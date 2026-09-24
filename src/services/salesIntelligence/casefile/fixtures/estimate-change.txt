@@ -28,7 +28,7 @@ L1 Priority 1 Quoted (since Thu Sep 17, 2026 11:20 AM ET) · Quoted yes [Lead] �
 [T3] Thu Sep 17 10:04 AM · RingCentral · C0 outbound from Top10 line by Jordan Bell (ext 104, reviewed)
      → connected 4m12s, recorded, human conversation
      C0 SUMMARY (full): Customer is moving a 2 bedroom home from Norfolk to Raleigh around October 10. She wants a written estimate. | wanted: A written estimate. | money & dates: Move around Oct 10. | outcome: Rep will email the estimate today. | commitments: Email estimate today; call back Monday after 5 PM.
-     C0 SAID: [rep promised] Rep promised to email the estimate today. (K2 → no record) · [rep promised] Rep promised to call back Monday after 5 PM. (K1 → open F-0) · [customer] Customer said her husband decides.
+     C0 SAID: [rep promised] Rep promised to email the estimate today. (K3 → no record) · [rep promised] Rep promised to call back Monday after 5 PM. (K2 → open F-0) · [customer] Customer said her husband decides.
 [T4] Thu Sep 17 10:04 AM · Vantage Outreach · F-1 created: call "Send the moving checklist", due Thu Sep 17, 2026 4:00 PM ET (rep promise) (recorded Fri Sep 18)
 [T5] Thu Sep 17 10:30 AM · Vantage Outreach · F-0 created: call "Call back Monday after 5 PM", due Mon Sep 21, 2026 5:00 PM ET (rep promise)
 [T6] Thu Sep 17 11:20 AM · Granot · Priority 0 Fresh → 1 Quoted by JBELL · estimate $7,100 · move date Oct 10, 2026 · 540 cu ft · service Long distance
@@ -38,9 +38,9 @@ Tail: last human conversation Thu Sep 17 (6 days ago). No outbound attempt since
 
 §5 OPEN WORK NOW   [Vantage Outreach, as of this file]
 Commitments ledger:
-  K1 rep promised "Rep promised to call back Monday after 5 PM." (C0, Thu Sep 17, 2026) → open (F-0, due Mon Sep 21, 2026 5:00 PM ET, overdue 2 days)
-  K2 rep promised "Rep promised to email the estimate today." (C0, Thu Sep 17, 2026) → no record it was done
-  K3 rep promise follow-up: call "Send the moving checklist" (F-1, created Fri Sep 18) → attempted, not reached (1 attempt)
+  K1 rep promise follow-up: call "Send the moving checklist" (F-1, promised Thu Sep 17, recorded Fri Sep 18) → attempted, not reached (1 attempt)
+  K2 rep promised "Rep promised to call back Monday after 5 PM." (C0, Thu Sep 17, 2026) → open (F-0, due Mon Sep 21, 2026 5:00 PM ET, overdue 2 days)
+  K3 rep promised "Rep promised to email the estimate today." (C0, Thu Sep 17, 2026) → no record it was done
 Open actions:
   F-0 call "Call back Monday after 5 PM" due Mon Sep 21, 2026 5:00 PM ET (rep promise, exact) — overdue 2 days
 State: open · Assigned: Jordan Bell · Restrictions: none · Reviews open: none

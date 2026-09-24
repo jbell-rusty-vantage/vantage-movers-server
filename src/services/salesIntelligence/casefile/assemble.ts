@@ -210,6 +210,7 @@ export async function assembleCaseFileSources(input: CaseFileInput): Promise<Cas
     completion_basis: str(f.completion_basis), disposition: str(f.disposition), completed_at: iso(f.completed_at), created_at: iso(f.createdAt),
     source_finding_ids: ((f.source_finding_ids as unknown[]) ?? []).map(String), commitment_key: str(f.commitment_key), cancel_reason: str(f.cancel_reason),
     supersedes_id: f.supersedes_id ? String(f.supersedes_id) : null, missed_episode_key: str(f.missed_episode_key),
+    evidence_interaction_id: f.evidence_interaction_id ? String(f.evidence_interaction_id) : null,
     anchor_at: iso((f.date_resolution as { anchor?: unknown } | null | undefined)?.anchor)
       ?? (f.source_interaction_id ? calls.calls.find(c => c.id === String(f.source_interaction_id))?.started_at ?? null : null) }));
   const caseRecords: CaseRecord[] = recordRows.slice(0, 100).map(r => ({ id: String(r._id), subject: { kind: r.subject.kind, model: r.subject.model ?? null, id: r.subject.id ? String(r.subject.id) : null },

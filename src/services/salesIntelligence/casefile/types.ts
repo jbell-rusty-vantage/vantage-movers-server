@@ -81,6 +81,8 @@ export type CaseCall = {
   id: string; provider_account_id: string; telephony_session_id: string | null; direction: string; started_at: string;
   company_e164: string | null; inbound_route_id: string | null; parties: CaseCallParty[]; queue_fanout: boolean; transfer: boolean;
   duration_seconds: number | null; provider_result: string | null; provider_connected: boolean; contact_type: string; recording_count: number;
+  /** `provider:*` / `transcript:*` = capture; `finding:<id>` / `owner` = classified (V-AC B1). */
+  contact_type_basis?: string | null;
 };
 
 export type CaseRepLink = {
@@ -103,7 +105,9 @@ export type CaseFollowup = { id: string; record_id: string; kind: string; descri
   status: string; completion_basis: string | null; disposition: string | null; completed_at: string | null; created_at: string | null; source_finding_ids: string[];
   commitment_key: string | null; cancel_reason: string | null; supersedes_id: string | null; missed_episode_key: string | null;
   /** When the promise was made (`date_resolution.anchor`, else the source call's start); the timeline places "created" there (V-AC S4). */
-  anchor_at?: string | null };
+  anchor_at?: string | null;
+  /** The call that completed it (`evidence_interaction_id`), for the ledger's classification check (R-S2). */
+  evidence_interaction_id?: string | null };
 export type CaseRecord = { id: string; subject: { kind: string; model: string | null; id: string | null }; state: string; closed_reason: string | null;
   closure_origin: string | null; responsible_agent_id: string | null; assignment: { origin: string; assigned_at: string | null } | null; wait_until: string | null };
 export type CaseBooking = { lead_key: string; id: string; job_no: string | null; book_date: string | null; deposit_amount: number | null; total_binder_amount: number | null };

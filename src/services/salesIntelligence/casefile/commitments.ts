@@ -5,6 +5,7 @@ import type { SummaryStep } from "../analysis/structuredContract";
 import { cleanText, clip } from "./digest";
 import { etDaysBetween, fullDate, fullTime, parseIso, timelineDate } from "./time";
 import type { CaseFinding, CaseFollowup, CaseLedgerLine } from "./types";
+import { KNOWN_MISS_DISPOSITIONS } from "../outreach/derive";
 
 /**
  * F7 Commitments ledger (spec §4.7). A commitment is a `said_on_call` claim that is `requested` or
@@ -25,7 +26,12 @@ export const UNDATED_GRACE_STAFFED_MINUTES = 2 * 720;
 const COMMITMENT_ORIGINS = new Set(["rep_promise", "customer_request", "customer_wait", "owner"]);
 const KEPT_DISPOSITIONS = new Set(["spoke_with_customer", "customer_called", "completed"]);
 const KEPT_BASES = new Set(["owner", "customer_confirmation", "rep_confirmation"]);
-const UNREACHED = new Set(["no_answer", "left_voicemail", "connected_contact_unknown"]);
+/** Known misses at completion time (V-AC B1, `outreach/derive.ts` `KNOWN_MISS_DISPOSITIONS`). */
+const KNOWN_MISSES: ReadonlySet<string> = new Set(KNOWN_MISS_DISPOSITIONS);
+const CONNECTED_UNKNOWN = "connected_contact_unknown";
+/** Owner-facing wording of the system cancel reasons (the free-text Owner reasons are shown as written). */
+const CANCEL_REASON_TEXT: Readonly<Record<string, string>> = { reached_on_classification: "the customer was reached (the call was classified as a conversation)",
+  superseded_by_specific_plan: "replaced by a later, specific plan" };
 /** Automatic confirmations are not a rep keeping a promise to text. */
 const AUTOMATIC_MESSAGE_PURPOSES = new Set(["quote_request_confirmation", "granot_lead_created_confirmation"]);
 
@@ -39,6 +45,11 @@ export type LedgerInput = {
   as_of: string;
   staffing: Staffing;
   followupLabel: (id: string) => string;
+  /**
+   * The Number's calls, for the completing call's classification (R-S2). `c` is its C number when it is a
+   * summarized conversation. Absent: every `connected_contact_unknown` completion reads as unclassified.
+   */
+  interactions?: ReadonlyArray<{ id: string; contact_type: string; contact_type_basis: string | null; c: number | null }>;
 };
 export type LedgerResult = {
   lines: CaseLedgerLine[];
@@ -74,14 +85,28 @@ function dueText(iso: string | null, asOf: string): string {
 
 function followupStatus(chain: readonly CaseFollowup[], input: LedgerInput, events: readonly StoryEvent[]): Status | null {
   const tOf = (followupId: string) => events.findIndex(e => e.kind === "followup_completed" && e.detail.followup_id === followupId);
-  const kept = chain.find(f => f.status === "completed" && ((f.disposition && KEPT_DISPOSITIONS.has(f.disposition)) || (f.completion_basis && KEPT_BASES.has(f.completion_basis))));
+  // R-S2 (after V-AC B1): a completion by a connected call is a miss only once that call is classified as not a
+  // conversation (`finding:*` / `owner` basis); classified as a human conversation it is kept; until then it is its own status.
+  const callOf = (f: CaseFollowup) => (f.evidence_interaction_id ? input.interactions?.find(i => i.id === f.evidence_interaction_id) ?? null : null);
+  const classified = (call: ReturnType<typeof callOf>) => Boolean(call?.contact_type_basis && (call.contact_type_basis === "owner" || call.contact_type_basis.startsWith("finding:")));
+  const completed = chain.filter(f => f.status === "completed");
+  const reachedByCall = completed.find(f => f.disposition === CONNECTED_UNKNOWN && callOf(f)?.contact_type === "human_conversation");
+  const kept = completed.find(f => (f.disposition && KEPT_DISPOSITIONS.has(f.disposition)) || (f.completion_basis && KEPT_BASES.has(f.completion_basis))) ?? reachedByCall;
   if (kept) {
     const t = tOf(kept.id);
     return { rank: 1, text: t >= 0 ? `kept at T${t}` : `kept (${input.followupLabel(kept.id)} completed ${fullDate(kept.completed_at)})`, short: t >= 0 ? `kept T${t}` : "kept" };
   }
-  const unreached = chain.filter(f => f.status === "completed" && f.disposition && UNREACHED.has(f.disposition));
+  const unreached = completed.filter(f => f.disposition && (KNOWN_MISSES.has(f.disposition) || (f.disposition === CONNECTED_UNKNOWN && classified(callOf(f)))));
+  const unclassified = completed.filter(f => f.disposition === CONNECTED_UNKNOWN && !classified(callOf(f)));
   const open = chain.filter(f => f.status === "open");
   const retryOpen = open.find(f => f.commitment_key?.startsWith("retry:"));
+  if (unclassified.length && !(open.length && !retryOpen)) {
+    const f = unclassified.at(-1)!, call = callOf(f);
+    const t = f.evidence_interaction_id ? events.findIndex(e => e.kind === "call" && String(e.detail.interaction_id ?? "") === f.evidence_interaction_id) : -1;
+    const where = [call?.c !== null && call?.c !== undefined ? `C${call.c}` : null, t >= 0 ? `T${t}` : null].filter(Boolean).join(", ");
+    const retry = retryOpen ? `; retry ${input.followupLabel(retryOpen.id)} ${dueText(retryOpen.due_at, input.as_of)}` : "";
+    return { rank: 3, text: `connected on a call${where ? ` (${where})` : ""}, contact not yet classified${retry}`, short: "connected, not classified" };
+  }
   if (open.length && !(retryOpen && unreached.length)) {
     const f = open[0]!;
     return { rank: 2, text: `open (${input.followupLabel(f.id)}, ${dueText(f.due_at, input.as_of)})`, short: `open ${input.followupLabel(f.id)}` };
@@ -93,7 +118,7 @@ function followupStatus(chain: readonly CaseFollowup[], input: LedgerInput, even
   if (chain.length && chain.every(f => f.status === "superseded")) return { rank: 4, text: "superseded by a later follow-up", short: "superseded" };
   if (chain.length && chain.every(f => f.status === "cancelled" || f.status === "superseded")) {
     const reason = chain.map(f => f.cancel_reason).find(Boolean);
-    return { rank: 4, text: `cancelled${reason ? `: ${cleanText(reason, 120)}` : ""}`, short: "cancelled" };
+    return { rank: 4, text: `cancelled${reason ? `: ${CANCEL_REASON_TEXT[reason] ?? cleanText(reason, 120)}` : ""}`, short: "cancelled" };
   }
   return null;
 }
@@ -147,8 +172,10 @@ export function buildLedger(input: LedgerInput): LedgerResult {
     const chain = followupChain(row, input.followups);
     chain.forEach(f => linkedFollowups.add(f.id));
     const status = followupStatus(chain, input, input.events) ?? dateStatus(row.due_at, row.created_at ?? input.as_of, input);
-    entries.push({ at: row.created_at ?? input.as_of, conversation_id: null, claim_key: null, status,
-      text: `${originLabel(row.origin)} follow-up: ${followupKindLabel(row.kind)} "${clip(cleanText(row.description ?? "", 200), 120)}" (${input.followupLabel(row.id)}, created ${timelineDate(row.created_at, input.as_of)})` });
+    // §5 shows the date §4 places the creation at (V-AC S4 / R-S2): the promise, not the row's write time.
+    const promised = row.anchor_at && (!row.created_at || Date.parse(row.anchor_at) < Date.parse(row.created_at)) ? row.anchor_at : null;
+    entries.push({ at: promised ?? row.created_at ?? input.as_of, conversation_id: null, claim_key: null, status,
+      text: `${originLabel(row.origin)} follow-up: ${followupKindLabel(row.kind)} "${clip(cleanText(row.description ?? "", 200), 120)}" (${input.followupLabel(row.id)}, ${promised ? `promised ${timelineDate(promised, input.as_of)}, recorded ${timelineDate(row.created_at, input.as_of)}` : `created ${timelineDate(row.created_at, input.as_of)}`})` });
   }
 
   entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));

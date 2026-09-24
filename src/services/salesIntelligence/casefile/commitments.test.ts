@@ -66,3 +66,35 @@ test("tiers: focus and the three newest others are full; the rest digest; SAID p
   assert.equal(digestOutcome(summary("x", { outcome: "o", commitments: "c" }), ["K1 → open F-0"]), "o | commitments: c [K1 → open F-0]");
   assert.equal(digestOutcome(summary("x"), []), null);
 });
+
+test("R-S2: a connected completion is 'not yet classified' until the call is classified; reached_on_classification reads as reached", () => {
+  const call = (basis: string | null, type = "unknown") => [{ id: "i1", contact_type: type, contact_type_basis: basis, c: 1 }];
+  const done = (over: Parameters<typeof followup>[1] = {}) => followup(31, { status: "completed", disposition: "connected_contact_unknown", completion_basis: "call_attempt",
+    completed_at: "2026-09-22T14:00:45.000Z", evidence_interaction_id: "i1", ...over });
+  const callEvent = { id: "call:i1", kind: "call", happened_at: "2026-09-22T14:00:00.000Z", observed_at: "2026-09-22T14:00:40.000Z", subject_key: "number:x",
+    actor: { kind: "rep", agent_id: null, name: null, identity_status: null }, record: { record_type: "story_event", record_id: "call:i1" }, sentence: "",
+    detail: { interaction_id: "i1" }, evidence_refs: [] } as StoryEvent;
+  const only = (followups: ReturnType<typeof followup>[], interactions: ReturnType<typeof call>, events: StoryEvent[] = [callEvent]) =>
+    status(buildLedger(input({ calls: [], followups, interactions, events })));
+  assert.deepEqual(only([done()], call("provider:connected")), ["connected on a call (C1, T0), contact not yet classified"]);
+  assert.deepEqual(only([done()], call(null), []), ["connected on a call (C1), contact not yet classified"]);
+  assert.deepEqual(only([done()], call("finding:abc", "human_conversation")), ["kept (F-1 completed Tue Sep 22, 2026)"], "classified a conversation: reached");
+  assert.deepEqual(only([done()], call("finding:abc")), ["attempted, not reached (1 attempt)"], "classified as not a conversation: a known miss");
+  assert.deepEqual(only([done()], call("owner", "voicemail")), ["attempted, not reached (1 attempt)"]);
+  // The pre-B1 shape: an open retry after an unclassified connected completion.
+  const retry = followup(32, { origin: "system_default", commitment_key: `retry:${hex(31)}:1`, due_at: "2026-09-22T16:00:00.000Z", created_at: "2026-09-22T14:01:00.000Z" });
+  assert.deepEqual(only([done(), retry], call("provider:connected")), ["connected on a call (C1, T0), contact not yet classified; retry F-2 due Tue Sep 22, 2026 12:00 PM ET, overdue 1 day"]);
+  // After classification as a conversation (B1 reconcile): root re-marked spoke_with_customer, retry superseded with reached_on_classification.
+  const reached = [done({ disposition: "spoke_with_customer" }), { ...retry, status: "superseded", cancel_reason: "reached_on_classification" }];
+  assert.deepEqual(only(reached, call("finding:abc", "human_conversation")), ["kept (F-1 completed Tue Sep 22, 2026)"]);
+  const cancelledOnly = [{ ...done(), status: "cancelled", cancel_reason: "reached_on_classification" }];
+  assert.deepEqual(only(cancelledOnly, call("finding:abc", "human_conversation")), ["cancelled: the customer was reached (the call was classified as a conversation)"]);
+});
+
+test("R-S2: §5 dates a follow-up-only commitment at the promise, like §4", () => {
+  const late = followup(31, { anchor_at: "2026-09-17T14:04:00.000Z", created_at: "2026-09-18T16:00:00.000Z" });
+  const ledger = buildLedger(input({ calls: [], followups: [late] }));
+  assert.match(ledger.lines[0]!.text, /\(F-1, promised Thu Sep 17, recorded Fri Sep 18\)/);
+  const onTime = followup(31);
+  assert.match(buildLedger(input({ calls: [], followups: [onTime] })).lines[0]!.text, /\(F-1, created Thu Sep 17\)/);
+});

@@ -133,16 +133,17 @@ export function vantageClauseText(side: VantageSide, direction: string, connecte
 
 type CallRow = { _id: unknown; provider_account_id: string; telephony_session_id?: string | null; direction: string; started_at: Date; company_e164?: string | null;
   inbound_route_id?: unknown; parties?: Array<{ role: string; extension_id?: string | null; extension_number?: string | null; name_raw?: string | null; connected?: boolean }>;
-  queue_fanout?: boolean; transfer?: boolean; duration_seconds?: number | null; provider_result?: string | null; provider_connected?: boolean; contact_type?: string;
+  queue_fanout?: boolean; transfer?: boolean; duration_seconds?: number | null; provider_result?: string | null; provider_connected?: boolean; contact_type?: string; contact_type_basis?: string | null;
   recordings?: unknown[] };
 export function toCaseCall(row: CallRow): CaseCall {
   return { id: String(row._id), provider_account_id: row.provider_account_id, telephony_session_id: row.telephony_session_id ?? null, direction: row.direction,
     started_at: row.started_at.toISOString(), company_e164: row.company_e164 ?? null, inbound_route_id: row.inbound_route_id ? String(row.inbound_route_id) : null,
     parties: (row.parties ?? []).map(p => ({ role: p.role, extension_id: p.extension_id ?? null, extension_number: p.extension_number ?? null, name_raw: p.name_raw ?? null, connected: Boolean(p.connected) })),
     queue_fanout: Boolean(row.queue_fanout), transfer: Boolean(row.transfer), duration_seconds: typeof row.duration_seconds === "number" ? row.duration_seconds : null,
-    provider_result: row.provider_result ?? null, provider_connected: Boolean(row.provider_connected), contact_type: row.contact_type ?? "unknown", recording_count: (row.recordings ?? []).length };
+    provider_result: row.provider_result ?? null, provider_connected: Boolean(row.provider_connected), contact_type: row.contact_type ?? "unknown", recording_count: (row.recordings ?? []).length,
+    contact_type_basis: row.contact_type_basis ?? null };
 }
-export const CALL_PROJECTION = "provider_account_id telephony_session_id direction started_at company_e164 inbound_route_id parties queue_fanout transfer duration_seconds provider_result provider_connected contact_type recordings";
+export const CALL_PROJECTION = "provider_account_id telephony_session_id direction started_at company_e164 inbound_route_id parties queue_fanout transfer duration_seconds provider_result provider_connected contact_type contact_type_basis recordings";
 
 /** The Number's canonical calls, newest `limit` at or before `as_of`, oldest first. */
 export async function readCaseCalls(numberId: string, asOf: Date, limit: number): Promise<{ calls: CaseCall[]; truncated: boolean }> {

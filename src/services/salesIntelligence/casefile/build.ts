@@ -108,7 +108,13 @@ function timelineEvents(src: CaseFileSources, histories: GranotHistory[], ctx: P
   }
   const notes = all.filter(e => e.kind === "owner_note");
   // Recorded conversations never collapse (they have recordings); attempt runs, Priority churn and review runs do.
-  let collapsed = collapseEvents(all);
+  // A connected call is never an "attempt" (the story's attempt rule keys on contact type and recordings, and every
+  // connected call starts as `contact_type: unknown`): it stays its own line so "none connected" is never false (R-S2).
+  const connectedIds = new Set(all.filter(e => e.kind === "call" && e.detail.provider_connected).map(e => e.id));
+  const focusById = new Map(all.map(e => [e.id, e.focus]));
+  let collapsed = collapseEvents(all.map(e => (connectedIds.has(e.id) ? { ...e, focus: true } : e)))
+    .map(e => (connectedIds.has(e.id) ? { ...e, focus: focusById.get(e.id) } : e));
+  for (const e of collapsed) if (e.focus === undefined) delete e.focus;
   // The collapse keeps five Owner notes; the budget (step 4) owns that cut here, so every note is restored.
   const present = new Set(collapsed.map(e => e.id));
   collapsed = [...collapsed.map(e => {
@@ -464,6 +470,8 @@ export function buildCaseFile(src: CaseFileSources): CaseFile {
 
   const tiers = assignTiers(cConversations.map(c => ({ conversation_id: c.id, started_at: c.started_at, focus: focus.has(c.id) })));
   const ledger = buildLedger({ calls: cConversations.map(c => ({ conversation_id: c.id, c: cIndex.get(c.id)!, started_at: c.started_at, summary: summaries.get(c.id)!.summary })),
+    interactions: src.calls.map(call => ({ id: call.id, contact_type: call.contact_type, contact_type_basis: call.contact_type_basis ?? null,
+      c: (conversationsByCall.get(call.id) ?? []).map(id => cIndex.get(id)).find((n): n is number => n !== undefined) ?? null })),
     findings: src.findings, followups: src.followups, events, as_of: asOf, staffing: src.staffing, followupLabel });
 
   // §4 timeline items. Tn = index (only story events carry T numbers).

@@ -263,6 +263,14 @@ export function unreviewedExtension(): CaseFileSources {
   sources.summaries = [{ ...sources.summaries[0]!, source: "canonical" }, { conversation_id: hex(25), source: "captured", summary: summary("Customer called back about the estimate and asked for a lower price.",
     { outcome: "The person who answered said someone would call her back tomorrow." }, [promise("Someone at Vantage said they would call her back tomorrow.", 2)]) }];
   sources.focus_conversation_ids = [hex(25)];
+  // R-S2: a callback completed by a connected 45 s call that is not yet classified (V-AC B1: no retry, no miss yet).
+  const c3 = call({ n: 17, when: "2026-09-22T14:00:00.000Z", direction: "Outbound", ext: "e104", connected: true, seconds: 45 });
+  const connected = followup(35, { description: "Call back Tuesday morning", due_at: "2026-09-22T14:00:00.000Z", status: "completed", disposition: "connected_contact_unknown",
+    completion_basis: "call_attempt", completed_at: "2026-09-22T14:00:45.000Z", created_at: "2026-09-21T15:00:00.000Z", evidence_interaction_id: c3.call.id });
+  sources.calls = [...sources.calls, { ...c3.call, contact_type_basis: "provider:connected" }];
+  sources.events = [...sources.events, c3.event, ...followupEvents(connected)];
+  sources.followups = [...sources.followups, connected];
+  sources.allowed_followup_ids = [...(sources.allowed_followup_ids ?? []), connected.id];
   return sources;
 }
 
