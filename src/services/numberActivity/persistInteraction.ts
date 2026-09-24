@@ -22,6 +22,7 @@ import {
   identityFromCallLogRecord,
   identityFromWebhookEvents,
   mergeProjections,
+  settleStoredProjection,
   type CallLogRecordInput,
 } from "./interactionProjection";
 import { reverseDigits, toNationalTenDigit } from "./phone";
@@ -53,6 +54,16 @@ export type ObservationInput =
   | {
       kind: "call_log";
       record: CallLogRecordInput;
+      proof_ref: string;
+      source?: CaptureSource;
+    }
+  | {
+      /**
+       * Settle a provisional row quiet past the horizon from its stored
+       * projection (no provider record). A no-op for any other row.
+       */
+      kind: "settle_stored";
+      identity: InteractionIdentity;
       proof_ref: string;
       source?: CaptureSource;
     };
@@ -186,7 +197,9 @@ async function applyOnce(
   const identity =
     input.kind === "webhook"
       ? identityFromWebhookEvents(input.events)
-      : identityFromCallLogRecord(input.record);
+      : input.kind === "settle_stored"
+        ? input.identity
+        : identityFromCallLogRecord(input.record);
   const aliases = aliasesFor(identity);
   if (!aliases.length) {
     throw new InteractionPersistenceError(
@@ -225,13 +238,18 @@ async function applyOnce(
 
   let outcome: ProjectionOutcome;
   try {
+    if (input.kind === "settle_stored" && !existing) {
+      throw new TypeError("No stored interaction to settle");
+    }
     outcome =
       input.kind === "webhook"
         ? fromWebhookParties(existing, input.events, deps.directory, accountId, {
             now,
             resolveRoute: deps.resolveRoute,
           })
-        : fromCallLogRecord(existing, input.record, deps.directory, accountId, {
+        : input.kind === "settle_stored"
+          ? settleStoredProjection(existing!, { now, settleHorizonMinutes: deps.settleHorizonMinutes })
+          : fromCallLogRecord(existing, input.record, deps.directory, accountId, {
             now,
             resolveRoute: deps.resolveRoute,
             source: input.source,
@@ -392,7 +410,7 @@ async function applyOnce(
     kind: "interaction",
   });
 
-  const captureSource = input.kind === "call_log" ? input.source : undefined;
+  const captureSource = input.kind === "webhook" ? undefined : input.source;
   const jobs = await scheduleDownstream(
     outcome,
     existing,

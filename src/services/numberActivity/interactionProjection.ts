@@ -614,7 +614,19 @@ export function fromCallLogRecord(
     lastModified < existing.provider_last_modified_at;
 
   const horizon = { now: options.now, settleHorizonMinutes: options.settleHorizonMinutes };
-  const callLogState = nextCallLogState(existing, stale, record, directory, horizon);
+  // A row another observation already made terminal never moves back to
+  // provisional: a mid-call snapshot read during the provider's rewrite lag
+  // (for example after webhook capture ended the session) only adds ids,
+  // legs and recordings, exactly like a stale record. Otherwise its Number,
+  // rollups and downstream work would be withdrawn and re-run on settle.
+  const snapshotOnFinal =
+    !stale &&
+    existing !== null &&
+    existing.terminal &&
+    existing.call_log_state !== "provisional" &&
+    classifyCallLogRecordState(record, directory, horizon) === "provisional";
+  const evidenceOnly = stale || snapshotOnFinal;
+  const callLogState = nextCallLogState(existing, evidenceOnly, record, directory, horizon);
   const provisional = callLogState === "provisional";
 
   const from = classifyEndpoint(endpointInput(recordOf(record.from)), directory);
@@ -627,7 +639,7 @@ export function fromCallLogRecord(
   // Internal -> Inbound/Outbound is the one allowed regression, and never from
   // a settled row: a settled Internal row stays Internal (CC-04).
   const keepEndpoints =
-    stale ||
+    evidenceOnly ||
     (existing?.call_log_state === "settled" && existing.direction === "Internal" && direction !== "Internal");
   const external = direction === "Outbound" ? to : from;
   const company = direction === "Outbound" ? from : to;
@@ -642,9 +654,9 @@ export function fromCallLogRecord(
     .filter((r): r is Record<string, unknown> => r !== null)
     .map((r) => ({ id: str(r.id), type: str(r.type) }))
     .filter((r): r is { id: string; type: string | null } => r.id !== null);
-  // A stale record may add legs it alone knows about, but must not overwrite
+  // A stale or evidence-only record may add legs it alone knows about, but must not overwrite
   // leg-level result/duration already stored from a newer record.
-  const mergedLegs = stale
+  const mergedLegs = evidenceOnly
     ? mergeLegs(legs, existing?.legs ?? [])
     : mergeLegs(existing?.legs ?? [], legs);
   const transfer =
@@ -707,15 +719,15 @@ export function fromCallLogRecord(
       (direction === "Inbound" && options.resolveRoute
         ? options.resolveRoute(companyE164, startTime)
         : null),
-    started_at: stale ? existing!.started_at : startTime,
+    started_at: evidenceOnly ? existing!.started_at : startTime,
     answered_at: existing?.answered_at ?? null,
     // A snapshot's duration is the ring-out time so far, not the call's.
-    ended_at: stale || provisional ? existing?.ended_at ?? null : endedAt ?? existing?.ended_at ?? null,
+    ended_at: evidenceOnly || provisional ? existing?.ended_at ?? null : endedAt ?? existing?.ended_at ?? null,
     duration_seconds:
-      stale || provisional
+      evidenceOnly || provisional
         ? existing?.duration_seconds ?? null
         : durationSeconds ?? existing?.duration_seconds ?? null,
-    provider_result: stale ? existing!.provider_result : result ?? existing?.provider_result ?? null,
+    provider_result: evidenceOnly ? existing!.provider_result : result ?? existing?.provider_result ?? null,
     provider_connected: (existing?.provider_connected ?? false) || connected,
     contact_type: contact.contact_type,
     contact_type_basis: contact.contact_type_basis,
@@ -741,7 +753,7 @@ export function fromCallLogRecord(
     monitoring,
     recordings: mergeRecordings(existing?.recordings ?? [], recordingIds, options.now),
     sources: unionSources(existing?.sources ?? [], [source]),
-    provider_last_modified_at: stale
+    provider_last_modified_at: evidenceOnly
       ? existing!.provider_last_modified_at
       : latest([existing?.provider_last_modified_at ?? null, lastModified]),
     // A settled Call Log record is a finalized provider fact: the session has
@@ -750,7 +762,31 @@ export function fromCallLogRecord(
     max_observed_webhook_sequence: existing?.max_observed_webhook_sequence ?? null,
     call_log_state: callLogState,
   };
-  return finish(existing, next, fullIdentity, 0, stale);
+  return finish(existing, next, fullIdentity, 0, evidenceOnly);
+}
+
+/**
+ * Settles a provisional row from its stored projection, without a provider
+ * record: the same result as a stale record arriving past the horizon
+ * (`nextCallLogState`). The last observed values become final, `terminal`
+ * is set, endpoints and direction stay as stored. Used when the provider can
+ * no longer answer for the record (404, a deterministic failure, quarantine,
+ * or Call Log capture switched off). Anything that is not a provisional row
+ * quiet past the horizon is returned unchanged (a no-op).
+ */
+export function settleStoredProjection(
+  existing: InteractionProjection,
+  options: { now: Date; settleHorizonMinutes?: number },
+): ProjectionOutcome {
+  const identity: InteractionIdentity = {
+    telephony_session_id: existing.telephony_session_id,
+    session_id: existing.session_id,
+    call_log_ids: existing.call_log_ids,
+  };
+  if (existing.call_log_state !== "provisional" || !pastSettleHorizon(existing.provider_last_modified_at, options)) {
+    return finish(existing, existing, identity, 0, false);
+  }
+  return finish(existing, { ...existing, call_log_state: "settled", terminal: true }, identity, 0, false);
 }
 
 /**

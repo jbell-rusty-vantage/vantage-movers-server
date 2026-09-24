@@ -27,6 +27,7 @@ import {
   mergeProjections,
   provisionalCallLogRule,
   sameProjection,
+  settleStoredProjection,
 } from "./interactionProjection";
 import { normalizeWebhookPartyObservations } from "./observeWebhookEvents";
 import type { InteractionProjection } from "./types";
@@ -321,4 +322,64 @@ test("live shape: Outbound snapshot -> Inbound final is the allowed settle trans
   assert.equal(settled.next.terminal, true);
   // The final version adds the Accept and connected leg ids; the record id is stable.
   assert.ok(settled.next.call_log_ids.includes(String(snapshot.id)));
+});
+
+test("a terminal row never moves to provisional: a snapshot read during the rewrite lag only adds evidence", () => {
+  // Webhook capture ended the session: terminal, external, Call Log state null.
+  const d = inboundQueueAnsweredDeliveries("s-lag-1");
+  let row = fromWebhookParties(null, normalizeWebhookPartyObservations(d.ringing, at(1)), directory, SYNTHETIC_ACCOUNT_ID, { now: at(1) }).next;
+  for (const delivery of [d.answered, d.disconnected]) {
+    row = fromWebhookParties(row, normalizeWebhookPartyObservations(delivery, at(96)), directory, SYNTHETIC_ACCOUNT_ID, { now: at(96) }).next;
+  }
+  assert.equal(row.terminal, true);
+  assert.equal(row.call_log_state, null);
+  assert.equal(row.direction, "Inbound");
+  const external = row.external_e164;
+  assert.ok(external);
+  const snapshot = internalSnapshotRecord(0, { sessionId: "s-lag-1" });
+  assert.equal(classify(snapshot), "provisional", "the record itself is a mid-call snapshot");
+  const after = project(row, snapshot);
+  assert.equal(after.next.call_log_state, null, "never provisional");
+  assert.equal(after.next.terminal, true);
+  assert.equal(after.next.direction, "Inbound", "direction is not rewritten to Internal");
+  assert.equal(after.next.external_e164, external, "the Contact Number keeps its interaction");
+  assert.equal(after.next.provider_last_modified_at, null, "a snapshot is not an authoritative Call Log version");
+  assert.ok(after.next.call_log_ids.includes(String(snapshot.id)), "ids and legs are still added");
+  assert.ok(after.next.legs.length > 0);
+  assert.equal(after.newly_settled, false);
+
+  // The final version later settles the row normally.
+  const final = finalVersionOf(snapshot, "s-lag-1");
+  const settled = project(after.next, final);
+  assert.equal(settled.next.call_log_state, "settled");
+  assert.equal(settled.next.duration_seconds, 1424);
+
+  // A settled Inbound row given a newer snapshot keeps its direction and values too.
+  const newer = { ...snapshot, lastModifiedTime: new Date(new Date(String(final.lastModifiedTime)).getTime() + 60_000).toISOString() };
+  const kept = project(settled.next, newer, soonAfter(newer));
+  assert.equal(kept.next.direction, "Inbound");
+  assert.equal(kept.next.duration_seconds, 1424);
+  assert.equal(kept.next.call_log_state, "settled");
+});
+
+test("settleStoredProjection: a provisional row quiet past the horizon settles with its stored values; anything else is unchanged", () => {
+  const snapshot = internalSnapshotRecord(6, { sessionId: "s-store-1" });
+  const provisional = project(null, snapshot).next;
+  assert.equal(provisional.call_log_state, "provisional");
+  const modified = new Date(String(snapshot.lastModifiedTime));
+  const early = settleStoredProjection(provisional, { now: soonAfter(snapshot) });
+  assert.equal(early.changed, false, "inside the horizon nothing happens");
+  const late = settleStoredProjection(provisional, { now: new Date(modified.getTime() + minutes(DEFAULT_SETTLE_HORIZON_MINUTES)) });
+  assert.equal(late.changed, true);
+  assert.equal(late.newly_settled, true);
+  assert.equal(late.newly_terminal, true);
+  assert.equal(late.next.call_log_state, "settled");
+  assert.equal(late.next.direction, provisional.direction);
+  assert.equal(late.next.provider_last_modified_at?.toISOString(), modified.toISOString());
+  // The same result as the stale-record settle.
+  const older = { ...snapshot, lastModifiedTime: new Date(modified.getTime() - 30_000).toISOString() };
+  const viaStale = project(provisional, older, new Date(modified.getTime() + minutes(DEFAULT_SETTLE_HORIZON_MINUTES)));
+  assert.equal(sameProjection(viaStale.next, { ...late.next, sources: viaStale.next.sources, call_log_ids: viaStale.next.call_log_ids, legs: viaStale.next.legs, recordings: viaStale.next.recordings }), true);
+  const settled = settleStoredProjection(late.next, { now: new Date(modified.getTime() + minutes(2 * DEFAULT_SETTLE_HORIZON_MINUTES)) });
+  assert.equal(settled.changed, false, "a settled row is a no-op");
 });
