@@ -44,7 +44,8 @@ const views = (move: { pickup?: [string, string, string]; delivery?: [string, st
 export function formLead(n: number, over: Partial<CaseLead> = {}): CaseLead {
   return { ref: { model: "FormLead", id: hex(n) }, name: "Maria Lopez", granot_contact_name: null, received_at: "2026-09-15T22:30:00.000Z", created_at: "2026-09-15T22:30:20.000Z",
     source_label: "Top10", job_no: "84521", normalized_job_no: "84521", normalized_phone: "7575550143", duplicate: false, bad_lead: false, no_sync: false, booked: false, cancelled: false,
-    granot_priority: "1", quoted: true, ingestion_origin: "wordpress_form", receiver: { agent_id: hex(801), name: "Jordan Bell", source: "granot_username_match", set_at: "2026-09-17T15:20:00.000Z" },
+    granot_priority: "1", quoted: true, ingestion_origin: "wordpress_form",
+    contact_origin: { ingested_name: "Maria Lopez", ingested_status: "captured_at_ingestion", current_source: "vantage" }, receiver: { agent_id: hex(801), name: "Jordan Bell", source: "granot_username_match", set_at: "2026-09-17T15:20:00.000Z" },
     move: views({ pickup: ["Norfolk", "VA", "23510"], delivery: ["Raleigh", "NC", "27601"], date: "2026-10-10", size: "2 Bedrooms" }), ringcentral: null, ...over };
 }
 
@@ -157,6 +158,7 @@ export function formLeadOneCall(): CaseFileSources {
 /** 2. A Call Lead: an inbound qualifying call to a routed line, answered by a reviewed rep. */
 export function callLead(): CaseFileSources {
   const lead: CaseLead = { ...formLead(2, { ref: { model: "CallLead", id: hex(2) }, name: "Dan Whit", job_no: "84600", normalized_job_no: "84600", granot_priority: null, quoted: false,
+    contact_origin: null, ingestion_origin: "ringcentral_call",
     receiver: null, move: views(null, false), source_label: "MovingQuotes", received_at: "2026-09-20T17:00:00.000Z", created_at: "2026-09-20T17:08:00.000Z" }),
   ringcentral: { telephony_session_id: "sess-12", qualification_reason: "Answered inbound call over 60 seconds", start_time: "2026-09-20T17:00:00.000Z",
     target_phone_number: "+18005550199", target_name: "MovingQuotes", source_label: "MQ", route_id: null } };
@@ -239,6 +241,14 @@ export function estimateChange(): CaseFileSources {
     observation(63, "2026-09-23T13:00:00.000Z", { priority: "1", move_date: "2026-10-12", rep_raw: "JBELL", user_raw: "JBELL" }),
   ] }];
   sources.bookings = [];
+  // V-AC S3: the Granot lifecycle rewrote the Lead's name after the form was submitted.
+  sources.leads = [{ ...lead, name: "Maria L. Lopez", contact_origin: { ingested_name: "Maria Lopez", ingested_status: "captured_at_ingestion", current_source: "granot" } }];
+  // V-AC S4: a promise from C0 whose follow-up row was written the next day, after a call attempt had already completed it.
+  const late = followup(32, { description: "Send the moving checklist", kind: "call", due_at: "2026-09-17T20:00:00.000Z", status: "completed", disposition: "no_answer",
+    completion_basis: "call_attempt", completed_at: "2026-09-17T20:05:00.000Z", created_at: "2026-09-18T16:00:00.000Z", anchor_at: "2026-09-17T14:04:00.000Z" });
+  sources.followups = [...sources.followups, late];
+  sources.allowed_followup_ids = [...(sources.allowed_followup_ids ?? []), late.id];
+  sources.events = [...sources.events, ...followupEvents(late)];
   return sources;
 }
 

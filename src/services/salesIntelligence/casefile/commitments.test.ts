@@ -63,6 +63,6 @@ test("tiers: focus and the three newest others are full; the rest digest; SAID p
     ["c3", { tier: "full", full_rank: 1 }], ["c4", { tier: "full", full_rank: 0 }]]);
   const s = summary("x", {}, [{ ...fact("intent", 1), kind: "intent", value: { intent: "moving_inquiry" } } as never, promise("call", 2), fact("too pricey", 3)]);
   assert.deepEqual(saidOrder(s), [1, 2, 0]);
-  assert.equal(digestOutcome(summary("x", { outcome: "o", commitments: "c" }), ["K1 → open F-0"]), "outcome: o | commitments: c [K1 → open F-0]");
+  assert.equal(digestOutcome(summary("x", { outcome: "o", commitments: "c" }), ["K1 → open F-0"]), "o | commitments: c [K1 → open F-0]");
   assert.equal(digestOutcome(summary("x"), []), null);
 });

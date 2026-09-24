@@ -44,7 +44,8 @@ export const CASE_FILE_CALL_LIMIT = 400;
 export const CASE_FILE_READER_LIMIT = 400;
 const CASE_FILE_KINDS = new Set(TIMELINE_KINDS.filter(kind => !["granot_observed", "followup_snoozed", "analysis_submitted"].includes(kind)));
 const CASE_LEAD_PROJECTION = { ...LEAD_PROJECTION, receiver_agent_source: 1, receiver_agent_set_at: 1, "ringcentral.target_phone_number": 1, "ringcentral.target_name": 1,
-  "ringcentral.source_label": 1, "ringcentral.route_id": 1 } as const;
+  "ringcentral.source_label": 1, "ringcentral.route_id": 1, "ingested_contact_snapshot.name": 1, "ingested_contact_snapshot.evidence_status": 1,
+  "current_contact_provenance.source_system": 1 } as const;
 
 export type AssembledCaseFile = { sources: CaseFileSources; file: CaseFile; rendered: RenderedCaseFile };
 
@@ -58,6 +59,7 @@ async function resolveSubject(input: CaseFileInput): Promise<StorySubject> {
 }
 
 export type RawLead = LeadRow & LeadMoveSource & { receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null;
+  ingested_contact_snapshot?: { name?: string | null; evidence_status?: string | null } | null; current_contact_provenance?: { source_system?: string | null } | null;
   ringcentral?: (LeadRow["ringcentral"] & { target_phone_number?: string | null; target_name?: string | null; source_label?: string | null; route_id?: unknown }) | null };
 export async function readCaseLeads(refs: readonly StoryLeadRef[]): Promise<RawLead[]> {
   const out = new Map<string, RawLead>();
@@ -75,6 +77,8 @@ export function toCaseLead(row: RawLead): CaseLead {
     created_at: iso(row.createdAt), source_label: str(row.source_company_label_snapshot) ?? str(row.source_company), job_no: str(row.job_no), normalized_job_no: str(row.normalized_job_no),
     normalized_phone: str(row.normalized_phone_number), duplicate: Boolean(row.duplicate), bad_lead: Boolean(row.bad_lead), no_sync: Boolean(row.no_sync), booked: Boolean(row.booked),
     cancelled: Boolean(row.cancelled), granot_priority: str(row.granot_priority), quoted: row.quoted === true, ingestion_origin: str(row.ingestion_origin),
+    contact_origin: row.ingested_contact_snapshot || row.current_contact_provenance ? { ingested_name: str(row.ingested_contact_snapshot?.name),
+      ingested_status: str(row.ingested_contact_snapshot?.evidence_status), current_source: str(row.current_contact_provenance?.source_system) } : null,
     receiver: row.receiver_agent || row.receiver_agent_name_snapshot ? { agent_id: row.receiver_agent ? String(row.receiver_agent) : null, name: str(row.receiver_agent_name_snapshot),
       source: str(row.receiver_agent_source), set_at: iso(row.receiver_agent_set_at) } : null,
     move: JSON.parse(JSON.stringify(moveViewsForLead(row, row.model))),
@@ -205,7 +209,9 @@ export async function assembleCaseFileSources(input: CaseFileInput): Promise<Cas
     precision: str((f.date_resolution as { precision?: string } | null | undefined)?.precision), origin: String(f.origin), status: String(f.status),
     completion_basis: str(f.completion_basis), disposition: str(f.disposition), completed_at: iso(f.completed_at), created_at: iso(f.createdAt),
     source_finding_ids: ((f.source_finding_ids as unknown[]) ?? []).map(String), commitment_key: str(f.commitment_key), cancel_reason: str(f.cancel_reason),
-    supersedes_id: f.supersedes_id ? String(f.supersedes_id) : null, missed_episode_key: str(f.missed_episode_key) }));
+    supersedes_id: f.supersedes_id ? String(f.supersedes_id) : null, missed_episode_key: str(f.missed_episode_key),
+    anchor_at: iso((f.date_resolution as { anchor?: unknown } | null | undefined)?.anchor)
+      ?? (f.source_interaction_id ? calls.calls.find(c => c.id === String(f.source_interaction_id))?.started_at ?? null : null) }));
   const caseRecords: CaseRecord[] = recordRows.slice(0, 100).map(r => ({ id: String(r._id), subject: { kind: r.subject.kind, model: r.subject.model ?? null, id: r.subject.id ? String(r.subject.id) : null },
     state: r.state, closed_reason: str(r.closed_reason), closure_origin: str(r.closure_origin), responsible_agent_id: r.responsible_agent_id ? String(r.responsible_agent_id) : null,
     assignment: r.assignment ? { origin: r.assignment.origin, assigned_at: iso(r.assignment.assigned_at) } : null, wait_until: iso(r.wait_until) }));

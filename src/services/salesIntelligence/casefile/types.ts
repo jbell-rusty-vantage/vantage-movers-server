@@ -60,6 +60,12 @@ export type CaseLead = {
   granot_priority: string | null;
   quoted: boolean;
   ingestion_origin: string | null;
+  /**
+   * Where the Lead's `name` came from (V-AC S3): the name as captured at ingestion
+   * (`ingested_contact_snapshot`, with its evidence status) and the source of the current contact
+   * (`current_contact_provenance.source_system`: the Granot lifecycle overwrites `name`). Absent = unknown.
+   */
+  contact_origin?: { ingested_name: string | null; ingested_status: string | null; current_source: string | null } | null;
   receiver: { agent_id: string | null; name: string | null; source: string | null; set_at: string | null } | null;
   move: MoveViews;
   /** Call Leads: the qualifying RingCentral call. */
@@ -95,7 +101,9 @@ export type CaseFinding = { id: string; run_id: string | null; conversation_id: 
   superseded_by: string | null; resolved_due_at: string | null; segment_ids: number[]; purged: boolean };
 export type CaseFollowup = { id: string; record_id: string; kind: string; description: string | null; due_at: string | null; precision: string | null; origin: string;
   status: string; completion_basis: string | null; disposition: string | null; completed_at: string | null; created_at: string | null; source_finding_ids: string[];
-  commitment_key: string | null; cancel_reason: string | null; supersedes_id: string | null; missed_episode_key: string | null };
+  commitment_key: string | null; cancel_reason: string | null; supersedes_id: string | null; missed_episode_key: string | null;
+  /** When the promise was made (`date_resolution.anchor`, else the source call's start); the timeline places "created" there (V-AC S4). */
+  anchor_at?: string | null };
 export type CaseRecord = { id: string; subject: { kind: string; model: string | null; id: string | null }; state: string; closed_reason: string | null;
   closure_origin: string | null; responsible_agent_id: string | null; assignment: { origin: string; assigned_at: string | null } | null; wait_until: string | null };
 export type CaseBooking = { lead_key: string; id: string; job_no: string | null; book_date: string | null; deposit_amount: number | null; total_binder_amount: number | null };

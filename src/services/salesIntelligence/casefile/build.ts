@@ -34,12 +34,47 @@ const cap = (text: string) => (text ? text[0]!.toUpperCase() + text.slice(1) : t
 const noPeriod = (text: string) => text.replace(/\.$/, "");
 const str = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 
+/** A follow-up's lifecycle order at equal instants: created before completed/cancelled/superseded (V-AC S4). */
+/** V-AC N7: "unreviewed" is reserved for rep identity; a finding's Owner review reads differently. */
+const REVIEW_WORDING: Readonly<Record<string, string>> = { unreviewed: "not yet reviewed by the Owner", confirmed: "confirmed by the Owner",
+  corrected: "corrected by the Owner", retracted: "retracted by the Owner" };
+const reviewWording = (state: string | null) => (state ? REVIEW_WORDING[state] ?? state.replace(/_/g, " ") : REVIEW_WORDING.unreviewed!);
+const LIFECYCLE_ORDER: Readonly<Record<string, number>> = { followup_created: 0, followup_completed: 1, followup_cancelled: 1, followup_superseded: 1 };
 function compareCase(a: StoryEvent, b: StoryEvent): number {
   const at = Date.parse(a.happened_at) - Date.parse(b.happened_at);
   if (at) return at;
   const order = timelineKindOrder(a.kind) - timelineKindOrder(b.kind);
   if (order) return order;
+  const lifecycle = (LIFECYCLE_ORDER[a.kind] ?? 0) - (LIFECYCLE_ORDER[b.kind] ?? 0);
+  if (lifecycle) return lifecycle;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * V-AC S4: a follow-up's "created" line sits at the promise (its `date_resolution.anchor`, else the
+ * source call), never after its own completion/cancellation. The row's write time becomes
+ * `observed_at`, so a follow-up written later reads `(recorded …)`. Pure.
+ */
+export function anchorFollowupCreation(events: readonly StoryEvent[], followups: readonly CaseFollowup[]): StoryEvent[] {
+  const byId = new Map(followups.map(f => [f.id, f]));
+  const firstTransition = new Map<string, number>();
+  for (const e of events) {
+    if (e.kind === "followup_created") continue;
+    if (!String(e.kind).startsWith("followup_")) continue;
+    const id = String(e.detail.followup_id ?? ""), at = Date.parse(e.happened_at);
+    if (!Number.isNaN(at)) firstTransition.set(id, Math.min(firstTransition.get(id) ?? at, at));
+  }
+  return events.map(e => {
+    if (e.kind !== "followup_created") return e;
+    const id = String(e.detail.followup_id ?? ""), written = Date.parse(e.happened_at);
+    const anchor = Date.parse(byId.get(id)?.anchor_at ?? "");
+    let at = Number.isNaN(anchor) ? written : Math.min(written, anchor);
+    const transition = firstTransition.get(id);
+    if (transition !== undefined && transition < at) at = transition;
+    if (at === written) return e;
+    const observed = Number.isNaN(Date.parse(e.observed_at)) ? e.happened_at : e.observed_at;
+    return { ...e, happened_at: new Date(at).toISOString(), observed_at: new Date(Math.max(Date.parse(observed), written)).toISOString() };
+  });
 }
 const leadIdOf = (event: StoryEvent): string | null => {
   const ref = event.detail.lead_ref as { id?: unknown } | null | undefined;
@@ -62,7 +97,7 @@ type Ctx = {
 /** Timeline events: readers (minus `granot_observed`) + Granot history, merged, focused, collapsed, bounded. */
 function timelineEvents(src: CaseFileSources, histories: GranotHistory[], ctx: Pick<Ctx, "cIndex" | "focus" | "conversationsByCall">) {
   const base = src.events.filter(e => !EXCLUDED_KINDS.has(e.kind)).map(e => ({ ...e, detail: { ...e.detail }, evidence_refs: [...e.evidence_refs] }));
-  const merged = mergeGranotHistory(base, histories.flatMap(h => h.entries));
+  const merged = mergeGranotHistory(anchorFollowupCreation(base, src.followups), histories.flatMap(h => h.entries));
   const all = [...merged.events, ...merged.history.map(granotHistoryEvent)].sort(compareCase);
   const conversationCalls = new Set<string>();
   for (const event of all) {
@@ -174,13 +209,22 @@ function headText(e: StoryEvent, ctx: Ctx): string {
     case "granot_priority_changed": {
       const by = str(d.granot_rep_raw) ? ` by ${cleanText(d.granot_rep_raw, 40)}` : "";
       const from = str(d.from), to = str(d.to);
-      const change = from === null ? `Priority set to ${to ?? "none"} ${priorityLabel(to)}` : `Priority ${from} ${priorityLabel(from)} → ${to ?? "none"} ${priorityLabel(to)}`;
-      const churn = typeof d.churn_count === "number" && d.churn_count > 1 ? ` (${d.churn_count} changes within an hour)` : "";
+      const churned = typeof d.churn_count === "number" && d.churn_count > 1;
+      // V-AC S2: a change whose from equals its to is not a change: say what the record shows instead.
+      const change = from === null ? `Priority set to ${to ?? "none"} ${priorityLabel(to)}`
+        : from === to ? (churned ? `Priority changed and returned to ${to} ${priorityLabel(to)}` : `Priority re-recorded as ${to} ${priorityLabel(to)} (no change)`)
+        : `Priority ${from} ${priorityLabel(from)} → ${to ?? "none"} ${priorityLabel(to)}`;
+      const churn = churned ? ` (${d.churn_count} changes within an hour)` : "";
       const fields = (Array.isArray(d.granot_fields) ? d.granot_fields as Parameters<typeof granotChangeText>[0][] : []).filter(c => c.field !== "user_raw");
       const extra = fields.length ? ` · ${fields.map(granotChangeText).join(" · ")}` : "";
       return `${lead}${change}${by}${churn}${extra}`;
     }
-    case "quoted_changed": return `${lead}${d.quoted === false ? "Quoted mark removed in Granot" : "marked Quoted in Granot"}`;
+    case "quoted_changed": {
+      // V-AC S2: the sentence names the same source as the line's source label.
+      const where = d.source_system === "vantage" ? "by a Vantage edit" : "in Granot";
+      if (d.quoted !== false && d.quoted_before === true) return `${lead}Quoted mark re-recorded ${where} (no change)`;
+      return `${lead}${d.quoted === false ? `Quoted mark removed ${where}` : `marked Quoted ${where}`}`;
+    }
     case "granot_observed": {
       const changes = (Array.isArray(d.changes) ? d.changes : []) as Parameters<typeof granotChangeText>[0][];
       const shown = changes.filter(c => c.field !== "user_raw");
@@ -232,11 +276,28 @@ function callBlock(conversation: string, ctx: Ctx, claims: Map<string, { k: numb
 // Sections
 // ---------------------------------------------------------------------------------------------
 
+const FORM_SUBMISSION_ORIGINS = new Set(["wordpress_form"]);
+/**
+ * V-AC S3: `name` is also a Granot write path, so it is labelled by where it came from. `[form name]`
+ * only for the name captured at ingestion from a form submission (`ingested_contact_snapshot`); the
+ * current value is `[Granot]` when the contact provenance says Granot wrote it, else `[Lead record]`.
+ */
+export function customerNameText(lead: CaseLead): string | null {
+  const current = str(lead.name) ? cleanText(lead.name, 80) : null;
+  const origin = lead.contact_origin ?? null;
+  const submitted = origin?.ingested_status === "captured_at_ingestion" && FORM_SUBMISSION_ORIGINS.has(lead.ingestion_origin ?? "") && str(origin.ingested_name)
+    ? cleanText(origin.ingested_name, 80) : null;
+  const currentLabel = origin?.current_source === "granot" ? "Granot" : "Lead record";
+  if (submitted && (!current || current === submitted)) return `${submitted} [form name]`;
+  if (submitted && current) return `${submitted} [form name] · Lead record now "${current}" [${currentLabel}]`;
+  return current ? `${current} [${currentLabel}]` : null;
+}
+
 function customerLine(src: CaseFileSources, leads: CaseLead[]): string {
-  const named = leads.find(l => str(l.name)) ?? null;
+  const named = leads.find(l => str(l.name) || str(l.contact_origin?.ingested_name)) ?? null;
   const granot = named ? null : leads.find(l => str(l.granot_contact_name)) ?? null;
   const callerId = src.provider_names.map(n => cleanText(n, 60)).find(Boolean) ?? null;
-  const name = named ? `${cleanText(named.name, 80)} [${named.ref.model === "FormLead" ? "form name" : "Call Lead name"}]` : granot ? `${cleanText(granot.granot_contact_name, 80)} [Granot]` : null;
+  const name = named ? customerNameText(named) : granot ? `${cleanText(granot.granot_contact_name, 80)} [Granot]` : null;
   const parts = [name, callerId ? `caller ID "${callerId}" [RingCentral]` : null].filter(Boolean);
   return `Customer: ${parts.length ? parts.join(" · ") : "name not recorded"}`;
 }
@@ -522,7 +583,7 @@ export function buildCaseFile(src: CaseFileSources): CaseFile {
       const effects = Array.isArray(r.fields.effects) ? (r.fields.effects as Array<{ kind?: string; status?: string; target_id?: string | null }>)
         .map(e => `${String(e.kind ?? "effect").replace(/_/g, " ")} ${e.status ?? ""}${e.target_id && followupIndex.has(e.target_id) ? ` → ${followupLabel(e.target_id)}` : ""}`.trim()) : [];
       priorFindings.push({ p, id: r.record_id, review_state: str(r.fields.review_state),
-        text: `  P${p} ${String(r.fields.kind ?? "finding").replace(/_/g, " ")} "${clip(cleanText(r.fields.description ?? "", 300), 200)}" (${where}, ${str(r.fields.review_state) ?? "unreviewed"}${r.fields.action_status ? `, ${r.fields.action_status}` : ""})${effects.length ? `; ${effects.join(", ")}` : ""}` });
+        text: `  P${p} ${String(r.fields.kind ?? "finding").replace(/_/g, " ")} "${clip(cleanText(r.fields.description ?? "", 300), 200)}" (${where}, ${reviewWording(str(r.fields.review_state))}${r.fields.action_status ? `, ${r.fields.action_status}` : ""})${effects.length ? `; ${effects.join(", ")}` : ""}` });
     });
     if (src.prior?.page.missing_ranges.length) notes.push(`(earlier model output not shown: ${src.prior.page.missing_ranges.join(", ")})`);
   }

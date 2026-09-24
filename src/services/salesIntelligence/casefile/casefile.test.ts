@@ -3,11 +3,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { applyCaseFileBudget, renderCaseFile, trimCandidates } from "./budget";
-import { buildCaseFile, customerEvidenceDigest } from "./build";
+import { anchorFollowupCreation, buildCaseFile, customerEvidenceDigest, customerNameText } from "./build";
 import { findingsAppendix, isPriorFindingTimelineRecord } from "./appendix";
 import { caseFileFromReadContent, caseFileToReadContent } from "./page";
 import { emptyTrimState, renderBody } from "./render";
-import { FIXTURES, busyNumber, estimateChange, formLeadOneCall, priorPage } from "./fixtures/sources";
+import { FIXTURES, busyNumber, estimateChange, followup, followupEvents, formLead, formLeadOneCall, priorPage, priorityChange } from "./fixtures/sources";
 import type { CaseFile, CaseFileSources } from "./types";
 
 /**
@@ -143,4 +143,65 @@ test("appendix (§4.9): calls keep segment ids only for captured calls; job_time
 test("renderCaseFile is the budgeted text", () => {
   const file = build(formLeadOneCall);
   assert.equal(renderCaseFile(file), applyCaseFileBudget(file).text);
+});
+
+test("V-AC S2: the sentence names the line's source; a Priority change to the same value is not rendered as a change", () => {
+  const sources = formLeadOneCall(), lead = sources.leads[0]!;
+  const quoted = (id: string, system: string, before: boolean, after: boolean) => ({ ...priorityChange(0, lead, "2026-09-18T12:00:00.000Z", null, "1", null),
+    id: `quoted_changed:${id}`, kind: "quoted_changed" as const, record: { record_type: "story_event" as const, record_id: `quoted_changed:${id}` },
+    detail: { lead_ref: lead.ref, quoted: after, quoted_before: before, source_system: system } });
+  sources.events = [...sources.events, quoted("a", "vantage", true, false), quoted("b", "granot", false, true), quoted("c", "granot", true, true),
+    { ...priorityChange(72, lead, "2026-09-19T12:00:00.000Z", "1", "1", "JBELL"), detail: { lead_ref: lead.ref, from: "1", to: "1", granot_rep_raw: "JBELL", source_system: "vantage" } },
+    { ...priorityChange(73, lead, "2026-09-20T12:00:00.000Z", "1", "1", null), detail: { lead_ref: lead.ref, from: "1", to: "1", churn_count: 3, source_system: "granot" } }];
+  const text = applyCaseFileBudget(buildCaseFile(sources)).text;
+  assert.match(text, /· Vantage · Quoted mark removed by a Vantage edit$/m);
+  assert.match(text, /· Granot · marked Quoted in Granot$/m);
+  assert.match(text, /· Granot · Quoted mark re-recorded in Granot \(no change\)$/m);
+  assert.match(text, /· Vantage · Priority re-recorded as 1 Quoted \(no change\) by JBELL$/m);
+  assert.match(text, /· Granot · Priority changed and returned to 1 Quoted \(3 changes within an hour\)$/m);
+  assert.ok(!/Priority 1 Quoted → 1 Quoted/.test(text));
+  assert.ok(!/· Vantage · [^\n]*in Granot/.test(text), "no Vantage line claims Granot");
+});
+
+test("V-AC S3: [form name] only for the name captured from the form; otherwise the Lead record or Granot", () => {
+  const base = formLead(1);
+  assert.equal(customerNameText(base), "Maria Lopez [form name]");
+  assert.equal(customerNameText({ ...base, name: "Maria L. Lopez", contact_origin: { ingested_name: "Maria Lopez", ingested_status: "captured_at_ingestion", current_source: "granot" } }),
+    'Maria Lopez [form name] · Lead record now "Maria L. Lopez" [Granot]');
+  assert.equal(customerNameText({ ...base, contact_origin: null }), "Maria Lopez [Lead record]", "no ingested snapshot: never called the form name");
+  assert.equal(customerNameText({ ...base, contact_origin: { ingested_name: "Maria Lopez", ingested_status: "legacy_baseline", current_source: null } }), "Maria Lopez [Lead record]");
+  assert.equal(customerNameText({ ...base, ingestion_origin: "granot_lead_created", contact_origin: { ingested_name: "M Lopez", ingested_status: "captured_at_ingestion", current_source: "granot" } }),
+    "Maria Lopez [Granot]", "a Granot-created Lead has no form");
+  assert.equal(customerNameText({ ...base, name: null, contact_origin: null }), null);
+});
+
+test("V-AC S4: a follow-up is never shown completed before it was created; creation sits at the promise with (recorded …)", () => {
+  const late = followup(32, { status: "completed", completed_at: "2026-09-17T20:05:00.000Z", created_at: "2026-09-18T16:00:00.000Z", anchor_at: "2026-09-17T14:04:00.000Z" });
+  const events = anchorFollowupCreation(followupEvents(late), [late]);
+  assert.equal(events[0]!.happened_at, "2026-09-17T14:04:00.000Z");
+  assert.equal(events[0]!.observed_at, "2026-09-18T16:00:00.000Z");
+  const noAnchor = { ...late, anchor_at: null };
+  const clamped = anchorFollowupCreation(followupEvents(noAnchor), [noAnchor]);
+  assert.equal(clamped[0]!.happened_at, "2026-09-17T20:05:00.000Z", "without an anchor, creation is clamped to the completion");
+  const onTime = followup(33);
+  assert.deepEqual(anchorFollowupCreation(followupEvents(onTime), [onTime]), followupEvents(onTime), "an on-time row is untouched");
+  const text = applyCaseFileBudget(buildCaseFile(estimateChange())).text;
+  const created = text.indexOf("F-1 created"), completed = text.indexOf("F-1 completed");
+  assert.ok(created > 0 && completed > created, "created precedes completed");
+  assert.match(text, /F-1 created: call "Send the moving checklist"[^\n]*\(recorded Fri Sep 18\)/);
+  // Equal instants: created sorts before completed.
+  const same = followup(34, { status: "completed", completed_at: "2026-09-17T14:30:00.000Z" });
+  const s2 = formLeadOneCall(); s2.followups = [same]; s2.allowed_followup_ids = [same.id];
+  s2.events = [...s2.events.filter(e => !e.kind.startsWith("followup_")), ...followupEvents(same)];
+  const t2 = applyCaseFileBudget(buildCaseFile(s2)).text;
+  assert.ok(t2.indexOf("F-0 created") < t2.indexOf("F-0 completed"));
+});
+
+test("V-AC N7: a prior finding's review reads as the Owner's review, and the digest outcome label is not doubled", () => {
+  const text = applyCaseFileBudget(build(busyNumber)).text;
+  assert.ok(text.includes("not yet reviewed by the Owner") && text.includes("confirmed by the Owner"));
+  assert.ok(!/\(C\d+, unreviewed/.test(text), "unreviewed stays an identity word only");
+  const untrimmed = renderBody(build(busyNumber), emptyTrimState()).join(String.fromCharCode(10));
+  assert.ok(/C0 OUTCOME: Outcome of call 0: waiting on the customer\. \| commitments: /.test(untrimmed), 'the digest line shows the outcome once');
+  assert.ok(!/OUTCOME: outcome:/.test(untrimmed) && !/OUTCOME: outcome:/.test(text));
 });

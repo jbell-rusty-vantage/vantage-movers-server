@@ -2,7 +2,7 @@ CASE FILE (data) · Number +17575550143 · as of Wed Sep 23, 2026 4:10 PM ET
 Sources: Vantage intake, RingCentral, Granot, Vantage Bookings, Vantage Outreach, Owner, Analysis.
 
 §1 WHO AND WHAT
-Customer: Maria Lopez [form name] · caller ID "M LOPEZ" [RingCentral]
+Customer: Maria Lopez [form name] · Lead record now "Maria L. Lopez" [Granot] · caller ID "M LOPEZ" [RingCentral]
 Leads on this number:
   L1 Form Lead · Top10 · Job 84521 · received Tue Sep 15, 2026 6:30 PM ET · attached (Exact, sole phone match)
 Assigned rep: Jordan Bell (first conversation, Thu Sep 17, 2026)
@@ -29,15 +29,18 @@ L1 Priority 1 Quoted (since Thu Sep 17, 2026 11:20 AM ET) · Quoted yes [Lead] �
      → connected 4m12s, recorded, human conversation
      C0 SUMMARY (full): Customer is moving a 2 bedroom home from Norfolk to Raleigh around October 10. She wants a written estimate. | wanted: A written estimate. | money & dates: Move around Oct 10. | outcome: Rep will email the estimate today. | commitments: Email estimate today; call back Monday after 5 PM.
      C0 SAID: [rep promised] Rep promised to email the estimate today. (K2 → no record) · [rep promised] Rep promised to call back Monday after 5 PM. (K1 → open F-0) · [customer] Customer said her husband decides.
-[T4] Thu Sep 17 10:30 AM · Vantage Outreach · F-0 created: call "Call back Monday after 5 PM", due Mon Sep 21, 2026 5:00 PM ET (rep promise)
-[T5] Thu Sep 17 11:20 AM · Granot · Priority 0 Fresh → 1 Quoted by JBELL · estimate $7,100 · move date Oct 10, 2026 · 540 cu ft · service Long distance
-[T6] Tue Sep 22 3:02 PM · Granot · estimate $7,100 → $6,600 · move date Oct 10, 2026 → Oct 12, 2026
+[T4] Thu Sep 17 10:04 AM · Vantage Outreach · F-1 created: call "Send the moving checklist", due Thu Sep 17, 2026 4:00 PM ET (rep promise) (recorded Fri Sep 18)
+[T5] Thu Sep 17 10:30 AM · Vantage Outreach · F-0 created: call "Call back Monday after 5 PM", due Mon Sep 21, 2026 5:00 PM ET (rep promise)
+[T6] Thu Sep 17 11:20 AM · Granot · Priority 0 Fresh → 1 Quoted by JBELL · estimate $7,100 · move date Oct 10, 2026 · 540 cu ft · service Long distance
+[T7] Thu Sep 17 4:05 PM · Vantage Outreach · F-1 completed (by a call attempt, no answer)
+[T8] Tue Sep 22 3:02 PM · Granot · estimate $7,100 → $6,600 · move date Oct 10, 2026 → Oct 12, 2026
 Tail: last human conversation Thu Sep 17 (6 days ago). No outbound attempt since.
 
 §5 OPEN WORK NOW   [Vantage Outreach, as of this file]
 Commitments ledger:
   K1 rep promised "Rep promised to call back Monday after 5 PM." (C0, Thu Sep 17, 2026) → open (F-0, due Mon Sep 21, 2026 5:00 PM ET, overdue 2 days)
   K2 rep promised "Rep promised to email the estimate today." (C0, Thu Sep 17, 2026) → no record it was done
+  K3 rep promise follow-up: call "Send the moving checklist" (F-1, created Fri Sep 18) → attempted, not reached (1 attempt)
 Open actions:
   F-0 call "Call back Monday after 5 PM" due Mon Sep 21, 2026 5:00 PM ET (rep promise, exact) — overdue 2 days
 State: open · Assigned: Jordan Bell · Restrictions: none · Reviews open: none
@@ -49,4 +52,4 @@ Move assessment: none published.
 
 §7 THIS RUN
 Analyze: no call is new in this run; the whole file is context.
-Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: none. Size 3.8 KB.
+Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: none. Size 4.2 KB.

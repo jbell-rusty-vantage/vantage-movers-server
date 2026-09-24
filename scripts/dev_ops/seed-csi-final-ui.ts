@@ -1538,7 +1538,7 @@ async function main() {
   {
     const s = await leadSubject({ model: "CallLead", receivedDaysAgo: 3 });
     await db.collection("call_leads").updateOne({ _id: O(s.lead.id) }, { $set: { "ringcentral.route_id": O(), "ringcentral.route_assignment_id": O(),
-      "ringcentral.target_name": "Sales Overflow Line", "ringcentral.target_phone_number": s.number!.e164, "ringcentral.source_label": "vantage_movers_main" } });
+      "ringcentral.target_name": "Sales Overflow Line", "ringcentral.target_phone_number": "+15615550177", "ringcentral.source_label": "vantage_movers_main" } });
     row("AC-call-lead-route", ["ac_call_lead_ringcentral_route"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
       note: "CallLead.ringcentral.route_id/target_name set (RingCentral inbound route + target line name)" });
   }

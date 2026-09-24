@@ -152,16 +152,16 @@ State: open · Assigned: Jordan Bell · Restrictions: none · Reviews open: none
 §6 PRIOR ANALYSIS   (earlier model outputs — what was concluded before, not facts)
 Rolling summary (Number synthesis, run …000450, Tue Sep 1, 2026, covers C0–C17): The customer has been worked for three months; the estimate sits near $6,200 and the customer keeps comparing movers. | outcome: Waiting on the customer. | commitments: Rep callbacks after each call.
 Prior findings (not superseded; earlier model output):
-  P0 promised callback "Prior finding 0 about call 24." (C24, confirmed, promised)
-  P1 objection "Prior finding 1 about call 23." (C23, confirmed)
-  P2 promised callback "Prior finding 2 about call 22." (C22, confirmed, promised)
-  P3 objection "Prior finding 3 about call 21." (C21, unreviewed)
-  P4 promised callback "Prior finding 4 about call 20." (C20, unreviewed, promised)
-  P5 objection "Prior finding 5 about call 19." (C19, unreviewed)
-  P6 promised callback "Prior finding 6 about call 18." (C18, unreviewed, promised)
-  P7 objection "Prior finding 7 about call 17." (C17, unreviewed)
+  P0 promised callback "Prior finding 0 about call 24." (C24, confirmed by the Owner, promised)
+  P1 objection "Prior finding 1 about call 23." (C23, confirmed by the Owner)
+  P2 promised callback "Prior finding 2 about call 22." (C22, confirmed by the Owner, promised)
+  P3 objection "Prior finding 3 about call 21." (C21, not yet reviewed by the Owner)
+  P4 promised callback "Prior finding 4 about call 20." (C20, not yet reviewed by the Owner, promised)
+  P5 objection "Prior finding 5 about call 19." (C19, not yet reviewed by the Owner)
+  P6 promised callback "Prior finding 6 about call 18." (C18, not yet reviewed by the Owner, promised)
+  P7 objection "Prior finding 7 about call 17." (C17, not yet reviewed by the Owner)
 Move assessment: none published.
 
 §7 THIS RUN
 Analyze: C18 (Fri Aug 14, 2026 10:00 AM ET, outbound, 5m18s), C19 (Tue Aug 18, 2026 10:00 AM ET, inbound, 5m19s), C20 (Sat Aug 22, 2026 10:00 AM ET, outbound, 5m20s), C21 (Wed Aug 26, 2026 10:00 AM ET, inbound, 5m21s), C22 (Sun Aug 30, 2026 10:00 AM ET, outbound, 5m22s), C23 (Thu Sep 3, 2026 10:00 AM ET, inbound, 5m23s), C24 (Mon Sep 7, 2026 10:00 AM ET, outbound, 5m24s). Earlier calls are context.
-Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: 15 digests to their overview sentence, 15 digests to fact lines, 19 attempt lines older than 30 days. Size 59.8 KB.
+Coverage: capture complete through Wed Sep 23, 2026 4:05 PM ET. Trimmed: 15 digests to their overview sentence, 15 digests to fact lines, 19 attempt lines older than 30 days. Size 60.0 KB.

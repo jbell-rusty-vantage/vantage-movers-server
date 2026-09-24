@@ -2,7 +2,7 @@ CASE FILE (data) · Number +17575550143 · as of Wed Sep 23, 2026 4:10 PM ET
 Sources: Vantage intake, RingCentral, Granot, Vantage Bookings, Vantage Outreach, Owner, Analysis.
 
 §1 WHO AND WHAT
-Customer: Dan Whit [Call Lead name] · caller ID "DAN WHIT" [RingCentral]
+Customer: Dan Whit [Lead record] · caller ID "DAN WHIT" [RingCentral]
 Leads on this number:
   L1 Call Lead · MovingQuotes · Job 84600 · received Sun Sep 20, 2026 1:00 PM ET · attached (Exact, RingCentral call identity)
 Assigned rep: Jordan Bell (first conversation, Sun Sep 20, 2026)

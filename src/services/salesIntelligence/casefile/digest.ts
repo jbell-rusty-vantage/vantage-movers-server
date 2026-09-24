@@ -61,7 +61,8 @@ export function firstSentence(text: string, max = DIGEST_OVERVIEW_MAX): string {
 /** Digest line 2: `outcome` + `commitments` (≤ 300), then the ledger tags. */
 export function digestOutcome(summary: SummaryStep, tags: readonly string[]): string | null {
   const outcome = cleanText(summary.summary.outcome), commitments = cleanText(summary.summary.commitments);
-  const body = [outcome ? `outcome: ${outcome}` : null, commitments ? `commitments: ${commitments}` : null].filter(Boolean).join(" | ");
+  // The line is already labelled `Cn OUTCOME:`; only the commitments part names itself (V-AC N7).
+  const body = [outcome || null, commitments ? `commitments: ${commitments}` : null].filter(Boolean).join(" | ");
   if (!body && !tags.length) return null;
   return `${clip(body, DIGEST_OUTCOME_MAX)}${tags.length ? `${body ? " " : ""}[${tags.join("; ")}]` : ""}`;
 }
