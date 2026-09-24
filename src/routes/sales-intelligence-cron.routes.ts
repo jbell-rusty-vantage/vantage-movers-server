@@ -21,6 +21,7 @@ import { drainMoveAssessmentJobs } from "../services/salesIntelligence/assessmen
 import { drainIntelligenceApplications } from "../services/salesIntelligence/analysis/apply";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
+import { runCallLogSweepOnce } from "../services/numberActivity/callLogSweep";
 import { runBackfillStepOnce } from "../services/salesIntelligence/backfill/step";
 import { drainBackfillActivationJobs } from "../services/salesIntelligence/backfill/worker";
 import { runRetentionOnce } from "../services/salesIntelligence/retention";
@@ -53,6 +54,8 @@ export type SalesIntelligenceCronRouteDeps = {
   connect?: typeof connectMongo;
   flag?: typeof csiFlag;
   runCallLogReconcile?: typeof runCallLogReconcileOnce;
+  /** CC-06: nightly authoritative Call Log sweep under `CAPTURE_CALL_LOG`. */
+  runCallLogSweep?: typeof runCallLogSweepOnce;
   runReceiptRecovery?: typeof runReceiptWatermarkRecovery;
   drainCaptureProjection?: (max: number, deadlineMs: number) => Promise<DrainSummary>;
   /** Additional per-stage recovery steps (e.g. the CSI-04 rebuild drain), each run only when its own flag is on. */
@@ -102,6 +105,7 @@ export const CSI_CRON_PATHS = {
   backfillStep: "/api/cron/sales-intelligence-backfill-step",
   retention: "/api/cron/sales-intelligence-retention",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
+  callLogSweep: "/api/cron/sales-intelligence-call-log-sweep",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   mediaFetch: "/api/cron/sales-intelligence-media-fetch",
@@ -202,6 +206,28 @@ export function createSalesIntelligenceCronRouter(
         errorName: error instanceof Error ? error.name : "Error",
       });
       return res.status(500).json({ ok: false, error: "Call Log reconcile failed" });
+    }
+  });
+
+  // CC-06: the nightly sweep takes the reconcile lease, so it never overlaps a
+  // run; `lease_held` just means a reconcile run is in progress.
+  router.all(CSI_CRON_PATHS.callLogSweep, requireCronAuth, async (_req, res) => {
+    if (!flag("CAPTURE_CALL_LOG")) {
+      return res.json({ ok: true, skipped: true, reason: "disabled" });
+    }
+    try {
+      await connect();
+      const summary = await (deps.runCallLogSweep ?? runCallLogSweepOnce)();
+      if (summary.skipped) {
+        return res.json({ ok: true, skipped: true, reason: summary.skip_reason ?? "disabled", summary });
+      }
+      return res.json({ ok: true, skipped: false, summary });
+    } catch (error) {
+      logger.error({
+        msg: "sales_intelligence.cron.call_log_sweep.failed",
+        errorName: error instanceof Error ? error.name : "Error",
+      });
+      return res.status(500).json({ ok: false, error: "Call Log sweep failed" });
     }
   });
 

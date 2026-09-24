@@ -7,6 +7,9 @@ import { getSalesIntelligenceAiBudgetModel } from "../../models/SalesIntelligenc
 import { getSalesIntelligenceAiReservationModel } from "../../models/SalesIntelligenceAiReservation";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { readCaptureCoverage } from "../numberActivity/coverage";
+import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
+import { CALL_LOG_ALL_DIRECTIONS_SCOPE, callLogReconcileConfig } from "../numberActivity/reconcileCallLog";
+import { CALL_LOG_SWEEP_SCOPE } from "../numberActivity/callLogSweep";
 import { decideAnalysisAdmission } from "./analysis/admission";
 import type { RuntimeLimits } from "./analysis/runtime";
 import { analysisRuntimeConfiguration, estimateAnalysisCents } from "./analysis/worker";
@@ -173,6 +176,74 @@ async function readMappingHygiene() {
   };
 }
 
+type CaptureHealthRow = {
+  scope: string;
+  quarantined_records?: Array<{ first_failed_at: Date }> | null;
+  consecutive_drift_runs?: number | null;
+  consecutive_failures?: number | null;
+  last_run?: {
+    started_at?: Date | null;
+    error_code?: string | null;
+    from?: Date | null;
+    to?: Date | null;
+    provider_records?: number | null;
+    stored_in_latest_version?: number | null;
+    applied_changes?: number | null;
+    missing_before?: number | null;
+    stale_before?: number | null;
+    provisional_after_horizon?: number | null;
+    quarantined?: number | null;
+  } | null;
+};
+
+/** Pure: quarantine and last-sweep figures from the two sync-state rows. */
+export function composeCallLogCapture(
+  reconcile: CaptureHealthRow | null,
+  sweep: CaptureHealthRow | null,
+  syncMode: "off" | "shadow" | "on",
+): OwnerCoverageDto["call_log_capture"] {
+  const quarantined = reconcile?.quarantined_records ?? [];
+  let oldest: Date | null = null;
+  for (const entry of quarantined) if (!oldest || entry.first_failed_at < oldest) oldest = entry.first_failed_at;
+  const run = sweep?.last_run;
+  const last_sweep = run?.started_at && run.from && run.to
+    ? {
+        ran_at: run.started_at.toISOString(),
+        from: run.from.toISOString(),
+        to: run.to.toISOString(),
+        complete: !run.error_code,
+        provider_records: run.provider_records ?? 0,
+        stored_in_latest_version: run.stored_in_latest_version ?? 0,
+        applied_changes: run.applied_changes ?? 0,
+        missing_before: run.missing_before ?? 0,
+        stale_before: run.stale_before ?? 0,
+        provisional_after_horizon: run.provisional_after_horizon ?? 0,
+        quarantined: run.quarantined ?? 0,
+        consecutive_drift_runs: sweep?.consecutive_drift_runs ?? 0,
+      }
+    : null;
+  return {
+    quarantined_count: quarantined.length,
+    oldest_quarantined_at: oldest ? oldest.toISOString() : null,
+    sync_mode: syncMode,
+    last_sweep,
+  };
+}
+
+async function readCallLogCapture() {
+  const rows = (await getSalesIntelligenceSyncStateModel()
+    .find(
+      { scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, CALL_LOG_SWEEP_SCOPE] } },
+      { scope: 1, quarantined_records: 1, consecutive_drift_runs: 1, last_run: 1 },
+    )
+    .lean()) as unknown as CaptureHealthRow[];
+  return composeCallLogCapture(
+    rows.find((row) => row.scope === CALL_LOG_ALL_DIRECTIONS_SCOPE) ?? null,
+    rows.find((row) => row.scope === CALL_LOG_SWEEP_SCOPE) ?? null,
+    callLogReconcileConfig().syncMode,
+  );
+}
+
 export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
   const capture = await readCaptureCoverage();
   const settings = await readCsiSettings();
@@ -181,7 +252,7 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
     .findOne({ period_start: { $lte: now }, period_end: { $gt: now } })
     .sort({ period_start: -1 })
     .lean();
-  const [recording, transcription, analysis, application, mapping, backfill, admission] = await Promise.all([
+  const [recording, transcription, analysis, application, mapping, backfill, admission, callLogCapture] = await Promise.all([
     readStage(RECORDING_STAGES),
     readStage(["transcription"]),
     readStage(["analysis"]),
@@ -189,6 +260,7 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
     readMappingHygiene(),
     readBackfillCoverage(),
     readAnalysisAdmission(settings.policy, budgetRow),
+    readCallLogCapture(),
   ]);
   return ownerCoverageDtoSchema.parse({
     ...capture,
@@ -196,6 +268,7 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
     budget: composeBudget(budgetRow, settings.policy.monthly_ceiling_cents),
     analysis_admission: admission,
     mapping_hygiene: mapping,
+    call_log_capture: callLogCapture,
     flags: settings.flags,
     models: settings.models,
     settings: {

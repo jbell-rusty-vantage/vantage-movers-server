@@ -12,12 +12,32 @@ import {
   resolveProviderAccountId,
 } from "./accountIdentity";
 import {
+  fetchCallLogSync,
   fetchDetailedCallLogPage,
+  fetchDetailedCallLogRecord,
   isProviderThrottle,
   providerSuppliedRetryAfter,
   throttleRetryAfterMs,
   type CallLogPageFetcher,
+  type CallLogRecordFetcher,
+  type CallLogSyncFetcher,
 } from "./callLogClient";
+import {
+  DEFAULT_QUARANTINE_LIMITS,
+  failureLogFields,
+  QuarantineBook,
+  quarantineErrorCode,
+  type QuarantinedRecord,
+  type QuarantineErrorCode,
+  type RecordFailure,
+} from "./callLogQuarantine";
+import {
+  parseCallLogSyncMode,
+  runCallLogSyncStep,
+  type CallLogSyncMode,
+  type StoredCallLogSync,
+  type SyncStepResult,
+} from "./callLogSyncDriver";
 import { loadDirectoryLookup, type DirectoryLookup } from "./directory";
 import {
   applyInteractionObservation,
@@ -30,6 +50,7 @@ import {
   type CallLogRecordInput,
 } from "./interactionProjection";
 import { getCallInteractionAliasModel } from "../../models/CallInteractionAlias";
+import { getCallInteractionModel } from "../../models/CallInteraction";
 import type { RouteResolver } from "./types";
 import { RingCentralApiError } from "../ringcentral/client";
 
@@ -44,24 +65,47 @@ function isProviderPermissionDenied(error: unknown): boolean {
  * `call_log_all_directions`) and fenced five-minute lease. The qualified-call
  * sync (`ringcentral_call_log_sync_state`, `key: "account"`) is untouched.
  *
+ * A Call Log record is observed, not final: RingCentral publishes a queue
+ * call while it is still ringing out and rewrites the same record when it
+ * ends. Every run therefore re-reads a trailing settle horizon, re-reads
+ * provisional rows that have left it, and (behind a flag) follows account
+ * Call Log Sync, which reports records by modification rather than start.
+ *
  * Coverage honesty: the cursor and `known_complete_through` advance only when
- * every page of the rolling window was fetched and every record projected.
- * Any interruption (throttle, provider error, page budget, projection
- * failure, account resolution) leaves the cursor where it was and records a
- * bounded gap `{from, to, reason}`. Later runs repair gaps oldest-first with
- * leftover page budget; a gap closes only when its window completes.
+ * every page of the rolling window was fetched and every record projected or
+ * quarantined. Any interruption (throttle, provider error, page budget,
+ * projection failure, account resolution) leaves the cursor where it was and
+ * records a bounded gap `{from, to, reason}`. Later runs repair gaps
+ * oldest-first with leftover page budget; a gap closes only when its window
+ * completes.
  */
 export const CALL_LOG_ALL_DIRECTIONS_SCOPE = "call_log_all_directions";
 
 export type ReconcileConfig = {
   rollingLookbackMinutes: number;
-  /** Ceiling on how far back one incremental window reaches; the rest is gap repair. */
+  /** Ceiling on how far back the incremental (cursor) part of a window reaches; the rest is gap repair. */
   safetyLookbackMinutes: number;
   overlapMinutes: number;
   maxPages: number;
   perPage: number;
   finalizationLagMinutes: number;
   leaseTtlMs: number;
+  /**
+   * CC-03: every run re-reads at least this far back, so a record that
+   * RingCentral rewrites after its start is fetched again until it has been
+   * quiet this long. Must exceed the longest expected call.
+   */
+  settleHorizonMinutes: number;
+  /** CC-01: consecutive failures before a record is quarantined. */
+  quarantineAfter: number;
+  /** CC-01: targeted re-reads of due quarantined records per run. */
+  quarantineRetriesPerRun: number;
+  /** Provisional rows older than the horizon re-read by id per run. */
+  stragglerReadsPerRun: number;
+  /** CC-05: account Call Log Sync driver. */
+  syncMode: CallLogSyncMode;
+  /** CC-06: nightly sweep reach. */
+  sweepLookbackHours: number;
 };
 
 export function callLogReconcileConfig(): ReconcileConfig {
@@ -81,6 +125,13 @@ export function callLogReconcileConfig(): ReconcileConfig {
     perPage: 250,
     finalizationLagMinutes: 15,
     leaseTtlMs: 300_000,
+    // Floor 60: below that a normal long call would leave the horizon mid-call.
+    settleHorizonMinutes: Math.max(60, int("CALL_LOG_SETTLE_HORIZON_MINUTES", 240, 1)),
+    quarantineAfter: int("CALL_LOG_QUARANTINE_AFTER", DEFAULT_QUARANTINE_LIMITS.quarantineAfter, 1),
+    quarantineRetriesPerRun: int("CALL_LOG_QUARANTINE_RETRIES_PER_RUN", 5, 0),
+    stragglerReadsPerRun: 10,
+    syncMode: parseCallLogSyncMode(process.env.SALES_INTELLIGENCE_CALL_LOG_SYNC),
+    sweepLookbackHours: int("CALL_LOG_SWEEP_LOOKBACK_HOURS", 36, 1),
   };
 }
 
@@ -105,11 +156,18 @@ export type WindowResult = {
   upserts: number;
   noops: number;
   failures: number;
+  /** Records held for their backoff or quarantined by this run; they never make a window incomplete. */
+  quarantined: number;
   complete: boolean;
   /** For `page_limit`: records older than this instant were not fetched. */
   incomplete_before: Date | null;
   error_code: ReconcileErrorCode | null;
 };
+
+export type ReconcileSyncSummary = Pick<
+  SyncStepResult,
+  "mode" | "sync_type" | "requests" | "records" | "changed" | "applied" | "failures" | "quarantined" | "expired" | "token_stored" | "error_code"
+>;
 
 export type ReconcileSummary = {
   ran_at: string;
@@ -124,6 +182,14 @@ export type ReconcileSummary = {
   upserts: number;
   noops: number;
   failures: number;
+  /** Quarantined records after this run (CC-01). */
+  quarantined: number;
+  /** By-id re-reads of due quarantined records this run. */
+  quarantine_retries: number;
+  /** By-id re-reads of provisional rows older than the settle horizon this run. */
+  straggler_reads: number;
+  /** Account Call Log Sync step; null when `SALES_INTELLIGENCE_CALL_LOG_SYNC` is off. */
+  sync: ReconcileSyncSummary | null;
   throttled_count: number;
   /** Wait applied after a 429. See `throttle_retry_after_observed` for whether the provider supplied it. */
   throttle_retry_after_ms: number | null;
@@ -141,6 +207,10 @@ export type ReconcileSummary = {
 export type ReconcileDependencies = {
   now: () => Date;
   fetchPage: CallLogPageFetcher;
+  /** One record by id (quarantine retries and straggler settles). */
+  fetchRecord: CallLogRecordFetcher;
+  /** Account Call Log Sync (CC-05); used only when `config.syncMode` is not `off`. */
+  fetchSync: CallLogSyncFetcher;
   apply: typeof applyInteractionObservation;
   directory: (accountId: string) => Promise<DirectoryLookup>;
   resolveRoute?: RouteResolver;
@@ -161,6 +231,9 @@ type StoredState = {
   known_complete_through?: Date | null;
   gaps?: StoredGap[];
   consecutive_failures?: number;
+  quarantined_records?: QuarantinedRecord[] | null;
+  record_failures?: RecordFailure[] | null;
+  call_log_sync?: StoredCallLogSync;
 };
 
 class LeaseLostError extends Error {
@@ -174,12 +247,21 @@ export function maskOwner(owner: string): string {
   return createHash("sha256").update(owner).digest("hex").slice(0, 12);
 }
 
+/** Quarantine older than this raises `quarantine_stale` (CC-01). */
+const QUARANTINE_STALE_MS = 2 * 3_600_000;
+
+type ApplyOutcome =
+  | { ok: true; noop: boolean }
+  | { ok: false; quarantined: boolean; code: QuarantineErrorCode };
+
 export async function runCallLogReconcileOnce(
   overrides: Partial<ReconcileDependencies> = {},
 ): Promise<ReconcileSummary> {
   const deps: ReconcileDependencies = {
     now: () => new Date(),
     fetchPage: fetchDetailedCallLogPage,
+    fetchRecord: fetchDetailedCallLogRecord,
+    fetchSync: fetchCallLogSync,
     apply: applyInteractionObservation,
     directory: loadDirectoryLookup,
     configuredAccountId: configuredRingCentralAccountId(),
@@ -203,6 +285,10 @@ export async function runCallLogReconcileOnce(
     upserts: 0,
     noops: 0,
     failures: 0,
+    quarantined: 0,
+    quarantine_retries: 0,
+    straggler_reads: 0,
+    sync: null,
     throttled_count: 0,
     throttle_retry_after_ms: null,
     throttle_retry_after_observed: false,
@@ -220,13 +306,7 @@ export async function runCallLogReconcileOnce(
   }
 
   const Model = getSalesIntelligenceSyncStateModel();
-  const leaseModel: MongoLeaseModel = {
-    findOneAndUpdate: (filter, update, options) =>
-      Model.findOneAndUpdate(filter, update, { ...options, lean: true }) as never,
-    updateOne: (filter, update) => Model.updateOne(filter, update),
-    findOne: (filter) => Model.findOne(filter).lean() as never,
-  };
-  const leases = new MongoLeaseStore(leaseModel);
+  const leases = new MongoLeaseStore(syncStateLeaseModel());
   const ownerHash = maskOwner(deps.owner);
   const token = await leases.acquire({
     scope: CALL_LOG_ALL_DIRECTIONS_SCOPE,
@@ -247,18 +327,6 @@ export async function runCallLogReconcileOnce(
   const state = ((await Model.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean()) ??
     {}) as StoredState;
   const windowTo = startedAt;
-  const plan = resolveWindowPlan(windowTo, state, deps.config);
-  const windowFrom = plan.from;
-  summary.window_from = windowFrom.toISOString();
-  summary.window_to = windowTo.toISOString();
-  await deps.recordEvent(
-    event("started", "info", summary.ran_at, {
-      leaseOwnerHash: ownerHash,
-      windowFrom: summary.window_from,
-      windowTo: summary.window_to,
-      openGaps: state.gaps?.length ?? 0,
-    }),
-  );
 
   // Renew on a clock, not per record. A fenced `findOneAndUpdate` for every
   // Call Log row in the window was N round trips that proved nothing the
@@ -278,12 +346,135 @@ export async function runCallLogReconcileOnce(
   let accountId: string | null = null;
   let directory: DirectoryLookup | null = null;
   let resolveRoute = deps.resolveRoute;
-  const storedWatermark: Date | null = state.cursor?.provider_modified_watermark ?? null;
-  let providerWatermark: Date | null = storedWatermark;
+  let providerWatermark: Date | null = state.cursor?.provider_modified_watermark ?? null;
   // One request id per reconcile run so every audit row it writes ties back
   // to this run (surfaced in the summary for operators).
   const runRequestId = randomBytes(12).toString("hex");
   summary.request_id = runRequestId;
+  const book = new QuarantineBook(state.quarantined_records, state.record_failures, {
+    ...DEFAULT_QUARANTINE_LIMITS,
+    quarantineAfter: deps.config.quarantineAfter,
+  });
+  /** Call Log ids this run already applied or attempted; by-id reads skip them. */
+  const attempted = new Set<string>();
+  /**
+   * Ids that failed in this run. A record in both the rolling window and a gap
+   * repair is attempted once: a failure counts once per run toward quarantine.
+   */
+  const failedThisRun = new Map<string, QuarantineErrorCode>();
+
+  const noteThrottle = (error: unknown) => {
+    summary.throttled_count += 1;
+    summary.throttle_retry_after_ms = throttleRetryAfterMs(error);
+    summary.throttle_retry_after_observed = providerSuppliedRetryAfter(error);
+  };
+
+  /** Resolves the provider account (never fabricated), the directory and the route resolver once per run. */
+  const ensureContext = async (records: CallLogRecordInput[]): Promise<ReconcileErrorCode | null> => {
+    try {
+      accountId ??= resolveProviderAccountId(
+        records.map((r) => accountIdFromProviderPath(str(r.uri))),
+        deps.configuredAccountId,
+      );
+    } catch (error) {
+      return error instanceof ProviderAccountError ? error.code : "unknown_error";
+    }
+    directory ??= await deps.directory(accountId);
+    resolveRoute ??= await defaultRouteResolver();
+    return null;
+  };
+
+  const applyOne = async (record: CallLogRecordInput): Promise<ApplyOutcome> => {
+    await renew();
+    const id = str(record.id);
+    const earlier = id ? failedThisRun.get(id) : undefined;
+    if (id && earlier) return { ok: false, quarantined: book.isQuarantined(id), code: earlier };
+    if (id) attempted.add(id);
+    try {
+      const applied = await deps.apply(
+        accountId!,
+        { kind: "call_log", record, proof_ref: `call_log:${id ?? "unknown"}`, source: "call_log_reconcile" },
+        { now: deps.now, directory: directory!, resolveRoute, request_id: runRequestId, settleHorizonMinutes: deps.config.settleHorizonMinutes },
+      );
+      if (id) book.recordSuccess(id);
+      const modified = dateOf(record.lastModifiedTime);
+      if (modified && (!providerWatermark || modified > providerWatermark)) providerWatermark = modified;
+      return { ok: true, noop: applied.noop };
+    } catch (error) {
+      const code = quarantineErrorCode(error);
+      logger.warn({
+        msg: "sales_intelligence.call_log_reconcile.record_failed",
+        leaseOwnerHash: ownerHash,
+        ...failureLogFields(error),
+        errorCode: error instanceof InteractionPersistenceError ? error.code : code,
+      });
+      if (!id) return { ok: false, quarantined: false, code };
+      failedThisRun.set(id, code);
+      const outcome = book.recordFailure(
+        {
+          call_log_id: id,
+          telephony_session_id: str(record.telephonySessionId),
+          start_time: startOf(record),
+          error_code: code,
+          error_name: failureLogFields(error).errorName,
+        },
+        deps.now(),
+      );
+      if (outcome === "newly_quarantined") {
+        await deps.recordEvent(
+          event("record_quarantined", "warn", summary.ran_at, {
+            leaseOwnerHash: ownerHash,
+            errorCode: code,
+            errorName: failureLogFields(error).errorName,
+            quarantineAfter: deps.config.quarantineAfter,
+          }),
+        );
+      }
+      return { ok: false, quarantined: outcome !== "counted", code };
+    }
+  };
+
+  type BatchCounts = Pick<WindowResult, "upserts" | "noops" | "failures" | "quarantined" | "error_code">;
+  /** Oldest-first projection of one fetched batch with the per-row skip and quarantine. */
+  const applyBatch = async (records: CallLogRecordInput[], counts: BatchCounts): Promise<void> => {
+    const contextError = await ensureContext(records);
+    if (contextError) {
+      counts.error_code ??= contextError;
+      return;
+    }
+    // Oldest-first so earlier evidence lands before later callbacks.
+    const ordered = [...records].sort(
+      (a, b) => (startOf(a)?.getTime() ?? Number.POSITIVE_INFINITY) - (startOf(b)?.getTime() ?? Number.POSITIVE_INFINITY),
+    );
+    const unchanged = await unchangedRecords(ordered, accountId!);
+    const at = deps.now();
+    for (const record of ordered) {
+      if (unchanged.has(record)) {
+        // Its own stored row already holds this provider version (or a newer
+        // one) and every provider identity it carries resolves to that row,
+        // so re-projecting it could only rediscover `noop: true` after
+        // opening a transaction (14 §4, CC-02).
+        counts.noops += 1;
+        continue;
+      }
+      const id = str(record.id);
+      if (id && book.isHeld(id, at)) {
+        // Quarantined and not yet due: its hourly retry handles it and it
+        // does not hold this window (CC-01).
+        counts.quarantined += 1;
+        continue;
+      }
+      const outcome = await applyOne(record);
+      if (outcome.ok) {
+        if (outcome.noop) counts.noops += 1;
+        else counts.upserts += 1;
+        continue;
+      }
+      counts.failures += 1;
+      if (outcome.quarantined) counts.quarantined += 1;
+      else counts.error_code ??= outcome.code === "account_mismatch" ? "account_mismatch" : "projection_failed";
+    }
+  };
 
   const runWindow = async (kind: WindowResult["kind"], from: Date, to: Date): Promise<WindowResult> => {
     const result: WindowResult = {
@@ -295,6 +486,7 @@ export async function runCallLogReconcileOnce(
       upserts: 0,
       noops: 0,
       failures: 0,
+      quarantined: 0,
       complete: false,
       incomplete_before: null,
       error_code: null,
@@ -308,9 +500,7 @@ export async function runCallLogReconcileOnce(
         page = await deps.fetchPage({ from, to, page: result.pages + 1, perPage: deps.config.perPage });
       } catch (error) {
         if (isProviderThrottle(error)) {
-          summary.throttled_count += 1;
-          summary.throttle_retry_after_ms = throttleRetryAfterMs(error);
-          summary.throttle_retry_after_observed = providerSuppliedRetryAfter(error);
+          noteThrottle(error);
           result.error_code = "provider_throttled";
         } else {
           result.error_code = "provider_request_failed";
@@ -331,79 +521,158 @@ export async function runCallLogReconcileOnce(
       result.error_code = "page_limit";
       result.incomplete_before = earliestStart(collected);
     }
-
-    if (collected.length) {
-      try {
-        accountId ??= resolveProviderAccountId(
-          collected.map((r) => accountIdFromProviderPath(str(r.uri))),
-          deps.configuredAccountId,
-        );
-      } catch (error) {
-        result.error_code = error instanceof ProviderAccountError ? error.code : "unknown_error";
-        return result;
-      }
-      directory ??= await deps.directory(accountId);
-      resolveRoute ??= await defaultRouteResolver();
-      // Oldest-first so earlier evidence lands before later callbacks.
-      const ordered = [...collected].sort(
-        (a, b) => (startOf(a)?.getTime() ?? Number.POSITIVE_INFINITY) - (startOf(b)?.getTime() ?? Number.POSITIVE_INFINITY),
-      );
-      const settled = await settledRecords(ordered, accountId, storedWatermark);
-      for (const record of ordered) {
-        if (settled.has(record)) {
-          // Not modified since the watermark and every provider identity it
-          // carries already resolves to a stored alias, so re-projecting it
-          // could only rediscover `noop: true` — after opening a Mongo
-          // transaction and reading aliases and canonical rows to find out
-          // (14 §4). The watermark advances only when every window completed,
-          // so a record whose previous apply failed is never in this set.
-          result.noops += 1;
-          continue;
-        }
-        await renew();
-        try {
-          const applied = await deps.apply(
-            accountId,
-            { kind: "call_log", record, proof_ref: `call_log:${str(record.id) ?? "unknown"}`, source: "call_log_reconcile" },
-            { now: deps.now, directory, resolveRoute, request_id: runRequestId },
-          );
-          if (applied.noop) result.noops += 1;
-          else result.upserts += 1;
-          const modified = dateOf(record.lastModifiedTime);
-          if (modified && (!providerWatermark || modified > providerWatermark)) providerWatermark = modified;
-        } catch (error) {
-          result.failures += 1;
-          result.error_code ??= error instanceof InteractionPersistenceError && error.code === "account_mismatch"
-            ? "account_mismatch"
-            : "projection_failed";
-          logger.warn({
-            msg: "sales_intelligence.call_log_reconcile.record_failed",
-            leaseOwnerHash: ownerHash,
-            errorName: error instanceof Error ? error.name : "Error",
-            errorCode: error instanceof InteractionPersistenceError ? error.code : "unknown",
-          });
-        }
-      }
-    }
-    result.complete = fetchedAll && result.failures === 0 && result.error_code === null;
+    if (collected.length) await applyBatch(collected, result);
+    // Failures of quarantined records are recorded, retried by id, and never
+    // hold the window; any other failure leaves `error_code` set.
+    result.complete = fetchedAll && result.error_code === null;
     return result;
   };
 
+  /** One by-id read and apply; `false` ends the by-id passes (throttle or budget). */
+  const rereadById = async (
+    id: string,
+    hint: { telephony_session_id: string | null; start_time: Date | null },
+  ): Promise<boolean> => {
+    if (pageBudget <= 0 || summary.throttled_count > 0) return false;
+    await renew();
+    pageBudget -= 1;
+    attempted.add(id);
+    const fail = (code: QuarantineErrorCode, errorName: string) =>
+      book.recordFailure({ call_log_id: id, ...hint, error_code: code, error_name: errorName }, deps.now());
+    let fetched: unknown;
+    try {
+      fetched = await deps.fetchRecord(id);
+    } catch (error) {
+      if (isProviderThrottle(error)) {
+        noteThrottle(error);
+        return false;
+      }
+      logger.warn({ msg: "sales_intelligence.call_log_reconcile.reread_failed", leaseOwnerHash: ownerHash, ...failureLogFields(error) });
+      fail("provider_request_failed", failureLogFields(error).errorName);
+      return true;
+    }
+    if (!isRecord(fetched)) {
+      fail("provider_not_found", "NotFound");
+      return true;
+    }
+    const contextError = await ensureContext([fetched]);
+    if (contextError) {
+      fail(contextError === "account_mismatch" ? "account_mismatch" : "projection_failed", "ProviderAccountError");
+      return true;
+    }
+    const outcome = await applyOne(fetched);
+    if (outcome.ok && !outcome.noop) summary.upserts += 1;
+    return true;
+  };
+
   try {
-    const rolling = await runWindow("rolling", windowFrom, windowTo);
+    // CC-05: Call Log Sync first, so a successful `on` step can narrow the
+    // start-time window to the safety net.
+    let syncStep: SyncStepResult | null = null;
+    if (deps.config.syncMode !== "off") {
+      const lastTo = state.cursor?.last_sync_to ?? null;
+      const horizonStart = new Date(windowTo.getTime() - deps.config.settleHorizonMinutes * 60_000);
+      await renew();
+      syncStep = await runCallLogSyncStep({
+        mode: deps.config.syncMode,
+        state: state.call_log_sync ?? null,
+        now: windowTo,
+        fsyncFrom: lastTo && lastTo < horizonStart ? lastTo : horizonStart,
+        recordCount: deps.config.perPage,
+        budget: pageBudget,
+        fetchSync: deps.fetchSync,
+        countChanged: async (records) => {
+          if (await ensureContext(records)) return records.length;
+          return records.length - (await unchangedRecords(records, accountId!)).size;
+        },
+        apply: async (records) => {
+          const counts: BatchCounts = { upserts: 0, noops: 0, failures: 0, quarantined: 0, error_code: null };
+          await applyBatch(records, counts);
+          return {
+            ...counts,
+            changed: records.length - counts.noops,
+            settled: counts.error_code === null,
+          };
+        },
+      });
+      pageBudget -= syncStep.requests;
+      if (syncStep.error_code === "provider_throttled") {
+        summary.throttled_count += 1;
+        summary.throttle_retry_after_ms = syncStep.throttle_retry_after_ms;
+        summary.throttle_retry_after_observed = syncStep.throttle_retry_after_observed;
+      }
+      summary.sync = {
+        mode: syncStep.mode,
+        sync_type: syncStep.sync_type,
+        requests: syncStep.requests,
+        records: syncStep.records,
+        changed: syncStep.changed,
+        applied: syncStep.applied,
+        failures: syncStep.failures,
+        quarantined: syncStep.quarantined,
+        expired: syncStep.expired,
+        token_stored: syncStep.token_stored,
+        error_code: syncStep.error_code,
+      };
+      if (syncStep.expired) {
+        await deps.recordEvent(event("sync_token_expired", "warn", summary.ran_at, { leaseOwnerHash: ownerHash }));
+      }
+    }
+    // With a stored `on` token the window is only a net for what ISync does
+    // not report; otherwise it must cover the whole settle horizon itself.
+    const syncDriving = deps.config.syncMode === "on" && syncStep?.token_stored === true;
+    const horizonMinutes = syncDriving ? deps.config.safetyLookbackMinutes : deps.config.settleHorizonMinutes;
+    const plan = resolveWindowPlan(windowTo, state, deps.config, horizonMinutes);
+    const windowFrom = plan.from;
+    summary.window_from = windowFrom.toISOString();
+    summary.window_to = windowTo.toISOString();
+    await deps.recordEvent(
+      event("started", "info", summary.ran_at, {
+        leaseOwnerHash: ownerHash,
+        windowFrom: summary.window_from,
+        windowTo: summary.window_to,
+        openGaps: state.gaps?.length ?? 0,
+        quarantined: book.quarantinedCount,
+      }),
+    );
+
+    // A throttle during the sync step ends the run before the window.
+    const rolling =
+      summary.throttled_count > 0
+        ? { ...emptyWindow("rolling", windowFrom, windowTo), error_code: "provider_throttled" as const }
+        : await runWindow("rolling", windowFrom, windowTo);
     summary.windows.push(rolling);
+    const stopProvider =
+      summary.throttled_count > 0 ||
+      rolling.error_code === "account_unresolved" ||
+      rolling.error_code === "account_mismatch";
+
+    // CC-01: due quarantined records, one by-id read each.
+    if (!stopProvider) {
+      for (const entry of book.due(deps.now(), deps.config.quarantineRetriesPerRun, attempted)) {
+        if (!(await rereadById(entry.call_log_id, entry))) break;
+        summary.quarantine_retries += 1;
+      }
+    }
+
+    // Stragglers: provisional rows whose start has left the horizon are no
+    // longer in any window; re-read each by id so it can settle.
+    if (!stopProvider && deps.config.stragglerReadsPerRun > 0) {
+      const settleBefore = new Date(windowTo.getTime() - deps.config.settleHorizonMinutes * 60_000);
+      for (const row of await provisionalStragglers(settleBefore, deps.config.stragglerReadsPerRun, book, attempted)) {
+        if (!(await rereadById(row.call_log_id, row))) break;
+        summary.straggler_reads += 1;
+      }
+    }
+
     // Oldest gaps first, only with leftover budget and only when not already inside the rolling window.
     const openGaps = [...(state.gaps ?? [])]
       .filter((gap) => !(gap.from >= windowFrom && gap.to <= windowTo))
       .sort((a, b) => a.from.getTime() - b.from.getTime());
-    const skipRepair =
-      rolling.error_code === "provider_throttled" ||
-      rolling.error_code === "account_unresolved" ||
-      rolling.error_code === "account_mismatch";
     for (const gap of openGaps) {
       // A throttle anywhere in this run (including a previous gap repair) ends
       // the run; the provider asked us to back off, not to try the next window.
-      if (pageBudget <= 0 || skipRepair || summary.throttled_count > 0) break;
+      if (pageBudget <= 0 || stopProvider || summary.throttled_count > 0) break;
       summary.windows.push(await runWindow("gap_repair", gap.from, gap.to));
     }
 
@@ -414,22 +683,43 @@ export async function runCallLogReconcileOnce(
       summary.noops += w.noops;
       summary.failures += w.failures;
     }
+    if (syncStep) {
+      summary.pages += syncStep.requests;
+      summary.records += syncStep.records;
+      summary.upserts += syncStep.applied;
+      summary.failures += syncStep.failures;
+    }
+    summary.pages += summary.quarantine_retries + summary.straggler_reads;
 
     const finishedAt = deps.now();
-    const next = nextState(state, summary.windows, windowTo, finishedAt, deps.config, plan.skipped);
-    // The provider-modified watermark is diagnostic today, but it must never
-    // advance past evidence this run did not fully observe: a partial run
-    // keeps the prior value so a future incremental reader cannot inherit a
-    // silent gap.
+    // R3: a provisional row inside the horizon means that range is not final,
+    // and with ISync driving, nothing past the provider's sync time is known.
+    let completeThroughCap = await oldestProvisionalStart(
+      new Date(windowTo.getTime() - deps.config.settleHorizonMinutes * 60_000),
+    );
+    if (syncDriving && syncStep?.sync_time) {
+      const syncCap = new Date(syncStep.sync_time.getTime() - deps.config.finalizationLagMinutes * 60_000);
+      if (!completeThroughCap || syncCap < completeThroughCap) completeThroughCap = syncCap;
+    }
+    const next = nextState(state, summary.windows, windowTo, finishedAt, deps.config, plan.skipped, {
+      completeThroughCap,
+      overflow: book.overflow,
+    });
+    // The provider-modified watermark is diagnostic only (the skip compares
+    // each record with its own row), but it must never advance past evidence
+    // this run did not fully observe.
     const everyWindowComplete = summary.windows.every((w) => w.complete);
     const nextWatermark = everyWindowComplete
       ? providerWatermark
       : state.cursor?.provider_modified_watermark ?? null;
+    const quarantine = book.snapshot();
+    summary.quarantined = quarantine.quarantined_records.length;
     summary.cursor_advanced = next.cursor_advanced;
     summary.known_complete_through = next.known_complete_through?.toISOString() ?? null;
     summary.gaps_after = next.gaps.length;
     summary.error_code = rolling.complete ? null : rolling.error_code;
     summary.runtime_ms = elapsed(startedAt, finishedAt);
+    const consecutiveFailures = rolling.complete ? 0 : (state.consecutive_failures ?? 0) + 1;
 
     const written = await Model.updateOne(
       {
@@ -449,7 +739,10 @@ export async function runCallLogReconcileOnce(
           },
           known_complete_through: next.known_complete_through,
           gaps: next.gaps,
-          consecutive_failures: rolling.complete ? 0 : (state.consecutive_failures ?? 0) + 1,
+          consecutive_failures: consecutiveFailures,
+          quarantined_records: quarantine.quarantined_records,
+          record_failures: quarantine.record_failures,
+          ...(syncStep?.next ? { call_log_sync: syncStep.next } : {}),
           last_run: {
             started_at: startedAt,
             finished_at: finishedAt,
@@ -459,6 +752,20 @@ export async function runCallLogReconcileOnce(
             upserts: summary.upserts,
             throttled_count: summary.throttled_count,
             error_code: summary.error_code,
+            quarantined: summary.quarantined,
+            quarantine_retries: summary.quarantine_retries,
+            straggler_reads: summary.straggler_reads,
+            ...(syncStep
+              ? {
+                  sync_mode: syncStep.mode,
+                  sync_type: syncStep.sync_type,
+                  sync_records: syncStep.records,
+                  sync_changed: syncStep.changed,
+                  sync_applied: syncStep.applied,
+                  sync_token_stored: syncStep.token_stored,
+                  sync_error_code: syncStep.error_code,
+                }
+              : {}),
           },
           lease_owner: null,
           leased_until: finishedAt,
@@ -486,8 +793,21 @@ export async function runCallLogReconcileOnce(
         }),
       );
     }
+    const oldestQuarantine = book.oldestFirstFailedAt();
+    if (oldestQuarantine && finishedAt.getTime() - oldestQuarantine.getTime() > QUARANTINE_STALE_MS) {
+      await deps.recordEvent(
+        event("quarantine_stale", "warn", summary.ran_at, {
+          leaseOwnerHash: ownerHash,
+          quarantined: summary.quarantined,
+          oldestFirstFailedAt: oldestQuarantine.toISOString(),
+        }),
+      );
+    }
+    // D10: three consecutive failed runs (15 min) escalate to `error`, which
+    // makes the event a notification candidate.
+    const failedLevel = consecutiveFailures >= 3 ? "error" : "warn";
     await deps.recordEvent(
-      event(rolling.complete ? "completed" : "failed", rolling.complete ? "info" : "warn", summary.ran_at, {
+      event(rolling.complete ? "completed" : "failed", rolling.complete ? "info" : failedLevel, summary.ran_at, {
         leaseOwnerHash: ownerHash,
         windowFrom: summary.window_from,
         windowTo: summary.window_to,
@@ -496,10 +816,18 @@ export async function runCallLogReconcileOnce(
         upserts: summary.upserts,
         noops: summary.noops,
         failures: summary.failures,
+        quarantined: summary.quarantined,
+        quarantineRetries: summary.quarantine_retries,
+        stragglerReads: summary.straggler_reads,
+        syncMode: summary.sync?.mode ?? "off",
+        syncRecords: summary.sync?.records ?? null,
+        syncChanged: summary.sync?.changed ?? null,
+        syncErrorCode: summary.sync?.error_code ?? null,
         throttledCount: summary.throttled_count,
         cursorAdvanced: summary.cursor_advanced,
         knownCompleteThrough: summary.known_complete_through,
         gapsAfter: summary.gaps_after,
+        consecutiveFailures,
         errorCode: summary.error_code,
         runtimeMs: summary.runtime_ms,
       }),
@@ -520,7 +848,7 @@ export async function runCallLogReconcileOnce(
     logger.error({
       msg: "sales_intelligence.call_log_reconcile.failed",
       leaseOwnerHash: ownerHash,
-      errorName: error instanceof Error ? error.name : "Error",
+      ...failureLogFields(error),
     });
     // Best-effort fenced release; the state and cursor stay untouched.
     try {
@@ -533,37 +861,63 @@ export async function runCallLogReconcileOnce(
   }
 }
 
+function emptyWindow(kind: WindowResult["kind"], from: Date, to: Date): WindowResult {
+  return {
+    kind,
+    from,
+    to,
+    pages: 0,
+    records: 0,
+    upserts: 0,
+    noops: 0,
+    failures: 0,
+    quarantined: 0,
+    complete: false,
+    incomplete_before: null,
+    error_code: null,
+  };
+}
+
 /**
- * The incremental window, plus the range this run deliberately did not reach.
+ * The start-time window, plus the range the cursor part deliberately did not reach.
  *
- * The cursor used to be able to move the window only *earlier*: the start was
- * `min(cursor.last_sync_to − overlap, now − 720 min)`, so every run re-fetched
- * and re-projected a full twelve hours and each Call Log record was processed
- * roughly seventy-two times before it aged out (14 §4).
+ * `incremental_from = max(cursor.last_sync_to − overlap, now − safety)` is a
+ * watermark: a stale cursor is never silently skipped — whatever the clamp
+ * left behind is returned as `skipped` and opened as a `watermark_clamp` gap,
+ * repaired oldest-first with the leftover page budget (14 §4).
  *
- * Now the cursor is a watermark: `max(cursor.last_sync_to − overlap,
- * now − safety)`. A stale cursor is never silently skipped — whatever the
- * clamp left behind is returned as `skipped` and opened as a gap, and gap
- * repair, which already exists and is the right mechanism for catching up,
- * covers it oldest-first with the leftover page budget. A first run has no
- * cursor and no gaps, so it uses the full cold-start lookback.
+ * `from = min(incremental_from, now − settle horizon)` (CC-03). RingCentral
+ * filters on **start** time and publishes a queue call mid-call, then
+ * rewrites the same record when it ends; without the horizon a call longer
+ * than ~20 minutes was fetched only as its mid-call snapshot, or never. A
+ * first run has no cursor and no gaps, so it uses the full cold-start lookback.
  */
 export function resolveWindowPlan(
   windowTo: Date,
   state: StoredState,
   config: ReconcileConfig,
-): { from: Date; skipped: { from: Date; to: Date } | null } {
+  horizonMinutes: number = config.settleHorizonMinutes,
+): { from: Date; incremental_from: Date; skipped: { from: Date; to: Date } | null } {
+  const horizonStart = new Date(windowTo.getTime() - horizonMinutes * 60_000);
+  const earlier = (a: Date, b: Date) => (a < b ? a : b);
   const lastTo = state.cursor?.last_sync_to ?? null;
   if (!lastTo) {
-    return { from: new Date(windowTo.getTime() - config.rollingLookbackMinutes * 60_000), skipped: null };
+    const coldStart = new Date(windowTo.getTime() - config.rollingLookbackMinutes * 60_000);
+    return { from: earlier(coldStart, horizonStart), incremental_from: coldStart, skipped: null };
   }
   const cursorStart = new Date(lastTo.getTime() - config.overlapMinutes * 60_000);
   const safetyStart = new Date(windowTo.getTime() - config.safetyLookbackMinutes * 60_000);
-  if (cursorStart >= safetyStart) return { from: cursorStart, skipped: null };
-  return { from: safetyStart, skipped: { from: cursorStart, to: safetyStart } };
+  if (cursorStart >= safetyStart) {
+    return { from: earlier(cursorStart, horizonStart), incremental_from: cursorStart, skipped: null };
+  }
+  return {
+    from: earlier(safetyStart, horizonStart),
+    incremental_from: safetyStart,
+    skipped: { from: cursorStart, to: safetyStart },
+  };
 }
 
-/** Start of the incremental window. See `resolveWindowPlan` for the skipped range. */
+/** Start of the window. See `resolveWindowPlan` for the skipped range. */
 export function resolveWindowStart(windowTo: Date, state: StoredState, config: ReconcileConfig): Date {
   return resolveWindowPlan(windowTo, state, config).from;
 }
@@ -576,6 +930,12 @@ export function nextState(
   config: ReconcileConfig,
   /** Range the watermark clamp did not reach this run; recorded, never skipped. */
   skipped: { from: Date; to: Date } | null = null,
+  options: {
+    /** `known_complete_through` never passes this (oldest provisional start, ISync time). */
+    completeThroughCap?: Date | null;
+    /** Start ranges of quarantine entries evicted past the bound. */
+    overflow?: ReadonlyArray<{ from: Date; to: Date }>;
+  } = {},
 ): {
   cursor_advanced: boolean;
   known_complete_through: Date | null;
@@ -614,7 +974,9 @@ export function nextState(
       gaps = gaps.filter((g) => !covered.includes(g));
       if (w.kind === "rolling") {
         cursorAdvanced = true;
-        const candidate = new Date(windowTo.getTime() - config.finalizationLagMinutes * 60_000);
+        let candidate = new Date(windowTo.getTime() - config.finalizationLagMinutes * 60_000);
+        const cap = options.completeThroughCap ?? null;
+        if (cap && cap < candidate) candidate = cap;
         if (!known || candidate > known) known = candidate;
       }
       continue;
@@ -641,6 +1003,11 @@ export function nextState(
       opened.push(gap);
     }
   }
+  for (const range of options.overflow ?? []) {
+    const gap = { from: range.from, to: range.to, reason: "quarantine_overflow", opened_at: now };
+    gaps.push(gap);
+    opened.push(gap);
+  }
   gaps.sort((a, b) => a.from.getTime() - b.from.getTime());
   // Bounded 50: coalesce the two oldest instead of dropping evidence.
   while (gaps.length > 50) {
@@ -653,8 +1020,19 @@ export function nextState(
   return { cursor_advanced: cursorAdvanced, known_complete_through: known, gaps, opened, closed };
 }
 
+type ReconcileEventKind =
+  | "started"
+  | "completed"
+  | "failed"
+  | "lease_contended"
+  | "gap_opened"
+  | "gap_closed"
+  | "record_quarantined"
+  | "quarantine_stale"
+  | "sync_token_expired";
+
 function event(
-  kind: "started" | "completed" | "failed" | "lease_contended" | "gap_opened" | "gap_closed",
+  kind: ReconcileEventKind,
   level: "info" | "warn" | "error",
   runId: string,
   details: Record<string, unknown>,
@@ -664,7 +1042,7 @@ function event(
     eventKey: `sales_intelligence.call_log_reconcile.${kind}`,
     category: "ringcentral" as const,
     workflow: "sales_intelligence",
-    summary: `All-direction Call Log reconcile ${kind.replace("_", " ")}.`,
+    summary: `All-direction Call Log reconcile ${kind.replace(/_/g, " ")}.`,
     runId,
     details,
     notificationCandidate: kind === "failed" && level === "error",
@@ -682,26 +1060,37 @@ function isRecord(value: unknown): value is CallLogRecordInput {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+type InteractionSkipRow = {
+  _id: unknown;
+  provider_last_modified_at?: Date | null;
+  call_log_state?: string | null;
+  merged_into_id?: unknown;
+};
+
 /**
- * Records this run can prove cannot change the projection, found with one
- * alias query for the whole window instead of one transaction per record.
+ * CC-02: records this run can prove cannot change their stored row, with two
+ * queries for the whole batch instead of one transaction per record.
  *
- * `provider_modified_watermark` was computed and persisted but explicitly
- * diagnostic; this is the incremental reader it was always for (14 §4).
+ * A record is unchanged only when **every** alias it carries resolves to one
+ * canonical row, its `lastModifiedTime` is at or before **that row's**
+ * `provider_last_modified_at`, and the row is not provisional. The previous
+ * skip compared against the run-wide maximum `lastModifiedTime` of *other*
+ * records, so a final version that became visible after a later-modified
+ * record was applied could be skipped forever (F6).
+ *
+ * `call_log_state` is read raw and may be absent; absent is not provisional.
  */
-export async function settledRecords(
+export async function unchangedRecords(
   records: readonly CallLogRecordInput[],
   accountId: string,
-  watermark: Date | null,
 ): Promise<Set<CallLogRecordInput>> {
-  const settled = new Set<CallLogRecordInput>();
-  if (!watermark) return settled;
+  const unchanged = new Set<CallLogRecordInput>();
   type Alias = ReturnType<typeof aliasesFor>[number];
-  const keysByRecord = new Map<CallLogRecordInput, string[]>();
+  const keysByRecord = new Map<CallLogRecordInput, { keys: string[]; modified: Date }>();
   const wanted = new Map<string, Alias>();
   for (const record of records) {
     const modified = dateOf(record.lastModifiedTime);
-    if (!modified || modified > watermark) continue;
+    if (!modified) continue;
     let aliases: Alias[];
     try {
       aliases = aliasesFor(identityFromCallLogRecord(record));
@@ -709,25 +1098,107 @@ export async function settledRecords(
       continue;
     }
     if (!aliases.length) continue;
-    keysByRecord.set(record, aliases.map((a) => `${a.kind}:${a.value}`));
+    keysByRecord.set(record, { keys: aliases.map((a) => `${a.kind}:${a.value}`), modified });
     for (const alias of aliases) wanted.set(`${alias.kind}:${alias.value}`, alias);
   }
-  if (!wanted.size) return settled;
-  const rows = await getCallInteractionAliasModel()
+  if (!wanted.size) return unchanged;
+  const aliasRows = await getCallInteractionAliasModel()
     .find(
       {
         provider: "ringcentral",
         provider_account_id: accountId,
         $or: [...wanted.values()].map((a) => ({ kind: a.kind, value: a.value })),
       },
-      { kind: 1, value: 1 },
+      { kind: 1, value: 1, interaction_id: 1 },
     )
     .lean();
-  const known = new Set(rows.map((row) => `${row.kind}:${row.value}`));
-  for (const [record, keys] of keysByRecord) {
-    if (keys.every((key) => known.has(key))) settled.add(record);
+  const interactionByKey = new Map<string, unknown>();
+  for (const row of aliasRows) interactionByKey.set(`${row.kind}:${row.value}`, row.interaction_id);
+
+  // Canonical rows, following `merged_into_id` (rare) with at most a few extra reads.
+  const rows = new Map<string, InteractionSkipRow>();
+  let pending = [...new Map([...interactionByKey.values()].map((id) => [String(id), id])).values()];
+  const collection = getCallInteractionModel().collection;
+  for (let hop = 0; pending.length && hop < 4; hop += 1) {
+    const found = (await collection
+      .find(
+        { _id: { $in: pending as never[] } },
+        { projection: { provider_last_modified_at: 1, call_log_state: 1, merged_into_id: 1 } },
+      )
+      .toArray()) as unknown as InteractionSkipRow[];
+    pending = [];
+    for (const row of found) {
+      rows.set(String(row._id), row);
+      if (row.merged_into_id && !rows.has(String(row.merged_into_id))) pending.push(row.merged_into_id);
+    }
   }
-  return settled;
+  const canonicalOf = (id: unknown): InteractionSkipRow | null => {
+    let row = rows.get(String(id)) ?? null;
+    for (let hop = 0; row?.merged_into_id && hop < 8; hop += 1) row = rows.get(String(row.merged_into_id)) ?? null;
+    return row && !row.merged_into_id ? row : null;
+  };
+
+  for (const [record, { keys, modified }] of keysByRecord) {
+    let canonical: InteractionSkipRow | null = null;
+    let single = true;
+    for (const key of keys) {
+      const row = interactionByKey.has(key) ? canonicalOf(interactionByKey.get(key)) : null;
+      if (!row || (canonical && String(canonical._id) !== String(row._id))) {
+        single = false;
+        break;
+      }
+      canonical = row;
+    }
+    if (!single || !canonical) continue;
+    if (canonical.call_log_state === "provisional") continue;
+    const stored = canonical.provider_last_modified_at;
+    if (!(stored instanceof Date) || modified > stored) continue;
+    unchanged.add(record);
+  }
+  return unchanged;
+}
+
+/** Oldest canonical provisional row that started at or after `since` (bounds `known_complete_through`). */
+async function oldestProvisionalStart(since: Date): Promise<Date | null> {
+  const row = (await getCallInteractionModel()
+    .collection.find(
+      { call_log_state: "provisional", started_at: { $gte: since }, merged_into_id: null },
+      { projection: { started_at: 1 } },
+    )
+    .sort({ started_at: 1 })
+    .limit(1)
+    .next()) as { started_at?: Date | null } | null;
+  return row?.started_at instanceof Date ? row.started_at : null;
+}
+
+/**
+ * Canonical provisional rows whose start is older than the settle horizon,
+ * oldest first. No start-time window reaches them any more, so each is
+ * re-read by its first Call Log id. Quarantined ids and ids this run already
+ * applied are skipped.
+ */
+async function provisionalStragglers(
+  settleBefore: Date,
+  limit: number,
+  book: QuarantineBook,
+  attempted: ReadonlySet<string>,
+): Promise<Array<{ call_log_id: string; telephony_session_id: string | null; start_time: Date | null }>> {
+  const rows = (await getCallInteractionModel()
+    .collection.find(
+      { call_log_state: "provisional", started_at: { $lt: settleBefore }, merged_into_id: null },
+      { projection: { call_log_ids: 1, telephony_session_id: 1, started_at: 1 } },
+    )
+    .sort({ started_at: 1 })
+    .limit(limit + 50)
+    .toArray()) as Array<{ call_log_ids?: string[]; telephony_session_id?: string | null; started_at?: Date | null }>;
+  const out: Array<{ call_log_id: string; telephony_session_id: string | null; start_time: Date | null }> = [];
+  for (const row of rows) {
+    const id = row.call_log_ids?.[0];
+    if (!id || book.isQuarantined(id) || attempted.has(id)) continue;
+    out.push({ call_log_id: id, telephony_session_id: row.telephony_session_id ?? null, start_time: row.started_at ?? null });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 function str(value: unknown): string | null {

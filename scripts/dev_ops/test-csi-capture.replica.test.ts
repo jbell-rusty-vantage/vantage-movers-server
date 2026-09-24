@@ -18,9 +18,12 @@ import {
   observeRingCentralWebhookEvents,
 } from "../../src/services/numberActivity/observeWebhookEvents";
 import { applyInteractionObservation } from "../../src/services/numberActivity/persistInteraction";
+import { CALL_LOG_SWEEP_SCOPE, runCallLogSweepOnce } from "../../src/services/numberActivity/callLogSweep";
+import type { CallLogSyncInput } from "../../src/services/numberActivity/callLogClient";
 import {
   CALL_LOG_ALL_DIRECTIONS_SCOPE,
   callLogReconcileConfig,
+  type ReconcileConfig,
   runCallLogReconcileOnce,
   type ReconcileDependencies,
 } from "../../src/services/numberActivity/reconcileCallLog";
@@ -78,7 +81,7 @@ test(
   { skip: !enabled, timeout: 180_000 },
   async (t) => {
     assert.equal(process.env.TEST_MODE, "true");
-    assert.match(getMongoDatabaseName(), /^testvantagemovers_csi02[a-z0-9]+$/);
+    assert.match(getMongoDatabaseName(), /^testvantagemovers_[a-z0-9]+$/);
     assert.equal(
       process.env.MONGO_URI,
       "mongodb://127.0.0.1:27189/?replicaSet=csi01",
@@ -641,6 +644,14 @@ test(
         resolveRoute: noRoute,
         configuredAccountId: SYNTHETIC_ACCOUNT_ID,
         recordEvent: noEvent as never,
+        // No live provider traffic from a replica proof: by-id and Call Log
+        // Sync reads must be faked by the test that expects them.
+        fetchRecord: async () => {
+          throw new Error("unexpected by-id Call Log read");
+        },
+        fetchSync: async () => {
+          throw new Error("unexpected Call Log Sync read");
+        },
         requireFlag: false,
         config: {
           ...callLogReconcileConfig(),
@@ -1152,6 +1163,103 @@ test(
           assert.equal(current.call_log_state, "settled");
           assert.equal(current.direction, "Inbound");
           assert.equal(current.contact_number_id, settled.contact_number_id);
+
+      // ---- Call Log capture completeness (CC-01/02/03/05/06) ----
+      const MIN = 60_000;
+      const resetReconcile = async () => {
+        await SyncState.deleteMany({ scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, CALL_LOG_SWEEP_SCOPE] } });
+      };
+      const ccConfig = (patch: Partial<ReconcileConfig> = {}): ReconcileConfig => ({
+        ...callLogReconcileConfig(),
+        perPage: 50,
+        maxPages: 10,
+        leaseTtlMs: 5_000,
+        settleHorizonMinutes: 240,
+        syncMode: "off",
+        ...patch,
+      });
+      /** A provider that honours the start-time filter, like RingCentral. */
+      const startFiltered = (records: () => Record<string, unknown>[]) =>
+        async (page: number, from?: Date, to?: Date) =>
+          page === 1
+            ? records().filter((r) => {
+                const start = new Date(String(r.startTime));
+                return (!from || start >= from) && (!to || start <= to);
+              })
+            : [];
+      /** reconcileDeps with a start-filtered provider. */
+      const filteredDeps = (records: () => Record<string, unknown>[], overrides: Partial<ReconcileDependencies> = {}) => {
+        const fetch = startFiltered(records);
+        return reconcileDeps([], { fetchPage: ({ page, from, to }) => fetch(page, from, to), ...overrides });
+      };
+      const rawInteractions = () => db.collection("call_interactions");
+      /** A warm cursor, so the window is not the 720-minute cold start. */
+      const seedCursor = async (lastSyncTo: Date) => {
+        await SyncState.create({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE, cursor: { last_sync_to: lastSyncTo } });
+      };
+      type CapturedEvent = { eventKey: string; level: string; notificationCandidate: boolean };
+
+      await t.test(
+        "CC-02: a final version modified between two already-applied records is applied (F6: L1 < L2 < L3)",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const start = new Date(now.getTime() - 30 * MIN);
+          const l1 = new Date(now.getTime() - 25 * MIN);
+          const l2 = new Date(now.getTime() - 10 * MIN);
+          const l3 = new Date(now.getTime() - 5 * MIN);
+          const aFirst = inboundConnectedCallLog("s-f6-a", { startTime: start, duration: 60, lastModifiedTime: l1, result: "Call connected" });
+          const aFinal = inboundConnectedCallLog("s-f6-a", { startTime: start, duration: 900, lastModifiedTime: l2, result: "Accepted" });
+          const b = inboundConnectedCallLog("s-f6-b", { startTime: new Date(now.getTime() - 20 * MIN), lastModifiedTime: l3 });
+          const cfg = ccConfig();
+          await runCallLogReconcileOnce(reconcileDeps([[aFirst]], { config: cfg }));
+          await runCallLogReconcileOnce(reconcileDeps([[b]], { config: cfg }));
+          const state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(state?.cursor.provider_modified_watermark?.toISOString(), l3.toISOString(), "the run-wide watermark is past L2");
+          const third = await runCallLogReconcileOnce(reconcileDeps([[aFinal, b]], { config: cfg }));
+          assert.equal(third.upserts, 1, "A's final version is applied (the run-wide watermark skip lost it)");
+          assert.equal(third.noops, 1, "B is skipped without a transaction");
+          const stored = await Interaction.findOne({ telephony_session_id: "s-f6-a" }).lean();
+          assert.equal(stored?.provider_last_modified_at?.toISOString(), l2.toISOString());
+          assert.equal(stored?.provider_result, "Accepted");
+          assert.equal(stored?.duration_seconds, 900);
+        },
+      );
+
+      await t.test(
+        "CC-03: a mid-call snapshot is re-read inside the settle horizon after its start has left the incremental window",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const t0 = new Date(now.getTime() - 50 * MIN);
+          const snapshot = inboundConnectedCallLog("s-horizon-1", {
+            startTime: t0,
+            duration: 0,
+            result: "Stopped",
+            recording: null,
+            lastModifiedTime: new Date(t0.getTime() + 2 * MIN),
+          });
+          const final = inboundConnectedCallLog("s-horizon-1", {
+            startTime: t0,
+            duration: 46 * 60,
+            result: "Call connected",
+            lastModifiedTime: new Date(t0.getTime() + 47 * MIN),
+          });
+          let provider = [snapshot];
+          const cfg = ccConfig();
+          // Run 1 at T+2: the snapshot is all RingCentral has.
+          await runCallLogReconcileOnce(filteredDeps(() => provider, { config: cfg, now: () => new Date(t0.getTime() + 2 * MIN) }));
+          assert.equal((await Interaction.findOne({ telephony_session_id: "s-horizon-1" }).lean())?.provider_result, "Stopped");
+          // A fresh cursor: incremental_from = cursor − 15 min, long after T.
+          await SyncState.updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: { "cursor.last_sync_to": new Date(now.getTime() - 5 * MIN) } });
+          provider = [final];
+          const second = await runCallLogReconcileOnce(filteredDeps(() => provider, { config: cfg, now: () => now }));
+          assert.equal(second.window_from, new Date(now.getTime() - 240 * MIN).toISOString(), "window reaches back the settle horizon");
+          assert.equal(second.upserts, 1);
+          const row = await Interaction.findOne({ telephony_session_id: "s-horizon-1" }).lean();
+          assert.equal(row?.provider_result, "Call connected");
+          assert.equal(row?.duration_seconds, 46 * 60);
+          assert.equal(row?.recordings.length, 1, "the final record's recording is captured");
         },
       );
 
@@ -1279,13 +1387,250 @@ test(
           assert.equal(number?.rollups.inbound_total, 1);
           assert.equal(number?.rollups.outbound_total, 0, "the snapshot's Outbound was never counted");
           assert.equal(number?.rollups.recordings_total, 1);
+        "CC-01: a failing record is counted, quarantined at 3, stops holding the window, and is released by an hourly by-id retry",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const bad = inboundConnectedCallLog("s-q-bad", { startTime: new Date(now.getTime() - 20 * MIN) });
+          const good = inboundConnectedCallLog("s-q-good", { startTime: new Date(now.getTime() - 10 * MIN) });
+          let broken = true;
+          const apply: typeof applyInteractionObservation = async (accountId, input, deps) => {
+            if (broken && input.kind === "call_log" && input.record.id === bad.id) {
+              throw Object.assign(new Error('Cast to Embedded failed for value at path "rollups" because of "StrictModeError"'), { name: "StrictModeError" });
+            }
+            return applyInteractionObservation(accountId, input, deps);
+          };
+          const events: CapturedEvent[] = [];
+          const recordEvent = (async (e: CapturedEvent) => {
+            events.push(e);
+          }) as never;
+          const cfg = ccConfig();
+          const run = (at: Date, records: () => Record<string, unknown>[] = () => [bad, good], extra: Partial<ReconcileDependencies> = {}) =>
+            runCallLogReconcileOnce(filteredDeps(records, { config: cfg, apply, recordEvent, now: () => at, ...extra }));
+
+          const r1 = await run(now);
+          assert.equal(r1.error_code, "projection_failed");
+          assert.equal(r1.cursor_advanced, false);
+          let state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.deepEqual(state?.record_failures?.map((f) => [f.call_log_id, f.failures, f.last_error_code]), [[bad.id, 1, "persist_failed"]]);
+          await run(new Date(now.getTime() + 5 * MIN));
+          const r3 = await run(new Date(now.getTime() + 10 * MIN));
+          assert.equal(r3.error_code, null, "only a quarantined failure: the window counts complete");
+          assert.equal(r3.cursor_advanced, true);
+          assert.equal(r3.quarantined, 1);
+          state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(state?.consecutive_failures, 0);
+          assert.deepEqual(state?.record_failures, []);
+          const entry = state?.quarantined_records?.[0];
+          assert.equal(entry?.call_log_id, bad.id);
+          assert.equal(entry?.telephony_session_id, "s-q-bad");
+          assert.equal(entry?.error_name, "StrictModeError");
+          assert.equal(entry?.error_code, "persist_failed");
+          assert.equal(entry?.failures, 3);
+          assert.equal(entry?.next_retry_at.toISOString(), new Date(now.getTime() + 70 * MIN).toISOString());
+          assert.ok(events.some((e) => e.eventKey === "sales_intelligence.call_log_reconcile.record_quarantined"));
+          assert.equal(await Interaction.countDocuments({ telephony_session_id: "s-q-good" }), 1, "the other call was never held back");
+
+          // Held while its backoff runs: no apply attempt, still complete.
+          const held = await run(new Date(now.getTime() + 15 * MIN));
+          assert.equal(held.error_code, null);
+          assert.equal(held.windows[0]!.quarantined, 1);
+          assert.equal(held.quarantine_retries, 0);
+
+          // Due: the record is no longer in any window, so it is re-read by id.
+          broken = false;
+          const reads: string[] = [];
+          const retried = await run(new Date(now.getTime() + 71 * MIN), () => [], {
+            fetchRecord: async (id) => {
+              reads.push(id);
+              return bad;
+            },
+          });
+          assert.deepEqual(reads, [bad.id]);
+          assert.equal(retried.quarantine_retries, 1);
+          assert.equal(retried.quarantined, 0);
+          state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.deepEqual(state?.quarantined_records, []);
+          assert.equal(await Interaction.countDocuments({ telephony_session_id: "s-q-bad" }), 1);
+
+          // Escalation: three consecutive failed runs raise an error-level, notifiable `failed`.
+          await resetReconcile();
+          await Interaction.deleteMany({ telephony_session_id: "s-q-bad" });
+          await Alias.deleteMany({ value: { $regex: "s-q-bad" } });
+          broken = true;
+          events.length = 0;
+          const noQuarantine = ccConfig({ quarantineAfter: 10 });
+          for (let i = 0; i < 3; i += 1) {
+            await runCallLogReconcileOnce(filteredDeps(() => [bad], {
+              config: noQuarantine, apply, recordEvent, now: () => new Date(now.getTime() + i * 5 * MIN),
+            }));
+          }
+          const failed = events.filter((e) => e.eventKey === "sales_intelligence.call_log_reconcile.failed");
+          assert.deepEqual(failed.map((e) => [e.level, e.notificationCandidate]), [["warn", false], ["warn", false], ["error", true]]);
+          broken = false;
+        },
+      );
+
+      await t.test(
+        "straggler settle and R3: a provisional row past the horizon is re-read by id; one inside it caps known_complete_through and is never skipped",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const oldStart = new Date(now.getTime() - 300 * MIN);
+          const recentStart = new Date(now.getTime() - 30 * MIN);
+          const old = inboundConnectedCallLog("s-straggler-old", { startTime: oldStart });
+          const recent = inboundConnectedCallLog("s-straggler-new", { startTime: recentStart });
+          const cfg = ccConfig();
+          await runCallLogReconcileOnce(reconcileDeps([[old, recent]], { config: cfg }));
+          // Team Provisional's field, set raw: tolerated whether or not the model declares it.
+          await rawInteractions().updateMany(
+            { telephony_session_id: { $in: ["s-straggler-old", "s-straggler-new"] } },
+            { $set: { call_log_state: "provisional" } },
+          );
+          await SyncState.updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: { known_complete_through: null } });
+          // The seed run released its lease at its own finish time.
+          const later = new Date();
+          const reads: string[] = [];
+          const applied: string[] = [];
+          const summary = await runCallLogReconcileOnce(
+            filteredDeps(() => [old, recent], {
+              config: cfg,
+              now: () => later,
+              fetchRecord: async (id) => {
+                reads.push(id);
+                return old;
+              },
+              apply: async (accountId, input, deps) => {
+                if (input.kind === "call_log") applied.push(String(input.record.id));
+                return applyInteractionObservation(accountId, input, deps);
+              },
+            }),
+          );
+          assert.deepEqual(reads, [old.id], "only the row outside every window is read by id");
+          assert.equal(summary.straggler_reads, 1);
+          assert.ok(applied.includes(String(recent.id)), "a provisional row is never skipped as unchanged");
+          assert.equal(summary.known_complete_through, recentStart.toISOString(), "complete-through stops at the oldest provisional start");
+          await rawInteractions().updateMany({ call_log_state: "provisional" }, { $unset: { call_log_state: "" } });
+        },
+      );
+
+      await t.test(
+        "CC-05 on: FSync bootstraps a record whose start is outside the window, the window narrows to the safety net, ISync continues the chain; shadow only counts",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const started = new Date(now.getTime() - 200 * MIN);
+          const longAgo = inboundConnectedCallLog("s-isync-1", { startTime: started, duration: 60, lastModifiedTime: new Date(now.getTime() - 190 * MIN) });
+          const changed = inboundConnectedCallLog("s-isync-1", { startTime: started, duration: 3600, lastModifiedTime: new Date(now.getTime() - 2 * MIN) });
+          const calls: CallLogSyncInput[] = [];
+          const script = [
+            { records: [longAgo], syncType: "FSync" as const, syncToken: "tok-1", syncTime: now },
+            { records: [changed], syncType: "ISync" as const, syncToken: "tok-2", syncTime: new Date(now.getTime() + 5 * MIN) },
+          ];
+          const fetchSync = async (input: CallLogSyncInput) => {
+            calls.push(input);
+            return script.shift()!;
+          };
+          const cfg = ccConfig({ syncMode: "on" });
+          await seedCursor(new Date(now.getTime() - 5 * MIN));
+          const first = await runCallLogReconcileOnce(filteredDeps(() => [], { config: cfg, now: () => now, fetchSync }));
+          assert.equal(first.sync?.sync_type, "FSync");
+          assert.equal(first.sync?.token_stored, true);
+          assert.equal(first.window_from, new Date(now.getTime() - 90 * MIN).toISOString(), "with ISync driving, the window is the safety net");
+          let state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(state?.call_log_sync?.token, "tok-1");
+          assert.equal(state?.last_run?.sync_mode, "on");
+          assert.equal((await Interaction.findOne({ telephony_session_id: "s-isync-1" }).lean())?.duration_seconds, 60);
+
+          const second = await runCallLogReconcileOnce(filteredDeps(() => [], { config: cfg, now: () => new Date(now.getTime() + 5 * MIN), fetchSync }));
+          assert.deepEqual(calls.map((c) => c.syncType), ["FSync", "ISync"]);
+          assert.equal((calls[1] as { syncToken: string }).syncToken, "tok-1");
+          assert.equal(second.sync?.applied, 1);
+          state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(state?.call_log_sync?.token, "tok-2");
+          assert.equal((await Interaction.findOne({ telephony_session_id: "s-isync-1" }).lean())?.duration_seconds, 3600, "a change 3 h after the start is captured");
+
+          // Shadow: counts, applies nothing, and the window keeps the full horizon.
+          await resetReconcile();
+          await seedCursor(new Date(now.getTime() - 5 * MIN));
+          const newer = inboundConnectedCallLog("s-isync-1", { startTime: started, duration: 4000, lastModifiedTime: new Date(now.getTime() - MIN) });
+          const shadow = await runCallLogReconcileOnce(filteredDeps(() => [], {
+            config: ccConfig({ syncMode: "shadow" }),
+            now: () => now,
+            fetchSync: async () => ({ records: [newer, changed], syncType: "FSync", syncToken: "tok-s", syncTime: now }),
+          }));
+          assert.equal(shadow.sync?.changed, 1, "only the version newer than the stored row would change");
+          assert.equal(shadow.window_from, new Date(now.getTime() - 240 * MIN).toISOString());
+          assert.equal((await Interaction.findOne({ telephony_session_id: "s-isync-1" }).lean())?.duration_seconds, 3600, "shadow never writes");
+          state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(state?.last_run?.sync_changed, 1);
+        },
+      );
+
+      await t.test(
+        "CC-06 sweep: measures missing and stale rows the way the diff script does, applies without skip, records drift streaks",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
+          const current = inboundConnectedCallLog("s-sweep-current", { startTime: hoursAgo(10) });
+          const staleOld = inboundConnectedCallLog("s-sweep-stale", { startTime: hoursAgo(12), duration: 5, result: "Stopped", lastModifiedTime: hoursAgo(11.9) });
+          const staleNew = inboundConnectedCallLog("s-sweep-stale", { startTime: hoursAgo(12), duration: 1800, lastModifiedTime: hoursAgo(11.4) });
+          const missing = inboundConnectedCallLog("s-sweep-missing", { startTime: hoursAgo(20) });
+          const outside = inboundConnectedCallLog("s-sweep-outside", { startTime: hoursAgo(1) });
+          await runCallLogReconcileOnce(reconcileDeps([[current, staleOld]], { config: ccConfig() }));
+          const events: CapturedEvent[] = [];
+          const fetch = startFiltered(() => [current, staleNew, missing, outside]);
+          // After the seed run released the reconcile lease.
+          const sweepNow = new Date();
+          const sweepDeps = {
+            now: () => sweepNow,
+            fetchPage: ({ page, from, to }: { page: number; from: Date; to: Date }) => fetch(page, from, to),
+            directory: async () => directory,
+            resolveRoute: noRoute,
+            configuredAccountId: SYNTHETIC_ACCOUNT_ID,
+            recordEvent: (async (e: CapturedEvent) => {
+              events.push(e);
+            }) as never,
+            requireFlag: false,
+            config: ccConfig(),
+          };
+          const sweep = await runCallLogSweepOnce(sweepDeps);
+          assert.equal(sweep.from, new Date(sweepNow.getTime() - 36 * 3_600_000).toISOString());
+          assert.equal(sweep.to, new Date(sweepNow.getTime() - 240 * MIN).toISOString());
+          assert.equal(sweep.provider_records, 3, "the settle horizon is left to the live reconcile");
+          assert.deepEqual([sweep.missing_before, sweep.stale_before, sweep.stored_in_latest_version], [1, 1, 1]);
+          assert.equal(sweep.applied_changes, 2);
+          assert.equal(sweep.noops, 1, "no skip: the current record still went through apply");
+          assert.equal(sweep.complete, true);
+          assert.equal(sweep.consecutive_drift_runs, 1);
+          const row = await SyncState.findOne({ scope: CALL_LOG_SWEEP_SCOPE }).lean();
+          assert.equal(row?.last_run?.missing_before, 1);
+          assert.equal(row?.last_run?.stale_before, 1);
+          assert.equal(row?.consecutive_drift_runs, 1);
+          const drift = events.find((e) => e.eventKey === "sales_intelligence.call_log_sweep.sweep_found_drift");
+          assert.equal(drift?.notificationCandidate, false, "one night of drift is a warning");
+          const reconcileRow = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(reconcileRow?.lease_owner, null, "the reconcile lease is handed back");
+
+          const clean = await runCallLogSweepOnce(sweepDeps);
+          assert.deepEqual([clean.missing_before, clean.stale_before, clean.stored_in_latest_version], [0, 0, 3]);
+          assert.equal(clean.consecutive_drift_runs, 0);
+
+          // Two drifting nights in a row notify.
+          await SyncState.updateOne({ scope: CALL_LOG_SWEEP_SCOPE }, { $set: { consecutive_drift_runs: 1 } });
+          events.length = 0;
+          const later = inboundConnectedCallLog("s-sweep-missing-2", { startTime: hoursAgo(8) });
+          const fetchLater = startFiltered(() => [current, later]);
+          await runCallLogSweepOnce({ ...sweepDeps, fetchPage: ({ page, from, to }) => fetchLater(page, from, to) });
+          assert.equal(events.find((e) => e.eventKey === "sales_intelligence.call_log_sweep.sweep_found_drift")?.notificationCandidate, true);
         },
       );
 
     } finally {
       // Disposable per-run database on the loopback replica; drop it so repeated
       // runs do not accumulate testvantagemovers_csi02* databases.
-      if (/^testvantagemovers_csi02[a-z0-9]+$/.test(db.databaseName)) {
+      if (/^testvantagemovers_[a-z0-9]+$/.test(db.databaseName)) {
         await db.dropDatabase().catch(() => undefined);
       }
       await mongoose.disconnect();

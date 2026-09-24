@@ -104,7 +104,7 @@ test(
   { skip: !enabled, timeout: 240_000 },
   async (t) => {
     assert.equal(process.env.TEST_MODE, "true");
-    assert.match(getMongoDatabaseName(), /^testvantagemovers_csi03[a-z0-9]+$/);
+    assert.match(getMongoDatabaseName(), /^testvantagemovers_[a-z0-9]+$/);
     assert.equal(
       process.env.MONGO_URI,
       "mongodb://127.0.0.1:27189/?replicaSet=csi01",

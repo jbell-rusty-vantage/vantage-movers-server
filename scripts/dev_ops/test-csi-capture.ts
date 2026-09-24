@@ -1,7 +1,11 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 // CSI-02 isolated replica proof. Deliberately independent of .env and any inherited Atlas URI.
-const database = `testvantagemovers_csi02${randomBytes(6).toString("hex")}`;
+// An explicit loopback test database (`TEST_MONGO_DATABASE_NAME=testvantagemovers_<alnum>`) is honoured so parallel worktrees stay apart.
+const requested = process.env.TEST_MONGO_DATABASE_NAME?.trim() ?? "";
+const database = /^testvantagemovers_[a-z0-9]+$/.test(requested)
+  ? requested
+  : `testvantagemovers_csi02${randomBytes(6).toString("hex")}`;
 const child = spawn(
   process.execPath,
   [

@@ -24,6 +24,10 @@ function reconcileSummary(partial: Partial<ReconcileSummary>): ReconcileSummary 
     upserts: 0,
     noops: 0,
     failures: 0,
+    quarantined: 0,
+    quarantine_retries: 0,
+    straggler_reads: 0,
+    sync: null,
     throttled_count: 0,
     throttle_retry_after_ms: null,
     throttle_retry_after_observed: false,
@@ -290,4 +294,52 @@ test("app.ts mounts the CSI cron router before the v1 guard like the other cron 
   const v1 = source.indexOf("app.use(v1Routes)");
   assert.ok(mount > -1, "router is mounted");
   assert.ok(v1 > mount, "cron router precedes v1 routes");
+});
+
+test("CC-06 Call Log sweep route: cron auth, CAPTURE_CALL_LOG gate, lease_held skip, bounded 500, nightly registration", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  let enabled = false;
+  let outcome: "held" | "ran" | "throw" = "held";
+  const calls: string[] = [];
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {
+      calls.push("connect");
+    },
+    flag: ((name: string) => name === "CAPTURE_CALL_LOG" && enabled) as never,
+    runCallLogSweep: async () => {
+      calls.push("sweep");
+      if (outcome === "throw") throw new Error('{"errorCode":"CMN-301","message":"provider body must not leak"}');
+      return { skipped: outcome === "held", skip_reason: outcome === "held" ? "lease_held" : null, missing_before: 1 } as never;
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      assert.equal((await call(CSI_CRON_PATHS.callLogSweep)).status, 401);
+      assert.deepEqual((await call(CSI_CRON_PATHS.callLogSweep, auth)).body, { ok: true, skipped: true, reason: "disabled" });
+      assert.deepEqual(calls, [], "a disabled sweep never connects or claims the reconcile lease");
+      enabled = true;
+      const held = await call(CSI_CRON_PATHS.callLogSweep, auth);
+      assert.equal(held.body.reason, "lease_held");
+      outcome = "ran";
+      const ran = await call(CSI_CRON_PATHS.callLogSweep, { "x-cron-secret": "synthetic-cron" });
+      assert.equal(ran.body.skipped, false);
+      assert.equal((ran.body.summary as { missing_before: number }).missing_before, 1);
+      outcome = "throw";
+      const failed = await call(CSI_CRON_PATHS.callLogSweep, auth);
+      assert.equal(failed.status, 500);
+      assert.deepEqual(failed.body, { ok: false, error: "Call Log sweep failed" });
+    });
+  } finally {
+    process.env = saved;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as {
+    crons: Array<{ path: string; schedule: string }>;
+  };
+  assert.equal(
+    manifest.crons.find((c) => c.path === CSI_CRON_PATHS.callLogSweep)?.schedule,
+    "40 7 * * *",
+    "about 3:40 ET, after the business day",
+  );
 });
