@@ -20,6 +20,7 @@ import { authoritativeClosure, callFacts, customerCalledBack, fulfilledByCall, p
 import { closeRecord, jsonValue, refreshRecord, saveFollowup, recordForUpdate } from "./store";
 import { attentionEvolutionEnabled, CONTACT_FACT_FIELDS, mayReplaceAssignment, progressPlanEnabled, subjectKey, type InteractionRow, type RecordRow } from "./types";
 export { CONTACT_FACT_FIELDS } from "./types";
+import { progressPlanSuppressed } from "./types";
 import { isPromisedCallback, KNOWN_MISS_DISPOSITIONS } from "./derive";
 import { csiPolicyEvolution, type CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
@@ -244,6 +245,8 @@ async function nominateProgressReplan(record: Awaited<ReturnType<typeof recordFo
   if (!numberId) return null;
   if (await getOutreachFollowupModel().exists({ outreach_record_id: record._id, status: "open", default_kind: { $not: { $type: "string" } } }).session(context.session)) return null;
   if (!await recentSummarizedConversation(numberId, context)) return null;
+  // S10 step 6 `--no-progress-plan`: counted by the re-ensure lap, never nominated (no-op unless a suppressor is set).
+  if (progressPlanSuppressed(String(record._id))) return null;
   // Loaded lazily: the assessment runtime imports this module.
   const { nominateMoveAssessment } = await import("../assessment/runtime.js");
   return nominateMoveAssessment({ outreach_record_id: String(record._id), trigger: `progress:${next.disposition_revision}`, force: true }, context.session);

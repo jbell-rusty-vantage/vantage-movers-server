@@ -18,6 +18,18 @@ export const CONTACT_FACT_FIELDS = ["last_inbound_human_at", "last_attributable_
 export const attentionEvolutionEnabled = () => csiFlag("ATTENTION_EVOLUTION");
 /** AC6-PLAN: the Move assessment re-plan on accepted progress to Quoted (needs MOVE_ASSESSMENT too). Default off. */
 export const progressPlanEnabled = () => csiFlag("PROGRESS_PLAN");
+/**
+ * S10 step 6 (`scripts/dev_ops/reensure-outreach.ts --no-progress-plan`): a process-level override that
+ * suppresses the AC6-PLAN re-plan nomination and hands the record id to the suppressor instead, so the
+ * lap can count what it would have nominated. Null (the default, and every server process) changes nothing.
+ */
+let progressPlanSuppressor: ((recordId: string) => void) | null = null;
+export function setProgressPlanSuppressor(suppressor: ((recordId: string) => void) | null) { progressPlanSuppressor = suppressor; }
+export function progressPlanSuppressed(recordId: string): boolean {
+  if (!progressPlanSuppressor) return false;
+  progressPlanSuppressor(recordId);
+  return true;
+}
 
 /**
  * Spec §7.2: the one precedence of assignment origins. An automatic assignment may replace only a
