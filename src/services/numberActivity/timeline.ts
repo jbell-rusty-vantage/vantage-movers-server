@@ -153,6 +153,7 @@ type InteractionLean = {
   contact_type: string;
   duration_seconds: number | null;
   terminal: boolean;
+  call_log_state?: "provisional" | "settled" | null;
   started_at: Date;
   answered_at: Date | null;
   ended_at: Date | null;
@@ -196,6 +197,9 @@ function interactionEvent(numberId: string, row: InteractionLean): NumberTimelin
       contact_type: row.contact_type,
       duration_seconds: row.duration_seconds ?? null,
       terminal: Boolean(row.terminal),
+      // CC-04: "provisional" = the Call Log has only shown a mid-call snapshot (not final);
+      // null = never seen in the Call Log. Additive; readers that ignore it are unaffected.
+      call_log_state: row.call_log_state ?? null,
       recording_count: recordingIds.length,
       recording_ids: recordingIds,
       projection_revision: row.projection_revision,

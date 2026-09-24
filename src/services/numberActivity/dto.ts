@@ -398,6 +398,7 @@ export const NUMBER_DTO_FIXTURES = {
       contact_type: "unknown",
       duration_seconds: 95,
       terminal: true,
+      call_log_state: "settled",
       recording_count: 1,
       recording_ids: ["rec-synthetic-1"],
       projection_revision: 4,
