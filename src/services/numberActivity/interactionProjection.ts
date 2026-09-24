@@ -1068,7 +1068,13 @@ function finish(
   fenced: number,
   stale: boolean,
 ): ProjectionOutcome {
-  const changed = existing === null || !sameProjection(existing, next);
+  // A row stored before `call_log_state` existed (null) re-read from an unchanged settled record
+  // is not a change: writing a revision for the label alone woke the Outreach repair sweep for
+  // every historical call it touched and re-ran number syntheses (2026-09-24 repair).
+  const labelOnly =
+    existing !== null && existing.call_log_state === null && next.call_log_state === "settled" &&
+    sameProjection(existing, { ...next, call_log_state: null });
+  const changed = existing === null || (!labelOnly && !sameProjection(existing, next));
   const existingRecordings = new Set((existing?.recordings ?? []).map((r) => r.provider_recording_id));
   const existingAliases = new Set(
     existing ? aliasesFor(existing).map((a) => `${a.kind}:${a.value}`) : [],

@@ -383,3 +383,18 @@ test("settleStoredProjection: a provisional row quiet past the horizon settles w
   const settled = settleStoredProjection(late.next, { now: new Date(modified.getTime() + minutes(2 * DEFAULT_SETTLE_HORIZON_MINUTES)) });
   assert.equal(settled.changed, false, "a settled row is a no-op");
 });
+
+test("a pre-CC-04 row (call_log_state null) re-read from its unchanged settled record is not a change", () => {
+  const record = liveFinalRecord(2, "s-legacy");
+  const now = soonAfter(record);
+  const stored = project(null, record, now).next;
+  assert.equal(stored.call_log_state, "settled");
+  const legacy: InteractionProjection = { ...stored, call_log_state: null };
+  const again = project(legacy, record, now);
+  assert.equal(again.changed, false, "the label alone must not write a revision");
+  assert.equal(again.newly_settled, false);
+  // A real change on the same legacy row still writes, and settles it.
+  const later = project(legacy, { ...record, duration: Number(record.duration) + 60, lastModifiedTime: new Date(now.getTime() + minutes(1)).toISOString() }, now);
+  assert.equal(later.changed, true);
+  assert.equal(later.next.call_log_state, "settled");
+});
