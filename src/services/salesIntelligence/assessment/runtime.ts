@@ -57,7 +57,15 @@ export type MoveAssessmentOutcome = {
   status: "completed" | "reused" | "skipped" | "shadow_completed" | "stale_input" | "paused" | "retry" | "not_claimable" | "disabled" | "lease_lost";
   reason?: string; artifact_id?: string;
 };
-export type PublicationOutcome = "published" | "fenced" | "stale_input" | "current";
+/** `current_replan` (Team 4 §8.1): the projection is already this artifact, and a `progress:*` re-plan re-applies its engagement. */
+export type PublicationOutcome = "published" | "fenced" | "stale_input" | "current" | "current_replan";
+/** Team 4 §8.1: the progress re-plan trigger prefix (`nominateMoveAssessment({ trigger: "progress:<disposition_revision>" })`). */
+export const PROGRESS_REPLAN_TRIGGER = "progress:";
+/** The nomination trigger a job was queued with, read back from its dedupe key (`csi:move-assessment:<subject>:<trigger>`). */
+export function assessmentJobTrigger(job: { dedupe_key?: string | null; subject_key: string }): string | null {
+  const prefix = `csi:move-assessment:${job.subject_key}:`;
+  return job.dedupe_key?.startsWith(prefix) ? job.dedupe_key.slice(prefix.length) : null;
+}
 
 export function moveAssessmentRuntimeConfiguration() {
   const provider = csiProviderConfiguration();
@@ -129,6 +137,8 @@ export function publicationDecision(input: {
   fresh: AssessmentContext | AssessmentSkip;
   record: { state: string; lead_progress?: Pick<LeadProgressRow, "disposition" | "provenance" | "override"> | null; move_assessment?: Projection } | null;
   closure: string | null;
+  /** The job trigger; only `progress:*` changes the outcome (Team 4 §8.1). */
+  trigger?: string | null;
 }): PublicationOutcome {
   const { artifact, fresh, record, closure } = input;
   if (!(ACCEPTED as readonly string[]).includes(artifact.status)) return "fenced";
@@ -138,7 +148,9 @@ export function publicationDecision(input: {
   if ("skip" in fresh) return fresh.skip === "not_applicable" || fresh.skip === "ambiguous_subject" ? "fenced" : "stale_input";
   if (fresh.fingerprint !== artifact.input_fingerprint) return "stale_input";
   const current = record.move_assessment;
-  if (current && String(current.artifact_id) === String(artifact._id) && !current.stale && current.status === artifact.status) return "current";
+  if (current && String(current.artifact_id) === String(artifact._id) && !current.stale && current.status === artifact.status)
+    // A progress re-plan may reuse the artifact (unchanged customer evidence) but must still re-apply its engagement to the current record.
+    return input.trigger?.startsWith(PROGRESS_REPLAN_TRIGGER) ? "current_replan" : "current";
   // Never replace a projection built from newer context with an older artifact.
   if (current && current.status !== "purged" && String(current.artifact_id) !== String(artifact._id) && current.context_as_of &&
     +current.context_as_of > +artifact.context_as_of) return "fenced";
@@ -152,7 +164,7 @@ export function publicationDecision(input: {
  * only `move_assessment` + `revision` and one audit event. Never touches follow-ups.
  */
 export async function publishAssessmentProjection(artifact: ArtifactRow & { outreach_record_id?: unknown },
-  context: Pick<AssessmentContext, "outreach_record_id">, session: ClientSession, now = new Date()): Promise<PublicationOutcome> {
+  context: Pick<AssessmentContext, "outreach_record_id">, session: ClientSession, now = new Date(), trigger: string | null = null): Promise<PublicationOutcome> {
   if (artifact.shadow) return "fenced";
   const Records = getOutreachRecordModel();
   const fresh = await assembleAssessmentContext({ outreach_record_id: context.outreach_record_id, allow_lead_only: true, now }, session);
@@ -163,8 +175,14 @@ export async function publishAssessmentProjection(artifact: ArtifactRow & { outr
     const lead = await loadLead(ref, session);
     closure = lead ? await authoritativeClosure(lead, ref, session) : "lead_unavailable";
   }
-  const decision = publicationDecision({ artifact, fresh, closure,
+  const decision = publicationDecision({ artifact, fresh, closure, trigger,
     record: record ? { state: record.state, lead_progress: record.lead_progress as LeadProgressRow | null, move_assessment: record.move_assessment } : null });
+  if (decision === "current_replan") {
+    // Team 4 §8.1: the projection stays; the engagement is re-planned against the current record (same transaction, idempotent keys).
+    await applyAssessmentEngagement({ _id: artifact._id, job_id: artifact.job_id, engagement: artifact.engagement,
+      latest_conversation_at: artifact.latest_conversation_at ?? null, contact_number_id: artifact.contact_number_id }, context.outreach_record_id, session, now);
+    return decision;
+  }
   if (decision !== "published" || !record) return decision;
   const projection = projectionFor(artifact, record.revision, now);
   const changed = await Records.updateOne({ _id: record._id, revision: record.revision,
@@ -272,11 +290,12 @@ export async function runMoveAssessmentJob(jobId?: string, deps: MoveAssessmentD
     const allow_lead_only = deps.allow_lead_only ?? csiFlag("MOVE_ASSESSMENT");
     const context = await assembleAssessmentContext({ outreach_record_id: recordId, allow_lead_only, now: clock() });
     if ("skip" in context) return await completeSkip(lease, context, shadow, deps);
-    const contract = assessmentStepContract();
+    // AC2-ASSESS: the recorded contract follows the layout the context was assembled with (read once, at claim).
+    const contract = assessmentStepContract(context.layout);
     const key = { ...csiDataset(), subject_key: context.subject_key, input_fingerprint: context.fingerprint,
       schema_version: MOVE_ASSESSMENT_SCHEMA_VERSION, shadow };
     let artifact = await Artifacts.findOne(key).lean();
-    if (artifact && (ACCEPTED as readonly string[]).includes(artifact.status)) return await finishAccepted(lease, artifact, context, shadow, "reused", job.priority);
+    if (artifact && (ACCEPTED as readonly string[]).includes(artifact.status)) return await finishAccepted(lease, artifact, context, shadow, "reused", job.priority, assessmentJobTrigger(job));
     if (artifact?.status === "purged") {
       await completeCsiJob(lease, async () => undefined, { result: { reason: "purged", artifact_id: String(artifact._id) } });
       return { status: "skipped", reason: "purged", artifact_id: String(artifact._id) };
@@ -304,7 +323,7 @@ export async function runMoveAssessmentJob(jobId?: string, deps: MoveAssessmentD
         if (!duplicateKey(error)) throw error;
         artifact = await Artifacts.findOne(key).lean();
         if (!artifact) throw error;
-        if ((ACCEPTED as readonly string[]).includes(artifact.status)) return await finishAccepted(lease, artifact, context, shadow, "reused", job.priority);
+        if ((ACCEPTED as readonly string[]).includes(artifact.status)) return await finishAccepted(lease, artifact, context, shadow, "reused", job.priority, assessmentJobTrigger(job));
       }
     }
     artifactId = String(artifact._id);
@@ -324,7 +343,7 @@ export async function runMoveAssessmentJob(jobId?: string, deps: MoveAssessmentD
     }
 
     const generated = await generateMoveAssessment({ lease, artifact_id: artifactId, model: deps.model, model_id, gateway_key, credential,
-      pricing, prompt_payload: context.prompt_payload, catalog: context.catalog, ledger: deps.ledger,
+      pricing, prompt_payload: context.prompt_payload, catalog: context.catalog, ledger: deps.ledger, layout: context.layout,
       deadline: deps.deadline ?? Date.now() + STRUCTURED_INVOCATION_MS, onProviderCall: deps.onProviderCall,
       beforeProvider: async () => {
         if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED");
@@ -344,7 +363,7 @@ export async function runMoveAssessmentJob(jobId?: string, deps: MoveAssessmentD
       if (written.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
     });
     const stored = await Artifacts.findById(artifact._id).orFail().lean();
-    return await finishAccepted(lease, stored, context, shadow, "completed", job.priority);
+    return await finishAccepted(lease, stored, context, shadow, "completed", job.priority, assessmentJobTrigger(job));
   } catch (error) {
     deps.onError?.(error);
     return failAssessment(lease, job.result, error, artifactId);
@@ -383,14 +402,14 @@ async function completeSkip(lease: JobLease, skip: AssessmentSkip, shadow: boole
 }
 
 async function finishAccepted(lease: JobLease, artifact: ArtifactRow & { outreach_record_id?: unknown }, context: AssessmentContext,
-  shadow: boolean, kind: "completed" | "reused", priority: number): Promise<MoveAssessmentOutcome> {
+  shadow: boolean, kind: "completed" | "reused", priority: number, trigger: string | null = null): Promise<MoveAssessmentOutcome> {
   const artifact_id = String(artifact._id);
   if (shadow) {
     await completeCsiJob(lease, async () => undefined, { result: { reason: kind === "reused" ? "reused" : "shadow_completed", artifact_id } });
     return { status: kind === "reused" ? "reused" : "shadow_completed", artifact_id };
   }
   const outcome = await completeCsiJob(lease, async session => {
-    const decision = await publishAssessmentProjection(artifact, context, session);
+    const decision = await publishAssessmentProjection(artifact, context, session, new Date(), trigger);
     // The result stays historical; a fresh nomination assesses the current inputs.
     if (decision === "stale_input") await nominateMoveAssessment({ outreach_record_id: context.outreach_record_id, trigger: `stale:${artifact_id}`,
       priority, force: true }, session);

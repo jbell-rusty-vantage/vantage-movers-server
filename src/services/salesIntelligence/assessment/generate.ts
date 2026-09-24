@@ -10,8 +10,8 @@ import { cachedInputTokens } from "../analysis/runtime";
 import { measuredCents, StructuredStepTimeout, StructuredYield, type StepPricing } from "../analysis/structuredGeneration";
 import { structuredProviderSchema } from "../analysis/structuredProviderSchema";
 import {
-  expandAssessment, moveAssessmentModelOutputSchema, MOVE_ASSESSMENT_PROMPT,
-  type AcceptedAssessment, type EvidenceCatalogEntry, type MoveAssessmentModelOutput,
+  expandAssessment, moveAssessmentModelOutputSchema, moveAssessmentPrompt,
+  type AcceptedAssessment, type AssessmentLayout, type EvidenceCatalogEntry, type MoveAssessmentModelOutput,
 } from "./contract";
 import type { AssessmentPromptPayload } from "./context";
 
@@ -101,6 +101,8 @@ export type GenerateMoveAssessmentInput = {
   /** Test/backfill injection; otherwise the gateway model is built from `gateway_key`. */
   model?: LanguageModel; model_id: string; gateway_key?: string; credential: AssessmentCredential;
   pricing: StepPricing; prompt_payload: AssessmentPromptPayload; catalog: readonly EvidenceCatalogEntry[];
+  /** The context's layout (spec §4.10). Omitted: a payload that carries `case_file` is a Case File run, otherwise legacy (v1). */
+  layout?: AssessmentLayout;
   /** Absolute epoch ms by which the whole invocation must end. */
   deadline: number;
   beforeProvider?: () => Promise<void>;
@@ -138,8 +140,9 @@ export async function generateMoveAssessment(input: GenerateMoveAssessmentInput)
     if (!cost.complete) usage.usage_complete = false;
   };
   const prompt = JSON.stringify(input.prompt_payload);
+  const layout: AssessmentLayout = input.layout ?? (input.prompt_payload.case_file === undefined ? "legacy" : "case_file");
   const signal = AbortSignal.timeout(ASSESSMENT_STEP_MS);
-  let repair = "", uncertain = false;
+  let repair = "", uncertain = false, validationRepairs = 0;
   try {
     while (true) {
       if (signal.aborted) throw new StructuredStepTimeout("assessment");
@@ -149,7 +152,7 @@ export async function generateMoveAssessment(input: GenerateMoveAssessmentInput)
       let value: unknown;
       try {
         const result = await generateObject({ model, schema: providerSchema, maxRetries: 0,
-          system: MOVE_ASSESSMENT_PROMPT, prompt: prompt + repair, abortSignal: signal });
+          system: moveAssessmentPrompt(layout), prompt: prompt + repair, abortSignal: signal });
         await observe(result.usage, result.providerMetadata);
         value = result.object;
       } catch (error) {
@@ -165,10 +168,14 @@ export async function generateMoveAssessment(input: GenerateMoveAssessmentInput)
         continue;
       }
       try {
-        const accepted = expandAssessment(value, input.catalog);
+        const accepted = expandAssessment(value, input.catalog, { layout });
         return { accepted, model_output: accepted.model_output, usage };
       } catch (error) {
         if (!(error instanceof z.ZodError) && !(error instanceof CsiError && error.code === "EVIDENCE_SCOPE_INVALID")) throw error;
+        // Case File layout (spec §4.10): the stricter customer-evidence rule gets exactly one repair; a second
+        // invalid object fails the attempt (billed, reconciled) instead of looping until the step timeout.
+        // The legacy layout keeps its existing elapsed-time-only loop.
+        if (layout === "case_file" && validationRepairs++ >= 1) throw error;
         repair = `\nThe previous object (data) was ${JSON.stringify(value)}. Correct these validation paths: ${JSON.stringify(assessmentIssuePaths(error))}. Cite only the supplied evidence ids. Return the complete object.`;
       }
     }

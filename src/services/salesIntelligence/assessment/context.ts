@@ -4,8 +4,13 @@ import { subjectKey } from "../outreach/types";
 import { CsiError } from "../auth";
 import { payloadHash } from "../transactions";
 import {
-  assessmentStepContract, type EvidenceCatalogEntry, type EvidenceKind, type SourceManifestEntry,
+  assessmentLayoutFromFlag, assessmentStepContract, type AssessmentLayout, type EvidenceCatalogEntry, type EvidenceKind, type SourceManifestEntry,
 } from "./contract";
+import type { ReadContent } from "../analysis/reads";
+import { selectPriorAnalyses } from "../analysis/prior";
+import { readCaptureCoverage } from "../../numberActivity/coverage";
+import { assembleCaseFile } from "../casefile/assemble";
+import { CASE_FILE_TIMEZONE, type CaseFileInput, type RenderedCaseFile } from "../casefile/types";
 import { moveViewsForLead, type MoveView, type MoveViews } from "./views";
 import {
   mongoAssessmentReader, selectConversationSources, selectCorrections, selectRetainedFindings,
@@ -35,6 +40,8 @@ export type AssessmentPromptPayload = {
   conversations: Array<{ call_at: string; entries: Array<{ id: string; kind: EvidenceKind; speaker: string; text: string }> }>;
   /** `restates` lists the catalog ids this finding repeats: the same observation, not a confirmation. */
   findings: Array<{ id: string; text: string; restates: string[] }>;
+  /** Case File layout only (spec §4.10): the rendered Case File, audience "assessment". Absent (not null) under the legacy layout, so v1 payloads stay byte-identical. */
+  case_file?: string;
 };
 export type AssessmentContext = {
   subject_key: string; outreach_record_id: string; contact_number_id: string | null; lead_ref: LeadRef | null;
@@ -43,7 +50,22 @@ export type AssessmentContext = {
   coverage: { conversations_available: number; conversations_selected: number; findings_selected: number; source_coverage: "complete" | "partial" | "none" };
   views: MoveViews | null;
   eligibility: { record_revision: number; record_state: string; closure_origin: string | null; disposition_revision: string | null };
+  /** Decided once here (spec §4.10/§4.11); the step contract, prompt and validator follow it. */
+  layout: AssessmentLayout;
+  /** Case File layout only: what the run may record next to the artifact (size, digests, trimming). */
+  case_file?: Pick<RenderedCaseFile, "bytes" | "digest" | "customer_evidence_digest" | "trimmed_steps" | "over_hard_budget">;
 };
+/** Seams for the Case File layout (tests inject both; production reads Mongo through `casefile/assemble.ts`). */
+export type AssessmentContextDeps = {
+  layout?: AssessmentLayout;
+  caseFile?: (input: CaseFileInput) => Promise<{ rendered: RenderedCaseFile }>;
+  prior?: (input: { contact_number_id: string; subject_key: string; outreach_record_id: string; as_of: Date }) => Promise<ReadContent | null>;
+};
+const defaultCaseFile = (input: CaseFileInput) => assembleCaseFile(input);
+/** §6 for the assessment audience is the prior assessment only; the shared selection is reused, the builder renders only that record. */
+async function defaultPrior(input: { contact_number_id: string; subject_key: string; outreach_record_id: string; as_of: Date }) {
+  return selectPriorAnalyses({ ...input, exclude_conversation_id: null }, await readCaptureCoverage());
+}
 export type AssessmentContextInput = ({ outreach_record_id: string } | { subject_key: string }) & {
   /** Backfill Lead-only cohort, or the normal flow with MOVE_ASSESSMENT on. */
   allow_lead_only?: boolean; now?: Date;
@@ -63,7 +85,9 @@ function viewEntries(view: MoveView, kind: "lead_current" | "lead_ingested", lea
 }
 
 export async function assembleAssessmentContext(input: AssessmentContextInput, session?: ClientSession,
-  reader: AssessmentReader = mongoAssessmentReader(session)): Promise<AssessmentContext | AssessmentSkip> {
+  reader: AssessmentReader = mongoAssessmentReader(session), deps: AssessmentContextDeps = {}): Promise<AssessmentContext | AssessmentSkip> {
+  // Read once per context, so the payload, fingerprint, step contract and validator of one run agree.
+  const layout = deps.layout ?? assessmentLayoutFromFlag();
   const record = await reader.record("outreach_record_id" in input ? { id: input.outreach_record_id } : { subject_key: input.subject_key });
   if (!record) throw new CsiError("INVALID_INPUT");
   const subject_key = subjectKey(record.subject), outreach_record_id = String(record._id);
@@ -133,16 +157,33 @@ export async function assembleAssessmentContext(input: AssessmentContextInput, s
     ...(views && leadRef ? [{ kind: "lead" as const, id: leadRef.id, version: payloadHash(jsonValue(views)) }] : []),
     ...(official && leadRef ? [{ kind: "official" as const, id: leadRef.id, version: payloadHash(jsonValue(official)) }] : []),
   ].sort((a, b) => a.id.localeCompare(b.id) || a.kind.localeCompare(b.kind));
-  const contract = assessmentStepContract();
+  const contract = assessmentStepContract(layout);
+  const now = input.now ?? new Date();
+  // Case File layout (spec §4.10): the full file, audience "assessment", with each summarized call's catalog lines
+  // (renumbered ids) rendered under it. Only its customer-evidence digest (§2 + the §4 call summaries) enters the
+  // fingerprint, never the §3 Granot or §5 Outreach text, so neither can refresh an assessment.
+  let caseFile: RenderedCaseFile | null = null;
+  if (layout === "case_file") {
+    const evidence_lines: Record<string, Array<{ id: string; text: string }>> = {};
+    for (const c of conversations) evidence_lines[c.conversation_id] = c.entries.map(entry => ({ id: ids.get(entry.id)!, text: entry.text }));
+    const prior = numberId ? await (deps.prior ?? defaultPrior)({ contact_number_id: numberId, subject_key, outreach_record_id, as_of: now }) : null;
+    ({ rendered: caseFile } = await (deps.caseFile ?? defaultCaseFile)({
+      contact_number_id: numberId, e164: null, lead_refs: leadRef ? [leadRef] : [], outreach_record_ids: [outreach_record_id],
+      conversation_ids: conversations.map(c => c.conversation_id),
+      // The newest selected call is "this run"; the rest are context at their tier.
+      focus_conversation_ids: conversations.length ? [conversations.at(-1)!.conversation_id] : [],
+      summaries: new Map(), prior, as_of: now, timezone: CASE_FILE_TIMEZONE, audience: "assessment", evidence_lines,
+    }));
+  }
   const fingerprint = payloadHash(jsonValue({
     contract: { schema_version: contract.schema_version, rubric_version: contract.rubric_version, prompt_digest: contract.prompt_digest, schema_digest: contract.schema_digest },
     sources: source_manifest,
     views: { original_ingestion: views?.original_ingestion ?? null, canonical_current: views?.canonical_current ?? null },
     official, attachment,
     corrections: corrections.map(c => ({ id: c.manifest.id, revision: c.entry.locator.revision })),
+    ...(caseFile ? { case_file_customer_evidence: caseFile.customer_evidence_digest } : {}),
   }));
 
-  const now = input.now ?? new Date();
   const latest = conversations.at(-1)?.call_at ?? null;
   const lead_only = conversations.length === 0;
   const prompt_payload: AssessmentPromptPayload = {
@@ -157,6 +198,7 @@ export async function assembleAssessmentContext(input: AssessmentContextInput, s
     conversations: conversations.map(c => ({ call_at: c.call_at,
       entries: c.entries.map(entry => ({ id: ids.get(entry.id)!, kind: entry.kind, speaker: entry.speaker ?? "unknown", text: entry.text })) })),
     findings: findingEntries.map(entry => ({ id: ids.get(entry.id)!, text: entry.text, restates: entry.lineage.map(id => ids.get(id) ?? id) })),
+    ...(caseFile ? { case_file: caseFile.text } : {}),
   };
   const available = conversations.length + skipped.length;
   return {
@@ -168,5 +210,8 @@ export async function assembleAssessmentContext(input: AssessmentContextInput, s
     views,
     eligibility: { record_revision: record.revision, record_state: record.state, closure_origin: record.closure_origin ?? null,
       disposition_revision: record.lead_progress?.disposition_revision ?? null },
+    layout,
+    ...(caseFile ? { case_file: { bytes: caseFile.bytes, digest: caseFile.digest, customer_evidence_digest: caseFile.customer_evidence_digest,
+      trimmed_steps: caseFile.trimmed_steps, over_hard_budget: caseFile.over_hard_budget } } : {}),
   };
 }
