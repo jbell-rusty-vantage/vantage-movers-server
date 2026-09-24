@@ -14,15 +14,25 @@ import {
  * the stored subscription metadata). Foreign subscriptions — including ones
  * that point at our webhook address — are reported, never touched.
  *
- * No function here is invoked by the runtime automatically. The ops command
- * `scripts/ringcentral/sales-intelligence-subscription.ts` is read-only by
- * default and requires an explicit confirmation flag to apply. All tests use
- * fakes; no production subscription is created, renewed or deleted here.
+ * Two callers apply plans: the ops command
+ * `scripts/ringcentral/sales-intelligence-subscription.ts` (read-only by
+ * default, explicit confirmation flag to apply) and the daily CC-08 cron
+ * `/api/cron/sales-intelligence-webhook-subscription`
+ * (`webhookSubscriptionCron.ts`, behind `SALES_INTELLIGENCE_CAPTURE_WEBHOOK`;
+ * it creates only with `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE=true`). All
+ * tests use fakes; no production subscription is created, renewed or deleted
+ * by tests.
  */
 export const SUBSCRIPTION_PATH = "/restapi/v1.0/subscription";
-/** RingCentral webhook subscriptions live at most 7 days; renew well before that. */
-export const DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS = 604_800;
-export const DEFAULT_RENEW_WITHIN_MS = 24 * 60 * 60_000;
+/**
+ * WebHook transport accepts `expiresIn` up to 630,720,000 s (20 years); the
+ * provider default is 604,800 s (7 days). The longest lifetime is requested so
+ * a missed renewal never silently stops capture; the daily cron still renews.
+ */
+export const MAX_WEBHOOK_EXPIRES_IN_SECONDS = 630_720_000;
+export const DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS = MAX_WEBHOOK_EXPIRES_IN_SECONDS;
+/** Renew when under 7 days remain (covers a subscription created with the provider's 7-day default). */
+export const DEFAULT_RENEW_WITHIN_MS = 7 * 24 * 60 * 60_000;
 
 export type SubscriptionRecord = {
   id: string;
@@ -104,6 +114,26 @@ export function ringCentralSubscriptionProvider(
       await request("DELETE", `${SUBSCRIPTION_PATH}/${encodeURIComponent(id)}`);
     },
   };
+}
+
+/** Default delivery route when the configured URL names only a host. */
+export const RINGCENTRAL_WEBHOOK_ROUTE = "/api/webhooks/ringcentral";
+
+/**
+ * The all-direction subscription's delivery address: `RINGCENTRAL_WEBHOOK_URL`
+ * (https only; a bare host gets the webhook route). The ops command may pass
+ * `allowNgrok` so a developer tunnel (`RINGCENTRAL_NGROK_WEBHOOK_URL`) wins;
+ * the production cron never does.
+ */
+export function resolveAllDirectionWebhookAddress(options: { allowNgrok?: boolean } = {}): string {
+  const base =
+    (options.allowNgrok ? process.env.RINGCENTRAL_NGROK_WEBHOOK_URL?.trim() : "") ||
+    process.env.RINGCENTRAL_WEBHOOK_URL?.trim();
+  if (!base) throw new Error("RINGCENTRAL_WEBHOOK_URL is not set");
+  const url = new URL(base);
+  if (url.protocol !== "https:") throw new Error("RINGCENTRAL_WEBHOOK_URL must start with https://");
+  if (url.pathname === "/" || url.pathname === "") url.pathname = RINGCENTRAL_WEBHOOK_ROUTE;
+  return url.toString();
 }
 
 export function mongoOwnershipStore(): OwnershipStore {

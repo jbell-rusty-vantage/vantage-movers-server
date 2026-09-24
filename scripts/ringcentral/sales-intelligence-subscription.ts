@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
-import { getRequiredEnv } from "../../src/config/domain";
 import {
   ensureAllDirectionSubscription,
   mongoOwnershipStore,
   planAllDirectionSubscription,
   renewOwnedSubscription,
   repairOwnedSubscription,
+  resolveAllDirectionWebhookAddress,
   ringCentralSubscriptionProvider,
   SubscriptionOwnershipError,
   SubscriptionOwnershipRecordError,
@@ -26,8 +26,6 @@ import { buildRingCentralTelephonyEventFilters } from "../../src/services/ringce
  * qualified-call subscription (`RINGCENTRAL_WEBHOOK_FILTER_MODE`) is a
  * separate object and is never touched by this command.
  */
-const RINGCENTRAL_WEBHOOK_ROUTE = "/api/webhooks/ringcentral";
-
 type Action = "plan" | "list" | "ensure" | "renew" | "repair";
 
 function arg(name: string): string | null {
@@ -40,14 +38,6 @@ function flag(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
 
-function resolveWebhookAddress(): string {
-  const base = process.env.RINGCENTRAL_NGROK_WEBHOOK_URL?.trim() || getRequiredEnv("RINGCENTRAL_WEBHOOK_URL");
-  const url = new URL(base);
-  if (url.protocol !== "https:") throw new Error("RINGCENTRAL_WEBHOOK_URL must start with https://");
-  if (url.pathname === "/" || url.pathname === "") url.pathname = RINGCENTRAL_WEBHOOK_ROUTE;
-  return url.toString();
-}
-
 async function main(): Promise<void> {
   const action = (arg("action") ?? "plan") as Action;
   if (!["plan", "list", "ensure", "renew", "repair"].includes(action)) {
@@ -56,7 +46,7 @@ async function main(): Promise<void> {
   const deps: LifecycleDeps = {
     provider: ringCentralSubscriptionProvider(),
     store: mongoOwnershipStore(),
-    address: resolveWebhookAddress(),
+    address: resolveAllDirectionWebhookAddress({ allowNgrok: true }),
   };
   const filters = await buildRingCentralTelephonyEventFilters("all");
   console.log(`Webhook delivery address: ${deps.address}`);

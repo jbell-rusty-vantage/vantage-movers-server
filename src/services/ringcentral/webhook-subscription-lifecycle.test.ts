@@ -7,6 +7,7 @@ import { buildRingCentralTelephonyEventFilters } from "./webhook-subscriptions";
 import {
   applyAllDirectionSubscriptionPlan,
   classifySubscriptions,
+  DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS,
   ensureAllDirectionSubscription,
   parseSubscriptionRecord,
   planAllDirectionSubscription,
@@ -43,7 +44,7 @@ function record(partial: Partial<SubscriptionRecord> & { id: string }): Subscrip
     address: ADDRESS,
     status: "Active",
     expiresIn: 604_800,
-    expirationTime: new Date(NOW.getTime() + 6 * 24 * 60 * 60_000),
+    expirationTime: new Date(NOW.getTime() + 30 * 24 * 60 * 60_000),
     raw: { id: partial.id },
     ...partial,
   };
@@ -116,7 +117,7 @@ test("plan/apply: noop when healthy, create when none owned, foreign same-addres
   const ensured = await ensureAllDirectionSubscription(none.deps);
   assert.equal(ensured.plan.action, "create");
   assert.deepEqual(ensured.result, { action: "created", subscription_id: "new-1" });
-  assert.deepEqual(none.calls, [`create:${ALL[0]}:${ADDRESS}:604800`], "creates only the all-direction subscription; the inbound one is untouched");
+  assert.deepEqual(none.calls, [`create:${ALL[0]}:${ADDRESS}:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`], "creates only the all-direction subscription; the inbound one is untouched");
   assert.equal(none.stored.length, 1, "created subscription metadata is recorded as owned");
 });
 
@@ -139,7 +140,7 @@ test("repair: blacklisted owned subscription is deleted, marked and recreated; a
   const plan = await planAllDirectionSubscription(black.deps);
   assert.equal(plan.action, "repair");
   assert.deepEqual(await applyAllDirectionSubscriptionPlan(plan, black.deps), { action: "repaired", removed_subscription_id: "owned-black", subscription_id: "new-1" });
-  assert.deepEqual(black.calls, ["delete:owned-black", `create:${ALL[0]}:${ADDRESS}:604800`]);
+  assert.deepEqual(black.calls, ["delete:owned-black", `create:${ALL[0]}:${ADDRESS}:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`]);
   assert.deepEqual(black.statuses, [["owned-black", "Deleted"]]);
 
   await assert.rejects(
@@ -152,7 +153,7 @@ test("repair: blacklisted owned subscription is deleted, marked and recreated; a
   const foreignOnly = fakes([record({ id: "foreign-same", status: "Blacklisted" })], []);
   const ensured = await ensureAllDirectionSubscription(foreignOnly.deps);
   assert.equal(ensured.plan.action, "create");
-  assert.deepEqual(foreignOnly.calls, [`create:${ALL[0]}:${ADDRESS}:604800`]);
+  assert.deepEqual(foreignOnly.calls, [`create:${ALL[0]}:${ADDRESS}:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`]);
 });
 
 test("health edges: unknown expiry is renew-due; unknown or missing status is reported and never repaired (review finding 6)", async () => {
@@ -182,7 +183,7 @@ test("ownership evidence fails closed: create without a recordable store surface
     () => ensureAllDirectionSubscription(broken.deps),
     (e: unknown) => e instanceof SubscriptionOwnershipRecordError && e.subscriptionId === "new-1",
   );
-  assert.deepEqual(broken.calls, [`create:${ALL[0]}:${ADDRESS}:604800`], "one create, loudly unrecorded; never silently foreign");
+  assert.deepEqual(broken.calls, [`create:${ALL[0]}:${ADDRESS}:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`], "one create, loudly unrecorded; never silently foreign");
 
   const unavailable = fakes([], []);
   unavailable.deps.store.ownedIds = async () => {

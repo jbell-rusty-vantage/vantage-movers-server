@@ -16,6 +16,7 @@ import { runIntelligenceJob } from "../salesIntelligence/analysis/worker";
 import { runIntelligenceApplicationJob } from "../salesIntelligence/analysis/apply";
 import { runBackfillActivationJob } from "../salesIntelligence/backfill/worker";
 import { runMoveAssessmentJob } from "../salesIntelligence/assessment/runtime";
+import { runCallLogRefreshJob } from "./callLogRefresh";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -60,6 +61,7 @@ export function defaultStageHandlers(
     application: (jobId) => runIntelligenceApplicationJob(jobId),
     backfill: (jobId) => runBackfillActivationJob(jobId),
     move_assessment: (jobId) => runMoveAssessmentJob(jobId),
+    call_log_refresh: (jobId) => runCallLogRefreshJob(jobId),
   };
 }
 

@@ -16,6 +16,12 @@ import {
   type ObserveDependencies,
   type SessionObservationResult,
 } from "./observeWebhookEvents";
+import {
+  enqueueCallLogRefreshJob,
+  publishDelayedWakeup,
+  sessionsNeedingRefresh,
+  type DelayedPublishDeps,
+} from "./callLogRefresh";
 import { CAPTURE_PROJECTION_STAGE } from "./webhookFanout";
 import { findWebhookReceiptById } from "./webhookReceipts";
 
@@ -36,6 +42,10 @@ import { findWebhookReceiptById } from "./webhookReceipts";
  * job with the failures visible in `result` and in the `job` audit row.
  * Retryable failures (`persist_failed`, `retry_exhausted`) retry the job with
  * the partial result kept on the row.
+ *
+ * CC-08: when the delivery hangs a session up (terminal party status, every
+ * account party terminal), the completion transaction also enqueues one
+ * `call_log_refresh` for that session, due 90 s later (`callLogRefresh.ts`).
  */
 export type SessionSummary =
   | {
@@ -58,6 +68,8 @@ export type CaptureProjectionJobResult = {
   ok: number;
   failed: number;
   results: SessionSummary[];
+  /** CC-08: telephony sessions this delivery hung up; each has one `call_log_refresh` job. */
+  call_log_refresh: string[];
 };
 
 export type CaptureProjectionOutcome =
@@ -89,6 +101,10 @@ export type CaptureProjectionWorkerDeps = {
   /** Passed through to `observeRingCentralWebhookEvents`; `request_id` is always overridden with the job id. */
   observeDeps?: Omit<ObserveDependencies, "request_id">;
   recordEvent?: typeof recordOperationalEvent;
+  /** CC-08 seams: hang-up detection, the in-transaction enqueue and the delayed wake-up. */
+  refreshCandidates?: typeof sessionsNeedingRefresh;
+  enqueueRefresh?: typeof enqueueCallLogRefreshJob;
+  refreshPublish?: DelayedPublishDeps;
 };
 
 const RETRYABLE_SESSION_CODES = new Set(["persist_failed", "retry_exhausted"]);
@@ -142,6 +158,7 @@ export async function runCaptureProjectionJob(
       ok: results.filter((r) => r.ok).length,
       failed: results.filter((r) => !r.ok).length,
       results: results.map(summarize),
+      call_log_refresh: [],
     };
 
     const retryable = results.some((r) => !r.ok && RETRYABLE_SESSION_CODES.has(r.error_code));
@@ -150,10 +167,20 @@ export async function runCaptureProjectionJob(
       return { status: "failed", job_id: lease.job_id, reason: "transient", error_code: "session_retryable", result };
     }
 
+    const refresh = await (deps.refreshCandidates ?? sessionsNeedingRefresh)(
+      observations,
+      results.map((r) => (r.ok ? { telephony_session_id: r.telephony_session_id, ok: true, result: r.result } : { telephony_session_id: r.telephony_session_id, ok: false })),
+    );
+    result.call_log_refresh = refresh.map((c) => c.telephony_session_id);
     const at = now();
+    const enqueued: Array<{ job_id: string; created: boolean; due_at: Date }> = [];
     await complete(
       lease,
       async (session) => {
+        enqueued.length = 0;
+        for (const candidate of refresh) {
+          enqueued.push(await (deps.enqueueRefresh ?? enqueueCallLogRefreshJob)(candidate, session, at));
+        }
         await appendCsiAudit(
           { session, command_id: new mongoose.Types.ObjectId(), now: at, actor: csiWorkerActor(lease.job_id) },
           {
@@ -169,6 +196,9 @@ export async function runCaptureProjectionJob(
       },
       { result },
     );
+    for (const job of enqueued) {
+      if (job.created) await publishDelayedWakeup(job.job_id, job.due_at, now(), deps.refreshPublish);
+    }
     if (result.failed > 0) {
       await (deps.recordEvent ?? recordOperationalEvent)({
         level: "warn",

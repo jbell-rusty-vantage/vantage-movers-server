@@ -31,6 +31,8 @@ import {
 } from "../services/numberActivity/webhookRecovery";
 import { refreshCaptureCoverage } from "../services/numberActivity/coverage";
 import { ensureLeadMessageToIndex } from "../models/LeadMessage";
+import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
+import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
 
 /**
  * Sales Intelligence cron routes (03 §11). Mounted before the `/api/v1`
@@ -85,6 +87,9 @@ export type SalesIntelligenceCronRouteDeps = {
   refreshCoverage?: () => Promise<unknown>;
   /** Creates `lead_messages.to` if it is missing. Reads do not. */
   ensureLeadMessageIndex?: () => Promise<unknown>;
+  /** CC-08: `call_log_refresh` drain (job recovery, under `CAPTURE_WEBHOOK`) and the daily subscription maintenance. */
+  drainCallLogRefresh?: () => Promise<unknown>;
+  runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
 };
 
 export const CSI_CRON_PATHS = {
@@ -101,6 +106,7 @@ export const CSI_CRON_PATHS = {
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
   outreachEnsure: "/api/cron/sales-intelligence-outreach-ensure",
   attentionPublish: "/api/cron/sales-intelligence-attention-publish",
+  webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -124,7 +130,7 @@ export function createSalesIntelligenceCronRouter(
   const directorySync = deps.runDirectorySync ?? runDirectorySyncOnce;
   const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
   const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
-  const extraRecovery = deps.extraRecovery ?? [
+  const extraRecovery: NonNullable<SalesIntelligenceCronRouteDeps["extraRecovery"]> = deps.extraRecovery ?? [
     { name: "intelligence", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runIntelligence ?? drainIntelligenceJobs)() },
     { name: "application", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runApplication ?? drainIntelligenceApplications)() },
     { name: "move_assessment", flag: "MOVE_ASSESSMENT" as const, run: () => (deps.drainMoveAssessment ?? drainMoveAssessmentJobs)() },
@@ -144,6 +150,27 @@ export function createSalesIntelligenceCronRouter(
       },
     },
   ];
+
+  // CC-08 webhook acceleration: the `call_log_refresh` drain rides job
+  // recovery under `CAPTURE_WEBHOOK`; the subscription cron renews/repairs
+  // the owned all-direction subscription daily under the same flag.
+  if (!deps.extraRecovery) {
+    extraRecovery.push({
+      name: "call_log_refresh",
+      flag: "CAPTURE_WEBHOOK" as const,
+      run: () => (deps.drainCallLogRefresh ?? (() => drainCallLogRefreshJobs()))(),
+    });
+  }
+  router.all(CSI_CRON_PATHS.webhookSubscription, requireCronAuth, async (_req, res) => {
+    if (!flag("CAPTURE_WEBHOOK")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await (deps.runWebhookSubscription ?? runWebhookSubscriptionMaintenance)();
+      return res.json({ ok: true, skipped: false, summary });
+    } catch {
+      return res.status(500).json({ ok: false, error: "Webhook subscription maintenance failed" });
+    }
+  });
 
   for (const [path, work] of [
     [CSI_CRON_PATHS.extract, () => (deps.runIntelligence ?? drainIntelligenceJobs)()],
