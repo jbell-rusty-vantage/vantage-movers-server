@@ -150,11 +150,80 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           upserts: count,
           throttled_count: count,
           error_code: text,
+          // Call Log reconcile (CC-01/CC-03/CC-05). Absent on other scopes.
+          quarantined: { type: Number, min: 0 },
+          quarantine_retries: { type: Number, min: 0 },
+          straggler_reads: { type: Number, min: 0 },
+          sync_mode: { type: String },
+          sync_type: { type: String },
+          sync_records: { type: Number, min: 0 },
+          sync_changed: { type: Number, min: 0 },
+          sync_applied: { type: Number, min: 0 },
+          sync_token_stored: { type: Boolean },
+          sync_error_code: { type: String },
+          // Nightly Call Log sweep (CC-06), scope `call_log_sweep`.
+          from: { type: Date },
+          to: { type: Date },
+          provider_records: { type: Number, min: 0 },
+          stored_in_latest_version: { type: Number, min: 0 },
+          applied_changes: { type: Number, min: 0 },
+          missing_before: { type: Number, min: 0 },
+          stale_before: { type: Number, min: 0 },
+          provisional_after_horizon: { type: Number, min: 0 },
+          failures: { type: Number, min: 0 },
         },
         { _id: false, strict: "throw" },
       ),
       default: null,
     },
+    // CC-01: records that failed repeatedly, retried by id on a backoff so one
+    // bad record never holds the window (scope `call_log_all_directions`).
+    quarantined_records: {
+      type: [
+        new Schema(
+          {
+            call_log_id: str,
+            telephony_session_id: text,
+            start_time: date,
+            error_code: str,
+            error_name: str,
+            failures: count,
+            first_failed_at: at,
+            last_failed_at: at,
+            next_retry_at: at,
+          },
+          { _id: false, strict: "throw" },
+        ),
+      ],
+      default: undefined,
+      validate: (v: unknown[] | undefined) => (v?.length ?? 0) <= 200,
+    },
+    record_failures: {
+      type: [
+        new Schema(
+          { call_log_id: str, failures: count, last_error_code: str },
+          { _id: false, strict: "throw" },
+        ),
+      ],
+      default: undefined,
+      validate: (v: unknown[] | undefined) => (v?.length ?? 0) <= 500,
+    },
+    // CC-05: account Call Log Sync position. The token is provider state; it
+    // never appears in logs, events or summaries.
+    call_log_sync: {
+      type: new Schema(
+        {
+          token: text,
+          sync_time: date,
+          last_full_sync_at: date,
+          consecutive_expiries: count,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: undefined,
+    },
+    // CC-06: consecutive sweeps that found drift (scope `call_log_sweep`).
+    consecutive_drift_runs: { type: Number, min: 0, default: undefined },
     gaps: {
       type: [
         new Schema(

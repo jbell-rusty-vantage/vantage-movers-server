@@ -50,3 +50,84 @@ export function providerSuppliedRetryAfter(error: unknown): boolean {
   const value = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
+
+/**
+ * One Call Log record re-read by id (`GET /account/~/call-log/{id}?view=Detailed`).
+ * Returns null when the provider no longer knows the id (404). Used for
+ * quarantine retries and straggler settles, one request each.
+ */
+export type CallLogRecordFetcher = (id: string) => Promise<unknown | null>;
+
+export async function fetchDetailedCallLogRecord(id: string): Promise<unknown | null> {
+  try {
+    return await ringCentralRequest(
+      "GET",
+      `/restapi/v1.0/account/~/call-log/${encodeURIComponent(id)}?view=Detailed`,
+    );
+  } catch (error) {
+    if (error instanceof RingCentralApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/**
+ * Account Call Log Sync (`GET /account/~/call-log-sync`). `FSync` bootstraps
+ * from a start date and returns a `syncToken`; `ISync` returns records
+ * *modified* since that token regardless of their start time. The token is
+ * provider state, not a secret, but it is kept out of logs and summaries.
+ */
+export type CallLogSyncInput =
+  | { syncType: "FSync"; dateFrom: Date; recordCount: number }
+  | { syncType: "ISync"; syncToken: string };
+
+export type CallLogSyncPage = {
+  records: unknown[];
+  syncType: "FSync" | "ISync" | null;
+  syncToken: string | null;
+  syncTime: Date | null;
+};
+
+export type CallLogSyncFetcher = (input: CallLogSyncInput) => Promise<CallLogSyncPage>;
+
+export async function fetchCallLogSync(input: CallLogSyncInput): Promise<CallLogSyncPage> {
+  const query = new URLSearchParams(
+    input.syncType === "FSync"
+      ? {
+          syncType: "FSync",
+          view: "Detailed",
+          recordCount: String(input.recordCount),
+          dateFrom: input.dateFrom.toISOString(),
+        }
+      : { syncType: "ISync", syncToken: input.syncToken, view: "Detailed" },
+  );
+  const payload = await ringCentralRequest(
+    "GET",
+    `/restapi/v1.0/account/~/call-log-sync?${query.toString()}`,
+  );
+  return parseCallLogSyncPayload(payload);
+}
+
+export function parseCallLogSyncPayload(payload: unknown): CallLogSyncPage {
+  const body = (payload ?? {}) as { records?: unknown; syncInfo?: Record<string, unknown> };
+  const info = body.syncInfo ?? {};
+  const syncType = info.syncType === "FSync" || info.syncType === "ISync" ? info.syncType : null;
+  const token = typeof info.syncToken === "string" && info.syncToken.trim() ? info.syncToken : null;
+  const time = typeof info.syncTime === "string" ? new Date(info.syncTime) : null;
+  return {
+    records: Array.isArray(body.records) ? body.records : [],
+    syncType,
+    syncToken: token,
+    syncTime: time && !Number.isNaN(time.getTime()) ? time : null,
+  };
+}
+
+/**
+ * RingCentral answers an expired or unknown `syncToken` with a 400 (or a
+ * `CLG-*` error code). Either means "start over with FSync", not an outage.
+ */
+export function isSyncTokenExpired(error: unknown): boolean {
+  if (!(error instanceof RingCentralApiError)) return false;
+  if (error.status === 400) return true;
+  const code = (error.responseBody as { errorCode?: unknown } | null)?.errorCode;
+  return typeof code === "string" && code.startsWith("CLG-");
+}

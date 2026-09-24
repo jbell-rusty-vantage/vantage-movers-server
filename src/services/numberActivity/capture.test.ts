@@ -57,6 +57,12 @@ const config: ReconcileConfig = {
   perPage: 250,
   finalizationLagMinutes: 15,
   leaseTtlMs: 300_000,
+  settleHorizonMinutes: 240,
+  quarantineAfter: 3,
+  quarantineRetriesPerRun: 5,
+  stragglerReadsPerRun: 10,
+  syncMode: "off",
+  sweepLookbackHours: 36,
 };
 
 function window(partial: Partial<WindowResult> & Pick<WindowResult, "from" | "to">): WindowResult {
@@ -67,6 +73,7 @@ function window(partial: Partial<WindowResult> & Pick<WindowResult, "from" | "to
     upserts: 0,
     noops: 0,
     failures: 0,
+    quarantined: 0,
     complete: true,
     incomplete_before: null,
     error_code: null,
@@ -80,22 +87,62 @@ test("window start is a watermark with a bounded safety lookback, and records wh
   assert.equal(resolveWindowStart(now, {}, config).toISOString(), at(-720 * 60).toISOString());
   assert.equal(resolveWindowPlan(now, {}, config).skipped, null);
 
-  // Steady state: the cursor moves the window FORWARD. It used to be able to
-  // move it only earlier, so every run re-projected a full twelve hours.
+  // Steady state: the cursor part of the window is a watermark that moves
+  // FORWARD. It used to be able to move it only earlier, so every run
+  // re-projected a full twelve hours.
   const recent = { cursor: { last_sync_to: at(-600) } };
-  const incremental = resolveWindowPlan(now, recent, config);
+  const incremental = resolveWindowPlan(now, recent, config, 10);
   assert.equal(incremental.from.toISOString(), at(-600 - 15 * 60).toISOString(), "cursor minus overlap");
+  assert.equal(incremental.incremental_from.toISOString(), at(-600 - 15 * 60).toISOString());
   assert.equal(incremental.skipped, null);
 
-  // Stale cursor: the window is clamped to the safety lookback and whatever
-  // the clamp left behind is returned, never silently skipped.
+  // Stale cursor: the incremental part is clamped to the safety lookback and
+  // whatever the clamp left behind is returned, never silently skipped.
   const stale = { cursor: { last_sync_to: at(-20 * 3600) } };
-  const clamped = resolveWindowPlan(now, stale, config);
+  const clamped = resolveWindowPlan(now, stale, config, 60);
   assert.equal(clamped.from.toISOString(), at(-90 * 60).toISOString(), "clamped to the safety lookback");
   assert.deepEqual(
     [clamped.skipped?.from.toISOString(), clamped.skipped?.to.toISOString()],
     [at(-20 * 3600 - 15 * 60).toISOString(), at(-90 * 60).toISOString()],
   );
+});
+
+test("CC-03: the window always reaches back the settle horizon, and the clamp gap is still opened", () => {
+  const now = at(0);
+  // Fresh cursor: the incremental start is 20 minutes back, the window 240.
+  const fresh = resolveWindowPlan(now, { cursor: { last_sync_to: at(-5 * 60) } }, config);
+  assert.equal(fresh.from.toISOString(), at(-240 * 60).toISOString(), "now minus the settle horizon");
+  assert.equal(fresh.incremental_from.toISOString(), at(-20 * 60).toISOString());
+  assert.equal(fresh.skipped, null);
+
+  // Stale cursor: the horizon reaches past the safety clamp, but the clamp
+  // gap is about the incremental start and is opened exactly as before.
+  const stale = resolveWindowPlan(now, { cursor: { last_sync_to: at(-20 * 3600) } }, config);
+  assert.equal(stale.from.toISOString(), at(-240 * 60).toISOString());
+  assert.deepEqual(
+    [stale.skipped?.from.toISOString(), stale.skipped?.to.toISOString()],
+    [at(-20 * 3600 - 15 * 60).toISOString(), at(-90 * 60).toISOString()],
+  );
+  const gaps = nextState({ gaps: [] as never[] }, [window({ from: stale.from, to: now })], now, at(1), config, stale.skipped);
+  assert.deepEqual(gaps.gaps.map((g) => g.reason), ["watermark_clamp"]);
+
+  // With Call Log Sync driving, the window narrows to the safety net (90).
+  assert.equal(resolveWindowPlan(now, { cursor: { last_sync_to: at(-5 * 60) } }, config, config.safetyLookbackMinutes).from.toISOString(), at(-90 * 60).toISOString());
+});
+
+test("CC-03: known_complete_through never passes the oldest provisional start inside the horizon", () => {
+  const capped = nextState({ known_complete_through: at(-7200) }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
+    completeThroughCap: at(-3000),
+  });
+  assert.equal(capped.known_complete_through?.toISOString(), at(-3000).toISOString());
+  const behind = nextState({ known_complete_through: at(-2000) }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
+    completeThroughCap: at(-3000),
+  });
+  assert.equal(behind.known_complete_through?.toISOString(), at(-2000).toISOString(), "never regresses");
+  const overflow = nextState({ gaps: [] as never[] }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
+    overflow: [{ from: at(-50_000), to: at(-49_940) }],
+  });
+  assert.deepEqual(overflow.gaps.map((g) => g.reason), ["quarantine_overflow"], "an evicted quarantine entry becomes a repairable gap");
 });
 
 test("a clamped window opens a repairable gap instead of losing the range", () => {
