@@ -179,6 +179,8 @@ test("C20 down: expired subscription, provider-terminal status, missing subscrip
     renewal_event: { event_key: "sales_intelligence.webhook_subscription.missing", occurred_at: T("2026-09-22T06:15:05.000Z"), error_name: null },
   }));
   assert.equal(autoCreateOff.webhook.last_renewal_error, "subscription_missing");
+  assert.equal(autoCreateOff.webhook.state, "healthy", "a cron `missing` outcome is not a failure while this read finds a live owned subscription (production 2026-09-24)");
+  assert.equal(autoCreateOff.status, "ok");
   const stale = composeCaptureHealth(facts({
     renewal_event: { event_key: "sales_intelligence.webhook_subscription.failed", occurred_at: T("2026-09-21T06:15:05.000Z"), error_name: "Error" },
   }));

@@ -374,13 +374,17 @@ export function composeCaptureHealth(facts: CaptureHealthFacts): CaptureHealth {
       ? "subscription_missing"
       : event.error_name ?? "maintenance_failed";
 
+  // A `.missing` cron outcome means the renewal cron didn't recognise an owned subscription. When this read
+  // finds a live, unexpired owned subscription it isn't a failure (production 2026-09-24: the cron's exact
+  // filter match misses the account-resolved filter); it stays visible as `last_renewal_error`. `.failed` is down.
+  const renewalFailed = eventFailed && !event!.event_key.endsWith(".missing");
   let state: CaptureHealth["webhook"]["state"];
   if (!facts.webhook_enabled) state = "off";
   else if (
     !subscription ||
     isTerminalStatus(subscription.status) ||
     (subscription.expirationTime && subscription.expirationTime <= now) ||
-    eventFailed
+    renewalFailed
   ) state = "down";
   else if (
     facts.call_log_calls_in_window > 0 &&
