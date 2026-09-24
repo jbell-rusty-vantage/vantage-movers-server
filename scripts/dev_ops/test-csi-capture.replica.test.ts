@@ -1163,103 +1163,6 @@ test(
           assert.equal(current.call_log_state, "settled");
           assert.equal(current.direction, "Inbound");
           assert.equal(current.contact_number_id, settled.contact_number_id);
-
-      // ---- Call Log capture completeness (CC-01/02/03/05/06) ----
-      const MIN = 60_000;
-      const resetReconcile = async () => {
-        await SyncState.deleteMany({ scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, CALL_LOG_SWEEP_SCOPE] } });
-      };
-      const ccConfig = (patch: Partial<ReconcileConfig> = {}): ReconcileConfig => ({
-        ...callLogReconcileConfig(),
-        perPage: 50,
-        maxPages: 10,
-        leaseTtlMs: 5_000,
-        settleHorizonMinutes: 240,
-        syncMode: "off",
-        ...patch,
-      });
-      /** A provider that honours the start-time filter, like RingCentral. */
-      const startFiltered = (records: () => Record<string, unknown>[]) =>
-        async (page: number, from?: Date, to?: Date) =>
-          page === 1
-            ? records().filter((r) => {
-                const start = new Date(String(r.startTime));
-                return (!from || start >= from) && (!to || start <= to);
-              })
-            : [];
-      /** reconcileDeps with a start-filtered provider. */
-      const filteredDeps = (records: () => Record<string, unknown>[], overrides: Partial<ReconcileDependencies> = {}) => {
-        const fetch = startFiltered(records);
-        return reconcileDeps([], { fetchPage: ({ page, from, to }) => fetch(page, from, to), ...overrides });
-      };
-      const rawInteractions = () => db.collection("call_interactions");
-      /** A warm cursor, so the window is not the 720-minute cold start. */
-      const seedCursor = async (lastSyncTo: Date) => {
-        await SyncState.create({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE, cursor: { last_sync_to: lastSyncTo } });
-      };
-      type CapturedEvent = { eventKey: string; level: string; notificationCandidate: boolean };
-
-      await t.test(
-        "CC-02: a final version modified between two already-applied records is applied (F6: L1 < L2 < L3)",
-        async () => {
-          await resetReconcile();
-          const now = new Date();
-          const start = new Date(now.getTime() - 30 * MIN);
-          const l1 = new Date(now.getTime() - 25 * MIN);
-          const l2 = new Date(now.getTime() - 10 * MIN);
-          const l3 = new Date(now.getTime() - 5 * MIN);
-          const aFirst = inboundConnectedCallLog("s-f6-a", { startTime: start, duration: 60, lastModifiedTime: l1, result: "Call connected" });
-          const aFinal = inboundConnectedCallLog("s-f6-a", { startTime: start, duration: 900, lastModifiedTime: l2, result: "Accepted" });
-          const b = inboundConnectedCallLog("s-f6-b", { startTime: new Date(now.getTime() - 20 * MIN), lastModifiedTime: l3 });
-          const cfg = ccConfig();
-          await runCallLogReconcileOnce(reconcileDeps([[aFirst]], { config: cfg }));
-          await runCallLogReconcileOnce(reconcileDeps([[b]], { config: cfg }));
-          const state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
-          assert.equal(state?.cursor.provider_modified_watermark?.toISOString(), l3.toISOString(), "the run-wide watermark is past L2");
-          const third = await runCallLogReconcileOnce(reconcileDeps([[aFinal, b]], { config: cfg }));
-          assert.equal(third.upserts, 1, "A's final version is applied (the run-wide watermark skip lost it)");
-          assert.equal(third.noops, 1, "B is skipped without a transaction");
-          const stored = await Interaction.findOne({ telephony_session_id: "s-f6-a" }).lean();
-          assert.equal(stored?.provider_last_modified_at?.toISOString(), l2.toISOString());
-          assert.equal(stored?.provider_result, "Accepted");
-          assert.equal(stored?.duration_seconds, 900);
-        },
-      );
-
-      await t.test(
-        "CC-03: a mid-call snapshot is re-read inside the settle horizon after its start has left the incremental window",
-        async () => {
-          await resetReconcile();
-          const now = new Date();
-          const t0 = new Date(now.getTime() - 50 * MIN);
-          const snapshot = inboundConnectedCallLog("s-horizon-1", {
-            startTime: t0,
-            duration: 0,
-            result: "Stopped",
-            recording: null,
-            lastModifiedTime: new Date(t0.getTime() + 2 * MIN),
-          });
-          const final = inboundConnectedCallLog("s-horizon-1", {
-            startTime: t0,
-            duration: 46 * 60,
-            result: "Call connected",
-            lastModifiedTime: new Date(t0.getTime() + 47 * MIN),
-          });
-          let provider = [snapshot];
-          const cfg = ccConfig();
-          // Run 1 at T+2: the snapshot is all RingCentral has.
-          await runCallLogReconcileOnce(filteredDeps(() => provider, { config: cfg, now: () => new Date(t0.getTime() + 2 * MIN) }));
-          assert.equal((await Interaction.findOne({ telephony_session_id: "s-horizon-1" }).lean())?.provider_result, "Stopped");
-          // A fresh cursor: incremental_from = cursor − 15 min, long after T.
-          await SyncState.updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: { "cursor.last_sync_to": new Date(now.getTime() - 5 * MIN) } });
-          provider = [final];
-          const second = await runCallLogReconcileOnce(filteredDeps(() => provider, { config: cfg, now: () => now }));
-          assert.equal(second.window_from, new Date(now.getTime() - 240 * MIN).toISOString(), "window reaches back the settle horizon");
-          assert.equal(second.upserts, 1);
-          const row = await Interaction.findOne({ telephony_session_id: "s-horizon-1" }).lean();
-          assert.equal(row?.provider_result, "Call connected");
-          assert.equal(row?.duration_seconds, 46 * 60);
-          assert.equal(row?.recordings.length, 1, "the final record's recording is captured");
         },
       );
 
@@ -1387,6 +1290,110 @@ test(
           assert.equal(number?.rollups.inbound_total, 1);
           assert.equal(number?.rollups.outbound_total, 0, "the snapshot's Outbound was never counted");
           assert.equal(number?.rollups.recordings_total, 1);
+        },
+      );
+
+
+      // ---- Call Log capture completeness (CC-01/02/03/05/06) ----
+      const MIN = 60_000;
+      const resetReconcile = async () => {
+        await SyncState.deleteMany({ scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, CALL_LOG_SWEEP_SCOPE] } });
+      };
+      const ccConfig = (patch: Partial<ReconcileConfig> = {}): ReconcileConfig => ({
+        ...callLogReconcileConfig(),
+        perPage: 50,
+        maxPages: 10,
+        leaseTtlMs: 5_000,
+        settleHorizonMinutes: 240,
+        syncMode: "off",
+        ...patch,
+      });
+      /** A provider that honours the start-time filter, like RingCentral. */
+      const startFiltered = (records: () => Record<string, unknown>[]) =>
+        async (page: number, from?: Date, to?: Date) =>
+          page === 1
+            ? records().filter((r) => {
+                const start = new Date(String(r.startTime));
+                return (!from || start >= from) && (!to || start <= to);
+              })
+            : [];
+      /** reconcileDeps with a start-filtered provider. */
+      const filteredDeps = (records: () => Record<string, unknown>[], overrides: Partial<ReconcileDependencies> = {}) => {
+        const fetch = startFiltered(records);
+        return reconcileDeps([], { fetchPage: ({ page, from, to }) => fetch(page, from, to), ...overrides });
+      };
+      const rawInteractions = () => db.collection("call_interactions");
+      /** A warm cursor, so the window is not the 720-minute cold start. */
+      const seedCursor = async (lastSyncTo: Date) => {
+        await SyncState.create({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE, cursor: { last_sync_to: lastSyncTo } });
+      };
+      type CapturedEvent = { eventKey: string; level: string; notificationCandidate: boolean };
+
+      await t.test(
+        "CC-02: a final version modified between two already-applied records is applied (F6: L1 < L2 < L3)",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const start = new Date(now.getTime() - 30 * MIN);
+          const l1 = new Date(now.getTime() - 25 * MIN);
+          const l2 = new Date(now.getTime() - 10 * MIN);
+          const l3 = new Date(now.getTime() - 5 * MIN);
+          const aFirst = inboundConnectedCallLog("s-f6-a", { startTime: start, duration: 60, lastModifiedTime: l1, result: "Call connected" });
+          const aFinal = inboundConnectedCallLog("s-f6-a", { startTime: start, duration: 900, lastModifiedTime: l2, result: "Accepted" });
+          const b = inboundConnectedCallLog("s-f6-b", { startTime: new Date(now.getTime() - 20 * MIN), lastModifiedTime: l3 });
+          const cfg = ccConfig();
+          await runCallLogReconcileOnce(reconcileDeps([[aFirst]], { config: cfg }));
+          await runCallLogReconcileOnce(reconcileDeps([[b]], { config: cfg }));
+          const state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.equal(state?.cursor.provider_modified_watermark?.toISOString(), l3.toISOString(), "the run-wide watermark is past L2");
+          const third = await runCallLogReconcileOnce(reconcileDeps([[aFinal, b]], { config: cfg }));
+          assert.equal(third.upserts, 1, "A's final version is applied (the run-wide watermark skip lost it)");
+          assert.equal(third.noops, 1, "B is skipped without a transaction");
+          const stored = await Interaction.findOne({ telephony_session_id: "s-f6-a" }).lean();
+          assert.equal(stored?.provider_last_modified_at?.toISOString(), l2.toISOString());
+          assert.equal(stored?.provider_result, "Accepted");
+          assert.equal(stored?.duration_seconds, 900);
+        },
+      );
+
+      await t.test(
+        "CC-03: a mid-call snapshot is re-read inside the settle horizon after its start has left the incremental window",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const t0 = new Date(now.getTime() - 50 * MIN);
+          const snapshot = inboundConnectedCallLog("s-horizon-1", {
+            startTime: t0,
+            duration: 0,
+            result: "Stopped",
+            recording: null,
+            lastModifiedTime: new Date(t0.getTime() + 2 * MIN),
+          });
+          const final = inboundConnectedCallLog("s-horizon-1", {
+            startTime: t0,
+            duration: 46 * 60,
+            result: "Call connected",
+            lastModifiedTime: new Date(t0.getTime() + 47 * MIN),
+          });
+          let provider = [snapshot];
+          const cfg = ccConfig();
+          // Run 1 at T+2: the snapshot is all RingCentral has.
+          await runCallLogReconcileOnce(filteredDeps(() => provider, { config: cfg, now: () => new Date(t0.getTime() + 2 * MIN) }));
+          assert.equal((await Interaction.findOne({ telephony_session_id: "s-horizon-1" }).lean())?.provider_result, "Stopped");
+          // A fresh cursor: incremental_from = cursor − 15 min, long after T.
+          await SyncState.updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: { "cursor.last_sync_to": new Date(now.getTime() - 5 * MIN) } });
+          provider = [final];
+          const second = await runCallLogReconcileOnce(filteredDeps(() => provider, { config: cfg, now: () => now }));
+          assert.equal(second.window_from, new Date(now.getTime() - 240 * MIN).toISOString(), "window reaches back the settle horizon");
+          assert.equal(second.upserts, 1);
+          const row = await Interaction.findOne({ telephony_session_id: "s-horizon-1" }).lean();
+          assert.equal(row?.provider_result, "Call connected");
+          assert.equal(row?.duration_seconds, 46 * 60);
+          assert.equal(row?.recordings.length, 1, "the final record's recording is captured");
+        },
+      );
+
+      await t.test(
         "CC-01: a failing record is counted, quarantined at 3, stops holding the window, and is released by an hourly by-id retry",
         async () => {
           await resetReconcile();
