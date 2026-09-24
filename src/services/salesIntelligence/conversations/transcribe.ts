@@ -8,7 +8,7 @@ import { getSalesIntelligenceAiBudgetModel } from "../../../models/SalesIntellig
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { readStoredAudio, gatewaySttProvider, validateStoredAudio, TranscriptionProviderError, type BlobAudioReader, type SttProvider } from "../../conversations/transcriptionProvider";
 import { publishCaptureProjectionWakeup, publishRunnableWakeups } from "../../numberActivity/webhookFanout";
-import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs } from "../aiBudget";
+import { reserveCsiBudget, reconcileCsiBudget, resumeBudgetPausedJobs, currentLedger } from "../aiBudget";
 import { ensureCurrentCsiBudgetPeriod } from "../budgetPeriod";
 import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobLease } from "../jobs";
@@ -131,7 +131,7 @@ export async function runTranscriptionJob(jobId?: string, deps: TranscriptionDep
     reservationId = `stt:${job._id}:${job.lease_epoch}`;
     try {
       await reserveCsiBudget({ kind: "stt", reservation_id: reservationId, month: budget.month, job_id: String(job._id), run_id: null,
-        step: `stt:${job.lease_epoch}`, stage: "transcription", estimated_cents: estimate });
+        step: `stt:${job.lease_epoch}`, stage: "transcription", estimated_cents: estimate, ledger: currentLedger() });
     } catch (error) {
       reservationId = null;
       if (error instanceof CsiError && error.code === "BUDGET_EXHAUSTED") return await pause("budget_exhausted", "budget_exhausted", budget.period_end);
