@@ -88,11 +88,20 @@ export function repMetricValues(row: RepRow): Record<(typeof MEDIAN_FIELDS)[numb
     attempt_conversation_rate: row.interactions.attempt_conversation_rate, leads: row.outcomes.leads, quoted: row.outcomes.quoted, booked_in_granot: row.outcomes.booked_in_granot,
     booked_official: row.outcomes.booked_official, booking_rate: row.outcomes.booking_rate, spend: row.spend.spend, cost_per_booking: row.cost_per_booking };
 }
+/**
+ * C11 / E23: a median over fewer than 3 reps would let a rep work out another rep's exact value (with two
+ * reps, other = 2 × median − own). Below this cohort the metric's median is null.
+ */
+export const MEDIAN_MIN_COHORT = 3;
 /** E23: the median of each per-rep metric over reps with at least one open assignment or call in the period; a null metric is left out (unknown is never zero). */
 export function teamMedians(rows: readonly RepRow[]) {
   const members = rows.filter(row => row.open_assignments.open > 0 || row.interactions.calls > 0);
   const values = members.map(repMetricValues);
-  return { reps: members.length, ...Object.fromEntries(MEDIAN_FIELDS.map(field => [field, percentile(values.map(v => v[field]).filter((v): v is number => v != null), 0.5)])) } as
+  const median = (field: (typeof MEDIAN_FIELDS)[number]) => {
+    const known = values.map(v => v[field]).filter((v): v is number => v != null);
+    return known.length >= MEDIAN_MIN_COHORT ? percentile(known, 0.5) : null;
+  };
+  return { reps: members.length, ...Object.fromEntries(MEDIAN_FIELDS.map(field => [field, median(field)])) } as
     { reps: number } & Record<(typeof MEDIAN_FIELDS)[number], number | null>;
 }
 

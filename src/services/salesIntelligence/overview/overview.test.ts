@@ -173,6 +173,11 @@ test("S9 team medians (E23): over reps with an open assignment or a call; null m
   assert.equal(medians.open, 2);
   assert.equal(medians.outbound_attempts, 4);
   assert.equal(medians.spend, 200);
-  assert.equal(medians.cost_per_booking, 40, "median of 50 and 30; r2's null is left out");
-  assert.equal(medians.attempt_conversation_rate, 0.5);
+  assert.equal(medians.cost_per_booking, null, "only 2 known values (r2's null is left out): below the 3-rep cohort, so null (C11)");
+  assert.equal(medians.attempt_conversation_rate, null, "r4 has no attempts: 2 known values, suppressed");
+  // C11: with two reps a median would reveal the other rep's exact value (2 × median − own).
+  const two = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 1, 4, 300, 20)]);
+  assert.equal(two.reps, 2);
+  assert.equal(two.spend, null);
+  assert.equal(two.open, null);
 });
