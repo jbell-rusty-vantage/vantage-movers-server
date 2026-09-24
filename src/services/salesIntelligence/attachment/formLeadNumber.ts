@@ -31,7 +31,8 @@ export function formLeadNumberE164(lead: Pick<LeadSource, "duplicate" | "bad_lea
  * Form Lead → Contact Number, in the caller's transaction, before
  * `persistLeadAttachments` looks the phone up. Behind FORM_LEAD_NUMBERS.
  * An existing row with that E.164 (any kind, classification, restriction or
- * purge) is reused untouched. A new row has capture's shape with zero rollups:
+ * purge) is reused untouched. A new row has capture's shape with zero rollups
+ * and `created_via: "form_lead"` (G7):
  * the form is not a call, so the first real call starts the counts. A race on
  * one new phone hits the unique E.164 index and the losing job retries.
  */
@@ -52,6 +53,8 @@ export async function ensureFormLeadContactNumber(lead: LeadSource, session: Cli
     revision: 1, e164: plan.e164, national_ten: toNationalTenDigit(plan.e164), digits_reversed: reverseDigits(plan.e164),
     country: "US", kind: "external", classification: "unknown", contact_eligibility: { state: "allowed" },
     provider_names: [], search_terms: [], first_observed_at: observed, last_activity_at: observed,
+    // G7: set on create only; a reused row above keeps whatever it has (absent = `call`).
+    created_via: "form_lead",
   }], { session });
   const numberId = String(created!._id);
   await appendCsiAudit({ session, now, command_id: new mongoose.Types.ObjectId(), actor: csiWorkerActor(requestId) }, {

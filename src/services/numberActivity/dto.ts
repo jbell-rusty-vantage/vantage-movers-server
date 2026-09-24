@@ -92,6 +92,9 @@ export const numberAttachedLeadProgressDtoSchema = attachedLeadProgressDtoSchema
 });
 export type AttachedLeadProgressItemDto = AttachedLeadProgressDto;
 
+/** G7 (reconciliation §3.5): `ContactNumber.created_via`, null resolved to `call`. */
+export const numberCreatedViaDtoSchema = z.enum(["call", "form_lead"]);
+
 export const numberSearchItemDtoSchema = z
   .object({
     id,
@@ -110,6 +113,10 @@ export const numberSearchItemDtoSchema = z
     match: z.object({ kind: z.enum(NUMBER_SEARCH_MATCH_KINDS) }).strict(),
     /** LP-06: optional and additive; absent on detail-derived items and older servers. */
     attached_lead_progress: numberAttachedLeadProgressDtoSchema.optional(),
+    /** G7: how the Number came to exist; a stored null/absent resolves to `call` on the server. Optional for older servers. */
+    created_via: numberCreatedViaDtoSchema.optional(),
+    /** G7: `rollups.interactions_total > 0`. Optional for older servers. */
+    has_calls: z.boolean().optional(),
   })
   .strict();
 
@@ -123,6 +130,12 @@ export const numberSearchPageDtoSchema = ownerReadSchema(
         .object({ sort: z.enum(NUMBER_SEARCH_SORTS), direction: z.enum(NUMBER_SEARCH_DIRECTIONS) })
         .strict()
         .optional(),
+      /**
+       * G7: the `has_calls` narrowing the server applied (explicit param, or the
+       * `NUMBERS_HAS_CALLS_DEFAULT` flag default lifted by `include_form_only`). Absent when the flag
+       * is off and neither param was sent (the page is the historical list).
+       */
+      filters: z.object({ has_calls: z.boolean() }).strict().optional(),
     })
     .strict(),
 );
@@ -152,6 +165,8 @@ export const NUMBER_DETAIL_READ_ONLY_FIELDS = [
   "rollups",
   "connections",
   "attached_lead_progress",
+  "created_via",
+  "has_calls",
 ] as const;
 
 const numberDetailReadDataSchema = numberDetailDtoSchema.shape.data
@@ -167,6 +182,9 @@ const numberDetailReadDataSchema = numberDetailDtoSchema.shape.data
     connections: numberConnectionsDtoSchema,
     /** Final spec §9.3: the header's Lead line and scores, identical to the Numbers row's item. Optional and additive. */
     attached_lead_progress: numberAttachedLeadProgressDtoSchema.optional(),
+    /** G7: as on the Numbers item. Optional and additive. */
+    created_via: numberCreatedViaDtoSchema.optional(),
+    has_calls: z.boolean().optional(),
   })
   .strict();
 

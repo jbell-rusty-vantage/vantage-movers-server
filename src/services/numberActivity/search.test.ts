@@ -17,6 +17,7 @@ import {
   numberSearchQuerySchema,
   pageNumberSearch,
   parseSearchTerm,
+  resolveNumberHasCalls,
   resolveNumberSort,
   sortedNumberMongoSort,
   sortFieldValue,
@@ -411,4 +412,109 @@ test("S2 row DTO: rollups carry recordings, analysed conversations, last analyse
   // Older fixtures without the new keys still parse (additive, optional in the schema).
   numberSearchItemDtoSchema.parse(NUMBER_DTO_FIXTURES.searchItem);
   assert.throws(() => numberSearchItemDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.searchItem, rollups: { ...NUMBER_DTO_FIXTURES.searchItem.rollups, recordings_total: -1 } }));
+});
+
+// ---------------------------------------------------------------------------
+// S5c-NUMBERS (G7, C21): has_calls, the flag default and include_form_only
+// ---------------------------------------------------------------------------
+
+const hasCall = (r: Row) => typeof r.rollups.interactions_total === "number" && r.rollups.interactions_total > 0;
+
+test("G7 query schema: has_calls and include_form_only are tri-state and query-string safe; absent stays undefined", () => {
+  const bare = query({});
+  assert.equal(bare.has_calls, undefined);
+  assert.equal(bare.include_form_only, undefined);
+  assert.equal(query({ has_calls: "true" }).has_calls, true);
+  assert.equal(query({ has_calls: "false" }).has_calls, false);
+  assert.equal(query({ include_form_only: "true" }).include_form_only, true);
+  assert.equal(query({ include_form_only: false }).include_form_only, false);
+  assert.throws(() => query({ has_calls: "yes" }));
+});
+
+test("G7 resolution: flag off → no narrowing unless has_calls=true; flag on → true unless include_form_only; explicit wins", () => {
+  const cases: Array<[Record<string, unknown>, boolean, boolean]> = [
+    [{}, false, false],
+    [{}, true, true],
+    [{ include_form_only: "true" }, true, false],
+    [{ include_form_only: "false" }, true, true],
+    [{ include_form_only: "true" }, false, false],
+    [{ has_calls: "true" }, false, true],
+    [{ has_calls: "false" }, true, false],
+    [{ has_calls: "true", include_form_only: "true" }, true, true],
+    [{ has_calls: "false", include_form_only: "false" }, true, false],
+  ];
+  for (const [input, flagOn, want] of cases) assert.equal(resolveNumberHasCalls(query(input), flagOn), want, `${JSON.stringify(input)} flag=${flagOn}`);
+});
+
+test("G7 filter: has_calls=true is a residual interactions_total > 0; absent or false adds nothing (flag-off filter byte-identical)", () => {
+  const base = buildNumberSearchFilter(query({}), null);
+  assert.equal(JSON.stringify(buildNumberSearchFilter(query({ has_calls: "false" }), null)), JSON.stringify(base));
+  assert.equal(JSON.stringify(buildNumberSearchFilter(query({ include_form_only: "true" }), null)), JSON.stringify(base));
+  assert.deepEqual(buildNumberSearchFilter(query({ has_calls: "true" }), null)["rollups.interactions_total"], { $gt: 0 });
+  // Digest: bound only when the narrowing applies, so a flag-off cursor digest is unchanged.
+  const spec = resolveNumberSort({ sort: "interactions" });
+  assert.equal(numberSearchDigest(query({ sort: "interactions" }), spec), numberSearchDigest(query({ sort: "interactions", has_calls: "false" }), spec));
+  assert.notEqual(numberSearchDigest(query({ sort: "interactions" }), spec), numberSearchDigest(query({ sort: "interactions", has_calls: "true" }), spec));
+});
+
+test("G7 paging: flag on hides zero/null/missing-count Numbers on every sort; include_form_only and flag off return today's list", async () => {
+  const rows = fixture();
+  const sorts: Array<Record<string, unknown>> = [{}, { sort: "last_call" }, { sort: "interactions", direction: "asc" }, { sort: "first_call", direction: "desc" }];
+  for (const input of sorts) {
+    const spec = resolveNumberSort(query(input));
+    const pageWith = async (extra: Record<string, unknown>, flagOn: boolean) => {
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let guard = 0; guard < 100; guard += 1) {
+        const q = query({ ...input, ...extra, limit: 4, ...(cursor ? { cursor } : {}) });
+        const r = await pageNumberSearch(q, { kind: "none" }, memorySource(rows), { hasCallsDefault: flagOn });
+        assert.equal(r.has_calls, resolveNumberHasCalls(q, flagOn));
+        seen.push(...r.page.map((x) => String(x._id)));
+        if (!r.next) return seen;
+        cursor = r.next;
+      }
+      throw new Error("pager did not terminate");
+    };
+    const all = expectedOrder(rows, spec);
+    const called = expectedOrder(rows, spec, hasCall);
+    assert.ok(called.length < all.length && called.length > 0);
+    const off = await pageWith({}, false);
+    assert.deepEqual(off, all, `${JSON.stringify(input)} flag off: today's list, same order`);
+    assert.equal(new Set(off).size, off.length);
+    const on = await pageWith({}, true);
+    assert.deepEqual(on, called, `${JSON.stringify(input)} flag on: only Numbers with a call`);
+    assert.equal(new Set(on).size, on.length, "no repeats");
+    assert.deepEqual(await pageWith({ include_form_only: "true" }, true), all, "include_form_only lifts the default");
+    assert.deepEqual(await pageWith({ has_calls: "false" }, true), all, "explicit false lifts it too");
+    assert.deepEqual(await pageWith({ has_calls: "true" }, false), called, "explicit true narrows with the flag off");
+  }
+});
+
+test("G7 hint: an unsearched has_calls page reads through the sort's kind index; flag off and q requests are unchanged", async () => {
+  const rows = fixture();
+  const on = memorySource(rows);
+  await pageNumberSearch(query({ limit: 5 }), { kind: "none" }, on, { hasCallsDefault: true });
+  assert.deepEqual(on.hints, ["contact_number_kind_activity"]);
+  const sorted = memorySource(rows);
+  await pageNumberSearch(query({ sort: "interactions", limit: 5 }), { kind: "none" }, sorted, { hasCallsDefault: true });
+  assert.ok(sorted.hints.every((h) => h === "contact_number_kind_interactions"));
+  const off = memorySource(rows);
+  await pageNumberSearch(query({ limit: 5 }), { kind: "none" }, off, { hasCallsDefault: false });
+  assert.deepEqual(off.hints, [undefined], "flag off: no hint, the historical plan");
+  assert.equal(numberFilterHint(query({ q: "synthetic", has_calls: "true" }), "last_activity", parseSearchTerm("synthetic")), undefined);
+});
+
+test("G7 row DTO: created_via resolves null/absent to call; has_calls is interactions_total > 0 (null and missing are false)", () => {
+  const rows = fixture();
+  const item = (row: Row) => toNumberSearchItem(row, { kind: "none" });
+  assert.equal(item(rows[0]!).created_via, "call", "absent → call");
+  assert.equal(item({ ...rows[0]!, created_via: null }).created_via, "call", "null → call");
+  assert.equal(item({ ...rows[1]!, created_via: "form_lead" }).created_via, "form_lead");
+  assert.equal(item(rows[0]!).has_calls, true);
+  assert.equal(item(rows[1]!).has_calls, false, "zero");
+  assert.equal(item(rows[3]!).has_calls, false, "null");
+  assert.equal(item(rows[7]!).has_calls, false, "missing");
+  // Additive: an item without the two fields (older server) still parses; bad values do not.
+  numberSearchItemDtoSchema.parse(NUMBER_DTO_FIXTURES.searchItem);
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.searchItem, created_via: "sheet" }));
 });

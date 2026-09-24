@@ -112,6 +112,7 @@
     "test:si:suggest:replica": "node --import tsx scripts/dev_ops/test-si-suggest.ts",
     "test:si:desk:replica": "node --import tsx scripts/dev_ops/test-si-desk.ts",
     "test:si:numbers:replica": "node --import tsx scripts/dev_ops/test-si-numbers.ts",
+    "test:si:numbers:form-only:replica": "node --import tsx scripts/dev_ops/test-si-numbers-form-only.ts",
     "test:si:presentation:replica": "node --import tsx scripts/dev_ops/test-si-presentation.ts",
     "test:si:reads:replica": "node --import tsx scripts/dev_ops/test-si-reads.ts",
     "test:si:findings:replica": "node --import tsx scripts/dev_ops/test-si-findings.ts",

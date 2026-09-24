@@ -18,6 +18,15 @@
  *   node --env-file=.env --import tsx scripts/dev_ops/backfill-form-lead-contact-numbers.ts --apply --allow-production [--resume]
  *
  * Reports carry ids, job numbers and outcomes, never phone numbers.
+ *
+ * G7: a Number this creates carries `created_via: "form_lead"` (set by `ensureFormLeadContactNumber`).
+ * Numbers created before G7 are stamped by `stamp-form-created-numbers.ts` (S10 step 1, after this).
+ * Resume (S10 step 1): `--resume` continues after the checkpoint's `after` creator Lead id, so a
+ * group that errored at or before it is skipped. A plain re-run (no `--resume`) re-inventories and
+ * skips every phone that already has a Number, so it is idempotent and also retries errors and picks
+ * up Form Leads that arrived since. Run from the repository root (the paths are relative).
+ * `--apply` against production runs the drift guard (`lib/production-writer-guard.ts`); the job
+ * table is counted before and after and reported.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import mongoose from "mongoose";
@@ -34,6 +43,8 @@ import { loadLead } from "../../src/services/salesIntelligence/attachment/source
 import { ensureFormLeadContactNumber, formLeadNumberE164 } from "../../src/services/salesIntelligence/attachment/formLeadNumber";
 import { attachLeadsOnNumber } from "../../src/services/salesIntelligence/attachment/refresh";
 import { publishAttentionSnapshot } from "../../src/services/salesIntelligence/outreach/attention";
+import { getSalesIntelligenceJobModel } from "../../src/models/salesIntelligence/infrastructure";
+import { assertProductionWriterMatchesDeployment } from "./lib/production-writer-guard";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const flag = (name: string) => process.argv.includes(`--${name}`);
@@ -116,9 +127,12 @@ async function main() {
   await connectMongo();
   const database = getMongoDatabaseName();
   if (apply && database === "vantagemovers" && !flag("allow-production")) throw new Error("Refusing to write production without --allow-production");
+  // CC-00 §5.2 / reconciliation §5: only the deployed build writes production.
+  if (apply) await assertProductionWriterMatchesDeployment();
   const account = configuredRingCentralAccountId();
   const directory = account ? await loadDirectoryLookup(account) : EMPTY_DIRECTORY_LOOKUP;
   const started = new Date();
+  const jobsBefore = await getSalesIntelligenceJobModel().countDocuments({});
   console.log(JSON.stringify({ phase: "started", database, apply, today_ny: todayNy, directory_loaded: !directory.isEmpty,
     flags: { AUTO_ATTACH: csiFlag("AUTO_ATTACH"), OUTREACH_ENSURE: csiFlag("OUTREACH_ENSURE"), LEAD_PROGRESS: csiFlag("LEAD_PROGRESS") } }));
 
@@ -186,10 +200,13 @@ async function main() {
   await Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, worker));
   if (apply && queue.length) await writeFile(CHECKPOINT, JSON.stringify({ database, after: String(queue.at(-1)!.creator._id), done: true }));
   const publish = apply && outcomes.some((o) => o.action === "created") ? await publishAttentionSnapshot({ deadlineMs: 300_000 }) : null;
+  // On production the live crons also create jobs while this runs; the delta is reported, not asserted.
+  const jobs = { before: jobsBefore, after: await getSalesIntelligenceJobModel().countDocuments({}),
+    created_during_run: await getSalesIntelligenceJobModel().countDocuments({ _id: { $gte: mongoose.Types.ObjectId.createFromTime(Math.floor(+started / 1000)) } }) };
   const file = `${OUT_DIR}/form-lead-contact-numbers-${apply ? "apply" : "dry"}-${started.toISOString().replace(/[:.]/g, "-")}.json`;
   await writeFile(file, JSON.stringify({ database, apply, today_ny: todayNy, started_at: started.toISOString(), finished_at: new Date().toISOString(),
-    counts, publish, outcomes }, null, 2));
-  console.log(JSON.stringify({ phase: "finished", file, counts, publish }, null, 2));
+    counts, jobs, publish, outcomes }, null, 2));
+  console.log(JSON.stringify({ phase: "finished", file, counts, jobs, publish }, null, 2));
 }
 
 main().then(() => process.exit(0)).catch((error) => {

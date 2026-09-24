@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { z } from "zod";
-import { CONTACT_NUMBER_CLASSIFICATIONS } from "../../config/domain/salesIntelligence";
+import { CONTACT_NUMBER_CLASSIFICATIONS, csiFlag } from "../../config/domain/salesIntelligence";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { csiDateSchema, csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { canonicalJson } from "../durableWork/checksum";
@@ -35,6 +35,12 @@ const queryBoolean = z
   .transform((value) => value === true || value === "true")
   .default(false);
 
+/** Tri-state query boolean: `undefined` when absent, so a server default can apply (G7 `has_calls`). */
+const optionalQueryBoolean = z
+  .union([z.boolean(), z.enum(["true", "false"])])
+  .optional()
+  .transform((value) => (value === undefined ? undefined : value === true || value === "true"));
+
 function repeatedQuery<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess((value) => {
     if (value == null || value === "") return undefined;
@@ -63,6 +69,16 @@ export const numberSearchQuerySchema = z
      */
     has_recording: queryBoolean,
     has_outreach: queryBoolean,
+    /**
+     * G7 (reconciliation §3.5): `true` narrows to `rollups.interactions_total > 0` (the Number has
+     * a call; a form-created Number without one is hidden). `false` does not narrow, like
+     * `has_recording`. Absent: `true` when `SALES_INTELLIGENCE_NUMBERS_HAS_CALLS_DEFAULT` is on and
+     * `include_form_only` is not `true`; otherwise no narrowing (today's list). An explicit value
+     * wins over `include_form_only`. Resolved by `resolveNumberHasCalls`.
+     */
+    has_calls: optionalQueryBoolean,
+    /** G7: the Numbers list's `Include form-only numbers` toggle; lifts the flag default only. */
+    include_form_only: optionalQueryBoolean,
     cursor: z.string().max(2000).optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     /**
@@ -75,6 +91,23 @@ export const numberSearchQuerySchema = z
   })
   .strict();
 export type NumberSearchQuery = z.infer<typeof numberSearchQuerySchema>;
+
+/**
+ * G7: the `has_calls` narrowing a request gets. An explicit param wins; otherwise the flag default
+ * applies unless `include_form_only=true`. Flag off and no param → `false` (the list is unchanged).
+ */
+export function resolveNumberHasCalls(
+  query: Pick<NumberSearchQuery, "has_calls" | "include_form_only">,
+  defaultOn: boolean = csiFlag("NUMBERS_HAS_CALLS_DEFAULT"),
+): boolean {
+  if (query.has_calls !== undefined) return query.has_calls;
+  return defaultOn && query.include_form_only !== true;
+}
+
+/** The query with `has_calls` resolved to a boolean; every filter, hint and digest reads this. */
+export function withResolvedHasCalls(query: NumberSearchQuery, defaultOn?: boolean): NumberSearchQuery {
+  return { ...query, has_calls: resolveNumberHasCalls(query, defaultOn) };
+}
 
 export type NumberCursor = { last_activity_at: string; id: string };
 const numberCursorSchema = z
@@ -170,6 +203,8 @@ export function buildNumberSearchFilter(
   // Residual predicates on the `kind`-prefixed indexes (no index of their own).
   if (query.has_recording) filter["rollups.recordings_total"] = { $gt: 0 };
   if (query.has_outreach) filter["rollups.outreach_records_total"] = { $gt: 0 };
+  // G7: null or missing counts are "no call" (`$gt` never matches them).
+  if (query.has_calls === true) filter["rollups.interactions_total"] = { $gt: 0 };
   if (term.kind === "e164") {
     // Exact identity first, then the same digits as a suffix: both arms are
     // anchored index lookups, so the `$or` stays a bounded index union.
@@ -252,7 +287,7 @@ const DEFAULT_SORT: NumberSortSpec = { sort: "last_activity", direction: "desc" 
  * keep the candidate-cap rule; unfiltered requests are unchanged.
  */
 export function numberFilterHint(query: NumberSearchQuery, sort: NumberSearchSort, parsed: ParsedSearchTerm): string | undefined {
-  if (parsed.kind !== "none" || !(query.has_recording || query.has_outreach)) return undefined;
+  if (parsed.kind !== "none" || !(query.has_recording || query.has_outreach || query.has_calls === true)) return undefined;
   return NUMBER_SORT_KIND_INDEXES[canonicalNumberSort(sort)];
 }
 
@@ -316,6 +351,7 @@ export function numberSearchDigest(query: NumberSearchQuery, requested: NumberSo
         hygiene: query.hygiene,
         ...(query.has_recording ? { has_recording: true } : {}),
         ...(query.has_outreach ? { has_outreach: true } : {}),
+        ...(query.has_calls === true ? { has_calls: true } : {}),
         sort: canonicalNumberSort(requested.sort),
         direction: requested.direction,
       }),
@@ -442,6 +478,8 @@ export type NumberSearchPageResult = {
   applied: NumberSortSpec;
   /** The index hinted for this page (q-narrowed set above the cap), if any. */
   hint?: string;
+  /** G7: the resolved `has_calls` narrowing of this page. */
+  has_calls: boolean;
 };
 
 export function mongoNumberRowSource(): NumberRowSource {
@@ -463,10 +501,13 @@ export function mongoNumberRowSource(): NumberRowSource {
  * `_id`, in at most two index-served queries.
  */
 export async function pageNumberSearch(
-  query: NumberSearchQuery,
+  input: NumberSearchQuery,
   parsed: ParsedSearchTerm,
   source: NumberRowSource,
+  options: { hasCallsDefault?: boolean } = {},
 ): Promise<NumberSearchPageResult> {
+  const query = withResolvedHasCalls(input, options.hasCallsDefault);
+  const has_calls = query.has_calls === true;
   if (query.sort === undefined && query.direction === undefined) {
     const cursor = query.cursor ? decodeNumberCursor(query.cursor) : null;
     const legacyHint = numberFilterHint(query, "last_activity", parsed);
@@ -485,7 +526,7 @@ export async function pageNumberSearch(
             id: String(last._id),
           })
         : null;
-    return { page, next, applied: DEFAULT_SORT, ...(legacyHint ? { hint: legacyHint } : {}) };
+    return { page, next, applied: DEFAULT_SORT, ...(legacyHint ? { hint: legacyHint } : {}), has_calls };
   }
 
   const requested = resolveNumberSort(query);
@@ -542,7 +583,7 @@ export async function pageNumberSearch(
           digest,
         })
       : null;
-  return { page, next, applied, ...(hint ? { hint } : {}) };
+  return { page, next, applied, ...(hint ? { hint } : {}), has_calls };
 }
 
 export type NumberSearchDeps = {
@@ -553,6 +594,8 @@ export type NumberSearchDeps = {
     now: Date,
   ) => Promise<ReadonlyMap<string, AttachedLeadProgressItemDto>>;
   source?: NumberRowSource;
+  /** Test seam for `SALES_INTELLIGENCE_NUMBERS_HAS_CALLS_DEFAULT`; production reads the flag. */
+  hasCallsDefault?: boolean;
 };
 
 export async function searchNumberActivity(
@@ -561,7 +604,12 @@ export async function searchNumberActivity(
 ): Promise<NumberSearchPageDto> {
   const parsed = parseSearchTerm(query.q);
   const match = { kind: parsed.kind };
-  const { page, next, applied } = await pageNumberSearch(query, parsed, deps.source ?? mongoNumberRowSource());
+  const defaultOn = deps.hasCallsDefault ?? csiFlag("NUMBERS_HAS_CALLS_DEFAULT");
+  const { page, next, applied, has_calls } = await pageNumberSearch(query, parsed, deps.source ?? mongoNumberRowSource(),
+    { hasCallsDefault: defaultOn });
+  // G7: echo the applied narrowing whenever it can differ from today's list, so the toggle can
+  // render its state. Flag off with neither param: absent, and the page is today's.
+  const echo = defaultOn || query.has_calls !== undefined || query.include_form_only !== undefined;
 
   // One batched Lead progress read per page, never one per card.
   const now = deps.now?.() ?? new Date();
@@ -578,6 +626,7 @@ export async function searchNumberActivity(
         items: page.map((row) => toNumberSearchItem(row, match, attached.get(String(row._id)))),
         cursor: next,
         sort: applied,
+        ...(echo ? { filters: { has_calls } } : {}),
       },
       () => now,
     ),

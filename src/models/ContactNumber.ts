@@ -12,6 +12,18 @@ import {
 // src/models/ContactNumber.ts
 
 /**
+ * G7 (reconciliation addendum §3.5): how the Number came to exist. `form_lead` is written only
+ * when a Form Lead's submitted phone creates the row (`ensureFormLeadContactNumber`, its
+ * backfill, and the S10 step-1 stamp). Capture never writes it: absent or null means `call`.
+ */
+export const CONTACT_NUMBER_CREATED_VIA = ["call", "form_lead"] as const;
+export type ContactNumberCreatedVia = (typeof CONTACT_NUMBER_CREATED_VIA)[number];
+/** Null path: a row without the field (every historical and every call-created row) is `call`. */
+export function resolveCreatedVia(value: unknown): ContactNumberCreatedVia {
+  return value === "form_lead" ? "form_lead" : "call";
+}
+
+/**
  * Every filtered listing sorts `(last_activity_at desc, _id desc)`, so each
  * selective prefix carries that order in the index and the common Owner
  * searches run as index scans with no blocking in-memory sort (14 §8).
@@ -152,6 +164,8 @@ export const ContactNumberSchema = new Schema(
     search_terms: { type: [String], default: [] }, // lowercased: lead names, job numbers, provider names
     first_observed_at: { type: Date, required: true },
     last_activity_at: { type: Date, required: true },
+    /** G7: optional, no default, so call-created and historical rows stay without it (= `call`). */
+    created_via: { type: String, enum: CONTACT_NUMBER_CREATED_VIA, required: false },
     rollups: { type: rollupsSchema, required: true, default: () => ({}) },
     running_summary: {
       // projection from a completed number-level analysis run

@@ -1,6 +1,6 @@
 import type mongoose from "mongoose";
 import { getCallInteractionModel } from "../../models/CallInteraction";
-import { getContactNumberModel } from "../../models/ContactNumber";
+import { getContactNumberModel, resolveCreatedVia, type ContactNumberCreatedVia } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { csiFlag } from "../../config/domain/salesIntelligence";
@@ -34,6 +34,8 @@ export type ContactNumberLean = {
   search_terms: string[];
   first_observed_at: Date;
   last_activity_at: Date;
+  /** G7: absent or null on call-created and historical rows (= `call`). */
+  created_via?: ContactNumberCreatedVia | null;
   rollups: {
     interactions_total: number;
     inbound_total: number;
@@ -115,6 +117,8 @@ export function toNumberSearchItem(
     rollups,
     linked: rollups.attached_lead_count > 0 || rollups.candidate_lead_count > 0,
     match,
+    created_via: resolveCreatedVia(row.created_via),
+    has_calls: rollups.interactions_total > 0,
     ...(attached ? { attached_lead_progress: attachedForItem(attached, rollups.outreach_records_total) } : {}),
   });
 }
@@ -222,6 +226,8 @@ export async function getContactNumberDetail(
     rollups: toRollupsDto(row),
     // §9.3: the header is the Numbers row, through the same mapper (no extra read).
     attached_lead_progress: attachedForItem(attached, row.rollups.outreach_records_total ?? 0),
+    created_via: resolveCreatedVia(row.created_via),
+    has_calls: (row.rollups.interactions_total ?? 0) > 0,
     connections: {
       attachments_total: attachments.length,
       attached: byState("attached"),
