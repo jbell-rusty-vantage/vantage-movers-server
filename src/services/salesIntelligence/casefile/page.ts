@@ -23,6 +23,8 @@ export const caseFileArtifactSchema = z.object({
   trimmed_steps: z.array(z.object({ step: z.enum(TRIM_STEPS), count: z.number().int().positive() }).strict()), over_hard_budget: z.boolean(),
   call_conversation_ids: z.array(z.string()), prior_finding_ids: z.array(z.string()), followup_ids: z.array(z.string()),
   story_events: z.number().int().nonnegative(), timeline_dropped: z.number().int().nonnegative(), truncated_sources: z.array(z.string()),
+  /** G2: in-progress calls left out. Present only when > 0 (older artifacts and other Numbers never carry it). */
+  excluded_in_progress: z.number().int().positive().optional(),
 }).strict();
 export type CaseFileArtifact = z.infer<typeof caseFileArtifactSchema>;
 
@@ -35,7 +37,8 @@ export function caseFileToReadContent(file: CaseFile, rendered: RenderedCaseFile
   const artifact: CaseFileArtifact = { layout: "case_file", version: CASE_FILE_VERSION, audience: file.audience, text: rendered.text, bytes: rendered.bytes, digest: rendered.digest,
     customer_evidence_digest: rendered.customer_evidence_digest, trimmed_steps: rendered.trimmed_steps, over_hard_budget: rendered.over_hard_budget,
     call_conversation_ids: file.call_conversation_ids, prior_finding_ids: file.prior_finding_ids, followup_ids: file.followup_ids, story_events: file.story_events.length,
-    timeline_dropped: file.coverage.timeline_dropped, truncated_sources: file.coverage.truncated_sources };
+    timeline_dropped: file.coverage.timeline_dropped, truncated_sources: file.coverage.truncated_sources,
+    ...(file.coverage.excluded_in_progress ? { excluded_in_progress: file.coverage.excluded_in_progress } : {}) };
   const build = (records: ReadContent["page"]["records"]): ReadContent => readContentSchema.parse({
     page: { records, next_cursor: null, complete: true, missing_ranges: [...file.coverage.truncated_sources.map(s => `case_file_truncated:${s}`),
       ...(granot.length > keptGranot.length ? ["case_file_granot_overflow"] : []), ...(candidates.length > keptCandidates.length ? ["case_file_candidates_overflow"] : [])].slice(0, 100) },

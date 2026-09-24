@@ -51,6 +51,7 @@ import {
 } from "../../../src/services/numberActivity/persistInteraction";
 import type { RouteResolver } from "../../../src/services/numberActivity/types";
 import { waitForBackfillPeer } from "../../backfill-csi-structured-analysis.lib";
+import { recoveryKindFor, stampCaptureRecovery } from "./call-log-repair-recovery";
 
 export const REPAIR_MANIFEST_VERSION = "call-log-repair-v1" as const;
 export const OPERATOR_HOLD_REASON = "operator_hold";
@@ -222,6 +223,8 @@ export type RepairSeams = {
   maxWaitMs?: number;
   save: (manifest: RepairManifest) => Promise<unknown>;
   log: (event: string, fields?: Record<string, unknown>) => Promise<unknown>;
+  /** S5c-RECOVERY (G4): stamps `capture_recovery` on a call this run inserted or completed. Default: the real write. */
+  stampRecovery?: typeof stampCaptureRecovery;
 };
 
 type JobRow = { _id: unknown; status: string; reason?: string | null; next_attempt_at: Date; leased_until?: Date | null; completed_at?: Date | null;
@@ -588,6 +591,9 @@ export async function runCallLogRepair(manifest: RepairManifest, seams: RepairSe
       }
       if (result.noop) { day.applied.noop++; continue; }
       if (result.created) day.applied.created++; else day.applied.updated++;
+      // G4: provenance for the Owner timeline and the Case File; never bumps projection_revision.
+      const recoveryKind = recoveryKindFor(verdict.kind, result.created);
+      if (recoveryKind) await (seams.stampRecovery ?? stampCaptureRecovery)(result.interaction_id, { run_id: manifest.run_id, at: now(), kind: recoveryKind });
       if (verdict.kind === "unchanged") day.applied.changed_without_diff++;
       let entry = manifest.interactions.find(e => e.interaction_id === result.interaction_id);
       if (!entry) {

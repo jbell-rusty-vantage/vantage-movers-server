@@ -150,6 +150,10 @@ export type CaseFileSources = {
   truncated_sources: string[];
   evidence_lines: Record<string, Array<{ id: string; text: string }>>;
   staffing: Staffing;
+  /** G2: calls still in progress (`terminal: false`) left out of the file. Present only when > 0. */
+  excluded_in_progress?: number;
+  /** G4: `call` event id → the capture repair's time (`capture_recovery.at`). Present only when a call was recovered. */
+  recovered_calls?: Record<string, string>;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -201,7 +205,8 @@ export type CaseFile = {
   candidates: LeadCandidate[];
   /** §2 lines plus the §4 call blocks at full content, for the assessment fingerprint (spec §4.10). */
   customer_evidence: unknown;
-  coverage: { truncated_sources: string[]; timeline_dropped: number };
+  /** `excluded_in_progress` (G2) is present only when > 0, so other files are unchanged. */
+  coverage: { truncated_sources: string[]; timeline_dropped: number; excluded_in_progress?: number };
 };
 
 export const TRIM_STEPS = ["digest_overview_only", "digest_to_fact", "old_attempts_dropped", "owner_notes_dropped", "full_to_digest", "resolved_prior_findings_dropped"] as const;

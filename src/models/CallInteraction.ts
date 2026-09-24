@@ -212,6 +212,20 @@ export const CallInteractionSchema = new Schema(
       enum: [null, "provisional", "settled"],
     },
     terminal: { type: Boolean, required: true, default: false },
+    // S5c-RECOVERY (G4): set when a capture repair inserted ("added") or completed ("completed") this
+    // call. Provenance only: writing it never bumps `projection_revision`, so no fingerprint moves.
+    // Absent or null = captured normally.
+    capture_recovery: {
+      type: new Schema(
+        {
+          run_id: { type: String, required: true, trim: true },
+          at: { type: Date, required: true },
+          kind: { type: String, required: true, enum: ["added", "completed"] },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     projection_revision: { type: Number, required: true, default: 1 },
     max_observed_webhook_sequence: { type: Number, default: null }, // diagnostic only, never filters other parties
     first_observed_at: { type: Date, required: true },

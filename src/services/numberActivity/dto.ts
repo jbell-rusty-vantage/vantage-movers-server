@@ -227,6 +227,22 @@ const timelineV2RepDtoSchema = z
   })
   .strict();
 
+export const CALL_LOG_STATES = ["provisional", "settled"] as const;
+export const CALL_OBSERVED_REASONS = ["recovered", "late_capture"] as const;
+/**
+ * Call capture state on every Owner call DTO (reconciliation addendum §3.1, G2). Optional so an
+ * older server's response still parses; S5c servers always send all three.
+ *
+ * Null rule: `call_log_state: null` means **final** unless `terminal === false` (historical rows keep
+ * `null` forever). `in_progress` = `!terminal`; while it is true the result and duration are null
+ * (not yet final), and the UI shows an `In progress` chip. `direction: "Unknown"` is passed through.
+ */
+export const callCaptureStateShape = {
+  terminal: z.boolean().optional(),
+  call_log_state: z.enum(CALL_LOG_STATES).nullable().optional(),
+  in_progress: z.boolean().optional(),
+};
+
 /** Facts of a `call` event (Number route Calls tab, final spec §9.3). */
 export const timelineV2CallDtoSchema = z
   .object({
@@ -241,6 +257,13 @@ export const timelineV2CallDtoSchema = z
     /** The analyzed conversation, else the first linked one; null without a recording link. */
     conversation_id: id.nullable(),
     rep: timelineV2RepDtoSchema.nullable(),
+    ...callCaptureStateShape,
+    /**
+     * Why `observed_at` is later than the call (G4): `recovered` when a capture repair added or
+     * completed the call (`capture_recovery`), `late_capture` when first stored more than 1 h after it
+     * started, else null. Optional: servers before S5c did not send it.
+     */
+    observed_reason: z.enum(CALL_OBSERVED_REASONS).nullable().optional(),
   })
   .strict();
 

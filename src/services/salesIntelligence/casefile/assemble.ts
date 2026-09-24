@@ -21,7 +21,7 @@ import { subjectKey } from "../outreach/types";
 import { resolveStorySubject } from "../story/assemble";
 import { findLeadCandidates } from "../story/candidates";
 import { readLeadBookings } from "../story/granot";
-import { LEAD_PROJECTION, leadCollection, readLeadRows, readOutreachRecords, readStoryContactNumber, STORY_SOURCES, subjectKeysFor, TIMELINE_KINDS, TIMELINE_LEAD_FANOUT,
+import { isInProgressCall, LEAD_PROJECTION, leadCollection, modelCallEvent, readLeadRows, readOutreachRecords, readStoryContactNumber, STORY_SOURCES, subjectKeysFor, TIMELINE_KINDS, TIMELINE_LEAD_FANOUT,
   type LeadRow, type TimelineReadContext } from "../story/sources";
 import type { LeadCandidate, StoryEvent, StoryLeadRef, StorySubject } from "../story/types";
 import { applyCaseFileBudget } from "./budget";
@@ -127,7 +127,7 @@ export async function assembleCaseFileSources(input: CaseFileInput): Promise<Cas
     subject.outreach_record_ids.length ? getOutreachRecordModel().find({ _id: { $in: subject.outreach_record_ids.filter(id => mongoose.isValidObjectId(id)).map(oid) } })
       .select("subject state closed_reason closure_origin responsible_agent_id assignment wait_until move_assessment").sort({ _id: 1 }).limit(101).lean() : Promise.resolve([]),
     readCaseLeads(subject.lead_refs),
-    numberId ? readCaseCalls(numberId, asOf, CASE_FILE_CALL_LIMIT) : Promise.resolve({ calls: [], truncated: false }),
+    numberId ? readCaseCalls(numberId, asOf, CASE_FILE_CALL_LIMIT) : Promise.resolve({ calls: [], truncated: false, in_progress_ids: [] as string[] }),
     numberId ? getLeadConversationModel().find({ contact_number_id: oid(numberId), started_at: { $lte: asOf }, content_purged_at: null })
       .select("call_interaction_id started_at direction duration_seconds lead_ref state latest_transcript_version").sort({ started_at: -1, _id: -1 }).limit(101).lean()
       : subject.conversation_ids.length ? getLeadConversationModel().find({ _id: { $in: subject.conversation_ids.filter(id => mongoose.isValidObjectId(id)).map(oid) }, started_at: { $lte: asOf } })
@@ -148,8 +148,11 @@ export async function assembleCaseFileSources(input: CaseFileInput): Promise<Cas
   const attachedRefs = numberId ? edges.filter(e => e.state === "attached").map(e => e.lead_ref) : subject.lead_refs;
   const recordRows = records as unknown as Array<{ _id: unknown; subject: { kind: string; model?: string | null; id?: unknown; contact_number_id?: unknown }; state: string;
     closed_reason?: string | null; closure_origin?: string | null; responsible_agent_id?: unknown; assignment?: { origin: string; assigned_at?: Date | null } | null; wait_until?: Date | null }>;
+  // G2: nothing of a call still in progress enters the file (its conversation, if one was already linked, neither).
+  const inProgress = new Set(calls.in_progress_ids);
   const conversations = (conversationRows as unknown as Array<{ _id: unknown; call_interaction_id?: unknown; started_at: Date; direction?: string | null; duration_seconds?: number | null;
-    lead_ref?: { model: "FormLead" | "CallLead"; id: unknown } | null; state?: string | null; latest_transcript_version?: string | null }>).slice(0, 100);
+    lead_ref?: { model: "FormLead" | "CallLead"; id: unknown } | null; state?: string | null; latest_transcript_version?: string | null }>).slice(0, 100)
+    .filter(c => !(c.call_interaction_id && inProgress.has(String(c.call_interaction_id))));
 
   // The story readers in timeline mode, every kind but the ones the Case File replaces or never shows.
   const storyRecords = await readOutreachRecords(subject.outreach_record_ids);
@@ -179,13 +182,20 @@ export async function assembleCaseFileSources(input: CaseFileInput): Promise<Cas
   ]);
   const events: StoryEvent[] = [];
   const seen = new Set<string>();
+  const recovered: Record<string, string> = {};
   for (const [name, result] of results) {
     if (result.truncated) truncated.push(name);
     for (const event of result.events) {
       const key = `${event.kind}:${event.id}`;
       if (seen.has(key) || Date.parse(event.happened_at) > +asOf) continue;
       seen.add(key);
-      events.push(event);
+      // G2: an in-progress call is excluded; G4: a recovered call keeps its repair date for the observed suffix.
+      // The Owner-only capture keys never reach the file, so a Number without either stays byte-identical.
+      if (isInProgressCall(event)) { inProgress.add(String(event.detail.interaction_id ?? event.id.slice(5))); continue; }
+      const recovery = event.kind === "call" ? event.detail.capture_recovery as { at?: unknown } | null | undefined : null;
+      if (recovery && typeof recovery.at === "string") recovered[event.id] = recovery.at;
+      if (event.kind === "conversation_recorded" && typeof event.detail.call_interaction_id === "string" && inProgress.has(event.detail.call_interaction_id)) continue;
+      events.push(modelCallEvent(event));
     }
   }
   if (findingRows.length > 500) truncated.push("findings");
@@ -232,6 +242,8 @@ export async function assembleCaseFileSources(input: CaseFileInput): Promise<Cas
       deposit_amount: typeof b.deposit_amount === "number" ? b.deposit_amount : null, total_binder_amount: typeof b.total_binder_amount === "number" ? b.total_binder_amount : null })),
     prior: input.prior, synthesis_covers: covers, coverage: coverage ?? null, truncated_sources: [...new Set(truncated)].sort(), evidence_lines: input.evidence_lines ?? {},
     staffing: { timezone: policy.timezone, staffed_hours: policy.staffed_hours },
+    ...(inProgress.size ? { excluded_in_progress: inProgress.size } : {}),
+    ...(Object.keys(recovered).length ? { recovered_calls: recovered } : {}),
   };
 }
 

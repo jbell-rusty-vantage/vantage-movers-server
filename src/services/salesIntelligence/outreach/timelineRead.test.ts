@@ -51,7 +51,8 @@ test("adapter: a call carries title, the model's sentence, chips, rep, recording
   assert.deepEqual(dto.chips, ["Recording", "Analyzed", "Human conversation"]);
   assert.deepEqual(dto.action, { kind: "open_conversation", href: `/sales-intelligence/numbers/${NUMBER}?tab=calls&conversation=${CONV}` });
   assert.deepEqual(dto.call, { interaction_id: "64b0000000000000000000e5", direction: "Outbound", result: "Call connected", connected: true, contact_type: "human_conversation",
-    duration_seconds: 252, recording_count: 1, recording_state: "analyzed", conversation_id: CONV, rep: { agent_id: "a1", name: "Jordan Bell", status: "reviewed", extension: "101" } });
+    duration_seconds: 252, recording_count: 1, recording_state: "analyzed", conversation_id: CONV, rep: { agent_id: "a1", name: "Jordan Bell", status: "reviewed", extension: "101" },
+    terminal: true, call_log_state: null, in_progress: false, observed_reason: null });
   assert.equal(dto.kind_order, 3);
   assert.equal(dto.group, "calls");
   assert.equal(dto.routine, false);

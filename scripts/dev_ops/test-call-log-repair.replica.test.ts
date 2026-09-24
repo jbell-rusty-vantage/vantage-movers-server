@@ -194,6 +194,10 @@ test("CC-07 Call Log repair: classify, apply live, in-process downstream on the 
   const audit = await getSalesIntelligenceAuditEventModel().findOne({ subject_key: `interaction:${repaired!._id}`, event_kind: "interaction.updated" }).lean();
   assert.match(JSON.stringify(audit), /call_log_repair:cl-stale/);
   assert.match(JSON.stringify(audit), new RegExp(apply.run_id), "the repair run id is the audit request id");
+  // S5c-RECOVERY (G4): the repair stamps provenance on the calls it inserted or completed; an unchanged call gets none.
+  assert.deepEqual([repaired?.capture_recovery?.kind, repaired?.capture_recovery?.run_id], ["completed", apply.run_id]);
+  assert.deepEqual([created?.capture_recovery?.kind, created?.capture_recovery?.run_id], ["added", apply.run_id]);
+  assert.ok(!(await Interactions.findOne({ telephony_session_id: "s-ok" }).lean())?.capture_recovery, "an unchanged call is not a recovery");
 
   // Live downstream scheduling applied (not the backfill source's attachment-only path).
   for (const id of [repaired!._id, created!._id]) {

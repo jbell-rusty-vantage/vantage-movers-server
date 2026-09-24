@@ -223,18 +223,24 @@ function callFacts(e: StoryEvent): TimelineV2EventDto["call"] {
   const d = e.detail;
   const rep = d.rep && typeof d.rep === "object" ? d.rep as { agent_id?: unknown; name?: unknown; status?: unknown; extension?: unknown } : null;
   const state = d.recording_state === "analyzed" || d.recording_state === "recorded" ? d.recording_state : Number(d.recording_count ?? 0) > 0 ? "recorded" : "none";
+  // G2: `call_log_state: null` is final unless `terminal === false`; an in-progress call has no result or duration yet.
+  const terminal = d.terminal !== false;
   return {
     interaction_id: String(d.interaction_id ?? e.id.slice(e.id.indexOf(":") + 1)),
     direction: String(d.direction ?? "unknown"),
-    result: str(d.provider_result),
+    result: terminal ? str(d.provider_result) : null,
     connected: Boolean(d.provider_connected),
     contact_type: String(d.contact_type ?? "unknown"),
-    duration_seconds: typeof d.duration_seconds === "number" ? d.duration_seconds : null,
+    duration_seconds: terminal && typeof d.duration_seconds === "number" ? d.duration_seconds : null,
     recording_count: Math.max(0, Math.trunc(Number(d.recording_count ?? 0)) || 0),
     recording_state: state,
     conversation_id: str(d.analyzed_conversation_id) ?? str(d.conversation_id),
     rep: rep ? { agent_id: str(rep.agent_id), name: rep.status === "reviewed" ? str(rep.name) : null,
       status: rep.status === "reviewed" || rep.status === "proposed" ? rep.status : "unknown", extension: str(rep.extension) } : null,
+    terminal,
+    call_log_state: d.call_log_state === "provisional" || d.call_log_state === "settled" ? d.call_log_state : null,
+    in_progress: !terminal,
+    observed_reason: d.observed_reason === "recovered" || d.observed_reason === "late_capture" ? d.observed_reason : null,
   };
 }
 

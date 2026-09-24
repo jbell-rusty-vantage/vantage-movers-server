@@ -9,6 +9,7 @@ import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { csiDateSchema, csiIdSchema } from "../../../validation/v1/salesIntelligence";
 import { redactTranscript } from "../../conversations/redaction";
 import { ownerRead } from "../../numberActivity/coverage";
+import { callCaptureStateShape } from "../../numberActivity/dto";
 import { ownerReadSchema, type CoverageDto } from "../dto";
 import { CsiError } from "../auth";
 import { formatEtDateTime } from "../assessment/presentation";
@@ -107,6 +108,11 @@ const callHeaderShape = {
   /** `Human conversation` / `Voicemail` / `Contact unknown`. */
   contact_type_label: z.string(),
   recording_count: z.number().int().nonnegative(),
+  /**
+   * G2 (reconciliation addendum §3.1): `terminal`, `call_log_state`, `in_progress`. `call_log_state: null`
+   * means final unless `terminal === false`; while `in_progress` the duration (and `result`) are null.
+   */
+  ...callCaptureStateShape,
 };
 export const conversationCardDtoSchema = z.object({
   ...callHeaderShape,
@@ -173,6 +179,8 @@ export type CallPartyRow = { role: string; extension_id?: string | null; connect
 export type CallRow = {
   _id: unknown; started_at: Date; direction: string; duration_seconds?: number | null; provider_result?: string | null;
   contact_type?: string | null; provider_account_id: string; parties?: CallPartyRow[] | null;
+  /** Absent on a row stored before the field existed: final. */
+  terminal?: boolean | null; call_log_state?: string | null;
   recordings?: Array<{ provider_recording_id: string; lead_conversation_id?: unknown }> | null;
 };
 export type ConversationRow = {
@@ -212,7 +220,7 @@ export const mongoOwnerConversationsStore: OwnerConversationsStore = {
   number: async id => (await getContactNumberModel().findById(id).select("purged_at content_purge_pending").lean()) as NumberRow | null,
   calls: async (numberId, after, fetch) => (await getCallInteractionModel().find({ contact_number_id: oid(numberId), merged_into_id: null, purged_at: null,
     ...(after ? { $or: [{ started_at: { $lt: after.started_at } }, { started_at: after.started_at, _id: { $lt: oid(after.id) } }] } : {}) })
-    .select("started_at direction duration_seconds provider_result contact_type provider_account_id parties.role parties.extension_id parties.connected recordings.provider_recording_id recordings.lead_conversation_id")
+    .select("started_at direction duration_seconds provider_result contact_type provider_account_id terminal call_log_state parties.role parties.extension_id parties.connected recordings.provider_recording_id recordings.lead_conversation_id")
     .sort({ started_at: -1, _id: -1 }).limit(fetch).lean()) as unknown as CallRow[],
   // Never selects `media.blob_url`; `media.blob_pathname` is read only to derive the recording state.
   conversations: async ids => ids.length ? (await getLeadConversationModel().find({ _id: { $in: ids.map(oid) } })
@@ -313,12 +321,14 @@ export function repFor(call: CallRow, links: readonly RepLinkRow[]): z.infer<typ
 function callHeader(call: CallRow, links: readonly RepLinkRow[], fallbackDuration?: number | null) {
   const direction = asDirection(call.direction);
   const contactType = asContactType(call.contact_type);
-  const duration = typeof call.duration_seconds === "number" ? call.duration_seconds : typeof fallbackDuration === "number" ? fallbackDuration : null;
+  const terminal = call.terminal !== false;
+  const duration = !terminal ? null : typeof call.duration_seconds === "number" ? call.duration_seconds : typeof fallbackDuration === "number" ? fallbackDuration : null;
   return {
     interaction_id: String(call._id), started_at: call.started_at.toISOString(), started_at_label: formatEtDateTime(call.started_at) ?? call.started_at.toISOString(),
     direction, direction_label: DIRECTION_LABELS[direction], duration_seconds: duration !== null && duration >= 0 ? duration : null,
     rep: repFor(call, links), contact_type: contactType, contact_type_label: labelOf(CONTACT_TYPE_LABELS, contactType, CONTACT_TYPE_LABELS.unknown),
     recording_count: (call.recordings ?? []).length,
+    terminal, call_log_state: call.call_log_state === "provisional" ? "provisional" as const : call.call_log_state === "settled" ? "settled" as const : null, in_progress: !terminal,
   };
 }
 
@@ -360,7 +370,7 @@ export async function readOwnerConversations(numberId: string, raw: unknown = {}
   page.forEach((call, index) => {
     const conversation = chosen[index];
     if (!conversation) {
-      other_calls.push({ ...callHeader(call, links), result: clean(call.provider_result)?.slice(0, 60) ?? null });
+      other_calls.push({ ...callHeader(call, links), result: call.terminal === false ? null : clean(call.provider_result)?.slice(0, 60) ?? null });
       return;
     }
     const conversationId = String(conversation._id);

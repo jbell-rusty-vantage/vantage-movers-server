@@ -200,3 +200,11 @@ Current-context transcript reads reject explicitly requested obsolete versions. 
 ## CSI-16 evidence restamp
 
 Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.
+
+## S5c: in-progress and recovered calls in the model's inputs (2026-09-24)
+
+Reconciliation addendum §3.1 (G2) and §3.3 (G4). An unflagged correctness fix.
+
+- The Subject Story model page (`assembleSubjectStory`, `purpose: "model"`) and the Case File (`casefile/assemble.ts`) drop calls with `terminal: false` (and a conversation already linked to one). Both record `excluded_in_progress` only when it is > 0: the story in `coverage`; the Case File in `coverage`, the `case_file` artifact and the §7 coverage line ("{n} call(s) still in progress not shown"). The Owner-only call keys never reach either page.
+- A call a capture repair added or completed reads "(recovered by a capture repair on {date})" on its Case File timeline line. The customer-evidence subset (§2 and the §4 summaries, the assessment fingerprint input) does not change.
+- **No paid-job storm.** Neither change touches `intelligenceSources`: the Number fingerprint hashes call ids and `projection_revision`, not the story or the Case File. A Number with no in-progress and no recovered call has a byte-identical story page, Case File text and `case_file` artifact (`story/b22.test.ts`, the `casefile/casefile.test.ts` K5 goldens, `casefile/capture.test.ts`, and the replica `test-si-capture-recovery.ts`).

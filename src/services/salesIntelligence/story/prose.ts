@@ -163,6 +163,8 @@ function call(event: StoryEvent, ctx: RenderContext): string {
   const duration = formatDuration(d.duration_seconds);
   const recorded = Number(d.recording_count ?? 0) > 0;
   const result = clean(d.provider_result, 40) ?? "result not reported";
+  // G2: Owner timeline only (the model never reads an in-progress call): no result or duration yet.
+  if (d.terminal === false) return `${d.direction === "Inbound" ? `${ctx.customer} called in; the call is` : d.direction === "Outbound" ? `${rep} made an outbound call; the call is` : "a call is"} in progress${focus}.`;
   if (d.direction === "Inbound") {
     if (d.provider_connected) return `${ctx.customer} called in; ${rep} answered, ${duration}${recorded ? ", recorded" : ""}${d.contact_type === "human_conversation" ? ", human conversation" : d.contact_type === "voicemail" ? ", voicemail" : ""}${focus}.`;
     return `${ctx.customer} called in; not answered (${result})${focus}.`;
@@ -356,7 +358,7 @@ export function renderTimelineTitle(event: StoryEvent, ctx: RenderContext, refer
   switch (event.kind as string) {
     case "lead_received": title = d.model === "CallLead" ? "Call Lead created after Call Qualification" : `Form Lead received from ${clean(d.source_company_label, 60) ?? "an unknown source"}`; break;
     case "call_qualified": title = "Call qualified as a Lead"; break;
-    case "call": title = `${d.direction === "Inbound" ? "Inbound" : d.direction === "Outbound" ? "Outbound" : sentenceCase(String(d.direction ?? "Unknown"))} call · ${clean(d.provider_result, 40) ?? "result not reported"} · ${formatDuration(d.duration_seconds)}`; break;
+    case "call": title = `${d.direction === "Inbound" ? "Inbound" : d.direction === "Outbound" ? "Outbound" : sentenceCase(String(d.direction ?? "Unknown"))} call · ${d.terminal === false ? "In progress" : `${clean(d.provider_result, 40) ?? "result not reported"} · ${formatDuration(d.duration_seconds)}`}`; break;
     case "conversation_recorded": title = "Recorded conversation captured"; break;
     case "conversation_analyzed": title = "Conversation analyzed"; break;
     case "assessment_published": title = `Assessment published · Transaction intent ${num(d.transaction_intent) ?? "not scored"} · Move likelihood ${num(d.move_likelihood) ?? "not scored"}`; break;

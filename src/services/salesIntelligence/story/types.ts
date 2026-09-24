@@ -27,6 +27,11 @@ export type StoryOptions = {
   /** Events kept on the model page after collapse (≤ 80). */
   model_events: number;
   timezone: string;
+  /**
+   * `model` (default): the page the findings model reads, with in-progress calls excluded and the
+   * Owner-only call capture keys stripped. `owner`: every call as stored, with its capture state.
+   */
+  purpose?: "model" | "owner";
 };
 
 export const STORY_EVENT_KINDS = [
@@ -147,6 +152,11 @@ export type GranotLeadState = {
 export type StoryCoverage = {
   sources: Record<string, { read: number; truncated: boolean }>;
   dropped_from_model_page: number;
+  /**
+   * In-progress calls (`terminal: false`) left out of the model's page (G2). Present only when > 0,
+   * so a subject without one keeps a byte-identical page and digest.
+   */
+  excluded_in_progress?: number;
   from: string | null;
   to: string | null;
 };

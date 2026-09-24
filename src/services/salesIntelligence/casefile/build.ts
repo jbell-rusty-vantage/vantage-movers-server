@@ -477,7 +477,10 @@ export function buildCaseFile(src: CaseFileSources): CaseFile {
   // §4 timeline items. Tn = index (only story events carry T numbers).
   const placed = new Set<string>();
   const timeline: CaseTimelineItem[] = events.map((e, t) => {
-    const late = e.observed_at && Date.parse(e.observed_at) - Date.parse(e.happened_at) > LATE_MS ? ` (recorded ${timelineDate(e.observed_at, asOf)})` : "";
+    // G4: a call a capture repair added or completed says so; otherwise a late write reads "(recorded …)".
+    const recoveredAt = src.recovered_calls?.[e.id];
+    const late = recoveredAt ? ` (recovered by a capture repair on ${timelineDate(recoveredAt, asOf)})`
+      : e.observed_at && Date.parse(e.observed_at) - Date.parse(e.happened_at) > LATE_MS ? ` (recorded ${timelineDate(e.observed_at, asOf)})` : "";
     const head = `[T${t}] ${timeSlot(e, asOf)} · ${sourceOf(e)} · ${headText(e, ctx)}${late}`;
     const lines = [head];
     const conversations = e.kind === "call" ? conversationsByCall.get(String(e.detail.interaction_id ?? "")) ?? []
@@ -610,6 +613,7 @@ export function buildCaseFile(src: CaseFileSources): CaseFile {
   const gaps = src.coverage?.gaps.length ? `; ${src.coverage.gaps.length} capture gap${src.coverage.gaps.length === 1 ? "" : "s"}` : "";
   const truncated = src.truncated_sources.length ? `; truncated sources: ${[...new Set(src.truncated_sources)].sort().join(", ")}` : "";
   const omitted = dropped ? `; ${dropped} older timeline event${dropped === 1 ? "" : "s"} omitted` : "";
+  const inProgress = src.excluded_in_progress ? `; ${src.excluded_in_progress} call${src.excluded_in_progress === 1 ? "" : "s"} still in progress not shown` : "";
 
   const header = [`CASE FILE (data) · ${src.e164 ? `Number ${src.e164}` : orderedLeads[0] ? `${labels.get(leadKey(orderedLeads[0].ref))} (no Contact Number)` : "no subject"} · as of ${fullTime(asOf)}`,
     "Sources: Vantage intake, RingCentral, Granot, Vantage Bookings, Vantage Outreach, Owner, Analysis."];
@@ -618,10 +622,11 @@ export function buildCaseFile(src: CaseFileSources): CaseFile {
     summary: fullSummaryText(summaries.get(c.id)!.summary), said: summaries.get(c.id)!.summary.said_on_call.map(saidText) })) };
   return {
     version: src.version, audience: src.audience, as_of: asOf, header, who, origins, granot, timeline, tail, open_work,
-    prior: { rolling, findings: priorFindings, assessment, notes }, run: { analyze, coverage: `Coverage: ${known}${gaps}${truncated}${omitted}.` },
+    prior: { rolling, findings: priorFindings, assessment, notes }, run: { analyze, coverage: `Coverage: ${known}${gaps}${truncated}${omitted}${inProgress}.` },
     story_events: storyEvents, call_conversation_ids: cConversations.map(c => c.id), prior_finding_ids: priorFindingIds, followup_ids: [...allowed],
     granot_states: attachedLeads.map(l => granotState(l, historyByLead.get(leadKey(l.ref)), src.bookings)), candidates: src.candidates,
-    customer_evidence: customerEvidence, coverage: { truncated_sources: [...new Set(src.truncated_sources)].sort(), timeline_dropped: dropped },
+    customer_evidence: customerEvidence, coverage: { truncated_sources: [...new Set(src.truncated_sources)].sort(), timeline_dropped: dropped,
+      ...(src.excluded_in_progress ? { excluded_in_progress: src.excluded_in_progress } : {}) },
   };
 }
 

@@ -403,6 +403,53 @@ type CallRow = Awaited<ReturnType<typeof readCallRows>>[number];
 const readCallRows = (filter: Record<string, unknown>, limit: number) =>
   getCallInteractionModel().find(filter).sort({ started_at: -1, _id: -1 }).limit(limit).lean();
 
+// ---------------------------------------------------------------------------------------------
+// Call capture state (reconciliation addendum §3.1, §3.3; G2, G4)
+// ---------------------------------------------------------------------------------------------
+
+/** `first_observed_at − started_at` above this is a late capture (the timeline `Recorded {t}` hour). */
+export const LATE_CAPTURE_MS = 60 * 60 * 1000;
+export type CallObservedReason = "recovered" | "late_capture" | null;
+export type CallCaptureState = {
+  /** Stored `terminal`; a row without the field is final. */
+  terminal: boolean;
+  /** `null` means final unless `terminal === false` (historical rows keep `null` forever). */
+  call_log_state: "provisional" | "settled" | null;
+  in_progress: boolean;
+  observed_reason: CallObservedReason;
+  capture_recovery: { kind: "added" | "completed"; at: string } | null;
+};
+type CaptureFields = { terminal?: boolean | null; call_log_state?: string | null; started_at: Date; first_observed_at?: Date | null;
+  capture_recovery?: { kind?: string | null; at?: Date | string | null } | null };
+/** The capture facts every Owner call DTO carries. Pure. */
+export function callCaptureState(call: CaptureFields): CallCaptureState {
+  const terminal = call.terminal !== false;
+  const state = call.call_log_state === "provisional" || call.call_log_state === "settled" ? call.call_log_state : null;
+  const at = iso(call.capture_recovery?.at);
+  const kind = call.capture_recovery?.kind;
+  const capture_recovery = at && (kind === "added" || kind === "completed") ? { kind: kind as "added" | "completed", at } : null;
+  const observed = call.first_observed_at instanceof Date ? +call.first_observed_at : NaN;
+  const observed_reason: CallObservedReason = capture_recovery ? "recovered"
+    : !Number.isNaN(observed) && observed - +call.started_at > LATE_CAPTURE_MS ? "late_capture" : null;
+  return { terminal, call_log_state: state, in_progress: !terminal, observed_reason, capture_recovery };
+}
+
+/**
+ * The capture keys of a `call` event's detail. They are for Owner surfaces only: the model's story
+ * page and the Case File strip them (`modelCallEvent`), so a Number with no in-progress call keeps a
+ * byte-identical model payload (addendum §3.1, the no-paid-job-storm rule).
+ */
+export const OWNER_ONLY_CALL_DETAIL_KEYS = ["terminal", "call_log_state", "in_progress", "sources", "observed_reason", "capture_recovery"] as const;
+/** True for a `call` event whose call is still in progress (`terminal: false`). */
+export const isInProgressCall = (e: Pick<StoryEvent, "kind" | "detail">) => e.kind === "call" && e.detail.terminal === false;
+/** The event as the model reads it: a `call` without the Owner-only capture keys; other kinds unchanged. Pure. */
+export function modelCallEvent(e: StoryEvent): StoryEvent {
+  if (e.kind !== "call" || !OWNER_ONLY_CALL_DETAIL_KEYS.some(key => key in e.detail)) return e;
+  const detail = { ...e.detail };
+  for (const key of OWNER_ONLY_CALL_DETAIL_KEYS) delete detail[key];
+  return { ...e, detail };
+}
+
 /** One `call` event per row, in row order, with the rep resolved through one batched link read. */
 async function callEvents(rows: CallRow[], subject: StorySubject): Promise<StoryEvent[]> {
   const userParty = (call: CallRow) => call.parties.find(p => p.role === "user" && p.connected && p.extension_id) ?? call.parties.find(p => p.role === "user" && p.extension_id) ?? null;
@@ -420,12 +467,16 @@ async function callEvents(rows: CallRow[], subject: StorySubject): Promise<Story
       extension: party?.extension_number ?? party?.extension_id ?? null };
     const identity: StoryActor["identity_status"] = rep.status === "reviewed" ? "reviewed" : rep.status === "proposed" ? "proposed" : "unknown";
     const recordings = call.recordings ?? [];
+    const capture = callCaptureState(call as CallRow & CaptureFields);
+    // An in-progress call has no final result or duration yet (G2): both stay null until it settles.
     return event({ kind: "call", id: String(call._id), happened_at: call.started_at.toISOString(), observed_at: iso(call.first_observed_at), subject_key: `number:${subject.contact_number_id}`,
       actor: call.direction === "Inbound" ? actor("customer") : actor("rep", rep.name, rep.agent_id, identity),
-      detail: { interaction_id: String(call._id), direction: call.direction, provider_result: text(call.provider_result, 60), provider_connected: bool(call.provider_connected),
-        contact_type: call.contact_type, contact_type_basis: call.contact_type_basis ?? null, duration_seconds: num(call.duration_seconds), recording_count: recordings.length,
+      detail: { interaction_id: String(call._id), direction: call.direction, provider_result: capture.terminal ? text(call.provider_result, 60) : null, provider_connected: bool(call.provider_connected),
+        contact_type: call.contact_type, contact_type_basis: call.contact_type_basis ?? null, duration_seconds: capture.terminal ? num(call.duration_seconds) : null, recording_count: recordings.length,
         rep, transfer: bool(call.transfer), queue_fanout: bool(call.queue_fanout), account_id: call.provider_account_id,
-        conversation_id: recordings.find(r => r.lead_conversation_id)?.lead_conversation_id ? String(recordings.find(r => r.lead_conversation_id)!.lead_conversation_id) : null },
+        conversation_id: recordings.find(r => r.lead_conversation_id)?.lead_conversation_id ? String(recordings.find(r => r.lead_conversation_id)!.lead_conversation_id) : null,
+        terminal: capture.terminal, call_log_state: capture.call_log_state, in_progress: capture.in_progress, sources: [...((call as { sources?: string[] }).sources ?? [])],
+        observed_reason: capture.observed_reason, capture_recovery: capture.capture_recovery },
       evidence_refs: [`interaction:${call._id}`, ...recordings.map(r => `recording:${r.provider_recording_id}`)] });
   });
 }

@@ -12,7 +12,8 @@ import { boundModelPage, collapseEvents, kindOrder } from "./catalog";
 import { findLeadCandidates, type CandidateDeps } from "./candidates";
 import { granotLeadStates } from "./granot";
 import { formatDate, renderSentence, renderStoryProse, renderTail, type RenderContext } from "./prose";
-import { leadCustomerName, leadSourceLabel, mergeConversationsIntoCalls, readLeadRows, readStoryContactNumber, STORY_SOURCES, type LeadRow } from "./sources";
+import { isInProgressCall, leadCustomerName, leadSourceLabel, mergeConversationsIntoCalls, modelCallEvent, readLeadRows, readStoryContactNumber, STORY_SOURCES,
+  type LeadRow } from "./sources";
 import type { LeadCandidate, StoryCoverage, StoryEvent, StoryLeadRef, StoryOptions, StorySubject, SubjectStory } from "./types";
 
 /**
@@ -120,6 +121,7 @@ export async function assembleSubjectStory(input: StorySubject, options: Partial
   const limit_events = Math.min(MAX_LIMIT_EVENTS, Math.max(1, Math.trunc(options.limit_events ?? DEFAULT_STORY_OPTIONS.limit_events)));
   const model_events = Math.min(MAX_MODEL_EVENTS, Math.max(1, Math.trunc(options.model_events ?? DEFAULT_STORY_OPTIONS.model_events)));
   const timezone = options.timezone ?? DEFAULT_STORY_OPTIONS.timezone;
+  const forModel = (options.purpose ?? "model") === "model";
   const { subject, edges, number } = await resolveScope(input);
   const attachedRefs = edges.filter(e => e.state === "attached").map(e => e.lead_ref);
   const hasAttached = attachedRefs.length > 0;
@@ -138,15 +140,20 @@ export async function assembleSubjectStory(input: StorySubject, options: Partial
   const coverage: StoryCoverage = { sources: {}, dropped_from_model_page: 0, from: null, to: null };
   const seen = new Set<string>();
   let merged: StoryEvent[] = [];
+  let excludedInProgress = 0;
   for (const [name, result] of results) {
     coverage.sources[name] = { read: result.read, truncated: result.truncated };
     for (const event of result.events) {
       const key = `${event.kind}:${event.id}`;
       if (seen.has(key) || Date.parse(event.happened_at) > +subject.as_of || Number.isNaN(Date.parse(event.happened_at))) continue;
       seen.add(key);
-      merged.push(event);
+      // G2: the model never reads a call that is still in progress, nor the Owner-only call capture keys.
+      if (forModel && isInProgressCall(event)) { excludedInProgress++; continue; }
+      merged.push(forModel ? modelCallEvent(event) : event);
     }
   }
+  // Only when > 0: a subject without an in-progress call keeps a byte-identical page and digest.
+  if (excludedInProgress) coverage.excluded_in_progress = excludedInProgress;
   merged.sort(compareEvents);
   merged = mergeConversationsIntoCalls(merged);
   if (merged.length > limit_events) {

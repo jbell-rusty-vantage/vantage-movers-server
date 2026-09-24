@@ -157,7 +157,7 @@ test("S4-CONV conversations: step-1 summary, legacy fallback, none; recording st
   assert.equal(result.data.other_calls.length, 1);
   assert.deepEqual({ ...result.data.other_calls[0], started_at_label: undefined }, { interaction_id: hex(0x1005), started_at: at(10).toISOString(), started_at_label: undefined,
     direction: "Inbound", direction_label: "Inbound", duration_seconds: null, rep: { name: null, status: "unknown" }, contact_type: "human_conversation",
-    contact_type_label: "Human conversation", recording_count: 1, result: "Missed" });
+    contact_type_label: "Human conversation", recording_count: 1, terminal: true, call_log_state: null, in_progress: false, result: "Missed" });
 
   const body = JSON.stringify(result);
   assert.doesNotMatch(body, /conversations\/acct|rec-\d\.mp3|blob/i);
@@ -277,4 +277,38 @@ test("S4-CONV transcript: missing conversation 404; purged, missing or retention
     assert.deepEqual(result.data.segments, []);
     assert.deepEqual(result.data.completeness, { complete: false, missing_ranges: [reason] });
   }
+});
+
+test("S5c-CALLS C16/C17: other_calls and cards carry terminal, call_log_state and in_progress; an in-progress call has no result or duration", async () => {
+  const world: World = { number: { _id: NUMBER }, calls: [], conversations: [], summaries: [], transcripts: [], links: [] };
+  // A webhook-only in-progress call (direction still Unknown), a historical call (no call_log_state, terminal true) and a settled card.
+  world.calls.push(call(1, at(30), { terminal: false, call_log_state: null, direction: "Unknown", provider_result: "Missed", duration_seconds: 42 }));
+  world.calls.push(call(2, at(20), { terminal: true, call_log_state: null, provider_result: "Missed", contact_type: "unknown" }));
+  world.calls.push(call(3, at(10), { terminal: true, call_log_state: "settled", recordings: linked(3) }));
+  world.conversations.push(conversation(3));
+  const { store } = memoryStore(world);
+  const result = await readOwnerConversations(NUMBER, {}, { ...deps, store });
+  assert.ok(result);
+  assert.doesNotThrow(() => ownerConversationsResponseSchema.parse(result));
+  const [live, historical] = result.data.other_calls;
+  assert.equal(live!.interaction_id, hex(0x1001));
+  assert.deepEqual({ terminal: live!.terminal, call_log_state: live!.call_log_state, in_progress: live!.in_progress, result: live!.result,
+    duration_seconds: live!.duration_seconds, direction: live!.direction }, { terminal: false, call_log_state: null, in_progress: true, result: null, duration_seconds: null, direction: "Unknown" });
+  // C17: call_log_state null with terminal true is final everywhere.
+  assert.deepEqual({ terminal: historical!.terminal, call_log_state: historical!.call_log_state, in_progress: historical!.in_progress, result: historical!.result,
+    duration_seconds: historical!.duration_seconds }, { terminal: true, call_log_state: null, in_progress: false, result: "Missed", duration_seconds: 62 });
+  const card = result.data.items[0]!;
+  assert.deepEqual({ terminal: card.terminal, call_log_state: card.call_log_state, in_progress: card.in_progress, duration_seconds: card.duration_seconds },
+    { terminal: true, call_log_state: "settled", in_progress: false, duration_seconds: 63 });
+  // After the settle the same call is final.
+  world.calls[0] = { ...world.calls[0]!, terminal: true, call_log_state: "settled", direction: "Inbound", provider_result: "Call connected", duration_seconds: 420 };
+  const settled = await readOwnerConversations(NUMBER, {}, { ...deps, store: memoryStore(world).store });
+  const after = settled!.data.other_calls[0]!;
+  assert.deepEqual({ in_progress: after.in_progress, result: after.result, duration_seconds: after.duration_seconds, call_log_state: after.call_log_state },
+    { in_progress: false, result: "Call connected", duration_seconds: 420, call_log_state: "settled" });
+  // A row without `terminal` (stored before the field) reads as final.
+  const legacy = { ...world.calls[1]! }; delete (legacy as { terminal?: unknown }).terminal;
+  world.calls[1] = legacy;
+  const old = await readOwnerConversations(NUMBER, {}, { ...deps, store: memoryStore(world).store });
+  assert.equal(old!.data.other_calls[1]!.in_progress, false);
 });

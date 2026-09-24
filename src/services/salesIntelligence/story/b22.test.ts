@@ -14,6 +14,11 @@ import type { StorySubject } from "./types";
  * pre-change reader file; both run over the same in-memory documents (every source, ties, slack rows,
  * undated Bookings, audit-timed cancels, truncation at small limits) and must produce identical JSON,
  * reader by reader and for the whole story page the model reads.
+ *
+ * S5c-CALLS (G2) adds Owner-only capture keys to each `call` detail (`terminal`, `call_log_state`,
+ * `in_progress`, `sources`, `observed_reason`, `capture_recovery`). The assembler strips them for the
+ * model (`modelCallEvent`), so the reader-level comparison applies the same strip; the whole-page
+ * comparison below needs none.
  */
 process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID ||= "csi-local-proof";
 const coverage = { known_through: S4_AS_OF.toISOString(), gaps: [], capabilities: {}, ai_paused: false };
@@ -44,7 +49,8 @@ test("B22: every story reader returns byte-identical output to the pre-change re
     for (const limit of [400, 25, 5, 1]) {
       for (const name of Object.keys(baseline.STORY_SOURCES)) {
         const before = JSON.stringify(await baseline.STORY_SOURCES[name]!(subject, limit));
-        const after = JSON.stringify(await current.STORY_SOURCES[name]!(subject, limit));
+        const read = await current.STORY_SOURCES[name]!(subject, limit);
+        const after = JSON.stringify({ ...read, events: read.events.map(current.modelCallEvent) });
         assert.equal(after, before, `${label} · ${name} · limit ${limit}`);
         compared++;
         events += (JSON.parse(before) as { events: unknown[] }).events.length;

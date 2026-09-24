@@ -145,12 +145,18 @@ export function toCaseCall(row: CallRow): CaseCall {
 }
 export const CALL_PROJECTION = "provider_account_id telephony_session_id direction started_at company_e164 inbound_route_id parties queue_fanout transfer duration_seconds provider_result provider_connected contact_type contact_type_basis recordings";
 
-/** The Number's canonical calls, newest `limit` at or before `as_of`, oldest first. */
-export async function readCaseCalls(numberId: string, asOf: Date, limit: number): Promise<{ calls: CaseCall[]; truncated: boolean }> {
-  if (!mongoose.isValidObjectId(numberId)) return { calls: [], truncated: false };
+/**
+ * The Number's canonical calls, newest `limit` at or before `as_of`, oldest first. A call still in
+ * progress (`terminal: false`) is not a Case File fact (G2): it is left out and its id reported in
+ * `in_progress_ids`, so the file of a Number without one is unchanged.
+ */
+export async function readCaseCalls(numberId: string, asOf: Date, limit: number): Promise<{ calls: CaseCall[]; truncated: boolean; in_progress_ids: string[] }> {
+  if (!mongoose.isValidObjectId(numberId)) return { calls: [], truncated: false, in_progress_ids: [] };
   const rows = await getCallInteractionModel().find({ contact_number_id: new mongoose.Types.ObjectId(numberId), merged_into_id: null, purged_at: null, started_at: { $lte: asOf } })
-    .select(CALL_PROJECTION).sort({ started_at: -1, _id: -1 }).limit(limit + 1).lean();
-  return { calls: (rows as unknown as CallRow[]).slice(0, limit).reverse().map(toCaseCall), truncated: rows.length > limit };
+    .select(`${CALL_PROJECTION} terminal`).sort({ started_at: -1, _id: -1 }).limit(limit + 1).lean();
+  const page = (rows as unknown as Array<CallRow & { terminal?: boolean | null }>).slice(0, limit);
+  return { calls: page.filter(row => row.terminal !== false).reverse().map(toCaseCall), truncated: rows.length > limit,
+    in_progress_ids: page.filter(row => row.terminal === false).map(row => String(row._id)) };
 }
 
 /** Links, the newest directory snapshot per account, the inbound routes and the Call Leads' qualifying calls. */
