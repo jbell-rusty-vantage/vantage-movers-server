@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createGranotObservationProcessor, wakeOutreachAfterGranotApply, type OutreachWakeDependencies } from "./processor";
+import { boundedOutreachWake, createGranotObservationProcessor, OUTREACH_WAKE_TIMEOUT_MS, wakeOutreachAfterGranotApply, type OutreachWakeDependencies } from "./processor";
 import { publishOutreachWakeup, salesIntelligenceQueueTopic } from "../numberActivity/webhookFanout";
 import { outreachChangeNomination } from "../salesIntelligence/outreach/worker";
 
@@ -79,3 +79,20 @@ test("K33: publishOutreachWakeup is a no-op in tests; with a queue it sends { jo
     recordEvent: async event => { events.push(event); return undefined as never; } }), { published: false, error_code: "publish_failed" });
   assert.equal(events.length, 1);
 });
+
+test("V-AC N2: the wake-up holds processing for at most the bound; a slow or failing wake-up never delays or fails the receipt", async () => {
+  const fast = await boundedOutreachWake(async () => undefined, OBSERVATION, 1_000);
+  assert.equal(fast, "done");
+  const started = Date.now();
+  let finished = false;
+  const slow = await boundedOutreachWake(() => new Promise(resolve => setTimeout(() => { finished = true; resolve(undefined); }, 300)), OBSERVATION, 50);
+  assert.equal(slow, "timeout");
+  assert.ok(Date.now() - started < 250, "returned at the bound, not when the wake-up finished");
+  assert.equal(finished, false, "the wake-up keeps running in the background");
+  await new Promise(resolve => setTimeout(resolve, 320));
+  assert.equal(finished, true);
+  assert.equal(await boundedOutreachWake(async () => { throw new Error("mongo down"); }, OBSERVATION, 1_000), "failed");
+  assert.equal(await boundedOutreachWake(() => { throw new Error("sync throw"); }, OBSERVATION, 1_000), "failed");
+  assert.equal(OUTREACH_WAKE_TIMEOUT_MS, 2_000);
+});
+

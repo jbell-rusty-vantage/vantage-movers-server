@@ -201,6 +201,8 @@ export type GranotLifecycleProcessorDeps = {
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
   /** AC6-WAKE seam: post-commit Outreach wake-up after a Lead EntityChange (default `wakeOutreachAfterGranotApply`). */
   wakeOutreach?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
+  /** AC6-WAKE seam: how long receipt processing waits for the wake-up (default `OUTREACH_WAKE_TIMEOUT_MS`). */
+  wakeOutreachTimeoutMs?: number;
   bookingReconciliationStore?: BookingReconciliationPersistenceStore;
   reconcileBooking?: (
     ids: { observation_id: string; decision_id: string },
@@ -230,11 +232,34 @@ export function createGranotObservationProcessor(
     async process(input) {
       const result = await processGranotObservation(input, deps);
       // AC6-WAKE: after the lifecycle transaction(s) committed. Additive and best-effort: it never
-      // changes the decision and never throws (the minute Outreach scan stays the backstop).
-      await (deps.wakeOutreach ?? wakeOutreachAfterGranotApply)(result).catch(() => undefined);
+      // changes the decision, never throws, and holds receipt finalization for at most
+      // `wakeOutreachTimeoutMs` (the minute Outreach scan stays the backstop).
+      await boundedOutreachWake(() => (deps.wakeOutreach ?? wakeOutreachAfterGranotApply)(result), result.observation_id,
+        deps.wakeOutreachTimeoutMs ?? OUTREACH_WAKE_TIMEOUT_MS);
       return result;
     },
   };
+}
+
+/**
+ * V-AC N2: the longest the drainer waits for the post-commit Outreach wake-up. Normally one indexed
+ * read, one small transaction and one publish (tens of ms). On timeout the receipt is finalized anyway;
+ * the wake-up keeps running in the background (its own failures are caught and logged) and, if it is
+ * lost with the invocation, the minute Outreach scan enqueues the same dedupe key.
+ */
+export const OUTREACH_WAKE_TIMEOUT_MS = 2_000;
+
+/** Waits for `wake` at most `timeoutMs`; never throws and never rejects. Resolves "done" | "timeout" | "failed". */
+export async function boundedOutreachWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number): Promise<"done" | "timeout" | "failed"> {
+  let timer: NodeJS.Timeout | undefined;
+  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.outreach_wakeup_${outcome}`,
+    observationId: maskLifecycleId(observationId), timeoutMs, errorName: error instanceof Error ? error.name : null });
+  const running = Promise.resolve().then(wake).then(() => "done" as const, (error: unknown) => { log("failed", error); return "failed" as const; });
+  const timeout = new Promise<"timeout">(resolve => { timer = setTimeout(() => resolve("timeout"), Math.max(0, timeoutMs)); timer.unref?.(); });
+  const outcome = await Promise.race([running, timeout]);
+  if (timer) clearTimeout(timer);
+  if (outcome === "timeout") log("timeout");
+  return outcome;
 }
 
 export type OutreachWakeDependencies = {

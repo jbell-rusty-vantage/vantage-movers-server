@@ -113,6 +113,21 @@ test("AC6-WAKE K32: Granot receipt → outreach_ensure job at commit; the minute
   assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: "^csi:outreach:entity-change:v2:" } }), before, "no new entity-change job at all");
   console.log(JSON.stringify({ k32_scan: { scanned: scan.scanned, outcomes: "outcomes" in scan ? scan.outcomes : null, statuses: afterRows.map(r => r.status) } }));
 
+  // V-AC N2: a hanging wake-up (injected) holds a real applied receipt for at most the bound.
+  {
+    const slowLead = oid(), slowRaw = `t4c-wake-slow-${slowLead}`, slowJob = { raw: slowRaw, normalized: normalizeJobNo(slowRaw)! };
+    await seedFormLead(slowLead, slowJob);
+    const slowObservation = observation(slowJob, "1");
+    await seedReceipt(slowObservation);
+    const slow = createGranotObservationProcessor({ ...liveDeps(slowObservation, String(slowLead)), wakeOutreachTimeoutMs: 100,
+      wakeOutreach: () => new Promise(resolve => setTimeout(resolve, 5_000).unref()) });
+    const started = Date.now();
+    assert.equal((await slow.process({ receipt_id: String(slowObservation.receipt_id) })).outcome, "applied");
+    const waited = Date.now() - started;
+    console.log(JSON.stringify({ n2_hanging_wake_ms: waited }));
+    assert.ok(waited < 3_000, `processing returned at the bound (${waited} ms), not after the 5 s wake-up`);
+  }
+
   // Flag off (the scan's own gate): the wake-up writes no job row.
   process.env.SALES_INTELLIGENCE_OUTREACH_ENSURE = "false";
   try {

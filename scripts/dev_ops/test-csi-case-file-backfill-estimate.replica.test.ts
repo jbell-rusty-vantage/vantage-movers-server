@@ -53,6 +53,15 @@ test("AC7-BACKFILL --estimate: cohort, re-summaries and projected cost; writes n
   await reservations.insertOne({ reservation_id: "r-sum-c1", stage: "analysis", step: `summary:${v2}:invocation:1`, observed_steps: 1, input_tokens: 12_000, output_tokens: 1_500, model_version: MODEL });
   const run = (await runs.insertOne({ ...dataset, job_id: oid(), subject_key: `number:${n1}`, analysis_pipeline: STRUCTURED_PIPELINE, status: "completed", prompt_version: "sales_intelligence_analyze_v4" })).insertedId;
   await reservations.insertOne({ reservation_id: "r-find-n1", stage: "analysis", run_id: run, step: "findings:k1:invocation:1", observed_steps: 1, input_tokens: 30_000, output_tokens: 3_000, model_version: MODEL });
+  // V-AC N4: N1's open records: one with a generated assessment (20 000 / 2 000 tokens), one never assessed (median), one in identity review (skips).
+  const records = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).db!.collection("outreach_records");
+  const rec = async (state: string) => (await records.insertOne({ subject: { kind: "lead", model: "FormLead", id: oid(), contact_number_id: null }, primary_contact_number_id: n1, state })).insertedId;
+  const assessed = await rec("open");
+  await rec("unworked");
+  await rec("identity_review");
+  await rec("closed");
+  await mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).db!.collection("move_assessment_artifacts").insertOne({ ...dataset, outreach_record_id: assessed, shadow: false,
+    subject_key: "lead:FormLead:x", input_fingerprint: "fp", schema_version: "move-assessment-v1", status: "ready", usage: { input_tokens: 20_000, output_tokens: 2_000 } });
   // N2: excluded (company). N3: already has a completed Case File (v5) number run.
   const n2 = await number("company");
   await summarySnapshot(await conversation(n2, "t4"), "k-n2");
@@ -75,9 +84,11 @@ test("AC7-BACKFILL --estimate: cohort, re-summaries and projected cost; writes n
   assert.deepEqual(estimate.summaries, { conversations: 3, re_summaries: 2, v3_cache_hits: 1, from_reservation: 1, from_transcript_length: 1, unknown: 0,
     input_tokens: 12_000 + 100 + 2_500, output_tokens: 1_500 + 1_500 });
   assert.deepEqual(estimate.findings, { numbers: 1, from_reservation: 1, defaulted: 0, input_tokens: 30_000, output_tokens: 3_000 });
+  assert.deepEqual({ ...estimate.assessments, billed_to: undefined }, { subjects: 2, skipped_identity_review: 1, from_artifact: 1, defaulted: 1, input_tokens: 40_000, output_tokens: 4_000, billed_to: undefined });
   assert.equal(estimate.pricing.source, "env");
   // (14 600 × 100 + 3 000 × 400) / 1e6 = 2.66; (30 000 × 100 + 3 000 × 400) / 1e6 = 4.2
-  assert.deepEqual(estimate.projected_cents, { summaries: 2.66, findings: 4.2, total: 6.86, conservative_total: 9.23 });
+  // Assessments: (40 000 × 100 + 4 000 × 400) / 1e6 = 5.6; conservative = 2.66 × 1.1 + (4.2 + 5.6) × 1.5 = 17.63
+  assert.deepEqual(estimate.projected_cents, { summaries: 2.66, findings: 4.2, assessments: 5.6, total: 12.46, conservative_total: 17.63 });
   assert.equal(estimate.findings_prompt_version, "sales_intelligence_analyze_v5");
   assert.equal(estimate.summary_prompt_version, "csi-summary-v3");
 });

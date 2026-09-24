@@ -242,4 +242,24 @@ test("AC1 K3/K4 fingerprint split on the replica", { skip: process.env.CSI_REPLI
     const verify = await refingerprintNumbers({ apply: false, limit: 1000 });
     console.log(JSON.stringify({ t4d4_verifier: verify.counts }));
   });
+  await t.test("V-AC N3: system_default actions no longer push a Number into the paused overflow intent", async () => {
+    const f = await fixture({ transcript: true });
+    await Actions.insertMany(Array.from({ length: 250 }, (_, i) => ({ outreach_record_id: f.record!._id, commitment_key: `t4c-n3:${f.record!._id}:${i}`, kind: "call",
+      description: "Return missed call", status: "completed", origin: "system_default", completion_basis: "call_attempt", missed_episode_key: `t4c-n3-${i}`,
+      due_at: new Date("2026-09-18T14:00:00Z") })));
+    await Actions.insertMany(Array.from({ length: 3 }, (_, i) => ({ outreach_record_id: f.record!._id, commitment_key: `t4c-n3-promise:${f.record!._id}:${i}`, kind: "call",
+      description: "Call back", status: "open", origin: "rep_promise", due_at: new Date("2026-09-19T14:00:00Z") })));
+    const jobId = await withTransaction(s => scheduleNumberIntelligence(String(f.number._id), s));
+    const job = await Jobs.findById(jobId).lean();
+    console.log(JSON.stringify({ n3: { actions: 253, dedupe_key: job?.dedupe_key, status: job?.status } }));
+    assert.match(String(job?.dedupe_key), /^csi:number-analysis:[a-f0-9]{24}:1$/, "a normal generation-1 run, not csi:number-analysis:overflow");
+    assert.equal(job?.status, "pending");
+    // 201 fingerprinted actions still overflow, exactly as before.
+    await Actions.insertMany(Array.from({ length: 198 }, (_, i) => ({ outreach_record_id: f.record!._id, commitment_key: `t4c-n3-more:${f.record!._id}:${i}`, kind: "call",
+      description: "Call back", status: "open", origin: "rep_promise", due_at: new Date("2026-09-19T14:00:00Z") })));
+    await Jobs.updateOne({ _id: jobId }, { $set: { status: "completed" } });
+    const overflow = await Jobs.findById(await withTransaction(s => scheduleNumberIntelligence(String(f.number._id), s))).lean();
+    assert.equal(overflow?.dedupe_key, `csi:number-analysis:overflow:${f.number._id}`);
+    assert.equal(overflow?.status, "paused");
+  });
 });

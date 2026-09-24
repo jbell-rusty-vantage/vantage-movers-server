@@ -97,11 +97,20 @@ export function legacyOutreachFingerprint(sources: {
   outreach: ReadonlyArray<FingerprintOutreachRecord & { responsible_agent_id?: unknown; assignment?: unknown }>;
   actions: ReadonlyArray<FingerprintOutreachAction & { promised_by_agent_id?: unknown; source_interaction_id?: unknown }>;
 }) {
+  // 01bcf18 refused more than 200 actions of any origin (EVIDENCE_LIMIT_REACHED), so it never stored a value for such a Number.
+  if (sources.actions.length > 200) return "legacy:over_action_bound";
   return payloadHash(jsonValue({ ...sources.fingerprint_base,
     outreach: sources.outreach.map(r => ({ id: String(r._id), subject: r.subject, state: r.state === "waiting_on_customer" ? "open" : r.state,
       closed_reason: r.closed_reason, owner: r.responsible_agent_id, assignment: r.assignment })),
     actions: sources.actions.map(a => ({ id: String(a._id), kind: a.kind, description: a.description, status: a.status, due: a.due_at,
       owner: a.responsible_agent_id, promised: a.promised_by_agent_id, source: a.source_interaction_id, origin: a.origin })) }));
+}
+
+/** V-AC N3: at most 200 fingerprinted actions (unchanged number), and at most `ACTION_READ_LIMIT` read in total. */
+export const FINGERPRINT_ACTION_LIMIT = 200;
+export const ACTION_READ_LIMIT = 1_000;
+export function actionsOverBound(actions: readonly Pick<FingerprintOutreachAction, "origin">[]) {
+  return actions.length > ACTION_READ_LIMIT || actions.filter(a => allowed(FINGERPRINT_ACTION_ORIGINS, a.origin)).length > FINGERPRINT_ACTION_LIMIT;
 }
 
 /** Bounded source fingerprint deliberately excludes clocks, generic updatedAt and derived analysis. */
@@ -112,10 +121,14 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
   const conversations = await getLeadConversationModel().find({ contact_number_id: numberId, latest_transcript_version: { $ne: null } }).sort({ _id: 1 }).limit(101).session(session).lean();
   const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
   const outreach = await getOutreachRecordModel().find({ primary_contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
-  const actions = await getOutreachFollowupModel().find({ outreach_record_id: { $in: outreach.map(r => r._id) } }).sort({ _id: 1 }).limit(201).session(session).lean();
+  // V-AC N3: the 200 bound counts only the actions that enter the fingerprint (allow-listed origins), so
+  // system_default missed episodes, retries and defaults cannot push a Number into the paused overflow
+  // intent. The read itself stays bounded (`ACTION_READ_LIMIT`); every action is read for the one-time
+  // legacy re-stamp (`legacyOutreachFingerprint`).
+  const actions = await getOutreachFollowupModel().find({ outreach_record_id: { $in: outreach.map(r => r._id) } }).sort({ _id: 1 }).limit(ACTION_READ_LIMIT + 1).session(session).lean();
   const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
   const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: { $in: [`number:${numberId}`, ...conversations.map(c => `conversation:${c._id}`), ...outreach.map(r => subjectKey(r.subject))] } }).sort({ _id: 1 }).limit(201).session(session).lean();
-  if (calls.length > 200 || conversations.length > 100 || edges.length > 100 || outreach.length > 100 || actions.length > 200 || restrictions.length > 100 || instructions.length > 200) throw new CsiError("EVIDENCE_LIMIT_REACHED");
+  if (calls.length > 200 || conversations.length > 100 || edges.length > 100 || outreach.length > 100 || actionsOverBound(actions) || restrictions.length > 100 || instructions.length > 200) throw new CsiError("EVIDENCE_LIMIT_REACHED");
   const identities = [];
   for (const call of calls) identities.push({ id: String(call._id), identity: (await interactionRepIdentity(call, session)).fingerprint });
   const official = [];

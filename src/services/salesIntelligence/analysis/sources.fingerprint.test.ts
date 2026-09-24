@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fingerprintOutreachInputs, type FingerprintOutreachAction, type FingerprintOutreachRecord } from "./sources";
+import { actionsOverBound, ACTION_READ_LIMIT, fingerprintOutreachInputs, legacyOutreachFingerprint, type FingerprintOutreachAction, type FingerprintOutreachRecord } from "./sources";
 import { payloadHash } from "../transactions";
 import { jsonValue } from "../outreach/store";
 
@@ -115,4 +115,20 @@ test("deterministic: identical input hashes identically; record state is out", (
   assert.equal(hash(before.outreach, before.actions), hash(structuredClone(before.outreach), structuredClone(before.actions)));
   for (const state of ["unworked", "open", "waiting_on_customer", "identity_review"])
     assert.equal(hash([record({ ...before.outreach[0], state })], before.actions), baseline);
+});
+
+test("V-AC N3: the 200-action bound counts only fingerprinted origins; the read stays bounded", () => {
+  const many = (n: number, origin: string) => Array.from({ length: n }, () => ({ origin }));
+  assert.equal(actionsOverBound(many(200, "rep_promise")), false);
+  assert.equal(actionsOverBound(many(201, "rep_promise")), true, "unchanged for fingerprinted actions");
+  assert.equal(actionsOverBound([...many(150, "owner"), ...many(51, "customer_request")]), true);
+  assert.equal(actionsOverBound(many(900, "system_default")), false, "missed episodes, retries and defaults no longer overflow a Number");
+  assert.equal(actionsOverBound([...many(200, "rep_promise"), ...many(700, "system_default")]), false);
+  assert.equal(actionsOverBound(many(ACTION_READ_LIMIT + 1, "system_default")), true, "the read itself is still bounded");
+});
+
+test("V-AC N3: the one-time legacy hash never matches a Number over the old 200-action bound", () => {
+  const actions = Array.from({ length: 201 }, (_, i) => ({ ...promise({ _id: `a${i}`, origin: "system_default" }) }));
+  assert.equal(legacyOutreachFingerprint({ fingerprint_base: base, outreach: before.outreach, actions }), "legacy:over_action_bound");
+  assert.match(legacyOutreachFingerprint({ fingerprint_base: base, outreach: before.outreach, actions: actions.slice(0, 200) }), /^[a-f0-9]{64}$/);
 });

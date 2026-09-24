@@ -54,6 +54,8 @@ import { getIntelligenceRunModel } from "../../src/models/IntelligenceRun";
 import { getIntelligenceEvidenceSnapshotModel } from "../../src/models/IntelligenceEvidenceSnapshot";
 import { getSalesIntelligenceJobModel } from "../../src/models/SalesIntelligenceJob";
 import { getSalesIntelligenceAiReservationModel } from "../../src/models/SalesIntelligenceAiReservation";
+import { getOutreachRecordModel } from "../../src/models/OutreachRecord";
+import { getMoveAssessmentArtifactModel } from "../../src/models/MoveAssessmentArtifact";
 import { enqueueCsiJob } from "../../src/services/salesIntelligence/jobs";
 import { CsiError } from "../../src/services/salesIntelligence/auth";
 import { runIntelligenceJob } from "../../src/services/salesIntelligence/analysis/worker";
@@ -144,8 +146,10 @@ export type CaseFileBackfillEstimate = {
   summaries: { conversations: number; re_summaries: number; v3_cache_hits: number; from_reservation: number; from_transcript_length: number; unknown: number;
     input_tokens: number; output_tokens: number };
   findings: { numbers: number; from_reservation: number; defaulted: number; input_tokens: number; output_tokens: number };
+  /** V-AC N4: Move assessment re-runs the refresh triggers (each run nominates the Number's open records; v2 + the new digest miss every artifact). */
+  assessments: { subjects: number; skipped_identity_review: number; from_artifact: number; defaulted: number; input_tokens: number; output_tokens: number; billed_to: string };
   pricing: { source: "env" | "reservation" | "none"; input_cents_per_million: number | null; output_cents_per_million: number | null };
-  projected_cents: { summaries: number; findings: number; total: number; conservative_total: number };
+  projected_cents: { summaries: number; findings: number; assessments: number; total: number; conservative_total: number };
   notes: string[];
 };
 
@@ -181,6 +185,10 @@ export async function estimateCaseFileBackfill(options: { limit: number; model?:
   const Reservations = getSalesIntelligenceAiReservationModel();
   const summaries = { conversations: 0, re_summaries: 0, v3_cache_hits: 0, from_reservation: 0, from_transcript_length: 0, unknown: 0, input_tokens: 0, output_tokens: 0 };
   const findings = { numbers: 0, from_reservation: 0, defaulted: 0, input_tokens: 0, output_tokens: 0 };
+  const assessments = { subjects: 0, skipped_identity_review: 0, from_artifact: 0, defaulted: 0, input_tokens: 0, output_tokens: 0,
+    billed_to: "company key and the Owner's monthly ceiling: the move_assessment jobs the runs nominate are drained by the production worker" };
+  const assessmentSamples: Array<{ input: number; output: number }> = [];
+  let pendingAssessments = 0;
   const summaryOutputs: number[] = [], findingsSamples: Array<{ input: number; output: number }> = [];
   const pendingFallback: number[] = [];
   let pendingFindings = 0;
@@ -219,6 +227,21 @@ export async function estimateCaseFileBackfill(options: { limit: number; model?:
       findings.from_reservation++; findings.input_tokens += reservation.input_tokens; findings.output_tokens += reservation.output_tokens;
       findingsSamples.push({ input: reservation.input_tokens, output: reservation.output_tokens });
     } else pendingFindings++;
+    // V-AC N4: `nominateMoveAssessmentForNumber` nominates every non-closed record on the Number (≤ 50) at the summary
+    // checkpoint; with the flag on the v2 contract and the new customer-evidence digest miss every stored artifact,
+    // so each assessable subject regenerates once. Tokens: the subject's newest generated artifact, else the median.
+    const records = await getOutreachRecordModel().find({ primary_contact_number_id: entry.number_id, state: { $ne: "closed" } }).select({ _id: 1, state: 1 }).sort({ _id: 1 }).limit(50).lean();
+    for (const record of records) {
+      if (record.state === "identity_review") { assessments.skipped_identity_review++; continue; }
+      assessments.subjects++;
+      const artifact = await getMoveAssessmentArtifactModel().findOne({ ...dataset, outreach_record_id: record._id, shadow: false, "usage.input_tokens": { $gt: 0 } })
+        .sort({ _id: -1 }).select({ usage: 1 }).lean();
+      const usage = artifact?.usage as { input_tokens?: number; output_tokens?: number } | null | undefined;
+      if (usage?.input_tokens) {
+        assessments.from_artifact++; assessments.input_tokens += usage.input_tokens; assessments.output_tokens += usage.output_tokens ?? 0;
+        assessmentSamples.push({ input: usage.input_tokens, output: usage.output_tokens ?? 0 });
+      } else pendingAssessments++;
+    }
     options.log?.(JSON.stringify({ progress: findings.numbers, of: selected.length }));
   }
   // Fallback rows take the median observed output (summaries) or the median observed findings call.
@@ -228,19 +251,25 @@ export async function estimateCaseFileBackfill(options: { limit: number; model?:
     const input = median(findingsSamples.map(s => s.input)), output = median(findingsSamples.map(s => s.output));
     findings.defaulted = pendingFindings; findings.input_tokens += pendingFindings * input; findings.output_tokens += pendingFindings * output;
   }
+  if (pendingAssessments) {
+    const input = median(assessmentSamples.map(s => s.input)), output = median(assessmentSamples.map(s => s.output));
+    assessments.defaulted = pendingAssessments; assessments.input_tokens += pendingAssessments * input; assessments.output_tokens += pendingAssessments * output;
+  }
   const summaryCents = cents(pricing, summaries.input_tokens, summaries.output_tokens), findingsCents = cents(pricing, findings.input_tokens, findings.output_tokens);
+  const assessmentCents = cents(pricing, assessments.input_tokens, assessments.output_tokens);
   const round = (n: number) => Math.round(n * 100) / 100;
   return {
     mode: "estimate", layout: "case_file", database: getMongoDatabaseName(), model,
     findings_prompt_version: CASE_FILE_FINDINGS_PROMPT_VERSION, summary_prompt_version: CASE_FILE_SUMMARY_PROMPT_VERSION, summary_cache_prompt_version_now: SUMMARY_PROMPT_VERSION,
     cohort: { numbers_selected: selected.length, numbers_skipped: skipped, truncated: selected.length >= options.limit },
-    summaries, findings,
+    summaries, findings, assessments,
     pricing: { source, input_cents_per_million: pricing?.input_cents_per_million ?? null, output_cents_per_million: pricing?.output_cents_per_million ?? null },
-    projected_cents: { summaries: round(summaryCents), findings: round(findingsCents), total: round(summaryCents + findingsCents),
-      conservative_total: round(summaryCents * 1.1 + findingsCents * 1.5) },
+    projected_cents: { summaries: round(summaryCents), findings: round(findingsCents), assessments: round(assessmentCents), total: round(summaryCents + findingsCents + assessmentCents),
+      conservative_total: round(summaryCents * 1.1 + findingsCents * 1.5 + assessmentCents * 1.5) },
     notes: [
       "Token counts are the provider-reported usage of each conversation's current summary / the Number's newest findings call; list-price cents, cache discounts ignored.",
-      "conservative_total: summaries x1.1 (call header + Vantage-side clause), findings x1.5 (Case File up to the 60 KB soft budget).",
+      "conservative_total: summaries x1.1 (call header + Vantage-side clause), findings and assessments x1.5 (Case File up to the 60 KB soft budget).",
+      "Assessments run only with SALES_INTELLIGENCE_MOVE_ASSESSMENT on; they are billed to the company key and count against the Owner's monthly ceiling, not the personal ledger.",
       "Runs that fail validation and repair once are not included (see schema_failures on recent runs).",
     ],
   };
