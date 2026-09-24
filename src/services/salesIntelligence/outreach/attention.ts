@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type mongoose from "mongoose";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { csiDataset, csiFlag } from "../../../config/domain/salesIntelligence";
@@ -8,7 +9,10 @@ import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/Sale
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { attentionRowDtoSchema, attentionPageDtoSchema, ATTENTION_SORTS, ATTENTION_SORT_DEFAULT_DIRECTION, ATTENTION_VIEWS, ATTENTION_FRESHNESS,
-  ATTENTION_CLOSED_SORTS, ATTENTION_OUTCOMES, type AttentionFilterKeysDto, type AttentionMetricsDto, type AttentionPriorityCountsDto } from "../dto";
+  ATTENTION_CLOSED_SORTS, ATTENTION_OUTCOMES, type AttentionFilterKeysDto, type AttentionMetricsDto, type AttentionPriorityCountsDto, type AttentionPublishMeta } from "../dto";
+import { getOutreachBandTransitionModel } from "../../../models/salesIntelligence/outreach";
+import { bandTransitionDocs, bandTransitionsExist, estimateBandEntry, overviewEnabled, planBandRow, primaryReason, publishMeta, samePublishMeta,
+  type BandChange, type BandMode, type PreviousBandEntry } from "./bandTransitions";
 import { attentionIndexEntry, attentionPriorityCounts, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery, sortAttentionEntries,
   type AttentionIndexEntry, type AttentionMatchContext } from "./attentionIndex";
 import { closedOutcome, outcomeReason, recordFilterKeys, type FactsCancellation, type RecordFilterKeys } from "./facts";
@@ -139,10 +143,13 @@ export function rowMatchesAttentionQuery(row: z.infer<typeof attentionRowDtoSche
   return entryMatchesAttentionQuery(attentionIndexEntry(row, 0), query, context);
 }
 
-/** Filter keys of one published row: the record's (`recordFilterKeys`) plus the derived band, review badge and state. */
-export function attentionFilterKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "derived" | "outreach">, record: RecordFilterKeys): AttentionFilterKeysDto {
+/**
+ * Filter keys of one published row: the record's (`recordFilterKeys`) plus the derived band, review badge and state.
+ * S9-PUBLISH (unflagged, T3-S9-INTERFACE §1): `responsible` is the record's `responsible_agent_id`, `overdue` is `derived.overdue`.
+ */
+export function attentionFilterKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "derived" | "outreach">, record: RecordFilterKeys, responsible: unknown = null): AttentionFilterKeysDto {
   return { band: row.derived.attention_band ?? null, needs_review: Boolean(row.derived.review_badges?.length), state: row.outreach?.state ?? null, ...record,
-    live_call: Boolean(row.outreach?.live_call) };
+    live_call: Boolean(row.outreach?.live_call), responsible: responsible == null || responsible === "" ? null : String(responsible), overdue: Boolean(row.derived.overdue) };
 }
 
 const DAY_MS = 86_400_000;
@@ -253,8 +260,16 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const v2 = options.attentionV2 ?? attentionV2Enabled();
   const closedSince = +now - ATTENTION_CLOSED_RETENTION_MS, receivedSince = +now - METRICS_WINDOW_MS;
   let leadsReceived7d = 0;
-  const [policy, coverage, queued] = await Promise.all([resolvePolicy(), readCaptureCoverage(),
-    getSalesIntelligenceJobModel().distinct("subject_key", { ...csiDataset(), stage: "move_assessment", status: { $in: ["pending", "leased", "retry"] } })]);
+  // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): the previous snapshot's index is read once, beside the other publish-wide reads.
+  const overview = overviewEnabled();
+  const [policy, coverage, queued, previous] = await Promise.all([resolvePolicy(), readCaptureCoverage(),
+    getSalesIntelligenceJobModel().distinct("subject_key", { ...csiDataset(), stage: "move_assessment", status: { $in: ["pending", "leased", "retry"] } }),
+    overview ? previousSnapshotForBands(now) : Promise.resolve(null)]);
+  const meta = overview ? publishMeta(policy.version) : null;
+  // Baseline once: the first OVERVIEW publish (no previous `publish_meta`) when no transition row exists yet (reconciliation §4.3).
+  const bandMode: BandMode | null = !overview ? null : previous?.publish_meta ? "compare" : !(await bandTransitionsExist()) ? "baseline" : previous ? "compare" : "estimate_only";
+  const metaChanged = Boolean(previous && meta && !samePublishMeta(previous.publish_meta, meta));
+  const bandChanges: BandChange[] = [];
   const pendingAssessments = new Set(queued.map(String));
   const rows: z.infer<typeof attentionRowDtoSchema>[] = [];
   const closedRows: z.infer<typeof attentionRowDtoSchema>[] = [];
@@ -292,17 +307,26 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
         const facts = outreach.facts!;
         const recordKeys = recordFilterKeys({ record, followups: bundle.actions }, facts, outcome);
         if (active) {
-          const row = { subject_key: key, subject: outreach.subject, outreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions };
+          let activeOutreach = outreach;
+          if (bandMode) {
+            // S9-PUBLISH: `band_since` carried from the previous row, `as_of` on a band change, or the baseline estimate; one change row at most.
+            const band = outreach.derived.attention_band ?? null, reason = primaryReason(band, outreach.derived.reasons);
+            const plan = planBandRow({ mode: bandMode, previous: previous?.entries.get(key), record_id: String(record._id), subject_key: key, band, reason,
+              revision: record.revision, asOf: now, estimate: () => estimateBandEntry({ record, actions: bundle.actions, band, reason, policy, asOf: now }) });
+            activeOutreach = { ...outreach, band_since: plan.band_since };
+            if (plan.change) bandChanges.push(plan.change);
+          }
+          const row = { subject_key: key, subject: outreach.subject, outreach: activeOutreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions };
           // The active row never names a closure outcome, even for badge-only closed work.
           rows.push({ ...row, sort_keys: attentionSortKeys(row), in_attention: inAttention, partition: "active",
-            filter_keys: attentionFilterKeys(row, { ...recordKeys, outcome: null, closed_at: null }) });
+            filter_keys: attentionFilterKeys(row, { ...recordKeys, outcome: null, closed_at: null }, record.responsible_agent_id) });
         }
         if (closedKeep && outcome) {
           // §2.3: the closed card reduces to `Open`, which keeps 90 days of history inside the inline budget.
           const closed = { ...outreach, followups: [], allowed_actions: [] };
           const row = { subject_key: key, subject: outreach.subject, outreach: closed, derived: outreach.derived, allowed_actions: [] };
           closedRows.push({ ...row, sort_keys: { ...attentionSortKeys(row), closed: outcome.closed_at, time_to_close: outcome.time_to_close_ms }, in_attention: false,
-            partition: "closed", filter_keys: attentionFilterKeys(row, recordKeys), outcome });
+            partition: "closed", filter_keys: attentionFilterKeys(row, recordKeys, record.responsible_agent_id), outcome });
         }
       }
     }
@@ -326,7 +350,8 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     rows.push(attentionRowDtoSchema.parse({ subject_key: review.subject_key, subject, outreach: null, allowed_actions: [], derived,
       sort_keys: { next_action_due: null, lead_received: null, last_human_contact: null, last_lead_progress: null, ...assessmentSortKeys(null), last_call: null, interactions: null }, in_attention: true,
       partition: "active", filter_keys: { band: null, needs_review: true, state: null, agents: [], attachment: subject.kind === "lead" ? "lead" : "none", priority: subject.kind === "lead" ? null : "no_lead",
-        has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null, live_call: false } }));
+        has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null, live_call: false,
+        responsible: null, overdue: false } }));
     published.add(review.subject_key);
   }
   // Team 4 §5.1/§5.2 (flag on): band 1 orders by the promised callbacks it is in for, band 3 by missed-call
@@ -348,6 +373,10 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const encoded = z.array(attentionRowDtoSchema).parse(jsonValue([...rows, ...closedRows]));
   const snapshot_id = `outreach:${randomUUID()}`;
   const expires_at = null;
+  // S9-PUBLISH: causes of the changed rows (one audit `$in`; one `call_interactions` `$in` only when a call moved a band).
+  if (bandChanges.length && Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
+  const transitionDocs = bandChanges.length ? await bandTransitionDocs(bandChanges, { since: previous?.as_of ?? null, asOf: now, metaChanged, snapshotId: snapshot_id }) : [];
+  const s9Header = meta ? { publish_meta: meta } : {};
   const header = { snapshot_id, owner_id: "system", filter_digest: payloadHash({}), policy_version: policy.version, ...csiDataset(), as_of: now, expires_at, chunk_index: null, parent_snapshot_id: null };
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
   const compressed = options.layout === "chunked" ? null : compressAttentionRows(encoded);
@@ -363,11 +392,11 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const counts = { total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}) };
   await withTransaction(async session => {
     if (compressed) {
-      await Snapshot.create([{ ...header, ...v2Header, rows: [], rows_gzip_base64: compressed, counts }], { session });
+      await Snapshot.create([{ ...header, ...v2Header, ...s9Header, rows: [], rows_gzip_base64: compressed, counts }], { session });
     } else if (inline) {
-      await Snapshot.create([{ ...header, ...v2Header, rows: encoded, counts }], { session });
+      await Snapshot.create([{ ...header, ...v2Header, ...s9Header, rows: encoded, counts }], { session });
     } else {
-      await Snapshot.create([{ ...header, ...v2Header, rows: [], counts: { ...counts, chunks: chunks!.length } }], { session });
+      await Snapshot.create([{ ...header, ...v2Header, ...s9Header, rows: [], counts: { ...counts, chunks: chunks!.length } }], { session });
       await Snapshot.insertMany(chunks!.map((part, chunk_index) => ({ ...header, snapshot_id: `${snapshot_id}:chunk:${chunk_index}`, parent_snapshot_id: snapshot_id, chunk_index, rows: part, counts: { total_items: part.length } })), { session });
     }
     // Privileged cache-lifecycle update only: never mutate immutable rows or
@@ -375,8 +404,15 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     // The transaction leaves the previous list untouched if publication fails.
     await Snapshot.collection.updateMany({ ...csiDataset(), as_of: { $lt: now }, expires_at: null },
       { $set: { expires_at: new Date(Date.now() + ATTENTION_FRESH_MS) } }, { session });
+    // S9-PUBLISH: the band history commits with the snapshot it compares against, so a failed publish writes none.
+    if (transitionDocs.length) await getOutreachBandTransitionModel().insertMany(transitionDocs, { session });
   });
-  return { status: "published", snapshot_id, total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}) };
+  if (overview) {
+    // Warm the parsed cache with this snapshot, so the next publish (and reads) on this instance skip the payload read.
+    rememberParsedSnapshot(parsedSnapshotKey(snapshot_id), { entries: indexEntries ?? encoded.map((row, position) => attentionIndexEntry(row, position)),
+      rows: indexEntries && chunks ? null : encoded, loadRows: () => encoded, chunks: new Map() });
+  }
+  return { status: "published", snapshot_id, total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}), ...(overview ? { band_transitions: transitionDocs.length } : {}) };
 }
 /** Cursor digest: the default request keeps the pre-sort `filters` shape; anything else binds sort, direction, view and `fresh`. */
 export function attentionCursorDigest(input: Omit<AttentionQuery, "cursor" | "limit" | "direction"> & { direction: "asc" | "desc" }) {
@@ -409,6 +445,61 @@ function rememberParsedSnapshot(key: string, value: ParsedSnapshot) {
 export function clearParsedAttentionSnapshots() {
   PARSED_SNAPSHOTS.clear();
 }
+/**
+ * The parsed payload of one snapshot header (read without its payload): from the process cache when warm, else its
+ * index (or its rows, inline or chunked) is loaded and parsed once and remembered. Null when the payload or a chunk
+ * is missing. Shared by `readAttention` and the S9 band-transition comparison in the publish.
+ */
+async function parsedSnapshotFor(snapshot: { _id: mongoose.Types.ObjectId; snapshot_id: string; counts?: { chunks?: number } | Record<string, number> | null }): Promise<ParsedSnapshot | null> {
+  const cacheKey = parsedSnapshotKey(snapshot.snapshot_id);
+  const cached = PARSED_SNAPSHOTS.get(cacheKey);
+  if (cached) return cached;
+  const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
+  const chunkCount = (snapshot.counts as { chunks?: number } | null | undefined)?.chunks ?? 0;
+  const payload = await Snapshot.findOne({ _id: snapshot._id }).select("rows rows_gzip_base64 index_gzip_base64").lean();
+  if (!payload) return null;
+  const encodedRows = payload.rows_gzip_base64 ?? null, plainRows = Array.isArray(payload.rows) ? payload.rows as StoredRow[] : [];
+  const encodedIndex = (payload as { index_gzip_base64?: string | null }).index_gzip_base64;
+  const inlineRows = () => (encodedRows ? decompressAttentionRows(encodedRows) : plainRows) as StoredRow[];
+  let parsed: ParsedSnapshot;
+  if (encodedIndex) {
+    parsed = { entries: decodeAttentionIndex(encodedIndex), rows: null, loadRows: inlineRows, chunks: new Map() };
+  } else {
+    let stored = inlineRows();
+    if (chunkCount > 0) {
+      const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
+      if (parts.length !== chunkCount) return null;
+      stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
+    }
+    parsed = { entries: stored.map((row, position) => attentionIndexEntry(row, position)), rows: stored, loadRows: () => stored, chunks: new Map() };
+  }
+  rememberParsedSnapshot(cacheKey, parsed);
+  return parsed;
+}
+/** The newest bindable snapshot header (chunk siblings excluded), without its payload. */
+function latestSnapshotHeader(now: Date, snapshotId?: string) {
+  return getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+    $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] },
+      { chunk_index: null }] }).select(ATTENTION_PAYLOAD_EXCLUDED).sort({ as_of: -1 }).lean();
+}
+/**
+ * S9-PUBLISH: the previous snapshot as the band comparison needs it: one header read, and its index from the
+ * parsed cache when warm (the publish warms it with its own entries). Null before the first publish.
+ */
+async function previousSnapshotForBands(now: Date) {
+  const header = await latestSnapshotHeader(now);
+  if (!header) return null;
+  const parsed = await parsedSnapshotFor(header);
+  if (!parsed) return null;
+  const entries = new Map<string, PreviousBandEntry>();
+  for (const entry of parsed.entries) {
+    if (entry.partition !== "active") continue;
+    const band = entry.filter_keys.band ?? null;
+    entries.set(entry.subject_key, { band, reason: primaryReason(band, entry.reasons), ...(entry.band_since !== undefined ? { band_since: entry.band_since } : {}),
+      ...(entry.revision !== undefined ? { revision: entry.revision } : {}) });
+  }
+  return { as_of: header.as_of, snapshot_id: header.snapshot_id, publish_meta: (header as { publish_meta?: AttentionPublishMeta | null }).publish_meta ?? null, entries };
+}
 /** No writes on GET, including pagination; cursors bind immutable as-of rows and filters. */
 export async function readAttention(raw: z.input<typeof attentionQuerySchema>, deps: { coverage?: typeof readCaptureCoverage; now?: Date } = {}) {
   const now = deps.now ?? new Date(), coverage = deps.coverage ?? readCaptureCoverage;
@@ -431,9 +522,7 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
   // The header is read without its payload; the parsed payload comes from the in-process cache when this
   // instance has already read this snapshot (B8), otherwise it is loaded and parsed once below.
-  const snapshot = await Snapshot.findOne({ ...csiDataset(), ...(page ? { snapshot_id: page.snapshot_id } : {}),
-    $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] },
-      { chunk_index: null }] }).select(ATTENTION_PAYLOAD_EXCLUDED).sort({ as_of: -1 }).lean();
+  const snapshot = await latestSnapshotHeader(now, page?.snapshot_id);
   const pending = async () => attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
   if (!snapshot) {
     if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
@@ -445,28 +534,8 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   // index on the header the read filters, sorts and counts over the index and
   // materializes only the page (inline: the row array once; chunked: only the
   // chunks the page names). A snapshot without an index is read as before.
-  const chunkCount = snapshot.counts?.chunks ?? 0;
-  const cacheKey = parsedSnapshotKey(snapshot.snapshot_id);
-  let parsed = PARSED_SNAPSHOTS.get(cacheKey);
-  if (!parsed) {
-    const payload = await Snapshot.findOne({ _id: snapshot._id }).select("rows rows_gzip_base64 index_gzip_base64").lean();
-    if (!payload) return pending();
-    const encodedRows = payload.rows_gzip_base64 ?? null, plainRows = Array.isArray(payload.rows) ? payload.rows as StoredRow[] : [];
-    const encodedIndex = (payload as { index_gzip_base64?: string | null }).index_gzip_base64;
-    const inlineRows = () => (encodedRows ? decompressAttentionRows(encodedRows) : plainRows) as StoredRow[];
-    if (encodedIndex) {
-      parsed = { entries: decodeAttentionIndex(encodedIndex), rows: null, loadRows: inlineRows, chunks: new Map() };
-    } else {
-      let stored = inlineRows();
-      if (chunkCount > 0) {
-        const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id }).sort({ chunk_index: 1 }).lean();
-        if (parts.length !== chunkCount) return pending();
-        stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
-      }
-      parsed = { entries: stored.map((row, position) => attentionIndexEntry(row, position)), rows: stored, loadRows: () => stored, chunks: new Map() };
-    }
-    rememberParsedSnapshot(cacheKey, parsed);
-  }
+  const parsed = await parsedSnapshotFor(snapshot);
+  if (!parsed) return pending();
   const entries = parsed.entries;
   // Filter, then sort the whole frozen snapshot, then paginate (§14.1). Attention order is the stored band order.
   const context = { as_of: snapshot.as_of };

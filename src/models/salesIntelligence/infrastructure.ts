@@ -5,7 +5,7 @@ import {
   intelligenceFindingSchema,
 } from "../../validation/intelligence/intelligenceEnvelope.validation";
 import { csiPolicySchema } from "../../validation/v1/salesIntelligence";
-import { attentionMetricsDtoSchema, attentionPriorityCountsDtoSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
+import { attentionMetricsDtoSchema, attentionPriorityCountsDtoSchema, attentionPublishMetaSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
 import { z } from "zod";
 import {
   defineCsiModel,
@@ -339,6 +339,11 @@ export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
       type: Schema.Types.Mixed,
       default: null,
       validate: { validator: (v: unknown) => v == null || attentionPriorityCountsDtoSchema.safeParse(v).success, message: "Invalid Attention priority counts" },
+    },
+    // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): `{ policy_version, flags }`. No default, so flag-off headers stay byte-identical.
+    publish_meta: {
+      type: Schema.Types.Mixed,
+      validate: { validator: (v: unknown) => v == null || attentionPublishMetaSchema.safeParse(v).success, message: "Invalid Attention publish meta" },
     },
   },
   { collection: "sales_intelligence_attention_snapshots" },

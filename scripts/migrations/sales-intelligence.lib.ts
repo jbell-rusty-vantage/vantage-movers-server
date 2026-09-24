@@ -8,6 +8,7 @@ import {
 import type { CsiIndex } from "../../src/models/salesIntelligence/common";
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
 import { GRANOT_OBSERVATION_INDEXES } from "../../src/models/GranotObservation";
+import { OUTREACH_BAND_TRANSITION_INDEXES } from "../../src/models/salesIntelligence/outreach";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 export type AccountMapping = {
@@ -25,6 +26,8 @@ export function csiIndexInventory(): Array<{
       indexes: v.indexes,
     })),
     { collection: "lead_conversations", indexes: LEAD_CONVERSATION_INDEXES },
+    // S9-PUBLISH (addendum §6.3): band history, `{ record_id: 1, at: -1 }` and `{ at: 1 }`.
+    { collection: "outreach_band_transitions", indexes: OUTREACH_BAND_TRANSITION_INDEXES },
     // CSI-owned additions only; the Lead collections' own indexes are not
     // managed here (14 §3 attachment reverse lookup).
     { collection: "form_leads", indexes: FORM_LEAD_ATTACHMENT_INDEXES },

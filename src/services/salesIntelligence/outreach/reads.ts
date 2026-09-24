@@ -1,3 +1,4 @@
+import { overviewEnabled, readDetailBandSince } from "./bandTransitions";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { z } from "zod";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
@@ -491,8 +492,10 @@ export async function readOutreach(id: string) {
     getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean(),
     loadOutreachInputs(record, now), nudgeHistoryPage({ outreach_record_id: id, limit: 20 }), newestCompletedRun(numberId)]);
   const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]), { now });
-  const outreach = outreachDetailDtoSchema.parse({ ...await toOutreachDto(record, now, coverage, { policy, inputs, side }),
-    ...outreachDetailAdditions(record, side, inputs.number, run) });
+  const base = await toOutreachDto(record, now, coverage, { policy, inputs, side });
+  // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): `band_since` from the record's newest band transition (one indexed read).
+  const bandSince = overviewEnabled() ? { band_since: await readDetailBandSince(String(record._id), base.derived.attention_band ?? null) } : {};
+  const outreach = outreachDetailDtoSchema.parse({ ...base, ...bandSince, ...outreachDetailAdditions(record, side, inputs.number, run) });
   return { as_of: now.toISOString(), coverage, data: { outreach, owner_instructions: instructions, nudges } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {

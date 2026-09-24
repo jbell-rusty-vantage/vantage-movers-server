@@ -359,3 +359,65 @@ export const getOutreachFollowupModel = defineCsiModel(
   OutreachFollowupSchema,
   OUTREACH_FOLLOWUP_INDEXES,
 );
+/**
+ * S9-PUBLISH (assignment addendum §6.3, reconciliation §4.3 / G8; SALES_INTELLIGENCE_OVERVIEW): band history.
+ * Append-only; the Attention publish writes one row when a record's band or primary reason differs from the
+ * previous snapshot row (one bounded `insertMany` in the publish transaction), plus the one-time `baseline`
+ * rows (`estimated: true`). Retention matches the audit rows (no TTL). `band_since` is the record's time in
+ * its `to_band` as of this row (carried across reason-only changes), so the detail reads it from the newest row.
+ */
+export const OUTREACH_BAND_TRANSITION_CAUSES = [
+  "call",
+  "lead_progress",
+  "followup",
+  "owner",
+  "clock",
+  "booking",
+  "capture_repair",
+  "policy",
+  "baseline",
+] as const;
+export const OUTREACH_BAND_TRANSITION_INDEXES = [
+  index("band_transition_record_at", { record_id: 1, at: -1 }),
+  index("band_transition_at", { at: 1 }),
+];
+const band = { type: Number, default: null, min: 1, max: 7 } as const;
+export const OutreachBandTransitionSchema = new Schema(
+  {
+    record_id: oid,
+    subject_key: str,
+    from_band: band,
+    to_band: band,
+    from_reason: text,
+    to_reason: text,
+    at,
+    estimated: { type: Boolean, required: true },
+    cause: {
+      type: new Schema(
+        {
+          kind: enumeration(OUTREACH_BAND_TRANSITION_CAUSES),
+          event_kind: text,
+          target_id: text,
+          audit_id: ref,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      required: true,
+    },
+    snapshot_id: str,
+    band_since: {
+      type: new Schema(
+        { at, estimated: { type: Boolean, required: true } },
+        { _id: false, strict: "throw" },
+      ),
+      default: null,
+    },
+  },
+  { collection: "outreach_band_transitions" },
+);
+export const getOutreachBandTransitionModel = defineCsiModel(
+  "OutreachBandTransition",
+  OutreachBandTransitionSchema,
+  OUTREACH_BAND_TRANSITION_INDEXES,
+  true,
+);

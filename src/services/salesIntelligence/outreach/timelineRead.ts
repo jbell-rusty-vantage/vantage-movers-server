@@ -17,8 +17,12 @@ import { decodeTimelineCursor, encodeTimelineCursor } from "../../numberActivity
 import type { CoverageDto } from "../dto";
 import { customerLabel } from "../story/assemble";
 import { renderTimelineSentence, renderTimelineTitle, type RenderContext } from "../story/prose";
+import { getOutreachBandTransitionModel } from "../../../models/salesIntelligence/outreach";
+import { overviewEnabled, type BandTransitionRow } from "./bandTransitions";
 import {
   compareTimelineOrder,
+  isAfterStoryCursor,
+  keysetScan,
   readLeadRows,
   STORY_SOURCES,
   subjectKeysFor,
@@ -50,6 +54,18 @@ import type { StoryEvent, StoryLeadRef, StorySubject } from "../story/types";
  * here against the response `as_of`.
  */
 const DEFAULT_LIMIT = 50;
+/**
+ * S9-PUBLISH (addendum §6.3, T3-S9-INTERFACE §7; SALES_INTELLIGENCE_OVERVIEW): a band change from `outreach_band_transitions`.
+ * Emitted only by this reader (never on the model's page or the Case File); its `kind_order` is the unknown-kind order.
+ */
+export const BAND_CHANGED = "band_changed";
+/** Routine (under Processing details) unless a call, a recovered call or an Owner action moved the band. */
+const BAND_ATTENTION_CAUSES = new Set(["call", "capture_repair", "owner"]);
+const BAND_CAUSE_TEXT: Readonly<Record<string, string>> = {
+  call: "a call", capture_repair: "a call recovered by a capture repair", lead_progress: "Lead progress in Granot", followup: "a follow-up change",
+  owner: "an Owner action", clock: "time passing", booking: "an official Booking or closure", policy: "a policy or settings change",
+};
+const bandName = (band: unknown) => (typeof band === "number" ? `band ${band}` : "no band");
 const MAX_LIMIT = 200;
 const SUBJECT_CAP = 100;
 const HOUR_MS = 60 * 60 * 1000;
@@ -72,7 +88,7 @@ export const timelineV2QuerySchema = z
     return { cursor, limit, kinds: list.length ? [...new Set(list)] : null };
   })
   .superRefine((q, ctx) => {
-    for (const kind of q.kinds ?? []) if (!TIMELINE_KINDS.includes(kind)) ctx.addIssue({ code: "custom", message: `unknown timeline kind ${kind}`, path: ["kinds"] });
+    for (const kind of q.kinds ?? []) if (!TIMELINE_KINDS.includes(kind) && !(kind === BAND_CHANGED && overviewEnabled())) ctx.addIssue({ code: "custom", message: `unknown timeline kind ${kind}`, path: ["kinds"] });
   });
 export type TimelineV2Query = z.infer<typeof timelineV2QuerySchema>;
 
@@ -244,8 +260,54 @@ function callFacts(e: StoryEvent): TimelineV2EventDto["call"] {
   };
 }
 
+/** One transition row → a `band_changed` story event (timeline only). */
+export function bandTransitionEvent(row: BandTransitionRow): StoryEvent {
+  const id = String(row._id);
+  return {
+    id: `${BAND_CHANGED}:${id}`, kind: BAND_CHANGED as StoryEvent["kind"], happened_at: row.at.toISOString(), observed_at: (row.createdAt ?? row.at).toISOString(),
+    subject_key: row.subject_key, actor: { kind: row.cause.kind === "owner" ? "owner" : "worker", agent_id: null, name: null, identity_status: null },
+    record: { record_type: "story_event", record_id: `${BAND_CHANGED}:${id}` }, sentence: "",
+    detail: { record_id: String(row.record_id), from_band: row.from_band, to_band: row.to_band, from_reason: row.from_reason, to_reason: row.to_reason,
+      estimated: row.estimated, cause: { kind: row.cause.kind, event_kind: row.cause.event_kind, target_id: row.cause.target_id, audit_id: row.cause.audit_id ? String(row.cause.audit_id) : null },
+      band_since: row.band_since ? { at: row.band_since.at.toISOString(), estimated: row.band_since.estimated } : null },
+    evidence_refs: [`band_transition:${id}`, ...(row.cause.audit_id ? [`audit:${String(row.cause.audit_id)}`] : [])],
+  };
+}
+function bandTitle(e: StoryEvent): string {
+  const d = e.detail as { from_band?: unknown; to_band?: unknown; cause?: { kind?: string } };
+  return d.cause?.kind === "baseline" ? `In ${bandName(d.to_band)} (estimated start)` : `Moved from ${bandName(d.from_band)} to ${bandName(d.to_band)}`;
+}
+function bandSentence(e: StoryEvent): string {
+  const d = e.detail as { to_reason?: unknown; cause?: { kind?: string } };
+  const reason = typeof d.to_reason === "string" ? ` (${d.to_reason.replace(/_/g, " ")})` : "";
+  if (d.cause?.kind === "baseline") return `Estimated when the record entered ${bandName((e.detail as { to_band?: unknown }).to_band)}${reason}, from its history when band tracking started.`;
+  return `The Attention band changed${reason} after ${BAND_CAUSE_TEXT[d.cause?.kind ?? "clock"] ?? "time passing"}.`;
+}
+
+/**
+ * Timeline reader of `band_changed` (flag on): keyset on `{ record_id, at }` over the subject's records, exact under the
+ * shared cursor (one event per row, `happened_at` = `at`, id order = `_id` order).
+ */
+async function bandTransitionSource(asOf: Date, limit: number, t: TimelineReadContext): Promise<SourceResult> {
+  if (!t.records.length) return { events: [], read: 0, truncated: false };
+  const ids = t.records.map(r => r._id);
+  const upper = new Date(Math.min(+asOf, t.after ? Date.parse(t.after.happened_at) : Number.POSITIVE_INFINITY));
+  return keysetScan<BandTransitionRow>({
+    query: (window, batch) => getOutreachBandTransitionModel().find({ record_id: { $in: ids }, ...window }).sort({ at: -1, _id: -1 }).limit(batch).lean().exec() as unknown as Promise<BandTransitionRow[]>,
+    field: "at", indexed: row => row.at, toEvents: rows => rows.map(bandTransitionEvent),
+    accept: e => Date.parse(e.happened_at) <= +asOf && (t.kinds === null || t.kinds.has(e.kind)) && isAfterStoryCursor(e, t.after),
+    limit, upper, aheadMs: 0, tieSafe: true });
+}
+
 /** The adapter (data spec §5.2 step 4): one `StoryEvent` → one timeline v2 event DTO. Pure. */
 export function storyEventToTimelineDto(e: StoryEvent, ctx: AdapterContext): TimelineV2EventDto {
+  if (e.kind === (BAND_CHANGED as StoryEvent["kind"])) {
+    const cause = (e.detail as { cause?: { kind?: string } }).cause?.kind ?? "clock";
+    return { id: e.id, kind: e.kind, kind_order: timelineKindOrder(e.kind), group: "work", happened_at: e.happened_at, observed_at: e.observed_at,
+      recorded_late: isRecordedLate(e.happened_at, e.observed_at), subject_key: e.subject_key, title: bandTitle(e), description: bandSentence(e),
+      evidence_refs: [...e.evidence_refs], detail: jsonSafe(e.detail), chips: [], action: null, routine: !BAND_ATTENTION_CAUSES.has(cause), job_no: null,
+      actor: { kind: e.actor.kind, agent_id: e.actor.agent_id, name: e.actor.name }, call: null };
+  }
   const leadId = ctx.job_no_by_lead && JOB_KINDS.has(e.kind) ? leadIdOf(e) : null;
   const job_no = ctx.job_no_by_lead && JOB_KINDS.has(e.kind)
     ? str(e.detail.job_no) ?? (leadId ? ctx.job_no_by_lead.get(leadId) ?? null : null)
@@ -303,7 +365,10 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
     leads: resolved.leads,
   };
   const names = kinds ? [...new Set(kinds.map(k => TIMELINE_SOURCE_BY_KIND[k]).filter((n): n is string => Boolean(n)))] : Object.keys(STORY_SOURCES);
-  const results = await Promise.all(names.map(async name => [name, await STORY_SOURCES[name]!(subject, limit, { timeline: ctx })] as const));
+  // S9-PUBLISH: the band reader runs only with SALES_INTELLIGENCE_OVERVIEW on, so a flag-off timeline is byte-identical.
+  const bands = overviewEnabled() && (!kinds || kinds.includes(BAND_CHANGED));
+  const results = await Promise.all([...names.map(async name => [name, await STORY_SOURCES[name]!(subject, limit, { timeline: ctx })] as const),
+    ...(bands ? [(async () => ["band_transitions", await bandTransitionSource(asOf, limit, ctx)] as const)()] : [])]);
   const merged = mergeTimelinePages(results.map(([, r]) => r), limit);
   const multiLead = resolved.scope === "number" && subject.lead_refs.length > 1;
   const adapter: AdapterContext = {

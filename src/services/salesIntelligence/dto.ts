@@ -529,6 +529,10 @@ export const attentionFilterKeysDtoSchema = z
     closed_at: date.nullable(),
     // S5c-LIVE (G3): `outreach.live_call` is set at publish; absent on snapshots published before it.
     live_call: z.boolean().optional(),
+    // S9-PUBLISH (T3-S9-INTERFACE §1, unflagged): the record's `responsible_agent_id` (open assignments per rep;
+    // `agents` stays the E11 union) and `derived.overdue`. Absent on snapshots published before S9.
+    responsible: id.nullable().optional(),
+    overdue: z.boolean().optional(),
   })
   .strict();
 export type AttentionFilterKeysDto = z.infer<typeof attentionFilterKeysDtoSchema>;
@@ -555,6 +559,12 @@ export type AttentionMetricsDto = z.infer<typeof attentionMetricsDtoSchema>;
  * `attention` = Needs Attention, `active` = All Outreach, `closed` = the Closed view. A chip's count
  * equals the rows that view returns for `priority=<key>` with no other filter.
  */
+/**
+ * S9-PUBLISH (T3-S9-INTERFACE §2; SALES_INTELLIGENCE_OVERVIEW): the policy version and the flags that shape bands, stored
+ * on the snapshot header. A band change with an unchanged record revision under a different `publish_meta` is a `policy` transition.
+ */
+export const attentionPublishMetaSchema = z.object({ policy_version: z.string(), flags: z.record(z.string(), z.boolean()) }).strict();
+export type AttentionPublishMeta = z.infer<typeof attentionPublishMetaSchema>;
 export const attentionPriorityCountsDtoSchema = z.record(z.string(), z.object({ attention: nonnegative, active: nonnegative, closed: nonnegative }).strict());
 export type AttentionPriorityCountsDto = z.infer<typeof attentionPriorityCountsDtoSchema>;
 /**
@@ -607,6 +617,8 @@ export const liveCallDtoSchema = z
   })
   .strict();
 export type LiveCallDto = z.infer<typeof liveCallDtoSchema>;
+export const bandSinceDtoSchema = z.object({ at: date, estimated: z.boolean() }).strict();
+export type BandSinceDto = z.infer<typeof bandSinceDtoSchema>;
 export const outreachDtoSchema = z
   .object({
     id,
@@ -625,6 +637,9 @@ export const outreachDtoSchema = z
       ended_at: date.nullable(), ended_by: z.string().nullable(), note: z.string().nullable() }).strict().nullable().optional(),
     // S5c-LIVE (G3): server-derived "On the call"; optional so snapshots published before it still parse.
     live_call: liveCallDtoSchema.nullable().optional(),
+    // S9-PUBLISH (addendum §6.3, reconciliation §4.3; SALES_INTELLIGENCE_OVERVIEW): since when the record has been in its
+    // current band. `estimated` for the one-time baseline estimate. Null without a band; absent with the flag off.
+    band_since: bandSinceDtoSchema.nullable().optional(),
     // Move assessment §8.1: compact projection with read-time applicability; absent/null reads as Not assessed.
     move_assessment: outreachMoveAssessmentDtoSchema.nullable().optional(),
     // Data spec §3.3 (S1): card facts at the response's `as_of`. Optional so snapshots published

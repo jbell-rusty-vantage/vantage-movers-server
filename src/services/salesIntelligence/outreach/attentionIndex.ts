@@ -27,6 +27,12 @@ export type AttentionIndexEntry = {
   chunk_index: number | null;
   position: number;
   legacy?: true;
+  /**
+   * S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): the active row's `outreach.band_since` and record `revision`, so the next
+   * publish compares bands and carries `band_since` from the index alone. Present only on rows published with the flag.
+   */
+  band_since?: { at: string; estimated: boolean } | null;
+  revision?: number;
 };
 
 /** The pre-S2 matching inputs, read from the row DTO exactly as the legacy predicate did. */
@@ -59,6 +65,10 @@ export function attentionIndexEntry(row: Row, position: number, chunk_index: num
   const entry: AttentionIndexEntry = { subject_key: row.subject_key, partition: row.partition ?? "active", in_attention: row.in_attention ?? null,
     sort_keys: row.sort_keys ?? {}, filter_keys: row.filter_keys ?? legacyFilterKeys(row), reasons: row.derived.reasons ?? [], chunk_index, position };
   if (!row.filter_keys) entry.legacy = true;
+  if (row.outreach && row.outreach.band_since !== undefined) {
+    entry.band_since = row.outreach.band_since;
+    entry.revision = row.outreach.revision;
+  }
   return entry;
 }
 
