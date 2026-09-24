@@ -1,0 +1,2 @@
+# Golden Case File texts are compared byte-for-byte (Attention and Case File spec K5).
+src/services/salesIntelligence/casefile/fixtures/*.txt text eol=lf
