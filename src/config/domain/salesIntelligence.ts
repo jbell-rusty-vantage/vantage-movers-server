@@ -166,6 +166,9 @@ export const CSI_FLAGS = [
   "CASE_FILE",
   "ATTENTION_EVOLUTION",
   "PROGRESS_PLAN",
+  // Form Lead Contact Numbers: the `attachment-lead:` job creates the Contact Number for a
+  // non-duplicate Form Lead's submitted phone before attachment. Off: only calls create numbers.
+  "FORM_LEAD_NUMBERS",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (

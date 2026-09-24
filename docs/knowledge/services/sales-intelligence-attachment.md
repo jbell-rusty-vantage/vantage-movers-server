@@ -63,3 +63,18 @@ Fan-in leaves a contested edge Ambiguous. History and applied effects are preser
 - Owner attachment commands.
 
 `leadAttachmentJobInput` (`sources.ts`) is the single `attachment-lead:` key: `csi:attachment-lead:sole-match-v1:<model>:<id>:<fingerprint>`. Scan keys also carry `sole-match-v1`, so completed old-rule jobs never fence new evaluation. The fingerprint now includes `no_sync`.
+
+## H6 (September 24): Form Lead Contact Numbers
+
+Before this, only call capture created a Contact Number, so a Form Lead whose phone never called had no number, no edge and a card reading "No Lead attached". Now the Form Lead's own `attachment-lead:` job creates the number. That is the job the Lead's EntityChange raises on create and on every phone change, with the watermark as backstop. The quote form never waits on it, and a failure retries the job without touching the Lead. Behind `FORM_LEAD_NUMBERS` (default off).
+
+`ensureFormLeadContactNumber` (`formLeadNumber.ts`) runs in the job transaction before `persistLeadAttachments`:
+- `duplicate: true` and any `bad_lead` never create a number. Neither can be a sole-match target, and the original Lead creates the number for a duplicate's phone.
+- The E.164 is `toE164(normalized_phone_number)`, the live phone only.
+- An existing row with that E.164 (any kind, classification, restriction or purge) is reused untouched. A company DID in the latest RingCentral directory snapshot is skipped.
+- A new row has capture's shape: external, `unknown`, eligibility allowed, revision 1, zero rollups, `first_observed_at` = `last_activity_at` = Lead `timestamp`. The form is not a call, so the first real call starts the counts. Audit `contact_number_created_from_form_lead`.
+- A created number enqueues the same `attachment-scan:` jobs capture raises, so every Lead on that phone gets its edge. Sole-match, fan-in, identity review and the Outreach mirror/primary number are unchanged code, reached earlier.
+
+There is no move-date gate. A Contact Number is an endpoint, and Outreach decides work. Two Leads racing on one new phone hit `contact_number_e164_unique`; the losing job retries and reuses the row.
+
+Historical backfill: `scripts/dev_ops/backfill-form-lead-contact-numbers.ts`. It applies the same rule, creates one number per phone from the earliest Lead, and runs `attachLeadsOnNumber` (`refresh.ts`, the scan jobs' work inline) in one transaction per number. The dry run executes that transaction and rolls it back.

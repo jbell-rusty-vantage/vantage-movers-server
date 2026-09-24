@@ -27,6 +27,7 @@ import {
   runAttachmentRefreshOnce,
 } from "../../src/services/salesIntelligence/attachment/refresh";
 import {
+  leadAttachmentJobInput,
   loadLead,
   type LeadSource,
 } from "../../src/services/salesIntelligence/attachment/sources";
@@ -959,6 +960,67 @@ test(
             assert.equal(resolveAtInteraction([attachmentPolicyInput(homeEdge)], identity).lead_ref?.id, String(f._id));
             assert.equal(resolveAtInteraction([attachmentPolicyInput(homeEdge)], { ...identity, started_at: new Date("2026-11-01T12:00:00Z") })
               .lead_effects_allowed, false);
+          },
+        );
+        await t.test(
+          "Form Lead Contact Numbers: the attachment-lead job mints the number, attaches a sole match, reuses rows and skips duplicates",
+          async () => {
+            const prior = process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS;
+            const runLeadJob = async (row: LeadSource, replay = false) => {
+              const job = await withTransaction(async (s) => {
+                const current = (await loadLead({ model: "FormLead", id: String(row._id) }, s))!;
+                return enqueueCsiJob(leadAttachmentJobInput("FormLead", String(row._id), current), s);
+              });
+              // A replay with an unchanged fingerprint dedupes onto the completed job.
+              assert.equal((await runAttachmentRefreshJob(String(job._id))).status, replay ? "not_claimable" : "completed");
+            };
+            try {
+              process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS = "false";
+              const off = await lead("2025559000");
+              await runLeadJob(off);
+              assert.equal(await Numbers.countDocuments({ e164: "+12025559000" }), 0, "flag off: only calls create numbers");
+              process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS = "true";
+              const a = await lead("2025559001");
+              await runLeadJob(a);
+              const minted = await Numbers.findOne({ e164: "+12025559001" }).lean().orFail();
+              assert.equal(minted.kind, "external");
+              assert.equal(minted.classification, "unknown");
+              assert.equal(minted.rollups.interactions_total, 0, "the form is not a call");
+              assert.equal(+minted.first_observed_at, +at);
+              assert.equal(await getCallInteractionModel().countDocuments({ contact_number_id: minted._id }), 0);
+              const edgeA = await edge(a._id);
+              assert.equal(String(edgeA.contact_number_id), String(minted._id));
+              assert.equal(edgeA.state, "attached");
+              assert.equal(edgeA.decision_reason, "sole_non_duplicate_match");
+              assert.equal(await db.collection("sales_intelligence_audit_events").countDocuments({
+                event_kind: "contact_number_created_from_form_lead", subject_key: `number:${minted._id}` }), 1);
+              assert.equal(await Jobs.countDocuments({ subject_key: new RegExp(`^attachment-scan:(FormLead|CallLead):${minted._id}$`) }), 2);
+              await runLeadJob(a, true);
+              assert.equal(await Numbers.countDocuments({ e164: "+12025559001" }), 1, "replay reuses the row");
+              // A second non-duplicate Lead on the phone contests the automatic attach; the number is reused.
+              const b = await lead("2025559001", new Date("2026-09-03T12:00:00Z"));
+              await getFormLeadModel().collection.updateOne({ _id: b._id }, { $set: { updatedAt: new Date("2026-09-03T12:00:01Z") } });
+              await runLeadJob(b);
+              assert.equal(await Numbers.countDocuments({ e164: "+12025559001" }), 1);
+              assert.notEqual((await edge(a._id)).state, "attached");
+              assert.notEqual((await edge(b._id)).state, "attached");
+              // An existing (captured) number is reused untouched.
+              const captured = await number();
+              const c = await lead(ten(captured));
+              await runLeadJob(c);
+              assert.equal(await Numbers.countDocuments({ e164: captured.e164 }), 1);
+              assert.equal((await Numbers.findById(captured._id).lean().orFail()).rollups.interactions_total, captured.rollups.interactions_total);
+              assert.equal(await db.collection("sales_intelligence_audit_events").countDocuments({
+                event_kind: "contact_number_created_from_form_lead", subject_key: `number:${captured._id}` }), 0);
+              // Duplicates and Bad Leads never mint a number.
+              const dup = await lead("2025559002", at, "FormLead", { duplicate: true });
+              const bad = await lead("2025559003", at, "FormLead", { bad_lead: "fake_info" });
+              await runLeadJob(dup); await runLeadJob(bad);
+              assert.equal(await Numbers.countDocuments({ e164: { $in: ["+12025559002", "+12025559003"] } }), 0);
+            } finally {
+              if (prior === undefined) delete process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS;
+              else process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS = prior;
+            }
           },
         );
       } finally {

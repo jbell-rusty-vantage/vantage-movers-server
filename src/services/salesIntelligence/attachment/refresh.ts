@@ -18,6 +18,7 @@ import type { LeadRef } from "./suggest";
 import { persistLeadAttachments } from "./store";
 import { numberLookupDigits, SOLE_MATCH_POLICY_VERSION } from "./matchSet";
 import { rediscoverAttachmentPage } from "./hooks";
+import { ensureFormLeadContactNumber } from "./formLeadNumber";
 
 const PAGE = 250;
 
@@ -57,6 +58,25 @@ async function enqueueNumberScan(numberId: string, revision: number, session: Cl
     dedupe_key: `csi:attachment-scan:${SOLE_MATCH_POLICY_VERSION}:${model}:${numberId}:${revision}:${after ?? "start"}`,
     input_revision: revision, input_refs: [numberId, ...(after ? [after] : [])] }, session);
 }
+/**
+ * Every Lead on one Contact Number, all pages inline, through `persistLeadAttachments`: what the
+ * `attachment-scan:` jobs do page by page. The Form Lead Contact Number backfill uses it in one
+ * transaction per number.
+ */
+export async function attachLeadsOnNumber(numberId: string, session: ClientSession, requestId: string, now = new Date()) {
+  const number = await getContactNumberModel().findById(numberId, { national_ten: 1, e164: 1 }).session(session).lean();
+  if (!number) return 0;
+  let count = 0;
+  for (const model of ["FormLead", "CallLead"] as const) {
+    for (let after: string | undefined; ;) {
+      const leads = await findLeadsByNumber(number, model, session, after);
+      for (const lead of leads) count += await persistLeadAttachments(lead, model, session, requestId, now, numberId);
+      if (leads.length < PAGE) break;
+      after = String(leads.at(-1)!._id);
+    }
+  }
+  return count;
+}
 /** Queue payload remains {job_id}. Only durable input_refs and current documents supply inputs. */
 export async function runAttachmentRefreshJob(jobId?: string) {
   if (!csiFlag("ATTACHMENT_REFRESH")) return { status: "disabled" };
@@ -75,7 +95,14 @@ export async function runAttachmentRefreshJob(jobId?: string) {
         const model = row.subject_key.split(":")[1];
         if (model !== "FormLead" && model !== "CallLead") throw new CsiError("INVALID_INPUT");
         const lead = await loadLead({ model, id: first }, session);
-        return lead ? persistLeadAttachments(lead, model, session, lease.job_id) : 0;
+        if (!lead) return 0;
+        // A Form Lead's submitted phone becomes a Contact Number here, in the job the Lead's
+        // EntityChange (or the watermark backstop) raised, so the quote form never waits on it.
+        const formNumber = model === "FormLead" ? await ensureFormLeadContactNumber(lead, session, lease.job_id) : null;
+        const changed = await persistLeadAttachments(lead, model, session, lease.job_id);
+        // A new number gets the same scans a captured one does, so every Lead on that phone gets its edge.
+        if (formNumber?.action === "created") for (const scan of ["FormLead", "CallLead"] as const) await enqueueNumberScan(formNumber.number_id, 1, session, scan);
+        return changed;
       }
       if (row.subject_key.startsWith("attachment-scan:")) {
         const model = row.subject_key.split(":")[1];
