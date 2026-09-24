@@ -31,7 +31,7 @@ import { createGranotWebhookInitiator } from "../durableWork/actors";
 import { csiFlag } from "../../config/domain/salesIntelligence";
 import { getEntityChangeModel } from "../../models/EntityChange";
 import { enqueueCsiJob } from "../salesIntelligence/jobs";
-import { outreachChangeNomination } from "../salesIntelligence/outreach/worker";
+import type { outreachChangeNomination } from "../salesIntelligence/outreach/worker";
 import { publishOutreachWakeup } from "../numberActivity/webhookFanout";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
@@ -270,8 +270,10 @@ export async function wakeOutreachAfterGranotApply(
       : await getEntityChangeModel().find({ "entity.model": target.model, "entity.id": target.id,
         "provenance.observation_id": toObjectId(result.observation_id) })
         .select({ _id: 1, entity: 1, revision_after: 1 }).sort({ applied_at: 1, _id: 1 }).limit(OUTREACH_WAKE_CHANGE_LIMIT).lean();
+    // Loaded lazily: a static import closes a cycle (outreach/worker → analysis → structuredPrompt).
+    const { outreachChangeNomination: nominate } = await import("../salesIntelligence/outreach/worker.js");
     for (const change of changes) {
-      const nomination = outreachChangeNomination({ _id: change._id, entity: { model: change.entity.model, id: String(change.entity.id) },
+      const nomination = nominate({ _id: change._id, entity: { model: change.entity.model, id: String(change.entity.id) },
         revision_after: change.revision_after });
       const row = deps.enqueue ? await deps.enqueue(nomination) : await defaultWithTransaction(session => enqueueCsiJob(nomination, session));
       // A replayed observation finds its job already claimed or completed: nothing to wake.
