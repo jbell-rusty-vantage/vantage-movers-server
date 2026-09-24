@@ -20,6 +20,7 @@ import dailyOperationsAdminRoutes from "./daily-operations-admin.routes";
 import jobNumberTimelineAdminRoutes from "./job-number-timeline-admin.routes";
 import conversationsAdminRoutes from "./conversations-admin.routes";
 import extensionUsersAdminRoutes from "./extension-users-admin.routes";
+import adminInviteEmailInternalRoutes from "./admin-invite-email-internal.routes";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
 import { createTariffAdjustmentsRouter } from "./tariff-adjustments.routes";
 import {
@@ -306,6 +307,8 @@ router.use(dailyOperationsAdminRoutes);
 router.use(jobNumberTimelineAdminRoutes);
 router.use(conversationsAdminRoutes);
 router.use(extensionUsersAdminRoutes);
+// S8-USERS: signed-Owner internal send of an Admin user invite email.
+router.use(adminInviteEmailInternalRoutes);
 
 type RequestWithLogger = Request & {
   log?: Logger;
