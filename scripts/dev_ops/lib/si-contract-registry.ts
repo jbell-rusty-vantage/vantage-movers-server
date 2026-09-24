@@ -21,7 +21,7 @@ import type { SiManifestRow } from "./si-contract-common";
 // as a stub only: `ROUTES` gets its entries once AC2's new reads exist. `routesFor("AC", mode)`
 // correctly returns `[]` until then, which `capture-si-contract.ts` already reports as "no entries".
 // "S5c" is CF5c (Team 3, SEED-T3 2026-09-24): capture reconciliation (reconciliation addendum §3.7).
-export type Stage = "S1" | "S2" | "S3" | "S4" | "AC" | "S5c";
+export type Stage = "S1" | "S2" | "S3" | "S4" | "AC" | "S5c" | "S6" | "S7" | "S9";
 export type Mode = "on" | "off";
 /** A follow-up call built from the previous response (cursor paging). */
 export type ChainCall = { state: string; next: (body: any) => string | null };
@@ -628,6 +628,285 @@ ROUTES.push(
     calls: t3FormNumberCall, schema: numberDetailServer, admin: [adminSchema("numberSchema")], checks: t3FormNumberCheck },
   { stage: "S5c", mode: "off", slug: "coverage", route: "GET /coverage (NUMBERS_HAS_CALLS_DEFAULT off)", params: "seed", kind: "read",
     calls: fixed([{ state: "seed", path: "/coverage" }]), schema: coverageRouteSchema, admin: [adminSchema("ownerCoverageSchema")], checks: t3CoverageChecks },
+);
+
+// ── CF6 / CF7 / CF9 (Team 3, SEED-T3 part 2, 2026-09-24): assignment addendum §2, §3, §5, §2.2a, §6–§7 ─────────
+// Flags on: production's (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN, CAPTURE_WEBHOOK) plus every Team 3
+// flag that has code on the branch (NUMBERS_HAS_CALLS_DEFAULT, PRIORITY5_CLOSURE, OVERVIEW, RECEIVER_ASSIGNMENT, RECEIVER_LATEST_WINS).
+// Flag off (`flag-off/`): production today, i.e. every Team 3 flag off, with the snapshot republished with PRIORITY5_CLOSURE and OVERVIEW off.
+const labelRow = (ctx: CheckContext, label: string) => (ctx.rows ? byLabel(ctx.rows, label) : null);
+const rowByRecord = (body: any, recordId: string | null | undefined) => items(body).find(item => item.outreach?.id === recordId) ?? null;
+const labelCalls = (labels: readonly string[], path: (row: SiManifestRow) => string | null, suffix?: string) => (rows: readonly SiManifestRow[]) =>
+  perRow(row => { const p = labels.includes(row.label) ? path(row) : null; return p ? [{ path: p, ...(suffix ? { suffix } : {}) }] : []; })(rows);
+const P5 = { accepted: "T3-p5-accepted", uncertain: "T3-p5-uncertain", toOne: "T3-p5-to-1", upgrade: "T3-p5-booking-upgrade" } as const;
+const RECEIVER_LABELS = ["T3-receiver-manual", "T3-receiver-granot", "T3-receiver-extension", "T3-receiver-sheet", "T3-receiver-ringcentral", "T3-granot-rep-change"] as const;
+const RECEIVER_SOURCE: Record<string, string> = { "t3-receiver-manual": "manual", "t3-receiver-granot": "granot_username_match", "t3-receiver-extension": "extension_match",
+  "t3-receiver-sheet": "best_relocation_sheet", "t3-receiver-ringcentral": "ringcentral_answered", "t3-granot-rep-change": "granot_username_match" };
+const ACROSS = ["T3-promise-across-a", "T3-promise-across-b"] as const;
+
+function s6ClosedChecks(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body), ...attentionRowsCarryS2(body, true)];
+  const accepted = rowByRecord(body, labelRow(ctx, P5.accepted)?.outreach_record_id), upgraded = rowByRecord(body, labelRow(ctx, P5.upgrade)?.outreach_record_id);
+  const toOne = rowByRecord(body, labelRow(ctx, P5.toOne)?.outreach_record_id);
+  if (ctx.state !== "closed-outcome-booked") {
+    // The outcome's Priority is the Lead's current code: 5 "Booked in Granot" for the accepted 5; 1 "Quoted" after 5 → 1 (still closed granot_booked, reopen review open).
+    for (const [what, row, code, label] of [["T3-p5-accepted", accepted, "5", "Booked in Granot"], ["T3-p5-to-1", toOne, "1", "Quoted"]] as const) {
+      if (!row) out.push(`${what}: no closed row`);
+      else if (row.outcome?.reason !== "granot_booked" || row.outcome?.priority?.code !== code || row.outcome?.priority?.label !== label || row.filter_keys?.outcome !== "granot_booked")
+        out.push(`${what}: outcome ${JSON.stringify(row.outcome)}, filter_keys.outcome ${row.filter_keys?.outcome}`);
+    }
+  }
+  if (ctx.state !== "closed-outcome-granot-booked") {
+    if (!upgraded) out.push("T3-p5-booking-upgrade: no closed row");
+    else if (upgraded.outcome?.reason !== "booked") out.push(`T3-p5-booking-upgrade: outcome ${upgraded.outcome?.reason}, expected the upgraded official booked`);
+  }
+  const want = ctx.state === "closed-outcome-granot-booked" ? "granot_booked" : ctx.state === "closed-outcome-booked" ? "booked" : null;
+  if (want) out.push(...closedOutcome(want)(body));
+  return out;
+}
+function s6ActiveChecks(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body)];
+  const uncertain = rowByRecord(body, labelRow(ctx, P5.uncertain)?.outreach_record_id);
+  if (!uncertain) { if (ctx.state === "all-outreach") out.push("T3-p5-uncertain: no active row"); }
+  else {
+    if (uncertain.partition === "closed") out.push("T3-p5-uncertain is closed");
+    if (uncertain.filter_keys?.needs_review !== true) out.push(`T3-p5-uncertain: filter_keys.needs_review ${uncertain.filter_keys?.needs_review} (the review badge)`);
+    if (!uncertain.derived?.review_badges?.includes("disposition_review")) out.push(`T3-p5-uncertain: derived.review_badges ${JSON.stringify(uncertain.derived?.review_badges)} lacks disposition_review`);
+    if (uncertain.outreach?.lead_progress?.provenance !== "uncertain") out.push(`T3-p5-uncertain: lead_progress.provenance ${uncertain.outreach?.lead_progress?.provenance}`);
+  }
+  for (const label of [P5.accepted, P5.upgrade]) if (rowByRecord(body, labelRow(ctx, label)?.outreach_record_id)) out.push(`${label} is on an active view`);
+  return out;
+}
+function s6DetailChecks(body: any, ctx: CheckContext): string[] {
+  const o = body?.data?.outreach;
+  if (!o) return ["data.outreach missing"];
+  const out: string[] = [];
+  if (!has(o, "assignment") || !has(o.assignment, "origin") || !has(o.assignment, "agent")) out.push("assignment {agent, origin} missing");
+  const lp = o.lead_progress;
+  if (ctx.state === "t3-p5-accepted" && (o.state !== "closed" || lp?.closure?.basis !== "granot_booked" || lp?.priority_label !== "Booked in Granot" || lp?.disposition !== "crm_booked"))
+    out.push(`accepted 5: state ${o.state}, lead_progress ${JSON.stringify({ disposition: lp?.disposition, closure: lp?.closure, label: lp?.priority_label })}`);
+  if (ctx.state === "t3-p5-uncertain" && (o.state === "closed" || lp?.provenance !== "uncertain" || lp?.disposition !== "crm_booked")) out.push(`uncertain 5: state ${o.state}, provenance ${lp?.provenance}`);
+  if (ctx.state === "t3-p5-to-1" && (o.state !== "closed" || lp?.granot_priority !== "1" || !lp?.reopen_review_id)) out.push(`5 → 1: state ${o.state}, code ${lp?.granot_priority}, reopen_review_id ${lp?.reopen_review_id}`);
+  if (ctx.state === "t3-p5-booking-upgrade" && (o.state !== "closed" || lp?.closure?.basis === "granot_booked")) out.push(`upgrade: state ${o.state}, closure ${JSON.stringify(lp?.closure)}`);
+  if (ctx.state.startsWith("t3-promise-across") && o.assignment?.origin !== "owner") out.push(`Owner assignment: origin ${o.assignment?.origin}`);
+  // S6-AGENT (lands later): once the detail carries `receiver_agent`, it must show the seeded source.
+  if (has(o, "receiver_agent") && RECEIVER_SOURCE[ctx.state] && o.receiver_agent?.source !== RECEIVER_SOURCE[ctx.state]) out.push(`receiver_agent.source ${o.receiver_agent?.source}, expected ${RECEIVER_SOURCE[ctx.state]}`);
+  return out;
+}
+
+const PRESETS = { new: ["0", "not_set"], quoted: ["1"], other: ["3", "4", "7", "8", "9"] } as const;
+const VIEWS = { attention: { param: "", count: "attention" }, "all-outreach": { param: "view=all_outreach&", count: "active" }, closed: { param: "view=closed&", count: "closed" } } as const;
+function s7AttentionCalls(): CaptureCall[] {
+  const calls: CaptureCall[] = [{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" },
+    { state: "all-outreach-no-lead", path: "/attention?view=all_outreach&priority=no_lead&limit=200" }];
+  for (const [view, v] of Object.entries(VIEWS)) {
+    calls.push({ state: `${view}-preset-new`, path: `/attention?${v.param}priority=0&priority=not_set&limit=200` });
+    calls.push({ state: `${view}-preset-quoted`, path: `/attention?${v.param}priority=1&limit=200` });
+    calls.push({ state: `${view}-preset-other`, path: `/attention?${v.param}priority=${PRESETS.other.join(",")}&limit=200` });
+  }
+  return calls;
+}
+function s7AttentionChecks(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body)];
+  const counts = body?.data?.priority_counts;
+  if (!counts) out.push("data.priority_counts missing");
+  else for (const key of ["no_lead", "not_set", "0", "1", "3", "4", "7", "8", "9", "5"]) if (!has(counts, key)) out.push(`priority_counts lacks ${key}`);
+  const preset = /^(attention|all-outreach|closed)-preset-(new|quoted|other)$/.exec(ctx.state);
+  const keyOf = (row: any) => row.filter_keys?.priority ?? "not_set";
+  if (preset) {
+    const keys: readonly string[] = PRESETS[preset[2] as keyof typeof PRESETS];
+    const rows = items(body).filter(row => row.outreach);
+    const outside = rows.filter(row => !keys.includes(keyOf(row)));
+    if (outside.length) out.push(`${outside.length} rows outside the preset ${keys.join(",")}: ${[...new Set(outside.map(keyOf))].join(",")}`);
+    if (preset[1] === "closed") out.push(...attentionRowsCarryS2(body, true));
+    const view = VIEWS[preset[1] as keyof typeof VIEWS];
+    const expected = counts ? keys.reduce((sum, key) => sum + (counts[key]?.[view.count] ?? 0), 0) : null;
+    if (expected !== null && typeof body?.data?.total_items === "number" && body.data.total_items !== expected) out.push(`total_items ${body.data.total_items} ≠ Σ priority_counts.${view.count} ${expected} (C: a chip's count equals its rows)`);
+  }
+  if (ctx.state === "all-outreach" && !items(body).some(row => row.filter_keys?.priority === "no_lead")) out.push("no row carries filter_keys.priority no_lead");
+  if (ctx.state === "all-outreach-no-lead" && (!items(body).length || items(body).some(row => row.filter_keys?.priority !== "no_lead"))) out.push("priority=no_lead returned another key (or nothing)");
+  return out;
+}
+function s7ClosedHistoryCalls(): CaptureCall[] {
+  const base = "/outreach/closed-history";
+  const paged = (state: string, query: string): CaptureCall => ({ state: `${state}-page-1`, path: `${base}?${query}`,
+    chain: [{ state: `${state}-page-2`, next: body => (body?.data?.cursor ? `${base}?${query}&cursor=${q(body.data.cursor)}` : null) }] });
+  return [
+    paged("default", "limit=5"),
+    paged("outcome-booked-granot-booked", "outcome=booked&outcome=granot_booked&limit=2"),
+    paged("priority-8", "priority=8&limit=1"),
+    { state: "priority-5", path: `${base}?priority=5&limit=50` },
+    { state: "before-90d", path: `${base}?closed_before=${q(isoAgo(90))}&limit=50` },
+  ];
+}
+function s7ClosedHistoryChecks(body: any, ctx: CheckContext): string[] {
+  const out: string[] = [];
+  const rows = items(body);
+  if (!rows.length) out.push("empty page");
+  if (body?.data?.retention?.basis !== "activity") out.push("retention missing");
+  for (const [i, row] of rows.entries()) {
+    if (row.partition !== "closed" || !row.outcome || row.in_attention !== false) out.push(`items[${i}] is not a closed-partition row with an outcome`);
+    if (i > 0 && Date.parse(row.sort_keys?.closed ?? row.outcome?.closed_at ?? "") > Date.parse(rows[i - 1].sort_keys?.closed ?? rows[i - 1].outcome?.closed_at ?? "")) out.push(`items[${i}] out of closed_at desc order`);
+    if (!has(row.filter_keys, "responsible")) out.push(`items[${i}].filter_keys.responsible missing`);
+  }
+  if (ctx.state.startsWith("outcome-booked-granot-booked") && rows.some(row => !["booked", "granot_booked"].includes(row.outcome?.reason))) out.push("outcome filter not held");
+  if (ctx.state.startsWith("priority-8") && rows.some(row => row.filter_keys?.priority !== "8")) out.push("priority=8 filter not held");
+  if (ctx.state === "priority-5" && (rows.some(row => row.filter_keys?.priority !== "5") || !rows.some(row => row.outcome?.reason === "granot_booked"))) out.push("priority=5 filter not held or no granot_booked row");
+  if (ctx.state === "before-90d") {
+    for (const label of ["T3-closed-200d", "S-closed-over-90d"]) if (!rowByRecord(body, labelRow(ctx, label)?.outreach_record_id)) out.push(`${label} not in Closed history before 90 days`);
+    const old = rowByRecord(body, labelRow(ctx, "T3-closed-200d")?.outreach_record_id);
+    if (old && (old.outcome?.reason !== "crm_dead" || old.outcome?.priority?.code !== "8")) out.push(`T3-closed-200d outcome ${JSON.stringify(old.outcome)}`);
+  }
+  if (ctx.state.endsWith("page-1") && !body?.data?.cursor) out.push("page 1 has no cursor for a page 2");
+  return out;
+}
+
+const etDayKey = (at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+const dayMinus = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+function s9OverviewCalls(): CaptureCall[] {
+  const today = etDayKey(new Date());
+  const scoped = (body: any) => { const id = body?.data?.reps?.find((r: any) => r.agent?.name === "Dana Reyes")?.agent?.id; return id ? `/overview?agent_id=${id}` : null; };
+  return [
+    { state: "default", path: "/overview", chain: [{ state: "owner-one-rep-scope", next: scoped }] },
+    { state: "today", path: "/overview?period=today" },
+    { state: "last-7-days", path: "/overview?period=last_7_days" },
+    { state: "custom", path: `/overview?period=custom&from=${dayMinus(today, 3)}&to=${today}` },
+    { state: "preset-new", path: "/overview?period=last_7_days&priority=0,not_set" },
+  ];
+}
+function s9OverviewChecks(body: any, ctx: CheckContext): string[] {
+  const d = body?.data;
+  if (!d) return ["data missing"];
+  const out: string[] = [];
+  if (!["ok", "attention", "broken"].includes(d.now?.capture_health?.status)) out.push("now.capture_health.status missing");
+  if (ctx.state === "owner-one-rep-scope") {
+    if (d.reps?.length !== 1 || d.reps[0].agent?.name !== "Dana Reyes" || !d.team_medians || d.unmapped !== null || d.unassigned !== null) out.push("one-rep scope: expected one rep row, team_medians, null unmapped/unassigned");
+    return out;
+  }
+  if (d.team_medians) out.push("team_medians on an unscoped Owner read");
+  if (!(d.now?.live_calls >= 1)) out.push(`now.live_calls ${d.now?.live_calls}, expected ≥ 1 (T3-live-call)`);
+  const rep = (name: string) => d.reps?.find((r: any) => r.agent?.name === name);
+  if (ctx.state !== "preset-new") for (const name of ["Dana Reyes", "Marcus Bell"]) if (!(rep(name)?.interactions?.calls > 0)) out.push(`${name}: no calls in ${d.periods?.activity?.key}`);
+  if (ctx.state !== "preset-new" && !d.unmapped?.extensions?.includes("107")) out.push(`unmapped.extensions ${JSON.stringify(d.unmapped?.extensions)} lacks 107`);
+  if (!d.unassigned) out.push("unassigned null on an Owner read");
+  if (["default", "last-7-days"].includes(ctx.state)) {
+    const t = d.spend?.total;
+    if (!(t?.rate > 0 && t?.legacy > 0 && t?.unpriced_leads >= 1 && t?.zero_leads >= 1)) out.push(`spend.total by basis ${JSON.stringify(t)}`);
+    if (!(d.spend?.by_source?.length >= 2)) out.push("spend.by_source has fewer than 2 sources");
+    if (!d.spend?.by_rep?.some((r: any) => r.agent_id === null)) out.push("spend.by_rep has no Unassigned (null) row");
+  }
+  if (ctx.state === "today") {
+    const bands = d.desk?.flow?.bands;
+    if (!(bands?.capture_repair >= 1) || !(bands?.excluded_baseline_or_policy >= 1) || !(bands?.moves >= 1)) out.push(`desk.flow.bands ${JSON.stringify(bands)}`);
+  }
+  return out;
+}
+const BAND = { call: "T3-band-call", repair: "T3-band-repair", owner: "T3-band-owner", policy: "AC-callback-customer-exact", baseline: "S-followup-due" } as const;
+const BAND_CAUSE: Record<string, string[]> = { "t3-band-call": ["baseline", "call"], "t3-band-repair": ["baseline", "capture_repair"], "t3-band-owner": ["baseline", "owner"],
+  "ac-callback-customer-exact": ["baseline", "policy"], "s-followup-due": ["baseline"] };
+function s9BandSinceRows(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body)];
+  const active = items(body).filter(row => row.outreach && row.partition !== "closed");
+  if (!active.some(row => row.outreach.band_since?.estimated === true)) out.push("no row with band_since.estimated true");
+  if (ctx.state === "all-outreach") {
+    const call = rowByRecord(body, labelRow(ctx, BAND.call)?.outreach_record_id);
+    if (!call || call.outreach.band_since?.estimated !== false) out.push(`T3-band-call band_since ${JSON.stringify(call?.outreach?.band_since)}, expected a measured (estimated false) start`);
+  }
+  for (const [i, row] of active.entries()) if (!has(row.outreach, "band_since") || !has(row.filter_keys, "responsible") || !has(row.filter_keys, "overdue")) out.push(`items[${i}] lacks band_since / filter_keys.responsible / overdue`);
+  return out;
+}
+function s9DetailChecks(body: any, ctx: CheckContext): string[] {
+  const since = body?.data?.outreach?.band_since;
+  if (since === undefined) return ["data.outreach.band_since missing"];
+  if (ctx.state === "s-followup-due" && since?.estimated !== true) return [`baseline record band_since ${JSON.stringify(since)}, expected estimated true`];
+  if (ctx.state === "t3-band-call" && since?.estimated !== false) return [`T3-band-call band_since ${JSON.stringify(since)}`];
+  return [];
+}
+function s9TimelineChecks(body: any, ctx: CheckContext): string[] {
+  const state = ctx.state.replace(/-band-changed$/, "");
+  const bands = items(body).filter(item => item.kind === "band_changed");
+  const out: string[] = [];
+  if (ctx.state.endsWith("-band-changed") && items(body).some(item => item.kind !== "band_changed")) out.push("kinds[]=band_changed returned another kind");
+  const causes = new Set(bands.map(item => item.detail?.cause?.kind));
+  for (const cause of BAND_CAUSE[state] ?? []) if (!causes.has(cause)) out.push(`no band_changed with cause ${cause} (causes: ${[...causes].join(",")})`);
+  for (const item of bands) {
+    const cause = item.detail?.cause?.kind;
+    if (cause === "baseline" && item.detail?.estimated !== true) out.push("baseline band_changed not estimated");
+    if (item.routine !== !["call", "capture_repair", "owner"].includes(cause)) out.push(`band_changed ${cause}: routine ${item.routine}`);
+  }
+  return out;
+}
+async function overviewSchema(): Promise<ResolvedSchema> {
+  const { overviewDtoSchema } = await import("../../../src/services/salesIntelligence/overview/dto");
+  const { z } = await import("zod");
+  return { schema: z.object({ data: overviewDtoSchema }).strict(), name: "{ data: overviewDtoSchema } (GET /overview)", source: "server" };
+}
+const closedHistoryServer = serverSchema(() => import("../../../src/services/salesIntelligence/outreach/closedHistory") as Promise<Mod>, "closedHistoryPageDtoSchema", "outreach/closedHistory.ts");
+const bandTimelineCalls = (rows: readonly SiManifestRow[]) => perRow(row => {
+  if (!(Object.values(BAND) as string[]).includes(row.label) || !row.outreach_record_id) return [];
+  const base = `/outreach/${row.outreach_record_id}/timeline?limit=50`;
+  return [{ suffix: "band-changed", path: `${base}&kinds[]=band_changed` }, ...(row.label === BAND.call ? [{ path: base }] : [])];
+})(rows);
+const P5_ALL = [P5.accepted, P5.uncertain, P5.toOne, P5.upgrade];
+ROUTES.push(
+  // ── CF6 ──
+  { stage: "S6", mode: "on", slug: "attention-closed", route: "GET /attention?view=closed", params: "view=closed&limit=200; &outcome=granot_booked; &outcome=booked", kind: "read",
+    calls: fixed([{ state: "closed", path: "/attention?view=closed&limit=200" }, { state: "closed-outcome-granot-booked", path: "/attention?view=closed&outcome=granot_booked&limit=200" },
+      { state: "closed-outcome-booked", path: "/attention?view=closed&outcome=booked&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s6ClosedChecks },
+  { stage: "S6", mode: "on", slug: "attention", route: "GET /attention", params: "limit=200 default; view=all_outreach&limit=200 (the uncertain 5 with its review badge)", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s6ActiveChecks },
+  { stage: "S6", mode: "on", slug: "outreach", route: "GET /outreach/:id", params: `${[...P5_ALL, ...RECEIVER_LABELS, ...ACROSS].join(", ")}`, kind: "read",
+    calls: labelCalls([...P5_ALL, ...RECEIVER_LABELS, ...ACROSS], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: s6DetailChecks },
+  { stage: "S6", mode: "on", slug: "outreach-timeline", route: "GET /outreach/:id/timeline", params: "limit=50: the Priority 5 closures, the reopen review, the upgrade", kind: "read",
+    calls: labelCalls(P5_ALL, row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null)), schema: timelineServer },
+  { stage: "S6", mode: "off", slug: "attention", route: "GET /attention (Team 3 flags off)", params: "limit=200 default; view=all_outreach; view=closed", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }, { state: "closed", path: "/attention?view=closed&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: flagOnHeader },
+  { stage: "S6", mode: "off", slug: "outreach", route: "GET /outreach/:id (Team 3 flags off)", params: `${[...P5_ALL, ACROSS[0]].join(", ")}`, kind: "read",
+    calls: labelCalls([...P5_ALL, ACROSS[0]], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: body => (has(body?.data?.outreach, "band_since") ? ["flag-off detail carries band_since"] : []) },
+  { stage: "S6", mode: "off", slug: "number-timeline", route: "GET /numbers/:id/timeline (v2, Team 3 flags off)", params: "T3-p5-accepted, T3-p5-booking-upgrade", kind: "read",
+    calls: labelCalls([P5.accepted, P5.upgrade], row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/timeline?limit=50` : null)),
+    schema: timelineServer, admin: [adminSchema("timelineSchema")] },
+
+  // ── CF7 ── (S7 is unflagged: the production Admin must parse these as they are)
+  { stage: "S7", mode: "on", slug: "attention", route: "GET /attention", params: "priority presets New 0,not_set / Quoted 1 / Other 3,4,7,8,9 in view attention, all_outreach, closed; priority=no_lead", kind: "read",
+    calls: s7AttentionCalls, schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s7AttentionChecks },
+  { stage: "S7", mode: "on", slug: "closed-history", route: "GET /outreach/closed-history", params: "limit=5 pages 1–2; outcome=booked&outcome=granot_booked&limit=2 pages 1–2; priority=8&limit=1 pages 1–2; priority=5; closed_before=90 days ago",
+    kind: "read", calls: s7ClosedHistoryCalls, schema: closedHistoryServer, checks: s7ClosedHistoryChecks },
+
+  // ── CF9 ──
+  { stage: "S9", mode: "on", slug: "overview", route: "GET /overview", params: "default (activity Today, spend Last 7 days); period=today; last_7_days; custom (3 ET days back → today); preset New; Owner one-rep scope (agent_id)",
+    kind: "read", calls: s9OverviewCalls, schema: overviewSchema, checks: s9OverviewChecks },
+  { stage: "S9", mode: "on", slug: "attention", route: "GET /attention", params: "limit=200 default; view=all_outreach&limit=200 (band_since, filter_keys.responsible/overdue)", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s9BandSinceRows },
+  { stage: "S9", mode: "on", slug: "outreach", route: "GET /outreach/:id", params: Object.values(BAND).join(", "), kind: "read",
+    calls: labelCalls(Object.values(BAND), row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: s9DetailChecks },
+  { stage: "S9", mode: "on", slug: "outreach-timeline", route: "GET /outreach/:id/timeline", params: "limit=50&kinds[]=band_changed per cause; limit=50 on T3-band-call", kind: "read",
+    calls: bandTimelineCalls, schema: timelineServer, checks: s9TimelineChecks },
+  { stage: "S9", mode: "off", slug: "overview", route: "GET /overview (OVERVIEW off)", params: "no params", kind: "status",
+    calls: fixed([{ state: "feature-off", path: "/overview", expect: 404 }]), schema: statusSchema(404, "FEATURE_DISABLED", "Sales Intelligence is disabled") },
+  { stage: "S9", mode: "off", slug: "attention", route: "GET /attention (OVERVIEW off)", params: "limit=200 default; view=all_outreach", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")],
+    checks: body => [...flagOnHeader(body), ...(items(body).some(row => row.outreach && has(row.outreach, "band_since")) ? ["a flag-off row carries band_since"] : [])] },
+  { stage: "S9", mode: "off", slug: "outreach", route: "GET /outreach/:id (OVERVIEW off)", params: `${BAND.call}, ${BAND.baseline}`, kind: "read",
+    calls: labelCalls([BAND.call, BAND.baseline], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: body => (has(body?.data?.outreach, "band_since") ? ["flag-off detail carries band_since"] : []) },
+  { stage: "S9", mode: "off", slug: "outreach-timeline", route: "GET /outreach/:id/timeline (OVERVIEW off)", params: "limit=50 on T3-band-call (no band_changed)", kind: "read",
+    calls: labelCalls([BAND.call], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null)), schema: timelineServer,
+    checks: body => (items(body).some(item => item.kind === "band_changed") ? ["band_changed on a flag-off timeline"] : []) },
+  { stage: "S9", mode: "off", slug: "outreach-timeline-band-changed", route: "GET /outreach/:id/timeline?kinds[]=band_changed (OVERVIEW off)", params: "T3-band-call: rejected as an unknown kind", kind: "status",
+    calls: rows => labelCalls([BAND.call], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50&kinds[]=band_changed` : null))(rows).map(c => ({ ...c, expect: 400 })),
+    schema: statusSchema(400, "INVALID_INPUT") },
+  { stage: "S9", mode: "off", slug: "number-timeline", route: "GET /numbers/:id/timeline (v2, OVERVIEW off)", params: "T3-band-call", kind: "read",
+    calls: labelCalls([BAND.call], row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/timeline?limit=50` : null)),
+    schema: timelineServer, admin: [adminSchema("timelineSchema")] },
 );
 
 export const routesFor = (stage: Stage, mode: Mode = "on") => ROUTES.filter(route => route.stage === stage && route.mode === mode);

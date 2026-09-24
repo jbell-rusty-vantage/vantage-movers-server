@@ -68,6 +68,17 @@ export const SI_SEED_STATES = [
   "t3_call_in_progress", "t3_call_pending_finalization", "t3_call_settled", "t3_call_provisional_then_settled",
   "t3_call_unknown_direction", "t3_call_recovered", "t3_call_late_capture",
   "t3_form_created_number", "t3_quarantined_call_log", "t3_webhook_subscription_healthy", "t3_webhook_subscription_expired",
+  // SEED-T3 part 2 (2026-09-24): the assignment addendum's seed list (TEAM-3 §4) for CF6, CF7 and CF9.
+  "t3_p5_accepted", "t3_p5_uncertain", "t3_p5_to_1", "t3_p5_booking_upgrade",
+  "t3_receiver_manual", "t3_receiver_granot", "t3_receiver_extension", "t3_receiver_sheet", "t3_receiver_ringcentral",
+  "t3_granot_rep_change", "t3_granot_observation_out_of_order", "t3_granot_user_not_rep",
+  "t3_owner_assign_vs_receiver", "t3_promise_across_reps",
+  "t3_closed_200d", "t3_no_lead",
+  "t3_priority_0", "t3_priority_1", "t3_priority_3", "t3_priority_4", "t3_priority_7", "t3_priority_8", "t3_priority_9", "t3_priority_not_set",
+  "t3_rep_days_two_reps", "t3_rep_days_unmapped",
+  "t3_spend_rate", "t3_spend_legacy", "t3_spend_missing_rate", "t3_spend_duplicate_zero", "t3_spend_no_sync",
+  "t3_band_baseline", "t3_band_transition_call", "t3_band_transition_capture_repair", "t3_band_transition_owner", "t3_band_transition_policy",
+  "t3_band_since_estimated",
 ] as const;
 export type SiSeedState = (typeof SI_SEED_STATES)[number];
 

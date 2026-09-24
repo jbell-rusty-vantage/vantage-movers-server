@@ -36,7 +36,9 @@ process.env.BLOB_STORE_ID = "";
 // CF-AC: the three Team 4 flags too, so .env can never decide an AC capture mode either.
 // SEED-T3 (CF5c): CAPTURE_WEBHOOK (the coverage read's webhook facts) and NUMBERS_HAS_CALLS_DEFAULT (S5c-NUMBERS) too.
 // CAPTURE_WEBHOOK only changes reads here: the local API runs no cron and receives no webhook.
-const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN", "CAPTURE_WEBHOOK", "NUMBERS_HAS_CALLS_DEFAULT"] as const;
+// SEED-T3 part 2 (CF6/CF7/CF9): PRIORITY5_CLOSURE, OVERVIEW and the two RECEIVER flags too.
+const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN", "CAPTURE_WEBHOOK", "NUMBERS_HAS_CALLS_DEFAULT",
+  "PRIORITY5_CLOSURE", "OVERVIEW", "RECEIVER_ASSIGNMENT", "RECEIVER_LATEST_WINS"] as const;
 const requested = (process.env.CSI_LOCAL_FLAGS ?? "").split(",").map(v => v.trim().toUpperCase()).filter(Boolean);
 const unknownFlags = requested.filter(v => !(LOCAL_FLAGS as readonly string[]).includes(v));
 if (unknownFlags.length) throw new Error(`CSI_LOCAL_FLAGS: unknown flag(s) ${unknownFlags.join(", ")}; allowed ${LOCAL_FLAGS.join(", ")}`);

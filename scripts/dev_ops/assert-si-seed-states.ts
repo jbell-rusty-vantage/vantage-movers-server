@@ -639,7 +639,154 @@ const CHECKS: Record<SiSeedState, Check> = {
     eventFilters: T3_ALL_DIRECTIONS, status: { $nin: ["Blacklisted", "Suspended", "Deleted"] }, expirationTime: { $gt: now } }),
   t3_webhook_subscription_expired: (db, now) => db.collection("ringcentral_webhook_subscriptions").countDocuments({ provider: "ringcentral", subscriptionId: { $type: "string" },
     eventFilters: T3_ALL_DIRECTIONS, expirationTime: { $lte: now } }),
+  // ── SEED-T3 part 2 (2026-09-24): the assignment addendum's seed list, counted in the source collections. ──
+  // Priority 5 (E1): an accepted 5 closes crm_disposition / granot_booked, with no quote default (G8).
+  t3_p5_accepted: async db => {
+    const rows = await db.collection("outreach_records").find({ state: "closed", closure_origin: "crm_disposition", closed_reason: "granot_booked",
+      "lead_progress.disposition": "crm_booked", "lead_progress.provenance": "accepted", "lead_progress.granot_priority": "5" }).toArray();
+    let n = 0;
+    for (const r of rows) if (!await db.collection("outreach_followups").countDocuments({ outreach_record_id: r._id, default_kind: { $type: "string" } })) n++;
+    return n;
+  },
+  // An uncertain 5: active, with an open disposition_review on its subject.
+  t3_p5_uncertain: async db => {
+    const rows = await db.collection("outreach_records").find({ state: { $ne: "closed" }, "lead_progress.disposition": "crm_booked", "lead_progress.provenance": "uncertain" }).toArray();
+    let n = 0;
+    for (const r of rows) if (await db.collection("sales_intelligence_review_items").countDocuments({ subject_key: subjectKeyOf(r), cause_kind: "disposition_review", state: "open" })) n++;
+    return n;
+  },
+  // 5 → 1: still closed granot_booked, current code 1, one open disposition_reopen review.
+  t3_p5_to_1: async db => {
+    const rows = await db.collection("outreach_records").find({ state: "closed", closed_reason: "granot_booked", "lead_progress.granot_priority": "1" }).toArray();
+    let n = 0;
+    for (const r of rows) if ((await db.collection("sales_intelligence_review_items").countDocuments({ subject_key: subjectKeyOf(r), cause_kind: "disposition_reopen", state: "open" })) === 1) n++;
+    return n;
+  },
+  // 5 → official Booking (E2): official `booked`, and the closure audit says `upgraded_from: granot_booked`.
+  t3_p5_booking_upgrade: async db => {
+    const audits = await db.collection("sales_intelligence_audit_events").find({ event_kind: "outreach_closed", "current.upgraded_from": "granot_booked" }).toArray();
+    let n = 0;
+    for (const a of audits) if (await db.collection("outreach_records").countDocuments({ "subject.id": new ObjectId(String(a.subject_key).split(":")[2]), state: "closed", closure_origin: "official", closed_reason: "booked" })) n++;
+    return n;
+  },
+  // receiver_agent sources (E3–E7): the Lead field, its source, and the EntityChange that wrote it.
+  t3_receiver_manual: db => receiverSourceCount(db, "manual"),
+  t3_receiver_granot: db => receiverSourceCount(db, "granot_username_match"),
+  t3_receiver_extension: db => receiverSourceCount(db, "extension_match", "extension_selected", "extension_created", "extension_crm_username_match"),
+  t3_receiver_sheet: db => receiverSourceCount(db, "best_relocation_sheet"),
+  t3_receiver_ringcentral: db => receiverSourceCount(db, "ringcentral_answered"),
+  // A Granot rep change: ≥ 2 Granot receiver changes on one Lead with different agents, and ≥ 2 observations with different reps for its job.
+  t3_granot_rep_change: async db => {
+    const groups = await db.collection("entity_changes").aggregate<{ _id: string; agents: unknown[]; n: number }>([
+      { $match: { changed_paths: "receiver_agent", "provenance.source_system": "granot" } }, { $unwind: "$fields" }, { $match: { "fields.path": "receiver_agent" } },
+      { $group: { _id: "$entity.id", agents: { $addToSet: "$fields.after" }, n: { $sum: 1 } } }, { $match: { n: { $gte: 2 } } }]).toArray();
+    let n = 0;
+    for (const g of groups.filter(g => g.agents.length >= 2)) {
+      const lead = await db.collection("form_leads").findOne({ _id: new ObjectId(g._id) }) ?? await db.collection("call_leads").findOne({ _id: new ObjectId(g._id) });
+      const reps = await db.collection("granot_observations").distinct("agent_identity.rep_raw", { "identity.normalized_job_no": lead?.normalized_job_no });
+      if (reps.length >= 2) n++;
+    }
+    return n;
+  },
+  // An older observation received after a newer one (captured_at order ≠ receipt order) for the same job.
+  t3_granot_observation_out_of_order: async db => {
+    const rows = await db.collection("granot_observations").find({ "agent_identity.rep_raw": { $type: "string" } }, { projection: { "identity.normalized_job_no": 1, captured_at: 1, createdAt: 1 } }).toArray();
+    const byJob = new Map<string, Array<{ captured: number; received: number }>>();
+    for (const r of rows) { const key = String(r.identity?.normalized_job_no); byJob.set(key, [...(byJob.get(key) ?? []), { captured: +r.captured_at, received: +r.createdAt }]); }
+    let n = 0;
+    for (const list of byJob.values()) if (list.some(a => list.some(b => a.captured < b.captured && a.received > b.received))) n++;
+    return n;
+  },
+  t3_granot_user_not_rep: db => db.collection("granot_observations").countDocuments({ "agent_identity.user_raw": { $type: "string" }, "agent_identity.rep_raw": { $type: "string" },
+    $expr: { $ne: ["$agent_identity.user_raw", "$agent_identity.rep_raw"] } }),
+  // An Owner assignment (origin owner) to a rep other than the Lead's receiver_agent.
+  t3_owner_assign_vs_receiver: async db => {
+    const rows = await db.collection("outreach_records").find({ "subject.kind": "lead", "assignment.origin": "owner", responsible_agent_id: { $type: "objectId" } }).toArray();
+    let n = 0;
+    for (const r of rows) {
+      const lead = await db.collection(r.subject.model === "FormLead" ? "form_leads" : "call_leads").findOne({ _id: new ObjectId(String(r.subject.id)) });
+      if (lead?.receiver_agent && String(lead.receiver_agent) !== String(r.responsible_agent_id)) n++;
+    }
+    return n;
+  },
+  // Two reps each promised a follow-up on a record another rep is responsible for (E11 union).
+  t3_promise_across_reps: async db => {
+    const actions = await db.collection("outreach_followups").find({ status: "open", origin: "rep_promise", promised_by_agent_id: { $type: "objectId" } }).toArray();
+    const promisers = new Set<string>();
+    for (const a of actions) {
+      const r = await db.collection("outreach_records").findOne({ _id: a.outreach_record_id, responsible_agent_id: { $type: "objectId" } });
+      if (r && String(r.responsible_agent_id) !== String(a.promised_by_agent_id)) promisers.add(String(a.promised_by_agent_id));
+    }
+    return promisers.size >= 2 ? promisers.size : 0;
+  },
+  // Closed history (E27): a record closed ~200 days ago (outside the snapshot's 90-day closed partition).
+  t3_closed_200d: (db, now) => db.collection("outreach_records").countDocuments({ state: "closed", closed_at: { $gte: new Date(+now - 230 * DAY), $lte: new Date(+now - 180 * DAY) } }),
+  t3_no_lead: db => db.collection("outreach_records").countDocuments({ "subject.kind": { $ne: "lead" }, state: { $ne: "closed" }, purged_at: null }),
+  t3_priority_0: db => priorityCount(db, "0"),
+  t3_priority_1: db => priorityCount(db, "1"),
+  t3_priority_3: db => priorityCount(db, "3"),
+  t3_priority_4: db => priorityCount(db, "4"),
+  t3_priority_7: db => priorityCount(db, "7"),
+  t3_priority_8: db => priorityCount(db, "8"),
+  t3_priority_9: db => priorityCount(db, "9"),
+  t3_priority_not_set: db => db.collection("outreach_records").countDocuments({ "subject.kind": "lead", state: { $ne: "closed" }, purged_at: null,
+    $or: [{ lead_progress: null }, { "lead_progress.granot_priority": null }] }),
+  // Two ET days on which both reviewed reps have calls in `outreach_rep_days` (the rebuild the seed ran), and the raw calls behind them.
+  t3_rep_days_two_reps: async db => {
+    const days = await db.collection("outreach_rep_days").aggregate<{ _id: string; reps: number }>([{ $match: { agent_id: { $type: "objectId" }, calls: { $gt: 0 } } },
+      { $group: { _id: "$day", reps: { $sum: 1 } } }, { $match: { reps: { $gte: 2 } } }]).toArray();
+    let n = 0;
+    for (const d of days) {
+      const reps = await db.collection("outreach_rep_days").find({ day: d._id, agent_id: { $type: "objectId" }, calls: { $gt: 0 } }).toArray();
+      const reviewed = await db.collection("rep_identity_links").distinct("agent_id", { status: "reviewed", role_kind: "sales_rep" });
+      if (reps.filter(r => reviewed.some(a => String(a) === String(r.agent_id))).length >= 2) n++;
+    }
+    return n >= 2 ? n : 0;
+  },
+  t3_rep_days_unmapped: async db => {
+    const rows = await db.collection("outreach_rep_days").find({ agent_key: "unmapped", calls: { $gt: 0 } }).toArray();
+    let n = 0;
+    for (const r of rows) for (const ext of r.extensions ?? []) if (!await db.collection("rep_identity_links").countDocuments({ rc_extension_id: ext, status: "reviewed" })) { n++; break; }
+    return n;
+  },
+  // Priced Leads in the last 7 days (§7, E20).
+  t3_spend_rate: (db, now) => leadCount(db, now, { cpl: { $gt: 0 }, cpl_resolution_status: "resolved", cpl_rate_period: { $type: "objectId" }, no_sync: { $ne: true }, duplicate: { $ne: true } }),
+  t3_spend_legacy: (db, now) => leadCount(db, now, { cpl: { $gt: 0 }, cpl_resolution_status: { $exists: false }, cpl_rate_period: { $exists: false }, no_sync: { $ne: true }, duplicate: { $ne: true } }),
+  t3_spend_missing_rate: (db, now) => leadCount(db, now, { cpl_resolution_status: "missing_rate" }),
+  t3_spend_duplicate_zero: (db, now) => leadCount(db, now, { cpl_resolution_status: "duplicate_zero" }),
+  t3_spend_no_sync: (db, now) => leadCount(db, now, { no_sync: true, cpl: { $gt: 0 } }),
+  // Band transitions (§6.3, G8): the baseline and each real cause the seed drove between OVERVIEW publishes.
+  t3_band_baseline: db => db.collection("outreach_band_transitions").countDocuments({ "cause.kind": "baseline", estimated: true }),
+  t3_band_transition_call: db => db.collection("outreach_band_transitions").countDocuments({ "cause.kind": "call", "cause.event_kind": { $type: "string" }, estimated: false }),
+  t3_band_transition_capture_repair: db => db.collection("outreach_band_transitions").countDocuments({ "cause.kind": "capture_repair" }),
+  t3_band_transition_owner: db => db.collection("outreach_band_transitions").countDocuments({ "cause.kind": "owner" }),
+  t3_band_transition_policy: db => db.collection("outreach_band_transitions").countDocuments({ "cause.kind": "policy" }),
+  // Active records whose newest transition is still the estimated baseline (`band_since.estimated: true`).
+  t3_band_since_estimated: async db => {
+    const newest = await db.collection("outreach_band_transitions").aggregate<{ _id: ObjectId; cause: string; to_band: number | null }>([{ $sort: { record_id: 1, at: -1, _id: -1 } },
+      { $group: { _id: "$record_id", cause: { $first: "$cause.kind" }, to_band: { $first: "$to_band" } } }, { $match: { cause: "baseline", to_band: { $ne: null } } }]).toArray();
+    return db.collection("outreach_records").countDocuments({ _id: { $in: newest.map(r => r._id) }, state: { $ne: "closed" } });
+  },
 };
+function subjectKeyOf(record: { subject?: { kind: string; model?: string; id?: unknown; contact_number_id?: unknown } } & object) {
+  if (!record.subject) return "";
+  return record.subject.kind === "lead" ? `lead:${record.subject.model}:${String(record.subject.id)}` : `number:${String(record.subject.contact_number_id)}`;
+}
+async function receiverSourceCount(db: Db, ...sources: string[]) {
+  let n = 0;
+  for (const collection of ["form_leads", "call_leads"]) {
+    const leads = await db.collection(collection).find({ receiver_agent: { $type: "objectId" }, receiver_agent_source: { $in: sources } }, { projection: { _id: 1, receiver_agent: 1 } }).toArray();
+    for (const lead of leads) if (await db.collection("entity_changes").countDocuments({ "entity.id": String(lead._id), changed_paths: "receiver_agent" })) n++;
+  }
+  return n;
+}
+function priorityCount(db: Db, code: string) {
+  return db.collection("outreach_records").countDocuments({ "subject.kind": "lead", "lead_progress.granot_priority": code, purged_at: null });
+}
+async function leadCount(db: Db, now: Date, filter: Record<string, unknown>) {
+  const match = { timestamp: { $gte: new Date(+now - 7 * DAY), $lte: now }, ...filter };
+  return (await db.collection("form_leads").countDocuments(match)) + (await db.collection("call_leads").countDocuments(match));
+}
 
 async function main() {
   assertSeedDatabase(SI_SEED_DATABASE);

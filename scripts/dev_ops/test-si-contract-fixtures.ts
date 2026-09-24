@@ -24,13 +24,16 @@ Object.assign(process.env, { TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: "testv
 const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 const stage = arg("stage") as Stage | undefined;
-if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c is required");
+if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c", "S6", "S7", "S9"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c|S6|S7|S9 is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const root = resolve(arg("dir") ?? SI_CONTRACTS_DIR);
 const dir = resolve(root, stage, ...(mode === "off" ? ["flag-off"] : []));
 
 function manifestRows(): SiManifestRow[] | null {
-  const file = resolve(root, "seed-manifest.json");
+  // SEED-T3 part 2: a stage folder's own `_seed-manifest.json` (written by the capture) wins, so a later re-seed, which rewrites the shared
+  // `seed-manifest.json` with new ids, never breaks an earlier freeze's id-based checks. Older stages fall back to the shared file.
+  const own = resolve(dir, "_seed-manifest.json");
+  const file = existsSync(own) ? own : resolve(root, "seed-manifest.json");
   if (!existsSync(file)) return null;
   return (JSON.parse(readFileSync(file, "utf8")) as { rows?: SiManifestRow[] }).rows ?? null;
 }

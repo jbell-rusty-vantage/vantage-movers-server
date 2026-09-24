@@ -48,6 +48,17 @@ const PUBLISH_ONLY = (() => {
 })();
 /** ATTENTION_V2 for the snapshot this run publishes. */
 const ATTENTION_V2 = PUBLISH_ONLY ? PUBLISH_ONLY === "on" : ARGS.includes("--attention-v2");
+/** SEED-T3 part 2: `--p5 on|off`, `--overview on|off` (republish mode: the CF6/CF9 flag-off snapshots). */
+const onOff = (name: string, fallback: boolean) => {
+  const i = ARGS.indexOf(`--${name}`);
+  if (i < 0) return fallback;
+  const value = ARGS[i + 1];
+  if (value !== "on" && value !== "off") throw new Error(`--${name} on|off`);
+  return value === "on";
+};
+const PRIORITY5_CLOSURE = onOff("p5", true);
+// OVERVIEW (band transitions, baseline, band_since) needs the ATTENTION_V2 index; the full seed runs it with `--attention-v2`.
+const OVERVIEW = onOff("overview", ATTENTION_V2);
 Object.assign(process.env, {
   CSI_REPLICA_TEST: "true", TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: DATABASE, MONGO_URI: SI_SEED_REPLICA, MONGODB_URI: SI_SEED_REPLICA,
   SALES_INTELLIGENCE_DEPLOYMENT_ID: SI_SEED_DEPLOYMENT, SHEET_SYNC_MODE: "disabled",
@@ -64,6 +75,12 @@ Object.assign(process.env, {
   // PROGRESS_PLAN can only nominate a Move assessment job here; nothing in this process or the local API runs one
   // (no gateway key, MOVE_ASSESSMENT off on the API), and the seed prints the job table by stage at the end.
   SALES_INTELLIGENCE_CASE_FILE: "true", SALES_INTELLIGENCE_PROGRESS_PLAN: "true",
+  // SEED-T3 part 2 (2026-09-24): Team 3's flags. PRIORITY5_CLOSURE drives the Priority 5 states through the real
+  // `applyLeadProgress` closure; OVERVIEW makes every publish write band transitions (baseline first). The two
+  // RECEIVER flags are read by S6-AGENT once it merges (the coordinator re-runs this seed then, so the raw
+  // `receiver_agent` states below become `crm_receiver` assignments); before that nothing reads them.
+  SALES_INTELLIGENCE_PRIORITY5_CLOSURE: PRIORITY5_CLOSURE ? "true" : "false", SALES_INTELLIGENCE_OVERVIEW: OVERVIEW ? "true" : "false",
+  SALES_INTELLIGENCE_RECEIVER_ASSIGNMENT: "true", SALES_INTELLIGENCE_RECEIVER_LATEST_WINS: "true",
   // SEED-T3: the webhook receipt collection name (`ringcentral_webhook_events`, production naming, as the local .env and the API use).
   RINGCENTRAL_COLLECTION_MODE: "production",
   SALES_INTELLIGENCE_ATTENTION_V2: ATTENTION_V2 ? "true" : "false", SALES_INTELLIGENCE_TIMELINE_V2: "false",
@@ -113,7 +130,8 @@ async function republishAttention() {
   if (!(await db.collection(SI_SEED_MANIFEST).countDocuments({}))) throw new Error(`no ${SI_SEED_MANIFEST} in ${DATABASE}: run the full seed first`);
   const snapshot = await publishAttentionSnapshot({ attentionV2: ATTENTION_V2 });
   if (snapshot.status !== "published") throw new Error(`attention publish: ${JSON.stringify(snapshot)}`);
-  console.log(`Attention snapshot republished on ${DATABASE} with ATTENTION_V2 ${ATTENTION_V2 ? "on" : "off"}, ATTENTION_EVOLUTION ${process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION === "true" ? "on" : "off"}: ${JSON.stringify(snapshot)}`);
+  console.log(`Attention snapshot republished on ${DATABASE} with ATTENTION_V2 ${ATTENTION_V2 ? "on" : "off"}, ATTENTION_EVOLUTION ${process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION === "true" ? "on" : "off"}, ` +
+    `PRIORITY5_CLOSURE ${PRIORITY5_CLOSURE ? "on" : "off"}, OVERVIEW ${OVERVIEW ? "on" : "off"}: ${JSON.stringify(snapshot)}`);
   await mongoose.disconnect();
 }
 
@@ -1696,6 +1714,247 @@ async function main() {
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════════
+  // 14. SEED-T3 part 2 (2026-09-24): the assignment addendum's seed list (TEAM-3 §4) for CF6, CF7 and CF9.
+  //     Priority 5 through the real `ensureLead` → `authoritativeClosure` / `applyLeadProgress` paths
+  //     (PRIORITY5_CLOSURE on); `receiver_agent` sources as raw Lead fields (S6-AGENT derives `crm_receiver`
+  //     from them once it merges); Priority codes; a record closed 200 days ago; Number reviews (`no_lead`);
+  //     promises across reps; two ET days of calls for two reviewed reps and an unreviewed extension; priced
+  //     Leads for spend; three fresh records whose band changes between two OVERVIEW publishes.
+  //     The rep AdminUser and the pending invite live in the admin database (CF8), not here.
+  // ════════════════════════════════════════════════════════════════════════════════════════
+  const MINUTE = 60_000;
+  const DANA = agents[0]!, MARCUS = agents[1]!, TINA = agents[2]!;
+  const leadCollection = (lead: LeadRef) => db.collection(lead.model === "FormLead" ? "form_leads" : "call_leads");
+  const setLead = (lead: LeadRef, fields: Record<string, unknown>) => leadCollection(lead).updateOne({ _id: O(lead.id) }, { $set: fields });
+  /** A Granot observation with its own `user` / `rep` and receipt time (`createdAt`), for rep changes and out-of-order deliveries. */
+  async function granotObservation(lead: LeadRef & { job: string }, ten: string, capturedAt: Date, priority: string, agentIdentity: { user_raw: string; rep_raw: string },
+    receivedAt = plus(capturedAt, 5_000)) {
+    const _id = O();
+    await getGranotObservationModel().collection.insertOne({ _id, receipt_id: O(), schema_version: 1, kind: "lead_snapshot", normalization_result: "valid",
+      normalized_source_label: "top10", captured_at: capturedAt, identity: { job_no_raw: lead.job, normalized_job_no: lead.job }, contact: { normalized_phone: ten },
+      move: {}, priority: { raw: priority, canonical: priority, valid: true }, booking_action: {}, display_money: {}, agent_identity: agentIdentity, provider_context: {},
+      issues: [], quoted: false, createdAt: receivedAt, updatedAt: receivedAt } as never);
+    return String(_id);
+  }
+  /** The `EntityChange` a receiver write appends (every receiver path, before/after), as the Granot processor or a Vantage writer records it. */
+  async function receiverChange(lead: LeadRef, at: Date, before: { agent: mongoose.Types.ObjectId | null; source: string | null; value: string | null },
+    after: { agent: mongoose.Types.ObjectId; source: string; value: string }, observationId: string | null) {
+    const revision = revisionByLead.get(lead.id) ?? 0;
+    revisionByLead.set(lead.id, revision + 1);
+    const system = observationId ? "granot" : after.source === "ringcentral_answered" ? "ringcentral" : "vantage";
+    await getEntityChangeModel().collection.insertOne({ _id: O(), entity: { model: lead.model, id: lead.id }, command_execution_id: O(),
+      command_name: observationId ? "granot.observe_lead" : "vantage.update_lead",
+      provenance: { source_system: system, ...(observationId ? { observation_channel: "granot_webhook", observation_id: O(observationId) } : {}),
+        actor: { actor_type: "system", actor_id: system === "granot" ? "granot-lifecycle" : "seed" }, initiator: { actor_type: "system", actor_id: "seed" } },
+      changed_paths: ["receiver_agent", "receiver_agent_set_at", "receiver_agent_source", "receiver_agent_source_value"],
+      fields: [{ path: "receiver_agent", value_mode: "stored", before: before.agent, after: after.agent }, { path: "receiver_agent_set_at", value_mode: "stored", before: null, after: at },
+        { path: "receiver_agent_source", value_mode: "stored", before: before.source, after: after.source },
+        { path: "receiver_agent_source_value", value_mode: "stored", before: before.value, after: after.value }],
+      revision_before: revision, revision_after: revision + 1, applied_at: at } as never);
+  }
+  const receiverFields = (agent: (typeof agents)[number], source: string, value: string, setAt: Date) => ({ receiver_agent: agent._id, receiver_agent_name_snapshot: agent.name,
+    receiver_agent_source: source, receiver_agent_source_value: value, receiver_agent_set_at: setAt });
+  const ownerAssign = async (recordId: string, agent: (typeof agents)[number]) => {
+    const record = await Records.findById(recordId).lean().orFail();
+    await commandOutreach({ actor: ownerActor(`${ADMIN}/outreach/${recordId}/commands`), target_id: recordId, idempotency_key: `fui-assign-${recordId}-${++keySerial}`,
+      command: { command: "assign", expected_revision: record.revision, responsible_agent_id: String(agent._id), reason: "Owner assigned the record" } });
+  };
+
+  // ── A second reviewed rep (Marcus Bell, extension 104), so two reps have reviewed calls (E17). 102/103/105/107 stay unreviewed. ──
+  await getRepIdentityLinkModel().create({ agent_id: MARCUS._id, agent_name_snapshot: MARCUS.name, rc_account_id: REP_ACCOUNT, rc_extension_id: "104", rc_extension_number: "104",
+    rc_extension_name_snapshot: "Marcus Bell", role_kind: "sales_rep", status: "reviewed", proposal_basis: "exact_full_name", effective_from: ago(400),
+    reviewed_by: "owner@example.test", reviewed_at: ago(399), history: [{ at: ago(400), by: "system", change: "proposed" }, { at: ago(399), by: "owner@example.test", change: "reviewed" }] });
+
+  // ── Priority 5 (assignment addendum §2, E1/E2, C1/C2) ──────────────────────────────────────
+  {
+    // Accepted: a paired Granot 5 (Granot also sets Quoted) closes the record `crm_disposition` / `granot_booked`, no quote default (G8).
+    const s = await leadSubject({ receivedDaysAgo: 6, fields: { name: "T3 P5 Accepted" }, calls: [{ at: ago(5, 20), direction: "Outbound", result: "Call connected", duration: 260, contact: "human_conversation" }] });
+    await applyAllInteractions(s.number!.id);
+    const obsAt = ago(2, 3), obs = await observation(s.lead, s.number!.ten, obsAt, "5", "Dana R.", true);
+    await leadChange(s.lead, plus(obsAt, 10 * MINUTE), [{ path: "granot_priority", before: null, after: "5" }, { path: "quoted", before: false, after: true }], obs);
+    await setLead(s.lead, { granot_priority: "5", quoted: true });
+    await seedRecord(s.lead, s.number!.id, plus(obsAt, 15 * MINUTE));
+    row("T3-p5-accepted", ["t3_p5_accepted"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Accepted Granot Priority 5 (paired observation, quoted) closed crm_disposition / granot_booked through ensureLead; no quote default" });
+  }
+  {
+    // Uncertain: a Call Lead carries 5 with no vouching change: a disposition_review opens and the record stays active.
+    const s = await leadSubject({ model: "CallLead", receivedDaysAgo: 3, fields: { name: "T3 P5 Uncertain", granot_priority: "5" },
+      calls: [{ at: ago(2, 22), direction: "Inbound", result: "Call connected", duration: 150, contact: "human_conversation" }] });
+    await applyAllInteractions(s.number!.id);
+    await seedRecord(s.lead, s.number!.id, ago(2, 20));
+    row("T3-p5-uncertain", ["t3_p5_uncertain"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Call Lead with granot_priority 5 and no vouching EntityChange: uncertain provenance, open disposition_review, record active" });
+  }
+  {
+    // 5 → 1: closed granot_booked, then Granot moves it back to Quoted: one disposition_reopen review, still closed (closed_at kept).
+    const s = await leadSubject({ receivedDaysAgo: 8, fields: { name: "T3 P5 Back To Quoted" }, calls: [{ at: ago(7, 20), direction: "Outbound", result: "Call connected", duration: 210, contact: "human_conversation" }] });
+    await applyAllInteractions(s.number!.id);
+    const o1At = ago(4), o1 = await observation(s.lead, s.number!.ten, o1At, "5", "Marcus B.", true);
+    await leadChange(s.lead, plus(o1At, 10 * MINUTE), [{ path: "granot_priority", before: null, after: "5" }, { path: "quoted", before: false, after: true }], o1);
+    await setLead(s.lead, { granot_priority: "5", quoted: true });
+    await seedRecord(s.lead, s.number!.id, plus(o1At, 15 * MINUTE));
+    const o2At = ago(1, 2), o2 = await observation(s.lead, s.number!.ten, o2At, "1", "Marcus B.", true);
+    await leadChange(s.lead, plus(o2At, 10 * MINUTE), [{ path: "granot_priority", before: "5", after: "1" }], o2);
+    await setLead(s.lead, { granot_priority: "1" });
+    await seedRecord(s.lead, s.number!.id, plus(o2At, 15 * MINUTE));
+    row("T3-p5-to-1", ["t3_p5_to_1"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Accepted 5 closed granot_booked 4 days ago, then an accepted 5 → 1: one open disposition_reopen review, still closed with the original closed_at" });
+  }
+  {
+    // 5 → official Booking (E2): the exact Booking upgrades the closure to `booked`, keeping closed_at (`upgraded_from: granot_booked`).
+    const s = await leadSubject({ receivedDaysAgo: 7, fields: { name: "T3 P5 Upgraded" }, calls: [{ at: ago(6, 20), direction: "Outbound", result: "Call connected", duration: 330, contact: "human_conversation" }] });
+    await applyAllInteractions(s.number!.id);
+    const obsAt = ago(3), obs = await observation(s.lead, s.number!.ten, obsAt, "5", "Dana R.", true);
+    await leadChange(s.lead, plus(obsAt, 10 * MINUTE), [{ path: "granot_priority", before: null, after: "5" }, { path: "quoted", before: false, after: true }], obs);
+    await setLead(s.lead, { granot_priority: "5", quoted: true });
+    await seedRecord(s.lead, s.number!.id, plus(obsAt, 15 * MINUTE));
+    const bookingId = await booking(s.lead, ago(1, 5), 4600);
+    await seedRecord(s.lead, s.number!.id, ago(1, 4));
+    row("T3-p5-booking-upgrade", ["t3_p5_booking_upgrade"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Closed granot_booked 3 days ago; the exact Booking ${bookingId} upgraded it to official booked with closed_at kept (audit upgraded_from granot_booked)` });
+  }
+
+  // ── receiver_agent sources (assignment addendum §3, E3–E7) as raw Lead fields; S6-AGENT derives crm_receiver on the re-run ──
+  for (const [label, state, agent, source, value, model] of [
+    ["T3-receiver-manual", "t3_receiver_manual", DANA, "manual", "owner@example.test", "FormLead"],
+    ["T3-receiver-granot", "t3_receiver_granot", MARCUS, "granot_username_match", "marcus b.", "FormLead"],
+    ["T3-receiver-extension", "t3_receiver_extension", TINA, "extension_match", "103", "FormLead"],
+    ["T3-receiver-sheet", "t3_receiver_sheet", DANA, "best_relocation_sheet", "Dana Reyes", "FormLead"],
+    ["T3-receiver-ringcentral", "t3_receiver_ringcentral", MARCUS, "ringcentral_answered", "104", "CallLead"],
+  ] as const) {
+    const setAt = ago(3, 2);
+    const s = await leadSubject({ model, receivedDaysAgo: 4, fields: { name: `T3 Receiver ${source}` } });
+    await setLead(s.lead, receiverFields(agent, source, value, setAt));
+    await receiverChange(s.lead, setAt, { agent: null, source: null, value: null }, { agent: agent._id, source, value }, null);
+    if (source === "granot_username_match") {
+      // The Granot fill: its observation and the paired change.
+      await granotObservation(s.lead, s.number!.ten, plus(setAt, -10 * MINUTE), "0", { user_raw: value, rep_raw: value });
+    }
+    await seedRecord(s.lead, s.number!.id, plus(setAt, MINUTE));
+    row(label, [state], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Lead receiver_agent ${agent.name} (source ${source}, value ${value}, set ${setAt.toISOString()}) with its EntityChange` });
+  }
+  {
+    // A Granot rep change across two observations (Dana R. → Marcus B.), then an out-of-order older observation (Tina C.,
+    // captured between the two, received last) that must not win; and one observation whose `user` differs from its `rep`.
+    const s = await leadSubject({ receivedDaysAgo: 6, fields: { name: "T3 Granot Rep Change" } });
+    const n = s.number!;
+    const o1At = ago(5), o1 = await granotObservation(s.lead, n.ten, o1At, "0", { user_raw: "dana r.", rep_raw: "dana r." });
+    await receiverChange(s.lead, plus(o1At, 2 * MINUTE), { agent: null, source: null, value: null }, { agent: DANA._id, source: "granot_username_match", value: "dana r." }, o1);
+    const o2At = ago(2), o2 = await granotObservation(s.lead, n.ten, o2At, "0", { user_raw: "marcus b.", rep_raw: "marcus b." });
+    await receiverChange(s.lead, plus(o2At, 2 * MINUTE), { agent: DANA._id, source: "granot_username_match", value: "dana r." },
+      { agent: MARCUS._id, source: "granot_username_match", value: "marcus b." }, o2);
+    await setLead(s.lead, receiverFields(MARCUS, "granot_username_match", "marcus b.", plus(o2At, 2 * MINUTE)));
+    const lateId = await granotObservation(s.lead, n.ten, ago(3), "0", { user_raw: "tina c.", rep_raw: "tina c." }, ago(1));
+    const splitId = await granotObservation(s.lead, n.ten, ago(1, 6), "0", { user_raw: "dana r.", rep_raw: "marcus b." });
+    await seedRecord(s.lead, n.id, ago(1, 5));
+    row("T3-granot-rep-change", ["t3_granot_rep_change", "t3_granot_observation_out_of_order", "t3_granot_user_not_rep"], { outreach_record_id: s.recordId,
+      contact_number_id: n.id, lead_refs: leadIds(s.lead),
+      note: `Granot rep Dana R. (${o1}) → Marcus B. (${o2}), receiver_agent Marcus; older observation ${lateId} (Tina C., captured 3 days ago, received 1 day ago) ` +
+        `did not win; observation ${splitId} has user dana r. ≠ rep marcus b.` });
+  }
+
+  // ── Owner assignments against a different receiver_agent, and follow-ups promised across two reps' records (E11, C13) ──
+  for (const [label, receiver, owner, promiser] of [["T3-promise-across-a", MARCUS, DANA, MARCUS], ["T3-promise-across-b", DANA, MARCUS, DANA]] as const) {
+    const s = await leadSubject({ receivedDaysAgo: 3, fields: { name: `T3 ${label.slice(-1).toUpperCase()} Across` },
+      calls: [{ at: ago(2, 20), direction: "Outbound", result: "Call connected", duration: 220, contact: "human_conversation", extension: promiser === DANA ? "101" : "104" }] });
+    await applyAllInteractions(s.number!.id);
+    await setLead(s.lead, receiverFields(receiver, "granot_username_match", receiver === DANA ? "dana r." : "marcus b.", ago(2, 22)));
+    await receiverChange(s.lead, ago(2, 22), { agent: null, source: null, value: null },
+      { agent: receiver._id, source: "granot_username_match", value: receiver === DANA ? "dana r." : "marcus b." }, null);
+    await ownerAssign(s.recordId, owner);
+    const anchor = ago(2, 19), resolved = resolveActionDate({ exact: ahead(1, 2).toISOString() }, policy, anchor);
+    const fid = await directFollowup(s.recordId, { kind: "call", description: `${promiser.name} promised a callback about the estimate`, origin: "rep_promise", requestedBy: "rep",
+      anchor, resolved, promisedBy: String(promiser._id), commitment: `t3:promise-across:${s.recordId}` });
+    row(label, ["t3_owner_assign_vs_receiver", "t3_promise_across_reps"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `receiver_agent ${receiver.name}; Owner assigned ${owner.name}; open rep_promise ${fid} promised by ${promiser.name}` });
+  }
+
+  // ── A record closed 200 days ago (Closed history, E27): Priority 8 accepted, crm_dead ──────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 215, fields: { name: "T3 Closed 200 Days" },
+      calls: [{ at: ago(214), direction: "Outbound", result: "Call connected", duration: 190, contact: "human_conversation" }] });
+    const obsAt = ago(200, 1), obs = await observation(s.lead, s.number!.ten, obsAt, "8", "Marcus B.");
+    await leadChange(s.lead, plus(obsAt, 10 * MINUTE), [{ path: "granot_priority", before: null, after: "8" }], obs);
+    await setLead(s.lead, { granot_priority: "8" });
+    await seedRecord(s.lead, s.number!.id, ago(200));
+    row("T3-closed-200d", ["t3_closed_200d"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Accepted Priority 8 closed crm_disposition / granot_dead_opportunity 200 days ago: in Closed history only" });
+  }
+
+  // ── Number reviews (`no_lead`, E13) and Priority codes 0, 4, 9 (1, 3, 7, 8 and Not set exist above) ─────
+  {
+    const number = await seedNumber(ago(2));
+    await seedCalls(number.id, number.e164, [{ at: ago(2), direction: "Inbound", result: "Missed", connected: false, duration: 0, name: "WIRELESS CALLER" },
+      { at: ago(1, 3), direction: "Inbound", result: "Call connected", duration: 140, name: "WIRELESS CALLER", contact: "human_conversation" }]);
+    const record = await withTransaction(session => ensureNumberReview(number.id, "owner_open", workerContext(session, String(O()))));
+    row("T3-no-lead", ["t3_no_lead"], { outreach_record_id: String(record._id), contact_number_id: number.id, note: "A second Number review (no Lead): filter_keys.priority no_lead" });
+  }
+  for (const code of ["0", "4", "9"] as const) {
+    const s = await leadSubject({ receivedDaysAgo: 5, fields: { name: `T3 Priority ${code}` }, calls: [{ at: ago(4, 20), direction: "Outbound", result: "Call connected", duration: 160, contact: "human_conversation" }] });
+    await applyAllInteractions(s.number!.id);
+    const obsAt = ago(2, 4), obs = await observation(s.lead, s.number!.ten, obsAt, code, "Dana R.");
+    await leadChange(s.lead, plus(obsAt, 10 * MINUTE), [{ path: "granot_priority", before: null, after: code }], obs);
+    await setLead(s.lead, { granot_priority: code });
+    await seedRecord(s.lead, s.number!.id, plus(obsAt, 15 * MINUTE));
+    row(`T3-priority-${code}`, [`t3_priority_${code}` as SiSeedState], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Accepted Granot Priority ${code} (paired observation) on an open record` });
+  }
+
+  // ── Two ET days of calls for two reviewed reps (101 Dana, 104 Marcus) and an unreviewed extension (107): outreach_rep_days ──
+  {
+    const { easternInstantBounds } = await import("../../src/services/dailyOperations/dayDocument");
+    const todayStart = easternInstantBounds(etDay(new Date(NOW))).start;
+    const span = NOW - +todayStart;
+    const today = (share: number) => new Date(+todayStart + Math.floor(span * share));
+    const yesterday = (hoursBeforeMidnight: number) => new Date(+todayStart - hoursBeforeMidnight * HOUR);
+    const s = await leadSubject({ receivedDaysAgo: 3, fields: { name: "T3 Rep Days" } });
+    const n = s.number!;
+    const specs: CallSpec[] = [
+      { at: yesterday(14), direction: "Outbound", result: "Call connected", duration: 240, contact: "human_conversation", extension: "101" },
+      { at: yesterday(13), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "101" },
+      { at: yesterday(12), direction: "Outbound", result: "Call connected", duration: 300, contact: "human_conversation", extension: "104" },
+      { at: yesterday(11), direction: "Inbound", result: "Call connected", duration: 180, contact: "human_conversation", extension: "104" },
+      { at: yesterday(10), direction: "Outbound", result: "Voicemail", connected: true, duration: 30, contact: "voicemail", extension: "107" },
+      { at: today(0.2), direction: "Outbound", result: "Call connected", duration: 200, contact: "human_conversation", extension: "101" },
+      { at: today(0.35), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "104" },
+      { at: today(0.5), direction: "Inbound", result: "Call connected", duration: 260, contact: "human_conversation", extension: "101" },
+      { at: today(0.65), direction: "Outbound", result: "Call connected", duration: 150, contact: "human_conversation", extension: "104" },
+      { at: today(0.8), direction: "Outbound", result: "Call connected", duration: 90, extension: "107" },
+    ];
+    // Observed promptly (callDoc's outbound default is +2 h, which would put today's calls' observation in the future).
+    const docs = specs.map(spec => ({ ...callDoc(n.id, n.e164, spec), first_observed_at: plus(spec.at, 40_000), last_observed_at: plus(spec.at, 90_000),
+      createdAt: plus(spec.at, 40_000), updatedAt: plus(spec.at, 90_000) }));
+    const inserted = await Calls.collection.insertMany(docs as never[]);
+    await applyAllInteractions(n.id);
+    row("T3-rep-days", ["t3_rep_days_two_reps", "t3_rep_days_unmapped"], { outreach_record_id: s.recordId, contact_number_id: n.id, lead_refs: leadIds(s.lead),
+      interaction_ids: Object.values(inserted.insertedIds).map(String),
+      note: `Calls yesterday and today (ET) on ext 101 (Dana, reviewed), 104 (Marcus, reviewed) and 107 (no identity link: Unmapped); today from ${todayStart.toISOString()}` });
+  }
+
+  // ── Priced Leads over the last 7 days (§7, E19–E21): rate, legacy, missing_rate, duplicate_zero, and a no_sync Lead ──
+  for (const [label, state, model, days, agent, fields] of [
+    ["T3-spend-rate", "t3_spend_rate", "FormLead", 1, DANA, { cpl: 40, cpl_rate_period: O(), cpl_resolution_status: "resolved", cpl_resolved_at: ago(1), source_granularity_label_snapshot: "TBM Form" }],
+    ["T3-spend-legacy", "t3_spend_legacy", "FormLead", 3, MARCUS, { cpl: 35, source_granularity_label_snapshot: "MoveBuddy Form" }],
+    ["T3-spend-missing-rate", "t3_spend_missing_rate", "CallLead", 4, TINA, { cpl: 0, cpl_resolution_status: "missing_rate", cpl_resolved_at: ago(4), source_granularity_label_snapshot: "Relo Compare Calls" }],
+    ["T3-spend-duplicate-zero", "t3_spend_duplicate_zero", "FormLead", 5, null, { cpl: 0, cpl_resolution_status: "duplicate_zero", cpl_resolved_at: ago(5), source_granularity_label_snapshot: "TBM Form" }],
+    ["T3-spend-no-sync", "t3_spend_no_sync", "FormLead", 2, DANA, { cpl: 40, cpl_rate_period: O(), cpl_resolution_status: "resolved", cpl_resolved_at: ago(2), no_sync: true, source_granularity_label_snapshot: "TBM Form" }],
+  ] as const) {
+    const s = await leadSubject({ model, receivedDaysAgo: days + 0.3, fields: { name: `T3 Spend ${state.slice(9)}`, ...fields,
+      ...(agent ? receiverFields(agent, "granot_username_match", agent.name.toLowerCase(), ago(days)) : { receiver_agent_name_snapshot: null }) } });
+    row(label, [state as SiSeedState], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `${model} ${days} days ago, receiver ${agent?.name ?? "none (Unassigned)"}, ${JSON.stringify({ cpl: fields.cpl, status: (fields as unknown as { cpl_resolution_status?: string }).cpl_resolution_status ?? null })}` });
+  }
+
+  // ── Band changes between OVERVIEW publishes (§6.3, G8): fresh records (band 2 no_call_yet) that change after the first publish ──
+  const bandSubjects: Record<"call" | "repair" | "owner", Awaited<ReturnType<typeof leadSubject>>> = {
+    call: await leadSubject({ receivedDaysAgo: 1.2, fields: { name: "T3 Band Call" } }),
+    repair: await leadSubject({ receivedDaysAgo: 1.2, fields: { name: "T3 Band Capture Repair" } }),
+    owner: await leadSubject({ receivedDaysAgo: 1.2, fields: { name: "T3 Band Owner" } }),
+  };
+
+  // ════════════════════════════════════════════════════════════════════════════════════════
   // Projections through the real code paths
   // ════════════════════════════════════════════════════════════════════════════════════════
   const numberIds = (await Numbers.find({}).select("_id revision").lean()).map(r => ({ id: String(r._id), revision: r.revision }));
@@ -1705,8 +1964,55 @@ async function main() {
   });
   const rebuild = await drainRebuildJobs(numberIds.length + 10);
   if (rebuild.completed !== numberIds.length) throw new Error(`rebuild completed ${rebuild.completed} of ${numberIds.length}: ${JSON.stringify(rebuild)}`);
-  const snapshot = await publishAttentionSnapshot({ attentionV2: ATTENTION_V2 });
-  if (snapshot.status !== "published") throw new Error(`attention publish: ${JSON.stringify(snapshot)}`);
+  const publish = async (what: string) => {
+    const result = await publishAttentionSnapshot({ attentionV2: ATTENTION_V2 });
+    if (result.status !== "published") throw new Error(`attention publish (${what}): ${JSON.stringify(result)}`);
+    console.log(`Attention publish ${what}: ${JSON.stringify(result)}`);
+    return result;
+  };
+  let snapshot = await publish(OVERVIEW ? "1 (OVERVIEW baseline)" : "(OVERVIEW off)");
+  if (OVERVIEW) {
+    // SEED-T3 part 2: real causes between two OVERVIEW publishes (§6.3, G8). Every audit row is recorded at the real
+    // time (context `now` = now), so it falls in (previous as_of, next as_of] and names the cause.
+    // `call`: an outbound attempt on a never-called Form Lead, applied through the real `ensureInteraction`.
+    const attemptCall: CallSpec = { at: new Date(Date.now() - 2 * 60_000), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "101" };
+    const callNumber = bandSubjects.call.number!;
+    const bandCallId = String((await Calls.collection.insertOne({ ...callDoc(callNumber.id, callNumber.e164, attemptCall), first_observed_at: plus(attemptCall.at, 30_000),
+      last_observed_at: plus(attemptCall.at, 60_000) } as never)).insertedId);
+    await applyInteraction(bandCallId, new Date());
+    // `capture_repair`: a call a capture repair added (settled Call Log row, `capture_recovery` stamped), then applied.
+    const repairNumber = bandSubjects.repair.number!, repairAt = ago(0, 3);
+    const repaired = { ...callDoc(repairNumber.id, repairNumber.e164, { at: repairAt, direction: "Outbound", result: "Call connected", duration: 75, extension: "101" }),
+      sources: ["backfill"], call_log_state: "settled", call_log_ids: [`cl-t3-band-repair-${keySerial}`], first_observed_at: new Date(), last_observed_at: new Date(),
+      capture_recovery: { run_id: "call-log-repair-seed-t3-band", at: new Date(), kind: "added" } };
+    const repairedId = String((await Calls.collection.insertOne(repaired as never)).insertedId);
+    await applyInteraction(repairedId, new Date());
+    // `owner`: the Owner sets the record waiting (the real command).
+    const ownerRecord = await Records.findById(bandSubjects.owner.recordId).lean().orFail();
+    await commandOutreach({ actor: ownerActor(`${ADMIN}/outreach/${bandSubjects.owner.recordId}/commands`), target_id: bandSubjects.owner.recordId,
+      idempotency_key: `fui-waiting-${bandSubjects.owner.recordId}`, command: { command: "set_waiting", expected_revision: ownerRecord.revision,
+        until: ahead(3).toISOString(), reason: "Customer is travelling this week" } });
+    await publish("2 (call, capture_repair, owner)");
+    // `policy`: a flag flip with no record write (ATTENTION_EVOLUTION off, then back on), as S9-PUBLISH's replica proof does.
+    process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "false";
+    try { await publish("3 (policy: ATTENTION_EVOLUTION off)"); } finally { process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "true"; }
+    snapshot = await publish("4 (policy: ATTENTION_EVOLUTION back on)");
+    const bandStates = { call: "t3_band_transition_call", repair: "t3_band_transition_capture_repair", owner: "t3_band_transition_owner" } as const;
+    const bandNotes = { call: "an outbound attempt applied", repair: "a capture-repaired call applied", owner: "Owner set_waiting" } as const;
+    const bandCalls = { call: [bandCallId], repair: [repairedId], owner: undefined };
+    for (const key of ["call", "repair", "owner"] as const) {
+      const s = bandSubjects[key];
+      row(`T3-band-${key}`, [bandStates[key]], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+        ...(bandCalls[key] ? { interaction_ids: bandCalls[key] } : {}),
+        note: `Fresh Form Lead (band 2 no_call_yet at the baseline publish); between publishes 1 and 2: ${bandNotes[key]}` });
+    }
+  }
+  // SEED-T3 part 2: `outreach_rep_days` for the last 9 ET days (Today, Yesterday, Last 7 days), through the service the cron and the Owner command use.
+  const { rebuildRepDay } = await import("../../src/services/salesIntelligence/overview/repDays");
+  const { addEasternDays } = await import("../../src/services/salesIntelligence/overview/periods");
+  const repDays = [];
+  for (let i = 8; i >= 0; i--) repDays.push(await rebuildRepDay(addEasternDays(etDay(new Date()), -i)));
+  console.log(`outreach_rep_days rebuilt: ${repDays.map(d => `${d.day}=${d.documents}/${d.calls}/${d.unmapped_calls}`).join(", ")} (day=documents/calls/unmapped calls)`);
 
   // ── manifest: collection in the seed DB + a copy for the contract workspace ──────────────
   await db.collection(SI_SEED_MANIFEST).insertMany(manifest.map(m => ({ ...m, seeded_at: new Date(NOW) })));

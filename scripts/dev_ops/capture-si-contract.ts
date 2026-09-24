@@ -26,20 +26,23 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MongoClient } from "mongodb";
-import { SI_CONTRACTS_DIR, SI_SEED_DATABASE, SI_SEED_MANIFEST, SI_SEED_REPLICA, assertSeedDatabase, type SiManifestRow } from "./lib/si-contract-common";
+import { SI_CONTRACTS_DIR, SI_SEED_DATABASE, SI_SEED_MANIFEST, SI_SEED_REPLICA, SI_WORKSPACE, assertSeedDatabase, type SiManifestRow } from "./lib/si-contract-common";
 import { routesFor, type CaptureCall, type Mode, type RouteEntry, type Stage } from "./lib/si-contract-registry";
 
 const PREFIX = "/api/v1/admin/sales-intelligence";
+// SEED-T3 part 2: the flags production runs today, and Team 3's flags with code on the branch (the CF6/CF7/CF9 mode switch).
+const T3_PRODUCTION_FLAGS = ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN", "CAPTURE_WEBHOOK"] as const;
+const T3_TEAM_FLAGS = ["NUMBERS_HAS_CALLS_DEFAULT", "PRIORITY5_CLOSURE", "OVERVIEW", "RECEIVER_ASSIGNMENT", "RECEIVER_LATEST_WINS"] as const;
 const KEPT_HEADERS = ["content-type", "content-range", "accept-ranges", "cache-control"];
 const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 const stage = arg("stage") as Stage | undefined;
 // "AC" (CF-AC, Team 4) is a stub until AC2's new reads land: `routesFor` returns `[]` and `main()`
 // already turns that into a clear "no ... registry entries for AC" failure (AC0-SEED, 2026-09-23).
-if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c is required");
+if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c", "S6", "S7", "S9"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c|S6|S7|S9 is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const base = (arg("base") ?? "http://127.0.0.1:3999").replace(/\/+$/, "");
 const out = resolve(arg("out") ?? SI_CONTRACTS_DIR, stage, ...(mode === "off" ? ["flag-off"] : []));
@@ -121,6 +124,20 @@ async function main() {
     const rows = ((page.body as { data?: { items?: Array<{ sort_keys?: Record<string, unknown> }> } } | null)?.data?.items ?? []);
     if (!(page.body as { data?: { metrics?: unknown } } | null)?.data?.metrics) throw new Error("the Attention snapshot has no metrics: seed with --attention-v2 or republish with --publish-attention on");
     if (!rows.some(row => row.sort_keys && "band2_due_rank" in row.sort_keys)) throw new Error("the Attention snapshot was published with ATTENTION_EVOLUTION off: seed-csi-final-ui.ts --publish-attention on");
+  } else if (stage === "S6" || stage === "S7" || stage === "S9") {
+    // Guard 2 (CF6/CF7/CF9, SEED-T3 part 2): production's flags always on; every Team 3 flag on (mode on) or off (flag-off = production today).
+    const settings = await get("/settings");
+    const flags = (settings.body as { data?: { flags?: Record<string, boolean> } } | null)?.data?.flags ?? {};
+    const want = mode === "on";
+    const start = `start serve-csi-local.ts with CSI_LOCAL_FLAGS=${[...T3_PRODUCTION_FLAGS, ...(want ? T3_TEAM_FLAGS : [])].join(",")}`;
+    for (const flag of T3_PRODUCTION_FLAGS) if (!flags[flag]) throw new Error(`${flag} is off on the API; ${start}`);
+    for (const flag of T3_TEAM_FLAGS) if (Boolean(flags[flag]) !== want) throw new Error(`${flag} is ${want ? "off" : "on"} on the API; ${start}`);
+    const page = await get("/attention?view=all_outreach&limit=200");
+    const rows = ((page.body as { data?: { items?: Array<{ sort_keys?: Record<string, unknown>; outreach?: Record<string, unknown> | null }> } } | null)?.data?.items ?? []);
+    if (!(page.body as { data?: { metrics?: unknown } } | null)?.data?.metrics) throw new Error("the Attention snapshot has no metrics: seed with --attention-v2");
+    if (!rows.some(row => row.sort_keys && "band2_due_rank" in row.sort_keys)) throw new Error("the Attention snapshot was published with ATTENTION_EVOLUTION off");
+    const banded = rows.some(row => row.outreach && "band_since" in row.outreach);
+    if (banded !== want) throw new Error(`the Attention snapshot was published with OVERVIEW ${banded ? "on" : "off"}: seed-csi-final-ui.ts --publish-attention on${want ? "" : " --p5 off --overview off"}`);
   } else if (stage === "AC") {
     const settings = await get("/settings");
     const flags = (settings.body as { data?: { flags?: Record<string, boolean> } } | null)?.data?.flags ?? {};
@@ -149,6 +166,8 @@ async function main() {
   if (!routes.length) throw new Error(`no ${mode === "off" ? "flag-off " : ""}registry entries for ${stage}`);
   mkdirSync(out, { recursive: true });
   for (const file of readdirSync(out)) if (file.endsWith(".json")) rmSync(resolve(out, file));
+  // SEED-T3 part 2: the manifest this capture used, beside its fixtures (the fixture test prefers it over the shared seed-manifest.json).
+  writeFileSync(resolve(out, "_seed-manifest.json"), `${JSON.stringify({ database: SI_SEED_DATABASE, captured_at: new Date().toISOString(), rows }, null, 2)}\n`);
   const summary: Summary[] = [];
   // `script` entries (CF5c) have no HTTP call: `capture-si-s5c-local.ts` writes them after the HTTP pass (it reads `coverage__seed.json`).
   for (const route of routes) if (route.kind !== "script") for (const call of route.calls(rows)) await capture(route, call, summary);
@@ -159,11 +178,32 @@ async function main() {
     if (child.status !== 0 || !line) summary.push({ route: "script: capture-si-s5c-local.ts", state: "(run)", path: "(script)", status: child.status ?? -1,
       note: `exit ${child.status}: ${(child.stderr ?? "").trim().split(/\r?\n/).slice(-3).join(" | ").slice(0, 300)}`, ok: false });
   }
-  const modeLabel = stage === "AC" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN)" : "Team 4 flags off (ATTENTION_V2, TIMELINE_V2 on)")
+  // CF6: the S10 report formats (receiver backfill step 3, Priority 5 reconcile step 4) are copied from the replica evidence, not captured.
+  const reports = stage === "S6" && mode === "on" ? ["S10-3-replica.md", "S10-3-replica-apply.md", "S10-4-replica.md", "S10-4-replica-apply.md"] : [];
+  if (reports.length) {
+    mkdirSync(resolve(out, "reports"), { recursive: true });
+    for (const file of reports) {
+      const from = resolve(SI_WORKSPACE, "evidence", file);
+      if (!existsSync(from)) { summary.push({ route: "report (copied from evidence/)", state: file, path: "(file)", status: 0, note: `missing ${from}`, ok: false }); continue; }
+      copyFileSync(from, resolve(out, "reports", file));
+      summary.push({ route: "report (copied from evidence/)", state: file, path: "(file)", status: 0, note: `reports/${file}`, ok: true });
+    }
+  }
+  const modeLabel = ["S6", "S7", "S9"].includes(stage!) ? (mode === "on" ? `flags on (${[...T3_PRODUCTION_FLAGS, ...T3_TEAM_FLAGS].join(", ")})`
+      : `Team 3 flags off (${T3_TEAM_FLAGS.join(", ")}); production's on (${T3_PRODUCTION_FLAGS.join(", ")}); snapshot republished with PRIORITY5_CLOSURE and OVERVIEW off`)
+    : stage === "AC" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN)" : "Team 4 flags off (ATTENTION_V2, TIMELINE_V2 on)")
     : stage === "S5c" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN, CAPTURE_WEBHOOK, NUMBERS_HAS_CALLS_DEFAULT)"
       : "NUMBERS_HAS_CALLS_DEFAULT off (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN, CAPTURE_WEBHOOK on: production today)")
     : mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2)" : "flags off";
-  const notes = stage === "S5c" && mode === "on" ? {
+  const notes = stage === "S6" && mode === "on" ? {
+    reports: "reports/S10-{3,4}-replica[-apply].md: the receiver_agent backfill (S10 step 3, S6-AGENT) and the Priority 5 reconcile (S10 step 4, S6-P5) dry-run and apply " +
+      "report formats, copied from the replica evidence (evidence/S10-3-replica*.md, evidence/S10-4-replica*.md); not HTTP captures.",
+    receiver_agent: "S6-AGENT has not merged: the detail carries assignment {agent, origin} but not receiver_agent, and no record is crm_receiver yet. The seed writes the " +
+      "receiver_agent states as raw Lead fields (and sets RECEIVER_ASSIGNMENT / RECEIVER_LATEST_WINS); re-run the seed and this capture after S6-AGENT merges.",
+  } : stage === "S9" && mode === "on" ? {
+    rep_scope: "The rep's own Overview (forced scope + team_medians) needs S8-REP: not captured. overview__owner-one-rep-scope.json is the Owner's agent_id scope " +
+      "(the same readOverview scope path, from the param).",
+  } : stage === "S5c" && mode === "on" ? {
     script: "case-file__*__script.json: no route exposes the Case File; capture-si-s5c-local.ts ran the real assembler (caseFileInputFor → assembleCaseFile → caseFileToReadContent) on the seed, read only.",
     synthetic: "coverage__capture-health-{ok,broken}__synthetic.json: the pure composeCaptureHealth (ownerCoverage.ts) over fixed inputs built from the seeded rows, " +
       "put in a copy of the real coverage__seed.json; validated with the same route schema and the production Admin ownerCoverageSchema. coverage__seed.json is the one real example (attention).",
