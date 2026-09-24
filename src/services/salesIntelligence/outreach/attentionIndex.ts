@@ -39,6 +39,22 @@ function legacyFilterKeys(row: Row): AttentionFilterKeysDto {
     ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null };
 }
 
+/**
+ * S7-PRIO (addendum §5, E12–E14): per Priority key (a Granot code, `not_set` for a Lead without one,
+ * `no_lead`), how many rows each view returns with no other filter: `attention` (the Needs Attention
+ * view), `active` (All Outreach, which hides closed work) and `closed` (the Closed view's partition).
+ */
+export function attentionPriorityCounts(entries: Iterable<Pick<AttentionIndexEntry, "partition" | "in_attention" | "filter_keys">>) {
+  const counts: Record<string, { attention: number; active: number; closed: number }> = {};
+  for (const entry of entries) {
+    const bucket = (counts[entry.filter_keys.priority ?? "not_set"] ??= { attention: 0, active: 0, closed: 0 });
+    if (entry.partition === "closed") { bucket.closed++; continue; }
+    if (entry.in_attention !== false) bucket.attention++;
+    if (entry.filter_keys.state !== "closed") bucket.active++;
+  }
+  return counts;
+}
+
 export function attentionIndexEntry(row: Row, position: number, chunk_index: number | null = null): AttentionIndexEntry {
   const entry: AttentionIndexEntry = { subject_key: row.subject_key, partition: row.partition ?? "active", in_attention: row.in_attention ?? null,
     sort_keys: row.sort_keys ?? {}, filter_keys: row.filter_keys ?? legacyFilterKeys(row), reasons: row.derived.reasons ?? [], chunk_index, position };

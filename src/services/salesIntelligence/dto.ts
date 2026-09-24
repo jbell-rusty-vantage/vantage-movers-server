@@ -453,6 +453,7 @@ export const attentionFilterKeysDtoSchema = z
     state: z.enum(CSI_OUTREACH_STATES).nullable(),
     agents: z.array(id),
     attachment: z.enum(["lead", "none"]),
+    // S7-PRIO (E13): `no_lead` for a record with no Lead (from S7 on; earlier snapshots wrote null).
     priority: z.string().nullable(),
     has_recording: z.boolean(),
     has_assessment: z.boolean(),
@@ -485,6 +486,14 @@ export const attentionMetricsDtoSchema = z
   })
   .strict();
 export type AttentionMetricsDto = z.infer<typeof attentionMetricsDtoSchema>;
+/**
+ * S7-PRIO (addendum §5, E12–E14): chip counts per Priority key (a Granot code, `not_set` for a Lead
+ * without a code, `no_lead` for a record with no Lead) and view, over the whole snapshot at its `as_of`:
+ * `attention` = Needs Attention, `active` = All Outreach, `closed` = the Closed view. A chip's count
+ * equals the rows that view returns for `priority=<key>` with no other filter.
+ */
+export const attentionPriorityCountsDtoSchema = z.record(z.string(), z.object({ attention: nonnegative, active: nonnegative, closed: nonnegative }).strict());
+export type AttentionPriorityCountsDto = z.infer<typeof attentionPriorityCountsDtoSchema>;
 /**
  * S1-SUGGEST (final spec §5.5 case 2): the newest analysis's suggestion for card line 6, served only when the
  * server decided case 2 holds at `as_of` (open record, no open next action, newest completed run of the Number has
@@ -632,6 +641,8 @@ export const attentionPageDtoSchema = ownerReadSchema(
       freshness: z.enum(ATTENTION_FRESHNESS).optional(),
       // Data spec §3.6 (S2, ATTENTION_V2): the header's tiles; absent when the snapshot has none.
       metrics: attentionMetricsDtoSchema.nullable().optional(),
+      // S7-PRIO (addendum §5): absent on snapshots published before it and on flag-off (ATTENTION_V2) publishes.
+      priority_counts: attentionPriorityCountsDtoSchema.optional(),
     })
     .strict(),
 );

@@ -5,7 +5,7 @@ import {
   intelligenceFindingSchema,
 } from "../../validation/intelligence/intelligenceEnvelope.validation";
 import { csiPolicySchema } from "../../validation/v1/salesIntelligence";
-import { attentionMetricsDtoSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
+import { attentionMetricsDtoSchema, attentionPriorityCountsDtoSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
 import { z } from "zod";
 import {
   defineCsiModel,
@@ -334,6 +334,12 @@ export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
       validate: { validator: (v: unknown) => v == null || attentionMetricsDtoSchema.safeParse(v).success, message: "Invalid Attention metrics" },
     },
     index_gzip_base64: { type: String, default: null },
+    // S7-PRIO (addendum §5): Priority chip counts per view; null on flag-off publishes and older headers.
+    priority_counts: {
+      type: Schema.Types.Mixed,
+      default: null,
+      validate: { validator: (v: unknown) => v == null || attentionPriorityCountsDtoSchema.safeParse(v).success, message: "Invalid Attention priority counts" },
+    },
   },
   { collection: "sales_intelligence_attention_snapshots" },
 );

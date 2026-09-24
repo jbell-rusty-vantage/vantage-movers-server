@@ -8,8 +8,8 @@ import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/Sale
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { attentionRowDtoSchema, attentionPageDtoSchema, ATTENTION_SORTS, ATTENTION_SORT_DEFAULT_DIRECTION, ATTENTION_VIEWS, ATTENTION_FRESHNESS,
-  ATTENTION_CLOSED_SORTS, ATTENTION_OUTCOMES, type AttentionFilterKeysDto, type AttentionMetricsDto } from "../dto";
-import { attentionIndexEntry, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery, sortAttentionEntries,
+  ATTENTION_CLOSED_SORTS, ATTENTION_OUTCOMES, type AttentionFilterKeysDto, type AttentionMetricsDto, type AttentionPriorityCountsDto } from "../dto";
+import { attentionIndexEntry, attentionPriorityCounts, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery, sortAttentionEntries,
   type AttentionIndexEntry, type AttentionMatchContext } from "./attentionIndex";
 import { closedOutcome, outcomeReason, recordFilterKeys, type FactsCancellation, type RecordFilterKeys } from "./facts";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
@@ -56,7 +56,7 @@ export const attentionQuerySchema = z.object({
   unassigned: bool,
   attachment: z.enum(["lead", "none"]).optional(),
   // Granot Priority codes; the literal `not_set` selects rows without a Priority.
-  priority: repeatedQuery(z.string().regex(/^(not_set|[A-Za-z0-9]{1,8})$/)),
+  priority: repeatedQuery(z.string().regex(/^(not_set|no_lead|[A-Za-z0-9]{1,8})$/)),
   has_recording: bool,
   has_assessment: bool,
   newer_call: bool,
@@ -325,7 +325,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
       attention_band: null, reasons: [], review_item_ids: same.map(r => String(r._id)), review_badges: [...new Set(same.map(r => r.cause_kind))], call_blockers: ["review_only"], age_wall_ms: 0, age_staffed_ms: 0, policy_version: policy.version };
     rows.push(attentionRowDtoSchema.parse({ subject_key: review.subject_key, subject, outreach: null, allowed_actions: [], derived,
       sort_keys: { next_action_due: null, lead_received: null, last_human_contact: null, last_lead_progress: null, ...assessmentSortKeys(null), last_call: null, interactions: null }, in_attention: true,
-      partition: "active", filter_keys: { band: null, needs_review: true, state: null, agents: [], attachment: subject.kind === "lead" ? "lead" : "none", priority: null,
+      partition: "active", filter_keys: { band: null, needs_review: true, state: null, agents: [], attachment: subject.kind === "lead" ? "lead" : "none", priority: subject.kind === "lead" ? null : "no_lead",
         has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null, live_call: false } }));
     published.add(review.subject_key);
   }
@@ -354,10 +354,12 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const inline = !compressed && options.layout !== "chunked" && Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES;
   const chunks = compressed || inline ? null : splitAttentionChunks(encoded, options.chunkBytes);
   // §3.7: the index names where each row lives, so the read materializes only its page.
-  const index = v2 ? encodeAttentionIndex(chunks
+  const indexEntries = v2 ? (chunks
     ? chunks.flatMap((part, chunk) => part.map((row, position) => attentionIndexEntry(row, position, chunk)))
     : encoded.map((row, position) => attentionIndexEntry(row, position))) : null;
-  const v2Header = v2 ? { metrics, index_gzip_base64: index } : {};
+  const index = indexEntries ? encodeAttentionIndex(indexEntries) : null;
+  // S7-PRIO (addendum §5): chip counts per Priority key and view, tallied over the same entries the read filters.
+  const v2Header = v2 ? { metrics, index_gzip_base64: index, priority_counts: attentionPriorityCounts(indexEntries!) } : {};
   const counts = { total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}) };
   await withTransaction(async session => {
     if (compressed) {
@@ -490,8 +492,9 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   // The index and the rows are written in one transaction; a mismatch means a corrupt snapshot, never a silent wrong page.
   if (items.some((row, i) => row?.subject_key !== slice[i]!.subject_key)) throw new Error("Attention index does not match its rows");
   const metrics = (snapshot as { metrics?: AttentionMetricsDto | null }).metrics;
+  const priorityCounts = (snapshot as { priority_counts?: AttentionPriorityCountsDto | null }).priority_counts;
   return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: { items, snapshot_id: snapshot.snapshot_id,
     cursor: offset + limit < matched.length ? Buffer.from(JSON.stringify({ snapshot_id: snapshot.snapshot_id, offset: offset + limit, digest })).toString("base64url") : null,
     total_items: matched.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS, sort: query.sort, direction, view: query.view, freshness: freshness ?? "all",
-    ...(metrics ? { metrics } : {}) } });
+    ...(metrics ? { metrics } : {}), ...(priorityCounts ? { priority_counts: priorityCounts } : {}) } });
 }

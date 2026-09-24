@@ -154,7 +154,8 @@ export function recordFilterKeys(input: Pick<FactsInput, "record" | "followups">
   return {
     agents,
     attachment: record.subject.kind === "lead" ? "lead" : "none",
-    priority: record.lead_progress?.granot_priority ?? null,
+    // S7-PRIO (addendum §5, E13): a record with no Lead is its own chip, `no_lead`; a Lead without a code is null ("Not set").
+    priority: record.subject.kind === "lead" ? record.lead_progress?.granot_priority ?? null : "no_lead",
     has_recording: (facts.recordings_available ?? 0) > 0,
     has_assessment: active && SCORED.has(record.move_assessment?.status ?? ""),
     newer_call: facts.newer_call_since_assessment,
