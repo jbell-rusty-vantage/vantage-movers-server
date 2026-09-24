@@ -113,6 +113,16 @@ export type OwnerMediaOutcome =
 export type OwnerMediaDeps = { store?: OwnerMediaStore; readBlob?: BlobReader; now?: () => Date };
 
 const AUDIO_TYPE = /^audio\/[a-z0-9.+-]+$/i;
+/**
+ * Vercel caps a function response body (4.5 MB), and a browser opens an `<audio>` with `bytes=0-`. Every
+ * response therefore carries at most one bounded chunk and answers 206 with the real total, so the player
+ * asks for the next range; a recording that fits is served whole as before.
+ */
+export const MEDIA_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+export function boundedMediaRange(range: ByteRange | null, size: number | null): ByteRange | null {
+  if (range) return { start: range.start, end: Math.min(range.end, range.start + MEDIA_MAX_RESPONSE_BYTES - 1) };
+  return size !== null && size > MEDIA_MAX_RESPONSE_BYTES ? { start: 0, end: MEDIA_MAX_RESPONSE_BYTES - 1 } : null;
+}
 const BASE_HEADERS = { "Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } as const;
 
 /** Owner-only (the route guard). Every header is built here; nothing from the store response is forwarded. */
@@ -133,6 +143,8 @@ export async function openOwnerConversationMedia(input: { conversation_id: strin
   const parsed = parseByteRange(input.range, size);
   if (parsed.kind === "unsatisfiable") return { kind: "range_not_satisfiable", headers: { ...BASE_HEADERS, "Content-Range": `bytes */${size}` } };
 
+  const range = boundedMediaRange(parsed.kind === "range" ? parsed.range : null, size);
+
   // Audit first: no byte is read before the row exists.
   const now = (deps.now ?? (() => new Date()))();
   const window = Math.floor(now.getTime() / MEDIA_AUDIT_WINDOW_MS) * MEDIA_AUDIT_WINDOW_MS;
@@ -140,10 +152,9 @@ export async function openOwnerConversationMedia(input: { conversation_id: strin
   await store.audit({ semantic_key: `${MEDIA_PLAYED_EVENT}:${id}:${input.actor.id}:${window}`, subject_key: subject, event_kind: MEDIA_PLAYED_EVENT, command_id: null,
     actor: { kind: input.actor.kind, id: input.actor.id, request_id: input.actor.request_id, run_id: input.actor.run_id },
     happened_at: now, recorded_at: now, prior: { recording_state: "available" },
-    current: { conversation_id: id, contact_number_id: numberId, range: parsed.kind === "range" ? `bytes=${parsed.range.start}-${parsed.range.end}` : null },
+    current: { conversation_id: id, contact_number_id: numberId, range: range ? `bytes=${range.start}-${range.end}` : null },
     invalidation: { kind: "number", target_id: numberId ?? id, subject_key: subject, revision: 1 } });
 
-  const range = parsed.kind === "range" ? parsed.range : null;
   const blob = await (deps.readBlob ?? privateBlobReader)(pathname, range, input.signal);
   if (!blob) return { kind: "not_found" };
   const stored = conversation.media?.content_type;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { csiOperatorActor, CsiError, type CsiActor } from "../auth";
 import {
-  BlobReadFailed, MEDIA_AUDIT_WINDOW_MS, openOwnerConversationMedia, parseByteRange, privateBlobReader,
+  BlobReadFailed, MEDIA_AUDIT_WINDOW_MS, MEDIA_MAX_RESPONSE_BYTES, boundedMediaRange, openOwnerConversationMedia, parseByteRange, privateBlobReader,
   type BlobReader, type MediaAuditRow, type MediaConversationRow, type OwnerMediaStore,
 } from "./ownerMedia";
 
@@ -162,4 +162,15 @@ test("S4-CONV media: the default private reader refuses without credentials and 
     if (saved.token === undefined) delete process.env.BLOB_READ_WRITE_TOKEN; else process.env.BLOB_READ_WRITE_TOKEN = saved.token;
     if (saved.store === undefined) delete process.env.BLOB_STORE_ID; else process.env.BLOB_STORE_ID = saved.store;
   }
+});
+
+test("S4-CONV media: every response is at most one bounded chunk (Vercel response cap); small objects are unchanged", () => {
+  const cap = MEDIA_MAX_RESPONSE_BYTES, big = 5 * cap + 7;
+  assert.deepEqual(boundedMediaRange(null, 100), null, "a recording under the cap is served whole");
+  assert.deepEqual(boundedMediaRange(null, null), null, "unknown size: whole object, as before");
+  assert.deepEqual(boundedMediaRange(null, big), { start: 0, end: cap - 1 }, "no Range on a large object → the first chunk");
+  assert.deepEqual(boundedMediaRange({ start: 0, end: big - 1 }, big), { start: 0, end: cap - 1 }, "bytes=0- is clamped");
+  assert.deepEqual(boundedMediaRange({ start: 3 * cap, end: big - 1 }, big), { start: 3 * cap, end: 4 * cap - 1 });
+  assert.deepEqual(boundedMediaRange({ start: 5 * cap, end: big - 1 }, big), { start: 5 * cap, end: big - 1 }, "the tail fits");
+  assert.deepEqual(boundedMediaRange({ start: 10, end: 19 }, big), { start: 10, end: 19 });
 });
