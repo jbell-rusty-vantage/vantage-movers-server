@@ -154,6 +154,7 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           quarantined: { type: Number, min: 0 },
           quarantine_retries: { type: Number, min: 0 },
           straggler_reads: { type: Number, min: 0 },
+          settled_from_store: { type: Number, min: 0 },
           sync_mode: { type: String },
           sync_type: { type: String },
           sync_records: { type: Number, min: 0 },

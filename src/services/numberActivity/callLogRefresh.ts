@@ -23,6 +23,7 @@ import {
 } from "./accountIdentity";
 import { isProviderThrottle, throttleRetryAfterMs } from "./callLogClient";
 import { loadDirectoryLookup, type DirectoryLookup } from "./directory";
+import { callLogReconcileConfig } from "./reconcileCallLog";
 import { TERMINAL_PARTY_STATUSES, type CallLogRecordInput } from "./interactionProjection";
 import {
   applyInteractionObservation,
@@ -394,7 +395,7 @@ export async function runCallLogRefreshJob(
         const applied = await apply(
           accountId,
           { kind: "call_log", record, proof_ref: `call_log_refresh:${id ?? "unknown"}`, source: "call_log_reconcile" },
-          { now, directory, resolveRoute, request_id: lease.job_id },
+          { now, directory, resolveRoute, request_id: lease.job_id, settleHorizonMinutes: callLogReconcileConfig().settleHorizonMinutes },
         );
         result.applied.push({ call_log_id: id, interaction_id: applied.interaction_id, noop: applied.noop, created: applied.created });
       } catch (error) {

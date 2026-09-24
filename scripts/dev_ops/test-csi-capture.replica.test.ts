@@ -17,7 +17,7 @@ import {
   normalizeWebhookPartyObservations,
   observeRingCentralWebhookEvents,
 } from "../../src/services/numberActivity/observeWebhookEvents";
-import { applyInteractionObservation } from "../../src/services/numberActivity/persistInteraction";
+import { applyInteractionObservation, InteractionPersistenceError } from "../../src/services/numberActivity/persistInteraction";
 import { CALL_LOG_SWEEP_SCOPE, runCallLogSweepOnce } from "../../src/services/numberActivity/callLogSweep";
 import type { CallLogSyncInput } from "../../src/services/numberActivity/callLogClient";
 import {
@@ -1403,7 +1403,8 @@ test(
           let broken = true;
           const apply: typeof applyInteractionObservation = async (accountId, input, deps) => {
             if (broken && input.kind === "call_log" && input.record.id === bad.id) {
-              throw Object.assign(new Error('Cast to Embedded failed for value at path "rollups" because of "StrictModeError"'), { name: "StrictModeError" });
+              // Deterministic: quarantined after 3 (a transient error gets 6).
+              throw new InteractionPersistenceError("projection_failed", "Call Log record has no start time");
             }
             return applyInteractionObservation(accountId, input, deps);
           };
@@ -1419,7 +1420,7 @@ test(
           assert.equal(r1.error_code, "projection_failed");
           assert.equal(r1.cursor_advanced, false);
           let state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
-          assert.deepEqual(state?.record_failures?.map((f) => [f.call_log_id, f.failures, f.last_error_code]), [[bad.id, 1, "persist_failed"]]);
+          assert.deepEqual(state?.record_failures?.map((f) => [f.call_log_id, f.failures, f.last_error_code]), [[bad.id, 1, "projection_failed"]]);
           await run(new Date(now.getTime() + 5 * MIN));
           const r3 = await run(new Date(now.getTime() + 10 * MIN));
           assert.equal(r3.error_code, null, "only a quarantined failure: the window counts complete");
@@ -1431,8 +1432,8 @@ test(
           const entry = state?.quarantined_records?.[0];
           assert.equal(entry?.call_log_id, bad.id);
           assert.equal(entry?.telephony_session_id, "s-q-bad");
-          assert.equal(entry?.error_name, "StrictModeError");
-          assert.equal(entry?.error_code, "persist_failed");
+          assert.equal(entry?.error_name, "InteractionPersistenceError");
+          assert.equal(entry?.error_code, "projection_failed");
           assert.equal(entry?.failures, 3);
           assert.equal(entry?.next_retry_at.toISOString(), new Date(now.getTime() + 70 * MIN).toISOString());
           assert.ok(events.some((e) => e.eventKey === "sales_intelligence.call_log_reconcile.record_quarantined"));
@@ -1486,7 +1487,14 @@ test(
           const oldStart = new Date(now.getTime() - 300 * MIN);
           const recentStart = new Date(now.getTime() - 30 * MIN);
           const old = inboundConnectedCallLog("s-straggler-old", { startTime: oldStart });
-          const recent = inboundConnectedCallLog("s-straggler-new", { startTime: recentStart });
+          // A real mid-call snapshot: the CC-04 classifier keeps it provisional on re-apply.
+          const recent = inboundConnectedCallLog("s-straggler-new", {
+            startTime: recentStart,
+            duration: 0,
+            result: "Stopped",
+            recording: null,
+            lastModifiedTime: new Date(recentStart.getTime() + 2 * MIN),
+          });
           const cfg = ccConfig();
           await runCallLogReconcileOnce(reconcileDeps([[old, recent]], { config: cfg }));
           // Team Provisional's field, set raw: tolerated whether or not the model declares it.
@@ -1518,6 +1526,136 @@ test(
           assert.ok(applied.includes(String(recent.id)), "a provisional row is never skipped as unchanged");
           assert.equal(summary.known_complete_through, recentStart.toISOString(), "complete-through stops at the oldest provisional start");
           await rawInteractions().updateMany({ call_log_state: "provisional" }, { $unset: { call_log_state: "" } });
+        },
+      );
+
+
+      await t.test(
+        "settle from store: a provisional straggler the provider no longer knows (404) or holds in quarantine settles from its stored projection, once",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const gone = inboundConnectedCallLog("s-store-404", { startTime: new Date(now.getTime() - 300 * MIN), recording: null });
+          const held = inboundConnectedCallLog("s-store-held", { startTime: new Date(now.getTime() - 400 * MIN), recording: null });
+          const young = inboundConnectedCallLog("s-store-young", {
+            startTime: new Date(now.getTime() - 20 * MIN),
+            duration: 0,
+            result: "Stopped",
+            recording: null,
+            lastModifiedTime: new Date(now.getTime() - 18 * MIN),
+          });
+          await runCallLogReconcileOnce(reconcileDeps([[gone, held, young]], { config: ccConfig() }));
+          // Make the two old rows look like stored mid-call snapshots: provisional, no Number.
+          for (const sessionId of ["s-store-404", "s-store-held"]) {
+            const row = await Interaction.findOne({ telephony_session_id: sessionId }).lean();
+            if (row?.contact_number_id) {
+              await ContactNumber.updateOne({ _id: row.contact_number_id }, { $inc: { "rollups.interactions_total": -1, "rollups.inbound_total": -1 } });
+            }
+          }
+          await rawInteractions().updateMany(
+            { telephony_session_id: { $in: ["s-store-404", "s-store-held"] } },
+            { $set: { call_log_state: "provisional", terminal: false, contact_number_id: null } },
+          );
+          const storeIds = (await Interaction.distinct("_id", { telephony_session_id: { $in: ["s-store-404", "s-store-held"] } })).map(String);
+          await Jobs.deleteMany({ stage: "outreach_ensure", input_refs: { $in: storeIds } });
+          await SyncState.updateOne(
+            { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE },
+            {
+              $set: {
+                quarantined_records: [{
+                  call_log_id: held.id,
+                  telephony_session_id: "s-store-held",
+                  start_time: new Date(String(held.startTime)),
+                  error_code: "projection_failed",
+                  error_name: "InteractionPersistenceError",
+                  failures: 3,
+                  first_failed_at: new Date(now.getTime() - 30 * MIN),
+                  last_failed_at: new Date(now.getTime() - 30 * MIN),
+                  next_retry_at: new Date(now.getTime() + 30 * MIN),
+                }],
+              },
+            },
+          );
+          const reads: string[] = [];
+          const later = new Date();
+          const summary = await runCallLogReconcileOnce(
+            filteredDeps(() => [young], {
+              config: ccConfig(),
+              now: () => later,
+              fetchRecord: async (id) => {
+                reads.push(id);
+                return null;
+              },
+            }),
+          );
+          assert.deepEqual(reads, [gone.id], "the quarantined row is not re-read; the 404 one is");
+          assert.equal(summary.settled_from_store, 2);
+          for (const sessionId of ["s-store-404", "s-store-held"]) {
+            const row = await Interaction.findOne({ telephony_session_id: sessionId }).lean();
+            assert.equal((row as { call_log_state?: string } | null)?.call_log_state, "settled", sessionId);
+            assert.equal(row?.terminal, true);
+            assert.ok(row?.contact_number_id, "the settled external row gets its Contact Number");
+            assert.equal(await Jobs.countDocuments({ stage: "outreach_ensure", input_refs: String(row!._id) }), 1, "downstream runs once, on settle");
+          }
+          assert.equal(
+            (await rawInteractions().findOne({ telephony_session_id: "s-store-young" }))?.call_log_state,
+            "provisional",
+            "a snapshot inside the horizon is left for the provider",
+          );
+          const state = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean();
+          assert.deepEqual(state?.quarantined_records, [], "a settled row's record needs no more retries");
+          assert.equal(state?.last_run?.settled_from_store, 2);
+
+          // Idempotent: the next run finds nothing to settle and enqueues nothing.
+          const again = await runCallLogReconcileOnce(filteredDeps(() => [young], { config: ccConfig(), now: () => new Date(), fetchRecord: async () => null }));
+          assert.equal(again.settled_from_store, 0);
+          await rawInteractions().updateMany({ call_log_state: "provisional" }, { $unset: { call_log_state: "" } });
+        },
+      );
+
+      await t.test(
+        "sweep: a record held in the reconcile's quarantine is counted as quarantined, not measured, and does not fail the sweep",
+        async () => {
+          await resetReconcile();
+          const now = new Date();
+          const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
+          const ok = inboundConnectedCallLog("s-sweepq-ok", { startTime: hoursAgo(10) });
+          const bad = inboundConnectedCallLog("s-sweepq-bad", { startTime: hoursAgo(11) });
+          await runCallLogReconcileOnce(reconcileDeps([[ok]], { config: ccConfig() }));
+          await SyncState.updateOne(
+            { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE },
+            {
+              $set: {
+                quarantined_records: [{
+                  call_log_id: bad.id, telephony_session_id: "s-sweepq-bad", start_time: hoursAgo(11),
+                  error_code: "projection_failed", error_name: "InteractionPersistenceError", failures: 3,
+                  first_failed_at: hoursAgo(9), last_failed_at: hoursAgo(9), next_retry_at: hoursAgo(-1),
+                }],
+              },
+            },
+          );
+          const fetch = startFiltered(() => [ok, bad]);
+          const applied: string[] = [];
+          const sweep = await runCallLogSweepOnce({
+            now: () => new Date(),
+            fetchPage: ({ page, from, to }) => fetch(page, from, to),
+            apply: async (accountId, input, deps) => {
+              if (input.kind === "call_log" && input.record.id === bad.id) throw new InteractionPersistenceError("projection_failed", "deterministic");
+              if (input.kind === "call_log") applied.push(String(input.record.id));
+              return applyInteractionObservation(accountId, input, deps);
+            },
+            directory: async () => directory,
+            resolveRoute: noRoute,
+            configuredAccountId: SYNTHETIC_ACCOUNT_ID,
+            recordEvent: noEvent as never,
+            requireFlag: false,
+            config: ccConfig(),
+          });
+          assert.equal(sweep.complete, true);
+          assert.equal(sweep.failures, 0);
+          assert.equal(sweep.quarantined, 1);
+          assert.deepEqual([sweep.provider_records, sweep.missing_before, sweep.stored_in_latest_version], [2, 0, 1]);
+          assert.deepEqual(applied, [ok.id]);
         },
       );
 

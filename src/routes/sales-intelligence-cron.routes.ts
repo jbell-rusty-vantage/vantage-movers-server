@@ -20,7 +20,8 @@ import { drainIntelligenceJobs } from "../services/salesIntelligence/analysis/wo
 import { drainMoveAssessmentJobs } from "../services/salesIntelligence/assessment/runtime";
 import { drainIntelligenceApplications } from "../services/salesIntelligence/analysis/apply";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
-import { runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
+import { callLogReconcileConfig, runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
+import { settleProvisionalFromStore } from "../services/numberActivity/settleProvisional";
 import { runCallLogSweepOnce } from "../services/numberActivity/callLogSweep";
 import { runBackfillStepOnce } from "../services/salesIntelligence/backfill/step";
 import { drainBackfillActivationJobs } from "../services/salesIntelligence/backfill/worker";
@@ -54,6 +55,12 @@ export type SalesIntelligenceCronRouteDeps = {
   connect?: typeof connectMongo;
   flag?: typeof csiFlag;
   runCallLogReconcile?: typeof runCallLogReconcileOnce;
+  /**
+   * Settles provisional rows past the horizon from the store. Job recovery runs
+   * it when webhook capture is on and Call Log capture is off, because then no
+   * reconcile exists to settle them.
+   */
+  settleProvisional?: () => Promise<unknown>;
   /** CC-06: nightly authoritative Call Log sweep under `CAPTURE_CALL_LOG`. */
   runCallLogSweep?: typeof runCallLogSweepOnce;
   runReceiptRecovery?: typeof runReceiptWatermarkRecovery;
@@ -255,10 +262,19 @@ export function createSalesIntelligenceCronRouter(
       });
       let receiptRecovery: RecoverySummary | null = null;
       let capture: DrainSummary | null = null;
+      let provisionalSettle: unknown = null;
       let rebuild: RebuildDrainSummary | null = null;
       if (captureOn) {
         receiptRecovery = await recovery();
         capture = await drainCapture(drainMax, drainDeadlineMs);
+        if (!flag("CAPTURE_CALL_LOG")) {
+          provisionalSettle = await (deps.settleProvisional ??
+            (() => settleProvisionalFromStore({
+              now: () => new Date(),
+              settleHorizonMinutes: callLogReconcileConfig().settleHorizonMinutes,
+              limit: 50,
+            })))();
+        }
       }
       if (rebuildOn) {
         rebuild = await drainRebuild(rebuildMax, drainDeadlineMs);
@@ -295,6 +311,7 @@ export function createSalesIntelligenceCronRouter(
             }
           : null,
         rebuild,
+        provisional_settle: provisionalSettle,
         ...extraResults,
       });
     } catch (error) {

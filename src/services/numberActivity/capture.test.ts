@@ -138,7 +138,7 @@ test("CC-03: known_complete_through never passes the oldest provisional start in
   const behind = nextState({ known_complete_through: at(-2000) }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
     completeThroughCap: at(-3000),
   });
-  assert.equal(behind.known_complete_through?.toISOString(), at(-2000).toISOString(), "never regresses");
+  assert.equal(behind.known_complete_through?.toISOString(), at(-2000).toISOString(), "an older provisional row holds it: never raised, never lowered");
   const overflow = nextState({ gaps: [] as never[] }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
     overflow: [{ from: at(-50_000), to: at(-49_940) }],
   });

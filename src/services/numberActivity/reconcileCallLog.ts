@@ -22,9 +22,11 @@ import {
   type CallLogRecordFetcher,
   type CallLogSyncFetcher,
 } from "./callLogClient";
+import { settleProvisionalFromStore } from "./settleProvisional";
 import {
   DEFAULT_QUARANTINE_LIMITS,
   failureLogFields,
+  isTransientQuarantineCode,
   QuarantineBook,
   quarantineErrorCode,
   type QuarantinedRecord,
@@ -188,6 +190,8 @@ export type ReconcileSummary = {
   quarantine_retries: number;
   /** By-id re-reads of provisional rows older than the settle horizon this run. */
   straggler_reads: number;
+  /** Provisional rows past the horizon settled from their stored projection this run. */
+  settled_from_store: number;
   /** Account Call Log Sync step; null when `SALES_INTELLIGENCE_CALL_LOG_SYNC` is off. */
   sync: ReconcileSyncSummary | null;
   throttled_count: number;
@@ -247,6 +251,10 @@ export function maskOwner(owner: string): string {
   return createHash("sha256").update(owner).digest("hex").slice(0, 12);
 }
 
+/** Provisional rows settled from the store per run, and the extra quiet time before the straggler re-read is bypassed. */
+const STORE_SETTLES_PER_RUN = 50;
+const STORE_SETTLE_GRACE_MINUTES = 60;
+
 /** Quarantine older than this raises `quarantine_stale` (CC-01). */
 const QUARANTINE_STALE_MS = 2 * 3_600_000;
 
@@ -288,6 +296,7 @@ export async function runCallLogReconcileOnce(
     quarantined: 0,
     quarantine_retries: 0,
     straggler_reads: 0,
+    settled_from_store: 0,
     sync: null,
     throttled_count: 0,
     throttle_retry_after_ms: null,
@@ -354,7 +363,13 @@ export async function runCallLogReconcileOnce(
   const book = new QuarantineBook(state.quarantined_records, state.record_failures, {
     ...DEFAULT_QUARANTINE_LIMITS,
     quarantineAfter: deps.config.quarantineAfter,
+    transientQuarantineAfter: deps.config.quarantineAfter * 2,
   });
+  /**
+   * Call Log ids the provider cannot answer for (404, deterministic failure):
+   * their provisional rows are settled from the store past the horizon.
+   */
+  const settleFromStore = new Set<string>();
   /** Call Log ids this run already applied or attempted; by-id reads skip them. */
   const attempted = new Set<string>();
   /**
@@ -553,6 +568,7 @@ export async function runCallLogReconcileOnce(
     }
     if (!isRecord(fetched)) {
       fail("provider_not_found", "NotFound");
+      settleFromStore.add(id);
       return true;
     }
     const contextError = await ensureContext([fetched]);
@@ -562,6 +578,7 @@ export async function runCallLogReconcileOnce(
     }
     const outcome = await applyOne(fetched);
     if (outcome.ok && !outcome.noop) summary.upserts += 1;
+    if (!outcome.ok && !isTransientQuarantineCode(outcome.code)) settleFromStore.add(id);
     return true;
   };
 
@@ -665,6 +682,23 @@ export async function runCallLogReconcileOnce(
       }
     }
 
+    // A provisional row the provider cannot settle (404, deterministic failure,
+    // quarantine), or one the straggler pass has not reached an hour past the
+    // horizon, settles from its stored projection. No provider traffic.
+    const fromStore = await settleProvisionalFromStore({
+      now: deps.now,
+      settleHorizonMinutes: deps.config.settleHorizonMinutes,
+      limit: STORE_SETTLES_PER_RUN,
+      graceMinutes: STORE_SETTLE_GRACE_MINUTES,
+      priorityCallLogIds: [...settleFromStore, ...book.quarantinedIds()],
+      request_id: runRequestId,
+      apply: deps.apply,
+      beforeEach: () => renew(),
+    });
+    summary.settled_from_store = fromStore.settled;
+    // A settled row is final: its provider record no longer needs retrying.
+    for (const id of fromStore.settled_call_log_ids) book.recordSuccess(id);
+
     // Oldest gaps first, only with leftover budget and only when not already inside the rolling window.
     const openGaps = [...(state.gaps ?? [])]
       .filter((gap) => !(gap.from >= windowFrom && gap.to <= windowTo))
@@ -755,6 +789,7 @@ export async function runCallLogReconcileOnce(
             quarantined: summary.quarantined,
             quarantine_retries: summary.quarantine_retries,
             straggler_reads: summary.straggler_reads,
+            settled_from_store: summary.settled_from_store,
             ...(syncStep
               ? {
                   sync_mode: syncStep.mode,
@@ -819,6 +854,7 @@ export async function runCallLogReconcileOnce(
         quarantined: summary.quarantined,
         quarantineRetries: summary.quarantine_retries,
         stragglerReads: summary.straggler_reads,
+        settledFromStore: summary.settled_from_store,
         syncMode: summary.sync?.mode ?? "off",
         syncRecords: summary.sync?.records ?? null,
         syncChanged: summary.sync?.changed ?? null,
@@ -975,6 +1011,9 @@ export function nextState(
       if (w.kind === "rolling") {
         cursorAdvanced = true;
         let candidate = new Date(windowTo.getTime() - config.finalizationLagMinutes * 60_000);
+        // `known` never moves backwards. A provisional row older than it (a
+        // snapshot first stored after `known` passed its start) therefore
+        // cannot lower it, but holds it where it is until the row settles.
         const cap = options.completeThroughCap ?? null;
         if (cap && cap < candidate) candidate = cap;
         if (!known || candidate > known) known = candidate;
@@ -1346,7 +1385,7 @@ export async function projectCallLogBackfillPage(input: {
       const applied = await apply(
         accountId,
         { kind: "call_log", record, proof_ref: `call_log:${str(record.id) ?? "unknown"}`, source: "backfill" },
-        { now, directory, resolveRoute, request_id: input.request_id },
+        { now, directory, resolveRoute, request_id: input.request_id, settleHorizonMinutes: callLogReconcileConfig().settleHorizonMinutes },
       );
       if (applied.noop) result.noops += 1;
       else result.upserts += 1;

@@ -27,6 +27,7 @@ function reconcileSummary(partial: Partial<ReconcileSummary>): ReconcileSummary 
     quarantined: 0,
     quarantine_retries: 0,
     straggler_reads: 0,
+    settled_from_store: 0,
     sync: null,
     throttled_count: 0,
     throttle_retry_after_ms: null,
@@ -342,4 +343,37 @@ test("CC-06 Call Log sweep route: cron auth, CAPTURE_CALL_LOG gate, lease_held s
     "40 7 * * *",
     "about 3:40 ET, after the business day",
   );
+});
+
+test("job recovery settles provisional rows from the store only when webhook capture runs without Call Log capture", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  const flags: Record<string, boolean> = { CAPTURE_WEBHOOK: true, CAPTURE_CALL_LOG: false };
+  let settles = 0;
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {},
+    flag: ((name: string) => flags[name] ?? false) as never,
+    runReceiptRecovery: async () => recoverySummary({}),
+    drainCaptureProjection: async () => ({ claimed: 0, completed: 0, failed: 0, lease_lost: 0, deadline_reached: false, outcomes: [] }),
+    refreshCoverage: async () => {},
+    ensureLeadMessageIndex: async () => {},
+    extraRecovery: [],
+    settleProvisional: async () => {
+      settles += 1;
+      return { settled: 2 };
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      const first = await call(CSI_CRON_PATHS.jobRecovery, auth);
+      assert.deepEqual(first.body.provisional_settle, { settled: 2 });
+      flags.CAPTURE_CALL_LOG = true;
+      const second = await call(CSI_CRON_PATHS.jobRecovery, auth);
+      assert.equal(second.body.provisional_settle, null, "the reconcile owns settling while Call Log capture runs");
+    });
+  } finally {
+    process.env = saved;
+  }
+  assert.equal(settles, 1);
 });
