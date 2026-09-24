@@ -33,6 +33,7 @@ import { refreshCaptureCoverage } from "../services/numberActivity/coverage";
 import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
+import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
 
 /**
  * Sales Intelligence cron routes (03 §11). Mounted before the `/api/v1`
@@ -90,6 +91,8 @@ export type SalesIntelligenceCronRouteDeps = {
   /** CC-08: `call_log_refresh` drain (job recovery, under `CAPTURE_WEBHOOK`) and the daily subscription maintenance. */
   drainCallLogRefresh?: () => Promise<unknown>;
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
+  /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
+  recordDeployment?: () => Promise<unknown>;
 };
 
 export const CSI_CRON_PATHS = {
@@ -211,6 +214,7 @@ export function createSalesIntelligenceCronRouter(
     }
     try {
       await connect();
+      await (deps.recordDeployment ?? recordDeploymentCommitOnce)();
       await (deps.refreshCoverage ?? refreshCaptureCoverage)().catch((error: unknown) => {
         logger.error({
           msg: "sales_intelligence.cron.coverage_refresh.failed",

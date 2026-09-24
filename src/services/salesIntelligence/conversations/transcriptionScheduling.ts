@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 import { csiFlag, CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY } from "../../../config/domain/salesIntelligence";
 import { withTransaction } from "../../../db";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
@@ -13,8 +14,13 @@ function pipelineJobPriority(sources: readonly string[] | undefined): number {
   return historicalOnly ? CSI_BACKFILL_JOB_PRIORITY : CSI_LIVE_JOB_PRIORITY;
 }
 
-/** Close CSI-11's durable hook→job gap. The marker and job commit together; digest changes alone create a new STT unit. */
-export async function scheduleTranscriptionJobs(max = 5, publish = publishCaptureProjectionWakeup) {
+/**
+ * Close CSI-11's durable hook→job gap. The marker and job commit together; digest changes alone create a new STT unit.
+ * `options.conversationIds` narrows the scan to named conversations, for an operator runner that
+ * schedules and then claims its own unit by id (Call Log repair, CC-07).
+ */
+export async function scheduleTranscriptionJobs(max = 5, publish = publishCaptureProjectionWakeup,
+  options: { conversationIds?: readonly string[] } = {}) {
   if (!csiFlag("STT_ENABLED")) return [];
   if (!Number.isFinite(max)) return [];
   const limit = Math.min(5, Math.max(0, Math.floor(max)));
@@ -22,6 +28,7 @@ export async function scheduleTranscriptionJobs(max = 5, publish = publishCaptur
   const Conversations = getLeadConversationModel();
   const now = new Date();
   const filter = {
+    ...(options.conversationIds ? { _id: { $in: options.conversationIds.map((id) => new Types.ObjectId(id)) } } : {}),
     content_purged_at: null,
     state: "media_stored" as const,
     media_digest_sha256: { $type: "string" as const }, "media.blob_pathname": { $type: "string" as const },

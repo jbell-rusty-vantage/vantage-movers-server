@@ -9,7 +9,7 @@
  * apply cron, exactly like the unsummarized backfill.
  *
  *   node --env-file=.env --import tsx scripts/dev_ops/backfill-csi-context-refresh.ts \
- *     --manifest scripts/dev_ops/output/<file>.json [--limit N] [--concurrency 1..4] [--allow-production] [--confirm-write]
+ *     --manifest scripts/dev_ops/output/<file>.json [--limit N] [--concurrency 1..4] [--allow-production] [--confirm-write] [--allow-schema-drift]
  *
  * Manifests carry identifiers and operational outcomes only, never transcript or summary text.
  */
@@ -40,6 +40,7 @@ import { CsiError } from "../../src/services/salesIntelligence/auth";
 import { runIntelligenceJob } from "../../src/services/salesIntelligence/analysis/worker";
 import { STRUCTURED_PIPELINE, FINDINGS_PROMPT_VERSION } from "../../src/services/salesIntelligence/analysis/structuredPrompt";
 import { continueStructuredAnalysis, runBoundedBackfill, waitForBackfillPeer } from "../backfill-csi-structured-analysis.lib";
+import { assertProductionWriterMatchesDeployment } from "./lib/production-writer-guard";
 
 const idSchema = z.string().regex(/^[a-f\d]{24}$/i);
 const entrySchema = z.object({
@@ -110,6 +111,8 @@ async function main() {
   const database = getMongoDatabaseName();
   if (!localDatabase(database, process.env.MONGO_URI) && !process.argv.includes("--allow-production"))
     throw new Error("the database is not a local testvantagemovers_* one; pass --allow-production to proceed");
+  // CC-00 §5.2: production data is only written by the deployed build (override: --allow-schema-drift).
+  await assertProductionWriterMatchesDeployment();
   let manifest: Manifest;
   try { manifest = manifestSchema.parse(JSON.parse(await readFile(path, "utf8"))); }
   catch (error) {
