@@ -125,6 +125,68 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
         .nullable(),
     })
     .strict(),
+  // S5c-HEALTH (G6): the server-computed capture headline and the successor of
+  // `call_log_capture` (which stays unchanged for the production Admin).
+  // `status`: `broken` when the webhook is `down` or the oldest quarantine is
+  // older than 24 h; `attention` when the webhook is `degraded`, a quarantine
+  // exists or a call is pending finalization; otherwise `ok`. Stable `reasons`
+  // keys, broken ones first: `webhook_down`, `quarantine_over_24h`,
+  // `webhook_degraded`, `quarantine`, `pending_finalization`.
+  // `webhook.state`: `off` (SALES_INTELLIGENCE_CAPTURE_WEBHOOK off), `down`
+  // (no owned subscription, expired or provider-terminal, or the latest renewal
+  // run in the last 26 h failed), `degraded` (no receipt for 30 staffed minutes
+  // while the Call Log shows calls in those minutes), else `healthy`. Only a
+  // suffix of the subscription id is exposed. Optional: older snapshots lack it.
+  capture_health: z
+    .object({
+      as_of: date,
+      status: z.enum(["ok", "attention", "broken"]),
+      reasons: z.array(z.enum(["webhook_down", "quarantine_over_24h", "webhook_degraded", "quarantine", "pending_finalization"])),
+      known_complete_through: date.nullable(),
+      call_log: z
+        .object({
+          sync_mode: z.enum(["off", "shadow", "on"]),
+          last_reconcile_at: date.nullable(),
+          quarantined_count: nonnegative,
+          oldest_quarantined_at: date.nullable(),
+          last_sweep: z
+            .object({
+              ran_at: date,
+              from: date,
+              to: date,
+              complete: z.boolean(),
+              provider_records: nonnegative,
+              stored_in_latest_version: nonnegative,
+              applied_changes: nonnegative,
+              missing_before: nonnegative,
+              stale_before: nonnegative,
+              provisional_after_horizon: nonnegative,
+              quarantined: nonnegative,
+              consecutive_drift_runs: nonnegative,
+              // Derived: min(applied_changes, missing_before + stale_before), the
+              // measured drift the sweep actually applied (calls added or corrected).
+              recovered_calls: nonnegative,
+            })
+            .strict()
+            .nullable(),
+        })
+        .strict(),
+      webhook: z
+        .object({
+          state: z.enum(["healthy", "degraded", "down", "off"]),
+          subscription_id_suffix: z.string().nullable(),
+          subscription_expires_at: date.nullable(),
+          last_receipt_at: date.nullable(),
+          receipts_1h: nonnegative,
+          last_renewal_at: date.nullable(),
+          last_renewal_error: z.string().nullable(),
+        })
+        .strict(),
+      in_progress_calls: nonnegative,
+      pending_finalization: nonnegative,
+    })
+    .strict()
+    .optional(),
   mapping_hygiene: z
     .object({
       unmapped_inbound_numbers: nonnegative,
