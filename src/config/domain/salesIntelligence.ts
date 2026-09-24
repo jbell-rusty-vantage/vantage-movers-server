@@ -124,6 +124,8 @@ export const CSI_ERROR_CODES = [
   // terminal disposition whose provenance is unresolved.
   "CRM_DISPOSITION_CLOSED",
   "DISPOSITION_REVIEW",
+  // S8-REP (addendum §4.2): a rep command outside the E9 allowlist, or on a follow-up it isn't responsible for.
+  "FORBIDDEN",
 ] as const;
 export type CsiErrorCode = (typeof CSI_ERROR_CODES)[number];
 export const CSI_FLAGS = [

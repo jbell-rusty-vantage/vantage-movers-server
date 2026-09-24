@@ -61,7 +61,8 @@ export function followupActorKind(origin: string | null | undefined): StoryActor
 
 /** Audit actors are `owner`/`worker`/`intelligence`; anything else is the worker. */
 export function auditActorKind(kind: string | null | undefined): StoryActorKind {
-  return kind === "owner" || kind === "intelligence" ? kind : "worker";
+  // S8-REP: a signed rep's own follow-up change (audit `actor.kind: "rep"`) is the rep's, not Vantage's.
+  return kind === "owner" || kind === "intelligence" || kind === "rep" ? kind : "worker";
 }
 
 /**

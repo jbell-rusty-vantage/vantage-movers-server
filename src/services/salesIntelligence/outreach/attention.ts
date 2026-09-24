@@ -501,9 +501,18 @@ async function previousSnapshotForBands(now: Date) {
   return { as_of: header.as_of, snapshot_id: header.snapshot_id, publish_meta: (header as { publish_meta?: AttentionPublishMeta | null }).publish_meta ?? null, entries };
 }
 /** No writes on GET, including pagination; cursors bind immutable as-of rows and filters. */
-export async function readAttention(raw: z.input<typeof attentionQuerySchema>, deps: { coverage?: typeof readCaptureCoverage; now?: Date } = {}) {
+/**
+ * S8-REP (addendum §4.2): a rep's forced scope. The server replaces any client `agent_id` / `unassigned`
+ * with `agent_id=[scope.agent_id]` (the `agents` key: responsible ∪ follow-up responsible ∪ promised, E11),
+ * so the cursor binds to it too; `metrics` and `priority_counts` are recomputed over the rep's entries of
+ * the same snapshot at read time. Null (the Owner) reads exactly as before.
+ */
+export type AttentionScope = { agent_id: string } | null;
+export async function readAttention(raw: z.input<typeof attentionQuerySchema>, deps: { coverage?: typeof readCaptureCoverage; now?: Date; scope?: AttentionScope } = {}) {
   const now = deps.now ?? new Date(), coverage = deps.coverage ?? readCaptureCoverage;
-  const query = attentionQuerySchema.parse(raw);
+  const scope = deps.scope ?? null;
+  const parsedQuery = attentionQuerySchema.parse(raw);
+  const query: AttentionQuery = scope ? (({ agent_id: _agent, unassigned: _unassigned, ...rest }) => ({ ...rest, agent_id: [scope.agent_id.toLowerCase()] }))(parsedQuery) : parsedQuery;
   const direction = query.direction ?? ATTENTION_SORT_DEFAULT_DIRECTION[query.sort];
   // The cursor binds snapshot, view, filters, freshness, sort and direction (§14.1, Move assessment §8). The default
   // request (Attention order, Attention view, all freshness) keeps the pre-sort digest shape and a time sort keeps the
@@ -543,25 +552,44 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
   for (const entry of matched) for (const reason of entry.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
   const slice = matched.slice(offset, offset + limit);
-  let items: StoredRow[];
-  if (slice.some(entry => entry.chunk_index != null)) {
-    const cached = parsed.chunks;
-    const wanted = [...new Set(slice.map(entry => entry.chunk_index!))];
-    const missing = wanted.filter(chunk => !cached.has(chunk));
-    if (missing.length) {
-      const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id, chunk_index: { $in: missing } }).lean();
-      if (parts.length !== missing.length) return pending();
-      for (const part of parts) cached.set(part.chunk_index as number, (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
+  /** The stored rows of some index entries: inline rows once, or only the chunks they name (one `$in`). Null: a chunk is missing. */
+  const rowsFor = async (wantedEntries: readonly AttentionIndexEntry[]): Promise<StoredRow[] | null> => {
+    let rows: StoredRow[];
+    if (wantedEntries.some(entry => entry.chunk_index != null)) {
+      const cached = parsed.chunks;
+      const wanted = [...new Set(wantedEntries.map(entry => entry.chunk_index!))];
+      const missing = wanted.filter(chunk => !cached.has(chunk));
+      if (missing.length) {
+        const parts = await Snapshot.find({ ...csiDataset(), parent_snapshot_id: snapshot.snapshot_id, chunk_index: { $in: missing } }).lean();
+        if (parts.length !== missing.length) return null;
+        for (const part of parts) cached.set(part.chunk_index as number, (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
+      }
+      rows = wantedEntries.map(entry => cached.get(entry.chunk_index!)?.[entry.position] as StoredRow);
+    } else {
+      const all = wantedEntries.length ? (parsed.rows ??= parsed.loadRows()) : [];
+      rows = wantedEntries.map(entry => all[entry.position]!);
     }
-    items = slice.map(entry => cached.get(entry.chunk_index!)?.[entry.position] as StoredRow);
-  } else {
-    const all = slice.length ? (parsed.rows ??= parsed.loadRows()) : [];
-    items = slice.map(entry => all[entry.position]!);
+    // The index and the rows are written in one transaction; a mismatch means a corrupt snapshot, never a silent wrong page.
+    if (rows.some((row, i) => row?.subject_key !== wantedEntries[i]!.subject_key)) throw new Error("Attention index does not match its rows");
+    return rows;
+  };
+  const items = await rowsFor(slice);
+  if (!items) return pending();
+  let metrics = (snapshot as { metrics?: AttentionMetricsDto | null }).metrics;
+  let priorityCounts = (snapshot as { priority_counts?: AttentionPriorityCountsDto | null }).priority_counts;
+  if (scope && (metrics || priorityCounts)) {
+    // S8-REP: the header tallies are the whole desk's; a rep gets them over its own entries (both partitions) of this snapshot.
+    const agent = scope.agent_id.toLowerCase();
+    const scoped = entries.filter(entry => entry.filter_keys.agents.includes(agent));
+    if (priorityCounts) priorityCounts = attentionPriorityCounts(scoped);
+    if (metrics) {
+      const scopedRows = await rowsFor(scoped);
+      if (!scopedRows) return pending();
+      const since = +snapshot.as_of - METRICS_WINDOW_MS;
+      const received = scoped.filter(entry => entry.filter_keys.received_at != null && Date.parse(entry.filter_keys.received_at) >= since).length;
+      metrics = attentionMetrics(scopedRows, received, snapshot.as_of);
+    }
   }
-  // The index and the rows are written in one transaction; a mismatch means a corrupt snapshot, never a silent wrong page.
-  if (items.some((row, i) => row?.subject_key !== slice[i]!.subject_key)) throw new Error("Attention index does not match its rows");
-  const metrics = (snapshot as { metrics?: AttentionMetricsDto | null }).metrics;
-  const priorityCounts = (snapshot as { priority_counts?: AttentionPriorityCountsDto | null }).priority_counts;
   return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: { items, snapshot_id: snapshot.snapshot_id,
     cursor: offset + limit < matched.length ? Buffer.from(JSON.stringify({ snapshot_id: snapshot.snapshot_id, offset: offset + limit, digest })).toString("base64url") : null,
     total_items: matched.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS, sort: query.sort, direction, view: query.view, freshness: freshness ?? "all",

@@ -63,3 +63,18 @@ export function buildCanonicalAdminActorPayload(
     normalizeAdminPath(fields.path),
   ].join("\n");
 }
+
+/**
+ * S8-REP (additive): a rep actor's linked Agent id, sent and signed by the admin proxy only when
+ * the role is `rep`. The rep payload is the seven lines above plus the lowercase Agent id as an
+ * eighth line; Owner and Admin payloads are unchanged, so `buildCanonicalAdminActorPayload` and
+ * every registry verification stay byte-identical. The registry never admits `rep`
+ * (`APPROVED_REGISTRY_READ_ROLES`); only Sales Intelligence verifies this payload.
+ */
+export const ADMIN_PROXY_AGENT_HEADER = "x-vantage-admin-agent-id";
+
+export function buildCanonicalRepActorPayload(
+  fields: CanonicalAdminActorFields & { agentId: string },
+): string {
+  return `${buildCanonicalAdminActorPayload(fields)}\n${fields.agentId.trim().toLowerCase()}`;
+}

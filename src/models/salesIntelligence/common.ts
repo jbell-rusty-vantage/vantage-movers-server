@@ -67,7 +67,8 @@ export const leadRef = new Schema(
 );
 export const actor = new Schema(
   {
-    kind: enumeration(["owner", "worker", "intelligence"]),
+    // S8-REP: `rep` for a signed rep's own follow-up change or media play (id = its admin user id).
+    kind: enumeration(["owner", "worker", "intelligence", "rep"]),
     id: str,
     request_id: str,
     run_id: ref,

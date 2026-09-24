@@ -4,7 +4,7 @@ import { connectMongo } from "../db";
 import { csiFlag, CSI_TOOLS } from "../config/domain/salesIntelligence";
 import {
   CsiError,
-  requireCsiOwner,
+  requireCsiReader,
   requireCsiRun,
   assertCurrentScope,
 } from "../services/salesIntelligence/auth";
@@ -29,7 +29,8 @@ export function createSalesIntelligenceBoundaryRouter(
   router.use("/api/v1/admin/sales-intelligence", (req, res, next) => {
     try {
       if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED");
-      requireCsiOwner(req);
+      // S8-REP: the Owner, or a signed rep with REP_ACCESS on; each admin route then decides (Owner-only routes refuse a rep).
+      requireCsiReader(req);
       assertCurrentScope(req.query.scope, req.body?.scope);
       next();
     } catch (e) {

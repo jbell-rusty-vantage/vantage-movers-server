@@ -75,6 +75,8 @@ export function createSalesIntelligenceHistoryRouter(deps: SalesIntelligenceHist
     const auth = (req as Request & { vantageAuth?: VantageAuthContext }).vantageAuth;
     // The broad secret (MCP) or a signed-in user; the CSI scoped key and unauthenticated calls never reach history.
     if (!auth || (auth.kind !== "secret" && auth.kind !== "user")) throw new CsiError("RUN_SCOPE_DENIED");
+    // S8-REP: history is the MCP's (broad secret), never a rep's; a request signed as a rep is refused here too (the admin proxy already denies it).
+    if (req.header("x-vantage-admin-role")?.trim().toLowerCase() === "rep") throw new CsiError("RUN_SCOPE_DENIED");
     historyQuerySchemas.empty.parse(req.body ?? {});
   }
   function fail(res: Response, error: unknown) {

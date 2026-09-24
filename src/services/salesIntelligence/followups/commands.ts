@@ -10,7 +10,7 @@ import { getSalesIntelligenceCommandExecutionModel } from "../../../models/Sales
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { csiCommandSchema, csiIdSchema, type CsiCommand } from "../../../validation/v1/salesIntelligence";
-import { assertTrustedActor, CsiError, type CsiActor } from "../auth";
+import { assertTrustedActor, CsiError, isCsiRepActor, type CsiActor } from "../auth";
 import { executeCsiCommand, appendCsiAudit, type CsiTransactionContext } from "../transactions";
 import { resolvePolicy } from "../policy";
 import { loadLead } from "../attachment/sources";
@@ -262,9 +262,88 @@ async function applyEvidenceCommand(id: string, command: CsiCommand, context: Cs
   }
   throw new CsiError("INVALID_INPUT");
 }
+/**
+ * S8-REP (assignment addendum §4.2, E9): the only commands a rep may run, each on a follow-up it is the
+ * responsible rep of, each with a note. A re-date is `patch_followup` whose only change is `due_at` (plus an
+ * optional `date_note`); its `reason` is the note, as `snooze_followup`'s is. Everything else is `FORBIDDEN`.
+ */
+export const REP_OUTREACH_COMMANDS = ["complete_followup", "snooze_followup", "patch_followup"] as const;
+const REP_PATCH_FIELDS = new Set(["due_at", "date_note"]);
+const blank = (value: string | undefined | null) => !value || !value.trim();
+export function assertRepCommand(command: CsiCommand): void {
+  if (!(REP_OUTREACH_COMMANDS as readonly string[]).includes(command.command)) throw new CsiError("FORBIDDEN");
+  if (command.command === "complete_followup") {
+    // A rep completes only; creating the next follow-up or citing evidence stays the Owner's.
+    if (command.next !== undefined || command.evidence_ref !== undefined) throw new CsiError("FORBIDDEN", [{ path: command.next !== undefined ? "next" : "evidence_ref", code: "rep_not_allowed" }]);
+    if (blank(command.note)) throw new CsiError("INVALID_INPUT", [{ path: "note", code: "required" }]);
+  } else if (command.command === "snooze_followup") {
+    if (blank(command.reason)) throw new CsiError("INVALID_INPUT", [{ path: "reason", code: "required" }]);
+  } else if (command.command === "patch_followup") {
+    const fields = Object.keys(command.changes);
+    const other = fields.find(field => !REP_PATCH_FIELDS.has(field));
+    if (other) throw new CsiError("FORBIDDEN", [{ path: `changes.${other}`, code: "rep_not_allowed" }]);
+    if (!command.changes.due_at) throw new CsiError("INVALID_INPUT", [{ path: "changes.due_at", code: "required" }]);
+    if (blank(command.reason)) throw new CsiError("INVALID_INPUT", [{ path: "reason", code: "required" }]);
+  }
+}
+
+/**
+ * S8-REP: a rep's own follow-up change. It is not an Owner instruction: no `owner_instruction_ids`, no Owner
+ * precedence against later Owner edits, and no paid `number_refresh` nomination (the Attention publish picks the
+ * change up; model re-analysis follows the normal nomination paths). The follow-up and record audits carry the rep
+ * as actor (`kind: "rep"`, the admin user id) and the rep's note. A follow-up that doesn't exist, or whose
+ * `responsible_agent_id` isn't the rep's Agent, is `FORBIDDEN` (the same answer, so ids can't be probed).
+ */
+export async function applyRepCommandInTransaction(targetId: string, command: CsiCommand, context: CsiTransactionContext): Promise<import("../outreach/store").JsonValue> {
+  assertTrustedActor(context.actor, "rep");
+  if (!isCsiRepActor(context.actor)) throw new CsiError("FORBIDDEN");
+  const agentId = context.actor.agent_id;
+  if (!csiFlag("ENABLED") || !csiFlag("OUTREACH_ENSURE") || !csiFlag("REP_ACCESS")) throw new CsiError("FEATURE_DISABLED");
+  csiIdSchema.parse(targetId);
+  assertRepCommand(command);
+  const action = await getOutreachFollowupModel().findById(targetId).session(context.session);
+  if (!action || action.responsible_agent_id == null || String(action.responsible_agent_id) !== agentId) throw new CsiError("FORBIDDEN");
+  if (action.revision !== command.expected_revision) throw new CsiError("REVISION_CONFLICT");
+  const record = await recordForUpdate(String(action.outreach_record_id), context);
+  await validateFences(command, record, action);
+  const prior = record.toObject(), key = subjectKey(record.subject);
+  if (record.subject.kind === "lead") {
+    const ref = { model: record.subject.model!, id: String(record.subject.id) };
+    const lead = await loadLead(ref, context.session);
+    // An official closure the record doesn't show yet is the Owner path's to apply; a rep change is refused.
+    if (!lead || await authoritativeClosure(lead, ref, context.session)) throw new CsiError("ILLEGAL_TRANSITION");
+  }
+  if (record.state === "closed" || action.status !== "open") throw new CsiError("ILLEGAL_TRANSITION");
+  const before = action.toObject();
+  let note: string;
+  if (command.command === "complete_followup") {
+    action.status = "completed"; action.snoozed_until = null; action.disposition = command.disposition;
+    action.completion_basis = "rep_confirmation"; action.completed_at = context.now; action.completed_by = context.actor.id;
+    note = command.note!.trim();
+  } else if (command.command === "snooze_followup") {
+    if (!action.due_at || new Date(command.until) <= context.now) throw new CsiError("INVALID_INPUT");
+    action.snoozed_until = new Date(command.until);
+    note = command.reason.trim();
+  } else if (command.command === "patch_followup") {
+    action.due_at = new Date(String(command.changes.due_at)); action.base_attention_due_at = action.due_at; action.snoozed_until = null; action.wait_expired_at = null;
+    if (command.changes.date_note !== undefined) action.date_text = String(command.changes.date_note);
+    note = command.reason.trim();
+  } else throw new CsiError("FORBIDDEN");
+  await saveFollowup(action, before, context, key, command.command);
+  // Team 4 §7.3: work on the record is activity (going cold resets), as for an Owner command.
+  if (attentionEvolutionEnabled()) record.last_activity_at = latestOf(record.last_activity_at, context.now);
+  await refreshRecord(record, context, command.command, prior, { note, rep_agent_id: agentId });
+  return { id: String(action._id), revision: action.revision, outreach_revision: record.revision, state: record.state };
+}
+
 export async function commandOutreach(input: { actor: CsiActor; idempotency_key: string; target_id: string; command: CsiCommand }) {
   const command = csiCommandSchema.parse(input.command);
+  // S8-REP: a rep's command is checked against the allowlist before it opens a transaction.
+  const rep = input.actor.kind === "rep";
+  if (rep) assertRepCommand(command);
   return executeCsiCommand({ actor: input.actor, idempotency_key: input.idempotency_key, command: command.command,
-    payload: { target_id: input.target_id, command }, operation: context => applyOwnerCommandInTransaction(input.target_id, command, context) });
+    payload: { target_id: input.target_id, command }, operation: context => rep
+      ? applyRepCommandInTransaction(input.target_id, command, context)
+      : applyOwnerCommandInTransaction(input.target_id, command, context) });
 }
 

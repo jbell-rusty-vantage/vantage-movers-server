@@ -130,14 +130,17 @@ export async function executeCsiCommand<
   payload: unknown;
   operation: (context: CsiTransactionContext) => Promise<T>;
 }): Promise<{ response: T; replayed: boolean }> {
-  assertTrustedActor(input.actor, "owner");
+  // S8-REP: a signed rep runs its allowlisted follow-up commands through the same ledger, in its own
+  // idempotency scope (`rep:<id>`). The Owner's scope and checks are unchanged.
+  const rep = input.actor.kind === "rep";
+  assertTrustedActor(input.actor, rep ? "rep" : "owner");
   if (!input.idempotency_key.trim() || input.idempotency_key.length > 200)
     throw new CsiError("INVALID_INPUT");
   const Model = getSalesIntelligenceCommandExecutionModel();
   const indexes = SALES_INTELLIGENCE_COMMAND_EXECUTION_INDEXES;
   await assertIndexes(Model.collection, indexes);
   const key = {
-    actor_scope: `owner:${input.actor.id}`,
+    actor_scope: `${rep ? "rep" : "owner"}:${input.actor.id}`,
     idempotency_key: input.idempotency_key,
   };
   const hash = payloadHash({ command: input.command, payload: input.payload });

@@ -52,8 +52,18 @@ export function watchCsiChanges(): LiveChanges {
  * `topics` narrows those reads; `refetch: "all"` stays so a version 1 client keeps resyncing.
  * A connect, reconnect or clock frame carries no topics, so the client resyncs everything.
  */
+/**
+ * S8-REP: the topics a rep's stream carries. The stream never carries a subject for anyone (only collection
+ * slugs), so a rep's stream is scoped by topic: the surfaces the rep reads (the desk snapshot, Outreach work,
+ * analysis and a Number's calls). Changes on Owner-only surfaces (attachments, reviews, restrictions, rep links,
+ * nudges and unmapped collections) are dropped, not coalesced to "other"; the rep refetches only through its
+ * scoped reads. Connect, reconnect and clock frames are unchanged.
+ */
+export const REP_LIVE_TOPICS: ReadonlySet<string> = new Set(["attention", "outreach", "analysis", "number"]);
 export function streamCsiInvalidations(req: Request, res: Response, deps: {
   watch?: () => LiveChanges; clockMs?: number; lifetimeMs?: number; enabled?: () => boolean;
+  /** S8-REP: when set, only these topics are forwarded (`REP_LIVE_TOPICS` for a rep). Absent: every topic, as before. */
+  topics?: ReadonlySet<string> | null;
 } = {}) {
   const changes = (deps.watch ?? watchCsiChanges)();
   let closed = false, pending = false, sequence = 0;
@@ -83,7 +93,13 @@ export function streamCsiInvalidations(req: Request, res: Response, deps: {
   res.write("retry: 1000\n\n");
   send(req.header("last-event-id") ? "reconnect" : "connect");
   void (async () => {
-    try { while (!closed) { topics.add(csiLiveTopic(await changes.next())); pending = true; } }
+    try {
+      while (!closed) {
+        const topic = csiLiveTopic(await changes.next());
+        if (deps.topics && !deps.topics.has(topic)) continue;
+        topics.add(topic); pending = true;
+      }
+    }
     catch { close(); } // No provider/database errors are exposed. EventSource reconnects and refetches.
   })();
   return close;

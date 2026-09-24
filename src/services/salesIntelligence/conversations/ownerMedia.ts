@@ -125,10 +125,14 @@ export function boundedMediaRange(range: ByteRange | null, size: number | null):
 }
 const BASE_HEADERS = { "Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } as const;
 
-/** Owner-only (the route guard). Every header is built here; nothing from the store response is forwarded. */
+/**
+ * The Owner, or (S8-REP) a signed rep whose scope the route has already checked (`conversationInRepScope`).
+ * The `media_played` audit row carries the actor as given, so a rep's play is audited with `kind: "rep"`.
+ * Every header is built here; nothing from the store response is forwarded.
+ */
 export async function openOwnerConversationMedia(input: { conversation_id: string; actor: CsiActor; range?: string | null; signal?: AbortSignal },
   deps: OwnerMediaDeps = {}): Promise<OwnerMediaOutcome> {
-  assertTrustedActor(input.actor, "owner");
+  assertTrustedActor(input.actor, input.actor.kind === "rep" ? "rep" : "owner");
   const id = csiIdSchema.parse(input.conversation_id);
   const store = deps.store ?? mongoOwnerMediaStore;
   const conversation = await store.conversation(id);

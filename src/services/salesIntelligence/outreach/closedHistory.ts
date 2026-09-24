@@ -164,6 +164,7 @@ async function closedRows(records: readonly RecordRow[], now: Date, context: { p
     const closed = { ...outreach, followups: [], allowed_actions: [] };
     const base = { subject_key: key, subject: outreach.subject, outreach: closed, derived: outreach.derived, allowed_actions: [] };
     out.push({ record, row: { ...base, sort_keys: { ...attentionSortKeys(base), closed: outcome.closed_at, time_to_close: outcome.time_to_close_ms }, in_attention: false,
+      // `responsible` (S9-PUBLISH) as the publish's closed row carries it, so both shapes stay equal (C14).
       partition: "closed", filter_keys: attentionFilterKeys(base, recordKeys, record.responsible_agent_id), outcome } });
   }
   return out;
