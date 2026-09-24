@@ -355,7 +355,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     ...(a.promise_chain ? { promise_chain: { root_id: String(a.promise_chain.root_id), root_origin: a.promise_chain.root_origin, attempt: a.promise_chain.attempt } } : {}),
     ...(a.default_kind ? { default_kind: a.default_kind } : {}),
     ...(a.supersedes_id ? { supersedes_id: String(a.supersedes_id) } : {}),
-    ...(a.cancel_reason === SUPERSEDED_BY_SPECIFIC_PLAN ? { cancel_reason: a.cancel_reason } : {}) }));
+    ...(a.cancel_reason === SUPERSEDED_BY_SPECIFIC_PLAN || a.cancel_reason === "reached_on_classification" ? { cancel_reason: a.cancel_reason } : {}) }));
   const { actions: actionFacts, ...derived } = facts;
   const lead = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.leads.get(leadKey(record.subject.model, record.subject.id)) ?? null : null;
   const bookings = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.bookings.get(leadKey(record.subject.model, record.subject.id)) ?? [] : [];

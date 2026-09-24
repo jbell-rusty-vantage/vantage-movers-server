@@ -29,7 +29,14 @@ export function isPromiseOriginCall(a: PromiseCandidate): boolean {
 export const promisedBy = (a: PromiseCandidate) => ({ rep_promise: "rep", customer_request: "customer", owner: "owner" } as const)[promiseOrigin(a) as PromiseOrigin];
 /** A promised callback (or a successor) completed without reaching the customer (spec §6 rule 4). */
 export const UNREACHED_DISPOSITIONS = ["no_answer", "left_voicemail", "connected_contact_unknown"] as const;
-const isUnreached = (disposition: string | null | undefined) => (UNREACHED_DISPOSITIONS as readonly string[]).includes(disposition ?? "");
+/**
+ * V-AC B1 (2026-09-24): the dispositions that are known misses at completion time. `connected_contact_unknown`
+ * is not one: capture records every connected call that way until analysis or the Owner classifies it, so it
+ * never spawns a retry by itself and never ends a chain in `promise_unreached` (a classified non-conversation
+ * gets its retry from the re-projection pass in `ensureInteraction`).
+ */
+export const KNOWN_MISS_DISPOSITIONS = ["no_answer", "left_voicemail"] as const;
+const isUnreached = (disposition: string | null | undefined) => (KNOWN_MISS_DISPOSITIONS as readonly string[]).includes(disposition ?? "");
 
 /**
  * Spec §6 rule 4: the chain whose newest action completed unreached after the last retry, with no

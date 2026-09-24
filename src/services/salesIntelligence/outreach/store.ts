@@ -8,7 +8,7 @@ import { appendCsiAudit, payloadHash, type CsiTransactionContext } from "../tran
 import { enqueueCsiJob } from "../jobs";
 import { attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
-import { attentionEvolutionEnabled, subjectKey, type RecordRow, type FollowupRow } from "./types";
+import { attentionEvolutionEnabled, CONTACT_FACT_FIELDS, subjectKey, type RecordRow, type FollowupRow } from "./types";
 
 export type JsonValue = z.infer<ReturnType<typeof z.json>>;
 export const jsonValue = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value ?? { value: null }));
@@ -53,7 +53,11 @@ export async function refreshRecord(record: Awaited<ReturnType<typeof recordForU
   // A clock scan is not an Owner edit. Keep actual transitions fenced, but do not
   // invalidate every open editor merely because the worker inspected this row.
   if (event === "clock_boundary" && !record.isNew && !actionChanged && beforeRefresh === payloadHash(jsonValue(record.toObject()))) return;
+  // V-AC S1: facts that were current before this flag-on write stay current after it (re-stamped at the new
+  // revision). Stale facts are never re-stamped here; only a recompute (`computeContactFacts`) makes them current.
+  const factsCurrent = attentionEvolutionEnabled() && CONTACT_FACT_FIELDS.every(field => record.get(field) !== undefined) && record.get("contact_facts_revision") === record.revision;
   if (!record.isNew) record.revision++;
+  if (factsCurrent) record.set("contact_facts_revision", record.revision);
   await record.save({ session: context.session });
   await auditChange(context, "outreach", subjectKey(record.subject), record, prior, { ...record.toObject(), ...details }, event,
     ["outreach_created", "number_review_opened"].includes(event) ? record.trigger_at : undefined);

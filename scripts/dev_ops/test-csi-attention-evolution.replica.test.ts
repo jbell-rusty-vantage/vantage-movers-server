@@ -77,10 +77,11 @@ test("Team 4 AC3/AC4/AC5 attention evolution replica", { skip: process.env.CSI_R
     return { n, lead, record };
   }
   const repLeg = (ext: string, direction: "Inbound" | "Outbound") => [{ role: "user", extension_id: ext, direction, connected: true }];
-  const call = (number: mongoose.Types.ObjectId, started_at: Date, kind: "attempt" | "outbound_human" | "inbound_human" | "voicemail", ext = "101") =>
+  const call = (number: mongoose.Types.ObjectId, started_at: Date, kind: "attempt" | "outbound_human" | "inbound_human" | "voicemail" | "connected_unknown", ext = "101") =>
     getCallInteractionModel().create({ provider_account_id: "synthetic", telephony_session_id: String(oid()), identity_basis: "telephony_session_id", contact_number_id: number,
       direction: kind === "inbound_human" ? "Inbound" : "Outbound", started_at, ended_at: new Date(+started_at + 120_000), first_observed_at: started_at, last_observed_at: started_at, terminal: true,
-      provider_connected: kind !== "attempt", contact_type: kind === "attempt" ? "unknown" : kind === "voicemail" ? "voicemail" : "human_conversation",
+      // "connected_unknown" is what capture really writes for a connected call (V-AC B1): only analysis or the Owner sets human_conversation.
+      provider_connected: kind !== "attempt", contact_type: kind === "attempt" || kind === "connected_unknown" ? "unknown" : kind === "voicemail" ? "voicemail" : "human_conversation",
       parties: repLeg(ext, kind === "inbound_human" ? "Inbound" : "Outbound"), ...(kind === "inbound_human" ? { inbound_route_id: oid() } : {}) });
   /** The production path: one `outreach_ensure` job per call, run through `runOutreachEnsureJob`. */
   async function viaJob(c: { _id: unknown; contact_number_id?: unknown }, tag = "1") {
@@ -287,6 +288,98 @@ test("Team 4 AC3/AC4/AC5 attention evolution replica", { skip: process.env.CSI_R
     assert.ok(keys.indexOf(oldKey) < keys.indexOf(freshKey), "no_call_yet before new_not_yet_due");
     const band2 = page.data.items.filter(row => row.derived.attention_band === 2).map(row => row.sort_keys?.band2_due_rank ?? 0);
     assert.deepEqual(band2, [...band2].sort((a, b) => a - b), "every band 2 row is ordered by its rank");
+  });
+
+  await t.test("V-AC B1 capture reality: a connected call first projects `unknown`; no retry until classified; classified human re-marks the callback reached", async () => {
+    const f = await fixture();
+    const root = await promise(f.record._id);
+    const c1 = await call(f.n._id, ET("2026-09-23T15:05"), "connected_unknown");
+    await viaJob(c1);
+    let chain = await chainOf(f.record._id);
+    assert.equal(chain.length, 1, "no retry for an unclassified connected call");
+    assert.equal(chain[0]!.status, "completed"); assert.equal(chain[0]!.disposition, "connected_contact_unknown");
+    assert.ok(!(await deriveAt(f.record._id, ET("2026-09-24T10:00"))).reasons.includes("promise_unreached"), "an unclassified call never reaches promise_unreached");
+    // Transcription + analysis classify it a human conversation (what applyUnboundContactTypeEffect does: new projection revision, then ensure).
+    await getCallInteractionModel().updateOne({ _id: c1._id }, { $set: { contact_type: "human_conversation", contact_type_basis: `finding:${oid()}` }, $inc: { projection_revision: 1 } });
+    await viaJob(c1, "classified");
+    chain = await chainOf(f.record._id);
+    assert.equal(chain.length, 1); assert.equal(chain[0]!.disposition, "spoke_with_customer", "the kept promise is re-marked reached");
+    const d = await deriveAt(f.record._id, ET("2026-09-23T18:00"));
+    assert.ok(!d.reasons.includes("promised_callback_overdue") && !d.reasons.includes("promise_unreached"));
+    // Re-delivery of the classified revision and a later unanswered attempt create nothing.
+    await viaJob(c1, "classified-redelivery");
+    await viaJob(await call(f.n._id, ET("2026-09-23T18:10"), "attempt"));
+    chain = await chainOf(f.record._id);
+    assert.equal(chain.length, 1); assert.equal(String(chain[0]!._id), String(root._id));
+  });
+
+  await t.test("V-AC B1 a connected call classified NOT human creates the retry then (once); a legacy retry is superseded when the call turns out human", async () => {
+    const f = await fixture();
+    const root = await promise(f.record._id);
+    const c1 = await call(f.n._id, ET("2026-09-23T15:05"), "connected_unknown");
+    await viaJob(c1);
+    assert.equal((await chainOf(f.record._id)).length, 1);
+    await getCallInteractionModel().updateOne({ _id: c1._id }, { $set: { contact_type_basis: `finding:${oid()}` }, $inc: { projection_revision: 1 } });
+    await viaJob(c1, "classified-unknown");
+    await viaJob(c1, "classified-unknown-redelivery");
+    let chain = await chainOf(f.record._id);
+    assert.equal(chain.length, 2); assert.equal(chain[1]!.commitment_key, `retry:${root._id}:1`); assert.equal(+chain[1]!.due_at!, +addStaffedMinutes(c1.started_at, 120, policy));
+    // A retry that exists when the same call is later re-classified human (e.g. created before this fix) is superseded, and the root re-marked reached.
+    await getCallInteractionModel().updateOne({ _id: c1._id }, { $set: { contact_type: "human_conversation", contact_type_basis: "owner" }, $inc: { projection_revision: 1 } });
+    await viaJob(c1, "classified-human");
+    chain = await chainOf(f.record._id);
+    assert.equal(chain[0]!.disposition, "spoke_with_customer");
+    assert.equal(chain[1]!.status, "superseded"); assert.equal(chain[1]!.cancel_reason, "reached_on_classification");
+    assert.equal(chain.filter(a => a.status === "open").length, 0);
+  });
+
+  await t.test("V-AC S1 flag off → on: facts written while the flag was off are recomputed (stamp ≠ revision) before they drive a reason", async () => {
+    const f = await fixture();
+    await viaJob(await call(f.n._id, ET("2026-09-21T10:00"), "inbound_human"));
+    let record = await Records.findById(f.record._id).lean().orFail();
+    assert.equal(record.contact_facts_revision, record.revision, "flag-on writes stamp the facts");
+    process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "false";
+    try { await viaJob(await call(f.n._id, ET("2026-09-21T11:00"), "attempt")); } finally { process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "true"; }
+    record = await Records.findById(f.record._id).lean().orFail();
+    assert.equal(record.last_attributable_outbound_at, null, "the flag-off write left the facts stale");
+    assert.notEqual(record.contact_facts_revision, record.revision, "and the stamp shows it");
+    // The repair lap nominates the stale record once and recomputes it.
+    const nomination = outreachRepairNomination("OutreachRecord", record)!;
+    assert.match(nomination.dedupe_key, /:contact-facts-v1$/);
+    const job = await withTransaction(s => enqueueCsiJob(nomination, s));
+    assert.equal((await runOutreachEnsureJob(String(job._id))).status, "completed");
+    record = await Records.findById(f.record._id).lean().orFail();
+    assert.equal(+record.last_attributable_outbound_at!, +ET("2026-09-21T11:00"));
+    assert.equal(record.contact_facts_revision, record.revision);
+    assert.doesNotMatch(outreachRepairNomination("OutreachRecord", record)!.dedupe_key, /contact-facts/);
+    assert.ok(!(await deriveAt(f.record._id, ET("2026-09-21T16:00"))).reasons.includes("no_callback_after_inbound"), "no false reason after the recompute");
+    // The same staleness is also repaired by the next call on the record (ensureInteraction recomputes before applying).
+    process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "false";
+    try { await viaJob(await call(f.n._id, ET("2026-09-22T10:00"), "attempt")); } finally { process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "true"; }
+    await viaJob(await call(f.n._id, ET("2026-09-22T12:00"), "voicemail"));
+    record = await Records.findById(f.record._id).lean().orFail();
+    assert.equal(+record.last_attributable_outbound_at!, +ET("2026-09-22T12:00")); assert.equal(record.contact_facts_revision, record.revision);
+  });
+
+  await t.test("V-AC S5 the seven policy fields cannot be persisted while ATTENTION_EVOLUTION is off", async () => {
+    const { commandCsiSettings } = await import("../../src/services/salesIntelligence/settings");
+    const { defaultCsiPolicy } = await import("../../src/services/salesIntelligence/policy");
+    const base = { ...defaultCsiPolicy() };
+    const { getSalesIntelligencePolicyPointerModel } = await import("../../src/models/SalesIntelligencePolicyPointer");
+    const revisionNow = async () => (await getSalesIntelligencePolicyPointerModel().findOne({ key: "active" }).lean())?.revision ?? 1;
+    const send = async (policy: Record<string, unknown>) => commandCsiSettings({ actor, idempotency_key: String(oid()),
+      command: { command: "update_settings", expected_revision: await revisionNow(), reason: "Team 4 S5 proof", policy } });
+    process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "false";
+    try {
+      await assert.rejects(send({ ...base, callback_max_retries: 3 }), (error: { code?: string; issues?: Array<{ path: string; code: string }> }) =>
+        error.code === "INVALID_INPUT" && error.issues?.[0]?.path === "policy.callback_max_retries" && error.issues[0].code === "requires_attention_evolution");
+      await send(base);   // a policy without them is accepted as before
+    } finally { process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION = "true"; }
+    const { resolvePolicy: current } = await import("../../src/services/salesIntelligence/policy");
+    assert.equal("callback_max_retries" in (await current()), false);
+    await send({ ...base, callback_max_retries: 3 });
+    assert.equal((await current()).callback_max_retries, 3, "accepted with the flag on");
+    await send(base);   // restore the defaults for anything after this subtest
   });
 
   await t.test("K29 zero model calls: no automatic step above enqueued a number_refresh or move_assessment job", async () => {

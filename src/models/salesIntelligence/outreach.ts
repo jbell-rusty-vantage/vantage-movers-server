@@ -77,6 +77,9 @@ export const OutreachRecordSchema = new Schema(
     last_attributable_outbound_at: { type: Date },
     prior_contact_at: { type: Date },
     last_activity_at: { type: Date },
+    // V-AC S1 (2026-09-24): the record revision at which the four facts were last written with the flag on.
+    // A later flag-off write moves `revision` without it, so a mismatch means "stale: recompute".
+    contact_facts_revision: { type: Number },
     next_action: {
       type: new Schema(
         {

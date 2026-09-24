@@ -20,7 +20,7 @@ import { authoritativeClosure, callFacts, customerCalledBack, fulfilledByCall, p
 import { closeRecord, jsonValue, refreshRecord, saveFollowup, recordForUpdate } from "./store";
 import { attentionEvolutionEnabled, CONTACT_FACT_FIELDS, mayReplaceAssignment, progressPlanEnabled, subjectKey, type InteractionRow, type RecordRow } from "./types";
 export { CONTACT_FACT_FIELDS } from "./types";
-import { isPromisedCallback, UNREACHED_DISPOSITIONS } from "./derive";
+import { isPromisedCallback, KNOWN_MISS_DISPOSITIONS } from "./derive";
 import { csiPolicyEvolution, type CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getIntelligenceEvidenceSnapshotModel } from "../../../models/IntelligenceEvidenceSnapshot";
@@ -270,10 +270,15 @@ export async function interactionRepIdentity(call: InteractionRow, session: Clie
 
 // ── Team 4 AC3/AC5: contact facts on the record (spec §5.4, §7.2, §7.3) ─────────────────────────
 /** The four record fields written at ensure time and read from the row by `derive()` (no query in the Attention walk). */
-export type ContactFacts = Record<(typeof CONTACT_FACT_FIELDS)[number], Date | null>;
+/** The four facts plus the revision they are current at (V-AC S1). */
+export type ContactFacts = Record<(typeof CONTACT_FACT_FIELDS)[number], Date | null> & { contact_facts_revision: number };
 /** A record the flag never computed (legacy, or written with the flag off) lacks the fields; `null` means computed, none. */
-export const contactFactsMissing = (record: Partial<Record<(typeof CONTACT_FACT_FIELDS)[number], Date | null | undefined>>) =>
-  CONTACT_FACT_FIELDS.some(field => record[field] === undefined);
+/**
+ * V-AC S1: missing (a field absent) or stale (not stamped at the current revision: the record was written
+ * while the flag was off, e.g. across a rollback). Either way the next ensure or repair recomputes them.
+ */
+export const contactFactsMissing = (record: Partial<Record<(typeof CONTACT_FACT_FIELDS)[number], Date | null | undefined>> & { revision?: number | null; contact_facts_revision?: number | null }) =>
+  CONTACT_FACT_FIELDS.some(field => record[field] === undefined) || (record.revision != null && record.contact_facts_revision !== record.revision);
 /** Newest of the given instants, or null. */
 export function latestOf(...values: Array<Date | null | undefined>): Date | null {
   let out: Date | null = null;
@@ -329,7 +334,7 @@ export async function computeContactFacts(record: RecordRow | InstanceType<Retur
     if (row.subject.kind === "lead" && row.subject.model === "FormLead" && row.primary_contact_number_id) prior = await priorContactAt(row.primary_contact_number_id, row.trigger_at, session);
   }
   const owner = await getSalesIntelligenceOwnerInstructionModel().findOne({ subject_key: subjectKey(row.subject) }).sort({ happened_at: -1, _id: -1 }).select({ happened_at: 1 }).session(session).lean();
-  return { last_inbound_human_at: inbound, last_attributable_outbound_at: outbound, prior_contact_at: prior,
+  return { contact_facts_revision: row.revision ?? 1, last_inbound_human_at: inbound, last_attributable_outbound_at: outbound, prior_contact_at: prior,
     last_activity_at: lastActivityAt({ last_meaningful_contact_at: row.last_meaningful_contact_at, last_attributable_outbound_at: outbound, lead_progress: row.lead_progress }, owner?.happened_at ?? null) };
 }
 /** Repair backfill (§5.4): a record whose facts were never computed gets them once, audited. Flag off: no-op. */
@@ -376,14 +381,28 @@ export async function firstAttemptsAgent(record: RecordRow, numberId: mongoose.T
 export const PROMISE_RETRY_DESCRIPTION = "Try again: promised callback not reached";
 export const promiseRetryKey = (rootId: unknown, attempt: number) => `retry:${rootId}:${attempt}`;
 /**
+ * V-AC B1 (2026-09-24): capture never labels a connected call a human conversation; only a finding
+ * (`finding:<id>`) or the Owner (`owner`) classifies it. Until then a `connected_contact_unknown`
+ * completion is not known to be a miss.
+ */
+export const contactClassified = (call: Pick<InteractionRow, "contact_type_basis">) =>
+  Boolean(call.contact_type_basis && (call.contact_type_basis === "owner" || call.contact_type_basis.startsWith("finding:")));
+/** A completion that is a known miss: no answer, voicemail, or a connected call classified as not a conversation. */
+export function knownMiss(disposition: string | null | undefined, call: Pick<InteractionRow, "contact_type" | "contact_type_basis">): boolean {
+  if (call.contact_type === "human_conversation") return false;
+  if ((KNOWN_MISS_DISPOSITIONS as readonly string[]).includes(disposition ?? "")) return true;
+  return disposition === "connected_contact_unknown" && contactClassified(call);
+}
+/**
  * Spec §6 rule 4 (F9): a promised callback (or one of its successors) that a call completed without
  * reaching the customer gets one `system_default` exact successor due `callback_retry_staffed_minutes`
  * after that call, while `attempt <= callback_max_retries`. Same transaction as the completion; the
  * unique `retry:<root>:<attempt>` key makes a re-delivery, replay or out-of-order call a no-op.
+ * V-AC B1: only for a known miss (`knownMiss`); a connected, unclassified call waits for its classification.
  */
 async function createPromiseRetry(record: Awaited<ReturnType<typeof recordForUpdate>>, completed: InstanceType<ReturnType<typeof getOutreachFollowupModel>>,
   call: InteractionRow, policy: CsiPolicy, context: CsiTransactionContext) {
-  if (!isPromisedCallback(completed) || !(UNREACHED_DISPOSITIONS as readonly string[]).includes(completed.disposition ?? "")) return null;
+  if (!isPromisedCallback(completed) || !knownMiss(completed.disposition, call)) return null;
   const tuning = csiPolicyEvolution(policy);
   const attempt = (completed.promise_chain?.attempt ?? 0) + 1;
   if (attempt > tuning.callback_max_retries) return null;
@@ -400,6 +419,34 @@ async function createPromiseRetry(record: Awaited<ReturnType<typeof recordForUpd
     assignment: completed.responsible_agent_id ? { origin: "inherited_outreach", assigned_at: call.started_at, evidence_id: call._id } : null });
   await saveFollowup(row, null, context, subjectKey(record.subject), "promise_retry_created");
   return String(row._id);
+}
+export const REACHED_ON_CLASSIFICATION = "reached_on_classification";
+/**
+ * V-AC B1: the same call projected again after it was classified (new projection revision: the
+ * `set_contact_type` effect or an Owner correction). A promised callback that call completed is
+ * re-marked `spoke_with_customer` when the call is now a human conversation, and every open retry in
+ * its chain is superseded (`reached_on_classification`); when it is classified as not a conversation,
+ * the deferred retry is created now. Idempotent: the re-mark is a no-op once done; the retry is keyed.
+ */
+async function reconcileClassifiedCall(record: Awaited<ReturnType<typeof recordForUpdate>>, call: InteractionRow, policy: CsiPolicy, context: CsiTransactionContext, recordKey: string) {
+  const human = call.contact_type === "human_conversation";
+  if (!human && !contactClassified(call)) return;
+  const Followups = getOutreachFollowupModel();
+  const settled = await Followups.find({ outreach_record_id: record._id, status: "completed", evidence_interaction_id: call._id, kind: "call", missed_episode_key: null })
+    .sort({ _id: 1 }).session(context.session);
+  for (const action of settled.filter(isPromisedCallback)) {
+    if (!human) { await createPromiseRetry(record, action, call, policy, context); continue; }
+    if (["spoke_with_customer", "customer_called", "completed"].includes(action.disposition ?? "")) continue;
+    const before = action.toObject();
+    action.disposition = "spoke_with_customer";
+    await saveFollowup(action, before, context, recordKey, "promise_reached_on_classification");
+    const rootId = action.promise_chain?.root_id ?? action._id;
+    for (const retry of await Followups.find({ outreach_record_id: record._id, status: "open", "promise_chain.root_id": rootId }).sort({ _id: 1 }).session(context.session)) {
+      const prior = retry.toObject();
+      retry.status = "superseded"; retry.cancel_reason = REACHED_ON_CLASSIFICATION; retry.snoozed_until = null;
+      await saveFollowup(retry, prior, context, recordKey, "followup_superseded_by_plan");
+    }
+  }
 }
 /** §6: the completion policy handed to `fulfilledByCall` with the flag on. */
 export const completionPolicy = (policy: CsiPolicy): CompletionPolicy =>
@@ -536,6 +583,8 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
     await saveFollowup(action, before, context, recordKey, "call_fulfilled_action");
     if (evolved) await createPromiseRetry(record, action, call, policy, context);
   }
+  // V-AC B1: a re-projection of a call that already completed a promised callback (its classification).
+  if (evolved && facts.attributable) await reconcileClassifiedCall(record, call, policy, context, recordKey);
   if (waits.length > 1) await openReview(context, recordKey, "completion_target", `wait:${call._id}`, [String(call._id)]);
   if (callbacks.length > 1 && !target) await openReview(context, recordKey, "completion_target", `callback:${call._id}`, [String(call._id)]);
   // Identity-only replay can fulfill still-open work, but cannot recreate an already applied missed-call episode.

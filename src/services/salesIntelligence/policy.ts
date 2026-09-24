@@ -1,11 +1,13 @@
 import {
   csiPolicySchema,
+  CSI_POLICY_EVOLUTION_DEFAULTS,
   type CsiPolicy,
 } from "../../validation/v1/salesIntelligence";
 import {
   SALES_INTELLIGENCE_POLICY_VERSION,
   csiBootstrapNumbers,
   csiDataset,
+  csiFlag,
 } from "../../config/domain/salesIntelligence";
 import { getSalesIntelligencePolicyVersionModel } from "../../models/SalesIntelligencePolicyVersion";
 import { getSalesIntelligencePolicyPointerModel } from "../../models/SalesIntelligencePolicyPointer";
@@ -48,6 +50,18 @@ export async function resolvePolicy(session?: ClientSession): Promise<CsiPolicy>
   if (!row) throw new CsiError("INVALID_INPUT");
   return csiPolicySchema.parse(row.policy);
 }
+/**
+ * V-AC S5 (2026-09-24): the seven Attention-evolution policy fields may be stored only while
+ * SALES_INTELLIGENCE_ATTENTION_EVOLUTION is on. A policy stored with them is rejected by the strict
+ * `csiPolicySchema` of any build before this one (`01bcf18`), so persisting them with the flag off would
+ * make a code rollback stop every policy read. Rejected (not stripped) so the caller sees why its value
+ * was not kept. Pure; the flag is passed in.
+ */
+export function assertEvolutionPolicyWritable(policy: Partial<Record<keyof typeof CSI_POLICY_EVOLUTION_DEFAULTS, unknown>>, evolutionEnabled: boolean) {
+  if (evolutionEnabled) return;
+  const present = (Object.keys(CSI_POLICY_EVOLUTION_DEFAULTS) as (keyof typeof CSI_POLICY_EVOLUTION_DEFAULTS)[]).filter(key => policy[key] !== undefined);
+  if (present.length) throw new CsiError("INVALID_INPUT", present.map(key => ({ path: `policy.${key}`, code: "requires_attention_evolution" })));
+}
 export async function updateCsiPolicy(input: {
   actor: CsiActor;
   idempotency_key: string;
@@ -55,6 +69,7 @@ export async function updateCsiPolicy(input: {
   policy: CsiPolicy;
 }) {
   const policy = csiPolicySchema.parse(input.policy);
+  assertEvolutionPolicyWritable(policy, csiFlag("ATTENTION_EVOLUTION"));
   // Jobs this change makes runnable, woken after the command commits. An
   // idempotent replay resumes nothing and so publishes nothing (22 §3).
   const resumed: string[] = [];

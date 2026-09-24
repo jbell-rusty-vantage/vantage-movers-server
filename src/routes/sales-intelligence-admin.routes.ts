@@ -148,6 +148,8 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
         code: error.code,
         error: error.code === "FEATURE_DISABLED" ? "Sales Intelligence is disabled" : "Sales Intelligence request rejected",
         request_id: requestId,
+        // Additive (V-AC S5): which parts were refused, when the service said so (e.g. `policy.<field>` / `requires_attention_evolution`).
+        ...(error.issues?.length ? { issues: error.issues } : {}),
       });
     }
     logger.error({

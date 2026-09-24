@@ -105,7 +105,7 @@ type RepairRow = { _id: unknown; projection_revision?: number; contact_number_id
   booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: unknown; no_sync?: boolean;
   granot_priority?: unknown; quoted?: unknown;
   // Team 4 §5.4 (OutreachRecord rows): absent until the flag computed them.
-  last_inbound_human_at?: Date | null; last_attributable_outbound_at?: Date | null; prior_contact_at?: Date | null; last_activity_at?: Date | null };
+  last_inbound_human_at?: Date | null; last_attributable_outbound_at?: Date | null; prior_contact_at?: Date | null; last_activity_at?: Date | null; contact_facts_revision?: number | null };
 
 /** H2: the commit-lag re-scan window. `applied_at` is taken before the transaction runs, so a change can commit after the cursor has passed it. */
 export const OUTREACH_CHANGE_RESCAN_MS = 120_000;

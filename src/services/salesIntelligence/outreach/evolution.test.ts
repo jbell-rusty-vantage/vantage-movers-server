@@ -12,7 +12,8 @@ import { derive, isPromisedCallback, isPromiseOriginCall, promisedBy, promiseUnr
 import { callbackWindowOpens, customerCalledBack, fulfilledByCall, pickCallbackTarget, type CallFacts } from "./transitions";
 import { assignmentRank, ASSIGNMENT_RANKS, mayReplaceAssignment, type FollowupRow, type InteractionRow, type RecordRow } from "./types";
 import { band2DueRank } from "./attention";
-import { completionPolicy, contactFactsMissing, lastActivityAt, latestOf } from "./ensure";
+import { completionPolicy, contactClassified, contactFactsMissing, knownMiss, lastActivityAt, latestOf } from "./ensure";
+import { assertEvolutionPolicyWritable } from "../policy";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
 
@@ -264,7 +265,10 @@ test("K28 going cold measures from last_activity_at; unreached at 2× the thresh
   assert.equal(+lastActivityAt({ last_meaningful_contact_at: null, last_attributable_outbound_at: null, lead_progress: null }, ET("2026-09-23T09:00"))!, +ET("2026-09-23T09:00"), "Owner command");
   assert.equal(latestOf(null, undefined), null);
   assert.equal(contactFactsMissing(record()), true);
-  assert.equal(contactFactsMissing(record({ last_inbound_human_at: null, last_attributable_outbound_at: null, prior_contact_at: null, last_activity_at: null })), false);
+  const facts = { last_inbound_human_at: null, last_attributable_outbound_at: null, prior_contact_at: null, last_activity_at: null };
+  assert.equal(contactFactsMissing(record({ ...facts, contact_facts_revision: 1 })), false, "stamped at the current revision");
+  assert.equal(contactFactsMissing(record(facts)), true, "V-AC S1: never stamped (legacy) → recompute");
+  assert.equal(contactFactsMissing(record({ ...facts, contact_facts_revision: 1, revision: 3 })), true, "V-AC S1: written while the flag was off → stale");
 });
 test("rep_discretion is a secondary reason on band 5 only", () => {
   const progress = { granot_priority: "3", disposition: "rep_discretion", work_observed: true, provenance: "accepted" } as RecordRow["lead_progress"];
@@ -288,4 +292,27 @@ test("staffedMinutesAtLeast equals staffedMinutesBetween >= n (capped walk), acr
   const points = [ET("2026-06-01T09:00"), ET("2026-09-19T19:30"), ET("2026-09-23T10:00"), ET("2026-10-31T19:00"), ET("2026-11-02T08:30")];
   for (const from of points) for (const to of points) for (const n of [0, 1, 239, 240, 1440, 2880, 50_000])
     assert.equal(staffedMinutesAtLeast(from, to, n, policy), staffedMinutesBetween(from, to, policy) >= n, `${from.toISOString()} → ${to.toISOString()} ≥ ${n}`);
+});
+
+test("V-AC B1: a connected call is a known miss only once classified not a conversation; unclassified never ends a chain", () => {
+  const unclassified = { contact_type: "unknown" as const, contact_type_basis: null };
+  assert.equal(knownMiss("no_answer", unclassified), true);
+  assert.equal(knownMiss("left_voicemail", { contact_type: "voicemail" as const, contact_type_basis: "provider:voicemail" }), true);
+  assert.equal(knownMiss("connected_contact_unknown", unclassified), false, "capture's first projection of every connected call");
+  assert.equal(knownMiss("connected_contact_unknown", { contact_type: "unknown" as const, contact_type_basis: "finding:abc" }), true);
+  assert.equal(knownMiss("connected_contact_unknown", { contact_type: "unknown" as const, contact_type_basis: "owner" }), true);
+  assert.equal(knownMiss("connected_contact_unknown", { contact_type: "human_conversation" as const, contact_type_basis: "finding:abc" }), false);
+  assert.equal(contactClassified({ contact_type_basis: "provider:voicemail" }), false);
+  const root = followup({ status: "completed", disposition: "no_answer", completed_at: ET("2026-09-23T15:05") });
+  const last = (disposition: string) => followup({ origin: "system_default", promise_chain: { root_id: root._id, root_origin: "rep_promise", attempt: 2 },
+    status: "completed", disposition, completed_at: ET("2026-09-24T10:00") });
+  assert.notEqual(promiseUnreachedSince(record(), [root, last("no_answer")], 2), null);
+  assert.equal(promiseUnreachedSince(record(), [root, last("connected_contact_unknown")], 2), null);
+});
+test("V-AC S5: the seven evolution policy fields are writable only with the flag on", () => {
+  assert.doesNotThrow(() => assertEvolutionPolicyWritable({}, false));
+  assert.doesNotThrow(() => assertEvolutionPolicyWritable({ callback_max_retries: 3 }, true));
+  assert.throws(() => assertEvolutionPolicyWritable({ callback_max_retries: 3, unreached_multiplier: 2 }, false),
+    (error: { code?: string; issues?: Array<{ path: string; code: string }> }) => error.code === "INVALID_INPUT" &&
+      JSON.stringify(error.issues) === JSON.stringify([{ path: "policy.callback_max_retries", code: "requires_attention_evolution" }, { path: "policy.unreached_multiplier", code: "requires_attention_evolution" }]));
 });
