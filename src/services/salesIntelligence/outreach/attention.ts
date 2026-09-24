@@ -19,7 +19,8 @@ import { resolvePolicy } from "../policy";
 import { payloadHash } from "../transactions";
 import { readCaptureCoverage } from "../../numberActivity/coverage";
 import { deriveOutreachFacts, loadOutreachInputsBatch, loadOutreachSideData, toOutreachDto } from "./reads";
-import { subjectKey } from "./types";
+import { attentionEvolutionEnabled, subjectKey } from "./types";
+import { isPromisedCallback } from "./derive";
 import { jsonValue } from "./store";
 
 function repeatedQuery<T extends z.ZodTypeAny>(schema: T) {
@@ -112,7 +113,14 @@ export function attentionSortKeys(row: Pick<z.infer<typeof attentionRowDtoSchema
     // Data spec §3.3 (S1): from the row's frozen `facts`; null without a Number (never 0).
     last_call: record?.facts?.last_call_at ?? null,
     interactions: record?.facts?.calls_total ?? null,
+    // Team 4 §5.2 (F10): band 2 rows order `no_call_yet` (0) before `new_not_yet_due` (1). Flag off: absent.
+    ...(attentionEvolutionEnabled() ? { band2_due_rank: band2DueRank(row.derived) } : {}),
   };
+}
+/** Team 4 §5.2: 0 for a band 2 row that is due (`no_call_yet`), 1 before its first-call deadline (`new_not_yet_due`), else null. */
+export function band2DueRank(derived: Pick<z.infer<typeof attentionRowDtoSchema>["derived"], "attention_band" | "reasons">): 0 | 1 | null {
+  if (derived.attention_band !== 2) return null;
+  return derived.reasons.includes("new_not_yet_due") ? 1 : 0;
 }
 /**
  * Global order over the whole filtered snapshot: value order, nulls last in both directions, ties on subject_key.
@@ -320,13 +328,19 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
         has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null } }));
     published.add(review.subject_key);
   }
+  // Team 4 §5.1/§5.2 (flag on): band 1 orders by the promised callbacks it is in for, band 3 by missed-call
+  // episodes only (not retries or defaults), and band 2 by `band2_due_rank` before its first-call deadline.
+  const evolution = attentionEvolutionEnabled();
+  const bandAction = (band: number | null | undefined, a: NonNullable<z.infer<typeof attentionRowDtoSchema>["outreach"]>["followups"][number]) => !evolution
+    ? (band !== 1 || (a.kind === "call" && a.origin === "rep_promise")) && (band !== 3 || a.origin === "system_default")
+    : (band !== 1 || isPromisedCallback(a)) && (band !== 3 || (a.origin === "system_default" && !a.promise_chain && !a.default_kind));
   const orderTime = (r: z.infer<typeof attentionRowDtoSchema>) => {
     if (r.derived.attention_band === 2) return r.outreach?.first_action_due_at ?? r.outreach?.trigger_at ?? "9999";
-    const actions = r.outreach?.followups.filter(a => a.status === "open" && (r.derived.attention_band !== 1 || (a.kind === "call" && a.origin === "rep_promise")) &&
-      (r.derived.attention_band !== 3 || a.origin === "system_default")) ?? [];
+    const actions = r.outreach?.followups.filter(a => a.status === "open" && bandAction(r.derived.attention_band, a)) ?? [];
     return actions.map(a => a.attention_due_at).filter((at): at is string => Boolean(at)).sort()[0] ?? r.outreach?.trigger_at ?? "9999";
   };
-  rows.sort((a,b) => (a.derived.attention_band ?? 8) - (b.derived.attention_band ?? 8) || orderTime(a).localeCompare(orderTime(b)) || a.subject_key.localeCompare(b.subject_key));
+  const rank = (r: z.infer<typeof attentionRowDtoSchema>) => (evolution ? r.sort_keys?.band2_due_rank ?? 0 : 0);
+  rows.sort((a,b) => (a.derived.attention_band ?? 8) - (b.derived.attention_band ?? 8) || rank(a) - rank(b) || orderTime(a).localeCompare(orderTime(b)) || a.subject_key.localeCompare(b.subject_key));
   // Closed rows follow every active row (their `attention` order is newest closure first); views never mix them.
   closedRows.sort((a, b) => String(b.outcome?.closed_at).localeCompare(String(a.outcome?.closed_at)) || a.subject_key.localeCompare(b.subject_key));
   const metrics = v2 ? attentionMetrics([...rows, ...closedRows], leadsReceived7d, now) : null;

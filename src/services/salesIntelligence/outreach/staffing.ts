@@ -62,6 +62,21 @@ export function staffedMinutesBetween(from: Date, to: Date, staffing: Staffing):
   }
   return total / minute;
 }
+/**
+ * `staffedMinutesBetween(from, to) >= minutes`, stopping as soon as the threshold is reached, so a
+ * threshold check on an old record walks a few days instead of its whole age (Attention walk, K18).
+ */
+export function staffedMinutesAtLeast(from: Date, to: Date, minutes: number, staffing: Staffing): boolean {
+  if (minutes <= 0) return true;
+  if (to <= from) return false;
+  let total = 0;
+  const target = minutes * minute, lastDay = dayKey(to, staffing.timezone);
+  for (let day = dayKey(from, staffing.timezone); day <= lastDay; day = shiftDay(day, 1)) {
+    for (const span of intervals(day, staffing)) total += Math.max(0, Math.min(+to, +span.end) - Math.max(+from, +span.start));
+    if (total >= target) return true;
+  }
+  return false;
+}
 export function addStaffedMinutes(from: Date, minutes: number, staffing: Staffing): Date {
   if (!Number.isFinite(minutes) || minutes < 0 || !staffing.staffed_hours.length) throw new Error("Invalid staffed clock");
   let remaining = minutes * minute;
@@ -76,6 +91,35 @@ export function addStaffedMinutes(from: Date, minutes: number, staffing: Staffin
   throw new Error("Staffing horizon exceeded");
 }
 export const nextOpening = (at: Date, staffing: Staffing) => addStaffedMinutes(at, 0, staffing);
+/**
+ * Team 4 AC4 (spec §6 rule 1): the mirror of `addStaffedMinutes`. The latest instant `t <= from`
+ * with `staffedMinutesBetween(t, from) === minutes`; an exact fit lands on an opening, never on
+ * the previous closing (Mon 08:30 − 60 → Sat 19:30 with Mon–Sat 08:00–20:00). Zero returns `from`.
+ */
+export function subtractStaffedMinutes(from: Date, minutes: number, staffing: Staffing): Date {
+  if (!Number.isFinite(minutes) || minutes < 0 || !staffing.staffed_hours.length) throw new Error("Invalid staffed clock");
+  if (minutes === 0) return new Date(+from);
+  let remaining = minutes * minute;
+  for (let day = dayKey(from, staffing.timezone), count = 0; count < 36600; day = shiftDay(day, -1), count++) {
+    const spans = intervals(day, staffing);
+    for (let i = spans.length - 1; i >= 0; i--) {
+      const span = spans[i]!;
+      const end = Math.min(+from, +span.end);
+      if (end <= +span.start) continue;
+      if (remaining <= end - +span.start) return new Date(end - remaining);
+      remaining -= end - +span.start;
+    }
+  }
+  throw new Error("Staffing horizon exceeded");
+}
+/**
+ * Team 4 AC4 (spec §6 rule 1, day precision): the first staffed opening of the local (policy
+ * timezone) calendar day that contains `at`, or local midnight when that day is not staffed.
+ */
+export function staffedDayOpening(at: Date, staffing: Staffing): Date {
+  const day = dayKey(at, staffing.timezone);
+  return intervals(day, staffing)[0]?.start ?? localInstant(day, 0, staffing.timezone) ?? new Date(+at);
+}
 /** Dates are resolved from explicit structured evidence; ambiguous language stays undated. */
 export function resolveActionDate(input: { exact?: string; day?: string; wait?: boolean }, policy: CsiPolicy, anchor: Date) {
   const resolution = { precision: "unresolved" as "exact" | "day" | "unresolved", timezone: policy.timezone, assumption: null as string | null, anchor, policy_version: policy.version };

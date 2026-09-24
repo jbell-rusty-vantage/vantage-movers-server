@@ -8,7 +8,7 @@ import { appendCsiAudit, payloadHash, type CsiTransactionContext } from "../tran
 import { enqueueCsiJob } from "../jobs";
 import { attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
-import { subjectKey, type RecordRow, type FollowupRow } from "./types";
+import { attentionEvolutionEnabled, subjectKey, type RecordRow, type FollowupRow } from "./types";
 
 export type JsonValue = z.infer<ReturnType<typeof z.json>>;
 export const jsonValue = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value ?? { value: null }));
@@ -57,6 +57,25 @@ export async function refreshRecord(record: Awaited<ReturnType<typeof recordForU
   await record.save({ session: context.session });
   await auditChange(context, "outreach", subjectKey(record.subject), record, prior, { ...record.toObject(), ...details }, event,
     ["outreach_created", "number_review_opened"].includes(event) ? record.trigger_at : undefined);
+}
+/**
+ * Team 4 spec §7.1 / §6 rule 5: a specific plan replaces the server's own placeholders. A new LLM,
+ * Move assessment or Owner action supersedes every open `default_kind` action on the record, and
+ * a new `call` action also supersedes open promise retry successors (`promise_chain`). Status
+ * `superseded` with `cancel_reason: superseded_by_specific_plan`, audited through `saveFollowup`
+ * in the caller's transaction (the timeline reads it as `followup_superseded`). Flag off: no-op.
+ */
+export const SUPERSEDED_BY_SPECIFIC_PLAN = "superseded_by_specific_plan";
+export async function supersedeDefaults(record: Pick<RecordRow, "_id" | "subject">, context: CsiTransactionContext, created: { _id: mongoose.Types.ObjectId | string; kind: string }) {
+  if (!attentionEvolutionEnabled()) return [] as string[];
+  const placeholders = await getOutreachFollowupModel().find({ outreach_record_id: record._id, status: "open", _id: { $ne: created._id },
+    $or: [{ default_kind: { $type: "string" } }, ...(created.kind === "call" ? [{ "promise_chain.root_id": { $exists: true } }] : [])] }).sort({ _id: 1 }).session(context.session);
+  for (const action of placeholders) {
+    const before = action.toObject();
+    action.status = "superseded"; action.cancel_reason = SUPERSEDED_BY_SPECIFIC_PLAN; action.snoozed_until = null;
+    await saveFollowup(action, before, context, subjectKey(record.subject), "followup_superseded_by_plan");
+  }
+  return placeholders.map(action => String(action._id));
 }
 export type ClosureOrigin = "official" | "owner" | "crm_disposition";
 export async function closeRecord(record: Awaited<ReturnType<typeof recordForUpdate>>, reason: string, origin: ClosureOrigin, context: CsiTransactionContext, details: Record<string, JsonValue> = {}) {

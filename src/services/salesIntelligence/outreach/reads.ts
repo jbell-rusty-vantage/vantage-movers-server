@@ -22,6 +22,8 @@ import { getNumberLeadAttachmentModel as attachmentModel } from "../../../models
 import { derive, attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
+import { SUPERSEDED_BY_SPECIFIC_PLAN } from "./store";
+import { CONTACT_FACT_FIELDS } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
 import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
 import { moveAssessmentProjectionDto } from "../assessment/presentation";
@@ -348,7 +350,12 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     assignment: assignment(a), promised_by: agent(a.promised_by_agent_id), origin: a.origin,
     provenance_refs: [...a.source_finding_ids, ...a.owner_instruction_ids].map(String), disposition: a.disposition, completion_basis: a.completion_basis,
     paused_channels: [...new Set(activeRestrictions.flatMap(r => r.channels))], overdue: a.status === "open" && Boolean(a.due_at && a.due_at < now),
-    allowed_actions: (["patch_followup", "complete_followup", "cancel_followup", "snooze_followup"] as const).map(action => availability(action, a)) }));
+    allowed_actions: (["patch_followup", "complete_followup", "cancel_followup", "snooze_followup"] as const).map(action => availability(action, a)),
+    // Team 4 §9: only rows the flag wrote carry these, so a flag-off read is byte-identical.
+    ...(a.promise_chain ? { promise_chain: { root_id: String(a.promise_chain.root_id), root_origin: a.promise_chain.root_origin, attempt: a.promise_chain.attempt } } : {}),
+    ...(a.default_kind ? { default_kind: a.default_kind } : {}),
+    ...(a.supersedes_id ? { supersedes_id: String(a.supersedes_id) } : {}),
+    ...(a.cancel_reason === SUPERSEDED_BY_SPECIFIC_PLAN ? { cancel_reason: a.cancel_reason } : {}) }));
   const { actions: actionFacts, ...derived } = facts;
   const lead = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.leads.get(leadKey(record.subject.model, record.subject.id)) ?? null : null;
   const bookings = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.bookings.get(leadKey(record.subject.model, record.subject.id)) ?? [] : [];
@@ -407,6 +414,8 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     trigger_at: iso(record.trigger_at), first_action_due_at: iso(record.first_action_due_at), first_attributable_outbound_at: iso(record.first_attributable_outbound_at),
     next_action: followups.find(a => a.id === String(record.next_action?.followup_id)) ?? null, first_human_conversation_at: iso(record.first_human_conversation_at),
     last_meaningful_contact_at: iso(record.last_meaningful_contact_at), related_record_links: related,
+    // Team 4 §5.4/§7.3: present once the flag computed them for this record (absent on flag-off rows).
+    ...Object.fromEntries(CONTACT_FACT_FIELDS.filter(field => record[field] !== undefined).map(field => [field, iso(record[field])])),
     derived: { ...derived, action_facts: actionFacts, call_state: record.call_progress?.state ?? "not_started", provenance_state: provenanceState(mirror) },
     allowed_actions: [...(["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => {
       const guarded = (action === "mark_worked" && dispositionBlocked) || ((action === "set_waiting" || action === "create_followup") && dispositionBlockers.length > 0);

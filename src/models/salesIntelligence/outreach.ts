@@ -69,6 +69,14 @@ export const OutreachRecordSchema = new Schema(
     first_attributable_outbound_at: date,
     first_human_conversation_at: date,
     last_meaningful_contact_at: date,
+    // Team 4 AC3/AC5 (spec §5.4, §7.3), behind SALES_INTELLIGENCE_ATTENTION_EVOLUTION. No default:
+    // a record the flag never touched stores none of them (flag-off rows stay byte-identical),
+    // `null` means "computed, none", and a missing field is backfilled by the next ensure/repair.
+    // Written at ensure time and read from the row, so the Attention walk adds no query.
+    last_inbound_human_at: { type: Date },
+    last_attributable_outbound_at: { type: Date },
+    prior_contact_at: { type: Date },
+    last_activity_at: { type: Date },
     next_action: {
       type: new Schema(
         {
@@ -323,6 +331,20 @@ export const OutreachFollowupSchema = new Schema(
     completion_finding_id: ref,
     supersedes_id: ref,
     cancel_reason: text,
+    // Team 4 AC4 (spec §6 rule 4): a `system_default` retry successor of a promised callback.
+    // No default, so rows written without the flag stay byte-identical.
+    promise_chain: {
+      type: new Schema(
+        {
+          root_id: oid,
+          root_origin: enumeration(["rep_promise", "customer_request", "owner"]),
+          attempt: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+        },
+        { _id: false, strict: "throw" },
+      ),
+    },
+    // Team 4 AC5-PROGRESS (spec §7.1): a server default next step, superseded by any specific plan.
+    default_kind: { type: String, enum: ["quote_followup"] },
     revision,
   },
   { collection: "outreach_followups" },

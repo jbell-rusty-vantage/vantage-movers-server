@@ -14,11 +14,12 @@ import { CsiError, assertTrustedActor } from "../auth";
 import { payloadHash, type CsiTransactionContext } from "../transactions";
 import { resolvePolicy } from "../policy";
 import { openReview } from "../review/items";
-import { ensureLead, ensureInteraction, interactionAttribution, mappedSalesReps } from "./ensure";
+import { completionPolicy, ensureLead, ensureInteraction, interactionAttribution, mappedSalesReps } from "./ensure";
 import { subjectKey, type RecordRow, type FollowupRow } from "./types";
-import { callFacts, fulfilledByCall } from "./transitions";
+import { callFacts, customerCalledBack, fulfilledByCall } from "./transitions";
 import { resolveActionDate, resolveActionDateText } from "./staffing";
-import { recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild } from "./store";
+import { recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild, supersedeDefaults } from "./store";
+import { attentionEvolutionEnabled, mayReplaceAssignment } from "./types";
 import { applySpokenRestriction } from "../review/restrictions";
 
 /** Server-resolved intent, never an HTTP/model write schema. D validates snapshots and resolves date wording first. */
@@ -138,15 +139,17 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
       // Reconcile later calls before activating an old callback/wait, independent of ingestion order.
       const later = await getCallInteractionModel().find({ contact_number_id: call.contact_number_id, merged_into_id: null, started_at: { $gt: call.started_at } }).sort({ started_at: 1 }).limit(501).session(context.session).lean();
       if (later.length > 500) plan = { status: "needs_review", reason: "history_window_incomplete" };
-      else for (const next of later) {
+      // Team 4 §6 (flag on): the same early window and customer-called rule as `ensureInteraction`.
+      const evolved = attentionEvolutionEnabled() ? completionPolicy(policy) : undefined;
+      if (later.length <= 500) for (const next of later) {
         const facts = callFacts(current, next, await interactionAttribution(next, context.session), await mappedSalesReps(next, context.session));
-        if (fulfilledByCall(action, next, facts)) {
+        if (fulfilledByCall(action, next, facts, evolved)) {
           const competing = await getOutreachFollowupModel().find({ outreach_record_id: current._id, kind: action.kind, missed_episode_key: null,
             $or: [{ status: "open" }, { evidence_interaction_id: next._id, completion_basis: "call_attempt" }] }).session(context.session);
-          if (competing.some(other => other.evidence_interaction_id?.equals(next._id) || fulfilledByCall(other, next, facts))) {
+          if (competing.some(other => other.evidence_interaction_id?.equals(next._id) || fulfilledByCall(other, next, facts, evolved))) {
             await openReview(context, key, "completion_target", `callback:${next._id}`, [input.finding_id]); continue;
           }
-          action.status = "completed"; action.disposition = action.kind === "wait" ? "customer_called" : facts.outcome; action.completed_at = next.started_at;
+          action.status = "completed"; action.disposition = action.kind === "wait" || (evolved && customerCalledBack(action, next, facts)) ? "customer_called" : facts.outcome; action.completed_at = next.started_at;
           action.evidence_interaction_id = next._id; action.completion_basis = "call_attempt"; break;
         }
       }
@@ -154,7 +157,11 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
         await saveFollowup(action, null, context, key, "intelligence_followup_created");
         if (!resolved.due_at) await openReview(context, key, "missing_date", String(action._id), [input.finding_id]);
         if (!assigned) await openReview(context, key, "missing_responsibility", String(action._id), [input.finding_id]);
-        if (promising && (input.origin === "rep_promise" || call.contact_type === "human_conversation") && !current.responsible_agent_id && current.assignment?.origin !== "owner") {
+        // Team 4 §7.1/§6 rule 5: a specific plan supersedes the default next step and open promise retries.
+        if (action.status === "open") await supersedeDefaults(current, context, action);
+        // §7.2: with the flag the one precedence decides (a promise replaces `first_attempts`, never the Owner).
+        const assignable = attentionEvolutionEnabled() ? mayReplaceAssignment(current, "rep_promise") : !current.responsible_agent_id && current.assignment?.origin !== "owner";
+        if (promising && (input.origin === "rep_promise" || call.contact_type === "human_conversation") && assignable) {
           current.responsible_agent_id = new mongoose.Types.ObjectId(promising); current.assignment = { origin: "rep_promise", assigned_at: call.started_at, evidence_id: call._id };
         }
         if (input.action_kind === "wait" && resolved.due_at && current.state === "unworked") current.state = "open";

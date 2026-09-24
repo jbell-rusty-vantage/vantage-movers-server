@@ -10,8 +10,8 @@ import { resolvePolicy } from "../policy";
 import { openReview } from "../review/items";
 import { workerContext } from "../outreach/ensure";
 import { resolveActionDate, resolveActionDateText } from "../outreach/staffing";
-import { jsonValue, recordForUpdate, refreshRecord, saveFollowup } from "../outreach/store";
-import { subjectKey } from "../outreach/types";
+import { jsonValue, recordForUpdate, refreshRecord, saveFollowup, supersedeDefaults } from "../outreach/store";
+import { attentionEvolutionEnabled, subjectKey } from "../outreach/types";
 import { engagementSchema, evidenceRefSchema, nextStepSchema, promisedCallbackSchema, type EvidenceRef } from "./contract";
 
 /**
@@ -138,7 +138,7 @@ export async function applyAssessmentEngagement(artifact: { _id: unknown; job_id
   const key = subjectKey(record.subject);
   const Followups = getOutreachFollowupModel();
   const [open, existing, ownerProtected, laterAttempt] = await Promise.all([
-    Followups.find({ outreach_record_id: record._id, status: "open" }).select("kind").session(session).lean(),
+    Followups.find({ outreach_record_id: record._id, status: "open" }).select("kind default_kind promise_chain").session(session).lean(),
     Followups.find({ outreach_record_id: record._id, commitment_key: { $regex: `^assessment:${artifactId}:` } }).select("commitment_key").session(session).lean(),
     getSalesIntelligenceOwnerInstructionModel().exists({ subject_key: key, state: "active", field: { $in: ["status", "closure"] } }).session(session),
     artifact.latest_conversation_at && artifact.contact_number_id
@@ -148,7 +148,8 @@ export async function applyAssessmentEngagement(artifact: { _id: unknown; job_id
   ]);
   const plan = planEngagementEffects({ artifact_id: artifactId, engagement: parsed.data,
     latest_conversation_at: artifact.latest_conversation_at ? artifact.latest_conversation_at.toISOString() : null, record: { state: record.state },
-    open_actions: open, existing_keys: new Set(existing.map(row => row.commitment_key)), later_outbound_attempt: Boolean(laterAttempt), owner_protected: Boolean(ownerProtected) });
+    // Team 4 §7.1 / §6 rule 5: server placeholders (the default next step, promise retries) never block a specific plan; it supersedes them.
+    open_actions: open.filter(a => !(attentionEvolutionEnabled() && (a.default_kind || a.promise_chain))), existing_keys: new Set(existing.map(row => row.commitment_key)), later_outbound_attempt: Boolean(laterAttempt), owner_protected: Boolean(ownerProtected) });
   const followup_ids: string[] = [];
   if (plan.followups.length || plan.mark_worked) {
     const prior = record.toObject();
@@ -162,6 +163,8 @@ export async function applyAssessmentEngagement(artifact: { _id: unknown; job_id
         assignment: record.responsible_agent_id ? { origin: "inherited_outreach", actor_id: context.actor.id, assigned_at: context.now } : null });
       await saveFollowup(row, null, context, key, "assessment_followup_created");
       followup_ids.push(String(row._id));
+      // Team 4 §7.1 / §6 rule 5: an assessment next step supersedes the default next step (a call also open promise retries).
+      await supersedeDefaults(record, context, row);
       if (!resolved.due_at) await openReview(context, key, "missing_date", String(row._id), []);
       if (!record.responsible_agent_id) await openReview(context, key, "missing_responsibility", String(row._id), []);
     }

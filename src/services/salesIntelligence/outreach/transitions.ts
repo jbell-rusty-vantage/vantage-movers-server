@@ -2,6 +2,8 @@ import mongoose, { type ClientSession } from "mongoose";
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import type { AttachmentAttribution } from "../attachment/suggest";
 import type { RecordRow, FollowupRow, InteractionRow } from "./types";
+import { isPromiseOriginCall } from "./derive";
+import { staffedDayOpening, staffedMinutesBetween, subtractStaffedMinutes, type Staffing } from "./staffing";
 
 export type CallFacts = { identityAllowed: boolean; attributable: boolean; outboundAttempt: boolean; human: boolean; missed: boolean;
   outcome: "no_answer" | "left_voicemail" | "spoke_with_customer" | "connected_contact_unknown" | null };
@@ -17,13 +19,42 @@ export function callFacts(record: RecordRow, call: InteractionRow, attribution: 
   const outcome = human ? "spoke_with_customer" : call.contact_type === "voicemail" ? "left_voicemail" : call.provider_connected ? "connected_contact_unknown" : outboundAttempt ? "no_answer" : null;
   return { identityAllowed: Boolean(matches && call.started_at >= record.trigger_at), attributable, outboundAttempt, human, missed, outcome };
 }
-export function fulfilledByCall(action: FollowupRow, call: InteractionRow, facts: CallFacts): boolean {
+/**
+ * Team 4 AC4 (spec §6), passed only when SALES_INTELLIGENCE_ATTENTION_EVOLUTION is on: the staffed
+ * clock and the early window. Without it every rule below is exactly today's.
+ */
+export type CompletionPolicy = Staffing & { callback_early_window_staffed_minutes: number };
+export function fulfilledByCall(action: FollowupRow, call: InteractionRow, facts: CallFacts, evolved?: CompletionPolicy): boolean {
   const trigger = action.first_missed_at ?? action.date_resolution?.anchor ?? action.createdAt;
   if (action.status !== "open" || !trigger || call.started_at <= trigger) return false;
   if (action.kind === "wait") return call.direction === "Inbound" && call.terminal && facts.identityAllowed;
   if (action.kind !== "call") return false;
   if (action.missed_episode_key) return facts.outboundAttempt || (call.direction === "Inbound" && facts.human);
-  return facts.outboundAttempt && (!action.due_at || call.started_at >= action.due_at);
+  if (!evolved) return facts.outboundAttempt && (!action.due_at || call.started_at >= action.due_at);
+  // Rule 2: the customer called and spoke with a rep after the promise was made.
+  if (customerCalledBack(action, call, facts)) return true;
+  const opens = callbackWindowOpens(action, evolved);
+  return facts.outboundAttempt && (!opens || call.started_at >= opens);
+}
+/** Rule 1: exact → due − early window (staffed); day → that staffed day's opening; other → due; undated → any attempt after the trigger. */
+export function callbackWindowOpens(action: Pick<FollowupRow, "due_at" | "date_resolution">, evolved: CompletionPolicy): Date | null {
+  if (!action.due_at) return null;
+  if (action.date_resolution?.precision === "exact") return subtractStaffedMinutes(action.due_at, evolved.callback_early_window_staffed_minutes, evolved);
+  if (action.date_resolution?.precision === "day") return staffedDayOpening(action.due_at, evolved);
+  return action.due_at;
+}
+/** Rule 2 (F9): an attributable inbound human conversation completes a promised callback of any precision as `customer_called`. */
+export function customerCalledBack(action: FollowupRow, call: InteractionRow, facts: CallFacts): boolean {
+  return facts.human && call.direction === "Inbound" && isPromiseOriginCall(action);
+}
+/**
+ * Rule 3: several callbacks match one call. Exactly one due within the early window of the call
+ * (either side, staffed minutes) is the target; otherwise none completes and a review opens.
+ */
+export function pickCallbackTarget<T extends Pick<FollowupRow, "due_at">>(matches: readonly T[], call: Pick<InteractionRow, "started_at">, evolved: CompletionPolicy): T | null {
+  if (matches.length === 1) return matches[0]!;
+  const near = matches.filter(a => a.due_at && staffedMinutesBetween(new Date(Math.min(+a.due_at, +call.started_at)), new Date(Math.max(+a.due_at, +call.started_at)), evolved) <= evolved.callback_early_window_staffed_minutes);
+  return near.length === 1 ? near[0]! : null;
 }
 export function stateWithActions(record: RecordRow, actions: readonly FollowupRow[], now: Date): RecordRow["state"] {
   if (["closed", "identity_review", "unworked"].includes(record.state)) return record.state;

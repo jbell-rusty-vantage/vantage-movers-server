@@ -279,9 +279,39 @@ export const csiPolicySchema = z
         audit_days: minutes.positive(),
       })
       .strict(),
+    // Team 4 AC3–AC5 (Attention evolution spec §5.3). Optional with no schema default, so a stored
+    // policy without them stays valid and the settings read stays byte-identical with the flag off;
+    // `csiPolicyEvolution()` resolves each one to its default.
+    inbound_followup_staffed_minutes: minutes.positive().optional(),
+    callback_early_window_staffed_minutes: minutes.optional(),
+    callback_retry_staffed_minutes: minutes.positive().optional(),
+    callback_max_retries: minutes.max(10).optional(),
+    quote_followup_staffed_minutes: minutes.positive().optional(),
+    unreached_multiplier: minutes.positive().max(20).optional(),
+    first_attempts_threshold: minutes.positive().max(20).optional(),
   })
   .strict();
 export type CsiPolicy = z.infer<typeof csiPolicySchema>;
+/** Spec §5.3 defaults for the optional Attention-evolution policy fields. */
+export const CSI_POLICY_EVOLUTION_DEFAULTS = Object.freeze({
+  inbound_followup_staffed_minutes: 240,
+  callback_early_window_staffed_minutes: 60,
+  callback_retry_staffed_minutes: 120,
+  callback_max_retries: 2,
+  quote_followup_staffed_minutes: 1440,
+  unreached_multiplier: 2,
+  first_attempts_threshold: 2,
+});
+export type CsiPolicyEvolution = { -readonly [K in keyof typeof CSI_POLICY_EVOLUTION_DEFAULTS]: number };
+/** The Attention-evolution values of a (possibly older) stored policy, each resolved to its default when absent. Pure. */
+export function csiPolicyEvolution(policy: Partial<Pick<CsiPolicy, keyof CsiPolicyEvolution>>): CsiPolicyEvolution {
+  const out: CsiPolicyEvolution = { ...CSI_POLICY_EVOLUTION_DEFAULTS };
+  for (const key of Object.keys(out) as (keyof CsiPolicyEvolution)[]) {
+    const value = policy[key];
+    if (typeof value === "number") out[key] = value;
+  }
+  return out;
+}
 export const csiSettingsCommandSchema = z
   .object({ command: z.literal("update_settings"), ...base, policy: csiPolicySchema, ...reason })
   .strict();

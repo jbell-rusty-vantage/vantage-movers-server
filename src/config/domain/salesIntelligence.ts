@@ -159,6 +159,13 @@ export const CSI_FLAGS = [
   // CC-08: the daily webhook-subscription cron may create the all-direction
   // subscription when none owned exists. Off: it only renews/repairs owned ones.
   "WEBHOOK_AUTO_CREATE",
+  // Attention and Case File spec (Team 4): the model reads the Case File (AC2); band semantics,
+  // completion quality, progress default, first attempts, last activity (AC3–AC5); the Move
+  // assessment re-plan on accepted progress to Quoted (AC6, needs MOVE_ASSESSMENT). All off keeps
+  // today's behaviour byte-identical.
+  "CASE_FILE",
+  "ATTENTION_EVOLUTION",
+  "PROGRESS_PLAN",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (

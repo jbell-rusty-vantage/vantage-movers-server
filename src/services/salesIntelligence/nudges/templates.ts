@@ -16,6 +16,12 @@ const reasonText: Record<string, string> = {
   promised_callback_overdue: "A promised callback is due.", no_call_yet: "No attributable call is recorded yet.",
   missed_call_no_callback: "An unanswered inbound call needs attention.", followups_due: "A followup is due.",
   no_next_step: "The next step needs review.", missing_responsibility: "Responsibility needs review.", going_cold: "The record needs attention.",
+  // Team 4 AC3–AC5 reasons (spec §9); only published with SALES_INTELLIGENCE_ATTENTION_EVOLUTION.
+  "promised_by:rep": "A callback the rep promised is due.", "promised_by:customer": "A callback the customer asked for is due.",
+  "promised_by:owner": "A callback the Owner scheduled is due.", new_not_yet_due: "A new Lead arrived and its first call is not due yet.",
+  no_callback_after_inbound: "The customer called in and no callback is recorded since.", called_before_form: "A call on this number came before the form.",
+  promise_unreached: "A promised callback was tried and not reached.", rep_discretion: "The Lead is at rep discretion with no next step.",
+  unreached: "Recent attempts have not reached the customer.",
 };
 const clean = (text: string) => text.replace(/[\r\n\t]/g, " ").trim();
 const CONTACT_ACTION = String.raw`(?:call|dial|phone|text|sms|contact|message|ring|reach(?:\s+out)?(?:\s+to)?)`;

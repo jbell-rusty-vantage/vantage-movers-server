@@ -195,6 +195,8 @@ export const assignmentDtoSchema = z
         "first_conversation",
         "rep_promise",
         "inherited_outreach",
+        // Team 4 AC5-ACTIVITY (spec §7.2), additive.
+        "first_attempts",
       ])
       .nullable(),
     assigned_at: date.nullable(),
@@ -271,6 +273,13 @@ export const followupDtoSchema = z
     paused_channels: z.array(z.enum(["call", "text"])),
     overdue: z.boolean(),
     allowed_actions: z.array(csiActionAvailabilitySchema),
+    // Team 4 AC4/AC5 (spec §9), additive and present only on rows the flag wrote: a promise retry
+    // successor's chain, a server default next step, the action a retry replaces, and why a
+    // placeholder was superseded (`superseded_by_specific_plan`).
+    promise_chain: z.object({ root_id: id, root_origin: z.enum(["rep_promise", "customer_request", "owner"]), attempt: z.number().int().positive() }).strict().optional(),
+    default_kind: z.enum(["quote_followup"]).optional(),
+    supersedes_id: id.optional(),
+    cancel_reason: z.string().optional(),
   })
   .strict();
 export const findingDtoSchema = z
@@ -352,6 +361,9 @@ export const attentionSortKeysDtoSchema = z
     // Data spec §3.5 (S2): closed partition only; absent on active rows and on older snapshots.
     closed: date.nullable().optional(),
     time_to_close: z.number().int().nonnegative().nullable().optional(),
+    // Team 4 AC3 (spec §5.2, F10): band 2 order, 0 `no_call_yet`, 1 `new_not_yet_due`, null otherwise.
+    // Written only with SALES_INTELLIGENCE_ATTENTION_EVOLUTION; older snapshots omit it.
+    band2_due_rank: z.number().int().min(0).max(1).nullable().optional(),
   })
   .strict();
 /**
@@ -531,6 +543,11 @@ export const outreachDtoSchema = z
     first_action_due_at: date.nullable().optional(),
     first_attributable_outbound_at: date.nullable().optional(),
     last_meaningful_contact_at: date.nullable(),
+    // Team 4 AC3/AC5 (spec §5.4, §7.3, §9), additive; present once the flag has computed them for the record.
+    last_inbound_human_at: date.nullable().optional(),
+    last_attributable_outbound_at: date.nullable().optional(),
+    prior_contact_at: date.nullable().optional(),
+    last_activity_at: date.nullable().optional(),
     derived: derivedDtoSchema,
     related_record_links: z.array(
       z

@@ -81,6 +81,8 @@ export const assignment = new Schema(
       "first_conversation",
       "rep_promise",
       "inherited_outreach",
+      // Team 4 AC5-ACTIVITY (spec §7.2): two or more attributable attempts by one reviewed rep.
+      "first_attempts",
     ]),
     actor_id: text,
     evidence_id: ref,

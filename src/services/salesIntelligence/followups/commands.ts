@@ -16,11 +16,11 @@ import { resolvePolicy } from "../policy";
 import { loadLead } from "../attachment/sources";
 import { lockNumber, attachmentPolicyInput } from "../attachment/store";
 import { resolveAtInteraction } from "../attachment/suggest";
-import { ensureInteraction } from "../outreach/ensure";
+import { ensureInteraction, latestOf } from "../outreach/ensure";
 import { authoritativeClosure } from "../outreach/transitions";
 import { isTerminal, type LeadProgressRow } from "../outreach/leadProgress";
-import { subjectKey, type RecordRow } from "../outreach/types";
-import { auditChange, closeRecord, ownerInstruction, recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild } from "../outreach/store";
+import { attentionEvolutionEnabled, subjectKey, type RecordRow } from "../outreach/types";
+import { auditChange, closeRecord, ownerInstruction, recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild, supersedeDefaults } from "../outreach/store";
 import { enqueueCsiJob } from "../jobs";
 import { ensureNumberReview } from "../outreach/numberReview";
 
@@ -38,6 +38,8 @@ export async function createOwnerFollowup(record: Awaited<ReturnType<typeof reco
   const instruction = await ownerInstruction(context, record, "status", null, { created: true }, String(row._id));
   row.owner_instruction_ids.push(instruction);
   await saveFollowup(row, null, context, subjectKey(record.subject), "owner_followup_created");
+  // Team 4 §7.1 / §6 rule 5: an Owner plan supersedes the default next step (and, for a call, open promise retries).
+  await supersedeDefaults(record, context, row);
   return row;
 }
 async function validateFences(command: CsiCommand, record: RecordRow, action: { _id: unknown; revision: number } | null) {
@@ -198,6 +200,8 @@ export async function applyOwnerCommandInTransaction(targetId: string, command: 
     }
     await saveFollowup(action, before, context, key, command.command);
   }
+  // Team 4 §7.3: an Owner command on the record is activity (going cold resets).
+  if (attentionEvolutionEnabled()) record.last_activity_at = latestOf(record.last_activity_at, context.now);
   await refreshRecord(record, context, command.command, prior, {
     ...(command.command === "add_note" ? { note: command.text } : "note" in command ? { note: command.note ?? null } : {}),
     ...("reason" in command ? { reason: command.reason ?? null } : {}),

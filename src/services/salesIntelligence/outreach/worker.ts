@@ -14,7 +14,8 @@ import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput } from "../jobs";
 import { loadCanonicalInteraction } from "../conversations/workerSupport";
 import { leadAttachmentJobInput, loadLead } from "../attachment/sources";
-import { ensureInteraction, ensureLead, workerContext } from "./ensure";
+import { backfillContactFacts, contactFactsMissing, ensureInteraction, ensureLead, workerContext } from "./ensure";
+import { attentionEvolutionEnabled } from "./types";
 import { refreshRecord, jsonValue } from "./store";
 import { payloadHash } from "../transactions";
 import { ATTENTION_PUBLISH_BUDGET_MS, publishAttentionSnapshot } from "./attention";
@@ -65,6 +66,8 @@ export async function runOutreachEnsureJob(jobId?: string) {
         if (record) {
           if (record.subject.kind === "lead") await ensureLead({ model: record.subject.model!, id: String(record.subject.id) }, context);
           const current = await getOutreachRecordModel().findById(first).session(session);
+          // Team 4 §5.4: a Number Review record has no Lead pass (`ensureLead` backfills Lead records); backfill it here.
+          if (current && current.subject.kind !== "lead") await backfillContactFacts(current, context);
           if (current) await refreshRecord(current, context, "clock_boundary", current.toObject());
         }
       } else if (job.subject_key.startsWith("outreach-number:")) {
@@ -100,7 +103,9 @@ export async function drainOutreachEnsureJobs(max = 50, options: { deadline?: nu
 type RepairSource = "FormLead" | "CallLead" | "CallInteraction" | "OutreachRecord";
 type RepairRow = { _id: unknown; projection_revision?: number; contact_number_id?: unknown; revision?: number;
   booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: unknown; no_sync?: boolean;
-  granot_priority?: unknown; quoted?: unknown };
+  granot_priority?: unknown; quoted?: unknown;
+  // Team 4 §5.4 (OutreachRecord rows): absent until the flag computed them.
+  last_inbound_human_at?: Date | null; last_attributable_outbound_at?: Date | null; prior_contact_at?: Date | null; last_activity_at?: Date | null };
 
 /** H2: the commit-lag re-scan window. `applied_at` is taken before the transaction runs, so a change can commit after the cursor has passed it. */
 export const OUTREACH_CHANGE_RESCAN_MS = 120_000;
@@ -139,8 +144,11 @@ export function outreachRepairNomination(source: RepairSource, row: RepairRow): 
   }
   if (source === "OutreachRecord") {
     const revision = row.revision ?? 1;
+    // Team 4 §5.4: with ATTENTION_EVOLUTION on, a record that never had its contact facts computed gets one
+    // more (distinct) nomination so the repair lap backfills it; once written, the key is today's again.
+    const backfill = attentionEvolutionEnabled() && contactFactsMissing(row) ? ":contact-facts-v1" : "";
     return { stage: "outreach_ensure", subject_key: `outreach-clock:${id}`,
-      dedupe_key: `csi:outreach:repair:OutreachRecord:${id}:r${revision}`, input_revision: revision, input_refs: [id] };
+      dedupe_key: `csi:outreach:repair:OutreachRecord:${id}:r${revision}${backfill}`, input_revision: revision, input_refs: [id] };
   }
   // H3: with LEAD_PROGRESS on, a Priority/Quoted change also re-nominates the Lead, so the sweep
   // recovers any missed accepted change within one lap. Off keeps the old key so no mass
