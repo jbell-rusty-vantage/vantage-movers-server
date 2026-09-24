@@ -17,7 +17,10 @@
 import type { ZodType } from "zod";
 import type { SiManifestRow } from "./si-contract-common";
 
-export type Stage = "S1" | "S2" | "S3" | "S4";
+// "AC" is CF-AC's stage (Team 4, Attention evolution / Case File). AC0-SEED (2026-09-23) adds it here
+// as a stub only: `ROUTES` gets its entries once AC2's new reads exist. `routesFor("AC", mode)`
+// correctly returns `[]` until then, which `capture-si-contract.ts` already reports as "no entries".
+export type Stage = "S1" | "S2" | "S3" | "S4" | "AC";
 export type Mode = "on" | "off";
 /** A follow-up call built from the previous response (cursor paging). */
 export type ChainCall = { state: string; next: (body: any) => string | null };

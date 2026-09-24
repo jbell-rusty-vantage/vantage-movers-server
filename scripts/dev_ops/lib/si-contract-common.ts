@@ -40,6 +40,18 @@ export const SI_SEED_STATES = [
   "newest_run_relations", "newest_run_story_discrepancies", "newest_number_run_no_relations",
   "owner_instruction_assessments", "rep_identity_reviewed", "rep_identity_unreviewed",
   "suggestion_unapplied_no_followup", "suggestion_applied_followup",
+  // AC0-SEED (2026-09-23): source-data states for the Attention evolution and Case File spec (TEAM-4-INSTRUCTION §4).
+  // Every one is raw source-collection data written through the real models/writers; none depends on AC1–AC6 code.
+  "ac_callback_customer_exact", "ac_callback_owner_exact", "ac_callback_rep_day", "ac_callback_send_estimate_day",
+  "ac_attempt_50_early", "ac_attempt_70_early", "ac_inbound_after_promise", "ac_promise_chain_source",
+  "ac_formlead_40s", "ac_formlead_3h", "ac_inbound_only_239", "ac_inbound_only_240",
+  "ac_called_before_form_6d", "ac_called_before_form_8d",
+  "ac_progress_0_to_1", "ac_progress_1_3_1", "ac_progress_uncertain_1", "ac_progress_accepted_3",
+  "ac_attempts_same_rep", "ac_attempts_two_reps", "ac_going_cold_unreached",
+  "ac_number_25_summaries",
+  "ac_granot_estimate_drop", "ac_granot_invalid", "ac_granot_phone_mismatch",
+  "ac_extension_directory_name", "ac_extension_unknown",
+  "ac_call_lead_ringcentral_route",
 ] as const;
 export type SiSeedState = (typeof SI_SEED_STATES)[number];
 

@@ -130,6 +130,8 @@ async function main() {
   const { getRepIdentityLinkModel } = await import("../../src/models/RepIdentityLink");
   const { getSalesIntelligenceOwnerInstructionModel } = await import("../../src/models/SalesIntelligenceOwnerInstruction");
   const { getIntelligenceOwnerAssessmentModel } = await import("../../src/models/IntelligenceOwnerAssessment");
+  const { getRingCentralDirectorySnapshotModel } = await import("../../src/models/RingCentralDirectorySnapshot");
+  const { addStaffedMinutes, resolveActionDate } = await import("../../src/services/salesIntelligence/outreach/staffing");
   const { applyPriorRelations } = await import("../../src/services/salesIntelligence/analysis/relations");
   const { ensureLead, workerContext, latestProgressEvidence } = await import("../../src/services/salesIntelligence/outreach/ensure");
   const { ensureNumberReview } = await import("../../src/services/salesIntelligence/outreach/numberReview");
@@ -495,6 +497,43 @@ async function main() {
       command: { command: "create_followup", expected_revision: record.revision, outreach_record_id: recordId,
         action: { kind: "call", description, due_at: dueInHours === null ? null : new Date(Date.now() + dueInHours * HOUR).toISOString() } } });
   }
+  // ── AC0-SEED helpers (§4 seed list) ────────────────────────────────────────────────────────
+  /**
+   * A follow-up written through the shared store with an explicit origin/precision, for AC3's shared
+   * predicate (`isPromisedCallback`, §5.1) and AC4's completion rules (§6): none of that code exists
+   * yet, so this writes only the source `outreach_followups` row the future reader will see.
+   */
+  async function directFollowup(recordId: string, input: { kind: string; description: string; origin: "owner" | "rep_promise" | "customer_request" | "customer_wait";
+    requestedBy: "rep" | "customer" | "owner"; anchor: Date; resolved: ReturnType<typeof resolveActionDate>; promisedBy?: string | null; commitment: string }) {
+    return withTransaction(async session => {
+      const context = workerContext(session, String(O()), input.anchor);
+      const record = await recordForUpdate(recordId, context);
+      const prior = record.toObject();
+      const row = new Followups({ outreach_record_id: record._id, commitment_key: input.commitment, kind: input.kind, description: input.description,
+        due_at: input.resolved.due_at, base_attention_due_at: input.resolved.base_attention_due_at, source_due_at: input.resolved.due_at,
+        date_text: input.resolved.due_at ? null : "sometime soon", date_resolution: input.resolved.date_resolution, origin: input.origin,
+        requested_by: input.requestedBy, promised_by_agent_id: input.promisedBy ?? null, source_finding_ids: [] });
+      await saveFollowup(row, null, context, subjectKey(record.subject), "intelligence_followup_created");
+      await refreshRecord(record, context, "intelligence_effects_applied", prior, {});
+      return String(row._id);
+    });
+  }
+  /**
+   * Search for a calendar instant `minutes` staffed minutes before `anchor`, using only the real
+   * `addStaffedMinutes` (forward) as the spec instructs (§4 "compute start times by searching with
+   * addStaffedMinutes"). `addStaffedMinutes` is monotonic non-decreasing in its `from` argument, so a
+   * binary search on the candidate start converges to the instant whose forward count of staffed
+   * minutes lands closest to `anchor` without exceeding it.
+   */
+  function staffedBefore(anchor: Date, minutes: number): Date {
+    let lo = +anchor - 45 * DAY, hi = +anchor;
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      const arrival = +addStaffedMinutes(new Date(mid), minutes, policy);
+      if (arrival > +anchor) hi = mid; else lo = mid;
+    }
+    return new Date(Math.round(lo));
+  }
 
   // ── Move assessment runtime with a deterministic mocked model ──────────────────────────────
   type Tag = "default" | "conflict_move" | "conflict_other" | "engagement" | "lead_only" | "unknown";
@@ -557,11 +596,14 @@ async function main() {
 
   // ── Granot: observations and Lead changes ─────────────────────────────────────────────────
   const revisionByLead = new Map<string, number>();
-  async function observation(lead: LeadRef & { job: string }, ten: string, at: Date, priority: string, rep = "Dana R.", quoted = false) {
+  // `money: null` omits `display_money.estimate` entirely (AC0-SEED: F5 "an empty money block never erases a prior estimate").
+  // `normalizationResult` lets AC0-SEED seed an `invalid` observation without forking this helper.
+  async function observation(lead: LeadRef & { job: string }, ten: string, at: Date, priority: string, rep = "Dana R.", quoted = false, money: string | null = "4200.00",
+    normalizationResult: "valid" | "valid_with_issues" | "invalid" = "valid") {
     const _id = O();
-    await getGranotObservationModel().collection.insertOne({ _id, receipt_id: O(), schema_version: 1, kind: "lead_snapshot", normalization_result: "valid",
+    await getGranotObservationModel().collection.insertOne({ _id, receipt_id: O(), schema_version: 1, kind: "lead_snapshot", normalization_result: normalizationResult,
       normalized_source_label: "top10", captured_at: at, identity: { job_no_raw: lead.job, normalized_job_no: lead.job }, contact: { normalized_phone: ten },
-      move: {}, priority: { raw: priority, canonical: priority, valid: true }, booking_action: {}, display_money: { estimate: { raw: "4200.00", canonical: "4200.00" } },
+      move: {}, priority: { raw: priority, canonical: priority, valid: true }, booking_action: {}, display_money: money ? { estimate: { raw: money, canonical: money } } : {},
       agent_identity: { rep_raw: rep, user_raw: rep }, provider_context: {}, issues: [], quoted, createdAt: plus(at, 5_000), updatedAt: plus(at, 5_000) } as never);
     return String(_id);
   }
@@ -1121,6 +1163,296 @@ async function main() {
     row("S-timeline-300", ["timeline_300", "calls_50", "lead_message", "priority_change_paired", "priority_change_unpaired", "quoted_change"], { outreach_record_id: s.recordId,
       contact_number_id: n.id, lead_refs: leadIds(s.lead), conversation_ids: conversations.map(c => c.conversationId),
       note: "158 calls, 60+ Lead changes (priority churn and quoted flips, a third paired), 45 Lead Messages, 25 follow-ups, 8 conversations" });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════════════════
+  // 12. AC0-SEED: Attention evolution / Case File source-data states (TEAM-4-INSTRUCTION §4).
+  //     Phase 1 only: raw source-collection facts written through the real models/writers, for
+  //     code that doesn't exist yet (AC1–AC6). No band/derive/completion logic is exercised here.
+  // ════════════════════════════════════════════════════════════════════════════════════════
+  const nextStaffedDay = (fromDays: number): string => {
+    for (let i = 0; i < 14; i++) { const day = etDay(ahead(fromDays + i)); if (resolveActionDate({ day }, policy, new Date(0)).due_at) return day; }
+    throw new Error("AC0-SEED: no staffed day found");
+  };
+
+  // ── Follow-up origin/precision combinations (§5.1, §5.4) ───────────────────────────────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 5, calls: [{ at: ago(4, 20), direction: "Inbound", result: "Call connected", duration: 200, contact: "human_conversation" }] });
+    const anchor = ago(4, 19), due = ago(2);
+    const resolved = resolveActionDate({ exact: due.toISOString() }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_callback_customer_exact: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "call", description: "Customer asked to be called back", origin: "customer_request", requestedBy: "customer",
+      anchor, resolved, commitment: `ac:customer-exact:${s.recordId}` });
+    row("AC-callback-customer-exact", ["ac_callback_customer_exact"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Exact-precision customer_request call callback, due in the past (follow-up ${fid})` });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 5, calls: [{ at: ago(4, 18), direction: "Outbound", result: "Call connected", duration: 190, contact: "human_conversation" }] });
+    await ownerFollowup(s.recordId, 6, "Owner promised the customer a callback");
+    row("AC-callback-owner-exact", ["ac_callback_owner_exact"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Exact-precision owner call callback, due in the future (real create_followup Owner command)" });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 6, calls: [{ at: ago(5, 20), direction: "Outbound", result: "Call connected", duration: 300, contact: "human_conversation" }] });
+    const anchor = ago(5, 19), day = nextStaffedDay(3);
+    const resolved = resolveActionDate({ day }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_callback_rep_day: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "call", description: "Rep promised a callback next week", origin: "rep_promise", requestedBy: "rep",
+      anchor, resolved, commitment: `ac:rep-day:${s.recordId}` });
+    row("AC-callback-rep-day", ["ac_callback_rep_day"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Day-precision rep_promise call callback (follow-up ${fid}, day ${day})` });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 7, calls: [{ at: ago(6, 18), direction: "Outbound", result: "Call connected", duration: 260, contact: "human_conversation" }] });
+    const anchor = ago(6, 17), day = nextStaffedDay(4);
+    const resolved = resolveActionDate({ day }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_callback_send_estimate_day: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "send_estimate", description: "Rep promised to send the written estimate", origin: "rep_promise", requestedBy: "rep",
+      anchor, resolved, commitment: `ac:send-estimate-day:${s.recordId}` });
+    row("AC-callback-send-estimate-day", ["ac_callback_send_estimate_day"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Day-precision rep_promise send_estimate (non-call) action (follow-up ${fid}, day ${day})` });
+  }
+
+  // ── Early-window attempts and inbound-after-promise (§6) ───────────────────────────────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 4, calls: [{ at: ago(3, 20), direction: "Inbound", result: "Call connected", duration: 200, contact: "human_conversation" }] });
+    const anchor = ago(2), due = ago(0, 5);
+    const resolved = resolveActionDate({ exact: due.toISOString() }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_attempt_50_early: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "call", description: "Rep promised to call back", origin: "rep_promise", requestedBy: "rep", anchor, resolved,
+      commitment: `ac:attempt-50:${s.recordId}` });
+    const attemptAt = staffedBefore(resolved.due_at, 50);
+    await seedCalls(s.number!.id, s.number!.e164, [{ at: attemptAt, direction: "Outbound", result: "Call connected", duration: 45 }]);
+    row("AC-attempt-50-early", ["ac_attempt_50_early"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Outbound attempt ~50 staffed minutes before the exact due_at ${resolved.due_at.toISOString()} (follow-up ${fid}, attempt ${attemptAt.toISOString()})` });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 4, calls: [{ at: ago(3, 16), direction: "Inbound", result: "Call connected", duration: 210, contact: "human_conversation" }] });
+    const anchor = ago(2), due = ago(0, 6);
+    const resolved = resolveActionDate({ exact: due.toISOString() }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_attempt_70_early: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "call", description: "Rep promised to call back", origin: "rep_promise", requestedBy: "rep", anchor, resolved,
+      commitment: `ac:attempt-70:${s.recordId}` });
+    const attemptAt = staffedBefore(resolved.due_at, 70);
+    await seedCalls(s.number!.id, s.number!.e164, [{ at: attemptAt, direction: "Outbound", result: "Call connected", duration: 52 }]);
+    row("AC-attempt-70-early", ["ac_attempt_70_early"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Outbound attempt ~70 staffed minutes before the exact due_at ${resolved.due_at.toISOString()} (follow-up ${fid}, attempt ${attemptAt.toISOString()})` });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 4, calls: [{ at: ago(3, 20), direction: "Outbound", result: "Call connected", duration: 220, contact: "human_conversation" }] });
+    const anchor = ago(3, 19), due = ahead(1);
+    const resolved = resolveActionDate({ exact: due.toISOString() }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_inbound_after_promise: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "call", description: "Rep promised to call back", origin: "rep_promise", requestedBy: "rep", anchor, resolved,
+      commitment: `ac:inbound-after-promise:${s.recordId}` });
+    const inboundAt = plus(anchor, HOUR);
+    await seedCalls(s.number!.id, s.number!.e164, [{ at: inboundAt, direction: "Inbound", result: "Call connected", duration: 180, contact: "human_conversation" }]);
+    row("AC-inbound-after-promise", ["ac_inbound_after_promise"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Inbound human conversation ${inboundAt.toISOString()} after the promise's trigger (follow-up ${fid}, due ${resolved.due_at.toISOString()})` });
+  }
+  {
+    // Source for the promise chain (§6 rule 4): the chain itself (`promise_chain`, retry successors) is created by AC4 code
+    // that doesn't exist yet. This lays down the promised exact callback plus 3 outbound no_answer attempts spaced ~120
+    // staffed minutes apart (`callback_retry_staffed_minutes`).
+    const s = await leadSubject({ receivedDaysAgo: 5, calls: [{ at: ago(4, 20), direction: "Inbound", result: "Call connected", duration: 210, contact: "human_conversation" }] });
+    const anchor = ago(4, 19), due = ago(2);
+    const resolved = resolveActionDate({ exact: due.toISOString() }, policy, anchor);
+    if (!resolved.due_at) throw new Error("ac_promise_chain_source: due_at failed to resolve");
+    const fid = await directFollowup(s.recordId, { kind: "call", description: "Rep promised to call back", origin: "rep_promise", requestedBy: "rep", anchor, resolved,
+      commitment: `ac:promise-chain:${s.recordId}` });
+    const attempt1 = plus(resolved.due_at, 10 * 60_000), attempt2 = addStaffedMinutes(attempt1, 120, policy), attempt3 = addStaffedMinutes(attempt2, 120, policy);
+    await seedCalls(s.number!.id, s.number!.e164, [
+      { at: attempt1, direction: "Outbound", result: "No Answer", connected: false, duration: 0 },
+      { at: attempt2, direction: "Outbound", result: "No Answer", connected: false, duration: 0 },
+      { at: attempt3, direction: "Outbound", result: "No Answer", connected: false, duration: 0 },
+    ]);
+    row("AC-promise-chain-source", ["ac_promise_chain_source"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Promised exact callback (follow-up ${fid}) + 3 outbound no_answer attempts spaced ~120 staffed minutes apart; the retry chain itself is AC4's` });
+  }
+
+  // ── Fresh FormLeads, unworked, no calls (§5.2 band 2 source) ───────────────────────────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 40_000 / DAY });
+    row("AC-formlead-40s", ["ac_formlead_40s"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Unworked FormLead ~40 seconds old, no calls" });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: (3 * HOUR) / DAY });
+    row("AC-formlead-3h", ["ac_formlead_3h"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Unworked FormLead ~3 hours old, no calls" });
+  }
+
+  // ── Inbound-only conversations at 239 / 240 staffed minutes ago (§5.2 no_callback_after_inbound) ──
+  for (const [label, state, minutes] of [["AC-inbound-only-239", "ac_inbound_only_239", 239], ["AC-inbound-only-240", "ac_inbound_only_240", 240]] as const) {
+    const callAt = staffedBefore(new Date(NOW), minutes);
+    const number = await seedNumber(callAt);
+    const lead = await seedLead("CallLead", number.ten, callAt);
+    await attach(number.id, lead, callAt, "exact");
+    await seedCalls(number.id, number.e164, [{ at: callAt, direction: "Inbound", result: "Call connected", duration: 240, contact: "human_conversation" }]);
+    const recordId = await seedRecord(lead, number.id);
+    row(label, [state], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: `Inbound-only Lead; sole conversation ~${minutes} staffed minutes before seed time (call ${callAt.toISOString()})` });
+  }
+
+  // ── FormLead called before the form arrived, 6 / 8 days (§5.2 called_before_form) ──────────
+  for (const [label, state, daysBefore] of [["AC-called-before-form-6d", "ac_called_before_form_6d", 6], ["AC-called-before-form-8d", "ac_called_before_form_8d", 8]] as const) {
+    const formAt = ago(3), priorCallAt = ago(3 + daysBefore);
+    const number = await seedNumber(priorCallAt);
+    await seedCalls(number.id, number.e164, [{ at: priorCallAt, direction: "Outbound", result: "No Answer", connected: false, duration: 0 }]);
+    const lead = await seedLead("FormLead", number.ten, formAt);
+    await attach(number.id, lead, formAt);
+    const recordId = await seedRecord(lead, number.id);
+    row(label, [state], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: `Outbound attempt ${daysBefore} days before the form's trigger_at (call ${priorCallAt.toISOString()}, form ${formAt.toISOString()})` });
+  }
+
+  // ── Lead progress states (§7.1; see also `leadProgress.ts`, `test-csi-lead-progress.ts`) ───
+  {
+    // Accepted 0 (fresh) -> 1 (quoted), paired, no open action: the K25 base state.
+    const receivedAt = ago(9);
+    const number = await seedNumber(receivedAt);
+    const lead = await seedLead("FormLead", number.ten, receivedAt, { granot_priority: "0" });
+    await attach(number.id, lead, receivedAt);
+    await leadChange(lead, plus(receivedAt, 10 * 60_000), [{ path: "granot_priority", before: null, after: "0" }], null);
+    const obsAt = ago(5), obs = await observation(lead, number.ten, obsAt, "1", "Dana R.");
+    await leadChange(lead, plus(obsAt, 12 * 60_000), [{ path: "granot_priority", before: "0", after: "1" }], obs);
+    await db.collection("form_leads").updateOne({ _id: O(lead.id) }, { $set: { granot_priority: "1" } });
+    const recordId = await seedRecord(lead, number.id);
+    row("AC-progress-0-to-1", ["ac_progress_0_to_1"], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: "Accepted Lead progress 0 (fresh) -> 1 (quoted), paired to an observation, no open action" });
+  }
+  {
+    // 1 -> 3 -> 1 churn, all paired: current disposition is quoted again, accepted from the newest vouching change.
+    const receivedAt = ago(9);
+    const number = await seedNumber(receivedAt);
+    const lead = await seedLead("FormLead", number.ten, receivedAt, { granot_priority: "1" });
+    await attach(number.id, lead, receivedAt);
+    const o1At = ago(6), o1 = await observation(lead, number.ten, o1At, "1", "Dana R.");
+    await leadChange(lead, plus(o1At, 10 * 60_000), [{ path: "granot_priority", before: null, after: "1" }], o1);
+    const o2At = ago(5), o2 = await observation(lead, number.ten, o2At, "3", "Dana R.");
+    await leadChange(lead, plus(o2At, 10 * 60_000), [{ path: "granot_priority", before: "1", after: "3" }], o2);
+    const o3At = ago(4), o3 = await observation(lead, number.ten, o3At, "1", "Dana R.");
+    await leadChange(lead, plus(o3At, 10 * 60_000), [{ path: "granot_priority", before: "3", after: "1" }], o3);
+    await db.collection("form_leads").updateOne({ _id: O(lead.id) }, { $set: { granot_priority: "1" } });
+    const recordId = await seedRecord(lead, number.id);
+    row("AC-progress-1-3-1", ["ac_progress_1_3_1"], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: "Granot Priority churns 1 -> 3 -> 1 (three paired entity_changes); current disposition quoted, accepted" });
+  }
+  {
+    // granot_priority=1 with no vouching entity_change at all: uncertain provenance.
+    const s = await leadSubject({ receivedDaysAgo: 3, fields: { granot_priority: "1" } });
+    row("AC-progress-uncertain-1", ["ac_progress_uncertain_1"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "granot_priority=1 with no vouching entity_change; uncertain provenance" });
+  }
+  {
+    // Accepted rep_discretion (Priority 3), paired to an observation.
+    const receivedAt = ago(6);
+    const number = await seedNumber(receivedAt);
+    const lead = await seedLead("FormLead", number.ten, receivedAt);
+    await attach(number.id, lead, receivedAt);
+    const obsAt = ago(3), obs = await observation(lead, number.ten, obsAt, "3", "Marcus B.");
+    await leadChange(lead, plus(obsAt, 10 * 60_000), [{ path: "granot_priority", before: null, after: "3" }], obs);
+    await db.collection("form_leads").updateOne({ _id: O(lead.id) }, { $set: { granot_priority: "3" } });
+    const recordId = await seedRecord(lead, number.id);
+    row("AC-progress-accepted-3", ["ac_progress_accepted_3"], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: "Accepted Lead progress disposition rep_discretion (Priority 3), paired to an observation" });
+  }
+
+  // ── Attempt assignment source data (§7.2 first_attempts) ───────────────────────────────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 4 });
+    await seedCalls(s.number!.id, s.number!.e164, [
+      { at: ago(3, 10), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "101" },
+      { at: ago(2, 6), direction: "Outbound", result: "Voicemail", connected: true, duration: 25, contact: "voicemail", extension: "101" },
+    ]);
+    row("AC-attempts-same-rep", ["ac_attempts_same_rep"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Two outbound attempts by the same reviewed rep (ext 101, Dana Reyes), no conversation" });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 4 });
+    await seedCalls(s.number!.id, s.number!.e164, [
+      { at: ago(3, 10), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "101" },
+      { at: ago(2, 6), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "103" },
+    ]);
+    row("AC-attempts-two-reps", ["ac_attempts_two_reps"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Outbound attempts on two different extensions (101 reviewed, 103 proposed-only)" });
+  }
+
+  // ── Going cold with recent, unreached attempts (§7.3 unreached) ────────────────────────────
+  {
+    const receivedAt = ago(60);
+    const number = await seedNumber(receivedAt);
+    const lead = await seedLead("FormLead", number.ten, receivedAt);
+    await attach(number.id, lead, receivedAt);
+    await seedCalls(number.id, number.e164, [
+      { at: plus(receivedAt, HOUR), direction: "Outbound", result: "No Answer", connected: false, duration: 0 },
+      { at: ago(5), direction: "Outbound", result: "No Answer", connected: false, duration: 0 },
+      { at: ago(1), direction: "Outbound", result: "Voicemail", connected: true, duration: 20, contact: "voicemail" },
+    ]);
+    const recordId = await seedRecord(lead, number.id);
+    row("AC-going-cold-unreached", ["ac_going_cold_unreached"], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: "Open record, trigger_at 60 days ago, no human conversation ever, recent outbound attempts (5 and 1 days ago) never connect as human" });
+  }
+
+  // ── A Number with 25 summarized calls (§4.6/§4.8 tiered depth / budget source) ─────────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 30 });
+    const n = s.number!;
+    const conversations: SeededConversation[] = [];
+    for (let i = 0; i < 25; i++) conversations.push(await seedConversation(n, { call: { at: ago(29 - i, rand() * 4), direction: i % 2 ? "Outbound" : "Inbound",
+      result: "Call connected", duration: 120 + i * 5 }, lead: s.lead }));
+    row("AC-number-25-summaries", ["ac_number_25_summaries"], { outreach_record_id: s.recordId, contact_number_id: n.id, lead_refs: leadIds(s.lead),
+      conversation_ids: conversations.map(c => c.conversationId), note: "25 summarized calls on one Number (Case File tiered-depth / budget source data)" });
+  }
+
+  // ── Granot observations (§4.4) ──────────────────────────────────────────────────────────────
+  {
+    // Estimate 7100 -> 6600, then a newer accepted observation with no money (F5: an empty money block never erases a prior estimate).
+    const s = await leadSubject({ receivedDaysAgo: 14, fields: { granot_priority: "1" } });
+    await observation(s.lead, s.number!.ten, ago(10), "1", "Dana R.", false, "7100.00");
+    await observation(s.lead, s.number!.ten, ago(6), "1", "Dana R.", false, "6600.00");
+    await observation(s.lead, s.number!.ten, ago(2), "1", "Dana R.", false, null);
+    row("AC-granot-estimate-drop", ["ac_granot_estimate_drop"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "Estimate 7100.00 -> 6600.00 across two accepted observations, then a newer accepted observation with no money" });
+  }
+  {
+    const s = await leadSubject({ receivedDaysAgo: 5 });
+    await observation(s.lead, s.number!.ten, ago(1), "1", "Dana R.", false, "4200.00", "invalid");
+    row("AC-granot-invalid", ["ac_granot_invalid"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "A Granot observation with normalization_result invalid" });
+  }
+  {
+    // A Job Number Lead plus a phone-matched observation carrying a DIFFERENT job_no (F5: phone matching applies only when the
+    // Lead has no Job Number, so this observation must never be read as this Lead's Granot history).
+    const s = await leadSubject({ receivedDaysAgo: 6 });
+    const mismatchJob = `${s.lead.job}-x`;
+    const obsId = await observation({ model: s.lead.model, id: s.lead.id, job: mismatchJob }, s.number!.ten, ago(2), "1", "Dana R.");
+    row("AC-granot-phone-mismatch", ["ac_granot_phone_mismatch"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: `Lead has Job Number ${s.lead.job}; observation ${obsId} is phone-matched only and carries a different job_no ${mismatchJob}` });
+  }
+
+  // ── Extensions: an unreviewed directory-sync name, and an unknown extension (§4.5) ─────────
+  {
+    const s = await leadSubject({ receivedDaysAgo: 4 });
+    const n = s.number!;
+    await getRingCentralDirectorySnapshotModel().create({ provider_account_id: REP_ACCOUNT, taken_at: ago(1), digest: "fui-directory-1",
+      extensions: [{ id: "105", extension_number: "105", type: "User", name: "Mike Reyes", status: "Enabled", direct_numbers: [], sms_sender_numbers: [] }],
+      company_numbers: [], queues: [], counts: { extensions: 1, users: 1, departments: 0, company_numbers: 0, queues: 0 } });
+    await seedCalls(n.id, n.e164, [
+      { at: ago(3), direction: "Outbound", result: "Call connected", duration: 90, extension: "105" },
+      { at: ago(2), direction: "Outbound", result: "No Answer", connected: false, duration: 0, extension: "199" },
+    ]);
+    row("AC-extensions", ["ac_extension_directory_name", "ac_extension_unknown"], { outreach_record_id: s.recordId, contact_number_id: n.id, lead_refs: leadIds(s.lead),
+      note: "Ext 105: unreviewed with a RingCentral directory-sync name; ext 199: no directory entry and no rep identity link (unknown)" });
+  }
+
+  // ── A Call Lead with a RingCentral route and target name (§4.5 `call_leads.ringcentral.*`) ─
+  {
+    const s = await leadSubject({ model: "CallLead", receivedDaysAgo: 3 });
+    await db.collection("call_leads").updateOne({ _id: O(s.lead.id) }, { $set: { "ringcentral.route_id": O(), "ringcentral.route_assignment_id": O(),
+      "ringcentral.target_name": "Sales Overflow Line", "ringcentral.target_phone_number": s.number!.e164, "ringcentral.source_label": "vantage_movers_main" } });
+    row("AC-call-lead-route", ["ac_call_lead_ringcentral_route"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+      note: "CallLead.ringcentral.route_id/target_name set (RingCentral inbound route + target line name)" });
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════════

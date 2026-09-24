@@ -36,7 +36,9 @@ const KEPT_HEADERS = ["content-type", "content-range", "accept-ranges", "cache-c
 const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 const stage = arg("stage") as Stage | undefined;
-if (!stage || !["S1", "S2", "S3", "S4"].includes(stage)) throw new Error("--stage S1|S2|S3|S4 is required");
+// "AC" (CF-AC, Team 4) is a stub until AC2's new reads land: `routesFor` returns `[]` and `main()`
+// already turns that into a clear "no ... registry entries for AC" failure (AC0-SEED, 2026-09-23).
+if (!stage || !["S1", "S2", "S3", "S4", "AC"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const base = (arg("base") ?? "http://127.0.0.1:3999").replace(/\/+$/, "");
 const out = resolve(arg("out") ?? SI_CONTRACTS_DIR, stage, ...(mode === "off" ? ["flag-off"] : []));

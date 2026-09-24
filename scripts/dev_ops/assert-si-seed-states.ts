@@ -8,11 +8,15 @@
  */
 import { MongoClient, ObjectId, type Db } from "mongodb";
 import { SI_SEED_DATABASE, SI_SEED_REPLICA, SI_SEED_STATES, assertSeedDatabase, type SiSeedState } from "./lib/si-contract-common";
+import { defaultCsiPolicy } from "../../src/services/salesIntelligence/policy";
+import { staffedMinutesBetween } from "../../src/services/salesIntelligence/outreach/staffing";
 
 const DAY = 86_400_000;
 const etDay = (at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 const BOOKKEEPING_REVIEW_REASONS = ["prior_finding_contradicted", "prior_fulfilled_followup_open"];
 const LOCATION_OR_DATE = ["pickup_location", "delivery_location", "move_date"];
+// AC0-SEED: the seed never calls `updateCsiPolicy`, so the live policy is always the default (pure, no DB read needed here).
+const POLICY = defaultCsiPolicy();
 
 type Check = (db: Db, now: Date) => Promise<number>;
 const closedWithin = (reason: string, origin: string): Check => (db, now) => db.collection("outreach_records").countDocuments({ state: "closed", closed_reason: reason,
@@ -78,6 +82,71 @@ async function reviewedRepClauses(db: Db) {
   return links.map(link => ({ provider_account_id: link.rc_account_id,
     parties: { $elemMatch: { role: "user", extension_id: link.rc_extension_id } },
     started_at: { $gte: link.effective_from, ...(link.effective_to ? { $lt: link.effective_to } : {}) } }));
+}
+
+// ── AC0-SEED helpers: the follow-ups below are found by their seed commitment-key prefix, never
+// the manifest (per the file header). Each prefix is unique to one AC0-SEED subject. ──────────
+async function followupByCommitmentPrefix(db: Db, prefix: string) {
+  return db.collection("outreach_followups").findOne({ commitment_key: { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}` } });
+}
+/** Is there an Outbound call on the followup's Number within `tolerance` staffed minutes of `target` before `due_at`? */
+async function attemptOffsetMatches(db: Db, prefix: string, target: number, tolerance: number) {
+  const followup = await followupByCommitmentPrefix(db, prefix);
+  if (!followup?.due_at) return 0;
+  const record = await db.collection("outreach_records").findOne({ _id: followup.outreach_record_id });
+  if (!record?.primary_contact_number_id) return 0;
+  const calls = await db.collection("call_interactions").find({ contact_number_id: record.primary_contact_number_id, direction: "Outbound", merged_into_id: null }).toArray();
+  for (const call of calls) if (Math.abs(staffedMinutesBetween(call.started_at, followup.due_at, POLICY) - target) <= tolerance) return 1;
+  return 0;
+}
+/** Numbers whose only calls are a single Inbound human conversation: [staffed minutes ago] per Number. */
+async function inboundOnlyStaffedMinutesAgo(db: Db, now: Date): Promise<number[]> {
+  const groups = await db.collection("call_interactions").aggregate<{ _id: ObjectId; directions: string[]; calls: Array<{ direction: string; contact_type: string; started_at: Date }> }>([
+    { $match: { merged_into_id: null } },
+    { $group: { _id: "$contact_number_id", directions: { $addToSet: "$direction" }, calls: { $push: { direction: "$direction", contact_type: "$contact_type", started_at: "$started_at" } } } },
+  ]).toArray();
+  const out: number[] = [];
+  for (const row of groups) {
+    if (row.directions.length !== 1 || row.directions[0] !== "Inbound") continue;
+    const human = row.calls.filter(c => c.contact_type === "human_conversation");
+    if (human.length !== 1) continue;
+    out.push(staffedMinutesBetween(human[0]!.started_at, now, POLICY));
+  }
+  return out;
+}
+/** FormLeads within [minSec, maxSec] old whose attached Number has zero call_interactions. */
+async function unworkedFormLeadAge(db: Db, minSec: number, maxSec: number) {
+  const leads = await db.collection("form_leads").find({}, { projection: { _id: 1, timestamp: 1 } }).toArray();
+  const now = Date.now();
+  let n = 0;
+  for (const lead of leads) {
+    const ageSec = (now - +lead.timestamp) / 1000;
+    if (ageSec < minSec || ageSec > maxSec) continue;
+    const attachment = await db.collection("number_lead_attachments").findOne({ "lead_ref.id": lead._id, state: "attached" });
+    if (!attachment) continue;
+    if (await db.collection("call_interactions").countDocuments({ contact_number_id: attachment.contact_number_id, merged_into_id: null }) === 0) n++;
+  }
+  return n;
+}
+/** FormLeads with an Outbound call on the attached phone [minDays, maxDays] before the form's `timestamp`. */
+async function calledBeforeFormDays(db: Db, minDays: number, maxDays: number) {
+  const leads = await db.collection("form_leads").find({}, { projection: { _id: 1, timestamp: 1 } }).toArray();
+  let n = 0;
+  for (const lead of leads) {
+    const attachment = await db.collection("number_lead_attachments").findOne({ "lead_ref.id": lead._id, state: "attached" });
+    if (!attachment) continue;
+    const calls = await db.collection("call_interactions").find({ contact_number_id: attachment.contact_number_id, direction: "Outbound", started_at: { $lt: lead.timestamp } }).toArray();
+    if (calls.some(call => { const days = (+lead.timestamp - +call.started_at) / DAY; return days >= minDays && days <= maxDays; })) n++;
+  }
+  return n;
+}
+/** Outbound, non-human-conversation attempts grouped by Number, with the distinct `user`-party extensions seen. */
+async function outboundAttemptExtensionGroups(db: Db) {
+  return db.collection("call_interactions").aggregate<{ _id: ObjectId; exts: string[]; n: number }>([
+    { $match: { direction: "Outbound", merged_into_id: null, contact_type: { $ne: "human_conversation" } } },
+    { $unwind: "$parties" }, { $match: { "parties.role": "user" } },
+    { $group: { _id: "$contact_number_id", exts: { $addToSet: "$parties.extension_id" }, n: { $sum: 1 } } },
+  ]).toArray();
 }
 
 const CHECKS: Record<SiSeedState, Check> = {
@@ -245,6 +314,122 @@ const CHECKS: Record<SiSeedState, Check> = {
       && await db.collection("outreach_followups").countDocuments({ commitment_key: `owner:${String(audit.command_id)}:action` })) n++;
     return n;
   },
+  // ── AC0-SEED (2026-09-23): Attention evolution / Case File source-data states. Every check reads
+  // only the source collections the corresponding seed subject wrote (TEAM-4-INSTRUCTION §4). ──────
+  ac_callback_customer_exact: (db, now) => db.collection("outreach_followups").countDocuments({ origin: "customer_request", kind: "call", status: "open",
+    "date_resolution.precision": "exact", due_at: { $lt: now } }),
+  ac_callback_owner_exact: db => db.collection("outreach_followups").countDocuments({ origin: "owner", kind: "call", status: "open", "date_resolution.precision": "exact" }),
+  ac_callback_rep_day: db => db.collection("outreach_followups").countDocuments({ origin: "rep_promise", kind: "call", status: "open", "date_resolution.precision": "day" }),
+  ac_callback_send_estimate_day: db => db.collection("outreach_followups").countDocuments({ origin: "rep_promise", kind: "send_estimate", status: "open", "date_resolution.precision": "day" }),
+  ac_attempt_50_early: db => attemptOffsetMatches(db, "ac:attempt-50:", 50, 5),
+  ac_attempt_70_early: db => attemptOffsetMatches(db, "ac:attempt-70:", 70, 5),
+  ac_inbound_after_promise: async db => {
+    const followup = await followupByCommitmentPrefix(db, "ac:inbound-after-promise:");
+    if (!followup) return 0;
+    const record = await db.collection("outreach_records").findOne({ _id: followup.outreach_record_id });
+    if (!record?.primary_contact_number_id) return 0;
+    return db.collection("call_interactions").countDocuments({ contact_number_id: record.primary_contact_number_id, direction: "Inbound", contact_type: "human_conversation",
+      started_at: { $gt: record.trigger_at } });
+  },
+  ac_promise_chain_source: async db => {
+    const followup = await followupByCommitmentPrefix(db, "ac:promise-chain:");
+    if (!followup?.due_at) return 0;
+    const record = await db.collection("outreach_records").findOne({ _id: followup.outreach_record_id });
+    if (!record?.primary_contact_number_id) return 0;
+    const calls = await db.collection("call_interactions").find({ contact_number_id: record.primary_contact_number_id, direction: "Outbound", provider_result: "No Answer",
+      started_at: { $gte: followup.due_at } }).sort({ started_at: 1 }).toArray();
+    if (calls.length < 3) return 0;
+    const gaps = [staffedMinutesBetween(calls[0]!.started_at, calls[1]!.started_at, POLICY), staffedMinutesBetween(calls[1]!.started_at, calls[2]!.started_at, POLICY)];
+    return gaps.every(g => g >= 90 && g <= 150) ? 1 : 0;
+  },
+  ac_formlead_40s: db => unworkedFormLeadAge(db, 0, 300),
+  ac_formlead_3h: db => unworkedFormLeadAge(db, 2 * 3600, 4 * 3600),
+  // Bucketed with a small epsilon around the 240-minute boundary: the seed's own binary search
+  // (`staffedBefore`, searching via `addStaffedMinutes`) already lands within floating-point noise
+  // (~1e-5 minutes) of the exact target, and the two states must stay on either side of the threshold
+  // even with a little real clock drift between the seed run and this assertion.
+  ac_inbound_only_239: async (db, now) => (await inboundOnlyStaffedMinutesAgo(db, now)).filter(m => m >= 225 && m < 239.95).length,
+  ac_inbound_only_240: async (db, now) => (await inboundOnlyStaffedMinutesAgo(db, now)).filter(m => m >= 239.95 && m <= 255).length,
+  ac_called_before_form_6d: db => calledBeforeFormDays(db, 5.5, 6.5),
+  ac_called_before_form_8d: db => calledBeforeFormDays(db, 7.5, 8.5),
+  ac_progress_0_to_1: db => db.collection("entity_changes").countDocuments({ changed_paths: "granot_priority",
+    fields: { $elemMatch: { path: "granot_priority", before: "0", after: "1" } }, "provenance.observation_id": { $exists: true } }),
+  ac_progress_1_3_1: async db => {
+    const upTo3 = await db.collection("entity_changes").countDocuments({ changed_paths: "granot_priority", fields: { $elemMatch: { path: "granot_priority", before: "1", after: "3" } },
+      "provenance.observation_id": { $exists: true } });
+    const backTo1 = await db.collection("entity_changes").countDocuments({ changed_paths: "granot_priority", fields: { $elemMatch: { path: "granot_priority", before: "3", after: "1" } },
+      "provenance.observation_id": { $exists: true } });
+    return Math.min(upTo3, backTo1);
+  },
+  ac_progress_uncertain_1: db => db.collection("outreach_records").countDocuments({ "lead_progress.granot_priority": "1", "lead_progress.provenance": "uncertain" }),
+  ac_progress_accepted_3: db => db.collection("outreach_records").countDocuments({ "lead_progress.disposition": "rep_discretion", "lead_progress.provenance": "accepted",
+    "lead_progress.work_observed": true }),
+  ac_attempts_same_rep: async db => (await outboundAttemptExtensionGroups(db)).filter(g => g.exts.length === 1 && g.n >= 2).length,
+  ac_attempts_two_reps: async db => (await outboundAttemptExtensionGroups(db)).filter(g => g.exts.length >= 2).length,
+  ac_going_cold_unreached: async (db, now) => {
+    const records = await db.collection("outreach_records").find({ state: { $ne: "closed" }, primary_contact_number_id: { $ne: null }, trigger_at: { $lt: new Date(+now - 30 * DAY) } }).toArray();
+    let n = 0;
+    for (const r of records) {
+      if (await db.collection("call_interactions").countDocuments({ contact_number_id: r.primary_contact_number_id, contact_type: "human_conversation" })) continue;
+      if (await db.collection("call_interactions").countDocuments({ contact_number_id: r.primary_contact_number_id, direction: "Outbound", started_at: { $gte: new Date(+now - 10 * DAY) } })) n++;
+    }
+    return n;
+  },
+  ac_number_25_summaries: async db => (await db.collection("lead_conversations").aggregate([
+    { $lookup: { from: "intelligence_evidence_snapshots", localField: "_id", foreignField: "conversation_id", as: "snaps" } },
+    { $match: { snaps: { $elemMatch: { source_type: "summary" } } } },
+    { $group: { _id: "$contact_number_id", n: { $sum: 1 } } },
+    { $match: { n: { $gte: 25 } } },
+  ]).toArray()).length,
+  ac_granot_estimate_drop: async db => {
+    const rows = await db.collection("granot_observations").find({ normalization_result: { $in: ["valid", "valid_with_issues"] }, "identity.normalized_job_no": { $type: "string" } })
+      .sort({ captured_at: 1 }).toArray();
+    const byJob = new Map<string, typeof rows>();
+    for (const row of rows) { const key = row.identity.normalized_job_no as string; (byJob.get(key) ?? byJob.set(key, []).get(key)!).push(row); }
+    let n = 0;
+    for (const obs of byJob.values()) {
+      const has7100 = obs.some(o => o.display_money?.estimate?.raw === "7100.00");
+      const has6600 = obs.some(o => o.display_money?.estimate?.raw === "6600.00");
+      const newest = obs.at(-1);
+      if (has7100 && has6600 && newest && !newest.display_money?.estimate) n++;
+    }
+    return n;
+  },
+  ac_granot_invalid: db => db.collection("granot_observations").countDocuments({ normalization_result: "invalid" }),
+  ac_granot_phone_mismatch: async db => {
+    const leads = await db.collection("form_leads").find({ normalized_job_no: { $type: "string", $ne: "" } }, { projection: { normalized_job_no: 1, normalized_phone_number: 1 } }).toArray();
+    let n = 0;
+    for (const lead of leads) {
+      if (!lead.normalized_phone_number) continue;
+      if (await db.collection("granot_observations").countDocuments({ "contact.normalized_phone": lead.normalized_phone_number, "identity.normalized_job_no": { $ne: lead.normalized_job_no } })) n++;
+    }
+    return n;
+  },
+  ac_extension_directory_name: async db => {
+    const snapshots = await db.collection("ringcentral_directory_snapshots").find({ "extensions.name": { $type: "string" } }).toArray();
+    let n = 0;
+    for (const snap of snapshots) for (const ext of snap.extensions ?? []) {
+      if (!ext.name) continue;
+      if (await db.collection("rep_identity_links").countDocuments({ rc_account_id: snap.provider_account_id, rc_extension_id: ext.id, status: "reviewed" })) continue;
+      if (await db.collection("call_interactions").countDocuments({ provider_account_id: snap.provider_account_id, parties: { $elemMatch: { role: "user", extension_id: ext.id } } })) n++;
+    }
+    return n;
+  },
+  ac_extension_unknown: async db => {
+    const groups = await db.collection("call_interactions").aggregate<{ _id: { account: string; ext: string } }>([
+      { $match: { merged_into_id: null, parties: { $elemMatch: { role: "user", extension_id: { $type: "string" } } } } },
+      { $unwind: "$parties" }, { $match: { "parties.role": "user" } },
+      { $group: { _id: { account: "$provider_account_id", ext: "$parties.extension_id" } } },
+    ]).toArray();
+    let n = 0;
+    for (const { _id } of groups) {
+      if (await db.collection("rep_identity_links").countDocuments({ rc_account_id: _id.account, rc_extension_id: _id.ext })) continue;
+      if (await db.collection("ringcentral_directory_snapshots").countDocuments({ provider_account_id: _id.account, "extensions.id": _id.ext })) continue;
+      n++;
+    }
+    return n;
+  },
+  ac_call_lead_ringcentral_route: db => db.collection("call_leads").countDocuments({ "ringcentral.route_id": { $type: "objectId" }, "ringcentral.target_name": { $type: "string", $ne: "" } }),
 };
 
 async function main() {
