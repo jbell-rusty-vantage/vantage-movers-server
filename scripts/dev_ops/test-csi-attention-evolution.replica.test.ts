@@ -333,6 +333,53 @@ test("Team 4 AC3/AC4/AC5 attention evolution replica", { skip: process.env.CSI_R
     assert.equal(chain.filter(a => a.status === "open").length, 0);
   });
 
+  await t.test("T4-VAC-A4 R-S1 classification flips are symmetric: conversation → not re-opens the miss and its retry once; → conversation again restores it", async () => {
+    const f = await fixture();
+    const root = await promise(f.record._id);
+    const c1 = await call(f.n._id, ET("2026-09-23T15:05"), "connected_unknown");
+    await viaJob(c1);
+    const classify = async (contact_type: "human_conversation" | "unknown", basis: string, tag: string) => {
+      await getCallInteractionModel().updateOne({ _id: c1._id }, { $set: { contact_type, contact_type_basis: basis }, $inc: { projection_revision: 1 } });
+      await viaJob(c1, tag);
+    };
+    const brief = async () => (await chainOf(f.record._id)).map(a => `${a.commitment_key.startsWith("retry:") ? a.commitment_key.split(":").slice(0, 1).concat(a.commitment_key.split(":").slice(2)).join(":") : "root"}/${a.status}/${a.disposition ?? a.cancel_reason ?? ""}`);
+    await classify("human_conversation", `finding:${oid()}`, "human-1");
+    assert.deepEqual(await brief(), ["root/completed/spoke_with_customer"]);
+    await classify("unknown", "owner", "not-1");
+    assert.deepEqual(await brief(), ["root/completed/connected_contact_unknown", "retry:1/open/"]);
+    const d = await deriveAt(f.record._id, ET("2026-09-23T18:00"));
+    assert.equal(d.attention_band, 1, "the promise was not reached after all: the retry is due");
+    await viaJob(c1, "not-1-redelivery");
+    assert.deepEqual(await brief(), ["root/completed/connected_contact_unknown", "retry:1/open/"], "re-delivery changes nothing");
+    await classify("human_conversation", "owner", "human-2");
+    assert.deepEqual(await brief(), ["root/completed/spoke_with_customer", "retry:1/superseded/reached_on_classification"]);
+    await classify("unknown", "owner", "not-2");
+    assert.deepEqual(await brief(), ["root/completed/connected_contact_unknown", "retry:1/open/"], "the same retry (same key) comes back, never a second one");
+    assert.equal((await chainOf(f.record._id)).filter(a => a.commitment_key === `retry:${root._id}:1`).length, 1);
+  });
+
+  await t.test("T4-VAC-A4 R-N2 a late not-a-conversation classification applies the attempts already made after the call", async () => {
+    const f = await fixture();
+    const root = await promise(f.record._id);
+    const c1 = await call(f.n._id, ET("2026-09-23T15:05"), "connected_unknown");
+    await viaJob(c1);
+    await viaJob(await call(f.n._id, ET("2026-09-23T17:30"), "attempt"));
+    assert.equal((await chainOf(f.record._id)).length, 1, "the 17:30 attempt has nothing to complete yet");
+    await getCallInteractionModel().updateOne({ _id: c1._id }, { $set: { contact_type_basis: `finding:${oid()}` }, $inc: { projection_revision: 1 } });
+    await viaJob(c1, "classified-unknown");
+    const chain = await chainOf(f.record._id);
+    assert.deepEqual(chain.map(a => [a.commitment_key.replace(String(root._id), "root"), a.status, a.disposition]), [
+      [chain[0]!.commitment_key.replace(String(root._id), "root"), "completed", "connected_contact_unknown"],
+      ["retry:root:1", "completed", "no_answer"],
+      ["retry:root:2", "open", null]]);
+    assert.equal(+chain[1]!.completed_at!, +ET("2026-09-23T17:30"), "the attempt already made counts as retry 1");
+    assert.equal(+chain[2]!.due_at!, +addStaffedMinutes(ET("2026-09-23T17:30"), 120, policy), "retry 2 is anchored at that attempt");
+    const d = await deriveAt(f.record._id, ET("2026-09-23T18:00"));
+    assert.ok(!d.reasons.includes("promised_callback_overdue"), "no stale overdue retry after the rep already tried again");
+    await viaJob(c1, "classified-unknown-redelivery");
+    assert.equal((await chainOf(f.record._id)).length, 3);
+  });
+
   await t.test("V-AC S1 flag off → on: facts written while the flag was off are recomputed (stamp ≠ revision) before they drive a reason", async () => {
     const f = await fixture();
     await viaJob(await call(f.n._id, ET("2026-09-21T10:00"), "inbound_human"));

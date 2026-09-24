@@ -409,7 +409,17 @@ async function createPromiseRetry(record: Awaited<ReturnType<typeof recordForUpd
   const rootId = completed.promise_chain?.root_id ?? completed._id;
   const rootOrigin = (completed.promise_chain?.root_origin ?? completed.origin) as "rep_promise" | "customer_request" | "owner";
   const Followups = getOutreachFollowupModel(), commitment_key = promiseRetryKey(rootId, attempt);
-  if (await Followups.exists({ commitment_key }).session(context.session)) return null;
+  const existing = await Followups.findOne({ commitment_key }).session(context.session);
+  if (existing) {
+    // T4-VAC-A4 (R-S1): a retry superseded because its call was classified a conversation comes back, once,
+    // when that call is re-classified as not a conversation (same key). Anything else: already handled.
+    if (existing.status !== "superseded" || existing.cancel_reason !== REACHED_ON_CLASSIFICATION) return null;
+    const before = existing.toObject();
+    existing.status = "open"; existing.cancel_reason = null;
+    await saveFollowup(existing, before, context, subjectKey(record.subject), "promise_retry_reopened");
+    await advanceRetryThroughLaterCalls(record, existing, call, policy, context);
+    return String(existing._id);
+  }
   const due = addStaffedMinutes(call.started_at, tuning.callback_retry_staffed_minutes, policy);
   const row = new Followups({ outreach_record_id: record._id, commitment_key, kind: "call", description: PROMISE_RETRY_DESCRIPTION, origin: "system_default",
     requested_by: completed.requested_by ?? null, due_at: due, base_attention_due_at: due, supersedes_id: completed._id,
@@ -418,8 +428,39 @@ async function createPromiseRetry(record: Awaited<ReturnType<typeof recordForUpd
     responsible_agent_id: completed.responsible_agent_id ?? null, promised_by_agent_id: completed.promised_by_agent_id ?? null,
     assignment: completed.responsible_agent_id ? { origin: "inherited_outreach", assigned_at: call.started_at, evidence_id: call._id } : null });
   await saveFollowup(row, null, context, subjectKey(record.subject), "promise_retry_created");
+  await advanceRetryThroughLaterCalls(record, row, call, policy, context);
   return String(row._id);
 }
+/** Bound of the later-call scan when a retry is created or reopened (T4-VAC-A4). */
+export const RETRY_LATER_CALL_SCAN = 50;
+/**
+ * T4-VAC-A4 (R-N2): a retry is "try the customer again after the call that did not reach them"; it stays
+ * anchored at that call (due +retry minutes after it), so it is genuinely overdue when nobody has tried again.
+ * When it is created late (the call was classified later, or arrived out of order), attributable calls that
+ * already happened after that call are applied to it at once: the first outbound attempt (any time after the
+ * call; the rep could not see a due time that did not exist yet) or inbound human conversation completes it
+ * with that call's outcome, and a known miss creates the next link the same way (bounded by
+ * `callback_max_retries`). An unclassified connected call completes it without a successor, as in B1.
+ */
+async function advanceRetryThroughLaterCalls(record: Awaited<ReturnType<typeof recordForUpdate>>, retry: InstanceType<ReturnType<typeof getOutreachFollowupModel>>,
+  after: InteractionRow, policy: CsiPolicy, context: CsiTransactionContext) {
+  const later = await getCallInteractionModel().find({ contact_number_id: after.contact_number_id, merged_into_id: null, direction: { $in: ["Inbound", "Outbound"] },
+    started_at: { $gt: after.started_at } }).sort({ started_at: 1, _id: 1 }).limit(RETRY_LATER_CALL_SCAN).session(context.session).lean();
+  for (const next of later) {
+    const facts = callFacts(record, next, await interactionAttribution(next, context.session), await mappedSalesReps(next, context.session));
+    const inboundHuman = facts.human && next.direction === "Inbound";
+    if (!facts.outboundAttempt && !inboundHuman) continue;
+    const before = retry.toObject();
+    retry.status = "completed"; retry.disposition = inboundHuman ? "customer_called" : facts.outcome;
+    retry.completion_basis = "call_attempt"; retry.completed_at = next.started_at; retry.evidence_interaction_id = next._id; retry.snoozed_until = null;
+    await saveFollowup(retry, before, context, subjectKey(record.subject), "call_fulfilled_action");
+    await createPromiseRetry(record, retry, next, policy, context);
+    return;
+  }
+}
+/** The completion outcome a call has when it is not a human conversation (as `callFacts` computes it). */
+const missOutcome = (call: Pick<InteractionRow, "contact_type" | "provider_connected">) =>
+  call.contact_type === "voicemail" ? "left_voicemail" as const : call.provider_connected ? "connected_contact_unknown" as const : "no_answer" as const;
 export const REACHED_ON_CLASSIFICATION = "reached_on_classification";
 /**
  * V-AC B1: the same call projected again after it was classified (new projection revision: the
@@ -435,7 +476,16 @@ async function reconcileClassifiedCall(record: Awaited<ReturnType<typeof recordF
   const settled = await Followups.find({ outreach_record_id: record._id, status: "completed", evidence_interaction_id: call._id, kind: "call", missed_episode_key: null })
     .sort({ _id: 1 }).session(context.session);
   for (const action of settled.filter(isPromisedCallback)) {
-    if (!human) { await createPromiseRetry(record, action, call, policy, context); continue; }
+    if (!human) {
+      // T4-VAC-A4 (R-S1): a completion first marked reached, then re-classified not a conversation, is a miss again.
+      if (action.disposition === "spoke_with_customer" && action.completion_basis === "call_attempt") {
+        const before = action.toObject();
+        action.disposition = missOutcome(call);
+        await saveFollowup(action, before, context, recordKey, "promise_unreached_on_classification");
+      }
+      await createPromiseRetry(record, action, call, policy, context);
+      continue;
+    }
     if (["spoke_with_customer", "customer_called", "completed"].includes(action.disposition ?? "")) continue;
     const before = action.toObject();
     action.disposition = "spoke_with_customer";
