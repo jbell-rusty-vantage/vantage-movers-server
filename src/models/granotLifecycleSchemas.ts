@@ -350,6 +350,9 @@ export const RECEIVER_AGENT_SOURCES = [
   "granot_username_match",
   "best_relocation_sheet",
   "manual",
+  // S6-AGENT (assignment addendum E5): the one reviewed rep who answered a Call Lead's creating call.
+  // The weakest source: written only into an empty field; never accepted from an API client.
+  "ringcentral_answered",
 ] as const;
 
 export const LEAD_PROVENANCE_FIELD_NAMES = [

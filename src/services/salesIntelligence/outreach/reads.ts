@@ -23,7 +23,7 @@ import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { getNumberLeadAttachmentModel as attachmentModel } from "../../../models/NumberLeadAttachment";
 import { derive, attentionDue } from "./derive";
 import { stateWithActions } from "./transitions";
-import { subjectKey, type RecordRow, type FollowupRow } from "./types";
+import { receiverAssignmentEnabled, subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { SUPERSEDED_BY_SPECIFIC_PLAN } from "./store";
 import { CONTACT_FACT_FIELDS } from "./types";
 import { nudgeHistoryPage } from "../nudges/reads";
@@ -34,7 +34,7 @@ import { outreachFacts } from "./facts";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
-import { latestSummaryFromRun, officialStatus, outreachDetailDtoSchema } from "./detailDto";
+import { latestSummaryFromRun, officialStatus, outreachDetailDtoSchema, receiverAgentDto } from "./detailDto";
 import { EMPTY_SUGGESTION_SIDE, loadSuggestionSide, suggestedNextStep, type SuggestionSide } from "./suggestion";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
@@ -230,7 +230,8 @@ export function deriveOutreachFacts(record: RecordRow, inputs: OutreachInputs, c
 
 type LeadLite = LeadMoveSource & { _id: unknown; name?: string | null; job_no?: string | null; source_company_label_snapshot?: string | null;
   timestamp?: Date | null; booked?: unknown; cancelled?: unknown; duplicate?: boolean | null; bad_lead?: unknown; no_sync?: boolean | null;
-  granot_priority?: unknown; quoted?: boolean | null; receiver_agent_name_snapshot?: string | null };
+  granot_priority?: unknown; quoted?: boolean | null; receiver_agent_name_snapshot?: string | null;
+  receiver_agent?: unknown; receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null };
 type BookingLite = { _id: unknown; book_date?: Date | null; total_binder_amount?: number | null; job_no?: string | null; agent?: unknown };
 type CancelLite = { _id: unknown; cancel_date?: Date | null; reason?: string | null };
 /**
@@ -240,7 +241,9 @@ type CancelLite = { _id: unknown; cancel_date?: Date | null; reason?: string | n
  */
 const LEAD_COMMON_PROJECTION = { name: 1, job_no: 1, source_company_label_snapshot: 1, timestamp: 1, pickup_city: 1, pickup_state: 1, pickup_zip: 1,
   delivery_city: 1, delivery_state: 1, move_date: 1, move_size: 1, granot_move_size: 1, cubic_feet: 1, current_move_provenance: 1,
-  booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, granot_priority: 1, quoted: 1, receiver_agent_name_snapshot: 1 } as const;
+  booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, granot_priority: 1, quoted: 1, receiver_agent_name_snapshot: 1,
+  // S6-AGENT (E26): the detail's Receiver agent; the same `$in`, no extra read.
+  receiver_agent: 1, receiver_agent_source: 1, receiver_agent_set_at: 1 } as const;
 const FORM_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, destination_zip: 1 } as const;
 const CALL_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, delivery_zip: 1 } as const;
 type LatestLite = { _id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string };
@@ -479,8 +482,9 @@ export function outreachDetailAdditions(record: RecordRow, side: OutreachSideDat
   const ref = record.subject.kind === "lead" && record.subject.model && record.subject.id ? leadKey(record.subject.model, record.subject.id) : null;
   const bookings = ref ? side.bookings.get(ref) ?? [] : [];
   const cancelled = new Set(bookings.filter(b => (side.cancellations.get(String(b._id)) ?? []).length > 0).map(b => String(b._id)));
+  const lead = ref ? side.leads.get(ref) ?? null : null;
   return { newest_run_id: usable ? String(usable._id) : null, latest_summary: latestSummaryFromRun(usable),
-    official: officialStatus(ref ? side.leads.get(ref) ?? null : null, bookings, cancelled) };
+    official: officialStatus(lead, bookings, cancelled), ...(receiverAssignmentEnabled() ? { receiver_agent: receiverAgentDto(lead) } : {}) };
 }
 
 export async function readOutreach(id: string) {

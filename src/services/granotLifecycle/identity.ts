@@ -927,7 +927,7 @@ function classifyCallLeads(
   };
 }
 
-async function resolveAgentAssertion(
+export async function resolveAgentAssertion(
   agentIdentity: LeadIdentityObservation["agent_identity"],
   store: LeadIdentityStore,
 ): Promise<{

@@ -27,11 +27,23 @@ export const officialStatusDtoSchema = z.object({
   booking_id: id.nullable(),
   priority: z.object({ code: z.string(), label: z.string() }).strict().nullable(),
 }).strict();
+/**
+ * S6-AGENT (E26): the Lead's Receiver agent beside the Outreach Assigned rep (`assignment`). Two fields:
+ * the Owner's `assign` never writes this one, and a Granot rep change never overwrites an Owner assignment.
+ */
+export const receiverAgentDtoSchema = z.object({
+  agent: z.object({ id, name: z.string() }).strict(),
+  /** `receiver_agent_source`; null on legacy Leads that never recorded one. */
+  source: z.string().nullable(),
+  set_at: date.nullable(),
+}).strict();
 export const outreachDetailAdditionsShape = {
   newest_run_id: id.nullable(),
   latest_summary: latestSummaryDtoSchema.nullable(),
   /** Null when the subject is not a Lead (Number-only Outreach) or the Lead row is gone. */
   official: officialStatusDtoSchema.nullable(),
+  /** S6-AGENT, RECEIVER_ASSIGNMENT on only (absent off): null when the subject has no Lead or the Lead no receiver. */
+  receiver_agent: receiverAgentDtoSchema.nullable().optional(),
 };
 /** `data.outreach` on `GET /outreach/:id`: the shared Outreach DTO plus the §4.1 fields. */
 export const outreachDetailDtoSchema = outreachDtoSchema.extend(outreachDetailAdditionsShape).strict();
@@ -88,6 +100,15 @@ export function latestSummaryFromRun(run: RunLite | null): LatestSummaryDto | nu
     // Legacy (pre-structured) runs have no step artifacts: a conversation run covered its one call; a Number run cannot say.
     conversations_covered: Array.isArray(summaries) ? summaries.length : conversation ? 1 : null,
   });
+}
+
+export type ReceiverAgentDto = z.infer<typeof receiverAgentDtoSchema>;
+type ReceiverLead = { receiver_agent?: unknown; receiver_agent_name_snapshot?: string | null; receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null };
+/** E26 `receiver_agent` from the Lead row the detail read already holds; the name is the catalog snapshot the sheet also reads. */
+export function receiverAgentDto(lead: ReceiverLead | null): ReceiverAgentDto | null {
+  if (!lead?.receiver_agent) return null;
+  return receiverAgentDtoSchema.parse({ agent: { id: String(lead.receiver_agent), name: lead.receiver_agent_name_snapshot?.trim() || "Unknown Agent" },
+    source: lead.receiver_agent_source ?? null, set_at: lead.receiver_agent_set_at ? new Date(lead.receiver_agent_set_at).toISOString() : null });
 }
 
 type LeadFlags = { duplicate?: boolean | null; bad_lead?: unknown; booked?: unknown; cancelled?: unknown; no_sync?: boolean | null; granot_priority?: unknown };

@@ -174,12 +174,13 @@ async function resolveOutreach(outreachId: string, as_of: Date): Promise<Resolve
 
 const ROUTINE_KINDS = new Set(["conversation_recorded", "granot_observed", "analysis_submitted"]);
 /** Sources 1, 2, 5, 6, 8, 10, 11, 12 of data spec §5.2: prefixed `Job {n} ·` on a multi-Lead Number. */
-const JOB_KINDS = new Set(["lead_received", "call_qualified", "assessment_published", "granot_priority_changed", "quoted_changed", "granot_observed",
+const JOB_KINDS = new Set(["lead_received", "call_qualified", "assessment_published", "granot_priority_changed", "quoted_changed", "granot_observed", "receiver_agent_changed",
   "followup_created", "followup_completed", "followup_cancelled", "followup_superseded", "booking_recorded", "cancellation_recorded", "lead_message_sent"]);
 const GROUP_BY_KIND: Readonly<Record<string, TimelineV2EventDto["group"]>> = {
   call: "calls", conversation_recorded: "calls",
   conversation_analyzed: "analysis", assessment_published: "analysis", analysis_submitted: "analysis",
   lead_received: "lead_updates", call_qualified: "lead_updates", granot_priority_changed: "lead_updates", quoted_changed: "lead_updates", granot_observed: "lead_updates",
+  receiver_agent_changed: "lead_updates",
   number_attached: "lead_updates", booking_recorded: "lead_updates", cancellation_recorded: "lead_updates",
   lead_message_sent: "messages", nudge_sent: "messages",
 };

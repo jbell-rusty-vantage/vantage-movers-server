@@ -19,7 +19,8 @@ import { subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { callFacts, customerCalledBack, fulfilledByCall } from "./transitions";
 import { resolveActionDate, resolveActionDateText } from "./staffing";
 import { recordForUpdate, refreshRecord, saveFollowup, jsonValue, queueNumberRollupRebuild, supersedeDefaults } from "./store";
-import { attentionEvolutionEnabled, mayReplaceAssignment } from "./types";
+import { attentionEvolutionEnabled, mayReplaceAssignment, receiverAssignmentEnabled, receiverBlocksPhoneEvidence } from "./types";
+import { loadLead } from "../attachment/sources";
 import { applySpokenRestriction } from "../review/restrictions";
 
 /** Server-resolved intent, never an HTTP/model write schema. D validates snapshots and resolves date wording first. */
@@ -161,7 +162,10 @@ export async function applyOutreachEffect(raw: OutreachEffectInput, context: Csi
         if (action.status === "open") await supersedeDefaults(current, context, action);
         // §7.2: with the flag the one precedence decides (a promise replaces `first_attempts`, never the Owner).
         const assignable = attentionEvolutionEnabled() ? mayReplaceAssignment(current, "rep_promise") : !current.responsible_agent_id && current.assignment?.origin !== "owner";
-        if (promising && (input.origin === "rep_promise" || call.contact_type === "human_conversation") && assignable) {
+        // S6-AGENT E4 (flag on): a promise assigns the record only when the Lead has no outranking `receiver_agent`.
+        const receiverBlocks = receiverAssignmentEnabled() && current.subject.kind === "lead" && current.subject.model && current.subject.id
+          ? receiverBlocksPhoneEvidence(await loadLead({ model: current.subject.model, id: String(current.subject.id) }, context.session), "rep_promise") : false;
+        if (promising && (input.origin === "rep_promise" || call.contact_type === "human_conversation") && assignable && !receiverBlocks) {
           current.responsible_agent_id = new mongoose.Types.ObjectId(promising); current.assignment = { origin: "rep_promise", assigned_at: call.started_at, evidence_id: call._id };
         }
         if (input.action_kind === "wait" && resolved.due_at && current.state === "unworked") current.state = "open";

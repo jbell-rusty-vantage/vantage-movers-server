@@ -230,7 +230,8 @@ test("K22 (derive) retries stay band 1; after the last retry is unreached → pr
 
 // ── K27 precedence (§7.2) ────────────────────────────────────────────────────────────────────────
 test("K27 (rank) owner > rep_promise = first_conversation > inherited_outreach > first_attempts; only strictly lower is replaced", () => {
-  assert.deepEqual(ASSIGNMENT_RANKS, { owner: 100, rep_promise: 40, first_conversation: 40, inherited_outreach: 30, first_attempts: 10 });
+  // S6-AGENT inserts Team 3's two rows (DECISIONS 2026-09-24 "Team 4 hooks for Team 3"); Team 4's rows are unchanged.
+  assert.deepEqual(ASSIGNMENT_RANKS, { owner: 100, crm_receiver: 60, rep_promise: 40, first_conversation: 40, inherited_outreach: 30, ringcentral_answered: 20, first_attempts: 10 });
   assert.ok(assignmentRank("owner") > assignmentRank("first_conversation"));
   assert.ok(assignmentRank("first_conversation") > assignmentRank("first_attempts"));
   assert.equal(assignmentRank(null), 0);

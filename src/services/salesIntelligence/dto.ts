@@ -259,6 +259,8 @@ export const assignmentDtoSchema = z
         "inherited_outreach",
         // Team 4 AC5-ACTIVITY (spec §7.2), additive.
         "first_attempts",
+        // S6-AGENT (assignment addendum §3.2), additive; only written with RECEIVER_ASSIGNMENT on.
+        "crm_receiver",
       ])
       .nullable(),
     assigned_at: date.nullable(),

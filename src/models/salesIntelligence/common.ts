@@ -84,7 +84,12 @@ export const assignment = new Schema(
       "inherited_outreach",
       // Team 4 AC5-ACTIVITY (spec §7.2): two or more attributable attempts by one reviewed rep.
       "first_attempts",
+      // S6-AGENT (assignment addendum §3.2, E4): the record follows the Lead's `receiver_agent`.
+      "crm_receiver",
     ]),
+    // S6-AGENT: on a `crm_receiver` assignment, the Lead's `receiver_agent_source` it followed (its rank,
+    // `outreach/types.ts`). No default, so every other assignment is stored exactly as before.
+    receiver_source: { type: String },
     actor_id: text,
     evidence_id: ref,
     assigned_at: at,

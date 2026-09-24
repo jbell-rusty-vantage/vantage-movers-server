@@ -42,7 +42,8 @@ const iso = (value: unknown) => (value instanceof Date && !Number.isNaN(+value) 
 const str = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 export const CASE_FILE_CALL_LIMIT = 400;
 export const CASE_FILE_READER_LIMIT = 400;
-const CASE_FILE_KINDS = new Set(TIMELINE_KINDS.filter(kind => !["granot_observed", "followup_snoozed", "analysis_submitted"].includes(kind)));
+// S6-AGENT: `receiver_agent_changed` is an Owner-timeline event; the Case File keeps its own `Receiver agent` line.
+const CASE_FILE_KINDS = new Set(TIMELINE_KINDS.filter(kind => !["granot_observed", "followup_snoozed", "analysis_submitted", "receiver_agent_changed"].includes(kind)));
 const CASE_LEAD_PROJECTION = { ...LEAD_PROJECTION, receiver_agent_source: 1, receiver_agent_set_at: 1, "ringcentral.target_phone_number": 1, "ringcentral.target_name": 1,
   "ringcentral.source_label": 1, "ringcentral.route_id": 1, "ingested_contact_snapshot.name": 1, "ingested_contact_snapshot.evidence_status": 1,
   "current_contact_provenance.source_system": 1 } as const;

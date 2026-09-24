@@ -52,6 +52,9 @@ export type LeadDesiredStateProjection = {
   granot_priority?: string;
   quoted?: boolean;
   receiver_agent?: string;
+  /** S6-AGENT: read only by the latest-wins rule (flag on); absent on legacy projections. */
+  receiver_agent_source?: string;
+  receiver_agent_set_at?: Date;
   name?: string;
   first_name?: string;
   last_name?: string;
@@ -105,6 +108,39 @@ const FORBIDDEN_DESIRED_PATHS = new Set([
   "balance",
 ]);
 
+/** S6-AGENT (assignment addendum §3.1, E3/E6): the Granot latest-wins `receiver_agent` rule, default off. */
+export const receiverLatestWinsEnabled = () =>
+  process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS?.trim().toLowerCase() === "true";
+/** Sources a Granot rep never replaces (E6). A receiver with no recorded source is of unknown origin: protected too. */
+const PROTECTED_RECEIVER_SOURCES = new Set(["manual"]);
+/** Sources a Granot rep replaces whatever their time (E5: the weakest; not a rep assertion made in time). */
+const ALWAYS_REPLACEABLE_RECEIVER_SOURCES = new Set(["ringcentral_answered"]);
+/**
+ * S6-AGENT latest wins (flag on): may a Granot observation captured at `capturedAt` whose `user`/`rep`
+ * resolved to `agentId` set `receiver_agent`? Yes when the field is empty; otherwise only when the
+ * current receiver is automatic (not `manual`, not source-less), the Agent differs, and the observation
+ * is the temporal winner over whatever set it:
+ * - `granot_username_match`: set by an accepted observation, which is never newer than the Lead's
+ *   temporal winner; the planner only reaches here for an observation newer than that winner, so an
+ *   older observation delivered late already plans `stale`.
+ * - extension and sheet sources: `captured_at` must be after `receiver_agent_set_at` (unknown set time:
+ *   the observation wins).
+ * - `ringcentral_answered`: always replaced (E5).
+ * The other guards (valid Priority, `user`/`rep` agreement, one active Agent) stay with the caller.
+ */
+export function receiverReplaceableByGranot(
+  lead: Pick<LeadDesiredStateProjection, "receiver_agent" | "receiver_agent_source" | "receiver_agent_set_at">,
+  agentId: string | undefined,
+  capturedAt: Date,
+): boolean {
+  if (!lead.receiver_agent) return true;
+  if (!agentId || String(lead.receiver_agent) === agentId) return false;
+  const source = lead.receiver_agent_source;
+  if (!source || PROTECTED_RECEIVER_SOURCES.has(source)) return false;
+  if (ALWAYS_REPLACEABLE_RECEIVER_SOURCES.has(source) || source === "granot_username_match") return true;
+  return !lead.receiver_agent_set_at || +capturedAt > +lead.receiver_agent_set_at;
+}
+
 export type LeadDesiredStateInput = {
   observation: GranotObservationDocument;
   identity: LeadIdentityResult;
@@ -113,6 +149,8 @@ export type LeadDesiredStateInput = {
   temporal_order?: GranotTemporalOrder;
   now: Date;
   attempt: number;
+  /** S6-AGENT E3/E6. Default: `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS`. Off keeps the fill-empty rule. */
+  receiver_latest_wins?: boolean;
 };
 
 export function planLeadDesiredState(input: LeadDesiredStateInput): LeadDesiredStatePlan {
@@ -295,9 +333,12 @@ function planMatchedLead(input: LeadDesiredStateInput): LeadDesiredStatePlan {
     }
   }
 
+  const latestWins = input.receiver_latest_wins ?? receiverLatestWinsEnabled();
   const canFillAgent =
     Boolean(input.identity.agent) &&
-    !lead.receiver_agent &&
+    (latestWins
+      ? receiverReplaceableByGranot(lead, input.identity.agent?.target.id, input.observation.captured_at)
+      : !lead.receiver_agent) &&
     input.observation.priority?.valid === true &&
     !skipPriority;
   if (canFillAgent && input.identity.agent) {

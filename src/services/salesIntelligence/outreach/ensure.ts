@@ -18,7 +18,8 @@ import { openReview } from "../review/items";
 import { addStaffedMinutes } from "./staffing";
 import { authoritativeClosure, callFacts, customerCalledBack, fulfilledByCall, pickCallbackTarget, type CompletionPolicy } from "./transitions";
 import { closeRecord, jsonValue, refreshRecord, saveFollowup, recordForUpdate } from "./store";
-import { attentionEvolutionEnabled, CONTACT_FACT_FIELDS, mayReplaceAssignment, progressPlanEnabled, subjectKey, type InteractionRow, type RecordRow } from "./types";
+import { attentionEvolutionEnabled, CONTACT_FACT_FIELDS, mayReplaceAssignment, progressPlanEnabled, receiverAssignmentEnabled, receiverBlocksPhoneEvidence, subjectKey, type InteractionRow, type RecordRow } from "./types";
+import { applyReceiverAssignment } from "./receiverAssignment";
 export { CONTACT_FACT_FIELDS } from "./types";
 import { progressPlanSuppressed } from "./types";
 import { isPromisedCallback, KNOWN_MISS_DISPOSITIONS } from "./derive";
@@ -87,6 +88,8 @@ export async function ensureLead(ref: LeadRef, context: CsiTransactionContext, n
   // G8 (reconciliation §4.2): inside `applyLeadProgress` the CRM-disposition closure (accepted 5/7/8) is decided
   // before the §7.1 quote default can be created, so an accepted 5 (Granot also sets `quoted`) never gets one.
   if (csiFlag("LEAD_PROGRESS")) await applyLeadProgress(row, lead, ref, context, options.changeId ?? null, reason);
+  // S6-AGENT (§3.2, E5), after the closure and Lead progress: the responsible rep follows `receiver_agent`.
+  if (receiverAssignmentEnabled()) await applyReceiverAssignment(row, lead as Parameters<typeof applyReceiverAssignment>[1], ref, context, options.changeId ?? null);
   if (numberId) {
     const numberReview = await Model.findOne({ "subject.kind": "number_review", "subject.contact_number_id": numberId, state: { $ne: "closed" } }).session(context.session);
     if (numberReview) await closeRecord(numberReview, "lead_context_available", "official", context);
@@ -597,7 +600,8 @@ export async function ensureInteraction(call: InteractionRow, context: CsiTransa
       if (!record.last_meaningful_contact_at || record.last_meaningful_contact_at < call.started_at) record.last_meaningful_contact_at = call.started_at;
       // §7.2: with the flag the one precedence decides (a conversation replaces `first_attempts`, never the Owner).
       const assignable = evolution ? mayReplaceAssignment(record, "first_conversation") : !record.responsible_agent_id && record.assignment?.origin !== "owner";
-      if (assignable && reps.length === 1) {
+      // S6-AGENT E4 (flag on): phone evidence assigns only when the Lead has no outranking `receiver_agent`.
+      if (assignable && reps.length === 1 && !(receiverAssignmentEnabled() && attribution.lead_ref && receiverBlocksPhoneEvidence(await loadLead(attribution.lead_ref, context.session), "first_conversation"))) {
         record.responsible_agent_id = new mongoose.Types.ObjectId(reps[0]); record.assignment = { origin: "first_conversation", assigned_at: call.started_at, evidence_id: call._id };
       }
     }

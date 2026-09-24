@@ -34,24 +34,53 @@ export function progressPlanSuppressed(recordId: string): boolean {
 /**
  * Spec §7.2: the one precedence of assignment origins. An automatic assignment may replace only a
  * strictly lower rank; `owner` is never replaced automatically. A missing origin ranks 0.
- * Team 3 inserts `crm_receiver` (between `owner` and the conversation origins, E4) and
- * `ringcentral_answered` (above `first_attempts`, E5) here, and nowhere else.
+ *
+ * S6-AGENT (assignment addendum E4/E5, DECISIONS 2026-09-24 "Team 4 hooks for Team 3"): the two
+ * Team 3 rows are inserted here and nowhere else.
+ * - `crm_receiver` 60: the Outreach rep follows the Lead's `receiver_agent` (Owner > receiver_agent >
+ *   first conversation / rep promise).
+ * - `ringcentral_answered` 20: not an origin of its own. It is the rank of a `crm_receiver`
+ *   assignment whose receiver came from the weakest source, `ringcentral_answered` (E5: the one
+ *   reviewed rep who answered a Call Lead's creating call). It outranks only `first_attempts`, so
+ *   phone evidence (`first_conversation`, `rep_promise`) and `inherited_outreach` are never displaced
+ *   by it, and it never blocks them (see `receiverBlocksPhoneEvidence`).
  */
 export const ASSIGNMENT_RANKS = Object.freeze({
   owner: 100,
+  crm_receiver: 60,
   rep_promise: 40,
   first_conversation: 40,
   inherited_outreach: 30,
+  ringcentral_answered: 20,
   first_attempts: 10,
 } as const);
+/** A key of the precedence table: an assignment origin, or the `ringcentral_answered` receiver rank. */
 export type AssignmentOrigin = keyof typeof ASSIGNMENT_RANKS;
-export function assignmentRank(origin: string | null | undefined): number {
-  return origin && origin in ASSIGNMENT_RANKS ? ASSIGNMENT_RANKS[origin as AssignmentOrigin] : 0;
+/** The Lead receiver source whose `crm_receiver` assignment ranks as `ringcentral_answered` (E5). */
+export const WEAKEST_RECEIVER_SOURCE = "ringcentral_answered";
+/** The rank key of a `crm_receiver` assignment backed by this `receiver_agent_source`. */
+export const receiverRankKey = (source: string | null | undefined): "crm_receiver" | "ringcentral_answered" =>
+  source === WEAKEST_RECEIVER_SOURCE ? "ringcentral_answered" : "crm_receiver";
+export function assignmentRank(origin: string | null | undefined, receiverSource?: string | null): number {
+  const key = origin === "crm_receiver" ? receiverRankKey(receiverSource) : origin;
+  return key && key in ASSIGNMENT_RANKS ? ASSIGNMENT_RANKS[key as AssignmentOrigin] : 0;
 }
 /** True when an automatic assignment with `next` origin may replace the record's current one. */
-export function mayReplaceAssignment(current: { responsible_agent_id?: unknown; assignment?: { origin?: string | null } | null }, next: AssignmentOrigin): boolean {
+export function mayReplaceAssignment(current: { responsible_agent_id?: unknown; assignment?: { origin?: string | null; receiver_source?: string | null } | null }, next: AssignmentOrigin): boolean {
   if (!current.responsible_agent_id) return current.assignment?.origin !== "owner";
   // An agent with no recorded origin is of unknown strength (legacy rows): never replaced automatically.
   if (!current.assignment?.origin) return false;
-  return assignmentRank(next) > assignmentRank(current.assignment.origin);
+  return assignmentRank(next) > assignmentRank(current.assignment.origin, current.assignment.receiver_source);
+}
+/** S6-AGENT: the Outreach `crm_receiver` assignment (§3.2), default off. */
+export const receiverAssignmentEnabled = () => csiFlag("RECEIVER_ASSIGNMENT");
+/**
+ * E4 (flag on): `first_conversation` / `rep_promise` responsibility is set only when the Lead has no
+ * `receiver_agent` that outranks the phone evidence. A `ringcentral_answered` receiver (rank 20) never
+ * blocks it; every other source does. Flag off: never blocks (today's rule).
+ */
+export function receiverBlocksPhoneEvidence(lead: object | null | undefined, next: "first_conversation" | "rep_promise"): boolean {
+  const row = lead as { receiver_agent?: unknown; receiver_agent_source?: string | null } | null | undefined;
+  if (!receiverAssignmentEnabled() || !row?.receiver_agent) return false;
+  return ASSIGNMENT_RANKS[receiverRankKey(row.receiver_agent_source)] >= ASSIGNMENT_RANKS[next];
 }

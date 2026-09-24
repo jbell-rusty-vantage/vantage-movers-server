@@ -347,7 +347,18 @@ export function renderTimelineSentence(event: StoryEvent, ctx: RenderContext): s
   const kind = event.kind as string;
   if (kind === "followup_snoozed") return clip(redactTranscript(`The follow-up was snoozed${str(d.until) ? ` until ${formatAbsolute(str(d.until), ctx.timezone)}` : ""}${str(d.reason) ? `: ${clean(d.reason, 120)}` : ""}.`).text, SENTENCE_MAX);
   if (kind === "analysis_submitted") return "An analysis run was submitted for processing.";
+  if (kind === "receiver_agent_changed") return `${receiverChangeText(d)}.`;
   return capitalize(renderSentence(event, ctx));
+}
+
+/**
+ * S6-AGENT (assignment addendum §3.1): `Rep changed in Granot: {old} → {new}` for a Granot change; other
+ * writers (RingCentral answer, manual edit, extension, sheet) read `Receiver agent changed: …`.
+ */
+function receiverChangeText(d: Record<string, unknown>): string {
+  const side = (value: unknown) => clean((value as { name?: unknown } | null | undefined)?.name, 60) ?? "none";
+  const prefix = d.source_system === "granot" ? "Rep changed in Granot" : "Receiver agent changed";
+  return `${prefix}: ${side(d.from)} → ${side(d.to)}`;
 }
 
 /** The §10.2 title of one timeline event. `reference` is the response `as_of` (year rule). */
@@ -390,6 +401,7 @@ export function renderTimelineTitle(event: StoryEvent, ctx: RenderContext, refer
     case "call_started": title = "Call started"; break;
     case "call_ended": title = "Call ended"; break;
     case "analysis_submitted": title = "Analysis submitted"; break;
+    case "receiver_agent_changed": title = receiverChangeText(d); break;
     case "owner_correction": title = `You corrected ${clean(String(d.field ?? "the record").replace(/_/g, " "), 30)}`; break;
     case "booking_recorded": {
       const binder = formatMoney(d.total_binder_amount);

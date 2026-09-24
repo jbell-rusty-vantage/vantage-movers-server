@@ -112,7 +112,7 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 
 ## Correction (`correctCallLead`)
 
-- Strips forbidden lifecycle fields. Optional location (including explicit `local`); re-derives states/local only when zip/state/`local` is in the patch. Optional `receiver_agent` via Operations Registry (missing agent → 404). The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable.
+- Strips forbidden lifecycle fields. Optional location (including explicit `local`); re-derives states/local only when zip/state/`local` is in the patch. Optional `receiver_agent` via Operations Registry (missing agent → 404). The source enum includes `granot_username_match`; existing extension writes still store `extension_crm_username_match`, which remains readable. S6-AGENT adds `ringcentral_answered` (the one reviewed rep who answered the Call Lead's creating call, written only by the Outreach ensure path into an empty field; the API schema does not accept it).
 - **Blocked:** `duplicate === true` when the Call Lead is already Booked (ConflictError). Does not re-run the 90-day Duplicate Lead guard.
 - Recomputes the **CPL** snapshot only when source-affecting fields change, `lead_source_company` is missing, `timestamp` is patched, or `duplicate` is patched (`resolveLeadCplSnapshot` receives current `lead.duplicate`).
 - No field changes → return the lead and skip Sheet Sync. Otherwise `persistTheCorrectionAndRefreshTheBookingChain` saves + refreshes attached **Booking Chain** (`call_lead.update`). Missing CPL after save emits `lead.cpl.missing_rate` even on the in-transaction command path (before command commit). Move that report only as a separate, tested change.

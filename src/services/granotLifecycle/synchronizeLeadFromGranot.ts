@@ -38,6 +38,8 @@ import {
 import { compareGranotTemporal, olderTemporalWinnerFilter } from "./granotTemporal";
 import {
   contactSemanticallyEqual,
+  receiverLatestWinsEnabled,
+  receiverReplaceableByGranot,
   type LeadContactSnapshot,
   type LeadDesiredStateProjection,
 } from "./leadDesiredState";
@@ -329,7 +331,12 @@ function revalidateDesiredAgainstLead(
     throw new AuthorizedPathError("quoted:false is forbidden.");
   }
   if (input.desired_state.set.receiver_agent) {
-    if (lead.receiver_agent) {
+    // S6-AGENT (E3/E6): with latest wins on, the planner's rule is re-checked against the Lead read in
+    // this transaction (a manual edit or a newer rep that landed meanwhile). Off: only an empty field.
+    const replaceable = receiverLatestWinsEnabled()
+      ? receiverReplaceableByGranot(lead, String(input.desired_state.set.receiver_agent), input.execution.observation.captured_at)
+      : !lead.receiver_agent;
+    if (!replaceable) {
       throw new SynchronizeLeadRaceError("eligibility");
     }
   }
@@ -771,6 +778,8 @@ async function loadLeadSnapshot(
     granot_priority: absent(row.granot_priority as string | undefined),
     quoted: row.quoted as boolean | undefined,
     receiver_agent: row.receiver_agent ? String(row.receiver_agent) : undefined,
+    receiver_agent_source: absent(row.receiver_agent_source as string | undefined),
+    receiver_agent_set_at: row.receiver_agent_set_at ? new Date(row.receiver_agent_set_at as Date) : undefined,
     name: absent(row.name as string | undefined),
     first_name: absent(row.first_name as string | undefined),
     last_name: absent(row.last_name as string | undefined),

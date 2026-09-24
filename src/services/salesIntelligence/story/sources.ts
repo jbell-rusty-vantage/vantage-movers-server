@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
-import { csiDataset } from "../../../config/domain/salesIntelligence";
+import { csiDataset, csiFlag } from "../../../config/domain/salesIntelligence";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getGranotObservationModel, type GranotObservationDocument } from "../../../models/GranotObservation";
@@ -117,7 +117,7 @@ const event = (input: EventInput): StoryEvent => ({
  * Kinds the Owner timeline emits beyond the story catalog. They are never on the model's page:
  * a snooze and an analysis submission are audit rows the story skips.
  */
-export const TIMELINE_ONLY_KINDS = ["followup_snoozed", "analysis_submitted"] as const;
+export const TIMELINE_ONLY_KINDS = ["followup_snoozed", "analysis_submitted", "receiver_agent_changed"] as const;
 export type TimelineEventKind = StoryEventKind | (typeof TIMELINE_ONLY_KINDS)[number];
 
 /** `kind_order` = the data spec §5.2 row number. Replaces the string comparison of the old merge. */
@@ -127,7 +127,7 @@ export const TIMELINE_KIND_ORDER: Readonly<Record<string, number>> = {
   call: 3,
   conversation_analyzed: 4, conversation_recorded: 4,
   assessment_published: 5,
-  granot_priority_changed: 6, quoted_changed: 6, granot_observed: 6,
+  granot_priority_changed: 6, quoted_changed: 6, granot_observed: 6, receiver_agent_changed: 6,
   number_attached: 7,
   followup_created: 8, followup_completed: 8, followup_cancelled: 8, followup_superseded: 8,
   assigned: 9, owner_note: 9, closed: 9, reopened: 9, waiting_set: 9, review_opened: 9, review_resolved: 9, restriction_set: 9,
@@ -708,11 +708,13 @@ export const attachmentSource: StorySource = async (subject, limit, options) => 
 };
 
 type ChangeRow = { _id: mongoose.Types.ObjectId; entity: { model: string; id: string }; changed_paths: string[]; fields: Array<{ path: string; before?: unknown; after?: unknown }>;
-  applied_at: Date; provenance?: { source_system?: string; observation_id?: unknown } | null };
+  applied_at: Date; provenance?: { source_system?: string; observation_id?: unknown } | null; revision_before?: number };
+/** S6-AGENT: the Owner-timeline `receiver_agent_changed` event (timeline mode only; never on the model's page). */
+const receiverTimelineEnabled = () => csiFlag("RECEIVER_ASSIGNMENT");
 const CHANGE_PROJECTION = { entity: 1, changed_paths: 1, fields: 1, applied_at: 1, "provenance.source_system": 1, "provenance.observation_id": 1 } as const;
 
 /** Priority/Quoted events from Lead changes, timed by the observation paired through `provenance.observation_id` (one `$in`). */
-async function granotChangeEvents(changes: ChangeRow[]): Promise<StoryEvent[]> {
+async function granotChangeEvents(changes: ChangeRow[], receiverEvents = false): Promise<StoryEvent[]> {
   const observationIds = [...new Set(changes.map(c => c.provenance?.observation_id).filter(Boolean).map(String))].filter(id => mongoose.isValidObjectId(id));
   const observations = new Map<string, GranotObservationDocument>();
   if (observationIds.length) for (const row of await getGranotObservationModel().find({ _id: { $in: observationIds.map(oid) } }).select("captured_at agent_identity").limit(observationIds.length).lean())
@@ -737,6 +739,16 @@ async function granotChangeEvents(changes: ChangeRow[]): Promise<StoryEvent[]> {
     // A creation change carrying quoted:false is not a change of mind; only a real flip is an event.
     if (quoted && change.changed_paths.includes("quoted") && (quoted.after === true || quoted.before === true)) events.push(event({ kind: "quoted_changed", id: String(change._id), happened_at: happened, observed_at: change.applied_at.toISOString(),
       subject_key: leadKey(ref), actor: who, detail: { ...common, lead_ref: ref, quoted: quoted.after === true, quoted_before: quoted.before === true }, evidence_refs: refs }));
+    // S6-AGENT: `Rep changed in Granot: {old} → {new}`. A creation change is the Lead's arrival, not a rep change.
+    const creation = change.revision_before === 0 && change.changed_paths.includes("timestamp");
+    const receiver = receiverEvents && change.changed_paths.includes("receiver_agent") && !creation ? change.fields.find(f => f.path === "receiver_agent") : undefined;
+    if (receiver) {
+      const name = (side: "before" | "after") => text(change.fields.find(f => f.path === "receiver_agent_name_snapshot")?.[side], 60);
+      const agentId = (value: unknown) => (value == null ? null : String(value));
+      events.push(event({ kind: "receiver_agent_changed" as StoryEventKind, id: String(change._id), happened_at: happened, observed_at: change.applied_at.toISOString(), subject_key: leadKey(ref), actor: who,
+        detail: { ...common, lead_ref: ref, from: { agent_id: agentId(receiver.before), name: name("before") }, to: { agent_id: agentId(receiver.after), name: name("after") },
+          receiver_agent_source: text(change.fields.find(f => f.path === "receiver_agent_source")?.after, 40) }, evidence_refs: refs }));
+    }
   }
   return events;
 }
@@ -750,10 +762,14 @@ async function timelineGranotChanges(subject: StorySubject, limit: number, t: Ti
   if (!t.lead_refs.length) return empty();
   const accept = acceptor(subject, t);
   const upper = upperBound(subject, t, GRANOT_CHANGE_SLACK_MS);
+  // S6-AGENT (§3.1, E3): with RECEIVER_ASSIGNMENT on, the Owner timeline also reads `receiver_agent` changes.
+  const receiver = receiverTimelineEnabled() && (t.kinds === null || t.kinds.has("receiver_agent_changed"));
+  const paths = receiver ? ["granot_priority", "quoted", "receiver_agent"] : ["granot_priority", "quoted"];
+  const projection = receiver ? { ...CHANGE_PROJECTION, revision_before: 1 } : CHANGE_PROJECTION;
   const scans = t.lead_refs.map(ref => keysetScan<ChangeRow>({
-    query: (window, batch) => db().collection("entity_changes").find({ "entity.model": ref.model, "entity.id": ref.id, changed_paths: { $in: ["granot_priority", "quoted"] }, ...window },
-      { projection: CHANGE_PROJECTION }).sort({ applied_at: -1, _id: -1 }).limit(batch).toArray() as unknown as Promise<ChangeRow[]>,
-    field: "applied_at", indexed: row => row.applied_at, toEvents: granotChangeEvents, accept, limit, upper, aheadMs: 0 }));
+    query: (window, batch) => db().collection("entity_changes").find({ "entity.model": ref.model, "entity.id": ref.id, changed_paths: { $in: paths }, ...window },
+      { projection }).sort({ applied_at: -1, _id: -1 }).limit(batch).toArray() as unknown as Promise<ChangeRow[]>,
+    field: "applied_at", indexed: row => row.applied_at, toEvents: rows => granotChangeEvents(rows, receiver), accept, limit, upper, aheadMs: 0 }));
   const result = timelineUnion(await Promise.all(scans), limit);
   return { ...result, truncated: result.truncated || subject.lead_refs.length > t.lead_refs.length };
 }
@@ -1096,7 +1112,7 @@ export const STORY_SOURCES: Readonly<Record<string, StorySource>> = {
 /** Which reader emits each timeline kind, so a `kinds[]` filter runs only the readers it needs. */
 export const TIMELINE_SOURCE_BY_KIND: Readonly<Record<string, keyof typeof STORY_SOURCES & string>> = {
   lead_received: "lead_received", call_qualified: "lead_received", call: "calls", conversation_analyzed: "conversations", conversation_recorded: "conversations",
-  assessment_published: "assessments", granot_priority_changed: "granot_changes", quoted_changed: "granot_changes", granot_observed: "granot_observed",
+  assessment_published: "assessments", granot_priority_changed: "granot_changes", quoted_changed: "granot_changes", receiver_agent_changed: "granot_changes", granot_observed: "granot_observed",
   number_attached: "attachments", followup_created: "followups", followup_completed: "followups", followup_cancelled: "followups", followup_superseded: "followups",
   assigned: "audit", owner_note: "audit", closed: "audit", reopened: "audit", waiting_set: "audit", review_opened: "audit", review_resolved: "audit",
   restriction_set: "audit", restriction_resolved: "audit", nudge_sent: "audit", followup_snoozed: "audit", call_started: "audit", call_ended: "audit",

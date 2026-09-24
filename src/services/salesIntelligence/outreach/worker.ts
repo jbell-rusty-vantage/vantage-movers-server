@@ -15,7 +15,7 @@ import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput }
 import { loadCanonicalInteraction } from "../conversations/workerSupport";
 import { leadAttachmentJobInput, loadLead } from "../attachment/sources";
 import { backfillContactFacts, contactFactsMissing, ensureInteraction, ensureLead, workerContext } from "./ensure";
-import { attentionEvolutionEnabled } from "./types";
+import { attentionEvolutionEnabled, receiverAssignmentEnabled } from "./types";
 import { refreshRecord, jsonValue } from "./store";
 import { payloadHash } from "../transactions";
 import { ATTENTION_PUBLISH_BUDGET_MS, publishAttentionSnapshot } from "./attention";
@@ -104,6 +104,8 @@ type RepairSource = "FormLead" | "CallLead" | "CallInteraction" | "OutreachRecor
 type RepairRow = { _id: unknown; projection_revision?: number; contact_number_id?: unknown; revision?: number;
   booked?: unknown; cancelled?: unknown; duplicate?: boolean; bad_lead?: unknown; no_sync?: boolean;
   granot_priority?: unknown; quoted?: unknown;
+  // S6-AGENT (Lead rows): the receiver the Outreach rep follows.
+  receiver_agent?: unknown; receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null;
   // Team 4 §5.4 (OutreachRecord rows): absent until the flag computed them.
   last_inbound_human_at?: Date | null; last_attributable_outbound_at?: Date | null; prior_contact_at?: Date | null; last_activity_at?: Date | null; contact_facts_revision?: number | null };
 
@@ -131,7 +133,7 @@ export function outreachChangeNomination(change: { _id: unknown; entity: { model
  * inserting a completed no-op job per row per cycle, which was the dominant
  * `sales_intelligence_jobs` growth (17 §6).
  */
-export function outreachRepairNomination(source: RepairSource, row: RepairRow): JobInput | null {
+export function outreachRepairNomination(source: RepairSource, row: RepairRow, now = new Date()): JobInput | null {
   const id = String(row._id);
   if (source === "CallInteraction") {
     // A call with no Contact Number has no Outreach subject (`ensureInteraction` returns at once);
@@ -157,7 +159,23 @@ export function outreachRepairNomination(source: RepairSource, row: RepairRow): 
     duplicate: row.duplicate ?? false, bad_lead: row.bad_lead ?? null, no_sync: row.no_sync ?? false },
     ...(csiFlag("LEAD_PROGRESS") ? { progress: { granot_priority: row.granot_priority ?? null, quoted: row.quoted ?? null } } : {}) }));
   return { stage: "outreach_ensure", subject_key: `outreach-lead:${source}:${id}`,
-    dedupe_key: `csi:outreach:repair:${source}:${id}:${fingerprint}`, input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [id] };
+    dedupe_key: `csi:outreach:repair:${source}:${id}:${fingerprint}${receiverRepairSuffix(row, now)}`, input_revision: parseInt(payloadHash(fingerprint).slice(0, 12), 16) + 1, input_refs: [id] };
+}
+/** Receivers set this recently carry the repair suffix; older ones were covered by the S10 backfill and re-ensure lap. */
+export const RECEIVER_REPAIR_WINDOW_MS = 90 * 86_400_000;
+/**
+ * S6-AGENT (§3.2 trigger): with RECEIVER_ASSIGNMENT on, a Lead whose `receiver_agent` was set in the last
+ * 90 days carries its receiver in the repair key, so the sweep recovers a missed `receiver_agent` change
+ * (one free `outreach_ensure` job per receiver value, deduped afterwards). Like Team 4's `:contact-facts-v1`
+ * the suffix applies only to rows that may need it: every other Lead keeps today's key, so turning the flag
+ * on never re-nominates the whole corpus. An `outreach_ensure` job never nominates a model call for this:
+ * `crm_receiver` is outside the Number fingerprint (`FINGERPRINT_ASSIGNMENT_ORIGINS`) and `receiver_agent`
+ * is not a Move assessment trigger path.
+ */
+export function receiverRepairSuffix(row: Pick<RepairRow, "receiver_agent" | "receiver_agent_source" | "receiver_agent_set_at">, now: Date): string {
+  if (!receiverAssignmentEnabled() || !row.receiver_agent || !row.receiver_agent_set_at) return "";
+  if (+now - +new Date(row.receiver_agent_set_at) > RECEIVER_REPAIR_WINDOW_MS) return "";
+  return `:receiver-v1:${String(row.receiver_agent)}:${row.receiver_agent_source ?? "none"}`;
 }
 
 /**
@@ -257,7 +275,7 @@ export async function runOutreachEnsureOnce(options: { deadline?: number } = {})
           // Closed records need no clock: official closure cannot move them and only an Owner command reopens them.
           await getOutreachRecordModel().find({ ...filter, state: { $in: [...OPEN_OUTREACH_STATES] } }).sort({ _id: 1 }).limit(OUTREACH_REPAIR_PAGE).session(session).lean();
         for (const row of rows) {
-          const nomination = outreachRepairNomination(source, row);
+          const nomination = outreachRepairNomination(source, row, now);
           if (nomination) await enqueueTolerant(nomination);
         }
         await State.updateOne({ scope }, { $set: { "cursor.attachment_source_id": rows.length === OUTREACH_REPAIR_PAGE ? rows.at(-1)!._id : null,
