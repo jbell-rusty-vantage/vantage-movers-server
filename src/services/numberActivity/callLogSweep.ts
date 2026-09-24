@@ -65,6 +65,7 @@ export type SweepSummary = {
   missing_before: number;
   stale_before: number;
   provisional_after_horizon: number;
+  /** Provider records held in the reconcile's quarantine: skipped, neither measured nor applied. */
   quarantined: number;
   consecutive_drift_runs: number;
   complete: boolean;
@@ -310,14 +311,24 @@ export async function runCallLogSweepOnce(overrides: Partial<SweepDependencies> 
       if (accountId) {
         const directory = await deps.directory(accountId);
         const resolveRoute = deps.resolveRoute ?? (await defaultRouteResolver());
-        const before = await storedRowsFor(collected, accountId);
-        for (const record of collected) {
+        // Records the reconcile holds in quarantine are its business: they are
+        // retried by id there, and one of them must not fail every nightly
+        // sweep and stall the drift streak. Counted, not measured or applied.
+        const reconcileRow = (await Model.findOne(
+          { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE },
+          { quarantined_records: 1 },
+        ).lean()) as { quarantined_records?: Array<{ call_log_id: string }> } | null;
+        const held = new Set((reconcileRow?.quarantined_records ?? []).map((entry) => entry.call_log_id));
+        const measured = collected.filter((record) => !(typeof record.id === "string" && held.has(record.id)));
+        summary.quarantined = collected.length - measured.length;
+        const before = await storedRowsFor(measured, accountId);
+        for (const record of measured) {
           const drift = classifyProviderRecord(record, before.get(record) ?? null);
           if (drift.kind === "missing") summary.missing_before += 1;
           else if (drift.kind === "stale") summary.stale_before += 1;
           else summary.stored_in_latest_version += 1;
         }
-        const ordered = [...collected].sort((a, b) => startMs(a) - startMs(b));
+        const ordered = [...measured].sort((a, b) => startMs(a) - startMs(b));
         for (const record of ordered) {
           await renew();
           try {
@@ -338,17 +349,15 @@ export async function runCallLogSweepOnce(overrides: Partial<SweepDependencies> 
     }
     summary.complete = fetchedAll && summary.error_code === null;
 
-    const [provisional, reconcileRow, previous] = await Promise.all([
+    const [provisional, previous] = await Promise.all([
       getCallInteractionModel().collection.countDocuments({
         call_log_state: "provisional",
         merged_into_id: null,
         started_at: { $gte: from, $lte: to },
       }),
-      Model.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { quarantined_records: 1 }).lean(),
       Model.findOne({ scope: CALL_LOG_SWEEP_SCOPE }, { consecutive_drift_runs: 1 }).lean(),
     ]);
     summary.provisional_after_horizon = provisional;
-    summary.quarantined = (reconcileRow as { quarantined_records?: unknown[] } | null)?.quarantined_records?.length ?? 0;
     const drift = summary.missing_before + summary.stale_before > 0;
     const priorDrift = (previous as { consecutive_drift_runs?: number } | null)?.consecutive_drift_runs ?? 0;
     // Only a complete sweep measures completeness; an interrupted one keeps the streak as it was.
