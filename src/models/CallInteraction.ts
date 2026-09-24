@@ -51,6 +51,12 @@ export const CALL_INTERACTION_INDEXES = [
     key: { provider_last_modified_at: -1 },
   },
   { name: "call_interaction_updated", key: { updatedAt: -1, _id: -1 } }, // repair/read index; SSE uses the durable audit stream
+  // CC-04: the reconcile finds provisional rows (oldest first) to re-read and to bound
+  // `known_complete_through`; Coverage counts them.
+  {
+    name: "call_interaction_call_log_state_started",
+    key: { call_log_state: 1, started_at: 1 },
+  },
 ] as const;
 
 const partySchema = new Schema(
@@ -197,6 +203,14 @@ export const CallInteractionSchema = new Schema(
     },
     sources: { type: [String], default: [] }, // ["webhook","call_log_reconcile","backfill"]
     provider_last_modified_at: { type: Date, default: null },
+    // CC-04: null = never seen in the Call Log; "provisional" = the latest Call Log
+    // record looks like a mid-call snapshot (terminal stays false, no downstream work);
+    // "settled" = final by shape or by the settle horizon. Never settled → provisional.
+    call_log_state: {
+      type: String,
+      default: null,
+      enum: [null, "provisional", "settled"],
+    },
     terminal: { type: Boolean, required: true, default: false },
     projection_revision: { type: Number, required: true, default: 1 },
     max_observed_webhook_sequence: { type: Number, default: null }, // diagnostic only, never filters other parties

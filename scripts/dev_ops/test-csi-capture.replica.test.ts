@@ -43,6 +43,11 @@ import {
   webhookDelivery,
   withheldInboundDelivery,
 } from "../../src/services/numberActivity/fixtures";
+import {
+  internalSnapshotRecord,
+  liveFinalRecord,
+  liveSnapshotRecord,
+} from "../../src/services/numberActivity/callLogStateFixtures";
 
 const enabled = process.env.CSI_REPLICA_TEST === "true";
 const directory = syntheticDirectory();
@@ -1026,6 +1031,257 @@ test(
           );
         },
       );
+      await t.test(
+        "CC-04: provisional Internal snapshot -> settled Inbound: one Contact Number, one outreach_ensure, discovery per recording, rollups once, audit with both proofs",
+        async () => {
+          const sessionId = "s-prov-1";
+          const snapshot = internalSnapshotRecord(0, { sessionId });
+          const caller = "+15550100300";
+          const snapshotProof = `call_log:${String(snapshot.id)}@${String(snapshot.lastModifiedTime)}`;
+          const deps = { directory, resolveRoute: noRoute };
+
+          const first = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: snapshot, proof_ref: snapshotProof, source: "call_log_reconcile" },
+            { ...deps, now: () => at(100) },
+          );
+          assert.equal(first.created, true);
+          assert.equal(first.call_log_state, "provisional");
+          assert.equal(first.newly_settled, false);
+          assert.equal(first.newly_terminal, false);
+          assert.equal(first.contact_number_id, null);
+          assert.equal(first.contact_number_created, false);
+          assert.deepEqual(first.jobs, [], "a snapshot schedules no downstream work");
+          const provisionalRow = await Interaction.findById(first.interaction_id).lean();
+          assert.equal(provisionalRow?.call_log_state, "provisional");
+          assert.equal(provisionalRow?.terminal, false);
+          assert.equal(provisionalRow?.direction, "Internal");
+          assert.equal(provisionalRow?.ended_at, null);
+          assert.equal(provisionalRow?.duration_seconds, null);
+          assert.equal(await ContactNumber.countDocuments({ e164: caller }), 0);
+          assert.equal(await Jobs.countDocuments({ input_refs: new mongoose.Types.ObjectId(first.interaction_id) }), 0);
+
+          // The same snapshot on the next run, still inside the horizon: nothing to do.
+          const again = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: snapshot, proof_ref: snapshotProof, source: "call_log_reconcile" },
+            { ...deps, now: () => at(400) },
+          );
+          assert.equal(again.noop, true);
+          assert.equal(again.call_log_state, "provisional");
+
+          // The final version of the same record id, 24 minutes later.
+          const final = callLogRecord({
+            id: String(snapshot.id),
+            telephonySessionId: sessionId,
+            direction: "Inbound",
+            result: "Accepted",
+            startTime: new Date(String(snapshot.startTime)),
+            duration: 1424,
+            from: { phoneNumber: caller, name: "Synthetic Caller" },
+            to: { phoneNumber: SYNTHETIC_SALES_DID },
+            recording: { id: `rec-${sessionId}-1` },
+            legs: [
+              { startTime: String(snapshot.startTime), duration: 1424, direction: "Inbound", action: "Phone Call", result: "Accepted", legType: "Accept", master: true, from: { phoneNumber: caller }, to: { phoneNumber: SYNTHETIC_SALES_DID }, recording: { id: `rec-${sessionId}-1`, type: "Automatic" } },
+              ...(snapshot.legs as Record<string, unknown>[]),
+              { startTime: at(12).toISOString(), duration: 1417, direction: "Outbound", action: "VoIP Call", result: "Call connected", legType: "PstnToSip", from: { phoneNumber: caller, extensionId: "900000000101" }, to: { phoneNumber: SYNTHETIC_SALES_DID, extensionNumber: "101" }, extension: { id: "900000000101" }, recording: { id: `rec-${sessionId}-2`, type: "Automatic" } },
+            ],
+            lastModifiedTime: at(1450),
+          });
+          const finalProof = `call_log:${String(final.id)}@${String(final.lastModifiedTime)}`;
+          const settled = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: final, proof_ref: finalProof, source: "call_log_reconcile" },
+            { ...deps, now: () => at(1500) },
+          );
+          assert.equal(settled.noop, false);
+          assert.equal(settled.created, false);
+          assert.equal(settled.interaction_id, first.interaction_id);
+          assert.equal(settled.newly_settled, true);
+          assert.equal(settled.call_log_state, "settled");
+          assert.equal(settled.contact_number_created, true);
+          const stages = settled.jobs.map((j) => j.split(":")[1]).sort();
+          assert.deepEqual(stages, ["attachment_refresh", "outreach_ensure", "recording_discovery", "recording_discovery"]);
+          assert.ok(settled.jobs.every((j) => !j.endsWith(":pending")));
+
+          const numbers = await ContactNumber.find({ e164: caller }).lean();
+          assert.equal(numbers.length, 1, "one Contact Number");
+          assert.equal(String(numbers[0]!._id), settled.contact_number_id);
+          assert.equal(numbers[0]!.rollups.interactions_total, 1);
+          assert.equal(numbers[0]!.rollups.inbound_total, 1);
+          assert.equal(numbers[0]!.rollups.outbound_total, 0);
+          assert.equal(numbers[0]!.rollups.recordings_total, 2);
+
+          const row = await Interaction.findById(first.interaction_id).lean();
+          assert.equal(row?.call_log_state, "settled");
+          assert.equal(row?.direction, "Inbound");
+          assert.equal(row?.external_e164, caller);
+          assert.equal(row?.external_endpoint_kind, "external");
+          assert.equal(String(row?.contact_number_id), settled.contact_number_id);
+          assert.equal(row?.terminal, true);
+          assert.equal(row?.duration_seconds, 1424);
+          assert.equal(row?.projection_revision, 2);
+
+          // A replay of the final version: no revision, no job, no rollup change.
+          const replay = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: final, proof_ref: finalProof, source: "call_log_reconcile" },
+            { ...deps, now: () => at(1800) },
+          );
+          assert.equal(replay.noop, true);
+          const interactionRef = new mongoose.Types.ObjectId(first.interaction_id);
+          assert.equal(await Jobs.countDocuments({ stage: "outreach_ensure", input_refs: interactionRef }), 1, "outreach_ensure once");
+          assert.equal(await Jobs.countDocuments({ stage: "recording_discovery", input_refs: interactionRef }), 2, "discovery per recording");
+          assert.equal(await Jobs.countDocuments({ stage: "attachment_refresh", subject_key: `number:${settled.contact_number_id}` }), 1);
+          const recounted = await ContactNumber.findById(settled.contact_number_id).lean();
+          assert.equal(recounted?.rollups.interactions_total, 1, "rollups counted once");
+          assert.equal(recounted?.rollups.recordings_total, 2);
+
+          const audit = await Audit.find({ subject_key: `interaction:${first.interaction_id}` }).sort({ _id: 1 }).lean();
+          assert.deepEqual(audit.map((a) => a.event_kind), ["interaction.created", "interaction.updated"]);
+          const created = audit[0]!.current as { proof_ref: string; call_log_state: string; terminal: boolean; contact_number_id: string | null };
+          assert.equal(created.proof_ref, snapshotProof);
+          assert.equal(created.call_log_state, "provisional");
+          assert.equal(created.terminal, false);
+          assert.equal(created.contact_number_id, null);
+          const prior = audit[1]!.prior as { call_log_state: string; direction: string };
+          const current = audit[1]!.current as { proof_ref: string; call_log_state: string; direction: string; contact_number_id: string };
+          assert.equal(prior.call_log_state, "provisional");
+          assert.equal(prior.direction, "Internal");
+          assert.equal(current.proof_ref, finalProof);
+          assert.equal(current.call_log_state, "settled");
+          assert.equal(current.direction, "Inbound");
+          assert.equal(current.contact_number_id, settled.contact_number_id);
+        },
+      );
+
+      await t.test(
+        "CC-04: a provisional row past the settle horizon settles on re-apply of the same record with its last observed values",
+        async () => {
+          const deps = { directory, resolveRoute: noRoute };
+          // Internal snapshot: settles as Internal, still no Number and no work.
+          const snapshot = internalSnapshotRecord(1, { sessionId: "s-prov-2" });
+          const modified = new Date(String(snapshot.lastModifiedTime)).getTime();
+          const first = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: snapshot, proof_ref: `call_log:${String(snapshot.id)}` },
+            { ...deps, now: () => at(100) },
+          );
+          assert.equal(first.call_log_state, "provisional");
+          const settled = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: snapshot, proof_ref: `call_log:${String(snapshot.id)}` },
+            { ...deps, now: () => new Date(modified + 240 * 60_000) },
+          );
+          assert.equal(settled.noop, false);
+          assert.equal(settled.newly_settled, true);
+          assert.equal(settled.call_log_state, "settled");
+          assert.deepEqual(settled.jobs, [], "an Internal call schedules nothing, settled or not");
+          const row = await Interaction.findById(first.interaction_id).lean();
+          assert.equal(row?.call_log_state, "settled");
+          assert.equal(row?.terminal, true);
+          assert.equal(row?.direction, "Internal");
+          assert.equal(row?.provider_result, "IP Phone Offline");
+          assert.equal(row?.duration_seconds, 0);
+          assert.equal(row?.contact_number_id, null);
+
+          // External P-a snapshot with a shorter configured horizon (passthrough):
+          // the Number appears on the settle transition, counted once, with its work.
+          const caller = "+15550100398";
+          const external = callLogRecord({
+            id: "cl-s-prov-3",
+            telephonySessionId: "s-prov-3",
+            direction: "Inbound",
+            result: "In Progress",
+            startTime: at(0),
+            duration: 12,
+            from: { phoneNumber: caller },
+            to: { phoneNumber: SYNTHETIC_SALES_DID },
+            legs: [
+              { startTime: at(0).toISOString(), duration: 12, direction: "Inbound", action: "Phone Call", result: "In Progress", legType: "Accept", master: true, from: { phoneNumber: caller }, to: { phoneNumber: SYNTHETIC_SALES_DID } },
+            ],
+            lastModifiedTime: at(30),
+          });
+          const horizonDeps = { ...deps, settleHorizonMinutes: 60 };
+          const pending = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: external, proof_ref: "call_log:cl-s-prov-3" },
+            { ...horizonDeps, now: () => at(30 + 59 * 60) },
+          );
+          assert.equal(pending.call_log_state, "provisional");
+          assert.equal(pending.contact_number_id, null);
+          assert.deepEqual(pending.jobs, []);
+          const pendingRow = await Interaction.findById(pending.interaction_id).lean();
+          assert.equal(pendingRow?.direction, "Inbound");
+          assert.equal(pendingRow?.external_e164, caller, "raw observation kept for display");
+          assert.equal(await ContactNumber.countDocuments({ e164: caller }), 0);
+
+          const done = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: external, proof_ref: "call_log:cl-s-prov-3" },
+            { ...horizonDeps, now: () => at(30 + 60 * 60) },
+          );
+          assert.equal(done.newly_settled, true);
+          assert.equal(done.contact_number_created, true);
+          assert.deepEqual(
+            done.jobs.map((j) => j.split(":")[1]).sort(),
+            ["attachment_refresh", "outreach_ensure", "recording_discovery"],
+          );
+          assert.ok(done.jobs.some((j) => j.endsWith(":pending")), "no recording id yet: pending discovery");
+          const number = await ContactNumber.findOne({ e164: caller }).lean();
+          assert.equal(number?.rollups.interactions_total, 1);
+          assert.equal(number?.rollups.inbound_total, 1);
+          const doneRow = await Interaction.findById(done.interaction_id).lean();
+          assert.equal(doneRow?.terminal, true);
+          assert.equal(doneRow?.duration_seconds, 12);
+
+          const replay = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: external, proof_ref: "call_log:cl-s-prov-3" },
+            { ...horizonDeps, now: () => at(30 + 90 * 60) },
+          );
+          assert.equal(replay.noop, true);
+          assert.equal((await ContactNumber.findOne({ e164: caller }).lean())?.rollups.interactions_total, 1);
+        },
+      );
+      await t.test(
+        "CC-04: live shape: Outbound ring-out snapshot -> Inbound Accepted final settles once with its Number and work",
+        async () => {
+          const deps = { directory, resolveRoute: noRoute };
+          const snapshot = liveSnapshotRecord(2, "s-prov-live");
+          const first = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: snapshot, proof_ref: "call_log:cl-s-prov-live" },
+            { ...deps, now: () => at(60) },
+          );
+          assert.equal(first.call_log_state, "provisional");
+          assert.deepEqual(first.jobs, []);
+          assert.equal(first.contact_number_id, null);
+          assert.equal((await Interaction.findById(first.interaction_id).lean())?.direction, "Outbound");
+          const settled = await applyInteractionObservation(
+            SYNTHETIC_ACCOUNT_ID,
+            { kind: "call_log", record: liveFinalRecord(2, "s-prov-live"), proof_ref: "call_log:cl-s-prov-live" },
+            { ...deps, now: () => at(200) },
+          );
+          assert.equal(settled.interaction_id, first.interaction_id);
+          assert.equal(settled.newly_settled, true);
+          assert.equal(settled.contact_number_created, true);
+          assert.deepEqual(
+            settled.jobs.map((j) => j.split(":")[1]).sort(),
+            ["attachment_refresh", "outreach_ensure", "recording_discovery"],
+          );
+          const row = await Interaction.findById(first.interaction_id).lean();
+          assert.equal(row?.direction, "Inbound");
+          assert.equal(row?.company_e164, SYNTHETIC_SALES_DID);
+          assert.equal(row?.started_at.toISOString(), at(0).toISOString());
+          const number = await ContactNumber.findById(settled.contact_number_id).lean();
+          assert.equal(number?.rollups.interactions_total, 1);
+          assert.equal(number?.rollups.inbound_total, 1);
+          assert.equal(number?.rollups.outbound_total, 0, "the snapshot's Outbound was never counted");
+          assert.equal(number?.rollups.recordings_total, 1);
+        },
+      );
+
     } finally {
       // Disposable per-run database on the loopback replica; drop it so repeated
       // runs do not accumulate testvantagemovers_csi02* databases.

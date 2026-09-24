@@ -129,3 +129,10 @@ test("the Coverage counters and the job claim are index-served (14 §1, §7)", (
   assert.deepEqual(ttl?.key, { completed_at: 1 }, "TTL keys off a field only completion writes");
   assert.ok((ttl?.expireAfterSeconds ?? 0) > 0, "completed queue rows are not kept forever");
 });
+
+test("provisional Call Log rows are found oldest first without a scan (CC-04)", () => {
+  assert.deepEqual(keyOf(CALL_INTERACTION_INDEXES, "call_interaction_call_log_state_started"), {
+    call_log_state: 1,
+    started_at: 1,
+  });
+});

@@ -3,6 +3,7 @@ import type { DirectoryLookup } from "./directory";
 import { classifyEndpoint, isCompanySide, type ClassifiedEndpoint } from "./phone";
 import type {
   AliasKind,
+  CallLogState,
   CaptureSource,
   ContactType,
   IdentityBasis,
@@ -36,6 +37,10 @@ import type {
  * - `contact_type` is only `voicemail` (provider-declared) or `unknown` here;
  *   human conversation is never inferred from connection or duration.
  * - Identical semantic input yields `changed: false`.
+ * - A Call Log record is observed, not final (CC-04). A record that looks like
+ *   a mid-call snapshot is `call_log_state: "provisional"`: it does not set
+ *   `terminal`, `ended_at` or `duration_seconds`. `settled` never regresses to
+ *   `provisional`; webhook projection never sets the state.
  */
 
 /** Parity set with the qualification evaluator; kept local because `call-candidate-*` is a forbidden import. */
@@ -81,7 +86,109 @@ export type CallLogRecordInput = Record<string, unknown>;
 export type ProjectionOptions = {
   now: Date;
   resolveRoute?: RouteResolver;
+  /**
+   * Quiet time after which any Call Log record is final (CC-04). Default
+   * {@link DEFAULT_SETTLE_HORIZON_MINUTES}. Only the Call Log path reads it.
+   */
+  settleHorizonMinutes?: number;
 };
+
+// ---------------------------------------------------------------------------
+// Provisional Call Log records (CC-04)
+// ---------------------------------------------------------------------------
+
+/** `SALES_INTELLIGENCE_CALL_LOG_SETTLE_HORIZON_MINUTES` default (spec §6.3, §7). */
+export const DEFAULT_SETTLE_HORIZON_MINUTES = 240;
+
+/**
+ * P-a: top-level results RingCentral publishes on a record while the answered
+ * leg is still running. In 14 days of production they never appeared as the
+ * top-level result of a settled external call (spec §2.3).
+ */
+export const PROVISIONAL_CALL_LOG_RESULTS = Object.freeze([
+  "Stopped",
+  "IP Phone Offline",
+  "In Progress",
+] as const);
+const PROVISIONAL_RESULTS = new Set<string>(PROVISIONAL_CALL_LOG_RESULTS);
+/** Leg types RingCentral uses to ring a company extension or device. */
+const RING_OUT_LEG_TYPES = new Set(["PstnToSip", "SipToSip"]);
+
+export type ProvisionalCallLogRule = "P-a" | "P-b";
+
+/**
+ * Which provisional rule a record's shape matches, ignoring time. Pure.
+ *
+ * - **P-a**: the top-level `result` is `Stopped`, `IP Phone Offline` or `In Progress`.
+ * - **P-b**: RingCentral says `Inbound` or `Outbound` (a live snapshot said
+ *   `Outbound`: it copies the ring-out leg), the top-level `to` classifies as
+ *   company side, every leg is a company ring-out (a `PstnToSip`/`SipToSip` leg
+ *   that is not `Inbound`, aimed at a company extension; so no `Accept` or
+ *   customer leg), and the call carries PSTN evidence (a `PstnToSip` leg, or a
+ *   top-level number that is not a company DID). The top-level `from` may be
+ *   either the caller id or the rep's extension: the stored snapshots carried
+ *   an extension id there (both sides company, stored `Internal`), the live
+ *   watch of 2026-09-24 shows a PSTN-shaped caller. The PSTN condition keeps a
+ *   genuine extension-to-extension call (`SipToSip`, extension endpoints)
+ *   settled: its shape is otherwise the same, and it never had an external caller.
+ *
+ * An `Inbound`/`Accepted` snapshot with a short `Accept` leg matches neither
+ * rule on purpose: a snapshot's `lastModifiedTime` does not move while the call
+ * continues, so it cannot be told from a genuine short answered queue call.
+ */
+export function provisionalCallLogRule(
+  record: CallLogRecordInput,
+  directory: DirectoryLookup,
+): ProvisionalCallLogRule | null {
+  const result = str(record.result);
+  if (result !== null && PROVISIONAL_RESULTS.has(result)) return "P-a";
+  if (!normalizeDirection(str(record.direction))) return null;
+  const from = classifyEndpoint(endpointInput(recordOf(record.from)), directory);
+  const to = classifyEndpoint(endpointInput(recordOf(record.to)), directory);
+  if (!isCompanySide(to.kind)) return null;
+  const legs = arrayOfRecords(record.legs);
+  if (!legs.length || !legs.every((leg) => isCompanyRingOut(leg, directory))) return null;
+  const pstnLeg = legs.some((leg) => str(leg.legType) === "PstnToSip");
+  const nonCompanyNumber = [from, to].some(
+    (endpoint) => endpoint.e164 !== null && directory.companyNumberByE164(endpoint.e164) === null,
+  );
+  return pstnLeg || nonCompanyNumber ? "P-b" : null;
+}
+
+function isCompanyRingOut(leg: Record<string, unknown>, directory: DirectoryLookup): boolean {
+  if (!RING_OUT_LEG_TYPES.has(str(leg.legType) ?? "")) return false;
+  if (str(leg.direction) === "Inbound") return false;
+  if (strOf(recordOf(leg.extension)?.id)) return true;
+  return isCompanySide(classifyEndpoint(endpointInput(recordOf(leg.to)), directory).kind);
+}
+
+/**
+ * `provisional` when the record looks like a mid-call snapshot (P-a or P-b),
+ * otherwise `settled`. Any record quiet for the settle horizon
+ * (`now - lastModifiedTime >= settleHorizonMinutes`) is settled: a provider
+ * record that has not changed for that long is final by definition. Pure.
+ *
+ * The rules are a gate for downstream work, not the correctness mechanism: the
+ * reconcile re-reads every record inside the horizon regardless.
+ */
+export function classifyCallLogRecordState(
+  record: CallLogRecordInput,
+  directory: DirectoryLookup,
+  options: { now: Date; settleHorizonMinutes?: number },
+): CallLogState {
+  const quietSince = dateOf(record.lastModifiedTime) ?? dateOf(record.startTime);
+  if (pastSettleHorizon(quietSince, options)) return "settled";
+  return provisionalCallLogRule(record, directory) ? "provisional" : "settled";
+}
+
+function pastSettleHorizon(
+  quietSince: Date | null,
+  options: { now: Date; settleHorizonMinutes?: number },
+): boolean {
+  if (!quietSince) return false;
+  const horizonMs = (options.settleHorizonMinutes ?? DEFAULT_SETTLE_HORIZON_MINUTES) * 60_000;
+  return options.now.getTime() - quietSince.getTime() >= horizonMs;
+}
 
 // ---------------------------------------------------------------------------
 // Identity
@@ -310,6 +417,8 @@ export function fromWebhookParties(
     provider_last_modified_at: existing?.provider_last_modified_at ?? null,
     terminal,
     max_observed_webhook_sequence: maxSequence,
+    // Only a settled Call Log record settles a row; webhook evidence never does.
+    call_log_state: existing?.call_log_state ?? null,
   };
   return finish(existing, next, fullIdentity, fenced, false);
 }
@@ -504,6 +613,10 @@ export function fromCallLogRecord(
     lastModified !== null &&
     lastModified < existing.provider_last_modified_at;
 
+  const horizon = { now: options.now, settleHorizonMinutes: options.settleHorizonMinutes };
+  const callLogState = nextCallLogState(existing, stale, record, directory, horizon);
+  const provisional = callLogState === "provisional";
+
   const from = classifyEndpoint(endpointInput(recordOf(record.from)), directory);
   const to = classifyEndpoint(endpointInput(recordOf(record.to)), directory);
   const recordDirection = normalizeDirection(str(record.direction));
@@ -511,6 +624,11 @@ export function fromCallLogRecord(
   const direction: InteractionDirection = bothCompany
     ? "Internal"
     : recordDirection ?? existing?.direction ?? "Unknown";
+  // Internal -> Inbound/Outbound is the one allowed regression, and never from
+  // a settled row: a settled Internal row stays Internal (CC-04).
+  const keepEndpoints =
+    stale ||
+    (existing?.call_log_state === "settled" && existing.direction === "Internal" && direction !== "Internal");
   const external = direction === "Outbound" ? to : from;
   const company = direction === "Outbound" ? from : to;
 
@@ -580,10 +698,10 @@ export function fromCallLogRecord(
     session_id: fullIdentity.session_id,
     call_log_ids: fullIdentity.call_log_ids,
     identity_basis: strongestBasis(fullIdentity),
-    direction: stale ? existing!.direction : direction,
-    external_e164: stale ? existing!.external_e164 : externalE164 ?? existing?.external_e164 ?? null,
-    external_endpoint_kind: stale ? existing!.external_endpoint_kind : external.kind,
-    company_e164: stale ? existing!.company_e164 : companyE164 ?? existing?.company_e164 ?? null,
+    direction: keepEndpoints ? existing!.direction : direction,
+    external_e164: keepEndpoints ? existing!.external_e164 : externalE164 ?? existing?.external_e164 ?? null,
+    external_endpoint_kind: keepEndpoints ? existing!.external_endpoint_kind : external.kind,
+    company_e164: keepEndpoints ? existing!.company_e164 : companyE164 ?? existing?.company_e164 ?? null,
     inbound_route_id:
       existing?.inbound_route_id ??
       (direction === "Inbound" && options.resolveRoute
@@ -591,8 +709,12 @@ export function fromCallLogRecord(
         : null),
     started_at: stale ? existing!.started_at : startTime,
     answered_at: existing?.answered_at ?? null,
-    ended_at: stale ? existing!.ended_at : endedAt ?? existing?.ended_at ?? null,
-    duration_seconds: stale ? existing!.duration_seconds : durationSeconds ?? existing?.duration_seconds ?? null,
+    // A snapshot's duration is the ring-out time so far, not the call's.
+    ended_at: stale || provisional ? existing?.ended_at ?? null : endedAt ?? existing?.ended_at ?? null,
+    duration_seconds:
+      stale || provisional
+        ? existing?.duration_seconds ?? null
+        : durationSeconds ?? existing?.duration_seconds ?? null,
     provider_result: stale ? existing!.provider_result : result ?? existing?.provider_result ?? null,
     provider_connected: (existing?.provider_connected ?? false) || connected,
     contact_type: contact.contact_type,
@@ -622,11 +744,35 @@ export function fromCallLogRecord(
     provider_last_modified_at: stale
       ? existing!.provider_last_modified_at
       : latest([existing?.provider_last_modified_at ?? null, lastModified]),
-    // A Call Log record is a finalized provider fact: the session has ended.
-    terminal: true,
+    // A settled Call Log record is a finalized provider fact: the session has
+    // ended. A provisional one proves nothing about the end; terminal never regresses.
+    terminal: provisional ? existing?.terminal ?? false : true,
     max_observed_webhook_sequence: existing?.max_observed_webhook_sequence ?? null,
+    call_log_state: callLogState,
   };
   return finish(existing, next, fullIdentity, 0, stale);
+}
+
+/**
+ * The row's Call Log state after this record. `settled` never regresses. A
+ * stale record only adds evidence, so it keeps the stored state, except that a
+ * provisional row quiet past the horizon settles.
+ */
+function nextCallLogState(
+  existing: InteractionProjection | null,
+  stale: boolean,
+  record: CallLogRecordInput,
+  directory: DirectoryLookup,
+  horizon: { now: Date; settleHorizonMinutes?: number },
+): CallLogState | null {
+  if (existing?.call_log_state === "settled") return "settled";
+  if (stale) {
+    if (existing?.call_log_state === "provisional") {
+      return pastSettleHorizon(existing.provider_last_modified_at, horizon) ? "settled" : "provisional";
+    }
+    return existing?.call_log_state ?? null;
+  }
+  return classifyCallLogRecordState(record, directory, horizon);
 }
 
 function projectLeg(leg: Record<string, unknown>): ProjectedLeg {
@@ -837,6 +983,7 @@ export function mergeProjections(
       other.provider_last_modified_at,
     ]),
     terminal: canonical.terminal || other.terminal,
+    call_log_state: mergeCallLogState(canonical.call_log_state, other.call_log_state),
     max_observed_webhook_sequence: Math.max(
       canonical.max_observed_webhook_sequence ?? Number.NEGATIVE_INFINITY,
       other.max_observed_webhook_sequence ?? Number.NEGATIVE_INFINITY,
@@ -847,6 +994,12 @@ export function mergeProjections(
           other.max_observed_webhook_sequence ?? Number.NEGATIVE_INFINITY,
         ),
   };
+}
+
+function mergeCallLogState(a: CallLogState | null, b: CallLogState | null): CallLogState | null {
+  if (a === "settled" || b === "settled") return "settled";
+  if (a === "provisional" || b === "provisional") return "provisional";
+  return null;
 }
 
 function mergeParty(a: ProjectedParty, b: ProjectedParty): ProjectedParty {
@@ -889,6 +1042,7 @@ function finish(
     changed,
     created: existing === null,
     newly_terminal: next.terminal && !(existing?.terminal ?? false),
+    newly_settled: existing?.call_log_state === "provisional" && next.call_log_state === "settled",
     new_recording_ids: next.recordings
       .map((r) => r.provider_recording_id)
       .filter((id) => !existingRecordings.has(id)),
