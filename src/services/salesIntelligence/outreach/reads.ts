@@ -35,6 +35,7 @@ import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJ
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
 import { latestSummaryFromRun, officialStatus, outreachDetailDtoSchema, receiverAgentDto } from "./detailDto";
+import { spendBasis } from "../overview/spend";
 import { EMPTY_SUGGESTION_SIDE, loadSuggestionSide, suggestedNextStep, type SuggestionSide } from "./suggestion";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
@@ -231,7 +232,8 @@ export function deriveOutreachFacts(record: RecordRow, inputs: OutreachInputs, c
 type LeadLite = LeadMoveSource & { _id: unknown; name?: string | null; job_no?: string | null; source_company_label_snapshot?: string | null;
   timestamp?: Date | null; booked?: unknown; cancelled?: unknown; duplicate?: boolean | null; bad_lead?: unknown; no_sync?: boolean | null;
   granot_priority?: unknown; quoted?: boolean | null; receiver_agent_name_snapshot?: string | null;
-  receiver_agent?: unknown; receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null };
+  receiver_agent?: unknown; receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null;
+  cpl?: number | null; cpl_rate_period?: unknown; cpl_resolution_status?: string | null };
 type BookingLite = { _id: unknown; book_date?: Date | null; total_binder_amount?: number | null; job_no?: string | null; agent?: unknown };
 type CancelLite = { _id: unknown; cancel_date?: Date | null; reason?: string | null };
 /**
@@ -243,7 +245,9 @@ const LEAD_COMMON_PROJECTION = { name: 1, job_no: 1, source_company_label_snapsh
   delivery_city: 1, delivery_state: 1, move_date: 1, move_size: 1, granot_move_size: 1, cubic_feet: 1, current_move_provenance: 1,
   booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, granot_priority: 1, quoted: 1, receiver_agent_name_snapshot: 1,
   // S6-AGENT (E26): the detail's Receiver agent; the same `$in`, no extra read.
-  receiver_agent: 1, receiver_agent_source: 1, receiver_agent_set_at: 1 } as const;
+  receiver_agent: 1, receiver_agent_source: 1, receiver_agent_set_at: 1,
+  // Addendum §4.3: the detail's Lead cost (the Overview's spend basis); the same `$in`, no extra read.
+  cpl: 1, cpl_rate_period: 1, cpl_resolution_status: 1 } as const;
 const FORM_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, destination_zip: 1 } as const;
 const CALL_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, delivery_zip: 1 } as const;
 type LatestLite = { _id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string };
@@ -484,7 +488,8 @@ export function outreachDetailAdditions(record: RecordRow, side: OutreachSideDat
   const cancelled = new Set(bookings.filter(b => (side.cancellations.get(String(b._id)) ?? []).length > 0).map(b => String(b._id)));
   const lead = ref ? side.leads.get(ref) ?? null : null;
   return { newest_run_id: usable ? String(usable._id) : null, latest_summary: latestSummaryFromRun(usable),
-    official: officialStatus(lead, bookings, cancelled), ...(receiverAssignmentEnabled() ? { receiver_agent: receiverAgentDto(lead) } : {}) };
+    official: officialStatus(lead, bookings, cancelled), ...(receiverAssignmentEnabled() ? { receiver_agent: receiverAgentDto(lead) } : {}),
+    lead_cost: lead ? spendBasis(lead as Parameters<typeof spendBasis>[0]) : null };
 }
 
 export async function readOutreach(id: string) {

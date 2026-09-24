@@ -44,6 +44,13 @@ export const outreachDetailAdditionsShape = {
   official: officialStatusDtoSchema.nullable(),
   /** S6-AGENT, RECEIVER_ASSIGNMENT on only (absent off): null when the subject has no Lead or the Lead no receiver. */
   receiver_agent: receiverAgentDtoSchema.nullable().optional(),
+  /**
+   * Addendum §4.3 (E10, E20): the Lead's cost for the official status line, "Lead cost $X (legacy price)".
+   * Same rule as the Overview spend (`spendBasis`): `rate` (resolved rate period), `legacy` (a positive `cpl`
+   * with no rate period), `unpriced` (missing rate, $0), `zero` (duplicate / not applicable, $0). Dollars.
+   * Null when the subject has no Lead. Optional so older servers' responses still parse.
+   */
+  lead_cost: z.object({ amount: z.number().nonnegative(), basis: z.enum(["rate", "legacy", "unpriced", "zero"]) }).strict().nullable().optional(),
 };
 /** `data.outreach` on `GET /outreach/:id`: the shared Outreach DTO plus the §4.1 fields. */
 export const outreachDetailDtoSchema = outreachDtoSchema.extend(outreachDetailAdditionsShape).strict();
