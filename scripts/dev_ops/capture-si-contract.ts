@@ -107,7 +107,20 @@ async function main() {
   const probe = await get(`/outreach/${sentinel.outreach_record_id}`);
   if (probe.status !== 200 || (probe.body as { data?: { outreach?: { id?: string } } } | null)?.data?.outreach?.id !== sentinel.outreach_record_id)
     throw new Error(`the API at ${base} does not serve ${SI_SEED_DATABASE} (probe ${probe.status}); refusing to capture`);
-  // Guard 2: API flags and snapshot match the mode.
+  // Guard 2 (CF-AC): both AC modes run with ATTENTION_V2 and TIMELINE_V2 on (production); the Team 4 flags decide the mode.
+  if (stage === "AC") {
+    const settings = await get("/settings");
+    const flags = (settings.body as { data?: { flags?: Record<string, boolean> } } | null)?.data?.flags ?? {};
+    const want = mode === "on";
+    for (const flag of ["ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN"]) if (Boolean(flags[flag]) !== want)
+      throw new Error(`${flag} is ${flags[flag] ? "on" : "off"} on the API; start serve-csi-local.ts with CSI_LOCAL_FLAGS=ATTENTION_V2,TIMELINE_V2${want ? ",ATTENTION_EVOLUTION,CASE_FILE,PROGRESS_PLAN" : ""}`);
+    if ((await get(`/outreach/${sentinel.outreach_record_id}/timeline?limit=1`)).status !== 200) throw new Error("TIMELINE_V2 is off on the API; AC captures need it on");
+    const page = await get("/attention?view=all_outreach&limit=200");
+    const rows = ((page.body as { data?: { items?: Array<{ sort_keys?: Record<string, unknown> }>; metrics?: unknown } } | null)?.data?.items ?? []);
+    if (!(page.body as { data?: { metrics?: unknown } } | null)?.data?.metrics) throw new Error("the Attention snapshot has no metrics: republish with ATTENTION_V2 on");
+    const evolved = rows.some(row => row.sort_keys && "band2_due_rank" in row.sort_keys);
+    if (evolved !== want) throw new Error(`the Attention snapshot was published with ATTENTION_EVOLUTION ${evolved ? "on" : "off"}: seed-csi-final-ui.ts --publish-attention on${want ? "" : " --evolution off"}`);
+  } else {
   const timeline = await get(`/outreach/${sentinel.outreach_record_id}/timeline?limit=1`);
   const timelineOn = timeline.status === 200;
   if (mode === "on" && !timelineOn) throw new Error(`TIMELINE_V2 is off on the API (outreach timeline ${timeline.status}); start serve-csi-local.ts with CSI_LOCAL_FLAGS=ATTENTION_V2,TIMELINE_V2`);
@@ -117,6 +130,7 @@ async function main() {
   const metrics = Boolean((desk.body as { data?: { metrics?: unknown } } | null)?.data?.metrics);
   if (mode === "on" && !metrics) throw new Error("the Attention snapshot has no metrics: republish with the flag on (seed-csi-final-ui.ts --publish-attention on)");
   if (mode === "off" && metrics) throw new Error("the Attention snapshot carries metrics: republish with the flag off (seed-csi-final-ui.ts --publish-attention off)");
+  }
 
   const routes = routesFor(stage!, mode);
   if (!routes.length) throw new Error(`no ${mode === "off" ? "flag-off " : ""}registry entries for ${stage}`);
@@ -124,7 +138,8 @@ async function main() {
   for (const file of readdirSync(out)) if (file.endsWith(".json")) rmSync(resolve(out, file));
   const summary: Summary[] = [];
   for (const route of routes) for (const call of route.calls(rows)) await capture(route, call, summary);
-  writeFileSync(resolve(out, "_capture-index.json"), `${JSON.stringify({ stage, mode: mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2)" : "flags off",
+  writeFileSync(resolve(out, "_capture-index.json"), `${JSON.stringify({ stage, mode: stage === "AC" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN)" : "Team 4 flags off (ATTENTION_V2, TIMELINE_V2 on)")
+    : mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2)" : "flags off",
     database: SI_SEED_DATABASE, captured_at: new Date().toISOString(), calls: summary }, null, 2)}\n`);
   for (const s of summary) console.log(`${s.ok ? "ok  " : "FAIL"} ${String(s.status).padEnd(4)} ${s.route.padEnd(44)} ${s.state.padEnd(40)} ${s.note}`);
   const failed = summary.filter(s => !s.ok);

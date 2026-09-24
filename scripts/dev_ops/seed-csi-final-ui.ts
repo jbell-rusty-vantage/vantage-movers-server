@@ -58,7 +58,8 @@ Object.assign(process.env, {
   // AC0-SEED phase 2 (2026-09-24): Worker A's AC3-AC5 code (`eddad04`) is in, so the seed's own Outreach
   // ensure/derive runs evolved. Flag-off identity is proven separately (`snapshot-derive.ts`,
   // `--publish-attention off`); this seed only ever needs the flag-on behaviour for its own subjects.
-  SALES_INTELLIGENCE_ATTENTION_EVOLUTION: "true",
+  // CF-AC: `--publish-attention on|off --evolution off` republishes the snapshot with the Team 4 flag off (the AC flag-off set).
+  SALES_INTELLIGENCE_ATTENTION_EVOLUTION: PUBLISH_ONLY && ARGS.includes("--evolution") && ARGS[ARGS.indexOf("--evolution") + 1] === "off" ? "false" : "true",
   SALES_INTELLIGENCE_ATTENTION_V2: ATTENTION_V2 ? "true" : "false", SALES_INTELLIGENCE_TIMELINE_V2: "false",
   SALES_INTELLIGENCE_ANALYSIS_PRICING_VERSION: "synthetic", SALES_INTELLIGENCE_ANALYSIS_INPUT_CENTS_PER_MILLION: "1",
   SALES_INTELLIGENCE_ANALYSIS_OUTPUT_CENTS_PER_MILLION: "1", SALES_INTELLIGENCE_EXTRACTION_MODEL: "openai/gpt-5-mini",
@@ -106,7 +107,7 @@ async function republishAttention() {
   if (!(await db.collection(SI_SEED_MANIFEST).countDocuments({}))) throw new Error(`no ${SI_SEED_MANIFEST} in ${DATABASE}: run the full seed first`);
   const snapshot = await publishAttentionSnapshot({ attentionV2: ATTENTION_V2 });
   if (snapshot.status !== "published") throw new Error(`attention publish: ${JSON.stringify(snapshot)}`);
-  console.log(`Attention snapshot republished on ${DATABASE} with ATTENTION_V2 ${ATTENTION_V2 ? "on" : "off"}: ${JSON.stringify(snapshot)}`);
+  console.log(`Attention snapshot republished on ${DATABASE} with ATTENTION_V2 ${ATTENTION_V2 ? "on" : "off"}, ATTENTION_EVOLUTION ${process.env.SALES_INTELLIGENCE_ATTENTION_EVOLUTION === "true" ? "on" : "off"}: ${JSON.stringify(snapshot)}`);
   await mongoose.disconnect();
 }
 
@@ -549,7 +550,9 @@ async function main() {
       const arrival = +addStaffedMinutes(new Date(mid), minutes, policy);
       if (arrival > +anchor) hi = mid; else lo = mid;
     }
-    return new Date(Math.round(lo));
+    // Floor, not round: `lo` is the latest instant whose +minutes still lands at or before the anchor; rounding up
+    // by 1 ms left "240 staffed minutes ago" at 239.99998 (CF-AC, 2026-09-24).
+    return new Date(Math.floor(lo));
   }
   /**
    * AC0-SEED phase 2: run the real `ensureInteraction` over one already-inserted call, in its own
@@ -1405,6 +1408,21 @@ async function main() {
     const recordId = await seedRecord(lead, number.id);
     row("AC-progress-1-3-1", ["ac_progress_1_3_1"], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
       note: "Granot Priority churns 1 -> 3 -> 1 (three paired entity_changes); current disposition quoted, accepted" });
+  }
+  {
+    // CF-AC: accepted 0 -> 1 creates the P4 default, then an Owner follow-up supersedes it (§7.1 supersession).
+    const receivedAt = ago(8);
+    const number = await seedNumber(receivedAt);
+    const lead = await seedLead("FormLead", number.ten, receivedAt, { granot_priority: "0" });
+    await attach(number.id, lead, receivedAt);
+    await leadChange(lead, plus(receivedAt, 10 * 60_000), [{ path: "granot_priority", before: null, after: "0" }], null);
+    const obsAt = ago(4), obs = await observation(lead, number.ten, obsAt, "1", "Dana R.");
+    await leadChange(lead, plus(obsAt, 12 * 60_000), [{ path: "granot_priority", before: "0", after: "1" }], obs);
+    await db.collection("form_leads").updateOne({ _id: O(lead.id) }, { $set: { granot_priority: "1" } });
+    const recordId = await seedRecord(lead, number.id);
+    await ownerFollowup(recordId, 24, "Owner scheduled the quote follow-up call");
+    row("AC-default-superseded", ["ac_default_superseded"], { outreach_record_id: recordId, contact_number_id: number.id, lead_refs: leadIds(lead),
+      note: "Accepted 0 -> 1 created the quote default; an Owner create_followup then superseded it (superseded_by_specific_plan)" });
   }
   {
     // granot_priority=1 with no vouching entity_change at all: uncertain provenance.

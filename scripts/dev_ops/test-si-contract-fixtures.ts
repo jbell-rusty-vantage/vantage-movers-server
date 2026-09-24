@@ -24,7 +24,7 @@ Object.assign(process.env, { TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: "testv
 const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 const stage = arg("stage") as Stage | undefined;
-if (!stage || !["S1", "S2", "S3", "S4"].includes(stage)) throw new Error("--stage S1|S2|S3|S4 is required");
+if (!stage || !["S1", "S2", "S3", "S4", "AC"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const root = resolve(arg("dir") ?? SI_CONTRACTS_DIR);
 const dir = resolve(root, stage, ...(mode === "off" ? ["flag-off"] : []));

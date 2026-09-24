@@ -60,6 +60,8 @@ export const SI_SEED_STATES = [
   "ac_progress_default_created",
   "ac_first_attempts_assigned", "ac_first_attempts_none",
   "ac_unreached_reason",
+  // CF-AC (2026-09-24): a quote default superseded by an Owner plan (cancel_reason superseded_by_specific_plan).
+  "ac_default_superseded",
 ] as const;
 export type SiSeedState = (typeof SI_SEED_STATES)[number];
 

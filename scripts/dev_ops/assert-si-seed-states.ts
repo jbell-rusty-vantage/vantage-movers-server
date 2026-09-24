@@ -495,6 +495,8 @@ const CHECKS: Record<SiSeedState, Check> = {
   // Phase 2: P4 (§7.1) actually created one `system_default` "Follow up on the quote" for the accepted
   // 0->1 / 1->3->1 transitions — and, strengthening the phase-1 checks, created NOTHING for the
   // uncertain-1 and accepted-rep_discretion-3 records (K25: "creates nothing").
+  // CF-AC: an Owner follow-up superseded the P4 default (§7.1): status superseded, cancel_reason superseded_by_specific_plan.
+  ac_default_superseded: db => db.collection("outreach_followups").countDocuments({ default_kind: "quote_followup", status: "superseded", cancel_reason: "superseded_by_specific_plan" }),
   ac_progress_default_created: db => db.collection("outreach_followups").countDocuments({ default_kind: "quote_followup", status: "open" }),
   ac_progress_uncertain_1: async db => {
     const records = await db.collection("outreach_records").find({ "lead_progress.granot_priority": "1", "lead_progress.provenance": "uncertain" }).toArray();

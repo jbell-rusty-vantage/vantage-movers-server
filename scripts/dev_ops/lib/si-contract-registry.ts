@@ -93,7 +93,7 @@ const ownerReadOf = (loader: () => Promise<Mod>, key: string, from: string) => a
 };
 const serverSchema = (loader: () => Promise<Mod>, key: string, from: string) => async (): Promise<ResolvedSchema> =>
   ({ schema: await exported(loader, key, from), name: key, source: "server" });
-const adminSchema = (key: "attentionSchema" | "timelineSchema" | "numberSearchSchema") => async (): Promise<ResolvedSchema> =>
+const adminSchema = (key: "attentionSchema" | "timelineSchema" | "numberSearchSchema" | "outreachReadSchema") => async (): Promise<ResolvedSchema> =>
   ({ schema: await exported(load.local, key, "si-contract-schemas.ts"), name: `admin ${key}`, source: "admin@539a628" });
 
 /** `GET /outreach/:id`: `data.outreach` is the strict detail DTO; instructions and nudges keep their pre-existing (untyped) contracts. */
@@ -346,6 +346,102 @@ export const ROUTES: RouteEntry[] = [
     calls: perRow(row => (row.label === "S-timeline-300" && row.outreach_record_id ? [{ path: `/outreach/${row.outreach_record_id}/timeline`, expect: 404 }] : [])),
     schema: statusSchema(404, "FEATURE_DISABLED", "Sales Intelligence is disabled") },
 ];
+
+// ── CF-AC (Team 4, 2026-09-24): Attention evolution fields on the desk, the Outreach detail and the timeline ──
+/** Every new reason a flags-on AC snapshot must carry somewhere (spec §9). */
+export const AC_REASONS = ["promised_by:rep", "promised_by:customer", "promised_by:owner", "new_not_yet_due", "no_call_yet", "no_callback_after_inbound",
+  "called_before_form", "promise_unreached", "rep_discretion", "unreached"] as const;
+const AC_NEW_REASONS = AC_REASONS.filter(r => r !== "no_call_yet");
+const isAcNew = (reason: string) => (AC_NEW_REASONS as readonly string[]).includes(reason);
+const CONTACT_FACTS = ["last_inbound_human_at", "last_attributable_outbound_at", "prior_contact_at", "last_activity_at"] as const;
+const acLabel = (row: SiManifestRow) => row.label.startsWith("AC-");
+function acAttentionOn(body: any, ctx: CheckContext): string[] {
+  const out: string[] = [...flagOnHeader(body)];
+  const rows = items(body);
+  for (const [i, row] of rows.entries()) {
+    const band = row.derived?.attention_band, rank = row.sort_keys?.band2_due_rank;
+    if (!row.outreach) continue;
+    if (band === 2 && rank !== (row.derived.reasons.includes("new_not_yet_due") ? 1 : 0)) out.push(`items[${i}] band 2 with band2_due_rank ${rank}`);
+    if (band !== 2 && rank !== null && rank !== undefined) out.push(`items[${i}] band ${band} with band2_due_rank ${rank}`);
+  }
+  const band2 = rows.filter(row => row.derived?.attention_band === 2).map(row => row.sort_keys?.band2_due_rank ?? 0);
+  if (ctx.state === "default" && band2.some((rank, i) => i > 0 && rank < band2[i - 1]!)) out.push("band 2 rows are not ordered no_call_yet before new_not_yet_due");
+  if (ctx.state === "all-outreach") {
+    const seen = new Set(rows.flatMap(row => row.derived?.reasons ?? []));
+    for (const reason of AC_REASONS) if (!seen.has(reason)) out.push(`no row carries reason ${reason}`);
+    if (!band2.includes(0) || !band2.includes(1)) out.push("band2_due_rank 0 and 1 not both present");
+  }
+  return out;
+}
+function acAttentionOff(body: any): string[] {
+  const out = [...flagOnHeader(body)];
+  for (const [i, row] of items(body).entries()) {
+    const reasons: string[] = row.derived?.reasons ?? [];
+    if (reasons.some(isAcNew)) out.push(`items[${i}] flag-off row carries ${reasons.filter(isAcNew).join(",")}`);
+    if (row.sort_keys && "band2_due_rank" in row.sort_keys) out.push(`items[${i}] flag-off row carries band2_due_rank`);
+  }
+  return out;
+}
+/** Per seeded AC state: the field the fixture must actually show (spec §9). */
+const AC_DETAIL: Record<string, (o: any) => string[]> = {
+  "ac-callback-customer-exact": o => (o.derived.reasons.includes("promised_by:customer") && o.derived.attention_band === 1 ? [] : ["not band 1 promised_by:customer"]),
+  "ac-callback-owner-exact": o => (o.derived.reasons.includes("promised_by:owner") && o.derived.attention_band === 1 ? [] : ["not band 1 promised_by:owner"]),
+  "ac-callback-rep-day": o => (o.derived.attention_band === 4 ? [] : [`band ${o.derived.attention_band}, expected 4`]),
+  "ac-inbound-after-promise": o => (o.followups.some((a: any) => a.disposition === "customer_called") ? [] : ["no customer_called follow-up"]),
+  "ac-promise-chain-source": o => {
+    const chain = o.followups.filter((a: any) => a.promise_chain);
+    return [...(chain.length === 2 && chain.every((a: any) => a.supersedes_id && a.origin === "system_default") ? [] : [`${chain.length} retry successors with promise_chain+supersedes_id`]),
+      ...(o.derived.reasons.includes("promise_unreached") ? [] : ["no promise_unreached"])];
+  },
+  "ac-progress-0-to-1": o => (o.followups.some((a: any) => a.default_kind === "quote_followup" && a.status === "open") ? [] : ["no open quote default"]),
+  "ac-default-superseded": o => (o.followups.some((a: any) => a.default_kind === "quote_followup" && a.status === "superseded" && a.cancel_reason === "superseded_by_specific_plan")
+    ? [] : ["no superseded quote default"]),
+  "ac-progress-accepted-3": o => (o.derived.reasons.includes("rep_discretion") ? [] : ["no rep_discretion"]),
+  "ac-attempts-same-rep": o => (o.assignment.origin === "first_attempts" && o.assignment.agent ? [] : [`assignment origin ${o.assignment.origin}`]),
+  "ac-attempts-two-reps": o => (o.assignment.agent === null ? [] : ["assigned"]),
+  "ac-inbound-only-240": o => (o.last_inbound_human_at && o.derived.reasons.includes("no_callback_after_inbound") ? [] : ["no last_inbound_human_at + no_callback_after_inbound"]),
+  "ac-called-before-form-6d": o => (o.prior_contact_at && o.derived.reasons.includes("called_before_form") ? [] : ["no prior_contact_at + called_before_form"]),
+  "ac-called-before-form-8d": o => (o.prior_contact_at === null ? [] : ["prior_contact_at set at 8 days"]),
+  "ac-going-cold-unreached": o => (o.last_attributable_outbound_at && o.derived.reasons.includes("unreached") ? [] : ["no unreached"]),
+};
+function acDetailOn(body: any, ctx: CheckContext): string[] {
+  const o = body?.data?.outreach;
+  if (!o) return ["data.outreach missing"];
+  const missing = CONTACT_FACTS.filter(field => !has(o, field));
+  return [...(missing.length ? [`contact facts missing: ${missing.join(", ")}`] : []), ...(AC_DETAIL[ctx.state]?.(o) ?? [])];
+}
+function acDetailOff(body: any): string[] {
+  const reasons: string[] = body?.data?.outreach?.derived?.reasons ?? [];
+  return reasons.some(isAcNew) ? [`flag-off detail carries ${reasons.filter(isAcNew).join(",")}`] : [];
+}
+const TIMELINE_EXPECT: Record<string, (list: any[]) => string[]> = {
+  "ac-promise-chain-source": list => (list.filter(i => i.kind === "followup_created" && /Try again: promised callback not reached/.test(JSON.stringify(i))).length === 2 ? [] : ["two retry followup_created entries expected"]),
+  "ac-progress-0-to-1": list => (list.some(i => i.kind === "followup_created" && /Follow up on the quote/.test(JSON.stringify(i))) ? [] : ["no default followup_created"]),
+  "ac-default-superseded": list => (list.some(i => i.kind === "followup_superseded" && /Follow up on the quote/.test(JSON.stringify(i))) ? [] : ["no followup_superseded for the default"]),
+};
+const AC_TIMELINE_STATES = Object.keys(TIMELINE_EXPECT);
+const acRows = (rows: readonly SiManifestRow[]) => rows.filter(acLabel);
+const detailCalls = (only?: readonly string[]) => (rows: readonly SiManifestRow[]) => perRow(row => (row.outreach_record_id && (!only || only.includes(stateOf(row.label)))
+  ? [{ path: `/outreach/${row.outreach_record_id}` }] : []))(acRows(rows));
+const AC_OFF_DETAIL = ["ac-promise-chain-source", "ac-attempts-same-rep", "ac-default-superseded", "ac-progress-0-to-1", "ac-called-before-form-6d", "ac-callback-customer-exact"];
+ROUTES.push(
+  { stage: "AC", mode: "on", slug: "attention", route: "GET /attention", params: "limit=200 default; view=all_outreach; band=1; band=2; band=4", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" },
+      { state: "band-1", path: "/attention?band=1&limit=200" }, { state: "band-2", path: "/attention?band=2&limit=200" }, { state: "band-4", path: "/attention?band=4&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: acAttentionOn },
+  { stage: "AC", mode: "on", slug: "outreach", route: "GET /outreach/:id", params: "one call per seeded AC state", kind: "read",
+    calls: detailCalls(), schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: acDetailOn },
+  { stage: "AC", mode: "on", slug: "outreach-timeline", route: "GET /outreach/:id/timeline", params: "limit=200: the retry chain, the quote default, the superseded default", kind: "read",
+    calls: rows => perRow(row => (row.outreach_record_id && AC_TIMELINE_STATES.includes(stateOf(row.label)) ? [{ path: `/outreach/${row.outreach_record_id}/timeline?limit=200` }] : []))(acRows(rows)),
+    schema: serverSchema(load.numberDto, "timelineV2PageDtoSchema", "numberActivity/dto.ts"),
+    checks: (body, ctx) => TIMELINE_EXPECT[ctx.state]?.(items(body)) ?? [] },
+  // Flag off: ATTENTION_V2 and TIMELINE_V2 stay on (as in production); the three Team 4 flags are off and the snapshot is republished with ATTENTION_EVOLUTION off.
+  { stage: "AC", mode: "off", slug: "attention", route: "GET /attention (Team 4 flags off)", params: "limit=200 default; view=all_outreach", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: acAttentionOff },
+  { stage: "AC", mode: "off", slug: "outreach", route: "GET /outreach/:id (Team 4 flags off)", params: AC_OFF_DETAIL.join(", "), kind: "read",
+    calls: detailCalls(AC_OFF_DETAIL), schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: acDetailOff },
+);
 
 export const routesFor = (stage: Stage, mode: Mode = "on") => ROUTES.filter(route => route.stage === stage && route.mode === mode);
 /** Longest slug first so `outreach-assessment__x` never matches `outreach`. */

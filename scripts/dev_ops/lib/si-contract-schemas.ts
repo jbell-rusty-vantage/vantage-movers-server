@@ -20,6 +20,8 @@ import { csiDateSchema } from "../../../src/validation/v1/salesIntelligence";
 
 // ── 1. Production Admin (vantage-admin@539a628), verbatim ──────────────────────────────────────
 export { attentionSchema, leadProgressSchema } from "../../../src/services/salesIntelligence/outreach/attention.adminSchema.fixture";
+// CF-AC: the production Admin Outreach read (verbatim vantage-admin@539a628, generated copy).
+export { outreachReadSchema } from "./admin-si-schemas-539a628";
 import { leadProgressSchema } from "../../../src/services/salesIntelligence/outreach/attention.adminSchema.fixture";
 /* eslint-disable */
 const coverage = z.object({ known_through: z.string().nullable(), gaps: z.array(z.object({ from:z.string(), to:z.string(), reason:z.string() })), ai_paused:z.boolean() });

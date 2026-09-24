@@ -32,7 +32,8 @@ process.env.BLOB_READ_WRITE_TOKEN = "";
 process.env.BLOB_STORE_ID = "";
 // CF-PREP: `CSI_LOCAL_FLAGS=ATTENTION_V2,TIMELINE_V2` turns the final-data flags on. Each of the two is
 // set explicitly (listed → "true", else "false") so `.env` or the shell can never decide a capture's mode.
-const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2"] as const;
+// CF-AC: the three Team 4 flags too, so .env can never decide an AC capture mode either.
+const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN"] as const;
 const requested = (process.env.CSI_LOCAL_FLAGS ?? "").split(",").map(v => v.trim().toUpperCase()).filter(Boolean);
 const unknownFlags = requested.filter(v => !(LOCAL_FLAGS as readonly string[]).includes(v));
 if (unknownFlags.length) throw new Error(`CSI_LOCAL_FLAGS: unknown flag(s) ${unknownFlags.join(", ")}; allowed ${LOCAL_FLAGS.join(", ")}`);
