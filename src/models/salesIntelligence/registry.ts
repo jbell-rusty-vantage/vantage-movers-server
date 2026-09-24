@@ -111,6 +111,7 @@ import {
   getOwnerRepNudgeModel,
   OWNER_REP_NUDGE_INDEXES,
 } from "../OwnerRepNudge";
+import { getOutreachRepDayModel, OUTREACH_REP_DAY_INDEXES } from "./overview";
 export const CSI_MODEL_REGISTRY = [
   {
     name: "OutreachRecord",
@@ -256,5 +257,11 @@ export const CSI_MODEL_REGISTRY = [
     name: "OwnerRepNudge",
     model: getOwnerRepNudgeModel,
     indexes: OWNER_REP_NUDGE_INDEXES,
+  },
+  // S9-READS (addendum §6.4): per-rep ET day documents.
+  {
+    name: "OutreachRepDay",
+    model: getOutreachRepDayModel,
+    indexes: OUTREACH_REP_DAY_INDEXES,
   },
 ] as const;

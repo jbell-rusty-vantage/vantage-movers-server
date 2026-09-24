@@ -23,6 +23,9 @@ import { commandAttachment } from "../services/salesIntelligence/attachment/comm
 import { commandOutreach } from "../services/salesIntelligence/followups/commands";
 import { listReviewItems, readOutreach, readOutreachByLead, reviewItemsQuerySchema } from "../services/salesIntelligence/outreach/reads";
 import { attentionQuerySchema, readAttention } from "../services/salesIntelligence/outreach/attention";
+import { closedHistoryQuerySchema, readClosedHistory } from "../services/salesIntelligence/outreach/closedHistory";
+import { overviewQuerySchema, readOverview } from "../services/salesIntelligence/overview/read";
+import { commandRebuildOverviewDay } from "../services/salesIntelligence/overview/commands";
 import { listRepLinks, readRepLink, repListQuerySchema } from "../services/salesIntelligence/repIdentity/reads";
 import { createRepLink, proposeRepLinks, reviewRepLink } from "../services/salesIntelligence/repIdentity/commands";
 import { csiRepCreateSchema, csiRepProposeSchema, csiRepCommandSchema } from "../validation/v1/salesIntelligence";
@@ -86,6 +89,9 @@ export type SalesIntelligenceAdminRouteDeps = {
   conversations?: typeof readOwnerConversations;
   transcript?: typeof readOwnerTranscript;
   conversationMedia?: typeof openOwnerConversationMedia;
+  closedHistory?: typeof readClosedHistory;
+  overview?: typeof readOverview;
+  rebuildOverviewDay?: typeof commandRebuildOverviewDay;
 };
 
 const timelineQuerySchema = z
@@ -315,6 +321,27 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
   });
   router.get(`${CSI_ADMIN_PREFIX}/attention`, async (req, res) => {
     try { guard(req); const query = attentionQuerySchema.parse(req.query); await connect(); return res.json({ ok: true, ...(await readAttention(query)) }); }
+    catch (error) { return fail(req, res, error); }
+  });
+  // S7-CLOSED (addendum §2.2a, E27): closed Outreach beyond the snapshot's 90 days. Registered before `/outreach/:id`.
+  // S8-REP: pass `{ agent_id: actor.agent_id }` as `scope` for a rep actor; the Owner reads unscoped.
+  router.get(`${CSI_ADMIN_PREFIX}/outreach/closed-history`, async (req, res) => {
+    try { guard(req); const query = closedHistoryQuerySchema.parse(req.query); await connect();
+      return res.json({ ok: true, ...(await (deps.closedHistory ?? readClosedHistory)(query, { scope: null })) }); }
+    catch (error) { return fail(req, res, error); }
+  });
+  // S9-READS (addendum §6–§7): the Overview tab. 404 FEATURE_DISABLED until `SALES_INTELLIGENCE_OVERVIEW` is on.
+  // S8-REP: pass `{ agent_id: actor.agent_id }` as `scope` for a rep actor (forced scope + team medians).
+  router.get(`${CSI_ADMIN_PREFIX}/overview`, async (req, res) => {
+    try { guard(req); if (!flag("OVERVIEW")) throw new CsiError("FEATURE_DISABLED");
+      const query = overviewQuerySchema.parse(req.query); await connect();
+      return res.json({ ok: true, data: await (deps.overview ?? readOverview)(query, { scope: null }) }); }
+    catch (error) { return fail(req, res, error); }
+  });
+  router.post(`${CSI_ADMIN_PREFIX}/overview/rebuild-day`, async (req, res) => {
+    try { const actor = guard(req); if (!flag("OVERVIEW")) throw new CsiError("FEATURE_DISABLED");
+      const idempotency_key = req.header("idempotency-key")?.trim(); if (!idempotency_key) throw new CsiError("INVALID_INPUT");
+      await connect(); return res.json({ ok: true, data: await (deps.rebuildOverviewDay ?? commandRebuildOverviewDay)({ actor, idempotency_key, command: req.body }) }); }
     catch (error) { return fail(req, res, error); }
   });
   // Move assessment §8.3–8.4 / MA-01 §10: GET-only presentation reads behind the master flag. No model calls, no writes.

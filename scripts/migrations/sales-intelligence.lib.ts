@@ -11,6 +11,8 @@ import { GRANOT_OBSERVATION_INDEXES } from "../../src/models/GranotObservation";
 import { OUTREACH_BAND_TRANSITION_INDEXES } from "../../src/models/salesIntelligence/outreach";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
+/** S9-READS (addendum §6.4): Overview lead spend and outcomes read Leads by arrival with their current rep. */
+const OVERVIEW_LEAD_INDEX = (prefix: string): CsiIndex => ({ name: `${prefix}_overview_timestamp_receiver`, key: { timestamp: 1, receiver_agent: 1 } });
 export type AccountMapping = {
   conversation_id: string;
   provider_account_id: string;
@@ -30,8 +32,8 @@ export function csiIndexInventory(): Array<{
     { collection: "outreach_band_transitions", indexes: OUTREACH_BAND_TRANSITION_INDEXES },
     // CSI-owned additions only; the Lead collections' own indexes are not
     // managed here (14 §3 attachment reverse lookup).
-    { collection: "form_leads", indexes: FORM_LEAD_ATTACHMENT_INDEXES },
-    { collection: "call_leads", indexes: CALL_LEAD_ATTACHMENT_INDEXES },
+    { collection: "form_leads", indexes: [...FORM_LEAD_ATTACHMENT_INDEXES, OVERVIEW_LEAD_INDEX("form_lead")] },
+    { collection: "call_leads", indexes: [...CALL_LEAD_ATTACHMENT_INDEXES, OVERVIEW_LEAD_INDEX("call_lead")] },
     {
       collection: "entity_changes",
       indexes: [

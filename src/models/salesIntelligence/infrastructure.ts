@@ -110,6 +110,8 @@ export const SALES_INTELLIGENCE_AUDIT_EVENT_INDEXES = [
   unique("csi_audit_semantic_unique", { semantic_key: 1 }),
   index("csi_audit_stream", { recorded_at: 1, _id: 1 }),
   index("csi_audit_subject", { subject_key: 1, happened_at: 1 }),
+  // S9-READS (addendum §6.2 flow): "moved to Quoted" reads `lead_progress_updated` rows in the period.
+  index("csi_audit_kind_happened", { event_kind: 1, happened_at: 1 }),
 ];
 export const SalesIntelligenceAuditEventSchema = new Schema(
   {

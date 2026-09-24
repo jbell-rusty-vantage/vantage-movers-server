@@ -560,6 +560,12 @@ export async function readCaptureHealthFacts(input: {
   };
 }
 
+/** S9-READS: the `capture_health.status` headline alone (the Overview "now" block), from the same facts and rules as the coverage read. */
+export async function readCaptureHealthStatus(now: Date, staffing: Staffing): Promise<CaptureHealth["status"]> {
+  const { reconcile, sweep } = await readCallLogRows();
+  return composeCaptureHealth(await readCaptureHealthFacts({ now, staffing, reconcile, sweep })).status;
+}
+
 export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
   const capture = await readCaptureCoverage();
   const settings = await readCsiSettings();

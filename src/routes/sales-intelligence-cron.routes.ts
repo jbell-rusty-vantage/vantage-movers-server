@@ -36,6 +36,7 @@ import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
+import { runOverviewRefreshOnce } from "../services/salesIntelligence/overview/repDays";
 
 /**
  * Sales Intelligence cron routes (03 §11). Mounted before the `/api/v1`
@@ -103,6 +104,8 @@ export type SalesIntelligenceCronRouteDeps = {
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
   /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
   recordDeployment?: () => Promise<unknown>;
+  /** S9-READS: `outreach_rep_days` refresh under `SALES_INTELLIGENCE_OVERVIEW` (own lease). */
+  runOverviewRefresh?: typeof runOverviewRefreshOnce;
 };
 
 export const CSI_CRON_PATHS = {
@@ -121,6 +124,7 @@ export const CSI_CRON_PATHS = {
   outreachEnsure: "/api/cron/sales-intelligence-outreach-ensure",
   attentionPublish: "/api/cron/sales-intelligence-attention-publish",
   webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
+  overviewRefresh: "/api/cron/sales-intelligence-overview-refresh",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -383,6 +387,15 @@ export function createSalesIntelligenceCronRouter(
     if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try { await connect(); return res.json({ ok: true, ...(await (deps.runAttentionPublish ?? runAttentionPublishOnce)()) }); }
     catch { return res.status(500).json({ ok: false, error: "Attention publish failed" }); }
+  });
+  // S9-READS (addendum §6.4): today's (and until 06:00 ET yesterday's) per-rep day documents; a no-op with the flag off.
+  router.all(CSI_CRON_PATHS.overviewRefresh, requireCronAuth, async (_req, res) => {
+    if (!flag("OVERVIEW")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await (deps.runOverviewRefresh ?? runOverviewRefreshOnce)();
+      return res.json({ ok: true, ...(summary.skipped ? { skipped: true, reason: summary.reason } : { skipped: false, summary }) });
+    } catch { return res.status(500).json({ ok: false, error: "Overview refresh failed" }); }
   });
   router.all(CSI_CRON_PATHS.nudgeRepair, requireCronAuth, async (_req, res) => {
     if (!flag("ENABLED") || !flag("NUDGE_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });

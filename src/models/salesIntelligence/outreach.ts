@@ -34,6 +34,10 @@ export const OUTREACH_RECORD_INDEXES = [
   index("outreach_agent_state", { responsible_agent_id: 1, state: 1 }),
   index("outreach_number", { primary_contact_number_id: 1 }),
   index("outreach_updated", { updatedAt: 1, _id: 1 }),
+  // S7-CLOSED (addendum §2.2a): Closed history keyset `(closed_at, _id)` newest first.
+  index("outreach_state_closed", { state: 1, closed_at: -1, _id: -1 }),
+  // S9-READS (addendum §6.2): speed to lead and flow "new Outreach" read records by `trigger_at` in the period.
+  index("outreach_trigger", { trigger_at: 1 }),
 ];
 export const OutreachRecordSchema = new Schema(
   {
@@ -258,6 +262,9 @@ export const OUTREACH_FOLLOWUP_INDEXES = [
     due_at: 1,
   }),
   index("followup_due", { status: 1, due_at: 1 }),
+  // S9-READS (addendum §6.4): callbacks kept (due in the period, any status) and missed calls returned (first missed in the period).
+  index("followup_kind_due", { kind: 1, due_at: 1, status: 1 }),
+  index("followup_first_missed", { first_missed_at: 1 }),
   unique(
     "followup_open_missed_episode_unique",
     { outreach_record_id: 1, missed_episode_key: 1 },
