@@ -257,3 +257,12 @@ test("C20 pickOwnedSubscription prefers a live row, then the latest expiry", () 
   assert.equal(pickOwnedSubscription(rows.slice(0, 1))?.subscriptionId, "deleted-000001");
   assert.equal(pickOwnedSubscription([]), null);
 });
+
+test("S5c-HEALTH: the owned subscription is found when RingCentral resolved the account id in its filter", async () => {
+  const { pickOwnedSubscription, isAllDirectionFilter } = await import("./ownerCoverage.js");
+  assert.equal(isAllDirectionFilter("/restapi/v1.0/account/62948571023/telephony/sessions"), true);
+  assert.equal(isAllDirectionFilter("/restapi/v1.0/account/~/telephony/sessions"), true);
+  assert.equal(isAllDirectionFilter("/restapi/v1.0/account/~/telephony/sessions?direction=Inbound"), false);
+  const row = { subscriptionId: "sub-abcdef123456", status: "Active", expirationTime: new Date("2036-09-21T03:24:09Z"), eventFilters: ["/restapi/v1.0/account/62948571023/telephony/sessions"] };
+  assert.equal(pickOwnedSubscription([row])?.subscriptionId, "sub-abcdef123456");
+});

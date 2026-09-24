@@ -319,8 +319,13 @@ const isTerminalStatus = (status: string | null | undefined) =>
   TERMINAL_SUBSCRIPTION_STATUSES.has(status?.trim().toLowerCase() ?? "");
 
 /** The owned all-direction subscription this read reports on: live rows first, then the latest expiry. */
+/**
+ * RingCentral stores the filter with the account id resolved (`/account/62948571023/…`), not `~`, so the
+ * all-direction filter is matched with the account segment normalized (production 2026-09-24).
+ */
+export const isAllDirectionFilter = (filter: string) => filter.trim().replace(/^\/restapi\/v1\.0\/account\/[^/]+\//, "/restapi/v1.0/account/~/") === ALL_DIRECTION_FILTER;
 export function pickOwnedSubscription(rows: OwnedSubscriptionRow[]): OwnedSubscriptionRow | null {
-  const candidates = rows.filter((row) => (row.eventFilters ?? []).includes(ALL_DIRECTION_FILTER));
+  const candidates = rows.filter((row) => (row.eventFilters ?? []).some(isAllDirectionFilter));
   const expiry = (row: OwnedSubscriptionRow) => row.expirationTime?.getTime() ?? Number.POSITIVE_INFINITY;
   return [...candidates].sort(
     (a, b) => Number(isTerminalStatus(a.status)) - Number(isTerminalStatus(b.status)) || expiry(b) - expiry(a),
