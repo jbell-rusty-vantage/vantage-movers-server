@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { actionsOverBound, ACTION_READ_LIMIT, fingerprintOutreachInputs, legacyOutreachFingerprint, type FingerprintOutreachAction, type FingerprintOutreachRecord } from "./sources";
+import { actionsOverBound, ACTION_READ_LIMIT, fingerprintOutreachInputs, type FingerprintOutreachAction, type FingerprintOutreachRecord } from "./sources";
 import { payloadHash } from "../transactions";
 import { jsonValue } from "../outreach/store";
 
@@ -127,8 +127,3 @@ test("V-AC N3: the 200-action bound counts only fingerprinted origins; the read 
   assert.equal(actionsOverBound(many(ACTION_READ_LIMIT + 1, "system_default")), true, "the read itself is still bounded");
 });
 
-test("V-AC N3: the one-time legacy hash never matches a Number over the old 200-action bound", () => {
-  const actions = Array.from({ length: 201 }, (_, i) => ({ ...promise({ _id: `a${i}`, origin: "system_default" }) }));
-  assert.equal(legacyOutreachFingerprint({ fingerprint_base: base, outreach: before.outreach, actions }), "legacy:over_action_bound");
-  assert.match(legacyOutreachFingerprint({ fingerprint_base: base, outreach: before.outreach, actions: actions.slice(0, 200) }), /^[a-f0-9]{64}$/);
-});

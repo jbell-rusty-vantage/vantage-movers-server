@@ -85,26 +85,6 @@ export function fingerprintOutreachInputs(outreach: readonly FingerprintOutreach
   };
 }
 
-/**
- * ONE-TIME MIGRATION (AC1, decision T4-D4; remove after one full scheduling lap in production).
- * The whole Number fingerprint exactly as `01bcf18` computed it, before the Outreach split: the same
- * `fingerprint_base` with the old Outreach inputs (record state, closure, assignment, every follow-up).
- * `scheduleNumberIntelligence` uses it only to recognise a stored value written by the old rule for a
- * Number that has not changed since, and re-stamps it instead of re-running analysis.
- */
-export function legacyOutreachFingerprint(sources: {
-  fingerprint_base: object;
-  outreach: ReadonlyArray<FingerprintOutreachRecord & { responsible_agent_id?: unknown; assignment?: unknown }>;
-  actions: ReadonlyArray<FingerprintOutreachAction & { promised_by_agent_id?: unknown; source_interaction_id?: unknown }>;
-}) {
-  // 01bcf18 refused more than 200 actions of any origin (EVIDENCE_LIMIT_REACHED), so it never stored a value for such a Number.
-  if (sources.actions.length > 200) return "legacy:over_action_bound";
-  return payloadHash(jsonValue({ ...sources.fingerprint_base,
-    outreach: sources.outreach.map(r => ({ id: String(r._id), subject: r.subject, state: r.state === "waiting_on_customer" ? "open" : r.state,
-      closed_reason: r.closed_reason, owner: r.responsible_agent_id, assignment: r.assignment })),
-    actions: sources.actions.map(a => ({ id: String(a._id), kind: a.kind, description: a.description, status: a.status, due: a.due_at,
-      owner: a.responsible_agent_id, promised: a.promised_by_agent_id, source: a.source_interaction_id, origin: a.origin })) }));
-}
 
 /** V-AC N3: at most 200 fingerprinted actions (unchanged number), and at most `ACTION_READ_LIMIT` read in total. */
 export const FINGERPRINT_ACTION_LIMIT = 200;
@@ -123,8 +103,8 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
   const outreach = await getOutreachRecordModel().find({ primary_contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
   // V-AC N3: the 200 bound counts only the actions that enter the fingerprint (allow-listed origins), so
   // system_default missed episodes, retries and defaults cannot push a Number into the paused overflow
-  // intent. The read itself stays bounded (`ACTION_READ_LIMIT`); every action is read for the one-time
-  // legacy re-stamp (`legacyOutreachFingerprint`).
+  // intent. The read itself stays bounded (`ACTION_READ_LIMIT`); every action is read, so the S10 quiet-state
+  // verifier (`scripts/dev_ops/lib/legacy-outreach-fingerprint.ts`) can still recompute the 01bcf18 rule.
   const actions = await getOutreachFollowupModel().find({ outreach_record_id: { $in: outreach.map(r => r._id) } }).sort({ _id: 1 }).limit(ACTION_READ_LIMIT + 1).session(session).lean();
   const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
   const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: { $in: [`number:${numberId}`, ...conversations.map(c => `conversation:${c._id}`), ...outreach.map(r => subjectKey(r.subject))] } }).sort({ _id: 1 }).limit(201).session(session).lean();

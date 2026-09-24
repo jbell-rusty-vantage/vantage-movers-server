@@ -31,13 +31,14 @@ import { getContactNumberModel } from "../../src/models/ContactNumber";
 import { getSalesIntelligenceJobModel } from "../../src/models/SalesIntelligenceJob";
 import { getIntelligenceRunModel } from "../../src/models/IntelligenceRun";
 import { getIntelligenceSubmissionModel } from "../../src/models/IntelligenceSubmission";
-import { intelligenceSources, legacyOutreachFingerprint } from "../../src/services/salesIntelligence/analysis/sources";
+import { intelligenceSources } from "../../src/services/salesIntelligence/analysis/sources";
+import { legacyOutreachFingerprint } from "./lib/legacy-outreach-fingerprint";
 import { CsiError } from "../../src/services/salesIntelligence/auth";
 import { assertProductionWriterMatchesDeployment } from "./lib/production-writer-guard";
 
 type Sources = Awaited<ReturnType<typeof intelligenceSources>>;
 
-/** The 01bcf18 rule, shared with the scheduler's one-time re-stamp branch (`analysis/sources.ts`). */
+/** The 01bcf18 rule (the scheduler re-stamp that shared it was removed after `rewrite = 0`, Team 3 2026-09-24). */
 export const legacyFingerprint = (sources: Sources) => legacyOutreachFingerprint(sources);
 
 export type RefingerprintOutcome =

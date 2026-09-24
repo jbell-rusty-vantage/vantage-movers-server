@@ -61,7 +61,7 @@ test("AC1 K3/K4 fingerprint split on the replica", { skip: process.env.CSI_REPLI
       const legacy = await withTransaction(async s => legacyFingerprint(await intelligenceSources(numberId, s)));
       await Numbers.updateOne({ _id: numberId }, { $set: { "intelligence_schedule.fingerprint": legacy } });
     }
-    // A legacy-settled Number is re-stamped by the scheduler (T4-D4); the K4 script cases inspect it before any scheduling pass.
+    // The K4 script cases inspect a legacy-settled Number before any scheduling pass (the T4-D4 scheduler re-stamp was removed by Team 3, rewrite = 0).
     if (rule === "new") assert.equal(await withTransaction(s => scheduleNumberIntelligence(numberId, s)), null, "settled: the stored fingerprint matches");
     return jobId;
   }
@@ -184,64 +184,6 @@ test("AC1 K3/K4 fingerprint split on the replica", { skip: process.env.CSI_REPLI
     assert.equal(await analysisJobs(), before + 1);
   });
 
-  await t.test("T4-D4 one-time migration: the scheduler re-stamps a pre-split value instead of re-running", async () => {
-    const stored = async (id: unknown) => (await Numbers.findById(id).lean())!;
-    const numberJobs = (id: unknown) => Jobs.countDocuments({ subject_key: `number:${id}`, dedupe_key: { $regex: "^csi:number-analysis:" } });
-    // a. Settled under the old rule (no change since): re-stamped with the new hash, no job, revision untouched.
-    const a = await fixture({ transcript: true });
-    await settle(String(a.number._id), "legacy");
-    const legacyA = (await stored(a.number._id)).intelligence_schedule!.fingerprint, revisionA = (await stored(a.number._id)).revision;
-    const newA = (await withTransaction(s => intelligenceSources(String(a.number._id), s))).fingerprint;
-    assert.notEqual(legacyA, newA);
-    const jobs0 = await numberJobs(a.number._id);
-    assert.equal(await withTransaction(s => scheduleNumberIntelligence(String(a.number._id), s)), null, "no run");
-    assert.equal((await stored(a.number._id)).intelligence_schedule!.fingerprint, newA, "re-stamped with the split rule");
-    assert.equal((await stored(a.number._id)).revision, revisionA, "the Number revision is not bumped");
-    assert.equal(await numberJobs(a.number._id), jobs0);
-    assert.equal(await withTransaction(s => scheduleNumberIntelligence(String(a.number._id), s)), null, "idempotent: the next pass is a plain match");
-    assert.equal(await numberJobs(a.number._id), jobs0);
-    // b. Settled under the old rule, then a real change (a new call): scheduled, exactly as the old build would.
-    const b = await fixture({ transcript: true });
-    await settle(String(b.number._id), "legacy");
-    await getCallInteractionModel().create({ provider_account_id: "synthetic", telephony_session_id: `t4c-d4-b-${b.number._id}`, identity_basis: "telephony_session_id",
-      contact_number_id: b.number._id, direction: "Inbound", started_at: new Date("2026-09-20T15:00:00Z"), first_observed_at: new Date(), last_observed_at: new Date(), terminal: true, parties: [], recordings: [] });
-    const jobB = await withTransaction(s => scheduleNumberIntelligence(String(b.number._id), s));
-    assert.ok(jobB, "a real change still runs");
-    assert.equal(await numberJobs(b.number._id), 2, "the settle job and the real-change run");
-    // c. The worker retired the scheduled run because its fingerprint moved (eligibility_changed): still rescheduled.
-    const c = await fixture({ transcript: true });
-    const jobC = await settle(String(c.number._id), "legacy");
-    await Jobs.updateOne({ _id: jobC }, { $set: { result: { reason: "eligibility_changed" } } });
-    assert.ok(await withTransaction(s => scheduleNumberIntelligence(String(c.number._id), s)), "a retired run is rescheduled, never re-stamped away");
-    assert.equal(await numberJobs(c.number._id), 2, "the retired job and its successor");
-    // d. A concurrent writer bumped the Number revision after the old build scheduled it: still re-stamped, no job.
-    const d = await fixture({ transcript: true });
-    await settle(String(d.number._id), "legacy");
-    await Numbers.updateOne({ _id: d.number._id }, { $inc: { revision: 1 } });
-    assert.equal(await withTransaction(s => scheduleNumberIntelligence(String(d.number._id), s)), null);
-    assert.equal(await numberJobs(d.number._id), 1, "only the settle job");
-    assert.equal((await stored(d.number._id)).intelligence_schedule!.fingerprint, (await withTransaction(s => intelligenceSources(String(d.number._id), s))).fingerprint);
-    // e. Two scheduling passes racing on one legacy-stamped Number: both return null, one re-stamp, no job.
-    const e = await fixture({ transcript: true });
-    await settle(String(e.number._id), "legacy");
-    const raced = await Promise.all([withTransaction(s => scheduleNumberIntelligence(String(e.number._id), s)), withTransaction(s => scheduleNumberIntelligence(String(e.number._id), s))]);
-    assert.deepEqual(raced, [null, null]);
-    assert.equal(await numberJobs(e.number._id), 1, "only the settle job");
-    // f. The minute scan over legacy-stamped Numbers named by the audit stream enqueues nothing.
-    const f = await fixture({ transcript: true });
-    await settle(String(f.number._id), "legacy");
-    await withTransaction(async s => { const context = workerContext(s, "t4c-d4"), row = await recordForUpdate(String(f.record!._id), context);
-      await auditChange(context, "outreach", subjectKey(row.subject), row, row.toObject(), row.toObject(), "t4c_nominate"); });
-    const fJobs = () => Jobs.countDocuments({ subject_key: `number:${f.number._id}`, dedupe_key: { $regex: "^csi:number-analysis:" } });
-    const fBefore = await fJobs();
-    const scan = await scanIntelligenceChanges();
-    assert.equal(scan.status, "scanned");
-    assert.equal(await fJobs(), fBefore, "the scan re-stamped instead of enqueuing");
-    assert.equal((await stored(f.number._id)).intelligence_schedule!.fingerprint, (await withTransaction(s => intelligenceSources(String(f.number._id), s))).fingerprint);
-    // The verifier: nothing settled is left to rewrite for these Numbers.
-    const verify = await refingerprintNumbers({ apply: false, limit: 1000 });
-    console.log(JSON.stringify({ t4d4_verifier: verify.counts }));
-  });
   await t.test("V-AC N3: system_default actions no longer push a Number into the paused overflow intent", async () => {
     const f = await fixture({ transcript: true });
     await Actions.insertMany(Array.from({ length: 250 }, (_, i) => ({ outreach_record_id: f.record!._id, commitment_key: `t4c-n3:${f.record!._id}:${i}`, kind: "call",
