@@ -14,7 +14,7 @@ import { getIntelligenceSubmissionModel } from "../../../models/IntelligenceSubm
 import { MongoLeaseStore, activeTokenFilter } from "../../durableWork/leases";
 import { enqueueCsiJob } from "../jobs";
 import { CsiError } from "../auth";
-import { intelligenceSources } from "./sources";
+import { intelligenceSources, legacyOutreachFingerprint } from "./sources";
 
 /** Existing Outreach intents are change signals, coalesced into one number-owned analysis job. */
 export async function scheduleNumberIntelligence(numberId: string, session: ClientSession) {
@@ -39,6 +39,19 @@ export async function scheduleNumberIntelligence(numberId: string, session: Clie
       if (receipt && await getSalesIntelligenceJobModel().exists({ _id: receipt.application_job_id, status: { $nin: ["completed", "dead_letter"] } }).session(session)) return String(active!._id);
     }
     if (prior.fingerprint === sources.fingerprint) return null;
+    // ONE-TIME MIGRATION (AC1 fingerprint split, decision T4-D4; remove after one full scheduling lap in
+    // production). A value stored by the pre-split rule for a Number that has not changed since would
+    // otherwise re-run analysis once per Number: re-stamp it with the split rule and enqueue nothing. A
+    // run the worker retired because its fingerprint moved (`eligibility_changed`) still reschedules, and
+    // a Number with a real change (stored ≠ the old rule's hash of its current state) still runs.
+    if (prior.fingerprint === legacyOutreachFingerprint(sources)
+      && (active?.result as { reason?: unknown } | null | undefined)?.reason !== "eligibility_changed") {
+      const restamped = await getContactNumberModel().updateOne({ _id: numberId, revision: sources.number.revision,
+        "intelligence_schedule.fingerprint": prior.fingerprint, "intelligence_schedule.job_id": prior.job_id },
+      { $set: { "intelligence_schedule.fingerprint": sources.fingerprint } }, { session });
+      if (restamped.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
+      return null;
+    }
   }
   const generation = (prior?.generation ?? 0) + 1;
   const job = await enqueueCsiJob({ stage: "number_refresh", subject_key: `number:${numberId}`,

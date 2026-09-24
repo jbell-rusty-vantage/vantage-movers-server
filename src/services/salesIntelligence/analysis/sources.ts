@@ -21,6 +21,89 @@ import { payloadHash } from "../transactions";
 import { decideAnalysisEligibility, loadEligibilityInputs } from "../conversations/eligibility";
 import { intelligenceFindingSchema } from "../../../validation/intelligence/intelligenceEnvelope.validation";
 
+/**
+ * AC1 (Attention and Case File spec §3.1, F2): the Outreach part of the Number fingerprint.
+ *
+ * The fingerprint answers "has anything happened that a model should read?". New evidence and
+ * human intent count; the system's own deterministic writes do not. Every rule below is an
+ * ALLOW-list, so an origin, closure or completion basis added later (`first_attempts`,
+ * `crm_receiver`, `ringcentral_answered`, `granot_booked`, ...) stays out until it is named here.
+ *
+ * - Record `state` is out: `unworked↔open↔waiting` follow from calls and progress already counted.
+ * - `closed_reason` only for an Owner or official closure (`crm_disposition` is out).
+ * - Assignment only when its origin is `owner`, normalised to `{ owner: responsible_agent_id }`.
+ * - Follow-ups only for origins owner / rep_promise / customer_request / customer_wait
+ *   (`system_default` is always out: missed episodes, progress defaults, retries). For those only
+ *   `{id, kind, description, due, origin, responsible (Owner-assigned only), status}` is hashed, and
+ *   `status` only when an Owner, customer or rep confirmation completed it or the Owner cancelled it.
+ *   A completion caused by a call (`call_attempt`, `vantage_evidence`) or a closure never registers.
+ *
+ * Pure and deterministic: the result is JSON data that `intelligenceSources` hashes.
+ */
+export const FINGERPRINT_CLOSURE_ORIGINS: readonly string[] = ["owner", "official"];
+export const FINGERPRINT_ASSIGNMENT_ORIGINS: readonly string[] = ["owner"];
+export const FINGERPRINT_ACTION_ORIGINS: readonly string[] = ["owner", "rep_promise", "customer_request", "customer_wait"];
+export const FINGERPRINT_COMPLETION_BASES: readonly string[] = ["owner", "customer_confirmation", "rep_confirmation"];
+
+type IdLike = { toString(): string } | string;
+export type FingerprintOutreachRecord = {
+  _id: IdLike; subject: unknown; state?: string | null;
+  closed_reason?: string | null; closure_origin?: string | null;
+  responsible_agent_id?: IdLike | null; assignment?: { origin?: string | null } | null;
+};
+export type FingerprintOutreachAction = {
+  _id: IdLike; outreach_record_id?: IdLike | null; kind?: string | null; description?: string | null; status?: string | null;
+  due_at?: Date | null; origin?: string | null; responsible_agent_id?: IdLike | null; assignment?: { origin?: string | null } | null;
+  completion_basis?: string | null; cancel_reason?: string | null; owner_instruction_ids?: readonly unknown[] | null;
+};
+
+/**
+ * An Owner `cancel_followup` records an Owner instruction on the action. A closure cancel
+ * (`closeRecord`) writes the closure reason as `cancel_reason`, so it is told apart even when
+ * the Owner edited the action earlier.
+ */
+function ownerCancelled(action: FingerprintOutreachAction, record: FingerprintOutreachRecord | undefined) {
+  if (action.status !== "cancelled" || !action.owner_instruction_ids?.length) return false;
+  return !(record?.state === "closed" && record.closed_reason != null && action.cancel_reason === record.closed_reason);
+}
+
+const allowed = (list: readonly string[], value: string | null | undefined) => value != null && list.includes(value);
+
+export function fingerprintOutreachInputs(outreach: readonly FingerprintOutreachRecord[], actions: readonly FingerprintOutreachAction[]) {
+  const records = new Map(outreach.map(r => [String(r._id), r]));
+  return {
+    outreach: outreach.map(r => ({ id: String(r._id), subject: r.subject,
+      closure: allowed(FINGERPRINT_CLOSURE_ORIGINS, r.closure_origin) ? { reason: r.closed_reason ?? null, origin: r.closure_origin } : null,
+      assignment: allowed(FINGERPRINT_ASSIGNMENT_ORIGINS, r.assignment?.origin) ? { owner: r.responsible_agent_id ? String(r.responsible_agent_id) : null } : null })),
+    actions: actions.filter(a => allowed(FINGERPRINT_ACTION_ORIGINS, a.origin)).map(a => {
+      const record = a.outreach_record_id ? records.get(String(a.outreach_record_id)) : undefined;
+      const statusCounts = (a.status === "completed" && allowed(FINGERPRINT_COMPLETION_BASES, a.completion_basis)) || ownerCancelled(a, record);
+      return { id: String(a._id), kind: a.kind ?? null, description: a.description ?? null, due: a.due_at ?? null, origin: a.origin,
+        responsible: allowed(FINGERPRINT_ASSIGNMENT_ORIGINS, a.assignment?.origin) ? (a.responsible_agent_id ? String(a.responsible_agent_id) : null) : null,
+        status: statusCounts ? a.status : null };
+    }),
+  };
+}
+
+/**
+ * ONE-TIME MIGRATION (AC1, decision T4-D4; remove after one full scheduling lap in production).
+ * The whole Number fingerprint exactly as `01bcf18` computed it, before the Outreach split: the same
+ * `fingerprint_base` with the old Outreach inputs (record state, closure, assignment, every follow-up).
+ * `scheduleNumberIntelligence` uses it only to recognise a stored value written by the old rule for a
+ * Number that has not changed since, and re-stamps it instead of re-running analysis.
+ */
+export function legacyOutreachFingerprint(sources: {
+  fingerprint_base: object;
+  outreach: ReadonlyArray<FingerprintOutreachRecord & { responsible_agent_id?: unknown; assignment?: unknown }>;
+  actions: ReadonlyArray<FingerprintOutreachAction & { promised_by_agent_id?: unknown; source_interaction_id?: unknown }>;
+}) {
+  return payloadHash(jsonValue({ ...sources.fingerprint_base,
+    outreach: sources.outreach.map(r => ({ id: String(r._id), subject: r.subject, state: r.state === "waiting_on_customer" ? "open" : r.state,
+      closed_reason: r.closed_reason, owner: r.responsible_agent_id, assignment: r.assignment })),
+    actions: sources.actions.map(a => ({ id: String(a._id), kind: a.kind, description: a.description, status: a.status, due: a.due_at,
+      owner: a.responsible_agent_id, promised: a.promised_by_agent_id, source: a.source_interaction_id, origin: a.origin })) }));
+}
+
 /** Bounded source fingerprint deliberately excludes clocks, generic updatedAt and derived analysis. */
 export async function intelligenceSources(numberId: string, session: ClientSession) {
   const number = await getContactNumberModel().findById(numberId).session(session).lean().orFail();
@@ -64,18 +147,17 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
     return payloadHash(jsonValue({ conversation_id: f.conversation_id, claim, review_state: f.review_state,
       evidence: evidence.map(({ snapshot_id: _snapshot, ...source }) => source) }));
   }).sort();
-  const fingerprint = payloadHash(jsonValue({ number: { kind: number.kind, classification: number.classification, eligibility: number.contact_eligibility },
+  const fingerprint_base = { number: { kind: number.kind, classification: number.classification, eligibility: number.contact_eligibility },
     calls: calls.map(c => ({ id: String(c._id), revision: c.projection_revision })),
     transcripts: conversations.map(c => ({ id: String(c._id), version: c.latest_transcript_version, media: c.media_digest_sha256 })), identities, official, bookings, cancellations, assertions,
     edges: edges.map(e => ({ id: String(e._id), revision: e.revision })),
-    outreach: outreach.map(r => ({ id: String(r._id), subject: r.subject, state: r.state === "waiting_on_customer" ? "open" : r.state,
-      closed_reason: r.closed_reason, owner: r.responsible_agent_id, assignment: r.assignment })),
-    actions: actions.map(a => ({ id: String(a._id), kind: a.kind, description: a.description, status: a.status, due: a.due_at,
-      owner: a.responsible_agent_id, promised: a.promised_by_agent_id, source: a.source_interaction_id, origin: a.origin })),
     restrictions: restrictions.map(r => ({ id: String(r._id), channels: r.channels, until: r.until, state: r.state === "expired" ? "active" : r.state })),
     instructions: instructions.map(i => ({ id: String(i.instruction_id), revision: i.revision, state: i.state })),
-  }));
-  return { fingerprint, number, calls, conversations, outreach };
+  };
+  // `payloadHash` hashes canonical JSON, so key order is irrelevant; only the Outreach part is filtered (AC1 §3.1).
+  const fingerprint = payloadHash(jsonValue({ ...fingerprint_base, ...fingerprintOutreachInputs(outreach, actions) }));
+  // `actions` and `fingerprint_base` are returned for `scripts/dev_ops/refingerprint-numbers.ts` only.
+  return { fingerprint, number, calls, conversations, outreach, actions, fingerprint_base };
 }
 
 /** CSI-12 input refs are immutable; eligibility and version are rechecked without calling STT. */
