@@ -125,6 +125,14 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       calls.push("directory");
       return directoryResult;
     },
+    drainCallLogRefresh: async () => {
+      calls.push("call-log-refresh");
+      return { claimed: 0 };
+    },
+    runWebhookSubscription: async () => {
+      calls.push("webhook-subscription");
+      return { address: "https://example.test/api/webhooks/ringcentral", plan: "noop", action: "noop", subscription_id: "s", removed_subscription_id: null, expiration_time: null, warnings: [] };
+    },
   });
   let directoryResult: DirectorySyncSummary = {
     ran_at: "2026-09-17T14:00:00.000Z",
@@ -171,7 +179,22 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(recoveryHeld.status, 200);
       assert.equal((recoveryHeld.body.receipt_recovery as RecoverySummary).skip_reason, "lease_held");
       assert.deepEqual(recoveryHeld.body.capture_projection, { claimed: 2, completed: 1, failed: 1, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "coverage", "message-index", "recovery", "drain:7:1234"], "the scan lease being held never blocks job draining");
+      assert.deepEqual(calls, ["connect", "coverage", "message-index", "recovery", "drain:7:1234", "call-log-refresh"], "the scan lease being held never blocks job draining; CC-08 refresh drains under CAPTURE_WEBHOOK");
+      assert.deepEqual(recoveryHeld.body.call_log_refresh, { claimed: 0 });
+
+      // CC-08: daily subscription maintenance under CAPTURE_WEBHOOK.
+      calls.length = 0;
+      const subscription = await call(CSI_CRON_PATHS.webhookSubscription, auth);
+      assert.equal(subscription.body.skipped, false);
+      assert.equal((subscription.body.summary as { action: string }).action, "noop");
+      assert.deepEqual(calls, ["connect", "webhook-subscription"]);
+      calls.length = 0;
+      flags.CAPTURE_WEBHOOK = false;
+      assert.deepEqual((await call(CSI_CRON_PATHS.webhookSubscription, auth)).body, { ok: true, skipped: true, reason: "disabled" });
+      assert.deepEqual(calls, []);
+      flags.CAPTURE_WEBHOOK = true;
+      calls.length = 0;
+      await call(CSI_CRON_PATHS.jobRecovery, auth);
       recoveryResult = recoverySummary({ scanned: 3, created: 1, existing: 2, watermark_after: "2026-09-17T13:59:55.000Z" });
       const recovered = await call(CSI_CRON_PATHS.jobRecovery, auth);
       assert.equal((recovered.body.receipt_recovery as RecoverySummary).created, 1);
@@ -253,6 +276,7 @@ test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a h
   assert.equal(schedules.get(CSI_CRON_PATHS.directorySync), "20 5 * * *", "CSI-04 directory sync is registered and handled by the same router");
   assert.equal(schedules.get(CSI_CRON_PATHS.backfillStep), "*/15 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.retention), "30 4 * * *");
+  assert.equal(schedules.get(CSI_CRON_PATHS.webhookSubscription), "15 6 * * *", "CC-08 daily subscription renewal");
   assert.equal(schedules.get("/api/cron/ringcentral-call-log-sync"), "*/30 * * * *", "qualified-call sync schedule unchanged");
   const triggers = manifest.functions["api/queues/sales-intelligence-consumer.ts"]?.experimentalTriggers;
   assert.ok(triggers, "consumer function trigger registered");

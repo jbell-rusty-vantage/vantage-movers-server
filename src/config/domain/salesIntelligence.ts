@@ -89,6 +89,8 @@ export const CSI_JOB_STAGES = [
   "nudge_repair",
   // MA-02: independent Move assessment step (one subject-level model call per input fingerprint).
   "move_assessment",
+  // CC-08: targeted Call Log re-read of one telephony session after webhook hang-up.
+  "call_log_refresh",
 ] as const;
 export const CSI_ERROR_CODES = [
   "FEATURE_DISABLED",
@@ -154,6 +156,9 @@ export const CSI_FLAGS = [
   // Final data spec §9 S4: the Owner timeline on the story readers (§5).
   // Off keeps GET /numbers/:id/timeline exactly as before.
   "TIMELINE_V2",
+  // CC-08: the daily webhook-subscription cron may create the all-direction
+  // subscription when none owned exists. Off: it only renews/repairs owned ones.
+  "WEBHOOK_AUTO_CREATE",
 ] as const;
 export function csiFlag(flag: (typeof CSI_FLAGS)[number]): boolean {
   return (
