@@ -168,7 +168,7 @@ test("D2: GET /numbers/:id read count is independent of the number of Outreach r
     });
   }
   assert.deepEqual(counts[1], counts[8], "same reads, same kinds, for 1 and 8 Outreach records");
-  assert.equal(counts[1]!.length, 30, "the header adds no read (29 after S4-NUMBER follow-up; +1 S1-SUGGEST newest-run aggregation, constant in n)");
+  assert.equal(counts[1]!.length, 31, "the header adds no read (29 after S4-NUMBER follow-up; +1 S1-SUGGEST newest-run aggregation; +1 S5c-LIVE live-call $in, constant in n)");
   t.diagnostic(`reads per GET /numbers/:id = ${counts[1]!.length}: ${counts[1]!.join(", ")}`);
 });
 

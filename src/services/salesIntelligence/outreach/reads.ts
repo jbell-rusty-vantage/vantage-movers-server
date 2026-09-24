@@ -14,7 +14,8 @@ import type { SalesIntelligenceReviewItemSchema } from "../../../models/SalesInt
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import type { CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import { ownerRead, readCaptureCoverage } from "../../numberActivity/coverage";
-import { attachedLeadProgressDtoSchema, leadProgressDtoSchema, outreachDtoSchema, reviewItemDtoSchema, restrictionDtoSchema, type AttachedLeadProgressDto, type CoverageDto, type LeadProgressDto } from "../dto";
+import { attachedLeadProgressDtoSchema, leadProgressDtoSchema, outreachDtoSchema, reviewItemDtoSchema, restrictionDtoSchema, LIVE_CALL_WINDOW_MS, type AttachedLeadProgressDto, type CoverageDto, type LeadProgressDto, type LiveCallDto } from "../dto";
+import { CALL_PROJECTION, readVantageSideContext, repClause, toCaseCall } from "../casefile/vantageSide";
 import { resolvePolicy } from "../policy";
 import { certaintyLabel } from "../attachment/suggest";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
@@ -83,7 +84,7 @@ export async function loadAttachedLeadProgressForNumbers(numberIds: readonly str
   if (!refs.length) return out;
   const records = await getOutreachRecordModel().find({ purged_at: null, $or: refs.map(ref => ({ "subject.model": ref.model, "subject.id": ref.id })) }).lean();
   const recordByLead = new Map(records.map(record => [leadKey(String(record.subject.model), record.subject.id), record] as const));
-  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map(), { suggestions: false }), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
+  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map(), { suggestions: false, liveCalls: false }), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
   for (const [numberId, ref] of resolved) out.set(numberId, attachedProgressForLead(ref, recordByLead, side, pending, now));
   return out;
 }
@@ -252,7 +253,34 @@ export type OutreachSideData = {
   latestCalls: Map<string, LatestLite>;
   /** S1-SUGGEST: case-2 inputs for card line 6 (final spec §5.5), batched per page (`suggestion.ts`). */
   suggestions: SuggestionSide;
+  /** S5c-LIVE (G3): the newest live call per primary Number at the page's `now`; absent when the caller built no side data. */
+  liveCalls?: Map<string, LiveCallDto>;
 };
+
+type LiveCallRow = Parameters<typeof toCaseCall>[0] & { contact_number_id: unknown };
+/**
+ * S5c-LIVE (G3): one `$in` read per page over the page's primary Numbers (index
+ * `contact_number_id + started_at`), plus the rep-identity context only when a page has a live call.
+ * A call is live when telephony still reports it (`terminal: false`), it isn't a monitoring leg, an
+ * Internal call or a merged duplicate, and it started in the last 4 h.
+ */
+async function loadLiveCalls(numberIds: readonly mongoose.Types.ObjectId[], now: Date): Promise<Map<string, LiveCallDto>> {
+  if (!numberIds.length) return new Map();
+  const rows = await getCallInteractionModel().find({ contact_number_id: { $in: numberIds }, started_at: { $gte: new Date(+now - LIVE_CALL_WINDOW_MS), $lte: now },
+    terminal: false, merged_into_id: null, monitoring: { $ne: true }, direction: { $ne: "Internal" } })
+    .select(`${CALL_PROJECTION} contact_number_id`).sort({ started_at: -1, _id: -1 }).lean() as unknown as LiveCallRow[];
+  if (!rows.length) return new Map();
+  const calls = rows.map(row => ({ numberId: String(row.contact_number_id), call: toCaseCall(row) }));
+  const ctx = await readVantageSideContext(calls.map(c => c.call), []);
+  const out = new Map<string, LiveCallDto>();
+  for (const { numberId, call } of calls) {
+    if (out.has(numberId)) continue;
+    const rep = repClause(call, ctx);
+    out.set(numberId, { interaction_id: call.id, direction: call.direction, started_at: call.started_at,
+      rep: { kind: rep.kind, agent_id: rep.agent_id, name: rep.name, extension: rep.extension, text: rep.text } });
+  }
+  return out;
+}
 const leadKey = (model: string, id: unknown) => `${model}:${String(id)}`;
 
 /**
@@ -261,7 +289,7 @@ const leadKey = (model: string, id: unknown) => `${model}:${String(id)}`;
  * row, which never finished inside the cron budget at production volume.
  */
 export async function loadOutreachSideData(records: readonly RecordRow[], inputs: ReadonlyMap<string, OutreachInputs>,
-  options: { suggestions?: boolean } = {}): Promise<OutreachSideData> {
+  options: { suggestions?: boolean; now?: Date; liveCalls?: boolean } = {}): Promise<OutreachSideData> {
   const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
   const agentIds = [...new Map(records.flatMap(record => {
     const actions = inputs.get(String(record._id))?.actions ?? [];
@@ -274,7 +302,7 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
   // S1-SUGGEST: needs each record's follow-ups; a caller without `inputs` (the Numbers list) opts out.
   const suggestionsLoad = options.suggestions === false ? Promise.resolve(EMPTY_SUGGESTION_SIDE)
     : loadSuggestionSide(records, record => inputs.get(String(record._id))?.actions ?? []);
-  const [formDocs, callDocs, bookingDocs, latestDocs, suggestions] = await Promise.all([
+  const [formDocs, callDocs, bookingDocs, latestDocs, suggestions, liveCalls] = await Promise.all([
     formIds.length ? db.collection("form_leads").find({ _id: { $in: formIds } }, { projection: FORM_LEAD_PROJECTION }).toArray() : [],
     callIds.length ? db.collection("call_leads").find({ _id: { $in: callIds } }, { projection: CALL_LEAD_PROJECTION }).toArray() : [],
     leadRefs.length ? db.collection("booked_leads").find({ $or: leadRefs.map(ref => ({ lead_model: ref.model, lead_ref: ref.id })) },
@@ -287,6 +315,8 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
       { $group: { _id: "$contact_number_id", id: { $first: "$_id" }, started_at: { $first: "$started_at" }, direction: { $first: "$direction" }, provider_result: { $first: "$provider_result" }, contact_type: { $first: "$contact_type" } } },
     ]) : [],
     suggestionsLoad,
+    // The Numbers list resolves only the display Lead's progress: it never shows `live_call`.
+    options.liveCalls === false ? Promise.resolve(new Map<string, LiveCallDto>()) : loadLiveCalls(numberIds, options.now ?? new Date()),
   ]);
   // `Booked · {agent}` (§3.2): the booking agents join the one agents `$in`, so it runs after the bookings.
   const bookingAgentIds = bookingDocs.flatMap(booking => booking.agent instanceof mongoose.Types.ObjectId ? [booking.agent] : []);
@@ -322,6 +352,7 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
     cancellations,
     latestCalls: new Map(latestDocs.map(call => [String(call._id), { _id: call.id, started_at: call.started_at, direction: call.direction, provider_result: call.provider_result ?? null, contact_type: call.contact_type }])),
     suggestions,
+    liveCalls,
   };
 }
 
@@ -335,7 +366,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
   const inputs = prefetched.inputs ?? await loadOutreachInputs(record, now);
   const { actions, restrictions, number } = inputs;
   const activeRestrictions = restrictions.filter(r => r.state === "active" && (!r.until || r.until > now));
-  const side = prefetched.side ?? await loadOutreachSideData([record], new Map([[String(record._id), inputs]]));
+  const side = prefetched.side ?? await loadOutreachSideData([record], new Map([[String(record._id), inputs]]), { now });
   const agent = (id: unknown) => id ? { id: String(id), name: side.agentNames.get(String(id)) ?? "Unknown Agent" } : null;
   const assignment = (row: Pick<FollowupRow, "responsible_agent_id" | "assignment">) => ({ agent: agent(row.responsible_agent_id), origin: row.assignment?.origin ?? null,
     assigned_at: iso(row.assignment?.assigned_at), evidence_ref: row.assignment?.evidence_id ? String(row.assignment.evidence_id) : null, owner_instruction_id: row.assignment?.instruction_id ? String(row.assignment.instruction_id) : null });
@@ -406,6 +437,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     call_progress: record.call_progress ? { state: record.call_progress.state, started_at: iso(record.call_progress.started_at),
       started_by: record.call_progress.started_by, ended_at: iso(record.call_progress.ended_at), ended_by: record.call_progress.ended_by,
       note: record.call_progress.note } : null,
+    live_call: record.primary_contact_number_id ? side.liveCalls?.get(String(record.primary_contact_number_id)) ?? null : null,
     lead_display: lead ? { name: lead.name ?? null, job_no: lead.job_no ?? null, source_company: lead.source_company_label_snapshot ?? null } : null,
     latest_number_call: latest ? { id: String(latest._id), happened_at: iso(latest.started_at), direction: latest.direction, provider_result: latest.provider_result ?? null, contact_type: latest.contact_type } : null,
     primary_number: number ? { id: String(number._id), e164: number.e164 } : null,
@@ -458,7 +490,7 @@ export async function readOutreach(id: string) {
     readCaptureCoverage(), resolvePolicy(),
     getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean(),
     loadOutreachInputs(record, now), nudgeHistoryPage({ outreach_record_id: id, limit: 20 }), newestCompletedRun(numberId)]);
-  const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]));
+  const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]), { now });
   const outreach = outreachDetailDtoSchema.parse({ ...await toOutreachDto(record, now, coverage, { policy, inputs, side }),
     ...outreachDetailAdditions(record, side, inputs.number, run) });
   return { as_of: now.toISOString(), coverage, data: { outreach, owner_instructions: instructions, nudges } };
@@ -518,7 +550,7 @@ export async function readNumberOutreach(numberId: string, prefetched: { edges?:
       attempts: attempts.filter(a => a.subject_key === subjectKey(record.subject)),
     });
   }
-  const side = await loadOutreachSideData(records, inputs);
+  const side = await loadOutreachSideData(records, inputs, { now });
   // §9.3 header = the Numbers row: the same resolver and mapper over the edges, records, side data and pending set already held.
   const pick = resolveAttachedLead(edges);
   const leadRecords = new Map(records.flatMap(r => r.subject.kind === "lead" ? [[leadKey(String(r.subject.model), r.subject.id), r] as const] : []));

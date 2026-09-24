@@ -463,6 +463,8 @@ export const attentionFilterKeysDtoSchema = z
     move_date: dayString.nullable(),
     outcome: z.enum(ATTENTION_OUTCOMES).nullable(),
     closed_at: date.nullable(),
+    // S5c-LIVE (G3): `outreach.live_call` is set at publish; absent on snapshots published before it.
+    live_call: z.boolean().optional(),
   })
   .strict();
 export type AttentionFilterKeysDto = z.infer<typeof attentionFilterKeysDtoSchema>;
@@ -508,6 +510,31 @@ export const outreachSuggestedNextStepDtoSchema = z
   })
   .strict();
 export type OutreachSuggestedNextStepDto = z.infer<typeof outreachSuggestedNextStepDtoSchema>;
+/**
+ * Reconciliation addendum §3.2 (S5c-LIVE, G3): a call on the record's primary Number that telephony still
+ * reports as ringing or connected (`terminal: false`, not monitoring, not Internal, not merged, started in
+ * the last 4 h), computed at the response's `as_of`. Null otherwise. Independent of the Owner's manual
+ * `call_progress` ("Owner calling"); the row is live when either is set. `rep` is the Vantage-side clause
+ * of the Case File §4.5 (reviewed name, else the extension, else `no_extension`).
+ */
+export const LIVE_CALL_WINDOW_MS = 4 * 3_600_000;
+export const liveCallDtoSchema = z
+  .object({
+    interaction_id: id,
+    direction: z.string(),
+    started_at: date,
+    rep: z
+      .object({
+        kind: z.enum(["reviewed", "unreviewed", "excluded_role", "no_extension"]),
+        agent_id: id.nullable(),
+        name: z.string().nullable(),
+        extension: z.string().nullable(),
+        text: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+export type LiveCallDto = z.infer<typeof liveCallDtoSchema>;
 export const outreachDtoSchema = z
   .object({
     id,
@@ -524,6 +551,8 @@ export const outreachDtoSchema = z
       lead_display: z.object({ name: z.string().nullable(), job_no: z.string().nullable() }).strict().nullable() }).strict().nullable().optional(),
     call_progress: z.object({ state: z.enum(["in_progress", "ended"]), started_at: date, started_by: z.string(),
       ended_at: date.nullable(), ended_by: z.string().nullable(), note: z.string().nullable() }).strict().nullable().optional(),
+    // S5c-LIVE (G3): server-derived "On the call"; optional so snapshots published before it still parse.
+    live_call: liveCallDtoSchema.nullable().optional(),
     // Move assessment §8.1: compact projection with read-time applicability; absent/null reads as Not assessed.
     move_assessment: outreachMoveAssessmentDtoSchema.nullable().optional(),
     // Data spec §3.3 (S1): card facts at the response's `as_of`. Optional so snapshots published

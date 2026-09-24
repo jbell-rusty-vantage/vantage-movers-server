@@ -141,7 +141,8 @@ export function rowMatchesAttentionQuery(row: z.infer<typeof attentionRowDtoSche
 
 /** Filter keys of one published row: the record's (`recordFilterKeys`) plus the derived band, review badge and state. */
 export function attentionFilterKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "derived" | "outreach">, record: RecordFilterKeys): AttentionFilterKeysDto {
-  return { band: row.derived.attention_band ?? null, needs_review: Boolean(row.derived.review_badges?.length), state: row.outreach?.state ?? null, ...record };
+  return { band: row.derived.attention_band ?? null, needs_review: Boolean(row.derived.review_badges?.length), state: row.outreach?.state ?? null, ...record,
+    live_call: Boolean(row.outreach?.live_call) };
 }
 
 const DAY_MS = 86_400_000;
@@ -279,7 +280,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     }
     if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
     if (desk.length) {
-      const side = await loadOutreachSideData(desk.map(item => item.record), inputs);
+      const side = await loadOutreachSideData(desk.map(item => item.record), inputs, { now });
       for (const { record, bundle, inAttention, active, closedKeep } of desk) {
         if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
         const key = subjectKey(record.subject);
@@ -325,7 +326,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     rows.push(attentionRowDtoSchema.parse({ subject_key: review.subject_key, subject, outreach: null, allowed_actions: [], derived,
       sort_keys: { next_action_due: null, lead_received: null, last_human_contact: null, last_lead_progress: null, ...assessmentSortKeys(null), last_call: null, interactions: null }, in_attention: true,
       partition: "active", filter_keys: { band: null, needs_review: true, state: null, agents: [], attachment: subject.kind === "lead" ? "lead" : "none", priority: null,
-        has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null } }));
+        has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null, live_call: false } }));
     published.add(review.subject_key);
   }
   // Team 4 §5.1/§5.2 (flag on): band 1 orders by the promised callbacks it is in for, band 3 by missed-call
