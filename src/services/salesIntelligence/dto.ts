@@ -98,6 +98,33 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
       unresolved_reservations: z.object({ count: nonnegative, estimated_cents: nonnegative }).strict(),
     })
     .strict(),
+  // CC-01/CC-06: Call Log capture completeness, readable without logs.
+  // Quarantined records are retried hourly and never hold the window; the
+  // last sweep says how many provider calls needed correction.
+  call_log_capture: z
+    .object({
+      quarantined_count: nonnegative,
+      oldest_quarantined_at: date.nullable(),
+      sync_mode: z.enum(["off", "shadow", "on"]),
+      last_sweep: z
+        .object({
+          ran_at: date,
+          from: date,
+          to: date,
+          complete: z.boolean(),
+          provider_records: nonnegative,
+          stored_in_latest_version: nonnegative,
+          applied_changes: nonnegative,
+          missing_before: nonnegative,
+          stale_before: nonnegative,
+          provisional_after_horizon: nonnegative,
+          quarantined: nonnegative,
+          consecutive_drift_runs: nonnegative,
+        })
+        .strict()
+        .nullable(),
+    })
+    .strict(),
   mapping_hygiene: z
     .object({
       unmapped_inbound_numbers: nonnegative,
