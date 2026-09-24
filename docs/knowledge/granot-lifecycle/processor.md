@@ -122,6 +122,18 @@ After commit, `finalize` may send one Granot create-if-missing confirmation Lead
 
 Creation never opens a Booking/Release case, writes a Booking or Cancellation, sends email, or invokes RingCentral adoption. Checked-in flags stay processing true, shadow true, Lead writes/creation false. Unit 19 adds no migration, backfill, or index.
 
+## Post-commit Outreach wake-up (AC6-WAKE, 2026-09-23)
+
+Additive and outside every lifecycle transaction; no Decision, gate, desired-state or write above changes. `createGranotObservationProcessor().process` (the drainer's entry point) calls `wakeOutreachAfterGranotApply(result)` **after** `processGranotObservation` returns, that is after its transaction(s) committed:
+
+- Only when `result.target` is a FormLead/CallLead and `SALES_INTELLIGENCE_OUTREACH_ENSURE` is on (the same gate as the minute Outreach scan).
+- Reads the Lead's `EntityChange` rows whose `provenance.observation_id` is this Observation (index `entity_change_entity_applied`, at most 10).
+- For each one, enqueues `outreachChangeNomination(change)` (`salesIntelligence/outreach/worker.ts`): the **same** `outreach_ensure` job and dedupe key (`csi:outreach:entity-change:v2:<change id>`) the minute scan would insert, so the scan later hits the key and creates nothing. Then `publishOutreachWakeup(jobId)` (`numberActivity/webhookFanout.ts`) sends `{ job_id }` to `salesIntelligenceQueueTopic()`; the Sales Intelligence consumer already dispatches stage `outreach_ensure`. The publisher is a no-op in tests and off Vercel (`shouldPublishSalesIntelligenceQueue`).
+- A replay of the same receipt finds the job already there (claimed or completed) and publishes nothing.
+- Failures are logged (`granot_lifecycle.outreach_wakeup_failed`, masked Observation id) and never thrown, so processing and receipt finalization are unaffected. A crash between the commit and the enqueue only waits for the minute scan, which stays the backstop; the Attention publish stays the one-minute walk.
+
+Source: Attention and Case File specification §8.2 (P10). Replica proof: `scripts/dev_ops/test-granot-outreach-wake.ts`.
+
 ## Flags
 
 Ten centralized flags (`src/config/domain/granotLifecycle.ts`): `GRANOT_LIFECYCLE_PROCESSING_ENABLED` and `GRANOT_LIFECYCLE_SHADOW_MODE` default true; the eight effect flags (`LEAD_WRITES`, `LEAD_CREATION`, `BOOKING_CASES`, `BOOKING_COMMANDS`, `RELEASE_CASES`, `RELEASE_COMMANDS`, `REFERRAL_BOOKING`, `EMAIL`) default false. Booking-case path also snapshots `referral_booking_enabled`. Processing false refuses this module unless a test supplies config.

@@ -136,6 +136,44 @@ export async function publishCaptureProjectionWakeup(
 }
 
 /**
+ * AC6-WAKE (Attention and Case File spec §8.2, P10): post-commit wake-up for the
+ * `outreach_ensure` job the Granot lifecycle processor enqueues after it commits a
+ * Lead EntityChange. Same topic and payload as `publishCaptureProjectionWakeup`
+ * (`{ job_id }`; the consumer routes by the job row's stage). A no-op in tests and
+ * off Vercel (`shouldPublishSalesIntelligenceQueue`). Failure is logged and counted,
+ * never thrown: the minute Outreach scan stays the backstop and hits the same dedupe key.
+ */
+export async function publishOutreachWakeup(
+  jobId: string,
+  deps: PublishDependencies = {},
+): Promise<{ published: boolean; error_code: "publish_failed" | null }> {
+  const shouldPublish = deps.shouldPublish ?? shouldPublishSalesIntelligenceQueue;
+  if (!shouldPublish()) return { published: false, error_code: null };
+  try {
+    await (deps.send ?? queueSend)(salesIntelligenceQueueTopic(), { job_id: jobId });
+    return { published: true, error_code: null };
+  } catch (error) {
+    logger.error({
+      msg: "sales_intelligence.queue.outreach_wakeup_failed",
+      jobId,
+      errorName: error instanceof Error ? error.name : "Error",
+    });
+    await (deps.recordEvent ?? recordOperationalEvent)({
+      level: "warn",
+      eventKey: "sales_intelligence.queue.outreach_wakeup_failed",
+      category: "ringcentral",
+      workflow: "sales_intelligence",
+      summary: "Outreach wake-up publish failed after a Granot change; the minute Outreach scan will claim the pending job.",
+      details: { jobId },
+      notificationCandidate: false,
+      reportable: false,
+      piiPolicy: "none",
+    }).catch(() => undefined);
+    return { published: false, error_code: "publish_failed" };
+  }
+}
+
+/**
  * Wake-ups for jobs that became runnable without being newly enqueued.
  *
  * Every durable job needs exactly one thing to start promptly: a message. The
