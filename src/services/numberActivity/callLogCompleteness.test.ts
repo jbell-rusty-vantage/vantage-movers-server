@@ -14,8 +14,8 @@ const failure = (id: string) => ({
   call_log_id: id,
   telephony_session_id: `s-${id}`,
   start_time: at(-600),
-  error_code: "persist_failed" as const,
-  error_name: "StrictModeError",
+  error_code: "projection_failed" as const,
+  error_name: "InteractionPersistenceError",
 });
 
 test("CC-01 quarantine lifecycle: counted, quarantined at 3, held, retried on a doubling backoff, released on success", () => {
@@ -51,8 +51,19 @@ test("CC-01 quarantine lifecycle: counted, quarantined at 3, held, retried on a 
   assert.equal(book.changed, true);
 });
 
+test("CC-01 transient failures (persist_failed, retry_exhausted, provider_request_failed) get 6 attempts before quarantine", () => {
+  const book = new QuarantineBook([], []);
+  const transient = { ...failure("t"), error_code: "persist_failed" as const, error_name: "MongoServerError" };
+  for (let i = 0; i < 5; i += 1) assert.equal(book.recordFailure(transient, at(i * 300)), "counted");
+  assert.equal(book.recordFailure(transient, at(1500)), "newly_quarantined");
+  const entry = book.snapshot().quarantined_records[0]!;
+  assert.equal(entry.failures, 6);
+  assert.equal(entry.next_retry_at.toISOString(), at(1500 + 3600).toISOString(), "the first retry is still 60 minutes out");
+  assert.deepEqual(book.quarantinedIds(), ["t"]);
+});
+
 test("CC-01 quarantine is bounded: the oldest entry is evicted into an overflow range, record failures drop the oldest", () => {
-  const limits = { quarantineAfter: 1, baseDelayMinutes: 60, maxDelayMinutes: 720, maxQuarantined: 2, maxRecordFailures: 2 };
+  const limits = { quarantineAfter: 1, transientQuarantineAfter: 1, baseDelayMinutes: 60, maxDelayMinutes: 720, maxQuarantined: 2, maxRecordFailures: 2 };
   const book = new QuarantineBook([], [], limits);
   book.recordFailure({ ...failure("x"), start_time: at(-100) }, at(1));
   book.recordFailure(failure("y"), at(2));

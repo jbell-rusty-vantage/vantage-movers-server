@@ -37,7 +37,14 @@ export type QuarantinedRecord = {
 export type RecordFailure = { call_log_id: string; failures: number; last_error_code: string };
 
 export type QuarantineLimits = {
+  /** Consecutive failures before quarantine for a deterministic error. */
   quarantineAfter: number;
+  /**
+   * The same for a transient error (`persist_failed`, `retry_exhausted`,
+   * `provider_request_failed`): a write conflict or a provider hiccup
+   * deserves more attempts in the window before it is set aside.
+   */
+  transientQuarantineAfter: number;
   baseDelayMinutes: number;
   maxDelayMinutes: number;
   maxQuarantined: number;
@@ -46,6 +53,7 @@ export type QuarantineLimits = {
 
 export const DEFAULT_QUARANTINE_LIMITS: QuarantineLimits = {
   quarantineAfter: 3,
+  transientQuarantineAfter: 6,
   baseDelayMinutes: 60,
   maxDelayMinutes: 720,
   maxQuarantined: 200,
@@ -61,6 +69,13 @@ export type FailureInput = {
 };
 
 export type FailureOutcome = "counted" | "quarantined" | "newly_quarantined";
+
+const TRANSIENT_CODES: ReadonlySet<string> = new Set(["persist_failed", "retry_exhausted", "provider_request_failed"]);
+
+/** Deterministic failures repeat on every attempt; transient ones may not. */
+export function isTransientQuarantineCode(code: string): boolean {
+  return TRANSIENT_CODES.has(code);
+}
 
 /** Classification written on the quarantine entry (no provider content). */
 export function quarantineErrorCode(error: unknown): QuarantineErrorCode {
@@ -125,6 +140,10 @@ export class QuarantineBook {
       .map((e) => ({ ...e }));
   }
 
+  quarantinedIds(): string[] {
+    return [...this.quarantined.keys()];
+  }
+
   oldestFirstFailedAt(): Date | null {
     let out: Date | null = null;
     for (const entry of this.quarantined.values()) {
@@ -150,16 +169,21 @@ export class QuarantineBook {
     this.dirty = true;
     const held = this.quarantined.get(input.call_log_id);
     if (held) {
+      // Each failed retry doubles the previous delay, capped at 12 h.
+      const previousDelay = Math.max(this.baseDelayMs(), held.next_retry_at.getTime() - held.last_failed_at.getTime());
       held.failures += 1;
       held.error_code = input.error_code;
       held.error_name = input.error_name;
       held.last_failed_at = now;
-      held.next_retry_at = new Date(now.getTime() + this.delayMs(held.failures));
+      held.next_retry_at = new Date(now.getTime() + Math.min(this.limits.maxDelayMinutes * 60_000, previousDelay * 2));
       return "quarantined";
     }
     const previous = this.failures.get(input.call_log_id);
     const failures = (previous?.failures ?? 0) + 1;
-    if (failures < this.limits.quarantineAfter) {
+    const threshold = isTransientQuarantineCode(input.error_code)
+      ? Math.max(this.limits.quarantineAfter, this.limits.transientQuarantineAfter)
+      : this.limits.quarantineAfter;
+    if (failures < threshold) {
       // Re-insert so Map order stays oldest-touched first for eviction.
       this.failures.delete(input.call_log_id);
       this.failures.set(input.call_log_id, {
@@ -183,7 +207,7 @@ export class QuarantineBook {
       failures,
       first_failed_at: now,
       last_failed_at: now,
-      next_retry_at: new Date(now.getTime() + this.delayMs(failures)),
+      next_retry_at: new Date(now.getTime() + this.baseDelayMs()),
     });
     while (this.quarantined.size > this.limits.maxQuarantined) this.evictOldest();
     return "newly_quarantined";
@@ -198,11 +222,9 @@ export class QuarantineBook {
     };
   }
 
-  /** 60 min at quarantine, doubling per further failure, capped at 12 h. */
-  private delayMs(failures: number): number {
-    const exponent = Math.max(0, failures - this.limits.quarantineAfter);
-    const minutes = Math.min(this.limits.maxDelayMinutes, this.limits.baseDelayMinutes * 2 ** Math.min(exponent, 16));
-    return minutes * 60_000;
+  /** First retry 60 min after quarantine. */
+  private baseDelayMs(): number {
+    return Math.min(this.limits.baseDelayMinutes, this.limits.maxDelayMinutes) * 60_000;
   }
 
   private evictOldest(): void {
