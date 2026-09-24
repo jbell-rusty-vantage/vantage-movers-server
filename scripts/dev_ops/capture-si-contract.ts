@@ -24,6 +24,7 @@
  * (`GET /outreach/:id/timeline` 200 vs 404 FEATURE_DISABLED; `data.metrics` present vs absent on
  * `GET /attention`). Secrets are read from `.env` files and never printed.
  */
+import { spawnSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -38,7 +39,7 @@ const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >=
 const stage = arg("stage") as Stage | undefined;
 // "AC" (CF-AC, Team 4) is a stub until AC2's new reads land: `routesFor` returns `[]` and `main()`
 // already turns that into a clear "no ... registry entries for AC" failure (AC0-SEED, 2026-09-23).
-if (!stage || !["S1", "S2", "S3", "S4", "AC"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC is required");
+if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const base = (arg("base") ?? "http://127.0.0.1:3999").replace(/\/+$/, "");
 const out = resolve(arg("out") ?? SI_CONTRACTS_DIR, stage, ...(mode === "off" ? ["flag-off"] : []));
@@ -52,7 +53,8 @@ function envValue(file: string, key: string): string {
   return value;
 }
 const apiSecret = envValue(resolve(process.cwd(), ".env"), "VANTAGE_API_SECRET");
-const signingSecret = envValue(resolve(process.cwd(), "../vantage-admin/.env"), "VANTAGE_ADMIN_PROXY_SIGNING_SECRET");
+// SEED-T3: `CSI_ADMIN_ENV_FILE` names the Admin .env when the server checkout is a worktree outside the workspace.
+const signingSecret = envValue(resolve(process.cwd(), process.env.CSI_ADMIN_ENV_FILE ?? "../vantage-admin/.env"), "VANTAGE_ADMIN_PROXY_SIGNING_SECRET");
 const OWNER = { id: "5eed00000000000000000001", email: "owner@example.test" };
 
 type Response = { status: number; headers: Record<string, string>; body: unknown; json: boolean };
@@ -107,8 +109,19 @@ async function main() {
   const probe = await get(`/outreach/${sentinel.outreach_record_id}`);
   if (probe.status !== 200 || (probe.body as { data?: { outreach?: { id?: string } } } | null)?.data?.outreach?.id !== sentinel.outreach_record_id)
     throw new Error(`the API at ${base} does not serve ${SI_SEED_DATABASE} (probe ${probe.status}); refusing to capture`);
-  // Guard 2 (CF-AC): both AC modes run with ATTENTION_V2 and TIMELINE_V2 on (production); the Team 4 flags decide the mode.
-  if (stage === "AC") {
+  // Guard 2 (CF5c): both S5c modes run with every production flag on; NUMBERS_HAS_CALLS_DEFAULT decides the mode.
+  if (stage === "S5c") {
+    const settings = await get("/settings");
+    const flags = (settings.body as { data?: { flags?: Record<string, boolean> } } | null)?.data?.flags ?? {};
+    const want = mode === "on";
+    const start = `start serve-csi-local.ts with CSI_LOCAL_FLAGS=ATTENTION_V2,TIMELINE_V2,ATTENTION_EVOLUTION,CASE_FILE,PROGRESS_PLAN,CAPTURE_WEBHOOK${want ? ",NUMBERS_HAS_CALLS_DEFAULT" : ""}`;
+    for (const flag of ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN", "CAPTURE_WEBHOOK"]) if (!flags[flag]) throw new Error(`${flag} is off on the API; ${start}`);
+    if (Boolean(flags.NUMBERS_HAS_CALLS_DEFAULT) !== want) throw new Error(`NUMBERS_HAS_CALLS_DEFAULT is ${want ? "off" : "on"} on the API; ${start}`);
+    const page = await get("/attention?view=all_outreach&limit=200");
+    const rows = ((page.body as { data?: { items?: Array<{ sort_keys?: Record<string, unknown> }> } } | null)?.data?.items ?? []);
+    if (!(page.body as { data?: { metrics?: unknown } } | null)?.data?.metrics) throw new Error("the Attention snapshot has no metrics: seed with --attention-v2 or republish with --publish-attention on");
+    if (!rows.some(row => row.sort_keys && "band2_due_rank" in row.sort_keys)) throw new Error("the Attention snapshot was published with ATTENTION_EVOLUTION off: seed-csi-final-ui.ts --publish-attention on");
+  } else if (stage === "AC") {
     const settings = await get("/settings");
     const flags = (settings.body as { data?: { flags?: Record<string, boolean> } } | null)?.data?.flags ?? {};
     const want = mode === "on";
@@ -137,10 +150,26 @@ async function main() {
   mkdirSync(out, { recursive: true });
   for (const file of readdirSync(out)) if (file.endsWith(".json")) rmSync(resolve(out, file));
   const summary: Summary[] = [];
-  for (const route of routes) for (const call of route.calls(rows)) await capture(route, call, summary);
-  writeFileSync(resolve(out, "_capture-index.json"), `${JSON.stringify({ stage, mode: stage === "AC" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN)" : "Team 4 flags off (ATTENTION_V2, TIMELINE_V2 on)")
-    : mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2)" : "flags off",
-    database: SI_SEED_DATABASE, captured_at: new Date().toISOString(), calls: summary }, null, 2)}\n`);
+  // `script` entries (CF5c) have no HTTP call: `capture-si-s5c-local.ts` writes them after the HTTP pass (it reads `coverage__seed.json`).
+  for (const route of routes) if (route.kind !== "script") for (const call of route.calls(rows)) await capture(route, call, summary);
+  if (stage === "S5c" && mode === "on") {
+    const child = spawnSync(process.execPath, ["--import", "tsx", resolve(__dirname, "capture-si-s5c-local.ts"), "--out", out], { encoding: "utf8", env: process.env });
+    const line = (child.stdout ?? "").split(/\r?\n/).find(row => row.startsWith("S5C_LOCAL_SUMMARY "));
+    if (line) summary.push(...(JSON.parse(line.slice("S5C_LOCAL_SUMMARY ".length)) as Summary[]));
+    if (child.status !== 0 || !line) summary.push({ route: "script: capture-si-s5c-local.ts", state: "(run)", path: "(script)", status: child.status ?? -1,
+      note: `exit ${child.status}: ${(child.stderr ?? "").trim().split(/\r?\n/).slice(-3).join(" | ").slice(0, 300)}`, ok: false });
+  }
+  const modeLabel = stage === "AC" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN)" : "Team 4 flags off (ATTENTION_V2, TIMELINE_V2 on)")
+    : stage === "S5c" ? (mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN, CAPTURE_WEBHOOK, NUMBERS_HAS_CALLS_DEFAULT)"
+      : "NUMBERS_HAS_CALLS_DEFAULT off (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN, CAPTURE_WEBHOOK on: production today)")
+    : mode === "on" ? "flags on (ATTENTION_V2, TIMELINE_V2)" : "flags off";
+  const notes = stage === "S5c" && mode === "on" ? {
+    script: "case-file__*__script.json: no route exposes the Case File; capture-si-s5c-local.ts ran the real assembler (caseFileInputFor → assembleCaseFile → caseFileToReadContent) on the seed, read only.",
+    synthetic: "coverage__capture-health-{ok,broken}__synthetic.json: the pure composeCaptureHealth (ownerCoverage.ts) over fixed inputs built from the seeded rows, " +
+      "put in a copy of the real coverage__seed.json; validated with the same route schema and the production Admin ownerCoverageSchema. coverage__seed.json is the one real example (attention).",
+  } : undefined;
+  writeFileSync(resolve(out, "_capture-index.json"), `${JSON.stringify({ stage, mode: modeLabel, database: SI_SEED_DATABASE, captured_at: new Date().toISOString(),
+    ...(notes ? { notes } : {}), calls: summary }, null, 2)}\n`);
   for (const s of summary) console.log(`${s.ok ? "ok  " : "FAIL"} ${String(s.status).padEnd(4)} ${s.route.padEnd(44)} ${s.state.padEnd(40)} ${s.note}`);
   const failed = summary.filter(s => !s.ok);
   console.log(`\n${stage}${mode === "off" ? " flag-off" : ""}: captured ${summary.length - failed.length}, failed ${failed.length} → ${out}`);

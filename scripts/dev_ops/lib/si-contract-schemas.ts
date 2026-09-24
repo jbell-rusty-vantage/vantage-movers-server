@@ -22,6 +22,8 @@ import { csiDateSchema } from "../../../src/validation/v1/salesIntelligence";
 export { attentionSchema, leadProgressSchema } from "../../../src/services/salesIntelligence/outreach/attention.adminSchema.fixture";
 // CF-AC: the production Admin Outreach read (verbatim vantage-admin@539a628, generated copy).
 export { outreachReadSchema } from "./admin-si-schemas-539a628";
+// CF5c: the production Admin coverage read (Settings → capture) and Number detail read (same verbatim copy).
+export { ownerCoverageSchema, numberSchema } from "./admin-si-schemas-539a628";
 import { leadProgressSchema } from "../../../src/services/salesIntelligence/outreach/attention.adminSchema.fixture";
 /* eslint-disable */
 const coverage = z.object({ known_through: z.string().nullable(), gaps: z.array(z.object({ from:z.string(), to:z.string(), reason:z.string() })), ai_paused:z.boolean() });

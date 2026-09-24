@@ -60,6 +60,12 @@ Object.assign(process.env, {
   // `--publish-attention off`); this seed only ever needs the flag-on behaviour for its own subjects.
   // CF-AC: `--publish-attention on|off --evolution off` republishes the snapshot with the Team 4 flag off (the AC flag-off set).
   SALES_INTELLIGENCE_ATTENTION_EVOLUTION: PUBLISH_ONLY && ARGS.includes("--evolution") && ARGS[ARGS.indexOf("--evolution") + 1] === "off" ? "false" : "true",
+  // SEED-T3 (2026-09-24): CASE_FILE and PROGRESS_PLAN are on in production (TEAM-3 §4), so the seed runs with them on too.
+  // PROGRESS_PLAN can only nominate a Move assessment job here; nothing in this process or the local API runs one
+  // (no gateway key, MOVE_ASSESSMENT off on the API), and the seed prints the job table by stage at the end.
+  SALES_INTELLIGENCE_CASE_FILE: "true", SALES_INTELLIGENCE_PROGRESS_PLAN: "true",
+  // SEED-T3: the webhook receipt collection name (`ringcentral_webhook_events`, production naming, as the local .env and the API use).
+  RINGCENTRAL_COLLECTION_MODE: "production",
   SALES_INTELLIGENCE_ATTENTION_V2: ATTENTION_V2 ? "true" : "false", SALES_INTELLIGENCE_TIMELINE_V2: "false",
   SALES_INTELLIGENCE_ANALYSIS_PRICING_VERSION: "synthetic", SALES_INTELLIGENCE_ANALYSIS_INPUT_CENTS_PER_MILLION: "1",
   SALES_INTELLIGENCE_ANALYSIS_OUTPUT_CENTS_PER_MILLION: "1", SALES_INTELLIGENCE_EXTRACTION_MODEL: "openai/gpt-5-mini",
@@ -197,7 +203,8 @@ async function main() {
   const row = (label: string, states: SiSeedState[], ids: Partial<SiManifestRow> & { note: string }) => {
     const entry: SiManifestRow = { label, kind: ids.outreach_record_id ? "outreach" : "number", states, outreach_record_id: ids.outreach_record_id ?? null,
       contact_number_id: ids.contact_number_id ?? null, lead_refs: ids.lead_refs ?? [], conversation_ids: ids.conversation_ids ?? [], run_ids: ids.run_ids ?? [],
-      artifact_ids: ids.artifact_ids ?? [], finding_ids: ids.finding_ids ?? [], note: ids.note };
+      artifact_ids: ids.artifact_ids ?? [], finding_ids: ids.finding_ids ?? [], note: ids.note,
+      ...(ids.interaction_ids ? { interaction_ids: ids.interaction_ids } : {}) };
     manifest.push(entry);
     return entry;
   };
@@ -631,7 +638,13 @@ async function main() {
     currentTag = tag;
     const jobId = await withTransaction(session => runtime.nominateMoveAssessment({ outreach_record_id: recordId, trigger: `seed:${tag}:${recordId}`, force: true }, session));
     if (!jobId) throw new Error(`no nomination for ${recordId}`);
-    const result = await runtime.runMoveAssessmentJob(jobId, { model: mock.model, onError: (error: unknown) => console.error(error) });
+    // SEED-T3: the deterministic mock answers the legacy assessment layout (its evidence ids); with CASE_FILE on the
+    // payload changes and `lead_only` fails `score_requires_customer_evidence`. These artifacts stand for ones
+    // generated before CASE_FILE was on, so the flag is off only while the mock runs, then restored.
+    const caseFile = process.env.SALES_INTELLIGENCE_CASE_FILE;
+    process.env.SALES_INTELLIGENCE_CASE_FILE = "false";
+    const result = await runtime.runMoveAssessmentJob(jobId, { model: mock.model, onError: (error: unknown) => console.error(error) })
+      .finally(() => { process.env.SALES_INTELLIGENCE_CASE_FILE = caseFile; });
     if (!["completed", "reused"].includes(result.status)) throw new Error(`assessment ${tag}: ${JSON.stringify(result)}`);
     return String((result as { artifact_id?: string }).artifact_id ?? "");
   }
@@ -1350,7 +1363,9 @@ async function main() {
   }
 
   // ── Inbound-only conversations at 239 / 240 staffed minutes ago (§5.2 no_callback_after_inbound) ──
-  for (const [label, state, minutes] of [["AC-inbound-only-239", "ac_inbound_only_239", 239], ["AC-inbound-only-240", "ac_inbound_only_240", 240]] as const) {
+  // SEED-T3: "239" is seeded at 237 staffed minutes. At 239 it crossed the assert's 239.95 bucket edge during the
+  // ~82 s seed run (S5c-baseline 97/98). Same label and meaning: under 240, so the reason doesn't fire.
+  for (const [label, state, minutes] of [["AC-inbound-only-239", "ac_inbound_only_239", 237], ["AC-inbound-only-240", "ac_inbound_only_240", 240]] as const) {
     const callAt = staffedBefore(new Date(NOW), minutes);
     const number = await seedNumber(callAt);
     const lead = await seedLead("CallLead", number.ten, callAt);
@@ -1544,6 +1559,143 @@ async function main() {
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════════
+  // 13. SEED-T3 (2026-09-24): the S5c capture states (reconciliation addendum §4.1, CF5c §3.7).
+  //     Calls are raw `call_interactions` rows in the shapes capture writes (`interactionProjection.ts`):
+  //     webhook-only in-progress rows, Call Log settled rows, the recovery stamp through the repair's own
+  //     writer, the form-created Number through `ensureFormLeadContactNumber`, the ownership store through
+  //     `storeRingCentralWebhookSubscriptionMetadata`, the quarantine in the reconcile sync-state row.
+  //     No model call, no job.
+  // ════════════════════════════════════════════════════════════════════════════════════════
+  {
+    const { appendCsiAudit } = await import("../../src/services/salesIntelligence/transactions");
+    const { stampCaptureRecovery } = await import("./lib/call-log-repair-recovery");
+    const { ensureFormLeadContactNumber } = await import("../../src/services/salesIntelligence/attachment/formLeadNumber");
+    const { EMPTY_DIRECTORY_LOOKUP } = await import("../../src/services/numberActivity/directory");
+    const { storeRingCentralWebhookSubscriptionMetadata } = await import("../../src/services/ringcentral/webhook-subscriptions");
+    const { getRingCentralCollectionName } = await import("../../src/services/ringcentral/ringcentral-config");
+    const { ensureRingCentralWebhookEventIndexes } = await import("../../src/services/ringcentral/webhook-capture");
+    const { getOperationalEventModel } = await import("../../src/models/OperationalEvent");
+    const { getSalesIntelligenceSyncStateModel } = await import("../../src/models/SalesIntelligenceSyncState");
+    const { CALL_LOG_ALL_DIRECTIONS_SCOPE } = await import("../../src/services/numberActivity/reconcileCallLog");
+    const { CALL_LOG_SWEEP_SCOPE } = await import("../../src/services/numberActivity/callLogSweep");
+    const MIN = 60_000;
+    /** A webhook-only call telephony still reports: no end, result or duration yet (`terminal: false`, never in the Call Log). */
+    const inProgressDoc = (number: { id: string; e164: string }, at: Date, direction: "Inbound" | "Outbound") => ({
+      ...callDoc(number.id, number.e164, { at, direction, connected: true }),
+      answered_at: plus(at, 6_000), ended_at: null, duration_seconds: null, provider_result: null, terminal: false, terminal_at: null, call_log_state: null,
+      call_log_ids: [], sources: ["webhook"], provider_last_modified_at: null, first_observed_at: plus(at, 1_500), last_observed_at: plus(at, 20_000),
+      createdAt: plus(at, 1_500), updatedAt: plus(at, 20_000) });
+    /** A Call Log row after the reconcile settled it (`call_log_state: "settled"`, terminal). */
+    const settledDoc = (number: { id: string; e164: string }, spec: CallSpec, observedAfterMs: number, extra: Record<string, unknown> = {}) => {
+      const base = callDoc(number.id, number.e164, spec);
+      return { ...base, call_log_ids: [`cl-${base.telephony_session_id}`], sources: ["call_log_reconcile"], call_log_state: "settled", terminal: true,
+        provider_last_modified_at: plus(spec.at, (spec.duration ?? 30) * 1000 + 60_000), first_observed_at: plus(spec.at, observedAfterMs),
+        last_observed_at: plus(spec.at, observedAfterMs), createdAt: plus(spec.at, observedAfterMs), updatedAt: plus(spec.at, observedAfterMs), ...extra };
+    };
+    const insertCall = async (doc: Record<string, unknown>) => String((await Calls.collection.insertOne(doc as never)).insertedId);
+
+    // t3_call_in_progress: an Owner-started call (`call_progress: in_progress`, the `start_call` shape) and a
+    // webhook-only in-progress call on the record's primary Number that started 3 minutes before seed time, so the
+    // publish sets `live_call` on its desk row and the detail read sets it at read time. Both fields together (§3.7).
+    {
+      const s = await leadSubject({ receivedDaysAgo: 2, fields: { name: "T3 Live Caller" },
+        calls: [{ at: ago(1, 20), direction: "Outbound", result: "Call connected", duration: 140, contact: "human_conversation" }] });
+      await applyAllInteractions(s.number!.id);
+      // The field exactly as the `start_call` Owner command writes it (`followups/commands.ts`). Not the command itself:
+      // every Owner outreach command also enqueues a `number_refresh` job, and SEED-T3 creates no paid job.
+      await Records.collection.updateOne({ _id: O(s.recordId) }, { $set: { call_progress: { state: "in_progress", started_at: new Date(NOW - 4 * MIN), started_by: OWNER_ID,
+        ended_at: null, ended_by: null, note: "Owner calling from the desk", interaction_id: null } }, $inc: { revision: 1 } });
+      const liveId = await insertCall(inProgressDoc(s.number!, new Date(NOW - 3 * MIN), "Outbound"));
+      row("T3-live-call", ["t3_call_in_progress"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead), interaction_ids: [liveId],
+        note: `Webhook-only in-progress call ${liveId} (terminal false, sources [webhook], call_log_state null) on the primary Number, started 3 min before seed time; call_progress in_progress (Owner calling, started 4 min before seed time)` });
+    }
+    // t3_call_pending_finalization: telephony still reports a call that started 35 minutes ago (> 10 min, ≤ 4 h).
+    {
+      const s = await leadSubject({ receivedDaysAgo: 1, fields: { name: "T3 Pending Finalization" },
+        calls: [{ at: ago(0, 20), direction: "Inbound", result: "Call connected", duration: 95, contact: "human_conversation" }] });
+      await applyAllInteractions(s.number!.id);
+      const pendingId = await insertCall(inProgressDoc(s.number!, new Date(NOW - 35 * MIN), "Inbound"));
+      row("T3-pending-finalization", ["t3_call_pending_finalization"], { outreach_record_id: s.recordId, contact_number_id: s.number!.id, lead_refs: leadIds(s.lead),
+        interaction_ids: [pendingId], note: `terminal:false call ${pendingId} started 35 min before seed time: capture_health pending_finalization > 0 (and a live_call on this record)` });
+    }
+    // One Number with every final capture shape the Calls tab and timeline show (§3.7), all ≥ 3 days old so the
+    // webhook's 30-staffed-minute silence window never sees a Call Log call (the coverage read stays `healthy`).
+    {
+      const s = await leadSubject({ receivedDaysAgo: 8, fields: { name: "T3 Capture States" } });
+      const n = s.number!;
+      const settledId = await insertCall(settledDoc(n, { at: ago(6, 3), direction: "Outbound", result: "Call connected", duration: 210, contact: "human_conversation" }, 20 * MIN));
+      // Provisional, then settled: the webhook saw it first, the Call Log stored a mid-call snapshot (provisional), and the
+      // settle made it final: sources carry both, the revision moved three times, the row is final and settled.
+      const provisionalAt = ago(5, 4);
+      const pts = settledDoc(n, { at: provisionalAt, direction: "Inbound", result: "Call connected", duration: 330, contact: "human_conversation" }, 2_000,
+        { sources: ["webhook", "call_log_reconcile"], projection_revision: 3, last_observed_at: plus(provisionalAt, 2 * HOUR), updatedAt: plus(provisionalAt, 2 * HOUR) });
+      const provisionalThenSettledId = await insertCall(pts);
+      const unknownId = await insertCall(settledDoc(n, { at: ago(4, 5), direction: "Inbound", result: "Missed", connected: false, duration: 0 }, 15 * MIN,
+        { direction: "Unknown", parties: [{ role: "external", direction: "Unknown", e164: n.e164, phone_number_raw: n.e164, name_raw: null, connected: false }] }));
+      // Recovered: inserted by a capture repair three days after it happened; the repair's audit row and its stamp.
+      const recoveredAt = ago(7, 2), repairAt = ago(4);
+      const recovered = settledDoc(n, { at: recoveredAt, direction: "Inbound", result: "Call connected", duration: 260, contact: "human_conversation" }, +repairAt - +recoveredAt,
+        { sources: ["backfill"] });
+      const recoveredId = await insertCall(recovered);
+      const repairRecordId = String((recovered.call_log_ids as string[])[0]);
+      await withTransaction(session => appendCsiAudit(workerContext(session, `t3-call-log-repair-${recoveredId}`, repairAt), {
+        subject_key: `interaction:${recoveredId}`, event_kind: "interaction.created", prior: { exists: false },
+        current: { projection_revision: 1, contact_number_id: n.id, direction: "Inbound", external_e164: n.e164, external_endpoint_kind: "external", terminal: true,
+          call_log_state: "settled", provider_result: "Call connected", provider_connected: true, contact_type: "human_conversation", recordings: 0,
+          started_at: recoveredAt.toISOString(), sources: ["backfill"], proof_ref: `call_log_repair:${repairRecordId}`, input_kind: "call_log", request_id_generated: false,
+          aliases_added: [`call_log_id:${repairRecordId}`], merged_interaction_ids: [] },
+        target_id: recoveredId, revision: 1, kind: "interaction" }));
+      if (!await stampCaptureRecovery(recoveredId, { run_id: "call-log-repair-seed-t3", at: repairAt, kind: "added" })) throw new Error("t3_call_recovered: stamp failed");
+      // Late capture: first stored 3 h after it started by the ordinary reconcile; no repair.
+      const lateId = await insertCall(settledDoc(n, { at: ago(3, 6), direction: "Outbound", result: "No Answer", connected: false, duration: 0 }, 3 * HOUR));
+      await applyAllInteractions(n.id);
+      row("T3-capture-states", ["t3_call_settled", "t3_call_provisional_then_settled", "t3_call_unknown_direction", "t3_call_recovered", "t3_call_late_capture"], {
+        outreach_record_id: s.recordId, contact_number_id: n.id, lead_refs: leadIds(s.lead),
+        interaction_ids: [settledId, provisionalThenSettledId, unknownId, recoveredId, lateId],
+        note: `Calls tab shapes on one Number: settled ${settledId} (Call Log only), provisional-then-settled ${provisionalThenSettledId} (webhook + call_log_reconcile), ` +
+          `direction Unknown ${unknownId}, recovered ${recoveredId} (capture_recovery added, repair audit call_log_repair:${repairRecordId}), late capture ${lateId} (+3 h, no recovery)` });
+    }
+    // t3_form_created_number: the Form Lead's phone minted the Number (`created_via: "form_lead"`); no call yet.
+    {
+      const receivedAt = ago(1, 2);
+      const ten = `${AREAS[++numberSerial % AREAS.length]}555${String(1000 + numberSerial).slice(-4)}`;
+      const lead = await seedLead("FormLead", ten, receivedAt, { name: "T3 Form Only" });
+      const leadDoc = await db.collection("form_leads").findOne({ _id: O(lead.id) });
+      const minted = await withTransaction(session => ensureFormLeadContactNumber(leadDoc as never, session, String(O()), plus(receivedAt, 30_000),
+        { force: true, directory: EMPTY_DIRECTORY_LOOKUP }));
+      if (minted.action !== "created") throw new Error(`t3_form_created_number: ${JSON.stringify(minted)}`);
+      await attach(minted.number_id, lead, receivedAt);
+      const recordId = await seedRecord(lead, minted.number_id, plus(receivedAt, 60_000));
+      row("T3-form-created-number", ["t3_form_created_number"], { outreach_record_id: recordId, contact_number_id: minted.number_id, lead_refs: leadIds(lead),
+        note: "Number minted by ensureFormLeadContactNumber (created_via form_lead), attached to its Form Lead, no call: hidden from GET /numbers by the has_calls default" });
+    }
+    // Capture health sources: the reconcile row's quarantine, a sweep, the ownership store and one receipt.
+    await getOperationalEventModel().createIndexes();
+    await ensureRingCentralWebhookEventIndexes();
+    await getSalesIntelligenceSyncStateModel().collection.insertMany([
+      { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE, known_complete_through: new Date(NOW - 10 * MIN), gaps: [],
+        quarantined_records: [{ call_log_id: "t3-seed-quarantined-1", telephony_session_id: "s-t3-seed-quarantined-1", start_time: ago(0, 3), error_code: "projection_failed",
+          error_name: "InteractionPersistenceError", failures: 3, first_failed_at: ago(0, 2), last_failed_at: ago(0, 1), next_retry_at: new Date(NOW + HOUR) }],
+        record_failures: [], last_run: { started_at: new Date(NOW - 6 * MIN), finished_at: new Date(NOW - 5 * MIN), error_code: null } },
+      { scope: CALL_LOG_SWEEP_SCOPE, consecutive_drift_runs: 0,
+        last_run: { started_at: ago(0, 5), finished_at: ago(0, 4.9), error_code: null, from: ago(1, 17), to: ago(0, 5), provider_records: 120, stored_in_latest_version: 118,
+          applied_changes: 2, missing_before: 1, stale_before: 1, provisional_after_horizon: 0, quarantined: 1 } },
+    ] as never[]);
+    const ALL_DIRECTIONS = "/restapi/v1.0/account/~/telephony/sessions";
+    const HEALTHY_SUB = "t3seed-healthy-4c3d-9e8f-00000000a1b2", EXPIRED_SUB = "t3seed-expired-7a1e-4b2c-00000000c3d4";
+    const delivery = { transportType: "WebHook", address: "https://seed.invalid/api/webhooks/ringcentral" };
+    await storeRingCentralWebhookSubscriptionMetadata({ id: HEALTHY_SUB, eventFilters: [ALL_DIRECTIONS], status: "Active", expiresIn: 630_720_000, deliveryMode: delivery });
+    await storeRingCentralWebhookSubscriptionMetadata({ id: EXPIRED_SUB, eventFilters: [ALL_DIRECTIONS], status: "Active", expiresIn: 604_800, deliveryMode: delivery });
+    // The expired row: the store computes expiry from `now`; this one lapsed two days ago and was last renewed nine days ago.
+    await db.collection("ringcentral_webhook_subscriptions").updateOne({ subscriptionId: EXPIRED_SUB }, { $set: { expirationTime: ago(2), updatedAt: ago(9) } });
+    await db.collection(getRingCentralCollectionName("webhookEvents")).insertOne({ provider: "ringcentral", receivedAt: new Date(NOW - MIN), uuid: "t3-seed-receipt-1",
+      telephonySessionId: "s-t3-seed-receipt-1", rawBody: {} });
+    row("T3-capture-health", ["t3_quarantined_call_log", "t3_webhook_subscription_healthy", "t3_webhook_subscription_expired"], {
+      note: `Reconcile sync-state row with one quarantined Call Log record (first failed 2 h before seed time) and a sweep; owned all-direction subscriptions ` +
+        `…${HEALTHY_SUB.slice(-6)} (healthy, the one GET /coverage reports) and …${EXPIRED_SUB.slice(-6)} (expired 2 days ago); one webhook receipt 1 min before seed time` });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════════════════
   // Projections through the real code paths
   // ════════════════════════════════════════════════════════════════════════════════════════
   const numberIds = (await Numbers.find({}).select("_id revision").lean()).map(r => ({ id: String(r._id), revision: r.revision }));
@@ -1565,6 +1717,10 @@ async function main() {
   console.log(`\nFinal-UI seed: database ${DATABASE} (loopback csi01). Subjects ${manifest.length}, Numbers ${numberIds.length}, artifacts ${artifacts}, ` +
     `mocked model calls ${mock.calls()}. Rebuild ${JSON.stringify(rebuild)}. Attention ${JSON.stringify(snapshot)}. ${((Date.now() - started) / 1000).toFixed(1)} s`);
   console.table(manifest.map(m => ({ label: m.label, states: m.states.join(","), outreach: m.outreach_record_id, number: m.contact_number_id })));
+  // SEED-T3: every job the seed left behind, by stage and status (nothing runs them: no worker, no gateway key).
+  const jobs = await db.collection("sales_intelligence_jobs").aggregate<{ _id: { stage: string; status: string }; n: number }>([
+    { $group: { _id: { stage: "$stage", status: "$status" }, n: { $sum: 1 } } }, { $sort: { "_id.stage": 1, "_id.status": 1 } }]).toArray();
+  console.log(`Jobs by stage/status: ${jobs.map(j => `${j._id.stage}/${j._id.status}=${j.n}`).join(", ")}`);
   await mongoose.disconnect();
 }
 (PUBLISH_ONLY ? republishAttention() : main()).then(() => process.exit(0)).catch(error => { console.error(error instanceof Error ? error.stack ?? error.message : String(error)); process.exit(1); });

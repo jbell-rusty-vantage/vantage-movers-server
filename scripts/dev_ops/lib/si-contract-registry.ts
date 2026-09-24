@@ -20,7 +20,8 @@ import type { SiManifestRow } from "./si-contract-common";
 // "AC" is CF-AC's stage (Team 4, Attention evolution / Case File). AC0-SEED (2026-09-23) adds it here
 // as a stub only: `ROUTES` gets its entries once AC2's new reads exist. `routesFor("AC", mode)`
 // correctly returns `[]` until then, which `capture-si-contract.ts` already reports as "no entries".
-export type Stage = "S1" | "S2" | "S3" | "S4" | "AC";
+// "S5c" is CF5c (Team 3, SEED-T3 2026-09-24): capture reconciliation (reconciliation addendum §3.7).
+export type Stage = "S1" | "S2" | "S3" | "S4" | "AC" | "S5c";
 export type Mode = "on" | "off";
 /** A follow-up call built from the previous response (cursor paging). */
 export type ChainCall = { state: string; next: (body: any) => string | null };
@@ -44,7 +45,11 @@ export type RouteEntry = {
   route: string;
   params: string;
   /** `read` fixtures are `{ok: true, as_of, coverage, data}`; `status` fixtures are `{status, headers, body}`. */
-  kind: "read" | "status";
+  /**
+   * CF5c: `script` fixtures have the `read` envelope but are written by `capture-si-s5c-local.ts`, not by an HTTP
+   * call. The HTTP capture skips them; the fixture test validates them like reads.
+   */
+  kind: "read" | "status" | "script";
   calls: (rows: readonly SiManifestRow[]) => CaptureCall[];
   schema: () => Promise<ResolvedSchema>;
   /** Production Admin consumer schemas that must parse the same fixture (non-strict, as the Admin parses). */
@@ -93,7 +98,7 @@ const ownerReadOf = (loader: () => Promise<Mod>, key: string, from: string) => a
 };
 const serverSchema = (loader: () => Promise<Mod>, key: string, from: string) => async (): Promise<ResolvedSchema> =>
   ({ schema: await exported(loader, key, from), name: key, source: "server" });
-const adminSchema = (key: "attentionSchema" | "timelineSchema" | "numberSearchSchema" | "outreachReadSchema") => async (): Promise<ResolvedSchema> =>
+const adminSchema = (key: "attentionSchema" | "timelineSchema" | "numberSearchSchema" | "outreachReadSchema" | "ownerCoverageSchema" | "numberSchema") => async (): Promise<ResolvedSchema> =>
   ({ schema: await exported(load.local, key, "si-contract-schemas.ts"), name: `admin ${key}`, source: "admin@539a628" });
 
 /** `GET /outreach/:id`: `data.outreach` is the strict detail DTO; instructions and nudges keep their pre-existing (untyped) contracts. */
@@ -441,6 +446,188 @@ ROUTES.push(
     schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: acAttentionOff },
   { stage: "AC", mode: "off", slug: "outreach", route: "GET /outreach/:id (Team 4 flags off)", params: AC_OFF_DETAIL.join(", "), kind: "read",
     calls: detailCalls(AC_OFF_DETAIL), schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: acDetailOff },
+);
+
+// ── CF5c (Team 3, SEED-T3 2026-09-24): capture reconciliation (reconciliation addendum §3.7) ─────────────────
+// Flags on: production's (ATTENTION_V2, TIMELINE_V2, ATTENTION_EVOLUTION, CASE_FILE, PROGRESS_PLAN, CAPTURE_WEBHOOK) plus
+// Team 3's NUMBERS_HAS_CALLS_DEFAULT. Flag off: the same without NUMBERS_HAS_CALLS_DEFAULT (production today). The S5c
+// call-state fields, `live_call` and `capture_health` are unflagged, so both sets carry them.
+const T3 = { live: "T3-live-call", pending: "T3-pending-finalization", states: "T3-capture-states", form: "T3-form-created-number" } as const;
+const T3_LABELS: readonly string[] = [T3.live, T3.pending, T3.states, T3.form];
+const t3Rows = (rows: readonly SiManifestRow[]) => rows.filter(row => T3_LABELS.includes(row.label));
+const t3Row = (ctx: CheckContext, label: string) => (ctx.rows ? byLabel(ctx.rows, label) : null);
+/** Strip a call's suffix (`-kinds-call`) and the script/synthetic marker so a check keys on the seed label. */
+const t3State = (state: string) => state.replace(/__(script|synthetic)$/, "").replace(/-kinds-call$/, "");
+const callItem = (body: any, interactionId: string | undefined) => items(body).find(item => item.kind === "call" && item.call?.interaction_id === interactionId)?.call ?? null;
+
+function t3InProgressCall(body: any, interactionId: string | undefined, what: string): string[] {
+  const call = callItem(body, interactionId);
+  if (!call) return [`${what}: call ${interactionId} not on the page`];
+  const out: string[] = [];
+  if (call.in_progress !== true || call.terminal !== false) out.push(`${what}: in_progress ${call.in_progress}, terminal ${call.terminal}`);
+  if (call.call_log_state !== null) out.push(`${what}: call_log_state ${call.call_log_state}, expected null`);
+  if (call.result !== null || call.duration_seconds !== null) out.push(`${what}: result/duration not null while in progress`);
+  return out;
+}
+/** Per seeded Number: the call-state facts its Calls tab and timeline must show (§3.1, §3.3). */
+function t3CallChecks(body: any, ctx: CheckContext): string[] {
+  const state = t3State(ctx.state);
+  const out: string[] = [];
+  if (state === "t3-live-call") out.push(...t3InProgressCall(body, t3Row(ctx, T3.live)?.interaction_ids?.[0], "live call"));
+  if (state === "t3-pending-finalization") out.push(...t3InProgressCall(body, t3Row(ctx, T3.pending)?.interaction_ids?.[0], "pending call"));
+  if (state === "t3-capture-states") {
+    const [settled, pts, unknown, recovered, late] = t3Row(ctx, T3.states)?.interaction_ids ?? [];
+    const expect = (id: string | undefined, what: string, test: (call: any) => boolean) => {
+      const call = callItem(body, id);
+      if (!call) out.push(`${what}: call ${id} not on the page`);
+      else if (!test(call)) out.push(`${what}: ${JSON.stringify({ direction: call.direction, terminal: call.terminal, call_log_state: call.call_log_state, in_progress: call.in_progress, observed_reason: call.observed_reason })}`);
+    };
+    const final = (call: any) => call.terminal === true && call.in_progress === false;
+    expect(settled, "settled", call => final(call) && call.call_log_state === "settled" && call.observed_reason === null);
+    expect(pts, "provisional then settled", call => final(call) && call.call_log_state === "settled");
+    expect(unknown, "Unknown direction", call => final(call) && call.direction === "Unknown");
+    expect(recovered, "recovered", call => final(call) && call.observed_reason === "recovered");
+    expect(late, "late capture", call => final(call) && call.observed_reason === "late_capture");
+  }
+  if (ctx.state.endsWith("kinds-call") && items(body).some(item => item.kind !== "call")) out.push("kinds[]=call returned another kind");
+  return out;
+}
+/** Desk and detail: `live_call` next to `call_progress` (§3.2); a record without a live call reads null. */
+function t3LiveChecks(outreach: any, label: string, row: any | null, ctx: CheckContext): string[] {
+  const liveId = t3Row(ctx, label)?.interaction_ids?.[0];
+  if (label === T3.live) {
+    const out: string[] = [];
+    if (outreach?.live_call?.interaction_id !== liveId) out.push(`${label}: live_call ${JSON.stringify(outreach?.live_call ?? null)} ≠ ${liveId}`);
+    if (outreach?.call_progress?.state !== "in_progress") out.push(`${label}: call_progress ${JSON.stringify(outreach?.call_progress ?? null)}`);
+    if (row && row.filter_keys?.live_call !== true) out.push(`${label}: filter_keys.live_call ${row.filter_keys?.live_call}`);
+    return out;
+  }
+  if (label === T3.pending) return outreach?.live_call?.interaction_id === liveId && (!row || row.filter_keys?.live_call === true) ? [] : [`${label}: live_call not set`];
+  return (outreach?.live_call ?? null) === null && (!row || row.filter_keys?.live_call === false) ? [] : [`${label}: live_call set on a record without a live call`];
+}
+function t3AttentionChecks(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body)];
+  for (const label of [T3.live, T3.pending, T3.states]) {
+    const id = t3Row(ctx, label)?.outreach_record_id;
+    const row = items(body).find(item => item.outreach?.id === id) ?? null;
+    if (!row) { if (ctx.state === "all-outreach") out.push(`${label}: no desk row`); continue; }
+    out.push(...t3LiveChecks(row.outreach, label, row, ctx));
+  }
+  return out;
+}
+function t3DetailChecks(body: any, ctx: CheckContext): string[] {
+  const label = t3Rows(ctx.rows ?? []).find(row => stateOf(row.label) === ctx.state)?.label;
+  return label && label !== T3.form ? t3LiveChecks(body?.data?.outreach, label, null, ctx) : [];
+}
+function t3NumbersChecks(mode: Mode) {
+  return (body: any, ctx: CheckContext): string[] => {
+    const out: string[] = [];
+    const formId = t3Row(ctx, T3.form)?.contact_number_id;
+    const form = items(body).find(item => item.id === formId);
+    const hidesFormOnly = mode === "on" && ctx.state !== "include-form-only";
+    if (mode === "off" && has(body?.data, "filters")) out.push("flag off: data.filters echoed without a param");
+    if (mode === "on" && body?.data?.filters?.has_calls !== hidesFormOnly) out.push(`data.filters.has_calls ${body?.data?.filters?.has_calls}, expected ${hidesFormOnly}`);
+    if (hidesFormOnly) {
+      if (form) out.push("the form-created Number is listed under the has_calls default");
+      if (items(body).some(item => item.has_calls !== true)) out.push("a Number without calls is listed under the has_calls default");
+    } else if (ctx.state !== "default") {
+      if (!form) out.push("the form-created Number is missing");
+      else if (form.created_via !== "form_lead" || form.has_calls !== false) out.push(`form-created Number: created_via ${form.created_via}, has_calls ${form.has_calls}`);
+    }
+    return out;
+  };
+}
+function t3CoverageChecks(body: any, ctx: CheckContext): string[] {
+  const health = body?.data?.coverage?.capture_health;
+  if (!health) return ["data.coverage.capture_health missing"];
+  const out: string[] = [];
+  if (/t3seed-(healthy|expired)-[0-9a-f-]{20,}/.test(JSON.stringify(body))) out.push("a full subscription id is in the response");
+  const want = (status: string, reasons: string[], state?: string) => {
+    if (health.status !== status) out.push(`capture_health.status ${health.status}, expected ${status}`);
+    for (const reason of reasons) if (!health.reasons.includes(reason)) out.push(`capture_health.reasons lacks ${reason}`);
+    if (state && health.webhook.state !== state) out.push(`webhook.state ${health.webhook.state}, expected ${state}`);
+  };
+  if (ctx.state === "seed") {
+    want("attention", ["quarantine", "pending_finalization"], "healthy");
+    if (health.webhook.subscription_id_suffix !== "00a1b2") out.push(`subscription_id_suffix ${health.webhook.subscription_id_suffix}`);
+    if (health.call_log.quarantined_count !== 1 || !(health.in_progress_calls >= 2) || !(health.pending_finalization >= 1)) out.push("seeded counts not shown");
+  }
+  if (ctx.state === "capture-health-ok__synthetic") want("ok", [], "healthy");
+  if (ctx.state === "capture-health-broken__synthetic") want("broken", ["webhook_down", "quarantine_over_24h", "pending_finalization"], "down");
+  return out;
+}
+function t3CaseFileChecks(body: any, ctx: CheckContext): string[] {
+  const data = body?.data, state = t3State(ctx.state);
+  if (state === "t3-live-call") return data?.coverage?.excluded_in_progress >= 1 && data?.case_file?.excluded_in_progress >= 1 && /still in progress not shown/.test(data?.case_file?.text ?? "")
+    ? [] : ["the live call's Case File does not report excluded_in_progress"];
+  if (state === "t3-capture-states") return !has(data?.coverage, "excluded_in_progress") && /recovered by a capture repair on/.test(data?.case_file?.text ?? "")
+    ? [] : ["the capture-states Case File lacks the recovery wording (or reports an in-progress call)"];
+  return [];
+}
+async function coverageRouteSchema(): Promise<ResolvedSchema> {
+  const { ownerCoverageDtoSchema } = await import("../../../src/services/salesIntelligence/dto");
+  const { z } = await import("zod");
+  return { schema: z.object({ data: z.object({ as_of: z.string(), coverage: ownerCoverageDtoSchema }).strict() }).strict(),
+    name: "{ data: { as_of, coverage: ownerCoverageDtoSchema } } (GET /coverage)", source: "server" };
+}
+async function caseFileScriptSchema(): Promise<ResolvedSchema> {
+  const { caseFileArtifactSchema } = await import("../../../src/services/salesIntelligence/casefile/page");
+  const { z } = await import("zod");
+  return { schema: z.object({ as_of: z.string(), capture: z.literal("script"), data: z.object({ outreach_record_id: z.string().nullable(), contact_number_id: z.string(),
+    // `CaseFile.coverage` (casefile/types.ts) has no Zod export: transcribed strictly here.
+    coverage: z.object({ truncated_sources: z.array(z.string()), timeline_dropped: z.number().int().nonnegative(), excluded_in_progress: z.number().int().positive().optional() }).strict(),
+    case_file: caseFileArtifactSchema }).strict() }).strict(),
+    name: "script capture { coverage: CaseFile.coverage, case_file: caseFileArtifactSchema }", source: "script-local" };
+}
+const t3DetailCalls = (labels: readonly string[]) => (rows: readonly SiManifestRow[]) =>
+  perRow(row => (labels.includes(row.label) && row.outreach_record_id ? [{ path: `/outreach/${row.outreach_record_id}` }] : []))(rows);
+const t3TimelineCalls = (labels: readonly string[], scope: "numbers" | "outreach", kindsCall: boolean) => (rows: readonly SiManifestRow[]) =>
+  perRow(row => {
+    const id = scope === "numbers" ? row.contact_number_id : row.outreach_record_id;
+    if (!labels.includes(row.label) || !id) return [];
+    const base = `/${scope}/${id}/timeline?limit=50`;
+    return [{ path: base }, ...(kindsCall ? [{ suffix: "kinds-call", path: `${base}&kinds[]=call` }] : [])];
+  })(rows);
+const t3FormNumberCall = (rows: readonly SiManifestRow[]) => perRow(row => (row.label === T3.form && row.contact_number_id ? [{ path: `/numbers/${row.contact_number_id}` }] : []))(rows);
+const t3FormNumberCheck = (body: any) => (body?.data?.created_via === "form_lead" && body?.data?.has_calls === false ? [] : [`Number detail: created_via ${body?.data?.created_via}, has_calls ${body?.data?.has_calls}`]);
+const timelineServer = serverSchema(load.numberDto, "timelineV2PageDtoSchema", "numberActivity/dto.ts");
+const numbersServer = serverSchema(load.numberDto, "numberSearchPageDtoSchema", "numberActivity/dto.ts");
+const numberDetailServer = serverSchema(load.numberDto, "numberDetailReadDtoSchema", "numberActivity/dto.ts");
+const T3_CALL_LABELS = [T3.live, T3.pending, T3.states];
+ROUTES.push(
+  { stage: "S5c", mode: "on", slug: "attention", route: "GET /attention", params: "limit=200 default; view=all_outreach&limit=200", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: t3AttentionChecks },
+  { stage: "S5c", mode: "on", slug: "outreach", route: "GET /outreach/:id", params: "T3-live-call, T3-pending-finalization, T3-capture-states, T3-form-created-number", kind: "read",
+    calls: t3DetailCalls(T3_LABELS), schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: t3DetailChecks },
+  { stage: "S5c", mode: "on", slug: "number-timeline", route: "GET /numbers/:id/timeline (v2) = the Number Calls list with kinds[]=call", params: "limit=50; limit=50&kinds[]=call",
+    kind: "read", calls: t3TimelineCalls(T3_CALL_LABELS, "numbers", true), schema: timelineServer, admin: [adminSchema("timelineSchema")], checks: t3CallChecks },
+  { stage: "S5c", mode: "on", slug: "outreach-timeline", route: "GET /outreach/:id/timeline", params: "limit=50", kind: "read",
+    calls: t3TimelineCalls(T3_CALL_LABELS, "outreach", false), schema: timelineServer, checks: t3CallChecks },
+  { stage: "S5c", mode: "on", slug: "numbers", route: "GET /numbers", params: "default; limit=200; include_form_only=true&limit=200 (NUMBERS_HAS_CALLS_DEFAULT on)", kind: "read",
+    calls: fixed([{ state: "default", path: "/numbers" }, { state: "limit-200", path: "/numbers?limit=200" }, { state: "include-form-only", path: "/numbers?include_form_only=true&limit=200" }]),
+    schema: numbersServer, admin: [adminSchema("numberSearchSchema")], checks: t3NumbersChecks("on") },
+  { stage: "S5c", mode: "on", slug: "number", route: "GET /numbers/:id", params: "T3-form-created-number", kind: "read",
+    calls: t3FormNumberCall, schema: numberDetailServer, admin: [adminSchema("numberSchema")], checks: t3FormNumberCheck },
+  { stage: "S5c", mode: "on", slug: "coverage", route: "GET /coverage", params: "seed (real); capture-health-ok / -broken (synthetic: composeCaptureHealth in a copy of the real response)",
+    kind: "read", calls: fixed([{ state: "seed", path: "/coverage" }]), schema: coverageRouteSchema, admin: [adminSchema("ownerCoverageSchema")], checks: t3CoverageChecks },
+  { stage: "S5c", mode: "on", slug: "case-file", route: "script: casefile/assemble.ts (no route exposes the Case File)", params: "T3-live-call, T3-capture-states", kind: "script",
+    calls: () => [], schema: caseFileScriptSchema, checks: t3CaseFileChecks },
+  // Flag off: NUMBERS_HAS_CALLS_DEFAULT off, every production flag on; the production Admin must parse each.
+  { stage: "S5c", mode: "off", slug: "attention", route: "GET /attention (NUMBERS_HAS_CALLS_DEFAULT off)", params: "limit=200 default; view=all_outreach&limit=200", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: t3AttentionChecks },
+  { stage: "S5c", mode: "off", slug: "outreach", route: "GET /outreach/:id (NUMBERS_HAS_CALLS_DEFAULT off)", params: "T3-live-call, T3-capture-states", kind: "read",
+    calls: t3DetailCalls([T3.live, T3.states]), schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: t3DetailChecks },
+  { stage: "S5c", mode: "off", slug: "number-timeline", route: "GET /numbers/:id/timeline (v2, NUMBERS_HAS_CALLS_DEFAULT off)", params: "limit=50; limit=50&kinds[]=call", kind: "read",
+    calls: t3TimelineCalls([T3.live, T3.states], "numbers", true), schema: timelineServer, admin: [adminSchema("timelineSchema")], checks: t3CallChecks },
+  { stage: "S5c", mode: "off", slug: "numbers", route: "GET /numbers (NUMBERS_HAS_CALLS_DEFAULT off)", params: "default; limit=200", kind: "read",
+    calls: fixed([{ state: "default", path: "/numbers" }, { state: "limit-200", path: "/numbers?limit=200" }]),
+    schema: numbersServer, admin: [adminSchema("numberSearchSchema")], checks: t3NumbersChecks("off") },
+  { stage: "S5c", mode: "off", slug: "number", route: "GET /numbers/:id (NUMBERS_HAS_CALLS_DEFAULT off)", params: "T3-form-created-number", kind: "read",
+    calls: t3FormNumberCall, schema: numberDetailServer, admin: [adminSchema("numberSchema")], checks: t3FormNumberCheck },
+  { stage: "S5c", mode: "off", slug: "coverage", route: "GET /coverage (NUMBERS_HAS_CALLS_DEFAULT off)", params: "seed", kind: "read",
+    calls: fixed([{ state: "seed", path: "/coverage" }]), schema: coverageRouteSchema, admin: [adminSchema("ownerCoverageSchema")], checks: t3CoverageChecks },
 );
 
 export const routesFor = (stage: Stage, mode: Mode = "on") => ROUTES.filter(route => route.stage === stage && route.mode === mode);

@@ -16,7 +16,8 @@ import { resolve } from "node:path";
 const DATABASE = process.env.CSI_LOCAL_DATABASE ?? "testvantagemovers_madem0";
 if (!/^testvantagemovers_[a-z0-9]+$/.test(DATABASE)) throw new Error("CSI_LOCAL_DATABASE must be testvantagemovers_<alnum>");
 function adminSecret(): string {
-  const file = readFileSync(resolve(process.cwd(), "../vantage-admin/.env"), "utf8");
+  // SEED-T3: `CSI_ADMIN_ENV_FILE` names the Admin .env when the server checkout is a worktree outside the workspace.
+  const file = readFileSync(resolve(process.cwd(), process.env.CSI_ADMIN_ENV_FILE ?? "../vantage-admin/.env"), "utf8");
   const line = file.split(/\r?\n/).find(row => row.startsWith("VANTAGE_ADMIN_PROXY_SIGNING_SECRET="));
   const value = line?.slice("VANTAGE_ADMIN_PROXY_SIGNING_SECRET=".length).trim().replace(/^["']|["']$/g, "");
   if (!value) throw new Error("Admin proxy signing secret not found in ../vantage-admin/.env");
@@ -33,7 +34,9 @@ process.env.BLOB_STORE_ID = "";
 // CF-PREP: `CSI_LOCAL_FLAGS=ATTENTION_V2,TIMELINE_V2` turns the final-data flags on. Each of the two is
 // set explicitly (listed → "true", else "false") so `.env` or the shell can never decide a capture's mode.
 // CF-AC: the three Team 4 flags too, so .env can never decide an AC capture mode either.
-const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN"] as const;
+// SEED-T3 (CF5c): CAPTURE_WEBHOOK (the coverage read's webhook facts) and NUMBERS_HAS_CALLS_DEFAULT (S5c-NUMBERS) too.
+// CAPTURE_WEBHOOK only changes reads here: the local API runs no cron and receives no webhook.
+const LOCAL_FLAGS = ["ATTENTION_V2", "TIMELINE_V2", "ATTENTION_EVOLUTION", "CASE_FILE", "PROGRESS_PLAN", "CAPTURE_WEBHOOK", "NUMBERS_HAS_CALLS_DEFAULT"] as const;
 const requested = (process.env.CSI_LOCAL_FLAGS ?? "").split(",").map(v => v.trim().toUpperCase()).filter(Boolean);
 const unknownFlags = requested.filter(v => !(LOCAL_FLAGS as readonly string[]).includes(v));
 if (unknownFlags.length) throw new Error(`CSI_LOCAL_FLAGS: unknown flag(s) ${unknownFlags.join(", ")}; allowed ${LOCAL_FLAGS.join(", ")}`);
@@ -42,7 +45,7 @@ Object.assign(process.env, {
   TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: DATABASE, MONGO_URI: "mongodb://127.0.0.1:27189/?replicaSet=csi01",
   MONGODB_URI: "mongodb://127.0.0.1:27189/?replicaSet=csi01",
   SALES_INTELLIGENCE_DEPLOYMENT_ID: "csi-local-proof", SHEET_SYNC_MODE: "disabled",
-  SALES_INTELLIGENCE_ENABLED: "true", SALES_INTELLIGENCE_CAPTURE_CALL_LOG: "false", SALES_INTELLIGENCE_CAPTURE_WEBHOOK: "false",
+  SALES_INTELLIGENCE_ENABLED: "true", SALES_INTELLIGENCE_CAPTURE_CALL_LOG: "false",
   SALES_INTELLIGENCE_DIRECTORY_SYNC: "false", SALES_INTELLIGENCE_MEDIA_ENABLED: "false", SALES_INTELLIGENCE_STT_ENABLED: "false",
   SALES_INTELLIGENCE_EXTRACTION_ENABLED: "false", SALES_INTELLIGENCE_MOVE_ASSESSMENT: "false",
   SALES_INTELLIGENCE_ATTACHMENT_REFRESH: "true", SALES_INTELLIGENCE_OUTREACH_ENSURE: "true", SALES_INTELLIGENCE_AUTO_ATTACH: "false",

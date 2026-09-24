@@ -8,7 +8,9 @@ export const SI_SEED_DATABASE = "testvantagemovers_finalui";
 export const SI_SEED_REPLICA = "mongodb://127.0.0.1:27189/?replicaSet=csi01";
 export const SI_SEED_MANIFEST = "si_seed_manifest";
 export const SI_SEED_DEPLOYMENT = "csi-local-proof";
-export const SI_WORKSPACE = resolve(__dirname, "../../../../sales-intelligence-ui-ux-workspace");
+// SEED-T3: `SI_WORKSPACE_DIR` points a worktree outside the workspace root (e.g. `%TEMP%/t3w-a`) at the real workspace.
+export const SI_WORKSPACE = process.env.SI_WORKSPACE_DIR ? resolve(process.env.SI_WORKSPACE_DIR)
+  : resolve(__dirname, "../../../../sales-intelligence-ui-ux-workspace");
 export const SI_CONTRACTS_DIR = resolve(SI_WORKSPACE, "contracts");
 
 export function assertSeedDatabase(name: string) {
@@ -62,6 +64,10 @@ export const SI_SEED_STATES = [
   "ac_unreached_reason",
   // CF-AC (2026-09-24): a quote default superseded by an Owner plan (cancel_reason superseded_by_specific_plan).
   "ac_default_superseded",
+  // SEED-T3 (2026-09-24): reconciliation addendum §4.1, the S5c capture states (CF5c, §3.7).
+  "t3_call_in_progress", "t3_call_pending_finalization", "t3_call_settled", "t3_call_provisional_then_settled",
+  "t3_call_unknown_direction", "t3_call_recovered", "t3_call_late_capture",
+  "t3_form_created_number", "t3_quarantined_call_log", "t3_webhook_subscription_healthy", "t3_webhook_subscription_expired",
 ] as const;
 export type SiSeedState = (typeof SI_SEED_STATES)[number];
 
@@ -78,4 +84,6 @@ export type SiManifestRow = {
   artifact_ids: string[];
   finding_ids: string[];
   note: string;
+  /** SEED-T3: the Call Interactions a row's states name (optional; older manifests don't carry it). */
+  interaction_ids?: string[];
 };

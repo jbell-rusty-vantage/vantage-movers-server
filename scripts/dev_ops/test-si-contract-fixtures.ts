@@ -24,7 +24,7 @@ Object.assign(process.env, { TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: "testv
 const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 const stage = arg("stage") as Stage | undefined;
-if (!stage || !["S1", "S2", "S3", "S4", "AC"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC is required");
+if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const root = resolve(arg("dir") ?? SI_CONTRACTS_DIR);
 const dir = resolve(root, stage, ...(mode === "off" ? ["flag-off"] : []));
@@ -51,7 +51,9 @@ async function main() {
     const problems: string[] = [];
     const raw = JSON.parse(readFileSync(resolve(dir, file), "utf8")) as Record<string, unknown>;
     let body: unknown = raw;
-    if (route.kind === "read") {
+    // CF5c: `script` fixtures carry the read envelope (written by capture-si-s5c-local.ts, not an HTTP call).
+    const readLike = route.kind === "read" || route.kind === "script";
+    if (readLike) {
       const { ok, ...rest } = raw;
       if (ok !== true) problems.push(`ok envelope is ${String(ok)}`);
       body = rest;
@@ -67,8 +69,10 @@ async function main() {
       if (!result.success) problems.push(...result.error.issues.slice(0, 5).map(issue => `${admin.name}: ${issue.path.join(".")}: ${issue.message}`));
     }
     const state = file.slice(route.slug.length + 2, -".json".length);
-    if (route.checks) problems.push(...route.checks(route.kind === "read" ? raw : (raw as { body?: unknown }).body, { rows, state, file }));
-    const note = server.source === "script-local" && route.kind === "read" ? " # server exports no schema; script-local strict schema" : "";
+    if (route.checks) problems.push(...route.checks(readLike ? raw : (raw as { body?: unknown }).body, { rows, state, file }));
+    const note = route.kind === "script" ? " # script capture (no route); server caseFileArtifactSchema + script-local strict wrapper"
+      : state.endsWith("__synthetic") ? " # synthetic: pure composeCaptureHealth in a copy of the real response"
+      : server.source === "script-local" && route.kind === "read" ? " # server exports no schema; script-local strict schema" : "";
     if (!problems.length) { pass++; console.log(`ok ${n} - ${file} (${names.join(" + ")})${note}`); continue; }
     fail++;
     console.log(`not ok ${n} - ${file} (${names.join(" + ")})`);

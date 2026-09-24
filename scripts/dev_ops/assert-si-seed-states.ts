@@ -18,6 +18,9 @@ const BOOKKEEPING_REVIEW_REASONS = ["prior_finding_contradicted", "prior_fulfill
 const LOCATION_OR_DATE = ["pickup_location", "delivery_location", "move_date"];
 // AC0-SEED: the seed never calls `updateCsiPolicy`, so the live policy is always the default (pure, no DB read needed here).
 const POLICY = defaultCsiPolicy();
+// SEED-T3: the live-call window (`LIVE_CALL_WINDOW_MS`, 4 h) and the owned all-direction subscription filter (`ownerCoverage.ts`).
+const T3_LIVE_WINDOW_MS = 4 * 3_600_000;
+const T3_ALL_DIRECTIONS = "/restapi/v1.0/account/~/telephony/sessions";
 
 type Check = (db: Db, now: Date) => Promise<number>;
 const closedWithin = (reason: string, origin: string): Check => (db, now) => db.collection("outreach_records").countDocuments({ state: "closed", closed_reason: reason,
@@ -589,6 +592,53 @@ const CHECKS: Record<SiSeedState, Check> = {
     return n;
   },
   ac_call_lead_ringcentral_route: db => db.collection("call_leads").countDocuments({ "ringcentral.route_id": { $type: "objectId" }, "ringcentral.target_name": { $type: "string", $ne: "" } }),
+  // ── SEED-T3 (2026-09-24): the S5c capture states (reconciliation addendum §4.1), counted in the source collections. ──
+  // An open record whose primary Number has a webhook-only call telephony still reports (the `live_call` rule, S5c-LIVE)
+  // while the Owner's `call_progress` is `in_progress`: both fields on one record.
+  t3_call_in_progress: async (db, now) => {
+    const calls = await db.collection("call_interactions").find({ terminal: false, call_log_state: null, sources: ["webhook"], merged_into_id: null,
+      monitoring: { $ne: true }, direction: { $ne: "Internal" }, started_at: { $gte: new Date(+now - T3_LIVE_WINDOW_MS), $lte: now } }).toArray();
+    let n = 0;
+    for (const call of calls) if (await db.collection("outreach_records").countDocuments({ primary_contact_number_id: call.contact_number_id, state: { $ne: "closed" },
+      "call_progress.state": "in_progress" })) n++;
+    return n;
+  },
+  // `capture_health.pending_finalization`: terminal:false, unmerged, started more than 10 min and at most 4 h ago.
+  t3_call_pending_finalization: (db, now) => db.collection("call_interactions").countDocuments({ terminal: false, merged_into_id: null,
+    started_at: { $gte: new Date(+now - T3_LIVE_WINDOW_MS), $lt: new Date(+now - 10 * 60_000) } }),
+  // Final from the Call Log alone (the reconcile stored it settled; the webhook never saw it).
+  t3_call_settled: db => db.collection("call_interactions").countDocuments({ call_log_state: "settled", terminal: true, sources: ["call_log_reconcile"],
+    "call_log_ids.0": { $exists: true }, merged_into_id: null }),
+  // The webhook saw it, the Call Log stored it provisional, then it settled: both sources, revised, final.
+  t3_call_provisional_then_settled: db => db.collection("call_interactions").countDocuments({ call_log_state: "settled", terminal: true,
+    sources: { $all: ["webhook", "call_log_reconcile"] }, projection_revision: { $gte: 2 }, merged_into_id: null }),
+  t3_call_unknown_direction: db => db.collection("call_interactions").countDocuments({ direction: "Unknown", merged_into_id: null }),
+  // `capture_recovery` set, and the repair's own audit row proves it (`stamp-capture-recovery.ts` matching rule).
+  t3_call_recovered: async db => {
+    const calls = await db.collection("call_interactions").find({ "capture_recovery.kind": "added", "capture_recovery.run_id": { $type: "string" } }).toArray();
+    let n = 0;
+    for (const call of calls) if (await db.collection("sales_intelligence_audit_events").countDocuments({ subject_key: `interaction:${String(call._id)}`,
+      event_kind: "interaction.created", "current.proof_ref": { $regex: "^call_log_repair:" } })) n++;
+    return n;
+  },
+  // First stored more than 1 h after it started by the Call Log, with no repair (timeline `observed_reason: late_capture`).
+  t3_call_late_capture: db => db.collection("call_interactions").countDocuments({ call_log_state: { $ne: null }, capture_recovery: null, merged_into_id: null,
+    $expr: { $gt: [{ $subtract: ["$first_observed_at", "$started_at"] }, 3_600_000] } }),
+  // A Number the Form Lead minted (`created_via: "form_lead"`), no call, attached to its Form Lead.
+  t3_form_created_number: async db => {
+    const numbers = await db.collection("contact_numbers").find({ created_via: "form_lead", "rollups.interactions_total": 0 }).toArray();
+    let n = 0;
+    for (const number of numbers) {
+      if (await db.collection("call_interactions").countDocuments({ contact_number_id: number._id })) continue;
+      if (await db.collection("number_lead_attachments").countDocuments({ contact_number_id: number._id, state: "attached", "lead_ref.model": "FormLead" })) n++;
+    }
+    return n;
+  },
+  t3_quarantined_call_log: async db => ((await db.collection("sales_intelligence_sync_state").findOne({ scope: "call_log_all_directions" }))?.quarantined_records ?? []).length,
+  t3_webhook_subscription_healthy: (db, now) => db.collection("ringcentral_webhook_subscriptions").countDocuments({ provider: "ringcentral", subscriptionId: { $type: "string" },
+    eventFilters: T3_ALL_DIRECTIONS, status: { $nin: ["Blacklisted", "Suspended", "Deleted"] }, expirationTime: { $gt: now } }),
+  t3_webhook_subscription_expired: (db, now) => db.collection("ringcentral_webhook_subscriptions").countDocuments({ provider: "ringcentral", subscriptionId: { $type: "string" },
+    eventFilters: T3_ALL_DIRECTIONS, expirationTime: { $lte: now } }),
 };
 
 async function main() {
