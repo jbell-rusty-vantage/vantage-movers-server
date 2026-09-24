@@ -27,6 +27,7 @@ import {
 import { reverseDigits, toNationalTenDigit } from "./phone";
 import { addObservedSearchTerm } from "./searchTerms";
 import type {
+  CallLogState,
   CaptureSource,
   InteractionIdentity,
   InteractionProjection,
@@ -68,6 +69,11 @@ export type PersistDependencies = {
    * row instead of masquerading as a job id.
    */
   request_id?: string | null;
+  /**
+   * Quiet minutes after which a Call Log record is final (CC-04); passed to
+   * `fromCallLogRecord`. Default `DEFAULT_SETTLE_HORIZON_MINUTES` (240).
+   */
+  settleHorizonMinutes?: number;
 };
 
 export type ApplyResult = {
@@ -77,6 +83,10 @@ export type ApplyResult = {
   noop: boolean;
   created: boolean;
   newly_terminal: boolean;
+  /** Provisional -> settled on this revision (CC-04). */
+  newly_settled: boolean;
+  /** The row's Call Log state after this observation (CC-04). */
+  call_log_state: CallLogState | null;
   new_recording_ids: string[];
   fenced_party_events: number;
   stale_call_log: boolean;
@@ -207,7 +217,7 @@ async function applyOnce(
   if (canonical && "purged_at" in canonical && canonical.purged_at) return {
     interaction_id: String(canonical._id), contact_number_id: canonical.contact_number_id ? String(canonical.contact_number_id) : null,
     projection_revision: canonical.projection_revision, noop: true, created: false, newly_terminal: false,
-    new_recording_ids: [], fenced_party_events: 0, stale_call_log: false, merged_interaction_ids: [], jobs: [], contact_number_created: false,
+    newly_settled: false, call_log_state: canonical.call_log_state ?? null, new_recording_ids: [], fenced_party_events: 0, stale_call_log: false, merged_interaction_ids: [], jobs: [], contact_number_created: false,
   };
   const others = rows.filter((row) => canonical && !row._id.equals(canonical._id));
   let existing: InteractionProjection | null = canonical ? toProjection(canonical) : null;
@@ -225,6 +235,7 @@ async function applyOnce(
             now,
             resolveRoute: deps.resolveRoute,
             source: input.source,
+            settleHorizonMinutes: deps.settleHorizonMinutes,
           });
   } catch (error) {
     throw new InteractionPersistenceError(
@@ -249,6 +260,8 @@ async function applyOnce(
       noop: true,
       created: false,
       newly_terminal: false,
+      newly_settled: false,
+      call_log_state: canonical.call_log_state ?? null,
       new_recording_ids: [],
       fenced_party_events: outcome.fenced_party_events,
       stale_call_log: outcome.stale_call_log,
@@ -398,6 +411,8 @@ async function applyOnce(
     noop: false,
     created: outcome.created,
     newly_terminal: outcome.newly_terminal,
+    newly_settled: outcome.newly_settled,
+    call_log_state: outcome.next.call_log_state,
     new_recording_ids: outcome.new_recording_ids,
     fenced_party_events: outcome.fenced_party_events,
     stale_call_log: outcome.stale_call_log,
@@ -448,7 +463,13 @@ async function upsertContactNumber(
 ): Promise<NumberRef> {
   const ContactNumber = getContactNumberModel();
   const e164 = next.external_e164;
-  const eligible = e164 !== null && next.external_endpoint_kind === "external" && next.direction !== "Internal";
+  // A provisional row gets no Contact Number: the snapshot may still turn out to
+  // be another direction, and the Number appears (counted once) when it settles.
+  const eligible =
+    e164 !== null &&
+    next.external_endpoint_kind === "external" &&
+    next.direction !== "Internal" &&
+    next.call_log_state !== "provisional";
   if (!eligible) {
     if (prevNumberId && prev) await applyRollupDelta(prevNumberId, prev, null, now, session);
     return { id: null, created: false };
@@ -641,6 +662,8 @@ async function scheduleDownstream(
   now: Date,
   captureSource?: CaptureSource,
 ): Promise<string[]> {
+  // R2: a mid-call snapshot drives no downstream work until it settles (CC-04).
+  if (outcome.next.call_log_state === "provisional") return [];
   if (captureSource === "backfill") {
     if (!number.id) return [];
     const key = `csi:backfill:attachment:number:${String(number.id)}:interaction:${interactionId}`;
@@ -651,9 +674,12 @@ async function scheduleDownstream(
   const jobs: string[] = [];
   const next = outcome.next;
   const internal = next.direction === "Internal" || next.external_endpoint_kind === "company_did" || next.external_endpoint_kind === "extension";
+  // The first settled revision of a provisional row is its first final
+  // observation: downstream treats it like a creation (CC-04).
+  const firstFinal = outcome.newly_terminal || outcome.newly_settled;
   const material =
     outcome.created ||
-    outcome.newly_terminal ||
+    firstFinal ||
     (existing?.provider_connected ?? false) !== next.provider_connected ||
     existing?.contact_type !== next.contact_type ||
     existing?.direction !== next.direction ||
@@ -691,7 +717,7 @@ async function scheduleDownstream(
     jobs.push(key);
   }
   if (next.terminal && !internal) {
-    const recordingIds = outcome.newly_terminal
+    const recordingIds = firstFinal
       ? next.recordings.map((r) => r.provider_recording_id)
       : outcome.new_recording_ids;
     for (const recordingId of recordingIds) {
@@ -709,7 +735,7 @@ async function scheduleDownstream(
       );
       jobs.push(key);
     }
-    if (outcome.newly_terminal && next.recordings.length === 0) {
+    if (firstFinal && next.recordings.length === 0) {
       // Pending discovery: not proof that no recording will ever exist.
       const key = `csi:recording_discovery:interaction:${interactionId}:pending`;
       await enqueueCsiJob(
@@ -741,6 +767,7 @@ function summarize(
     external_e164: projection.external_e164,
     external_endpoint_kind: projection.external_endpoint_kind,
     terminal: projection.terminal,
+    call_log_state: projection.call_log_state,
     provider_result: projection.provider_result,
     provider_connected: projection.provider_connected,
     contact_type: projection.contact_type,
@@ -815,5 +842,6 @@ export function toProjection(row: StoredInteraction | Record<string, unknown>): 
     provider_last_modified_at: r.provider_last_modified_at ?? null,
     terminal: Boolean(r.terminal),
     max_observed_webhook_sequence: r.max_observed_webhook_sequence ?? null,
+    call_log_state: r.call_log_state ?? null,
   };
 }

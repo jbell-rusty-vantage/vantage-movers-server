@@ -14,6 +14,14 @@ export type IdentityBasis = "telephony_session_id" | "session_id" | "call_log_id
 export type AliasKind = IdentityBasis;
 export type ContactType = "unknown" | "voicemail" | "human_conversation";
 export type CaptureSource = "webhook" | "call_log_reconcile" | "backfill";
+/**
+ * Whether the Call Log has shown this interaction in a final version (CC-04).
+ * `null`: never seen in the Call Log (webhook-only, or stored before CC-04).
+ * `provisional`: the latest Call Log record looks like a mid-call snapshot.
+ * `settled`: a Call Log record that is final by its shape or by the settle horizon.
+ */
+export type CallLogState = "provisional" | "settled";
+export const CALL_LOG_STATES = ["provisional", "settled"] as const satisfies readonly CallLogState[];
 
 export type ProjectedParty = {
   party_id: string | null;
@@ -88,6 +96,8 @@ export type InteractionProjection = {
   provider_last_modified_at: Date | null;
   terminal: boolean;
   max_observed_webhook_sequence: number | null;
+  /** Only the Call Log path sets it; webhook projection carries it through untouched. */
+  call_log_state: CallLogState | null;
 };
 
 /** One normalized party event from an account telephony-session webhook delivery. */
@@ -133,6 +143,8 @@ export type ProjectionOutcome = {
   changed: boolean;
   created: boolean;
   newly_terminal: boolean;
+  /** Provisional -> settled (CC-04): downstream treats this revision like a creation. */
+  newly_settled: boolean;
   new_recording_ids: string[];
   new_aliases: Array<{ kind: AliasKind; value: string }>;
   /** Party events fenced as stale or duplicate by that party's own sequence. */
