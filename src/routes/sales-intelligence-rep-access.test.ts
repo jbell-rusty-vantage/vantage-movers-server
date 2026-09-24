@@ -111,6 +111,7 @@ test("S8-REP access matrix: every registered Sales Intelligence route × Owner /
   const { base, close } = await serve([history, boundary, internal, admin, invite, cron]);
   const repReads = new Set<string>(CSI_REP_READ_ROUTES), repCommands = new Set<string>(CSI_REP_COMMAND_ROUTES);
   const rows: string[] = [];
+  const matrix: Array<{ router: string; method: string; path: string; key: string; rep_route: "read" | "command" | null; owner: string; admin: string; rep: string; rep_flag_off: string }> = [];
   try {
     const adminRoutes = routesOf(admin, CSI_ADMIN_PREFIX);
     // Every route the rep may call is registered (a renamed route can't silently drop out of the matrix).
@@ -150,10 +151,21 @@ test("S8-REP access matrix: every registered Sales Intelligence route × Owner /
         for (const label of ["owner", "admin", "rep", "rep_off"]) assert.equal(result[label], "401", `${label} ${key}`);
       }
       rows.push(`| ${group.name} | \`${key}\` | ${result.owner} | ${result.admin} | ${result.rep} | ${result.rep_off} |`);
+      matrix.push({ router: group.name, method: route.method, path: group.name === "admin" ? `${CSI_ADMIN_PREFIX}${route.path}` : route.path, key,
+        rep_route: repReads.has(key) ? "read" : repCommands.has(key) ? "command" : null, owner: result.owner!, admin: result.admin!, rep: result.rep!, rep_flag_off: result.rep_off! });
     }
     // Guards the enumeration itself (Express internals): the admin router alone registers 60+ method/path pairs.
     assert.ok(adminRoutes.length >= 60 && total >= 70, `enumerated ${adminRoutes.length} admin routes, ${total} in all`);
-    if (process.env.S8_MATRIX_OUT) writeFileSync(process.env.S8_MATRIX_OUT, `| router | route | Owner | Admin | rep (REP_ACCESS on) | rep (REP_ACCESS off) |\n|---|---|---|---|---|---|\n${rows.join("\n")}\n`);
+    // CF8: `S8_MATRIX_OUT=<file>.md` writes the Markdown table there and the same rows as `<file>.json`.
+    if (process.env.S8_MATRIX_OUT) {
+      writeFileSync(process.env.S8_MATRIX_OUT, `| router | route | Owner | Admin | rep (REP_ACCESS on) | rep (REP_ACCESS off) |\n|---|---|---|---|---|---|\n${rows.join("\n")}\n`);
+      writeFileSync(process.env.S8_MATRIX_OUT.replace(/\.md$/, "") + ".json", `${JSON.stringify({
+        generated_by: "src/routes/sales-intelligence-rep-access.test.ts (router enumeration; every service stubbed, `connect` throws a marker so \"reached\" = passed the role guard)",
+        outcomes: { reached: "passed the route's role guard (stub marker)", "403 OWNER_REQUIRED": "Owner-only route", "403 FORBIDDEN": "rep on an Outreach command route outside the E9 allowlist",
+          "403 RUN_SCOPE_DENIED": "history/internal routers: needs a run-scoped token", "403 forbidden": "invite email route: Owner only", "401": "cron: needs CRON_SECRET" },
+        totals: { routes: matrix.length, rep_reached: matrix.filter(row => row.rep === "reached").length, admin_reached: matrix.filter(row => row.admin === "reached").length },
+        routes: matrix }, null, 2)}\n`);
+    }
   } finally {
     await close();
     process.env = saved;

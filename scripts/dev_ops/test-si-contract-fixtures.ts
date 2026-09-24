@@ -24,23 +24,27 @@ Object.assign(process.env, { TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: "testv
 const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
 const stage = arg("stage") as Stage | undefined;
-if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c", "S6", "S7", "S9"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c|S6|S7|S9 is required");
+if (!stage || !["S1", "S2", "S3", "S4", "AC", "S5c", "S6", "S7", "S8", "S9"].includes(stage)) throw new Error("--stage S1|S2|S3|S4|AC|S5c|S6|S7|S8|S9 is required");
 const mode: Mode = args.includes("--flag-off") ? "off" : "on";
 const root = resolve(arg("dir") ?? SI_CONTRACTS_DIR);
 const dir = resolve(root, stage, ...(mode === "off" ? ["flag-off"] : []));
 
-function manifestRows(): SiManifestRow[] | null {
+function manifest(): { rows: SiManifestRow[] | null; agents: Record<string, string> | null } {
   // SEED-T3 part 2: a stage folder's own `_seed-manifest.json` (written by the capture) wins, so a later re-seed, which rewrites the shared
   // `seed-manifest.json` with new ids, never breaks an earlier freeze's id-based checks. Older stages fall back to the shared file.
   const own = resolve(dir, "_seed-manifest.json");
   const file = existsSync(own) ? own : resolve(root, "seed-manifest.json");
-  if (!existsSync(file)) return null;
-  return (JSON.parse(readFileSync(file, "utf8")) as { rows?: SiManifestRow[] }).rows ?? null;
+  if (!existsSync(file)) return { rows: null, agents: null };
+  // CF8: the capture-time manifest also names the seeded Agents (the rep-scope checks need the rep id); older manifests have none.
+  const parsed = JSON.parse(readFileSync(file, "utf8")) as { rows?: SiManifestRow[]; agents?: Record<string, string> };
+  return { rows: parsed.rows ?? null, agents: parsed.agents ?? null };
 }
 
 async function main() {
-  const files = existsSync(dir) ? readdirSync(dir).filter(file => file.endsWith(".json") && !file.startsWith("_")).sort() : [];
-  const rows = manifestRows();
+  // CF8: the S8 folder also holds the generated access matrices (not HTTP fixtures; validated where they are generated).
+  const NON_FIXTURES = new Set(["access-matrix.json", "admin-proxy-matrix.json"]);
+  const files = existsSync(dir) ? readdirSync(dir).filter(file => file.endsWith(".json") && !file.startsWith("_") && !NON_FIXTURES.has(file)).sort() : [];
+  const { rows, agents } = manifest();
   const uncaptured = routesFor(stage!, mode).filter(route => !files.some(file => file.split("__")[0] === route.slug));
   console.log("TAP version 13");
   console.log(`1..${files.length + uncaptured.length}`);
@@ -72,7 +76,7 @@ async function main() {
       if (!result.success) problems.push(...result.error.issues.slice(0, 5).map(issue => `${admin.name}: ${issue.path.join(".")}: ${issue.message}`));
     }
     const state = file.slice(route.slug.length + 2, -".json".length);
-    if (route.checks) problems.push(...route.checks(readLike ? raw : (raw as { body?: unknown }).body, { rows, state, file }));
+    if (route.checks) problems.push(...route.checks(readLike ? raw : (raw as { body?: unknown }).body, { rows, state, file, agents }));
     const note = route.kind === "script" ? " # script capture (no route); server caseFileArtifactSchema + script-local strict wrapper"
       : state.endsWith("__synthetic") ? " # synthetic: pure composeCaptureHealth in a copy of the real response"
       : server.source === "script-local" && route.kind === "read" ? " # server exports no schema; script-local strict schema" : "";

@@ -74,6 +74,8 @@ void (async () => {
   const { ADMIN_PROXY_HEADER_NAMES: names, ADMIN_PROXY_AGENT_HEADER, buildCanonicalRepActorPayload, normalizeAdminPath } = canonical;
   const outer = express();
   outer.use((req, res, next) => {
+    // CF8: names the database this local API serves, so a capture can prove its commands go to a disposable copy.
+    res.setHeader("x-csi-local-database", DATABASE);
     const requested = (req.header("x-csi-local-actor") ?? defaultActor).trim();
     delete req.headers["x-csi-local-actor"];
     if (!LOCAL_ACTOR_PATTERN.test(requested)) { res.status(400).json({ ok: false, error: "x-csi-local-actor must be owner or rep:<agent_id>" }); return; }

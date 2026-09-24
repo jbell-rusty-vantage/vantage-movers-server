@@ -21,7 +21,8 @@ import type { SiManifestRow } from "./si-contract-common";
 // as a stub only: `ROUTES` gets its entries once AC2's new reads exist. `routesFor("AC", mode)`
 // correctly returns `[]` until then, which `capture-si-contract.ts` already reports as "no entries".
 // "S5c" is CF5c (Team 3, SEED-T3 2026-09-24): capture reconciliation (reconciliation addendum §3.7).
-export type Stage = "S1" | "S2" | "S3" | "S4" | "AC" | "S5c" | "S6" | "S7" | "S9";
+// "S8" is CF8 (Team 3, S8-REP): every Sales Intelligence route called as a rep, in and out of scope, the rep commands and the Owner's same reads.
+export type Stage = "S1" | "S2" | "S3" | "S4" | "AC" | "S5c" | "S6" | "S7" | "S8" | "S9";
 export type Mode = "on" | "off";
 /** A follow-up call built from the previous response (cursor paging). */
 export type ChainCall = { state: string; next: (body: any) => string | null };
@@ -33,9 +34,19 @@ export type CaptureCall = {
   /** Extra request headers (e.g. `Range`). */
   headers?: Record<string, string>;
   chain?: ChainCall[];
+  /** CF8: a command call (default GET). A call with a body is stored with its `request` (method, path, body). */
+  method?: "GET" | "POST" | "PATCH";
+  body?: unknown;
+  /** CF8: `command` sends the call to `--command-base` (a disposable copy of the seed), so the read fixtures stay stable. */
+  target?: "command";
 };
+/**
+ * CF8: what a stage needs beyond the manifest rows, read from the seed database by the capture: the seeded Agents by name, and
+ * the follow-ups the rep commands act on (`{ id, revision }` by role). Stages before S8 ignore it.
+ */
+export type CaptureEnv = { agents: Record<string, string>; followups: Record<string, { id: string; revision: number } | null> };
 export type ResolvedSchema = { schema: ZodType; name: string; source: "server" | "script-local" | "admin@539a628" };
-export type CheckContext = { rows: readonly SiManifestRow[] | null; state: string; file: string };
+export type CheckContext = { rows: readonly SiManifestRow[] | null; state: string; file: string; agents?: Record<string, string> | null };
 export type RouteEntry = {
   stage: Stage;
   mode: Mode;
@@ -50,7 +61,7 @@ export type RouteEntry = {
    * call. The HTTP capture skips them; the fixture test validates them like reads.
    */
   kind: "read" | "status" | "script";
-  calls: (rows: readonly SiManifestRow[]) => CaptureCall[];
+  calls: (rows: readonly SiManifestRow[], env: CaptureEnv) => CaptureCall[];
   schema: () => Promise<ResolvedSchema>;
   /** Production Admin consumer schemas that must parse the same fixture (non-strict, as the Admin parses). */
   admin?: Array<() => Promise<ResolvedSchema>>;
@@ -763,20 +774,57 @@ function s7ClosedHistoryChecks(body: any, ctx: CheckContext): string[] {
 
 const etDayKey = (at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 const dayMinus = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
-function s9OverviewCalls(): CaptureCall[] {
+// CF8/CF9: the rep the S8 captures act as (a reviewed rep with records, follow-ups, a promise across records and closed work),
+// and the other seeded reps whose names and values must never reach the rep's Overview (C11).
+const REP_NAME = "Dana Reyes";
+const OTHER_REP_NAMES = ["Marcus Bell", "Tina Cho"] as const;
+/** The local API (`serve-csi-local.ts`) re-signs a request carrying this header as the named rep, exactly as the admin proxy does. */
+const asRep = (env: CaptureEnv): Record<string, string> => ({ "x-csi-local-actor": `rep:${env.agents[REP_NAME]}` });
+/** A rep-scoped Overview (S8-REP, E23, C11): the rep's own row, anonymous `team_medians`, and no other rep's name, id or values. */
+function repOverviewChecks(body: any, agents?: Record<string, string> | null): string[] {
+  const d = body?.data;
+  if (!d) return ["data missing"];
+  const out: string[] = [];
+  const rep = agents?.[REP_NAME] ?? null;
+  if (!d.scope?.agent_id) out.push("scope.agent_id missing: not a rep-scoped Overview");
+  if (rep && d.scope?.agent_id !== rep) out.push(`scope.agent_id ${d.scope?.agent_id} is not the rep ${rep} (the server must force it)`);
+  if (d.reps?.length !== 1 || d.reps[0].agent?.name !== REP_NAME || d.reps[0].agent?.id !== d.scope?.agent_id) out.push(`reps ${JSON.stringify(d.reps?.map((r: any) => r.agent?.name))}: expected exactly the rep's own row`);
+  if (!d.team_medians || !(d.team_medians.reps >= 1)) out.push("team_medians missing on a rep read");
+  if (d.unmapped !== null || d.unassigned !== null) out.push("unmapped / unassigned not null on a rep read (C11)");
+  if ((d.spend?.by_rep ?? []).some((r: any) => r.agent_id !== d.scope?.agent_id)) out.push("spend.by_rep carries another rep or the Unassigned row (C11)");
+  const text = JSON.stringify(d);
+  for (const name of OTHER_REP_NAMES) if (text.includes(name)) out.push(`C11: another rep's name (${name}) in a rep's Overview`);
+  for (const [name, id] of Object.entries(agents ?? {})) if (name !== REP_NAME && text.includes(id)) out.push(`C11: another rep's Agent id (${name}) in a rep's Overview`);
+  if (!["ok", "attention", "broken"].includes(d.now?.capture_health?.status)) out.push("now.capture_health.status missing");
+  return out;
+}
+function s9OverviewCalls(_rows: readonly SiManifestRow[], env: CaptureEnv): CaptureCall[] {
   const today = etDayKey(new Date());
   const scoped = (body: any) => { const id = body?.data?.reps?.find((r: any) => r.agent?.name === "Dana Reyes")?.agent?.id; return id ? `/overview?agent_id=${id}` : null; };
+  // CF8 addition (S8-REP): the rep's own Overview for the same periods, as the rep (forced scope + team_medians).
+  const rep = env?.agents?.[REP_NAME] ? asRep(env) : null;
   return [
     { state: "default", path: "/overview", chain: [{ state: "owner-one-rep-scope", next: scoped }] },
     { state: "today", path: "/overview?period=today" },
     { state: "last-7-days", path: "/overview?period=last_7_days" },
     { state: "custom", path: `/overview?period=custom&from=${dayMinus(today, 3)}&to=${today}` },
     { state: "preset-new", path: "/overview?period=last_7_days&priority=0,not_set" },
+    ...(rep ? [
+      { state: "rep-today", path: "/overview?period=today", headers: rep },
+      { state: "rep-last-7-days", path: "/overview?period=last_7_days", headers: rep },
+      { state: "rep-custom", path: `/overview?period=custom&from=${dayMinus(today, 3)}&to=${today}`, headers: rep },
+    ] : []),
   ];
 }
 function s9OverviewChecks(body: any, ctx: CheckContext): string[] {
   const d = body?.data;
   if (!d) return ["data missing"];
+  if (ctx.state.startsWith("rep-")) {
+    const out = repOverviewChecks(body, ctx.agents);
+    const period = /^rep-(today|last-7-days|custom)$/.exec(ctx.state)?.[1]?.replace(/-/g, "_");
+    if (period && d.periods?.activity?.key !== period) out.push(`periods.activity.key ${d.periods?.activity?.key}, expected ${period}`);
+    return out;
+  }
   const out: string[] = [];
   if (!["ok", "attention", "broken"].includes(d.now?.capture_health?.status)) out.push("now.capture_health.status missing");
   if (ctx.state === "owner-one-rep-scope") {
@@ -879,7 +927,7 @@ ROUTES.push(
     kind: "read", calls: s7ClosedHistoryCalls, schema: closedHistoryServer, checks: s7ClosedHistoryChecks },
 
   // ── CF9 ──
-  { stage: "S9", mode: "on", slug: "overview", route: "GET /overview", params: "default (activity Today, spend Last 7 days); period=today; last_7_days; custom (3 ET days back → today); preset New; Owner one-rep scope (agent_id)",
+  { stage: "S9", mode: "on", slug: "overview", route: "GET /overview", params: "default (activity Today, spend Last 7 days); period=today; last_7_days; custom (3 ET days back → today); preset New; Owner one-rep scope (agent_id); CF8: as the rep (Dana Reyes) for today, last_7_days, custom",
     kind: "read", calls: s9OverviewCalls, schema: overviewSchema, checks: s9OverviewChecks },
   { stage: "S9", mode: "on", slug: "attention", route: "GET /attention", params: "limit=200 default; view=all_outreach&limit=200 (band_since, filter_keys.responsible/overdue)", kind: "read",
     calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
@@ -907,6 +955,326 @@ ROUTES.push(
   { stage: "S9", mode: "off", slug: "number-timeline", route: "GET /numbers/:id/timeline (v2, OVERVIEW off)", params: "T3-band-call", kind: "read",
     calls: labelCalls([BAND.call], row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/timeline?limit=50` : null)),
     schema: timelineServer, admin: [adminSchema("timelineSchema")] },
+);
+
+// ── CF8 (S8-REP, assignment addendum §4.2, E8–E11, E23, C6, C11): every Sales Intelligence route as a rep ──
+// The rep is Dana Reyes (seed Agent), signed by the local API exactly as the admin proxy signs a rep session. In her E11 scope:
+// records she is responsible for (AC-*, T3-*), S-findings and T3-promise-across-b through follow-ups she promised. Out of scope:
+// every S-* record without her, and their Numbers / conversations. Commands run against `--command-base` (a disposable copy).
+const S8 = {
+  findings: "S-findings", owned: "AC-callback-owner-exact", promisedOnly: "T3-promise-across-b", closed: "T3-p5-accepted",
+  outRecords: ["S-audio-purged", "T3-band-call", "S-number-only"], outTimeline: "S-timeline-300", outAssessment: "S-engagement",
+  outFindings: "S-suggestion-open", outNumbers: ["S-audio-purged", "S-calls-60"], outConversation: "S-audio-purged",
+} as const;
+/** A well-formed id no seeded row has: the "missing record" answer an out-of-scope id must be identical to. */
+const S8_MISSING_ID = "5eed00000000000000000dea";
+const repId = (ctx: CheckContext) => ctx.agents?.[REP_NAME] ?? null;
+const rowAgents = (row: any): string[] => row?.filter_keys?.agents ?? [];
+/** As `labelCalls`, with the call's headers (rep or not) and target. */
+const s8Label = (labels: readonly string[], path: (row: SiManifestRow) => string | null, extra: (env: CaptureEnv) => Partial<CaptureCall> = () => ({}), suffix?: string) =>
+  (rows: readonly SiManifestRow[], env: CaptureEnv) => labelCalls(labels, path, suffix)(rows).map(call => ({ ...call, ...extra(env) }));
+const repOf = (env: CaptureEnv) => ({ headers: asRep(env) });
+const labelOfState = (ctx: CheckContext) => ctx.rows?.find(row => stateOf(row.label) === ctx.state.replace(/-(include-superseded|after-commands)$/, "")) ?? null;
+
+const S8_VIEW_COUNT = (state: string) => (state.startsWith("closed") ? "closed" : state.startsWith("default") ? "attention" : "active");
+function s8RepDeskCalls(_rows: readonly SiManifestRow[], env: CaptureEnv): CaptureCall[] {
+  const h = asRep(env), other = env.agents[OTHER_REP_NAMES[0]];
+  const all = "/attention?view=all_outreach&limit=200";
+  return [
+    { state: "default", path: "/attention?limit=200", headers: h },
+    { state: "all-outreach", path: all, headers: h },
+    { state: "closed", path: "/attention?view=closed&limit=200", headers: h },
+    // The rep asks for another rep and for Unassigned: the server ignores both and forces agent_id = the rep.
+    { state: "all-outreach-param-agent-other-rep", path: `${all}&agent_id=${other}`, headers: h },
+    { state: "all-outreach-param-unassigned", path: `${all}&unassigned=true`, headers: h },
+    { state: "default-param-agent-other-rep", path: `/attention?limit=200&agent_id=${other}`, headers: h },
+    { state: "all-outreach-preset-other", path: `${all}&priority=${PRESETS.other.join(",")}`, headers: h },
+    { state: "page-1", path: "/attention?view=all_outreach&limit=5", headers: h,
+      chain: [{ state: "page-2", next: body => (body?.data?.cursor ? `/attention?view=all_outreach&limit=5&cursor=${q(body.data.cursor)}` : null) }] },
+  ];
+}
+function s8RepDeskChecks(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body)];
+  const rep = repId(ctx);
+  if (!rep) return [...out, "no rep Agent id in the stage manifest"];
+  const rows = items(body).filter(row => row.outreach);
+  if (!rows.length) out.push("empty rep desk page");
+  const outside = rows.filter(row => !rowAgents(row).includes(rep));
+  if (outside.length) out.push(`${outside.length} rows outside the rep's scope (filter_keys.agents lacks the rep)`);
+  const counts = body?.data?.priority_counts;
+  if (!counts) out.push("data.priority_counts missing");
+  else if (!ctx.state.startsWith("page")) {
+    const view = S8_VIEW_COUNT(ctx.state);
+    const keys = ctx.state.endsWith("preset-other") ? PRESETS.other : Object.keys(counts);
+    const sum = keys.reduce((total: number, key: string) => total + (counts[key]?.[view] ?? 0), 0);
+    if (body?.data?.total_items !== sum) out.push(`total_items ${body?.data?.total_items} ≠ Σ rep priority_counts.${view} ${sum} (the rep's chips count the rep's rows)`);
+  }
+  if (ctx.state.endsWith("preset-other") && rows.some(row => !(PRESETS.other as readonly string[]).includes(row.filter_keys?.priority ?? "not_set"))) out.push("preset Other returned another Priority");
+  out.push(...attentionRowsCarryS2(body, ctx.state.startsWith("closed")));
+  return out;
+}
+function s8OwnerDeskChecks(body: any, ctx: CheckContext): string[] {
+  const out = [...flagOnHeader(body)];
+  const rep = repId(ctx);
+  const rows = items(body).filter(row => row.outreach);
+  if (!rep) return [...out, "no rep Agent id in the stage manifest"];
+  if (ctx.state.endsWith("agent-rep")) {
+    if (!rows.length || rows.some(row => !rowAgents(row).includes(rep))) out.push("the Owner's agent_id=<rep> page is empty or holds another rep's row");
+  } else if (!rows.some(row => !rowAgents(row).includes(rep))) out.push("the Owner's unscoped desk holds only the rep's rows (expected the whole desk)");
+  return out;
+}
+function s8DetailChecks(rep: boolean) {
+  return (body: any, ctx: CheckContext): string[] => {
+    const out: string[] = [];
+    const row = labelOfState(ctx);
+    if (row && body?.data?.outreach?.id !== row.outreach_record_id) out.push(`data.outreach.id ${body?.data?.outreach?.id} is not ${row.label}'s record`);
+    const nudges = body?.data?.nudges;
+    if (rep && (!nudges || nudges.items?.length !== 0 || nudges.next_cursor !== null)) out.push("a rep's detail carries Owner→rep nudges");
+    return out;
+  };
+}
+function s8ClosedHistoryChecks(rep: boolean) {
+  return (body: any, ctx: CheckContext): string[] => {
+    const out: string[] = [];
+    const agent = repId(ctx);
+    const rows = items(body);
+    if (!rows.length) out.push("empty page");
+    if (body?.data?.retention?.basis !== "activity") out.push("retention missing");
+    for (const [i, row] of rows.entries()) if (row.partition !== "closed" || !row.outcome) out.push(`items[${i}] is not a closed-partition row with an outcome`);
+    const mine = (row: any) => rowAgents(row).includes(agent!) || row.filter_keys?.responsible === agent;
+    if (rep && rows.some(row => !mine(row))) out.push("a rep's Closed history holds a row outside the rep's scope");
+    if (!rep && !rows.some(row => !mine(row))) out.push("the Owner's Closed history holds only the rep's rows");
+    if (ctx.state.endsWith("page-1") && !body?.data?.cursor) out.push("page 1 has no cursor for a page 2");
+    return out;
+  };
+}
+function s8OwnerOverviewChecks(body: any, ctx: CheckContext): string[] {
+  const d = body?.data;
+  if (!d) return ["data missing"];
+  if (ctx.state === "agent-rep") return d.reps?.length === 1 && d.reps[0].agent?.name === REP_NAME && d.team_medians && d.unmapped === null ? [] : ["Owner agent_id=<rep>: expected one rep row + team_medians"];
+  return d.team_medians === undefined && d.scope === null && d.reps?.some((r: any) => r.agent?.name === OTHER_REP_NAMES[0]) ? [] : ["the Owner's unscoped Overview: expected scope null, no team_medians, every rep"];
+}
+/** 404 bodies: an out-of-scope id gets exactly what a missing one gets (same code and message, C6). */
+const s8NotFound = (error: string) => statusSchema(404, "INVALID_INPUT", error);
+const s8OwnerOnly = statusSchema(403, "OWNER_REQUIRED", "Sales Intelligence request rejected");
+
+// Commands: `{ status, headers, body, request }` fixtures (the request is what the rep UI sends).
+async function commandFixtureSchema(status: number, body: "ok" | { code: string; error?: string }): Promise<ResolvedSchema> {
+  const { z } = await import("zod");
+  const request = z.object({ method: z.enum(["POST", "PATCH"]), path: z.string(), body: z.record(z.string(), z.unknown()) }).strict();
+  const issues = z.array(z.object({ path: z.string(), code: z.string() }).strict());
+  const responseBody = body === "ok"
+    ? z.object({ ok: z.literal(true), data: z.object({ response: z.object({ id: z.string(), revision: z.number().int(), outreach_revision: z.number().int(), state: z.string() }).strict(),
+      replayed: z.boolean() }).strict() }).strict()
+    : z.object({ ok: z.literal(false), code: z.literal(body.code), error: body.error ? z.literal(body.error) : z.string(), request_id: z.string(), issues: issues.optional() }).strict();
+  return { schema: z.object({ status: z.literal(status), headers: z.record(z.string(), z.string()), body: responseBody, request }).strict(),
+    name: `command ${status}${body === "ok" ? " {ok, data: {response, replayed}}" : ` ${body.code}`} + request`, source: "script-local" };
+}
+const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+type CommandCall = CaptureCall & { method: "POST" | "PATCH" };
+function s8CommandCalls(kind: "ok" | "refused" | "invalid") {
+  return (rows: readonly SiManifestRow[], env: CaptureEnv): CaptureCall[] => {
+    const own = env.followups.own, other = env.followups.other_rep_promise, promised = env.followups.rep_promised_not_responsible;
+    const record = byLabel(rows, S8.owned)?.outreach_record_id;
+    if (!own || !record) return [];
+    const c = (state: string, method: "POST" | "PATCH", path: string, body: Record<string, unknown>, expect: number): CommandCall =>
+      ({ state, method, path, body, expect, headers: asRep(env), target: "command" });
+    const f = (id: string) => `/followups/${id}`;
+    if (kind === "refused") return [
+      c("close-record", "POST", `/outreach/${record}/commands`, { command: "close", expected_revision: 1, reason: "lost" }, 403),
+      c("assign-record", "POST", `/outreach/${record}/commands`, { command: "assign", expected_revision: 1, responsible_agent_id: env.agents[OTHER_REP_NAMES[0]] }, 403),
+      c("add-note-record", "POST", `/outreach/${record}/commands`, { command: "add_note", expected_revision: 1, text: "Left a voicemail" }, 403),
+      c("create-followup", "POST", "/followups", { command: "create_followup", expected_revision: 1, outreach_record_id: record, action: { kind: "call", description: "Call back", due_at: null } }, 403),
+      c("cancel-own-followup", "POST", `${f(own.id)}/cancel`, { command: "cancel_followup", expected_revision: own.revision, reason: "Duplicate" }, 403),
+      c("redate-with-description", "PATCH", f(own.id), { command: "patch_followup", expected_revision: own.revision, changes: { due_at: inDays(3), description: "Call about the quote" }, reason: "Customer asked for Monday" }, 403),
+      c("complete-with-next", "POST", `${f(own.id)}/complete`, { command: "complete_followup", expected_revision: own.revision, disposition: "spoke_with_customer", note: "Spoke",
+        next: { kind: "call", description: "Call again", due_at: null } }, 403),
+      ...(other ? [c("complete-other-rep-followup", "POST", `${f(other.id)}/complete`, { command: "complete_followup", expected_revision: other.revision, disposition: "spoke_with_customer", note: "Spoke with the customer" }, 403)] : []),
+      ...(promised ? [c("complete-promised-not-responsible", "POST", `${f(promised.id)}/complete`, { command: "complete_followup", expected_revision: promised.revision, disposition: "spoke_with_customer", note: "Spoke with the customer" }, 403)] : []),
+    ];
+    if (kind === "invalid") return [
+      c("complete-missing-note", "POST", `${f(own.id)}/complete`, { command: "complete_followup", expected_revision: own.revision, disposition: "spoke_with_customer" }, 400),
+      c("complete-blank-note", "POST", `${f(own.id)}/complete`, { command: "complete_followup", expected_revision: own.revision, disposition: "spoke_with_customer", note: "   " }, 400),
+      c("snooze-blank-reason", "POST", `${f(own.id)}/snooze`, { command: "snooze_followup", expected_revision: own.revision, until: inDays(2), reason: " " }, 400),
+      c("redate-blank-reason", "PATCH", f(own.id), { command: "patch_followup", expected_revision: own.revision, changes: { due_at: inDays(3) }, reason: " " }, 400),
+    ];
+    // Allowed (E9), in order on the rep's own open follow-up: snooze, re-date, complete. Each bumps its revision by one.
+    return [
+      c("snooze-own", "POST", `${f(own.id)}/snooze`, { command: "snooze_followup", expected_revision: own.revision, until: inDays(2), reason: "Customer is at work until Friday" }, 200),
+      c("redate-own", "PATCH", f(own.id), { command: "patch_followup", expected_revision: own.revision + 1, changes: { due_at: inDays(3), date_note: "Monday morning" }, reason: "Customer asked for Monday" }, 200),
+      c("complete-own", "POST", `${f(own.id)}/complete`, { command: "complete_followup", expected_revision: own.revision + 2, disposition: "spoke_with_customer", note: "Spoke with the customer; quote sent" }, 200),
+    ];
+  };
+}
+function s8CommandChecks(body: any, ctx: CheckContext): string[] {
+  const code = body?.code, issues = JSON.stringify(body?.issues ?? []);
+  const want: Record<string, (b: any) => boolean> = {
+    "redate-with-description": () => code === "FORBIDDEN" && issues.includes("changes.description"),
+    "complete-with-next": () => code === "FORBIDDEN" && issues.includes("\"next\""),
+    "complete-missing-note": () => code === "INVALID_INPUT" && issues.includes("\"note\""),
+    // A blank (whitespace) note or reason fails the command schema itself: the generic 400 "Invalid request", no issues.
+    "complete-blank-note": b => code === "INVALID_INPUT" && b?.error === "Invalid request",
+    "snooze-blank-reason": b => code === "INVALID_INPUT" && b?.error === "Invalid request",
+    "redate-blank-reason": b => code === "INVALID_INPUT" && b?.error === "Invalid request",
+    "complete-own": b => b?.data?.response?.state !== undefined && b?.data?.replayed === false,
+  };
+  const check = want[ctx.state];
+  return check && !check(body) ? [`${ctx.state}: unexpected body ${JSON.stringify(body).slice(0, 200)}`] : [];
+}
+function s8AfterCommandChecks(body: any): string[] {
+  const followups: any[] = body?.data?.outreach?.followups ?? body?.data?.followups ?? [];
+  const text = JSON.stringify(body);
+  const out: string[] = [];
+  if (!text.includes("Spoke with the customer; quote sent") && !followups.some(f => f.status === "completed")) out.push("the rep's completed follow-up is not visible after the commands");
+  return out;
+}
+const s8Cmd = (kind: "ok" | "refused" | "invalid") => ({ kind: "status" as const, calls: s8CommandCalls(kind) });
+
+ROUTES.push(
+  // ── CF8, flags on (production's six + Team 3's five + REP_ACCESS) ──
+  // Desk: forced agent_id, rep-scoped tiles and chip counts; the Owner's same reads for comparison.
+  { stage: "S8", mode: "on", slug: "rep-attention", route: "GET /attention (as the rep)", params: "default; all_outreach; closed; &agent_id=<other rep>; &unassigned=true; default &agent_id=<other rep>; preset Other; limit=5 pages 1–2",
+    kind: "read", calls: s8RepDeskCalls, schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s8RepDeskChecks },
+  { stage: "S8", mode: "on", slug: "owner-attention", route: "GET /attention (Owner)", params: "default; all_outreach; all_outreach&agent_id=<rep> (the Owner's view of the rep's scope)", kind: "read",
+    calls: (_rows, env) => [{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" },
+      { state: "all-outreach-agent-rep", path: `/attention?view=all_outreach&limit=200&agent_id=${env.agents[REP_NAME]}` }],
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: s8OwnerDeskChecks },
+  // Record reads in scope (responsible; promised only; closed) and out of scope (404, identical to a missing id).
+  { stage: "S8", mode: "on", slug: "rep-outreach", route: "GET /outreach/:id (as the rep, in scope)", params: `${S8.findings} (promised follow-up), ${S8.owned} (responsible), ${S8.promisedOnly} (promised, other rep responsible), ${S8.closed} (closed)`,
+    kind: "read", calls: s8Label([S8.findings, S8.owned, S8.promisedOnly, S8.closed], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null), repOf),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: s8DetailChecks(true) },
+  { stage: "S8", mode: "on", slug: "owner-outreach", route: "GET /outreach/:id (Owner)", params: `the same four records, and ${S8.outRecords[0]}`, kind: "read",
+    calls: s8Label([S8.findings, S8.owned, S8.promisedOnly, S8.closed, S8.outRecords[0]], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: s8DetailChecks(false) },
+  { stage: "S8", mode: "on", slug: "rep-outreach-out-of-scope", route: "GET /outreach/:id (as the rep, out of scope / missing)", params: `${S8.outRecords.join(", ")}; missing id`, kind: "status",
+    calls: (rows, env) => [...s8Label(S8.outRecords, row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null), repOf)(rows, env).map(call => ({ ...call, expect: 404 })),
+      { state: "missing-id", path: `/outreach/${S8_MISSING_ID}`, expect: 404, headers: asRep(env) }],
+    schema: s8NotFound("Number not found") },
+  { stage: "S8", mode: "on", slug: "owner-outreach-missing", route: "GET /outreach/:id (Owner, missing id)", params: "missing id: the body a rep's out-of-scope read must equal", kind: "status",
+    calls: fixed([{ state: "missing-id", path: `/outreach/${S8_MISSING_ID}`, expect: 404 }]), schema: s8NotFound("Number not found") },
+  { stage: "S8", mode: "on", slug: "rep-outreach-timeline", route: "GET /outreach/:id/timeline (as the rep)", params: `limit=50: ${S8.findings}, ${S8.owned}`, kind: "read",
+    calls: s8Label([S8.findings, S8.owned], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null), repOf), schema: timelineServer },
+  { stage: "S8", mode: "on", slug: "rep-outreach-timeline-out-of-scope", route: "GET /outreach/:id/timeline (as the rep, out of scope)", params: S8.outTimeline, kind: "status",
+    calls: (rows, env) => s8Label([S8.outTimeline], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null), repOf)(rows, env).map(call => ({ ...call, expect: 404 })),
+    schema: s8NotFound("Outreach not found") },
+  { stage: "S8", mode: "on", slug: "rep-outreach-assessment", route: "GET /outreach/:id/assessment (as the rep)", params: S8.findings, kind: "read",
+    calls: s8Label([S8.findings], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/assessment` : null), repOf),
+    schema: ownerReadOf(load.assessmentDto, "outreachAssessmentDtoSchema", "assessment/dto.ts") },
+  { stage: "S8", mode: "on", slug: "rep-outreach-assessment-out-of-scope", route: "GET /outreach/:id/assessment (as the rep, out of scope)", params: S8.outAssessment, kind: "status",
+    calls: (rows, env) => s8Label([S8.outAssessment], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/assessment` : null), repOf)(rows, env).map(call => ({ ...call, expect: 404 })),
+    schema: s8NotFound("Outreach not found") },
+  { stage: "S8", mode: "on", slug: "rep-outreach-findings", route: "GET /outreach/:id/findings (as the rep)", params: `${S8.findings}; include_superseded=true`, kind: "read",
+    calls: (rows, env) => [...s8Label([S8.findings], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/findings` : null), repOf)(rows, env),
+      ...s8Label([S8.findings], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/findings?include_superseded=true` : null), repOf, "include-superseded")(rows, env)],
+    schema: serverSchema(load.findings, "currentFindingsResponseSchema", "analysis/currentFindings.ts"), checks: body => (items(body).length ? [] : ["S-findings has no current findings for the rep"]) },
+  { stage: "S8", mode: "on", slug: "rep-outreach-findings-out-of-scope", route: "GET /outreach/:id/findings (as the rep, out of scope)", params: S8.outFindings, kind: "status",
+    calls: (rows, env) => s8Label([S8.outFindings], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/findings` : null), repOf)(rows, env).map(call => ({ ...call, expect: 404 })),
+    schema: s8NotFound("Outreach not found") },
+  // Number- and conversation-keyed reads: in scope through an in-scope record on the Number.
+  { stage: "S8", mode: "on", slug: "rep-number-conversations", route: "GET /numbers/:id/conversations (as the rep)", params: `${S8.findings}'s Number`, kind: "read",
+    calls: s8Label([S8.findings], row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/conversations` : null), repOf),
+    schema: serverSchema(load.conversations, "ownerConversationsResponseSchema", "analysis/ownerConversations.ts") },
+  { stage: "S8", mode: "on", slug: "rep-number-conversations-out-of-scope", route: "GET /numbers/:id/conversations (as the rep, out of scope)", params: S8.outNumbers.join(", "), kind: "status",
+    calls: (rows, env) => s8Label(S8.outNumbers, row => (row.contact_number_id ? `/numbers/${row.contact_number_id}/conversations` : null), repOf)(rows, env).map(call => ({ ...call, expect: 404 })),
+    schema: s8NotFound("Number not found") },
+  { stage: "S8", mode: "on", slug: "rep-conversation-transcript", route: "GET /conversations/:id/transcript (as the rep)", params: `${S8.findings} first conversation`, kind: "read",
+    calls: (rows, env) => perRow(row => (row.label === S8.findings && row.conversation_ids[0] ? [{ suffix: "c1", path: `/conversations/${row.conversation_ids[0]}/transcript`, headers: asRep(env) }] : []))(rows),
+    schema: serverSchema(load.conversations, "ownerTranscriptResponseSchema", "analysis/ownerConversations.ts") },
+  { stage: "S8", mode: "on", slug: "rep-conversation-transcript-out-of-scope", route: "GET /conversations/:id/transcript (as the rep, out of scope)", params: `${S8.outConversation} first conversation`, kind: "status",
+    calls: (rows, env) => perRow(row => (row.label === S8.outConversation && row.conversation_ids[0] ? [{ suffix: "c1", path: `/conversations/${row.conversation_ids[0]}/transcript`, expect: 404, headers: asRep(env) }] : []))(rows),
+    schema: s8NotFound("Conversation not found") },
+  // Media out of scope: 404 before any audit row, for a purged (c1) and a retained (c2; the Owner gets the audited 500 with no Blob store) recording.
+  { stage: "S8", mode: "on", slug: "rep-conversation-media-out-of-scope", route: "GET /conversations/:id/media (as the rep, out of scope)", params: `Range: bytes=0-99; ${S8.outConversation} c1 (purged), c2 (retained)`, kind: "status",
+    calls: (rows, env) => perRow(row => (row.label === S8.outConversation ? row.conversation_ids.slice(0, 2).map((id, i) => ({ suffix: `c${i + 1}`, path: `/conversations/${id}/media`, expect: 404,
+      headers: { ...asRep(env), Range: "bytes=0-99" } })) : []))(rows),
+    schema: s8NotFound("Recording not found") },
+  // Media in scope: the route audits `media_played` with the rep as actor, so it runs on the disposable copy (no Blob store locally: 500 after the audit).
+  { stage: "S8", mode: "on", slug: "rep-conversation-media", route: "GET /conversations/:id/media (as the rep, in scope; on the command copy)", params: `Range: bytes=0-99; ${S8.findings} c3 (media retained)`, kind: "status",
+    calls: (rows, env) => perRow(row => (row.label === S8.findings && row.conversation_ids[2] ? [{ suffix: "c3", path: `/conversations/${row.conversation_ids[2]}/media`, expect: 500,
+      headers: { ...asRep(env), Range: "bytes=0-99" }, target: "command" as const }] : []))(rows),
+    schema: statusSchema(500, "INVALID_INPUT", "Sales Intelligence request failed") },
+  { stage: "S8", mode: "on", slug: "rep-conversation-media-no-recording", route: "GET /conversations/:id/media (as the rep, in scope, no stored recording; on the command copy)", params: `Range: bytes=0-99; ${S8.findings} c1 (no media)`, kind: "status",
+    calls: (rows, env) => perRow(row => (row.label === S8.findings && row.conversation_ids[0] ? [{ suffix: "c1", path: `/conversations/${row.conversation_ids[0]}/media`, expect: 404,
+      headers: { ...asRep(env), Range: "bytes=0-99" }, target: "command" as const }] : []))(rows),
+    schema: s8NotFound("Recording not found") },
+  // Closed history and Overview: forced to the rep.
+  { stage: "S8", mode: "on", slug: "rep-closed-history", route: "GET /outreach/closed-history (as the rep)", params: "limit=2 pages 1–2; &agent_id=<other rep>", kind: "read",
+    calls: (_rows, env) => [{ state: "default-page-1", path: "/outreach/closed-history?limit=2", headers: asRep(env),
+      chain: [{ state: "default-page-2", next: body => (body?.data?.cursor ? `/outreach/closed-history?limit=2&cursor=${q(body.data.cursor)}` : null) }] },
+      { state: "param-agent-other-rep", path: `/outreach/closed-history?limit=50&agent_id=${env.agents[OTHER_REP_NAMES[0]]}`, headers: asRep(env) }],
+    schema: closedHistoryServer, checks: s8ClosedHistoryChecks(true) },
+  { stage: "S8", mode: "on", slug: "owner-closed-history", route: "GET /outreach/closed-history (Owner)", params: "limit=50", kind: "read",
+    calls: fixed([{ state: "default", path: "/outreach/closed-history?limit=50" }]), schema: closedHistoryServer, checks: s8ClosedHistoryChecks(false) },
+  { stage: "S8", mode: "on", slug: "rep-overview", route: "GET /overview (as the rep)", params: "default; &agent_id=<other rep> (ignored)", kind: "read",
+    calls: (_rows, env) => [{ state: "default", path: "/overview", headers: asRep(env) }, { state: "param-agent-other-rep", path: `/overview?agent_id=${env.agents[OTHER_REP_NAMES[0]]}`, headers: asRep(env) }],
+    schema: overviewSchema, checks: (body, ctx) => repOverviewChecks(body, ctx.agents) },
+  { stage: "S8", mode: "on", slug: "owner-overview", route: "GET /overview (Owner)", params: "default; agent_id=<rep>", kind: "read",
+    calls: (_rows, env) => [{ state: "default", path: "/overview" }, { state: "agent-rep", path: `/overview?agent_id=${env.agents[REP_NAME]}` }],
+    schema: overviewSchema, checks: s8OwnerOverviewChecks },
+  // Owner-only reads a rep can't open (403 OWNER_REQUIRED), including a Number and artifacts inside the rep's scope.
+  { stage: "S8", mode: "on", slug: "rep-owner-only", route: "GET <Owner-only read> (as the rep)", params: "numbers, number, number timeline, settings, coverage, reps, review-items, nudges, attachments, assessment, run presentation, conversation findings",
+    kind: "status", calls: (rows, env) => {
+      const row = byLabel(rows, S8.findings);
+      const h = asRep(env);
+      return [
+        { state: "numbers", path: "/numbers" }, { state: "settings", path: "/settings" }, { state: "coverage", path: "/coverage" }, { state: "reps", path: "/reps" },
+        { state: "review-items", path: "/review-items" }, { state: "nudges", path: "/nudges" }, { state: "attachments", path: "/attachments" },
+        ...(row?.contact_number_id ? [{ state: "number-in-scope", path: `/numbers/${row.contact_number_id}` }, { state: "number-timeline-in-scope", path: `/numbers/${row.contact_number_id}/timeline?limit=50` }] : []),
+        ...(row?.artifact_ids[0] ? [{ state: "assessment-artifact-in-scope", path: `/assessments/${row.artifact_ids[0]}` }] : []),
+        ...(row?.run_ids[0] ? [{ state: "run-presentation-in-scope", path: `/analysis-runs/${row.run_ids[0]}/presentation` }] : []),
+        ...(row?.conversation_ids[0] ? [{ state: "conversation-findings-in-scope", path: `/conversations/${row.conversation_ids[0]}/findings` }] : []),
+      ].map(call => ({ ...call, expect: 403, headers: h }));
+    }, schema: s8OwnerOnly },
+  // Commands (E9), on the disposable copy: refused, invalid (a note is required), then allowed on the rep's own follow-up.
+  { stage: "S8", mode: "on", slug: "rep-command-refused", route: "POST|PATCH <command route> (as the rep)", params: "close / assign / add_note / create_followup / cancel_followup / re-date with another field / complete with next / another rep's promise / a promise the rep made but isn't responsible for",
+    ...s8Cmd("refused"), schema: () => commandFixtureSchema(403, { code: "FORBIDDEN", error: "Sales Intelligence request rejected" }), checks: s8CommandChecks },
+  { stage: "S8", mode: "on", slug: "rep-command-invalid", route: "POST|PATCH <follow-up command> (as the rep, no note)", params: "complete without / with a blank note; snooze and re-date with a blank reason",
+    ...s8Cmd("invalid"), schema: () => commandFixtureSchema(400, { code: "INVALID_INPUT" }), checks: s8CommandChecks },
+  { stage: "S8", mode: "on", slug: "rep-command", route: "POST /followups/:id/snooze · PATCH /followups/:id · POST /followups/:id/complete (as the rep, own follow-up)", params: `${S8.owned}'s open follow-up: snooze, re-date (due_at + date_note), complete; each with a note`,
+    ...s8Cmd("ok"), schema: () => commandFixtureSchema(200, "ok"), checks: s8CommandChecks },
+  // After the commands (on the copy): what the rep and the Owner read.
+  { stage: "S8", mode: "on", slug: "rep-outreach-after-commands", route: "GET /outreach/:id (as the rep, on the command copy, after the commands)", params: S8.owned, kind: "read",
+    calls: s8Label([S8.owned], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null), env => ({ ...repOf(env), target: "command" as const })),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: (body, ctx) => [...s8DetailChecks(true)(body, ctx), ...s8AfterCommandChecks(body)] },
+  { stage: "S8", mode: "on", slug: "owner-outreach-timeline-after-commands", route: "GET /outreach/:id/timeline (Owner, on the command copy, after the commands)", params: `${S8.owned} limit=50`, kind: "read",
+    calls: s8Label([S8.owned], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null), () => ({ target: "command" as const })),
+    schema: timelineServer, checks: body => {
+      // What the Owner sees today: the completion (rep confirmed, actor kind rep) and the snooze with the rep's note. The re-date has no timeline item (see evidence/CF8.md).
+      const done = items(body).find(item => item.kind === "followup_completed" && item.detail?.completion_basis === "rep_confirmation");
+      const snooze = items(body).find(item => item.kind === "followup_snoozed" && item.detail?.actor_kind === "rep" && item.detail?.note === "Customer is at work until Friday");
+      return [...(done?.actor?.kind === "rep" ? [] : ["no followup_completed (rep_confirmation, actor rep) on the Owner's timeline"]), ...(snooze ? [] : ["no rep snooze with its note on the Owner's timeline"])];
+    } },
+
+  // ── CF8 flag off (REP_ACCESS off; everything else as flags on): a rep is refused exactly as today; the Owner's reads are unchanged ──
+  { stage: "S8", mode: "off", slug: "rep-refused", route: "<rep route> (as the rep, REP_ACCESS off)", params: "attention, outreach detail, timeline, closed history, overview, conversations, complete own follow-up",
+    kind: "status", calls: (rows, env) => {
+      const row = byLabel(rows, S8.findings), own = env.followups.own, h = asRep(env);
+      return [
+        { state: "attention", path: "/attention" }, { state: "closed-history", path: "/outreach/closed-history" }, { state: "overview", path: "/overview" },
+        ...(row?.outreach_record_id ? [{ state: "outreach", path: `/outreach/${row.outreach_record_id}` }, { state: "outreach-timeline", path: `/outreach/${row.outreach_record_id}/timeline?limit=50` }] : []),
+        ...(row?.contact_number_id ? [{ state: "number-conversations", path: `/numbers/${row.contact_number_id}/conversations` }] : []),
+        ...(own ? [{ state: "complete-own-followup", method: "POST" as const, path: `/followups/${own.id}/complete`,
+          body: { command: "complete_followup", expected_revision: own.revision, disposition: "spoke_with_customer", note: "Spoke with the customer" } }] : []),
+      ].map(call => ({ ...call, expect: 403, headers: h }));
+    }, schema: async () => {
+      const { z } = await import("zod");
+      const local = await load.local() as { errorBodySchema: (c: string, e?: string) => ZodType };
+      return { schema: z.object({ status: z.literal(403), headers: z.record(z.string(), z.string()), body: local.errorBodySchema("OWNER_REQUIRED", "Sales Intelligence access denied"),
+        request: z.object({ method: z.enum(["POST", "PATCH"]), path: z.string(), body: z.record(z.string(), z.unknown()) }).strict().optional() }).strict(),
+        name: "status 403 OWNER_REQUIRED \"Sales Intelligence access denied\" (boundary; + request on the command)", source: "script-local" };
+    } },
+  { stage: "S8", mode: "off", slug: "owner-attention", route: "GET /attention (Owner, REP_ACCESS off)", params: "default; all_outreach", kind: "read",
+    calls: fixed([{ state: "default", path: "/attention?limit=200" }, { state: "all-outreach", path: "/attention?view=all_outreach&limit=200" }]),
+    schema: attentionServer, admin: [adminSchema("attentionSchema")], checks: flagOnHeader },
+  { stage: "S8", mode: "off", slug: "owner-outreach", route: "GET /outreach/:id (Owner, REP_ACCESS off)", params: `${S8.findings}, ${S8.owned}`, kind: "read",
+    calls: s8Label([S8.findings, S8.owned], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}` : null)),
+    schema: outreachReadSchema, admin: [adminSchema("outreachReadSchema")], checks: s8DetailChecks(false) },
+  { stage: "S8", mode: "off", slug: "owner-outreach-timeline", route: "GET /outreach/:id/timeline (Owner, REP_ACCESS off)", params: `${S8.findings} limit=50`, kind: "read",
+    calls: s8Label([S8.findings], row => (row.outreach_record_id ? `/outreach/${row.outreach_record_id}/timeline?limit=50` : null)), schema: timelineServer },
+  { stage: "S8", mode: "off", slug: "owner-closed-history", route: "GET /outreach/closed-history (Owner, REP_ACCESS off)", params: "limit=50", kind: "read",
+    calls: fixed([{ state: "default", path: "/outreach/closed-history?limit=50" }]), schema: closedHistoryServer },
+  { stage: "S8", mode: "off", slug: "owner-overview", route: "GET /overview (Owner, REP_ACCESS off)", params: "default", kind: "read",
+    calls: fixed([{ state: "default", path: "/overview" }]), schema: overviewSchema },
 );
 
 export const routesFor = (stage: Stage, mode: Mode = "on") => ROUTES.filter(route => route.stage === stage && route.mode === mode);
