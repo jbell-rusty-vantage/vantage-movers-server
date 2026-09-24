@@ -120,7 +120,7 @@ export type StageRecord = {
 export type InteractionEntry = {
   interaction_id: string; day: string; record_id: string | null; classification: RepairClass;
   created: boolean; contact_number_id: string | null; job_keys: string[];
-  downstream: "pending" | "done" | "deferred" | "blocked" | "failed" | "none";
+  downstream: "pending" | "done" | "deferred" | "blocked" | "failed" | "none" | "transcribed";
   stages: StageRecord[]; reason?: string;
 };
 export type HoldEntry = { job_id: string; stage: string; interaction_id: string; prior_status: string; prior_reason: string | null; due_at: string; held_at: string };
@@ -228,7 +228,13 @@ type JobRow = { _id: unknown; status: string; reason?: string | null; next_attem
   stage: string; dedupe_key: string; input_refs: unknown[] };
 
 class Downstream {
-  constructor(private readonly manifest: RepairManifest, private readonly stages: StageRunners, private readonly seams: RepairSeams) {}
+  /**
+   * `throughTranscription`: stop each conversation after transcription and put its analysis job on
+   * `operator_hold`, so the operator can analyse later with an improved analysis (a later run without
+   * the option releases and claims the held analyses by id).
+   */
+  constructor(private readonly manifest: RepairManifest, private readonly stages: StageRunners, private readonly seams: RepairSeams,
+    private readonly throughTranscription = false) {}
   private now() { return (this.seams.now ?? (() => new Date()))(); }
   private jobs() { return getSalesIntelligenceJobModel(); }
   private async load(jobId: string) {
@@ -344,6 +350,11 @@ class Downstream {
     // 2. Every conversation of the interaction: media → transcription → analysis → application.
     const conversations = await getLeadConversationModel().find({ call_interaction_id: entry.interaction_id }).select("_id").sort({ _id: 1 }).lean();
     for (const { _id } of conversations) if (!(await this.driveConversation(entry, String(_id)))) return;
+    if (this.throughTranscription) {
+      // Analysis is held; the number synthesis follows the applications of a later full run.
+      entry.downstream = entry.stages.some(s => s.stage === "analysis") ? "transcribed" : entry.stages.length ? "done" : "none";
+      return;
+    }
     // 3. The number synthesis the conversation applications scheduled.
     if (entry.contact_number_id && conversations.length && !(await this.driveNumberRefresh(entry, entry.contact_number_id))) return;
     entry.downstream = entry.stages.length ? "done" : "none";
@@ -382,8 +393,21 @@ class Downstream {
       await this.seams.log("conversation_skipped", { interaction_id: entry.interaction_id, conversation_id: conversationId, reason: "analysis_not_scheduled" });
       return true;
     }
+    if (this.throughTranscription) return this.holdAnalysis(entry, String(analysis._id));
     if (!(await this.step(entry, "analysis", String(analysis._id), () => this.stages.analysis(String(analysis._id), "analysis"))).ok) return false;
     return this.driveApplication(entry, String(analysis._id));
+  }
+
+  /** `--through transcription`: hold a due analysis so no cron runs it; a later full run releases and claims it. */
+  private async holdAnalysis(entry: InteractionEntry, jobId: string): Promise<boolean> {
+    const job = await this.load(jobId);
+    if (!job) return true;
+    const held = job.status === "paused" && job.reason === OPERATOR_HOLD_REASON
+      ? true
+      : ["pending", "retry"].includes(job.status) ? await this.hold(entry, "analysis", job) : false;
+    await this.record(entry, { stage: "analysis", job_id: jobId, outcome: held ? "deferred" : job.status === "completed" ? "done" : "blocked",
+      by: job.status === "completed" ? "peer" : null, paid: PAID_STAGES.has("analysis"), reason: held ? "held_for_later_analysis" : job.status });
+    return true;
   }
 
   private async driveApplication(entry: InteractionEntry, analysisJobId: string): Promise<boolean> {
@@ -483,12 +507,13 @@ export function summarize(manifest: RepairManifest): RepairSummary {
  * Resumable: a `projected` day is skipped, a `classified` day keeps its first counts and is
  * re-applied (unchanged records are semantic no-ops), and deferred interactions are re-driven.
  */
-export async function runCallLogRepair(manifest: RepairManifest, seams: RepairSeams, options: { releaseHolds?: boolean } = {}): Promise<RepairSummary> {
+export async function runCallLogRepair(manifest: RepairManifest, seams: RepairSeams,
+  options: { releaseHolds?: boolean; throughTranscription?: boolean } = {}): Promise<RepairSummary> {
   const now = seams.now ?? (() => new Date());
   const apply = seams.apply ?? applyInteractionObservation;
   const directoryFor = seams.directory ?? loadDirectoryLookup;
   if (manifest.mode === "apply" && !seams.stages) throw new Error("apply mode requires downstream stage runners");
-  const downstream = manifest.mode === "apply" ? new Downstream(manifest, seams.stages!, seams) : null;
+  const downstream = manifest.mode === "apply" ? new Downstream(manifest, seams.stages!, seams, options.throughTranscription ?? false) : null;
   if (downstream && options.releaseHolds) {
     await downstream.releaseAllToProduction();
     await seams.save(manifest);
@@ -585,7 +610,9 @@ export async function runCallLogRepair(manifest: RepairManifest, seams: RepairSe
   }
   if (downstream) {
     // Interactions deferred earlier (this run or a previous one) are re-driven as their units fall due.
-    for (const entry of manifest.interactions.filter(e => e.downstream === "pending" || e.downstream === "deferred")) {
+    // A full run (no `--through transcription`) also finishes interactions an earlier run stopped after transcription.
+    const redrive = new Set<InteractionEntry["downstream"]>(options.throughTranscription ? ["pending", "deferred"] : ["pending", "deferred", "transcribed"]);
+    for (const entry of manifest.interactions.filter(e => redrive.has(e.downstream))) {
       await downstream.drive(entry);
       await seams.save(manifest);
     }

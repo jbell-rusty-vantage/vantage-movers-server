@@ -18,6 +18,8 @@
  *     --manifest scripts/dev_ops/output/<name>.json --allow-production --confirm-write [--max-wait-minutes 120]
  * Resume: re-run the same command (the manifest is resumable). Give held units back to production
  * consumers instead: add --release-holds.
+ * `--through transcription`: fix records, fetch media and transcribe, and hold every analysis on
+ * `operator_hold`; a later run on the same manifest without it releases and runs the held analyses.
  *
  * Output: the manifest (--manifest) and a JSONL log next to it (<manifest>.jsonl). Identifiers only.
  */
@@ -42,6 +44,13 @@ function option(name: string) {
   return value;
 }
 const flag = (name: string) => process.argv.includes(name);
+/** `--through transcription`: fix records, fetch media and transcribe; hold every analysis for a later full run. */
+const throughTranscription = () => {
+  const value = option("--through");
+  if (value === null || value === undefined) return false;
+  if (value !== "transcription") throw new Error("--through accepts only 'transcription'");
+  return true;
+};
 const localDatabase = (database: string, uri: string | undefined) =>
   /^testvantagemovers_[a-z0-9]+$/i.test(database) && /^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(uri ?? "");
 const date = (name: string, value: string) => {
@@ -112,7 +121,7 @@ async function main() {
   const summary = await runCallLogRepair(manifest, {
     save, log, maxWaitMs: maxWaitMinutes * 60_000,
     ...(confirm ? { stages: createStageRunners({ runId: manifest.run_id }) } : {}),
-  }, { releaseHolds: flag("--release-holds") });
+  }, { releaseHolds: flag("--release-holds"), throughTranscription: throughTranscription() });
   console.log(JSON.stringify({ done: true, manifest: manifestPath, ...summary }));
 }
 

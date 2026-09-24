@@ -163,6 +163,21 @@ test("CC-07 Call Log repair: classify, apply live, in-process downstream on the 
     },
   });
   const apply = newManifest({ mode: "apply", ...window, now: new Date(Date.now() - 1000), credential: "PERSONAL_AI_GATEWAY_API_KEY", models: {} });
+  // First `--through transcription`: records fixed, media fetched and transcribed; every analysis held.
+  await runCallLogRepair(apply, { ...base(outputs[1]!), stages, maxWaitMs: 0 }, { throughTranscription: true });
+  assert.equal(sttCalls.length, 2, "both conversations transcribed");
+  assert.deepEqual(analysisCalls, [], "no analysis ran");
+  for (const record of ["cl-stale", "cl-missing"]) {
+    const entry = apply.interactions.find(e => e.record_id === record)!;
+    assert.equal(entry.downstream, "transcribed", record);
+    const analysisUnit = entry.stages.find(u => u.stage === "analysis")!;
+    assert.deepEqual([analysisUnit.outcome, analysisUnit.reason], ["deferred", "held_for_later_analysis"]);
+    const heldAnalysis = await Jobs.findById(analysisUnit.job_id).lean();
+    assert.deepEqual([heldAnalysis?.status, heldAnalysis?.reason], ["paused", OPERATOR_HOLD_REASON]);
+  }
+  assert.equal(await claimCsiJob("csi-analysis:cron", undefined, 60_000, "analysis"), null, "no cron can take a held analysis");
+
+  // Then a full run on the same manifest releases the held analyses and finishes the chain in-process.
   const summary = await runCallLogRepair(apply, { ...base(outputs[1]!), stages, maxWaitMs: 0 });
   assert.deepEqual(summary.days[0]!.counts, { MISSING: 2, STALE: 1, unchanged: 1 });
   assert.deepEqual(summary.days[0]!.applied, { created: 2, updated: 1, noop: 1, failed: 0, changed_without_diff: 0 });
