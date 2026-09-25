@@ -38,6 +38,7 @@ import { getSalesIntelligenceJobModel } from "../../src/models/SalesIntelligence
 import { getSalesIntelligenceAiReservationModel } from "../../src/models/SalesIntelligenceAiReservation";
 import { getSalesIntelligenceAiBudgetModel } from "../../src/models/SalesIntelligenceAiBudget";
 import { enqueueCsiJob } from "../../src/services/salesIntelligence/jobs";
+import { ensureCurrentCsiBudgetPeriod } from "../../src/services/salesIntelligence/budgetPeriod";
 import { payloadHash } from "../../src/services/salesIntelligence/transactions";
 import { intelligenceSources } from "../../src/services/salesIntelligence/analysis/sources";
 import { scheduleNumberIntelligence } from "../../src/services/salesIntelligence/analysis/scheduling";
@@ -59,7 +60,10 @@ export const SUPERSEDED_REASON = "superseded_by_full_backfill";
 /** One synthesis per Number; a second only when the first one's own application moved the fingerprint. */
 export const MAX_SYNTHESES_PER_NUMBER = 2;
 const CLAIM_ATTEMPTS = 3;
-/** Preflight: refuse when the active budget period ends within this many hours (a step throws BUDGET_EXHAUSTED without one). */
+/**
+ * Estimate report only: hours left in the active period. The paid run ensures the current period before the run and
+ * before every paid unit (`ensureCurrentCsiBudgetPeriod`), so a month rollover mid-run creates the next period instead.
+ */
 export const BUDGET_PERIOD_MIN_HOURS = 12;
 /** Nominal per-step cents (`structuredGeneration.ts` fallback) when too few reconciled reservations exist. */
 export const NOMINAL_CENTS = { summary: 2, findings: 5 } as const;
@@ -95,6 +99,8 @@ export type CliOptions = {
   repairManifest: string | null;
   skipRepair: boolean;
   repairMaxWaitMinutes: number;
+  /** Phase 1 watchdog: the repair child is stopped after this long (it has no process.exit of its own). */
+  repairTimeoutMinutes: number;
   json: string | null;
 };
 const OBJECT_ID = /^[a-f\d]{24}$/i;
@@ -108,12 +114,13 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
   };
   const has = (name: string) => argv.includes(name);
   if (has("--release-holds")) throw new Error("--release-holds is not supported: held units are driven in-process or left held");
+  if (has("--allow-schema-drift")) throw new Error("--allow-schema-drift is never allowed on a paid run: run from the deployed commit");
   if (has("--estimate") && has("--confirm-write")) throw new Error("--estimate is read-only; drop it to write with --confirm-write");
   const concurrency = Number(value("--concurrency") ?? 2);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3) throw new Error("--concurrency must be 1..3");
   const layout = value("--layout") ?? "case_file";
   if (layout !== "case_file" && layout !== "default") throw new Error("--layout must be case_file or default");
-  const s10 = value("--s10-holds") ?? "leave";
+  const s10 = value("--s10-holds") ?? "drive";
   if (s10 !== "drive" && s10 !== "leave") throw new Error("--s10-holds must be drive or leave");
   const numbers = value("--numbers")?.split(",").map(s => s.trim()).filter(Boolean) ?? null;
   if (numbers?.some(id => !OBJECT_ID.test(id))) throw new Error("--numbers takes comma-separated Contact Number ids");
@@ -125,11 +132,13 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
   if (since && Number.isNaN(since.getTime())) throw new Error("--since is not a date");
   const wait = Number(value("--repair-max-wait-minutes") ?? 120);
   if (!Number.isFinite(wait) || wait < 0) throw new Error("--repair-max-wait-minutes must be ≥ 0");
+  const watchdog = Number(value("--repair-timeout-minutes") ?? 720);
+  if (!Number.isFinite(watchdog) || watchdog <= 0) throw new Error("--repair-timeout-minutes must be > 0");
   return {
     mode: has("--confirm-write") ? "apply" : "estimate", allowProduction: has("--allow-production"), concurrency,
     numbers: numbers?.length ? numbers : null, maxNumbers, since, resume: has("--resume"), manifest: value("--manifest") ?? null,
     layout, s10Holds: s10, repairManifest: value("--repair-manifest") ?? null, skipRepair: has("--skip-repair"),
-    repairMaxWaitMinutes: wait, json: value("--json") ?? null,
+    repairMaxWaitMinutes: wait, repairTimeoutMinutes: watchdog, json: value("--json") ?? null,
   };
 }
 
@@ -247,7 +256,9 @@ export async function measureCostBasis(now: Date): Promise<CostBucket[]> {
 
 // ── Manifest ───────────────────────────────────────────────────────────────────
 export type UnitBy = "backfill" | "repair" | "s10-hold" | "peer" | "prior" | null;
-export type PriorState = { status: string; reason: string | null; result_reason: string | null; attempts: number; action: "rearmed" | "superseded" | "left" };
+export type PriorState = { status: string; reason: string | null; result_reason: string | null; attempts: number;
+  /** rearmed: the same job re-driven by id; superseded: completed as superseded, fresh work made; left: a dead letter left as it is; driven: an S10 hold. */
+  action: "rearmed" | "superseded" | "left" | "driven" };
 export type UnitRecord = {
   stage: "analysis" | "application" | "number_refresh"; job_id: string;
   outcome: "done" | "deferred" | "blocked" | "failed" | "missing"; by: UnitBy; paid: boolean;
@@ -263,9 +274,12 @@ export type NumberEntry = {
   number_id: string; sets: Array<"a" | "b" | "c">;
   state: "pending" | "conversations_done" | "done" | "skipped" | "blocked" | "deferred" | "failed"; reason?: string;
   conversations: ConversationEntry[]; synthesis: UnitRecord[];
-  verification?: { summary_current: boolean; fingerprint_match: boolean | null; reason?: string };
+  verification?: { summary_current: boolean; fingerprint_match: boolean | null; expected_mismatch: string | null; pass: boolean };
+  /** `--s10-holds leave`: the scheduled job is an S10 hold, so the synthesis ran as the backfill's own job and the fingerprint stays with the held job. */
+  expected_fingerprint_mismatch?: string;
 };
-export type HoldEntry = { job_id: string; stage: string; number_id: string; conversation_id: string | null; prior_status: string; prior_reason: string | null; due_at: string; held_at: string };
+export type HoldEntry = { job_id: string; stage: string; number_id: string; conversation_id: string | null; prior_status: string; prior_reason: string | null;
+  due_at: string; held_at: string };
 export type ForeignHold = { job_id: string; stage: string; subject_key: string; action: "driven" | "left"; number_id: string | null; note?: string };
 export type FullBackfillManifest = {
   version: typeof FULL_BACKFILL_MANIFEST_VERSION;
@@ -281,7 +295,7 @@ export type FullBackfillManifest = {
   options: { concurrency: number; numbers: string[] | null; max_numbers: number | null; since: string | null; s10_holds: "drive" | "leave";
     repair_manifest: string | null };
   phases: {
-    repair: { state: "pending" | "skipped" | "done" | "failed"; exit_code?: number | null; started_at?: string; finished_at?: string; holds_remaining?: number };
+    repair: { state: "pending" | "skipped" | "done" | "failed"; exit_code?: number | null; started_at?: string; finished_at?: string; holds_remaining?: number; attempts?: number };
     select: { state: "pending" | "done"; at?: string; excluded?: Record<string, number>; counts?: Record<string, number> };
     estimate?: Estimate;
     verify?: Verification;
@@ -289,6 +303,8 @@ export type FullBackfillManifest = {
   numbers: NumberEntry[];
   holds: HoldEntry[];
   foreign_holds: ForeignHold[];
+  /** Jobs this process is claiming right now; a lease on one of them after a kill is this backfill's, not a peer's. */
+  inflight?: string[];
   stopped?: string;
 };
 
@@ -424,9 +440,17 @@ export async function selectWorkSet(target: TargetVersions, filter: { numbers: s
 export type Estimate = {
   layout: Layout; model: string; prompt_versions: TargetVersions;
   sets: WorkSet["counts"]; excluded: Record<string, number>;
-  calls: { conversation_summaries: number; conversation_summary_cache_hits: number; conversation_findings: number; number_summaries: number; number_findings: number };
-  cost_basis: { summary: ReturnType<typeof pickCost>; conversation_findings: ReturnType<typeof pickCost>; number_findings: ReturnType<typeof pickCost>; buckets: CostBucket[] };
-  projected_cents: { p95: number; mean: number };
+  /**
+   * `number_summaries`: summary steps the Number syntheses run, one per current conversation of the Number (a v3
+   * cache hit is free, so this is the upper bound; the conversation runs of this backfill fill most of the cache).
+   * `number_summaries_uncached_now`: of those, the ones with no target-prompt summary yet.
+   */
+  calls: { conversation_summaries: number; conversation_summary_cache_hits: number; conversation_findings: number;
+    number_summaries: number; number_summaries_uncached_now: number; number_findings: number };
+  cost_basis: { summary: ReturnType<typeof pickCost>; number_summary: ReturnType<typeof pickCost>; conversation_findings: ReturnType<typeof pickCost>;
+    number_findings: ReturnType<typeof pickCost>; buckets: CostBucket[] };
+  /** `p95` / `mean` bill every Number summary step; `p95_cache_hits` bills only the ones uncached now. */
+  projected_cents: { p95: number; mean: number; p95_cache_hits: number };
   jobs: Awaited<ReturnType<typeof inventoryJobs>>;
   budget: ReturnType<typeof budgetHeadroom> & { month: string | null; period_end: string | null };
 };
@@ -458,32 +482,34 @@ export async function estimateWorkSet(ws: WorkSet, target: TargetVersions, model
   const Snapshots = getIntelligenceEvidenceSnapshotModel();
   const cached = async (conversationId: string, version: string) =>
     Boolean(await Snapshots.exists({ artifact_key: summaryCacheKey(conversationId, version, target.summary, model), ...csiDataset() }));
-  const calls = { conversation_summaries: 0, conversation_summary_cache_hits: 0, conversation_findings: 0, number_summaries: 0, number_findings: ws.numbers.length };
+  const calls = { conversation_summaries: 0, conversation_summary_cache_hits: 0, conversation_findings: 0, number_summaries: 0,
+    number_summaries_uncached_now: 0, number_findings: ws.numbers.length };
   const inSet = new Set<string>();
   for (const n of ws.numbers) for (const c of n.conversations) {
     inSet.add(c.conversation_id);
     calls.conversation_findings++;
     if (await cached(c.conversation_id, c.transcript_version)) calls.conversation_summary_cache_hits++; else calls.conversation_summaries++;
   }
-  // A Number synthesis re-summarizes only its current conversations with no summary under the target prompt.
+  // A Number synthesis runs a summary step per current conversation; only a cache miss is billed.
   const ids = ws.numbers.map(n => new mongoose.Types.ObjectId(n.number_id));
   for (let i = 0; i < ids.length; i += 200) {
     const cursor = getLeadConversationModel().find({ ...ELIGIBLE_CONVERSATION, contact_number_id: { $in: ids.slice(i, i + 200) } })
       .select("latest_transcript_version").lean().cursor();
     for await (const row of cursor) {
-      if (inSet.has(String(row._id))) continue;
-      if (!(await cached(String(row._id), String(row.latest_transcript_version)))) calls.number_summaries++;
+      calls.number_summaries++;
+      if (!inSet.has(String(row._id)) && !(await cached(String(row._id), String(row.latest_transcript_version)))) calls.number_summaries_uncached_now++;
     }
   }
   const buckets = await measureCostBasis(now);
-  const basis = { summary: pickCost(buckets, "summary", "conversation"), conversation_findings: pickCost(buckets, "findings", "conversation"),
+  const basis = { summary: pickCost(buckets, "summary", "conversation"), number_summary: pickCost(buckets, "summary", "number"), conversation_findings: pickCost(buckets, "findings", "conversation"),
     number_findings: pickCost(buckets, "findings", "number"), buckets };
-  const total = (pick: "cents" | "mean") => Math.round((calls.conversation_summaries + calls.number_summaries) * basis.summary[pick] +
-    calls.conversation_findings * basis.conversation_findings[pick] + calls.number_findings * basis.number_findings[pick]);
+  const total = (pick: "cents" | "mean", numberSummaries: number) => Math.round(calls.conversation_summaries * basis.summary[pick] +
+    numberSummaries * basis.number_summary[pick] + calls.conversation_findings * basis.conversation_findings[pick] + calls.number_findings * basis.number_findings[pick]);
   const period = await activeBudgetPeriod(now);
   return {
     layout: target.layout, model, prompt_versions: target, sets: ws.counts, excluded: ws.excluded, calls, cost_basis: basis,
-    projected_cents: { p95: total("cents"), mean: total("mean") }, jobs: await inventoryJobs(repairHoldIds),
+    projected_cents: { p95: total("cents", calls.number_summaries), mean: total("mean", calls.number_summaries),
+      p95_cache_hits: total("cents", calls.number_summaries_uncached_now) }, jobs: await inventoryJobs(repairHoldIds),
     budget: { ...budgetHeadroom(period, now), month: period?.month ?? null, period_end: period?.period_end.toISOString() ?? null },
   };
 }
@@ -523,6 +549,8 @@ export type BackfillSeams = {
   sleep?: (ms: number) => Promise<unknown>;
   /** Phase 1: finish the repair's held work (the entry point spawns `ops/repair-call-log-capture.ts`). Returns its exit code. */
   runRepair?: (repairManifest: string) => Promise<number | null>;
+  /** Before every paid unit: the current budget period exists and is active (the month rolls over mid-run). Default: the production helper. */
+  ensureBudget?: (now: Date) => Promise<unknown>;
 };
 export type BackfillOptions = { concurrency: number; s10Holds: "drive" | "leave"; repairManifest: string | null; skipRepair: boolean;
   numbers: string[] | null; since: Date | null; maxNumbers: number | null; model: string };
@@ -533,7 +561,10 @@ type JobRow = { _id: unknown; status: JobStatus; reason?: string | null; result?
 const JOB_FIELDS = "status reason result stage dedupe_key subject_key next_attempt_at leased_until completed_at attempts max_attempts input_refs";
 export const isOwnDedupe = (key: string | null | undefined) => Boolean(key && (key.includes(OWN_DEDUPE_MARK) || key.startsWith(OWN_NUMBER_DEDUPE_PREFIX)));
 const resultReason = (job: { result?: unknown }) => job.result && typeof job.result === "object" && "reason" in job.result ? String((job.result as { reason: unknown }).reason) : null;
+/** Application pauses this backfill re-drives (shadow runs are never touched). */
+const APPLICATION_REDRIVE_REASONS = new Set(["permission_denied", "invocation_pending", "consumer_unavailable"]);
 type Pick = { job_id: string; by: UnitBy; prior?: PriorState; superseded_job_id?: string } | { blocked: UnitRecord["outcome"]; reason: string; by: UnitBy; job_id?: string };
+type Existing = Pick | { supersede_foreign: string } | null;
 
 /**
  * A run attached to a failed job resumes only when the worker would continue it under the target layout:
@@ -571,12 +602,19 @@ class FullBackfill {
     return this.repairHoldIds.has(String(job._id)) ? "repair" : "foreign";
   }
 
-  /** Paused jobs are claimed by no cron, queue consumer or drain; only this runner releases its own hold. */
+  /**
+   * Paused jobs are claimed by no cron, queue consumer or drain; only this runner releases its own hold.
+   * A `budget_exhausted` pause is held too, so production's `resumeBudgetPausedJobs` cannot hand it to the company key.
+   */
   private async hold(job: JobRow, numberId: string, conversationId: string | null) {
-    const held = await this.jobs().updateOne({ _id: String(job._id), status: { $in: ["pending", "retry"] } }, { $set: { status: "paused", reason: OPERATOR_HOLD_REASON } });
+    const update = { $set: { status: "paused" as const, reason: OPERATOR_HOLD_REASON } };
+    const held = job.status === "paused"
+      ? await this.jobs().updateOne({ _id: String(job._id), status: "paused", reason: job.reason ?? null }, update)
+      : await this.jobs().updateOne({ _id: String(job._id), status: { $in: ["pending", "retry"] } }, update);
     if (held.modifiedCount !== 1) return false;
     this.recordHold(String(job._id), job.stage, numberId, conversationId, job.status, job.reason ?? null, job.next_attempt_at);
-    await this.seams.log("hold", { job_id: String(job._id), stage: job.stage, number_id: numberId });
+    await this.seams.save(this.manifest);
+    await this.seams.log("hold", { job_id: String(job._id), stage: job.stage, number_id: numberId, prior_status: job.status, prior_reason: job.reason ?? null });
     return true;
   }
   private recordHold(jobId: string, stage: string, numberId: string, conversationId: string | null, priorStatus: string, priorReason: string | null, due: Date) {
@@ -584,21 +622,36 @@ class FullBackfill {
     this.manifest.holds.push({ job_id: jobId, stage, number_id: numberId, conversation_id: conversationId, prior_status: priorStatus,
       prior_reason: priorReason, due_at: new Date(due).toISOString(), held_at: this.now().toISOString() });
   }
-  /** Restores the job's own status, due now, so the immediate by-id claim that follows takes it. */
+  /** Due now, so the by-id claim that immediately follows takes it; a held pause (budget) comes back as pending. */
   private async release(job: JobRow) {
     const jobId = String(job._id);
     const hold = this.manifest.holds.find(h => h.job_id === jobId);
+    const runnable = hold !== undefined && ["pending", "retry"].includes(hold.prior_status);
     await this.jobs().updateOne({ _id: jobId, status: "paused", reason: OPERATOR_HOLD_REASON },
-      { $set: { status: hold?.prior_status ?? "pending", reason: hold?.prior_reason ?? null, next_attempt_at: this.now() } });
+      { $set: { status: runnable ? hold.prior_status : "pending", reason: runnable ? hold.prior_reason : null, next_attempt_at: this.now() } });
     this.manifest.holds = this.manifest.holds.filter(h => h.job_id !== jobId);
     await this.seams.log("release", { job_id: jobId, stage: job.stage });
   }
-  /** `--s10-holds drive`: release a foreign hold and claim it in the same moment (the caller claims next). */
-  private async driveForeign(job: JobRow, numberId: string) {
-    await this.jobs().updateOne({ _id: String(job._id), status: "paused", reason: OPERATOR_HOLD_REASON },
-      { $set: { status: "pending", reason: null, next_attempt_at: this.now() } });
-    this.noteForeign(job, "driven", numberId);
-    await this.seams.log("s10_hold_driven", { job_id: String(job._id), stage: job.stage, number_id: numberId });
+  /** After a throw between release and claim: a released job is never left pending and due. */
+  private async rehold(jobId: string, numberId: string, conversationId: string | null) {
+    const job = await this.load(jobId);
+    if (job && ["pending", "retry"].includes(job.status)) await this.hold(job, numberId, conversationId);
+  }
+  /**
+   * Take a failed (re-arm) or S10-held (drive) job onto this run's own hold, prior state recorded; the unit
+   * runner then releases and claims it by id in the same moment. Null when it changed under us.
+   */
+  private async adopt(job: JobRow, numberId: string, conversationId: string | null, action: "rearmed" | "driven") {
+    const prior = this.priorOf(job, action);
+    const exhausted = job.status === "dead_letter" || job.attempts >= job.max_attempts - 1;
+    const changed = await this.jobs().updateOne({ _id: String(job._id), status: job.status, reason: job.reason ?? null },
+      { $set: { status: "paused", reason: OPERATOR_HOLD_REASON, ...(exhausted ? { attempts: 0 } : {}) } });
+    if (changed.modifiedCount !== 1) return null;
+    this.recordHold(String(job._id), job.stage, numberId, conversationId, "pending", null, this.now());
+    if (action === "driven") this.noteForeign(job, "driven", numberId, "driven_by_backfill");
+    await this.seams.save(this.manifest);
+    await this.seams.log(action === "driven" ? "s10_hold_driven" : "rearmed", { job_id: String(job._id), stage: job.stage, number_id: numberId, prior });
+    return prior;
   }
   private noteForeign(job: JobRow, action: "driven" | "left", numberId: string | null, note?: string) {
     const existing = this.manifest.foreign_holds.find(h => h.job_id === String(job._id));
@@ -608,28 +661,19 @@ class FullBackfill {
   private priorOf(job: JobRow, action: PriorState["action"]): PriorState {
     return { status: job.status, reason: job.reason ?? null, result_reason: resultReason(job), attempts: job.attempts, action };
   }
-  /** Re-arm a failed job by id (same dedupe), due now; the caller claims it at once. */
-  private async rearm(job: JobRow) {
-    const prior = this.priorOf(job, "rearmed");
-    await this.jobs().updateOne({ _id: String(job._id), status: job.status, reason: job.reason ?? null },
-      { $set: { status: "pending", reason: null, next_attempt_at: this.now(), ...(job.attempts >= job.max_attempts - 1 ? { attempts: 0 } : {}) } });
-    await this.seams.log("rearmed", { job_id: String(job._id), stage: job.stage, prior });
-    return prior;
-  }
   /** A paused failure whose run cannot resume under the target layout: complete it as superseded and retire its unfinished run. */
   private async supersede(job: JobRow) {
-    const prior = this.priorOf(job, job.status === "paused" ? "superseded" : "left");
-    if (job.status === "paused" || ["pending", "retry"].includes(job.status)) {
+    const prior = this.priorOf(job, job.status === "dead_letter" ? "left" : "superseded");
+    if (job.status !== "dead_letter") {
       const now = this.now();
       await withTransaction(async session => {
         const done = await this.jobs().updateOne({ _id: String(job._id), status: job.status, reason: job.reason ?? null },
-          { $set: { status: "completed", completed_at: now, reason: null, result: { reason: SUPERSEDED_REASON, run_id: this.manifest.run_id,
+          { $set: { status: "completed", completed_at: now, reason: null, result: { reason: SUPERSEDED_REASON, backfill_run_id: this.manifest.run_id,
             prior_status: job.status, prior_reason: job.reason ?? null, prior_result_reason: resultReason(job) } } }, { session });
         if (done.modifiedCount !== 1) return;
         await getIntelligenceRunModel().updateOne({ job_id: String(job._id), finalized_at: null, status: { $in: ["running", "paused"] } },
           { $set: { status: "stale", processing_reason: SUPERSEDED_REASON, completed_at: now } }, { session });
       });
-      prior.action = "superseded";
     }
     await this.seams.log("superseded", { job_id: String(job._id), stage: job.stage, prior });
     return prior;
@@ -655,64 +699,140 @@ class FullBackfill {
     if (status === "disabled") this.fatal ??= "analysis_disabled";
     else if (reason && FATAL_REASONS.has(reason)) this.fatal ??= reason;
   }
+  private async ensureBudget() {
+    try { await (this.seams.ensureBudget ?? ensureCurrentCsiBudgetPeriod)(this.now()); return true; }
+    catch (error) {
+      this.fatal ??= "no_active_period";
+      await this.seams.log("budget_period_unavailable", { error: error instanceof Error ? error.message.slice(0, 120) : "unknown" });
+      return false;
+    }
+  }
+  private async inflight(jobId: string, on: boolean) {
+    const list = new Set(this.manifest.inflight ?? []);
+    if (on) list.add(jobId); else list.delete(jobId);
+    this.manifest.inflight = [...list];
+    await this.seams.save(this.manifest);
+  }
 
   /**
    * One unit by id: made due and claimed at once. A unit a production consumer claimed first is waited for
-   * and recorded as `peer`; one still pending after the claim attempts goes back on `operator_hold`.
+   * and recorded as `peer`; one still pending after the claim attempts goes back on `operator_hold`, and so
+   * does any job left released or due when something throws.
    */
   async runUnit(numberId: string, conversationId: string | null, stage: UnitRecord["stage"], jobId: string, by: UnitBy, prior?: PriorState): Promise<UnitRecord> {
     const paid = stage !== "application";
     const record = (outcome: UnitRecord["outcome"], who: UnitBy, reason?: string): UnitRecord =>
       ({ stage, job_id: jobId, outcome, by: who, paid, ...(reason ? { reason } : {}), ...(prior ? { prior } : {}) });
     let invoked = false, peer = false;
-    for (let attempt = 0; attempt < CLAIM_ATTEMPTS && !this.fatal; attempt++) {
-      let job = await this.load(jobId);
-      if (!job) return record("missing", null);
-      if (job.status === "completed") {
-        if (invoked) return record("done", peer ? "peer" : by, resultReason(job) ?? undefined);
-        const who: UnitBy = by === "prior" || by === "s10-hold" ? by : isOwnDedupe(job.dedupe_key) ? "backfill"
-          : job.completed_at && job.completed_at >= this.started() ? "peer" : "prior";
-        return record("done", who, resultReason(job) ?? undefined);
+    try {
+      for (let attempt = 0; attempt < CLAIM_ATTEMPTS && !this.fatal; attempt++) {
+        const job = await this.load(jobId);
+        if (!job) return record("missing", null);
+        if (job.status === "completed") {
+          if (invoked) return record("done", peer ? "peer" : by, resultReason(job) ?? undefined);
+          const who: UnitBy = by === "prior" || by === "s10-hold" ? by : isOwnDedupe(job.dedupe_key) ? "backfill"
+            : job.completed_at && job.completed_at >= this.started() ? "peer" : "prior";
+          return record("done", who, resultReason(job) ?? undefined);
+        }
+        if (job.status === "dead_letter") return record("failed", invoked ? by : null, resultReason(job) ?? job.reason ?? "dead_letter");
+        if (job.status === "paused" && (job.reason !== OPERATOR_HOLD_REASON || this.holdOwner(job) !== "own"))
+          return record("blocked", invoked ? by : null, resultReason(job) ?? job.reason ?? "paused");
+        if (job.status === "leased" && job.leased_until && job.leased_until > this.now()) {
+          // A lease this backfill held before a kill is its own: wait for it to expire, then claim; anything else is a peer.
+          if (!(this.manifest.inflight ?? []).includes(jobId)) { peer = true; invoked = true; }
+          await waitForBackfillPeer(async () => this.load(jobId), ms => this.sleep(ms));
+          continue;
+        }
+        if (paid && !(await this.ensureBudget())) break;
+        if (job.status === "paused") await this.release(job);
+        else await this.jobs().updateOne({ _id: jobId, status: { $in: ["pending", "retry"] }, next_attempt_at: { $gt: this.now() } }, { $set: { next_attempt_at: this.now() } });
+        await this.inflight(jobId, true);
+        const result = stage === "application" ? await this.seams.runners.application(jobId) : await this.seams.runners.analysis(jobId, stage);
+        await this.inflight(jobId, false);
+        invoked = true;
+        this.checkFatal(result.reason, result.status);
+        if (result.status === "not_claimable" || result.status === "lease_lost") {
+          peer = true;
+          await waitForBackfillPeer(async () => this.load(jobId), ms => this.sleep(ms));
+        }
+        const after = await this.load(jobId);
+        if (!after) return record("missing", null);
+        this.checkFatal(resultReason(after) ?? after.reason);
+        if (after.status === "completed") return record("done", peer ? "peer" : by, resultReason(after) ?? undefined);
+        if (after.status === "dead_letter") return record("failed", by, resultReason(after) ?? after.reason ?? "dead_letter");
+        if (after.status === "paused" && after.reason === "budget_exhausted") {
+          await this.hold(after, numberId, conversationId);
+          return record("deferred", null, "budget_exhausted_held");
+        }
+        if (after.status === "paused") return record("blocked", by, resultReason(after) ?? after.reason ?? "paused");
       }
-      if (job.status === "dead_letter") return record("failed", invoked ? by : null, resultReason(job) ?? job.reason ?? "dead_letter");
-      if (job.status === "paused") {
-        if (job.reason !== OPERATOR_HOLD_REASON || this.holdOwner(job) !== "own") return record("blocked", invoked ? by : null, resultReason(job) ?? job.reason ?? "paused");
-        await this.release(job);
-        job = (await this.load(jobId))!;
+      const last = await this.load(jobId);
+      if (last && ["pending", "retry"].includes(last.status)) {
+        await this.hold(last, numberId, conversationId);
+        return record("deferred", null, `held:${this.fatal ?? resultReason(last) ?? last.reason ?? last.status}`);
       }
-      if (job.status === "leased" && job.leased_until && job.leased_until > this.now()) {
-        peer = true; invoked = true;
-        await waitForBackfillPeer(async () => this.load(jobId), ms => this.sleep(ms));
-        continue;
-      }
-      await this.jobs().updateOne({ _id: jobId, status: { $in: ["pending", "retry"] }, next_attempt_at: { $gt: this.now() } }, { $set: { next_attempt_at: this.now() } });
-      const result = stage === "application" ? await this.seams.runners.application(jobId) : await this.seams.runners.analysis(jobId, stage);
-      invoked = true;
-      this.checkFatal(result.reason, result.status);
-      if (result.status === "not_claimable" || result.status === "lease_lost") {
-        peer = true;
-        await waitForBackfillPeer(async () => this.load(jobId), ms => this.sleep(ms));
-      }
-      const after = await this.load(jobId);
-      if (!after) return record("missing", null);
-      this.checkFatal(resultReason(after));
-      if (after.status === "completed") return record("done", peer ? "peer" : by, resultReason(after) ?? undefined);
-      if (after.status === "dead_letter") return record("failed", by, resultReason(after) ?? after.reason ?? "dead_letter");
-      if (after.status === "paused") return record("blocked", by, resultReason(after) ?? after.reason ?? "paused");
-      if (after.status === "leased") continue;
+      if (last?.status === "paused" && last.reason === OPERATOR_HOLD_REASON) return record("deferred", null, `held:${this.fatal ?? "not_claimed"}`);
+      return record(last?.status === "completed" ? "done" : "deferred", peer ? "peer" : by, last ? `still_${last.status}` : "missing");
+    } catch (error) {
+      // The in-flight marker stays: after a real kill it is what identifies this backfill's own lease.
+      await this.rehold(jobId, numberId, conversationId).catch(() => undefined);
+      throw error;
     }
-    const last = await this.load(jobId);
-    if (last && ["pending", "retry"].includes(last.status)) {
-      await this.hold(last, numberId, conversationId);
-      return record("deferred", null, `held:${resultReason(last) ?? last.reason ?? last.status}`);
-    }
-    return record(last?.status === "completed" ? "done" : "deferred", peer ? "peer" : by, last ? `still_${last.status}` : "missing");
   }
 
+  /** Merges by job id, so the prior state recorded before a claim survives the outcome recorded after it. */
   private recordUnit(units: UnitRecord[], unit: UnitRecord) {
     const at = units.findIndex(u => u.job_id === unit.job_id);
-    if (at >= 0) units[at] = { ...units[at], ...unit }; else units.push(unit);
+    if (at >= 0) {
+      const merged: UnitRecord = { ...units[at]!, ...unit };
+      if (unit.reason === undefined) delete merged.reason;
+      units[at] = merged;
+    } else units.push(unit);
     return this.seams.log("unit", { ...unit });
+  }
+  /** Before the claim: the unit, its prior state and what it supersedes are saved, so a kill during the claim loses none of it. */
+  private async recordClaiming(units: UnitRecord[], stage: UnitRecord["stage"], pick: Extract<Pick, { job_id: string; by: UnitBy; prior?: PriorState }>) {
+    const earlier = units.find(u => u.job_id === pick.job_id);
+    // On resume the job is this run's own hold again; the attribution recorded before the kill (prior / s10-hold) stands.
+    if (earlier) return { ...pick, by: earlier.by === "prior" || earlier.by === "s10-hold" ? earlier.by : pick.by, prior: pick.prior ?? earlier.prior };
+    units.push({ stage, job_id: pick.job_id, outcome: "deferred", by: pick.by, paid: stage !== "application", reason: "claiming",
+      ...(pick.prior ? { prior: pick.prior } : {}), ...(pick.superseded_job_id ? { superseded_job_id: pick.superseded_job_id } : {}) });
+    await this.seams.save(this.manifest);
+    return pick;
+  }
+
+  /** Holds and live leases on an existing job; null when the caller decides (completed, failed, pending). */
+  private async pickExisting(job: JobRow, numberId: string, conversationId: string | null): Promise<Existing> {
+    const id = String(job._id);
+    if (job.status === "paused" && job.reason === OPERATOR_HOLD_REASON) {
+      const owner = this.holdOwner(job);
+      if (owner === "own") return { job_id: id, by: "backfill" };
+      if (owner === "repair") return { blocked: "blocked", reason: "repair_hold", by: "repair", job_id: id };
+      if (this.options.s10Holds === "drive") {
+        const prior = await this.adopt(job, numberId, conversationId, "driven");
+        return prior ? { job_id: id, by: "s10-hold", prior } : { blocked: "blocked", reason: "s10_hold_changed", by: null, job_id: id };
+      }
+      this.noteForeign(job, "left", numberId, "superseded_by_backfill_work");
+      return { supersede_foreign: id };
+    }
+    if (job.status === "paused" && job.reason === "eligibility_pending") return { blocked: "blocked", reason: "eligibility_pending", by: null, job_id: id };
+    if (job.status === "paused" && !REDRIVE_PAUSE_REASONS.has(job.reason ?? "")) return { blocked: "blocked", reason: `paused:${job.reason}`, by: null, job_id: id };
+    if (job.status === "leased") return { job_id: id, by: "backfill" };
+    return null;
+  }
+
+  /** Re-arm when the job's run resumes under the target layout, otherwise supersede; pending jobs on an old run are superseded too. */
+  private async failedOrPending(job: JobRow, numberId: string, conversationId: string | null): Promise<Pick | { superseded: PriorState } | null> {
+    const failed = job.status === "dead_letter" || (job.status === "paused" && REDRIVE_PAUSE_REASONS.has(job.reason ?? ""));
+    const pending = ["pending", "retry"].includes(job.status);
+    if (!failed && !pending) return null;
+    const decision = await this.resumable(job);
+    if (pending && decision.resumable) return { job_id: String(job._id), by: "backfill" };
+    if (failed && decision.resumable) {
+      const prior = await this.adopt(job, numberId, conversationId, "rearmed");
+      return prior ? { job_id: String(job._id), by: "prior", prior } : { blocked: "blocked", reason: "changed_concurrently", by: null, job_id: String(job._id) };
+    }
+    return { superseded: await this.supersede(job) };
   }
 
   /** Pick the analysis job for a conversation: an own job, the standard job (driven, re-armed or superseded), or fresh work. */
@@ -724,19 +844,18 @@ class FullBackfill {
     let prior: PriorState | undefined, superseded: string | undefined;
     if (std) {
       const id = String(std._id);
-      const pick = await this.pickExisting(std, n.number_id);
-      if (pick) return pick;
-      if (std.status === "completed") {
+      const existing = await this.pickExisting(std, n.number_id, c.conversation_id);
+      if (existing && "supersede_foreign" in existing) { prior = this.priorOf(std, "left"); superseded = id; }
+      else if (existing) return existing;
+      else if (std.status === "completed") {
         // Its run may be a target-layout receipt still awaiting application: drive the application only.
-        const run = await getIntelligenceRunModel().findOne({ job_id: String(std._id) }).sort({ _id: -1 }).select("status step_contracts").lean();
+        const run = await getIntelligenceRunModel().findOne({ job_id: id }).sort({ _id: -1 }).select("status step_contracts").lean();
         if (run?.status === "submitted" && payloadHash(run.step_contracts ?? null) === this.targetDigest) return { job_id: id, by: "prior" };
       } else {
-        const decision = await this.resumable(std);
-        const failed = std.status === "dead_letter" || (std.status === "paused" && REDRIVE_PAUSE_REASONS.has(std.reason ?? ""));
-        if (failed && decision.resumable) return { job_id: id, by: "prior", prior: await this.rearm(std) };
-        if (["pending", "retry"].includes(std.status) && decision.resumable) return { job_id: id, by: "backfill" };
-        if (failed || ["pending", "retry"].includes(std.status)) { prior = await this.supersede(std); superseded = id; }
-        else return { blocked: "blocked", reason: `standard_job_${std.status}:${std.reason ?? ""}`, by: null, job_id: id };
+        const decided = await this.failedOrPending(std, n.number_id, c.conversation_id);
+        if (!decided) return { blocked: "blocked", reason: `standard_job_${std.status}:${std.reason ?? ""}`, by: null, job_id: id };
+        if (!("superseded" in decided)) return decided;
+        prior = decided.superseded; superseded = id;
       }
     }
     const jobId = await this.createHeld({ stage: "analysis", subject_key: `conversation:${c.conversation_id}`, dedupe_key: ownKey,
@@ -744,28 +863,25 @@ class FullBackfill {
     return { job_id: jobId, by: "backfill", ...(prior ? { prior } : {}), ...(superseded ? { superseded_job_id: superseded } : {}) };
   }
 
-  /** Holds and live leases on an existing job; null when the caller decides (completed, failed, pending). */
-  private async pickExisting(job: JobRow, numberId: string): Promise<Pick | null> {
-    const id = String(job._id);
-    if (job.status === "paused" && job.reason === OPERATOR_HOLD_REASON) {
-      const owner = this.holdOwner(job);
-      if (owner === "own") return { job_id: id, by: "backfill" };
-      if (owner === "repair") return { blocked: "blocked", reason: "repair_hold", by: "repair", job_id: id };
-      if (this.options.s10Holds === "drive") { await this.driveForeign(job, numberId); return { job_id: id, by: "s10-hold" }; }
-      this.noteForeign(job, "left", numberId, "s10_hold_left");
-      return { blocked: "blocked", reason: "s10_hold_left", by: null, job_id: id };
-    }
-    if (job.status === "paused" && job.reason === "eligibility_pending") return { blocked: "blocked", reason: "eligibility_pending", by: null, job_id: id };
-    if (job.status === "paused" && !REDRIVE_PAUSE_REASONS.has(job.reason ?? "")) return { blocked: "blocked", reason: `paused:${job.reason}`, by: null, job_id: id };
-    if (job.status === "leased") return { job_id: id, by: "backfill" };
-    return null;
-  }
-
+  /** The analysis run's receipt → its application, by id; failed application pauses (never shadow runs) are re-armed. */
   private async driveApplication(numberId: string, conversationId: string | null, analysisJobId: string, units: UnitRecord[]) {
     const run = await getIntelligenceRunModel().findOne({ job_id: analysisJobId }).select("_id status").sort({ _id: -1 }).lean();
     const submission = run ? await getIntelligenceSubmissionModel().findOne({ run_id: run._id }).select("application_job_id").lean() : null;
     if (!run || !submission?.application_job_id) return { run_id: run ? String(run._id) : null, unit: null };
-    const unit = await this.runUnit(numberId, conversationId, "application", String(submission.application_job_id), "backfill");
+    const appId = String(submission.application_job_id);
+    const app = await this.load(appId);
+    let by: UnitBy = "backfill", prior: PriorState | undefined;
+    if (app && resultReason(app) === "shadow_analysis") {
+      const unit: UnitRecord = { stage: "application", job_id: appId, outcome: "blocked", by: null, paid: false, reason: "shadow_analysis", run_id: String(run._id) };
+      await this.recordUnit(units, unit);
+      return { run_id: String(run._id), unit };
+    }
+    if (app && (app.status === "dead_letter" || (app.status === "paused" && APPLICATION_REDRIVE_REASONS.has(app.reason ?? "")))) {
+      prior = (await this.adopt(app, numberId, conversationId, "rearmed")) ?? undefined;
+      if (prior) by = "prior";
+    }
+    const claim = await this.recordClaiming(units, "application", { job_id: appId, by, ...(prior ? { prior } : {}) });
+    const unit = await this.runUnit(numberId, conversationId, "application", appId, claim.by, claim.prior);
     await this.recordUnit(units, { ...unit, run_id: String(run._id) });
     return { run_id: String(run._id), unit };
   }
@@ -795,7 +911,7 @@ class FullBackfill {
     const version = String(conv.latest_transcript_version);
     c.transcript_version = version;
     if (await this.conversationCurrent(c.conversation_id)) {
-      c.state = "done"; c.reason = c.units.length ? c.reason : "already_current";
+      c.state = "done"; if (!c.units.length) c.reason = "already_current";
       return;
     }
     const snapshot = await getIntelligenceEvidenceSnapshotModel().findOne({ ...csiDataset(), source_type: "transcript", conversation_id: conv._id,
@@ -807,7 +923,8 @@ class FullBackfill {
       c.state = "blocked"; c.reason = pick.reason;
       return;
     }
-    const unit = await this.runUnit(n.number_id, c.conversation_id, "analysis", pick.job_id, pick.by, pick.prior);
+    const claim = await this.recordClaiming(c.units, "analysis", pick);
+    const unit = await this.runUnit(n.number_id, c.conversation_id, "analysis", claim.job_id, claim.by, claim.prior);
     if (pick.superseded_job_id) unit.superseded_job_id = pick.superseded_job_id;
     await this.recordUnit(c.units, unit);
     await this.seams.save(this.manifest);
@@ -819,21 +936,40 @@ class FullBackfill {
     c.state = "done"; delete c.reason;
   }
 
-  /** The scheduled synthesis, or the normal scheduling path, or (fingerprint unchanged) a backfill-namespaced one. */
+  /** The backfill's own synthesis, keyed by the Number's current fingerprint so a resume finds the same held job. */
+  private async ownNumberJob(n: NumberEntry, extra: { prior?: PriorState; superseded_job_id?: string }): Promise<Pick> {
+    const fingerprint = (await withTransaction(session => intelligenceSources(n.number_id, session))).fingerprint;
+    const key = `${OWN_NUMBER_DEDUPE_PREFIX}${n.number_id}:${this.target.findings}:${fingerprint.slice(0, 16)}`;
+    const existing = await this.jobs().findOne({ dedupe_key: key }).select("_id").lean();
+    const id = existing ? String(existing._id) : await this.createHeld({ stage: "number_refresh", subject_key: `number:${n.number_id}`, dedupe_key: key,
+      input_refs: [n.number_id] }, n.number_id, null);
+    return { job_id: id, by: "backfill", ...extra };
+  }
+
+  /** The scheduled synthesis, or the normal scheduling path, or (fingerprint unchanged / S10-held and left) the backfill's own job. */
   private async pickNumberJob(n: NumberEntry): Promise<Pick | { none: true }> {
     const number = await getContactNumberModel().findById(n.number_id).select("intelligence_schedule").lean();
     const scheduled = number?.intelligence_schedule?.job_id ? await this.load(String(number.intelligence_schedule.job_id)) : null;
     let prior: PriorState | undefined, superseded: string | undefined;
-    if (scheduled && !["completed"].includes(scheduled.status)) {
+    if (scheduled?.status === "completed") {
+      // A synthesis already submitted on the target layout whose application never ran: apply it, don't pay for another.
+      const run = await getIntelligenceRunModel().findOne({ job_id: String(scheduled._id) }).sort({ _id: -1 }).select("_id status step_contracts").lean();
+      const submission = run?.status === "submitted" ? await getIntelligenceSubmissionModel().findOne({ run_id: run._id }).select("application_job_id").lean() : null;
+      const app = submission?.application_job_id ? await this.load(String(submission.application_job_id)) : null;
+      if (run && app && app.status !== "completed" && payloadHash(run.step_contracts ?? null) === this.targetDigest) return { job_id: String(scheduled._id), by: "prior" };
+    } else if (scheduled) {
       const id = String(scheduled._id);
       if (scheduled.status === "paused" && scheduled.reason === "evidence_limit_reached") return { blocked: "blocked", reason: "evidence_limit_reached", by: null, job_id: id };
-      const pick = await this.pickExisting(scheduled, n.number_id);
-      if (pick) return pick;
-      const decision = await this.resumable(scheduled);
-      const failed = scheduled.status === "dead_letter" || (scheduled.status === "paused" && REDRIVE_PAUSE_REASONS.has(scheduled.reason ?? ""));
-      if (["pending", "retry"].includes(scheduled.status)) return { job_id: id, by: "backfill" };
-      if (failed && decision.resumable) return { job_id: id, by: "prior", prior: await this.rearm(scheduled) };
-      if (failed) { prior = await this.supersede(scheduled); superseded = id; }
+      const existing = await this.pickExisting(scheduled, n.number_id, null);
+      if (existing && "supersede_foreign" in existing) {
+        // `--s10-holds leave`: the held job stays held; the Number's one synthesis runs as the backfill's own job.
+        n.expected_fingerprint_mismatch = "s10_hold_left";
+        return this.ownNumberJob(n, { prior: this.priorOf(scheduled, "left"), superseded_job_id: id });
+      }
+      if (existing) return existing;
+      const decided = await this.failedOrPending(scheduled, n.number_id, null);
+      if (decided && !("superseded" in decided)) return decided;
+      if (decided) { prior = decided.superseded; superseded = id; }
     }
     // The normal way (§4 step 4): scheduling compares the real fingerprint and, when it moved, creates the next generation.
     let jobId: string | null = null;
@@ -844,17 +980,13 @@ class FullBackfill {
     const extra = { ...(prior ? { prior } : {}), ...(superseded ? { superseded_job_id: superseded } : {}) };
     if (jobId) {
       const job = await this.load(jobId);
-      if (job && ["pending", "retry"].includes(job.status)) { await this.hold(job, n.number_id, null); await this.seams.save(this.manifest); return { job_id: jobId, by: "backfill", ...extra }; }
+      if (job && ["pending", "retry"].includes(job.status)) { await this.hold(job, n.number_id, null); return { job_id: jobId, by: "backfill", ...extra }; }
       if (job?.status === "paused" && job.reason === "evidence_limit_reached") return { blocked: "blocked", reason: "evidence_limit_reached", by: null, job_id: jobId };
       if (job && job.status !== "completed") return { blocked: "blocked", reason: `scheduled_${job.status}:${job.reason ?? ""}`, by: null, job_id: jobId };
     }
     // Fingerprint unchanged: synthesize only when the running summary is not on the target version yet.
     if (await this.runningSummaryCurrent(n.number_id)) return { none: true };
-    const key = `${OWN_NUMBER_DEDUPE_PREFIX}${n.number_id}:${this.target.findings}:${n.synthesis.filter(u => u.stage === "number_refresh").length + 1}`;
-    const existing = await this.jobs().findOne({ dedupe_key: key }).select("_id").lean();
-    const id = existing ? String(existing._id) : await this.createHeld({ stage: "number_refresh", subject_key: `number:${n.number_id}`, dedupe_key: key,
-      input_refs: [n.number_id] }, n.number_id, null);
-    return { job_id: id, by: "backfill", ...extra };
+    return this.ownNumberJob(n, extra);
   }
 
   /** The running summary points to a completed target-version run newer than every conversation run of the Number. */
@@ -882,7 +1014,8 @@ class FullBackfill {
         n.state = "blocked"; n.reason = pick.reason;
         return;
       }
-      const unit = await this.runUnit(n.number_id, null, "number_refresh", pick.job_id, pick.by, pick.prior);
+      const claim = await this.recordClaiming(n.synthesis, "number_refresh", pick);
+      const unit = await this.runUnit(n.number_id, null, "number_refresh", claim.job_id, claim.by, claim.prior);
       if (pick.superseded_job_id) unit.superseded_job_id = pick.superseded_job_id;
       const run = await getIntelligenceRunModel().findOne({ job_id: pick.job_id }).select("_id status").sort({ _id: -1 }).lean();
       if (run) unit.run_id = String(run._id);
@@ -900,8 +1033,8 @@ class FullBackfill {
     }
     // A generation scheduled after the last allowed synthesis stays held and is listed.
     const leftover = await this.followupScheduled(n.number_id, null);
-    if (leftover && ["pending", "retry"].includes(leftover.status)) { await this.hold(leftover, n.number_id, null); n.reason = "followup_generation_held"; }
-    n.state = this.fatal ? n.state : "done";
+    if (leftover) { await this.hold(leftover, n.number_id, null); n.reason = "followup_generation_held"; }
+    if (!this.fatal) n.state = "done";
   }
   /** The Number's scheduled job when it is a new, runnable generation (not `exclude`). */
   private async followupScheduled(numberId: string, exclude: string | null) {
@@ -933,7 +1066,7 @@ class FullBackfill {
     return !this.fatal;
   }
 
-  /** Foreign holds seen now (by query), listed; `leave` notes where this run's Number synthesis supersedes them. */
+  /** Foreign holds seen now (by query), listed; notes where this run's Number synthesis supersedes them. */
   async listForeignHolds() {
     const holds = (await this.jobs().find({ ...csiDataset(), status: "paused", reason: OPERATOR_HOLD_REASON }).select(JOB_FIELDS).lean()) as JobRow[];
     for (const job of holds) {
@@ -941,35 +1074,47 @@ class FullBackfill {
       const numberId = job.subject_key.startsWith("number:") ? job.subject_key.slice(7) : null;
       const entry = numberId ? this.manifest.numbers.find(n => n.number_id === numberId) : null;
       const synthesized = entry?.synthesis.some(u => u.stage === "number_refresh" && u.submitted);
-      this.noteForeign(job, "left", numberId, synthesized ? "superseded_by_backfill_synthesis" : "not_superseded");
+      const known = this.manifest.foreign_holds.find(h => h.job_id === String(job._id));
+      this.noteForeign(job, "left", numberId, synthesized ? "superseded_by_backfill_synthesis" : known?.note ?? "not_superseded");
     }
   }
 }
 
 // ── Verification (§7) ─────────────────────────────────────────────────────────────
+export type NumberVerdict = { number_id: string; state: string; reason: string | null; summary_current: boolean; fingerprint_match: boolean | null;
+  expected_mismatch: string | null; conversations_left: number; pass: boolean };
 export type Verification = {
   at: string;
+  /** True only when every in-scope Number passes, no conversation is left and no hold this run or the repair owns remains. */
+  complete: boolean;
   conversations_left: { a: number; b: number };
-  numbers: { checked: number; summary_current: number; fingerprint_match: number; mismatched: string[] };
+  numbers: { checked: number; passed: number; summary_current: number; fingerprint_match: number; expected_mismatch: string[]; skipped: Array<{ number_id: string; reason: string | null }> };
+  leftovers: NumberVerdict[];
   holds: { own_left: number; repair_still_held: number; foreign: number };
   peer_paid_units: number;
   peer_units: Array<{ job_id: string; stage: string }>;
   spend: Array<{ ledger: string; step: string; reservations: number; actual_cents: number }>;
+  /** §7: Owner-ledger spend in the run window against the same window a day earlier (it should be live traffic only). */
+  owner_ledger: { window: { from: string; to: string; reservations: number; cents: number }; day_before: { from: string; to: string; reservations: number; cents: number } };
 };
-export async function verifyBackfill(manifest: FullBackfillManifest, repairHoldIds: ReadonlySet<string>, model: string): Promise<Verification> {
+/** Pure: a Number passes when its summary is current, its fingerprint matches (or the mismatch is expected) and no conversation is left. */
+export function numberVerdict(input: Omit<NumberVerdict, "pass">): NumberVerdict {
+  return { ...input, pass: input.summary_current && (input.fingerprint_match === true || input.expected_mismatch !== null) && input.conversations_left === 0 };
+}
+export async function verifyBackfill(manifest: FullBackfillManifest, repairHoldIds: ReadonlySet<string>, model: string, now = new Date()): Promise<Verification> {
   const target = manifest.prompt_versions;
-  const ids = manifest.numbers.filter(n => n.state !== "skipped").map(n => new mongoose.Types.ObjectId(n.number_id));
-  const left = { a: 0, b: 0 };
-  for (let i = 0; i < ids.length; i += 200) {
-    const cursor = getLeadConversationModel().find({ ...ELIGIBLE_CONVERSATION, contact_number_id: { $in: ids.slice(i, i + 200) } })
-      .select("contact_number_id started_at latest_transcript_version latest_completed_run_id summary.prompt_version").lean().cursor();
-    for await (const row of cursor) { const set = await conversationSet(row as unknown as ConversationRow, target); if (set) left[set]++; }
-  }
   const checker = new FullBackfill(manifest, { runners: createBackfillRunners(), save: async () => undefined, log: async () => undefined },
     { concurrency: 1, s10Holds: manifest.options.s10_holds, repairManifest: null, skipRepair: true, numbers: null, since: null, maxNumbers: null, model }, repairHoldIds);
-  const numbers = { checked: 0, summary_current: 0, fingerprint_match: 0, mismatched: [] as string[] };
-  for (const n of manifest.numbers.filter(e => e.state === "done")) {
+  const left = { a: 0, b: 0 };
+  const numbers: Verification["numbers"] = { checked: 0, passed: 0, summary_current: 0, fingerprint_match: 0, expected_mismatch: [], skipped: [] };
+  const leftovers: NumberVerdict[] = [];
+  for (const n of manifest.numbers) {
+    if (n.state === "skipped") { numbers.skipped.push({ number_id: n.number_id, reason: n.reason ?? null }); continue; }
     numbers.checked++;
+    let conversationsLeft = 0;
+    const cursor = getLeadConversationModel().find({ ...ELIGIBLE_CONVERSATION, contact_number_id: new mongoose.Types.ObjectId(n.number_id) })
+      .select("contact_number_id started_at latest_transcript_version latest_completed_run_id summary.prompt_version").lean().cursor();
+    for await (const row of cursor) { const set = await conversationSet(row as unknown as ConversationRow, target); if (set) { left[set]++; conversationsLeft++; } }
     const summaryCurrent = await checker.runningSummaryCurrent(n.number_id);
     let fingerprintMatch: boolean | null = null;
     try {
@@ -978,25 +1123,43 @@ export async function verifyBackfill(manifest: FullBackfillManifest, repairHoldI
         return sources.number.intelligence_schedule?.fingerprint === sources.fingerprint;
       });
     } catch { fingerprintMatch = null; }
-    n.verification = { summary_current: summaryCurrent, fingerprint_match: fingerprintMatch };
+    const verdict = numberVerdict({ number_id: n.number_id, state: n.state, reason: n.reason ?? null, summary_current: summaryCurrent,
+      fingerprint_match: fingerprintMatch, expected_mismatch: fingerprintMatch ? null : n.expected_fingerprint_mismatch ?? null, conversations_left: conversationsLeft });
+    n.verification = { summary_current: summaryCurrent, fingerprint_match: fingerprintMatch, expected_mismatch: verdict.expected_mismatch, pass: verdict.pass };
     if (summaryCurrent) numbers.summary_current++;
     if (fingerprintMatch) numbers.fingerprint_match++;
-    if (!summaryCurrent || !fingerprintMatch) numbers.mismatched.push(n.number_id);
+    if (verdict.expected_mismatch) numbers.expected_mismatch.push(n.number_id);
+    if (verdict.pass) numbers.passed++; else leftovers.push(verdict);
   }
-  const repairHeld = repairHoldIds.size ? await getSalesIntelligenceJobModel().countDocuments({ _id: { $in: [...repairHoldIds] }, status: "paused", reason: OPERATOR_HOLD_REASON }) : 0;
+  const Jobs = getSalesIntelligenceJobModel();
+  const ownLeft = await Jobs.countDocuments({ status: "paused", reason: OPERATOR_HOLD_REASON, $or: [
+    { _id: { $in: manifest.holds.map(h => new mongoose.Types.ObjectId(h.job_id)) } },
+    { dedupe_key: { $regex: OWN_DEDUPE_MARK } }, { dedupe_key: { $regex: `^${OWN_NUMBER_DEDUPE_PREFIX}` } }] });
+  const repairHeld = repairHoldIds.size ? await Jobs.countDocuments({ _id: { $in: [...repairHoldIds] }, status: "paused", reason: OPERATOR_HOLD_REASON }) : 0;
   const units = manifest.numbers.flatMap(n => [...n.conversations.flatMap(c => c.units), ...n.synthesis]);
   const peers = units.filter(u => u.paid && u.by === "peer");
-  const spend = await getSalesIntelligenceAiReservationModel().aggregate<{ _id: { ledger: string; step: string }; n: number; cents: number }>([
+  const Reservations = getSalesIntelligenceAiReservationModel();
+  const spend = await Reservations.aggregate<{ _id: { ledger: string; step: string }; n: number; cents: number }>([
     { $match: { reserved_at: { $gte: new Date(manifest.created_at) } } },
     { $group: { _id: { ledger: "$ledger", step: { $arrayElemAt: [{ $split: ["$step", ":"] }, 0] } }, n: { $sum: 1 },
       cents: { $sum: { $ifNull: ["$actual_cents", { $ifNull: ["$observed_cents", 0] }] } } } },
     { $sort: { "_id.ledger": 1, "_id.step": 1 } },
   ]);
+  const ownerWindow = async (from: Date, to: Date) => {
+    const [row] = await Reservations.aggregate<{ n: number; cents: number }>([
+      { $match: { ledger: { $ne: "personal" }, reserved_at: { $gte: from, $lt: to } } },
+      { $group: { _id: null, n: { $sum: 1 }, cents: { $sum: { $ifNull: ["$actual_cents", { $ifNull: ["$observed_cents", 0] }] } } } },
+    ]);
+    return { from: from.toISOString(), to: to.toISOString(), reservations: row?.n ?? 0, cents: row?.cents ?? 0 };
+  };
+  const start = new Date(manifest.created_at), day = 86_400_000;
+  const holds = { own_left: ownLeft, repair_still_held: repairHeld, foreign: manifest.foreign_holds.length };
   return {
-    at: new Date().toISOString(), conversations_left: left, numbers,
-    holds: { own_left: manifest.holds.length, repair_still_held: repairHeld, foreign: manifest.foreign_holds.length },
+    at: now.toISOString(), complete: leftovers.length === 0 && left.a + left.b === 0 && ownLeft === 0 && repairHeld === 0,
+    conversations_left: left, numbers, leftovers, holds,
     peer_paid_units: peers.length, peer_units: peers.map(u => ({ job_id: u.job_id, stage: u.stage })),
     spend: spend.map(s => ({ ledger: s._id.ledger, step: s._id.step, reservations: s.n, actual_cents: s.cents })),
+    owner_ledger: { window: await ownerWindow(start, now), day_before: await ownerWindow(new Date(start.getTime() - day), new Date(now.getTime() - day)) },
   };
 }
 
@@ -1005,6 +1168,7 @@ export function summarize(manifest: FullBackfillManifest) {
   const tally = (values: string[]) => values.reduce<Record<string, number>>((out, v) => ({ ...out, [v]: (out[v] ?? 0) + 1 }), {});
   const units = manifest.numbers.flatMap(n => [...n.conversations.flatMap(c => c.units), ...n.synthesis]);
   return {
+    complete: manifest.phases.verify?.complete ?? false,
     numbers: tally(manifest.numbers.map(n => n.state)),
     conversations: tally(manifest.numbers.flatMap(n => n.conversations.map(c => c.state))),
     units_by: tally(units.map(u => `${u.stage}:${u.by ?? "none"}`)),
@@ -1012,6 +1176,7 @@ export function summarize(manifest: FullBackfillManifest) {
     superseded: units.filter(u => u.prior?.action === "superseded").length,
     peer_paid_units: units.filter(u => u.paid && u.by === "peer").length,
     holds: manifest.holds.length, foreign_holds: manifest.foreign_holds.length,
+    leftovers: manifest.phases.verify?.leftovers.map(l => l.number_id) ?? [],
     ...(manifest.stopped ? { stopped: manifest.stopped } : {}),
   };
 }
@@ -1019,17 +1184,19 @@ export function summarize(manifest: FullBackfillManifest) {
 /** Phases 1–5 on an apply manifest. Resumable: done Numbers and units are skipped; own holds are released and claimed. */
 export async function runFullBackfill(manifest: FullBackfillManifest, seams: BackfillSeams, options: BackfillOptions) {
   const now = seams.now ?? (() => new Date());
-  // Phase 1: the CC-07 repair finishes its own held work through its own script (never `--release-holds`).
-  if (manifest.phases.repair.state === "pending" && options.repairManifest && !options.skipRepair) {
+  delete manifest.stopped;
+  // Phase 1: the CC-07 repair finishes its own held work through its own script (never `--release-holds`); a failed repair is re-run on resume.
+  if (["pending", "failed"].includes(manifest.phases.repair.state) && options.repairManifest && !options.skipRepair) {
     if (!seams.runRepair) throw new Error("phase 1 needs a repair runner");
-    manifest.phases.repair = { state: "pending", started_at: now().toISOString() };
+    manifest.phases.repair = { state: "pending", started_at: now().toISOString(), attempts: (manifest.phases.repair.attempts ?? 0) + 1 };
     await seams.save(manifest);
-    await seams.log("repair_start", { repair_manifest: options.repairManifest });
+    await seams.log("repair_start", { repair_manifest: options.repairManifest, attempt: manifest.phases.repair.attempts });
     const code = await seams.runRepair(options.repairManifest);
     manifest.phases.repair = { ...manifest.phases.repair, state: code === 0 ? "done" : "failed", exit_code: code, finished_at: now().toISOString() };
+    if (code !== 0) manifest.stopped = `repair_exit_${code}`;
     await seams.save(manifest);
-    if (code !== 0) { manifest.stopped = `repair_exit_${code}`; await seams.save(manifest); throw new Error(`repair exited ${code}; fix it and resume`); }
-  } else if (manifest.phases.repair.state === "pending" && options.skipRepair) manifest.phases.repair = { state: "skipped" };
+    if (code !== 0) throw new Error(`repair exited ${code}; fix it and resume`);
+  } else if (["pending", "failed"].includes(manifest.phases.repair.state) && options.skipRepair) manifest.phases.repair = { ...manifest.phases.repair, state: "skipped" };
   const repairHoldIds = await readRepairHoldIds(options.repairManifest);
   manifest.phases.repair.holds_remaining = repairHoldIds.size;
 
@@ -1059,8 +1226,8 @@ export async function runFullBackfill(manifest: FullBackfillManifest, seams: Bac
   }
   await runner.listForeignHolds();
 
-  // Phase 5: verification.
-  manifest.phases.verify = await verifyBackfill(manifest, repairHoldIds, options.model);
+  // Phase 5: verification of every Number in the work set.
+  manifest.phases.verify = await verifyBackfill(manifest, repairHoldIds, options.model, now());
   await seams.save(manifest);
   const summary = summarize(manifest);
   await seams.log("summary", { ...summary, verify: manifest.phases.verify });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  bucketize, budgetHeadroom, configurePaidProcess, isOwnDedupe, numberExclusion, p95, parseCliOptions, pickCost, resumeDecision,
+  numberVerdict, bucketize, budgetHeadroom, configurePaidProcess, isOwnDedupe, numberExclusion, p95, parseCliOptions, pickCost, resumeDecision,
   summarize, targetContractsDigest, targetVersions, type FullBackfillManifest,
 } from "./full-backfill";
 import {
@@ -12,14 +12,16 @@ test("CLI: estimate by default, Case File by default, bounded concurrency, no --
   const base = parseCliOptions(["node", "script"]);
   assert.equal(base.mode, "estimate");
   assert.equal(base.layout, "case_file");
-  assert.equal(base.s10Holds, "leave");
+  assert.equal(base.s10Holds, "drive", "an S10-held scheduled synthesis IS the Number's one synthesis: drive by default");
+  assert.equal(base.repairTimeoutMinutes, 720);
   assert.equal(base.concurrency, 2);
   const apply = parseCliOptions(["node", "s", "--confirm-write", "--allow-production", "--concurrency", "3", "--numbers", "aaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbb",
-    "--max-numbers", "5", "--since", "2026-09-01T00:00:00Z", "--layout", "default", "--s10-holds", "drive", "--resume"]);
+    "--max-numbers", "5", "--since", "2026-09-01T00:00:00Z", "--layout", "default", "--s10-holds", "leave", "--resume"]);
   assert.deepEqual([apply.mode, apply.allowProduction, apply.concurrency, apply.numbers?.length, apply.maxNumbers, apply.layout, apply.s10Holds, apply.resume],
-    ["apply", true, 3, 2, 5, "default", "drive", true]);
+    ["apply", true, 3, 2, 5, "default", "leave", true]);
   assert.equal(apply.since?.toISOString(), "2026-09-01T00:00:00.000Z");
   assert.throws(() => parseCliOptions(["n", "s", "--release-holds"]), /release-holds/);
+  assert.throws(() => parseCliOptions(["n", "s", "--confirm-write", "--allow-schema-drift"]), /allow-schema-drift/);
   assert.throws(() => parseCliOptions(["n", "s", "--estimate", "--confirm-write"]), /read-only/);
   assert.throws(() => parseCliOptions(["n", "s", "--concurrency", "4"]), /1\.\.3/);
   assert.throws(() => parseCliOptions(["n", "s", "--numbers", "not-an-id"]), /Contact Number ids/);
@@ -115,9 +117,23 @@ test("summary counts peer paid units and prior re-arms", () => {
   const manifest = { numbers: [{ state: "done", conversations: [{ state: "done", units: [
     { stage: "analysis", job_id: "1", outcome: "done", by: "prior", paid: true, prior: { status: "paused", reason: "permission_denied", result_reason: "schema_exhausted", attempts: 1, action: "rearmed" } },
     { stage: "application", job_id: "2", outcome: "done", by: "peer", paid: false }] }],
-    synthesis: [{ stage: "number_refresh", job_id: "3", outcome: "done", by: "peer", paid: true }] }], holds: [], foreign_holds: [] } as unknown as FullBackfillManifest;
+    synthesis: [{ stage: "number_refresh", job_id: "3", outcome: "done", by: "peer", paid: true }] }], holds: [], foreign_holds: [],
+    phases: { verify: { complete: false, leftovers: [{ number_id: "n9" }] } } } as unknown as FullBackfillManifest;
   const summary = summarize(manifest);
   assert.equal(summary.peer_paid_units, 1);
   assert.equal(summary.rearmed, 1);
   assert.deepEqual(summary.numbers, { done: 1 });
+  assert.equal(summary.complete, false, "never reads complete while a Number is left over");
+  assert.deepEqual(summary.leftovers, ["n9"]);
+});
+
+test("verification: a Number passes only with a current summary, a matching (or expected-mismatch) fingerprint and nothing left", () => {
+  const base = { number_id: "n", state: "done", reason: null, summary_current: true, fingerprint_match: true as boolean | null, expected_mismatch: null as string | null, conversations_left: 0 };
+  assert.equal(numberVerdict(base).pass, true);
+  assert.equal(numberVerdict({ ...base, summary_current: false }).pass, false);
+  assert.equal(numberVerdict({ ...base, fingerprint_match: false }).pass, false);
+  assert.equal(numberVerdict({ ...base, fingerprint_match: null }).pass, false);
+  assert.equal(numberVerdict({ ...base, fingerprint_match: false, expected_mismatch: "s10_hold_left" }).pass, true, "--s10-holds leave: the mismatch is expected, not a failure");
+  assert.equal(numberVerdict({ ...base, conversations_left: 1 }).pass, false);
+  assert.equal(numberVerdict({ ...base, state: "blocked" }).pass, true, "state alone does not decide: the §7 checks do");
 });

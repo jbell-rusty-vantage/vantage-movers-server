@@ -9,8 +9,8 @@
  * Paid run (from a clean worktree of the deployed commit; detached, see the session prompt §7):
  *   node --max-old-space-size=8192 --env-file=.env --import tsx ops/backfill-csi-full-personal.ts \
  *     --allow-production --confirm-write --concurrency 2 --manifest ops/output/csi-full-backfill-<date>.json \
- *     --repair-manifest <abs path to call-log-repair-2026-09-20.json> [--layout case_file] [--s10-holds leave|drive] \
- *     [--numbers id,id | --max-numbers N] [--since ISO] [--repair-max-wait-minutes 120] [--skip-repair]
+ *     --repair-manifest <abs path to call-log-repair-2026-09-20.json> [--layout case_file] [--s10-holds drive|leave] \
+ *     [--numbers id,id | --max-numbers N] [--since ISO] [--repair-max-wait-minutes 120] [--repair-timeout-minutes 720] [--skip-repair]
  * Resume: the same command plus --resume.
  *
  * Phase 1 spawns `ops/repair-call-log-capture.ts --manifest <repair manifest> --allow-production --confirm-write`
@@ -26,8 +26,9 @@ import { connectMongo } from "../src/db";
 import { getMongoDatabaseName } from "../src/config/domain/runtime";
 import { csiDataset, csiProviderConfiguration } from "../src/config/domain/salesIntelligence";
 import { readRecordedDeployment } from "../src/services/salesIntelligence/deploymentStamp";
+import { ensureCurrentCsiBudgetPeriod } from "../src/services/salesIntelligence/budgetPeriod";
 import {
-  activeBudgetPeriod, budgetHeadroom, configurePaidProcess, createBackfillRunners, estimateWorkSet, jsonlLogger, loadManifest, manifestSaver,
+  budgetHeadroom, configurePaidProcess, createBackfillRunners, estimateWorkSet, jsonlLogger, loadManifest, manifestSaver,
   newManifest, parseCliOptions, readRepairHoldIds, runFullBackfill, selectWorkSet, targetVersions, type FullBackfillManifest,
 } from "./lib/full-backfill";
 import { assertProductionWriterMatchesDeployment, localGitHead } from "./lib/production-writer-guard";
@@ -35,16 +36,38 @@ import { assertProductionWriterMatchesDeployment, localGitHead } from "./lib/pro
 const localDatabase = (database: string, uri: string | undefined) =>
   /^testvantagemovers_[a-z0-9]+$/i.test(database) && /^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(uri ?? "");
 
-/** Phase 1: the repair's own script on its own manifest; the child inherits this process's paid configuration. */
-function spawnRepair(repairManifest: string, input: { allowProduction: boolean; maxWaitMinutes: number; rcTokenStore: string | null }) {
+/** After the repair prints its `{"done":true…}` line it has nothing left to do; a child still alive this long after is stopped. */
+const REPAIR_EXIT_GRACE_MS = 60_000;
+
+/**
+ * Phase 1: the repair's own script on its own manifest; the child inherits this process's paid configuration.
+ * Watchdog: the repair script ends with `mongoose.disconnect()`, not `process.exit()`, so an open handle can keep it
+ * alive. Once it reports `done` it gets a grace period and is then stopped (exit 0); a child that never reports
+ * is stopped at `--repair-timeout-minutes` (a failed phase, resumable).
+ */
+function spawnRepair(repairManifest: string, input: { allowProduction: boolean; maxWaitMinutes: number; timeoutMinutes: number; rcTokenStore: string | null }) {
   return new Promise<number | null>((done, fail) => {
     const env = { ...process.env };
     // The repair fetches media through its own code (handoff A4); it keeps the store it ran with.
     if (input.rcTokenStore === null) delete env.RC_TOKEN_STORE; else env.RC_TOKEN_STORE = input.rcTokenStore;
     const child = spawn(process.execPath, ["--max-old-space-size=8192", "--import", "tsx", "ops/repair-call-log-capture.ts",
       "--manifest", repairManifest, "--confirm-write", "--max-wait-minutes", String(input.maxWaitMinutes),
-      ...(input.allowProduction ? ["--allow-production"] : [])], { stdio: "inherit", env, cwd: resolve(__dirname, "..") });
-    child.on("exit", code => done(code));
+      ...(input.allowProduction ? ["--allow-production"] : [])], { stdio: ["ignore", "pipe", "inherit"], env, cwd: resolve(__dirname, "..") });
+    let reported: "done" | "stopped" | null = null, tail = "";
+    let grace: NodeJS.Timeout | null = null;
+    const watchdog = setTimeout(() => { console.error(JSON.stringify({ repair_watchdog: "timeout", minutes: input.timeoutMinutes })); child.kill(); }, input.timeoutMinutes * 60_000);
+    child.stdout.on("data", (chunk: Buffer) => {
+      process.stdout.write(chunk);
+      tail = (tail + chunk.toString("utf8")).slice(-4_096);
+      if (!reported && /"done":true/.test(tail)) reported = "done";
+      if (!reported && /"stopped":true/.test(tail)) reported = "stopped";
+      if (reported === "done" && !grace) grace = setTimeout(() => { console.error(JSON.stringify({ repair_watchdog: "exit_after_done" })); child.kill(); }, REPAIR_EXIT_GRACE_MS);
+    });
+    child.on("exit", code => {
+      clearTimeout(watchdog);
+      if (grace) clearTimeout(grace);
+      done(reported === "done" ? 0 : reported === "stopped" ? (code || 1) : code);
+    });
     child.on("error", fail);
   });
 }
@@ -75,8 +98,13 @@ async function main() {
 
   // CC-00 §5.2: only the deployed build writes production (never pass --allow-schema-drift for a paid run).
   await assertProductionWriterMatchesDeployment();
-  const headroom = budgetHeadroom(await activeBudgetPeriod(now), now);
-  if (!headroom.ok) throw new Error(`budget preflight refused: ${headroom.reason} (an active period with ≥ 12 h left is required)`);
+  // The budget period is ensured before the run and again before every paid unit (the month rolls over mid-run),
+  // so no fixed headroom rule applies; this refuses only when no active period can be ensured at all.
+  const period = await ensureCurrentCsiBudgetPeriod(now).catch(error => {
+    throw new Error(`budget preflight refused: no active budget period (${error instanceof Error ? error.message : "unknown"})`);
+  });
+  const headroom = budgetHeadroom(period ? { month: String(period.month), period_start: period.period_start, period_end: period.period_end,
+    activated_at: period.activated_at ?? null } : null, now);
 
   const manifestPath = resolve(options.manifest ?? `ops/output/csi-full-backfill-${now.toISOString().slice(0, 10)}.json`);
   let manifest: FullBackfillManifest | null = await loadManifest(manifestPath);
@@ -101,7 +129,8 @@ async function main() {
 
   const summary = await runFullBackfill(manifest, {
     runners: createBackfillRunners(), save, log,
-    runRepair: path => spawnRepair(path, { allowProduction: options.allowProduction, maxWaitMinutes: options.repairMaxWaitMinutes, rcTokenStore: paid!.rcTokenStore }),
+    runRepair: path => spawnRepair(path, { allowProduction: options.allowProduction, maxWaitMinutes: options.repairMaxWaitMinutes,
+      timeoutMinutes: options.repairTimeoutMinutes, rcTokenStore: paid!.rcTokenStore }),
   }, { concurrency: options.concurrency, s10Holds: options.s10Holds, repairManifest, skipRepair: options.skipRepair,
     numbers: manifest.options.numbers, since: manifest.options.since ? new Date(manifest.options.since) : null, maxNumbers: manifest.options.max_numbers, model: paid!.model });
   console.log(JSON.stringify({ done: true, manifest: manifestPath, ...summary, verify: manifest.phases.verify }));
