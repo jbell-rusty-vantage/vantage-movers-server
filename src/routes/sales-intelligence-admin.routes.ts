@@ -426,7 +426,8 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     try { const actor = readerGuard(req); if (!flag("TIMELINE_V2")) throw new CsiError("FEATURE_DISABLED");
       const id = csiIdSchema.parse(req.params.id); const query = timelineV2QuerySchema.parse(req.query); await connect();
       if (!(await inScope(actor, "record", id))) return notFound(req, res, "Outreach");
-      const page = await (deps.outreachTimeline ?? readOutreachTimeline)(id, query);
+      // V-T3 M8: a rep's timeline drops Owner-only kinds (nudges, Owner notes) in the read, before the page is cut.
+      const page = await (deps.outreachTimeline ?? readOutreachTimeline)(id, csiRepScope(actor) ? { ...query, audience: "rep" } : query);
       return page ? res.json({ ok: true, ...page }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/outreach/:id`, async (req, res) => {

@@ -56,6 +56,8 @@ export type TimelineReadContext = {
   after: StoryCursor | null;
   /** Kinds to emit; null emits every kind. Applied before the bound so paging stays exact. */
   kinds: ReadonlySet<string> | null;
+  /** V-T3 M8: kinds never emitted (a rep's Owner-only kinds). Applied with `kinds`, before the bound, so paging stays exact. */
+  exclude?: ReadonlySet<string> | null;
   /** Every subject key the timeline spans (number, Leads, records, conversations). */
   subject_keys: string[];
   /** The subject's Outreach records (`subject`, `move_assessment`). */
@@ -171,7 +173,7 @@ const CORRECTION_CAP = 200;
 
 const acceptor = (subject: StorySubject, t: TimelineReadContext) => (e: StoryEvent) => {
   const at = Date.parse(e.happened_at);
-  return !Number.isNaN(at) && at <= +subject.as_of && (t.kinds === null || t.kinds.has(e.kind)) && isAfterStoryCursor(e, t.after);
+  return !Number.isNaN(at) && at <= +subject.as_of && (t.kinds === null || t.kinds.has(e.kind)) && !t.exclude?.has(e.kind) && isAfterStoryCursor(e, t.after);
 };
 /** Newest instant a row's indexed field may hold and still yield an event after the cursor. */
 const upperBound = (subject: StorySubject, t: TimelineReadContext, slackBeforeMs = 0) =>

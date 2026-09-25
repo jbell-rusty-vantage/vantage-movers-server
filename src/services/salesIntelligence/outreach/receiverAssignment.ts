@@ -1,4 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
+import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { Agent } from "../../../models/Agent";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getEntityChangeModel } from "../../../models/EntityChange";
@@ -15,7 +16,7 @@ import { mayReplaceAssignment, receiverAssignmentEnabled, receiverRankKey, subje
  * S6-AGENT (assignment addendum §3.1 E5, §3.2 E4/E26), behind SALES_INTELLIGENCE_RECEIVER_ASSIGNMENT.
  * Runs inside `ensureLead`, after the closure and Lead progress, in the caller's transaction:
  *
- * 1. `ringcentral_answered` (E5): a Call Lead with an empty `receiver_agent` whose creating call
+ * 1. `ringcentral_answered` (E5, only with RECEIVER_LATEST_WINS on too): a Call Lead with an empty `receiver_agent` whose creating call
  *    (`ringcentral.telephony_session_id`, on the record's primary Number) was answered by exactly one
  *    reviewed rep identity gets that rep, through the normal Lead write (`writeReceiverAgent`). The
  *    Outreach ensure path is the seam because it is where both halves meet: the Lead's creation change
@@ -31,10 +32,17 @@ type RecordDoc = Awaited<ReturnType<typeof recordForUpdate>>;
 type ReceiverLead = { receiver_agent?: unknown; receiver_agent_source?: string | null; receiver_agent_name_snapshot?: string | null;
   ringcentral?: { telephony_session_id?: string | null } | null };
 
+/**
+ * V-T3 M3: the E5 fill needs RECEIVER_LATEST_WINS too. With latest-wins off, Granot, the extension
+ * and the sheet only fill an empty `receiver_agent`, so a `ringcentral_answered` fill (the weakest
+ * source) would block every stronger automatic writer. Both flags on, or no fill.
+ */
+export const ringCentralFillEnabled = () => receiverAssignmentEnabled() && csiFlag("RECEIVER_LATEST_WINS");
+
 export async function applyReceiverAssignment(record: RecordDoc, lead: ReceiverLead, ref: LeadRef, context: CsiTransactionContext, changeId: string | null) {
   if (!receiverAssignmentEnabled()) return;
   let current = lead;
-  if (!lead.receiver_agent && ref.model === "CallLead") {
+  if (!lead.receiver_agent && ref.model === "CallLead" && ringCentralFillEnabled()) {
     const filled = await fillRingCentralAnswered(record, lead, ref, context);
     if (filled) { current = { ...lead, ...filled.lead }; changeId = filled.change_id; }
   }

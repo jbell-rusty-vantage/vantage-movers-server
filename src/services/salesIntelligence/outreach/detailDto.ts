@@ -47,7 +47,8 @@ export const outreachDetailAdditionsShape = {
   /**
    * Addendum §4.3 (E10, E20): the Lead's cost for the official status line, "Lead cost $X (legacy price)".
    * Same rule as the Overview spend (`spendBasis`): `rate` (resolved rate period), `legacy` (a positive `cpl`
-   * with no rate period), `unpriced` (missing rate, $0), `zero` (duplicate / not applicable, $0). Dollars.
+   * with no rate period), `unpriced` (missing rate, or no resolution status and a $0 `cpl`: price unknown, $0),
+   * `zero` (duplicate / not applicable, $0). Dollars.
    * Null when the subject has no Lead. Optional so older servers' responses still parse.
    */
   lead_cost: z.object({ amount: z.number().nonnegative(), basis: z.enum(["rate", "legacy", "unpriced", "zero"]) }).strict().nullable().optional(),

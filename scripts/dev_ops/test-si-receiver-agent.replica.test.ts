@@ -289,6 +289,20 @@ test("S6-AGENT receiver_agent replica", { skip: process.env.CSI_REPLICA_TEST !==
     } finally { process.env.SALES_INTELLIGENCE_RECEIVER_ASSIGNMENT = "true"; }
   });
 
+  await t.test("V-T3 M3: RECEIVER_ASSIGNMENT on, RECEIVER_LATEST_WINS off: no ringcentral_answered fill, so Granot (fill-empty) still sets the rep", async () => {
+    process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = "false";
+    try {
+      const c = await lead("CallLead", { ingestion_origin: "ringcentral", ringcentral: { telephony_session_id: "rc-answered-4" } });
+      await ensure(c, MON_12, await numberWithAnsweredCall("+12025559004", "rc-answered-4", [SYNTHETIC_USER_EXTENSION.id]));
+      assert.equal((await leadRow(c)).receiver_agent ?? null, null, "no ringcentral_answered fill with latest-wins off");
+      assert.equal(await Changes.countDocuments({ "entity.id": c.id, changed_paths: "receiver_agent" }), 0);
+      await granot(c, MON_12, { rep_raw: "arep" });
+      const l = await leadRow(c);
+      assert.equal(String(l.receiver_agent), String(AVERY)); assert.equal(l.receiver_agent_source, "granot_username_match");
+      assert.deepEqual(await modelJobs(), zero);
+    } finally { process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = "true"; }
+  });
+
   await t.test("C5: backfill dry run is write-free, apply sets, a second apply changes nothing", async () => {
     // Accepted Granot evidence, as the lifecycle leaves it: an observation and a live Decision targeting the Lead.
     async function accepted(ref: Ref, capturedAt: Date, agentIdentity: { user_raw?: string; rep_raw?: string }, valid = true) {

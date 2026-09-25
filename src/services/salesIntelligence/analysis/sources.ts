@@ -13,6 +13,8 @@ import { getSalesIntelligenceContactRestrictionModel } from "../../../models/Sal
 import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
 import { interactionAttribution, interactionRepIdentity } from "../outreach/ensure";
 import { subjectKey } from "../outreach/types";
+import { CRM_CLOSURE_REASONS } from "../outreach/leadProgress";
+import { OFFICIAL_CLOSURE_REASONS } from "../outreach/transitions";
 import { jsonValue } from "../outreach/store";
 import { loadLead } from "../attachment/sources";
 import { historicalCaptureReady, historicalAttachmentsReady } from "../backfill/readiness";
@@ -58,12 +60,24 @@ export type FingerprintOutreachAction = {
 };
 
 /**
+ * V-T3 M2: every reason `closeRecord` writes as `cancel_reason` for a machine closure: the CRM
+ * disposition bases (accepted 5/7/8) and the official closures (`officialClosure`, the exact-Booking
+ * `authoritativeClosure`, `lead_unavailable` from the command path, `lead_context_available` for a
+ * Number review). Owner closure reasons are left out on purpose: an Owner closure is fingerprinted on
+ * the record itself, and an Owner `cancel_followup` reason is free text.
+ */
+export const CLOSURE_CANCEL_REASONS: readonly string[] = [...CRM_CLOSURE_REASONS, ...OFFICIAL_CLOSURE_REASONS, "lead_unavailable", "lead_context_available"];
+
+/**
  * An Owner `cancel_followup` records an Owner instruction on the action. A closure cancel
  * (`closeRecord`) writes the closure reason as `cancel_reason`, so it is told apart even when
- * the Owner edited the action earlier.
+ * the Owner edited the action earlier. V-T3 M2: the test is the action's own `cancel_reason`, never
+ * the record's current `closed_reason`, so a later 5 ↔ 7 ↔ 8 refresh, an official closure over a CRM
+ * one, or a reopen never turns a closure cancel into an "Owner cancel" (and a paid refresh).
  */
 function ownerCancelled(action: FingerprintOutreachAction, record: FingerprintOutreachRecord | undefined) {
   if (action.status !== "cancelled" || !action.owner_instruction_ids?.length) return false;
+  if (action.cancel_reason != null && CLOSURE_CANCEL_REASONS.includes(action.cancel_reason)) return false;
   return !(record?.state === "closed" && record.closed_reason != null && action.cancel_reason === record.closed_reason);
 }
 

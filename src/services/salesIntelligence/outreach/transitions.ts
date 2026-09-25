@@ -61,6 +61,8 @@ export function stateWithActions(record: RecordRow, actions: readonly FollowupRo
   const open = actions.filter(a => a.status === "open");
   return open.length > 0 && open.every(a => a.kind === "wait" && a.due_at && a.due_at > now) ? "waiting_on_customer" : "open";
 }
+/** Every reason `officialClosure` / `authoritativeClosure` can return (V-T3 M2 reads it). */
+export const OFFICIAL_CLOSURE_REASONS = ["cancelled", "booked", "duplicate", "bad_lead", "no_sync"] as const;
 export function officialClosure(lead: { duplicate?: boolean; bad_lead?: unknown; booked?: unknown; cancelled?: unknown; no_sync?: boolean }): string | null {
   if (lead.cancelled) return "cancelled";
   if (lead.booked) return "booked";

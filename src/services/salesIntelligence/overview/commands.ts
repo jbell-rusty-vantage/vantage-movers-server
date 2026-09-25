@@ -19,10 +19,17 @@ export const rebuildOverviewDayCommandSchema = z.object({
   scope: z.literal("production").optional(),
 }).strict();
 
+/** V-T3 m5: a real `YYYY-MM-DD` calendar date, by round-trip (`2026-02-31` is refused, not rolled into March). */
+export function isCalendarDayKey(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const at = new Date(`${day}T12:00:00Z`);
+  return !Number.isNaN(+at) && at.toISOString().slice(0, 10) === day;
+}
+
 export async function commandRebuildOverviewDay(input: { actor: CsiActor; idempotency_key: string; command: unknown; now?: Date }) {
   if (!csiFlag("OVERVIEW")) throw new CsiError("FEATURE_DISABLED");
   const body = rebuildOverviewDayCommandSchema.parse(input.command);
-  if (Number.isNaN(Date.parse(`${body.day}T12:00:00Z`)) || body.day > easternDayKey(input.now ?? new Date())) throw new CsiError("INVALID_INPUT");
+  if (!isCalendarDayKey(body.day) || body.day > easternDayKey(input.now ?? new Date())) throw new CsiError("INVALID_INPUT");
   const { response, replayed } = await executeCsiCommand({
     actor: input.actor,
     command: "rebuild_overview_day",

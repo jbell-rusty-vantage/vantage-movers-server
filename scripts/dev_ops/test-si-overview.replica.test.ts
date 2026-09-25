@@ -332,6 +332,21 @@ test("S9-READS disposable replica", { skip: process.env.CSI_REPLICA_TEST !== "tr
       assert.deepEqual(large.byCollection, small.byCollection, "per-collection read counts are constant in the data size");
     });
 
+    await t.test("V-T3 M9: a rep's team medians cover the period only (the Priority filter is ignored) and need 4 known values", async () => {
+      const scope = { agent_id: String(agents[3]) };
+      const whole = await readOverview({ period: "last_30_days" }, { scope, cache: false });
+      assert.ok(whole.team_medians && whole.team_medians.reps >= 4, `a team of ${whole.team_medians?.reps}`);
+      assert.ok(whole.team_medians.spend != null && whole.team_medians.outbound_attempts != null, "medians are published over a large enough cohort");
+      for (const priority of ["0,not_set", "5", "1"]) {
+        const sliced = await readOverview({ period: "last_30_days", priority }, { scope, cache: false });
+        assert.deepEqual(sliced.team_medians, whole.team_medians, `priority=${priority}: same medians as the unfiltered period`);
+        assert.notDeepEqual(sliced.reps[0]!.spend, whole.reps[0]!.spend, `priority=${priority}: the rep's own numbers are still filtered`);
+      }
+      // A period change does move them (the period is the only input).
+      const week = await readOverview({ period: "last_7_days" }, { scope, cache: false });
+      assert.notDeepEqual(week.team_medians, whole.team_medians);
+    });
+
     await t.test("p95 < 500 ms for Last 30 days at production-like volume", async () => {
       const counts = { leads: await getFormLeadModel().countDocuments() + await getCallLeadModel().countDocuments(), calls: await Calls.countDocuments(), records: await Records.countDocuments(),
         followups: await Followups.countDocuments(), transitions: await db.collection("outreach_band_transitions").countDocuments() };

@@ -7,7 +7,9 @@ import { buildRepDayDocs, overviewRefreshDays, UNMAPPED_REP, type RepDayCall } f
 import { aggregateCohort, spendBasis, type SpendLead } from "./spend";
 import { bandFlow, callbacksKept, missedCallsReturned, percentile, speedToLead, timeInBand, type CallbackRow } from "./desk";
 import { entryOverdue, entryResponsible, tallyNow } from "./now";
-import { teamMedians } from "./read";
+import { MEDIAN_MIN_COHORT, teamMedians } from "./read";
+import { commandRebuildOverviewDay, isCalendarDayKey } from "./commands";
+import { CsiError, type CsiActor } from "../auth";
 
 const ACCOUNT = "acct-1";
 const A = "a".repeat(24), B = "b".repeat(24);
@@ -65,23 +67,29 @@ test("S9 spend basis rules (E19/E20) and the cohort aggregation", () => {
   assert.deepEqual(spendBasis({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: "missing_rate" }), { basis: "unpriced", amount: 0 });
   assert.deepEqual(spendBasis({ cpl: 0, cpl_rate_period: "p1", cpl_resolution_status: "duplicate_zero" }), { basis: "zero", amount: 0 });
   assert.deepEqual(spendBasis({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: "not_applicable" }), { basis: "zero", amount: 0 });
-  assert.deepEqual(spendBasis({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: null }), { basis: "zero", amount: 0 });
+  // V-T3 m12: no status and cpl 0 or missing is an unknown price (unpriced), not a known $0; totals are unchanged ($0 either way).
+  assert.deepEqual(spendBasis({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: null }), { basis: "unpriced", amount: 0 });
+  assert.deepEqual(spendBasis({ cpl: null, cpl_rate_period: null, cpl_resolution_status: undefined }), { basis: "unpriced", amount: 0 });
+  assert.deepEqual(spendBasis({}), { basis: "unpriced", amount: 0 });
+  assert.deepEqual(spendBasis({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: "resolved" }), { basis: "zero", amount: 0 }, "a Lead with a status keeps the old rule");
   const lead = (over: Partial<SpendLead>): SpendLead => ({ _id: new mongoose.Types.ObjectId(), model: "FormLead", cpl: 40, cpl_rate_period: "p1", cpl_resolution_status: "resolved",
     source_granularity_label_snapshot: "TBM Form", receiver_agent: A, ...over });
   const booked = lead({});
   const leads = [booked, lead({}), lead({}), lead({}), lead({ granot_priority: "5", quoted: true }),
     lead({ cpl: 25.5, cpl_rate_period: null, cpl_resolution_status: null, source_granularity_label_snapshot: "Legacy Web" }),
     lead({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: "missing_rate", receiver_agent: B }),
-    lead({ receiver_agent: null, model: "CallLead", source_granularity_label_snapshot: null, source_company: "Top10" })];
+    lead({ receiver_agent: null, model: "CallLead", source_granularity_label_snapshot: null, source_company: "Top10" }),
+    lead({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: null, receiver_agent: B, source_granularity_label_snapshot: "Legacy Web" }),
+    lead({ cpl: 0, cpl_rate_period: "p1", cpl_resolution_status: "duplicate_zero", receiver_agent: B })];
   const out = aggregateCohort(leads, new Set([`FormLead:${String(booked._id)}`]));
-  assert.deepEqual(out.total, { leads: 8, spend: 265.5, rate: 240, legacy: 25.5, unpriced_leads: 1, zero_leads: 0,
-    outcomes: { leads: 8, quoted: 1, booked_in_granot: 1, booked_official: 1, bookings: 2, booking_rate: 0.25 } });
+  assert.deepEqual(out.total, { leads: 10, spend: 265.5, rate: 240, legacy: 25.5, unpriced_leads: 2, zero_leads: 1,
+    outcomes: { leads: 10, quoted: 1, booked_in_granot: 1, booked_official: 1, bookings: 2, booking_rate: 0.2 } });
   const a = out.by_rep.get(A)!;
   assert.deepEqual(a.spend, { leads: 6, spend: 225.5, rate: 200, legacy: 25.5, unpriced_leads: 0, zero_leads: 0 });
   assert.deepEqual(a.by_source[0], { source: "TBM Form", leads: 5, spend: 200, rate: 200, legacy: 0, unpriced_leads: 0, zero_leads: 0, unit_cpl: 40 }, "TBM Form · 5 × $40 = $200");
   assert.equal(a.cost_per_booking, 112.75, "spend ÷ the cohort's bookings (official or Granot, once each)");
   assert.equal(out.by_rep.get(B)!.cost_per_booking, null, "— when there are no bookings");
-  assert.deepEqual(out.by_rep.get(B)!.spend.unpriced_leads, 1);
+  assert.deepEqual(out.by_rep.get(B)!.spend, { leads: 3, spend: 0, rate: 0, legacy: 0, unpriced_leads: 2, zero_leads: 1 }, "missing_rate and a status-less $0 are unpriced; duplicate_zero is zero");
   assert.deepEqual(out.unassigned!.spend, { leads: 1, spend: 40, rate: 40, legacy: 0, unpriced_leads: 0, zero_leads: 0 });
   assert.equal(out.unassigned!.by_source[0]!.source, "Top10");
   const sum = [...out.by_rep.values()].reduce((n, r) => n + r.spend.spend, 0) + out.unassigned!.spend.spend;
@@ -168,16 +176,34 @@ test("S9 team medians (E23): over reps with an open assignment or a call; null m
     interactions: { outbound_attempts: calls, answered_inbound: 0, human_conversations: 0, talk_minutes: 0, attempt_conversation_rate: calls ? 0.5 : null, calls, recovered_calls: 0 },
     outcomes: { leads: 1, quoted: 0, booked_in_granot: 0, booked_official: 0, bookings: 0, booking_rate: 0 }, spend: { leads: 1, spend, rate: spend, legacy: 0, unpriced_leads: 0, zero_leads: 0 },
     by_source: [], cost_per_booking: cpb });
-  const medians = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 0, 4, 300, null), row("r3", 0, 0, 900, 10), row("r4", 6, 0, 200, 30)]);
-  assert.equal(medians.reps, 3, "r3 has neither an open assignment nor a call");
-  assert.equal(medians.open, 2);
-  assert.equal(medians.outbound_attempts, 4);
-  assert.equal(medians.spend, 200);
-  assert.equal(medians.cost_per_booking, null, "only 2 known values (r2's null is left out): below the 3-rep cohort, so null (C11)");
-  assert.equal(medians.attempt_conversation_rate, null, "r4 has no attempts: 2 known values, suppressed");
-  // C11: with two reps a median would reveal the other rep's exact value (2 × median − own).
+  const medians = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 0, 4, 300, null), row("r3", 0, 0, 900, 10), row("r4", 6, 0, 200, 30), row("r5", 1, 2, 400, 40)]);
+  assert.equal(MEDIAN_MIN_COHORT, 4, "V-T3 M9: at least 3 other reps");
+  assert.equal(medians.reps, 4, "r3 has neither an open assignment nor a call");
+  assert.equal(medians.open, 1.5);
+  assert.equal(medians.outbound_attempts, 3);
+  assert.equal(medians.spend, 250);
+  assert.equal(medians.cost_per_booking, null, "only 3 known values (r2's null is left out): below the 4-rep cohort, so null (C11)");
+  assert.equal(medians.attempt_conversation_rate, null, "r4 has no attempts: 3 known values, suppressed");
+  // C11 / V-T3 M9: with three reps the median is one other rep's exact value whenever the caller is the lowest or highest.
+  const three = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 1, 4, 300, 20), row("r4", 3, 6, 200, 30)]);
+  assert.equal(three.reps, 3);
+  assert.equal(three.spend, null); assert.equal(three.outbound_attempts, null); assert.equal(three.open, null);
+  // With two reps a median would reveal the other rep's exact value (2 × median − own).
   const two = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 1, 4, 300, 20)]);
   assert.equal(two.reps, 2);
   assert.equal(two.spend, null);
   assert.equal(two.open, null);
+});
+
+test("V-T3 m5: rebuild_overview_day takes only a real calendar day (round-trip), before any write", async () => {
+  for (const day of ["2026-09-24", "2024-02-29", "2026-12-31", "2026-01-01"]) assert.equal(isCalendarDayKey(day), true, day);
+  for (const day of ["2026-02-31", "2026-02-29", "2026-04-31", "2026-13-01", "2026-00-10", "2026-09-00", "2026-9-24", "20260924", "2026-09-24T00:00"]) assert.equal(isCalendarDayKey(day), false, day);
+  const prior = process.env.SALES_INTELLIGENCE_OVERVIEW;
+  process.env.SALES_INTELLIGENCE_OVERVIEW = "true";
+  try {
+    const actor = { kind: "owner", id: "owner-user" } as unknown as CsiActor;
+    for (const day of ["2026-02-31", "2026-04-31"])
+      await assert.rejects(commandRebuildOverviewDay({ actor, idempotency_key: `m5-${day}`, command: { command: "rebuild_overview_day", day, reason: "late capture" }, now: new Date("2026-09-24T16:00:00Z") }),
+        (error: unknown) => error instanceof CsiError && error.code === "INVALID_INPUT", day);
+  } finally { if (prior === undefined) delete process.env.SALES_INTELLIGENCE_OVERVIEW; else process.env.SALES_INTELLIGENCE_OVERVIEW = prior; }
 });

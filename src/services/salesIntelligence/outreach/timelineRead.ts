@@ -92,7 +92,13 @@ export const timelineV2QuerySchema = z
   });
 export type TimelineV2Query = z.infer<typeof timelineV2QuerySchema>;
 
-export type TimelineReadOptions = { cursor?: string; limit?: number; kinds?: readonly string[] | null };
+/**
+ * V-T3 M8 (S8-REP): Owner-only kinds a rep's timeline never carries: Owner→rep nudges (Messages, blanked on the
+ * rep's detail too) and Owner notes. Restriction events stay: a rep must see do-not-call.
+ */
+export const REP_HIDDEN_TIMELINE_KINDS: readonly string[] = ["nudge_sent", "owner_note"];
+/** `audience: "rep"` drops `REP_HIDDEN_TIMELINE_KINDS` inside every reader's accept (before the bound), so paging stays exact. */
+export type TimelineReadOptions = { cursor?: string; limit?: number; kinds?: readonly string[] | null; audience?: "owner" | "rep" };
 export type TimelineReadDeps = { now?: () => Date; coverage?: CoverageDto };
 
 type Edge = { lead_ref: { model: "FormLead" | "CallLead"; id: unknown }; state: string };
@@ -296,7 +302,7 @@ async function bandTransitionSource(asOf: Date, limit: number, t: TimelineReadCo
   return keysetScan<BandTransitionRow>({
     query: (window, batch) => getOutreachBandTransitionModel().find({ record_id: { $in: ids }, ...window }).sort({ at: -1, _id: -1 }).limit(batch).lean().exec() as unknown as Promise<BandTransitionRow[]>,
     field: "at", indexed: row => row.at, toEvents: rows => rows.map(bandTransitionEvent),
-    accept: e => Date.parse(e.happened_at) <= +asOf && (t.kinds === null || t.kinds.has(e.kind)) && isAfterStoryCursor(e, t.after),
+    accept: e => Date.parse(e.happened_at) <= +asOf && (t.kinds === null || t.kinds.has(e.kind)) && !t.exclude?.has(e.kind) && isAfterStoryCursor(e, t.after),
     limit, upper, aheadMs: 0, tieSafe: true });
 }
 
@@ -360,12 +366,13 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
     scope: resolved.scope,
     after: decoded ? { happened_at: decoded.happened_at, kind_order: timelineKindOrder(decoded.kind), id: decoded.id } : null,
     kinds: kinds ? new Set(kinds) : null,
+    ...(opts.audience === "rep" ? { exclude: new Set(REP_HIDDEN_TIMELINE_KINDS) } : {}),
     subject_keys: subjectKeysFor(subject, resolved.records),
     records: resolved.records,
     lead_refs: subject.lead_refs.slice(0, TIMELINE_LEAD_FANOUT),
     leads: resolved.leads,
   };
-  const names = kinds ? [...new Set(kinds.map(k => TIMELINE_SOURCE_BY_KIND[k]).filter((n): n is string => Boolean(n)))] : Object.keys(STORY_SOURCES);
+  const names = kinds ? [...new Set(kinds.filter(k => !ctx.exclude?.has(k)).map(k => TIMELINE_SOURCE_BY_KIND[k]).filter((n): n is string => Boolean(n)))] : Object.keys(STORY_SOURCES);
   // S9-PUBLISH: the band reader runs only with SALES_INTELLIGENCE_OVERVIEW on, so a flag-off timeline is byte-identical.
   const bands = overviewEnabled() && (!kinds || kinds.includes(BAND_CHANGED));
   const results = await Promise.all([...names.map(async name => [name, await STORY_SOURCES[name]!(subject, limit, { timeline: ctx })] as const),

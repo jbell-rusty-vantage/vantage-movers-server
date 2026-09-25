@@ -14,6 +14,8 @@ import { createSalesIntelligenceInternalRouter } from "./sales-intelligence-inte
 import { createSalesIntelligenceCronRouter } from "./sales-intelligence-cron.routes";
 import { createAdminInviteEmailRouter } from "./admin-invite-email-internal.routes";
 import { CSI_ADMIN_PREFIX, CSI_REP_COMMAND_ROUTES, CSI_REP_READ_ROUTES, createSalesIntelligenceAdminRouter, type SalesIntelligenceAdminRouteDeps } from "./sales-intelligence-admin.routes";
+import { assertRepDateCap, REP_DATE_CAP_DAYS } from "../services/salesIntelligence/followups/commands";
+import type { CsiCommand } from "../validation/v1/salesIntelligence";
 
 /**
  * S8-REP (assignment addendum §4.2, C6): the access matrix over every registered Sales Intelligence route,
@@ -228,6 +230,23 @@ test("C6: a rep's record, Number and conversation reads answer 404 outside its s
   } finally { await close(); process.env = saved; }
 });
 
+test("V-T3 M8: a rep's Outreach timeline read carries audience rep (nudges and Owner notes dropped in the read); the Owner's options are unchanged", { timeout: 60_000 }, async () => {
+  const saved = { ...process.env };
+  env({ rep: true });
+  const seen: unknown[] = [];
+  const admin = createSalesIntelligenceAdminRouter({
+    connect: async () => {},
+    repScope: { record: async (id: string, agent: string) => id === IN && agent === AGENT_A, number: async () => false, conversation: async () => false },
+    outreachTimeline: (async (_id: string, opts: unknown) => { seen.push(opts); return { as_of: "2026-09-24T12:00:00.000Z", data: {} }; }) as never,
+  });
+  const { base, close } = await serve([createSalesIntelligenceBoundaryRouter({ connect: async () => {} }), admin]);
+  try {
+    assert.equal((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}/timeline?limit=5&kinds=nudge_sent`, "rep")).status, 200);
+    assert.equal((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}/timeline?limit=5&kinds=nudge_sent`, "owner")).status, 200);
+    assert.deepEqual(seen, [{ cursor: undefined, limit: 5, kinds: ["nudge_sent"], audience: "rep" }, { cursor: undefined, limit: 5, kinds: ["nudge_sent"] }]);
+  } finally { await close(); process.env = saved; }
+});
+
 test("C6: query parameters can't widen a rep's scope (desk, Closed history, Overview); the Owner's calls are unchanged", { timeout: 60_000 }, async () => {
   const saved = { ...process.env };
   env({ rep: true });
@@ -388,4 +407,20 @@ test("a rep's live stream forwards only the rep topics; the Owner's is unchanged
     assert.equal(frames().filter(frame => frame.reason === "change").length, 1);
     abort.abort(); await reader.cancel().catch(() => {});
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
+test("V-T3 m1: a rep's re-date and snooze are capped at now + 60 days (INVALID_INPUT, not cancel-by-proxy); the Owner's aren't checked", () => {
+  const NOW = new Date("2026-09-24T16:00:00.000Z");
+  const plus = (ms: number) => new Date(+NOW + ms).toISOString();
+  const cap = REP_DATE_CAP_DAYS * 86_400_000;
+  const redate = (due_at: string) => ({ command: "patch_followup", expected_revision: 1, changes: { due_at }, reason: "Customer asked" }) as unknown as CsiCommand;
+  const snooze = (until: string) => ({ command: "snooze_followup", expected_revision: 1, until, reason: "At work" }) as unknown as CsiCommand;
+  assert.equal(REP_DATE_CAP_DAYS, 60);
+  for (const command of [redate(plus(cap)), snooze(plus(cap)), redate(plus(86_400_000)), snooze(plus(3_600_000))]) assert.doesNotThrow(() => assertRepDateCap(command, NOW));
+  for (const [command, path] of [[redate(plus(cap + 1)), "changes.due_at"], [snooze(plus(cap + 1)), "until"], [redate("9999-12-31T00:00:00.000Z"), "changes.due_at"],
+    [snooze("9999-12-31T00:00:00.000Z"), "until"]] as const)
+    assert.throws(() => assertRepDateCap(command, NOW), (error: unknown) => error instanceof CsiError && error.code === "INVALID_INPUT"
+      && JSON.stringify(error.issues) === JSON.stringify([{ path, code: "rep_date_beyond_cap" }]));
+  // Completion carries no date: never checked.
+  assert.doesNotThrow(() => assertRepDateCap({ command: "complete_followup", expected_revision: 1, disposition: "completed", note: "ok" } as unknown as CsiCommand, NOW));
 });

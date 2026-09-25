@@ -270,6 +270,19 @@ async function applyEvidenceCommand(id: string, command: CsiCommand, context: Cs
 export const REP_OUTREACH_COMMANDS = ["complete_followup", "snooze_followup", "patch_followup"] as const;
 const REP_PATCH_FIELDS = new Set(["due_at", "date_note"]);
 const blank = (value: string | undefined | null) => !value || !value.trim();
+/**
+ * V-T3 m1 (E9: a rep never cancels): a rep's re-date (`due_at`) or snooze (`until`) lands at most
+ * `REP_DATE_CAP_DAYS` after `now`. A date beyond it would cancel the callback by proxy, so it is INVALID_INPUT.
+ * Owner commands are unchanged.
+ */
+export const REP_DATE_CAP_DAYS = 60;
+export function assertRepDateCap(command: CsiCommand, now: Date): void {
+  const [path, value] = command.command === "patch_followup" ? ["changes.due_at", command.changes.due_at]
+    : command.command === "snooze_followup" ? ["until", command.until] : [null, null];
+  if (!path || value == null) return;
+  const at = Date.parse(String(value));
+  if (Number.isNaN(at) || at > +now + REP_DATE_CAP_DAYS * 86_400_000) throw new CsiError("INVALID_INPUT", [{ path, code: "rep_date_beyond_cap" }]);
+}
 export function assertRepCommand(command: CsiCommand): void {
   if (!(REP_OUTREACH_COMMANDS as readonly string[]).includes(command.command)) throw new CsiError("FORBIDDEN");
   if (command.command === "complete_followup") {
@@ -288,9 +301,10 @@ export function assertRepCommand(command: CsiCommand): void {
 }
 
 /**
- * S8-REP: a rep's own follow-up change. It is not an Owner instruction: no `owner_instruction_ids`, no Owner
- * precedence against later Owner edits, and no paid `number_refresh` nomination (the Attention publish picks the
- * change up; model re-analysis follows the normal nomination paths). The follow-up and record audits carry the rep
+ * S8-REP: a rep's own follow-up change. It is not an Owner instruction: no `owner_instruction_ids` and no Owner
+ * precedence against later Owner edits. It enqueues no job directly (the Attention publish picks the change up).
+ * Like an Owner edit, a completion or re-date of a fingerprinted follow-up changes the Number fingerprint, so the
+ * next scan may re-analyse (budget-gated); a snooze doesn't (V-T3 M1, decision amended). The follow-up and record audits carry the rep
  * as actor (`kind: "rep"`, the admin user id) and the rep's note. A follow-up that doesn't exist, or whose
  * `responsible_agent_id` isn't the rep's Agent, is `FORBIDDEN` (the same answer, so ids can't be probed).
  */
@@ -301,6 +315,7 @@ export async function applyRepCommandInTransaction(targetId: string, command: Cs
   if (!csiFlag("ENABLED") || !csiFlag("OUTREACH_ENSURE") || !csiFlag("REP_ACCESS")) throw new CsiError("FEATURE_DISABLED");
   csiIdSchema.parse(targetId);
   assertRepCommand(command);
+  assertRepDateCap(command, context.now);
   const action = await getOutreachFollowupModel().findById(targetId).session(context.session);
   if (!action || action.responsible_agent_id == null || String(action.responsible_agent_id) !== agentId) throw new CsiError("FORBIDDEN");
   if (action.revision !== command.expected_revision) throw new CsiError("REVISION_CONFLICT");

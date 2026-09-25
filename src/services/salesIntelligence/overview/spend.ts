@@ -21,7 +21,9 @@ export type SpendLead = {
  * 2. `missing_rate` → $0, `unpriced` (counted; the resolver stores `cpl` 0 for it);
  * 3. `duplicate_zero` / `not_applicable` → $0, `zero`;
  * 4. otherwise a positive `cpl` with no rate period (pre-rate-period Leads) → that `cpl`, `legacy`;
- * 5. anything else → $0, `zero`.
+ * 5. no `cpl_resolution_status` at all and `cpl` 0 or missing → $0, `unpriced` (V-T3 m12: the price is unknown,
+ *    not a known $0; the detail's `lead_cost` shows it as unpriced rather than "Lead cost $0");
+ * 6. anything else → $0, `zero`.
  * Every basis adds exactly the stored `cpl` for the Lead it names except `unpriced` / `zero`, which store 0,
  * so the spend total equals Σ `cpl` over the cohort (C10).
  */
@@ -32,6 +34,7 @@ export function spendBasis(lead: Pick<SpendLead, "cpl" | "cpl_rate_period" | "cp
   if (status === "missing_rate") return { basis: "unpriced", amount: 0 };
   if (status === "duplicate_zero" || status === "not_applicable") return { basis: "zero", amount: 0 };
   if (cpl > 0) return { basis: "legacy", amount: cpl };
+  if (status === null) return { basis: "unpriced", amount: 0 };
   return { basis: "zero", amount: 0 };
 }
 

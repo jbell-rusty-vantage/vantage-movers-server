@@ -207,6 +207,45 @@ test("S8-REP rep access on the csi01 replica", { skip: process.env.CSI_REPLICA_T
     assert.deepEqual((await repA("GET", `/outreach/${records.R1}`)).body!.data.nudges, { items: [], next_cursor: null });
   });
 
+  await t.test("V-T3 M8: the rep's Outreach timeline drops Owner nudges and Owner notes before the page is cut; restrictions stay", async () => {
+    const r1 = await Records.findById(records.R1).lean();
+    const subject = r1!.subject as { model: string; id: unknown };
+    const subject_key = `lead:${subject.model}:${String(subject.id)}`;
+    const audit = (event_kind: string, hoursAgo: number, current: Record<string, unknown>, kind: string) => ({ _id: oid(), semantic_key: `m8:${event_kind}:${hoursAgo}`, subject_key, event_kind,
+      actor: { kind: "owner", id: "owner-user" }, happened_at: at(hoursAgo), recorded_at: at(hoursAgo), prior: {}, current,
+      invalidation: { kind, target_id: String(oid()), subject_key, revision: 1 } });
+    // Interleaved so the hidden rows fall inside and between small pages.
+    await getSalesIntelligenceAuditEventModel().collection.insertMany([
+      audit("nudge_sent", 1, { channel: "sms" }, "nudge"), audit("add_note", 2, { note: "Owner-only: margin is thin, push the deposit" }, "outreach"),
+      audit("restriction_set", 3, { reason: "Customer asked: do not call before 5 PM" }, "restriction"), audit("nudge.authorized", 4, { status: "pending" }, "nudge"),
+      audit("add_note", 5, { note: "Owner-only second note" }, "outreach"), audit("nudge_sent", 6, { channel: "teams" }, "nudge")]);
+    const pageAll = async (read: (path: string) => Promise<{ status: number; body: Record<string, any> | null }>, limit: number) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      const items: Array<{ id: string; kind: string; detail: unknown }> = [];
+      let cursor: string | null = null;
+      for (let pages = 0; pages < 200; pages++) {
+        const page = await read(`/outreach/${records.R1}/timeline?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+        assert.equal(page.status, 200, JSON.stringify(page.body));
+        items.push(...page.body!.data.items);
+        cursor = page.body!.data.cursor;
+        if (!cursor) return items;
+        assert.equal(page.body!.data.items.length, limit, "a page with a cursor is full");
+      }
+      throw new Error("timeline paging did not terminate");
+    };
+    const ownerItems = await pageAll(path => owner("GET", path), 50);
+    assert.ok(ownerItems.some(e => e.kind === "nudge_sent") && ownerItems.some(e => e.kind === "owner_note"), "the Owner sees nudges and notes");
+    const expected = ownerItems.filter(e => e.kind !== "nudge_sent" && e.kind !== "owner_note").map(e => `${e.kind}:${e.id}`);
+    for (const limit of [1, 2, 3, 50]) {
+      const repItems = await pageAll(path => repA("GET", path), limit);
+      assert.deepEqual(repItems.map(e => `${e.kind}:${e.id}`), expected, `rep limit ${limit}: the Owner's stream minus the hidden kinds, exact paging`);
+    }
+    const repItems = await pageAll(path => repA("GET", path), 50);
+    assert.ok(repItems.some(e => e.kind === "restriction_set"), "do-not-call stays visible to the rep");
+    assert.ok(!JSON.stringify(repItems).includes("Owner-only"), "no Owner note text reaches the rep");
+    const hidden = await repA("GET", `/outreach/${records.R1}/timeline?kinds=nudge_sent,owner_note`);
+    assert.equal(hidden.status, 200); assert.deepEqual(hidden.body!.data.items, []);
+  });
+
   await t.test("Number and conversation reads: in scope when one of the Number's records is; media audited with the rep", async () => {
     const missingNumber = await owner("GET", `/numbers/${String(oid())}/conversations`);
     assert.equal(missingNumber.status, 404);
@@ -284,7 +323,7 @@ test("S8-REP rep access on the csi01 replica", { skip: process.env.CSI_REPLICA_T
     assert.deepEqual(ownerScoped.body!.data.reps, data.reps);
   });
 
-  await t.test("commands: complete, snooze and re-date own follow-ups with a note; everything else FORBIDDEN; no Owner instruction, no paid job", async () => {
+  await t.test("commands: complete, snooze and re-date own follow-ups with a note; everything else FORBIDDEN; no Owner instruction, no direct enqueue", async () => {
     const Instructions = getSalesIntelligenceOwnerInstructionModel();
     const instructionsBefore = await Instructions.countDocuments({});
     // Allowlisted, own follow-ups.
@@ -299,6 +338,16 @@ test("S8-REP rep access on the csi01 replica", { skip: process.env.CSI_REPLICA_T
     assert.equal(redate.status, 200, JSON.stringify(redate.body));
     const f4 = await Followups.findById(F4._id).lean();
     assert.equal(+f4!.due_at!, +now + 3 * DAY); assert.equal(f4!.snoozed_until, null); assert.deepEqual(f4!.owner_instruction_ids, []);
+    // V-T3 m1: a re-date or snooze past now + 60 days would cancel by proxy (E9): INVALID_INPUT, nothing written.
+    for (const [method, path, body] of [
+      ["PATCH", `/followups/${F4._id}`, { command: "patch_followup", expected_revision: 3, changes: { due_at: "9999-12-31T00:00:00.000Z" }, reason: "Far away" }],
+      ["PATCH", `/followups/${F4._id}`, { command: "patch_followup", expected_revision: 3, changes: { due_at: new Date(+now + 61 * DAY).toISOString() }, reason: "Two months" }],
+      ["POST", `/followups/${F4._id}/snooze`, { command: "snooze_followup", expected_revision: 3, until: new Date(+now + 61 * DAY).toISOString(), reason: "Two months" }],
+    ] as const) {
+      const refused = await repA(method, path, body);
+      assert.equal(refused.status, 400, JSON.stringify(refused.body)); assert.equal(refused.body!.code, "INVALID_INPUT");
+    }
+    assert.equal((await Followups.findById(F4._id).lean())!.revision, 3, "the refused dates wrote nothing");
     assert.equal(await Instructions.countDocuments({}), instructionsBefore, "rep changes are not Owner instructions");
     const audits = await getSalesIntelligenceAuditEventModel().find({ "actor.kind": "rep", event_kind: { $in: ["complete_followup", "snooze_followup", "patch_followup"] } }).lean();
     assert.ok(audits.length >= 3);
@@ -327,7 +376,9 @@ test("S8-REP rep access on the csi01 replica", { skip: process.env.CSI_REPLICA_T
     assert.equal((await Records.findById(records.R1).lean())!.state === "closed", false);
     // No Owner precedence: the rep's changes carry no Owner instruction (checked above), so later Owner edits and automatic
     // plans treat the follow-up as before. An Owner command isn't sent here: it would queue a paid `number_refresh`.
-    assert.equal(await paidJobs(), paidBefore, "rep commands nominate no paid job");
+    // V-T3 M1 (decision amended): rep commands enqueue no job directly. Like an Owner edit, the completion and the re-date
+    // change the Number fingerprint, so the next scan (not run here) may re-analyse, budget-gated.
+    assert.equal(await paidJobs(), paidBefore, "rep commands enqueue no job directly");
   });
 
   await t.test("flag off: a rep is refused exactly as before; the Owner's desk is unchanged", async () => {

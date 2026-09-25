@@ -14,6 +14,11 @@ test("lead_cost on the Outreach detail: rate, legacy, unpriced, zero, and null w
   assert.deepEqual(cost({ cpl: 35, cpl_rate_period: null, cpl_resolution_status: null }), { amount: 35, basis: "legacy" });
   assert.deepEqual(cost({ cpl: 0, cpl_resolution_status: "missing_rate" }), { amount: 0, basis: "unpriced" });
   assert.deepEqual(cost({ cpl: 0, cpl_resolution_status: "duplicate_zero" }), { amount: 0, basis: "zero" });
+  assert.deepEqual(cost({ cpl: 0, cpl_resolution_status: "not_applicable" }), { amount: 0, basis: "zero" });
+  // V-T3 m12: a legacy Lead with no pricing basis is unpriced (price unknown), never "Lead cost $0".
+  assert.deepEqual(cost({ cpl: 0 }), { amount: 0, basis: "unpriced" });
+  assert.deepEqual(cost({ cpl: 0, cpl_rate_period: null, cpl_resolution_status: null }), { amount: 0, basis: "unpriced" });
+  assert.deepEqual(cost({}), { amount: 0, basis: "unpriced" });
   assert.equal(cost(null), null, "a Number-only record or a missing Lead: null, never $0");
   assert.equal(outreachDetailDtoSchema.shape.lead_cost.safeParse({ amount: 40, basis: "rate" }).success, true);
 });

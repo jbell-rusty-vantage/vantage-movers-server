@@ -6,7 +6,7 @@ import { legacyConversationFallbackEnabled, conversationSource as v1Conversation
 import { installFakeMongo } from "../story/fakeMongo.fixtures";
 import { compareTimelineOrder } from "../story/sources";
 import { buildS4TimelineDocs, S4_AS_OF, S4_E164, S4_IDS, type S4Docs } from "../story/timeline.fixtures";
-import { readNumberTimelineV2, readOutreachTimeline } from "./timelineRead";
+import { readNumberTimelineV2, readOutreachTimeline, REP_HIDDEN_TIMELINE_KINDS } from "./timelineRead";
 
 /**
  * Pure proof of the timeline v2 read over the real story readers (S4-TIMELINE), with the
@@ -24,6 +24,9 @@ const numberReader = (id: string, kinds: string[] | null = null): Reader => (cur
   readNumberTimelineV2(id, { cursor, limit, kinds }, { now, coverage }).then(page => page?.data ?? null);
 const outreachReader = (id: string, kinds: string[] | null = null): Reader => (cursor, limit) =>
   readOutreachTimeline(id, { cursor, limit, kinds }, { now, coverage }).then(page => page?.data ?? null);
+
+const repOutreachReader = (id: string, kinds: string[] | null = null): Reader => (cursor, limit) =>
+  readOutreachTimeline(id, { cursor, limit, kinds, audience: "rep" }, { now, coverage }).then(page => page?.data ?? null);
 
 async function pageAll(read: Reader, limit: number) {
   const items: TimelineV2EventDto[] = [];
@@ -93,6 +96,23 @@ test("B12 (real readers): Outreach scope, Lead-only record, kinds filters", asyn
   assert.ok(leadOnly.some(e => e.kind === "lead_message_sent") && leadOnly.every(e => e.kind !== "call"), "Lead-only: its Lead's messages, no calls");
   await exact("N2", numberReader(String(S4_IDS.n2)), 100);
   await exact("record M", outreachReader(String(S4_IDS.recordM)), 100);
+});
+
+test("V-T3 M8: a rep's Outreach timeline drops nudges and Owner notes before the page is cut; restrictions stay", async t => {
+  installFakeMongo(t, docs());
+  for (const record of [S4_IDS.recordA, S4_IDS.recordM]) {
+    const owner = await pageAll(outreachReader(String(record)), 200);
+    const hidden = owner.filter(e => REP_HIDDEN_TIMELINE_KINDS.includes(e.kind));
+    assert.ok(hidden.some(e => e.kind === "nudge_sent") && hidden.some(e => e.kind === "owner_note"), "the fixture carries both Owner-only kinds");
+    // Exact paging over the filtered stream: limit 7 and 13 concatenate to pages of 200, no repeats.
+    const rep = await exact(`rep ${record}`, repOutreachReader(String(record)), 1);
+    assert.deepEqual(keys(rep), keys(owner.filter(e => !REP_HIDDEN_TIMELINE_KINDS.includes(e.kind))), "the Owner's stream minus the hidden kinds");
+    const restrictions = owner.filter(e => e.kind.startsWith("restriction_"));
+    assert.ok(restrictions.length > 0, "the fixture carries a restriction event");
+    assert.deepEqual(keys(rep.filter(e => e.kind.startsWith("restriction_"))), keys(restrictions), "do-not-call stays visible to the rep");
+    // Asking for a hidden kind yields nothing (no reader output leaks through the kinds filter).
+    assert.deepEqual(await pageAll(repOutreachReader(String(record), ["nudge_sent", "owner_note"]), 50), []);
+  }
 });
 
 test("B13, reader fixes, D6, chips, actions and job prefixes (real readers)", async t => {

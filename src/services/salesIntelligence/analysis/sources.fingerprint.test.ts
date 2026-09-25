@@ -127,3 +127,30 @@ test("V-AC N3: the 200-action bound counts only fingerprinted origins; the read 
   assert.equal(actionsOverBound(many(ACTION_READ_LIMIT + 1, "system_default")), true, "the read itself is still bounded");
 });
 
+
+test("V-T3 M2: a closure cancel never becomes an Owner cancel when the closure reason later changes", async (t) => {
+  // An Owner edited the action (owner_instruction_ids), then an accepted 5 closed the record.
+  const edited = { owner_instruction_ids: ["i-edit"], description: "Call back Tuesday" };
+  const closedAs = (reason: string, origin = "crm_disposition") =>
+    [record({ state: "closed", closed_reason: reason, closure_origin: origin, responsible_agent_id: REP, assignment: { origin: "first_conversation" } })];
+  const cancelledBy5 = [promise({ ...edited, status: "cancelled", cancel_reason: "granot_booked" })];
+  const after5 = hash(closedAs("granot_booked"), cancelledBy5);
+  await t.test("an accepted 8 arrives: the fingerprint doesn't move", () => assert.equal(hash(closedAs("granot_dead_opportunity"), cancelledBy5), after5));
+  await t.test("an accepted 7 arrives: the fingerprint doesn't move", () => assert.equal(hash(closedAs("granot_bad_unusable"), cancelledBy5), after5));
+  await t.test("the closure cancel's status is never hashed", () => {
+    for (const reason of ["granot_booked", "granot_dead_opportunity", "granot_bad_unusable"])
+      assert.equal(fingerprintOutreachInputs(closedAs(reason), cancelledBy5).actions[0].status, null);
+  });
+  await t.test("a reopened record keeps the closure cancel out", () =>
+    assert.equal(fingerprintOutreachInputs([record({ state: "open" })], cancelledBy5).actions[0].status, null));
+  await t.test("a later official closure over an official one: the old closure cancel stays out", () => {
+    const byBooked = [promise({ ...edited, status: "cancelled", cancel_reason: "booked" })];
+    assert.equal(fingerprintOutreachInputs(closedAs("cancelled", "official"), byBooked).actions[0].status, null);
+    assert.equal(fingerprintOutreachInputs(closedAs("booked", "official"), byBooked).actions[0].status, null);
+  });
+  await t.test("an Owner cancel_followup still counts, whatever the record's state", () => {
+    const owner = [promise({ ...edited, status: "cancelled", cancel_reason: "customer asked not to" })];
+    assert.equal(fingerprintOutreachInputs(closedAs("granot_booked"), owner).actions[0].status, "cancelled");
+    assert.equal(fingerprintOutreachInputs([record({ state: "open" })], owner).actions[0].status, "cancelled");
+  });
+});

@@ -24,6 +24,8 @@ import { overviewDtoSchema, type OverviewDto } from "./dto";
  *   and Unassigned (records and spend).
  * - `spend`: total, by rep and by source.
  * - `team_medians`: only for a one-rep scope (E23), over reps with an open assignment or a call in the period.
+ *   V-T3 M9: over the chosen period only; the `priority` filter is ignored (Priority slices would let a rep
+ *   difference medians of small cohorts).
  *
  * Activity numbers default to Today and spend/outcomes to Last 7 days (E18) unless the caller picks a period.
  * Behind `SALES_INTELLIGENCE_OVERVIEW`: off, the read is FEATURE_DISABLED (404).
@@ -89,10 +91,11 @@ export function repMetricValues(row: RepRow): Record<(typeof MEDIAN_FIELDS)[numb
     booked_official: row.outcomes.booked_official, booking_rate: row.outcomes.booking_rate, spend: row.spend.spend, cost_per_booking: row.cost_per_booking };
 }
 /**
- * C11 / E23: a median over fewer than 3 reps would let a rep work out another rep's exact value (with two
- * reps, other = 2 × median − own). Below this cohort the metric's median is null.
+ * C11 / E23: a median over a small cohort lets a rep work out another rep's exact value (two reps:
+ * other = 2 × median − own; three: the median is one other rep's value whenever the caller is the lowest
+ * or the highest). V-T3 M9: at least 4 known values (3 other reps). Below this cohort the metric's median is null.
  */
-export const MEDIAN_MIN_COHORT = 3;
+export const MEDIAN_MIN_COHORT = 4;
 /** E23: the median of each per-rep metric over reps with at least one open assignment or call in the period; a null metric is left out (unknown is never zero). */
 export function teamMedians(rows: readonly RepRow[]) {
   const members = rows.filter(row => row.open_assignments.open > 0 || row.interactions.calls > 0);
@@ -152,13 +155,22 @@ export async function readOverview(raw: z.input<typeof overviewQuerySchema>, opt
   const spend = aggregateCohort(cohort.leads, cohort.officialBooked);
   const repIds = [...new Set([...teamNow.by_rep.keys(), ...[...days.keys()].filter(key => key !== UNMAPPED_REP), ...spend.by_rep.keys()])].sort();
   const names = await agentNames(repIds);
-  const repRow = (id: string): RepRow => {
-    const now = teamNow.by_rep.get(id) ?? ({ agent_id: id, open: 0, bands: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }, overdue: 0 } as NowRep);
-    const money = spend.by_rep.get(id) ?? emptyCohort();
+  const rowFor = (tally: typeof teamNow, money_by_rep: typeof spend.by_rep) => (id: string): RepRow => {
+    const now = tally.by_rep.get(id) ?? ({ agent_id: id, open: 0, bands: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }, overdue: 0 } as NowRep);
+    const money = money_by_rep.get(id) ?? emptyCohort();
     return { agent: { id, name: names.get(id) ?? "Unknown Agent" }, open_assignments: { open: now.open, bands: now.bands, overdue: now.overdue },
       interactions: interactionsDto(days.get(id)), outcomes: money.outcomes, spend: money.spend, by_source: money.by_source, cost_per_booking: money.cost_per_booking };
   };
+  const repRow = rowFor(teamNow, spend.by_rep);
   const teamRows = repIds.map(repRow);
+  // V-T3 M9: a scoped read's medians ignore the Priority filter (same period, whole team). Unfiltered, the team rows already are that.
+  const medianRows = !scopeAgent ? null : !priority ? teamRows : await (async () => {
+    const allNow = tallyNow(entries, {}, asOf);
+    const allCohort = await loadSpendCohort(spendPeriod, {});
+    const allSpend = aggregateCohort(allCohort.leads, allCohort.officialBooked);
+    const ids = [...new Set([...allNow.by_rep.keys(), ...[...days.keys()].filter(key => key !== UNMAPPED_REP), ...allSpend.by_rep.keys()])].sort();
+    return ids.map(rowFor(allNow, allSpend.by_rep));
+  })();
   const reps = scopeAgent ? [repRow(scopeAgent)] : teamRows;
   const unmapped = scopeAgent ? null : { interactions: interactionsDto(days.get(UNMAPPED_REP)), extensions: days.get(UNMAPPED_REP)?.extensions ?? [] };
   const unassignedCohort = spend.unassigned ?? emptyCohort();
@@ -182,7 +194,7 @@ export async function readOverview(raw: z.input<typeof overviewQuerySchema>, opt
       ? { total: { ...scopedSpend.spend, outcomes: scopedSpend.outcomes }, by_rep: [{ agent_id: scopeAgent!, ...scopedSpend.spend }], by_source: scopedSpend.by_source }
       : { total: spend.total, by_rep: [...teamRows.map(row => ({ agent_id: row.agent.id, ...row.spend })), ...(spend.unassigned ? [{ agent_id: null, ...spend.unassigned.spend }] : [])],
         by_source: spend.by_source },
-    ...(scopeAgent ? { team_medians: teamMedians(teamRows) } : {}),
+    ...(medianRows ? { team_medians: teamMedians(medianRows) } : {}),
   });
   CACHE.set(cacheKey, { at: +now, value });
   while (CACHE.size > CACHE_LIMIT) CACHE.delete(CACHE.keys().next().value!);

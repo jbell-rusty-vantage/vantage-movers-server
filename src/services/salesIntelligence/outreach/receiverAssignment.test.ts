@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import { followsRecordRep, receiverAssignmentPlan } from "./receiverAssignment";
+import { followsRecordRep, receiverAssignmentPlan, ringCentralFillEnabled } from "./receiverAssignment";
 import { assignmentRank, mayReplaceAssignment, receiverBlocksPhoneEvidence, receiverRankKey } from "./types";
 import { outreachRepairNomination, receiverRepairSuffix, RECEIVER_REPAIR_WINDOW_MS } from "./worker";
 import { receiverAgentDto } from "./detailDto";
@@ -114,4 +114,14 @@ test("timeline: Rep changed in Granot: {old} → {new}", () => {
   assert.equal(renderTimelineSentence(granotChange, ctx), "Rep changed in Granot: Jordan Bell → Sam Rivera.");
   assert.equal(renderTimelineTitle(event({ source_system: "ringcentral", from: { agent_id: null, name: null }, to: { agent_id: "b", name: "Sam Rivera" } }), ctx, NOW),
     "Receiver agent changed: none → Sam Rivera");
+});
+
+test("V-T3 M3: the ringcentral_answered fill needs RECEIVER_ASSIGNMENT and RECEIVER_LATEST_WINS", () => {
+  const prior = process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS;
+  try {
+    for (const [assignment, latestWins, expected] of [[true, false, false], [true, true, true], [false, true, false], [false, false, false]] as const) {
+      process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = latestWins ? "true" : "false";
+      assert.equal(withFlag(assignment, () => ringCentralFillEnabled()), expected, `A=${assignment} LW=${latestWins}`);
+    }
+  } finally { if (prior === undefined) delete process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS; else process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = prior; }
 });
