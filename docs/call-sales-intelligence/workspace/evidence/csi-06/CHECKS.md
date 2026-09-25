@@ -7,13 +7,13 @@ All commands run from `vantage-main-server` on `sales-intelligence`. Replica run
 | `git status --short`; `git branch --show-current`; `git log -1 --oneline`; `git remote -v` | Clean; sales-intelligence; 999c63d; jbell-rusty-vantage/vantage-movers-server. |
 | `pnpm typecheck` | Final source passed; [typecheck.log](typecheck.log). |
 | `pnpm lint` | Passed; [lint.log](lint.log). |
-| `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/outreach/outreach.test.ts` | 6/6 passed; final focused run includes route/capture compatibility. |
+| `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/outreach/outreach.test.ts` | 6/6 passed; final focused run includes route/capture compatibility. |
 | `pnpm test:csi:outreach:replica` | Final source 22/22 passed; [replica.log](replica.log). Covers persisted ownership, concurrent Owner-vs-worker correction, multi-action/undated, ambiguous callback matching, waits, closure, restrictions, chronology, replay/CAS/lease, EntityChange and read-only Attention/timeline pagination. |
 | `pnpm test:csi:reads:replica` | 10/10 passed; [reads-regression.log](reads-regression.log), including unchanged GET-mutation snapshot proof with populated Outreach DTOs. |
 | `pnpm test` | 2392 passed, 114 skipped, 0 failed; [offline.log](offline.log). This full run preceded final snapshot/date-parser/timeline refinements; final affected checks are listed below. |
 | `pnpm test:csi:attachment:replica` | 11/11 passed; [attachment-regression.log](attachment-regression.log). |
 | `pnpm test:csi:fanout:replica` | 11/11 passed; [fanout-regression.log](fanout-regression.log). |
-| `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/outreach/outreach.test.ts src/routes/sales-intelligence-admin.routes.test.ts src/routes/sales-intelligence-cron.routes.test.ts src/services/numberActivity/interactionProjection.test.ts` | Final source 31/31 passed; [focused.log](focused.log). Includes 30/15/1440 staffed minutes, DST/day-only/explicit-time/ambiguous-date cases and Owner-error HTTP mapping. |
+| `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/outreach/outreach.test.ts src/routes/sales-intelligence-admin.routes.test.ts src/routes/sales-intelligence-cron.routes.test.ts src/services/numberActivity/interactionProjection.test.ts` | Final source 31/31 passed; [focused.log](focused.log). Includes 30/15/1440 staffed minutes, DST/day-only/explicit-time/ambiguous-date cases and Owner-error HTTP mapping. |
 
 Initial implementation failures (null prior values rejected by required audit fields, spreading Mongoose documents into the attribution resolver, Agent accessor mismatch, raw ObjectIds in canonical fingerprints) were corrected and re-proven. These are implementation findings, not provider or environment permission failures.
 

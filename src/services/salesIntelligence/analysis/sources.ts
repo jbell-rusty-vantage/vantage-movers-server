@@ -118,7 +118,7 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
   // V-AC N3: the 200 bound counts only the actions that enter the fingerprint (allow-listed origins), so
   // system_default missed episodes, retries and defaults cannot push a Number into the paused overflow
   // intent. The read itself stays bounded (`ACTION_READ_LIMIT`); every action is read, so the S10 quiet-state
-  // verifier (`scripts/dev_ops/lib/legacy-outreach-fingerprint.ts`) can still recompute the 01bcf18 rule.
+  // verifier (`ops/lib/legacy-outreach-fingerprint.ts`) can still recompute the 01bcf18 rule.
   const actions = await getOutreachFollowupModel().find({ outreach_record_id: { $in: outreach.map(r => r._id) } }).sort({ _id: 1 }).limit(ACTION_READ_LIMIT + 1).session(session).lean();
   const restrictions = await getSalesIntelligenceContactRestrictionModel().find({ contact_number_id: numberId }).sort({ _id: 1 }).limit(101).session(session).lean();
   const instructions = await getSalesIntelligenceOwnerInstructionModel().find({ subject_key: { $in: [`number:${numberId}`, ...conversations.map(c => `conversation:${c._id}`), ...outreach.map(r => subjectKey(r.subject))] } }).sort({ _id: 1 }).limit(201).session(session).lean();
@@ -163,7 +163,7 @@ export async function intelligenceSources(numberId: string, session: ClientSessi
   };
   // `payloadHash` hashes canonical JSON, so key order is irrelevant; only the Outreach part is filtered (AC1 §3.1).
   const fingerprint = payloadHash(jsonValue({ ...fingerprint_base, ...fingerprintOutreachInputs(outreach, actions) }));
-  // `actions` and `fingerprint_base` are returned for `scripts/dev_ops/refingerprint-numbers.ts` only.
+  // `actions` and `fingerprint_base` are returned for `ops/refingerprint-numbers.ts` only.
   return { fingerprint, number, calls, conversations, outreach, actions, fingerprint_base };
 }
 

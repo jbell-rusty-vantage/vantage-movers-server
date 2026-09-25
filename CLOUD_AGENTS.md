@@ -67,7 +67,7 @@ Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typec
   Atlas, not local Mongo.
 
 ### Running and verifying the API
-- `pnpm dev` serves the Express app on `http://localhost:3000` (`scripts/dev-server.ts`).
+- `pnpm dev` serves the Express app on `http://localhost:3000` (`ops/dev-server.ts`).
   In this Cloud environment use `bash .cursor/scripts/start-api.sh` instead of a raw
   `pnpm dev` so Atlas/`TEST_MODE=false` secrets cannot win.
 - Unauthenticated probes for quick health checks: `GET /` (banner), `GET /health`, `GET /db`.

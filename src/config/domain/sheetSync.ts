@@ -257,7 +257,7 @@ export function getSheetSyncDrainGuardrails(): SheetSyncDrainGuardrails {
  * cannot wake or fail a queue publish.
  *
  * The unit suite marks the process as a Vantage test runner (see
- * `scripts/test-setup.ts`). Deploy-time test runs also inject `VERCEL=1`, which
+ * `ops/test-setup.ts`). Deploy-time test runs also inject `VERCEL=1`, which
  * would otherwise attempt queue publishes and record bogus
  * `sheet_sync.queue.publish_failed` events. Never publish from the test runner;
  * isolated queue adapter tests should stub `@vercel/queue` directly instead.

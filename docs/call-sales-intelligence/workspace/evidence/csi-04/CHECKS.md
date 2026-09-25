@@ -16,11 +16,11 @@ Executed September 17, 2026 on `sales-intelligence` over baseline `1925c32` (CSI
 | Patch hygiene | `git diff --check` | Clean (CRLF warnings only on files that already had them). |
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/routes/sales-intelligence-cron.routes.test.ts" "src/routes/sales-intelligence-admin.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts" "src/services/numberActivity/*.test.ts" "src/services/ringcentral/webhook-subscription-lifecycle.test.ts" "api/queues/sales-intelligence-consumer.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/routes/sales-intelligence-cron.routes.test.ts" "src/routes/sales-intelligence-admin.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts" "src/services/numberActivity/*.test.ts" "src/services/ringcentral/webhook-subscription-lifecycle.test.ts" "api/queues/sales-intelligence-consumer.test.ts"
 ```
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"
 ```
 
 ## Replica environment

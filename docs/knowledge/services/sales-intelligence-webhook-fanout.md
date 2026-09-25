@@ -15,7 +15,7 @@ applies_to:
   - src/services/numberActivity/callLogRefresh.ts
   - src/services/numberActivity/webhookSubscriptionCron.ts
   - src/services/ringcentral/webhook-subscription-lifecycle.ts
-  - scripts/ringcentral/sales-intelligence-subscription.ts
+  - ops/ringcentral/sales-intelligence-subscription.ts
   - src/routes/sales-intelligence-cron.routes.ts
   - api/queues/sales-intelligence-consumer.ts
 owners: [team:main-server]
@@ -58,7 +58,7 @@ sources:
 - Recovery watermark is monotone and pages forward within a run; a run that exhausts `maxPages` resumes from the last processed receipt. Recovery also backfills receipts stored while the flag was off (inside the lookback), which is intentional and idempotent.
 - Worker retry classification: `persist_failed` / `retry_exhausted` retry (`transient`); `account_unresolved`, `account_mismatch`, `identity_missing`, `projection_failed` complete the job with the code visible in `job.result` and the `invalidation.kind: "job"` audit row (`capture_projection.completed`); an unloadable receipt is `schema_invalid` with the receipt id on the row. Projection commits before completion; that is safe because CSI-02 semantic replay is a no-op and downstream jobs are dedupe-keyed. An expired lease cannot complete or fail after a successor claims.
 - Subscription lifecycle never renews, deletes or replaces a subscription whose id is not in this application's stored metadata; foreign same-address subscriptions are reported as warnings. Repair (delete + recreate) is reachable only from an explicit `Blacklisted`/`Suspended` status; unknown statuses are reported and left alone; unknown expiry is treated as renew-due. Create/renew that cannot record ownership surfaces `SubscriptionOwnershipRecordError` with the id.
-- Tests never create, renew or delete a production subscription. At runtime only the daily subscription cron mutates, and only an owned subscription (renew/repair); it creates one only with `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE=true`. The ops command `scripts/ringcentral/sales-intelligence-subscription.ts` is read-only by default and requires `--confirm-production-subscription` to mutate.
+- Tests never create, renew or delete a production subscription. At runtime only the daily subscription cron mutates, and only an owned subscription (renew/repair); it creates one only with `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE=true`. The ops command `ops/ringcentral/sales-intelligence-subscription.ts` is read-only by default and requires `--confirm-production-subscription` to mutate.
 - CC-08: webhook projection never settles a row; only a Call Log record does (the refresh or the reconcile). A session gets at most one `call_log_refresh` (dedupe key `...:1`); a later hang-up delivery for the same session reuses it and never conflicts. The refresh applies each record with `source: "call_log_reconcile"` and `proof_ref: "call_log_refresh:<record id>"`, `request_id` = the job id. No record yet: retry at +2, +5, +15 min, then complete with `result.state = "not_published"` (the reconcile window covers it). A 429 is a `throttled` deferral (attempt not spent); other provider errors retry with the job backoff; `identity_missing` / `projection_failed` / `account_mismatch` complete with the code on the row.
 
 ## Configuration
@@ -86,9 +86,9 @@ Run everything from `vantage-main-server` with the production `.env`. The Call L
 5. **Create the subscription** (the one mutating step). Make sure `RINGCENTRAL_NGROK_WEBHOOK_URL` is not set in `.env`; it wins over `RINGCENTRAL_WEBHOOK_URL` for this command. Warm the function with a GET first: RingCentral validates the address with a POST during creation, and a cold start can miss its short timeout.
    ```sh
    curl -s https://vantage-movers-main-server.vercel.app/api/webhooks/ringcentral
-   node --env-file=.env --import tsx scripts/ringcentral/sales-intelligence-subscription.ts --action plan
-   node --env-file=.env --import tsx scripts/ringcentral/sales-intelligence-subscription.ts --action ensure --confirm-production-subscription
-   node --env-file=.env --import tsx scripts/ringcentral/sales-intelligence-subscription.ts --action list
+   node --env-file=.env --import tsx ops/ringcentral/sales-intelligence-subscription.ts --action plan
+   node --env-file=.env --import tsx ops/ringcentral/sales-intelligence-subscription.ts --action ensure --confirm-production-subscription
+   node --env-file=.env --import tsx ops/ringcentral/sales-intelligence-subscription.ts --action list
    ```
    `ensure` creates the all-direction `/telephony/sessions` WebHook subscription with `expiresIn` 630,720,000 s and records ownership in `ringcentral_webhook_subscriptions`. `list` must show it `OWNED` and `Active`. If creation fails validation (`SUB-521`/`SUB-525`), check the deployed route, warm it with a GET and re-run.
 6. **Renewal** needs nothing more. `/api/cron/sales-intelligence-webhook-subscription` runs daily at 06:15 UTC. It renews the owned subscription when under 7 days remain, repairs it if RingCentral reports `Blacklisted`/`Suspended`, and warns about foreign same-address subscriptions (`sales_intelligence.webhook_subscription.*` operational events). Manual run: `curl -H "Authorization: Bearer $CRON_SECRET" https://vantage-movers-main-server.vercel.app/api/cron/sales-intelligence-webhook-subscription`.

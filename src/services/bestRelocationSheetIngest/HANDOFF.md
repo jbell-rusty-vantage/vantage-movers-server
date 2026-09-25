@@ -293,7 +293,7 @@ Before considering a production apply:
 1. Run the focused tests:
 
    ```bash
-   node --import tsx --import ./scripts/test-setup.ts --test \
+   node --import tsx --import ./ops/test-setup.ts --test \
      "src/services/bestRelocationSheetIngest/*.test.ts" \
      "src/services/cancellations/cancellationResolver.test.ts" \
      "src/validation/v1.validation.test.ts"

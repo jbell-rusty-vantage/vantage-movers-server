@@ -40,7 +40,7 @@ Exit 0, output `$ tsc --noEmit`. The repository has no lint script; none was inv
 Working directory `C:\Users\Pinda\Proyectos\vantage\vantage-main-server`:
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/operational.test.ts
+node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/operational.test.ts
 ```
 
 ```text
@@ -127,7 +127,7 @@ The Owner's additions extend the authoritative closed envelope citation record-t
 The coordinator's final audit found that the official Job Timeline Mongo loader fetched unbounded arrays before its presentation cap. The optional `maxRowsPerQuery` seam now bounds every loader `find` cursor; CSI-17 chooses 200 plus one overflow sentinel and a five-second query limit. Overflow throws `JobTimelineEvidenceLimitError`, mapped to `EVIDENCE_LIMIT_REACHED`; partial results never become evidence. Owner readers omit the option, preserving behavior. Additional coordinated files: `src/services/jobNumberTimeline/mongo-evidence-loader.ts`, its new `.test.ts`, and its Service documentation. MCP preserves `EVIDENCE_LIMIT_REACHED` and `PROVIDER_READ_UNAVAILABLE` safely rather than converting them into a generic transport error.
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test src/services/jobNumberTimeline/*.test.ts src/services/salesIntelligence/analysis/operational.test.ts
+node --import tsx --import ./ops/test-setup.ts --test src/services/jobNumberTimeline/*.test.ts src/services/salesIntelligence/analysis/operational.test.ts
 ```
 
 Actual result: tests **78**, pass **78**, fail **0**, duration **5845.9441 ms**. Real-loader tests use an instrumented synthetic Db and exercise every initial/downstream find cursor for Form/Call Lead paths; overflow tests cover observations, decisions, receipts, Cancellations, entity changes, Lead Messages, WordPress receipts, Sheet Sync and source catalogs. They assert Mongo limit 201-equivalent under a smaller test bound, timeout, no over-fetch, and explicit failure instead of truncation. Existing optional-unbounded behavior remains tested. This correction postdates the coordinator's running quality snapshot; it must be recorded as a later direct-source change, not silently attributed to that snapshot.

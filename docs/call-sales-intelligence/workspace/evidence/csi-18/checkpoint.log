@@ -1,6 +1,6 @@
 
 > vantage_movers_server@1.0.0 finish-work C:\Users\Pinda\Proyectos\vantage\vantage-main-server
-> node scripts/quality/cli.mjs run "--provider" "codex" "--no-apply"
+> node ops/quality/cli.mjs run "--provider" "codex" "--no-apply"
 
 {
   "id": "1789822049070-ce55fc86",

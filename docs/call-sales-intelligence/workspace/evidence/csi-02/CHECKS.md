@@ -5,15 +5,15 @@ Executed September 17, 2026 on `sales-intelligence` over baseline `dc70b43`; art
 | Check | Command / scope | Result / artifact |
 | --- | --- | --- |
 | Server typecheck | `pnpm exec tsc --noEmit` | Exit 0; [typecheck.txt](typecheck.txt). |
-| CSI-02 pure tests | `node --import tsx --import ./scripts/test-setup.ts --test "src/services/numberActivity/*.test.ts"` | 26/26 (part of the focused run below); four are review regressions (unknown short caller id, missing party direction, stale leg regression, overflow monotonicity). |
+| CSI-02 pure tests | `node --import tsx --import ./ops/test-setup.ts --test "src/services/numberActivity/*.test.ts"` | 26/26 (part of the focused run below); four are review regressions (unknown short caller id, missing party direction, stale leg regression, overflow monotonicity). |
 | Focused server suite (CSI-01 + CSI-02) | Command below | 69/69, 0 skipped; [focused-server-tests.txt](focused-server-tests.txt). |
 | CSI-02 replica proof | `pnpm test:csi:capture:replica` | 12/12 including outer test, 0 skipped; [csi02-replica-tests.txt](csi02-replica-tests.txt). Extended with: alias `proof_ref` preserved across merge; audit `proof_ref`/`request_id` tie-back with a supplied job id; throttle during gap repair ends the run; watermark holds on a partial run. |
 | CSI-01 replica regression | `pnpm test:csi:replica` | 15/15 after the two additive schema edits; [csi01-replica-regression.txt](csi01-replica-regression.txt). |
-| Unchanged qualification suites | `node --import tsx --import ./scripts/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"` | 93 pass, 0 fail, 3 skipped (pre-existing opt-in `GRANOT_LIFECYCLE_REPLICA_TESTS` proofs, unrelated to this change); [qualification-suites.txt](qualification-suites.txt). |
+| Unchanged qualification suites | `node --import tsx --import ./ops/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"` | 93 pass, 0 fail, 3 skipped (pre-existing opt-in `GRANOT_LIFECYCLE_REPLICA_TESTS` proofs, unrelated to this change); [qualification-suites.txt](qualification-suites.txt). |
 | Patch hygiene | `git diff --check` | See HANDOFF. |
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts" "src/services/numberActivity/*.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts" "src/services/numberActivity/*.test.ts"
 ```
 
 ## Replica environment

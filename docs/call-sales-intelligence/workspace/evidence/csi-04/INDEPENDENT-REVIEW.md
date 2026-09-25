@@ -51,7 +51,7 @@ Confirmed against the code and the passing suites; not re-opened below.
 | Command / probe | Result |
 | --- | --- |
 | `pnpm exec tsc --noEmit` | Exit 0, no diagnostics. |
-| `node --import tsx --import ./scripts/test-setup.ts --test` over `reads.test.ts`, `rebuild.test.ts`, `directorySync.test.ts`, `sales-intelligence-admin.routes.test.ts` | 14 pass, 0 fail, 0 skipped. |
+| `node --import tsx --import ./ops/test-setup.ts --test` over `reads.test.ts`, `rebuild.test.ts`, `directorySync.test.ts`, `sales-intelligence-admin.routes.test.ts` | 14 pass, 0 fail, 0 skipped. |
 | `pnpm test:csi:reads:replica` (Docker replica `csi01`, `127.0.0.1:27189`) | 10/10 including the outer test. |
 | `pnpm test:csi:numbers:replica` (same replica) | 7/7 including the outer test. |
 | Probe: `numberSearchQuerySchema` + `buildNumberSearchFilter` over `hygiene` values | **Finding 1** — `"false"`, `"0"`, `"off"` all invert the filter. |

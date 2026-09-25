@@ -10,7 +10,7 @@ Final direct results (September 19): server `pnpm typecheck` and `pnpm lint` exi
 |---|---|
 | `pnpm typecheck` | `typecheck.log` |
 | `pnpm lint` | `lint.log` |
-| `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/*.test.ts` | `focused.log` |
+| `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/*.test.ts` | `focused.log` |
 | `pnpm test` | `offline-suite.log` |
 | `node --import tsx scripts/test-csi-intelligence.ts` | `intake-replica.log` |
 | `node --import tsx scripts/test-csi-intelligence-reads.ts` | READS-CHECKS; final `reads-replica-final.log`; earlier 8-test `reads-replica.log` |

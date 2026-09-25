@@ -4,7 +4,7 @@ Working directories: `vantage-main-server` and `vantage-admin`. No `.env` writes
 
 | Exact command | Result |
 | --- | --- |
-| `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/nudges/*.test.ts src/services/salesIntelligence/repIdentity/identity.test.ts` | **18 pass / 0 fail** (includes destination-rejection event shape) |
+| `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/nudges/*.test.ts src/services/salesIntelligence/repIdentity/identity.test.ts` | **18 pass / 0 fail** (includes destination-rejection event shape) |
 | `pnpm test:csi:nudges:replica` | 18 pass / 0 fail (isolated `testvantagemovers_csi14c93bcb5b4fdc` on loopback `csi01:27189`; fake providers only). Log: [replica.log](replica.log) |
 | `pnpm test:csi:rep-identity:replica` | 12 pass / 0 fail |
 | `pnpm typecheck` | exit 0 after one `effective_to` nullable-date fix |

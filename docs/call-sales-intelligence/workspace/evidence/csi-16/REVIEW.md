@@ -4,7 +4,7 @@ Reviewer: the one Owner-authorized GPT-6 Astra subagent. Scope: evidence lineage
 
 ## Fresh reviewer check
 
-`node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/contracts.test.ts` exited 0: **3 passed, 0 failed, 0 skipped**. The generated MCP prompt, schema digest, envelope and every tool argument schema exactly match main-server authority. Closed arguments reject arbitrary tool names, Mongo operators, arbitrary URLs, authority and excessive pages. The sibling MCP artifact was present: this was not the isolated-checkpoint parity skip.
+`node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/contracts.test.ts` exited 0: **3 passed, 0 failed, 0 skipped**. The generated MCP prompt, schema digest, envelope and every tool argument schema exactly match main-server authority. Closed arguments reject arbitrary tool names, Mongo operators, arbitrary URLs, authority and excessive pages. The sibling MCP artifact was present: this was not the isolated-checkpoint parity skip.
 
 Read-only inspection of MCP `lib/intelligence/{auth,api,registration}.ts` found twelve bounded tools; both dedicated key and signed run token are required, registration uses the request-local signed allowlist, the server remains authority for nonce/lease/evidence, and uncertain submission is never automatically retried. No Owner command, Lead creation, message send or arbitrary Mongo tool is registered. Existing MCP formatting dirt is preserved. This is source/contract consistency, not a fresh deployed transport or capability probe.
 

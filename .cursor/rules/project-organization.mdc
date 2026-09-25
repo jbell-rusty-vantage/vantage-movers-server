@@ -12,7 +12,7 @@ alwaysApply: true
 ## API Launch Map
 
 - **Entry:** `api/index.ts` re-exports `src/app.ts` (Express bootstrap, CORS, JSON 5mb, health/db, route mounts).
-- **Local dev:** `scripts/dev-server.ts` (`pnpm dev` / `dev:local` / `dev:granot`).
+- **Local dev:** `ops/dev-server.ts` (`pnpm dev` / `dev:local` / `dev:granot`).
 - `src/routes/` owns HTTP boundaries — keep thin: auth → Zod → service → response.
 - `src/routes/v1.routes.ts` is the main surface (public v1 + admin browse/search/export/analytics/registry/observability + extension workflows). Mounted after most cron/webhook routes.
 - Before the `/api/v1` guard inside v1: `extension-auth.routes.ts` (`/api/v1/extension/auth/*`, no secret) and `google-drive-oauth.routes.ts` (mounted **inside** `v1.routes.ts`, not a separate `app.use`). OAuth callback is unguarded; other `/api/v1/admin/google-drive/*` routes attach per-route `requireApiSecret` + owner gate.
@@ -151,7 +151,7 @@ Run via `package.json` so `.env` + `tsx` stay consistent.
 
 | Folder | Owns |
 |--------|------|
-| `scripts/cloud/mongodb-backup/` | Production Cloud Run Job package for daily `vantagemovers` `mongodump` to `gs://vantage-mongodb-backups-496816`. Service: [`mongodb-backup.md`](../../docs/knowledge/services/mongodb-backup.md). Playbook: [`docs/mongodb-backup-automation/README.md`](../../docs/mongodb-backup-automation/README.md). Not `scripts/dev_ops/`. |
+| `ops/cloud/mongodb-backup/` | Production Cloud Run Job package for daily `vantagemovers` `mongodump` to `gs://vantage-mongodb-backups-496816`. Service: [`mongodb-backup.md`](../../docs/knowledge/services/mongodb-backup.md). Playbook: [`docs/mongodb-backup-automation/README.md`](../../docs/mongodb-backup-automation/README.md). Not `scripts/dev_ops/`. |
 | `scripts/api/` | HTTP hits against this server (`pnpm api:hit`, `vantageApi.ts`) using `VANTAGE_API_SECRET` → `x-api-secret`. Production host and route catalog: `rules/production-url.mdc`. Skill: `.cursor/skills/hit-vantage-api/` |
 | `scripts/dev_ops/` | Personal/admin DB ops, patches, Twilio, nested Google Sheets/Apps Script/Postman/RingCentral probes — treat as potentially destructive |
 | `scripts/granot-automation/` | Local run + seed sources (`pnpm granot:*`) |

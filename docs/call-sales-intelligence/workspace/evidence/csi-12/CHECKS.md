@@ -19,8 +19,8 @@ Repository `vantage-main-server`; branch `sales-intelligence`; baseline `63b3dfb
 | Independent review | Separate read-only agent; focused command in report | All actionable findings resolved; [INDEPENDENT-REVIEW.md](INDEPENDENT-REVIEW.md). |
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test src/services/conversations/redaction.test.ts src/services/conversations/transcriptionProvider.test.ts src/services/salesIntelligence/conversations/transcript.test.ts src/services/salesIntelligence/conversations/transcriptionWiring.test.ts src/services/salesIntelligence/conversations/wiring.test.ts
-node --import tsx --import ./scripts/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test src/services/conversations/redaction.test.ts src/services/conversations/transcriptionProvider.test.ts src/services/salesIntelligence/conversations/transcript.test.ts src/services/salesIntelligence/conversations/transcriptionWiring.test.ts src/services/salesIntelligence/conversations/wiring.test.ts
+node --import tsx --import ./ops/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"
 ```
 
 The CSI-12 runner does not load `.env`; it overrides URI and TEST_MODE, blanks Gateway/Blob credentials, uses a fresh random `testvantagemovers_csi12*` database on `mongodb://127.0.0.1:27189/?replicaSet=csi01`, checks replica identity, applies existing indexes only there, and drops its database after tests. Existing `csi01` Docker replica was reused; no new container/service. Synthetic audio and STT are in-memory; spies check Mongo and captured application/console logs for raw secret fixtures. Qualification cursor remains empty/unchanged, and qualification runtime files have no diff.

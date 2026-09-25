@@ -25,9 +25,9 @@ This slice implements **schema validation only**. Runtime evidence authorization
 
 | Path | What it is | CSI reuse |
 | --- | --- | --- |
-| `package.json` `test` | `node --import tsx --import ./scripts/test-setup.ts --test "src/**/*.test.ts" ...` | New `*.test.ts` under `src/` is picked up automatically. |
+| `package.json` `test` | `node --import tsx --import ./ops/test-setup.ts --test "src/**/*.test.ts" ...` | New `*.test.ts` under `src/` is picked up automatically. |
 | `src/validation/v1/*.validation.test.ts` | Colocated `node:test` + `node:assert/strict` | **Reuse.** This slice follows that layout. |
-| `scripts/test-setup.ts` | Shared test bootstrap | Reuse as-is. |
+| `ops/test-setup.ts` | Shared test bootstrap | Reuse as-is. |
 | Replica/integration tests (`*.replica.test.ts`, `*.integration.test.ts`) | Need Mongo replica / live fixtures | **Out of scope.** Envelope tests are pure and synthetic. |
 
 ## Models

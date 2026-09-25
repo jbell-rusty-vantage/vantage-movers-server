@@ -125,4 +125,4 @@ The newest restore point is the lexicographically greatest timestamped object un
 4. Restore drill used a local disposable `mongod` because Docker Desktop was not running.
 5. Runtime delete was proven by IAM (no object-delete role), not by impersonated `gcloud storage rm` (provisioning identity was not granted token creator on the runner SA).
 6. Cloud Build’s default compute SA received `roles/storage.objectAdmin` on `gs://vantage-sheets-496816_cloudbuild` only, so it can read source tarballs.
-7. Existing dirty worktree files were left untouched. New files are under `scripts/cloud/mongodb-backup/` and this record.
+7. Existing dirty worktree files were left untouched. New files are under `ops/cloud/mongodb-backup/` and this record.

@@ -27,7 +27,7 @@ No runtime fix was made in this review/instructions task. Close this finding bef
 Working directory for both successful commands: `C:\Users\Pinda\Proyectos\vantage\vantage-main-server`.
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/nudges/*.test.ts
+node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/nudges/*.test.ts
 ```
 
 Actual summary:
@@ -46,7 +46,7 @@ Actual summary:
 Adversarial reproduction:
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts -e 'const {renderNudgeTemplate}=require("./src/services/salesIntelligence/nudges/templates.ts"); for (const body of ["Please call the customer.", "Alex, call the customer tomorrow.", "Please urgently call the customer."]) { try { console.log(JSON.stringify({body,accepted:renderNudgeTemplate({purpose:"review_context",template_key:"review_context",template_version:1,repName:"Alex",customerName:null,customerNumber:"+12025550101",reasons:[],lastContact:null,source:null,recordUrl:"https://example.test",ownerId:"owner",customerNumbers:["+12025550101"],body})})); } catch(e) {console.log(JSON.stringify({body,error:e.message}));} }'
+node --import tsx --import ./ops/test-setup.ts -e 'const {renderNudgeTemplate}=require("./src/services/salesIntelligence/nudges/templates.ts"); for (const body of ["Please call the customer.", "Alex, call the customer tomorrow.", "Please urgently call the customer."]) { try { console.log(JSON.stringify({body,accepted:renderNudgeTemplate({purpose:"review_context",template_key:"review_context",template_version:1,repName:"Alex",customerName:null,customerNumber:"+12025550101",reasons:[],lastContact:null,source:null,recordUrl:"https://example.test",ownerId:"owner",customerNumbers:["+12025550101"],body})})); } catch(e) {console.log(JSON.stringify({body,error:e.message}));} }'
 ```
 
 Actual output:

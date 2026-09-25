@@ -28,6 +28,7 @@ ringcentral-recording-samples/
 
 # Local tooling, docs and editor state with no runtime imports
 scripts/
+ops/
 docs/
 internal_hidden_docs/
 hooks_hold/

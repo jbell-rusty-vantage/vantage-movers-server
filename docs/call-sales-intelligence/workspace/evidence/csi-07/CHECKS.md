@@ -6,7 +6,7 @@ Source baseline and hashes: INTAKE.md / SOURCES.md. No old CSI-13 checkpoint is 
 - Server initial and post-implementation `pnpm typecheck`: pass.
 - Server `pnpm lint`: pass.
 - Admin focused Node tests: 5/5 pass (forwarding/trust, Owner/scope, envelope metadata, SSE denial and cancellation).
-- Server `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/live.test.ts`: 1/1 pass, real HTTP guard/clock/disconnect.
+- Server `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/live.test.ts`: 1/1 pass, real HTTP guard/clock/disconnect.
 - Real local `node --import tsx scripts/test-csi-live.ts`: pass; Owner reads/metadata, anonymous/Admin denial, current/conflicting scopes, replay/conflict, reconnect and clock frames. Initial proof incorrectly compared replayed flags; corrected to compare durable response plus replayed=true.
 - Admin full suite first run: 618 pass / 2 fail from intentional navigation insertion; ordering expectations updated; final rerun 620/620 pass (admin-tests.txt).
 - Admin full lint: 11 errors / 7 warnings in pre-existing unrelated components/tests. Focused changed-path lint passes. Do not label full Admin lint passing.

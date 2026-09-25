@@ -1,6 +1,6 @@
 ---
 description: Inspect and manually run the server quality checkpoint pipeline
-globs: scripts/quality/**,.cursor/hooks.json,.quality.config.json,docs/quality-checkpoints.md
+globs: ops/quality/**,.cursor/hooks.json,.quality.config.json,docs/quality-checkpoints.md
 alwaysApply: false
 ---
 
@@ -44,4 +44,4 @@ pnpm quality:pause
 pnpm quality:resume
 ```
 
-Run `finish-work` at a finished-task boundary, not after every turn. Skip it when `VANTAGE_QUALITY_CHILD=1`. `pnpm quality:test` is offline. `node scripts/quality/smoke.mjs cursor` is a paid real-model fixture — do not point it at application code.
+Run `finish-work` at a finished-task boundary, not after every turn. Skip it when `VANTAGE_QUALITY_CHILD=1`. `pnpm quality:test` is offline. `node ops/quality/smoke.mjs cursor` is a paid real-model fixture — do not point it at application code.

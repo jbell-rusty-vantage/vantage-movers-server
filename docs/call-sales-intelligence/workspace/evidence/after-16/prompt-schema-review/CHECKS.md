@@ -18,9 +18,9 @@
 
 All commands run from vantage-main-server, without loading .env, calling a live model or contacting production Mongo/MCP.
 
-1. `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/promptSchemaReview.test.ts` — 2 passed. Demonstrates structural/server disagreement on three invalid payloads and existing structural enforcement of nullables/closed kinds. This is synthetic validator evidence, not a captured production replay.
-2. `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/runtime.test.ts` before limits change — 3 passed, 1 failed as expected at the requested higher step ceiling.
-3. `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/runtime.test.ts src/services/salesIntelligence/analysis/contracts.test.ts src/services/salesIntelligence/analysis/promptSchemaReview.test.ts src/validation/intelligence/intelligenceEnvelope.validation.test.ts` after limits change — 19 passed, no skips, including server/MCP artifact parity and cumulative budgets sufficient for every configured step.
+1. `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/promptSchemaReview.test.ts` — 2 passed. Demonstrates structural/server disagreement on three invalid payloads and existing structural enforcement of nullables/closed kinds. This is synthetic validator evidence, not a captured production replay.
+2. `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/runtime.test.ts` before limits change — 3 passed, 1 failed as expected at the requested higher step ceiling.
+3. `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/runtime.test.ts src/services/salesIntelligence/analysis/contracts.test.ts src/services/salesIntelligence/analysis/promptSchemaReview.test.ts src/validation/intelligence/intelligenceEnvelope.validation.test.ts` after limits change — 19 passed, no skips, including server/MCP artifact parity and cumulative budgets sufficient for every configured step.
 
 The review does not prove better gpt-5-mini first-submit quality. That requires a fixed synthetic model evaluation and sanitized production issue-path metrics. Prompt/flow/resource changes remain proposed, so artifact regeneration is not necessary for this patch.
 

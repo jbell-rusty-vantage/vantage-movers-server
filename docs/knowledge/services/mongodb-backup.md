@@ -5,16 +5,16 @@ description: Daily logical mongodump of vantagemovers to an immutable GCS archiv
 tags: [mongodb-backup, operations]
 status: draft
 stale_after: 2026-10-01
-resource: scripts/cloud/mongodb-backup/backup.mjs
+resource: ops/cloud/mongodb-backup/backup.mjs
 applies_to:
-  - scripts/cloud/mongodb-backup/backup.mjs
-  - scripts/cloud/mongodb-backup/backup.test.mjs
-  - scripts/cloud/mongodb-backup/Dockerfile
-  - scripts/cloud/mongodb-backup/lifecycle.json
+  - ops/cloud/mongodb-backup/backup.mjs
+  - ops/cloud/mongodb-backup/backup.test.mjs
+  - ops/cloud/mongodb-backup/Dockerfile
+  - ops/cloud/mongodb-backup/lifecycle.json
 owners: [team:main-server]
 sources:
   - id: primary
-    resource: scripts/cloud/mongodb-backup/backup.mjs
+    resource: ops/cloud/mongodb-backup/backup.mjs
   - id: glossary
     resource: ../CONTEXT.md
     title: Platform glossary
@@ -31,7 +31,7 @@ generated:
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
-**Primary code:** `scripts/cloud/mongodb-backup/backup.mjs`  
+**Primary code:** `ops/cloud/mongodb-backup/backup.mjs`  
 **Domain terms used:** [System of Record](../../../../CONTEXT.md)  
 **Operator playbook:** [`../../mongodb-backup-automation/README.md`](../../mongodb-backup-automation/README.md)  
 **Related rule:** [`mongodb-backup.mdc`](../../../.cursor/rules/mongodb-backup.mdc)
@@ -82,7 +82,7 @@ Project `vantage-sheets-496816`, region `us-east1`. Commands are in the [playboo
 3. Run now: `gcloud scheduler jobs run vantage-mongodb-backup-daily --location=us-east1`
 4. Restore drill: download one generation, check SHA-256 against the manifest, `mongorestore --gzip --nsFrom='vantagemovers.*' --nsTo='restore_probe.*'` into a disposable MongoDB.
 
-Local package tests: `cd scripts/cloud/mongodb-backup && npm test` (fakes only).
+Local package tests: `cd ops/cloud/mongodb-backup && npm test` (fakes only).
 
 ## Not this service
 

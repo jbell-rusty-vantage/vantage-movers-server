@@ -15,7 +15,7 @@ import {
  * that point at our webhook address — are reported, never touched.
  *
  * Two callers apply plans: the ops command
- * `scripts/ringcentral/sales-intelligence-subscription.ts` (read-only by
+ * `ops/ringcentral/sales-intelligence-subscription.ts` (read-only by
  * default, explicit confirmation flag to apply) and the daily CC-08 cron
  * `/api/cron/sales-intelligence-webhook-subscription`
  * (`webhookSubscriptionCron.ts`, behind `SALES_INTELLIGENCE_CAPTURE_WEBHOOK`;

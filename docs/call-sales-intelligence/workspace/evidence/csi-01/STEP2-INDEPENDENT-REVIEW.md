@@ -80,7 +80,7 @@ Stored run verification additionally checks referenced job subject/deployment/da
 Commands independently run by the reviewer after the fixes:
 
 ```text
-node --import tsx --import ./scripts/test-setup.ts --test src/routes/sales-intelligence-boundary.routes.test.ts src/services/salesIntelligence/foundation.test.ts
+node --import tsx --import ./ops/test-setup.ts --test src/routes/sales-intelligence-boundary.routes.test.ts src/services/salesIntelligence/foundation.test.ts
 Result: 9 tests passed, 0 failed.
 
 pnpm test:csi:replica

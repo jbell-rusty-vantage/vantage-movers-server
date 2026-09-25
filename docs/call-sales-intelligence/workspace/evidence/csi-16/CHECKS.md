@@ -15,8 +15,8 @@ Fresh checks on the intake SHAs plus the CSI-16 certification harness/docs. Prov
 | `node --import tsx scripts/test-csi-attachment.ts` | PASS 12/12 |
 | `node --import tsx scripts/test-csi-nudges.ts` | PASS 18/18; fake provider, no live send |
 | `node --import tsx scripts/test-csi-media.ts` | FAIL: 18 passed / 2 failed, one leaf plus enclosing parent; exact Retry-After mismatch in F-01. |
-| `node --import tsx --import ./scripts/test-setup.ts --test` with every `*.test.ts` under `src/services/salesIntelligence` and `src/services/numberActivity`, plus admin/cron/boundary CSI route tests | PASS 140/140, zero skipped. |
-| Reviewer: `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/contracts.test.ts` | PASS 3/3, zero skips; actual sibling MCP generated contract comparison. |
+| `node --import tsx --import ./ops/test-setup.ts --test` with every `*.test.ts` under `src/services/salesIntelligence` and `src/services/numberActivity`, plus admin/cron/boundary CSI route tests | PASS 140/140, zero skipped. |
+| Reviewer: `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/contracts.test.ts` | PASS 3/3, zero skips; actual sibling MCP generated contract comparison. |
 | `node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit` | FAIL: only three external probe TS18046 errors at line 231. |
 | `node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit -p .git/csi15-tsconfig.json` | PASS before new harness; final harness validation recorded below. Config extends original, retains `scripts/dev_ops/**` exclusion, excludes only external probe additionally. |
 | Admin `node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit` | PASS |

@@ -28,7 +28,7 @@
   - Not wired into `src/validation/v1.validation.ts`, routes, workers, models, MCP, or Admin.
   - G1 remains pending. Teams B–E should treat the schema as reviewable, not frozen.
 - Tests/checks actually run, results, and artifact paths:
-  - `node --import tsx --import ./scripts/test-setup.ts --test "src/validation/intelligence/**/*.test.ts"` — 10 pass, 0 fail (re-run after type narrowing fix).
+  - `node --import tsx --import ./ops/test-setup.ts --test "src/validation/intelligence/**/*.test.ts"` — 10 pass, 0 fail (re-run after type narrowing fix).
   - `pnpm typecheck` — pass (`tsc --noEmit` exit 0) after the same fix.
   - No Mongo, queue, provider, or Admin checks were run. None are in this slice.
 - Race/idempotency/failure cases verified:

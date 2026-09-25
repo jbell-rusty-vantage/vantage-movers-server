@@ -70,7 +70,7 @@ Owner authorized **all capabilities in one go** on Saturday. Do not drip flags. 
 
 Leave `SALES_INTELLIGENCE_EXACT_EVIDENCE_VERIFICATION=false`. Leave `SALES_INTELLIGENCE_BACKFILL_DAYS=0` unless the Owner names a positive day count in this sitting (that is slice H, allowed the same day).
 
-Also in this sitting, because capture is on: ensure the all-direction subscription exists via the existing ops command (`scripts/ringcentral/sales-intelligence-subscription.ts`) if D shows none we own; point production MCP `SALES_INTELLIGENCE_API_BASE_URL` at this production API and server `SALES_INTELLIGENCE_MCP_ENDPOINT` at that MCP; confirm Gateway and Blob env already present. Kill switches stay env-only; CSI-09 settings PATCH cannot turn them on.
+Also in this sitting, because capture is on: ensure the all-direction subscription exists via the existing ops command (`ops/ringcentral/sales-intelligence-subscription.ts`) if D shows none we own; point production MCP `SALES_INTELLIGENCE_API_BASE_URL` at this production API and server `SALES_INTELLIGENCE_MCP_ENDPOINT` at that MCP; confirm Gateway and Blob env already present. Kill switches stay env-only; CSI-09 settings PATCH cannot turn them on.
 
 > One task: Saturday **full-system cutover**. The Owner authorized every capability flag at once and will resolve fallout live. Work on `main`. Remotes `jbell-rusty-vantage`.
 >

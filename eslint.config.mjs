@@ -21,7 +21,7 @@ export default [
     }
   },
   {
-    files: ['scripts/quality/**/*.mjs'],
+    files: ['ops/quality/**/*.mjs'],
     rules: { 'no-async-promise-executor': 'error', 'no-debugger': 'error', 'no-duplicate-case': 'error', 'no-unreachable': 'error', 'no-unsafe-finally': 'error', 'use-isnan': 'error' }
   }
 ];

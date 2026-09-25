@@ -22,7 +22,7 @@ The first `pnpm quality:init` captures the current files as the starting baselin
 4. **Checks:** typecheck, correctness lint, the offline test suite, and quality-runner regression tests execute outside the model.
 5. **Final review:** a fresh read-only session inspects the result, prior reports and actual check outcomes. All checks and the final review must pass before application.
 
-Prompts are versioned in `scripts/quality/prompts.mjs`. Reports include the exact input HEAD, input fingerprint and changed paths. The model can explore the snapshot but is instructed not to read secrets, invoke production services, commit/push, deploy or install dependencies. Only `CURSOR_API_KEY` is loaded from the server `.env` when not already exported; the file is never copied or included in prompts.
+Prompts are versioned in `ops/quality/prompts.mjs`. Reports include the exact input HEAD, input fingerprint and changed paths. The model can explore the snapshot but is instructed not to read secrets, invoke production services, commit/push, deploy or install dependencies. Only `CURSOR_API_KEY` is loaded from the server `.env` when not already exported; the file is never copied or included in prompts.
 
 ## Isolation and application
 
@@ -47,8 +47,8 @@ pnpm finish-work --provider cursor
 pnpm quality:pause
 pnpm quality:resume
 pnpm quality:test
-node scripts/quality/smoke.mjs codex
-node scripts/quality/smoke.mjs cursor
+node ops/quality/smoke.mjs codex
+node ops/quality/smoke.mjs cursor
 ```
 
 `quality:install` merges project/user hooks without removing unrelated handlers, backs up changed user settings, asks the local Codex app-server for exact hook hashes, and persists trust only for these Vantage definitions. Re-run it after changing hook definitions or moving the checkout. User-level dispatch also supports a task opened at the parent `vantage` multi-repo folder, while ignoring unrelated repositories. New sessions pick up the configuration; existing clients may need to reload hooks/restart.

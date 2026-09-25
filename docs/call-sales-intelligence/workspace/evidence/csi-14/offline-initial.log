@@ -1,6 +1,6 @@
 
 > vantage_movers_server@1.0.0 test C:\Users\Pinda\Proyectos\vantage\vantage-main-server
-> node --import tsx --import ./scripts/test-setup.ts --test "src/**/*.test.ts" "api/queues/**/*.test.ts" "scripts/api/*.test.ts" "scripts/migrations/cancellation-correlation-snapshots.lib.test.ts" "scripts/migrations/wordpress-form-submission-receipts.lib.test.ts" "scripts/migrations/extension-user-roles-sales-backfill.lib.test.ts" "scripts/migrations/extension-user-roles-array.lib.test.ts" "scripts/migrations/form-lead-unknown-state-local.lib.test.ts" "scripts/prototypes/lead-conversion-and-granot-search/**/*.test.ts" "scripts/prototypes/job-number-timeline/**/*.test.ts"
+> node --import tsx --import ./ops/test-setup.ts --test "src/**/*.test.ts" "api/queues/**/*.test.ts" "scripts/api/*.test.ts" "scripts/migrations/cancellation-correlation-snapshots.lib.test.ts" "scripts/migrations/wordpress-form-submission-receipts.lib.test.ts" "scripts/migrations/extension-user-roles-sales-backfill.lib.test.ts" "scripts/migrations/extension-user-roles-array.lib.test.ts" "scripts/migrations/form-lead-unknown-state-local.lib.test.ts" "scripts/prototypes/lead-conversion-and-granot-search/**/*.test.ts" "scripts/prototypes/job-number-timeline/**/*.test.ts"
 
 ✔ consumer accepts only { receipt_id } (30.5123ms)
 ✔ vercel.json registers queue/v2beta topic granot-lifecycle-events* (4.7214ms)

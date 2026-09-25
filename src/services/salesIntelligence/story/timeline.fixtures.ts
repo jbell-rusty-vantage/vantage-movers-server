@@ -1,7 +1,7 @@
 /**
  * S4-TIMELINE fixture: deterministic documents (fixed ids, fixed times) for the timeline proofs B12,
  * B13, B15 and B22, as plain documents keyed by collection. The pure tests feed them to the in-memory
- * Mongo fake (`story/fakeMongo.fixtures.ts`); the replica seed (`scripts/dev_ops/lib/si-timeline-seed.ts`)
+ * Mongo fake (`story/fakeMongo.fixtures.ts`); the replica seed (`ops/lib/si-timeline-seed.ts`)
  * inserts the same documents. Synthetic data only (555 numbers, fake names). Test-only.
  *
  * Subjects:

@@ -114,7 +114,7 @@ The success manifest must contain the archive object name, object generation, si
 Create a committed, standalone job package at:
 
 ```text
-scripts/cloud/mongodb-backup/
+ops/cloud/mongodb-backup/
   Dockerfile
   .dockerignore
   package.json
@@ -214,7 +214,7 @@ The provisioning identity may need Service Usage Admin, IAM Service Account Admi
 - Enforce Public Access Prevention.
 - Keep soft delete at seven days.
 - Leave Object Versioning disabled because archive names are immutable and soft delete is enabled.
-- Apply `scripts/cloud/mongodb-backup/lifecycle.json` only after reviewing its prefixes.
+- Apply `ops/cloud/mongodb-backup/lifecycle.json` only after reviewing its prefixes.
 
 Lifecycle policy:
 
@@ -276,7 +276,7 @@ If the agent cannot safely retrieve the production URI from the local ignored `.
 ### 5. Build and publish the image
 
 - Create Artifact Registry Docker repository `vantage-operations` in the selected region.
-- Build from `scripts/cloud/mongodb-backup/` only.
+- Build from `ops/cloud/mongodb-backup/` only.
 - Tag the image with the git commit and a human version, for example `v1-<short-sha>`; do not deploy mutable `latest` as the only reference.
 - Scan build logs for accidental URI or credential output before deployment.
 - Record the immutable image digest in the deployment record.
@@ -379,7 +379,7 @@ gcloud scheduler jobs describe vantage-mongodb-backup-daily \
 
 The implementing Cursor agent must leave:
 
-1. The standalone job package under `scripts/cloud/mongodb-backup/`.
+1. The standalone job package under `ops/cloud/mongodb-backup/`.
 2. Unit tests passing locally.
 3. A successfully built, digest-pinned image in Artifact Registry.
 4. The dedicated protected bucket and reviewed lifecycle rules.

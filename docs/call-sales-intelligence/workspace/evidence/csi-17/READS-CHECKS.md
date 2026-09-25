@@ -4,7 +4,7 @@ Owned source: `src/services/salesIntelligence/analysis/reads.ts`, `reads.test.ts
 
 ## Direct current-source commands
 
-1. `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/analysis/reads.test.ts`
+1. `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/analysis/reads.test.ts`
 
    Final run: 4 tests, 4 pass, 0 fail, 0 skipped; duration 3559.1272 ms. Cursor run/query binding and strict operator rejection; full-number relevance; redacted closed Lead projection; strict response with unknown speaker/null timing.
 

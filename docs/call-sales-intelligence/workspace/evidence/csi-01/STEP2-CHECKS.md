@@ -13,7 +13,7 @@ Executed September 17, 2026, on the uncommitted `sales-intelligence` patch. Grok
 | Patch hygiene | `git diff --check` in both repositories | Pass after owned-file whitespace cleanup. |
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts"
 ```
 
 The replica runner explicitly overrides inherited URI and TEST_MODE routing, does not load `.env`, and chooses a new `testvantagemovers_csi<random>` database. It refuses any host other than the disposable loopback replica `csi01` on port 27189. Tests inspect replica status and selected model databases before writes. A single-node MongoDB 8.0.17 replica was used; synthetic databases are retained for inspection. CLI report/verify targeted the post-review successful fixture database `testvantagemovers_csi1dd6c73ddfdf`; later reruns use fresh databases shown in their output. All migration applies occurred inside isolated tests, never on production.

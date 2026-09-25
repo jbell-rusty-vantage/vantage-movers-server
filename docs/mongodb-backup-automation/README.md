@@ -8,7 +8,7 @@ stale_after: 2026-10-01
 resource: docs/knowledge/services/mongodb-backup.md
 applies_to:
   - docs/knowledge/services/mongodb-backup.md
-  - scripts/cloud/mongodb-backup/backup.mjs
+  - ops/cloud/mongodb-backup/backup.mjs
 owners: [team:main-server]
 sources:
   - id: service
@@ -122,7 +122,7 @@ Notification channel: project-owner email on `vantage-sheets-496816`. Do not put
 ## Local job package
 
 ```bash
-cd scripts/cloud/mongodb-backup
+cd ops/cloud/mongodb-backup
 npm test
 ```
 

@@ -6,7 +6,7 @@ All commands run in `C:\Users\Pinda\Proyectos\vantage\vantage-main-server`, with
 | --- | --- |
 | `pnpm typecheck` | exit 0, `typecheck.log` (rerun after refinements) |
 | `pnpm lint` | exit 0, `lint.log` |
-| `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/nudges/*.test.ts src/services/salesIntelligence/repIdentity/*.test.ts src/services/salesIntelligence/outreach/outreach.test.ts src/services/salesIntelligence/foundation.test.ts` | 31 pass, `focused.log` |
+| `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/nudges/*.test.ts src/services/salesIntelligence/repIdentity/*.test.ts src/services/salesIntelligence/outreach/outreach.test.ts src/services/salesIntelligence/foundation.test.ts` | 31 pass, `focused.log` |
 | `pnpm test:csi:nudges:replica` | 16 pass, `replica.log` |
 | `pnpm test:csi:outreach:replica` | 22 pass, `outreach-regression.log` |
 | `pnpm test:csi:rep-identity:replica` | 12 pass, `identity-regression.log` |

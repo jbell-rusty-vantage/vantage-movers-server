@@ -1,6 +1,6 @@
 ---
 description: Production MongoDB backup job package, GCS layout, and operator commands
-globs: scripts/cloud/mongodb-backup/**,docs/mongodb-backup-automation/**,docs/knowledge/services/mongodb-backup.md
+globs: ops/cloud/mongodb-backup/**,docs/mongodb-backup-automation/**,docs/knowledge/services/mongodb-backup.md
 alwaysApply: false
 ---
 
@@ -14,7 +14,7 @@ Owner rules live in the Service, not in this rule.
 
 Software-only notes:
 
-- Job package is `scripts/cloud/mongodb-backup/` (committed). Do not put it under `scripts/dev_ops/`.
+- Job package is `ops/cloud/mongodb-backup/` (committed). Do not put it under `scripts/dev_ops/`.
 - Runtime is the Cloud Run Job in GCP project `vantage-sheets-496816`. Archives are `gs://vantage-mongodb-backups-496816`. Not AWS S3, not `gs://vantage-sheets-496816/`.
 - Never print, commit, or log `MONGO_URI`. Secret name only: `vantage-production-mongo-uri`.
 - Tests are `npm test` in the job package. They must not contact MongoDB or GCS.

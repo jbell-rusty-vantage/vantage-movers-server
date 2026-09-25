@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event start",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event start",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event prompt",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event prompt",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event tool-start",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event tool-start",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event activity",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event activity",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event stop",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event stop",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event end",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event end",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/quality/hook-entry.mjs --provider codex --event interrupt",
+            "command": "node ops/quality/hook-entry.mjs --provider codex --event interrupt",
             "timeout": 3,
             "statusMessage": "Record Vantage checkpoint activity"
           }

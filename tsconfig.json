@@ -13,9 +13,9 @@
     "api/index.ts",
     "api/queues/**/*.ts",
     "src/**/*.ts",
-    "scripts/**/*.ts",
+    "ops/**/*.ts",
     "types/**/*.d.ts",
     "internal_hidden_docs/investigate-booking-intake-gap.ts"
   ],
-  "exclude": ["scripts/dev_ops/**"]
+  "exclude": ["ops/cloud/**"]
 }

@@ -6,7 +6,7 @@ Baseline: `git branch --show-current`, `git status --short`, `git log -1 --oneli
 | --- | --- |
 | `pnpm typecheck` | Final current-source run exit 0, [output](typecheck.txt). Initial errors corrected (nullable source fields, route params, evidence dates); later HTTP fake lacked its typed outcomes field, corrected before final run. |
 | `pnpm lint` | Exit 0, [output](lint.txt). |
-| `node --import tsx --import ./scripts/test-setup.ts --test "src/services/salesIntelligence/attachment/*.test.ts" src/services/salesIntelligence/conversations/eligibility.test.ts src/routes/sales-intelligence-admin.routes.test.ts src/routes/sales-intelligence-cron.routes.test.ts` | 13 pass / 0 fail, [output](focused.txt). |
+| `node --import tsx --import ./ops/test-setup.ts --test "src/services/salesIntelligence/attachment/*.test.ts" src/services/salesIntelligence/conversations/eligibility.test.ts src/routes/sales-intelligence-admin.routes.test.ts src/routes/sales-intelligence-cron.routes.test.ts` | 13 pass / 0 fail, [output](focused.txt). |
 | `pnpm test:csi:attachment:replica` | Final expanded run: 11 pass / 0 fail, [output](replica.txt). First fixture run failed on invalid synthetic worker id and missing required interaction fields; fixed the fixtures. An expanded rediscovery assertion initially ran behind an intentional 205-job backlog; changed the proof to target its actual change-hook jobs, preserving the production drain bound. |
 | `pnpm test:csi:media:replica` | 20 pass / 0 fail after CSI-11 shared-resolver and legacy account-scope integration, [output](media-regression.txt). |
 | `pnpm test` | 2,386 pass / 114 skip / 0 fail (2,500 total), [output](offline-tests.txt). |

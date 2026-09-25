@@ -19,7 +19,7 @@ export const attentionEvolutionEnabled = () => csiFlag("ATTENTION_EVOLUTION");
 /** AC6-PLAN: the Move assessment re-plan on accepted progress to Quoted (needs MOVE_ASSESSMENT too). Default off. */
 export const progressPlanEnabled = () => csiFlag("PROGRESS_PLAN");
 /**
- * S10 step 6 (`scripts/dev_ops/reensure-outreach.ts --no-progress-plan`): a process-level override that
+ * S10 step 6 (`ops/reensure-outreach.ts --no-progress-plan`): a process-level override that
  * suppresses the AC6-PLAN re-plan nomination and hands the record id to the suppressor instead, so the
  * lap can count what it would have nominated. Null (the default, and every server process) changes nothing.
  */

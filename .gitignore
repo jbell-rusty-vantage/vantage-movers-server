@@ -41,24 +41,15 @@ ringcentral-recording-transcript-probe-output.json
 ringcentral-recording-samples/
 ringcentral-workflow-test.log
 ringcentral-local-webhook-events.jsonl
-# Minified one-line copy for env paste (see scripts/minify-google-service-account-json.ts)
+# Minified one-line copy for env paste (see the local scripts/minify-google-service-account-json.ts)
 /google-service-account.one-line.json
 /vantage-sheets-service-account.one-line.json
 
 # Ignore output
 /*.log
 /logs
-scripts/historical/models/historical-analytics-report.json
-scripts/historical/reports/
 
-# Personal / destructive DB-hitting utilities (clear-db, ping-db, seed scripts, etc.)
-# Lives only on developer machines; never committed.
-scripts/dev_ops/**
-!scripts/dev_ops/backfill-main-site-granot-july-2026.ts
 
-# Local-only historical production DB staged merge ingestion tooling.
-# Keep on developer machines; never commit or deploy.
-scripts/historical_production_db_staged_merge_ingestion/
 
 
 # Editor
@@ -78,20 +69,19 @@ coverage/
 /.env.granot-webhook.local
 
 
-scripts/docs/**   
 
-# Local MongoDB -> owner Google Sheets report prototype.
-/scripts/test-create-google-spreadsheet.ts
 
 
 observability.env.example.env  
 
 
-scripts/booked_deals_sync/** 
 
 hooks_hold/ 
 
-
-**/scripts/output  
-
-
+# Local operator tooling. scripts/ is internal and never committed; only the
+# OKF catalog tools stay tracked. Tooling CI, the runbook or production needs
+# lives in ops/.
+/scripts/*
+!/scripts/okf-progress.mjs
+!/scripts/okf-query.mjs
+/ops/output/

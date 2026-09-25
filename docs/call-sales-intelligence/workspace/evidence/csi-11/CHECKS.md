@@ -7,7 +7,7 @@ Executed September 17, 2026 America/New_York on `vantage-main-server`, branch `s
 | Typecheck | `pnpm exec tsc --noEmit` | Exit 0, no diagnostics; [typecheck.txt](typecheck.txt). |
 | Focused suite | Command below | 108 passed, 0 failed/skipped; [focused-tests.txt](focused-tests.txt). |
 | CSI-11 transactions, workers, availability | `pnpm test:csi:media:replica` | 19 passed including outer test, 0 failed/skipped; [replica-tests.txt](replica-tests.txt). |
-| Final provider adapter regression | `node --import tsx --import ./scripts/test-setup.ts --test src/services/ringcentral/recordings.test.ts` | 2 passed; [provider-adapter-tests.txt](provider-adapter-tests.txt). |
+| Final provider adapter regression | `node --import tsx --import ./ops/test-setup.ts --test src/services/ringcentral/recordings.test.ts` | 2 passed; [provider-adapter-tests.txt](provider-adapter-tests.txt). |
 | Foundation regression | `pnpm test:csi:replica` | 15 passed; [foundation-replica.txt](foundation-replica.txt). |
 | Capture regression | `pnpm test:csi:capture:replica` | 12 passed; [capture-replica.txt](capture-replica.txt). |
 | Fan-out regression | `pnpm test:csi:fanout:replica` | 11 passed; [fanout-replica.txt](fanout-replica.txt). |
@@ -18,9 +18,9 @@ Executed September 17, 2026 America/New_York on `vantage-main-server`, branch `s
 | Patch hygiene | `git -c core.safecrlf=false diff --check` | Exit 0; [diff-check.txt](diff-check.txt). |
 
 ```powershell
-node --import tsx --import ./scripts/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/services/salesIntelligence/conversations/*.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/routes/sales-intelligence-cron.routes.test.ts" "src/routes/sales-intelligence-admin.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts" "src/services/numberActivity/*.test.ts" "api/queues/sales-intelligence-consumer.test.ts" "src/services/ringcentral/recordings.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test "src/validation/intelligence/*.test.ts" "src/services/salesIntelligence/foundation.test.ts" "src/services/salesIntelligence/conversations/*.test.ts" "src/routes/sales-intelligence-boundary.routes.test.ts" "src/routes/sales-intelligence-cron.routes.test.ts" "src/routes/sales-intelligence-admin.routes.test.ts" "src/middleware/requireApiSecret.test.ts" "src/models/LeadConversation.test.ts" "src/services/conversations/*.test.ts" "src/services/numberActivity/*.test.ts" "api/queues/sales-intelligence-consumer.test.ts" "src/services/ringcentral/recordings.test.ts"
 
-node --import tsx --import ./scripts/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"
+node --import tsx --import ./ops/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts"
 ```
 
 ## Disposable database
@@ -38,7 +38,7 @@ Fake provider plus real worker/Mongo: metadata before content, 404→success, 40
 The user requested another independent subagent review. Its two findings and resolutions are recorded in [INDEPENDENT-REVIEW.md](INDEPENDENT-REVIEW.md). Final patch checks:
 
 - `pnpm test:csi:media:replica`: 20 passed, including concurrent rescheduling after restored eligibility; [final-review-replica.txt](final-review-replica.txt).
-- `node --import tsx --import ./scripts/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts" "src/services/salesIntelligence/conversations/*.test.ts"`: 111 passed, 3 pre-existing skips; [final-review-tests.txt](final-review-tests.txt).
+- `node --import tsx --import ./ops/test-setup.ts --test "src/services/ringcentral/*.test.ts" "src/routes/ringcentral-cron.routes.test.ts" "src/routes/ringcentral-webhook.routes.test.ts" "src/services/salesIntelligence/conversations/*.test.ts"`: 111 passed, 3 pre-existing skips; [final-review-tests.txt](final-review-tests.txt).
 - `pnpm exec tsc --noEmit`: exit 0, no diagnostics; [final-review-typecheck.txt](final-review-typecheck.txt).
 - Evidence Markdown file targets resolve; `git -c core.safecrlf=false diff --check` passes.
 

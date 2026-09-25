@@ -8,7 +8,7 @@ Every replica runner explicitly selects a randomized `testvantagemovers_csi*` da
 | --- | --- |
 | `pnpm typecheck` | Passed; [typecheck.log](typecheck.log). |
 | `pnpm lint` | Passed; [lint.log](lint.log). |
-| `node --import tsx --import ./scripts/test-setup.ts --test src/services/salesIntelligence/repIdentity/identity.test.ts src/services/salesIntelligence/repIdentity/routes.test.ts src/services/salesIntelligence/outreach/outreach.test.ts src/services/salesIntelligence/conversations/eligibility.test.ts src/routes/sales-intelligence-admin.routes.test.ts src/routes/sales-intelligence-cron.routes.test.ts` | 19/19 passed; [focused.log](focused.log). |
+| `node --import tsx --import ./ops/test-setup.ts --test src/services/salesIntelligence/repIdentity/identity.test.ts src/services/salesIntelligence/repIdentity/routes.test.ts src/services/salesIntelligence/outreach/outreach.test.ts src/services/salesIntelligence/conversations/eligibility.test.ts src/routes/sales-intelligence-admin.routes.test.ts src/routes/sales-intelligence-cron.routes.test.ts` | 19/19 passed; [focused.log](focused.log). |
 | `pnpm test:csi:rep-identity:replica` | 12/12 passed; [replica.log](replica.log). |
 | `pnpm test:csi:outreach:replica` | 22/22 passed; [outreach-regression.log](outreach-regression.log). |
 | `pnpm test:csi:media:replica` | 20/20 passed; [media-regression.log](media-regression.log). |
