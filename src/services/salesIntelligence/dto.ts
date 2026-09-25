@@ -287,8 +287,9 @@ export const derivedDtoSchema = z
     absence_qualified: z.boolean().optional(),
     action_facts: z.array(z.object({ id, contractual_overdue: z.boolean(), overdue: z.boolean(), attention_due_at: date.nullable(), call_allowed: z.boolean() }).strict()).optional(),
     call_state: z.enum(["not_started", "in_progress", "ended"]).optional(),
-    // Derived from the attachment mirror, never stored: who or what decided this lead.
-    provenance_state: z.enum(["attached_by_you", "attached_automatically", "attached_from_evidence", "needs_a_lead", "ambiguous"]).optional(),
+    // Derived from the attachment mirror and the subject, never stored: who or what decided this lead.
+    // `is_the_lead` (S11-PROV, UX21): the subject is a Form Lead or Call Lead and no attached/ambiguous mirror is set.
+    provenance_state: z.enum(["attached_by_you", "attached_automatically", "attached_from_evidence", "is_the_lead", "needs_a_lead", "ambiguous"]).optional(),
   })
   .strict();
 export const followupDtoSchema = z

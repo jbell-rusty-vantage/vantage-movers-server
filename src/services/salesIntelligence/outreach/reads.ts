@@ -143,11 +143,15 @@ export function leadStatusWord(record: Pick<RecordRow, "state" | "closure_origin
   return record.closed_reason === "booked" ? "booked" : record.closed_reason === "cancelled" ? "booked_then_cancelled" : "not_booked";
 }
 
-/** Owner-facing reading of the stored attachment mirror. Derived on read, never stored. */
-export function provenanceState(mirror: RecordRow["lead_attachment"]) {
-  if (!mirror || mirror.state === "rejected") return "needs_a_lead" as const;
-  if (mirror.state === "ambiguous") return "ambiguous" as const;
-  if (mirror.state !== "attached") return "needs_a_lead" as const;
+/**
+ * Owner-facing reading of the stored attachment mirror. Derived on read, never stored.
+ * UX21 / S11-PROV (Owner correction B): a set `attached` or `ambiguous` mirror wins for every subject.
+ * Otherwise an Outreach whose subject is a Form Lead or Call Lead *is* the Lead (`is_the_lead`), never
+ * "No Lead attached"; `needs_a_lead` is left only for a Number subject (`number_review`) without one.
+ */
+export function provenanceState(mirror: RecordRow["lead_attachment"], subject: Pick<RecordRow["subject"], "kind">) {
+  if (mirror?.state === "ambiguous") return "ambiguous" as const;
+  if (!mirror || mirror.state !== "attached") return subject.kind === "lead" ? "is_the_lead" as const : "needs_a_lead" as const;
   if (mirror.certainty === "owner_confirmed") return "attached_by_you" as const;
   return mirror.decided_by === "automatic" ? "attached_automatically" as const : "attached_from_evidence" as const;
 }
@@ -456,7 +460,7 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
     last_meaningful_contact_at: iso(record.last_meaningful_contact_at), related_record_links: related,
     // Team 4 §5.4/§7.3: present once the flag computed them for this record (absent on flag-off rows).
     ...Object.fromEntries(CONTACT_FACT_FIELDS.filter(field => record[field] !== undefined).map(field => [field, iso(record[field])])),
-    derived: { ...derived, action_facts: actionFacts, call_state: record.call_progress?.state ?? "not_started", provenance_state: provenanceState(mirror) },
+    derived: { ...derived, action_facts: actionFacts, call_state: record.call_progress?.state ?? "not_started", provenance_state: provenanceState(mirror, record.subject) },
     allowed_actions: [...(["mark_worked", "assign", "set_waiting", "add_note", "close", "reopen", "create_followup"] as const).map(action => {
       const guarded = (action === "mark_worked" && dispositionBlocked) || ((action === "set_waiting" || action === "create_followup") && dispositionBlockers.length > 0);
       return { action, target_id: String(record._id), expected_revision: record.revision,

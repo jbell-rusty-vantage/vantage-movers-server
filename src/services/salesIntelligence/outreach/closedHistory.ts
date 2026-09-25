@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { z } from "zod";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
@@ -10,7 +11,8 @@ import { CsiError } from "../auth";
 import { resolvePolicy } from "../policy";
 import { resolveRetentionDays } from "../retentionPolicy";
 import { payloadHash } from "../transactions";
-import { attentionFilterKeys, attentionSortKeys } from "./attention";
+import { attentionFilterKeys, attentionSearchKeys, attentionSearchParam, attentionSortKeys, definedOnly, parseAttentionSearch, rowSearchKeys, searchKeysMatch,
+  type AttentionSearch, type AttentionSearchKeys } from "./attention";
 import { closedOutcome, recordFilterKeys, type FactsCancellation } from "./facts";
 import { loadOutreachInputsBatch, loadOutreachSideData, toOutreachDto } from "./reads";
 import { subjectKey, type RecordRow } from "./types";
@@ -32,6 +34,12 @@ import { subjectKey, type RecordRow } from "./types";
 const HISTORY_MAX_LIMIT = 50;
 /** A filtered page stops after this many keyset batches and returns its cursor (bounded work per request). */
 const HISTORY_MAX_BATCHES = 5;
+/**
+ * S11-SEARCH: with `q`, a keyset batch reads this many closed records (at most HISTORY_MAX_BATCHES × this per request).
+ * Only the batch's Leads (name, Job number) and Numbers (e164) are read to match; full rows are built for matches only.
+ * A request that reaches the bound returns fewer items and a cursor: the next request continues the scan from there.
+ */
+export const HISTORY_SEARCH_BATCH = 200;
 const instant = z.iso.datetime({ offset: true }).optional();
 function repeated<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess((value) => {
@@ -51,6 +59,8 @@ export const closedHistoryQuerySchema = z.object({
   agent_id: repeated(z.string().regex(/^[a-f\d]{24}$/i)),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(HISTORY_MAX_LIMIT).default(25),
+  // S11-SEARCH (UX22): the Closed view's `q` (name, Job number prefix, 4+ phone digits) over every retained closure.
+  q: attentionSearchParam,
 }).strict();
 export type ClosedHistoryQuery = z.infer<typeof closedHistoryQuerySchema>;
 
@@ -71,7 +81,7 @@ const cursorSchema = z.object({ closed_at: z.iso.datetime(), id: z.string().rege
 /** The filters a cursor is bound to (everything except the cursor and the page size). */
 export function closedHistoryDigest(query: Omit<ClosedHistoryQuery, "cursor" | "limit">, scope: ClosedHistoryScope) {
   const { scope: _scope, ...filters } = query;
-  return payloadHash({ ...filters, forced_agent: scope?.agent_id ?? null });
+  return payloadHash({ ...definedOnly(filters), forced_agent: scope?.agent_id ?? null });
 }
 export function encodeClosedHistoryCursor(at: Keyset, digest: string) {
   return Buffer.from(JSON.stringify({ closed_at: at.closed_at, id: at.id, digest })).toString("base64url");
@@ -170,6 +180,28 @@ async function closedRows(records: readonly RecordRow[], now: Date, context: { p
   return out;
 }
 
+/**
+ * S11-SEARCH: the search keys of a batch of closed records from the same Lead and Number documents the built row reads
+ * (`lead_display` from the subject's Lead, `primary_number.e164` from the primary Contact Number): three `$in` reads.
+ */
+export async function closedSearchKeys(records: readonly RecordRow[]): Promise<Map<string, AttentionSearchKeys>> {
+  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
+  const ids = (model: "FormLead" | "CallLead") => records.flatMap(record => record.subject.kind === "lead" && record.subject.model === model && record.subject.id ? [record.subject.id] : []);
+  const numberIds = [...new Set(records.flatMap(record => record.primary_contact_number_id ? [String(record.primary_contact_number_id)] : []))].map(id => new mongoose.Types.ObjectId(id));
+  const [forms, calls, numbers] = await Promise.all([
+    ids("FormLead").length ? db.collection("form_leads").find({ _id: { $in: ids("FormLead") as never[] } }, { projection: { name: 1, job_no: 1 } }).toArray() : [],
+    ids("CallLead").length ? db.collection("call_leads").find({ _id: { $in: ids("CallLead") as never[] } }, { projection: { name: 1, job_no: 1 } }).toArray() : [],
+    numberIds.length ? db.collection("contact_numbers").find({ _id: { $in: numberIds } }, { projection: { e164: 1 } }).toArray() : [],
+  ]);
+  const leads = new Map<string, (typeof forms)[number]>([...forms.map(lead => [`FormLead:${lead._id}`, lead] as const), ...calls.map(lead => [`CallLead:${lead._id}`, lead] as const)]);
+  const e164 = new Map(numbers.map(number => [String(number._id), number.e164 as string | null] as const));
+  return new Map(records.map(record => {
+    const lead = record.subject.kind === "lead" ? leads.get(`${record.subject.model}:${String(record.subject.id)}`) : undefined;
+    return [String(record._id), attentionSearchKeys({ name: lead?.name ?? null, job_no: lead?.job_no ?? null,
+      e164: record.primary_contact_number_id ? e164.get(String(record.primary_contact_number_id)) ?? null : null })] as const;
+  }));
+}
+
 /** The Mongo filter for one keyset batch (every narrowing is re-checked on the built row). */
 export function closedHistoryFilter(query: ClosedHistoryQuery, after: Keyset | null, agentRecordIds: readonly mongoose.Types.ObjectId[] | null, agents: readonly string[] | null) {
   const and: Record<string, unknown>[] = [outcomeMongoPredicate(query.outcome)];
@@ -196,17 +228,26 @@ export async function readClosedHistory(raw: z.input<typeof closedHistoryQuerySc
       { promised_by_agent_id: { $in: agents.map(id => new mongoose.Types.ObjectId(id)) } }] }) as Promise<mongoose.Types.ObjectId[]> : Promise.resolve(null),
   ]);
   const items: ClosedRow[] = [];
+  const search: AttentionSearch | null = parseAttentionSearch(query.q);
   let exhausted = false;
   for (let batch = 0; batch < HISTORY_MAX_BATCHES && items.length < limit; batch++) {
-    const want = limit - items.length;
+    const want = search ? HISTORY_SEARCH_BATCH : limit - items.length;
     const records = await getOutreachRecordModel().find(closedHistoryFilter(query, after, agentRecordIds, agents) as never)
       .sort({ closed_at: -1, _id: -1 }).limit(want + 1).lean() as RecordRow[];
     const page = records.slice(0, want);
-    for (const { record, row } of await closedRows(page, now, { policy, coverage })) {
+    // S11-SEARCH: match the batch on its Leads and Numbers first; only candidates pay for a built row, which is re-checked.
+    const keys = search ? await closedSearchKeys(page) : null;
+    const built = new Map((await closedRows(keys ? page.filter(record => searchKeysMatch(keys.get(String(record._id)), search)) : page, now, { policy, coverage }))
+      .map(({ record, row }) => [String(record._id), row] as const));
+    let full = false;
+    for (const record of page) {
+      // A search batch can hold more matches than the page needs: stop at the last one taken, so the cursor resumes after it.
+      if (items.length >= limit) { full = true; break; }
       after = { closed_at: record.closed_at!.toISOString(), id: String(record._id) };
-      if (row && closedRowMatches(row, query, agents)) items.push(row);
+      const row = built.get(String(record._id)) ?? null;
+      if (row && closedRowMatches(row, query, agents) && searchKeysMatch(search ? rowSearchKeys(row) : null, search)) items.push(row);
     }
-    if (records.length <= want) { exhausted = true; break; }
+    if (!full && records.length <= want) { exhausted = true; break; }
   }
   const next = !exhausted && after ? encodeClosedHistoryCursor(after, digest) : null;
   return closedHistoryPageDtoSchema.parse({ as_of: now.toISOString(), coverage,

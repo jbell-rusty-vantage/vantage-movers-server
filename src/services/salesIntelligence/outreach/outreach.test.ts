@@ -94,14 +94,25 @@ test("worker, cron and recovery registrations exist without enabling production 
   assert.ok(config.crons.some((c: { path: string }) => c.path === "/api/cron/sales-intelligence-outreach-ensure"));
   assert.match(readFileSync("src/routes/sales-intelligence-cron.routes.ts", "utf8"), /name: "outreach_ensure", flag: "OUTREACH_ENSURE"/);
 });
-test("provenance state reads the stored attachment mirror; no attached edge is Needs a lead", () => {
+test("provenance state reads the stored attachment mirror; no attached edge is Needs a lead only for a Number subject", () => {
   const mirror = (over: Partial<NonNullable<RecordRow["lead_attachment"]>> = {}) => ({ attachment_id: id(), lead_ref: { model: "FormLead" as const, id: id() },
     state: "attached" as const, certainty: "likely" as const, decided_by: "evidence" as const, decided_at: null, confidence: null, observed_at: at, ...over });
-  assert.equal(provenanceState(null), "needs_a_lead");
-  assert.equal(provenanceState(mirror({ state: "candidate" })), "needs_a_lead");
-  assert.equal(provenanceState(mirror({ state: "rejected", certainty: "rejected" })), "needs_a_lead");
-  assert.equal(provenanceState(mirror({ state: "ambiguous", certainty: "unsure" })), "ambiguous");
-  assert.equal(provenanceState(mirror({ certainty: "owner_confirmed", decided_by: "owner", decided_at: at })), "attached_by_you");
-  assert.equal(provenanceState(mirror({ decided_by: "automatic", confidence: 0.9, decided_at: at })), "attached_automatically");
-  assert.equal(provenanceState(mirror({ certainty: "exact" })), "attached_from_evidence");
+  const number = { kind: "number_review" as const }, formLead = { kind: "lead" as const, model: "FormLead" }, callLead = { kind: "lead" as const, model: "CallLead" };
+  // S11-PROV (UX21) case 1–2: a Form Lead or Call Lead subject with no mirror is the Lead.
+  assert.equal(provenanceState(null, formLead), "is_the_lead");
+  assert.equal(provenanceState(null, callLead), "is_the_lead");
+  // Case 3: a Number subject with no attached Lead still needs one (no mirror, candidate, rejected).
+  assert.equal(provenanceState(null, number), "needs_a_lead");
+  assert.equal(provenanceState(mirror({ state: "candidate" }), number), "needs_a_lead");
+  assert.equal(provenanceState(mirror({ state: "rejected", certainty: "rejected" }), number), "needs_a_lead");
+  // A candidate or rejected Number edge doesn't take the Lead away from a Lead subject.
+  assert.equal(provenanceState(mirror({ state: "candidate" }), formLead), "is_the_lead");
+  assert.equal(provenanceState(mirror({ state: "rejected", certainty: "rejected" }), callLead), "is_the_lead");
+  // Case 4: a set mirror wins for every subject.
+  for (const subject of [number, formLead, callLead]) {
+    assert.equal(provenanceState(mirror({ state: "ambiguous", certainty: "unsure" }), subject), "ambiguous");
+    assert.equal(provenanceState(mirror({ certainty: "owner_confirmed", decided_by: "owner", decided_at: at }), subject), "attached_by_you");
+    assert.equal(provenanceState(mirror({ decided_by: "automatic", confidence: 0.9, decided_at: at }), subject), "attached_automatically");
+    assert.equal(provenanceState(mirror({ certainty: "exact" }), subject), "attached_from_evidence");
+  }
 });

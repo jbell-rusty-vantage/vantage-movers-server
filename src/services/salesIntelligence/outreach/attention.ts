@@ -45,6 +45,49 @@ const instant = z.iso.datetime({ offset: true }).optional();
 const CLOSED_ONLY_PARAMS = ["outcome", "closed_from", "closed_to"] as const;
 
 /**
+ * S11-SEARCH (UX22): `q`, trimmed, inner whitespace collapsed and lower-cased, so a cursor binds the
+ * match rather than its spelling. Empty means no search (the request hashes exactly as before).
+ * Shared by `GET /attention` and `GET /outreach/closed-history`.
+ */
+export const attentionSearchParam = z.preprocess((value) => {
+  if (value == null) return undefined;
+  if (typeof value !== "string") return value;
+  const text = value.trim().replace(/\s+/g, " ").toLowerCase();
+  return text || undefined;
+}, z.string().max(100).optional());
+/** What a published row is searched on: `lead_display.name`, `lead_display.job_no` (both lower-cased) and the digits of `primary_number.e164`. */
+export type AttentionSearchKeys = { name: string | null; job_no: string | null; digits: string | null };
+export type AttentionSearch = { text: string; digits: string | null };
+/** Phone matching needs at least this many digits; a shorter digit run still matches a name or a Job number prefix. */
+export const SEARCH_PHONE_MIN_DIGITS = 4;
+export function attentionSearchKeys(input: { name?: string | null; job_no?: string | null; e164?: string | null }): AttentionSearchKeys {
+  const text = (value: string | null | undefined) => value?.trim().replace(/\s+/g, " ").toLowerCase() || null;
+  return { name: text(input.name), job_no: text(input.job_no), digits: input.e164?.replace(/\D/g, "") || null };
+}
+export function rowSearchKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "outreach">): AttentionSearchKeys {
+  const outreach = row.outreach;
+  return attentionSearchKeys({ name: outreach?.lead_display?.name, job_no: outreach?.lead_display?.job_no, e164: outreach?.primary_number?.e164 });
+}
+/** The parsed `q`: its text, and its digits when there are at least four (non-digits stripped). Null: no search. */
+export function parseAttentionSearch(q: string | undefined): AttentionSearch | null {
+  if (!q) return null;
+  const digits = q.replace(/\D/g, "");
+  return { text: q, digits: digits.length >= SEARCH_PHONE_MIN_DIGITS ? digits : null };
+}
+/** Case-insensitive substring on the name, exact-or-prefix on the Job number, digit substring on the phone (4+ digits only). */
+export function searchKeysMatch(keys: AttentionSearchKeys | null | undefined, search: AttentionSearch | null): boolean {
+  if (!search) return true;
+  if (!keys) return false;
+  return Boolean((keys.name && keys.name.includes(search.text)) || (keys.job_no && keys.job_no.startsWith(search.text))
+    || (search.digits && keys.digits && keys.digits.includes(search.digits)));
+}
+/** An index entry that also carries its row's search keys (S11-SEARCH, written at publish; absent on older snapshots). */
+type SearchableEntry = AttentionIndexEntry & { search?: AttentionSearchKeys };
+function searchableIndexEntry(row: z.infer<typeof attentionRowDtoSchema>, position: number, chunk: number | null = null): SearchableEntry {
+  return { ...attentionIndexEntry(row, position, chunk), search: rowSearchKeys(row) };
+}
+
+/**
  * Final spec §7.3 / §8, data spec §3.4. No new parameter has a default, so a request without it
  * parses to the same object (and the same cursor digest) as before S2. `rep_unread` is Phase 5
  * (S5) and is rejected as an unknown parameter until then.
@@ -81,6 +124,8 @@ export const attentionQuerySchema = z.object({
   view: z.enum(ATTENTION_VIEWS).default("attention"),
   // `fresh` excludes rows whose frozen assessment is stale; absent means `all`.
   freshness: z.enum(ATTENTION_FRESHNESS).optional(),
+  // S11-SEARCH (UX22): name, Job number or phone digits, matched in memory over the snapshot, every view.
+  q: attentionSearchParam,
 }).strict().superRefine((query, ctx) => {
   if (query.view === "closed") return;
   for (const param of CLOSED_ONLY_PARAMS) if (query[param] !== undefined) ctx.addIssue({ code: "custom", path: [param], message: "Only with view=closed" });
@@ -140,7 +185,7 @@ export function sortAttentionRows<T extends Pick<z.infer<typeof attentionRowDtoS
  * matches the record they own and every follow-up they are responsible for or promised.
  */
 export function rowMatchesAttentionQuery(row: z.infer<typeof attentionRowDtoSchema>, query: AttentionQuery, context?: AttentionMatchContext) {
-  return entryMatchesAttentionQuery(attentionIndexEntry(row, 0), query, context);
+  return entryMatchesAttentionQuery(attentionIndexEntry(row, 0), query, context) && searchKeysMatch(rowSearchKeys(row), parseAttentionSearch(query.q));
 }
 
 /**
@@ -385,8 +430,8 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const chunks = compressed || inline ? null : splitAttentionChunks(encoded, options.chunkBytes);
   // §3.7: the index names where each row lives, so the read materializes only its page.
   const indexEntries = v2 ? (chunks
-    ? chunks.flatMap((part, chunk) => part.map((row, position) => attentionIndexEntry(row, position, chunk)))
-    : encoded.map((row, position) => attentionIndexEntry(row, position))) : null;
+    ? chunks.flatMap((part, chunk) => part.map((row, position) => searchableIndexEntry(row, position, chunk)))
+    : encoded.map((row, position) => searchableIndexEntry(row, position))) : null;
   const index = indexEntries ? encodeAttentionIndex(indexEntries) : null;
   // S7-PRIO (addendum §5): chip counts per Priority key and view, tallied over the same entries the read filters.
   const v2Header = v2 ? { metrics, index_gzip_base64: index, priority_counts: attentionPriorityCounts(indexEntries!) } : {};
@@ -422,7 +467,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   }
   if (overview) {
     // Warm the parsed cache with this snapshot, so the next publish (and reads) on this instance skip the payload read.
-    rememberParsedSnapshot(parsedSnapshotKey(snapshot_id), { entries: indexEntries ?? encoded.map((row, position) => attentionIndexEntry(row, position)),
+    rememberParsedSnapshot(parsedSnapshotKey(snapshot_id), { entries: indexEntries ?? encoded.map((row, position) => searchableIndexEntry(row, position)),
       rows: indexEntries && chunks ? null : encoded, loadRows: () => encoded, chunks: new Map() });
   }
   return { status: "published", snapshot_id, total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}), ...(overview ? { band_transitions: transitionDocs.length } : {}) };
@@ -431,7 +476,13 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
 export function attentionCursorDigest(input: Omit<AttentionQuery, "cursor" | "limit" | "direction"> & { direction: "asc" | "desc" }) {
   const { sort, direction, view, freshness, ...filters } = input;
   const fresh = freshness === "fresh" ? { freshness } : {};
-  return payloadHash(sort === "attention" && view === "attention" && freshness !== "fresh" ? filters : { ...filters, sort, direction, view, ...fresh });
+  // A parameter sent empty (`q=`, `band=`) parses to a present-but-undefined key: it hashes as if absent, never throws.
+  const given = definedOnly(filters);
+  return payloadHash(sort === "attention" && view === "attention" && freshness !== "fresh" ? given : { ...given, sort, direction, view, ...fresh });
+}
+/** The keys of a parsed query whose value is defined (the canonical hash refuses `undefined`). */
+export function definedOnly<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 type StoredRow = z.infer<typeof attentionRowDtoSchema>;
 
@@ -441,7 +492,9 @@ type StoredRow = z.infer<typeof attentionRowDtoSchema>;
  * the whole row set (data spec §3.7, B8). Keyed by dataset and `snapshot_id`; the newest two are kept: the
  * current snapshot and the one open cursors may still be paging. Entries and rows are shared read-only.
  */
-type ParsedSnapshot = { entries: AttentionIndexEntry[]; rows: StoredRow[] | null; loadRows: () => StoredRow[]; chunks: Map<number, StoredRow[]> };
+type ParsedSnapshot = { entries: SearchableEntry[]; rows: StoredRow[] | null; loadRows: () => StoredRow[]; chunks: Map<number, StoredRow[]>;
+  /** S11-SEARCH: search keys aligned with `entries`, filled once for a snapshot whose index predates them. */
+  search?: AttentionSearchKeys[] };
 const PARSED_SNAPSHOTS = new Map<string, ParsedSnapshot>();
 const PARSED_SNAPSHOT_LIMIT = 2;
 const ATTENTION_PAYLOAD_EXCLUDED = "-rows -rows_gzip_base64 -index_gzip_base64";
@@ -484,7 +537,7 @@ async function parsedSnapshotFor(snapshot: { _id: mongoose.Types.ObjectId; snaps
       if (parts.length !== chunkCount) return null;
       stored = parts.flatMap(part => (Array.isArray(part.rows) ? part.rows : []) as StoredRow[]);
     }
-    parsed = { entries: stored.map((row, position) => attentionIndexEntry(row, position)), rows: stored, loadRows: () => stored, chunks: new Map() };
+    parsed = { entries: stored.map((row, position) => searchableIndexEntry(row, position)), rows: stored, loadRows: () => stored, chunks: new Map() };
   }
   rememberParsedSnapshot(cacheKey, parsed);
   return parsed;
@@ -563,12 +616,6 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const parsed = await parsedSnapshotFor(snapshot);
   if (!parsed) return pending();
   const entries = parsed.entries;
-  // Filter, then sort the whole frozen snapshot, then paginate (§14.1). Attention order is the stored band order.
-  const context = { as_of: snapshot.as_of };
-  const matched = sortAttentionEntries(entries.filter(entry => entryMatchesAttentionQuery(entry, query, context)), query.sort, direction);
-  const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
-  for (const entry of matched) for (const reason of entry.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
-  const slice = matched.slice(offset, offset + limit);
   /** The stored rows of some index entries: inline rows once, or only the chunks they name (one `$in`). Null: a chunk is missing. */
   const rowsFor = async (wantedEntries: readonly AttentionIndexEntry[]): Promise<StoredRow[] | null> => {
     let rows: StoredRow[];
@@ -590,6 +637,26 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
     if (rows.some((row, i) => row?.subject_key !== wantedEntries[i]!.subject_key)) throw new Error("Attention index does not match its rows");
     return rows;
   };
+  // S11-SEARCH (UX22): `q` is matched in memory over the parsed snapshot, after the other filters and before paging, so
+  // `total_items`, `reason_counts` and the cursor all count matches. The keys ride on the index entries from this stage on;
+  // a snapshot published before it pays one row load for them, and they then stay in the parsed cache.
+  const search = parseAttentionSearch(query.q);
+  let searchKeys: readonly (AttentionSearchKeys | undefined)[] | null = null;
+  if (search) {
+    if (!parsed.search && entries.some(entry => !entry.search)) {
+      const rows = await rowsFor(entries);
+      if (!rows) return pending();
+      parsed.search = rows.map(rowSearchKeys);
+    }
+    searchKeys = parsed.search ?? entries.map(entry => entry.search);
+  }
+  // Filter, then sort the whole frozen snapshot, then paginate (§14.1). Attention order is the stored band order.
+  const context = { as_of: snapshot.as_of };
+  const matched = sortAttentionEntries(entries.filter((entry, i) => entryMatchesAttentionQuery(entry, query, context) && (!searchKeys || searchKeysMatch(searchKeys[i], search))),
+    query.sort, direction);
+  const offset = page?.offset ?? 0, reasons: Record<string, number> = {};
+  for (const entry of matched) for (const reason of entry.reasons) reasons[reason] = (reasons[reason] ?? 0) + 1;
+  const slice = matched.slice(offset, offset + limit);
   const items = await rowsFor(slice);
   if (!items) return pending();
   let metrics = (snapshot as { metrics?: AttentionMetricsDto | null }).metrics;
