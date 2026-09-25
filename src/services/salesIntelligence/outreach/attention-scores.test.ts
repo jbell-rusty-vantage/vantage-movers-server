@@ -90,13 +90,14 @@ test("publication projection: closed and CRM-terminal rows are not applicable wi
 test("score sorts over all_outreach: Band 7 score 100 precedes Band 1 score 25; asc/desc; Unknowns last both ways; ties on subject_key", async t => {
   mockSnapshot(t, rows);
   const desc = await all({ view: "all_outreach", sort: "transaction_intent" });
-  // 100(4) 90(6) 75(5) 40(9) 25(1) then nulls by subject_key: 2 (Unknown), 3 (Not assessed), 7 (not applicable). Closed 8 is hidden.
-  assert.deepEqual(desc, [4, 6, 5, 9, 1, 2, 3, 7]);
+  // 100(4) 90(6) 75(5) 40(9) 25(1) then nulls by subject_key: 2 (Unknown), 3 (Not assessed), 7 (not applicable), 8 (closed with a
+  // badge: UX-C1 keeps it in all_outreach; closed scores are not applicable).
+  assert.deepEqual(desc, [4, 6, 5, 9, 1, 2, 3, 7, 8]);
   assert.ok(desc.indexOf(4) < desc.indexOf(1), "Band 7 score 100 precedes Band 1 score 25");
-  assert.deepEqual(await all({ view: "all_outreach", sort: "transaction_intent", direction: "asc" }), [1, 9, 5, 6, 4, 2, 3, 7]);
+  assert.deepEqual(await all({ view: "all_outreach", sort: "transaction_intent", direction: "asc" }), [1, 9, 5, 6, 4, 2, 3, 7, 8]);
   const first = await readAttention({ view: "all_outreach", sort: "transaction_intent", limit: 3 }, deps);
   assert.equal(first.data.direction, "desc", "score sorts default to Highest first");
-  assert.equal(first.data.total_items, 8, "counts describe the filtered population");
+  assert.equal(first.data.total_items, 9, "counts describe the filtered population");
   // Ties resolve on subject_key, never band or confidence.
   const tied = [row(20, 7, { projection: ready(50, 50), in_attention: true }), row(19, 1, { projection: ready(50, 50), in_attention: true })];
   assert.deepEqual(sortAttentionRows(tied, "move_likelihood", "desc").map(r => r.subject_key), [tied[1]!.subject_key, tied[0]!.subject_key]);
@@ -108,18 +109,18 @@ test("multipage walks are stable and equal the one-page order; a zero is a real 
   mockSnapshot(t, withZero);
   const onePage = keys(await readAttention({ view: "all_outreach", sort: "move_likelihood", limit: 200 }, deps));
   assert.deepEqual(await all({ view: "all_outreach", sort: "move_likelihood" }), onePage);
-  assert.deepEqual(onePage, [4, 6, 2, 1, 9, 5, 12, 3, 7]);
+  assert.deepEqual(onePage, [4, 6, 2, 1, 9, 5, 12, 3, 7, 8]);
   assert.deepEqual(await all({ view: "all_outreach", sort: "move_likelihood" }), onePage, "repeatable");
 });
 
-test("views: a no-band eligible row is reachable only in all_outreach; closed work only through an explicit state; default Attention unchanged", async t => {
+test("views: a no-band eligible row is reachable only in all_outreach; closed work held by a badge stays in all_outreach (UX-C1); default Attention unchanged", async t => {
   mockSnapshot(t, rows);
   const attention = await all({});
   // Stored order, minus in_attention:false rows; the unmarked older row stays in Attention; the closed row with a badge stays too.
   assert.deepEqual(attention, [1, 2, 3, 4, 7, 8, 9]);
   assert.ok(!attention.includes(5));
   assert.ok((await all({ view: "all_outreach" })).includes(5));
-  assert.ok(!(await all({ view: "all_outreach" })).includes(8), "closed work is not in all_outreach by default");
+  assert.ok((await all({ view: "all_outreach" })).includes(8), "UX-C1: closed work kept on the desk by a badge is in all_outreach");
   assert.deepEqual(await all({ view: "all_outreach", state: "closed" }), [8]);
   // The default request keeps the pre-sort digest shape: payloadHash of the filters alone.
   const first = await readAttention({ limit: 2 }, deps);

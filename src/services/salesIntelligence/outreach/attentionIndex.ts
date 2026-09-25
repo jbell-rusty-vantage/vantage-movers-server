@@ -48,7 +48,8 @@ function legacyFilterKeys(row: Row): AttentionFilterKeysDto {
 /**
  * S7-PRIO (addendum §5, E12–E14): per Priority key (a Granot code, `not_set` for a Lead without one,
  * `no_lead`), how many rows each view returns with no other filter: `attention` (the Needs Attention
- * view), `active` (All Outreach, which hides closed work) and `closed` (the Closed view's partition).
+ * view), `active` (All Outreach: every active row except closed work, which it keeps only while a band
+ * or review badge holds it on the desk, UX-C1) and `closed` (the Closed view's partition).
  */
 export function attentionPriorityCounts(entries: Iterable<Pick<AttentionIndexEntry, "partition" | "in_attention" | "filter_keys">>) {
   const counts: Record<string, { attention: number; active: number; closed: number }> = {};
@@ -56,7 +57,7 @@ export function attentionPriorityCounts(entries: Iterable<Pick<AttentionIndexEnt
     const bucket = (counts[entry.filter_keys.priority ?? "not_set"] ??= { attention: 0, active: 0, closed: 0 });
     if (entry.partition === "closed") { bucket.closed++; continue; }
     if (entry.in_attention !== false) bucket.attention++;
-    if (entry.filter_keys.state !== "closed") bucket.active++;
+    if (entry.filter_keys.state !== "closed" || entry.in_attention !== false) bucket.active++;
   }
   return counts;
 }
@@ -94,7 +95,9 @@ const inRange = (value: string | null, from?: string, to?: string) => {
 /**
  * Data spec §3.4: every desk parameter against the frozen keys. Views: `attention` keeps band/badge
  * rows of the active partition (a missing marker counts as in Attention); `all_outreach` adds every
- * active row but still hides closed work unless `state=closed`; `closed` reads only the closed partition.
+ * active row but still hides closed work unless `state=closed` or the row is in Attention (UX-C1: a
+ * review badge keeps closed work on the desk, and the Owner's one Outreach list must show it);
+ * `closed` reads only the closed partition.
  * Bounds are half-open `[from, to)`; a null key never matches a bound, a minimum or a boolean.
  */
 export function entryMatchesAttentionQuery(entry: AttentionIndexEntry, query: AttentionQuery, context?: AttentionMatchContext): boolean {
@@ -104,7 +107,7 @@ export function entryMatchesAttentionQuery(entry: AttentionIndexEntry, query: At
   } else {
     if (entry.partition === "closed") return false;
     if (query.view !== "all_outreach" && entry.in_attention === false) return false;
-    if (query.view === "all_outreach" && keys.state === "closed" && !query.state?.includes("closed")) return false;
+    if (query.view === "all_outreach" && keys.state === "closed" && entry.in_attention === false && !query.state?.includes("closed")) return false;
   }
   if (entry.legacy && S2_PARAMS.some(param => query[param] !== undefined)) return false;
   if (query.freshness === "fresh" && entry.sort_keys.assessment_stale === true) return false;

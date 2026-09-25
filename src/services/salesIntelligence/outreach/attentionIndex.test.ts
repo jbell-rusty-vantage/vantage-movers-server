@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { payloadHash } from "../transactions";
 import { attentionRowDtoSchema, type AttentionFilterKeysDto, type AttentionRowDto } from "../dto";
 import { attentionCursorDigest, attentionMetrics, attentionQuerySchema, rowMatchesAttentionQuery, sortAttentionRows } from "./attention";
-import { addDays, attentionIndexEntry, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery } from "./attentionIndex";
+import { addDays, attentionIndexEntry, attentionPriorityCounts, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery } from "./attentionIndex";
 import { attentionSchema as adminAttentionSchema } from "./attention.adminSchema.fixture";
 
 /**
@@ -71,7 +71,8 @@ test("B5: views partition the snapshot; closed rows never reach attention or all
   const active = row(), notInAttention = row({}, { in_attention: false }), badgeClosed = row({ state: "closed", needs_review: true }), closed = closedRow();
   const matches = (r: AttentionRowDto, q: Record<string, unknown>) => rowMatchesAttentionQuery(r, parse(q), ctx);
   assert.deepEqual([active, notInAttention, badgeClosed, closed].map(r => matches(r, {})), [true, false, true, false], "attention");
-  assert.deepEqual([active, notInAttention, badgeClosed, closed].map(r => matches(r, { view: "all_outreach" })), [true, true, false, false], "all_outreach");
+  // UX-C1: a badge keeps closed work in Attention, so the Owner's one list (All Outreach) keeps it too.
+  assert.deepEqual([active, notInAttention, badgeClosed, closed].map(r => matches(r, { view: "all_outreach" })), [true, true, true, false], "all_outreach");
   assert.deepEqual([active, notInAttention, badgeClosed, closed].map(r => matches(r, { view: "all_outreach", state: "closed" })), [false, false, true, false], "all_outreach + state=closed");
   assert.deepEqual([active, notInAttention, badgeClosed, closed].map(r => matches(r, { view: "closed" })), [false, false, false, true], "closed");
   // A pre-S2 row (no filter_keys, no partition) keeps the legacy predicate and never matches an S2 parameter.
@@ -81,6 +82,16 @@ test("B5: views partition the snapshot; closed rows never reach attention or all
   assert.equal(matches(legacy, { band: "4", state: "open" }), true);
   assert.equal(matches(legacy, { has_recording: "false" }), false);
   assert.equal(matches(legacy, { view: "closed" }), false);
+});
+
+test("UX-C1: all_outreach keeps badge-only closed rows, hides closed rows out of Attention, and priority_counts.active counts the same rows", () => {
+  const active = row(), badgeClosed = row({ state: "closed", needs_review: true }), closedOut = row({ state: "closed" }, { in_attention: false }), closed = closedRow();
+  const all = parse({ view: "all_outreach" });
+  assert.deepEqual([active, badgeClosed, closedOut, closed].map(r => rowMatchesAttentionQuery(r, all, ctx)), [true, true, false, false]);
+  const entries = [active, badgeClosed, closedOut, closed].map((r, i) => attentionIndexEntry(r, i));
+  const listed = entries.filter(entry => entryMatchesAttentionQuery(entry, all, ctx)).length;
+  assert.equal(attentionPriorityCounts(entries)["1"]!.active, listed);
+  assert.deepEqual(attentionPriorityCounts(entries)["1"], { attention: 2, active: 2, closed: 1 });
 });
 
 test("move_date filters use the ET calendar day of the snapshot as_of (fixed clocks across ET midnight)", () => {

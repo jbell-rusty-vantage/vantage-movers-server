@@ -59,7 +59,10 @@ test("rowMatchesAttentionQuery: view marker, closed work and freshness (Move ass
   assert.equal(rowMatchesAttentionQuery(noBand, parse({ view: "all_outreach" })), true);
   assert.equal(rowMatchesAttentionQuery(make({}), parse({})), true, "older rows without the marker stay in Attention");
   const closed = make({ in_attention: true, outreach: { state: "closed", assignment: { agent: null }, followups: [] } });
-  assert.equal(rowMatchesAttentionQuery(closed, parse({ view: "all_outreach" })), false);
+  assert.equal(rowMatchesAttentionQuery(closed, parse({ view: "all_outreach" })), true, "UX-C1: a badge keeps closed work in All Outreach");
+  const closedOut = make({ in_attention: false, outreach: { state: "closed", assignment: { agent: null }, followups: [] } });
+  assert.equal(rowMatchesAttentionQuery(closedOut, parse({ view: "all_outreach" })), false, "closed work out of Attention stays hidden");
+  assert.equal(rowMatchesAttentionQuery(closedOut, parse({ view: "all_outreach", state: "closed" })), true);
   assert.equal(rowMatchesAttentionQuery(closed, parse({ view: "all_outreach", state: "closed" })), true);
   assert.equal(rowMatchesAttentionQuery(closed, parse({})), true, "default Attention population is unchanged");
   const stale = make({ in_attention: false, sort_keys: { assessment_stale: true } });
