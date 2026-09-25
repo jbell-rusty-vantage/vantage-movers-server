@@ -16,6 +16,7 @@ import { attachmentPolicyInput, type StoredAttachment } from "../attachment/stor
 import { resolveAtInteraction, type LeadRef } from "../attachment/suggest";
 import { openReview } from "../review/items";
 import { addStaffedMinutes } from "./staffing";
+import { leadInstant } from "./leadInstant";
 import { authoritativeClosure, callFacts, customerCalledBack, fulfilledByCall, pickCallbackTarget, type CompletionPolicy } from "./transitions";
 import { closeRecord, jsonValue, refreshRecord, saveFollowup, recordForUpdate } from "./store";
 import { attentionEvolutionEnabled, CONTACT_FACT_FIELDS, mayReplaceAssignment, progressPlanEnabled, receiverAssignmentEnabled, receiverBlocksPhoneEvidence, subjectKey, type InteractionRow, type RecordRow } from "./types";
@@ -65,10 +66,12 @@ export async function ensureLead(ref: LeadRef, context: CsiTransactionContext, n
   let row = await Model.findOne({ "subject.kind": "lead", "subject.model": ref.model, "subject.id": ref.id }).session(context.session);
   const policy = await resolvePolicy();
   if (!row) {
-    row = new Model({ subject: { kind: "lead", model: ref.model, id: ref.id }, trigger_kind: "lead_arrival", trigger_at: lead.timestamp,
+    // S11-TIME: the real arrival instant (`Lead.timestamp` is ET wall clock for ingested Leads); `prior_contact_at` windows from it too.
+    const arrived = leadInstant(lead);
+    row = new Model({ subject: { kind: "lead", model: ref.model, id: ref.id }, trigger_kind: "lead_arrival", trigger_at: arrived,
       primary_contact_number_id: numberId ?? null, policy_version: policy.version,
-      first_action_due_at: ref.model === "FormLead" ? addStaffedMinutes(lead.timestamp, policy.first_action_due_staffed_minutes, policy) : null,
-      deadline_resolution: { precision: "exact", timezone: policy.timezone, assumption: "Staffed first-call deadline", anchor: lead.timestamp, policy_version: policy.version } });
+      first_action_due_at: ref.model === "FormLead" ? addStaffedMinutes(arrived, policy.first_action_due_staffed_minutes, policy) : null,
+      deadline_resolution: { precision: "exact", timezone: policy.timezone, assumption: "Staffed first-call deadline", anchor: arrived, policy_version: policy.version } });
     // AC3 §5.2/§5.4: `called_before_form` and the contact facts are computed at creation.
     if (attentionEvolutionEnabled()) row.set(await computeContactFacts(row, context.session));
     await refreshRecord(row, context, "outreach_created", null);

@@ -284,22 +284,23 @@ const TRIGGER = new Date("2026-09-10T14:00:00Z");
 function closed(reason: string, origin: string | null, over: Record<string, unknown> = {}) {
   return record({ state: "closed", closed_reason: reason, closure_origin: origin, closed_at: new Date("2026-09-19T16:00:00Z"), trigger_at: TRIGGER, ...over } as never);
 }
-const DAY = 86_400_000;
 
 test("B6 (unit): booked uses book_date - trigger_at; cancelled uses cancel_date - trigger_at; others closed_at - trigger_at", () => {
-  const agent = id(), booking = { _id: id(), book_date: new Date(+TRIGGER + 8 * DAY), total_binder_amount: 1850, job_no: "J-1", agent };
+  // book_date / cancel_date are ET calendar days at UTC midnight; time_to_close counts from the trigger's ET wall clock (14:00Z = 10:00 EDT → 10:00Z).
+  const TRIGGER_WALL = new Date("2026-09-10T10:00:00Z");
+  const agent = id(), booking = { _id: id(), book_date: new Date("2026-09-18T00:00:00Z"), total_binder_amount: 1850, job_no: "J-1", agent };
   const booked = facts({ record: closed("booked", "official"), bookings: [booking], agentNames: new Map([[String(agent), "Dana"]]) });
   assert.equal(booked.outcome?.reason, "booked");
-  assert.equal(booked.outcome?.time_to_close_ms, 8 * DAY);
+  assert.equal(booked.outcome?.time_to_close_ms, +booking.book_date - +TRIGGER_WALL, "7 d 14 h");
   assert.equal(booked.outcome?.calls_total, 6);
   assert.deepEqual(booked.outcome?.booking, { id: String(booking._id), book_date: booking.book_date.toISOString(), total_binder_amount: 1850, job_no: "J-1", agent_name: "Dana" });
   assert.equal(booked.outcome?.cancellation, null);
   assert.equal(booked.filter_keys.outcome, "booked");
   assert.equal(booked.filter_keys.closed_at, "2026-09-19T16:00:00.000Z");
-  const cancel = { _id: id(), booked_lead: booking._id, cancel_date: new Date(+TRIGGER + 11 * DAY), reason: "Found another mover" };
+  const cancel = { _id: id(), booked_lead: booking._id, cancel_date: new Date("2026-09-21T00:00:00Z"), reason: "Found another mover" };
   const cancelled = facts({ record: closed("cancelled", "official"), bookings: [booking], cancellations: [cancel] });
   assert.equal(cancelled.outcome?.reason, "cancelled");
-  assert.equal(cancelled.outcome?.time_to_close_ms, 11 * DAY);
+  assert.equal(cancelled.outcome?.time_to_close_ms, +cancel.cancel_date - +TRIGGER_WALL, "10 d 14 h");
   assert.equal(cancelled.outcome?.booking?.id, String(booking._id));
   assert.deepEqual(cancelled.outcome?.cancellation, { id: String(cancel._id), cancel_date: cancel.cancel_date.toISOString(), reason: "Found another mover" });
   for (const reason of ["bad_lead", "duplicate", "no_sync"]) {
@@ -311,7 +312,7 @@ test("B6 (unit): booked uses book_date - trigger_at; cancelled uses cancel_date 
   // A booked record whose Booking row is missing has no book_date: unknown, never zero.
   assert.equal(facts({ record: closed("booked", "official") }).outcome?.time_to_close_ms, null);
   // A date-only book_date before the Lead's arrival on the same day clamps at 0.
-  assert.equal(facts({ record: closed("booked", "official"), bookings: [{ ...booking, book_date: new Date(+TRIGGER - 3_600_000) }] }).outcome?.time_to_close_ms, 0);
+  assert.equal(facts({ record: closed("booked", "official"), bookings: [{ ...booking, book_date: new Date("2026-09-10T00:00:00Z") }] }).outcome?.time_to_close_ms, 0);
 });
 
 test("§3.5 outcome mapping: CRM dispositions, Owner closures, and the Number-review closures that are not outcomes", () => {

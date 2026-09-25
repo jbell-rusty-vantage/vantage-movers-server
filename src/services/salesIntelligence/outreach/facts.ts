@@ -1,6 +1,7 @@
 import type { AttentionFilterKeysDto, AttentionOutcome, AttentionOutcomeDto, OutreachFactsDto } from "../dto";
 import { assessmentApplicability, assessmentSortKeys, moveAssessmentProjectionDto, type ApplicabilityInput, type ProjectionRow } from "../assessment/presentation";
 import { priorityLabel } from "./leadProgress";
+import { toFloridaTimestamp } from "../../../utils/easternTime";
 import { moveViewsForLead, type LeadMoveSource } from "../assessment/views";
 import { attentionDue } from "./derive";
 import type { FollowupRow, RecordRow } from "./types";
@@ -206,8 +207,10 @@ export function closedOutcome(input: Pick<FactsInput, "record" | "bookings" | "c
   const booking = reason === "cancelled"
     ? byBookDate.find(row => cancellation?.booked_lead != null && String(row._id) === String(cancellation.booked_lead)) ?? byBookDate[0] ?? null
     : reason === "booked" ? byBookDate.find(row => !cancelledIds.has(String(row._id))) ?? byBookDate[0] ?? null : null;
-  const time = reason === "booked" ? since(toDate(booking?.book_date), trigger)
-    : reason === "cancelled" ? since(toDate(cancellation?.cancel_date), trigger)
+  // S11-TIME: `book_date`/`cancel_date` are ET calendar days at UTC midnight (wall-clock scale), so they are measured from the trigger's ET wall clock.
+  const triggerWall = trigger ? toFloridaTimestamp(trigger) : null;
+  const time = reason === "booked" ? since(toDate(booking?.book_date), triggerWall)
+    : reason === "cancelled" ? since(toDate(cancellation?.cancel_date), triggerWall)
     : since(closedAt, trigger);
   const code = record.lead_progress?.granot_priority ?? null;
   return {

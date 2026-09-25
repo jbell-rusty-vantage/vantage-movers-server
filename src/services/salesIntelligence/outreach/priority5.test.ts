@@ -83,7 +83,8 @@ test("outcomes: crm_disposition granot_booked → granot_booked with the Priorit
   const booking = { _id: id(), book_date: new Date("2026-09-23T00:00:00Z"), total_binder_amount: 1200, job_no: "J1" };
   const upgraded = closedOutcome({ record: record({ closure_origin: "official", closed_reason: "booked" }), bookings: [booking], cancellations: [] }, 3)!;
   assert.equal(upgraded.reason, "booked"); assert.equal(upgraded.closed_at, "2026-09-22T16:00:00.000Z"); assert.equal(upgraded.priority, null);
-  assert.equal(upgraded.time_to_close_ms, +booking.book_date - +TRIGGER);
+  // book_date is an ET calendar day at UTC midnight; it counts from the trigger's ET wall clock (13:00Z = 09:00 EDT → 09:00Z).
+  assert.equal(upgraded.time_to_close_ms, +booking.book_date - +new Date("2026-09-20T09:00:00Z"), "2 d 15 h");
 }));
 
 test("metrics: booked_7d / booked_7d_median_days stay official-only (granot_booked never counts)", () => {

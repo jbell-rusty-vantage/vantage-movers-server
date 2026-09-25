@@ -21,6 +21,7 @@ import { redactTranscript } from "../../conversations/redaction";
 import { moveViewsForLead, type LeadMoveSource, type MoveEndpoint } from "../assessment/views";
 import { dispositionFor, normalizePriority, priorityLabel } from "../outreach/leadProgress";
 import { subjectKey } from "../outreach/types";
+import { leadInstant } from "../outreach/leadInstant";
 import { resolveRepIdentityAt, type TemporalRepLink } from "../repIdentity/resolve";
 import { auditActorKind, auditEventStoryKind, EXCLUDED_AUDIT_EVENT_KINDS, followupActorKind } from "./catalog";
 import type { StoryActor, StoryEvent, StoryEventKind, StoryLeadRef, StorySubject } from "./types";
@@ -306,10 +307,15 @@ export function subjectKeysFor(subject: StorySubject, records: readonly RecordRo
     ...subject.conversation_ids.map(id => `conversation:${id}`)].filter((k): k is string => k !== null))];
 }
 
-const leadEvents = (lead: LeadRow): StoryEvent[] => {
+/**
+ * `timeline`: S11-TIME (TL-AUDIT N1), the Owner timeline's `lead_received` is the real arrival instant
+ * (`leadInstant`; ingested Leads store ET wall clock). The model's story keeps `lead.timestamp` (B22,
+ * DECISIONS 2026-09-23 "Reader fixes apply to the Owner timeline only for now").
+ */
+const leadEvents = (lead: LeadRow, timeline = false): StoryEvent[] => {
   const ref: StoryLeadRef = { model: lead.model, id: String(lead._id) };
   const views = moveViewsForLead(lead, lead.model).canonical_current;
-  const received = iso(lead.timestamp) ?? iso(lead.createdAt);
+  const received = iso(timeline ? leadInstant(lead) : lead.timestamp) ?? iso(lead.createdAt);
   if (!received) return [];
   const customer = leadCustomerName(lead);
   const events = [event({ kind: "lead_received", id: String(lead._id), happened_at: received, observed_at: iso(lead.createdAt), subject_key: leadKey(ref),
@@ -331,10 +337,10 @@ const leadEvents = (lead: LeadRow): StoryEvent[] => {
 /** `lead_received` (+ `call_qualified`) for every Lead in scope. */
 export const leadReceivedSource: StorySource = async (subject, limit, options) => {
   const t = options?.timeline;
-  if (t) return whole(t.leads.flatMap(leadEvents), acceptor(subject, t), limit, t.leads.length, subject.lead_refs.length > t.lead_refs.length);
+  if (t) return whole(t.leads.flatMap(lead => leadEvents(lead, true)), acceptor(subject, t), limit, t.leads.length, subject.lead_refs.length > t.lead_refs.length);
   if (!subject.lead_refs.length) return empty();
   const leads = await readLeadRows(subject.lead_refs.slice(0, limit));
-  const events = leads.flatMap(leadEvents).filter(withinAsOf(subject)).sort(byNewest);
+  const events = leads.flatMap(lead => leadEvents(lead)).filter(withinAsOf(subject)).sort(byNewest);
   return { events, read: leads.length, truncated: subject.lead_refs.length > limit };
 };
 
