@@ -955,7 +955,7 @@ function followupEvents(rows: FollowupRow[], keyByRecord: Map<string, string>, s
     if (created) events.push(event({ kind: "followup_created", id, happened_at: created, observed_at: created, subject_key: key, actor: who, detail, evidence_refs: refs }));
     const updated = iso((row as { updatedAt?: Date }).updatedAt);
     if (row.status === "completed" && (iso(row.completed_at) ?? updated)) events.push(event({ kind: "followup_completed", id, happened_at: iso(row.completed_at) ?? updated!, observed_at: updated, subject_key: key,
-      actor: row.completion_basis === "owner" ? actor("owner", null, text(row.completed_by, 60)) : row.completion_basis === "customer_confirmation" ? actor("customer") : row.completion_basis === "rep_confirmation" ? actor("rep") : actor("vantage"),
+      actor: row.completion_basis === "owner" ? actor("owner", null, text(row.completed_by, 60)) : row.completion_basis === "customer_confirmation" ? actor("customer") : row.completion_basis === "rep_confirmation" ? actor("rep", null, row.responsible_agent_id ? String(row.responsible_agent_id) : null) : actor("vantage"),
       detail, evidence_refs: [...refs, ...(row.evidence_interaction_id ? [`interaction:${row.evidence_interaction_id}`] : []), ...(row.completion_finding_id ? [`finding:${row.completion_finding_id}`] : [])] }));
     const cancelledAt = transitionAt?.get(`${id}:cancelled`) ?? updated;
     if (row.status === "cancelled" && cancelledAt) events.push(event({ kind: "followup_cancelled", id, happened_at: cancelledAt, observed_at: cancelledAt, subject_key: key, actor: actor("owner"), detail, evidence_refs: refs }));

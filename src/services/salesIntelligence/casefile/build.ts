@@ -138,7 +138,9 @@ function boundTimeline(events: StoryEvent[], conversationCalls: ReadonlySet<stri
   return { events: events.filter((_, i) => !drop.has(i)), dropped: drop.size };
 }
 
-function sourceOf(e: StoryEvent): string {
+// UI-2 gate (operator, 2026-09-25): a rep's own completion is labelled with the rep's name, `{rep} (rep)`.
+export function sourceOf(e: StoryEvent, agents: Readonly<Record<string, string>> = {}): string {
+  if (e.kind === "followup_completed" && e.actor.kind === "rep") { const name = e.actor.agent_id ? agents[e.actor.agent_id] : undefined; return name ? `${cleanText(name, 60)} (rep)` : "A rep"; }
   switch (e.kind) {
     case "lead_received": return "Vantage intake";
     case "call_qualified": case "call": case "call_attempts": case "conversation_recorded": return "RingCentral";
@@ -481,7 +483,7 @@ export function buildCaseFile(src: CaseFileSources): CaseFile {
     const recoveredAt = src.recovered_calls?.[e.id];
     const late = recoveredAt ? ` (recovered by a capture repair on ${timelineDate(recoveredAt, asOf)})`
       : e.observed_at && Date.parse(e.observed_at) - Date.parse(e.happened_at) > LATE_MS ? ` (recorded ${timelineDate(e.observed_at, asOf)})` : "";
-    const head = `[T${t}] ${timeSlot(e, asOf)} · ${sourceOf(e)} · ${headText(e, ctx)}${late}`;
+    const head = `[T${t}] ${timeSlot(e, asOf)} · ${sourceOf(e, src.agents)} · ${headText(e, ctx)}${late}`;
     const lines = [head];
     const conversations = e.kind === "call" ? conversationsByCall.get(String(e.detail.interaction_id ?? "")) ?? []
       : e.kind === "conversation_recorded" ? [String(e.detail.conversation_id ?? "")] : [];
