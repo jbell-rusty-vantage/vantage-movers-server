@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
-  numberVerdict, bucketize, budgetHeadroom, configurePaidProcess, isOwnDedupe, numberExclusion, p95, parseCliOptions, pickCost, resumeDecision,
+  acquireRepairLock, releaseRepairLock, repairLockPath, numberVerdict, bucketize, budgetHeadroom, configurePaidProcess, isOwnDedupe, numberExclusion, p95, parseCliOptions, pickCost, resumeDecision,
   summarize, targetContractsDigest, targetVersions, type FullBackfillManifest,
 } from "./full-backfill";
 import {
@@ -13,7 +16,9 @@ test("CLI: estimate by default, Case File by default, bounded concurrency, no --
   assert.equal(base.mode, "estimate");
   assert.equal(base.layout, "case_file");
   assert.equal(base.s10Holds, "drive", "an S10-held scheduled synthesis IS the Number's one synthesis: drive by default");
-  assert.equal(base.repairTimeoutMinutes, 720);
+  assert.equal(base.repairIdleMinutes, 60, "the repair child is stopped after 60 minutes without output");
+  assert.equal(parseCliOptions(["n", "s", "--repair-idle-minutes", "15"]).repairIdleMinutes, 15);
+  assert.throws(() => parseCliOptions(["n", "s", "--repair-timeout-minutes", "720"]), /repair-idle-minutes/);
   assert.equal(base.concurrency, 2);
   const apply = parseCliOptions(["node", "s", "--confirm-write", "--allow-production", "--concurrency", "3", "--numbers", "aaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbb",
     "--max-numbers", "5", "--since", "2026-09-01T00:00:00Z", "--layout", "default", "--s10-holds", "leave", "--resume"]);
@@ -136,4 +141,20 @@ test("verification: a Number passes only with a current summary, a matching (or 
   assert.equal(numberVerdict({ ...base, fingerprint_match: false, expected_mismatch: "s10_hold_left" }).pass, true, "--s10-holds leave: the mismatch is expected, not a failure");
   assert.equal(numberVerdict({ ...base, conversations_left: 1 }).pass, false);
   assert.equal(numberVerdict({ ...base, state: "blocked" }).pass, true, "state alone does not decide: the §7 checks do");
+});
+
+test("phase 1 lock: a live repair child refuses a second start; a stale lock is taken over; release clears only its own", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "fb-lock-"));
+  try {
+    const path = repairLockPath(join(dir, "csi-full-backfill.json"));
+    assert.ok(path.endsWith("csi-full-backfill.repair.lock"));
+    const lock = (pid: number) => ({ pid, started_at: "2026-09-25T00:00:00.000Z", repair_manifest: "r.json" });
+    assert.deepEqual(await acquireRepairLock(path, lock(111), () => false), { replaced_stale: false });
+    await assert.rejects(() => acquireRepairLock(path, lock(222), pid => pid === 111), /pid 111.*still running/);
+    assert.deepEqual(await acquireRepairLock(path, lock(333), () => false), { replaced_stale: true }, "a dead PID's lock is stale");
+    await releaseRepairLock(path, 111);
+    assert.equal(JSON.parse(await readFile(path, "utf8")).pid, 333, "another run's lock is left alone");
+    await releaseRepairLock(path, 333);
+    await assert.rejects(() => readFile(path, "utf8"), /ENOENT/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

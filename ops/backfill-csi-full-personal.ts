@@ -10,7 +10,7 @@
  *   node --max-old-space-size=8192 --env-file=.env --import tsx ops/backfill-csi-full-personal.ts \
  *     --allow-production --confirm-write --concurrency 2 --manifest ops/output/csi-full-backfill-<date>.json \
  *     --repair-manifest <abs path to call-log-repair-2026-09-20.json> [--layout case_file] [--s10-holds drive|leave] \
- *     [--numbers id,id | --max-numbers N] [--since ISO] [--repair-max-wait-minutes 120] [--repair-timeout-minutes 720] [--skip-repair]
+ *     [--numbers id,id | --max-numbers N] [--since ISO] [--repair-max-wait-minutes 120] [--repair-idle-minutes 60] [--skip-repair]
  * Resume: the same command plus --resume.
  *
  * Phase 1 spawns `ops/repair-call-log-capture.ts --manifest <repair manifest> --allow-production --confirm-write`
@@ -28,7 +28,7 @@ import { csiDataset, csiProviderConfiguration } from "../src/config/domain/sales
 import { readRecordedDeployment } from "../src/services/salesIntelligence/deploymentStamp";
 import { ensureCurrentCsiBudgetPeriod } from "../src/services/salesIntelligence/budgetPeriod";
 import {
-  budgetHeadroom, configurePaidProcess, createBackfillRunners, estimateWorkSet, jsonlLogger, loadManifest, manifestSaver,
+  acquireRepairLock, budgetHeadroom, configurePaidProcess, releaseRepairLock, repairLockPath, createBackfillRunners, estimateWorkSet, jsonlLogger, loadManifest, manifestSaver,
   newManifest, parseCliOptions, readRepairHoldIds, runFullBackfill, selectWorkSet, targetVersions, type FullBackfillManifest,
 } from "./lib/full-backfill";
 import { assertProductionWriterMatchesDeployment, localGitHead } from "./lib/production-writer-guard";
@@ -41,34 +41,46 @@ const REPAIR_EXIT_GRACE_MS = 60_000;
 
 /**
  * Phase 1: the repair's own script on its own manifest; the child inherits this process's paid configuration.
- * Watchdog: the repair script ends with `mongoose.disconnect()`, not `process.exit()`, so an open handle can keep it
- * alive. Once it reports `done` it gets a grace period and is then stopped (exit 0); a child that never reports
- * is stopped at `--repair-timeout-minutes` (a failed phase, resumable).
+ * - Lock: `<manifest>.repair.lock` holds the child's PID; a start or resume while that PID is alive refuses.
+ * - Watchdog: the repair script ends with `mongoose.disconnect()`, not `process.exit()`, so an open handle can keep it
+ *   alive. Once it reports `done` it gets a grace period and is then stopped (exit 0). A child with no output for
+ *   `--repair-idle-minutes` is stopped and the phase is marked failed (resumable).
  */
-function spawnRepair(repairManifest: string, input: { allowProduction: boolean; maxWaitMinutes: number; timeoutMinutes: number; rcTokenStore: string | null }) {
+async function spawnRepair(repairManifest: string, input: { allowProduction: boolean; maxWaitMinutes: number; idleMinutes: number; rcTokenStore: string | null; lockPath: string }) {
+  const env = { ...process.env };
+  // The repair fetches media through its own code (handoff A4); it keeps the store it ran with.
+  if (input.rcTokenStore === null) delete env.RC_TOKEN_STORE; else env.RC_TOKEN_STORE = input.rcTokenStore;
+  await acquireRepairLock(input.lockPath, { pid: process.pid, started_at: new Date().toISOString(), repair_manifest: repairManifest });
+  const child = spawn(process.execPath, ["--max-old-space-size=8192", "--import", "tsx", "ops/repair-call-log-capture.ts",
+    "--manifest", repairManifest, "--confirm-write", "--max-wait-minutes", String(input.maxWaitMinutes),
+    ...(input.allowProduction ? ["--allow-production"] : [])], { stdio: ["ignore", "pipe", "pipe"], env, cwd: resolve(__dirname, "..") });
+  const lockPid = child.pid ?? process.pid;
+  if (child.pid) await writeFile(input.lockPath, JSON.stringify({ pid: child.pid, started_at: new Date().toISOString(), repair_manifest: repairManifest }) + "\n");
   return new Promise<number | null>((done, fail) => {
-    const env = { ...process.env };
-    // The repair fetches media through its own code (handoff A4); it keeps the store it ran with.
-    if (input.rcTokenStore === null) delete env.RC_TOKEN_STORE; else env.RC_TOKEN_STORE = input.rcTokenStore;
-    const child = spawn(process.execPath, ["--max-old-space-size=8192", "--import", "tsx", "ops/repair-call-log-capture.ts",
-      "--manifest", repairManifest, "--confirm-write", "--max-wait-minutes", String(input.maxWaitMinutes),
-      ...(input.allowProduction ? ["--allow-production"] : [])], { stdio: ["ignore", "pipe", "inherit"], env, cwd: resolve(__dirname, "..") });
-    let reported: "done" | "stopped" | null = null, tail = "";
-    let grace: NodeJS.Timeout | null = null;
-    const watchdog = setTimeout(() => { console.error(JSON.stringify({ repair_watchdog: "timeout", minutes: input.timeoutMinutes })); child.kill(); }, input.timeoutMinutes * 60_000);
+    let reported: "done" | "stopped" | null = null, tail = "", idled = false;
+    let grace: NodeJS.Timeout | null = null, idle: NodeJS.Timeout | null = null;
+    const arm = () => {
+      if (idle) clearTimeout(idle);
+      idle = setTimeout(() => { idled = true; console.error(JSON.stringify({ repair_watchdog: "idle", minutes: input.idleMinutes })); child.kill(); }, input.idleMinutes * 60_000);
+    };
+    arm();
+    child.stderr.on("data", (chunk: Buffer) => { process.stderr.write(chunk); arm(); });
     child.stdout.on("data", (chunk: Buffer) => {
       process.stdout.write(chunk);
+      arm();
       tail = (tail + chunk.toString("utf8")).slice(-4_096);
       if (!reported && /"done":true/.test(tail)) reported = "done";
       if (!reported && /"stopped":true/.test(tail)) reported = "stopped";
       if (reported === "done" && !grace) grace = setTimeout(() => { console.error(JSON.stringify({ repair_watchdog: "exit_after_done" })); child.kill(); }, REPAIR_EXIT_GRACE_MS);
     });
     child.on("exit", code => {
-      clearTimeout(watchdog);
+      if (idle) clearTimeout(idle);
       if (grace) clearTimeout(grace);
-      done(reported === "done" ? 0 : reported === "stopped" ? (code || 1) : code);
+      // An idle stop is a failed phase even if the child exits 0 when killed.
+      const result = reported === "done" && !idled ? 0 : idled || reported === "stopped" ? (code || 1) : code;
+      void releaseRepairLock(input.lockPath, lockPid).finally(() => done(result));
     });
-    child.on("error", fail);
+    child.on("error", error => { void releaseRepairLock(input.lockPath, lockPid).finally(() => fail(error)); });
   });
 }
 
@@ -130,7 +142,7 @@ async function main() {
   const summary = await runFullBackfill(manifest, {
     runners: createBackfillRunners(), save, log,
     runRepair: path => spawnRepair(path, { allowProduction: options.allowProduction, maxWaitMinutes: options.repairMaxWaitMinutes,
-      timeoutMinutes: options.repairTimeoutMinutes, rcTokenStore: paid!.rcTokenStore }),
+      idleMinutes: options.repairIdleMinutes, rcTokenStore: paid!.rcTokenStore, lockPath: repairLockPath(manifestPath) }),
   }, { concurrency: options.concurrency, s10Holds: options.s10Holds, repairManifest, skipRepair: options.skipRepair,
     numbers: manifest.options.numbers, since: manifest.options.since ? new Date(manifest.options.since) : null, maxNumbers: manifest.options.max_numbers, model: paid!.model });
   console.log(JSON.stringify({ done: true, manifest: manifestPath, ...summary, verify: manifest.phases.verify }));

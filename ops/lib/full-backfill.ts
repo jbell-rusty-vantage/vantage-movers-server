@@ -24,7 +24,7 @@
  *
  * Manifests and logs carry identifiers, counts and outcomes only: no phone numbers, names or content.
  */
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import mongoose from "mongoose";
 import { withTransaction } from "../../src/db";
@@ -62,7 +62,9 @@ export const MAX_SYNTHESES_PER_NUMBER = 2;
 const CLAIM_ATTEMPTS = 3;
 /**
  * Estimate report only: hours left in the active period. The paid run ensures the current period before the run and
- * before every paid unit (`ensureCurrentCsiBudgetPeriod`), so a month rollover mid-run creates the next period instead.
+ * before every paid unit (`ensureCurrentCsiBudgetPeriod`). A rollover is not seamless: activating the new period resumes
+ * every `budget_exhausted` pause (`resumeBudgetPausedJobs`), so a unit paused in that instant can be released to
+ * production before this run holds it; `runUnit` then claims it at once or records it as a peer.
  */
 export const BUDGET_PERIOD_MIN_HOURS = 12;
 /** Nominal per-step cents (`structuredGeneration.ts` fallback) when too few reconciled reservations exist. */
@@ -99,8 +101,8 @@ export type CliOptions = {
   repairManifest: string | null;
   skipRepair: boolean;
   repairMaxWaitMinutes: number;
-  /** Phase 1 watchdog: the repair child is stopped after this long (it has no process.exit of its own). */
-  repairTimeoutMinutes: number;
+  /** Phase 1 watchdog: the repair child is stopped (phase failed, resumable) after this long with no output. */
+  repairIdleMinutes: number;
   json: string | null;
 };
 const OBJECT_ID = /^[a-f\d]{24}$/i;
@@ -132,13 +134,14 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
   if (since && Number.isNaN(since.getTime())) throw new Error("--since is not a date");
   const wait = Number(value("--repair-max-wait-minutes") ?? 120);
   if (!Number.isFinite(wait) || wait < 0) throw new Error("--repair-max-wait-minutes must be ≥ 0");
-  const watchdog = Number(value("--repair-timeout-minutes") ?? 720);
-  if (!Number.isFinite(watchdog) || watchdog <= 0) throw new Error("--repair-timeout-minutes must be > 0");
+  if (has("--repair-timeout-minutes")) throw new Error("--repair-timeout-minutes was replaced by --repair-idle-minutes (no-output timeout)");
+  const idle = Number(value("--repair-idle-minutes") ?? 60);
+  if (!Number.isFinite(idle) || idle <= 0) throw new Error("--repair-idle-minutes must be > 0");
   return {
     mode: has("--confirm-write") ? "apply" : "estimate", allowProduction: has("--allow-production"), concurrency,
     numbers: numbers?.length ? numbers : null, maxNumbers, since, resume: has("--resume"), manifest: value("--manifest") ?? null,
     layout, s10Holds: s10, repairManifest: value("--repair-manifest") ?? null, skipRepair: has("--skip-repair"),
-    repairMaxWaitMinutes: wait, repairTimeoutMinutes: watchdog, json: value("--json") ?? null,
+    repairMaxWaitMinutes: wait, repairIdleMinutes: idle, json: value("--json") ?? null,
   };
 }
 
@@ -351,6 +354,34 @@ export function jsonlLogger(path: string, runId: string, echo: (line: string) =>
     return pending;
   };
 }
+/**
+ * Phase 1 lock next to the backfill manifest: one repair child per manifest. A lock whose PID is still alive refuses
+ * a second start (a resume while the first child still runs); a stale lock (dead PID) is taken over.
+ */
+export type RepairLock = { pid: number; started_at: string; repair_manifest: string };
+export const repairLockPath = (manifestPath: string) => manifestPath.replace(/\.json$/, "") + ".repair.lock";
+export function pidAlive(pid: number) {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return Boolean(error && typeof error === "object" && "code" in error && error.code === "EPERM"); }
+}
+export async function acquireRepairLock(path: string, lock: RepairLock, alive: (pid: number) => boolean = pidAlive) {
+  let existing: RepairLock | null = null;
+  try { existing = JSON.parse(await readFile(path, "utf8")) as RepairLock; }
+  catch (error) { if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error; }
+  if (existing && Number.isInteger(existing.pid) && alive(existing.pid))
+    throw new Error(`a repair child (pid ${existing.pid}, started ${existing.started_at}) is still running on this manifest; wait for it or stop it, then resume`);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(lock) + "\n");
+  return { replaced_stale: existing !== null };
+}
+/** Clears the lock only when it still names `pid` (a newer run's lock is left alone). */
+export async function releaseRepairLock(path: string, pid: number) {
+  try {
+    const existing = JSON.parse(await readFile(path, "utf8")) as RepairLock;
+    if (existing.pid === pid) await rm(path, { force: true });
+  } catch { /* already gone */ }
+}
+
 /** The CC-07 repair's hold ids (it owns them; this run never releases them). */
 export async function readRepairHoldIds(path: string | null): Promise<Set<string>> {
   if (!path) return new Set();
@@ -630,7 +661,8 @@ class FullBackfill {
     await this.jobs().updateOne({ _id: jobId, status: "paused", reason: OPERATOR_HOLD_REASON },
       { $set: { status: runnable ? hold.prior_status : "pending", reason: runnable ? hold.prior_reason : null, next_attempt_at: this.now() } });
     this.manifest.holds = this.manifest.holds.filter(h => h.job_id !== jobId);
-    await this.seams.log("release", { job_id: jobId, stage: job.stage });
+    // Not awaited: the claim follows at once (the manifest is saved after it).
+    void Promise.resolve(this.seams.log("release", { job_id: jobId, stage: job.stage })).catch(() => undefined);
   }
   /** After a throw between release and claim: a released job is never left pending and due. */
   private async rehold(jobId: string, numberId: string, conversationId: string | null) {
@@ -744,9 +776,10 @@ class FullBackfill {
           continue;
         }
         if (paid && !(await this.ensureBudget())) break;
+        // The manifest write comes first: nothing sits between making the job due and claiming it.
+        await this.inflight(jobId, true);
         if (job.status === "paused") await this.release(job);
         else await this.jobs().updateOne({ _id: jobId, status: { $in: ["pending", "retry"] }, next_attempt_at: { $gt: this.now() } }, { $set: { next_attempt_at: this.now() } });
-        await this.inflight(jobId, true);
         const result = stage === "application" ? await this.seams.runners.application(jobId) : await this.seams.runners.analysis(jobId, stage);
         await this.inflight(jobId, false);
         invoked = true;
@@ -758,11 +791,25 @@ class FullBackfill {
         const after = await this.load(jobId);
         if (!after) return record("missing", null);
         this.checkFatal(resultReason(after) ?? after.reason);
+        if (this.fatal === "budget_exhausted" && after.status !== "paused") {
+          // The worker paused it for budget, but a rollover already released it: not a stop. Claim again (pending) or record the peer.
+          await this.seams.log("budget_release_raced", { job_id: jobId, stage, status: after.status });
+          this.fatal = null;
+          if (after.status === "leased") { peer = true; await waitForBackfillPeer(async () => this.load(jobId), ms => this.sleep(ms)); continue; }
+          if (after.status === "completed") return record("done", "peer", "released_to_production");
+        }
         if (after.status === "completed") return record("done", peer ? "peer" : by, resultReason(after) ?? undefined);
         if (after.status === "dead_letter") return record("failed", by, resultReason(after) ?? after.reason ?? "dead_letter");
         if (after.status === "paused" && after.reason === "budget_exhausted") {
-          await this.hold(after, numberId, conversationId);
-          return record("deferred", null, "budget_exhausted_held");
+          if (await this.hold(after, numberId, conversationId)) return record("deferred", null, "budget_exhausted_held");
+          // A budget rollover resumed it in between: claim it at once, or (a consumer got it first) record the peer.
+          const raced = await this.load(jobId);
+          await this.seams.log("budget_release_raced", { job_id: jobId, stage, status: raced?.status ?? null });
+          if (this.fatal === "budget_exhausted") this.fatal = null;
+          if (raced && ["pending", "retry"].includes(raced.status)) continue;
+          if (raced?.status === "leased") { peer = true; await waitForBackfillPeer(async () => this.load(jobId), ms => this.sleep(ms)); continue; }
+          if (raced?.status === "completed") return record("done", "peer", "released_to_production");
+          return record("blocked", null, `budget_race:${raced?.status ?? "missing"}`);
         }
         if (after.status === "paused") return record("blocked", by, resultReason(after) ?? after.reason ?? "paused");
       }

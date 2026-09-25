@@ -199,8 +199,8 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
 
   // ── Faked model step and application ─────────────────────────────────────
   const calls: Array<{ stage: string; subject: string; job: string }> = [];
-  const once = new Map<string, "budget" | "kill_mid" | "kill_after" | "throw_before_claim">([[a.id, "budget"], [b.id, "kill_mid"], [c.id, "kill_after"],
-    [e.id, "throw_before_claim"]]);
+  const once = new Map<string, "budget" | "budget_race" | "kill_mid" | "kill_after" | "throw_before_claim">([[a.id, "budget"], [b.id, "kill_mid"],
+    [c.id, "kill_after"], [e.id, "throw_before_claim"], [n4, "budget_race"]]);
   const cronCannotClaim = async () => {
     for (const stage of ["analysis", "number_refresh"] as const)
       assert.equal(await claimCsiJob("csi-analysis:cron", undefined, 60_000, stage), null, `an undirected cron claim takes no ${stage} job while the backfill runs`);
@@ -221,6 +221,12 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
       const lease = { job_id: jobId, owner: job.lease_owner!, epoch: job.lease_epoch };
       if (behaviour === "kill_mid") throw new Error("simulated kill mid-claim");
       if (behaviour === "budget") { await failCsiJob(lease, "budget_exhausted", 0, { result: { reason: "budget_exhausted" } }); return { status: "paused", reason: "budget_exhausted" }; }
+      if (behaviour === "budget_race") {
+        // A month rollover in the same instant: activating the new period resumes every budget pause before the backfill can hold it.
+        await failCsiJob(lease, "budget_exhausted", 0, { result: { reason: "budget_exhausted" } });
+        assert.equal((await resumeBudgetPausedJobs()).job_ids.includes(jobId), true);
+        return { status: "paused", reason: "budget_exhausted" };
+      }
       calls.push({ stage, subject, job: jobId });
       const conversation = stage === "analysis" ? await Conversations.findById(subject).select("contact_number_id").lean() : null;
       const numberId = conversation ? String(conversation.contact_number_id) : subject;
@@ -355,6 +361,7 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
   for (const [number, old, status] of [[n4, n4OldRun, "paused"], [n7, n7OldRun, "retry"]] as const) {
     const unit = byNumber.get(number)!.synthesis.find(u => u.stage === "number_refresh")!;
     assert.deepEqual([unit.prior?.action, unit.prior?.status], ["superseded", status]);
+    assert.deepEqual([unit.by, unit.outcome], ["backfill", "done"], "N4's budget pause raced a rollover: claimed again at once, not recorded as held");
     assert.equal((await Runs.findById(old).lean())?.status, "stale");
   }
   // N8: the pending application was re-armed by id (`by: "prior"`), no new synthesis.
