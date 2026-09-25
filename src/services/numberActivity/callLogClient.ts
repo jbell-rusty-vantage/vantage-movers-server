@@ -36,9 +36,10 @@ export function isProviderThrottle(error: unknown): boolean {
 }
 
 /**
- * Retry-After is honored when a caller surfaces it (`retryAfterMs`). The shared
- * client does not expose response headers today, so the default is the
- * documented ten-minute posture rather than a guessed shorter wait.
+ * Retry-After is honored when the error carries it (`retryAfterMs`). The shared
+ * client sets it from `Retry-After` / `X-Rate-Limit-Window` on a provider 429,
+ * and from the remaining wait when the shared rate gate refused the send
+ * (`rateLimitGate.ts`); otherwise the documented ten-minute default applies.
  */
 export function throttleRetryAfterMs(error: unknown, fallbackMs = 10 * 60_000): number {
   const value = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;

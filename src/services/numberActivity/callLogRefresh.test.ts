@@ -3,7 +3,10 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import { RingCentralApiError } from "../ringcentral/client";
 import {
+  CALL_LOG_REFRESH_MAX_AGE_MS,
   CALL_LOG_REFRESH_RETRY_DELAYS_MS,
+  CALL_LOG_REFRESH_THROTTLE_JITTER_MS,
+  drainCallLogRefreshJobs,
   callLogRefreshDedupeKey,
   callLogRefreshSubjectKey,
   deliveryCarriesTerminalStatus,
@@ -217,4 +220,66 @@ test("consumer: unclaimable id does nothing", async () => {
   assert.deepEqual(await runCallLogRefreshJob(h.jobId, h.deps), { status: "not_claimable", job_id: h.jobId });
   assert.deepEqual(await runCallLogRefreshJob("nope", h.deps), { status: "not_claimable", job_id: "nope" });
   assert.equal(h.calls.fetch.length, 0);
+});
+
+test("provider read: a refresh asks the shared RingCentral gate for a low-priority slot", async () => {
+  const options: unknown[] = [];
+  await fetchCallLogRecordsBySession(
+    { telephonySessionId: "s-1", dateFrom: new Date("2026-09-23T13:00:00.000Z") },
+    (async (_method: string, _endpoint: string, _body: unknown, requestOptions: unknown) => {
+      options.push(requestOptions);
+      return { records: [] };
+    }) as never,
+  );
+  assert.deepEqual(options, [{ priority: "low" }]);
+});
+
+test("consumer: a job older than the max age completes expired without a provider read (throttle backlogs drain)", async () => {
+  const h = harness({ fetch: async () => assert.fail("no provider read for an expired refresh") });
+  const old = mongoose.Types.ObjectId.createFromTime(Math.floor((NOW.getTime() - CALL_LOG_REFRESH_MAX_AGE_MS - 60_000) / 1000));
+  const claim = h.deps.claim!;
+  h.deps.claim = (async (...args: Parameters<typeof claim>) => ({ ...(await claim(...args))!, _id: old })) as never;
+  const outcome = await runCallLogRefreshJob(old.toHexString(), h.deps);
+  assert.equal(outcome.status, "completed");
+  assert.equal(h.calls.complete[0]!.result.state, "expired");
+  assert.equal(h.calls.fail.length, 0);
+});
+
+test("consumer: a row the reconcile already settled completes already_settled without a provider read", async () => {
+  const h = harness({ fetch: async () => assert.fail("no provider read for a settled row") });
+  h.deps.loadState = async () => ({
+    telephony_session_id: "s-r",
+    started_at: new Date("2026-09-23T14:30:00.000Z"),
+    provider_account_id: "800000000001",
+    account_parties_terminal: true,
+    call_log_state: "settled",
+  });
+  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
+  assert.equal(outcome.status, "completed");
+  assert.equal(h.calls.complete[0]!.result.state, "already_settled");
+});
+
+test("consumer: a throttle defers by the provider/gate Retry-After plus bounded jitter", async () => {
+  const h = harness({
+    fetch: async () => {
+      throw new RingCentralApiError("gated", 429, "Rate gate closed", "/call-log", "GET", null, { retryAfterMs: 45_000, gated: true });
+    },
+  });
+  h.deps.random = () => 0.5;
+  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
+  assert.ok(outcome.status === "retry" && outcome.reason === "throttled");
+  assert.equal(h.calls.fail[0]!.retryAfterMs, 45_000 + 0.5 * CALL_LOG_REFRESH_THROTTLE_JITTER_MS);
+});
+
+test("drain: stops at the first throttle instead of claiming every due job just to defer it", async () => {
+  const h = harness({
+    fetch: async () => {
+      throw new RingCentralApiError("throttled", 429, "Too Many Requests", "/call-log", "GET", null);
+    },
+  });
+  const summary = await drainCallLogRefreshJobs(50, h.deps);
+  assert.equal(summary.claimed, 1);
+  assert.equal(summary.retried, 1);
+  assert.equal(summary.throttled, true);
+  assert.equal(h.calls.fetch.length, 1);
 });

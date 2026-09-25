@@ -17,6 +17,7 @@ import type { EnhancedJobTimelinePage } from "../../jobNumberTimeline/types";
 import { redactTranscript } from "../../conversations/redaction";
 import { normalizePhoneNumberToE164Like } from "../../ringcentral/phone-normalization";
 import { getRingCentralTokenStore } from "../../ringcentral/auth";
+import { acquireRingCentralSlot, providerRetryAfterMs, recordRingCentralThrottle, RingCentralGateDeniedError, type RingCentralRateGate } from "../../ringcentral/rateLimitGate";
 import { resolveRepIdentities } from "../repIdentity/resolve";
 import type { RingCentralTokenCache } from "../../ringcentral/types";
 import { CsiError } from "../auth";
@@ -114,14 +115,18 @@ function projectProviderCall(scope: ReadScope, raw: unknown): EvidenceRecord | n
 }
 
 /** Fixed read-only provider adapter. Reuses cached credentials without refreshing or writing the token store. */
-export function createScopedRingCentralGet(deps: {fetchImpl?: typeof fetch; cachedToken?: () => Promise<RingCentralTokenCache | null>; origin?: string} = {}) {
+export function createScopedRingCentralGet(deps: {fetchImpl?: typeof fetch; cachedToken?: () => Promise<RingCentralTokenCache | null>; origin?: string; gate?: RingCentralRateGate} = {}) {
   return async (path: string): Promise<unknown> => {
     if (!/^\/restapi\/v1\.0\/account\/[A-Za-z0-9_-]+\/call-log(?:\/[A-Za-z0-9_-]+|\?[^#]*)?$/.test(path)) throw new CsiError("INVALID_INPUT");
     const origin = new URL(deps.origin ?? process.env.RC_SERVER_URL ?? "https://invalid.invalid");
     if (origin.protocol !== "https:" || !["platform.ringcentral.com", "platform.devtest.ringcentral.com"].includes(origin.hostname) || origin.pathname !== "/" || origin.username || origin.password || origin.search || origin.hash) throw new Error("provider_unavailable");
     const token = await (deps.cachedToken ?? (() => getRingCentralTokenStore().get()))();
     if (!token || token.access_token_expires_at <= Date.now() + 30_000) throw new Error("provider_unavailable");
+    // Model-driven Call Log reads share the Heavy budget as low-priority work: a closed gate is "unavailable", never a wait.
+    try { await acquireRingCentralSlot(path, {priority: "low", gate: deps.gate}); }
+    catch (error) { if (error instanceof RingCentralGateDeniedError) throw new Error("provider_unavailable"); throw error; }
     const response = await (deps.fetchImpl ?? fetch)(new URL(path, origin), {method: "GET", headers: {Authorization: `Bearer ${token.access_token}`, Accept: "application/json"}, redirect: "error", signal: AbortSignal.timeout(15_000)});
+    if (response.status === 429) await recordRingCentralThrottle(path, {retryAfterMs: providerRetryAfterMs(response.headers).ms, headerGroup: response.headers.get("x-rate-limit-group"), gate: deps.gate});
     if (!response.ok) { await response.body?.cancel(); throw new Error("provider_unavailable"); }
     const reader = response.body?.getReader();
     if (!reader) throw new Error("provider_unavailable");

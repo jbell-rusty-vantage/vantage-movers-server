@@ -15,7 +15,10 @@ export function retryAfterMs(value: string | null, now: Date): number {
   if (value) { const date = Date.parse(value); if (Number.isFinite(date) && date > now.getTime()) return date - now.getTime(); }
   return 600_000;
 }
-export function recordingProvider(read = ringCentralReadResponse): RecordingProvider {
+/** Recording reads are Heavy-group, low-priority work: they never crowd out the Call Log reconcile (see `rateLimitGate.ts`). */
+const lowPriorityRead = (endpoint: string, signal: AbortSignal) => ringCentralReadResponse(endpoint, signal, { priority: "low" });
+
+export function recordingProvider(read: (endpoint: string, signal: AbortSignal) => Promise<Response> = lowPriorityRead): RecordingProvider {
   const request = async (account: string, id: string, content: boolean, signal: AbortSignal) => {
     if (!/^[A-Za-z0-9_-]+$/.test(account) || !/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("invalid_recording_identity");
     const response = await read(`/restapi/v1.0/account/${account}/recording/${id}${content ? "/content" : ""}`, signal);

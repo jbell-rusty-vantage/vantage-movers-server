@@ -61,6 +61,16 @@ export const CALL_LOG_REFRESH_DELAY_MS = 90_000;
 export const CALL_LOG_REFRESH_RETRY_DELAYS_MS = Object.freeze([2 * 60_000, 5 * 60_000, 15 * 60_000]);
 /** `dateFrom` reaches this far before the stored session start. */
 export const CALL_LOG_REFRESH_LOOKBACK_MS = 60 * 60_000;
+/**
+ * A refresh is an acceleration, not the authority: past this age (the retry
+ * schedule ends ~24 min after hang-up) the reconcile window, which re-reads
+ * every record inside the settle horizon every five minutes, is as fast. An
+ * older job completes `expired` without a provider read, so a throttle
+ * backlog drains instead of re-hitting RingCentral every ten minutes.
+ */
+export const CALL_LOG_REFRESH_MAX_AGE_MS = 45 * 60_000;
+/** Extra spread on a throttle deferral so deferred jobs do not come due together. */
+export const CALL_LOG_REFRESH_THROTTLE_JITTER_MS = 5 * 60_000;
 const TERMINAL = new Set<string>(TERMINAL_PARTY_STATUSES);
 
 export function callLogRefreshDedupeKey(telephonySessionId: string): string {
@@ -95,7 +105,8 @@ export async function fetchCallLogRecordsBySession(
     view: "Detailed",
     dateFrom: input.dateFrom.toISOString(),
   });
-  const payload = (await request("GET", `/restapi/v1.0/account/~/call-log?${query.toString()}`)) as
+  // Low priority: a refresh may use only part of the shared Heavy budget and never waits for it.
+  const payload = (await request("GET", `/restapi/v1.0/account/~/call-log?${query.toString()}`, undefined, { priority: "low" })) as
     | { records?: unknown }
     | null;
   const records = Array.isArray(payload?.records) ? payload.records : [];
@@ -118,13 +129,15 @@ export type StoredSessionState = {
   started_at: Date | null;
   provider_account_id: string | null;
   account_parties_terminal: boolean;
+  /** `settled` once a Call Log record (reconcile or refresh) settled the row. */
+  call_log_state?: "provisional" | "settled" | null;
 };
 
 /** Reads the stored interaction (following one merge hop). Read-only. */
 export async function loadStoredSessionState(interactionId: string): Promise<StoredSessionState | null> {
   if (!mongoose.Types.ObjectId.isValid(interactionId)) return null;
   const Interaction = getCallInteractionModel();
-  const projection = { telephony_session_id: 1, started_at: 1, provider_account_id: 1, parties: 1, merged_into_id: 1 };
+  const projection = { telephony_session_id: 1, started_at: 1, provider_account_id: 1, parties: 1, merged_into_id: 1, call_log_state: 1 };
   let row = await Interaction.findById(interactionId, projection).lean();
   if (row?.merged_into_id) row = (await Interaction.findById(row.merged_into_id, projection).lean()) ?? row;
   if (!row) return null;
@@ -136,6 +149,7 @@ export async function loadStoredSessionState(interactionId: string): Promise<Sto
     started_at: row.started_at ?? null,
     provider_account_id: row.provider_account_id ?? null,
     account_parties_terminal: parties.length > 0 && parties.every((p) => p.terminal_at != null),
+    call_log_state: (row.call_log_state as StoredSessionState["call_log_state"]) ?? null,
   };
 }
 
@@ -236,7 +250,11 @@ export async function publishDelayedWakeup(
 
 export type CallLogRefreshResult = {
   telephony_session_id: string | null;
-  state: "applied" | "not_published" | "failed";
+  /**
+   * `expired`: older than `CALL_LOG_REFRESH_MAX_AGE_MS`; `already_settled`: the
+   * reconcile settled the row first. Both complete without a provider read.
+   */
+  state: "applied" | "not_published" | "failed" | "expired" | "already_settled";
   attempt: number;
   records: number;
   applied: Array<{
@@ -269,6 +287,8 @@ export type CallLogRefreshDeps = {
   configuredAccountId?: string | null;
   recordEvent?: typeof recordOperationalEvent;
   publish?: DelayedPublishDeps;
+  /** Jitter source for throttle deferrals (tests pin it). */
+  random?: () => number;
 };
 
 const DETERMINISTIC_APPLY_CODES = new Set(["identity_missing", "projection_failed", "account_mismatch"]);
@@ -342,8 +362,18 @@ export async function runCallLogRefreshJob(
       result.error_code = "session_missing";
       return await finish();
     }
+    if (now().getTime() - jobCreatedAt(row._id, now()).getTime() > CALL_LOG_REFRESH_MAX_AGE_MS) {
+      // The reconcile window covers it; no provider read (throttle backlogs drain here).
+      result.state = "expired";
+      return await finish();
+    }
     const interactionRef = row.input_refs?.[0] ? String(row.input_refs[0]) : null;
     const state = interactionRef ? await (deps.loadState ?? loadStoredSessionState)(interactionRef) : null;
+    if (state?.call_log_state === "settled") {
+      // The reconcile applied a settled Call Log record first: nothing left to accelerate.
+      result.state = "already_settled";
+      return await finish();
+    }
     const startedAt = state?.started_at ?? new Date(now().getTime() - 24 * 60 * 60_000);
     const dateFrom = new Date(startedAt.getTime() - CALL_LOG_REFRESH_LOOKBACK_MS);
 
@@ -353,8 +383,11 @@ export async function runCallLogRefreshJob(
     } catch (error) {
       if (isProviderThrottle(error)) {
         result.error_code = "provider_throttled";
-        // A throttle is transient and does not spend an attempt.
-        return await retry("throttled", undefined, throttleRetryAfterMs(error));
+        // A throttle is transient and does not spend an attempt. The wait is the
+        // provider's (or the shared gate's) Retry-After plus jitter, so deferred
+        // jobs spread out instead of coming due together.
+        const jitter = Math.floor((deps.random ?? Math.random)() * CALL_LOG_REFRESH_THROTTLE_JITTER_MS);
+        return await retry("throttled", undefined, throttleRetryAfterMs(error, 60_000) + jitter);
       }
       result.error_code = "provider_request_failed";
       return await retry("transient", undefined);
@@ -432,9 +465,22 @@ export type CallLogRefreshDrainSummary = {
   retried: number;
   lease_lost: number;
   deadline_reached: boolean;
+  /** The drain stopped at the first throttle: the next due job would only be deferred again. */
+  throttled?: boolean;
 };
 
-/** Cron recovery: claims due refresh jobs until none remain, `max` is reached, or the budget is spent. */
+/** Job creation time from its ObjectId; `now` when unknown. */
+function jobCreatedAt(id: unknown, now: Date): Date {
+  if (id instanceof mongoose.Types.ObjectId) return id.getTimestamp();
+  if (typeof id === "string" && mongoose.Types.ObjectId.isValid(id)) return new mongoose.Types.ObjectId(id).getTimestamp();
+  return now;
+}
+
+/**
+ * Cron recovery: claims due refresh jobs until none remain, `max` is reached,
+ * the budget is spent, or a throttle is seen (every later claim would be
+ * refused by the same shared RingCentral gate).
+ */
 export async function drainCallLogRefreshJobs(
   max = 50,
   deps: CallLogRefreshDeps = {},
@@ -454,6 +500,10 @@ export async function drainCallLogRefreshJobs(
     if (outcome.status === "completed") summary.completed += 1;
     else if (outcome.status === "retry") summary.retried += 1;
     else summary.lease_lost += 1;
+    if (outcome.status === "retry" && outcome.reason === "throttled") {
+      summary.throttled = true;
+      break;
+    }
   }
   return summary;
 }
