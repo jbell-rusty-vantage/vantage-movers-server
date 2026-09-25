@@ -14,6 +14,7 @@ const SECRET = "synthetic-admin-signing-secret";
 const TOKEN = "tok_Zq9SyntheticInviteToken_do_not_log_1234567890";
 const LINK = `https://admin.example.invalid/accept-invite#token=${TOKEN}`;
 const TO = "new.rep@example.invalid";
+const ADMIN_BASE = "https://admin.example.invalid";
 
 type Config = { apiKey: string | null; fromEmail: string | null; replyTo: string | null };
 let config: Config = { apiKey: "SG.synthetic", fromEmail: "noreply@example.invalid", replyTo: null };
@@ -40,8 +41,10 @@ const server = app.listen(0);
 const url = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}${ADMIN_INVITE_EMAIL_PATH}`;
 
 const logged: string[] = [];
+const savedAdminBase = process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL;
 before(() => {
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
+  process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL = ADMIN_BASE;
   for (const level of ["trace", "debug", "info", "warn", "error", "fatal"] as const) {
     mock.method(logger, level, (...args: unknown[]) => {
       logged.push(JSON.stringify(args, (_key, value) => (value instanceof Error ? `${value.message} ${value.stack}` : value)));
@@ -53,8 +56,10 @@ afterEach(() => {
   sendBehaviour = "ok";
   config = { apiKey: "SG.synthetic", fromEmail: "noreply@example.invalid", replyTo: null };
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
+  process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL = ADMIN_BASE;
 });
 after(async () => {
+  if (savedAdminBase === undefined) delete process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL; else process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL = savedAdminBase;
   mock.restoreAll();
   await new Promise<void>((resolve, reject) => server.close((error?: Error) => (error ? reject(error) : resolve())));
 });
@@ -85,7 +90,7 @@ function signedHeaders(role: "owner" | "admin" | "rep", options: { secret?: stri
   };
 }
 
-const body = () => JSON.stringify({ to: TO, link: LINK, expires_at: "2026-09-27T12:00:00.000Z" });
+const body = (link = LINK) => JSON.stringify({ to: TO, link, expires_at: "2026-09-27T12:00:00.000Z" });
 
 test("unsigned requests are 401 and send nothing", async () => {
   const response = await fetch(url(), { method: "POST", headers: { "content-type": "application/json" }, body: body() });
@@ -151,6 +156,46 @@ test("invalid bodies are 400 without echoing the link", async () => {
   assert.equal(response.status, 400);
   const text = await response.text();
   assert.equal(text.includes(TOKEN), false);
+});
+
+test("V-T3 m16: without SALES_INTELLIGENCE_ADMIN_BASE_URL the server answers not_configured (the admin copies the link)", async () => {
+  for (const value of [undefined, "", "   ", "not a url", "ftp://admin.example.invalid", "http://admin.example.invalid", "https://user:pw@admin.example.invalid"]) {
+    if (value === undefined) delete process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL; else process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL = value;
+    const response = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body() });
+    assert.equal(response.status, 200, String(value));
+    assert.deepEqual(await response.json(), { ok: true, data: { status: "not_configured" } }, String(value));
+  }
+  assert.equal(sent.length, 0);
+});
+
+test("V-T3 m16: only <admin base>/accept-invite#token=… on the admin origin is mailed; anything else is invalid_link and never echoed", async () => {
+  const refused = [
+    `https://evil.example.invalid/accept-invite#token=${TOKEN}`,
+    `https://admin.example.invalid.evil.example/accept-invite#token=${TOKEN}`,
+    `http://admin.example.invalid/accept-invite#token=${TOKEN}`,
+    `https://admin.example.invalid:8443/accept-invite#token=${TOKEN}`,
+    `https://admin.example.invalid/login#token=${TOKEN}`,
+    `https://admin.example.invalid/accept-invite/../login#token=${TOKEN}`,
+    `https://admin.example.invalid/accept-invite?next=https://evil.example.invalid#token=${TOKEN}`,
+    `https://someone@admin.example.invalid/accept-invite#token=${TOKEN}`,
+    "https://admin.example.invalid/accept-invite",
+    "https://admin.example.invalid/accept-invite#token=",
+  ];
+  for (const link of refused) {
+    const response = await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body(link) });
+    assert.equal(response.status, 400, link);
+    const text = await response.text();
+    assert.equal(JSON.parse(text).code, "invalid_link", link);
+    assert.equal(text.includes(TOKEN), false, "the link is never echoed");
+  }
+  assert.equal(sent.length, 0);
+  // A base with a path prefix and a trailing slash: the page lives under it.
+  process.env.SALES_INTELLIGENCE_ADMIN_BASE_URL = "https://admin.example.invalid/dashboard/";
+  const prefixed = `https://admin.example.invalid/dashboard/accept-invite#token=${TOKEN}`;
+  assert.equal((await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body(prefixed) })).status, 200);
+  assert.equal((await fetch(url(), { method: "POST", headers: signedHeaders("owner"), body: body(LINK) })).status, 400, "outside the base path");
+  assert.equal(sent.length, 1);
+  assert.ok(sent[0]?.message.text.includes(prefixed));
 });
 
 test("the link, token and recipient never reach the logger", () => {

@@ -1,0 +1,22 @@
+{
+  "version": "call-log-repair-v1",
+  "run_id": "6ab4999999999999999999a0",
+  "mode": "apply",
+  "created_at": "2026-09-24T03:32:16.399Z",
+  "range": { "from": "2026-09-20T00:00:00.000Z", "to": "2026-09-24T03:32:16.399Z" },
+  "dataset": { "deployment": "csi-local-proof", "database": "testvantagemovers_synthetic" },
+  "synthetic": "V-T3 m21: a small synthetic call-log-repair-v1 manifest (no production ids) so test-si-s10-dry-runs.ts passes on a clean checkout. The real manifest (scripts/dev_ops/output/call-log-repair-2026-09-20.json, gitignored) is used when present.",
+  "days": [
+    { "day": "2026-09-20", "from": "2026-09-20T00:00:00.000Z", "to": "2026-09-21T00:00:00.000Z", "state": "projected", "pages": 1, "records": 3,
+      "counts": { "MISSING": 1, "STALE": 1, "unchanged": 1 }, "applied": { "created": 1, "updated": 2, "noop": 0, "failed": 0, "changed_without_diff": 1 } }
+  ],
+  "interactions": [
+    { "interaction_id": "6ab4999999999999999999a1", "day": "2026-09-20", "record_id": "SYNTHETIC-ADDED-1", "classification": "MISSING", "created": true,
+      "contact_number_id": "6ab4999999999999999999b1", "job_keys": [], "downstream": "deferred", "stages": [], "reason": "synthetic" },
+    { "interaction_id": "6ab4999999999999999999a2", "day": "2026-09-20", "record_id": "SYNTHETIC-COMPLETED-1", "classification": "STALE", "created": false,
+      "contact_number_id": "6ab4999999999999999999b1", "job_keys": [], "downstream": "deferred", "stages": [], "reason": "synthetic" },
+    { "interaction_id": "6ab4999999999999999999a3", "day": "2026-09-20", "record_id": "SYNTHETIC-UNCHANGED-1", "classification": "unchanged", "created": false,
+      "contact_number_id": "6ab4999999999999999999b2", "job_keys": [], "downstream": "none", "stages": [], "reason": "synthetic" }
+  ],
+  "holds": []
+}

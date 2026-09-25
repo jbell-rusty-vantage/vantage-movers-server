@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertProductionWriterMatchesDeployment, ProductionWriterRefusal, type GuardSeams } from "./production-writer-guard";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assertProductionWriterMatchesDeployment, dirtyGitSourcePaths, ProductionWriterRefusal, relativeImports, scriptImportClosure, type GuardSeams } from "./production-writer-guard";
 
 const A = "1".repeat(40), B = "2".repeat(40);
 const seams = (overrides: Partial<GuardSeams> = {}): GuardSeams => ({
@@ -30,4 +34,42 @@ test("refuses when the deployment was never recorded or src/ has uncommitted cha
     (error: unknown) => error instanceof ProductionWriterRefusal && error.decision.reason === "deployment_not_recorded");
   await assert.rejects(assertProductionWriterMatchesDeployment(seams({ dirtySourcePaths: () => ["src/models/ContactNumber.ts"] })),
     (error: unknown) => error instanceof ProductionWriterRefusal && error.decision.reason === "working_tree_dirty");
+});
+
+test("V-T3 M7: relative imports are read from static, side-effect and dynamic import forms", () => {
+  assert.deepEqual(relativeImports(`import { a } from "./lib/a";\nimport "../b.js";\nconst c = await import("./c");\nimport x from "mongoose";\nimport { y } from "../../src/y";`).sort(),
+    ["../../src/y", "../b.js", "./c", "./lib/a"]);
+});
+
+test("V-T3 M7: the dirty check covers scripts/ (tracked edits, untracked files, force-added edits, untracked imports)", () => {
+  const repo = mkdtempSync(join(tmpdir(), "t3b-guard-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    git("init", "-q"); git("config", "user.email", "t@example.test"); git("config", "user.name", "t"); git("config", "core.autocrlf", "false");
+    mkdirSync(join(repo, "src"), { recursive: true }); mkdirSync(join(repo, "scripts", "dev_ops", "lib"), { recursive: true });
+    writeFileSync(join(repo, ".gitignore"), "scripts/dev_ops/**\n");
+    writeFileSync(join(repo, "src", "model.ts"), "export const m = 1;\n");
+    writeFileSync(join(repo, "scripts", "dev_ops", "run.ts"), `import { tracked } from "./lib/tracked";\nimport { m } from "../../src/model";\nexport const r = tracked + m;\n`);
+    writeFileSync(join(repo, "scripts", "dev_ops", "lib", "tracked.ts"), "export const tracked = 1;\n");
+    git("add", ".gitignore", "src"); git("add", "-f", "scripts/dev_ops/run.ts", "scripts/dev_ops/lib/tracked.ts"); git("commit", "-qm", "base");
+    const entry = join(repo, "scripts", "dev_ops", "run.ts");
+    assert.deepEqual(dirtyGitSourcePaths(entry), [], "a clean checkout of committed (force-added) scripts passes");
+    assert.deepEqual(scriptImportClosure(entry, repo), ["scripts/dev_ops/lib/tracked.ts", "scripts/dev_ops/run.ts"], "src/ is left to git status");
+
+    writeFileSync(join(repo, "scripts", "dev_ops", "lib", "tracked.ts"), "export const tracked = 2;\n");
+    assert.deepEqual(dirtyGitSourcePaths(entry), ["scripts/dev_ops/lib/tracked.ts"], "an edited force-added (gitignored, tracked) lib");
+    git("checkout", "--", "scripts/dev_ops/lib/tracked.ts");
+
+    writeFileSync(join(repo, "scripts", "dev_ops", "lib", "fresh.ts"), "export const fresh = 1;\n");
+    assert.deepEqual(dirtyGitSourcePaths(entry), [], "an ignored, untracked file nothing imports is not the run's code");
+    writeFileSync(join(repo, "scripts", "dev_ops", "run.ts"), `import { tracked } from "./lib/tracked";\nimport { fresh } from "./lib/fresh";\nexport const r = tracked + fresh;\n`);
+    assert.deepEqual(dirtyGitSourcePaths(entry), ["scripts/dev_ops/run.ts", "scripts/dev_ops/lib/fresh.ts (imported, untracked)"], "an imported lib never force-added");
+    git("checkout", "--", "scripts/dev_ops/run.ts");
+
+    writeFileSync(join(repo, "scripts", "other.ts"), "export {};\n");
+    assert.deepEqual(dirtyGitSourcePaths(entry), ["scripts/other.ts"], "an untracked, non-ignored file under scripts/");
+    rmSync(join(repo, "scripts", "other.ts"));
+    writeFileSync(join(repo, "src", "model.ts"), "export const m = 2;\n");
+    assert.deepEqual(dirtyGitSourcePaths(entry), ["src/model.ts"], "src/ as before");
+  } finally { rmSync(repo, { recursive: true, force: true }); }
 });

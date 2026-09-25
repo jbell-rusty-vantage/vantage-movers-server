@@ -14,6 +14,7 @@ import { getOutreachFollowupModel } from "../../src/models/OutreachFollowup";
 import { getRepIdentityLinkModel } from "../../src/models/RepIdentityLink";
 import { getSalesIntelligenceJobModel } from "../../src/models/SalesIntelligenceJob";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../src/models/SalesIntelligenceAttentionSnapshot";
+import { getSalesIntelligenceSyncStateModel } from "../../src/models/SalesIntelligenceSyncState";
 import { getIntelligenceRunModel } from "../../src/models/IntelligenceRun";
 import { getIntelligenceFindingModel } from "../../src/models/IntelligenceFinding";
 import { getOutreachBandTransitionModel } from "../../src/models/salesIntelligence/outreach";
@@ -44,6 +45,8 @@ import type { CsiCommand } from "../../src/validation/v1/salesIntelligence";
  * 4. The publish adds one snapshot header read in steady state and one audit `$in` when rows change, independent of
  *    the row count; `GET /attention`, the detail and the timeline reads stay flat as transition rows grow.
  * 5. The detail and the timeline carry `band_since` and `band_changed`.
+ * 6. V-T3 M4: two concurrent OVERVIEW publishes (a change, and the first-ever baseline) write band history once; the
+ *    loser returns `concurrent_publish` and writes nothing; a flag-off publish neither reads nor moves the fence.
  * No paid job runs; Owner commands enqueue their usual `csi:owner-outreach:` Number refresh, which is never run.
  */
 const READ_METHODS = new Set(["find", "findOne", "aggregate", "distinct", "countDocuments", "estimatedDocumentCount", "count"]);
@@ -320,6 +323,57 @@ test("S9-PUBLISH band transitions replica", { skip: process.env.CSI_REPLICA_TEST
     assert.deepEqual(page2.byCollection, page1.byCollection, "GET /attention reads are flat");
     assert.equal(page1.byCollection["outreach_band_transitions.find"] ?? 0, 0, "GET /attention never reads transitions");
     console.log(`# S9 publish reads: steady 6 records → ${steady1.reads}, 30 records → ${steady2.reads}; with 12 changes → ${changed.reads}`, JSON.stringify({ steady: steady2.byCollection, changed: changed.byCollection }));
+  });
+
+  // V-T3 M4: the publish fence. Both publishes start in the same tick, so both read the same previous snapshot (and
+  // "no transitions") long before either commits: exactly one may write band history.
+  const concurrentPublishes = async () => {
+    const results = await Promise.all([publishAttentionSnapshot(), publishAttentionSnapshot()]) as { status: string; reason?: string; snapshot_id?: string; band_transitions?: number }[];
+    const won = results.filter(r => r.status === "published"), lost = results.filter(r => r.status !== "published");
+    assert.equal(won.length, 1, JSON.stringify(results));
+    assert.deepEqual(lost, [{ status: "incomplete", reason: "concurrent_publish" }]);
+    assert.equal(await getSalesIntelligenceAttentionSnapshotModel().countDocuments({ snapshot_id: { $regex: /^outreach:[^:]+$/ }, as_of: { $gte: startedAt } }), 1, "the loser wrote no snapshot");
+    return won[0]!;
+  };
+  let startedAt = new Date();
+  const fence = () => getSalesIntelligenceSyncStateModel().collection.findOne({ scope: /^attention_publish_fence:/ });
+
+  await t.test("M4: two concurrent publishes after a change write the change row once", async () => {
+    const f = await fixture();
+    await publish(); // joins the active set
+    await viaJob(await attempt(f.n._id));
+    startedAt = new Date();
+    const won = await concurrentPublishes();
+    const mine = await Transitions.find({ subject_key: f.key, "cause.kind": "call" }).lean();
+    assert.equal(mine.length, 1, "one change row, not two");
+    assert.equal(mine[0]!.snapshot_id, won.snapshot_id);
+    assert.equal((await fence())?.last_snapshot_id, won.snapshot_id);
+    assert.equal((await publish()).band_transitions, 0, "the next publish is not wedged and sees no change");
+  });
+
+  await t.test("M4: two concurrent first publishes write exactly one baseline set; a flag-off publish between does not wedge the fence", async () => {
+    // Back to "never published with OVERVIEW": no transition row, no snapshot, no fence.
+    await Transitions.collection.deleteMany({});
+    await getSalesIntelligenceAttentionSnapshotModel().collection.deleteMany({});
+    await getSalesIntelligenceSyncStateModel().collection.deleteMany({ scope: /^attention_publish_fence:/ });
+    clearParsedAttentionSnapshots();
+    startedAt = new Date();
+    const won = await concurrentPublishes();
+    const active = (await rows()).filter(r => r.partition !== "closed" && r.outreach);
+    assert.ok(active.length > 30);
+    assert.equal(won.band_transitions, active.length);
+    assert.equal(await Transitions.countDocuments({}), active.length, "one baseline set");
+    assert.equal(await Transitions.countDocuments({ "cause.kind": { $ne: "baseline" } }), 0);
+    assert.equal(new Set((await Transitions.find({}).lean()).map(r => String(r.record_id))).size, active.length, "one row per record");
+    // Flag off: the fence is neither read nor written, and the next OVERVIEW publish still commits.
+    const fenced = await fence();
+    process.env.SALES_INTELLIGENCE_OVERVIEW = "false";
+    try { assert.equal((await publishAttentionSnapshot()).status, "published"); } finally { process.env.SALES_INTELLIGENCE_OVERVIEW = "true"; }
+    assert.deepEqual(await fence(), fenced, "a flag-off publish leaves the fence untouched");
+    const next = await publish();
+    assert.equal(next.band_transitions, 0);
+    assert.equal((await fence())?.last_snapshot_id, next.snapshot_id);
+    assert.equal(await Transitions.countDocuments({}), active.length);
   });
 
   await t.test("no paid job ran or was nominated by the automatic paths", async () => {

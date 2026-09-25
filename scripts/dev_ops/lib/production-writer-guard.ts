@@ -8,6 +8,8 @@
  * rejects is what stopped capture for hours on 2026-09-23 (§2.1).
  */
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { getMongoDatabaseName } from "../../../src/config/domain/runtime";
 import {
   decideProductionWriter,
@@ -34,18 +36,67 @@ export type GuardSeams = {
   log?: (line: string) => void;
 };
 
-function git(args: string[]): string | null {
+function git(args: string[], trim = true): string | null {
   try {
-    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const out = execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return trim ? out.trim() : out;
   } catch {
     return null;
   }
 }
 
 export const localGitHead = () => git(["rev-parse", "HEAD"]) || null;
-/** Uncommitted tracked or untracked changes under `src/`: the deployed build cannot contain them. */
-export const dirtyGitSourcePaths = () =>
-  (git(["status", "--porcelain", "--", "src"]) ?? "").split(/\r?\n/).map(line => line.slice(3).trim()).filter(Boolean);
+
+/** Relative imports (`./x`, `../y`) of one TypeScript source: static `from "…"`, `import "…"` and `import("…")`. */
+export function relativeImports(source: string): string[] {
+  const out = new Set<string>();
+  for (const match of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g)) out.add(match[1]!);
+  return [...out];
+}
+function resolveModule(fromFile: string, spec: string): string | null {
+  const base = resolve(dirname(fromFile), spec.replace(/\.js$/, ""));
+  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")]) if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  return null;
+}
+/**
+ * V-T3 M7: every file under `scripts/` that the entry script reaches through relative imports (plus every one
+ * Node has already loaded), repo-relative with forward slashes. `src/` is covered by `git status` itself.
+ */
+export function scriptImportClosure(entry: string, root: string, loaded: readonly string[] = []): string[] {
+  const scriptsDir = resolve(root, "scripts") + sep, seen = new Set<string>(), stack = [resolve(entry), ...loaded.map(f => resolve(f))];
+  while (stack.length) {
+    const file = stack.pop()!;
+    if (seen.has(file) || !file.startsWith(scriptsDir) || !/\.tsx?$/.test(file) || !existsSync(file)) continue;
+    seen.add(file);
+    for (const spec of relativeImports(readFileSync(file, "utf8"))) {
+      const next = resolveModule(file, spec);
+      if (next) stack.push(next);
+    }
+  }
+  return [...seen].map(file => relative(root, file).split(sep).join("/")).sort();
+}
+function loadedModuleFiles(): string[] {
+  try { return typeof require === "function" ? Object.keys(require.cache ?? {}) : []; } catch { return []; }
+}
+
+/**
+ * Uncommitted changes the deployed build cannot contain (V-T3 M7: `scripts/` as well as `src/`):
+ * - tracked changes and untracked, non-ignored files under `src/` and `scripts/` (`git status --ignored=no`),
+ *   which includes edits to force-added (gitignored but tracked) `scripts/dev_ops/**` files;
+ * - every `scripts/` file the running script imports that is not tracked at all (a gitignored `scripts/dev_ops`
+ *   lib that was never force-added is invisible to `git status`).
+ */
+export const dirtyGitSourcePaths = (entry: string | undefined = process.argv[1]) => {
+  // The repository the running script lives in (the operator runs from its root; the script path decides).
+  const root = git([...(entry ? ["-C", dirname(resolve(entry))] : []), "rev-parse", "--show-toplevel"]);
+  const dirty = (git([...(root ? ["-C", root] : []), "status", "--porcelain", "--ignored=no", "-uall", "--", "src", "scripts"], false) ?? "")
+    .split(/\r?\n/).map(line => line.slice(3).trim()).filter(Boolean);
+  if (!root || !entry) return dirty;
+  const imports = scriptImportClosure(entry, root, loadedModuleFiles());
+  if (!imports.length) return dirty;
+  const tracked = new Set((git(["-C", root, "ls-files", "--", ...imports]) ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean));
+  return [...dirty, ...imports.filter(file => !tracked.has(file)).map(file => `${file} (imported, untracked)`)];
+};
 
 export async function assertProductionWriterMatchesDeployment(seams: GuardSeams = {}): Promise<WriterDecision & { allowed: true }> {
   const argv = seams.argv ?? process.argv;

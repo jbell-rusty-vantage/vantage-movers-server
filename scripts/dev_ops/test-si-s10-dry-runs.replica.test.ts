@@ -65,7 +65,10 @@ test("S10 C25: every dry run on a copy of the final-UI seed", { skip: process.en
   const out = mkdtempSync(join(tmpdir(), "t3c-s10-"));
   const reportDir = process.env.T3C_S10_REPORT_DIR ?? join(out, "evidence");
   mkdirSync(reportDir, { recursive: true });
-  const manifest = "scripts/dev_ops/output/call-log-repair-2026-09-20.json";
+  // V-T3 m21: the real 09-20 manifest is gitignored; a clean checkout uses the shipped synthetic fixture.
+  const realManifest = "scripts/dev_ops/output/call-log-repair-2026-09-20.json";
+  const manifest = existsSync(realManifest) && process.env.T3_S10_SYNTHETIC_MANIFEST !== "1" ? realManifest : "scripts/dev_ops/fixtures/call-log-repair-synthetic.json";
+  console.log(`# step 5 manifest: ${manifest}`);
   const results: Array<Record<string, unknown>> = [];
   const lastJsonLine = (text: string) => {
     const lines = text.trim().split(/\r?\n/).filter(l => l.startsWith("{") && l.endsWith("}"));
@@ -103,7 +106,7 @@ test("S10 C25: every dry run on a copy of the final-UI seed", { skip: process.en
   await t.test("step 4: reconcile-priority5.ts dry run", async () => {
     await measure("4", "reconcile-priority5.ts", [`--manifest=${join(out, "p5.json")}`, `--report-dir=${reportDir}`]);
   });
-  await t.test("step 5: stamp-capture-recovery.ts dry run (the real 09-20 manifest)", async () => {
+  await t.test("step 5: stamp-capture-recovery.ts dry run (the real 09-20 manifest, or the synthetic fixture)", async () => {
     await measure("5", "stamp-capture-recovery.ts", ["--manifest", manifest, "--out", out, "--report", join(reportDir, "S10-5-replica.md")]);
   });
   await t.test("step 6: reensure-outreach.ts dry run", async () => {

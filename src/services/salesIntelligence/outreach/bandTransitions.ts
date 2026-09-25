@@ -3,6 +3,7 @@ import { csiFlag, type CSI_FLAGS } from "../../../config/domain/salesIntelligenc
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
 import { getOutreachBandTransitionModel, OUTREACH_BAND_TRANSITION_CAUSES } from "../../../models/salesIntelligence/outreach";
+import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { csiPolicyEvolution, type CsiPolicy } from "../../../validation/v1/salesIntelligence";
 import type { AttentionPublishMeta, BandSinceDto } from "../dto";
 import { attentionDue, isPromisedCallback, promiseUnreachedSince } from "./derive";
@@ -266,6 +267,42 @@ export async function bandTransitionDocs(changes: readonly BandChange[], context
       cause: { kind: cause.kind, event_kind: cause.event_kind, target_id: cause.target_id, audit_id: cause.audit_id ? new mongoose.Types.ObjectId(cause.audit_id) : null },
       snapshot_id: context.snapshotId, band_since: change.band_since ? { at: new Date(change.band_since.at), estimated: change.band_since.estimated } : null };
   });
+}
+
+/**
+ * V-T3 M4: the publish fence. Band history is computed against the snapshot the publish read first, and
+ * `publishAttentionSnapshot` takes no lease itself (only the cron does), so two OVERVIEW publishes (the cron and a
+ * script) could both see "no transitions" and write the baseline twice, or both write the same change row.
+ *
+ * One document per dataset in `sales_intelligence_sync_state` (scope `attention_publish_fence:<deployment>:<database>`)
+ * records the `as_of` of the last OVERVIEW publish that committed. Inside the publish transaction, and before any other
+ * write, it is moved forward only if it is not newer than the snapshot the band comparison used (`bound`). A publish
+ * that committed after this one read its previous snapshot has a newer `as_of`, so the conditional update matches
+ * nothing; the upsert then collides with the unique `scope` index (a concurrent uncommitted fence write surfaces as a
+ * WriteConflict, which the driver retries into the same collision), the transaction aborts, and nothing is written.
+ *
+ * Comparing `as_of` rather than the snapshot id keeps flag-off publishes (which never touch the fence) and a
+ * never-parsed previous snapshot from wedging the fence. A fence older than FENCE_STALE_MS is ignored: that bounds
+ * the damage if the snapshot it names were ever deleted by hand (publishes run for at most their budget, ≤ 90 s).
+ */
+export const ATTENTION_PUBLISH_FENCE_STALE_MS = 15 * 60_000;
+export class ConcurrentAttentionPublishError extends Error {
+  constructor() { super("concurrent_publish"); this.name = "ConcurrentAttentionPublishError"; }
+}
+export function attentionPublishFenceScope(dataset: { deployment: string; database: string }): string {
+  return `attention_publish_fence:${dataset.deployment}:${dataset.database}`;
+}
+export async function fenceAttentionPublish(session: mongoose.ClientSession, input: { scope: string; bound: Date | null; asOf: Date; snapshotId: string }): Promise<void> {
+  const stale = new Date(+input.asOf - ATTENTION_PUBLISH_FENCE_STALE_MS);
+  try {
+    await getSalesIntelligenceSyncStateModel().collection.updateOne(
+      { scope: input.scope, $or: [{ last_as_of: { $lte: input.bound ?? new Date(0) } }, { last_as_of: { $lt: stale } }] },
+      { $set: { last_as_of: input.asOf, last_snapshot_id: input.snapshotId } },
+      { upsert: true, session });
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) throw new ConcurrentAttentionPublishError();
+    throw error;
+  }
 }
 
 /** Whether any transition row exists (the baseline runs once: only when none does). */

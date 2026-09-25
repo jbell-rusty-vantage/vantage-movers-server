@@ -11,7 +11,7 @@ import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { attentionRowDtoSchema, attentionPageDtoSchema, ATTENTION_SORTS, ATTENTION_SORT_DEFAULT_DIRECTION, ATTENTION_VIEWS, ATTENTION_FRESHNESS,
   ATTENTION_CLOSED_SORTS, ATTENTION_OUTCOMES, type AttentionFilterKeysDto, type AttentionMetricsDto, type AttentionPriorityCountsDto, type AttentionPublishMeta } from "../dto";
 import { getOutreachBandTransitionModel } from "../../../models/salesIntelligence/outreach";
-import { bandTransitionDocs, bandTransitionsExist, estimateBandEntry, overviewEnabled, planBandRow, primaryReason, publishMeta, samePublishMeta,
+import { attentionPublishFenceScope, bandTransitionDocs, bandTransitionsExist, ConcurrentAttentionPublishError, fenceAttentionPublish, estimateBandEntry, overviewEnabled, planBandRow, primaryReason, publishMeta, samePublishMeta,
   type BandChange, type BandMode, type PreviousBandEntry } from "./bandTransitions";
 import { attentionIndexEntry, attentionPriorityCounts, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery, sortAttentionEntries,
   type AttentionIndexEntry, type AttentionMatchContext } from "./attentionIndex";
@@ -262,9 +262,10 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   let leadsReceived7d = 0;
   // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): the previous snapshot's index is read once, beside the other publish-wide reads.
   const overview = overviewEnabled();
-  const [policy, coverage, queued, previous] = await Promise.all([resolvePolicy(), readCaptureCoverage(),
+  const [policy, coverage, queued, bandsBase] = await Promise.all([resolvePolicy(), readCaptureCoverage(),
     getSalesIntelligenceJobModel().distinct("subject_key", { ...csiDataset(), stage: "move_assessment", status: { $in: ["pending", "leased", "retry"] } }),
     overview ? previousSnapshotForBands(now) : Promise.resolve(null)]);
+  const previous = bandsBase?.previous ?? null;
   const meta = overview ? publishMeta(policy.version) : null;
   // Baseline once: the first OVERVIEW publish (no previous `publish_meta`) when no transition row exists yet (reconciliation §4.3).
   const bandMode: BandMode | null = !overview ? null : previous?.publish_meta ? "compare" : !(await bandTransitionsExist()) ? "baseline" : previous ? "compare" : "estimate_only";
@@ -390,7 +391,19 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   // S7-PRIO (addendum §5): chip counts per Priority key and view, tallied over the same entries the read filters.
   const v2Header = v2 ? { metrics, index_gzip_base64: index, priority_counts: attentionPriorityCounts(indexEntries!) } : {};
   const counts = { total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}) };
-  await withTransaction(async session => {
+  // V-T3 M4 (OVERVIEW only): the fence write goes first, so a concurrent OVERVIEW publish that committed since this one
+  // read its previous snapshot aborts the whole transaction before the snapshot or any band row is written.
+  const fence = overview ? { scope: attentionPublishFenceScope(csiDataset()), bound: bandsBase?.latest_as_of ?? null, asOf: now, snapshotId: snapshot_id } : null;
+  try {
+    await withTransaction(async session => {
+      if (fence) await fenceAttentionPublish(session, fence);
+      await writeSnapshot(session);
+    });
+  } catch (error) {
+    if (error instanceof ConcurrentAttentionPublishError) return { status: "incomplete", reason: "concurrent_publish" };
+    throw error;
+  }
+  async function writeSnapshot(session: mongoose.ClientSession) {
     if (compressed) {
       await Snapshot.create([{ ...header, ...v2Header, ...s9Header, rows: [], rows_gzip_base64: compressed, counts }], { session });
     } else if (inline) {
@@ -406,7 +419,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
       { $set: { expires_at: new Date(Date.now() + ATTENTION_FRESH_MS) } }, { session });
     // S9-PUBLISH: the band history commits with the snapshot it compares against, so a failed publish writes none.
     if (transitionDocs.length) await getOutreachBandTransitionModel().insertMany(transitionDocs, { session });
-  });
+  }
   if (overview) {
     // Warm the parsed cache with this snapshot, so the next publish (and reads) on this instance skip the payload read.
     rememberParsedSnapshot(parsedSnapshotKey(snapshot_id), { entries: indexEntries ?? encoded.map((row, position) => attentionIndexEntry(row, position)),
@@ -489,6 +502,10 @@ function latestSnapshotHeader(now: Date, snapshotId?: string) {
 async function previousSnapshotForBands(now: Date) {
   const header = await latestSnapshotHeader(now);
   if (!header) return null;
+  // V-T3 M4: the fence bound is the newest header's `as_of`, even when its index can't be parsed (no comparison then).
+  return { latest_as_of: header.as_of, previous: await previousBandEntries(header) };
+}
+async function previousBandEntries(header: NonNullable<Awaited<ReturnType<typeof latestSnapshotHeader>>>) {
   const parsed = await parsedSnapshotFor(header);
   if (!parsed) return null;
   const entries = new Map<string, PreviousBandEntry>();

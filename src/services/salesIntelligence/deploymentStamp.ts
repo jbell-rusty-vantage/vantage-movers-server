@@ -131,7 +131,7 @@ export function decideProductionWriter(input: {
     if (deployed.toLowerCase() !== input.localHead.toLowerCase())
       return { allowed: false, reason: "commit_differs", detail: `local HEAD ${input.localHead} differs from deployed ${deployed}` };
     if (input.dirtySourcePaths.length)
-      return { allowed: false, reason: "working_tree_dirty", detail: `uncommitted src/ changes: ${input.dirtySourcePaths.slice(0, 5).join(", ")}` };
+      return { allowed: false, reason: "working_tree_dirty", detail: `uncommitted src/ or scripts/ changes: ${input.dirtySourcePaths.slice(0, 5).join(", ")}` };
     return null;
   })();
   if (!refusal) return { allowed: true, reason: "commit_matches" };
