@@ -330,6 +330,15 @@ export async function readRunPresentation(runId: string, deps: AssessmentReadDep
     instructions, conversations, transcripts }), deps);
 }
 
+/**
+ * S12-REPREADS (UX15): the presentation as a rep reads it. Every section is the Owner's (Summary & findings with
+ * `owner_instruction_assessments`, Evidence), except that the Full output references are emptied: the raw and
+ * accepted model output (`/analysis-runs/:id/output/:outputId`) stays Owner-only, so a rep gets no picker. Same shape.
+ */
+export function presentationForRep<T extends { data: RunPresentation }>(result: T): T {
+  return { ...result, data: { ...result.data, full_output: [] } };
+}
+
 /** `GET /analysis-runs/:id/output/:outputId`: one retained run output (the run's envelope, or a captured conversation summary). */
 export async function readRunOutput(runId: string, outputId: string, deps: AssessmentReadDeps = {}) {
   const store = deps.store ?? mongoAssessmentStore;

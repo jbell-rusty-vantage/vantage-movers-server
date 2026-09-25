@@ -345,6 +345,12 @@ const sentenceCase = (value: string) => capitalize(value.replace(/_/g, " "));
 export function renderTimelineSentence(event: StoryEvent, ctx: RenderContext): string {
   const d = event.detail;
   const kind = event.kind as string;
+  // S12-REPACT: a rep's own follow-up action reads as the rep's note (timeline only; the model's sentence is unchanged).
+  if (isRepAction(event)) {
+    const note = clean(d.note, SENTENCE_MAX);
+    if (note) return clip(note, SENTENCE_MAX);
+  }
+  if (kind === "followup_redated") return `The follow-up was moved${str(d.due_at) ? ` to ${formatAbsolute(str(d.due_at), ctx.timezone)}` : ""}.`;
   if (kind === "followup_snoozed") return clip(redactTranscript(`The follow-up was snoozed${str(d.until) ? ` until ${formatAbsolute(str(d.until), ctx.timezone)}` : ""}${str(d.reason) ? `: ${clean(d.reason, 120)}` : ""}.`).text, SENTENCE_MAX);
   if (kind === "analysis_submitted") return "An analysis run was submitted for processing.";
   if (kind === "receiver_agent_changed") return `${receiverChangeText(d)}.`;
@@ -361,11 +367,29 @@ function receiverChangeText(d: Record<string, unknown>): string {
   return `${prefix}: ${side(d.from)} → ${side(d.to)}`;
 }
 
+/**
+ * S12-REPACT (UI-2 §9): a signed rep's own follow-up command on the timeline: its re-date or snooze (audit-sourced, always
+ * the rep's), or a completion the timeline read matched to the rep's command (`resolveRepActions` set `actor.agent_id`).
+ * An Owner's re-date or snooze, and any other completion, keep today's rendering.
+ */
+const REP_ACTION_TIMELINE_KINDS = new Set(["followup_redated", "followup_snoozed", "followup_completed"]);
+const isRepAction = (event: StoryEvent) => event.actor.kind === "rep" && REP_ACTION_TIMELINE_KINDS.has(event.kind as string)
+  && (event.kind !== "followup_completed" || event.actor.agent_id !== null || event.actor.name !== null);
+/** The rep as the timeline names it: the Agent's name, or `A rep` when the Agent can't be read. */
+const repName = (event: StoryEvent) => clean(event.actor.name, 60) ?? "A rep";
+
 /** The §10.2 title of one timeline event. `reference` is the response `as_of` (year rule). */
 export function renderTimelineTitle(event: StoryEvent, ctx: RenderContext, reference: Date | null): string {
   const d = event.detail;
   const when = (value: unknown) => formatTimelineTime(str(value), ctx.timezone, reference);
   let title: string;
+  if (isRepAction(event)) {
+    const rep = repName(event);
+    title = event.kind === ("followup_redated" as string) ? (str(d.due_at) ? `${rep} moved the follow-up to ${when(d.due_at)}` : `${rep} moved the follow-up`)
+      : event.kind === ("followup_snoozed" as string) ? (str(d.until) ? `${rep} snoozed until ${when(d.until)}` : `${rep} snoozed the follow-up`)
+      : `${rep} completed the follow-up`;
+    return clip(redactTranscript(title).text, 160);
+  }
   switch (event.kind as string) {
     case "lead_received": title = d.model === "CallLead" ? "Call Lead created after Call Qualification" : `Form Lead received from ${clean(d.source_company_label, 60) ?? "an unknown source"}`; break;
     case "call_qualified": title = "Call qualified as a Lead"; break;
@@ -386,6 +410,7 @@ export function renderTimelineTitle(event: StoryEvent, ctx: RenderContext, refer
         : `Follow-up created · ${followupKindLabel(str(d.kind))}${str(d.due_at) ? ` · due ${when(d.due_at)}` : ""}`; break;
     case "followup_completed": title = `Follow-up completed · ${completionBasisLabel(str(d.completion_basis))}`; break;
     case "followup_snoozed": title = str(d.until) ? `Snoozed until ${when(d.until)}` : "Follow-up snoozed"; break;
+    case "followup_redated": title = str(d.due_at) ? `Follow-up moved to ${when(d.due_at)}` : "Follow-up moved"; break;
     case "followup_cancelled": title = `Follow-up cancelled · ${clean(d.cancel_reason, 80) ?? "no reason recorded"}`; break;
     case "followup_superseded": title = "Follow-up replaced by a later one"; break;
     case "assigned": title = `Assigned to ${clean(d.agent_name, 60) ?? (str(d.agent_id) ? `agent ${clean(d.agent_id, 30)}` : "no one")}`; break;

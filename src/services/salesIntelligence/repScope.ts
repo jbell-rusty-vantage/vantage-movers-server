@@ -2,6 +2,9 @@ import mongoose from "mongoose";
 import { getOutreachRecordModel } from "../../models/OutreachRecord";
 import { getOutreachFollowupModel } from "../../models/OutreachFollowup";
 import { getLeadConversationModel } from "../../models/LeadConversation";
+import { getIntelligenceRunModel } from "../../models/IntelligenceRun";
+import { getMoveAssessmentArtifactModel } from "../../models/MoveAssessmentArtifact";
+import { csiDataset } from "../../config/domain/salesIntelligence";
 
 /**
  * S8-REP (assignment addendum §4.2, E11): is one record, Number or conversation inside a rep's scope?
@@ -17,6 +20,12 @@ import { getLeadConversationModel } from "../../models/LeadConversation";
  * (its list row, detail and Number timeline) stays Owner-only.
  *
  * **Conversation.** In scope when its Number is.
+ *
+ * **Run** (S12-REPREADS, UX15). An analysis run is in scope when its Number is (`contact_number_id`, one more
+ * `_id` read). A run without a Number is out of scope.
+ *
+ * **Move assessment artifact** (S12-REPREADS). In scope when its `outreach_record_id` is (one more `_id` read).
+ * A shadow artifact, or one without a record, is out of scope.
  *
  * Every check is at most three indexed reads (`_id`; `outreach_number`; `followup_outreach_due` prefix
  * `outreach_record_id`), bounded by `REP_SCOPE_MAX_RECORDS_PER_NUMBER`. A malformed id, a missing row or a
@@ -65,9 +74,31 @@ export async function conversationInRepScope(conversationId: string, agentId: st
   return numberInRepScope(String(conversation.contact_number_id), agentId, deps);
 }
 
+export async function runInRepScope(runId: string, agentId: string, deps: RepScopeDeps = {}): Promise<boolean> {
+  if (!OBJECT_ID.test(runId) || !OBJECT_ID.test(agentId)) return false;
+  deps.onRead?.("intelligence_runs");
+  const run = await getIntelligenceRunModel().findOne({ _id: oid(runId), ...csiDataset() }).select({ contact_number_id: 1 }).lean() as { contact_number_id?: unknown } | null;
+  if (!run?.contact_number_id) return false;
+  return numberInRepScope(String(run.contact_number_id), agentId, deps);
+}
+
+export async function artifactInRepScope(artifactId: string, agentId: string, deps: RepScopeDeps = {}): Promise<boolean> {
+  if (!OBJECT_ID.test(artifactId) || !OBJECT_ID.test(agentId)) return false;
+  deps.onRead?.("move_assessment_artifacts");
+  const artifact = await getMoveAssessmentArtifactModel().findOne({ _id: oid(artifactId), ...csiDataset() }).select({ outreach_record_id: 1, shadow: 1 }).lean() as
+    { outreach_record_id?: unknown; shadow?: boolean } | null;
+  if (!artifact?.outreach_record_id || artifact.shadow) return false;
+  return outreachRecordInRepScope(String(artifact.outreach_record_id), agentId, deps);
+}
+
 export type RepScopeChecks = {
   record: typeof outreachRecordInRepScope;
   number: typeof numberInRepScope;
   conversation: typeof conversationInRepScope;
+  /** S12-REPREADS: `GET /analysis-runs/:id/presentation`. */
+  run: typeof runInRepScope;
+  /** S12-REPREADS: `GET /assessments/:artifactId/evidence`. */
+  artifact: typeof artifactInRepScope;
 };
-export const repScopeChecks: RepScopeChecks = { record: outreachRecordInRepScope, number: numberInRepScope, conversation: conversationInRepScope };
+export const repScopeChecks: RepScopeChecks = { record: outreachRecordInRepScope, number: numberInRepScope, conversation: conversationInRepScope,
+  run: runInRepScope, artifact: artifactInRepScope };

@@ -184,10 +184,11 @@ test("C6: a rep's record, Number and conversation reads answer 404 outside its s
   let mediaActor: CsiActor | null = null;
   const admin = createSalesIntelligenceAdminRouter({
     connect: async () => {},
-    repScope: { record: inScope("record"), number: inScope("number"), conversation: inScope("conversation") },
+    repScope: { record: inScope("record"), number: inScope("number"), conversation: inScope("conversation"), run: inScope("run"), artifact: inScope("artifact") },
     outreach: async (id: string) => { reads.push(`outreach:${id}`); return id === MISSING ? null : ({ as_of: "x", coverage: {}, data: { outreach: { id }, owner_instructions: [], nudges: { items: [{ id: "n1" }], next_cursor: "c" } } } as never); },
     outreachTimeline: found("timeline") as never, outreachAssessment: found("assessment") as never, currentFindings: found("findings") as never,
     conversations: found("conversations") as never, transcript: found("transcript") as never,
+    runPresentation: found("presentation") as never, assessmentEvidence: found("evidence") as never,
     conversationMedia: async (input) => {
       mediaActor = input.actor; reads.push(`media:${input.conversation_id}`);
       return input.conversation_id === MISSING ? { kind: "not_found" } : { kind: "stream", status: 200, headers: { "Content-Type": "audio/mpeg" }, body: new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1])); c.close(); } }) } as never;
@@ -197,7 +198,9 @@ test("C6: a rep's record, Number and conversation reads answer 404 outside its s
   const { base, close } = await serve([boundary, admin]);
   try {
     for (const [path, name] of [["/outreach/:id", "outreach"], ["/outreach/:id/timeline", "timeline"], ["/outreach/:id/assessment", "assessment"], ["/outreach/:id/findings", "findings"],
-      ["/numbers/:id/conversations", "conversations"], ["/conversations/:id/transcript", "transcript"], ["/conversations/:id/media", "media"]] as const) {
+      ["/numbers/:id/conversations", "conversations"], ["/conversations/:id/transcript", "transcript"], ["/conversations/:id/media", "media"],
+      // S12-REPREADS: the run presentation and the artifact evidence.
+      ["/analysis-runs/:id/presentation", "presentation"], ["/assessments/:id/evidence", "evidence"]] as const) {
       const url = (id: string) => `${CSI_ADMIN_PREFIX}${path.replace(":id", id)}`;
       reads.length = 0;
       const missingForOwner = await call(base, "GET", url(MISSING), "owner");
@@ -218,7 +221,7 @@ test("C6: a rep's record, Number and conversation reads answer 404 outside its s
     assert.ok(scopeCalls.every(entry => entry.endsWith(AGENT_A) || entry.endsWith(AGENT_B)));
     assert.equal((mediaActor as CsiActor | null)?.kind, "rep");
     assert.equal((mediaActor as CsiActor | null)?.agent_id, AGENT_A);
-    // The detail hides Owner→rep nudges from a rep; the Owner's detail is unchanged.
+    // The detail never carries a nudge that isn't addressed to the rep (the stub's nudge has no recipient Agent); the Owner's detail is unchanged.
     const repDetail = await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}`, "rep");
     assert.deepEqual(JSON.parse(repDetail.text).data.nudges, { items: [], next_cursor: null });
     const ownerDetail = await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}`, "owner");
@@ -230,20 +233,20 @@ test("C6: a rep's record, Number and conversation reads answer 404 outside its s
   } finally { await close(); process.env = saved; }
 });
 
-test("V-T3 M8: a rep's Outreach timeline read carries audience rep (nudges and Owner notes dropped in the read); the Owner's options are unchanged", { timeout: 60_000 }, async () => {
+test("V-T3 M8 + S12-REPNUDGE: a rep's Outreach timeline read carries audience rep and the rep's Agent (Owner notes and other reps' nudges dropped in the read); the Owner's options are unchanged", { timeout: 60_000 }, async () => {
   const saved = { ...process.env };
   env({ rep: true });
   const seen: unknown[] = [];
   const admin = createSalesIntelligenceAdminRouter({
     connect: async () => {},
-    repScope: { record: async (id: string, agent: string) => id === IN && agent === AGENT_A, number: async () => false, conversation: async () => false },
+    repScope: { record: async (id: string, agent: string) => id === IN && agent === AGENT_A, number: async () => false, conversation: async () => false, run: async () => false, artifact: async () => false },
     outreachTimeline: (async (_id: string, opts: unknown) => { seen.push(opts); return { as_of: "2026-09-24T12:00:00.000Z", data: {} }; }) as never,
   });
   const { base, close } = await serve([createSalesIntelligenceBoundaryRouter({ connect: async () => {} }), admin]);
   try {
     assert.equal((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}/timeline?limit=5&kinds=nudge_sent`, "rep")).status, 200);
     assert.equal((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}/timeline?limit=5&kinds=nudge_sent`, "owner")).status, 200);
-    assert.deepEqual(seen, [{ cursor: undefined, limit: 5, kinds: ["nudge_sent"], audience: "rep" }, { cursor: undefined, limit: 5, kinds: ["nudge_sent"] }]);
+    assert.deepEqual(seen, [{ cursor: undefined, limit: 5, kinds: ["nudge_sent"], audience: "rep", rep_agent_id: AGENT_A }, { cursor: undefined, limit: 5, kinds: ["nudge_sent"] }]);
   } finally { await close(); process.env = saved; }
 });
 
@@ -423,4 +426,102 @@ test("V-T3 m1: a rep's re-date and snooze are capped at now + 60 days (INVALID_I
       && JSON.stringify(error.issues) === JSON.stringify([{ path, code: "rep_date_beyond_cap" }]));
   // Completion carries no date: never checked.
   assert.doesNotThrow(() => assertRepDateCap({ command: "complete_followup", expected_revision: 1, disposition: "completed", note: "ok" } as unknown as CsiCommand, NOW));
+});
+
+test("S12-REPREADS: a rep reads an in-scope run presentation (Full output emptied, Owner corrections kept) and artifact evidence; 404 outside; Full output stays Owner-only", { timeout: 60_000 }, async () => {
+  const saved = { ...process.env };
+  env({ rep: true });
+  const RUN_IN = IN, RUN_OUT = OUT, ART_IN = "65f00000000000000000c1c1", ART_OUT = "65f00000000000000000d1d1";
+  const presentation = (id: string) => ({ as_of: "2026-09-25T12:00:00.000Z", coverage: {}, data: { run_id: id,
+    summary_findings: { availability: "ready", owner_instruction_assessments: [{ instruction_id: "i1", verdict: "followed" }] },
+    evidence: { availability: "ready", items: [{ id: "e1" }] },
+    full_output: [{ kind: "findings", id, label: "Findings", generated_at: null, version: null, available: true }] } });
+  const reads: string[] = [], scopeCalls: string[] = [];
+  const admin = createSalesIntelligenceAdminRouter({
+    connect: async () => {},
+    repScope: { record: async () => false, number: async () => false, conversation: async () => false,
+      run: async (id: string, agent: string) => { scopeCalls.push(`run:${id}`); return id === RUN_IN && agent === AGENT_A; },
+      artifact: async (id: string, agent: string) => { scopeCalls.push(`artifact:${id}`); return id === ART_IN && agent === AGENT_A; } },
+    runPresentation: (async (id: string) => { reads.push(`presentation:${id}`); return id === MISSING ? null : presentation(id); }) as never,
+    assessmentEvidence: (async (id: string) => { reads.push(`evidence:${id}`); return id === MISSING ? null : { as_of: "x", coverage: {}, data: { availability: "ready", items: [{ id: "e1" }] } }; }) as never,
+    runOutput: (async () => { reads.push("output"); return { as_of: "x", coverage: {}, data: {} }; }) as never,
+    assessment: (async () => { reads.push("assessment"); return { as_of: "x", coverage: {}, data: {} }; }) as never,
+    assessmentOutput: (async () => { reads.push("assessment-output"); return { as_of: "x", coverage: {}, data: {} }; }) as never,
+  });
+  const { base, close } = await serve([createSalesIntelligenceBoundaryRouter({ connect: async () => {} }), admin]);
+  const get = (path: string, role: Role = "rep") => call(base, "GET", `${CSI_ADMIN_PREFIX}${path}`, role);
+  try {
+    // In scope: 200, every section as the Owner's, Full output references emptied.
+    const repRun = await get(`/analysis-runs/${RUN_IN}/presentation`);
+    assert.equal(repRun.status, 200);
+    const repData = JSON.parse(repRun.text).data;
+    assert.deepEqual(repData.full_output, []);
+    assert.deepEqual(repData.summary_findings.owner_instruction_assessments, [{ instruction_id: "i1", verdict: "followed" }], "the Owner's corrections stay");
+    assert.deepEqual({ ...repData, full_output: presentation(RUN_IN).data.full_output }, presentation(RUN_IN).data, "only full_output differs from the Owner's");
+    const repEvidence = await get(`/assessments/${ART_IN}/evidence`);
+    assert.equal(repEvidence.status, 200);
+    assert.deepEqual(JSON.parse(repEvidence.text).data.items, [{ id: "e1" }]);
+    // Out of scope and missing: the same 404 as a missing id, and the read never runs for an out-of-scope id.
+    for (const [path, out, resource] of [[`/analysis-runs/:id/presentation`, RUN_OUT, "Analysis"], [`/assessments/:id/evidence`, ART_OUT, "Assessment"]] as const) {
+      reads.length = 0;
+      const missingOwner = await get(path.replace(":id", MISSING), "owner");
+      const outRep = await get(path.replace(":id", out));
+      const missingRep = await get(path.replace(":id", MISSING));
+      for (const result of [missingOwner, outRep, missingRep]) { assert.equal(result.status, 404, path); assert.equal(result.json?.error, `${resource} not found`); assert.equal(result.json?.code, "INVALID_INPUT"); }
+      assert.equal(reads.length, 1, `${path}: only the Owner's missing-id read ran`);
+      // Another rep's scope doesn't open A's run or artifact.
+      assert.equal((await call(base, "GET", `${CSI_ADMIN_PREFIX}${path.replace(":id", path.includes("analysis") ? RUN_IN : ART_IN)}`, "rep", true, { agent: AGENT_B })).status, 404, path);
+    }
+    // The Owner: unchanged payload (Full output kept), no scope check.
+    scopeCalls.length = 0;
+    const ownerRun = await get(`/analysis-runs/${RUN_OUT}/presentation`, "owner");
+    assert.equal(ownerRun.status, 200);
+    assert.deepEqual(JSON.parse(ownerRun.text).data, presentation(RUN_OUT).data);
+    assert.equal((await get(`/assessments/${ART_OUT}/evidence`, "owner")).status, 200);
+    assert.deepEqual(scopeCalls, [], "the Owner never pays a scope check");
+    // Full output and the other run/artifact reads stay Owner-only for a rep, in scope or not.
+    reads.length = 0;
+    for (const path of [`/analysis-runs/${RUN_IN}/output/${IN}`, `/analysis-runs/${RUN_IN}`, `/analysis-runs/${RUN_IN}/evidence`, `/analysis-runs/${RUN_IN}/evidence/${IN}`,
+      `/assessments/${ART_IN}`, `/assessments/${ART_IN}/output`]) {
+      const result = await get(path);
+      assert.equal(result.status, 403, path); assert.equal(result.json?.code, "OWNER_REQUIRED", path);
+    }
+    assert.deepEqual(reads, [], "no Owner-only read ran for the rep");
+    // REP_ACCESS off: both reads refuse a rep exactly as before.
+    env({ rep: false });
+    for (const path of [`/analysis-runs/${RUN_IN}/presentation`, `/assessments/${ART_IN}/evidence`]) {
+      const off = await get(path);
+      assert.equal(off.status, 403, path); assert.equal(off.json?.code, "OWNER_REQUIRED", path);
+    }
+    assert.equal((await get(`/analysis-runs/${RUN_IN}/presentation`, "owner")).status, 200, "the Owner, flag off");
+  } finally { await close(); process.env = saved; }
+});
+
+test("S12-REPNUDGE: a rep's detail asks the read for its own nudges and carries only nudges addressed to its Agent (read-only); the Owner's is unchanged", { timeout: 60_000 }, async () => {
+  const saved = { ...process.env };
+  env({ rep: true });
+  const options: unknown[] = [];
+  const nudge = (id: string, agent: string | null) => ({ id, agent_id: agent, body_as_sent: `Body ${id}`, status: "sent", sent_at: "2026-09-25T12:00:00.000Z" });
+  const admin = createSalesIntelligenceAdminRouter({
+    connect: async () => {},
+    repScope: { record: async (id: string) => id === IN, number: async () => false, conversation: async () => false, run: async () => false, artifact: async () => false },
+    // A read that ignored the option would leak every nudge; the route filters again.
+    outreach: (async (id: string, opts?: unknown) => { options.push(opts ?? null); return { as_of: "x", coverage: {}, data: { outreach: { id }, owner_instructions: [],
+      nudges: { items: [nudge("n-a", AGENT_A), nudge("n-b", AGENT_B), nudge("n-none", null)], next_cursor: "cursor" } } }; }) as never,
+  });
+  const { base, close } = await serve([createSalesIntelligenceBoundaryRouter({ connect: async () => {} }), admin]);
+  try {
+    const repA = JSON.parse((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}`, "rep")).text).data.nudges;
+    assert.deepEqual(repA, { items: [nudge("n-a", AGENT_A)], next_cursor: null });
+    const repB = JSON.parse((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}`, "rep", true, { agent: AGENT_B })).text).data.nudges;
+    assert.deepEqual(repB, { items: [nudge("n-b", AGENT_B)], next_cursor: null });
+    const owner = JSON.parse((await call(base, "GET", `${CSI_ADMIN_PREFIX}/outreach/${IN}`, "owner")).text).data.nudges;
+    assert.equal(owner.items.length, 3); assert.equal(owner.next_cursor, "cursor");
+    assert.deepEqual(options, [{ nudges_for_agent: AGENT_A }, { nudges_for_agent: AGENT_B }, null]);
+    // Read-only: the nudge history and the send routes stay Owner-only for a rep.
+    for (const [method, path] of [["GET", `/nudges?outreach_record_id=${IN}`], ["POST", "/nudges"], ["POST", "/nudges/preview"]] as const) {
+      const result = await call(base, method, `${CSI_ADMIN_PREFIX}${path}`, "rep", true, {}, {});
+      assert.equal(result.status, 403, path); assert.equal(result.json?.code, "OWNER_REQUIRED", path);
+    }
+  } finally { await close(); process.env = saved; }
 });

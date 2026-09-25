@@ -98,15 +98,16 @@ test("B12 (real readers): Outreach scope, Lead-only record, kinds filters", asyn
   await exact("record M", outreachReader(String(S4_IDS.recordM)), 100);
 });
 
-test("V-T3 M8: a rep's Outreach timeline drops nudges and Owner notes before the page is cut; restrictions stay", async t => {
+test("V-T3 M8 (+ S12-REPNUDGE): a rep's Outreach timeline drops Owner notes, and nudges not addressed to it, before the page is cut; restrictions stay", async t => {
   installFakeMongo(t, docs());
+  assert.deepEqual(REP_HIDDEN_TIMELINE_KINDS, ["owner_note"], "S12-REPNUDGE: nudges are filtered per recipient, not hidden as a kind");
   for (const record of [S4_IDS.recordA, S4_IDS.recordM]) {
     const owner = await pageAll(outreachReader(String(record)), 200);
-    const hidden = owner.filter(e => REP_HIDDEN_TIMELINE_KINDS.includes(e.kind));
+    const hidden = owner.filter(e => REP_HIDDEN_TIMELINE_KINDS.includes(e.kind) || e.kind === "nudge_sent");
     assert.ok(hidden.some(e => e.kind === "nudge_sent") && hidden.some(e => e.kind === "owner_note"), "the fixture carries both Owner-only kinds");
-    // Exact paging over the filtered stream: limit 7 and 13 concatenate to pages of 200, no repeats.
+    // Exact paging over the filtered stream: limit 7 and 13 concatenate to pages of 200, no repeats. No rep Agent here: no nudge event at all.
     const rep = await exact(`rep ${record}`, repOutreachReader(String(record)), 1);
-    assert.deepEqual(keys(rep), keys(owner.filter(e => !REP_HIDDEN_TIMELINE_KINDS.includes(e.kind))), "the Owner's stream minus the hidden kinds");
+    assert.deepEqual(keys(rep), keys(owner.filter(e => !hidden.includes(e))), "the Owner's stream minus Owner notes and every nudge");
     const restrictions = owner.filter(e => e.kind.startsWith("restriction_"));
     assert.ok(restrictions.length > 0, "the fixture carries a restriction event");
     assert.deepEqual(keys(rep.filter(e => e.kind.startsWith("restriction_"))), keys(restrictions), "do-not-call stays visible to the rep");

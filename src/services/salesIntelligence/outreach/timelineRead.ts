@@ -4,6 +4,7 @@ import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
+import { getOwnerRepNudgeModel } from "../../../models/OwnerRepNudge";
 import { toObjectId } from "../../../utils/objectId";
 import { csiIdSchema } from "../../../validation/v1/salesIntelligence";
 import { ownerRead } from "../../numberActivity/coverage";
@@ -24,6 +25,7 @@ import {
   isAfterStoryCursor,
   keysetScan,
   readLeadRows,
+  resolveRepActions,
   STORY_SOURCES,
   subjectKeysFor,
   TIMELINE_KINDS,
@@ -96,12 +98,31 @@ export const timelineV2QuerySchema = z
 export type TimelineV2Query = z.infer<typeof timelineV2QuerySchema>;
 
 /**
- * V-T3 M8 (S8-REP): Owner-only kinds a rep's timeline never carries: Owner→rep nudges (Messages, blanked on the
- * rep's detail too) and Owner notes. Restriction events stay: a rep must see do-not-call.
+ * V-T3 M8 (S8-REP): Owner-only kinds a rep's timeline never carries: Owner notes. Restriction events stay: a rep must
+ * see do-not-call. S12-REPNUDGE (UX11): `nudge_sent` left this list; a rep keeps the nudge events of nudges addressed to
+ * it (`rep_agent_id`) and never another rep's (`repNudgeFilter`).
  */
-export const REP_HIDDEN_TIMELINE_KINDS: readonly string[] = ["nudge_sent", "owner_note"];
-/** `audience: "rep"` drops `REP_HIDDEN_TIMELINE_KINDS` inside every reader's accept (before the bound), so paging stays exact. */
-export type TimelineReadOptions = { cursor?: string; limit?: number; kinds?: readonly string[] | null; audience?: "owner" | "rep" };
+export const REP_HIDDEN_TIMELINE_KINDS: readonly string[] = ["owner_note"];
+/**
+ * `audience: "rep"` drops `REP_HIDDEN_TIMELINE_KINDS`, and every `nudge_sent` whose nudge isn't addressed to `rep_agent_id`, inside
+ * every reader's accept (before the bound), so paging stays exact. Without `rep_agent_id` a rep sees no nudge event.
+ */
+export type TimelineReadOptions = { cursor?: string; limit?: number; kinds?: readonly string[] | null; audience?: "owner" | "rep"; rep_agent_id?: string | null };
+/** S12-REPNUDGE: bound on the nudge ids read for one rep timeline (the rep's own nudges on the subject's records). */
+export const REP_NUDGE_ID_CAP = 500;
+/**
+ * S12-REPNUDGE: which `nudge_sent` events a rep keeps: those whose nudge (`detail.target_id`, the audit row's nudge id) is on one
+ * of the subject's records and addressed to the rep's Agent. One read (`nudge_outreach_created` prefix), none without an Agent.
+ */
+export async function repNudgeFilter(records: readonly { _id: unknown }[], agentId: string | null | undefined): Promise<(e: StoryEvent) => boolean> {
+  const ids = new Set<string>();
+  if (agentId && mongoose.isValidObjectId(agentId) && records.length) {
+    const rows = await getOwnerRepNudgeModel().find({ outreach_record_id: { $in: records.map(r => oid(String(r._id))) }, agent_id: oid(agentId) })
+      .select("_id").limit(REP_NUDGE_ID_CAP).lean();
+    for (const row of rows) ids.add(String(row._id));
+  }
+  return e => e.kind !== "nudge_sent" || ids.has(String(e.detail.target_id ?? ""));
+}
 export type TimelineReadDeps = { now?: () => Date; coverage?: CoverageDto };
 
 type Edge = { lead_ref: { model: "FormLead" | "CallLead"; id: unknown }; state: string };
@@ -184,7 +205,7 @@ async function resolveOutreach(outreachId: string, as_of: Date): Promise<Resolve
 const ROUTINE_KINDS = new Set(["conversation_recorded", "granot_observed", "analysis_submitted"]);
 /** Sources 1, 2, 5, 6, 8, 10, 11, 12 of data spec §5.2: prefixed `Job {n} ·` on a multi-Lead Number. */
 const JOB_KINDS = new Set(["lead_received", "call_qualified", "assessment_published", "granot_priority_changed", "quoted_changed", "granot_observed", "receiver_agent_changed",
-  "followup_created", "followup_completed", "followup_cancelled", "followup_superseded", "booking_recorded", "cancellation_recorded", "lead_message_sent"]);
+  "followup_created", "followup_completed", "followup_cancelled", "followup_superseded", "followup_redated", "booking_recorded", "cancellation_recorded", "lead_message_sent"]);
 const GROUP_BY_KIND: Readonly<Record<string, TimelineV2EventDto["group"]>> = {
   call: "calls", conversation_recorded: "calls",
   conversation_analyzed: "analysis", assessment_published: "analysis", analysis_submitted: "analysis",
@@ -383,15 +404,19 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
   const decoded = opts.cursor ? decodeTimelineCursor(opts.cursor) : null;
   const kinds = opts.kinds?.length ? [...new Set(opts.kinds)] : null;
   const { subject } = resolved;
+  // S12-REPNUDGE: a rep's timeline keeps only the nudges addressed to it.
+  const keep = opts.audience === "rep" ? await repNudgeFilter(resolved.records, opts.rep_agent_id) : null;
   const ctx: TimelineReadContext = {
     scope: resolved.scope,
     after: decoded ? { happened_at: decoded.happened_at, kind_order: timelineKindOrder(decoded.kind), id: decoded.id } : null,
     kinds: kinds ? new Set(kinds) : null,
-    ...(opts.audience === "rep" ? { exclude: new Set(REP_HIDDEN_TIMELINE_KINDS) } : {}),
+    ...(opts.audience === "rep" ? { exclude: new Set(REP_HIDDEN_TIMELINE_KINDS), keep } : {}),
     subject_keys: subjectKeysFor(subject, resolved.records),
     records: resolved.records,
     lead_refs: subject.lead_refs.slice(0, TIMELINE_LEAD_FANOUT),
     leads: resolved.leads,
+    // S12-REPACT: a rep's follow-up command is one event (the Case File never sets this).
+    rep_actions: true,
   };
   const names = kinds ? [...new Set(kinds.filter(k => !ctx.exclude?.has(k)).map(k => TIMELINE_SOURCE_BY_KIND[k]).filter((n): n is string => Boolean(n)))] : Object.keys(STORY_SOURCES);
   // S9-PUBLISH: the band reader runs only with SALES_INTELLIGENCE_OVERVIEW on, so a flag-off timeline is byte-identical.
@@ -399,6 +424,8 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
   const results = await Promise.all([...names.map(async name => [name, await STORY_SOURCES[name]!(subject, limit, { timeline: ctx })] as const),
     ...(bands ? [(async () => ["band_transitions", await bandTransitionSource(asOf, limit, ctx)] as const)()] : [])]);
   const merged = mergeTimelinePages(results.map(([, r]) => r), limit);
+  // S12-REPACT: name the rep and attach its note on the page's rep follow-up events (≤ one audit read + one Agent read per page).
+  const events = await resolveRepActions(merged.events);
   const multiLead = resolved.scope === "number" && subject.lead_refs.length > 1;
   const adapter: AdapterContext = {
     scope: resolved.scope, number_id: resolved.number_id, outreach_id: resolved.outreach_id, as_of: asOf,
@@ -408,7 +435,7 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
   const truncated_sources = [...new Set([...resolved.capped, ...results.filter(([, r]) => r.truncated).map(([name]) => name)])].sort();
   const data = {
     scope: resolved.scope, number_id: resolved.number_id, outreach_id: resolved.outreach_id,
-    items: merged.events.map(e => storyEventToTimelineDto(opts.audience === "rep" ? redactOwnerTextForRep(e) : e, adapter)), cursor: merged.cursor, kinds,
+    items: events.map(e => storyEventToTimelineDto(opts.audience === "rep" ? redactOwnerTextForRep(e) : e, adapter)), cursor: merged.cursor, kinds,
     coverage: { truncated_sources },
   };
   return timelineV2PageDtoSchema.parse(await ownerRead(data, () => asOf, deps.coverage));
