@@ -357,6 +357,16 @@ export function mergeTimelinePages(results: readonly SourceResult[], limit: numb
   return { events, cursor: all.length > limit && last ? encodeTimelineCursor({ happened_at: last.happened_at, kind: last.kind, id: last.id }) : null };
 }
 
+/**
+ * V-T3 (M8 follow-up): a rep's timeline keeps Owner-authored events (a closure, a cancel, a snooze), but
+ * never the Owner's free text: the note, the reason and the before/after values are blanked. The event
+ * kind and time stay, so paging is unchanged.
+ */
+export function redactOwnerTextForRep<T extends { actor?: { kind?: string | null } | null; detail: Record<string, unknown> }>(event: T): T {
+  if (event.actor?.kind !== "owner") return event;
+  return { ...event, detail: { ...event.detail, note: null, reason: null, prior: null, current: null } };
+}
+
 async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf: Date, deps: TimelineReadDeps): Promise<TimelineV2PageDto> {
   const limit = Math.min(MAX_LIMIT, Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)));
   const decoded = opts.cursor ? decodeTimelineCursor(opts.cursor) : null;
@@ -387,7 +397,7 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
   const truncated_sources = [...new Set([...resolved.capped, ...results.filter(([, r]) => r.truncated).map(([name]) => name)])].sort();
   const data = {
     scope: resolved.scope, number_id: resolved.number_id, outreach_id: resolved.outreach_id,
-    items: merged.events.map(e => storyEventToTimelineDto(e, adapter)), cursor: merged.cursor, kinds,
+    items: merged.events.map(e => storyEventToTimelineDto(opts.audience === "rep" ? redactOwnerTextForRep(e) : e, adapter)), cursor: merged.cursor, kinds,
     coverage: { truncated_sources },
   };
   return timelineV2PageDtoSchema.parse(await ownerRead(data, () => asOf, deps.coverage));

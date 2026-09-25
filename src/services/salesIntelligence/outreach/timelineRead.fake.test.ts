@@ -214,3 +214,13 @@ test("D4: the v1 legacy conversation scan is on by default and can be turned off
     else process.env.SALES_INTELLIGENCE_LEGACY_CONVERSATION_FALLBACK_DISABLED = saved;
   }
 });
+
+test("V-T3 M8: a rep's timeline keeps Owner-authored events but blanks the Owner's free text", async () => {
+  const { redactOwnerTextForRep } = await import("./timelineRead.js");
+  const owner = { actor: { kind: "owner" }, detail: { note: "Customer is rude, lowball them", reason: "lost to competitor", prior: { a: 1 }, current: { b: 2 }, state: "closed" } };
+  const redacted = redactOwnerTextForRep(owner);
+  assert.deepEqual([redacted.detail.note, redacted.detail.reason, redacted.detail.prior, redacted.detail.current], [null, null, null, null]);
+  assert.equal(redacted.detail.state, "closed", "the event itself stays");
+  const rep = { actor: { kind: "rep" }, detail: { note: "Left a voicemail" } };
+  assert.equal(redactOwnerTextForRep(rep), rep, "non-Owner events are unchanged");
+});
