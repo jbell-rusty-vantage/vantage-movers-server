@@ -36,6 +36,9 @@ import {
   type TimelineReadContext,
 } from "../story/sources";
 import type { StoryEvent, StoryLeadRef, StorySubject } from "../story/types";
+import { CLOSURE_CANCEL_REASONS } from "../analysis/sources";
+import { SUPERSEDED_BY_SPECIFIC_PLAN } from "./store";
+import { REACHED_ON_CLASSIFICATION } from "./ensure";
 
 /**
  * Owner timeline v2 (data spec §5; final spec §10): `GET /outreach/:id/timeline` and the
@@ -358,13 +361,21 @@ export function mergeTimelinePages(results: readonly SourceResult[], limit: numb
 }
 
 /**
- * V-T3 (M8 follow-up): a rep's timeline keeps Owner-authored events (a closure, a cancel, a snooze), but
- * never the Owner's free text: the note, the reason and the before/after values are blanked. The event
- * kind and time stay, so paging is unchanged.
+ * V-T3 (M8 follow-up): a rep's timeline keeps Owner-authored events (a closure, a cancel, a snooze) but never
+ * the Owner's free text. On an Owner event the note, reason and before/after values are blanked. On every event a
+ * follow-up `cancel_reason` shows only when it is a machine reason (a closure, a superseding plan, a
+ * classification); an Owner cancel reason (free text) is blanked. Follow-up descriptions stay: they are the rep's
+ * own work items (E9). The event kind and time stay, so paging is unchanged.
  */
+// Built on first use: these constants live in modules that import this one indirectly.
+let machineCancelReasons: ReadonlySet<string> | null = null;
+const isMachineCancelReason = (reason: string) =>
+  (machineCancelReasons ??= new Set([...CLOSURE_CANCEL_REASONS, SUPERSEDED_BY_SPECIFIC_PLAN, REACHED_ON_CLASSIFICATION])).has(reason);
 export function redactOwnerTextForRep<T extends { actor?: { kind?: string | null } | null; detail: Record<string, unknown> }>(event: T): T {
-  if (event.actor?.kind !== "owner") return event;
-  return { ...event, detail: { ...event.detail, note: null, reason: null, prior: null, current: null } };
+  const reason = event.detail.cancel_reason;
+  const cancel = typeof reason === "string" && !isMachineCancelReason(reason) ? { cancel_reason: null } : {};
+  if (event.actor?.kind !== "owner") return "cancel_reason" in cancel ? { ...event, detail: { ...event.detail, ...cancel } } : event;
+  return { ...event, detail: { ...event.detail, ...cancel, note: null, reason: null, prior: null, current: null } };
 }
 
 async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf: Date, deps: TimelineReadDeps): Promise<TimelineV2PageDto> {

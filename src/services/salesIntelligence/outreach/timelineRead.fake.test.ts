@@ -224,3 +224,13 @@ test("V-T3 M8: a rep's timeline keeps Owner-authored events but blanks the Owner
   const rep = { actor: { kind: "rep" }, detail: { note: "Left a voicemail" } };
   assert.equal(redactOwnerTextForRep(rep), rep, "non-Owner events are unchanged");
 });
+
+test("V-T3 M8: a rep sees machine cancel reasons but never the Owner's cancel text", async () => {
+  const { redactOwnerTextForRep } = await import("./timelineRead.js");
+  const ownerCancel = { actor: { kind: "system" }, detail: { description: "Call back Tuesday", cancel_reason: "customer is a time-waster" } };
+  assert.equal(redactOwnerTextForRep(ownerCancel).detail.cancel_reason, null);
+  assert.equal(redactOwnerTextForRep(ownerCancel).detail.description, "Call back Tuesday", "the work item stays");
+  for (const reason of ["granot_booked", "booked", "superseded_by_specific_plan", "reached_on_classification"]) {
+    assert.equal(redactOwnerTextForRep({ actor: { kind: "system" }, detail: { cancel_reason: reason } }).detail.cancel_reason, reason);
+  }
+});
