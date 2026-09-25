@@ -1,6 +1,44 @@
-api/**/*.test.ts
+# Files the Vercel CLI must never upload or trace. Mirrors the secret, sample
+# and local-tooling entries in .gitignore. CI deploys with --prebuilt from a
+# clean checkout, so this mainly protects manual `vercel deploy` / `vercel dev`
+# runs from a developer machine.
+
+# Tests
+**/*.test.ts
+
+# Env files and local secrets
 .env
 .env.*
 !.env.example
 sales-intelligence.env
-.claude
+observability.env.example.env
+**/*service-account*.json
+**/client_secret*
+**/just-cosmos-*.json
+**/vantage-sheets-*.json
+.ringcentral-token-cache.json
+.ringcentral-webhook-subscription.json
+ringcentral-credentials.json
+ringcentral-*-output.json
+ringcentral-local-webhook-events.jsonl
+*.log
+
+# Customer call recordings and local samples (PII, 41 MB)
+ringcentral-recording-samples/
+
+# Local tooling, docs and editor state with no runtime imports
+scripts/
+docs/
+internal_hidden_docs/
+hooks_hold/
+coverage/
+.agents/
+.claude/
+.codex/
+.cursor/
+.github/
+.cleanup-*.cjs
+.cleanup-csi-manifest-path.txt
+.storage-*.cjs
+.quality.config.json
+skills-lock.json

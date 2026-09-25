@@ -46,7 +46,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@60.0.0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
