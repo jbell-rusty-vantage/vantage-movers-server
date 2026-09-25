@@ -8,7 +8,8 @@ import { installFakeMongo } from "../story/fakeMongo.fixtures";
 import { REP_ACTION_KINDS, resolveRepActions, TIMELINE_KINDS, timelineKindOrder, type RepActionReaders } from "../story/sources";
 import { buildS4TimelineDocs, S4_AS_OF, S4_IDS } from "../story/timeline.fixtures";
 import type { StoryEvent, StoryEventKind } from "../story/types";
-import { readOutreachTimeline, redactOwnerTextForRep, storyEventToTimelineDto, timelineV2QuerySchema } from "./timelineRead";
+import { nudgeFoldFilter, readOutreachTimeline, redactOwnerTextForRep, storyEventToTimelineDto, timelineV2QuerySchema } from "./timelineRead";
+import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
 
 /**
  * S12-REPACT (UI-2 §9, A09) and S12-REPNUDGE (UI-2 §5 server, A10): a rep's own follow-up commands named on the timeline with
@@ -211,7 +212,11 @@ test("S12-REPNUDGE (real readers): Dana's timeline keeps only her nudge's events
   const marcus = await pageAll(reader({ audience: "rep", rep_agent_id: AGENT_MARCUS }), 200);
   assert.deepEqual(nudgeTargets(dana), [toDana], "Dana: her nudge only (the fixture's other nudge rows and Marcus's are dropped)");
   assert.deepEqual(nudgeTargets(marcus), [toMarcus]);
-  assert.equal(dana.filter(e => e.kind === "nudge_sent").length, 2, "the authorized and sent rows of her nudge (pre-existing: one event per nudge audit row)");
+  assert.equal(dana.filter(e => e.kind === "nudge_sent").length, 1, "one event per nudge (its authorized and sent rows fold into the newest)");
+  assert.equal(owner.filter(e => e.kind === "nudge_sent" && [toDana, toMarcus, toNobody].includes(String(e.detail.target_id))).length, 3, "the Owner: one per nudge");
+  const danaEvent = dana.find(e => e.kind === "nudge_sent")!;
+  assert.equal(danaEvent.detail.event_kind, "nudge_sent", "the newest state's row");
+  assert.equal(danaEvent.happened_at, new Date(+nudges[0]!.at + 2000).toISOString(), "the newest state's time");
   // Owner free text stays blanked on the rep's nudge events; no Owner note reaches a rep.
   assert.ok(dana.filter(e => e.kind === "nudge_sent").every(e => e.detail.current === null && e.detail.prior === null));
   assert.equal(dana.filter(e => e.kind === "owner_note").length, 0);
@@ -222,4 +227,27 @@ test("S12-REPNUDGE (real readers): Dana's timeline keeps only her nudge's events
   // Asking for nudges only: hers.
   assert.deepEqual(nudgeTargets(await pageAll(reader({ audience: "rep", rep_agent_id: AGENT_DANA, kinds: ["nudge_sent"] }), 50)), [toDana]);
   assert.ok(reads.nudges >= 1);
+});
+
+test("S12-REPNUDGE fold: three audit rows of one nudge → one nudge_sent event (the newest); two nudges → two; other kinds and unread rows pass", async t => {
+  const nudgeA = "5eed12000000000000000001", nudgeB = "5eed12000000000000000002";
+  // Newest first, as the read sorts: A's sent, B's sent, A's submission_started, B's authorized, A's authorized.
+  const rows = [["aa0000000000000000000003", nudgeA], ["bb0000000000000000000002", nudgeB], ["aa0000000000000000000002", nudgeA],
+    ["bb0000000000000000000001", nudgeB], ["aa0000000000000000000001", nudgeA]].map(([id, target]) => ({ _id: new mongoose.Types.ObjectId(id), invalidation: { target_id: target } }));
+  const seen: unknown[] = [];
+  t.mock.method(getSalesIntelligenceAuditEventModel(), "find", ((filter: unknown) => {
+    seen.push(filter);
+    const chain = { select: () => chain, sort: () => chain, limit: () => chain, lean: async () => rows };
+    return chain;
+  }) as never);
+  const keep = await nudgeFoldFilter([KEY]);
+  assert.deepEqual(seen, [{ subject_key: { $in: [KEY] }, "invalidation.kind": "nudge" }]);
+  const nudgeEvent = (auditId: string) => make("nudge_sent", auditId, "2026-09-22T11:00:00.000Z", {}, { kind: "owner" });
+  const kept = rows.map(row => String(row._id)).filter(id => keep(nudgeEvent(id)));
+  assert.deepEqual(kept, ["aa0000000000000000000003", "bb0000000000000000000002"], "one event per nudge, its newest row");
+  assert.equal(rows.filter(row => row.invalidation.target_id === nudgeA).map(row => String(row._id)).filter(id => keep(nudgeEvent(id))).length, 1, "3 rows for one nudge → 1");
+  assert.equal(keep(make("owner_note", "x1", "2026-09-22T11:00:00.000Z", {}, { kind: "owner" })), true, "other kinds pass");
+  assert.equal(keep(nudgeEvent("cc0000000000000000000009")), true, "a row the fold didn't read (beyond the cap) is kept");
+  assert.equal((await nudgeFoldFilter([]))(nudgeEvent("aa0000000000000000000001")), true, "no subject keys: no read, nothing folded");
+  assert.equal(seen.length, 1);
 });

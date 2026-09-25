@@ -5,6 +5,7 @@ import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getOwnerRepNudgeModel } from "../../../models/OwnerRepNudge";
+import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
 import { toObjectId } from "../../../utils/objectId";
 import { csiIdSchema } from "../../../validation/v1/salesIntelligence";
 import { ownerRead } from "../../numberActivity/coverage";
@@ -399,19 +400,47 @@ export function redactOwnerTextForRep<T extends { actor?: { kind?: string | null
   return { ...event, detail: { ...event.detail, ...cancel, note: null, reason: null, prior: null, current: null } };
 }
 
+/** S12-REPNUDGE follow-up: bound on the nudge audit rows read to fold a subject's nudges (3 rows per nudge). */
+export const NUDGE_AUDIT_ROW_CAP = 1500;
+/**
+ * S12-REPNUDGE follow-up (timeline only; the Subject Story and the Case File never call it): one `nudge_sent` event per nudge.
+ * A nudge writes an audit row per state (`nudge.authorized`, `nudge.submission_started`, `nudge_sent` / `nudge.failed` …), each
+ * of which the audit reader maps to `nudge_sent`. One read of the subject's nudge audit rows (`csi_audit_subject`), newest first;
+ * the predicate keeps, per nudge (`invalidation.target_id`, the nudge id), only its newest row, so the event carries the newest
+ * state's time and sentence. Applied inside every reader's accept, before the bound, so paging stays exact. A row beyond the cap
+ * is not folded (kept as before).
+ */
+export async function nudgeFoldFilter(subjectKeys: readonly string[]): Promise<(e: StoryEvent) => boolean> {
+  if (!subjectKeys.length) return () => true;
+  const rows = await getSalesIntelligenceAuditEventModel().find({ subject_key: { $in: [...subjectKeys] }, "invalidation.kind": "nudge" })
+    .select("_id invalidation happened_at").sort({ happened_at: -1, _id: -1 }).limit(NUDGE_AUDIT_ROW_CAP).lean() as unknown as Array<{ _id: unknown; invalidation?: { target_id?: unknown } }>;
+  const read = new Set<string>(), newest = new Set<string>(), seen = new Set<string>();
+  for (const row of rows) {
+    const id = String(row._id), nudge = String(row.invalidation?.target_id ?? id);
+    read.add(id);
+    if (!seen.has(nudge)) { seen.add(nudge); newest.add(id); }
+  }
+  return e => e.kind !== "nudge_sent" || !read.has(e.id.slice("nudge_sent:".length)) || newest.has(e.id.slice("nudge_sent:".length));
+}
+
 async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf: Date, deps: TimelineReadDeps): Promise<TimelineV2PageDto> {
   const limit = Math.min(MAX_LIMIT, Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)));
   const decoded = opts.cursor ? decodeTimelineCursor(opts.cursor) : null;
   const kinds = opts.kinds?.length ? [...new Set(opts.kinds)] : null;
   const { subject } = resolved;
   // S12-REPNUDGE: a rep's timeline keeps only the nudges addressed to it.
-  const keep = opts.audience === "rep" ? await repNudgeFilter(resolved.records, opts.rep_agent_id) : null;
+  const repKeep = opts.audience === "rep" ? await repNudgeFilter(resolved.records, opts.rep_agent_id) : null;
+  const subjectKeys = subjectKeysFor(subject, resolved.records);
+  // One `nudge_sent` per nudge, for the Owner and the rep (read only when nudges can be on the page).
+  const fold = !kinds || kinds.includes("nudge_sent") ? await nudgeFoldFilter(subjectKeys) : null;
+  const keep = repKeep && fold ? (e: StoryEvent) => repKeep(e) && fold(e) : repKeep ?? fold;
   const ctx: TimelineReadContext = {
     scope: resolved.scope,
     after: decoded ? { happened_at: decoded.happened_at, kind_order: timelineKindOrder(decoded.kind), id: decoded.id } : null,
     kinds: kinds ? new Set(kinds) : null,
-    ...(opts.audience === "rep" ? { exclude: new Set(REP_HIDDEN_TIMELINE_KINDS), keep } : {}),
-    subject_keys: subjectKeysFor(subject, resolved.records),
+    ...(opts.audience === "rep" ? { exclude: new Set(REP_HIDDEN_TIMELINE_KINDS) } : {}),
+    keep,
+    subject_keys: subjectKeys,
     records: resolved.records,
     lead_refs: subject.lead_refs.slice(0, TIMELINE_LEAD_FANOUT),
     leads: resolved.leads,

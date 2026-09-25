@@ -181,7 +181,8 @@ test("bounded reads: a deep page costs no more reads than the first; DTO shapes;
   await readNumberTimelineV2(String(S4_IDS.n1), { limit: 50, cursor }, { now, coverage });
   const deepReads = counter.queries;
   console.log(`# reads per page: first ${firstReads}, sixth ${deepReads}`);
-  assert.ok(firstReads <= 30, `first page ${firstReads} reads`);
+  // 31: S12-REPNUDGE's one nudge-fold read (one `nudge_sent` per nudge) joined the first page's budget.
+  assert.ok(firstReads <= 31, `first page ${firstReads} reads`);
   assert.ok(deepReads <= firstReads + 8, `deep page ${deepReads} vs first ${firstReads}`);
   counter.queries = 0;
   await readNumberTimelineV2(String(S4_IDS.n1), { limit: 50, kinds: ["call"] }, { now, coverage });
