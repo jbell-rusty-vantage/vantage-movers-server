@@ -4,16 +4,11 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import mongoose from "mongoose";
 import { BSON } from "mongodb";
+import { csiEnqueueReplicaTarget } from "./lib/csi-enqueue-replica-target";
 
 const database = `testvantagemovers_enqueue${randomUUID().replaceAll("-", "")}`;
-// Default to the documented local/Cloud replica. An optional URI supports a
-// separate operator fixture, but never permits an Atlas or remote target.
-const uri = process.argv[2] ?? "mongodb://127.0.0.1:27017/?replicaSet=rs0";
-const target = new URL(uri);
-if (target.protocol !== "mongodb:" || !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) || !target.searchParams.get("replicaSet")) {
-  throw new Error("The enqueue test requires a loopback MongoDB replica-set URI");
-}
-process.env.MONGO_URI = uri;
+// Do not inherit a configurable target: this harness creates indexes and drops its test database.
+process.env.MONGO_URI = csiEnqueueReplicaTarget(process.argv);
 process.env.TEST_MODE = "true";
 process.env.TEST_MONGO_DATABASE_NAME = database;
 process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "enqueue-replica";
