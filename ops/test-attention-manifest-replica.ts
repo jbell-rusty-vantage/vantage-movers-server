@@ -107,6 +107,12 @@ async function main() {
   await assert.rejects(readAttention({ cursor: manifestPage.data.cursor! }, deps), { code: "ATTENTION_SNAPSHOT_EXPIRED" });
   assert.equal((await readAttention({}, deps)).data.status, "pending_projection");
   await assert.rejects(publish("outreach:pre-erasure", new Date(+now + 6), new Date(+now + 4), priorEpoch), /concurrent_publish/);
+  // With no live comparison header, the fresh epoch must rebuild immediately,
+  // not wait for the old band-publication fence's 15-minute stale escape.
+  await publish("outreach:after-erasure", new Date(+now + 7), null, priorEpoch + 1);
+  assert.equal((await readAttention({}, deps)).data.snapshot_id, "outreach:after-erasure");
+  await assert.rejects(publish("outreach:duplicate-recovery", new Date(+now + 8), null, priorEpoch + 1), /concurrent_publish/);
+  await Snapshot.collection.updateOne({ snapshot_id: "outreach:after-erasure" }, { $set: { expires_at: purgedAt, cursor_expires_at: purgedAt } });
   await Artifacts.collection.updateMany({}, { $set: { created_at: new Date(+now - 3_600_000) } });
   assert.equal(await collectAttentionArtifacts(now), content.artifacts.length);
   clearAttentionArtifacts();

@@ -4,7 +4,7 @@ import { withTransaction } from "../../../db";
 import { getAttentionArtifactModel } from "../../../models/salesIntelligence/attentionArtifact";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
-import { ConcurrentAttentionPublishError } from "./bandTransitions";
+import { ConcurrentAttentionPublishError, attentionPublishFenceScope } from "./bandTransitions";
 import { ATTENTION_ENCODING, attentionArtifactHashes, attentionManifestSchema, decodeAttentionArtifact, orderManifestEntries,
   type ArtifactKind, type AttentionArtifact, type AttentionManifest, type ManifestEntry } from "./attentionManifest";
 
@@ -24,6 +24,14 @@ export async function lockAttentionArtifacts(session: ClientSession, expectedEpo
     await getSalesIntelligenceSyncStateModel().collection.updateOne(filter,
       { $inc: { artifact_serial: 1, ...(purge ? { artifact_epoch: 1 } : {}) },
         ...(!purge ? { $setOnInsert: { artifact_epoch: 0 } } : {}) }, { session, upsert: true });
+    if (purge) {
+      // Erasure expires every comparison header. Reset its publication bound in
+      // the same transaction so the new epoch can rebuild immediately; builders
+      // from before erasure still fail the epoch check before touching this fence.
+      await getSalesIntelligenceSyncStateModel().collection.updateOne(
+        { scope: attentionPublishFenceScope(csiDataset()) },
+        { $set: { last_as_of: new Date(0) }, $unset: { last_snapshot_id: "" } }, { session });
+    }
   } catch (error) {
     if ((error as { code?: number }).code === 11000) throw new ConcurrentAttentionPublishError();
     throw error;

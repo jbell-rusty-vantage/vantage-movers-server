@@ -313,7 +313,8 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const overview = overviewEnabled();
   // Reader-first rollout: auto switches only after deployment enables the new writer.
   const useManifest = options.layout === "manifest" || (options.layout !== "chunked" && csiFlag("ATTENTION_MANIFEST"));
-  const artifactEpoch = useManifest ? await attentionArtifactEpoch() : undefined;
+  // Legacy rollback writers must also reject builds started before erasure.
+  const artifactEpoch = await attentionArtifactEpoch();
   const [policy, coverage, queued, bandsBase] = await Promise.all([resolvePolicy(), readCaptureCoverage(),
     getSalesIntelligenceJobModel().distinct("subject_key", { ...csiDataset(), stage: "move_assessment", status: { $in: ["pending", "leased", "retry"] } }),
     overview || useManifest ? previousSnapshotForBands(now) : Promise.resolve(null)]);
@@ -451,7 +452,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
   try {
     await withTransaction(async session => {
-      if (content) await lockAttentionArtifacts(session, artifactEpoch);
+      await lockAttentionArtifacts(session, artifactEpoch);
       if (fence) await fenceAttentionPublish(session, fence);
       await writeSnapshot(session);
     });
