@@ -272,7 +272,7 @@ test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a h
   assert.equal(schedules.get(CSI_CRON_PATHS.outreachEnsure), "* * * * *");
   // CSI-14 §5: publish owns its own cron, lease and invocation budget, so an
   // ensure drain backlog can never starve the Needs Attention desk.
-  assert.equal(schedules.get(CSI_CRON_PATHS.attentionPublish), "* * * * *");
+  assert.equal(schedules.get(CSI_CRON_PATHS.attentionPublish), "*/3 * * * *");
   assert.equal(
     manifest.functions["api/index.ts"]?.maxDuration,
     CSI_FUNCTION_MAX_DURATION_MS / 1000,
