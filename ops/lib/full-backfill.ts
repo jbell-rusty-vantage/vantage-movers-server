@@ -885,8 +885,17 @@ class FullBackfill {
   /** Pick the analysis job for a conversation: an own job, the standard job (driven, re-armed or superseded), or fresh work. */
   private async pickAnalysisJob(n: NumberEntry, c: ConversationEntry, version: string, snapshotId: string): Promise<Pick> {
     const standard = `csi:analysis:conversation:${c.conversation_id}:${version}`, ownKey = `${standard}${OWN_DEDUPE_MARK}${this.target.findings}`;
-    const own = await this.jobs().findOne({ dedupe_key: ownKey }).select("_id").lean();
-    if (own) return { job_id: String(own._id), by: "backfill" };
+    const own = (await this.jobs().findOne({ dedupe_key: ownKey }).select(JOB_FIELDS).lean()) as JobRow | null;
+    if (own) {
+      // An own job an earlier run left failed (e.g. `schema_exhausted`) is re-armed by id like any other failed job;
+      // it is on the target layout, so it resumes rather than being superseded (its dedupe key is taken).
+      const id = String(own._id);
+      const failed = own.status === "dead_letter" || (own.status === "paused" && REDRIVE_PAUSE_REASONS.has(own.reason ?? ""));
+      if (!failed) return { job_id: id, by: "backfill" };
+      if (!(await this.resumable(own)).resumable) return { blocked: "blocked", reason: "own_job_not_resumable", by: null, job_id: id };
+      const prior = await this.adopt(own, n.number_id, c.conversation_id, "rearmed");
+      return prior ? { job_id: id, by: "prior", prior } : { blocked: "blocked", reason: "changed_concurrently", by: null, job_id: id };
+    }
     const std = (await this.jobs().findOne({ dedupe_key: standard }).select(JOB_FIELDS).lean()) as JobRow | null;
     let prior: PriorState | undefined, superseded: string | undefined;
     if (std) {
