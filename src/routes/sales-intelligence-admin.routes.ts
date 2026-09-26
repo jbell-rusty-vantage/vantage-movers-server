@@ -38,7 +38,7 @@ import { csiNudgeCommandSchema } from "../validation/v1/salesIntelligence";
 import { streamCsiInvalidations } from "../services/salesIntelligence/live";
 import { commandAnalysis } from "../services/salesIntelligence/analysis/ownerCommands";
 import { listOwnerRuns, readOwnerRun, readOwnerEvidence } from "../services/salesIntelligence/analysis/ownerReads";
-import { readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation } from "../services/salesIntelligence/assessment/reads";
+import { presentationForRep, readAssessment, readAssessmentEvidence, readAssessmentOutput, readOutreachAssessment, readRunOutput, readRunPresentation } from "../services/salesIntelligence/assessment/reads";
 import { currentFindingsQuerySchema, readCurrentFindings } from "../services/salesIntelligence/analysis/currentFindings";
 import { ownerConversationsQuerySchema, ownerTranscriptQuerySchema, readOwnerConversations, readOwnerTranscript } from "../services/salesIntelligence/analysis/ownerConversations";
 import { openOwnerConversationMedia } from "../services/salesIntelligence/conversations/ownerMedia";
@@ -66,6 +66,8 @@ export const CSI_REP_READ_ROUTES = [
   "GET /live", "GET /attention", "GET /outreach/closed-history", "GET /overview",
   "GET /outreach/:id", "GET /outreach/:id/timeline", "GET /outreach/:id/assessment", "GET /outreach/:id/findings",
   "GET /numbers/:id/conversations", "GET /conversations/:id/transcript", "GET /conversations/:id/media",
+  // S12-REPREADS (UX15): the analysis kit's two run/artifact reads, 404 outside the scope; Full output stays Owner-only.
+  "GET /analysis-runs/:id/presentation", "GET /assessments/:artifactId/evidence",
 ] as const;
 /** The E9 commands a rep may send, each on its own follow-up with a note. */
 export const CSI_REP_COMMAND_ROUTES = ["POST /followups/:id/complete", "POST /followups/:id/snooze", "PATCH /followups/:id"] as const;
@@ -405,16 +407,26 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
   });
   for (const [path, read] of [["/assessments/:artifactId", () => deps.assessment ?? readAssessment],
-    ["/assessments/:artifactId/output", () => deps.assessmentOutput ?? readAssessmentOutput],
-    ["/assessments/:artifactId/evidence", () => deps.assessmentEvidence ?? readAssessmentEvidence]] as const) router.get(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
+    ["/assessments/:artifactId/output", () => deps.assessmentOutput ?? readAssessmentOutput]] as const) router.get(`${CSI_ADMIN_PREFIX}${path}`, async (req, res) => {
     try { guard(req); const id = csiIdSchema.parse(req.params.artifactId); scopeOnly.parse(req.query); await connect();
       const result = await read()(id);
       return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Assessment"); } catch (error) { return fail(req, res, error); }
   });
+  // S12-REPREADS (UX15): a rep reads an artifact's evidence when the artifact's `outreach_record_id` is in its E11 scope; else the missing-id 404.
+  router.get(`${CSI_ADMIN_PREFIX}/assessments/:artifactId/evidence`, async (req, res) => {
+    try { const actor = readerGuard(req); const id = csiIdSchema.parse(req.params.artifactId); scopeOnly.parse(req.query); await connect();
+      if (!(await inScope(actor, "artifact", id))) return notFound(req, res, "Assessment");
+      const result = await (deps.assessmentEvidence ?? readAssessmentEvidence)(id);
+      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Assessment"); } catch (error) { return fail(req, res, error); }
+  });
+  // S12-REPREADS (UX15): a rep reads a run's presentation when the run's Number has an Outreach record in its scope (else the missing-id 404),
+  // with `full_output[]` emptied (Full output stays Owner-only); every other section is the Owner's.
   router.get(`${CSI_ADMIN_PREFIX}/analysis-runs/:id/presentation`, async (req, res) => {
-    try { guard(req); const id = csiIdSchema.parse(req.params.id); scopeOnly.parse(req.query); await connect();
+    try { const actor = readerGuard(req); const id = csiIdSchema.parse(req.params.id); scopeOnly.parse(req.query); await connect();
+      if (!(await inScope(actor, "run", id))) return notFound(req, res, "Analysis");
       const result = await (deps.runPresentation ?? readRunPresentation)(id);
-      return result ? res.json({ ok: true, ...result }) : notFound(req, res, "Analysis"); } catch (error) { return fail(req, res, error); }
+      if (!result) return notFound(req, res, "Analysis");
+      return res.json({ ok: true, ...(csiRepScope(actor) ? presentationForRep(result) : result) }); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/analysis-runs/:id/output/:outputId`, async (req, res) => {
     try { guard(req); const id = csiIdSchema.parse(req.params.id), outputId = csiIdSchema.parse(req.params.outputId); scopeOnly.parse(req.query); await connect();
@@ -426,16 +438,20 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     try { const actor = readerGuard(req); if (!flag("TIMELINE_V2")) throw new CsiError("FEATURE_DISABLED");
       const id = csiIdSchema.parse(req.params.id); const query = timelineV2QuerySchema.parse(req.query); await connect();
       if (!(await inScope(actor, "record", id))) return notFound(req, res, "Outreach");
-      // V-T3 M8: a rep's timeline drops Owner-only kinds (nudges, Owner notes) in the read, before the page is cut.
-      const page = await (deps.outreachTimeline ?? readOutreachTimeline)(id, csiRepScope(actor) ? { ...query, audience: "rep" } : query);
+      // V-T3 M8: a rep's timeline drops Owner notes in the read, before the page is cut; S12-REPNUDGE: it keeps only the nudges addressed to the rep.
+      const repScope = csiRepScope(actor);
+      const page = await (deps.outreachTimeline ?? readOutreachTimeline)(id, repScope ? { ...query, audience: "rep", rep_agent_id: repScope.agent_id } : query);
       return page ? res.json({ ok: true, ...page }) : notFound(req, res, "Outreach"); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/outreach/:id`, async (req, res) => {
     try { const actor = readerGuard(req); const id = csiIdSchema.parse(req.params.id); await connect();
       if (!(await inScope(actor, "record", id))) return notFound(req, res);
-      const result = await (deps.outreach ?? readOutreach)(id); if (!result) return notFound(req, res);
-      // S8-REP: Owner→rep nudges (Messages) are Owner-only; a rep's detail carries an empty nudge page (same shape).
-      if (csiRepScope(actor)) return res.json({ ok: true, ...result, data: { ...result.data, nudges: { items: [], next_cursor: null } } });
+      // S12-REPNUDGE (UX11): a rep's detail carries only the Owner's nudges addressed to the rep (same item shape, no paging);
+      // nudges to other reps and unresolved recipients stay out. Filtered again here so no other read can widen it.
+      const repScope = csiRepScope(actor);
+      const result = await (deps.outreach ?? readOutreach)(id, repScope ? { nudges_for_agent: repScope.agent_id } : undefined); if (!result) return notFound(req, res);
+      if (repScope) return res.json({ ok: true, ...result, data: { ...result.data, nudges: {
+        items: (result.data.nudges?.items ?? []).filter(item => item.agent_id === repScope.agent_id), next_cursor: null } } });
       return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/review-items`, async (req, res) => {

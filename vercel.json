@@ -83,7 +83,7 @@
     },
     {
       "path": "/api/cron/sales-intelligence-attention-publish",
-      "schedule": "* * * * *"
+      "schedule": "*/3 * * * *"
     },
     {
       "path": "/api/cron/sales-intelligence-transcribe",

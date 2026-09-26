@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
 import { intelligenceEnvelopeSchema } from "../../../validation/intelligence/intelligenceEnvelope.validation";
-import { expandStructuredFindings, minimalFindingsSchema, summaryStepSchema, validateSummaryStep,
+import { citationRepairHints, expandStructuredFindings, minimalFindingsSchema, summaryStepSchema, validateSummaryStep,
   type StructuredExpansionInputs } from "./structuredContract";
 
 const summary = { overview: "Synthetic call", customer_wanted: "A move", money_and_dates: "",
@@ -119,6 +119,41 @@ test("model schemas contain no server metadata and reject operational additions"
       assert.equal(json.includes(`\"${key}\"`), false, key);
   }
   assert.equal(minimalFindingsSchema.safeParse({ ...raw(), schema_version: "invented" }).success, false);
+});
+
+test("repair hints name every mis-copied citation with the closest supplied ids and never change acceptance", () => {
+  const scope = inputs();
+  scope.context[0].data.page.records.push(
+    { record_type: "interaction", record_id: "6ab2ef80627a1dd94d746e5c", revision: null, fields: { status: "completed" } },
+    { record_type: "contact_number", record_id: "6ab2ef80627a1dd94d746e5e", revision: null, fields: { status: "active" } },
+    { record_type: "story_event", record_id: "call:6ab2e3cc6ed22806f2cd2aa8", revision: null, fields: { kind: "call" } });
+  const truncated = { source: "context", record: "story_event", id: "call:6ab2e3cc6ed22806f2cd2aa" };
+  const neighbour = { source: "context", record: "interaction", id: "6ab2ef80627a1dd94d746e5e" };
+  const model = { ...raw(), findings: [
+    { ...raw().findings[0], basis: "vantage_record", evidence: [truncated, neighbour] },
+    { ...raw().findings[0], basis: "vantage_record", evidence: [truncated, { source: "transcript", call_index: 0, segment_ids: [8], quote: null }] }] };
+  // The validator still refuses at the first bad citation, with the sanitized path only.
+  assert.throws(() => expandStructuredFindings(model, scope), (error: { issues?: unknown }) =>
+    JSON.stringify(error.issues) === JSON.stringify([{ path: "findings.0.evidence.0.id", code: "record_not_in_context" }]));
+  const hints = citationRepairHints(model, scope);
+  assert.equal(hints.length, 3);
+  assert.match(hints[0], /^findings\.0\.evidence\.0, findings\.1\.evidence\.0: .*"call:6ab2e3cc6ed22806f2cd2aa".*closest supplied story_event ids are "call:6ab2e3cc6ed22806f2cd2aa8"/);
+  assert.match(hints[1], /^findings\.0\.evidence\.1: .*supplied only as \{"record":"contact_number","id":"6ab2ef80627a1dd94d746e5e"\}.*closest supplied interaction ids are "6ab2ef80627a1dd94d746e5c"/);
+  assert.match(hints[2], /^findings\.1\.evidence\.1: call_index 0 may cite only the segment ids listed for it in appendix\.calls: \[7\]/);
+  // A story-event id naming a record supplied under another type points at that record.
+  const prefixed = { ...raw(), findings: [{ ...raw().findings[0], basis: "vantage_record", evidence: [{ source: "context", record: "story_event", id: "call:6ab2ef80627a1dd94d746e5c" }] }] };
+  assert.match(citationRepairHints(prefixed, scope)[0], /supplied only as \{"record":"interaction","id":"6ab2ef80627a1dd94d746e5c"\}/);
+  // Out-of-range indices name the valid range.
+  const indices = { ...raw(), owner_instruction_assessments: [{ instruction_index: 1, assessment: "agrees", reason: "x" }],
+    prior_finding_relations: [{ prior_index: 0, relation: "still_true", by_finding_index: 4, evidence: [], note: null }] };
+  assert.deepEqual(citationRepairHints(indices, scope).map(hint => hint.split(":")[0]),
+    ["prior_finding_relations.0.by_finding_index", "owner_instruction_assessments.0.instruction_index"]);
+  assert.match(citationRepairHints(indices, { ...scope, instructions: [] })[1], /instructions list is empty/);
+  // A clean object yields no hints; a call without segments is named as such.
+  assert.deepEqual(citationRepairHints(raw(), scope), []);
+  assert.match(citationRepairHints({ ...raw(), findings: [{ ...raw().findings[0], evidence: [{ source: "transcript", call_index: 3, segment_ids: [1], quote: null }] }] }, scope)[0],
+    /call_index 3 has no citable segments/);
+  assert.deepEqual(citationRepairHints(null, scope), []);
 });
 
 test("prior relations and story discrepancies resolve prompt indices to captured record ids and refuse unknown ones", () => {

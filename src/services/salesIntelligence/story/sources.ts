@@ -67,6 +67,15 @@ export type TimelineReadContext = {
   lead_refs: StoryLeadRef[];
   /** Those Leads' rows (`LEAD_PROJECTION`), read once by the caller. */
   leads: LeadRow[];
+  /**
+   * S12-REPACT: set only by the Owner/rep timeline read (`outreach/timelineRead.ts`), never by the Case File. A rep's own
+   * follow-up command is then one timeline event (its follow-up audit row: `followup_snoozed` / `followup_redated`; a
+   * completion is the follow-up row's `followup_completed`), and the record audit row of the same command is skipped (its note
+   * joins the event in `resolveRepActions`). Unset, the audit reader is exactly as before, so model input is unchanged.
+   */
+  rep_actions?: boolean;
+  /** S12-REPNUDGE: an extra per-event filter applied with `kinds` / `exclude`, before the bound (a rep keeps only its own nudges). */
+  keep?: ((e: StoryEvent) => boolean) | null;
 };
 export type SourceOptions = { timeline?: TimelineReadContext };
 
@@ -120,7 +129,7 @@ const event = (input: EventInput): StoryEvent => ({
  * Kinds the Owner timeline emits beyond the story catalog. They are never on the model's page:
  * a snooze and an analysis submission are audit rows the story skips.
  */
-export const TIMELINE_ONLY_KINDS = ["followup_snoozed", "analysis_submitted", "receiver_agent_changed"] as const;
+export const TIMELINE_ONLY_KINDS = ["followup_snoozed", "analysis_submitted", "receiver_agent_changed", "followup_redated"] as const;
 export type TimelineEventKind = StoryEventKind | (typeof TIMELINE_ONLY_KINDS)[number];
 
 /** `kind_order` = the data spec §5.2 row number. Replaces the string comparison of the old merge. */
@@ -135,6 +144,8 @@ export const TIMELINE_KIND_ORDER: Readonly<Record<string, number>> = {
   followup_created: 8, followup_completed: 8, followup_cancelled: 8, followup_superseded: 8,
   assigned: 9, owner_note: 9, closed: 9, reopened: 9, waiting_set: 9, review_opened: 9, review_resolved: 9, restriction_set: 9,
   restriction_resolved: 9, nudge_sent: 9, followup_snoozed: 9, call_started: 9, call_ended: 9, analysis_submitted: 9, owner_correction: 9,
+  // S12-REPACT: a rep's re-date (emitted only by the timeline read; see `TimelineReadContext.rep_actions`).
+  followup_redated: 9,
   booking_recorded: 10,
   cancellation_recorded: 11,
   lead_message_sent: 12,
@@ -174,7 +185,7 @@ const CORRECTION_CAP = 200;
 
 const acceptor = (subject: StorySubject, t: TimelineReadContext) => (e: StoryEvent) => {
   const at = Date.parse(e.happened_at);
-  return !Number.isNaN(at) && at <= +subject.as_of && (t.kinds === null || t.kinds.has(e.kind)) && !t.exclude?.has(e.kind) && isAfterStoryCursor(e, t.after);
+  return !Number.isNaN(at) && at <= +subject.as_of && (t.kinds === null || t.kinds.has(e.kind)) && !t.exclude?.has(e.kind) && (!t.keep || t.keep(e)) && isAfterStoryCursor(e, t.after);
 };
 /** Newest instant a row's indexed field may hold and still yield an event after the cursor. */
 const upperBound = (subject: StorySubject, t: TimelineReadContext, slackBeforeMs = 0) =>
@@ -944,7 +955,7 @@ function followupEvents(rows: FollowupRow[], keyByRecord: Map<string, string>, s
     if (created) events.push(event({ kind: "followup_created", id, happened_at: created, observed_at: created, subject_key: key, actor: who, detail, evidence_refs: refs }));
     const updated = iso((row as { updatedAt?: Date }).updatedAt);
     if (row.status === "completed" && (iso(row.completed_at) ?? updated)) events.push(event({ kind: "followup_completed", id, happened_at: iso(row.completed_at) ?? updated!, observed_at: updated, subject_key: key,
-      actor: row.completion_basis === "owner" ? actor("owner", null, text(row.completed_by, 60)) : row.completion_basis === "customer_confirmation" ? actor("customer") : row.completion_basis === "rep_confirmation" ? actor("rep") : actor("vantage"),
+      actor: row.completion_basis === "owner" ? actor("owner", null, text(row.completed_by, 60)) : row.completion_basis === "customer_confirmation" ? actor("customer") : row.completion_basis === "rep_confirmation" ? actor("rep", null, row.responsible_agent_id ? String(row.responsible_agent_id) : null) : actor("vantage"),
       detail, evidence_refs: [...refs, ...(row.evidence_interaction_id ? [`interaction:${row.evidence_interaction_id}`] : []), ...(row.completion_finding_id ? [`finding:${row.completion_finding_id}`] : [])] }));
     const cancelledAt = transitionAt?.get(`${id}:cancelled`) ?? updated;
     if (row.status === "cancelled" && cancelledAt) events.push(event({ kind: "followup_cancelled", id, happened_at: cancelledAt, observed_at: cancelledAt, subject_key: key, actor: actor("owner"), detail, evidence_refs: refs }));
@@ -1004,8 +1015,26 @@ export const TIMELINE_EXCLUDED_AUDIT_EVENT_KINDS: readonly string[] = [
   ...EXCLUDED_AUDIT_EVENT_KINDS.filter(kind => kind !== "intelligence.submitted"), "outreach_call_applied",
 ];
 
-function auditEvent(row: AuditRow, timeline: boolean): StoryEvent | null {
-  const kind = auditEventStoryKind(row.event_kind, row.invalidation?.kind) ?? (timeline ? (TIMELINE_AUDIT_KINDS[row.event_kind] as unknown as StoryEventKind | undefined) ?? null : null);
+/**
+ * S12-REPACT: a signed rep's E9 commands (`followups/commands.ts` `applyRepCommandInTransaction`) each write a follow-up audit row
+ * and a record audit row carrying the rep's note and Agent. In the timeline read (`rep_actions`) the follow-up row is the event
+ * (the completion is the follow-up row's own `followup_completed`) and the record row is skipped.
+ */
+export const REP_FOLLOWUP_COMMAND_KINDS: Readonly<Record<string, string>> = {
+  snooze_followup: "followup_snoozed", patch_followup: "followup_redated", complete_followup: "followup_completed",
+};
+/** The kinds that name the rep and carry its note on the timeline (`resolveRepActions`). */
+export const REP_ACTION_KINDS: ReadonlySet<string> = new Set(Object.values(REP_FOLLOWUP_COMMAND_KINDS));
+function repActionKind(row: AuditRow): StoryEventKind | "skip" | null {
+  if (row.actor?.kind !== "rep" || !Object.hasOwn(REP_FOLLOWUP_COMMAND_KINDS, row.event_kind)) return null;
+  if (row.invalidation?.kind !== "followup" || row.event_kind === "complete_followup") return "skip";
+  return REP_FOLLOWUP_COMMAND_KINDS[row.event_kind] as StoryEventKind;
+}
+
+function auditEvent(row: AuditRow, timeline: boolean, repActions = false): StoryEvent | null {
+  const repKind = timeline && repActions ? repActionKind(row) : null;
+  if (repKind === "skip") return null;
+  const kind = repKind ?? auditEventStoryKind(row.event_kind, row.invalidation?.kind) ?? (timeline ? (TIMELINE_AUDIT_KINDS[row.event_kind] as unknown as StoryEventKind | undefined) ?? null : null);
   if (!kind) return null;
   const current = row.current, prior = row.prior;
   const detail: Record<string, unknown> = { event_kind: row.event_kind, invalidation_kind: row.invalidation?.kind ?? null, target_id: row.invalidation?.target_id ?? null,
@@ -1018,8 +1047,12 @@ function auditEvent(row: AuditRow, timeline: boolean): StoryEvent | null {
   if (kind === "closed" && !detail.reason) detail.reason = text(pick(current, "closed_reason"), 300);
   if (kind === "call_ended") detail.note = text(pick(current, "call_progress.note") ?? pick(current, "note"), 300);
   if ((kind as string) === "followup_snoozed") detail.until = iso(pick(current, "snoozed_until")) ?? detail.until;
+  if (repKind) Object.assign(detail, { followup_id: row.invalidation?.target_id ?? null, due_at: iso(pick(current, "due_at")), date_text: text(pick(current, "date_text"), 60),
+    description: text(pick(current, "description"), 300) });
   return event({ kind, id: String(row._id), happened_at: row.happened_at.toISOString(), observed_at: iso(row.recorded_at), subject_key: row.subject_key,
-    actor: actor(auditActorKind(row.actor?.kind), null, row.actor?.kind === "owner" ? text(row.actor.id, 60) : null),
+    // S12-REPACT: a rep's follow-up event carries the rep's Agent (the follow-up's responsible agent: a rep acts only on its own).
+    actor: repKind ? actor("rep", null, typeof detail.agent_id === "string" ? detail.agent_id : null)
+      : actor(auditActorKind(row.actor?.kind), null, row.actor?.kind === "owner" ? text(row.actor.id, 60) : null),
     detail, evidence_refs: [`audit:${row._id}`, ...(row.invalidation?.target_id ? [`${row.invalidation.kind}:${row.invalidation.target_id}`] : [])] });
 }
 
@@ -1030,7 +1063,7 @@ async function timelineAudit(subject: StorySubject, limit: number, t: TimelineRe
   return keysetScan<AuditRow>({
     query: (window, batch) => model.find({ subject_key: { $in: t.subject_keys }, event_kind: { $nin: [...TIMELINE_EXCLUDED_AUDIT_EVENT_KINDS] }, ...window })
       .sort({ happened_at: -1, _id: -1 }).limit(batch).lean().exec() as unknown as Promise<AuditRow[]>,
-    field: "happened_at", indexed: row => row.happened_at, toEvents: rows => rows.flatMap(row => auditEvent(row, true) ?? []),
+    field: "happened_at", indexed: row => row.happened_at, toEvents: rows => rows.flatMap(row => auditEvent(row, true, t.rep_actions === true) ?? []),
     accept: acceptor(subject, t), limit, upper: upperBound(subject, t), aheadMs: 0 });
 }
 
@@ -1046,6 +1079,51 @@ export const auditSource: StorySource = async (subject, limit, options) => {
   for (const row of page.rows) { const e = auditEvent(row, false); if (e) events.push(e); }
   return { events, read: page.read, truncated: page.truncated };
 };
+
+export type RepActionReaders = {
+  /** The record audit rows of rep follow-up commands at these instants (`current.note`, `current.rep_agent_id`). One read. */
+  notes: (keys: readonly string[], at: readonly Date[]) => Promise<Array<{ subject_key: string; happened_at: Date; event_kind: string; current?: unknown }>>;
+  /** Agent names by id. One read. */
+  agents: (ids: readonly string[]) => Promise<Map<string, string>>;
+};
+const REP_NOTE_ROW_LIMIT = 200;
+export const mongoRepActionReaders: RepActionReaders = {
+  notes: async (keys, at) => (keys.length && at.length ? getSalesIntelligenceAuditEventModel().find({ subject_key: { $in: [...keys] }, happened_at: { $in: [...at] },
+    "actor.kind": "rep", "invalidation.kind": "outreach", event_kind: { $in: Object.keys(REP_FOLLOWUP_COMMAND_KINDS) } })
+    .select("subject_key happened_at event_kind current.note current.rep_agent_id").limit(REP_NOTE_ROW_LIMIT).lean() as unknown as Promise<Array<{ subject_key: string; happened_at: Date; event_kind: string; current?: unknown }>> : []),
+  agents: async ids => {
+    const wanted = [...new Set(ids)].filter(id => mongoose.isValidObjectId(id));
+    if (!wanted.length) return new Map();
+    const rows = await db().collection("agents").find({ _id: { $in: wanted.map(id => oid(id)) } }, { projection: { name: 1 } }).toArray();
+    return new Map(rows.flatMap(row => { const name = text((row as { name?: unknown }).name, 80); return name ? [[String(row._id), name] as const] : []; }));
+  },
+};
+/**
+ * S12-REPACT (UX11, UI-2 §9): names the rep and attaches the rep's own note on the timeline's rep follow-up events
+ * (`followup_completed` with a rep completion, and the rep's `followup_snoozed` / `followup_redated`). Runs on one timeline
+ * page after the merge: at most one audit read (the record audit rows of those commands, matched on subject, instant and
+ * command) and one Agent read, and none when the page has no rep action. A missing Agent leaves `actor.name` null (the
+ * title then reads `A rep`); a missing note leaves `detail.note` null. A rep completion without its command row keeps today's
+ * rendering. Timeline only: the story and the Case File never call it.
+ */
+export async function resolveRepActions(events: readonly StoryEvent[], readers: RepActionReaders = mongoRepActionReaders): Promise<StoryEvent[]> {
+  const targets = events.filter(e => e.actor.kind === "rep" && REP_ACTION_KINDS.has(e.kind));
+  if (!targets.length) return [...events];
+  const commandOf = Object.fromEntries(Object.entries(REP_FOLLOWUP_COMMAND_KINDS).map(([command, kind]) => [kind, command]));
+  const keyOf = (subject: string, at: number, command: string) => `${subject}|${at}|${command}`;
+  const rows = await readers.notes([...new Set(targets.map(e => e.subject_key))], [...new Set(targets.map(e => Date.parse(e.happened_at)))].map(ms => new Date(ms)));
+  const noteBy = new Map(rows.map(row => [keyOf(row.subject_key, +new Date(row.happened_at), row.event_kind), row.current]));
+  // A `rep_confirmation` completion is named only when its rep command row is found; the audit-sourced kinds always are.
+  const found = new Map(targets.flatMap(e => { const row = noteBy.get(keyOf(e.subject_key, Date.parse(e.happened_at), commandOf[e.kind]!));
+    return row === undefined && e.kind === "followup_completed" ? [] : [[e, row] as const]; }));
+  const agentOf = (e: StoryEvent) => e.actor.agent_id ?? (typeof pick(found.get(e), "rep_agent_id") === "string" ? String(pick(found.get(e), "rep_agent_id")) : null);
+  const names = await readers.agents([...new Set(targets.flatMap(e => agentOf(e) ?? []))]);
+  return events.map(e => {
+    if (!found.has(e)) return e;
+    const agent_id = agentOf(e);
+    return { ...e, actor: { ...e.actor, agent_id, name: agent_id ? names.get(agent_id) ?? null : null }, detail: { ...e.detail, note: text(pick(found.get(e), "note"), 400) } };
+  });
+}
 
 type AssessmentRow = { _id: mongoose.Types.ObjectId; subject_key: string; scores?: unknown; engagement?: unknown; published_at?: Date | null; createdAt?: Date };
 const readAssessmentRows = (keys: string[], subject: StorySubject, sort: Record<string, 1 | -1>, limit: number) =>
@@ -1123,7 +1201,7 @@ export const TIMELINE_SOURCE_BY_KIND: Readonly<Record<string, keyof typeof STORY
   assessment_published: "assessments", granot_priority_changed: "granot_changes", quoted_changed: "granot_changes", receiver_agent_changed: "granot_changes", granot_observed: "granot_observed",
   number_attached: "attachments", followup_created: "followups", followup_completed: "followups", followup_cancelled: "followups", followup_superseded: "followups",
   assigned: "audit", owner_note: "audit", closed: "audit", reopened: "audit", waiting_set: "audit", review_opened: "audit", review_resolved: "audit",
-  restriction_set: "audit", restriction_resolved: "audit", nudge_sent: "audit", followup_snoozed: "audit", call_started: "audit", call_ended: "audit",
+  restriction_set: "audit", restriction_resolved: "audit", nudge_sent: "audit", followup_snoozed: "audit", followup_redated: "audit", call_started: "audit", call_ended: "audit",
   analysis_submitted: "audit", owner_correction: "corrections", booking_recorded: "bookings", cancellation_recorded: "bookings", lead_message_sent: "lead_messages",
 };
 

@@ -26,7 +26,8 @@ import { stateWithActions } from "./transitions";
 import { receiverAssignmentEnabled, subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { SUPERSEDED_BY_SPECIFIC_PLAN } from "./store";
 import { CONTACT_FACT_FIELDS } from "./types";
-import { nudgeHistoryPage } from "../nudges/reads";
+import { nudgeHistoryPage, toNudgeDto, type NudgeDto, type NudgeRow } from "../nudges/reads";
+import { getOwnerRepNudgeModel } from "../../../models/OwnerRepNudge";
 import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
 import { moveAssessmentProjectionDto } from "../assessment/presentation";
 import type { LeadMoveSource } from "../assessment/views";
@@ -496,14 +497,32 @@ export function outreachDetailAdditions(record: RecordRow, side: OutreachSideDat
     lead_cost: lead ? spendBasis(lead as Parameters<typeof spendBasis>[0]) : null };
 }
 
-export async function readOutreach(id: string) {
+/** S12-REPNUDGE: the newest nudges a rep's detail carries (no paging for a rep: `GET /nudges` stays Owner-only). */
+export const REP_NUDGE_LIMIT = 20;
+/**
+ * S12-REPNUDGE (UX11, UI-2 §5): the Owner's nudges on one record addressed to this rep, in the Owner's item shape
+ * (body as sent, sent time, delivery state), newest first. A nudge whose recipient isn't resolved to an Agent
+ * (`agent_id` null: a directory entry without an Agent link) is never a rep's. `next_cursor` is always null.
+ */
+export async function repNudgePage(outreachId: string, agentId: string): Promise<{ items: NudgeDto[]; next_cursor: null }> {
+  if (!mongoose.isValidObjectId(outreachId) || !mongoose.isValidObjectId(agentId)) return { items: [], next_cursor: null };
+  const rows = await getOwnerRepNudgeModel().find({ outreach_record_id: new mongoose.Types.ObjectId(outreachId), agent_id: new mongoose.Types.ObjectId(agentId) })
+    .sort({ _id: -1 }).limit(REP_NUDGE_LIMIT).lean();
+  return { items: rows.map(row => toNudgeDto(row as unknown as NudgeRow)), next_cursor: null };
+}
+
+/** `nudges_for_agent` (S12-REPNUDGE): a rep's read; `nudges` then holds only that rep's nudges on the record. */
+export async function readOutreach(id: string, options: { nudges_for_agent?: string | null } = {}) {
   const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();
   if (!record) return null;
   const numberId = record.primary_contact_number_id ?? (record.subject.kind === "number_review" ? record.subject.contact_number_id : null);
   const now = new Date(), [coverage, policy, instructions, inputs, nudges, run] = await Promise.all([
     readCaptureCoverage(), resolvePolicy(),
     getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean(),
-    loadOutreachInputs(record, now), nudgeHistoryPage({ outreach_record_id: id, limit: 20 }), newestCompletedRun(numberId)]);
+    loadOutreachInputs(record, now),
+    options.nudges_for_agent !== undefined ? (options.nudges_for_agent ? repNudgePage(id, options.nudges_for_agent) : Promise.resolve({ items: [] as NudgeDto[], next_cursor: null }))
+      : nudgeHistoryPage({ outreach_record_id: id, limit: 20 }),
+    newestCompletedRun(numberId)]);
   const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]), { now });
   const base = await toOutreachDto(record, now, coverage, { policy, inputs, side });
   // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): `band_since` from the record's newest band transition (one indexed read).

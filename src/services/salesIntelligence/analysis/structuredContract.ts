@@ -122,6 +122,85 @@ export function structuredInstructions(context: readonly CapturedPromptPage[]) {
     .map(instruction => [`${instruction.id}:${instruction.revision}`, instruction])).values()];
 }
 
+const HINT_LIMIT = 20, NEAR_DISTANCE = 4, NEAR_LIMIT = 3;
+function editDistance(a: string, b: string) {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = row;
+  }
+  return previous[b.length];
+}
+
+/**
+ * Repair hints for a findings object the validator refused (never part of the refusal itself, which
+ * stays sanitized `path:code` pairs). The validator stops at the first unresolvable citation, and a
+ * model that mis-copied one long record id (a dropped last character, the neighbouring ObjectId)
+ * usually repeated it elsewhere, so every unresolvable citation in the object is listed once, with
+ * the same record under the type it was supplied as and the closest record ids of the cited type
+ * that the prompt already showed; out-of-range `by_finding_index` / `instruction_index` values name
+ * the valid range. Nothing is substituted: acceptance stays with `expandStructuredFindings`.
+ */
+export function citationRepairHints(raw: unknown, inputs: Pick<StructuredExpansionInputs, "context" | "calls" | "instructions">): string[] {
+  const records = inputs.context.flatMap(page => page.data.page.records);
+  const citable = new Set(records.map(record => `${record.record_type}\u0000${record.record_id}`));
+  const hints = new Map<string, { paths: string[]; text: string }>();
+  const object = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  // The same underlying record under another type: the exact id, or the id with / without a `kind:` prefix (`call:<id>` vs `<id>`).
+  const bare = (id: string) => id.replace(/^[a-z_]+:/, "");
+  const sameRecord = (id: string) => records.filter(r => r.record_id === id || bare(r.record_id) === bare(id))
+    .map(r => `{"record":${JSON.stringify(r.record_type)},"id":${JSON.stringify(r.record_id)}}`);
+  const count = Array.isArray(object.findings) ? object.findings.length : 0;
+  if (Array.isArray(object.prior_finding_relations)) object.prior_finding_relations.forEach((relation: unknown, index) => {
+    const at = relation && typeof relation === "object" ? (relation as { by_finding_index?: unknown }).by_finding_index : null;
+    if (typeof at === "number" && at >= count) hints.set(`by\u0000${index}`, { paths: [`prior_finding_relations.${index}.by_finding_index`],
+      text: `by_finding_index ${at} does not exist: this object has ${count} findings (indices 0 to ${count - 1}); use null when no finding of this object applies.` });
+  });
+  const instructions = inputs.instructions ?? structuredInstructions(inputs.context);
+  if (Array.isArray(object.owner_instruction_assessments)) object.owner_instruction_assessments.forEach((assessment: unknown, index) => {
+    const at = assessment && typeof assessment === "object" ? (assessment as { instruction_index?: unknown }).instruction_index : null;
+    if (typeof at === "number" && at >= instructions.length) hints.set(`instruction\u0000${index}`, { paths: [`owner_instruction_assessments.${index}.instruction_index`],
+      text: instructions.length ? `instruction_index ${at} does not exist: the instructions list has ${instructions.length} entries (indices 0 to ${instructions.length - 1}).`
+        : "the instructions list is empty, so owner_instruction_assessments must be an empty list." });
+  });
+  const lists = [["findings", object.findings], ["prior_finding_relations", object.prior_finding_relations], ["story_discrepancies", object.story_discrepancies]] as const;
+  for (const [name, list] of lists) {
+    if (!Array.isArray(list)) continue;
+    list.forEach((item: unknown, itemIndex) => {
+      const evidence = item && typeof item === "object" ? (item as { evidence?: unknown }).evidence : null;
+      if (!Array.isArray(evidence)) return;
+      evidence.forEach((ref: unknown, refIndex) => {
+        if (!ref || typeof ref !== "object") return;
+        const path = `${name}.${itemIndex}.evidence.${refIndex}`;
+        const { source, record, id, call_index: callIndex, segment_ids: segmentIds } = ref as Record<string, unknown>;
+        if (source === "context" && typeof record === "string" && typeof id === "string" && !citable.has(`${record}\u0000${id}`)) {
+          const key = `context\u0000${record}\u0000${id}`;
+          if (hints.has(key)) return void hints.get(key)!.paths.push(path);
+          const same = [...new Set(sameRecord(id))].slice(0, NEAR_LIMIT);
+          const near = [...new Set(records.filter(r => r.record_type === record).map(r => r.record_id))]
+            .map(candidate => ({ candidate, distance: editDistance(candidate, id) }))
+            .filter(entry => entry.distance <= NEAR_DISTANCE).sort((a, b) => a.distance - b.distance).slice(0, NEAR_LIMIT).map(entry => entry.candidate);
+          hints.set(key, { paths: [path], text: `record ${JSON.stringify(record)} id ${JSON.stringify(id)} is not a supplied ${record} record id.`
+            + (same.length ? ` That record is supplied only as ${same.join(" or ")}: cite it exactly that way if you mean it.` : "")
+            + (near.length ? ` The closest supplied ${record} ids are ${near.map(n => JSON.stringify(n)).join(", ")}; check which record you mean.` : "")
+            + " Copy record type and id character for character from the appendix, or drop the citation." });
+        } else if (source === "transcript" && typeof callIndex === "number" && Array.isArray(segmentIds)) {
+          const call = inputs.calls[callIndex];
+          const authorized = call?.data.transcript ? [...new Set(call.summary.said_on_call.flatMap(fact => fact.segment_ids))].sort((a, b) => a - b) : null;
+          if (authorized && segmentIds.every(sid => authorized.includes(sid as number))) return;
+          const key = `transcript\u0000${callIndex}`;
+          if (hints.has(key)) return void hints.get(key)!.paths.push(path);
+          hints.set(key, { paths: [path], text: authorized
+            ? `call_index ${callIndex} may cite only the segment ids listed for it in appendix.calls: ${JSON.stringify(authorized)}.`
+            : `call_index ${callIndex} has no citable segments (segments_available is false or no such call); cite its story event instead or drop the citation.` });
+        }
+      });
+    });
+  }
+  return [...hints.values()].slice(0, HINT_LIMIT).map(hint => `${hint.paths.slice(0, 6).join(", ")}${hint.paths.length > 6 ? ` (+${hint.paths.length - 6} more)` : ""}: ${hint.text}`);
+}
+
 /** Pure expansion. Snapshot ownership, retention and digest checks remain in submission. */
 export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansionInputs) {
   const minimal = minimalFindingsSchema.parse(raw);

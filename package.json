@@ -47,6 +47,7 @@
     "okf:progress": "node scripts/okf-progress.mjs",
     "okf:query": "node scripts/okf-query.mjs",
     "typecheck": "tsc --noEmit",
+    "test:csi:full-backfill:replica": "node --import tsx ops/full-backfill.replica.ts",
     "test": "node --import tsx --import ./ops/test-setup.ts --test \"src/**/*.test.ts\" \"api/queues/**/*.test.ts\" \"ops/lib/*.test.ts\"",
     "test:granot-lifecycle:replica": "node --env-file=.env --import tsx --import ./ops/test-setup.ts scripts/test-granot-lifecycle-replica.ts",
     "verify:granot-lifecycle:unit33-cleanup": "node --import tsx scripts/verify-granot-lifecycle-unit33-cleanup.ts",
