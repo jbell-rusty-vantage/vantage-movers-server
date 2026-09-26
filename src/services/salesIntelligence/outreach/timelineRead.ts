@@ -400,6 +400,17 @@ export function redactOwnerTextForRep<T extends { actor?: { kind?: string | null
   return { ...event, detail: { ...event.detail, ...cancel, note: null, reason: null, prior: null, current: null } };
 }
 
+/**
+ * UI-2 (V-UI2 finding): the timeline's titles are written for the Owner ("You corrected …", "Confirmed by you"); a rep reads
+ * them as the Owner's. Timeline read only: the Subject Story and the Case File never call it, so model input doesn't move.
+ */
+export function repWording<T extends { title?: string | null; description?: string | null }>(dto: T): T {
+  const fix = (text: string | null | undefined) => typeof text === "string"
+    ? text.replace(/^You corrected(?= )/, "The Owner corrected").replace(/Confirmed by you(?![a-z])/g, "Confirmed by the Owner")
+    : text;
+  return { ...dto, title: fix(dto.title), description: fix(dto.description) };
+}
+
 /** S12-REPNUDGE follow-up: bound on the nudge audit rows read to fold a subject's nudges (3 rows per nudge). */
 export const NUDGE_AUDIT_ROW_CAP = 1500;
 /**
@@ -464,7 +475,7 @@ async function readTimeline(resolved: Resolved, opts: TimelineReadOptions, asOf:
   const truncated_sources = [...new Set([...resolved.capped, ...results.filter(([, r]) => r.truncated).map(([name]) => name)])].sort();
   const data = {
     scope: resolved.scope, number_id: resolved.number_id, outreach_id: resolved.outreach_id,
-    items: events.map(e => storyEventToTimelineDto(opts.audience === "rep" ? redactOwnerTextForRep(e) : e, adapter)), cursor: merged.cursor, kinds,
+    items: events.map(e => opts.audience === "rep" ? repWording(storyEventToTimelineDto(redactOwnerTextForRep(e), adapter)) : storyEventToTimelineDto(e, adapter)), cursor: merged.cursor, kinds,
     coverage: { truncated_sources },
   };
   return timelineV2PageDtoSchema.parse(await ownerRead(data, () => asOf, deps.coverage));

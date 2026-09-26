@@ -8,7 +8,7 @@ import { installFakeMongo } from "../story/fakeMongo.fixtures";
 import { REP_ACTION_KINDS, resolveRepActions, TIMELINE_KINDS, timelineKindOrder, type RepActionReaders } from "../story/sources";
 import { buildS4TimelineDocs, S4_AS_OF, S4_IDS } from "../story/timeline.fixtures";
 import type { StoryEvent, StoryEventKind } from "../story/types";
-import { nudgeFoldFilter, readOutreachTimeline, redactOwnerTextForRep, storyEventToTimelineDto, timelineV2QuerySchema } from "./timelineRead";
+import { nudgeFoldFilter, readOutreachTimeline, redactOwnerTextForRep, repWording, storyEventToTimelineDto, timelineV2QuerySchema } from "./timelineRead";
 import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
 
 /**
@@ -250,4 +250,9 @@ test("S12-REPNUDGE fold: three audit rows of one nudge → one nudge_sent event 
   assert.equal(keep(nudgeEvent("cc0000000000000000000009")), true, "a row the fold didn't read (beyond the cap) is kept");
   assert.equal((await nudgeFoldFilter([]))(nudgeEvent("aa0000000000000000000001")), true, "no subject keys: no read, nothing folded");
   assert.equal(seen.length, 1);
+});
+
+test("UI-2: a rep reads the Owner's timeline titles as the Owner's (You corrected → The Owner corrected)", () => {
+  assert.deepEqual(repWording({ title: "You corrected status", description: "Confirmed by you · Exact" }), { title: "The Owner corrected status", description: "Confirmed by the Owner · Exact" });
+  assert.deepEqual(repWording({ title: "Dana Reyes completed the follow-up", description: null }), { title: "Dana Reyes completed the follow-up", description: null });
 });
