@@ -14,7 +14,7 @@ import { submitIntelligenceAnalysis } from "./submit";
 import { correctionContextSchema, retainedOriginal } from "./ownerReanalysis";
 import { assembleContextPage, findSummaryArtifact, findRunArtifact, persistAnalysisArtifact, restoreAnalysisArtifact } from "./structuredArtifacts";
 import { summaryGenerationSchema, minimalFindingsSchema, validateSummaryStep, expandStructuredFindings,
-  structuredInstructions, type StructuredCall } from "./structuredContract";
+  structuredInstructions, citationRepairHints, type StructuredCall } from "./structuredContract";
 import { SUMMARY_PROMPT_VERSION, SUMMARY_PROMPT, FINDINGS_PROMPT, structuredStepContracts, layoutOfContracts, CASE_FILE_SUMMARY_PROMPT_VERSION,
   SUMMARY_PROMPT_V3, FINDINGS_PROMPT_V5 } from "./structuredPrompt";
 import { generateStructuredStep, STRUCTURED_INVOCATION_MS, type StepPricing } from "./structuredGeneration";
@@ -79,7 +79,7 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
   const layout = layoutOfContracts(run.step_contracts);
   if (payloadHash(run.step_contracts) !== payloadHash(structuredStepContracts(layout))) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const beforeProvider = async () => { await input.beforeProvider(); auth = await authorize(); };
-  const generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate">) =>
+  const generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate" | "repairHints">) =>
     generateStructuredStep({ ...args, lease: input.lease, run_id: input.run_id, model, model_id: input.model_id,
       pricing: input.pricing, deadline, beforeProvider });
   if (layout === "case_file") return invokeCaseFileLayout({ input, run, generate, auth: () => auth, reauthorize: async () => { auth = await authorize(); return auth; } });
@@ -232,7 +232,7 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
 // ---------------------------------------------------------------------------------------------
 
 type RunRow = Awaited<ReturnType<typeof loadAuthorizedRun>>;
-type Generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate">) =>
+type Generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate" | "repairHints">) =>
   ReturnType<typeof generateStructuredStep<T>>;
 type Auth = Awaited<ReturnType<typeof authorizeCsiRun>>;
 /** Validation repairs of the findings object in the Case File layout before the run pauses (`schema_exhausted`). */
@@ -408,7 +408,9 @@ async function invokeCaseFileLayout(ctx: { input: StructuredInput; run: RunRow; 
         if (++rejected > CASE_FILE_FINDINGS_REPAIRS) throw new IntelligenceRuntimeError("schema_exhausted");
         throw error;
       }
-    } });
+    },
+    // The validator refuses at the first bad citation or index; the repair names every one, with what may be cited instead.
+    repairHints: value => citationRepairHints(value, { context: pages, calls: ordered, instructions }) });
   const auth = await ctx.reauthorize();
   await input.beforeProvider(); // Recheck current eligibility / purge before accepting any effects intent.
   const receipt = await submitIntelligenceAnalysis(auth, { idempotency_key: input.run_id, envelope }, { raw_output: raw });

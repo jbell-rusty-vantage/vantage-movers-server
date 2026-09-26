@@ -75,6 +75,8 @@ export async function generateStructuredStep<T>(input: {
   kind: "summary" | "findings"; key: string; run_id: string; lease: JobLease;
   model: LanguageModel; model_id: string; pricing: StepPricing; schema: z.ZodType;
   system: string; prompt: string; validate: (value: unknown) => T;
+  /** Extra repair lines for a refused object; never stored on the run (`schema_rejections` keeps the sanitized paths). */
+  repairHints?: (value: unknown) => readonly string[];
   deadline: number; beforeProvider: () => Promise<void>;
 }): Promise<{ raw: unknown; accepted: T }> {
   const { generateObject, NoObjectGeneratedError } = await import("ai");
@@ -121,7 +123,9 @@ export async function generateStructuredStep<T>(input: {
         const paths = issuePaths(error);
         await getIntelligenceRunModel().updateOne({ _id: input.run_id }, { $inc: { schema_failures: 1 },
           $push: { schema_rejections: { $each: paths.slice(0, 16), $slice: -32 } } });
-        repair = `\nThe previous object (data) was ${JSON.stringify(value)}. Correct these validation paths: ${JSON.stringify(paths)}. Return the complete object.`;
+        const hints = input.repairHints?.(value) ?? [];
+        repair = `\nThe previous object (data) was ${JSON.stringify(value)}. Correct these validation paths: ${JSON.stringify(paths)}.${
+          hints.length ? ` Citations to fix: ${JSON.stringify(hints)}.` : ""} Return the complete object.`;
       }
     }
   } finally {
