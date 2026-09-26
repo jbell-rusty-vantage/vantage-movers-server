@@ -28,6 +28,7 @@ test("the latest list stays readable after freshness expires, including its pagi
     assert.deepEqual(filter.$and, [
       { $or: [{ expires_at: null }, { expires_at: { $gt: new Date("2026-09-22T12:00:00Z") } }] },
       { chunk_index: null },
+      { $or: [{ cursor_expires_at: null }, { cursor_expires_at: { $gt: new Date("2026-09-22T12:00:00Z") } }] },
     ]);
     return query(retained);
   });

@@ -9,6 +9,7 @@ import { getMoveAssessmentArtifactModel } from "../../../models/MoveAssessmentAr
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
+import { lockAttentionArtifacts } from "../outreach/attentionArtifactStore";
 import { isObjectIdString, toObjectId } from "../../../utils/objectId";
 import { retryAfterMs } from "../../ringcentral/recordings";
 import { CsiError } from "../auth";
@@ -221,13 +222,18 @@ export async function purgeMoveAssessments(filter: { contact_number_id?: string;
   const Artifacts = getMoveAssessmentArtifactModel();
   const ids = (await Artifacts.find({ ...csiDataset(), purged_at: null, $or: or }).select("_id").session(session).lean()).map(row => row._id);
   if (!ids.length) return { artifacts: 0, projections: 0 };
+  // No-op retention must not invalidate an in-flight Attention publication.
+  // Acquire the shared fence before any erasure write; transaction retries also
+  // repeat the eligibility read if a publisher or another purge wins the lock.
+  await lockAttentionArtifacts(session, undefined, true);
   const artifacts = await Artifacts.updateMany({ _id: { $in: ids } }, { $set: { status: "purged", purged_at: at, purge_reason: "retention",
     scores: null, views: null, inventory: null, conflicts: null, engagement: null, engagement_effects: null, coverage: null, model_output: { purged: true } }, $inc: { revision: 1 } }, { session });
   const projections = await getOutreachRecordModel().updateMany({ "move_assessment.artifact_id": { $in: ids } }, { $set: {
     "move_assessment.status": "purged", "move_assessment.transaction_intent": null, "move_assessment.move_likelihood": null,
     "move_assessment.transaction_intent_confidence": null, "move_assessment.move_likelihood_confidence": null,
   }, $inc: { revision: 1 } }, { session });
-  await getSalesIntelligenceAttentionSnapshotModel().collection.updateMany({ ...csiDataset(), expires_at: null }, { $set: { expires_at: at } }, { session });
+  // Invalidate old cursors too; every cache hit checks its header. Publication checks the erasure epoch.
+  await getSalesIntelligenceAttentionSnapshotModel().collection.updateMany({ ...csiDataset() }, { $set: { expires_at: at, cursor_expires_at: at } }, { session });
   return { artifacts: artifacts.modifiedCount, projections: projections.modifiedCount };
 }
 
