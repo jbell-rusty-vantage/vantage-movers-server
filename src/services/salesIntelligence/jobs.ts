@@ -54,9 +54,12 @@ export async function enqueueCsiJob(
         max_attempts: 8,
         next_attempt_at: now,
         lease_epoch: 0,
+        createdAt: now,
+        updatedAt: now,
       },
     },
-    { session, upsert: true, returnDocument: "after", runValidators: true },
+    // Enqueue is insert-only: schema timestamps would otherwise touch duplicates.
+    { session, upsert: true, returnDocument: "after", runValidators: true, timestamps: false },
   );
   if (
     !row ||
