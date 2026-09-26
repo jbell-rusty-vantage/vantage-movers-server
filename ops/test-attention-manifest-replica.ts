@@ -95,6 +95,10 @@ async function main() {
   assert.equal(manifestPage.data.status, "ready");
   assert.ok(manifestPage.data.cursor);
   const priorEpoch = await attentionArtifactEpoch();
+  const noOp = await withTransaction(session => purgeMoveAssessments({ contact_number_id: String(new mongoose.Types.ObjectId()) }, now, session));
+  assert.deepEqual(noOp, { artifacts: 0, projections: 0 });
+  assert.equal(await attentionArtifactEpoch(), priorEpoch);
+  assert.equal((await readAttention({ cursor: manifestPage.data.cursor! }, deps)).data.status, "ready");
   const purgedAt = new Date(+now - 1);
   const purge = await withTransaction(session => purgeMoveAssessments({ artifact_ids: [String(assessment!._id)] }, purgedAt, session));
   assert.deepEqual(purge, { artifacts: 1, projections: 0 });

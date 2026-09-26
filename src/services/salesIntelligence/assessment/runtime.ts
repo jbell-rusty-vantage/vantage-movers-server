@@ -214,7 +214,6 @@ export async function markAssessmentStale(recordId: string, reason: string, sess
  * snapshots (including the non-expiring latest) so no frozen row keeps a purged score.
  */
 export async function purgeMoveAssessments(filter: { contact_number_id?: string; conversation_id?: string; artifact_ids?: string[] }, at: Date, session: ClientSession) {
-  await lockAttentionArtifacts(session, undefined, true);
   const or: Array<Record<string, unknown>> = [];
   if (filter.contact_number_id) or.push({ contact_number_id: toObjectId(filter.contact_number_id) });
   if (filter.conversation_id) or.push({ "source_manifest.conversation_id": filter.conversation_id });
@@ -223,6 +222,10 @@ export async function purgeMoveAssessments(filter: { contact_number_id?: string;
   const Artifacts = getMoveAssessmentArtifactModel();
   const ids = (await Artifacts.find({ ...csiDataset(), purged_at: null, $or: or }).select("_id").session(session).lean()).map(row => row._id);
   if (!ids.length) return { artifacts: 0, projections: 0 };
+  // No-op retention must not invalidate an in-flight Attention publication.
+  // Acquire the shared fence before any erasure write; transaction retries also
+  // repeat the eligibility read if a publisher or another purge wins the lock.
+  await lockAttentionArtifacts(session, undefined, true);
   const artifacts = await Artifacts.updateMany({ _id: { $in: ids } }, { $set: { status: "purged", purged_at: at, purge_reason: "retention",
     scores: null, views: null, inventory: null, conflicts: null, engagement: null, engagement_effects: null, coverage: null, model_output: { purged: true } }, $inc: { revision: 1 } }, { session });
   const projections = await getOutreachRecordModel().updateMany({ "move_assessment.artifact_id": { $in: ids } }, { $set: {
