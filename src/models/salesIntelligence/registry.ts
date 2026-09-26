@@ -1,4 +1,5 @@
 import { getOutreachRecordModel, OUTREACH_RECORD_INDEXES } from "./outreach";
+import { getAttentionArtifactModel, ATTENTION_ARTIFACT_INDEXES } from "./attentionArtifact";
 import {
   getOutreachFollowupModel,
   OUTREACH_FOLLOWUP_INDEXES,
@@ -163,6 +164,7 @@ export const CSI_MODEL_REGISTRY = [
     model: getSalesIntelligenceAttentionSnapshotModel,
     indexes: SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES,
   },
+  { name: "AttentionArtifact", model: getAttentionArtifactModel, indexes: ATTENTION_ARTIFACT_INDEXES },
   {
     name: "IntelligenceRun",
     model: getIntelligenceRunModel,

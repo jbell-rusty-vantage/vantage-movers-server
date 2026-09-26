@@ -129,6 +129,7 @@ export const CSI_ERROR_CODES = [
 ] as const;
 export type CsiErrorCode = (typeof CSI_ERROR_CODES)[number];
 export const CSI_FLAGS = [
+  "ATTENTION_MANIFEST",
   "ENABLED",
   "CAPTURE_WEBHOOK",
   "CAPTURE_CALL_LOG",

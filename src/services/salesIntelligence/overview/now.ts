@@ -1,7 +1,7 @@
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
 import type { AttentionFilterKeysDto, attentionRowDtoSchema } from "../dto";
-import { attentionQuerySchema, decompressAttentionRows, type AttentionQuery } from "../outreach/attention";
+import { attentionQuerySchema, decompressAttentionRows, parsedSnapshotFor, type AttentionQuery } from "../outreach/attention";
 import { attentionIndexEntry, decodeAttentionIndex, entryMatchesAttentionQuery, type AttentionIndexEntry } from "../outreach/attentionIndex";
 import type { z } from "zod";
 
@@ -24,9 +24,14 @@ export function clearOverviewIndexCache() { CACHE.clear(); }
 /** The newest unexpired snapshot header's index (the same header lookup as `readAttention`), or null when none is published. */
 export async function readOverviewIndex(now: Date): Promise<OverviewIndex | null> {
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
-  const header = await Snapshot.findOne({ ...csiDataset(), $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] }, { chunk_index: null }] })
-    .select("snapshot_id as_of counts").sort({ as_of: -1 }).lean();
+  const header = await Snapshot.findOne({ ...csiDataset(), $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] }, { chunk_index: null },
+    { $or: [{ cursor_expires_at: null }, { cursor_expires_at: { $gt: now } }] }] })
+    .select("snapshot_id as_of counts manifest").sort({ as_of: -1 }).lean();
   if (!header) return null;
+  if (header.manifest) {
+    const parsed = await parsedSnapshotFor(header);
+    return parsed ? { snapshot_id: header.snapshot_id, as_of: header.as_of, entries: parsed.entries } : null;
+  }
   const { deployment, database } = csiDataset();
   const key = `${deployment}:${database}:${header.snapshot_id}`;
   const cached = CACHE.get(key);

@@ -9,6 +9,7 @@ import { getMoveAssessmentArtifactModel } from "../../../models/MoveAssessmentAr
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceAttentionSnapshotModel } from "../../../models/SalesIntelligenceAttentionSnapshot";
+import { lockAttentionArtifacts } from "../outreach/attentionArtifactStore";
 import { isObjectIdString, toObjectId } from "../../../utils/objectId";
 import { retryAfterMs } from "../../ringcentral/recordings";
 import { CsiError } from "../auth";
@@ -213,6 +214,7 @@ export async function markAssessmentStale(recordId: string, reason: string, sess
  * snapshots (including the non-expiring latest) so no frozen row keeps a purged score.
  */
 export async function purgeMoveAssessments(filter: { contact_number_id?: string; conversation_id?: string; artifact_ids?: string[] }, at: Date, session: ClientSession) {
+  await lockAttentionArtifacts(session, undefined, true);
   const or: Array<Record<string, unknown>> = [];
   if (filter.contact_number_id) or.push({ contact_number_id: toObjectId(filter.contact_number_id) });
   if (filter.conversation_id) or.push({ "source_manifest.conversation_id": filter.conversation_id });
@@ -227,7 +229,8 @@ export async function purgeMoveAssessments(filter: { contact_number_id?: string;
     "move_assessment.status": "purged", "move_assessment.transaction_intent": null, "move_assessment.move_likelihood": null,
     "move_assessment.transaction_intent_confidence": null, "move_assessment.move_likelihood_confidence": null,
   }, $inc: { revision: 1 } }, { session });
-  await getSalesIntelligenceAttentionSnapshotModel().collection.updateMany({ ...csiDataset(), expires_at: null }, { $set: { expires_at: at } }, { session });
+  // Invalidate old cursors too; every cache hit checks its header. Publication checks the erasure epoch.
+  await getSalesIntelligenceAttentionSnapshotModel().collection.updateMany({ ...csiDataset() }, { $set: { expires_at: at, cursor_expires_at: at } }, { session });
   return { artifacts: artifacts.modifiedCount, projections: projections.modifiedCount };
 }
 

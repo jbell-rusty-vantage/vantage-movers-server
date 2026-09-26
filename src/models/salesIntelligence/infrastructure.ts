@@ -7,6 +7,7 @@ import {
 import { csiPolicySchema } from "../../validation/v1/salesIntelligence";
 import { attentionMetricsDtoSchema, attentionPriorityCountsDtoSchema, attentionPublishMetaSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
 import { z } from "zod";
+import { attentionManifestSchema } from "../../services/salesIntelligence/outreach/attentionManifest";
 import {
   defineCsiModel,
   str,
@@ -320,6 +321,9 @@ export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
     rows: validatedJson(z.array(attentionRowDtoSchema)),
     // Lossless cache encoding; legacy inline/chunk rows remain readable during rollout.
     rows_gzip_base64: { type: String, default: null },
+    manifest: { type: Schema.Types.Mixed, default: null,
+      validate: { validator: (v: unknown) => v == null || attentionManifestSchema.safeParse(v).success, message: "Invalid Attention manifest" } },
+    cursor_expires_at: date,
     counts: validatedJson(z.record(z.string(), z.number().int().nonnegative())),
     // The latest successful list has no deletion deadline. Superseded snapshots
     // receive a TTL only after their replacement has committed.

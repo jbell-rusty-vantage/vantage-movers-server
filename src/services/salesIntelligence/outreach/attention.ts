@@ -26,6 +26,10 @@ import { deriveOutreachFacts, loadOutreachInputsBatch, loadOutreachSideData, toO
 import { attentionEvolutionEnabled, subjectKey } from "./types";
 import { isPromisedCallback } from "./derive";
 import { jsonValue } from "./store";
+import { encodeAttentionManifest, attentionManifestSchema, restoreAttentionRow, attentionIdentity, type AttentionManifest, type ManifestEntry } from "./attentionManifest";
+import { attentionArtifactEpoch, lockAttentionArtifacts, writeAttentionArtifacts, loadAttentionArtifacts, readManifestIndex,
+  collectAttentionArtifacts, clearAttentionArtifacts, ATTENTION_READ_GRACE_MS } from "./attentionArtifactStore";
+import { logger } from "../../../logger";
 
 function repeatedQuery<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess((value) => {
@@ -298,7 +302,7 @@ export function splitAttentionChunks<T>(rows: readonly T[], maxBytes = ATTENTION
  * one snapshot. Those rows reuse the page's batched inputs and side data, and
  * the queued-assessment set is one query per publish, so no per-row read is added.
  */
-export async function publishAttentionSnapshot(options: { deadlineMs?: number; attentionV2?: boolean; layout?: "auto" | "chunked"; chunkBytes?: number } = {}) {
+export async function publishAttentionSnapshot(options: { deadlineMs?: number; attentionV2?: boolean; layout?: "auto" | "chunked" | "manifest"; chunkBytes?: number } = {}) {
   const now = new Date();
   const deadline = +now + (options.deadlineMs ?? ATTENTION_PUBLISH_BUDGET_MS);
   // Data spec §3.5–§3.7 behind SALES_INTELLIGENCE_ATTENTION_V2; off keeps today's publish.
@@ -307,9 +311,12 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   let leadsReceived7d = 0;
   // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): the previous snapshot's index is read once, beside the other publish-wide reads.
   const overview = overviewEnabled();
+  // Reader-first rollout: auto switches only after deployment enables the new writer.
+  const useManifest = options.layout === "manifest" || (options.layout !== "chunked" && csiFlag("ATTENTION_MANIFEST"));
+  const artifactEpoch = useManifest ? await attentionArtifactEpoch() : undefined;
   const [policy, coverage, queued, bandsBase] = await Promise.all([resolvePolicy(), readCaptureCoverage(),
     getSalesIntelligenceJobModel().distinct("subject_key", { ...csiDataset(), stage: "move_assessment", status: { $in: ["pending", "leased", "retry"] } }),
-    overview ? previousSnapshotForBands(now) : Promise.resolve(null)]);
+    overview || useManifest ? previousSnapshotForBands(now) : Promise.resolve(null)]);
   const previous = bandsBase?.previous ?? null;
   const meta = overview ? publishMeta(policy.version) : null;
   // Baseline once: the first OVERVIEW publish (no previous `publish_meta`) when no transition row exists yet (reconciliation §4.3).
@@ -425,22 +432,26 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const s9Header = meta ? { publish_meta: meta } : {};
   const header = { snapshot_id, owner_id: "system", filter_digest: payloadHash({}), policy_version: policy.version, ...csiDataset(), as_of: now, expires_at, chunk_index: null, parent_snapshot_id: null };
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
-  const compressed = options.layout === "chunked" ? null : compressAttentionRows(encoded);
-  const inline = !compressed && options.layout !== "chunked" && Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES;
-  const chunks = compressed || inline ? null : splitAttentionChunks(encoded, options.chunkBytes);
+  const content = useManifest ? encodeAttentionManifest(encoded, { timezone: policy.timezone, staffed_hours: policy.staffed_hours }, searchableIndexEntry) : null;
+  const compressed = useManifest || options.layout === "chunked" ? null : compressAttentionRows(encoded);
+  const inline = !useManifest && !compressed && options.layout !== "chunked" && Buffer.byteLength(JSON.stringify(encoded)) <= ATTENTION_INLINE_BYTES;
+  const chunks = useManifest || compressed || inline ? null : splitAttentionChunks(encoded, options.chunkBytes);
   // §3.7: the index names where each row lives, so the read materializes only its page.
-  const indexEntries = v2 ? (chunks
+  const indexEntries = content ? content.entries : v2 ? (chunks
     ? chunks.flatMap((part, chunk) => part.map((row, position) => searchableIndexEntry(row, position, chunk)))
     : encoded.map((row, position) => searchableIndexEntry(row, position))) : null;
-  const index = indexEntries ? encodeAttentionIndex(indexEntries) : null;
+  const index = !content && indexEntries ? encodeAttentionIndex(indexEntries) : null;
   // S7-PRIO (addendum §5): chip counts per Priority key and view, tallied over the same entries the read filters.
   const v2Header = v2 ? { metrics, index_gzip_base64: index, priority_counts: attentionPriorityCounts(indexEntries!) } : {};
   const counts = { total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}) };
   // V-T3 M4 (OVERVIEW only): the fence write goes first, so a concurrent OVERVIEW publish that committed since this one
   // read its previous snapshot aborts the whole transaction before the snapshot or any band row is written.
-  const fence = overview ? { scope: attentionPublishFenceScope(csiDataset()), bound: bandsBase?.latest_as_of ?? null, asOf: now, snapshotId: snapshot_id } : null;
+  const fence = overview || useManifest ? { scope: attentionPublishFenceScope(csiDataset()), bound: bandsBase?.latest_as_of ?? null, asOf: now, snapshotId: snapshot_id } : null;
+  let storage: Awaited<ReturnType<typeof writeAttentionArtifacts>> | undefined;
+  if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
   try {
     await withTransaction(async session => {
+      if (content) await lockAttentionArtifacts(session, artifactEpoch);
       if (fence) await fenceAttentionPublish(session, fence);
       await writeSnapshot(session);
     });
@@ -449,7 +460,10 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     throw error;
   }
   async function writeSnapshot(session: mongoose.ClientSession) {
-    if (compressed) {
+    if (content) {
+      storage = await writeAttentionArtifacts(content.artifacts, session);
+      await Snapshot.create([{ ...header, ...v2Header, ...s9Header, manifest: content.manifest, rows: [], counts }], { session });
+    } else if (compressed) {
       await Snapshot.create([{ ...header, ...v2Header, ...s9Header, rows: [], rows_gzip_base64: compressed, counts }], { session });
     } else if (inline) {
       await Snapshot.create([{ ...header, ...v2Header, ...s9Header, rows: encoded, counts }], { session });
@@ -460,17 +474,24 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     // Privileged cache-lifecycle update only: never mutate immutable rows or
     // cursor identities. Keep superseded headers AND chunks for five minutes.
     // The transaction leaves the previous list untouched if publication fails.
-    await Snapshot.collection.updateMany({ ...csiDataset(), as_of: { $lt: now }, expires_at: null },
+    await Snapshot.collection.updateMany({ ...csiDataset(), as_of: { $lt: now }, expires_at: null, manifest: null },
       { $set: { expires_at: new Date(Date.now() + ATTENTION_FRESH_MS) } }, { session });
+    await Snapshot.collection.updateMany({ ...csiDataset(), as_of: { $lt: now }, expires_at: null, manifest: { $ne: null } },
+      { $set: { cursor_expires_at: new Date(Date.now() + ATTENTION_FRESH_MS), expires_at: new Date(Date.now() + ATTENTION_FRESH_MS + ATTENTION_READ_GRACE_MS) } }, { session });
     // S9-PUBLISH: the band history commits with the snapshot it compares against, so a failed publish writes none.
     if (transitionDocs.length) await getOutreachBandTransitionModel().insertMany(transitionDocs, { session });
   }
-  if (overview) {
+  if (overview && !content) {
     // Warm the parsed cache with this snapshot, so the next publish (and reads) on this instance skip the payload read.
     rememberParsedSnapshot(parsedSnapshotKey(snapshot_id), { entries: indexEntries ?? encoded.map((row, position) => searchableIndexEntry(row, position)),
       rows: indexEntries && chunks ? null : encoded, loadRows: () => encoded, chunks: new Map() });
   }
-  return { status: "published", snapshot_id, total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}), ...(overview ? { band_transitions: transitionDocs.length } : {}) };
+  if (content) {
+    // A failed janitor must not turn a committed publication into a failed one. It retries next tick.
+    try { await collectAttentionArtifacts(); } catch (error) { logger.warn({ err: error }, "Attention artifact collection deferred"); }
+  }
+  return { status: "published", snapshot_id, total_items: encoded.length, ...(v2 ? { closed_items: closedRows.length } : {}), ...(overview ? { band_transitions: transitionDocs.length } : {}),
+    ...(storage ? { storage: { ...storage, header_manifest_bytes: Buffer.byteLength(JSON.stringify(content!.manifest)), publish_ms: Date.now() - +now } } : {}) };
 }
 /** Cursor digest: the default request keeps the pre-sort `filters` shape; anything else binds sort, direction, view and `fresh`. */
 export function attentionCursorDigest(input: Omit<AttentionQuery, "cursor" | "limit" | "direction"> & { direction: "asc" | "desc" }) {
@@ -493,6 +514,7 @@ type StoredRow = z.infer<typeof attentionRowDtoSchema>;
  * current snapshot and the one open cursors may still be paging. Entries and rows are shared read-only.
  */
 type ParsedSnapshot = { entries: SearchableEntry[]; rows: StoredRow[] | null; loadRows: () => StoredRow[]; chunks: Map<number, StoredRow[]>;
+  manifest?: AttentionManifest;
   /** S11-SEARCH: search keys aligned with `entries`, filled once for a snapshot whose index predates them. */
   search?: AttentionSearchKeys[] };
 const PARSED_SNAPSHOTS = new Map<string, ParsedSnapshot>();
@@ -510,16 +532,24 @@ function rememberParsedSnapshot(key: string, value: ParsedSnapshot) {
 /** Tests only: forget every parsed snapshot so a read pays the cold path again. */
 export function clearParsedAttentionSnapshots() {
   PARSED_SNAPSHOTS.clear();
+  clearAttentionArtifacts();
 }
 /**
  * The parsed payload of one snapshot header (read without its payload): from the process cache when warm, else its
  * index (or its rows, inline or chunked) is loaded and parsed once and remembered. Null when the payload or a chunk
  * is missing. Shared by `readAttention` and the S9 band-transition comparison in the publish.
  */
-async function parsedSnapshotFor(snapshot: { _id: mongoose.Types.ObjectId; snapshot_id: string; counts?: { chunks?: number } | Record<string, number> | null }): Promise<ParsedSnapshot | null> {
+export async function parsedSnapshotFor(snapshot: { _id: mongoose.Types.ObjectId; snapshot_id: string; manifest?: unknown; counts?: { chunks?: number; total_items?: number } | Record<string, number> | null }): Promise<ParsedSnapshot | null> {
   const cacheKey = parsedSnapshotKey(snapshot.snapshot_id);
   const cached = PARSED_SNAPSHOTS.get(cacheKey);
   if (cached) return cached;
+  if (snapshot.manifest) {
+    const manifest = attentionManifestSchema.parse(snapshot.manifest);
+    const parsed: ParsedSnapshot = { entries: await readManifestIndex(manifest), manifest, rows: null, loadRows: () => { throw new Error("Manifest rows require bucket loading"); }, chunks: new Map() };
+    if (parsed.entries.length !== snapshot.counts?.total_items) throw new Error("Attention manifest count mismatch");
+    rememberParsedSnapshot(cacheKey, parsed);
+    return parsed;
+  }
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
   const chunkCount = (snapshot.counts as { chunks?: number } | null | undefined)?.chunks ?? 0;
   const payload = await Snapshot.findOne({ _id: snapshot._id }).select("rows rows_gzip_base64 index_gzip_base64").lean();
@@ -546,7 +576,7 @@ async function parsedSnapshotFor(snapshot: { _id: mongoose.Types.ObjectId; snaps
 function latestSnapshotHeader(now: Date, snapshotId?: string) {
   return getSalesIntelligenceAttentionSnapshotModel().findOne({ ...csiDataset(), ...(snapshotId ? { snapshot_id: snapshotId } : {}),
     $and: [{ $or: [{ expires_at: null }, { expires_at: { $gt: now } }] },
-      { chunk_index: null }] }).select(ATTENTION_PAYLOAD_EXCLUDED).sort({ as_of: -1 }).lean();
+      { chunk_index: null }, { $or: [{ cursor_expires_at: null }, { cursor_expires_at: { $gt: now } }] }] }).select(ATTENTION_PAYLOAD_EXCLUDED).sort({ as_of: -1 }).lean();
 }
 /**
  * S9-PUBLISH: the previous snapshot as the band comparison needs it: one header read, and its index from the
@@ -619,7 +649,21 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   /** The stored rows of some index entries: inline rows once, or only the chunks they name (one `$in`). Null: a chunk is missing. */
   const rowsFor = async (wantedEntries: readonly AttentionIndexEntry[]): Promise<StoredRow[] | null> => {
     let rows: StoredRow[];
-    if (wantedEntries.some(entry => entry.chunk_index != null)) {
+    if (parsed.manifest) {
+      const manifest = parsed.manifest;
+      const wanted = wantedEntries as ManifestEntry[];
+      const hashes = wanted.map(entry => {
+        const hash = manifest.rows[entry.bucket]; if (!hash) throw new Error("Attention row bucket missing"); return hash;
+      });
+      const artifacts = await loadAttentionArtifacts("rows", hashes);
+      rows = wanted.map((entry, i) => {
+        const part = artifacts.get(hashes[i]!);
+        if (!Array.isArray(part) || !part[entry.position]) throw new Error("Attention row missing");
+        const row = restoreAttentionRow(part[entry.position], snapshot.as_of, manifest.staffing);
+        if (attentionIdentity(row) !== attentionIdentity(entry)) throw new Error("Attention row identity mismatch");
+        return row;
+      });
+    } else if (wantedEntries.some(entry => entry.chunk_index != null)) {
       const cached = parsed.chunks;
       const wanted = [...new Set(wantedEntries.map(entry => entry.chunk_index!))];
       const missing = wanted.filter(chunk => !cached.has(chunk));
@@ -674,6 +718,8 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
       metrics = attentionMetrics(scopedRows, received, snapshot.as_of);
     }
   }
+  // Erasure may invalidate a header while its artifacts are being read, even from a warm cache.
+  if (parsed.manifest && !(await latestSnapshotHeader(new Date(), snapshot.snapshot_id))) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
   return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: { items, snapshot_id: snapshot.snapshot_id,
     cursor: offset + limit < matched.length ? Buffer.from(JSON.stringify({ snapshot_id: snapshot.snapshot_id, offset: offset + limit, digest })).toString("base64url") : null,
     total_items: matched.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS, sort: query.sort, direction, view: query.view, freshness: freshness ?? "all",
