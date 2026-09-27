@@ -14,9 +14,10 @@ import { submitIntelligenceAnalysis } from "./submit";
 import { correctionContextSchema, retainedOriginal } from "./ownerReanalysis";
 import { assembleContextPage, findSummaryArtifact, findRunArtifact, persistAnalysisArtifact, restoreAnalysisArtifact } from "./structuredArtifacts";
 import { summaryGenerationSchema, minimalFindingsSchema, validateSummaryStep, expandStructuredFindings,
-  structuredInstructions, citationRepairHints, type StructuredCall } from "./structuredContract";
+  structuredInstructions, citationRepairHints, findingsSchemaFor, type StructuredCall, type StructuredExpansionInputs } from "./structuredContract";
 import { SUMMARY_PROMPT_VERSION, SUMMARY_PROMPT, FINDINGS_PROMPT, structuredStepContracts, layoutOfContracts, CASE_FILE_SUMMARY_PROMPT_VERSION,
-  SUMMARY_PROMPT_V3, FINDINGS_PROMPT_V5 } from "./structuredPrompt";
+  SUMMARY_PROMPT_V3, citationsOfContracts, findingsPromptFor } from "./structuredPrompt";
+import { buildCitationHandles, type CitationMode } from "./citationHandles";
 import { generateStructuredStep, STRUCTURED_INVOCATION_MS, type StepPricing } from "./structuredGeneration";
 import { IntelligenceRuntimeError, type InvocationInput } from "./runtime";
 import { readStructuredIdentities } from "./structuredIdentity";
@@ -27,7 +28,7 @@ import { assembleSubjectStory } from "../story/assemble";
 import { storyToReadContent } from "../story/page";
 import { nominateMoveAssessmentForNumber } from "../assessment/runtime";
 import { assembleCaseFile } from "../casefile/assemble";
-import { findingsAppendix } from "../casefile/appendix";
+import { appendixContextRecords, findingsAppendix, findingsAppendixHandles } from "../casefile/appendix";
 import { caseFileFromReadContent, caseFileToReadContent } from "../casefile/page";
 import { summaryCallContext, type SummaryCallContext } from "../casefile/summaryInput";
 import { CASE_FILE_TIMEZONE } from "../casefile/types";
@@ -76,13 +77,14 @@ export async function invokeStructuredAnalysis(input: StructuredInput) {
   const run = await loadAuthorizedRun(auth);
   // The layout was fixed at prepare time (`step_contracts`, Case File spec §4.11): a run never switches
   // layout mid-flight, and a legacy run resumed after the flag flips still runs, and checks, as legacy.
-  const layout = layoutOfContracts(run.step_contracts);
-  if (payloadHash(run.step_contracts) !== payloadHash(structuredStepContracts(layout))) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  // The citation mode is pinned the same way (citation handles spec §4.5): a v5 run finishes as v5, a v6 run as v6.
+  const layout = layoutOfContracts(run.step_contracts), citations = citationsOfContracts(run.step_contracts);
+  if (payloadHash(run.step_contracts) !== payloadHash(structuredStepContracts(layout, citations))) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const beforeProvider = async () => { await input.beforeProvider(); auth = await authorize(); };
   const generate = <T>(args: Pick<Parameters<typeof generateStructuredStep<T>>[0], "kind" | "key" | "schema" | "system" | "prompt" | "validate" | "repairHints">) =>
     generateStructuredStep({ ...args, lease: input.lease, run_id: input.run_id, model, model_id: input.model_id,
       pricing: input.pricing, deadline, beforeProvider });
-  if (layout === "case_file") return invokeCaseFileLayout({ input, run, generate, auth: () => auth, reauthorize: async () => { auth = await authorize(); return auth; } });
+  if (layout === "case_file") return invokeCaseFileLayout({ input, run, citations, generate, auth: () => auth, reauthorize: async () => { auth = await authorize(); return auth; } });
   const calls: StructuredCall[] = [];
   let context: CapturedPromptPage | undefined, story: CapturedPromptPage | undefined, prior: CapturedPromptPage | undefined;
 
@@ -240,6 +242,47 @@ export const CASE_FILE_FINDINGS_REPAIRS = 2;
 const EMPTY_SUMMARY: StructuredCall["summary"] = { summary: { overview: "", customer_wanted: "", money_and_dates: "", outcome: "", commitments: "", discrepancies: "" }, said_on_call: [] };
 
 /**
+ * The findings request of a Case File run, from its frozen pages alone (pure; no clock, no reads): the
+ * system prompt and generation schema of the run's citation mode, the user message, and the expansion
+ * inputs the validator and the repair hints use. `invokeCaseFileLayout` sends exactly this; a read-only
+ * replay of a frozen run rebuilds it byte for byte from the run's snapshots.
+ */
+export function caseFileFindingsRequest(input: { run: Pick<RunRow, "subject_key" | "conversation_id" | "owner_correction_context">; citations: CitationMode;
+  context: CapturedPromptPage; case_file: CapturedPromptPage; prior: CapturedPromptPage | undefined; calls: readonly StructuredCall[] }) {
+  const { run, citations, context: contextPage, case_file: caseFilePage, prior, calls } = input;
+  const recorded = caseFileFromReadContent(caseFilePage.data);
+  if (!recorded) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
+  const storyEvents = recordsOf(caseFilePage, "story_event"), priorFindings = recordsOf(prior, "prior_finding");
+  const storyEventIds = storyEvents.map(r => r.record_id), priorFindingIds = priorFindings.map(r => r.record_id);
+  const pages = [contextPage, caseFilePage, ...(prior ? [prior] : [])];
+  // Handles mode (citation handles spec §4.1): the table is rebuilt from the frozen snapshots, so a retry or replay gets the same one.
+  const handles = citations === "handles" ? buildCitationHandles({ context: pages, records: appendixContextRecords(contextPage.data),
+    story_event_ids: storyEventIds, prior_finding_ids: priorFindingIds }) : undefined;
+  // Cn = call_index: the Case File's call order (by `started_at`). A call this run did not capture keeps its number but has no segments.
+  const byConversation = new Map(calls.map(call => [call.data.transcript?.conversation_id ?? "", call]));
+  const ordered: StructuredCall[] = recorded.call_conversation_ids.map(id => byConversation.get(id) ?? { snapshot_id: "", summary: EMPTY_SUMMARY, speaker_refs: [],
+    data: { page: { records: [], next_cursor: null, complete: true, missing_ranges: [] }, coverage: contextPage.data.coverage, allowed_followup_ids: [], instructions: [], speaker_refs: [] } });
+  for (const call of calls) if (!recorded.call_conversation_ids.includes(call.data.transcript?.conversation_id ?? "")) ordered.push(call);
+  const instructions = structuredInstructions([contextPage]);
+  const corrections = correctionContextSchema.parse(run.owner_correction_context ?? []);
+  for (const correction of corrections) {
+    const existing = instructions.findIndex(i => i.id === correction.instruction_id);
+    if (existing >= 0) instructions.splice(existing, 1);
+    instructions.push({ id: correction.instruction_id, revision: correction.revision });
+  }
+  const appendixCalls = ordered.map(call => ({ summary: call.summary, segments_available: Boolean(call.data.transcript) }));
+  const prompt = JSON.stringify(modelEvidence({ subject_scope: run.conversation_id ? "conversation" : "number", case_file: recorded.text,
+    appendix: handles ? findingsAppendixHandles({ calls: appendixCalls, context: contextPage.data }, handles)
+      : findingsAppendix({ calls: appendixCalls, context: contextPage.data, story_event_ids: storyEventIds, prior_finding_ids: priorFindingIds }),
+    instructions: instructions.map((instruction, instruction_index) => ({ instruction_index, ...instruction })),
+    owner_corrections: corrections }));
+  const expansion: StructuredExpansionInputs = { subject_key: run.subject_key, context: pages, calls: ordered, instructions,
+    prior_finding_ids: priorFindingIds, story_event_ids: storyEventIds, citation_handles: handles };
+  return { recorded, ordered, storyEvents, priorFindings, handles, prompt, expansion,
+    system: findingsPromptFor("case_file", citations).prompt, schema: findingsSchemaFor(citations) };
+}
+
+/**
  * One findings invocation in the Case File layout. The same capture discipline as the legacy layout
  * (summaries, context, prior page frozen once per run and restored on retry and replay), plus:
  *
@@ -250,8 +293,8 @@ const EMPTY_SUMMARY: StructuredCall["summary"] = { summary: { overview: "", cust
  * - calls are numbered by `started_at` (C = `call_index`); calls this run did not capture are listed
  *   with `segments_available: false` and cannot be cited by transcript (§4.9).
  */
-async function invokeCaseFileLayout(ctx: { input: StructuredInput; run: RunRow; generate: Generate; auth: () => Auth; reauthorize: () => Promise<Auth> }) {
-  const { input, run, generate } = ctx;
+async function invokeCaseFileLayout(ctx: { input: StructuredInput; run: RunRow; citations: CitationMode; generate: Generate; auth: () => Auth; reauthorize: () => Promise<Auth> }) {
+  const { input, run, generate, citations } = ctx;
   const calls: StructuredCall[] = [];
   let context: CapturedPromptPage | undefined, prior: CapturedPromptPage | undefined, caseFile: CapturedPromptPage | undefined;
 
@@ -354,14 +397,8 @@ async function invokeCaseFileLayout(ctx: { input: StructuredInput; run: RunRow; 
   }
 
   const contextPage = context, caseFilePage = caseFile;
-  const recorded = caseFileFromReadContent(caseFilePage.data);
-  if (!recorded) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
-  const storyEvents = recordsOf(caseFilePage, "story_event"), priorFindings = recordsOf(prior, "prior_finding");
-  // Cn = call_index: the Case File's call order (by `started_at`). A call this run did not capture keeps its number but has no segments.
-  const byConversation = new Map(calls.map(call => [call.data.transcript?.conversation_id ?? "", call]));
-  const ordered: StructuredCall[] = recorded.call_conversation_ids.map(id => byConversation.get(id) ?? { snapshot_id: "", summary: EMPTY_SUMMARY, speaker_refs: [],
-    data: { page: { records: [], next_cursor: null, complete: true, missing_ranges: [] }, coverage: contextPage.data.coverage, allowed_followup_ids: [], instructions: [], speaker_refs: [] } });
-  for (const call of calls) if (!recorded.call_conversation_ids.includes(call.data.transcript?.conversation_id ?? "")) ordered.push(call);
+  const request = caseFileFindingsRequest({ run, citations, context: contextPage, case_file: caseFilePage, prior, calls });
+  const { recorded, storyEvents, priorFindings, handles, expansion } = request;
   await checkpointCsiJob(input.lease, async session => {
     await getIntelligenceRunModel().updateOne({ _id: run._id }, { $set: { step_artifacts: jsonValue({
       summaries: calls.map(c => c.snapshot_id), context: contextPage.snapshot_id,
@@ -377,40 +414,27 @@ async function invokeCaseFileLayout(ctx: { input: StructuredInput; run: RunRow; 
         assessment_artifact_id: recordsOf(prior, "prior_assessment")[0]?.record_id ?? null,
         story_events: storyEvents.length, story_from: storyEvents[0]?.fields.happened_at ?? null, story_to: storyEvents.at(-1)?.fields.happened_at ?? null,
       },
+      // Audit only (§4.5); absent in id mode so the v5 step_artifacts keep their shape.
+      ...(handles ? { citation_handles: { count: handles.handles.length, digest: handles.digest } } : {}),
     }) } }, { session });
     // Move assessment (MA-02 §3): the summaries this invocation captured are the assessment's inputs.
     if (!input.original_run_id && run.contact_number_id) await nominateMoveAssessmentForNumber(String(run.contact_number_id), `summary:${run._id}`, session);
   });
-  const instructions = structuredInstructions([contextPage]);
-  const corrections = correctionContextSchema.parse(run.owner_correction_context ?? []);
-  for (const correction of corrections) {
-    const existing = instructions.findIndex(i => i.id === correction.instruction_id);
-    if (existing >= 0) instructions.splice(existing, 1);
-    instructions.push({ id: correction.instruction_id, revision: correction.revision });
-  }
-  const storyEventIds = storyEvents.map(r => r.record_id), priorFindingIds = priorFindings.map(r => r.record_id);
-  const prompt = JSON.stringify(modelEvidence({ subject_scope: run.conversation_id ? "conversation" : "number", case_file: recorded.text,
-    appendix: findingsAppendix({ calls: ordered.map(call => ({ summary: call.summary, segments_available: Boolean(call.data.transcript) })), context: contextPage.data,
-      story_event_ids: storyEventIds, prior_finding_ids: priorFindingIds }),
-    instructions: instructions.map((instruction, instruction_index) => ({ instruction_index, ...instruction })),
-    owner_corrections: corrections }));
-  const pages = [contextPage, caseFilePage, ...(prior ? [prior] : [])];
   // The Case File layout adds citation paths a model can get wrong repeatedly (a call without segments, a T number):
   // after the original answer and two repairs the run pauses as `schema_exhausted` instead of repairing until the step timeout.
   let rejected = 0;
-  const { raw, accepted: envelope } = await generate({ kind: "findings", key: input.run_id, schema: minimalFindingsSchema,
-    system: FINDINGS_PROMPT_V5, prompt,
+  const { raw, accepted: envelope } = await generate({ kind: "findings", key: input.run_id, schema: request.schema,
+    system: request.system, prompt: request.prompt,
     validate: value => {
       try {
-        return expandStructuredFindings(value, { subject_key: run.subject_key, context: pages, calls: ordered, instructions,
-          prior_finding_ids: priorFindingIds, story_event_ids: storyEventIds });
+        return expandStructuredFindings(value, expansion);
       } catch (error) {
         if (++rejected > CASE_FILE_FINDINGS_REPAIRS) throw new IntelligenceRuntimeError("schema_exhausted");
         throw error;
       }
     },
     // The validator refuses at the first bad citation or index; the repair names every one, with what may be cited instead.
-    repairHints: value => citationRepairHints(value, { context: pages, calls: ordered, instructions }) });
+    repairHints: value => citationRepairHints(value, expansion) });
   const auth = await ctx.reauthorize();
   await input.beforeProvider(); // Recheck current eligibility / purge before accepting any effects intent.
   const receipt = await submitIntelligenceAnalysis(auth, { idempotency_key: input.run_id, envelope }, { raw_output: raw });

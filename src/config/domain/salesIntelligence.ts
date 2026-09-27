@@ -167,6 +167,9 @@ export const CSI_FLAGS = [
   // assessment re-plan on accepted progress to Quoted (AC6, needs MOVE_ASSESSMENT). All off keeps
   // today's behaviour byte-identical.
   "CASE_FILE",
+  // Citation handles spec §4.5: the Case File findings step cites context by short handles (T/P/R,
+  // `sales_intelligence_analyze_v6`). Read once at prepare; ignored without CASE_FILE. Off keeps v5.
+  "CITATION_HANDLES",
   "ATTENTION_EVOLUTION",
   "PROGRESS_PLAN",
   // Form Lead Contact Numbers: the `attachment-lead:` job creates the Contact Number for a

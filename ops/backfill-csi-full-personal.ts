@@ -4,14 +4,16 @@
  *
  * Estimate (default; free and strictly read-only: no gateway key, no manifest, no row written):
  *   node --env-file=.env --import tsx ops/backfill-csi-full-personal.ts --estimate --allow-production \
- *     [--layout case_file|default] [--numbers id,id] [--max-numbers N] [--since ISO] [--repair-manifest <abs path>] [--json <out.json>]
+ *     [--layout case_file|default] [--citations ids|handles] [--numbers id,id] [--max-numbers N] [--since ISO] [--repair-manifest <abs path>] [--json <out.json>]
  *
  * Paid run (from a clean worktree of the deployed commit; detached, see the session prompt §7):
  *   node --max-old-space-size=8192 --env-file=.env --import tsx ops/backfill-csi-full-personal.ts \
  *     --allow-production --confirm-write --concurrency 2 --manifest ops/output/csi-full-backfill-<date>.json \
- *     --repair-manifest <abs path to call-log-repair-2026-09-20.json> [--layout case_file] [--s10-holds drive|leave] \
- *     [--numbers id,id | --max-numbers N] [--since ISO] [--repair-max-wait-minutes 120] [--repair-idle-minutes 60] [--skip-repair]
+ *     --repair-manifest <abs path to call-log-repair-2026-09-20.json> [--layout case_file] [--citations ids|handles] [--s10-holds drive|leave] \
+ *     [--numbers id,id | --max-numbers N] [--since ISO] [--repair-max-wait-minutes 120] [--repair-idle-minutes 60] [--skip-repair] [--reprepare-schema-exhausted]
  * Resume: the same command plus --resume.
+ * Citation handles (spec §5): `--citations handles` prepares new work as v6 (v5 and v6 both count as current);
+ * `--reprepare-schema-exhausted` supersedes paused `schema_exhausted` jobs and prepares them afresh instead of re-arming.
  *
  * Phase 1 spawns `ops/repair-call-log-capture.ts --manifest <repair manifest> --allow-production --confirm-write`
  * (no `--through`, never `--release-holds`) and waits for it; `--skip-repair` only reads its hold ownership.
@@ -88,8 +90,8 @@ async function main() {
   const options = parseCliOptions(process.argv);
   const repairManifest = options.repairManifest ? resolve(options.repairManifest) : null;
   if (repairManifest && !existsSync(repairManifest)) throw new Error(`repair manifest ${repairManifest} does not exist (phase 1 never starts a new repair)`);
-  const target = targetVersions(options.layout);
-  const paid = options.mode === "apply" ? configurePaidProcess(process.env, options.layout) : null;
+  const target = targetVersions(options.layout, options.citations);
+  const paid = options.mode === "apply" ? configurePaidProcess(process.env, options.layout, options.citations) : null;
   const model = process.env.SALES_INTELLIGENCE_EXTRACTION_MODEL ?? "openai/gpt-5.6-luna";
 
   await connectMongo();
@@ -124,8 +126,10 @@ async function main() {
   if (!manifest && options.resume) throw new Error(`--resume: manifest ${manifestPath} does not exist`);
   if (manifest && JSON.stringify(manifest.dataset) !== JSON.stringify(csiDataset())) throw new Error("manifest dataset differs from this database");
   if (manifest && manifest.layout !== options.layout) throw new Error(`manifest layout is ${manifest.layout}; resume with --layout ${manifest.layout}`);
+  if (manifest && (manifest.prompt_versions.citations ?? "ids") !== options.citations)
+    throw new Error(`manifest citations are ${manifest.prompt_versions.citations ?? "ids"}; resume with --citations ${manifest.prompt_versions.citations ?? "ids"}`);
   const provider = csiProviderConfiguration();
-  manifest ??= newManifest({ now, layout: options.layout, deployed_commit: (await readRecordedDeployment())?.deployment_commit ?? null, local_head: localGitHead(),
+  manifest ??= newManifest({ now, layout: options.layout, citations: options.citations, deployed_commit: (await readRecordedDeployment())?.deployment_commit ?? null, local_head: localGitHead(),
     models: { extraction: provider.extractionModel, transcription: provider.transcriptionModel, stt_cents_per_second: String(provider.transcriptionCentsPerSecond),
       analysis_pricing_version: process.env.SALES_INTELLIGENCE_ANALYSIS_PRICING_VERSION ?? null, analysis_v3: process.env.SALES_INTELLIGENCE_ANALYSIS_V3 ?? null },
     options: { concurrency: options.concurrency, numbers: options.numbers, max_numbers: options.maxNumbers, since: options.since?.toISOString() ?? null,
@@ -144,7 +148,8 @@ async function main() {
     runRepair: path => spawnRepair(path, { allowProduction: options.allowProduction, maxWaitMinutes: options.repairMaxWaitMinutes,
       idleMinutes: options.repairIdleMinutes, rcTokenStore: paid!.rcTokenStore, lockPath: repairLockPath(manifestPath) }),
   }, { concurrency: options.concurrency, s10Holds: options.s10Holds, repairManifest, skipRepair: options.skipRepair,
-    numbers: manifest.options.numbers, since: manifest.options.since ? new Date(manifest.options.since) : null, maxNumbers: manifest.options.max_numbers, model: paid!.model });
+    numbers: manifest.options.numbers, since: manifest.options.since ? new Date(manifest.options.since) : null, maxNumbers: manifest.options.max_numbers, model: paid!.model,
+    reprepareSchemaExhausted: options.reprepareSchemaExhausted });
   console.log(JSON.stringify({ done: true, manifest: manifestPath, ...summary, verify: manifest.phases.verify }));
   if (manifest.stopped) process.exitCode = 1;
 }

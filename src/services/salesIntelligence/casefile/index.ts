@@ -10,7 +10,7 @@ export { assembleCaseFile, assembleCaseFileSources, caseFileInputFor, type Assem
 export { buildCaseFile, customerEvidenceDigest, callRanges } from "./build";
 export { applyCaseFileBudget, renderCaseFile, trimCandidates } from "./budget";
 export { caseFileArtifactSchema, caseFileFromReadContent, caseFileToReadContent, type CaseFileArtifact } from "./page";
-export { findingsAppendix, isPriorFindingTimelineRecord, type FindingsAppendix } from "./appendix";
+export { appendixContextRecords, findingsAppendix, findingsAppendixHandles, isPriorFindingTimelineRecord, type FindingsAppendix, type FindingsAppendixHandles } from "./appendix";
 export { CASE_FILE_FLAG, caseFileEnabled } from "./flag";
 export { summaryCallContext, type SummaryCallContext } from "./summaryInput";
 export * from "./types";

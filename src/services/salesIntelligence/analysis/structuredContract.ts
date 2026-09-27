@@ -8,21 +8,29 @@ import { CsiError } from "../auth";
 import { summaryMoveEvidenceSchema } from "../assessment/contract";
 import { validateEnvelopeEvidence, type EvidenceManifestEntry } from "../evidence";
 import type { CapturedPromptPage } from "./prompt";
+import { CITATION_HANDLE_PATTERN, handleIndex, handleRepairHint, type CitationHandleTable, type CitationMode } from "./citationHandles";
 
 const envelopeShape = intelligenceEnvelopeSchema.shape;
 const summaryTextSchema = envelopeShape.summary.omit({ finding_keys: true });
 const transcriptRef = intelligenceEvidenceRefSchema.options[0];
 const recordRef = intelligenceEvidenceRefSchema.options[1];
 const segmentIds = transcriptRef.shape.segment_ids.min(1);
+const minimalTranscriptRef = () => z.object({ source: z.literal("transcript"), call_index: z.number().int().nonnegative(),
+  segment_ids: segmentIds, quote: transcriptRef.shape.quote }).strict();
 const minimalEvidenceSchema = z.discriminatedUnion("source", [
-  z.object({ source: z.literal("transcript"), call_index: z.number().int().nonnegative(),
-    segment_ids: segmentIds, quote: transcriptRef.shape.quote }).strict(),
+  minimalTranscriptRef(),
   z.object({ source: z.literal("context"), record: recordRef.shape.record_type,
     id: recordRef.shape.record_id }).strict(),
 ]);
-const minimalOptions = intelligenceFindingSchema.options.map(option => option
+/** Handles mode (citation-handles spec §4.3): a context citation is a server handle, never a record id; transcript citations are unchanged. */
+const minimalEvidenceSchemaHandles = z.discriminatedUnion("source", [
+  minimalTranscriptRef(),
+  z.object({ source: z.literal("context"), ref: z.string().regex(CITATION_HANDLE_PATTERN) }).strict(),
+]);
+type MinimalEvidence = typeof minimalEvidenceSchema | typeof minimalEvidenceSchemaHandles;
+const minimalOptionsWith = <E extends MinimalEvidence>(evidence: E) => intelligenceFindingSchema.options.map(option => option
   .omit({ key: true, speaker_ref: true, confidence: true, evidence: true })
-  .extend({ evidence: z.array(minimalEvidenceSchema).min(1).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding) }));
+  .extend({ evidence: z.array(evidence).min(1).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding) }));
 const factOptions = intelligenceFindingSchema.options.map(option => option
   .omit({ key: true, speaker_ref: true, confidence: true, evidence: true, basis: true })
   .extend({ speaker: z.enum(["rep", "customer", "unknown"]), segment_ids: segmentIds,
@@ -47,35 +55,41 @@ export const summaryGenerationSchema = summaryStepSchema.extend({ move_evidence:
  * Both arrays are required in the generation contract (strict providers reject optional keys)
  * and empty when nothing applies.
  */
-const priorFindingRelationOutputSchema = z.object({
-  prior_index: z.number().int().nonnegative(),
-  relation: z.enum(PRIOR_FINDING_RELATIONS),
-  by_finding_index: z.number().int().nonnegative().nullable(),
-  evidence: z.array(minimalEvidenceSchema).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
-  note: envelopeShape.summary.shape.overview.max(200).nullable(),
-}).strict();
-const storyDiscrepancyOutputSchema = z.object({
-  story_index: z.number().int().nonnegative(),
-  claim: z.string().min(1).max(300),
-  evidence: z.array(minimalEvidenceSchema).min(1).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
-}).strict();
-
-export const minimalFindingsSchema = z.object({
-  summary: summaryTextSchema,
-  findings: z.array(z.discriminatedUnion("kind", [minimalOptions[0], ...minimalOptions.slice(1)]))
-    .max(CSI_ENVELOPE_BOUNDS.max_findings),
-  next_step: intelligenceActionValueSchema.extend({
-    rationale: envelopeShape.next_step_suggestion.unwrap().shape.rationale,
-  }).strict().nullable(),
-  owner_instruction_assessments: z.array(z.object({
-    instruction_index: z.number().int().nonnegative(),
-    assessment: envelopeShape.owner_instruction_assessments.element.shape.assessment,
-    reason: envelopeShape.owner_instruction_assessments.element.shape.reason,
-  }).strict()),
-  prior_finding_relations: z.array(priorFindingRelationOutputSchema).max(60),
-  story_discrepancies: z.array(storyDiscrepancyOutputSchema).max(20),
-}).strict();
+function findingsSchemaWith<E extends MinimalEvidence>(evidence: E) {
+  const minimalOptions = minimalOptionsWith(evidence);
+  const priorFindingRelationOutputSchema = z.object({
+    prior_index: z.number().int().nonnegative(),
+    relation: z.enum(PRIOR_FINDING_RELATIONS),
+    by_finding_index: z.number().int().nonnegative().nullable(),
+    evidence: z.array(evidence).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
+    note: envelopeShape.summary.shape.overview.max(200).nullable(),
+  }).strict();
+  const storyDiscrepancyOutputSchema = z.object({
+    story_index: z.number().int().nonnegative(),
+    claim: z.string().min(1).max(300),
+    evidence: z.array(evidence).min(1).max(CSI_ENVELOPE_BOUNDS.max_evidence_refs_per_finding),
+  }).strict();
+  return z.object({
+    summary: summaryTextSchema,
+    findings: z.array(z.discriminatedUnion("kind", [minimalOptions[0], ...minimalOptions.slice(1)]))
+      .max(CSI_ENVELOPE_BOUNDS.max_findings),
+    next_step: intelligenceActionValueSchema.extend({
+      rationale: envelopeShape.next_step_suggestion.unwrap().shape.rationale,
+    }).strict().nullable(),
+    owner_instruction_assessments: z.array(z.object({
+      instruction_index: z.number().int().nonnegative(),
+      assessment: envelopeShape.owner_instruction_assessments.element.shape.assessment,
+      reason: envelopeShape.owner_instruction_assessments.element.shape.reason,
+    }).strict()),
+    prior_finding_relations: z.array(priorFindingRelationOutputSchema).max(60),
+    story_discrepancies: z.array(storyDiscrepancyOutputSchema).max(20),
+  }).strict();
+}
+export const minimalFindingsSchema = findingsSchemaWith(minimalEvidenceSchema);
 export type MinimalFindings = z.infer<typeof minimalFindingsSchema>;
+/** `sales_intelligence_analyze_v6` generation contract: the v5 schema with the handle context citation; every bound unchanged. */
+export const minimalFindingsSchemaHandles = findingsSchemaWith(minimalEvidenceSchemaHandles);
+export const findingsSchemaFor = (citations: CitationMode) => (citations === "handles" ? minimalFindingsSchemaHandles : minimalFindingsSchema);
 
 function refuse(path: string, code: string): never {
   throw new CsiError("EVIDENCE_SCOPE_INVALID", [{ path, code }]);
@@ -115,6 +129,8 @@ export type StructuredExpansionInputs = {
   prior_finding_ids?: readonly string[];
   /** The `story_event` record ids in the order the prompt listed them. */
   story_event_ids?: readonly string[];
+  /** Handles mode (`step_contracts.citations: "handles"`): context citations are refs resolved through this table. */
+  citation_handles?: CitationHandleTable;
 };
 
 export function structuredInstructions(context: readonly CapturedPromptPage[]) {
@@ -142,7 +158,8 @@ function editDistance(a: string, b: string) {
  * that the prompt already showed; out-of-range `by_finding_index` / `instruction_index` values name
  * the valid range. Nothing is substituted: acceptance stays with `expandStructuredFindings`.
  */
-export function citationRepairHints(raw: unknown, inputs: Pick<StructuredExpansionInputs, "context" | "calls" | "instructions">): string[] {
+export function citationRepairHints(raw: unknown, inputs: Pick<StructuredExpansionInputs, "context" | "calls" | "instructions" | "citation_handles">): string[] {
+  const handles = inputs.citation_handles ? handleIndex(inputs.citation_handles) : null;
   const records = inputs.context.flatMap(page => page.data.page.records);
   const citable = new Set(records.map(record => `${record.record_type}\u0000${record.record_id}`));
   const hints = new Map<string, { paths: string[]; text: string }>();
@@ -173,8 +190,14 @@ export function citationRepairHints(raw: unknown, inputs: Pick<StructuredExpansi
       evidence.forEach((ref: unknown, refIndex) => {
         if (!ref || typeof ref !== "object") return;
         const path = `${name}.${itemIndex}.evidence.${refIndex}`;
-        const { source, record, id, call_index: callIndex, segment_ids: segmentIds } = ref as Record<string, unknown>;
-        if (source === "context" && typeof record === "string" && typeof id === "string" && !citable.has(`${record}\u0000${id}`)) {
+        const { source, record, id, ref: handle, call_index: callIndex, segment_ids: segmentIds } = ref as Record<string, unknown>;
+        if (source === "context" && handles && inputs.citation_handles) {
+          // Handles mode: an unknown ref names the valid ranges (and, when it exists, the same number under another letter).
+          if (typeof handle !== "string" || handles.resolve(handle)?.snapshot_ids.length) return;
+          const key = `handle\u0000${handle}`;
+          if (hints.has(key)) return void hints.get(key)!.paths.push(path);
+          hints.set(key, { paths: [path], text: handleRepairHint(inputs.citation_handles, handle) });
+        } else if (source === "context" && typeof record === "string" && typeof id === "string" && !citable.has(`${record}\u0000${id}`)) {
           const key = `context\u0000${record}\u0000${id}`;
           if (hints.has(key)) return void hints.get(key)!.paths.push(path);
           const same = [...new Set(sameRecord(id))].slice(0, NEAR_LIMIT);
@@ -203,7 +226,10 @@ export function citationRepairHints(raw: unknown, inputs: Pick<StructuredExpansi
 
 /** Pure expansion. Snapshot ownership, retention and digest checks remain in submission. */
 export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansionInputs) {
-  const minimal = minimalFindingsSchema.parse(raw);
+  // One parse per mode; both schemas infer the same shape except the context citation (`record`+`id` vs `ref`).
+  const minimal: z.infer<typeof minimalFindingsSchema> | z.infer<typeof minimalFindingsSchemaHandles> =
+    inputs.citation_handles ? minimalFindingsSchemaHandles.parse(raw) : minimalFindingsSchema.parse(raw);
+  const handles = inputs.citation_handles ? handleIndex(inputs.citation_handles) : null;
   const instructions = inputs.instructions ?? structuredInstructions(inputs.context);
   const allPages = [...inputs.context, ...inputs.calls];
   const manifest: EvidenceManifestEntry[] = [];
@@ -216,7 +242,7 @@ export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansi
       subject_key: inputs.subject_key, source: "transcript", conversation_id: page.data.transcript.conversation_id,
       transcript_version: page.data.transcript.transcript_version, record_type: null, record_id: null, field_paths: [] });
   }
-  type MinimalRef = z.infer<typeof minimalEvidenceSchema>;
+  type MinimalRef = z.infer<typeof minimalEvidenceSchema> | z.infer<typeof minimalEvidenceSchemaHandles>;
   const expandRefs = (refs: readonly MinimalRef[], at: string, transcriptSpeakers?: Array<string | null>) =>
     refs.flatMap((ref, refIndex): IntelligenceEvidenceRef[] => {
       const path = `${at}.evidence.${refIndex}`;
@@ -238,11 +264,19 @@ export function expandStructuredFindings(raw: unknown, inputs: StructuredExpansi
           conversation_id: transcript.conversation_id, transcript_version: transcript.transcript_version,
           segment_ids: ref.segment_ids, quote: ref.quote }];
       }
+      // Handles mode resolves the ref to the record type and id the id form names; the same match then runs, so the envelope is identical.
+      let type: string, id: string;
+      if ("ref" in ref) {
+        const handle = handles?.resolve(ref.ref);
+        if (!handle) refuse(`${path}.ref`, "handle_not_in_context");
+        type = handle.record_type; id = handle.record_id;
+      } else if (handles) refuse(`${path}.ref`, "handle_not_in_context");
+      else { type = ref.record; id = ref.id; }
       const matches = inputs.context.flatMap(page => page.data.page.records
-        .filter(record => record.record_type === ref.record && record.record_id === ref.id)
+        .filter(record => record.record_type === type && record.record_id === id)
         .map(record => ({ source: "vantage_record" as const, snapshot_id: page.snapshot_id,
           record_type: record.record_type, record_id: record.record_id, field_paths: Object.keys(record.fields) })));
-      if (!matches.length) refuse(`${path}.id`, "record_not_in_context");
+      if (!matches.length) refuse(handles ? `${path}.ref` : `${path}.id`, handles ? "handle_not_in_context" : "record_not_in_context");
       return matches;
     });
   const findings = minimal.findings.map((finding, index) => {

@@ -17,10 +17,16 @@
  *
  * Terminal runtime failures (paused `permission_denied`, paused `budget_exhausted`/`per_recording_ceiling`,
  * `dead_letter`) of in-scope conversations and Numbers are re-driven: the same job is re-armed by id when
- * its run can resume under the target layout and model (or it has no run yet), otherwise it is
+ * its run can resume under the target layout (any accepted citation mode) and model (or it has no run yet), otherwise it is
  * superseded (paused → `completed` with `result.reason: superseded_by_full_backfill`, its unfinished run
  * `stale`; a dead letter is left as it is) and fresh work is made the normal way. The prior state is
  * recorded on the unit (`prior`). Application jobs paused as `shadow_analysis` are never touched.
+ *
+ * Citation handles (spec §5): `--citations handles` prepares new work as `sales_intelligence_analyze_v6`, but a
+ * conversation or Number whose latest run is v5 or v6 counts as current (`ACCEPTED_CURRENT_FINDINGS_VERSIONS`), so
+ * switching modes starts no re-analysis wave, and a paused v5 run resumes under its own contracts. With
+ * `--reprepare-schema-exhausted`, a paused `schema_exhausted` job is superseded instead and fresh work is prepared
+ * under the current contracts (the way the leftovers are re-driven as v6).
  *
  * Manifests and logs carry identifiers, counts and outcomes only: no phone numbers, names or content.
  */
@@ -45,9 +51,10 @@ import { scheduleNumberIntelligence } from "../../src/services/salesIntelligence
 import { runIntelligenceJob } from "../../src/services/salesIntelligence/analysis/worker";
 import { runIntelligenceApplicationJob } from "../../src/services/salesIntelligence/analysis/apply";
 import {
-  CASE_FILE_CONTEXT_STEP_VERSION, CASE_FILE_FINDINGS_PROMPT_VERSION, CASE_FILE_SUMMARY_PROMPT_VERSION, CONTEXT_STEP_VERSION,
+  CASE_FILE_CONTEXT_STEP_VERSION, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, CASE_FILE_FINDINGS_PROMPT_VERSION, CASE_FILE_SUMMARY_PROMPT_VERSION, CONTEXT_STEP_VERSION,
   FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, SUMMARY_PROMPT_VERSION, structuredStepContracts,
 } from "../../src/services/salesIntelligence/analysis/structuredPrompt";
+import type { CitationMode } from "../../src/services/salesIntelligence/analysis/citationHandles";
 import { continueStructuredAnalysis, runBoundedBackfill, waitForBackfillPeer } from "./backfill-csi-structured-analysis.lib";
 
 export const FULL_BACKFILL_MANIFEST_VERSION = "csi-full-backfill-v1" as const;
@@ -77,15 +84,29 @@ const FATAL_REASONS = new Set(["analysis_configuration_missing", "budget_exhaust
 
 // ── Layout and CLI ─────────────────────────────────────────────────────────────
 export type Layout = "case_file" | "default";
-export type TargetVersions = { layout: Layout; summary: string; findings: string; context: string; pipeline: string };
-/** The versions a run records under the layout; read from `structuredPrompt.ts`, never hardcoded. */
-export function targetVersions(layout: Layout): TargetVersions {
+/** `citations` is absent on manifests written before citation handles (they are id mode). */
+export type TargetVersions = { layout: Layout; summary: string; findings: string; context: string; pipeline: string; citations?: CitationMode };
+/** The versions a run records under the layout and citation mode; read from `structuredPrompt.ts`, never hardcoded. */
+export function targetVersions(layout: Layout, citations: CitationMode = "ids"): TargetVersions {
+  if (citations === "handles" && layout !== "case_file") throw new Error("--citations handles needs --layout case_file");
   return layout === "case_file"
-    ? { layout, summary: CASE_FILE_SUMMARY_PROMPT_VERSION, findings: CASE_FILE_FINDINGS_PROMPT_VERSION, context: CASE_FILE_CONTEXT_STEP_VERSION, pipeline: STRUCTURED_PIPELINE }
-    : { layout, summary: SUMMARY_PROMPT_VERSION, findings: FINDINGS_PROMPT_VERSION, context: CONTEXT_STEP_VERSION, pipeline: STRUCTURED_PIPELINE };
+    ? { layout, summary: CASE_FILE_SUMMARY_PROMPT_VERSION, findings: citations === "handles" ? CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION : CASE_FILE_FINDINGS_PROMPT_VERSION,
+      context: CASE_FILE_CONTEXT_STEP_VERSION, pipeline: STRUCTURED_PIPELINE, citations }
+    : { layout, summary: SUMMARY_PROMPT_VERSION, findings: FINDINGS_PROMPT_VERSION, context: CONTEXT_STEP_VERSION, pipeline: STRUCTURED_PIPELINE, citations };
 }
-/** The step contracts a run prepared under the layout pins (`run.ts`); a paused run resumes only when they match. */
-export const targetContractsDigest = (layout: Layout) => payloadHash(structuredStepContracts(layout === "case_file" ? "case_file" : "legacy"));
+/**
+ * Citation handles spec §5: in the Case File layout, a latest completed run on either citation mode is current.
+ * v6 changes only how the model cites, so neither version makes the other stale (no re-analysis wave).
+ */
+export const ACCEPTED_CURRENT_FINDINGS_VERSIONS: readonly string[] = [CASE_FILE_FINDINGS_PROMPT_VERSION, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION];
+export const acceptedFindingsVersions = (target: TargetVersions): readonly string[] =>
+  (target.layout === "case_file" ? ACCEPTED_CURRENT_FINDINGS_VERSIONS : [target.findings]);
+/** The step contracts a run prepared under the layout and citation mode pins (`run.ts`). */
+export const targetContractsDigest = (layout: Layout, citations: CitationMode = "ids") =>
+  payloadHash(structuredStepContracts(layout === "case_file" ? "case_file" : "legacy", layout === "case_file" ? citations : "ids"));
+/** A paused run resumes under its own contracts (§4.5) when they are the layout's, in either citation mode. */
+export const acceptedContractsDigests = (layout: Layout): readonly string[] =>
+  (layout === "case_file" ? [targetContractsDigest(layout, "ids"), targetContractsDigest(layout, "handles")] : [targetContractsDigest(layout)]);
 
 export type CliOptions = {
   mode: "estimate" | "apply";
@@ -97,6 +118,10 @@ export type CliOptions = {
   resume: boolean;
   manifest: string | null;
   layout: Layout;
+  /** `ids` (v5, the default, as production with the flag off) or `handles` (v6); sets SALES_INTELLIGENCE_CITATION_HANDLES for the process. */
+  citations: CitationMode;
+  /** Supersede paused `schema_exhausted` jobs and prepare fresh work under the current contracts instead of re-arming them. */
+  reprepareSchemaExhausted: boolean;
   s10Holds: "drive" | "leave";
   repairManifest: string | null;
   skipRepair: boolean;
@@ -122,6 +147,9 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3) throw new Error("--concurrency must be 1..3");
   const layout = value("--layout") ?? "case_file";
   if (layout !== "case_file" && layout !== "default") throw new Error("--layout must be case_file or default");
+  const citations = value("--citations") ?? "ids";
+  if (citations !== "ids" && citations !== "handles") throw new Error("--citations must be ids or handles");
+  if (citations === "handles" && layout !== "case_file") throw new Error("--citations handles needs --layout case_file");
   const s10 = value("--s10-holds") ?? "drive";
   if (s10 !== "drive" && s10 !== "leave") throw new Error("--s10-holds must be drive or leave");
   const numbers = value("--numbers")?.split(",").map(s => s.trim()).filter(Boolean) ?? null;
@@ -140,7 +168,7 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
   return {
     mode: has("--confirm-write") ? "apply" : "estimate", allowProduction: has("--allow-production"), concurrency,
     numbers: numbers?.length ? numbers : null, maxNumbers, since, resume: has("--resume"), manifest: value("--manifest") ?? null,
-    layout, s10Holds: s10, repairManifest: value("--repair-manifest") ?? null, skipRepair: has("--skip-repair"),
+    layout, citations, reprepareSchemaExhausted: has("--reprepare-schema-exhausted"), s10Holds: s10, repairManifest: value("--repair-manifest") ?? null, skipRepair: has("--skip-repair"),
     repairMaxWaitMinutes: wait, repairIdleMinutes: idle, json: value("--json") ?? null,
   };
 }
@@ -151,7 +179,7 @@ export function parseCliOptions(argv: readonly string[]): CliOptions {
  * production STT pricing, and no RingCentral token row. Mutates and returns `env`; throws on anything missing.
  * `rcTokenStore` is the value before the change, for the repair child (it fetches media through its own code).
  */
-export function configurePaidProcess(env: NodeJS.ProcessEnv, layout: Layout) {
+export function configurePaidProcess(env: NodeJS.ProcessEnv, layout: Layout, citations: CitationMode = "ids") {
   const missing: string[] = [];
   const personal = env.PERSONAL_AI_GATEWAY_API_KEY?.trim() ?? "";
   if (!personal) missing.push("PERSONAL_AI_GATEWAY_API_KEY");
@@ -171,6 +199,7 @@ export function configurePaidProcess(env: NodeJS.ProcessEnv, layout: Layout) {
   env.SALES_INTELLIGENCE_MOVE_ASSESSMENT = "false";
   env.SALES_INTELLIGENCE_PROGRESS_PLAN = "false";
   env.SALES_INTELLIGENCE_CASE_FILE = layout === "case_file" ? "true" : "false";
+  env.SALES_INTELLIGENCE_CITATION_HANDLES = layout === "case_file" && citations === "handles" ? "true" : "false";
   env.SALES_INTELLIGENCE_STT_CENTS_PER_SECOND = "0.003";
   env.SALES_INTELLIGENCE_EXTRACTION_MODEL ??= "openai/gpt-5.6-luna";
   env.SALES_INTELLIGENCE_ANALYSIS_V3 ??= "true";
@@ -311,11 +340,11 @@ export type FullBackfillManifest = {
   stopped?: string;
 };
 
-export function newManifest(input: { now: Date; layout: Layout; models: Record<string, string | null>; deployed_commit: string | null;
+export function newManifest(input: { now: Date; layout: Layout; citations?: CitationMode; models: Record<string, string | null>; deployed_commit: string | null;
   local_head: string | null; options: FullBackfillManifest["options"] }): FullBackfillManifest {
   return {
     version: FULL_BACKFILL_MANIFEST_VERSION, run_id: new mongoose.Types.ObjectId().toHexString(), created_at: input.now.toISOString(),
-    dataset: csiDataset(), credential: "PERSONAL_AI_GATEWAY_API_KEY", layout: input.layout, prompt_versions: targetVersions(input.layout),
+    dataset: csiDataset(), credential: "PERSONAL_AI_GATEWAY_API_KEY", layout: input.layout, prompt_versions: targetVersions(input.layout, input.citations ?? "ids"),
     models: input.models, deployed_commit: input.deployed_commit, local_head: input.local_head, options: input.options,
     phases: { repair: { state: input.options.repair_manifest ? "pending" : "skipped" }, select: { state: "pending" } },
     numbers: [], holds: [], foreign_holds: [],
@@ -398,14 +427,16 @@ export const ELIGIBLE_CONVERSATION = { latest_transcript_version: { $type: "stri
   "analysis_eligibility.status": "eligible", contact_number_id: { $ne: null } } as const;
 
 /**
- * (a) never analysed; (b) its latest completed run is not the target findings version, not the structured
- * pipeline, or analysed an older transcript version; null when current.
+ * (a) never analysed; (b) its latest completed run is not an accepted findings version of the target layout
+ * (`acceptedFindingsVersions`: v5 or v6 for the Case File), not the structured pipeline, or analysed an older
+ * transcript version; null when current.
  */
 export async function conversationSet(row: ConversationRow, target: TargetVersions): Promise<"a" | "b" | null> {
   if (!row.latest_completed_run_id) return "a";
-  if (row.summary?.prompt_version !== target.findings) return "b";
+  const accepted = acceptedFindingsVersions(target);
+  if (!accepted.includes(row.summary?.prompt_version ?? "")) return "b";
   const run = await getIntelligenceRunModel().findById(row.latest_completed_run_id).select("analysis_pipeline prompt_version job_id").lean();
-  if (!run || run.analysis_pipeline !== target.pipeline || run.prompt_version !== target.findings) return "b";
+  if (!run || run.analysis_pipeline !== target.pipeline || !accepted.includes(run.prompt_version ?? "")) return "b";
   const job = run.job_id ? await getSalesIntelligenceJobModel().findById(run.job_id).select("input_refs").lean() : null;
   const snapshotId = job?.input_refs?.[1];
   const snapshot = snapshotId ? await getIntelligenceEvidenceSnapshotModel().findById(String(snapshotId)).select("transcript_version").lean() : null;
@@ -448,7 +479,7 @@ export async function selectWorkSet(target: TargetVersions, filter: { numbers: s
       // (c) no stale conversation, but the running summary is missing, on another version, or older than a conversation run.
       const summary = number!.running_summary as { run_id?: unknown; computed_at?: Date } | null;
       const run = summary?.run_id ? await getIntelligenceRunModel().findById(summary.run_id).select("prompt_version").lean() : null;
-      if (summary && run?.prompt_version === target.findings && new Date(summary.computed_at ?? 0).getTime() >= group.newestSummary) continue;
+      if (summary && acceptedFindingsVersions(target).includes(run?.prompt_version ?? "") && new Date(summary.computed_at ?? 0).getTime() >= group.newestSummary) continue;
       sets.push("c");
     }
     group.convs.sort((a, b) => a.started - b.started || a.conversation_id.localeCompare(b.conversation_id));
@@ -584,12 +615,15 @@ export type BackfillSeams = {
   ensureBudget?: (now: Date) => Promise<unknown>;
 };
 export type BackfillOptions = { concurrency: number; s10Holds: "drive" | "leave"; repairManifest: string | null; skipRepair: boolean;
-  numbers: string[] | null; since: Date | null; maxNumbers: number | null; model: string };
+  numbers: string[] | null; since: Date | null; maxNumbers: number | null; model: string;
+  /** Citation handles spec §5: supersede paused `schema_exhausted` jobs and prepare fresh work (default: re-arm them). */
+  reprepareSchemaExhausted?: boolean };
 
 type JobStatus = "pending" | "completed" | "retry" | "dead_letter" | "paused" | "leased";
 type JobRow = { _id: unknown; status: JobStatus; reason?: string | null; result?: { reason?: string } | null; stage: string; dedupe_key: string;
   subject_key: string; next_attempt_at: Date; leased_until?: Date | null; completed_at?: Date | null; attempts: number; max_attempts: number; input_refs: unknown[] };
 const JOB_FIELDS = "status reason result stage dedupe_key subject_key next_attempt_at leased_until completed_at attempts max_attempts input_refs";
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const isOwnDedupe = (key: string | null | undefined) => Boolean(key && (key.includes(OWN_DEDUPE_MARK) || key.startsWith(OWN_NUMBER_DEDUPE_PREFIX)));
 const resultReason = (job: { result?: unknown }) => job.result && typeof job.result === "object" && "reason" in job.result ? String((job.result as { reason: unknown }).reason) : null;
 /** Application pauses this backfill re-drives (shadow runs are never touched). */
@@ -599,28 +633,29 @@ type Existing = Pick | { supersede_foreign: string } | null;
 
 /**
  * A run attached to a failed job resumes only when the worker would continue it under the target layout:
- * no run yet, or an unpurged structured run with the target step contracts and model. Anything else would
+ * no run yet, or an unpurged structured run with the target step contracts (either citation mode of the layout,
+ * `acceptedContractsDigests`: it finishes in the mode it was prepared in) and model. Anything else would
  * finish on an old prompt (or fail again), so it is superseded instead.
  */
 export function resumeDecision(run: { purged_at?: Date | null; purge_started_at?: Date | null; analysis_pipeline?: string | null; model_version?: string | null;
-  step_contracts?: unknown; status?: string | null } | null, targetDigest: string, model: string): { resumable: boolean; reason: string } {
+  step_contracts?: unknown; status?: string | null } | null, targetDigest: string | readonly string[], model: string): { resumable: boolean; reason: string } {
   if (!run) return { resumable: true, reason: "no_run" };
   if (run.purged_at || run.purge_started_at) return { resumable: false, reason: "run_purged" };
   if (run.analysis_pipeline !== STRUCTURED_PIPELINE) return { resumable: false, reason: "legacy_pipeline" };
   if (run.model_version !== model) return { resumable: false, reason: "model_differs" };
-  if (payloadHash(run.step_contracts ?? null) !== targetDigest) return { resumable: false, reason: "layout_differs" };
+  if (!(typeof targetDigest === "string" ? [targetDigest] : targetDigest).includes(payloadHash(run.step_contracts ?? null))) return { resumable: false, reason: "layout_differs" };
   if (!["running", "paused", "submitted"].includes(run.status ?? "")) return { resumable: false, reason: `run_${run.status}` };
   return { resumable: true, reason: "target_layout" };
 }
 
 class FullBackfill {
-  private readonly targetDigest: string;
+  private readonly targetDigests: readonly string[];
   private readonly target: TargetVersions;
   fatal: string | null = null;
   constructor(private readonly manifest: FullBackfillManifest, private readonly seams: BackfillSeams, private readonly options: BackfillOptions,
     private readonly repairHoldIds: ReadonlySet<string>) {
     this.target = manifest.prompt_versions;
-    this.targetDigest = targetContractsDigest(manifest.layout);
+    this.targetDigests = acceptedContractsDigests(manifest.layout);
   }
   private now() { return (this.seams.now ?? (() => new Date()))(); }
   private sleep(ms: number) { return (this.seams.sleep ?? (m => new Promise(r => setTimeout(r, m))))(ms); }
@@ -710,10 +745,14 @@ class FullBackfill {
     await this.seams.log("superseded", { job_id: String(job._id), stage: job.stage, prior });
     return prior;
   }
+  /** `--reprepare-schema-exhausted`: a paused job whose run exhausted its schema repairs is superseded, not re-armed. */
+  private reprepare(job: JobRow) {
+    return Boolean(this.options.reprepareSchemaExhausted) && job.status === "paused" && resultReason(job) === "schema_exhausted";
+  }
   private async resumable(job: JobRow) {
     const run = await getIntelligenceRunModel().findOne({ job_id: String(job._id) }).sort({ _id: -1 })
       .select("purged_at purge_started_at analysis_pipeline model_version step_contracts status").lean();
-    return resumeDecision(run as Parameters<typeof resumeDecision>[0], this.targetDigest, this.options.model);
+    return resumeDecision(run as Parameters<typeof resumeDecision>[0], this.targetDigests, this.options.model);
   }
   /** Fresh work born on `operator_hold`: nothing can claim it before this runner releases and claims it by id. */
   private async createHeld(input: { stage: "analysis" | "number_refresh"; subject_key: string; dedupe_key: string; input_refs: string[] }, numberId: string, conversationId: string | null) {
@@ -873,7 +912,7 @@ class FullBackfill {
     const failed = job.status === "dead_letter" || (job.status === "paused" && REDRIVE_PAUSE_REASONS.has(job.reason ?? ""));
     const pending = ["pending", "retry"].includes(job.status);
     if (!failed && !pending) return null;
-    const decision = await this.resumable(job);
+    const decision = this.reprepare(job) ? { resumable: false, reason: "reprepare_schema_exhausted" } : await this.resumable(job);
     if (pending && decision.resumable) return { job_id: String(job._id), by: "backfill" };
     if (failed && decision.resumable) {
       const prior = await this.adopt(job, numberId, conversationId, "rearmed");
@@ -884,9 +923,18 @@ class FullBackfill {
 
   /** Pick the analysis job for a conversation: an own job, the standard job (driven, re-armed or superseded), or fresh work. */
   private async pickAnalysisJob(n: NumberEntry, c: ConversationEntry, version: string, snapshotId: string): Promise<Pick> {
-    const standard = `csi:analysis:conversation:${c.conversation_id}:${version}`, ownKey = `${standard}${OWN_DEDUPE_MARK}${this.target.findings}`;
-    const own = (await this.jobs().findOne({ dedupe_key: ownKey }).select(JOB_FIELDS).lean()) as JobRow | null;
-    if (own) {
+    const standard = `csi:analysis:conversation:${c.conversation_id}:${version}`;
+    let ownKey = `${standard}${OWN_DEDUPE_MARK}${this.target.findings}`;
+    // Own jobs of any findings version (a v5 own job stays this backfill's under a v6 target); the newest unfinished first.
+    const owns = (await this.jobs().find({ dedupe_key: { $regex: `^${escapeRegex(`${standard}${OWN_DEDUPE_MARK}`)}` } }).sort({ _id: -1 }).select(JOB_FIELDS).lean()) as JobRow[];
+    const own = owns.find(job => job.status !== "completed") ?? owns.find(job => job.dedupe_key === ownKey) ?? null;
+    let ownPrior: PriorState | undefined, ownSuperseded: string | undefined;
+    if (own && this.reprepare(own)) {
+      // `--reprepare-schema-exhausted`: complete it as superseded; fresh work is prepared under the current contracts,
+      // under a new key when the superseded job holds the target one.
+      ownPrior = await this.supersede(own); ownSuperseded = String(own._id);
+      if (own.dedupe_key === ownKey) ownKey = `${ownKey}:reprepare:${ownSuperseded}`;
+    } else if (own) {
       // An own job an earlier run left failed (e.g. `schema_exhausted`) is re-armed by id like any other failed job;
       // it is on the target layout, so it resumes rather than being superseded (its dedupe key is taken).
       const id = String(own._id);
@@ -896,8 +944,8 @@ class FullBackfill {
       const prior = await this.adopt(own, n.number_id, c.conversation_id, "rearmed");
       return prior ? { job_id: id, by: "prior", prior } : { blocked: "blocked", reason: "changed_concurrently", by: null, job_id: id };
     }
-    const std = (await this.jobs().findOne({ dedupe_key: standard }).select(JOB_FIELDS).lean()) as JobRow | null;
-    let prior: PriorState | undefined, superseded: string | undefined;
+    const std = ownSuperseded ? null : (await this.jobs().findOne({ dedupe_key: standard }).select(JOB_FIELDS).lean()) as JobRow | null;
+    let prior: PriorState | undefined = ownPrior, superseded: string | undefined = ownSuperseded;
     if (std) {
       const id = String(std._id);
       const existing = await this.pickExisting(std, n.number_id, c.conversation_id);
@@ -906,7 +954,7 @@ class FullBackfill {
       else if (std.status === "completed") {
         // Its run may be a target-layout receipt still awaiting application: drive the application only.
         const run = await getIntelligenceRunModel().findOne({ job_id: id }).sort({ _id: -1 }).select("status step_contracts").lean();
-        if (run?.status === "submitted" && payloadHash(run.step_contracts ?? null) === this.targetDigest) return { job_id: id, by: "prior" };
+        if (run?.status === "submitted" && this.targetDigests.includes(payloadHash(run.step_contracts ?? null))) return { job_id: id, by: "prior" };
       } else {
         const decided = await this.failedOrPending(std, n.number_id, c.conversation_id);
         if (!decided) return { blocked: "blocked", reason: `standard_job_${std.status}:${std.reason ?? ""}`, by: null, job_id: id };
@@ -995,7 +1043,9 @@ class FullBackfill {
   /** The backfill's own synthesis, keyed by the Number's current fingerprint so a resume finds the same held job. */
   private async ownNumberJob(n: NumberEntry, extra: { prior?: PriorState; superseded_job_id?: string }): Promise<Pick> {
     const fingerprint = (await withTransaction(session => intelligenceSources(n.number_id, session))).fingerprint;
-    const key = `${OWN_NUMBER_DEDUPE_PREFIX}${n.number_id}:${this.target.findings}:${fingerprint.slice(0, 16)}`;
+    let key = `${OWN_NUMBER_DEDUPE_PREFIX}${n.number_id}:${this.target.findings}:${fingerprint.slice(0, 16)}`;
+    // A reprepare never reuses the key of the job it just superseded.
+    if (extra.superseded_job_id && (await this.jobs().exists({ _id: extra.superseded_job_id, dedupe_key: key }))) key = `${key}:reprepare:${extra.superseded_job_id}`;
     const existing = await this.jobs().findOne({ dedupe_key: key }).select("_id").lean();
     const id = existing ? String(existing._id) : await this.createHeld({ stage: "number_refresh", subject_key: `number:${n.number_id}`, dedupe_key: key,
       input_refs: [n.number_id] }, n.number_id, null);
@@ -1005,14 +1055,26 @@ class FullBackfill {
   /** The scheduled synthesis, or the normal scheduling path, or (fingerprint unchanged / S10-held and left) the backfill's own job. */
   private async pickNumberJob(n: NumberEntry): Promise<Pick | { none: true }> {
     const number = await getContactNumberModel().findById(n.number_id).select("intelligence_schedule").lean();
-    const scheduled = number?.intelligence_schedule?.job_id ? await this.load(String(number.intelligence_schedule.job_id)) : null;
+    let scheduled = number?.intelligence_schedule?.job_id ? await this.load(String(number.intelligence_schedule.job_id)) : null;
     let prior: PriorState | undefined, superseded: string | undefined;
+    if (this.options.reprepareSchemaExhausted) {
+      // An own synthesis of an earlier run (any findings version) paused `schema_exhausted` is not what the schedule points to: supersede it too.
+      const stuck = (await this.jobs().find({ dedupe_key: { $regex: `^${escapeRegex(`${OWN_NUMBER_DEDUPE_PREFIX}${n.number_id}:`)}` }, status: "paused" })
+        .sort({ _id: -1 }).select(JOB_FIELDS).lean()) as JobRow[];
+      for (const job of stuck.filter(job => this.reprepare(job) && String(job._id) !== String(scheduled?._id ?? ""))) {
+        prior = await this.supersede(job); superseded = String(job._id);
+      }
+    }
+    if (scheduled && this.reprepare(scheduled)) {
+      prior = await this.supersede(scheduled); superseded = String(scheduled._id);
+      scheduled = await this.load(superseded);
+    }
     if (scheduled?.status === "completed") {
       // A synthesis already submitted on the target layout whose application never ran: apply it, don't pay for another.
       const run = await getIntelligenceRunModel().findOne({ job_id: String(scheduled._id) }).sort({ _id: -1 }).select("_id status step_contracts").lean();
       const submission = run?.status === "submitted" ? await getIntelligenceSubmissionModel().findOne({ run_id: run._id }).select("application_job_id").lean() : null;
       const app = submission?.application_job_id ? await this.load(String(submission.application_job_id)) : null;
-      if (run && app && app.status !== "completed" && payloadHash(run.step_contracts ?? null) === this.targetDigest) return { job_id: String(scheduled._id), by: "prior" };
+      if (run && app && app.status !== "completed" && this.targetDigests.includes(payloadHash(run.step_contracts ?? null))) return { job_id: String(scheduled._id), by: "prior" };
     } else if (scheduled) {
       const id = String(scheduled._id);
       if (scheduled.status === "paused" && scheduled.reason === "evidence_limit_reached") return { blocked: "blocked", reason: "evidence_limit_reached", by: null, job_id: id };
@@ -1034,6 +1096,8 @@ class FullBackfill {
       catch (error) { if (attempt >= 2 || !(error instanceof Error && /REVISION_CONFLICT|WriteConflict/.test(`${error.message} ${(error as { code?: string }).code ?? ""}`))) throw error; }
     }
     const extra = { ...(prior ? { prior } : {}), ...(superseded ? { superseded_job_id: superseded } : {}) };
+    // A reprepared synthesis runs even when the fingerprint did not move and the running summary looks current.
+    if (!jobId && superseded && this.options.reprepareSchemaExhausted) return this.ownNumberJob(n, extra);
     if (jobId) {
       const job = await this.load(jobId);
       if (job && ["pending", "retry"].includes(job.status)) { await this.hold(job, n.number_id, null); return { job_id: jobId, by: "backfill", ...extra }; }
@@ -1051,7 +1115,7 @@ class FullBackfill {
     const summary = number?.running_summary as { run_id?: unknown } | null | undefined;
     if (!summary?.run_id) return false;
     const run = await getIntelligenceRunModel().findById(summary.run_id).select("status prompt_version createdAt").lean();
-    if (!run || run.status !== "completed" || run.prompt_version !== this.target.findings) return false;
+    if (!run || run.status !== "completed" || !acceptedFindingsVersions(this.target).includes(run.prompt_version ?? "")) return false;
     const convRuns = (await getLeadConversationModel().find({ ...ELIGIBLE_CONVERSATION, contact_number_id: new mongoose.Types.ObjectId(numberId),
       latest_completed_run_id: { $ne: null } }).select("latest_completed_run_id").lean()).map(r => String(r.latest_completed_run_id));
     const newest = convRuns.length ? await getIntelligenceRunModel().findOne({ _id: { $in: convRuns } }).sort({ createdAt: -1 }).select("createdAt").lean() : null;
