@@ -4,11 +4,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  acquireRepairLock, releaseRepairLock, repairLockPath, numberVerdict, bucketize, budgetHeadroom, configurePaidProcess, isOwnDedupe, numberExclusion, p95, parseCliOptions, pickCost, resumeDecision,
+  ACCEPTED_CURRENT_FINDINGS_VERSIONS, acceptedContractsDigests, acceptedFindingsVersions, acquireRepairLock, releaseRepairLock, repairLockPath, numberVerdict, bucketize, budgetHeadroom, configurePaidProcess, isOwnDedupe, numberExclusion, p95, parseCliOptions, pickCost, resumeDecision,
   summarize, targetContractsDigest, targetVersions, type FullBackfillManifest,
 } from "./full-backfill";
+import { payloadHash } from "../../src/services/salesIntelligence/transactions";
 import {
-  CASE_FILE_FINDINGS_PROMPT_VERSION, CASE_FILE_SUMMARY_PROMPT_VERSION, FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, SUMMARY_PROMPT_VERSION, structuredStepContracts,
+  CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, CASE_FILE_FINDINGS_PROMPT_VERSION, CASE_FILE_SUMMARY_PROMPT_VERSION, FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, SUMMARY_PROMPT_VERSION, structuredStepContracts,
 } from "../../src/services/salesIntelligence/analysis/structuredPrompt";
 
 test("CLI: estimate by default, Case File by default, bounded concurrency, no --release-holds", () => {
@@ -157,4 +158,33 @@ test("phase 1 lock: a live repair child refuses a second start; a stale lock is 
     await releaseRepairLock(path, 333);
     await assert.rejects(() => readFile(path, "utf8"), /ENOENT/);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("citation handles (spec §5): --citations and --reprepare-schema-exhausted; v5 and v6 both current; paused runs resume in their own mode", () => {
+  const base = parseCliOptions(["node", "script"]);
+  assert.deepEqual([base.citations, base.reprepareSchemaExhausted], ["ids", false], "production parity by default (flag off)");
+  const handles = parseCliOptions(["n", "s", "--citations", "handles", "--reprepare-schema-exhausted"]);
+  assert.deepEqual([handles.citations, handles.reprepareSchemaExhausted], ["handles", true]);
+  assert.throws(() => parseCliOptions(["n", "s", "--citations", "refs"]), /ids or handles/);
+  assert.throws(() => parseCliOptions(["n", "s", "--citations", "handles", "--layout", "default"]), /needs --layout case_file/);
+  assert.equal(targetVersions("case_file", "handles").findings, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION);
+  assert.equal(targetVersions("case_file").findings, CASE_FILE_FINDINGS_PROMPT_VERSION);
+  assert.deepEqual([...ACCEPTED_CURRENT_FINDINGS_VERSIONS], [CASE_FILE_FINDINGS_PROMPT_VERSION, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION]);
+  for (const citations of ["ids", "handles"] as const) assert.deepEqual(acceptedFindingsVersions(targetVersions("case_file", citations)), ACCEPTED_CURRENT_FINDINGS_VERSIONS);
+  assert.deepEqual(acceptedFindingsVersions(targetVersions("default")), [FINDINGS_PROMPT_VERSION]);
+  assert.equal(targetContractsDigest("case_file"), payloadHash(structuredStepContracts("case_file", "ids")), "the id-mode target digest is unchanged");
+  assert.notEqual(targetContractsDigest("case_file", "handles"), targetContractsDigest("case_file"));
+  const env: NodeJS.ProcessEnv = { PERSONAL_AI_GATEWAY_API_KEY: "personal", SALES_INTELLIGENCE_DEPLOYMENT_ID: "d", SALES_INTELLIGENCE_ANALYSIS_PRICING_VERSION: "p1",
+    SALES_INTELLIGENCE_ANALYSIS_INPUT_CENTS_PER_MILLION: "10", SALES_INTELLIGENCE_ANALYSIS_OUTPUT_CENTS_PER_MILLION: "40", SALES_INTELLIGENCE_CITATION_HANDLES: "true" };
+  configurePaidProcess(env, "case_file");
+  assert.equal(env.SALES_INTELLIGENCE_CITATION_HANDLES, "false", "the process flag follows --citations, never the shell");
+  configurePaidProcess(env, "case_file", "handles");
+  assert.equal(env.SALES_INTELLIGENCE_CITATION_HANDLES, "true");
+  // A paused run of either Case File mode resumes under its own contracts; a legacy run does not.
+  const model = "openai/gpt-5.6-luna", accepted = acceptedContractsDigests("case_file");
+  const run = (citations: "ids" | "handles") => ({ analysis_pipeline: STRUCTURED_PIPELINE, model_version: model, step_contracts: structuredStepContracts("case_file", citations), status: "paused" });
+  assert.equal(resumeDecision(run("ids"), accepted, model).resumable, true);
+  assert.equal(resumeDecision(run("handles"), accepted, model).resumable, true);
+  assert.equal(resumeDecision({ ...run("ids"), step_contracts: structuredStepContracts("legacy") }, accepted, model).reason, "layout_differs");
+  assert.equal(resumeDecision(run("handles"), targetContractsDigest("case_file"), model).reason, "layout_differs", "a single digest still means exactly that one");
 });

@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { applyCaseFileBudget, renderCaseFile, trimCandidates } from "./budget";
 import { anchorFollowupCreation, buildCaseFile, customerEvidenceDigest, customerNameText } from "./build";
-import { findingsAppendix, isPriorFindingTimelineRecord } from "./appendix";
+import { appendixContextRecords, findingsAppendix, findingsAppendixHandles, isPriorFindingTimelineRecord } from "./appendix";
+import { buildCitationHandles, handleIndex } from "../analysis/citationHandles";
+import { modelEvidence } from "../analysis/modelEvidence";
 import { caseFileFromReadContent, caseFileToReadContent } from "./page";
 import { emptyTrimState, renderBody } from "./render";
 import { FIXTURES, busyNumber, estimateChange, followup, followupEvents, formLead, formLeadOneCall, priorPage, priorityChange } from "./fixtures/sources";
@@ -204,4 +206,49 @@ test("V-AC N7: a prior finding's review reads as the Owner's review, and the dig
   const untrimmed = renderBody(build(busyNumber), emptyTrimState()).join(String.fromCharCode(10));
   assert.ok(/C0 OUTCOME: Outcome of call 0: waiting on the customer\. \| commitments: /.test(untrimmed), 'the digest line shows the outcome once');
   assert.ok(!/OUTCOME: outcome:/.test(untrimmed) && !/OUTCOME: outcome:/.test(text));
+});
+
+test("CH-T2: handles are deterministic; T / P are the Case File's [Tn] / Pn; the handles appendix shows refs and never a record id", () => {
+  const sources = busyNumber(), file = buildCaseFile(sources), rendered = applyCaseFileBudget(file);
+  const caseFile = { snapshot_id: "case-file-snapshot", data: caseFileToReadContent(file, rendered, sources.coverage!) };
+  const prior = { snapshot_id: "prior-snapshot", data: sources.prior! };
+  const leadRecord = { record_type: "lead" as const, record_id: "6ab2b4870c84337849a49dc4", revision: "1", fields: { status: "open", booked: false } };
+  const context = priorPage([leadRecord,
+    { record_type: "job_timeline", record_id: "6ab2b4870c84337849a49dc6", revision: "1", fields: { description: "claim", details: JSON.stringify({ kind: "objection", value: {}, evidence: [], run_id: "r1" }) } },
+    { record_type: "interaction", record_id: "call:6ab2b4870c84337849a49dc5", revision: "1", fields: { direction: "Inbound" } },
+    { record_type: "contact_number", record_id: "6ab2b4870c84337849a49dc5", revision: "1", fields: { kind: "external" } },
+    { ...leadRecord }]);
+  // The same Lead also captured on the prior page: one handle naming both pages.
+  prior.data = { ...prior.data, page: { ...prior.data.page, records: [...prior.data.page.records, leadRecord] } };
+  const pages = [{ snapshot_id: "context-snapshot", data: context }, caseFile, prior];
+  const storyIds = caseFile.data.page.records.filter(r => r.record_type === "story_event").map(r => r.record_id);
+  const priorIds = prior.data.page.records.filter(r => r.record_type === "prior_finding").map(r => r.record_id);
+  const inputs = { context: pages, records: appendixContextRecords(context), story_event_ids: storyIds, prior_finding_ids: priorIds };
+  const table = buildCitationHandles(inputs), again = buildCitationHandles(JSON.parse(JSON.stringify(inputs)) as typeof inputs);
+  assert.deepEqual(again, table, "byte-stable across builds");
+  assert.equal(again.digest, table.digest);
+  const { resolve } = handleIndex(table);
+  const ts = [...rendered.text.matchAll(/^\[T(\d+)\] /gm)].map(m => Number(m[1]));
+  assert.ok(ts.length > 0);
+  for (const t of ts) assert.deepEqual([resolve(`T${t}`)?.record_type, resolve(`T${t}`)?.record_id, resolve(`T${t}`)?.snapshot_ids], ["story_event", file.story_events[t]!.id, ["case-file-snapshot"]], `T${t}`);
+  const ps = [...rendered.text.matchAll(/^ {2}P(\d+) /gm)].map(m => Number(m[1]));
+  assert.ok(ps.length > 0);
+  for (const p of ps) assert.equal(resolve(`P${p}`)?.record_id, file.prior.findings.find(f => f.p === p)!.id, `P${p}`);
+  assert.deepEqual(file.prior_finding_ids, priorIds, "P order is the prior page's prior_finding order");
+  // R: appendix order, 1-based, prior-finding timeline rows gone, the duplicate Lead one handle with both pages.
+  assert.deepEqual(table.handles.filter(h => h.ref.startsWith("R")).map(h => [h.ref, h.record_type, h.record_id, h.snapshot_ids]), [
+    ["R1", "lead", leadRecord.record_id, ["context-snapshot", "prior-snapshot"]],
+    ["R2", "interaction", "call:6ab2b4870c84337849a49dc5", ["context-snapshot"]],
+    ["R3", "contact_number", "6ab2b4870c84337849a49dc5", ["context-snapshot"]]]);
+  const appendix = findingsAppendixHandles({ calls: [{ summary: sources.summaries[0]!.summary, segments_available: true }], context }, table);
+  assert.deepEqual(appendix.context.records.map(r => [r.ref, r.record]), [["R1", "lead"], ["R2", "interaction"], ["R3", "contact_number"], ["R1", "lead"]]);
+  assert.ok(appendix.context.records.every(r => Object.keys(r).join() === "ref,record,fields"));
+  const message = JSON.stringify(modelEvidence({ case_file: rendered.text, appendix }));
+  for (const handle of table.handles) assert.ok(!message.includes(handle.record_id), `${handle.ref}: its record id is not in the handles-mode message`);
+  for (const key of ["record_id", "story_event_ids", "prior_finding_ids", "snapshot_id"]) assert.ok(!message.includes(`"${key}"`), key);
+  assert.deepEqual(modelEvidence({ ref: "R1", snapshot_id: "s", field_paths: ["a"] }), { ref: "R1" }, "modelEvidence still strips server metadata");
+  // The id-mode appendix is unchanged: the same calls and context, with record ids and the id lists.
+  const ids = findingsAppendix({ calls: [{ summary: sources.summaries[0]!.summary, segments_available: true }], context, story_event_ids: storyIds, prior_finding_ids: priorIds });
+  assert.deepEqual(ids.calls, appendix.calls);
+  assert.deepEqual(ids.context.records.map(r => r.record_id), [leadRecord.record_id, "call:6ab2b4870c84337849a49dc5", "6ab2b4870c84337849a49dc5", leadRecord.record_id]);
 });

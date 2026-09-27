@@ -19,7 +19,10 @@ import { readCaptureCoverage } from "../../numberActivity/coverage";
 import { loadReadScope } from "./reads";
 import { authorizedCorrections, retainedOriginal } from "./ownerReanalysis";
 import { jsonValue } from "../outreach/store";
-import { STRUCTURED_FINDINGS_PROMPT_VERSIONS, STRUCTURED_PIPELINE, findingsPromptFor, layoutOfContracts, structuredStepContracts } from "./structuredPrompt";
+import { STRUCTURED_FINDINGS_PROMPT_VERSIONS, STRUCTURED_PIPELINE, citationsOfContracts, currentAnalysisLayout, findingsPromptFor, layoutOfContracts,
+  structuredStepContracts } from "./structuredPrompt";
+import { CITATION_HANDLES_FLAG, citationHandlesEnabled } from "./citationHandles";
+import { logger } from "../../../logger";
 
 export { intelligenceSchemaDigest } from "./schemaArtifact";
 const preparationSchema = z.object({
@@ -75,6 +78,9 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
   // which has nothing to do with this run's writes and should not sit inside
   // their transaction.
   const discovery = await discoveryToolGrant(input.mode as AnalysisMode);
+  // Handles need the Case File layout (citation handles spec §4.5): without it the flag is ignored, and said so.
+  if (input.analysis_pipeline && citationHandlesEnabled() && currentAnalysisLayout() !== "case_file")
+    logger.warn({ msg: "sales_intelligence.citation_handles.ignored", flag: CITATION_HANDLES_FLAG, reason: "case_file_off" });
   const run = await withTransaction(async session => {
     const job = await getSalesIntelligenceJobModel().findOne({ _id: lease.job_id, ...csiDataset(), status: "leased",
       stage: { $in: ["analysis", "number_refresh"] }, lease_owner: lease.owner, lease_epoch: lease.epoch,
@@ -100,9 +106,10 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       await fenceRetention();
       return existing;
     }
-    // SALES_INTELLIGENCE_CASE_FILE is read once, here, and recorded in step_contracts (Case File spec §4.11).
+    // SALES_INTELLIGENCE_CASE_FILE and SALES_INTELLIGENCE_CITATION_HANDLES are read once, here, and recorded in
+    // step_contracts (`layout`, `citations`; Case File spec §4.11, citation handles spec §4.5). A replay keeps its parent's.
     const contracts = input.analysis_pipeline ? structuredStepContracts() : null;
-    const structured = contracts ? findingsPromptFor(layoutOfContracts(contracts)) : null;
+    const structured = contracts ? findingsPromptFor(layoutOfContracts(contracts), citationsOfContracts(contracts)) : null;
     let prompt = structured ? structured.prompt : renderIntelligencePrompt();
     let promptVersion: string = structured ? structured.version : CSI_PROMPT_VERSION;
     let schemaDigest = intelligenceSchemaDigest();

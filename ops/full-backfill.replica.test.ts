@@ -19,8 +19,10 @@ import { getSalesIntelligenceAiBudgetModel } from "../src/models/SalesIntelligen
 import { currentLedger, initializeCsiBudgetPeriod, reconcileCsiBudget, reserveCsiBudget, resumeBudgetPausedJobs } from "../src/services/salesIntelligence/aiBudget";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob } from "../src/services/salesIntelligence/jobs";
 import { intelligenceSources } from "../src/services/salesIntelligence/analysis/sources";
+import { payloadHash } from "../src/services/salesIntelligence/transactions";
 import { scheduleNumberIntelligence } from "../src/services/salesIntelligence/analysis/scheduling";
-import { CASE_FILE_FINDINGS_PROMPT_VERSION, FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, structuredStepContracts } from "../src/services/salesIntelligence/analysis/structuredPrompt";
+import { CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, CASE_FILE_FINDINGS_PROMPT_VERSION, FINDINGS_PROMPT_VERSION, STRUCTURED_PIPELINE, currentCitationMode, findingsPromptFor,
+  structuredStepContracts } from "../src/services/salesIntelligence/analysis/structuredPrompt";
 import {
   estimateWorkSet, loadManifest, manifestSaver, newManifest, OPERATOR_HOLD_REASON, readRepairHoldIds, runFullBackfill, selectWorkSet, SUPERSEDED_REASON,
   targetVersions, type BackfillOptions, type BackfillRunners, type FullBackfillManifest,
@@ -230,14 +232,18 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
       calls.push({ stage, subject, job: jobId });
       const conversation = stage === "analysis" ? await Conversations.findById(subject).select("contact_number_id").lean() : null;
       const numberId = conversation ? String(conversation.contact_number_id) : subject;
-      const runId = oid(), submissionId = oid();
+      // A re-armed job resumes its own run (prepare returns the existing row): it keeps the contracts it was prepared with.
+      const resumed = await Runs.findOne({ job_id: asId(jobId), status: { $in: ["running", "paused"] } }).lean();
+      const runId = resumed?._id ?? oid(), submissionId = oid();
       const reservation = `proof:${jobId}:${job.lease_epoch}`;
       await reserveCsiBudget({ reservation_id: reservation, month, job_id: jobId, run_id: String(runId), step: `findings:${jobId}:invocation:${job.lease_epoch}`,
         stage: "analysis", estimated_cents: 5, soft_stop: true, ledger: currentLedger() });
       await reconcileCsiBudget(reservation, 4);
       const fingerprint = await fingerprintOf(numberId);
-      await addRun({ _id: runId, job_id: asId(jobId), subject_key: job.subject_key, contact_number_id: asId(numberId),
-        conversation_id: conversation ? asId(subject) : null, status: "submitted", prompt_version: CASE_FILE_FINDINGS_PROMPT_VERSION,
+      if (resumed) await Runs.collection.updateOne({ _id: runId as mongoose.Types.ObjectId }, { $set: { status: "submitted", input_fingerprint: fingerprint, finalized_at: new Date() } });
+      else await addRun({ _id: runId, job_id: asId(jobId), subject_key: job.subject_key, contact_number_id: asId(numberId),
+        // As prepare does: the citation mode is read from the process flag (the backfill sets it from --citations).
+        conversation_id: conversation ? asId(subject) : null, status: "submitted", prompt_version: findingsPromptFor("case_file", currentCitationMode("case_file")).version,
         step_contracts: structuredStepContracts("case_file"), input_fingerprint: fingerprint, finalized_at: new Date() });
       const application = await enqueue({ stage: "application", subject_key: job.subject_key, dedupe_key: `csi:application:run:${runId}`, input_revision: 1,
         input_refs: [String(runId), String(submissionId)] });
@@ -419,4 +425,92 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
   assert.deepEqual([drive.complete, drive.peer_paid_units, driven.holds.length], [true, 0, 0]);
   assert.equal(repairRuns, 2, "no repair manifest: phase 1 is skipped");
   assert.deepEqual(await jobState(jobD._id), ["paused", OPERATOR_HOLD_REASON]);
+
+  // ── CH-T6 (citation handles spec §5): v5 and v6 are both current; `--reprepare-schema-exhausted` re-drives as v6 ──
+  process.env.SALES_INTELLIGENCE_CITATION_HANDLES = "true"; // what configurePaidProcess sets for `--citations handles`
+  t.after(() => { delete process.env.SALES_INTELLIGENCE_CITATION_HANDLES; });
+  const v6Contracts = structuredStepContracts("case_file", "handles"), v5Contracts = structuredStepContracts("case_file", "ids");
+  // N9: one conversation current on v5, one on v6, and a running summary from a completed v6 synthesis: nothing to do.
+  const n9 = await addNumber();
+  await currentConversation(n9);
+  const v6Conv = await addConversation(n9);
+  const v6Job = await analysisJob(v6Conv);
+  await setJob(v6Job._id, { status: "completed", completed_at: new Date() });
+  const v6Run = await addRun({ job_id: v6Job._id, subject_key: `conversation:${v6Conv.id}`, conversation_id: asId(v6Conv.id), contact_number_id: asId(n9),
+    status: "completed", prompt_version: CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, step_contracts: v6Contracts });
+  await Conversations.collection.updateOne({ _id: asId(v6Conv.id) }, { $set: { latest_completed_run_id: v6Run,
+    summary: { text: "v6", model: MODEL, prompt_version: CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, created_at: new Date() } } });
+  const n9Synthesis = await addRun({ subject_key: `number:${n9}`, conversation_id: null, contact_number_id: asId(n9), status: "completed",
+    prompt_version: CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, step_contracts: v6Contracts, createdAt: new Date(Date.now() + 60_000) });
+  await Numbers.collection.updateOne({ _id: asId(n9) }, { $set: { running_summary: { text: "s", run_id: n9Synthesis, evidence_digest: "d", computed_at: new Date(Date.now() + 60_000) } } });
+  for (const citations of ["handles", "ids"] as const) {
+    const set = await selectWorkSet(targetVersions("case_file", citations), { numbers: [n9], since: null, maxNumbers: null }, new Date());
+    assert.deepEqual([set.counts.a, set.counts.b, set.counts.numbers], [0, 0, 0], `${citations}: v5 and v6 are both current (no re-analysis wave)`);
+  }
+  // N10: synthesis-only; its scheduled synthesis is paused schema_exhausted on a v5 run. N11: conversation K whose own v5 job is paused schema_exhausted.
+  const stuckV5 = { status: "paused", reason: "permission_denied", result: { reason: "schema_exhausted" } };
+  const n10 = await addNumber();
+  await currentConversation(n10);
+  const n10Stuck = await numberJob(n10, 1);
+  await setJob(n10Stuck._id, stuckV5);
+  const n10StuckRun = await addRun({ job_id: n10Stuck._id, subject_key: `number:${n10}`, conversation_id: null, contact_number_id: asId(n10),
+    status: "paused", prompt_version: CASE_FILE_FINDINGS_PROMPT_VERSION, step_contracts: v5Contracts });
+  await Numbers.collection.updateOne({ _id: asId(n10) }, { $set: { intelligence_schedule: { fingerprint: "old10", generation: 1, job_id: n10Stuck._id } } });
+  const stuckConversation = async (numberId: string) => {
+    const conv = await addConversation(numberId);
+    const std = await analysisJob(conv);
+    await setJob(std._id, { status: "completed", completed_at: new Date(), result: { reason: SUPERSEDED_REASON } });
+    const own = await enqueue({ stage: "analysis", subject_key: `conversation:${conv.id}`, dedupe_key: `${conv.key}:full-backfill:${CASE_FILE_FINDINGS_PROMPT_VERSION}`,
+      input_revision: 1, input_refs: [conv.id, conv.snapshot], priority: 0 });
+    await setJob(own._id, stuckV5);
+    const run = await addRun({ job_id: own._id, subject_key: `conversation:${conv.id}`, conversation_id: asId(conv.id), contact_number_id: asId(numberId),
+      status: "paused", prompt_version: CASE_FILE_FINDINGS_PROMPT_VERSION, step_contracts: v5Contracts });
+    return { conv, own, run };
+  };
+  const n11 = await addNumber();
+  const k = await stuckConversation(n11);
+  const n12 = await addNumber();
+  const m = await stuckConversation(n12);
+
+  // Run 7: --citations handles --reprepare-schema-exhausted on N10 and N11.
+  const reprepPath = `${out}/reprepare.json`;
+  const reprepManifest = newManifest({ now: new Date(Date.now() - 1_000), layout: "case_file", citations: "handles", models: { extraction: MODEL }, deployed_commit: null, local_head: null,
+    options: { concurrency: 1, numbers: [n10, n11], max_numbers: null, since: null, s10_holds: "leave", repair_manifest: null } });
+  assert.equal(reprepManifest.prompt_versions.findings, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION);
+  const reprep = await runFullBackfill(reprepManifest, seams(reprepPath), { ...options, repairManifest: null, numbers: [n10, n11], reprepareSchemaExhausted: true });
+  const reprepared = (await loadManifest(reprepPath))!;
+  assert.deepEqual([reprep.complete, reprep.peer_paid_units, reprepared.holds.length], [true, 0, 0]);
+  const reprepBy = new Map(reprepared.numbers.map(n => [n.number_id, n]));
+  // K: the paused v5 own job is completed as superseded, its run stale; a fresh own v6 job ran.
+  const kUnit = reprepBy.get(n11)!.conversations[0]!.units.find(u => u.stage === "analysis")!;
+  assert.deepEqual([kUnit.prior?.action, kUnit.prior?.result_reason, kUnit.superseded_job_id, kUnit.outcome], ["superseded", "schema_exhausted", String(k.own._id), "done"]);
+  const kOld = await Jobs.findById(k.own._id).lean();
+  assert.deepEqual([kOld?.status, (kOld?.result as { reason?: string })?.reason], ["completed", SUPERSEDED_REASON]);
+  assert.equal((await Runs.findById(k.run).lean())?.status, "stale");
+  const kNew = await Jobs.findById(kUnit.job_id).lean();
+  assert.equal(kNew?.dedupe_key, `${k.conv.key}:full-backfill:${CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION}`);
+  const kRun = await Runs.findOne({ job_id: kNew!._id }).lean();
+  assert.deepEqual([kRun?.prompt_version, payloadHash(kRun?.step_contracts)], [CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION, payloadHash(v6Contracts)], "re-driven as a v6 run");
+  // N10: the paused v5 synthesis is superseded; the next generation ran as v6.
+  const n10Unit = reprepBy.get(n10)!.synthesis.find(u => u.stage === "number_refresh")!;
+  assert.deepEqual([n10Unit.prior?.action, n10Unit.prior?.result_reason, n10Unit.superseded_job_id, n10Unit.outcome], ["superseded", "schema_exhausted", String(n10Stuck._id), "done"]);
+  assert.equal((await Runs.findById(n10StuckRun).lean())?.status, "stale");
+  assert.equal((await Runs.findById((await Numbers.findById(n10).lean())?.running_summary?.run_id).lean())?.prompt_version, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION);
+  assert.equal(count("number_refresh", n10), 1);
+
+  // Run 8: the same v6 target without --reprepare: M's paused v5 own job is re-armed by id and resumes under its own (v5) contracts.
+  const rearmPath = `${out}/rearm.json`;
+  const rearmManifest = newManifest({ now: new Date(Date.now() - 1_000), layout: "case_file", citations: "handles", models: { extraction: MODEL }, deployed_commit: null, local_head: null,
+    options: { concurrency: 1, numbers: [n12], max_numbers: null, since: null, s10_holds: "leave", repair_manifest: null } });
+  await runFullBackfill(rearmManifest, seams(rearmPath), { ...options, repairManifest: null, numbers: [n12] });
+  const mUnit = (await loadManifest(rearmPath))!.numbers[0]!.conversations[0]!.units.find(u => u.stage === "analysis")!;
+  assert.deepEqual([mUnit.by, mUnit.job_id, mUnit.prior?.action, mUnit.prior?.result_reason], ["prior", String(m.own._id), "rearmed", "schema_exhausted"]);
+  const mRun = await Runs.findById(m.run).lean();
+  assert.deepEqual([mRun?.status, mRun?.prompt_version, payloadHash(mRun?.step_contracts)], ["completed", CASE_FILE_FINDINGS_PROMPT_VERSION, payloadHash(v5Contracts)],
+    "the re-armed v5 run finished as v5 under a v6 target");
+  // Afterwards N10 and N11 (now v6) and N9 are current under either target.
+  for (const citations of ["handles", "ids"] as const) {
+    const set = await selectWorkSet(targetVersions("case_file", citations), { numbers: [n9, n10, n11], since: null, maxNumbers: null }, new Date());
+    assert.deepEqual([set.counts.a, set.counts.b], [0, 0], `${citations}: set (b) is empty over v5 and v6 runs`);
+  }
 });
