@@ -254,6 +254,11 @@ export type AggregateMutationPlan = {
   revision_before: number;
   fields: Array<{ path: string; before?: unknown; after?: unknown }>;
   deleted?: boolean;
+  /**
+   * The command already advanced `domain_revision` in the same compare-and-swap
+   * that changed the document. The stamp then only attaches the change id.
+   */
+  revision_already_advanced?: boolean;
 };
 
 export function sourceSystemForOrigin(
@@ -408,6 +413,7 @@ export async function persistEntityChangeMutations(input: {
         revision_before: mutation.revision_before,
         applied_at: input.now,
         session: input.session,
+        revision_already_advanced: mutation.revision_already_advanced,
       });
     }
   }
@@ -419,18 +425,24 @@ async function stampAggregateRevision(input: {
   revision_before: number;
   applied_at: Date;
   session?: ClientSession;
+  revision_already_advanced?: boolean;
 }): Promise<void> {
   const model = writableAggregateModel(input.entity.model);
+  const expectedRevision = input.revision_already_advanced
+    ? input.revision_before + 1
+    : input.revision_before;
   const result = await model.collection.updateOne(
     {
       _id: toObjectId(input.entity.id),
-      domain_revision: input.revision_before,
+      domain_revision: expectedRevision,
     },
     {
       $set: {
         last_change_id: input.change_id,
         last_changed_at: input.applied_at,
-        domain_revision: input.revision_before + 1,
+        ...(input.revision_already_advanced
+          ? {}
+          : { domain_revision: input.revision_before + 1 }),
       },
     },
     input.session ? { session: input.session } : {},

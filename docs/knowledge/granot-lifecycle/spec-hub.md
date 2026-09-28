@@ -15,6 +15,7 @@ applies_to:
   - docs/granot-lead-lifecycle/release-into-booking-intake-specification.md
   - docs/granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md
   - docs/referral-review-release-first/referral-review-release-first-specification.md
+  - docs/dashboard-delete-live-claims/dashboard-delete-live-claims-specification.md
   - docs/call-lead-contact-provenance/call-lead-contact-provenance-specification.md
 owners: [team:main-server]
 sources:
@@ -39,6 +40,9 @@ sources:
   - id: referral-review-release-first
     resource: docs/referral-review-release-first/referral-review-release-first-specification.md
     title: Referral review Release-first owner commands
+  - id: dashboard-delete-live-claims
+    resource: docs/dashboard-delete-live-claims/dashboard-delete-live-claims-specification.md
+    title: Dashboard delete releases live Booking and Cancellation claims
 generated:
   by: process:docs-keeper
   at: 2026-09-04T20:00:00Z
@@ -53,6 +57,7 @@ This file is a **Reference** hub only. It points at the locked contract and owne
 - [Release into booking intake and Live Events link](../../granot-lead-lifecycle/release-into-booking-intake-specification.md) — Releas / Release upsert onto the Granot Booking Reconciliation Case; cancellation intakes retired; Live Events → booking intake. Pointer: [`release-into-booking-intake.md`](./release-into-booking-intake.md).
 - [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — prerequisite for Owner Daily. §5 even Binder, BILA-01 intake any-known-contact search/display, BILA-02 optional Lead on Confirm, and BILA-03 Connect Booking to Lead from `/bookings` are current; unmasking is not implemented. Pointer: [`owner-booking-intake.md`](./owner-booking-intake.md).
 - [Referral review Release-first owner commands](../../referral-review-release-first/referral-review-release-first-specification.md) — Referral `review_existing_booking` first evidence may be Release; Owner No Action / Update / Cancel revalidate live Referral policy, not Booked-on-`evidence[0]`. Create Referral Booking minting stays Booked-only. Pointer: [`referral-review-release-first.md`](./referral-review-release-first.md). Delivery: [`README.md`](../../referral-review-release-first/README.md).
+- [Dashboard delete live claims](../../dashboard-delete-live-claims/dashboard-delete-live-claims-specification.md) — Booking delete releases the active Granot Record Link `booking_ref` and an open booking case `deterministic_booking_id`. Cancellation delete keeps its current unwind. Delivery: [`README.md`](../../dashboard-delete-live-claims/README.md).
 - [Booking intake Form Lead contact snapshots](../../granot-lead-lifecycle/booking-intake-form-lead-contact-snapshots-specification.md) — **superseded.** BILA-01 shipped intake search/display. Do not implement from this draft. Remaining slices live in the [booking-intake robustness pack](../../booking-intake-lead-attachment/README.md).
 - [Call Lead contact provenance](../../call-lead-contact-provenance/call-lead-contact-provenance-specification.md) — operational phone stays the ingested caller; Granot contact coalesces on `granot_contact_snapshot` by Job Number; HTTP Automation and extension apply share the processor; Owner desk search is any-known-contact. Delivery: [`call-lead-contact-provenance/README.md`](../../call-lead-contact-provenance/README.md). Do not copy rules here.
 - [Lifecycle activation flags and source policies](../../granot-lead-lifecycle/lifecycle-activation-flags-and-source-policies.md)

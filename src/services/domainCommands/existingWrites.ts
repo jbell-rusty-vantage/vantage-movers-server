@@ -826,7 +826,7 @@ export async function runExistingDeleteBookedLead(input: {
   cascade: boolean;
   context: CanonicalCommandContext;
 }): Promise<CompatibilityCanonicalCommandResult> {
-  const changeIds = preallocatedChangeIds(4);
+  const changeIds = preallocatedChangeIds(5);
   return executeCanonicalCommandWithPostCommit({
     command_name: "deleteBookedLead",
     context: input.context,

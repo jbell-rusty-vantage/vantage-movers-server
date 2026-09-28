@@ -1,5 +1,4 @@
-import type mongoose from "mongoose";
-import type { ClientSession } from "mongoose";
+import type { ClientSession, Types } from "mongoose";
 import {
   getCallLeadSourceCompanyLabel,
   getFormLeadSourceCompanyLabel,
@@ -10,6 +9,7 @@ import {
   type SourceCompany,
 } from "../../config/domain";
 import { toFloridaTimestamp } from "../../utils/easternTime";
+import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import type {
@@ -47,6 +47,8 @@ import {
   CALL_LEAD_CHANGE_PATHS,
   collectDocumentFieldChanges,
   FORM_LEAD_CHANGE_PATHS,
+  persistEntityChangeMutations,
+  type PlannedAggregateMutation,
 } from "../domainCommands/entityChange";
 import {
   BOOKING_LEAD_MIRROR_ACTOR_ID,
@@ -60,6 +62,10 @@ import {
   clearBookingFromLead,
   mirrorBookingToLead,
 } from "./bookingMirror.service";
+import {
+  releaseLiveBookingClaims,
+  type ReleasedRecordLinkMutation,
+} from "./releaseLiveBookingClaims";
 import { getFormLeadSourceCompanyForBooking } from "./bookingSourceResolver";
 import { buildBookedLeadWarnings } from "./bookingWarnings";
 import {
@@ -93,6 +99,34 @@ type CreateBookedLeadServiceInput = Omit<CreateBookedLeadInput, "job_no"> & {
  * compatibility Lead removal). The canonical `*InTransaction` variants do not
  * use it because their commands already emit the Lead change.
  */
+async function persistCompatibilityRecordLinkRelease(
+  bookingId: string,
+  linkMutation: ReleasedRecordLinkMutation | undefined,
+  session?: ClientSession,
+): Promise<void> {
+  if (!linkMutation) return;
+  await persistEntityChangeMutations({
+    session,
+    now: new Date(),
+    command_name: "deleteBookedLead",
+    command_execution_id: toObjectId(newObjectIdHex()),
+    context: systemLeadChangeContext({
+      actor_id: BOOKING_LEAD_MIRROR_ACTOR_ID,
+      command_name: "deleteBookedLead",
+      payload: { booking_id: bookingId },
+    }),
+    mutations: [
+      {
+        change_id: toObjectId(newObjectIdHex()),
+        entity: linkMutation.entity,
+        revision_before: linkMutation.revision_before,
+        fields: linkMutation.fields,
+        revision_already_advanced: true,
+      },
+    ],
+  });
+}
+
 function compatibilityBookingLeadChanges(
   command_name: string,
   payload: Record<string, unknown>,
@@ -812,6 +846,8 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
         );
       }
 
+      const release = await releaseLiveBookingClaims(id, session);
+      await persistCompatibilityRecordLinkRelease(id, release.linkMutation, session);
       await enqueueSheetSyncTombstone(
         {
           resource: "delete_booked_lead",
@@ -850,6 +886,8 @@ export async function deleteBookedLead(id: string, cascade: boolean) {
     await clearBookingFromLead(leadModel, leadId);
     await leadChanges.flush();
   }
+  const release = await releaseLiveBookingClaims(id);
+  await persistCompatibilityRecordLinkRelease(id, release.linkMutation);
   await deleteBookedLeadFromSheets(booking);
   await booking.deleteOne();
 }
@@ -880,12 +918,7 @@ export async function deleteBookedLeadInTransaction(
   }
   const leadModel = hasLinkedLead ? (booking.lead_model as LeadModelName) : undefined;
   const leadId = hasLinkedLead ? booking.lead_ref!.toString() : undefined;
-  const mutations: Array<{
-    entity: { model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead"; id: string };
-    revision_before: number;
-    fields: Array<{ path: string; before?: unknown; after?: unknown }>;
-    deleted?: boolean;
-  }> = [];
+  const mutations: PlannedAggregateMutation[] = [];
   const entity_refs: Array<{ model: string; id: string }> = [
     { model: "BookedLead", id },
   ];
@@ -971,6 +1004,14 @@ export async function deleteBookedLeadInTransaction(
       },
     );
   }
+  const release = await releaseLiveBookingClaims(id, tx.session);
+  if (release.linkMutation) {
+    mutations.push(release.linkMutation);
+    entity_refs.push({
+      model: "GranotRecordLink",
+      id: release.linkMutation.entity.id,
+    });
+  }
   mutations.push({
     entity: { model: "BookedLead", id },
     revision_before: Number(booking.domain_revision ?? 0),
@@ -999,7 +1040,7 @@ export async function deleteBookedLeadInTransaction(
   };
 }
 
-export async function populateBookedLead(id: mongoose.Types.ObjectId) {
+export async function populateBookedLead(id: Types.ObjectId) {
   return BookedLead.findById(id).populate("customer").populate("agent_allocations.agent").orFail();
 }
 

@@ -186,6 +186,15 @@ Referral and leadless **delete** are supported (they skip `clearBookingFromLead`
 
 **Legacy mode:** cascade-delete cancellation sheets, `clearBookingFromLead` (inline sync), `deleteBookedLeadFromSheets`, Mongo delete.
 
+Booking delete does not delete the Lead. Inside the same delete, before the Booking document is removed, it releases live Granot claims:
+
+- An active [Granot Record Link](../../../../CONTEXT.md) whose `booking_ref` is this Booking: `$unset` `booking_ref` and advance `domain_revision` by 1. The link stays `active`. `lead_ref`, `source_scope`, and `last_observation_id` stay. A superseded link is left alone. The write is `collection.updateOne` compare-and-swap; a lost match aborts the delete. One `GranotRecordLink` EntityChange records the cleared `booking_ref`.
+- An open [Granot Booking Reconciliation Case](../../../../CONTEXT.md) whose `deterministic_booking_id` is this Booking: `$unset` that id and advance `case_revision` by 1. The case stays `open`. Resolved cases keep `deterministic_booking_id` and `resolution.entity_ref`.
+
+Referral and leadless deletes skip `clearBookingFromLead` and still release a matching active `booking_ref`.
+
+Cancellation delete does not clear Record Link `booking_ref`. The Booking is still there.
+
 ## Lead mirror (`bookingMirror.service.ts`)
 
 ### `mirrorBookingToLead`
