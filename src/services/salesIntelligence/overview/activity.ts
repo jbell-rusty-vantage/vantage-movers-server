@@ -34,6 +34,7 @@ export function activityDayCoverage(from: Date, through: Date, intervals: readon
 /** Reuses repDays attribution, but totals each interaction once even across transferred rep legs. */
 export function buildActivity(period: OverviewPeriod, calls: readonly RepDayCall[], links: readonly TemporalRepLink[], intervals: readonly CaptureInterval[], scope: RosterScope = null) {
   const byRep = new Map<string, ActivityCounts>(), team = empty(), unmapped = empty();
+  const lastConversation = new Map<string, Date>();
   const days = period.days.map(day => {
     const dayCalls = calls.filter(call => easternDayKey(call.started_at) === day);
     const totals = empty(), missingRep = empty();
@@ -46,6 +47,7 @@ export function buildActivity(period: OverviewPeriod, calls: readonly RepDayCall
         const value = { human_conversations: row.human_conversations, outbound_attempts: row.outbound_attempts };
         if (row.agent_key === UNMAPPED_REP) { add(missingRep, value); continue; }
         const target = byRep.get(row.agent_key) ?? empty(); add(target, value); byRep.set(row.agent_key, target);
+        if (row.human_conversations > 0 && +call.started_at > +(lastConversation.get(row.agent_key) ?? 0)) lastConversation.set(row.agent_key, call.started_at);
       }
     }
     const bounds = easternInstantBounds(day), through = +bounds.end > +period.end ? period.end : bounds.end;
@@ -55,7 +57,7 @@ export function buildActivity(period: OverviewPeriod, calls: readonly RepDayCall
   });
   const missing = days.some(day => day.coverage === "missing");
   const counted = (value: ActivityCounts) => ({ human_conversations: missing ? null : value.human_conversations, outbound_attempts: missing ? null : value.outbound_attempts });
-  return { totals: counted(team), by_rep: [...byRep].map(([agent_id, count]) => ({ agent_id, ...counted(count) })),
+  return { totals: counted(team), by_rep: [...byRep].map(([agent_id, count]) => ({ agent_id, ...counted(count), last_conversation_at: missing ? null : lastConversation.get(agent_id)?.toISOString() ?? null })),
     unmapped: scope ? null : counted(unmapped), coverage: days,
     status: days.every(day => day.coverage === "complete") ? "complete" as const : "partial" as const };
 }

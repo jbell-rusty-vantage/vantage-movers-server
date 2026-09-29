@@ -86,9 +86,17 @@ test("OI-C transferred call once for team, once per rep; missing capture day is 
   const result = buildActivity(period, [call], links, complete);
   assert.deepEqual(result.totals, { human_conversations: 1, outbound_attempts: 1 });
   assert.deepEqual(result.by_rep.map(r => r.human_conversations), [1, 1]);
+  assert.deepEqual(result.by_rep.map(r => r.last_conversation_at), [call.started_at.toISOString(), call.started_at.toISOString()]);
+  const latest = { ...call, _id: "latest", started_at: new Date("2026-09-29T16:00:00Z"), parties: [call.parties![0]!] };
+  const attempt = { ...latest, _id: "attempt", started_at: new Date("2026-09-29T17:00:00Z"), contact_type: "voicemail" as const };
+  const ordered = buildActivity(period, [attempt, latest, call], links, complete);
+  assert.equal(ordered.by_rep.find(r => r.agent_id === A)?.last_conversation_at, latest.started_at.toISOString());
+  assert.equal(ordered.by_rep.find(r => r.agent_id === S)?.last_conversation_at, call.started_at.toISOString());
+  assert.equal(buildActivity(period, [attempt], links, complete).by_rep[0]?.last_conversation_at, null);
   assert.equal(buildActivity(period, [call], links, complete, { agent_id: S }).by_rep.length, 1);
   const week = buildActivity(readPeriod("last_7_days", NOW), [call], links, complete);
   assert.equal(week.coverage[0]?.human_conversations, null); assert.equal(week.totals.human_conversations, null);
+  assert.ok(week.by_rep.every(r => r.last_conversation_at === null));
   assert.equal(activityDayCoverage(period.start, period.end, [], false), "missing");
   assert.equal(activityDayCoverage(period.start, period.end, [], true), "partial");
   const middle = new Date((+period.start + +period.end) / 2);
