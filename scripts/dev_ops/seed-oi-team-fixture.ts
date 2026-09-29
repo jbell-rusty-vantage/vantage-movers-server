@@ -85,7 +85,7 @@ async function main() {
   await upsert(Records.collection, records); await upsert(Followups.collection, followups);
   if (mode === "--fixture") {
     const review = new (getSalesIntelligenceReviewItemModel())({ _id: id("review:K"), subject_key: `lead:FormLead:${id("lead:K")}`, cause_kind: "closed_work_request", cause_key: "oi-team:K", state: "open", opened_at: past });
-    if (review.validateSync()) throw review.validateSync(); await upsert(getSalesIntelligenceReviewItemModel().collection, [review.toObject()]);
+    if (review.validateSync()) throw review.validateSync(); await upsert(getSalesIntelligenceReviewItemModel().collection, [{ ...review.toObject(), createdAt: past, updatedAt: NOW }]);
     const observations = calls.map((lead, i) => ({ _id: id(`observation:${i}`), receipt_id: id(`receipt:${i}`), schema_version: 1, kind: "lead_snapshot", normalization_result: "valid",
       normalized_source_label: "oi-synthetic", captured_at: past, identity: { normalized_job_no: i === 2 ? "UNRELATEDJOB" : lead.normalized_job_no }, contact: { normalized_phone: lead.normalized_phone_number },
       move: { move_date: new Date(future.toISOString().slice(0, 10)), granot_move_size_raw: "3 BR", estimated_cubic_feet: 600, origin: { city: "Boston", state: "MA", zip: "02118" }, destination: { city: "Austin", state: "TX", zip: "78701" } },
