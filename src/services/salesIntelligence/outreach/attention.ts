@@ -1,3 +1,6 @@
+import { moveJobKey, readJobMoveObservations } from "../story/granot";
+import type { OutreachInputs, OutreachSideData } from "./reads";
+import type { RecordRow } from "./types";
 import { randomUUID } from "node:crypto";
 import type mongoose from "mongoose";
 import { gzipSync, gunzipSync } from "node:zlib";
@@ -13,9 +16,9 @@ import { attentionRowDtoSchema, attentionPageDtoSchema, ATTENTION_SORTS, ATTENTI
 import { getOutreachBandTransitionModel } from "../../../models/salesIntelligence/outreach";
 import { attentionPublishFenceScope, bandTransitionDocs, bandTransitionsExist, ConcurrentAttentionPublishError, fenceAttentionPublish, estimateBandEntry, overviewEnabled, planBandRow, primaryReason, publishMeta, samePublishMeta,
   type BandChange, type BandMode, type PreviousBandEntry } from "./bandTransitions";
-import { attentionIndexEntry, attentionPriorityCounts, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery, sortAttentionEntries,
+import { attentionIndexEntry, attentionPriorityCounts, decodeAttentionIndex, encodeAttentionIndex, entryMatchesAttentionQuery, sortAttentionEntries, resolvedMoveWindow,
   type AttentionIndexEntry, type AttentionMatchContext } from "./attentionIndex";
-import { closedOutcome, outcomeReason, recordFilterKeys, type FactsCancellation, type RecordFilterKeys } from "./facts";
+import { closedOutcome, easternDay, outcomeReason, recordFilterKeys, type FactsCancellation, type RecordFilterKeys } from "./facts";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { assessmentSortKeys } from "../assessment/presentation";
 import { CsiError } from "../auth";
@@ -47,6 +50,39 @@ const bool = z.enum(["true", "false"]).optional();
 const instant = z.iso.datetime({ offset: true }).optional();
 /** Closed-view parameters (final spec §8); any other view rejects them instead of ignoring them. */
 const CLOSED_ONLY_PARAMS = ["outcome", "closed_from", "closed_to"] as const;
+
+export const MOVE_DATE_MODES = ["today", "tomorrow", "within", "future", "today_onward", "past", "unknown", "exact", "range"] as const;
+export const WORK_FILTERS = ["overdue_followup", "due_today", "no_next_step", "blocked"] as const;
+const agentId = z.string().regex(/^[a-f\d]{24}$/i).transform(value => value.toLowerCase());
+export const calendarDayParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(+date) && date.toISOString().slice(0, 10) === value;
+}, "Expected a real calendar date");
+export const moveLocationQueryShape = {
+  move_date_mode: z.enum(MOVE_DATE_MODES).optional(), move_days: z.union([z.number(), z.string().regex(/^\d+$/)]).transform(Number).pipe(z.number().int().min(0).max(366)).optional(),
+  move_on: calendarDayParam.optional(), move_from: calendarDayParam.optional(), move_through: calendarDayParam.optional(),
+  assigned_agent_id: repeatedQuery(agentId), assignment: z.literal("unassigned").optional(),
+  loc_side: z.enum(["either", "pickup", "delivery"]).optional(),
+  loc_city: z.string().trim().min(1).max(100).transform(value => value.toLowerCase()).optional(),
+  loc_state: z.string().regex(/^[a-z]{2}$/i).transform(value => value.toUpperCase()).optional(), loc_zip: z.string().regex(/^\d{5}$/).optional(),
+};
+export function validateMoveLocationQuery(query: z.infer<z.ZodObject<typeof moveLocationQueryShape>> & { move_date_within?: number; move_date_passed?: string }, ctx: z.RefinementCtx) {
+  const issue = (key: string, message: string) => ctx.addIssue({ code: "custom", path: [key], message });
+  const allowed = query.move_date_mode === "within" ? ["move_days"] : query.move_date_mode === "exact" ? ["move_on"] : query.move_date_mode === "range" ? ["move_from", "move_through"] : [];
+  for (const key of ["move_days", "move_on", "move_from", "move_through"] as const) {
+    if (query[key] !== undefined && !allowed.includes(key)) issue(key, "Incompatible move date mode");
+    if (allowed.includes(key) && query[key] === undefined) issue(key, "Required for this move date mode");
+  }
+  if (query.move_date_mode && (query.move_date_within !== undefined || query.move_date_passed !== undefined)) issue("move_date_mode", "Cannot mix legacy and new move date filters");
+  if (query.move_from && query.move_through && query.move_from > query.move_through) issue("move_through", "Must be on or after move_from");
+  if (query.assignment && query.assigned_agent_id) issue("assignment", "Cannot combine assigned and unassigned");
+  if (query.loc_side && !query.loc_city && !query.loc_state && !query.loc_zip) issue("loc_side", "A location value is required");
+}
+export const ATTENTION_CAPABILITIES = {
+  roster: true, team_workload: true, activity: true, outcomes: true,
+  move_facts: true, move_date: true, assignment: true, relationship: true, work: true, location: true, move_date_sort: true, snapshot_pin: true,
+  closed_history: { q: true, move_date: true, assignment: true, location: true, work: false, relationship: false, move_date_sort: false, snapshot_pin: false },
+} as const;
 
 /**
  * S11-SEARCH (UX22): `q`, trimmed, inner whitespace collapsed and lower-cased, so a cursor binds the
@@ -97,6 +133,9 @@ function searchableIndexEntry(row: z.infer<typeof attentionRowDtoSchema>, positi
  * (S5) and is rejected as an unknown parameter until then.
  */
 export const attentionQuerySchema = z.object({
+  ...moveLocationQueryShape,
+  followup_agent_id: repeatedQuery(agentId), relationship: z.enum(["assigned", "followup", "involved"]).optional(), agent: agentId.optional(),
+  work: repeatedQuery(z.enum(WORK_FILTERS)), snapshot_id: z.string().startsWith("outreach:").max(100).optional(),
   scope: z.literal("production").optional(),
   cursor: z.string().max(2000).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -131,6 +170,8 @@ export const attentionQuerySchema = z.object({
   // S11-SEARCH (UX22): name, Job number or phone digits, matched in memory over the snapshot, every view.
   q: attentionSearchParam,
 }).strict().superRefine((query, ctx) => {
+  validateMoveLocationQuery(query, ctx);
+  if (Boolean(query.relationship) !== Boolean(query.agent)) ctx.addIssue({ code: "custom", path: ["agent"], message: "relationship and agent are required together" });
   if (query.view === "closed") return;
   for (const param of CLOSED_ONLY_PARAMS) if (query[param] !== undefined) ctx.addIssue({ code: "custom", path: [param], message: "Only with view=closed" });
   if ((ATTENTION_CLOSED_SORTS as readonly string[]).includes(query.sort)) ctx.addIssue({ code: "custom", path: ["sort"], message: "Only with view=closed" });
@@ -158,6 +199,7 @@ export function attentionSortKeys(row: Pick<z.infer<typeof attentionRowDtoSchema
   const dues = open.map(a => a.attention_due_at).filter((at): at is string => Boolean(at));
   if (record?.state === "unworked" && record.subject.kind === "lead" && record.subject.model === "FormLead" && record.first_action_due_at) dues.push(record.first_action_due_at);
   return {
+    move_date: record?.facts?.move?.date ?? record?.facts?.route?.move_date ?? null,
     next_action_due: dues.length ? dues.sort()[0]! : null,
     lead_received: record?.subject.kind === "lead" ? record.trigger_at ?? null : null,
     last_human_contact: record?.last_meaningful_contact_at ?? null,
@@ -196,9 +238,38 @@ export function rowMatchesAttentionQuery(row: z.infer<typeof attentionRowDtoSche
  * Filter keys of one published row: the record's (`recordFilterKeys`) plus the derived band, review badge and state.
  * S9-PUBLISH (unflagged, T3-S9-INTERFACE §1): `responsible` is the record's `responsible_agent_id`, `overdue` is `derived.overdue`.
  */
-export function attentionFilterKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "derived" | "outreach">, record: RecordFilterKeys, responsible: unknown = null): AttentionFilterKeysDto {
+export function attentionFilterKeys(row: Pick<z.infer<typeof attentionRowDtoSchema>, "derived" | "outreach">, record: RecordFilterKeys, responsible: unknown = null, asOf?: Date): AttentionFilterKeysDto {
   return { band: row.derived.attention_band ?? null, needs_review: Boolean(row.derived.review_badges?.length), state: row.outreach?.state ?? null, ...record,
+    work: attentionWorkKeys(row.outreach?.followups ?? null, row.derived, asOf),
+    followup_counts: attentionFollowupCounts(row.outreach?.followups ?? [], row.derived, asOf),
     live_call: Boolean(row.outreach?.live_call), responsible: responsible == null || responsible === "" ? null : String(responsible), overdue: Boolean(row.derived.overdue) };
+}
+
+/** Frozen counts retain action multiplicity and assignee-specific due facts for exact team drills. */
+export function attentionFollowupCounts(followups: NonNullable<z.infer<typeof attentionRowDtoSchema>["outreach"]>["followups"],
+  derived: Pick<z.infer<typeof attentionRowDtoSchema>["derived"], "action_facts">, asOf?: Date) {
+  const overdueIds = new Set((derived.action_facts ?? []).filter(action => action.overdue).map(action => action.id));
+  const counts = new Map<string | null, { agent_id: string | null; actions: number; overdue: number; due_today: number }>();
+  for (const action of followups) {
+    if (action.status !== "open") continue;
+    const agent = action.assignment.agent?.id ?? null;
+    const count = counts.get(agent) ?? { agent_id: agent, actions: 0, overdue: 0, due_today: 0 };
+    count.actions++;
+    if (overdueIds.has(action.id)) count.overdue++;
+    if (asOf && action.due_at && easternDay(new Date(action.due_at)) === easternDay(asOf)) count.due_today++;
+    counts.set(agent, count);
+  }
+  return [...counts.values()].sort((a, b) => (a.agent_id ?? "").localeCompare(b.agent_id ?? ""));
+}
+
+/** Contractual due day is independent of a snooze or the next staffed Attention opening. */
+export function attentionWorkKeys(followups: NonNullable<z.infer<typeof attentionRowDtoSchema>["outreach"]>["followups"] | null,
+  derived: Pick<z.infer<typeof attentionRowDtoSchema>["derived"], "action_facts" | "call_blockers">, asOf?: Date) {
+  const open = followups?.filter(action => action.status === "open") ?? [];
+  const ids = new Set(open.map(action => action.id));
+  return { overdue_followup: (derived.action_facts ?? []).some(action => ids.has(action.id) && action.overdue),
+    due_today: Boolean(asOf && open.some(action => action.due_at && easternDay(new Date(action.due_at)) === easternDay(asOf))),
+    no_next_step: followups !== null && open.length === 0, blocked: followups !== null && derived.call_blockers.length > 0 };
 }
 
 const DAY_MS = 86_400_000;
@@ -211,7 +282,7 @@ const PENDING_ASSESSMENT = new Set(["pending", "not_assessed"]);
  * minus closed work (badge-only closed rows stay out of the tiles).
  */
 export function attentionMetrics(rows: readonly z.infer<typeof attentionRowDtoSchema>[], leadsReceived7d: number, asOf: Date): AttentionMetricsDto {
-  let notCalled = 0, overdue = 0, awaiting = 0;
+  let notCalled = 0, overdue = 0, awaiting = 0, recordsWithOverdue = 0;
   const booked: number[] = [];
   let booked7d = 0;
   for (const row of rows) {
@@ -224,13 +295,14 @@ export function attentionMetrics(rows: readonly z.infer<typeof attentionRowDtoSc
     if (row.outreach?.state === "closed") continue;
     if (row.derived.attention_band === 2) notCalled++;
     if (row.derived.attention_band === 1) overdue++;
+    if (row.filter_keys?.work?.overdue_followup ?? row.derived.action_facts?.some(action => action.overdue)) recordsWithOverdue++;
     const facts = row.outreach?.facts;
     const status = row.outreach?.move_assessment?.status ?? "not_assessed";
     if (facts && (facts.newer_call_since_assessment || ((facts.conversations_total ?? 0) >= 1 && PENDING_ASSESSMENT.has(status)))) awaiting++;
   }
   booked.sort((a, b) => a - b);
   const median = booked.length ? (booked.length % 2 ? booked[(booked.length - 1) / 2]! : (booked[booked.length / 2 - 1]! + booked[booked.length / 2]!) / 2) : null;
-  return { as_of: asOf.toISOString(), leads_received_7d: leadsReceived7d, not_called_yet: notCalled, callbacks_overdue: overdue, awaiting_assessment: awaiting,
+  return { as_of: asOf.toISOString(), leads_received_7d: leadsReceived7d, not_called_yet: notCalled, callbacks_overdue: overdue, records_with_overdue: recordsWithOverdue, awaiting_assessment: awaiting,
     booked_7d: booked7d, booked_7d_median_days: median == null ? null : Math.floor(median / DAY_MS) };
 }
 const PUBLISH_PAGE = 500;
@@ -327,6 +399,7 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
   const pendingAssessments = new Set(queued.map(String));
   const rows: z.infer<typeof attentionRowDtoSchema>[] = [];
   const closedRows: z.infer<typeof attentionRowDtoSchema>[] = [];
+  const batches: { desk: { record: RecordRow; bundle: OutreachInputs; inAttention: boolean; active: boolean; closedKeep: boolean }[]; side: OutreachSideData }[] = [];
   let after: string | undefined;
   for (;;) {
     if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
@@ -348,8 +421,15 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
       desk.push({ record, bundle, inAttention, active, closedKeep });
     }
     if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
-    if (desk.length) {
-      const side = await loadOutreachSideData(desk.map(item => item.record), inputs, { now });
+    if (desk.length) batches.push({ desk, side: await loadOutreachSideData(desk.map(item => item.record), inputs, { now, granot: false }) });
+    if (page.length < PUBLISH_PAGE) break;
+    after = String(page.at(-1)!._id);
+  }
+  // OI-S1: one observation query for the exact Lead jobs across every publish batch.
+  const jobs = batches.flatMap(batch => [...batch.side.leads.values()].flatMap(lead => { const key = moveJobKey(lead); return key ? [key] : []; }));
+  const granot = await readJobMoveObservations(jobs, now);
+  for (const { desk, side } of batches) {
+    side.granot = granot;
       for (const { record, bundle, inAttention, active, closedKeep } of desk) {
         if (Date.now() > deadline) return { status: "incomplete", reason: "snapshot_budget" };
         const key = subjectKey(record.subject);
@@ -373,19 +453,16 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
           const row = { subject_key: key, subject: outreach.subject, outreach: activeOutreach, derived: outreach.derived, allowed_actions: outreach.allowed_actions };
           // The active row never names a closure outcome, even for badge-only closed work.
           rows.push({ ...row, sort_keys: attentionSortKeys(row), in_attention: inAttention, partition: "active",
-            filter_keys: attentionFilterKeys(row, { ...recordKeys, outcome: null, closed_at: null }, record.responsible_agent_id) });
+            filter_keys: attentionFilterKeys(row, { ...recordKeys, outcome: null, closed_at: null }, record.responsible_agent_id, now) });
         }
         if (closedKeep && outcome) {
           // §2.3: the closed card reduces to `Open`, which keeps 90 days of history inside the inline budget.
           const closed = { ...outreach, followups: [], allowed_actions: [] };
           const row = { subject_key: key, subject: outreach.subject, outreach: closed, derived: outreach.derived, allowed_actions: [] };
           closedRows.push({ ...row, sort_keys: { ...attentionSortKeys(row), closed: outcome.closed_at, time_to_close: outcome.time_to_close_ms }, in_attention: false,
-            partition: "closed", filter_keys: attentionFilterKeys(row, recordKeys, record.responsible_agent_id), outcome });
+            partition: "closed", filter_keys: attentionFilterKeys(row, recordKeys, record.responsible_agent_id, now), outcome });
         }
       }
-    }
-    if (page.length < PUBLISH_PAGE) break;
-    after = String(page.at(-1)!._id);
   }
   const reviews = await getSalesIntelligenceReviewItemModel().find({ state: "open" }).lean();
   const conversationIds = [...new Set(reviews.map(review => review.subject_key).filter(key => /^conversation:[a-f\d]{24}$/i.test(key)).map(key => key.split(":")[1]!))];
@@ -402,10 +479,11 @@ export async function publishAttentionSnapshot(options: { deadlineMs?: number; a
     const derived = { overdue: false, no_owner: false, no_next_action: false, cooldown: false,
       attention_band: null, reasons: [], review_item_ids: same.map(r => String(r._id)), review_badges: [...new Set(same.map(r => r.cause_kind))], call_blockers: ["review_only"], age_wall_ms: 0, age_staffed_ms: 0, policy_version: policy.version };
     rows.push(attentionRowDtoSchema.parse({ subject_key: review.subject_key, subject, outreach: null, allowed_actions: [], derived,
-      sort_keys: { next_action_due: null, lead_received: null, last_human_contact: null, last_lead_progress: null, ...assessmentSortKeys(null), last_call: null, interactions: null }, in_attention: true,
+      sort_keys: { move_date: null, next_action_due: null, lead_received: null, last_human_contact: null, last_lead_progress: null, ...assessmentSortKeys(null), last_call: null, interactions: null }, in_attention: true,
       partition: "active", filter_keys: { band: null, needs_review: true, state: null, agents: [], attachment: subject.kind === "lead" ? "lead" : "none", priority: subject.kind === "lead" ? null : "no_lead",
         has_recording: false, has_assessment: false, newer_call: false, ti: null, ml: null, received_at: null, move_date: null, outcome: null, closed_at: null, live_call: false,
-        responsible: null, overdue: false } }));
+        responsible: null, overdue: false, followup_agents: [], followup_counts: [], loc: { pickup: null, delivery: null },
+        work: { overdue_followup: false, due_today: false, no_next_step: false, blocked: false } } }));
     published.add(review.subject_key);
   }
   // Team 4 §5.1/§5.2 (flag on): band 1 orders by the promised callbacks it is in for, band 3 by missed-call
@@ -613,6 +691,7 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const now = deps.now ?? new Date(), coverage = deps.coverage ?? readCaptureCoverage;
   const scope = deps.scope ?? null;
   const parsedQuery = attentionQuerySchema.parse(raw);
+  if (scope && parsedQuery.agent && parsedQuery.agent !== scope.agent_id.toLowerCase()) throw new CsiError("INVALID_INPUT");
   const query: AttentionQuery = scope ? (({ agent_id: _agent, unassigned: _unassigned, ...rest }) => ({ ...rest, agent_id: [scope.agent_id.toLowerCase()] }))(parsedQuery) : parsedQuery;
   const direction = query.direction ?? ATTENTION_SORT_DEFAULT_DIRECTION[query.sort];
   // The cursor binds snapshot, view, filters, freshness, sort and direction (§14.1, Move assessment §8). The default
@@ -624,6 +703,7 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const cursorSchema = z.object({ snapshot_id: z.string().startsWith("outreach:"), offset: z.number().int().nonnegative(), digest: z.string() }).strict();
   let page: z.infer<typeof cursorSchema> | null = null;
   if (cursor) { try { page = cursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString())); } catch { throw new CsiError("INVALID_INPUT"); } }
+  if (page && query.snapshot_id && query.snapshot_id !== page.snapshot_id) throw new CsiError("INVALID_INPUT");
   if (page && page.digest !== digest) throw new CsiError("INVALID_INPUT");
   // The dataset filter already selects Attention snapshots; a `/^outreach:/`
   // regex on top of it only stopped the lookup using an index (14 §10).
@@ -632,11 +712,12 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const Snapshot = getSalesIntelligenceAttentionSnapshotModel();
   // The header is read without its payload; the parsed payload comes from the in-process cache when this
   // instance has already read this snapshot (B8), otherwise it is loaded and parsed once below.
-  const snapshot = await latestSnapshotHeader(now, page?.snapshot_id);
-  const pending = async () => attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection" } });
+  const snapshot = await latestSnapshotHeader(now, page?.snapshot_id ?? query.snapshot_id);
+  const additions = (asOf: Date) => ({ applied_filters: definedOnly(filters), resolved_move_window: resolvedMoveWindow(query, asOf), timezone: "America/New_York", capabilities: ATTENTION_CAPABILITIES });
+  const pending = async () => attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection", ...additions(now) } });
   if (!snapshot) {
-    if (page) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
-    return attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection", sort: query.sort, direction, view: query.view, freshness: freshness ?? "all" } });
+    if (page || query.snapshot_id) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
+    return attentionPageDtoSchema.parse({ as_of: now.toISOString(), coverage: await coverage(), data: { items: [], snapshot_id: null, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection", ...additions(now), sort: query.sort, direction, view: query.view, freshness: freshness ?? "all" } });
   }
   // Rows were validated on write against the same schema and the snapshot is
   // immutable, so a paginated GET filters and counts without re-validating and
@@ -647,6 +728,15 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   const parsed = await parsedSnapshotFor(snapshot);
   if (!parsed) return pending();
   const entries = parsed.entries;
+  // Rolling deployment: retain the last successful list, but never pretend absent frozen query facts mean no matches.
+  const needsNewKeys = query.sort === "move_date" || [query.move_date_mode, query.assigned_agent_id, query.assignment, query.followup_agent_id,
+    query.relationship, query.work, query.loc_city, query.loc_state, query.loc_zip].some(value => value !== undefined);
+  if (needsNewKeys && entries.some(entry => entry.filter_keys.loc === undefined || entry.filter_keys.work === undefined || entry.filter_keys.followup_counts === undefined)) {
+    return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: {
+      items: [], snapshot_id: snapshot.snapshot_id, cursor: null, total_items: null, reason_counts: {}, status: "pending_projection",
+      pending_reason: "snapshot_missing_query_keys", ...additions(snapshot.as_of), sort: query.sort, direction, view: query.view, freshness: freshness ?? "all",
+    } });
+  }
   /** The stored rows of some index entries: inline rows once, or only the chunks they name (one `$in`). Null: a chunk is missing. */
   const rowsFor = async (wantedEntries: readonly AttentionIndexEntry[]): Promise<StoredRow[] | null> => {
     let rows: StoredRow[];
@@ -723,6 +813,6 @@ export async function readAttention(raw: z.input<typeof attentionQuerySchema>, d
   if (parsed.manifest && !(await latestSnapshotHeader(new Date(), snapshot.snapshot_id))) throw new CsiError("ATTENTION_SNAPSHOT_EXPIRED");
   return attentionPageDtoSchema.parse({ as_of: snapshot.as_of.toISOString(), coverage: await coverage(), data: { items, snapshot_id: snapshot.snapshot_id,
     cursor: offset + limit < matched.length ? Buffer.from(JSON.stringify({ snapshot_id: snapshot.snapshot_id, offset: offset + limit, digest })).toString("base64url") : null,
-    total_items: matched.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS, sort: query.sort, direction, view: query.view, freshness: freshness ?? "all",
+    ...additions(snapshot.as_of), total_items: matched.length, reason_counts: reasons, status: "ready", stale: +now >= +snapshot.as_of + ATTENTION_FRESH_MS, sort: query.sort, direction, view: query.view, freshness: freshness ?? "all",
     ...(metrics ? { metrics } : {}), ...(priorityCounts ? { priority_counts: priorityCounts } : {}) } });
 }

@@ -412,6 +412,7 @@ export type LeadProgressDto = z.infer<typeof leadProgressDtoSchema>;
  */
 export const attentionSortKeysDtoSchema = z
   .object({
+    move_date: z.string().nullable().optional(),
     next_action_due: date.nullable(),
     lead_received: date.nullable(),
     last_human_contact: date.nullable(),
@@ -439,8 +440,15 @@ export const attentionSortKeysDtoSchema = z
  * has no primary Contact Number ("No Number on file"), never zero.
  */
 export const NEXT_ACTION_STATES = ["due", "overdue", "no_due_date", "none"] as const;
+const moveEndpointSchema = z.object({ city: z.string().nullable(), state: z.string().nullable(), zip: z.string().nullable() }).strict();
+export const outreachMoveDtoSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), date_source: z.enum(["lead", "granot"]).nullable(),
+  pickup: moveEndpointSchema.nullable(), delivery: moveEndpointSchema.nullable(), size: z.string().nullable(), volume_ft3: z.number().nullable(),
+  service_type: z.string().nullable(), estimate: z.object({ display: z.string(), observed_at: date }).strict().nullable(), granot_observed_at: date.nullable(),
+}).strict();
 export const outreachFactsDtoSchema = z
   .object({
+    move: outreachMoveDtoSchema.optional(),
     route: z
       .object({
         pickup_city: z.string().nullable(),
@@ -469,13 +477,13 @@ export const outreachFactsDtoSchema = z
 export type OutreachFactsDto = z.infer<typeof outreachFactsDtoSchema>;
 export const ATTENTION_SORTS = ["attention", "next_action_due", "lead_received", "last_human_contact", "last_lead_progress", "transaction_intent", "move_likelihood",
   // Data spec §3.4 (S2): Last call and Interactions (final spec §7.2); Closed and Time to close exist only in `view=closed` (final spec §8).
-  "last_call", "interactions", "closed", "time_to_close"] as const;
+  "last_call", "interactions", "closed", "time_to_close", "move_date"] as const;
 export const ATTENTION_CLOSED_SORTS = ["closed", "time_to_close"] as const;
 export const ATTENTION_SCORE_SORTS = ["transaction_intent", "move_likelihood"] as const;
 export const ATTENTION_VIEWS = ["attention", "all_outreach", "closed"] as const;
 export const ATTENTION_FRESHNESS = ["fresh", "all"] as const;
 export const ATTENTION_SORT_DEFAULT_DIRECTION: Record<(typeof ATTENTION_SORTS)[number], "asc" | "desc"> = {
-  attention: "asc", next_action_due: "asc", lead_received: "desc", last_human_contact: "asc", last_lead_progress: "desc",
+  move_date: "asc", attention: "asc", next_action_due: "asc", lead_received: "desc", last_human_contact: "asc", last_lead_progress: "desc",
   transaction_intent: "desc", move_likelihood: "desc", last_call: "desc", interactions: "desc", closed: "desc", time_to_close: "asc",
 };
 /**
@@ -536,6 +544,11 @@ export const attentionFilterKeysDtoSchema = z
     // `agents` stays the E11 union) and `derived.overdue`. Absent on snapshots published before S9.
     responsible: id.nullable().optional(),
     overdue: z.boolean().optional(),
+    followup_agents: z.array(id).optional(),
+    followup_counts: z.array(z.object({ agent_id: id.nullable(), actions: z.number().int().nonnegative(), overdue: z.number().int().nonnegative(), due_today: z.number().int().nonnegative() }).strict()).optional(),
+    work: z.object({ overdue_followup: z.boolean(), due_today: z.boolean(), no_next_step: z.boolean(), blocked: z.boolean() }).strict().optional(),
+    loc: z.object({ pickup: z.object({ city_lc: z.string().nullable(), state_uc: z.string().nullable(), zip5: z.string().nullable() }).strict().nullable(),
+      delivery: z.object({ city_lc: z.string().nullable(), state_uc: z.string().nullable(), zip5: z.string().nullable() }).strict().nullable() }).strict().optional(),
   })
   .strict();
 export type AttentionFilterKeysDto = z.infer<typeof attentionFilterKeysDtoSchema>;
@@ -550,6 +563,8 @@ export const attentionMetricsDtoSchema = z
     leads_received_7d: z.number().int().nonnegative(),
     not_called_yet: z.number().int().nonnegative(),
     callbacks_overdue: z.number().int().nonnegative(),
+    /** OI-S2: every record with an overdue open follow-up; legacy callback-band count above is unchanged. */
+    records_with_overdue: z.number().int().nonnegative().optional(),
     awaiting_assessment: z.number().int().nonnegative(),
     booked_7d: z.number().int().nonnegative(),
     booked_7d_median_days: z.number().int().nonnegative().nullable(),
@@ -724,6 +739,11 @@ export const attentionPageDtoSchema = ownerReadSchema(
       metrics: attentionMetricsDtoSchema.nullable().optional(),
       // S7-PRIO (addendum §5): absent on snapshots published before it and on flag-off (ATTENTION_V2) publishes.
       priority_counts: attentionPriorityCountsDtoSchema.optional(),
+      applied_filters: z.record(z.string(), z.unknown()).optional(),
+      resolved_move_window: z.object({ reference_date: z.string(), from: z.string().nullable(), through: z.string().nullable() }).strict().optional(),
+      timezone: z.literal("America/New_York").optional(),
+      capabilities: z.record(z.string(), z.unknown()).optional(),
+      pending_reason: z.literal("snapshot_missing_query_keys").optional(),
     })
     .strict(),
 );

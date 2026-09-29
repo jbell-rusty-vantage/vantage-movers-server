@@ -19,6 +19,8 @@ sources:
 
 # Call and Sales Intelligence foundation
 
+OI-S3/S4 add reader-scoped GET `/roster`, `/overview/team`, `/overview/activity` and `/overview/outcomes` under the CSI admin prefix. They use the existing signed Owner/rep reader boundary and master ENABLED flag; Admin remains denied and rep access still requires REP_ACCESS. These reads are enabled in code without new flags or an OVERVIEW dependency. Old `/overview` keeps its existing flag and contract. Rep roster/workload return self only, activity only self attribution, and outcomes only Leads currently received by self. Strict query schemas reject unknown scope-widening parameters. Capabilities advertise `roster`, `team_workload`, `activity` and `outcomes`.
+
 CSI-01 is complete; G1 foundation contracts are frozen after independent GPT-6 review and resolution of all five findings. Downstream feature integration remains open. All feature flags default off. The [contract pack](../../call-sales-intelligence/README.md) is authoritative for product behavior; [concrete imports](../../call-sales-intelligence/workspace/CONTRACTS.md) and the [review packet](../../call-sales-intelligence/workspace/evidence/csi-01/STEP2-HANDOFF.md) describe implemented boundaries.
 
 Mongo is authoritative. Commands atomically combine CAS, idempotency receipts, CSI audit and downstream jobs when callers use the supplied transaction session. Jobs fence lease owner, epoch and expiry at effect commit. Budget reservations atomically enforce remaining allowance and reconcile once. Reuse `db.withTransaction`, runtime database routing and canonical payload hashing. Do not add CSI origins or entities to official domain-command enums.

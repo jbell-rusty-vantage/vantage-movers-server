@@ -190,6 +190,7 @@ test("B7: metrics equal a direct recount over the same rows (fixed clock, 7-day 
     as_of: AS_OF.toISOString(), leads_received_7d: 17,
     not_called_yet: activeRows.filter(x => x.derived.attention_band === 2).length,
     callbacks_overdue: activeRows.filter(x => x.derived.attention_band === 1).length,
+    records_with_overdue: 0,
     awaiting_assessment: activeRows.filter(x => x.outreach!.facts!.newer_call_since_assessment || ((x.outreach!.facts!.conversations_total ?? 0) >= 1 && ["pending", "not_assessed", undefined].includes(x.outreach!.move_assessment?.status))).length,
     booked_7d: inWindow.length, booked_7d_median_days: Math.floor(median / DAY),
   });

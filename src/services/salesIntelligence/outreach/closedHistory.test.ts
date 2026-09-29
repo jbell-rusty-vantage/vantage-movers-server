@@ -4,8 +4,9 @@ import mongoose from "mongoose";
 import { CsiError } from "../auth";
 import {
   closedHistoryDigest, closedHistoryFilter, closedHistoryQuerySchema, closedRowMatches, decodeClosedHistoryCursor, effectiveAgents,
-  encodeClosedHistoryCursor, keysetMongoPredicate, outcomeMongoPredicate, priorityMongoPredicate,
+  encodeClosedHistoryCursor, keysetMongoPredicate, outcomeMongoPredicate, priorityMongoPredicate, closedHistoryReadContext,
 } from "./closedHistory";
+import { moveLocationMatches, resolvedMoveWindow } from "./attentionIndex";
 
 const A = "a".repeat(24), B = "b".repeat(24);
 const keys = (over: Record<string, unknown> = {}) => ({ band: null, needs_review: false, state: "closed" as const, agents: [A], attachment: "lead" as const, priority: "7",
@@ -13,6 +14,24 @@ const keys = (over: Record<string, unknown> = {}) => ({ band: null, needs_review
   closed_at: "2026-03-08T15:00:00.000Z", ...over });
 const outcome = (over: Record<string, unknown> = {}) => ({ reason: "crm_dead" as const, origin: "crm_disposition" as const, closed_at: "2026-03-08T15:00:00.000Z",
   time_to_close_ms: 1, calls_total: 0, booking: null, cancellation: null, priority: { code: "7", label: "CRM dead" }, note: null, ...over });
+
+test("OI closed-history relative date membership and window remain fixed across ET midnight", () => {
+  const before = new Date("2026-09-30T03:59:00.000Z"), afterMidnight = new Date("2026-09-30T04:01:00.000Z");
+  for (const mode of ["today", "tomorrow", "within", "future", "past"] as const) {
+    const query = closedHistoryQuerySchema.parse({ move_date_mode: mode, ...(mode === "within" ? { move_days: 2 } : {}) });
+    const first = closedHistoryReadContext(query, null, before);
+    const cursor = encodeClosedHistoryCursor({ closed_at: "2026-09-01T12:00:00.000Z", id: A }, first.digest, first.referenceAt.toISOString());
+    const nextQuery = closedHistoryQuerySchema.parse({ ...query, cursor });
+    const next = closedHistoryReadContext(nextQuery, null, afterMidnight);
+    assert.deepEqual(resolvedMoveWindow(nextQuery, next.referenceAt), resolvedMoveWindow(query, first.referenceAt), mode);
+    for (const date of ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"]) {
+      assert.equal(moveLocationMatches(keys({ move_date: date }), nextQuery, next.referenceAt), moveLocationMatches(keys({ move_date: date }), query, first.referenceAt), `${mode}:${date}`);
+    }
+    const tampered = JSON.parse(Buffer.from(cursor, "base64url").toString());
+    tampered.reference_at = afterMidnight.toISOString();
+    assert.throws(() => decodeClosedHistoryCursor(Buffer.from(JSON.stringify(tampered)).toString("base64url"), first.digest), CsiError);
+  }
+});
 
 test("S7-CLOSED cursor: round-trips the keyset, binds the filters and the forced scope, rejects tampering", () => {
   const query = closedHistoryQuerySchema.parse({ outcome: "booked,cancelled", priority: ["7"], limit: "10" });
