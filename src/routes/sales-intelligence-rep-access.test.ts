@@ -51,6 +51,27 @@ function signed(method: string, url: string, role: Role, options: { agent?: stri
 }
 
 const marker = async () => { throw new CsiError("INDEX_REQUIRED"); };
+
+test("OI-C new reads work with legacy Overview disabled and force signed rep scope", { timeout: 60_000 }, async () => {
+  const saved = { ...process.env }; env({ rep: true }); delete process.env.SALES_INTELLIGENCE_OVERVIEW;
+  const seen: unknown[] = [];
+  const read = async (_query: unknown, options: unknown) => { seen.push(options); return { as_of: "fixture", data: {} }; };
+  const router = createSalesIntelligenceAdminRouter({ connect: async () => {}, roster: read as never, team: read as never, activity: read as never, outcomes: read as never });
+  const { base, close } = await serve([createSalesIntelligenceBoundaryRouter({ connect: async () => {} }), router]);
+  try {
+    for (const route of ["/roster", "/overview/team", "/overview/activity", "/overview/outcomes"]) {
+      const url = CSI_ADMIN_PREFIX + route;
+      assert.equal((await call(base, "GET", url, "owner")).status, 200);
+      assert.deepEqual(seen.at(-1), { scope: null });
+      assert.equal((await call(base, "GET", url, "rep")).status, 200);
+      assert.deepEqual(seen.at(-1), { scope: { agent_id: AGENT_A } });
+      assert.equal((await call(base, "GET", `${url}?agent_id=${AGENT_B}`, "rep")).status, 400);
+      assert.equal((await call(base, "GET", `${url}?scope=all`, "owner")).status, 403);
+      assert.equal((await call(base, "GET", url, "admin")).status, 403);
+    }
+    assert.equal((await call(base, "GET", CSI_ADMIN_PREFIX + "/overview", "owner")).status, 404);
+  } finally { await close(); process.env = saved; }
+});
 async function serve(routers: Router[]) {
   const app = express();
   app.use(express.json());

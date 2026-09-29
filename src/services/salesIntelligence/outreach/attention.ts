@@ -79,6 +79,7 @@ export function validateMoveLocationQuery(query: z.infer<z.ZodObject<typeof move
   if (query.loc_side && !query.loc_city && !query.loc_state && !query.loc_zip) issue("loc_side", "A location value is required");
 }
 export const ATTENTION_CAPABILITIES = {
+  roster: true, team_workload: true, activity: true, outcomes: true,
   move_facts: true, move_date: true, assignment: true, relationship: true, work: true, location: true, move_date_sort: true, snapshot_pin: true,
   closed_history: { q: true, move_date: true, assignment: true, location: true, work: false, relationship: false, move_date_sort: false, snapshot_pin: false },
 } as const;
