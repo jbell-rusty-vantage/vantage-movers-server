@@ -444,8 +444,8 @@ test("[AC-DLC-07] a resolved booking case keeps its booking history", async (t) 
   const stored = await getGranotBookingReconciliationCaseModel().findById(resolved.caseId).lean().exec();
   assert.equal(stored?.state, "resolved");
   assert.equal(String(stored?.deterministic_booking_id), String(booking._id));
-  assert.equal(stored?.resolution?.entity_ref.model, "BookedLead");
-  assert.equal(stored?.resolution?.entity_ref.id, String(booking._id));
+  assert.equal(stored?.resolution?.entity_ref?.model, "BookedLead");
+  assert.equal(stored?.resolution?.entity_ref?.id, String(booking._id));
   assert.equal(stored?.case_revision, 2);
 });
 

@@ -15,6 +15,7 @@ import type {
 import {
   CALL_LEAD_CHANGE_PATHS,
   collectDocumentFieldChanges,
+  type PlannedAggregateMutation,
 } from "../domainCommands/entityChange";
 import {
   applyLeadChangeStamp,
@@ -757,15 +758,7 @@ export async function beginCallLeadRemoval(
     });
   }
   refuseRemovalIfBookedWithoutCascade(lead, cascade, id);
-  const mutations: Array<{
-    entity: {
-      model: "FormLead" | "CallLead" | "BookedLead" | "CancelledLead";
-      id: string;
-    };
-    revision_before: number;
-    fields: Array<{ path: string; before?: unknown; after?: unknown }>;
-    deleted?: boolean;
-  }> = [];
+  const mutations: PlannedAggregateMutation[] = [];
   const entity_refs: Array<{ model: string; id: string }> = [
     { model: "CallLead", id },
   ];
