@@ -38,7 +38,9 @@ async function main() {
   if (mode === "--fixture") await upsert(db.collection("agents"), catalog);
   const existingAgents = await db.collection("agents").find({}, { projection: { _id: 1, name: 1 } }).toArray();
   if (mode === "--performance") {
-    const extra = Array.from({ length: Math.max(0, 50 - existingAgents.length) }, (_, i) => ({ _id: id(`performance-agent:${i}`), name: `OI Performance ${i + 1}`, active: true, createdAt: NOW, updatedAt: NOW }));
+    const existingIds = new Set(existingAgents.map(agent => String(agent._id)));
+    const extra = Array.from({ length: 50 }, (_, i) => ({ _id: id(`performance-agent:${i}`), name: `OI Performance ${i + 1}`, normalized_name: `oi performance ${i + 1}`, active: true, createdAt: NOW, updatedAt: NOW }))
+      .filter(agent => !existingIds.has(String(agent._id))).slice(0, Math.max(0, 50 - existingAgents.length));
     await upsert(db.collection("agents"), extra);
     existingAgents.push(...extra);
   }
