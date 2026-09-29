@@ -39,11 +39,6 @@ export function buildActivity(period: OverviewPeriod, calls: readonly RepDayCall
     const totals = empty(), missingRep = empty();
     for (const call of dayCalls) {
       const attributed = buildRepDayDocs(day, [call], links);
-      // An external call without a Vantage extension cannot acquire a guessed Agent.
-      if (!attributed.length && !(call.parties ?? []).some(p => p.role === "user" && p.extension_id)) {
-        attributed.push({ _id: `${day}|${UNMAPPED_REP}`, day, agent_key: UNMAPPED_REP, agent_id: null, human_conversations: call.contact_type === "human_conversation" ? 1 : 0,
-          outbound_attempts: call.direction === "Outbound" ? 1 : 0, outbound_conversations: 0, answered_inbound: 0, talk_seconds: 0, calls: 1, recovered_calls: 0, extensions: [] });
-      }
       const visible = scope ? attributed.filter(row => row.agent_key === scope.agent_id) : attributed;
       totals.human_conversations += visible.some(row => row.human_conversations > 0) ? 1 : 0;
       totals.outbound_attempts += visible.some(row => row.outbound_attempts > 0) ? 1 : 0;

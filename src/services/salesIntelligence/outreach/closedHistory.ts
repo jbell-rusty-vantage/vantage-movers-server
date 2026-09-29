@@ -82,21 +82,30 @@ export type ClosedHistoryPageDto = z.infer<typeof closedHistoryPageDtoSchema>;
 export type ClosedHistoryScope = { agent_id: string } | null;
 
 type Keyset = { closed_at: string; id: string };
-const cursorSchema = z.object({ closed_at: z.iso.datetime(), id: z.string().regex(/^[a-f\d]{24}$/i), digest: z.string() }).strict();
+const cursorSchema = z.object({ closed_at: z.iso.datetime(), id: z.string().regex(/^[a-f\d]{24}$/i), digest: z.string(), reference_at: z.iso.datetime().optional() }).strict();
 
 /** The filters a cursor is bound to (everything except the cursor and the page size). */
 export function closedHistoryDigest(query: Omit<ClosedHistoryQuery, "cursor" | "limit">, scope: ClosedHistoryScope) {
   const { scope: _scope, ...filters } = query;
   return payloadHash({ ...definedOnly(filters), forced_agent: scope?.agent_id ?? null });
 }
-export function encodeClosedHistoryCursor(at: Keyset, digest: string) {
-  return Buffer.from(JSON.stringify({ closed_at: at.closed_at, id: at.id, digest })).toString("base64url");
+export function encodeClosedHistoryCursor(at: Keyset, digest: string, referenceAt?: string) {
+  return Buffer.from(JSON.stringify({ closed_at: at.closed_at, id: at.id,
+    digest: referenceAt ? payloadHash({ digest, reference_at: referenceAt }) : digest, ...(referenceAt ? { reference_at: referenceAt } : {}) })).toString("base64url");
 }
-export function decodeClosedHistoryCursor(cursor: string, digest: string): Keyset {
+export function decodeClosedHistoryCursor(cursor: string, digest: string): Keyset & { reference_at?: string } {
   let parsed: z.infer<typeof cursorSchema>;
   try { parsed = cursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString())); } catch { throw new CsiError("INVALID_INPUT"); }
-  if (parsed.digest !== digest) throw new CsiError("INVALID_INPUT");
-  return { closed_at: parsed.closed_at, id: parsed.id };
+  if (parsed.digest !== (parsed.reference_at ? payloadHash({ digest, reference_at: parsed.reference_at }) : digest)) throw new CsiError("INVALID_INPUT");
+  return { closed_at: parsed.closed_at, id: parsed.id, ...(parsed.reference_at ? { reference_at: parsed.reference_at } : {}) };
+}
+
+/** Calendar filters retain the first page's instant across midnight; legacy cursors adopt it on continuation. */
+export function closedHistoryReadContext(query: ClosedHistoryQuery, scope: ClosedHistoryScope, now: Date) {
+  const { cursor, limit: _limit, ...filters } = query;
+  const digest = closedHistoryDigest(filters, scope);
+  const after = cursor ? decodeClosedHistoryCursor(cursor, digest) : null;
+  return { digest, after, referenceAt: after?.reference_at ? new Date(after.reference_at) : now };
 }
 
 /**
@@ -224,8 +233,8 @@ export async function readClosedHistory(raw: z.input<typeof closedHistoryQuerySc
   const scope = options.scope ?? null;
   const now = options.now ?? new Date();
   const { cursor, limit, ...filters } = query;
-  const digest = closedHistoryDigest(filters, scope);
-  let after = cursor ? decodeClosedHistoryCursor(cursor, digest) : null;
+  const { digest, referenceAt, after: initialAfter } = closedHistoryReadContext(query, scope, now);
+  let after: Keyset | null = initialAfter;
   const agents = effectiveAgents(query, scope);
   const [policy, coverage, retention, agentRecordIds] = await Promise.all([
     resolvePolicy(), readCaptureCoverage(), resolveRetentionDays(),
@@ -251,12 +260,12 @@ export async function readClosedHistory(raw: z.input<typeof closedHistoryQuerySc
       if (items.length >= limit) { full = true; break; }
       after = { closed_at: record.closed_at!.toISOString(), id: String(record._id) };
       const row = built.get(String(record._id)) ?? null;
-      if (row && closedRowMatches(row, query, agents) && moveLocationMatches(row.filter_keys!, query, now) && searchKeysMatch(search ? rowSearchKeys(row) : null, search)) items.push(row);
+      if (row && closedRowMatches(row, query, agents) && moveLocationMatches(row.filter_keys!, query, referenceAt) && searchKeysMatch(search ? rowSearchKeys(row) : null, search)) items.push(row);
     }
     if (!full && records.length <= want) { exhausted = true; break; }
   }
-  const next = !exhausted && after ? encodeClosedHistoryCursor(after, digest) : null;
+  const next = !exhausted && after ? encodeClosedHistoryCursor(after, digest, referenceAt.toISOString()) : null;
   return closedHistoryPageDtoSchema.parse({ as_of: now.toISOString(), coverage,
     data: { items, cursor: next, capabilities: ATTENTION_CAPABILITIES.closed_history, applied_filters: definedOnly(filters),
-      resolved_move_window: resolvedMoveWindow(query, now), timezone: "America/New_York", retention: { days: retention.activity_days > 0 ? retention.activity_days : null, basis: "activity" } } });
+      resolved_move_window: resolvedMoveWindow(query, referenceAt), timezone: "America/New_York", retention: { days: retention.activity_days > 0 ? retention.activity_days : null, basis: "activity" } } });
 }

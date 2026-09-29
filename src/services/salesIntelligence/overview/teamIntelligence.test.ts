@@ -103,3 +103,16 @@ test("OI-C outcomes count Leads with official Booking and Granot independently, 
   assert.deepEqual(cohortOutcomes([{ _id: A, model: "FormLead", quoted: true, granot_priority: "5", booked: S }, { _id: S, model: "CallLead" }],
     new Set([`FormLead:${A}`, `CallLead:${S}`])), { leads_received: 2, quoted: 1, booked_official: 2, booked_in_granot: 1 });
 });
+
+test("OI Activity requires a qualifying connected rep leg; unresolved qualifying identity stays Unmapped", () => {
+  const period = readPeriod("today", NOW), intervals = [{ from: period.start, through: period.end, complete: true }];
+  const base: RepDayCall = { _id: "missing-parties", provider_account_id: "acct", started_at: new Date("2026-09-29T15:00:00Z"), direction: "Inbound", contact_type: "human_conversation", parties: [] };
+  const unqualified = [base, { ...base, _id: "external-only", parties: [{ role: "external", connected: true }] },
+    { ...base, _id: "disconnected-user", parties: [{ role: "user", extension_id: "unknown", connected: false }] }];
+  const result = buildActivity(period, unqualified, [], intervals);
+  assert.deepEqual(result.totals, { human_conversations: 0, outbound_attempts: 0 });
+  assert.deepEqual(result.unmapped, { human_conversations: 0, outbound_attempts: 0 });
+  const connected = buildActivity(period, [...unqualified, { ...base, _id: "connected-unresolved", parties: [{ role: "user", extension_id: "unknown", connected: true }] }], [], intervals);
+  assert.equal(connected.totals.human_conversations, 1); assert.equal(connected.unmapped?.human_conversations, 1);
+  assert.deepEqual(connected.by_rep, []);
+});

@@ -12,7 +12,7 @@ const DB = "testvantagemovers_oi";
 if (process.env.TEST_MODE !== "true" || process.env.TEST_MONGO_DATABASE_NAME !== DB) throw new Error("Requires TEST_MODE=true and exact isolated database testvantagemovers_oi");
 if (!process.env.MONGO_URI) throw new Error("MONGO_URI must be supplied privately");
 const mode = process.argv[2];
-if (mode !== "--fixture" && mode !== "--performance") throw new Error("Use --fixture or --performance");
+if (mode !== "--fixture" && mode !== "--performance" && mode !== "--repair-dates") throw new Error("Use --fixture, --performance or --repair-dates");
 const id = (key: string) => new mongoose.Types.ObjectId(createHash("sha256").update(`oi-team-v1:${key}`).digest("hex").slice(0, 24));
 const NOW = new Date(), past = new Date(+NOW - 3_600_000), future = new Date(+NOW + 86_400_000);
 
@@ -22,6 +22,12 @@ async function main() {
   await mongoose.connect(process.env.MONGO_URI!, { dbName: DB, autoIndex: false });
   const db = mongoose.connection.useDb(DB, { useCache: true });
   if (db.name !== DB) throw new Error("Database fence mismatch");
+  if (mode === "--repair-dates") {
+    const result = await db.collection("outreach_followups").updateMany({ commitment_key: /^oi-team:/, date_resolution: null, due_at: { $type: "date" } },
+      [{ $set: { date_resolution: { precision: "exact", timezone: "America/New_York", assumption: null, anchor: "$createdAt", policy_version: "csi-policy-v1" } } }]);
+    console.log(JSON.stringify({ database: DB, mode, matched: result.matchedCount, modified: result.modifiedCount }));
+    return;
+  }
   const { getOutreachRecordModel } = await import("../../src/models/OutreachRecord");
   const { getOutreachFollowupModel } = await import("../../src/models/OutreachFollowup");
   const { getSalesIntelligenceReviewItemModel } = await import("../../src/models/SalesIntelligenceReviewItem");
@@ -69,6 +75,7 @@ async function main() {
       const due = label === "U" || (mode === "--performance" && i % 3 !== 0) ? future : past;
       const followup = new Followups({ _id: id(`followup:${label}:${j}`), outreach_record_id: recordId, commitment_key: `oi-team:${label}:${j}`,
         kind: "call", description: `OI fixture follow-up ${label} ${j + 1}`, status: "open", origin: "owner", due_at: due, attention_due_at: due, base_attention_due_at: due,
+        date_resolution: { precision: "exact", timezone: "America/New_York", anchor: past, policy_version: "csi-policy-v1" },
         responsible_agent_id: mode === "--performance" ? existingAgents[(i + 1) % existingAgents.length]!._id : catalog[1]!._id, revision: 1 });
       const error = followup.validateSync(); if (error) throw error;
       followups.push({ ...followup.toObject(), createdAt: past, updatedAt: NOW });
