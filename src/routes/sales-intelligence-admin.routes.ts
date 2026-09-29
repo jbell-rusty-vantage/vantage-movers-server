@@ -25,7 +25,7 @@ import { attachmentListQuerySchema, listAttachments } from "../services/salesInt
 import { commandAttachment } from "../services/salesIntelligence/attachment/commands";
 import { commandOutreach } from "../services/salesIntelligence/followups/commands";
 import { listReviewItems, readOutreach, readOutreachByLead, reviewItemsQuerySchema } from "../services/salesIntelligence/outreach/reads";
-import { attentionQuerySchema, readAttention } from "../services/salesIntelligence/outreach/attention";
+import { attentionQuerySchema, readAttention, ATTENTION_CAPABILITIES } from "../services/salesIntelligence/outreach/attention";
 import { closedHistoryQuerySchema, readClosedHistory } from "../services/salesIntelligence/outreach/closedHistory";
 import { overviewQuerySchema, readOverview } from "../services/salesIntelligence/overview/read";
 import { commandRebuildOverviewDay } from "../services/salesIntelligence/overview/commands";
@@ -63,7 +63,7 @@ export const CSI_ADMIN_PREFIX = "/api/v1/admin/sales-intelligence";
  * (403 `OWNER_REQUIRED` for a rep, as for Admin). `sales-intelligence-rep-access.test.ts` enumerates the router.
  */
 export const CSI_REP_READ_ROUTES = [
-  "GET /live", "GET /attention", "GET /outreach/closed-history", "GET /overview",
+  "GET /live", "GET /attention", "GET /attention/capabilities", "GET /outreach/closed-history", "GET /overview",
   "GET /outreach/:id", "GET /outreach/:id/timeline", "GET /outreach/:id/assessment", "GET /outreach/:id/findings",
   "GET /numbers/:id/conversations", "GET /conversations/:id/transcript", "GET /conversations/:id/media",
   // S12-REPREADS (UX15): the analysis kit's two run/artifact reads, 404 outside the scope; Full output stays Owner-only.
@@ -362,6 +362,11 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
   router.get(`${CSI_ADMIN_PREFIX}/outreach/by-lead/:model/:id`, async (req, res) => {
     try { guard(req); const model = z.enum(["FormLead", "CallLead"]).parse(req.params.model); const id = csiIdSchema.parse(req.params.id);
       await connect(); const result = await readOutreachByLead(model, id); if (!result) return notFound(req, res); return res.json({ ok: true, ...result }); } catch (error) { return fail(req, res, error); }
+  });
+  router.get(`${CSI_ADMIN_PREFIX}/attention/capabilities`, async (req, res) => {
+    try { readerGuard(req); z.object({ scope: z.literal("production").optional() }).strict().parse(req.query);
+      return res.json({ ok: true, as_of: new Date().toISOString(), data: { capabilities: ATTENTION_CAPABILITIES } }); }
+    catch (error) { return fail(req, res, error); }
   });
   router.get(`${CSI_ADMIN_PREFIX}/attention`, async (req, res) => {
     // S8-REP: a rep's desk is forced to `agent_id=[its Agent]` (client `agent_id` / `unassigned` ignored), with its own tiles and chip counts.

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { moveLocationMatches, resolvedMoveWindow } from "./attentionIndex";
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { z } from "zod";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
@@ -12,7 +13,7 @@ import { resolvePolicy } from "../policy";
 import { resolveRetentionDays } from "../retentionPolicy";
 import { payloadHash } from "../transactions";
 import { attentionFilterKeys, attentionSearchKeys, attentionSearchParam, attentionSortKeys, definedOnly, parseAttentionSearch, rowSearchKeys, searchKeysMatch,
-  type AttentionSearch, type AttentionSearchKeys } from "./attention";
+  moveLocationQueryShape, validateMoveLocationQuery, ATTENTION_CAPABILITIES, type AttentionSearch, type AttentionSearchKeys } from "./attention";
 import { closedOutcome, recordFilterKeys, type FactsCancellation } from "./facts";
 import { loadOutreachInputsBatch, loadOutreachSideData, toOutreachDto } from "./reads";
 import { subjectKey, type RecordRow } from "./types";
@@ -50,6 +51,7 @@ function repeated<T extends z.ZodTypeAny>(schema: T) {
 }
 
 export const closedHistoryQuerySchema = z.object({
+  ...moveLocationQueryShape,
   scope: z.literal("production").optional(),
   // Half-open `[closed_from, closed_before)`, the Closed view's bound convention.
   closed_before: instant,
@@ -61,10 +63,14 @@ export const closedHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(HISTORY_MAX_LIMIT).default(25),
   // S11-SEARCH (UX22): the Closed view's `q` (name, Job number prefix, 4+ phone digits) over every retained closure.
   q: attentionSearchParam,
-}).strict();
+}).strict().superRefine(validateMoveLocationQuery);
 export type ClosedHistoryQuery = z.infer<typeof closedHistoryQuerySchema>;
 
 export const closedHistoryPageDtoSchema = ownerReadSchema(z.object({
+  capabilities: z.record(z.string(), z.unknown()).optional(),
+  applied_filters: z.record(z.string(), z.unknown()).optional(),
+  resolved_move_window: z.object({ reference_date: z.string(), from: z.string().nullable(), through: z.string().nullable() }).strict().optional(),
+  timezone: z.literal("America/New_York").optional(),
   items: z.array(attentionRowDtoSchema),
   cursor: z.string().nullable(),
   /** `Closed Outreach is kept for {retention}`: the Sales Intelligence activity retention; null days = kept until removed by the Owner. */
@@ -175,7 +181,7 @@ async function closedRows(records: readonly RecordRow[], now: Date, context: { p
     const base = { subject_key: key, subject: outreach.subject, outreach: closed, derived: outreach.derived, allowed_actions: [] };
     out.push({ record, row: { ...base, sort_keys: { ...attentionSortKeys(base), closed: outcome.closed_at, time_to_close: outcome.time_to_close_ms }, in_attention: false,
       // `responsible` (S9-PUBLISH) as the publish's closed row carries it, so both shapes stay equal (C14).
-      partition: "closed", filter_keys: attentionFilterKeys(base, recordKeys, record.responsible_agent_id), outcome } });
+      partition: "closed", filter_keys: attentionFilterKeys(base, recordKeys, record.responsible_agent_id, now), outcome } });
   }
   return out;
 }
@@ -245,11 +251,12 @@ export async function readClosedHistory(raw: z.input<typeof closedHistoryQuerySc
       if (items.length >= limit) { full = true; break; }
       after = { closed_at: record.closed_at!.toISOString(), id: String(record._id) };
       const row = built.get(String(record._id)) ?? null;
-      if (row && closedRowMatches(row, query, agents) && searchKeysMatch(search ? rowSearchKeys(row) : null, search)) items.push(row);
+      if (row && closedRowMatches(row, query, agents) && moveLocationMatches(row.filter_keys!, query, now) && searchKeysMatch(search ? rowSearchKeys(row) : null, search)) items.push(row);
     }
     if (!full && records.length <= want) { exhausted = true; break; }
   }
   const next = !exhausted && after ? encodeClosedHistoryCursor(after, digest) : null;
   return closedHistoryPageDtoSchema.parse({ as_of: now.toISOString(), coverage,
-    data: { items, cursor: next, retention: { days: retention.activity_days > 0 ? retention.activity_days : null, basis: "activity" } } });
+    data: { items, cursor: next, capabilities: ATTENTION_CAPABILITIES.closed_history, applied_filters: definedOnly(filters),
+      resolved_move_window: resolvedMoveWindow(query, now), timezone: "America/New_York", retention: { days: retention.activity_days > 0 ? retention.activity_days : null, basis: "activity" } } });
 }

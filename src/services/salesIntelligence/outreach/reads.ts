@@ -31,7 +31,8 @@ import { getOwnerRepNudgeModel } from "../../../models/OwnerRepNudge";
 import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
 import { moveAssessmentProjectionDto } from "../assessment/presentation";
 import type { LeadMoveSource } from "../assessment/views";
-import { outreachFacts } from "./facts";
+import { outreachFacts, outreachMoveSummary } from "./facts";
+import { moveJobKey, readJobMoveObservations, type JobMoveObservation } from "../story/granot";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
 import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
@@ -87,7 +88,7 @@ export async function loadAttachedLeadProgressForNumbers(numberIds: readonly str
   if (!refs.length) return out;
   const records = await getOutreachRecordModel().find({ purged_at: null, $or: refs.map(ref => ({ "subject.model": ref.model, "subject.id": ref.id })) }).lean();
   const recordByLead = new Map(records.map(record => [leadKey(String(record.subject.model), record.subject.id), record] as const));
-  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map(), { suggestions: false, liveCalls: false }), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
+  const [side, pending] = await Promise.all([loadOutreachSideData(records, new Map(), { suggestions: false, liveCalls: false, granot: false }), pendingAssessmentKeys(records.map(r => subjectKey(r.subject)))]);
   for (const [numberId, ref] of resolved) out.set(numberId, attachedProgressForLead(ref, recordByLead, side, pending, now));
   return out;
 }
@@ -234,7 +235,7 @@ export function deriveOutreachFacts(record: RecordRow, inputs: OutreachInputs, c
     unsuccessfulAttempts: [...new Map(inputs.attempts.map(a => [String(a.current.interaction_id), new Date(String(a.current.happened_at))])).values()] });
 }
 
-type LeadLite = LeadMoveSource & { _id: unknown; name?: string | null; job_no?: string | null; source_company_label_snapshot?: string | null;
+type LeadLite = LeadMoveSource & { _id: unknown; name?: string | null; job_no?: string | null; normalized_job_no?: string | null; source_company_label_snapshot?: string | null;
   timestamp?: Date | null; booked?: unknown; cancelled?: unknown; duplicate?: boolean | null; bad_lead?: unknown; no_sync?: boolean | null;
   granot_priority?: unknown; quoted?: boolean | null; receiver_agent_name_snapshot?: string | null;
   receiver_agent?: unknown; receiver_agent_source?: string | null; receiver_agent_set_at?: Date | null;
@@ -246,7 +247,7 @@ type CancelLite = { _id: unknown; cancel_date?: Date | null; reason?: string | n
  * (`moveViewsForLead`), the official status, the Priority filter key and S2's closed
  * outcome. Form Leads carry `destination_zip`, Call Leads `delivery_zip`.
  */
-const LEAD_COMMON_PROJECTION = { name: 1, job_no: 1, source_company_label_snapshot: 1, timestamp: 1, pickup_city: 1, pickup_state: 1, pickup_zip: 1,
+const LEAD_COMMON_PROJECTION = { name: 1, job_no: 1, normalized_job_no: 1, source_company_label_snapshot: 1, timestamp: 1, pickup_city: 1, pickup_state: 1, pickup_zip: 1,
   delivery_city: 1, delivery_state: 1, move_date: 1, move_size: 1, granot_move_size: 1, cubic_feet: 1, current_move_provenance: 1,
   booked: 1, cancelled: 1, duplicate: 1, bad_lead: 1, no_sync: 1, granot_priority: 1, quoted: 1, receiver_agent_name_snapshot: 1,
   // S6-AGENT (E26): the detail's Receiver agent; the same `$in`, no extra read.
@@ -257,6 +258,7 @@ const FORM_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, destination_zip: 1 } a
 const CALL_LEAD_PROJECTION = { ...LEAD_COMMON_PROJECTION, delivery_zip: 1 } as const;
 type LatestLite = { _id: unknown; started_at: Date; direction: string; provider_result?: string | null; contact_type: string };
 export type OutreachSideData = {
+  granot?: ReadonlyMap<string, JobMoveObservation>;
   /** Lead keys with at least one attached Contact Number that is suppressed (override/reopen must stay closed). */
   suppressedLeads: Set<string>;
   agentNames: Map<string, string>;
@@ -302,7 +304,7 @@ const leadKey = (model: string, id: unknown) => `${model}:${String(id)}`;
  * row, which never finished inside the cron budget at production volume.
  */
 export async function loadOutreachSideData(records: readonly RecordRow[], inputs: ReadonlyMap<string, OutreachInputs>,
-  options: { suggestions?: boolean; now?: Date; liveCalls?: boolean } = {}): Promise<OutreachSideData> {
+  options: { suggestions?: boolean; now?: Date; liveCalls?: boolean; granot?: false } = {}): Promise<OutreachSideData> {
   const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true });
   const agentIds = [...new Map(records.flatMap(record => {
     const actions = inputs.get(String(record._id))?.actions ?? [];
@@ -359,6 +361,10 @@ export async function loadOutreachSideData(records: readonly RecordRow[], inputs
   }
   return {
     suppressedLeads,
+    ...(options.granot === false ? {} : { granot: await readJobMoveObservations([...formDocs, ...callDocs].flatMap(lead => {
+      const key = moveJobKey({ job_no: typeof lead.job_no === "string" ? lead.job_no : null, normalized_job_no: typeof lead.normalized_job_no === "string" ? lead.normalized_job_no : null });
+      return key ? [key] : [];
+    }), options.now ?? new Date()) }),
     agentNames: new Map(agentDocs.map(agent => [String(agent._id), typeof agent.name === "string" && agent.name ? agent.name : "Unknown Agent"])),
     leads: new Map([...formDocs.map(lead => [leadKey("FormLead", lead._id), lead] as const), ...callDocs.map(lead => [leadKey("CallLead", lead._id), lead] as const)]),
     bookings,
@@ -405,7 +411,8 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
   const bookings = record.subject.kind === "lead" && record.subject.model && record.subject.id ? side.bookings.get(leadKey(record.subject.model, record.subject.id)) ?? [] : [];
   const cancellations = bookings.flatMap(booking => side.cancellations.get(String(booking._id)) ?? []);
   // Data spec §3.3 / §3.8: card facts at this read's `now` (publish time for the snapshot, request time for the detail).
-  const card = outreachFacts({ record, followups: actions, number, lead, bookings, cancellations, now });
+  const granot = lead ? side.granot?.get(moveJobKey(lead) ?? "") : null;
+  const card = outreachFacts({ record, followups: actions, number, lead, granot, bookings, cancellations, now });
   const related = [
     ...(lead ? [{ model: record.subject.model!, id: String(lead._id), href: `/${record.subject.model === "FormLead" ? "form-leads" : "call-leads"}?record=${lead._id}&database_scope=production`, certainty: "exact" as const }] : []),
     ...bookings.map(b => ({ model: "BookedLead" as const, id: String(b._id), href: `/bookings?record=${b._id}&database_scope=production`, certainty: "exact" as const })),
@@ -527,7 +534,10 @@ export async function readOutreach(id: string, options: { nudges_for_agent?: str
   const base = await toOutreachDto(record, now, coverage, { policy, inputs, side });
   // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): `band_since` from the record's newest band transition (one indexed read).
   const bandSince = overviewEnabled() ? { band_since: await readDetailBandSince(String(record._id), base.derived.attention_band ?? null) } : {};
-  const outreach = outreachDetailDtoSchema.parse({ ...base, ...bandSince, ...outreachDetailAdditions(record, side, inputs.number, run) });
+  const lead = record.subject.kind === "lead" ? side.leads.get(leadKey(String(record.subject.model), record.subject.id)) : null;
+  const granot = lead ? side.granot?.get(moveJobKey(lead) ?? "") : null;
+  const outreach = outreachDetailDtoSchema.parse({ ...base, ...bandSince, ...outreachDetailAdditions(record, side, inputs.number, run),
+    move_summary: outreachMoveSummary(base.facts!.move!, granot) });
   return { as_of: now.toISOString(), coverage, data: { outreach, owner_instructions: instructions, nudges } };
 }
 export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
@@ -585,7 +595,7 @@ export async function readNumberOutreach(numberId: string, prefetched: { edges?:
       attempts: attempts.filter(a => a.subject_key === subjectKey(record.subject)),
     });
   }
-  const side = await loadOutreachSideData(records, inputs, { now });
+  const side = await loadOutreachSideData(records, inputs, { now, granot: false });
   // §9.3 header = the Numbers row: the same resolver and mapper over the edges, records, side data and pending set already held.
   const pick = resolveAttachedLead(edges);
   const leadRecords = new Map(records.flatMap(r => r.subject.kind === "lead" ? [[leadKey(String(r.subject.model), r.subject.id), r] as const] : []));

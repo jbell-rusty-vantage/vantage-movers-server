@@ -5,6 +5,7 @@ import { toFloridaTimestamp } from "../../../utils/easternTime";
 import { moveViewsForLead, type LeadMoveSource } from "../assessment/views";
 import { attentionDue } from "./derive";
 import type { FollowupRow, RecordRow } from "./types";
+import { observationEstimate, observationPayment, observationBalance, observationMoveSize, observationCubicFeet, observationServiceType, type JobMoveObservation } from "../story/granot";
 
 /**
  * Data spec §3.3: the card facts for one Outreach Record, pure over rows the
@@ -53,6 +54,7 @@ export type FactsInput = {
   number: FactsNumber;
   /** The subject Lead with the widened publish projection (§3.2), or null. */
   lead: LeadMoveSource | null;
+  granot?: JobMoveObservation | null;
   /** The subject Lead's exact Booking and Cancellation rows (closed outcome, §3.5). */
   bookings: readonly FactsBooking[];
   cancellations: readonly FactsCancellation[];
@@ -110,6 +112,35 @@ function safeCanonicalView(lead: Parameters<typeof moveViewsForLead>[0], model: 
   }
 }
 
+/** OI-S1: one canonical calendar date and exact-report money. No phone-matched report can enter this builder. */
+export function outreachMove(lead: LeadMoveSource | null, model: "FormLead" | "CallLead" | null, report?: JobMoveObservation | null) {
+  const view = lead && model ? safeCanonicalView(lead, model) : null;
+  const granot = report?.basis === "job_no" ? report : null;
+  const observed = granot?.captured_at?.toISOString() ?? null;
+  const endpoint = (first?: { city?: string | null; state?: string | null; zip?: string | null } | null, fallback?: { city?: string; state?: string; zip?: string } | null) => {
+    const value = { city: first?.city || fallback?.city || null, state: first?.state || fallback?.state || null, zip: first?.zip || fallback?.zip || null };
+    return Object.values(value).some(Boolean) ? value : null;
+  };
+  const rawDay = granot?.move?.move_date;
+  const granotDay = rawDay instanceof Date && !Number.isNaN(+rawDay) ? rawDay.toISOString().slice(0, 10) : null;
+  const estimate = observationEstimate(granot);
+  return {
+    date: view?.move_date ?? granotDay, date_source: view?.move_date ? "lead" as const : granotDay ? "granot" as const : null,
+    pickup: endpoint(view?.pickup, granot?.move?.origin), delivery: endpoint(view?.delivery, granot?.move?.destination),
+    size: view?.move_size ?? observationMoveSize(granot), volume_ft3: view?.cubic_feet ?? observationCubicFeet(granot),
+    service_type: observationServiceType(granot), estimate: estimate && observed ? { display: estimate, observed_at: observed } : null,
+    granot_observed_at: observed,
+  };
+}
+
+export function outreachMoveSummary(move: ReturnType<typeof outreachMove>, report?: JobMoveObservation | null) {
+  return { ...move, granot: report?.basis === "job_no" ? {
+    estimate: observationEstimate(report), payment: observationPayment(report), balance: observationBalance(report),
+    size: observationMoveSize(report), volume_ft3: observationCubicFeet(report), service_type: observationServiceType(report),
+    observed_at: report.captured_at.toISOString(), observation_id: String(report._id),
+  } : null };
+}
+
 export function outreachFacts(input: FactsInput) {
   const { record, number, lead, now } = input;
   const model = record.subject.kind === "lead" ? record.subject.model : null;
@@ -121,9 +152,11 @@ export function outreachFacts(input: FactsInput) {
   const assessment = record.move_assessment ?? null;
   const active = assessmentApplicability(record) === "active";
   const coveredThrough = toDate(assessment?.latest_conversation_at);
+  const move = outreachMove(lead, model ?? null, input.granot);
   const facts: OutreachFactsDto = {
     route,
-    move_date_passed: Boolean(route?.move_date && route.move_date < easternDay(now)),
+    move,
+    move_date_passed: Boolean(move.date && move.date < easternDay(now)),
     last_call_at: lastCall?.toISOString() ?? null,
     calls_total: rollups ? count(rollups.interactions_total) : null,
     conversations_total: rollups ? count(rollups.human_conversations_total) : null,
@@ -154,6 +187,8 @@ export function recordFilterKeys(input: Pick<FactsInput, "record" | "followups">
   const scores = assessmentSortKeys(record.move_assessment?.status ? moveAssessmentProjectionDto(record as Parameters<typeof moveAssessmentProjectionDto>[0], false) : null);
   return {
     agents,
+    followup_agents: [...new Set(input.followups.filter(row => row.status === "open").flatMap(row => row.responsible_agent_id ? [String(row.responsible_agent_id)] : []))].sort(),
+    loc: { pickup: locationIndex(facts.move?.pickup), delivery: locationIndex(facts.move?.delivery) },
     attachment: record.subject.kind === "lead" ? "lead" : "none",
     // S7-PRIO (addendum §5, E13): a record with no Lead is its own chip, `no_lead`; a Lead without a code is null ("Not set").
     priority: record.subject.kind === "lead" ? record.lead_progress?.granot_priority ?? null : "no_lead",
@@ -163,10 +198,15 @@ export function recordFilterKeys(input: Pick<FactsInput, "record" | "followups">
     ti: scores.transaction_intent,
     ml: scores.move_likelihood,
     received_at: record.subject.kind === "lead" ? isoOf(record.trigger_at) : null,
-    move_date: facts.route?.move_date ?? null,
+    move_date: facts.move?.date ?? facts.route?.move_date ?? null,
     outcome: outcome?.reason ?? null,
     closed_at: outcome?.closed_at ?? null,
   };
+}
+
+function locationIndex(endpoint: NonNullable<OutreachFactsDto["move"]>["pickup"] | undefined) {
+  return endpoint ? { city_lc: endpoint.city?.trim().toLowerCase() || null, state_uc: endpoint.state?.trim().toUpperCase() || null,
+    zip5: endpoint.zip?.match(/^\d{5}/)?.[0] ?? null } : null;
 }
 
 /** Official reasons that are Closed-view outcomes (`transitions.ts` `officialClosure`). */

@@ -83,6 +83,33 @@ export function addDays(day: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+/** OI-S2 calendar arithmetic is independent of daylight-saving offsets. */
+export function resolvedMoveWindow(query: Pick<AttentionQuery, "move_date_mode" | "move_days" | "move_on" | "move_from" | "move_through">, asOf: Date) {
+  const today = easternDay(asOf);
+  const mode = query.move_date_mode;
+  const from = mode === "today" || mode === "within" || mode === "today_onward" ? today
+    : mode === "tomorrow" || mode === "future" ? addDays(today, 1) : mode === "exact" ? query.move_on! : mode === "range" ? query.move_from! : null;
+  const through = mode === "today" ? today : mode === "tomorrow" ? addDays(today, 1) : mode === "within" ? addDays(today, query.move_days!)
+    : mode === "past" ? addDays(today, -1) : mode === "exact" ? query.move_on! : mode === "range" ? query.move_through! : null;
+  return { reference_date: today, from, through };
+}
+
+/** Shared with retained closed history; all fields of a location must match the same endpoint. */
+export function moveLocationMatches(keys: AttentionFilterKeysDto, query: Pick<AttentionQuery, "move_date_mode" | "move_days" | "move_on" | "move_from" | "move_through" | "assigned_agent_id" | "assignment" | "loc_city" | "loc_state" | "loc_zip" | "loc_side">, asOf: Date): boolean {
+  if (query.assigned_agent_id?.length && (!keys.responsible || !query.assigned_agent_id.includes(keys.responsible))) return false;
+  if (query.assignment === "unassigned" && keys.responsible != null) return false;
+  if (query.move_date_mode === "unknown") { if (keys.move_date != null) return false; }
+  else if (query.move_date_mode) {
+    const window = resolvedMoveWindow(query, asOf);
+    if (!keys.move_date || (window.from && keys.move_date < window.from) || (window.through && keys.move_date > window.through)) return false;
+  }
+  if (query.loc_city || query.loc_state || query.loc_zip) {
+    const places = query.loc_side === "pickup" ? [keys.loc?.pickup] : query.loc_side === "delivery" ? [keys.loc?.delivery] : [keys.loc?.pickup, keys.loc?.delivery];
+    if (!places.some(place => place && (!query.loc_city || place.city_lc?.includes(query.loc_city)) && (!query.loc_state || place.state_uc === query.loc_state) && (!query.loc_zip || place.zip5 === query.loc_zip))) return false;
+  }
+  return true;
+}
+
 /** Reference instant of the read: the snapshot `as_of` (data spec §3.8). */
 export type AttentionMatchContext = { as_of: Date };
 const inRange = (value: string | null, from?: string, to?: string) => {
@@ -115,6 +142,21 @@ export function entryMatchesAttentionQuery(entry: AttentionIndexEntry, query: At
   if (query.state?.length && (!keys.state || !query.state.includes(keys.state as NonNullable<AttentionQuery["state"]>[number]))) return false;
   if (query.agent_id?.length && !keys.agents.some(agent => query.agent_id!.includes(agent))) return false;
   if (query.unassigned !== undefined && (keys.agents.length === 0) !== (query.unassigned === "true")) return false;
+  if (query.move_date_mode && !context) throw new Error("move-date filters need the snapshot as_of");
+  if (!moveLocationMatches(keys, query, context?.as_of ?? new Date(0))) return false;
+  if (query.followup_agent_id?.length && !keys.followup_agents?.some(agent => query.followup_agent_id!.includes(agent))) return false;
+  if (query.relationship && query.agent) {
+    if (query.relationship === "assigned" && keys.responsible !== query.agent) return false;
+    if (query.relationship === "followup" && !keys.followup_agents?.includes(query.agent)) return false;
+    if (query.relationship === "involved" && !keys.agents.includes(query.agent)) return false;
+  }
+  const followupAgents = query.relationship === "followup" && query.agent ? [query.agent] : query.followup_agent_id;
+  if (query.work?.length && !query.work.some(work => {
+    if (followupAgents?.length && (work === "overdue_followup" || work === "due_today")) {
+      return keys.followup_counts?.some(count => count.agent_id && followupAgents.includes(count.agent_id) && count[work === "overdue_followup" ? "overdue" : "due_today"] > 0);
+    }
+    return keys.work?.[work];
+  })) return false;
   if (query.needs_review !== undefined && keys.needs_review !== (query.needs_review === "true")) return false;
   if (query.attachment && keys.attachment !== query.attachment) return false;
   if (query.priority?.length && !query.priority.includes(keys.priority ?? "not_set")) return false;

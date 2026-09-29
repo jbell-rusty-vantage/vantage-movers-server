@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { csiIdSchema as id, csiDateSchema as date } from "../../../validation/v1/salesIntelligence";
 import { redactTranscript } from "../../conversations/redaction";
-import { outreachDtoSchema } from "../dto";
+import { outreachDtoSchema, outreachMoveDtoSchema } from "../dto";
 import { normalizePriority, priorityLabel } from "./leadProgress";
 import { officialClosure } from "./transitions";
 
@@ -38,6 +38,10 @@ export const receiverAgentDtoSchema = z.object({
   set_at: date.nullable(),
 }).strict();
 export const outreachDetailAdditionsShape = {
+  move_summary: outreachMoveDtoSchema.extend({ granot: z.object({
+    estimate: z.string().nullable(), payment: z.string().nullable(), balance: z.string().nullable(), size: z.string().nullable(),
+    volume_ft3: z.number().nullable(), service_type: z.string().nullable(), observed_at: date, observation_id: id,
+  }).strict().nullable() }).optional(),
   newest_run_id: id.nullable(),
   latest_summary: latestSummaryDtoSchema.nullable(),
   /** Null when the subject is not a Lead (Number-only Outreach) or the Lead row is gone. */

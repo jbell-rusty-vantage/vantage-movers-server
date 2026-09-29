@@ -73,7 +73,7 @@ test("counts and last call come from the primary Number rollups; unknown is null
 
 test("null paths: a record with no Number and a Number-only subject", () => {
   const noNumber = facts({ number: null, record: record({ primary_contact_number_id: null, move_assessment: assessment() } as never) });
-  assert.deepEqual({ ...noNumber.facts, route: null }, { route: null, move_date_passed: false, last_call_at: null, calls_total: null, conversations_total: null,
+  assert.deepEqual({ ...noNumber.facts, route: null }, { route: null, move: noNumber.facts.move, move_date_passed: false, last_call_at: null, calls_total: null, conversations_total: null,
     recordings_available: null, recordings_analyzed: null, newer_call_since_assessment: false, details_disagree: false, next_action_state: "none", rep_thread: null });
   assert.deepEqual(noNumber.sort_keys, { last_call: null, interactions: null });
   assert.ok(noNumber.facts.route, "the Lead's route does not depend on a Number");

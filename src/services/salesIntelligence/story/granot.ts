@@ -6,6 +6,23 @@ import { dispositionFor, normalizePriority, priorityLabel } from "../outreach/le
 import type { GranotObservationDocument } from "../../../models/GranotObservation";
 import { newestObservations, readLeadRows, type LeadRow } from "./sources";
 import type { GranotLeadState, StorySubject } from "./types";
+import { getGranotObservationModel } from "../../../models/GranotObservation";
+import { normalizeJobNo } from "../../bookings/bookingIdentity";
+
+/** Outreach move facts accept exact Job Number evidence only, never the story's phone fallback. */
+export type JobMoveObservation = Pick<GranotObservationDocument, "_id" | "captured_at" | "identity" | "move" | "display_money"> & { basis: "job_no" };
+export const moveJobKey = (lead: { normalized_job_no?: string | null; job_no?: string | null }) => normalizeJobNo(lead.normalized_job_no ?? lead.job_no) ?? null;
+
+/** One batch for all publish Leads; $first keeps the newest accepted report, including its absent fields. */
+export async function readJobMoveObservations(jobs: readonly string[], asOf: Date): Promise<Map<string, JobMoveObservation>> {
+  if (!jobs.length) return new Map();
+  const rows = await getGranotObservationModel().aggregate<{ _id: string; observation: Omit<JobMoveObservation, "basis"> }>([
+    { $match: { "identity.normalized_job_no": { $in: [...new Set(jobs)] }, normalization_result: { $in: ["valid", "valid_with_issues"] }, captured_at: { $lte: asOf } } },
+    { $sort: { "identity.normalized_job_no": 1, captured_at: -1, _id: -1 } },
+    { $group: { _id: "$identity.normalized_job_no", observation: { $first: { _id: "$_id", captured_at: "$captured_at", identity: "$identity", move: "$move", display_money: "$display_money" } } } },
+  ]);
+  return new Map(rows.map(row => [row._id, { ...row.observation, basis: "job_no" }]));
+}
 
 /**
  * Current Granot state per Lead (context provenance specification §4.6 `granot`): the Lead's
@@ -52,7 +69,7 @@ export async function readLeadBookings(leads: readonly LeadRow[]): Promise<Map<s
  */
 export type GranotTrackedField = "priority" | "estimate" | "payment" | "balance" | "move_date" | "move_size" | "cubic_feet" | "service_type" | "pickup" | "delivery" | "user_raw" | "rep_raw";
 export const GRANOT_TRACKED_FIELDS: readonly GranotTrackedField[] = ["priority", "estimate", "payment", "balance", "move_date", "move_size", "cubic_feet", "service_type", "pickup", "delivery", "user_raw", "rep_raw"];
-type ObservationLike = Pick<GranotObservationDocument, "priority" | "display_money" | "move" | "agent_identity"> | null | undefined;
+type ObservationLike = Partial<Pick<GranotObservationDocument, "priority" | "display_money" | "move" | "agent_identity">> | null | undefined;
 export const observationEstimate = (o: ObservationLike) => text(o?.display_money?.estimate?.raw, 40);
 export const observationPayment = (o: ObservationLike) => text(o?.display_money?.payment?.raw, 40);
 export const observationBalance = (o: ObservationLike) => text(o?.display_money?.balance?.raw, 40);
