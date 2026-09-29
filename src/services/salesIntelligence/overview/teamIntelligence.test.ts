@@ -5,7 +5,7 @@ import { attentionQuerySchema } from "../outreach/attention";
 import { entryMatchesAttentionQuery, type AttentionIndexEntry } from "../outreach/attentionIndex";
 import { rosterQuerySchema, selectRoster, type RosterAgent } from "../roster";
 import { buildTeamWorkload, teamQuerySchema } from "./team";
-import { buildActivity, activityDayCoverage, activityQuerySchema } from "./activity";
+import { buildActivity, activityDayCoverage, activityLinkExtensions, activityQuerySchema } from "./activity";
 import { readPeriod } from "./queryPeriod";
 import { cohortOutcomes } from "./outcomes";
 import type { RepDayCall } from "./repDays";
@@ -123,4 +123,8 @@ test("OI Activity requires a qualifying connected rep leg; unresolved qualifying
   const connected = buildActivity(period, [...unqualified, { ...base, _id: "connected-unresolved", parties: [{ role: "user", extension_id: "unknown", connected: true }] }], [], intervals);
   assert.equal(connected.totals.human_conversations, 1); assert.equal(connected.unmapped?.human_conversations, 1);
   assert.deepEqual(connected.by_rep, []);
+});
+
+test("OI Activity link lookup tolerates interactions without parties", () => {
+  assert.deepEqual(activityLinkExtensions([{ parties: null }, {}, { parties: [{ extension_id: "101" }, { extension_id: null }, { extension_id: "101" }] }]), ["101"]);
 });

@@ -112,14 +112,25 @@ function safeCanonicalView(lead: Parameters<typeof moveViewsForLead>[0], model: 
   }
 }
 
+type MoveEndpointSource = { city?: string | null; state?: string | null; zip?: string | null };
+type MoveEndpoint = { city: string | null; state: string | null; zip: string | null };
+const placeKey = { city: (v: string) => v.trim().toLowerCase(), state: (v: string) => v.trim().toUpperCase(), zip: (v: string) => v.match(/^\s*(\d{5})/)?.[1] ?? v.trim() };
+function sameMovePlace(a: MoveEndpoint, b: MoveEndpoint): boolean {
+  return (["city", "state", "zip"] as const).every(field => !a[field] || !b[field] || placeKey[field](a[field]!) === placeKey[field](b[field]!));
+}
+
 /** OI-S1: one canonical calendar date and exact-report money. No phone-matched report can enter this builder. */
 export function outreachMove(lead: LeadMoveSource | null, model: "FormLead" | "CallLead" | null, report?: JobMoveObservation | null) {
   const view = lead && model ? safeCanonicalView(lead, model) : null;
   const granot = report?.basis === "job_no" ? report : null;
   const observed = granot?.captured_at?.toISOString() ?? null;
-  const endpoint = (first?: { city?: string | null; state?: string | null; zip?: string | null } | null, fallback?: { city?: string; state?: string; zip?: string } | null) => {
-    const value = { city: first?.city || fallback?.city || null, state: first?.state || fallback?.state || null, zip: first?.zip || fallback?.zip || null };
-    return Object.values(value).some(Boolean) ? value : null;
+  const endpoint = (first?: MoveEndpointSource | null, fallback?: MoveEndpointSource | null) => {
+    const lead = { city: first?.city || null, state: first?.state || null, zip: first?.zip || null };
+    const report = { city: fallback?.city || null, state: fallback?.state || null, zip: fallback?.zip || null };
+    if (!Object.values(lead).some(Boolean)) return Object.values(report).some(Boolean) ? report : null;
+    // A Lead endpoint is completed from the report only when every field both name is the same place; otherwise
+    // a mixed city/state/ZIP would be an address that never existed (it is frozen into cards and location search).
+    return sameMovePlace(lead, report) ? { city: lead.city ?? report.city, state: lead.state ?? report.state, zip: lead.zip ?? report.zip } : lead;
   };
   const rawDay = granot?.move?.move_date;
   const granotDay = rawDay instanceof Date && !Number.isNaN(+rawDay) ? rawDay.toISOString().slice(0, 10) : null;

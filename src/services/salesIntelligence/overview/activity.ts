@@ -62,6 +62,11 @@ export function buildActivity(period: OverviewPeriod, calls: readonly RepDayCall
     status: days.every(day => day.coverage === "complete") ? "complete" as const : "partial" as const };
 }
 
+/** Extensions to resolve; a historical interaction may carry no `parties` at all (as `repDays` allows). */
+export function activityLinkExtensions(calls: readonly { parties?: readonly { extension_id?: string | null }[] | null }[]): string[] {
+  return [...new Set(calls.flatMap(call => (call.parties ?? []).flatMap(p => p.extension_id ? [p.extension_id] : [])))];
+}
+
 async function readCaptureIntervals(period: OverviewPeriod): Promise<CaptureInterval[]> {
   const [windows, states] = await Promise.all([
     getSalesIntelligenceSyncWindowModel().find({ stream: CALL_LOG_BACKFILL_STREAM, window_from: { $lt: period.end }, window_to: { $gt: period.start } })
@@ -92,7 +97,7 @@ export async function readActivity(raw: z.input<typeof activityQuerySchema>, opt
     readCaptureIntervals(period), readRosterAgents(scope),
   ]);
   const accounts = [...new Set(calls.map(call => call.provider_account_id))];
-  const extensions = [...new Set(calls.flatMap(call => call.parties.flatMap(p => p.extension_id ? [p.extension_id] : [])))];
+  const extensions = activityLinkExtensions(calls);
   const links = extensions.length ? await getRepIdentityLinkModel().find({ rc_account_id: { $in: accounts }, rc_extension_id: { $in: extensions } }).lean() : [];
   const result = buildActivity(period, calls, links, intervals, scope);
   const names = new Map(agents.map(agent => [String(agent._id), agent.name]));

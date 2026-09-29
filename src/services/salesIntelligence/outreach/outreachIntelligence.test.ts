@@ -30,6 +30,18 @@ test("OI-S1 canonical date, partial route, money provenance and absent estimates
   assert.deepEqual(detail.estimate, call.estimate); assert.equal(detail.granot?.payment, "$500"); assert.equal(detail.granot?.observation_id, String(report._id));
 });
 
+test("OI-S1 move endpoints never mix a Lead place with a different Granot place", () => {
+  const withOrigin = (origin: { city?: string; state?: string; zip?: string }) => ({ ...report, move: { ...report.move, origin } });
+  // Same place: the Lead's city/state are completed with the report's ZIP.
+  assert.deepEqual(outreachMove({ pickup_city: "boston", pickup_state: "ma" }, "FormLead", report).pickup, { city: "boston", state: "ma", zip: "02118" });
+  // Different city: the Lead endpoint stays as the Lead has it; no foreign ZIP.
+  assert.deepEqual(outreachMove({ pickup_city: "Austin", pickup_state: "TX" }, "FormLead", report).pickup, { city: "Austin", state: "TX", zip: null });
+  // ZIP+4 on either side still names the same place.
+  assert.deepEqual(outreachMove({ pickup_zip: "02118-1234" }, "FormLead", withOrigin({ city: "Boston", state: "MA", zip: "02118" })).pickup, { city: "Boston", state: "MA", zip: "02118-1234" });
+  // No Lead endpoint: the report's endpoint as a whole.
+  assert.deepEqual(outreachMove({}, "CallLead", report).pickup, { city: "Boston", state: "MA", zip: "02118" });
+});
+
 test("OI-S1 batched reader selects accepted exact jobs only, with no phone fallback", async t => {
   let calls = 0;
   t.mock.method(getGranotObservationModel(), "aggregate", (pipeline: Record<string, unknown>[]) => {
