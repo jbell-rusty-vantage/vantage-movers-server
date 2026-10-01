@@ -53,6 +53,7 @@ export const CSI_EXTRACTION_MODELS = [
   "openai/gpt-5-mini",
   "openai/gpt-5-nano",
   "openai/gpt-5.6-luna",
+  "openai/gpt-6-luna",
 ] as const;
 export const CSI_TOOLS = [
   "get_intelligence_context",
