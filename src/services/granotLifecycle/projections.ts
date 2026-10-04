@@ -12,7 +12,6 @@ import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDisc
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
-import { getOperationalEventModel } from "../../models/OperationalEvent";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { getEntityChangeModel } from "../../models/EntityChange";
 import { BookedLead } from "../../models/BookedLead";
@@ -25,6 +24,10 @@ import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { RECEIPT_WORK_STATES } from "../../models/granotLifecycleSchemas";
 import { applyDueGauges } from "./drainer";
 import { getCallLogSyncState } from "../ringcentral/call-log-sync-state.store";
+import {
+  readGranotLifecycleHealthCounters,
+  readGranotLifecycleLastRun,
+} from "./healthState";
 import {
   evaluateGranotLifecycleAlerts,
   persistGranotLifecycleAlertTransitions,
@@ -518,7 +521,22 @@ export type GranotLifecycleHealthProjection = {
     reason_code: GranotDiscrepancyReasonCode;
     count: number;
   }>;
-  command_conflicts_last_24h: Array<{ code: string; count: number }>;
+  /**
+   * Owner command conflicts by closed code over the last 24 hours, or null when
+   * the 24-hour window is unknown (counting has not covered it yet, the state is
+   * stale, or a counter write was missed inside it). Null never means "none".
+   */
+  command_conflicts_last_24h: Array<{ code: string; count: number }> | null;
+  /**
+   * Coverage of the bounded Health counters. `unknown` means the window is not
+   * yet fully counted, is stale, or had a missed write: counts that depend on
+   * it (command conflicts, capture/claim alerts) are not proof of zero.
+   */
+  counter_coverage: {
+    counters_since: string | null;
+    window_24h: "covered" | "unknown";
+    window_1h: "covered" | "unknown";
+  };
   record_links: { active: number; disputed: number };
   last_queue_run: GranotLifecycleLastRunProjection;
   last_cron_run: GranotLifecycleLastRunProjection;
@@ -1966,7 +1984,6 @@ export async function projectGranotLifecycleHealth(
 ): Promise<GranotLifecycleHealthProjection> {
   const flags = getGranotLifecycleFlags();
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const claimSince = new Date(now.getTime() - 60 * 60 * 1000);
   const [
     activation,
     receiptStates,
@@ -1977,9 +1994,7 @@ export async function projectGranotLifecycleHealth(
     openReleaseCases,
     openBookingDiscrepancies,
     openReleaseDiscrepancies,
-    commandConflicts,
-    captureFailures,
-    claimRecoveries,
+    healthCounters,
     latencySamples,
     sourceRates,
     activeLinks,
@@ -2059,25 +2074,7 @@ export async function projectGranotLifecycleHealth(
         { $group: { _id: "$reason_code", count: { $sum: 1 } } },
       ])
       .exec(),
-    getOperationalEventModel()
-      .aggregate<{ _id: string; count: number }>([
-        {
-          $match: {
-            event_key: "granot_lifecycle.owner_command.conflict",
-            occurred_at: { $gte: since },
-          },
-        },
-        { $group: { _id: "$details.code", count: { $sum: 1 } } },
-      ])
-      .exec(),
-    getOperationalEventModel().countDocuments({
-      event_key: "granot_lifecycle.capture.failed",
-      occurred_at: { $gte: since },
-    }),
-    getOperationalEventModel().countDocuments({
-      event_key: "granot_lifecycle.claim.recovered",
-      occurred_at: { $gte: claimSince },
-    }),
+    readGranotLifecycleHealthCounters(now),
     getSynchronizationDecisionModel()
       .aggregate<{ duration_ms: number }>([
         { $match: { decided_at: { $gte: since } } },
@@ -2118,8 +2115,8 @@ export async function projectGranotLifecycleHealth(
       .exec(),
     getGranotRecordLinkModel().countDocuments({ state: "active" }),
     getGranotRecordLinkModel().countDocuments({ state: "active", disputed: true }),
-    loadLastRun("queue"),
-    loadLastRun("cron"),
+    readGranotLifecycleLastRun("queue"),
+    readGranotLifecycleLastRun("cron"),
     projectRingCentralHealth(now),
   ]);
 
@@ -2162,10 +2159,8 @@ export async function projectGranotLifecycleHealth(
     )
     .sort((a, b) => a.kind.localeCompare(b.kind) || a.reason_code.localeCompare(b.reason_code));
 
-  const command_conflicts_last_24h = commandConflicts
-    .filter((row) => typeof row._id === "string" && /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(row._id))
-    .map((row) => ({ code: row._id, count: row.count }))
-    .sort((a, b) => a.code.localeCompare(b.code));
+  // Unknown stays null: an empty list would read as "no conflicts".
+  const command_conflicts_last_24h = healthCounters.command_conflicts_24h;
 
   const decisions_last_24h = decisionCounts
     .map((row) => ({
@@ -2191,8 +2186,8 @@ export async function projectGranotLifecycleHealth(
       ? new Date(oldestDue.getTime() + GRANOT_LIFECYCLE_ALERT_THRESHOLDS.oldest_due_ms)
       : null,
     dead_letter_count: by_work_state.dead_letter,
-    capture_503_count_24h: captureFailures,
-    claim_recoveries_1h: claimRecoveries,
+    capture_503_count_24h: healthCounters.capture_failures_24h,
+    claim_recoveries_1h: healthCounters.claim_recoveries_1h,
     capture_to_decision_samples_24h: latency,
     ringcentral_lease_held: ringcentral.lease.held,
     ringcentral_lease_age_ms: ringcentral.lease.age_ms,
@@ -2224,6 +2219,11 @@ export async function projectGranotLifecycleHealth(
     open_cases,
     open_discrepancies,
     command_conflicts_last_24h,
+    counter_coverage: {
+      counters_since: healthCounters.coverage?.counters_since?.toISOString() ?? null,
+      window_24h: healthCounters.command_conflicts_24h ? "covered" : "unknown",
+      window_1h: healthCounters.claim_recoveries_1h != null ? "covered" : "unknown",
+    },
     record_links: { active: activeLinks, disputed: disputedLinks },
     last_queue_run: lastQueue,
     last_cron_run: lastCron,
@@ -2328,29 +2328,6 @@ async function sourceRatesForEnabledSources(
       denominator: counts.denominator,
     }))
     .sort((a, b) => a.scope_ref.localeCompare(b.scope_ref));
-}
-
-async function loadLastRun(
-  trigger: "queue" | "cron",
-): Promise<GranotLifecycleLastRunProjection> {
-  const row = await getOperationalEventModel()
-    .findOne({
-      event_key: {
-        $in: [
-          `granot_lifecycle.${trigger}.run.completed`,
-          `granot_lifecycle.${trigger}.run.failed`,
-        ],
-      },
-    })
-    .sort({ occurred_at: -1, _id: -1 })
-    .lean();
-  if (!row) {
-    return null;
-  }
-  return {
-    at: new Date(row.occurred_at).toISOString(),
-    status: row.event_key.endsWith(".failed") ? "failed" : "completed",
-  };
 }
 
 export function projectCaseDetailPriorityPairing(input: {

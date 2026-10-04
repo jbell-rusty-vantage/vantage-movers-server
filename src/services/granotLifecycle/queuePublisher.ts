@@ -5,7 +5,6 @@ import {
 } from "../../config/domain/granotWebhook";
 import { logger } from "../../logger";
 import { incrementGranotLifecycleQueuePublishFailures } from "./metrics";
-import { emitGranotLifecycleEvent } from "./observability";
 import { maskLifecycleId, safeLifecycleFailureLog } from "./safeLogging";
 
 export type GranotLifecycleReceiptWakeup = {
@@ -54,18 +53,6 @@ export async function publishGranotLifecycleReceiptWakeup(
       receipt_id,
       observation_channel: "granot_webhook",
     }));
-    await emitGranotLifecycleEvent({
-      level: "error",
-      eventKey: "granot_lifecycle.queue.publish_failed",
-      category: "queue",
-      workflow: "granot_lifecycle_queue",
-      summary: "Granot lifecycle queue wake-up publish failed.",
-      details: {
-        receipt_id,
-        channel: "granot_webhook",
-      },
-      entity: { type: "granot_observation_receipt", id: receipt_id },
-    });
     return { published: false };
   }
 }

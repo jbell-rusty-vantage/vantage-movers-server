@@ -7,13 +7,13 @@ import {
   LABEL_MAPPING_NAMESPACES,
   type LabelMappingNamespace,
 } from "../../models/LeadSourceLabelMapping";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { toObjectId } from "../../utils/objectId";
 import { RegistryError } from "./errors";
 import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
 import {
-  recordDurableCompatibilityRead,
+  recordCompatibilityRead,
   recordRegistryResolverFailure,
   type RegistryCompatibilityConsumer,
 } from "./runtimeTelemetry";
@@ -104,11 +104,11 @@ export type LabelResolution =
 
 export type SheetLegacyResolutionDeps = {
   consultStaticMap?: (rawLabel: string) => string | undefined;
-  recordCompatibilityRead?: typeof recordDurableCompatibilityRead;
+  recordCompatibilityRead?: typeof recordCompatibilityRead;
   recordResolutionFailure?: (
     kind: "ambiguous" | "not_found" | "inactive_destination",
     details: Record<string, unknown>,
-  ) => Promise<void>;
+  ) => void | Promise<void>;
 };
 
 let staticMapConsultCount = 0;
@@ -420,7 +420,7 @@ export async function resolveSheetOrLegacyLabel(
 ): Promise<LabelResolution> {
   const consultStaticMap = deps.consultStaticMap ?? consultStaticSourceLabelMap;
   const recordCompatibility =
-    deps.recordCompatibilityRead ?? recordDurableCompatibilityRead;
+    deps.recordCompatibilityRead ?? recordCompatibilityRead;
   const recordFailure =
     deps.recordResolutionFailure ?? recordSheetLegacyResolutionFailure;
 
@@ -476,10 +476,10 @@ export async function previewLabelResolution(input: {
   return resolveSheetOrLegacyLabel(input.namespace, input.label);
 }
 
-export async function recordSheetLegacyResolutionFailure(
+export function recordSheetLegacyResolutionFailure(
   kind: "ambiguous" | "not_found" | "inactive_destination",
   details: Record<string, unknown>,
-): Promise<void> {
+): void {
   const eventKey =
     kind === "ambiguous"
       ? "operations_registry.source_resolution_ambiguous"
@@ -488,29 +488,13 @@ export async function recordSheetLegacyResolutionFailure(
     "source",
     kind === "ambiguous" ? "ambiguous_resolution" : "not_found",
   );
-  try {
-    await recordOperationalEvent({
-      level: kind === "ambiguous" ? "error" : "warn",
-      eventKey,
-      category: "admin",
-      workflow: "operations_registry",
-      summary:
-        kind === "ambiguous"
-          ? "Sheet or legacy label attribution failed because the mapping was ambiguous."
-          : kind === "inactive_destination"
-            ? "Sheet or legacy label mapping points at an inactive or invalid Feed."
-            : "Sheet or legacy label attribution did not match an active mapping or static fallback.",
-      details: {
-        identifier_kind: "label_mapping",
-        ...details,
-      },
-      notificationCandidate: kind === "ambiguous",
-      ownerVisible: true,
-      piiPolicy: "none",
-    });
-  } catch {
-    // Fail-closed recording must never hide the resolution result.
-  }
+  logger[kind === "ambiguous" ? "error" : "warn"]({
+    msg: eventKey,
+    workflow: "operations_registry",
+    failure_kind: kind,
+    identifier_kind: "label_mapping",
+    ...details,
+  });
 }
 
 function persistActor(actor: RegistryActorContext) {

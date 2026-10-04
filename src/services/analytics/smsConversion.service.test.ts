@@ -5,7 +5,6 @@ import { analyticsQuerySchema } from "../../validation/v1.validation";
 import {
   getSmsSuccessfullySentThenBooked,
   smsConversionFromOriginRows,
-  unsupportedSmsConversionReport,
 } from "./smsConversion.service";
 
 type MutableModel = Record<string, unknown>;
@@ -50,13 +49,6 @@ test("an empty texted-lead cohort is a zero rate, not missing data", () => {
   assert.equal(payload.items[0]?.texted_leads, 0);
 });
 
-test("historical scope does not read Lead Messages", () => {
-  const payload = unsupportedSmsConversionReport();
-  assert.deepEqual(payload.items, []);
-  assert.equal(payload.metadata.sms_conversion_scope, "unsupported");
-  assert.equal(payload.metadata.historical_sms_conversion_supported, false);
-});
-
 test("production SMS conversion matches successful statuses and official booked refs", async () => {
   const pipelines: Record<string, unknown>[][] = [];
   (LeadMessage as unknown as MutableModel).aggregate = (pipeline: Record<string, unknown>[]) => {
@@ -86,5 +78,4 @@ test("production SMS conversion matches successful statuses and official booked 
   assert.equal(result.items[0]?.texted_leads, 4);
   assert.equal(result.items[0]?.booked_leads, 1);
   assert.equal(result.items[0]?.booking_rate, 0.25);
-  assert.equal(result.metadata.sms_conversion_scope, "production_only");
 });

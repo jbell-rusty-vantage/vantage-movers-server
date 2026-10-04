@@ -142,7 +142,6 @@ function harness(input: { attempts?: number; fetch: CallLogRefreshDeps["fetch"];
     directory: async () => syntheticDirectory(),
     resolveRoute: () => null,
     configuredAccountId: null,
-    recordEvent: (async () => null) as never,
     publish: { shouldPublish: () => false },
   };
   return { deps, calls, jobId: jobId.toHexString() };

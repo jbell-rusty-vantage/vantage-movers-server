@@ -11,7 +11,7 @@ import { floridaCalendarToday, toFloridaTimestamp } from "../../utils/easternTim
 import type { CreateEmployeeBookingSubmissionInput } from "../../validation/v1.validation";
 import { recordBookingDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { AppError, ConflictError } from "../errors";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { getLinkedLead } from "../leads";
 import { claimAvailableLeadForBooking } from "../bookings";
 import {
@@ -65,18 +65,12 @@ export async function submitEmployeeBooking(
     .lean()
     .exec();
   if (existingSubmission?._id) {
-    await recordOperationalEvent({
-      level: "info",
-      eventKey: "booking.employee_submission.duplicate_ignored",
-      category: "booking",
+    logger.info({
+      msg: "booking.employee_submission.duplicate_ignored",
       workflow: "employee_booking_submission",
-      summary: "Duplicate employee booking submission ignored.",
-      entity: { type: "booked_lead", id: String(existingSubmission._id) },
-      details: {
-        submission_id: prepared.submissionId,
-        normalized_job_no: prepared.normalizedJobNo,
-      },
-      notificationCandidate: false,
+      booking_id: String(existingSubmission._id),
+      submission_id: prepared.submissionId,
+      normalized_job_no: prepared.normalizedJobNo,
     });
     return buildDuplicateResult(
       String(existingSubmission._id),
@@ -355,17 +349,12 @@ export async function submitEmployeeBooking(
         job_no: prepared.jobNo,
         source_company: prepared.sourceAssignment.source_company,
       });
-      await recordOperationalEvent({
-        level: "info",
-        eventKey: "booking.employee_submission.created_linked",
-        category: "booking",
+      logger.info({
+        msg: "booking.employee_submission.created_linked",
         workflow: "employee_booking_submission",
-        summary: "Employee booking created and auto-linked.",
-        entity: { type: "booked_lead", id: outcome.bookingId },
-        details: {
-          submission_id: prepared.submissionId,
-          normalized_job_no: prepared.normalizedJobNo,
-        },
+        booking_id: outcome.bookingId,
+        submission_id: prepared.submissionId,
+        normalized_job_no: prepared.normalizedJobNo,
       });
       return {
         outcome: "booked_and_linked",
@@ -385,22 +374,16 @@ export async function submitEmployeeBooking(
       job_no: prepared.jobNo,
       source_company: prepared.sourceAssignment.source_company,
     });
-    await recordOperationalEvent({
-      level: outcome.reason === "matching_unavailable" ? "error" : "warn",
-      eventKey:
+    logger[outcome.reason === "matching_unavailable" ? "error" : "warn"]({
+      msg:
         outcome.reason === "matching_unavailable"
           ? "booking.employee_submission.matching_unavailable"
           : "booking.employee_submission.created_pending",
-      category: "booking",
       workflow: "employee_booking_submission",
-      summary: "Employee booking created pending reconciliation.",
-      entity: { type: "booked_lead", id: outcome.bookingId },
-      details: {
-        submission_id: prepared.submissionId,
-        normalized_job_no: prepared.normalizedJobNo,
-        reason: outcome.reason,
-      },
-      notificationCandidate: false,
+      booking_id: outcome.bookingId,
+      submission_id: prepared.submissionId,
+      normalized_job_no: prepared.normalizedJobNo,
+      reason: outcome.reason,
     });
     return {
       outcome: "booked_pending_lead",
@@ -541,16 +524,10 @@ async function enforceEmployeeBookingThrottle(
       config.publicThrottleWindowSeconds,
     );
     if (bucket.count > limit) {
-      await recordOperationalEvent({
-        level: "warn",
-        eventKey: "booking.employee_submission.rate_limited",
-        category: "booking",
+      logger.warn({
+        msg: "booking.employee_submission.rate_limited",
         workflow: "employee_booking_submission",
-        summary: "Employee booking submission rate-limited.",
-        details: {
-          scope: key === "global" ? "global" : "client",
-        },
-        notificationCandidate: false,
+        scope: key === "global" ? "global" : "client",
       });
       throw new AppError("Too many booking submissions. Please retry shortly.", {
         statusCode: 429,

@@ -58,8 +58,7 @@ async function main() {
     const n = evidence.number;
     const current: RebuiltFields = { rollups: n.rollups as RebuildRollups, provider_names: [...(n.provider_names ?? [])], search_terms: [...(n.search_terms ?? [])],
       first_observed_at: n.first_observed_at, last_activity_at: n.last_activity_at };
-    const next = recountNumber({ number: n, interactions: evidence.interactions, attachments: evidence.attachments, open_outreach_count: evidence.open_outreach_count,
-      analyzed_conversations: evidence.analyzed_conversations, outreach_records_total: evidence.outreach_records_total });
+    const next = recountNumber({ number: n, interactions: evidence.interactions, attachments: evidence.attachments });
     if (!sameRebuiltFields(current, next)) mismatches.push({ number_id: id, fields: differing(current, next) });
   }
   const byField: Record<string, number> = {};

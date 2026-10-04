@@ -14,6 +14,7 @@ import type { CoverageDto } from "../dto";
 import type { EvidenceRecord } from "./contracts";
 import { readContentSchema, type ReadContent } from "./reads";
 import { summaryStepSchema } from "./structuredContract";
+import { legacyNumber } from "../legacyNumberFields";
 
 /**
  * Prior Analysis page (context provenance specification §5.3): what earlier model runs concluded
@@ -86,7 +87,7 @@ export async function selectPriorAnalyses(input: PriorSelectionInput, coverage: 
       details: details({ sections: numberEnvelope.data.summary, next_step_suggestion: numberEnvelope.data.next_step_suggestion, model_version: numberRun.model_version }),
     } });
   } else {
-    const number = await getContactNumberModel().findById(numberId).select("running_summary").lean();
+    const number = legacyNumber(await getContactNumberModel().findById(numberId).select("running_summary").lean());
     if (number?.running_summary?.text && before(number.running_summary.computed_at, input.as_of))
       records.push({ record_type: "prior_summary", record_id: `running-summary:${numberId}`, revision: number.running_summary.run_id ? String(number.running_summary.run_id) : null, fields: {
         kind: "number_synthesis", run_id: number.running_summary.run_id ? String(number.running_summary.run_id) : null,

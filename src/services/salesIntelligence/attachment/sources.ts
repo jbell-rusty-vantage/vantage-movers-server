@@ -5,7 +5,6 @@ import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { toE164 } from "../../numberActivity/phone";
 import { configuredRingCentralAccountId } from "../../numberActivity/accountIdentity";
 import { payloadHash } from "../transactions";
-import { jsonValue } from "../outreach/store";
 import { leadWindow, type Evidence, type LeadRef } from "./suggest";
 import { SOLE_MATCH_POLICY_VERSION } from "./matchSet";
 
@@ -83,7 +82,8 @@ export function leadAttachmentFingerprint(lead: LeadSource): string {
     ? { normalized: snapshot.normalized_phone_number ?? null, phone: snapshot.phone_number ?? snapshot.phone ?? null, captured_at: snapshot.captured_at }
     : null;
   const { refreshed_at: _refreshed, ...display } = leadSnapshot(lead, new Date(0));
-  return payloadHash(jsonValue({
+  // JSON round trip: Dates become ISO strings and undefined fields drop, so the hash is stable.
+  return payloadHash(JSON.parse(JSON.stringify({
     timestamp: lead.timestamp, created_at: lead.createdAt ?? null,
     // H5: No-Sync decides target eligibility; duplicate/bad_lead ride in `display`.
     no_sync: lead.no_sync === true,
@@ -93,11 +93,11 @@ export function leadAttachmentFingerprint(lead: LeadSource): string {
     ringcentral: lead.ringcentral ? { telephony_session_id: lead.ringcentral.telephony_session_id ?? null,
       session_id: lead.ringcentral.session_id ?? null, call_log_id: lead.ringcentral.call_log_id ?? null } : null,
     display,
-  }));
+  })));
 }
 /**
- * The one `attachment-lead:` job identity, shared by the watermark backstop and the Outreach
- * entity-change trigger. Keyed by policy version and identity fingerprint, never `updatedAt`.
+ * The one `attachment-lead:` job identity, shared by the watermark backstop and the Lead
+ * EntityChange trigger (`leadTrigger.ts`). Keyed by policy version and identity fingerprint, never `updatedAt`.
  */
 export function leadAttachmentJobInput(model: LeadRef["model"], id: string, lead: LeadSource) {
   const fingerprint = leadAttachmentFingerprint(lead);

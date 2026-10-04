@@ -23,8 +23,7 @@ import {
 } from "./cplSchedule";
 import { RegistryError } from "./errors";
 import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
-import { sanitizeEventDetails } from "../observability/operationalEventSanitizer";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import type { RegistryActorContext, TransactionRunner } from "./types";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
 
@@ -315,7 +314,6 @@ export type CplCorrectionDependencies = {
   batchSize?: number;
   previewSampleLimit?: number;
   workerOwner?: () => string;
-  recordEvent?: typeof recordOperationalEvent;
 };
 
 type HashImpactInput = {
@@ -828,7 +826,7 @@ export async function cancelCplCorrectionJob(
   actor: RegistryActorContext,
   deps: Pick<
     CplCorrectionDependencies,
-    "jobStore" | "now" | "recordEvent" | "runMutation" | "registryAudit"
+    "jobStore" | "now" | "runMutation" | "registryAudit"
   >,
   reason?: string,
 ): Promise<CplCorrectionJobView> {
@@ -900,22 +898,13 @@ export async function cancelCplCorrectionJob(
     },
   );
 
-  const recordEvent = deps.recordEvent ?? recordOperationalEvent;
-  await recordEvent({
-    level: "info",
-    eventKey: "cpl_correction.cancelled",
-    category: "admin",
-    workflow: "cpl_correction",
-    summary: "CPL correction job cancelled.",
-    requestId: actor.requestId,
-    entity: { type: "cpl_correction_job", id: job.id },
-    details: sanitizeEventDetails({
-      request_id: job.request_id,
-      source_granularity_id: job.source_granularity_id,
-      matched_count: job.matched_count,
-      changed_count: job.changed_count,
-      failed_count: job.failed_count,
-    }) as Record<string, unknown>,
+  logCplCorrectionEvent("info", "cpl_correction.cancelled", job.id, {
+    actor_request_id: actor.requestId,
+    request_id: job.request_id,
+    source_granularity_id: job.source_granularity_id,
+    matched_count: job.matched_count,
+    changed_count: job.changed_count,
+    failed_count: job.failed_count,
   });
 
   return toJobView(job);
@@ -929,7 +918,6 @@ export async function processCplCorrectionBatch(
   const owner = deps.workerOwner?.() ?? randomUUID();
   const leaseMs = deps.leaseMs ?? DEFAULT_CPL_CORRECTION_LEASE_MS;
   const batchSize = deps.batchSize ?? DEFAULT_CPL_CORRECTION_BATCH_SIZE;
-  const recordEvent = deps.recordEvent ?? recordOperationalEvent;
 
   let job = await deps.jobStore.claimForProcessing(
     jobId,
@@ -1050,15 +1038,9 @@ export async function processCplCorrectionBatch(
         leaseNow,
       );
       if (!renewed) {
-        await recordEvent({
-          level: "warn",
-          eventKey: "cpl_correction.lease_lost",
-          category: "admin",
-          workflow: "cpl_correction",
-          summary: "CPL correction worker stopped after losing its lease.",
-          entity: { type: "cpl_correction_job", id: activeJob.id },
-          details: { request_id: activeJob.request_id, processed },
-          notificationCandidate: false,
+        logCplCorrectionEvent("warn", "cpl_correction.lease_lost", activeJob.id, {
+          request_id: activeJob.request_id,
+          processed,
         });
         return {
           job_id: activeJob.id,
@@ -1148,19 +1130,11 @@ export async function processCplCorrectionBatch(
           };
         }
         activeJob = failedJob;
-        await recordEvent({
-          level: "warn",
-          eventKey: "cpl_correction.lead_failed",
-          category: "admin",
-          workflow: "cpl_correction",
-          summary: "CPL correction failed for one lead.",
-          entity: { type: "cpl_correction_job", id: activeJob.id },
-          details: sanitizeEventDetails({
-            request_id: activeJob.request_id,
-            lead_model: lead.lead_model,
-            lead_id: lead.lead_id,
-            error: lastError,
-          }) as Record<string, unknown>,
+        logCplCorrectionEvent("warn", "cpl_correction.lead_failed", activeJob.id, {
+          request_id: activeJob.request_id,
+          lead_model: lead.lead_model,
+          lead_id: lead.lead_id,
+          error: lastError,
         });
         if (terminalPreviewConflict) {
           await deps.jobStore.releaseLease(activeJob.id, owner);
@@ -1212,19 +1186,15 @@ export async function processCplCorrectionBatch(
       );
       if (failedJob) activeJob = failedJob;
       await deps.jobStore.releaseLease(activeJob.id, owner);
-      await recordEvent({
-        level: "error",
-        eventKey: "cpl_correction.reviewed_target_missing",
-        category: "admin",
-        workflow: "cpl_correction",
-        summary:
-          "CPL correction stopped because a reviewed Lead disappeared.",
-        entity: { type: "cpl_correction_job", id: activeJob.id },
-        details: {
+      logCplCorrectionEvent(
+        "error",
+        "cpl_correction.reviewed_target_missing",
+        activeJob.id,
+        {
           request_id: activeJob.request_id,
           missing_reviewed_count: missingReviewedCount,
         },
-      });
+      );
       return {
         job_id: activeJob.id,
         claimed: true,
@@ -1259,19 +1229,11 @@ export async function processCplCorrectionBatch(
 
     if (completed && updated) {
       try {
-        await recordEvent({
-          level: "info",
-          eventKey: "cpl_correction.completed",
-          category: "admin",
-          workflow: "cpl_correction",
-          summary: "CPL correction job completed.",
-          entity: { type: "cpl_correction_job", id: activeJob.id },
-          details: sanitizeEventDetails({
-            request_id: updated.request_id,
-            changed_count: updated.changed_count,
-            no_op_count: updated.no_op_count,
-            failed_count: updated.failed_count,
-          }) as Record<string, unknown>,
+        logCplCorrectionEvent("info", "cpl_correction.completed", activeJob.id, {
+          request_id: updated.request_id,
+          changed_count: updated.changed_count,
+          no_op_count: updated.no_op_count,
+          failed_count: updated.failed_count,
         });
 
         if (updated.changed_count > 0) {
@@ -1284,40 +1246,25 @@ export async function processCplCorrectionBatch(
           });
         }
       } catch (handoffError) {
-        try {
-          await recordEvent({
-            level: "error",
-            eventKey: "cpl_correction.analytics_handoff_failed",
-            category: "admin",
-            workflow: "cpl_correction",
-            summary:
-              "CPL correction completed but its Analytics handoff failed.",
-            entity: { type: "cpl_correction_job", id: activeJob.id },
-            details: {
-              request_id: updated.request_id,
-              error: sanitizeCorrectionError(handoffError),
-            },
-          });
-        } catch {
-          // The durable job remains completed even if observability is down.
-        }
+        // The durable job remains completed; only the handoff is reported.
+        logCplCorrectionEvent(
+          "error",
+          "cpl_correction.analytics_handoff_failed",
+          activeJob.id,
+          {
+            request_id: updated.request_id,
+            error: sanitizeCorrectionError(handoffError),
+          },
+        );
       }
     } else if (processed > 0) {
-      await recordEvent({
-        level: "info",
-        eventKey: "cpl_correction.progress",
-        category: "admin",
-        workflow: "cpl_correction",
-        summary: "CPL correction batch processed.",
-        entity: { type: "cpl_correction_job", id: activeJob.id },
-        details: sanitizeEventDetails({
-          request_id: activeJob.request_id,
-          processed,
-          changed,
-          no_op: noOp,
-          failed,
-          cursor,
-        }) as Record<string, unknown>,
+      logCplCorrectionEvent("info", "cpl_correction.progress", activeJob.id, {
+        request_id: activeJob.request_id,
+        processed,
+        changed,
+        no_op: noOp,
+        failed,
+        cursor,
       });
     }
 
@@ -1349,20 +1296,21 @@ export async function processCplCorrectionBatch(
       ),
     );
     await deps.jobStore.releaseLease(activeJob.id, owner);
-    await recordEvent({
-      level: "error",
-      eventKey: "cpl_correction.batch_failed",
-      category: "admin",
-      workflow: "cpl_correction",
-      summary: "CPL correction batch failed.",
-      entity: { type: "cpl_correction_job", id: activeJob.id },
-      details: sanitizeEventDetails({
-        request_id: activeJob.request_id,
-        error: lastError,
-      }) as Record<string, unknown>,
+    logCplCorrectionEvent("error", "cpl_correction.batch_failed", activeJob.id, {
+      request_id: activeJob.request_id,
+      error: lastError,
     });
     throw error;
   }
+}
+
+function logCplCorrectionEvent(
+  level: "info" | "warn" | "error",
+  eventKey: string,
+  jobId: string,
+  details: Record<string, unknown>,
+): void {
+  logger[level]({ msg: eventKey, workflow: "cpl_correction", job_id: jobId, ...details });
 }
 
 export async function runDueCplCorrectionJobs(
@@ -2047,24 +1995,15 @@ export type CplCorrectionAnalyticsInvalidationSeam = {
 let analyticsInvalidationSeam: CplCorrectionAnalyticsInvalidationSeam = {
   // Analytics are computed from production Lead collections at request time;
   // there is no materialized CPL cache to rebuild. This bounded completion
-  // event is the invalidation/recalculation handoff and can be replaced if a
+  // log is the invalidation/recalculation handoff and can be replaced if a
   // materialized adapter is introduced later.
   invalidate: async (request) => {
-    await recordOperationalEvent({
-      level: "info",
-      eventKey: "analytics.cpl_correction.invalidated",
-      category: "admin",
-      workflow: "cpl_correction",
-      summary: "Live Analytics will reflect corrected CPL Lead snapshots.",
-      entity: { type: "cpl_correction_job", id: request.job_id },
-      details: {
-        source_granularity_id: request.source_granularity_id,
-        window_from: request.window_from.toISOString(),
-        window_until: request.window_until.toISOString(),
-        changed_count: request.changed_count,
-        analytics_mode: "live_query",
-      },
-      notificationCandidate: false,
+    logCplCorrectionEvent("info", "analytics.cpl_correction.invalidated", request.job_id, {
+      source_granularity_id: request.source_granularity_id,
+      window_from: request.window_from.toISOString(),
+      window_until: request.window_until.toISOString(),
+      changed_count: request.changed_count,
+      analytics_mode: "live_query",
     });
   },
   isConfigured: true,

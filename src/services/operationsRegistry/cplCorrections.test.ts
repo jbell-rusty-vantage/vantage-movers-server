@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, before, mock, test } from "node:test";
 import mongoose from "mongoose";
 import {
   cancelCplCorrectionJob,
@@ -23,11 +23,7 @@ import {
 } from "./cplCorrections";
 import type { CplResolution } from "./cplSchedule";
 import type { RegistryActorContext } from "./types";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-  installTestObservabilitySink,
-} from "../observability";
+import { logger } from "../../logger";
 
 const GRANULARITY_ID = "507f1f77bcf86cd799439011";
 const WINDOW_FROM = new Date("2026-01-01T05:00:00.000Z");
@@ -332,9 +328,20 @@ function baseSelection() {
   };
 }
 
+const loggedKeys: string[] = [];
+
+before(() => {
+  for (const level of ["info", "warn", "error"] as const) {
+    mock.method(logger, level, (entry: unknown) => {
+      const key = (entry as { msg?: unknown } | null)?.msg;
+      if (typeof key === "string") loggedKeys.push(key);
+    });
+  }
+});
+
 afterEach(() => {
   configureCplCorrectionAnalyticsInvalidation(async () => {});
-  clearCapturedOperationalEvents();
+  loggedKeys.length = 0;
 });
 
 test("computeCplCorrectionPreviewHash is stable for normalized selection and impact", () => {
@@ -661,7 +668,6 @@ test("re-entering a completed batch is a no-op", async () => {
 });
 
 test("cancellation stops future batches without corrupting completed work", async () => {
-  installTestObservabilitySink();
   const { deps, state } = createMemoryHarness({ batchSize: 2 });
   const preview = await previewCplCorrection(baseSelection(), deps);
   const created = await createCplCorrection(
@@ -697,14 +703,11 @@ test("cancellation stops future batches without corrupting completed work", asyn
   const uncorrected = state.leads.filter((lead) => !lead.cpl_correction?.job_id);
   assert.equal(uncorrected.length, 1);
   assert.ok(
-    getCapturedOperationalEvents().some(
-      (event) => event.input.eventKey === "cpl_correction.cancelled",
-    ),
+    loggedKeys.includes("cpl_correction.cancelled"),
   );
 });
 
 test("partial failure records failed count and resumes remaining leads", async () => {
-  installTestObservabilitySink();
   const { deps, state } = createMemoryHarness({ batchSize: 3 });
   state.failLeadIds.add(leadId("FormLead", "02"));
   const preview = await previewCplCorrection(baseSelection(), deps);
@@ -734,7 +737,7 @@ test("partial failure records failed count and resumes remaining leads", async (
   assert.equal(job?.changed_count, 3);
   assert.equal(job?.failed_count, 1);
   assert.ok(
-    getCapturedOperationalEvents().some((event) => event.input.eventKey === "cpl_correction.lead_failed"),
+    loggedKeys.includes("cpl_correction.lead_failed"),
   );
 });
 
@@ -763,7 +766,6 @@ test("analytics invalidation seam fires once after successful completion with ch
 });
 
 test("analytics handoff failure does not downgrade completed corrections", async () => {
-  installTestObservabilitySink();
   const { deps } = createMemoryHarness({ batchSize: 10 });
   deps.invalidateAnalytics = async () => {
     throw new Error("simulated analytics outage");
@@ -783,11 +785,7 @@ test("analytics handoff failure does not downgrade completed corrections", async
   const job = await deps.jobStore.findById(created.id);
   assert.equal(job?.status, "completed");
   assert.ok(
-    getCapturedOperationalEvents().some(
-      (event) =>
-        event.input.eventKey ===
-        "cpl_correction.analytics_handoff_failed",
-    ),
+    loggedKeys.includes("cpl_correction.analytics_handoff_failed"),
   );
 });
 

@@ -1,7 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Logger } from "pino";
 import { logger as rootLogger } from "../logger";
-import { recordOperationalEvent } from "../services/observability";
 import { runRingCentralAnalyticsReconcile } from "../services/ringcentral/analytics-reconcile.service";
 import { runRingCentralCallLogSync } from "../services/ringcentral/call-log-sync.service";
 import {
@@ -105,20 +104,6 @@ export function createRingCentralCronRouter(
         log.error({ err: error, msg: "ringcentral.cron.analytics_reconcile.failed" });
         const message =
           error instanceof Error ? error.message : "Analytics reconcile failed";
-        await recordOperationalEvent({
-          level: "error",
-          eventKey: "ringcentral.analytics_reconcile.failed",
-          category: "ringcentral",
-          workflow: "ringcentral_analytics_reconcile",
-          summary: "RingCentral analytics reconcile failed.",
-          request: req,
-          dedupeKey: `ringcentral.analytics_reconcile.failed:${
-            process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development"
-          }`,
-          details: { causeMessage: message },
-          errorMessage: message,
-          notificationCandidate: true,
-        });
         return res.status(500).json({
           ok: false,
           error: message,

@@ -6,7 +6,7 @@ import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJ
 import { CsiError, csiWorkerActor } from "../auth";
 import { claimCsiJob, completeCsiJob, failCsiJob } from "../jobs";
 import { createNudgeAdapter, type NudgeAdapter } from "./adapters";
-import { finishNudgeInTransaction, nudgeOperational, scheduleNudgeRepair } from "./commands";
+import { finishNudgeInTransaction, logNudgeOutcome, scheduleNudgeRepair } from "./commands";
 
 const enabled = () => csiFlag("ENABLED") && csiFlag("NUDGE_ENABLED");
 /** Recovery can ONLY reconcile. No import/call of the Owner send command and no submit path. */
@@ -40,7 +40,7 @@ export async function runNudgeRepairJob(jobId?: string, adapter: NudgeAdapter = 
       if (current.revision !== row!.revision || current.provider_message_id !== row!.provider_message_id) throw new CsiError("REVISION_CONFLICT");
       return finishNudgeInTransaction(current, status, code, { session, command_id: current.command_id ?? current._id, now: new Date(), actor: csiWorkerActor(String(job._id)) });
     });
-    if (changed && row) await nudgeOperational(String(row._id), status, code);
+    if (changed && row) logNudgeOutcome(String(row._id), status, code);
     return { status: "completed", repaired: Boolean(changed) };
   } catch (error) {
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { toObjectId } from "../../utils/objectId";
 import { logger } from "../../logger";
@@ -6,7 +7,7 @@ import {
   getGranotLifecycleActivationModel,
   type GranotLifecycleActivationDocument,
 } from "../../models/GranotLifecycleActivation";
-import { getOperationalEventModel } from "../../models/OperationalEvent";
+import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import type { DurableActor } from "../durableWork/types";
 import type { RegistryActorContext } from "../operationsRegistry/types";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
@@ -78,20 +79,35 @@ export type RequeueCommandDeps = {
     payload_sha256: string;
     channel_operation_id?: string;
   } | null>;
-  persistRequeueAudit?: (
-    input: {
-      receiptId: mongoose.Types.ObjectId;
-      reason: string;
-      priorState: "dead_letter";
-      newState: "pending";
-      manual_requeue_count: number;
-      actor: DurableActor;
-      occurredAt: Date;
-    },
+  persistRequeueProvenance?: (
+    input: RequeueProvenanceInput,
     session?: ClientSession,
   ) => Promise<void>;
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
 };
+
+export type RequeueProvenanceInput = {
+  receiptId: mongoose.Types.ObjectId;
+  reason: string;
+  priorState: "dead_letter";
+  newState: "pending";
+  manual_requeue_count: number;
+  actor: DurableActor;
+  occurredAt: Date;
+};
+
+export const GRANOT_RECEIPT_REQUEUE_COMMAND_NAME = "granot_lifecycle.receipt.requeue";
+
+/**
+ * One requeue per receipt revision: the dead_letter -> pending transition
+ * increments `manual_requeue_count`, so the pair is the idempotency fence.
+ */
+export function receiptRequeueIdempotencyKey(
+  receiptId: mongoose.Types.ObjectId | string,
+  manualRequeueCount: number,
+): string {
+  return `${GRANOT_RECEIPT_REQUEUE_COMMAND_NAME}:${String(receiptId)}:${manualRequeueCount}`;
+}
 
 export type ActivationCommandDeps = {
   now?: () => Date;
@@ -99,10 +115,6 @@ export type ActivationCommandDeps = {
     session?: ClientSession,
   ) => Promise<GranotLifecycleActivationDocument | null>;
   persistActivation?: (
-    document: GranotLifecycleActivationDocument,
-    session?: ClientSession,
-  ) => Promise<void>;
-  persistAudit?: (
     document: GranotLifecycleActivationDocument,
     session?: ClientSession,
   ) => Promise<void>;
@@ -201,12 +213,6 @@ export async function activateGranotLifecycle(
     throw error;
   }
 
-  try {
-    await (deps.persistAudit ?? defaultPersistActivationAudit)(document);
-  } catch {
-    // Observability is after-commit and best-effort.
-  }
-
   incrementGranotLifecycleActivationsTotal();
   logger.info({
     msg: "granot_lifecycle.activation.committed",
@@ -272,22 +278,20 @@ export async function requeueDeadLetterReceipt(
         actor.requestId,
       );
     }
+    await (deps.persistRequeueProvenance ?? defaultPersistRequeueProvenance)(
+      {
+        receiptId,
+        reason,
+        priorState: "dead_letter",
+        newState: "pending",
+        manual_requeue_count: transitioned.processing.manual_requeue_count,
+        actor: owner,
+        occurredAt,
+      },
+      session,
+    );
     return transitioned;
   });
-
-  try {
-    await (deps.persistRequeueAudit ?? defaultPersistRequeueAudit)({
-      receiptId,
-      reason,
-      priorState: "dead_letter",
-      newState: "pending",
-      manual_requeue_count: updated.processing.manual_requeue_count,
-      actor: owner,
-      occurredAt,
-    });
-  } catch {
-    // Observability is after-commit and best-effort.
-  }
 
   logger.info({
     msg: "granot_lifecycle.manual_requeue.committed",
@@ -406,111 +410,45 @@ async function defaultTransitionDeadLetter(
     .lean();
 }
 
-async function defaultPersistRequeueAudit(
-  input: {
-    receiptId: mongoose.Types.ObjectId;
-    reason: string;
-    priorState: "dead_letter";
-    newState: "pending";
-    manual_requeue_count: number;
-    actor: DurableActor;
-    occurredAt: Date;
-  },
+/**
+ * Owner provenance for a requeue lives in the domain command record, written in
+ * the same transaction as the receipt transition. A failure here aborts the
+ * transition, so a requeued receipt always has its actor, reason and states.
+ */
+async function defaultPersistRequeueProvenance(
+  input: RequeueProvenanceInput,
   session?: ClientSession,
 ): Promise<void> {
-  const maskedReceiptId = maskLifecycleId(String(input.receiptId)) ?? "***";
-  await getOperationalEventModel().create(
+  const receiptId = String(input.receiptId);
+  const entityRefs = [{ model: "GranotObservationReceipt", id: receiptId }];
+  await DomainCommandExecution.create(
     [
       {
-        occurred_at: input.occurredAt,
-        received_at: input.occurredAt,
-        level: "info",
-        event_key: "granot_lifecycle.manual_requeue",
-        category: "admin",
-        workflow: "granot_lifecycle",
-        summary: "Owner requeued a dead-lettered Granot lifecycle receipt",
-        details: {
-          receipt_id: maskedReceiptId,
-          prior_state: input.priorState,
-          new_state: input.newState,
-          manual_requeue_count: input.manual_requeue_count,
-          actor_role: input.actor.actor_role,
-          request_id: input.actor.request_id,
+        origin: "granot_lifecycle",
+        idempotency_key: receiptRequeueIdempotencyKey(receiptId, input.manual_requeue_count),
+        command_id: new mongoose.Types.ObjectId().toHexString(),
+        command_name: GRANOT_RECEIPT_REQUEUE_COMMAND_NAME,
+        payload_checksum: createHash("sha256")
+          .update(JSON.stringify({ receipt_id: receiptId, reason: input.reason }))
+          .digest("hex"),
+        actor: input.actor,
+        initiator: input.actor,
+        provenance: {
+          origin: "granot_lifecycle",
+          run_id: null,
+          source_receipt_id: receiptId,
+          source_connection_key: null,
+          requeue: {
+            reason: input.reason,
+            prior_state: input.priorState,
+            new_state: input.newState,
+            manual_requeue_count: input.manual_requeue_count,
+          },
         },
-        fingerprint: `granot_lifecycle.requeue.${maskedReceiptId}.${input.manual_requeue_count}`,
-        dedupe_key: `granot_lifecycle.requeue.${maskedReceiptId}.${input.manual_requeue_count}`,
-        environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
-        service: "vantage-main-server",
-        region: null,
-        request_id: input.actor.request_id,
-        route: "/api/v1/admin/granot-lifecycle/receipts/:id/requeue",
-        method: "POST",
-        status_code: 200,
-        duration_ms: null,
-        entity_type: "GranotObservationReceipt",
-        entity_id: maskedReceiptId,
-        lead_name: null,
-        lead_phone: null,
-        lead_email: null,
-        source_company: null,
-        job_no: null,
-        run_id: null,
-        trace: null,
-        pii_policy: "none",
-        incident_id: null,
-        notification_candidate: false,
-        reportable: true,
-      },
-    ],
-    { session },
-  );
-}
-
-async function defaultPersistActivationAudit(
-  document: GranotLifecycleActivationDocument,
-  session?: ClientSession,
-): Promise<void> {
-  const occurredAt = document.activated_at;
-  const maskedActivationId = maskLifecycleId(String(document._id)) ?? "***";
-  await getOperationalEventModel().create(
-    [
-      {
-        occurred_at: occurredAt,
-        received_at: occurredAt,
-        level: "info",
-        event_key: "granot_lifecycle.activation.committed",
-        category: "admin",
-        workflow: "granot_lifecycle",
-        summary: "Granot lifecycle activation committed",
-        details: {
-          activation_id: maskedActivationId,
-          activated_at: occurredAt.toISOString(),
-          processor_version: document.processor_version,
-          request_id: document.activated_by.request_id,
-        },
-        fingerprint: `granot_lifecycle.activation.${maskedActivationId}`,
-        dedupe_key: `granot_lifecycle.activation.${maskedActivationId}`,
-        environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
-        service: "vantage-main-server",
-        region: null,
-        request_id: document.activated_by.request_id,
-        route: "/api/v1/admin/granot-lifecycle/activation",
-        method: "POST",
-        status_code: 201,
-        duration_ms: null,
-        entity_type: "GranotLifecycleActivation",
-        entity_id: maskedActivationId,
-        lead_name: null,
-        lead_phone: null,
-        lead_email: null,
-        source_company: null,
-        job_no: null,
-        run_id: null,
-        trace: null,
-        pii_policy: "none",
-        incident_id: null,
-        notification_candidate: false,
-        reportable: true,
+        result: { status: "applied", entity_refs: entityRefs, warnings: [] },
+        entity_refs: entityRefs,
+        warnings: [],
+        applied_at: input.occurredAt,
       },
     ],
     { session },

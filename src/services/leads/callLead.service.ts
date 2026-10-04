@@ -56,7 +56,7 @@ import {
   recordMissingLeadCplRate,
   resolveLeadCplSnapshot,
 } from "./leadCplResolution";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import {
   getRegistryAgent,
   isRegistryError,
@@ -185,12 +185,9 @@ export async function completeCallLeadIngestion(
   }
   await reportAMissingCplRate(lead, source_company, sourceAssignment);
 
-  const callLeadIdentity = { name: lead.name ?? null, phone: lead.phone_number };
-  await recordThatACallLeadWasCreated(lead, source_company, form_fill, callLeadIdentity);
-  await recordFormFillWhenTrue(lead, source_company, form_fill, {
+  logThatACallLeadWasCreated(lead, source_company, form_fill);
+  logFormFillWhenTrue(lead, source_company, form_fill, {
     workflow: "call_lead_create",
-    leadIdentity: callLeadIdentity,
-    details: { form_fill: true },
   });
   await recordCallLeadDailyOperationsFact(pending);
 
@@ -221,55 +218,35 @@ async function reportAMissingCplRate(
   });
 }
 
-async function recordThatACallLeadWasCreated(
+function logThatACallLeadWasCreated(
   lead: CallLeadDocument,
   source_company: SourceCompany,
   form_fill: boolean,
-  leadIdentity: { name: string | null; phone?: string | null },
 ) {
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "lead.call.created",
-    category: "lead",
+  logger.info({
+    msg: "lead.call.created",
     workflow: "call_lead_create",
-    summary: "Call lead created.",
-    leadIdentity,
-    sourceCompany: source_company,
-    entity: { type: "call_lead", id: lead._id.toString() },
-    details: {
-      form_fill,
-      pickup_zip: lead.pickup_zip ?? null,
-      delivery_zip: lead.delivery_zip ?? null,
-      local: lead.local ?? null,
-      cpl: lead.cpl,
-    },
+    call_lead_id: lead._id.toString(),
+    source_company,
+    form_fill,
+    local: lead.local ?? null,
+    cpl: lead.cpl,
   });
 }
 
-async function recordFormFillWhenTrue(
+function logFormFillWhenTrue(
   lead: CallLeadDocument,
   source_company: SourceCompany,
   form_fill: boolean,
-  event: {
-    workflow: string;
-    leadIdentity: { name: string | null; phone?: string | null };
-    details: Record<string, unknown>;
-  },
+  event: { workflow: string; duplicate?: boolean },
 ) {
   if (!form_fill) return;
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "lead.call.form_fill_detected",
-    category: "lead",
+  logger.info({
+    msg: "lead.call.form_fill_detected",
     workflow: event.workflow,
-    summary:
-      event.workflow === "ringcentral_call_lead_create"
-        ? "RingCentral call lead is a form fill."
-        : "Call lead is a form fill.",
-    leadIdentity: event.leadIdentity,
-    sourceCompany: source_company,
-    entity: { type: "call_lead", id: lead._id.toString() },
-    details: event.details,
+    call_lead_id: lead._id.toString(),
+    source_company,
+    ...(event.duplicate === undefined ? {} : { duplicate: event.duplicate }),
   });
 }
 
@@ -357,8 +334,8 @@ async function recordTheRingCentralLeadChange(
 
 /**
  * Injectable RingCentral ingest adapter. Default ingest does **not** call
- * this — it uses begin + completeCallLeadIngestion, which emits
- * `lead.call.created`. This adapter does not emit that event.
+ * this — it uses begin + completeCallLeadIngestion, which logs
+ * `lead.call.created`. This adapter does not log that event.
  */
 export async function ingestRingCentralCallLead(
   input: CreateRingCentralCallLeadInput,
@@ -375,10 +352,9 @@ export async function ingestRingCentralCallLead(
     await projectTheLeadOntoSheets(callLeadCreateJob(lead._id.toString()));
   }
   await reportAMissingCplRate(lead, source_company, sourceAssignment);
-  await recordFormFillWhenTrue(lead, source_company, form_fill, {
+  logFormFillWhenTrue(lead, source_company, form_fill, {
     workflow: "ringcentral_call_lead_create",
-    leadIdentity: { name: lead.name ?? null, phone: lead.phone_number },
-    details: { form_fill: true, duplicate: lead.duplicate },
+    duplicate: lead.duplicate,
   });
 
   return lead;

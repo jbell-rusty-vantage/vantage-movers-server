@@ -1,17 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import { numberDetailDtoSchema } from "../salesIntelligence/dto";
 import { CsiError } from "../salesIntelligence/auth";
 import {
-  NUMBER_DETAIL_READ_ONLY_FIELDS,
-  NUMBER_DTO_FIXTURES,
+  numberAttachedLeadDtoSchema,
   numberDetailReadDtoSchema,
   numberSearchItemDtoSchema,
   numberTimelineEventDtoSchema,
   type NumberTimelineEventDto,
 } from "./dto";
-import { attachedForItem, type ContactNumberLean } from "./contactNumbers";
+import { toNumberSearchItem, type ContactNumberLean } from "./contactNumbers";
+import { attachedLeadItem, officialLeadState, resolveAttachedLead } from "./leadContext";
 import {
   buildNumberSearchFilter,
   buildSortedNumberSearchFilter,
@@ -33,6 +32,7 @@ import {
   type NumberSortSpec,
 } from "./search";
 import {
+  callRepAttribution,
   compareTimelineEvents,
   decodeTimelineCursor,
   encodeTimelineCursor,
@@ -122,14 +122,15 @@ test("buildNumberSearchFilter: hygiene, attachment, range, term and keyset curso
   assert.deepEqual(paged.last_activity_at, { $lte: new Date(T1) }, "range stays on the field; the cursor does not overwrite it");
 });
 
-const event = (over: Partial<NumberTimelineEventDto> & Pick<NumberTimelineEventDto, "id" | "kind" | "happened_at">): NumberTimelineEventDto => ({
+/** The merge and its cursor are kind-agnostic; `conversation` stands for any kind that sorts before `interaction`. */
+const event = (over: Partial<Omit<NumberTimelineEventDto, "kind">> & Pick<NumberTimelineEventDto, "id" | "happened_at"> & { kind: string }): NumberTimelineEventDto => ({
   observed_at: over.happened_at,
   subject_key: `number:${ID_A}`,
   description: "synthetic",
   evidence_refs: [],
   detail: {},
   ...over,
-});
+}) as NumberTimelineEventDto;
 
 test("timeline total order: happened_at desc, kind asc, id desc; isAfterCursor is strict", () => {
   const newer = event({ id: ID_A, kind: "interaction", happened_at: T1 });
@@ -190,23 +191,89 @@ test("mergeTimeline: k-way merge, dedupe on (kind,id), cursor only when more rem
   assert.deepEqual(mergeTimeline([[a], [a]], 1), { items: [a], cursor: null }, "duplicates do not fabricate a next page");
 });
 
-test("NUMBER_DTO_FIXTURES parse against their schemas; CSI-01 detail data is a subset of the CSI-04 detail data", () => {
-  numberSearchItemDtoSchema.parse(NUMBER_DTO_FIXTURES.searchItem);
-  numberDetailReadDtoSchema.parse(NUMBER_DTO_FIXTURES.detail);
-  numberTimelineEventDtoSchema.parse(NUMBER_DTO_FIXTURES.timelineInteraction);
-  numberTimelineEventDtoSchema.parse(NUMBER_DTO_FIXTURES.timelineLeadMessage);
+const ROW: ContactNumberLean = {
+  _id: new mongoose.Types.ObjectId(ID_A),
+  revision: 4,
+  e164: "+15550100200",
+  national_ten: "5550100200",
+  digits_reversed: "0020010555",
+  kind: "external",
+  classification: "unknown",
+  contact_eligibility: { state: "allowed" },
+  provider_names: ["Synthetic Customer"],
+  search_terms: ["synthetic customer"],
+  first_observed_at: new Date(T0),
+  last_activity_at: new Date(T1),
+  rollups: {
+    interactions_total: 3, inbound_total: 2, outbound_total: 1, human_conversations_total: 0, last_inbound_at: new Date(T1),
+    last_outbound_at: new Date(T0), last_human_conversation_at: null, attached_lead_count: 1, candidate_lead_count: 0, recordings_total: 1,
+  },
+};
 
-  const data: Record<string, unknown> = { ...NUMBER_DTO_FIXTURES.detail.data };
-  for (const field of NUMBER_DETAIL_READ_ONLY_FIELDS) delete data[field];
-  const base = numberDetailDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.detail, data });
-  assert.deepEqual(Object.keys(base.data).sort(), Object.keys(data).sort(), "stripping the B-only fields yields exactly the frozen CSI-01 shape");
-  const baseKeys = Object.keys(numberDetailDtoSchema.shape.data.shape);
-  const readKeys = Object.keys(numberDetailReadDtoSchema.shape.data.shape);
-  for (const key of baseKeys) assert.ok(readKeys.includes(key), `CSI-04 detail keeps CSI-01 key ${key}`);
-  assert.deepEqual(readKeys.filter((k) => !baseKeys.includes(k)).sort(), [...NUMBER_DETAIL_READ_ONLY_FIELDS].sort());
+test("Numbers DTOs are strict and carry no transcript, summary, analysis, assessment or Outreach field", () => {
+  const item = toNumberSearchItem(ROW, { kind: "e164" }, { status: "none" });
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, search_terms: ["leak"] }), "search item is strict: search_terms is detail-only");
+  for (const retired of ["attached_lead_progress", "running_analysis", "outreach_records", "review_items", "move_assessment", "suggested_next_step"]) {
+    assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, [retired]: null }), retired);
+  }
+  const detailKeys = Object.keys(numberDetailReadDtoSchema.shape.data.shape).sort();
+  assert.deepEqual(detailKeys, ["allowed_actions", "attached_lead", "attachments", "classification", "connections", "created_via", "e164", "eligibility",
+    "first_observed_at", "has_calls", "id", "kind", "last_activity_at", "national_ten", "provider_names", "restrictions", "revision", "rollups", "search_terms"]);
+  const interaction = event({ id: ID_B, kind: "interaction", happened_at: T1 });
+  numberTimelineEventDtoSchema.parse(interaction);
+  assert.throws(() => numberTimelineEventDtoSchema.parse({ ...interaction, kind: "conversation" }), "no conversation events");
+  assert.throws(() => numberTimelineEventDtoSchema.parse({ ...interaction, body: "x" }), "timeline events are strict");
+});
 
-  assert.throws(() => numberSearchItemDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.searchItem, search_terms: ["leak"] }), "search item is strict: search_terms is detail-only");
-  assert.throws(() => numberTimelineEventDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.timelineInteraction, body: "x" }), "timeline events are strict");
+test("attached Lead: exactly one attached edge resolves; several are multiple; candidates and ambiguous never lend a Lead", () => {
+  const edge = (state: string, id: string) => ({ state, lead_ref: { model: "FormLead" as const, id } });
+  assert.deepEqual(resolveAttachedLead([]), { status: "none" });
+  assert.deepEqual(resolveAttachedLead([edge("candidate", ID_A), edge("ambiguous", ID_B), edge("rejected", ID_C)]), { status: "none" });
+  assert.deepEqual(resolveAttachedLead([edge("attached", ID_A), edge("candidate", ID_B)]), { status: "resolved", ref: { model: "FormLead", id: ID_A } });
+  assert.deepEqual(resolveAttachedLead([edge("attached", ID_A), edge("attached", ID_B)]), { status: "multiple" });
+  const leads = new Map([[`FormLead:${ID_A}`, { lead: { _id: ID_A, name: "Jane", job_no: "J-1", source_company_label_snapshot: "Top10" },
+    official: { status: "open_lead" as const, booking_id: null, cancellation_id: null } }]]);
+  assert.deepEqual(attachedLeadItem({ status: "resolved", ref: { model: "FormLead", id: ID_A } }, leads), {
+    status: "resolved", lead_ref: { model: "FormLead", id: ID_A }, lead_display: { name: "Jane", job_no: "J-1", source_company: "Top10" },
+    official: { status: "open_lead", booking_id: null, cancellation_id: null } });
+  assert.deepEqual(attachedLeadItem({ status: "resolved", ref: { model: "CallLead", id: ID_B } }, leads),
+    { status: "resolved", lead_ref: { model: "CallLead", id: ID_B }, lead_display: null, official: null }, "a gone Lead row is explicit, never a guess");
+  assert.deepEqual(attachedLeadItem({ status: "multiple" }, leads), { status: "multiple" });
+  assert.throws(() => numberAttachedLeadDtoSchema.parse({ status: "multiple", lead_ref: { model: "FormLead", id: ID_A } }), "no Lead field on multiple");
+  assert.throws(() => numberAttachedLeadDtoSchema.parse({ status: "none", official: null }));
+  assert.throws(() => numberAttachedLeadDtoSchema.parse({ status: "resolved" }), "resolved names its Lead");
+});
+
+test("official Lead state: Lead closure flags first, then the newest exact Booking and its Cancellation, else open", () => {
+  const none = new Map<string, string>();
+  assert.deepEqual(officialLeadState({ _id: ID_A }, [], none), { status: "open_lead", booking_id: null, cancellation_id: null });
+  for (const [flags, status] of [[{ duplicate: true }, "duplicate"], [{ bad_lead: "spam" }, "bad_lead"], [{ no_sync: true }, "no_sync"],
+    [{ booked: true }, "booked"], [{ cancelled: true, booked: true }, "cancelled"]] as const) {
+    assert.equal(officialLeadState({ _id: ID_A, ...flags }, [], none).status, status, JSON.stringify(flags));
+  }
+  const older = { _id: ID_B, book_date: new Date(T0) }, newer = { _id: ID_C, book_date: new Date(T1) };
+  assert.deepEqual(officialLeadState({ _id: ID_A }, [older, newer], none), { status: "booked", booking_id: ID_C, cancellation_id: null },
+    "an exact Booking row books the Lead even when its mirror flag lags");
+  assert.deepEqual(officialLeadState({ _id: ID_A }, [older, newer], new Map([[ID_C, ID_A]])), { status: "cancelled", booking_id: ID_C, cancellation_id: ID_A });
+  assert.equal(officialLeadState({ _id: ID_A, duplicate: true }, [newer], none).status, "duplicate", "a Lead flag wins over the Booking row");
+});
+
+test("call rep attribution: only a reviewed sales-rep link at the call time names an Agent", () => {
+  const call = { provider_account_id: "acct", started_at: new Date(T1), parties: [
+    { role: "user", connected: false, extension_id: "e2", extension_number: "102" },
+    { role: "user", connected: true, extension_id: "e1", extension_number: "101" },
+  ] };
+  const link = { _id: ID_B, revision: 1, agent_id: ID_C, agent_name_snapshot: "Dana Rep", rc_account_id: "acct", rc_extension_id: "e1", role_kind: "sales_rep",
+    status: "reviewed", effective_from: new Date(T0), effective_to: null, reviewed_at: new Date(T0), reviewed_by: "owner" };
+  assert.deepEqual(callRepAttribution(call, [link]), { status: "reviewed", agent_id: ID_C, agent_name: "Dana Rep", extension_id: "e1", extension_number: "101" },
+    "the answering user party is the rep");
+  assert.deepEqual(callRepAttribution(call, [{ ...link, status: "proposed" }]),
+    { status: "unreviewed", agent_id: null, agent_name: null, extension_id: "e1", extension_number: "101" });
+  assert.deepEqual(callRepAttribution(call, [{ ...link, role_kind: "manager" }]),
+    { status: "excluded_role", agent_id: null, agent_name: null, extension_id: "e1", extension_number: "101" });
+  assert.equal(callRepAttribution({ ...call, started_at: new Date("2026-09-01T00:00:00.000Z") }, [link]).status, "unreviewed", "before the link's effective date");
+  assert.deepEqual(callRepAttribution({ ...call, parties: [{ role: "external", connected: true }] }, [link]),
+    { status: "no_extension", agent_id: null, agent_name: null, extension_id: null, extension_number: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -305,9 +372,7 @@ function sortFixture(): Row[] {
       last_human_conversation_at: h === null ? null : day(h),
       attached_lead_count: 0,
       candidate_lead_count: 0,
-      open_outreach_count: 0,
     },
-    running_summary: null,
     purged_at: null,
   }));
   rows.push({ ...rows[0]!, _id: oid(0x900), kind: "extension" }, { ...rows[1]!, _id: oid(0x901), purged_at: day(0) });
@@ -509,24 +574,9 @@ test("LP-06 q-filtered non-activity sort: planner-sorted under the cap; above it
   assert.equal(counted, 0);
 });
 
-test("LP-06 DTO: rollups expose last_human_conversation_at; attached_lead_progress is resolved-only for Lead fields", () => {
-  const item = NUMBER_DTO_FIXTURES.searchItem;
-  numberSearchItemDtoSchema.parse({ ...item, rollups: { ...item.rollups, last_human_conversation_at: null } });
-  numberSearchItemDtoSchema.parse({ ...item, rollups: { ...item.rollups, last_human_conversation_at: T1 } });
-  const leadRef = { model: "FormLead", id: ID_A } as const;
-  const resolved = { status: "resolved", lead_ref: leadRef, lead_progress: null, booking: { id: ID_B, cancelled: false }, outreach_state: "open" } as const;
-  numberSearchItemDtoSchema.parse({ ...item, attached_lead_progress: resolved });
-  numberSearchItemDtoSchema.parse({ ...item, attached_lead_progress: { status: "multiple" } });
-  numberSearchItemDtoSchema.parse({ ...item, attached_lead_progress: { status: "none" } });
-  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, attached_lead_progress: { status: "multiple", lead_ref: leadRef } }), "no merged Lead on multiple");
-  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, attached_lead_progress: { status: "none", booking: null } }));
-  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, attached_lead_progress: { status: "resolved" } }), "resolved names its Lead");
-  assert.deepEqual(attachedForItem({ status: "multiple", lead_ref: leadRef, booking: null }), { status: "multiple" }, "the mapper strips Lead fields from non-resolved statuses");
-  assert.deepEqual(attachedForItem({ status: "resolved", lead_ref: leadRef }), {
-    status: "resolved",
-    lead_ref: leadRef,
-    lead_progress: null,
-    booking: null,
-    outreach_state: null,
-  });
+test("LP-06 DTO: rollups expose last_human_conversation_at", () => {
+  const item = toNumberSearchItem(ROW, { kind: "none" }, { status: "none" });
+  assert.equal(item.rollups.last_human_conversation_at, null);
+  assert.equal(toNumberSearchItem({ ...ROW, rollups: { ...ROW.rollups, last_human_conversation_at: new Date(T1) } }, { kind: "none" }, { status: "none" })
+    .rollups.last_human_conversation_at, T1);
 });

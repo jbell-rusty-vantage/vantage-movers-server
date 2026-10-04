@@ -122,10 +122,6 @@
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/notifications-digest-daily",
-      "schedule": "0 12 * * *"
-    },
-    {
       "path": "/api/cron/best-relocation-ingest-heartbeat",
       "schedule": "0 */6 * * *"
     },

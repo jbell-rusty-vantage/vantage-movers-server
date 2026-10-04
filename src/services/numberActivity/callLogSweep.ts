@@ -5,7 +5,6 @@ import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { MongoLeaseStore } from "../durableWork/leases";
 import type { LeaseToken } from "../durableWork/types";
-import { recordOperationalEvent } from "../observability";
 import {
   accountIdFromProviderPath,
   configuredRingCentralAccountId,
@@ -81,7 +80,6 @@ export type SweepDependencies = {
   directory: (accountId: string) => Promise<DirectoryLookup>;
   resolveRoute?: RouteResolver;
   configuredAccountId: string | null;
-  recordEvent: typeof recordOperationalEvent;
   owner: string;
   config: ReconcileConfig;
   requireFlag: boolean;
@@ -206,7 +204,6 @@ export async function runCallLogSweepOnce(overrides: Partial<SweepDependencies> 
     apply: applyInteractionObservation,
     directory: loadDirectoryLookup,
     configuredAccountId: configuredRingCentralAccountId(),
-    recordEvent: recordOperationalEvent,
     owner: `csi-call-log-sweep:${randomBytes(8).toString("hex")}`,
     config,
     requireFlag: true,
@@ -257,7 +254,7 @@ export async function runCallLogSweepOnce(overrides: Partial<SweepDependencies> 
   if (!token) {
     summary.skipped = true;
     summary.skip_reason = "lease_held";
-    await deps.recordEvent(event("lease_contended", "info", summary.ran_at, { leaseOwnerHash: ownerHash }));
+    event("lease_contended", "info", summary.ran_at, { leaseOwnerHash: ownerHash });
     return summary;
   }
   summary.lease_owner_hash = ownerHash;
@@ -418,19 +415,17 @@ export async function runCallLogSweepOnce(overrides: Partial<SweepDependencies> 
       runtimeMs: summary.runtime_ms,
     };
     if (summary.complete && drift) {
-      // Two consecutive nights with drift → notification (D7).
-      await deps.recordEvent(
-        event("sweep_found_drift", "warn", summary.ran_at, details, summary.consecutive_drift_runs >= 2),
-      );
+      // Two consecutive nights with drift log at error level (D7), so platform alerting can page on it.
+      event("sweep_found_drift", summary.consecutive_drift_runs >= 2 ? "error" : "warn", summary.ran_at, details);
     }
-    await deps.recordEvent(event(summary.complete ? "completed" : "failed", summary.complete ? "info" : "warn", summary.ran_at, details));
+    event(summary.complete ? "completed" : "failed", summary.complete ? "info" : "warn", summary.ran_at, details);
     return summary;
   } catch (error) {
     summary.runtime_ms = Math.max(0, deps.now().getTime() - startedAt.getTime());
     summary.error_code = error instanceof SweepLeaseLostError ? "lease_lost" : "state_write_failed";
     logger.error({ msg: "sales_intelligence.call_log_sweep.failed", leaseOwnerHash: ownerHash, ...failureLogFields(error) });
     await leases.release({ token: lease, now: deps.now() }).catch(() => undefined);
-    await deps.recordEvent(event("failed", "error", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code }));
+    event("failed", "error", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code });
     return summary;
   }
 }
@@ -442,25 +437,14 @@ class SweepLeaseLostError extends Error {
   }
 }
 
+/** Structured log of one sweep run event (`sales_intelligence.call_log_sweep.<kind>`). */
 function event(
   kind: "completed" | "failed" | "lease_contended" | "sweep_found_drift",
   level: "info" | "warn" | "error",
   runId: string,
   details: Record<string, unknown>,
-  notify = kind === "failed" && level === "error",
-) {
-  return {
-    level,
-    eventKey: `sales_intelligence.call_log_sweep.${kind}`,
-    category: "ringcentral" as const,
-    workflow: "sales_intelligence",
-    summary: `Nightly Call Log sweep ${kind.replace(/_/g, " ")}.`,
-    runId,
-    details,
-    notificationCandidate: notify,
-    reportable: false,
-    piiPolicy: "none" as const,
-  };
+): void {
+  logger[level]({ msg: `sales_intelligence.call_log_sweep.${kind}`, runId, ...details });
 }
 
 function isRecord(value: unknown): value is CallLogRecordInput {

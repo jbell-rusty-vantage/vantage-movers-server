@@ -6,7 +6,6 @@ import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligen
 import { canonicalJson } from "../durableWork/checksum";
 import { MongoLeaseStore, type MongoLeaseModel } from "../durableWork/leases";
 import type { LeaseToken } from "../durableWork/types";
-import { recordOperationalEvent } from "../observability";
 import { ringCentralRequest, RingCentralApiError } from "../ringcentral/client";
 import { configuredRingCentralAccountId, resolveProviderAccountId, ProviderAccountError } from "./accountIdentity";
 import { toE164 } from "./phone";
@@ -169,7 +168,6 @@ export type DirectorySyncDependencies = {
   owner: string;
   fetcher: DirectoryFetcher;
   configuredAccountId: string | null;
-  recordEvent: typeof recordOperationalEvent;
   requireFlag: boolean;
   leaseTtlMs: number;
   bound: number;
@@ -194,7 +192,6 @@ export async function runDirectorySyncOnce(overrides: Partial<DirectorySyncDepen
     owner: `csi-directory:${randomBytes(8).toString("hex")}`,
     fetcher: ringCentralDirectoryFetcher(),
     configuredAccountId: configuredRingCentralAccountId(),
-    recordEvent: recordOperationalEvent,
     requireFlag: true,
     leaseTtlMs: 300_000,
     bound: DIRECTORY_SNAPSHOT_BOUND,
@@ -341,19 +338,19 @@ export async function runDirectorySyncOnce(overrides: Partial<DirectorySyncDepen
       consecutive_failures: 0,
       last_sync_to: takenAt,
     });
-    await deps.recordEvent(event("completed", "info", summary.ran_at, {
+    event("completed", "info", summary.ran_at, {
       leaseOwnerHash: ownerHash,
       changed: summary.changed,
       counts: normalized.counts,
       pruned: summary.pruned,
       requests: summary.requests,
-    }));
+    });
     return summary;
   } catch (error) {
     summary.runtime_ms = elapsed(startedAt, deps.now());
     if (error instanceof LeaseLostError) {
       summary.error_code = "lease_lost";
-      await deps.recordEvent(event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code }));
+      event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code });
       return summary;
     }
     summary.error_code =
@@ -381,7 +378,7 @@ export async function runDirectorySyncOnce(overrides: Partial<DirectorySyncDepen
     } catch {
       /* lease expiry is the recovery path */
     }
-    await deps.recordEvent(event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code }));
+    event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code });
     return summary;
   }
 }
@@ -417,19 +414,9 @@ async function writeState(
   if (written.modifiedCount !== 1) throw new LeaseLostError();
 }
 
-function event(kind: "completed" | "failed", level: "info" | "warn", runId: string, details: Record<string, unknown>) {
-  return {
-    level,
-    eventKey: `sales_intelligence.directory_sync.${kind}`,
-    category: "ringcentral" as const,
-    workflow: "sales_intelligence",
-    summary: `Directory snapshot sync ${kind}.`,
-    runId,
-    details,
-    notificationCandidate: false,
-    reportable: false,
-    piiPolicy: "none" as const,
-  };
+/** Structured log of one directory sync run event (`sales_intelligence.directory_sync.<kind>`). */
+function event(kind: "completed" | "failed", level: "info" | "warn", runId: string, details: Record<string, unknown>): void {
+  logger[level]({ msg: `sales_intelligence.directory_sync.${kind}`, runId, ...details });
 }
 
 function isDuplicateKey(error: unknown): boolean {

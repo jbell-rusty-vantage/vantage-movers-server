@@ -111,29 +111,16 @@ const rollupsSchema = new Schema(
     last_inbound_at: { type: Date, default: null },
     last_outbound_at: { type: Date, default: null },
     last_human_conversation_at: { type: Date, default: null },
-    last_meaningful_contact_at: { type: Date, default: null },
     attached_lead_count: { type: Number, required: true, default: 0 },
     candidate_lead_count: { type: Number, required: true, default: 0 },
-    open_outreach_count: { type: Number, required: true, default: 0 },
-    // Data spec §2.1 / §8 (owners and rebuild in the Number rollups Service doc).
-    // Rows written before these existed read the default until the rebuild sweep.
-    /** Σ `recordings.length` over canonical interactions (not merged, not purged). */
+    /** Σ `recordings.length` over canonical interactions (not merged, not purged): provider metadata only. */
     recordings_total: { type: Number, required: true, default: 0 },
-    /** Lead Conversations with `latest_completed_run_id` set and content not purged. */
-    conversations_analyzed_total: { type: Number, required: true, default: 0 },
-    /** Newest `started_at` among those analysed conversations. */
-    last_analyzed_at: { type: Date, default: null },
-    /** Outreach Records with this Number as primary or as subject, not purged. */
-    outreach_records_total: { type: Number, required: true, default: 0 },
   },
   { _id: false },
 );
 
 export const ContactNumberSchema = new Schema(
   {
-    content_purge_pending: { type: Boolean, default: false },
-    retention_epoch: { type: Number, default: 0 },
-    evidence_fence: { type: Number, default: 0 },
     purged_at: { type: Date, default: null },
     revision: { type: Number, required: true, default: 1 },
     e164: { type: String, required: true, trim: true }, // "+17573180143"
@@ -167,28 +154,6 @@ export const ContactNumberSchema = new Schema(
     /** G7: optional, no default, so call-created and historical rows stay without it (= `call`). */
     created_via: { type: String, enum: CONTACT_NUMBER_CREATED_VIA, required: false },
     rollups: { type: rollupsSchema, required: true, default: () => ({}) },
-    running_summary: {
-      // projection from a completed number-level analysis run
-      type: new Schema(
-        {
-          text: { type: String, required: true },
-          run_id: {
-            type: Schema.Types.ObjectId,
-            ref: "IntelligenceRun",
-            required: true,
-          },
-          evidence_digest: { type: String, required: true },
-          computed_at: { type: Date, required: true },
-        },
-        { _id: false },
-      ),
-      default: null,
-    },
-    intelligence_schedule: {
-      type: new Schema({ fingerprint: { type: String, required: true }, generation: { type: Number, required: true },
-        job_id: { type: Schema.Types.ObjectId, required: true } }, { _id: false, strict: "throw" }),
-      default: null,
-    },
   },
   {
     collection: "contact_numbers",

@@ -107,7 +107,7 @@ test("Operations Registry entities expose complete lifecycle CRUD surfaces", () 
   }
 });
 
-test("GET /api/v1/admin/agents is browse only — catalog list is /catalog/agents", () => {
+test("GET /api/v1/admin/agents and /:id serve the Agent catalog once each", () => {
   const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
   const getAgentList = stack.filter((layer) => {
     const route = layer.route;
@@ -122,9 +122,9 @@ test("GET /api/v1/admin/agents is browse only — catalog list is /catalog/agent
     return route?.path === "/api/v1/admin/agents/:id" && route.methods?.get;
   });
 
-  assert.equal(getAgentList.length, 1, "browse GET /admin/agents must be registered once");
+  assert.equal(getAgentList.length, 1, "catalog GET /admin/agents must be registered once");
   assert.equal(getCatalogAgents.length, 1, "catalog list stays on /catalog/agents");
-  assert.equal(getAgentDetail.length, 1, "browse GET /admin/agents/:id must be registered once");
+  assert.equal(getAgentDetail.length, 1, "catalog GET /admin/agents/:id must be registered once");
 });
 
 test("admin analytics receiver-agent reports have GET routes", () => {

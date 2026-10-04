@@ -1,58 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  composeBudget,
   composeCallLogCapture,
   composeCaptureHealth,
-  composeStage,
   pickOwnedSubscription,
   subscriptionIdSuffix,
   webhookSilenceWindowStart,
   type CaptureHealthFacts,
 } from "./ownerCoverage";
 import { ownerCoverageDtoSchema } from "./dto";
-import type { Staffing } from "./outreach/staffing";
+import type { Staffing } from "../numberActivity/staffedClock";
 
-test("budget unknown is distinct from a known zero remaining", () => {
-  assert.deepEqual(composeBudget(null, 8000), {
-    status: "unknown",
-    month: null,
-    ceiling_cents: 8000,
-    actual_cents: null,
-    reserved_cents: null,
-    remaining_cents: null,
-  });
-  assert.deepEqual(
-    composeBudget({ month: "2026-09", ceiling_cents: 8000, actual_cents: 1000, reserved_cents: 250 }, 8000),
-    {
-      status: "known",
-      month: "2026-09",
-      ceiling_cents: 8000,
-      actual_cents: 1000,
-      reserved_cents: 250,
-      remaining_cents: 6750,
-    },
-  );
-  assert.equal(
-    composeBudget({ month: "2026-09", ceiling_cents: 100, actual_cents: 80, reserved_cents: 40 }, 100).remaining_cents,
-    0,
-  );
-});
-
-test("empty stage counts keep oldest queued null instead of a false zero age", () => {
-  assert.deepEqual(composeStage({ pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0 }, null), {
-    pending: 0,
-    leased: 0,
-    retry: 0,
-    paused: 0,
-    dead_letter: 0,
-    oldest_queued_at: null,
-  });
-  assert.equal(
-    composeStage({ pending: 2, leased: 0, retry: 0, paused: 0, dead_letter: 1 }, new Date("2026-09-19T12:00:00.000Z"))
-      .oldest_queued_at,
-    "2026-09-19T12:00:00.000Z",
-  );
+test("owner coverage carries capture and directory health only: no AI stage, budget, admission, model or settings block", () => {
+  assert.deepEqual(Object.keys(ownerCoverageDtoSchema.shape).sort(),
+    ["call_log_capture", "capabilities", "capture_health", "gaps", "known_through", "mapping_hygiene"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -88,14 +49,14 @@ function facts(over: Partial<CaptureHealthFacts> = {}): CaptureHealthFacts {
     ],
     latest_receipt_at: new Date(+now - 2 * 60_000),
     receipts_1h: 140,
-    renewal_event: null,
+    renewal_outcome: null,
     call_log_calls_in_window: 6,
     in_progress_calls: 1,
     pending_finalization: 0,
     ...over,
   };
 }
-const parseHealth = (value: unknown) => ownerCoverageDtoSchema.shape.capture_health.unwrap().parse(value);
+const parseHealth = (value: unknown) => ownerCoverageDtoSchema.shape.capture_health.parse(value);
 
 test("C20 healthy: ok, no reasons, and only a suffix of the subscription id", () => {
   const health = composeCaptureHealth(facts());
@@ -170,23 +131,23 @@ test("C20 down: expired subscription, provider-terminal status, missing subscrip
   assert.equal(missing.webhook.subscription_id_suffix, null);
 
   const failed = composeCaptureHealth(facts({
-    renewal_event: { event_key: "sales_intelligence.webhook_subscription.failed", occurred_at: T("2026-09-22T06:15:05.000Z"), error_name: "SubscriptionOwnershipError" },
+    renewal_outcome: { finished_at: T("2026-09-22T06:15:05.000Z"), error_code: "SubscriptionOwnershipError" },
   }));
   assert.equal(failed.webhook.state, "down");
   assert.equal(failed.status, "broken");
   assert.equal(failed.webhook.last_renewal_error, "SubscriptionOwnershipError");
   const autoCreateOff = composeCaptureHealth(facts({
-    renewal_event: { event_key: "sales_intelligence.webhook_subscription.missing", occurred_at: T("2026-09-22T06:15:05.000Z"), error_name: null },
+    renewal_outcome: { finished_at: T("2026-09-22T06:15:05.000Z"), error_code: "subscription_missing" },
   }));
   assert.equal(autoCreateOff.webhook.last_renewal_error, "subscription_missing");
   assert.equal(autoCreateOff.webhook.state, "healthy", "a cron `missing` outcome is not a failure while this read finds a live owned subscription (production 2026-09-24)");
   assert.equal(autoCreateOff.status, "ok");
   const stale = composeCaptureHealth(facts({
-    renewal_event: { event_key: "sales_intelligence.webhook_subscription.failed", occurred_at: T("2026-09-21T06:15:05.000Z"), error_name: "Error" },
+    renewal_outcome: { finished_at: T("2026-09-21T06:15:05.000Z"), error_code: "Error" },
   }));
-  assert.equal(stale.webhook.state, "healthy", "a failure older than one cron period (26 h) was followed by a silent noop run");
+  assert.equal(stale.webhook.state, "healthy", "a failure older than one cron period (26 h) no longer counts");
   const renewed = composeCaptureHealth(facts({
-    renewal_event: { event_key: "sales_intelligence.webhook_subscription.renewed", occurred_at: T("2026-09-22T06:15:05.000Z"), error_name: null },
+    renewal_outcome: { finished_at: T("2026-09-22T06:15:05.000Z"), error_code: null },
   }));
   assert.equal(renewed.webhook.state, "healthy");
   assert.equal(renewed.webhook.last_renewal_error, null);
@@ -226,7 +187,7 @@ test("C20 pending_finalization is attention; reasons list broken ones first", ()
 test("C20 off: the webhook flag off reports state off and hides webhook facts", () => {
   const off = composeCaptureHealth(facts({
     webhook_enabled: false, subscriptions: [], latest_receipt_at: null, receipts_1h: 5,
-    renewal_event: { event_key: "sales_intelligence.webhook_subscription.failed", occurred_at: NOW, error_name: "Error" },
+    renewal_outcome: { finished_at: NOW, error_code: "Error" },
   }));
   parseHealth(off);
   assert.equal(off.status, "ok");

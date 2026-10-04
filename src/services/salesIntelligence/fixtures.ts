@@ -72,6 +72,5 @@ export const closedReviewFixture: AttentionRowDto = attentionRowDtoSchema.parse(
 export const unknownCoverageFixture = {
   known_through: null,
   gaps: [],
-  capabilities: { recording: "unknown" as const },
-  ai_paused: true,
+  capabilities: { call_log: "unknown" as const, webhook: "unknown" as const },
 };

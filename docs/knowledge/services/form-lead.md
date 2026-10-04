@@ -66,7 +66,7 @@ Public `ingestFormLead` always assigns `ingestion_origin: "wordpress_form"` and 
 | 2 | (not in ADR) | `dispatchOrQueuePersistedLeadMessage` — awaited, isolated; never throws out of finalize |
 | 3 | **CRM Posting** (Tracking Reference as `leadno`) | Runs **after** Sheet Sync finalization |
 | 4 | **Sheet Sync** (`finalizeSheetSync`) | Runs **before** CRM Posting |
-| 5 | **Operational Events** | After CRM |
+| 5 | **Diagnostic logs** (structured logger) | After CRM |
 
 **Known gap (deferred):** `finalizeSheetSync` runs before `submitFormLeadToCrm`. A Sheet Sync failure can block CRM Posting; order is reversed from ADR happy path. CRM Posting should still be best-effort when enabled and lead is not a Duplicate Lead ([ADR-0002](../../../../docs/adr/0002-granot-crm-post-despite-downstream-failures.md)).
 
@@ -156,7 +156,9 @@ Lead Messaging owner invariants live in [`lead-messaging.md`](./lead-messaging.m
 Form create persists intent only when `sms_consent` is parsed `true`; duplicates
 record a skipped row; dispatch runs after commit and cannot fail the 201.
 
-## Operational Events (create)
+## Diagnostic log keys (create)
+
+Structured logger `msg` keys; nothing is persisted to Mongo (the Operational Events ledger was retired).
 
 - `lead.form.created`
 - `lead.form.duplicate_detected` (warn, when Duplicate Lead)
@@ -179,4 +181,3 @@ record a skipped row; dispatch runs after commit and cannot fail the 201.
 
 - [`form-lead-granot-crm.mdc`](../../../.cursor/rules/form-lead-granot-crm.mdc) — CRM Posting payload and posting flow
 - [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox modes, drainer, quotas
-- [`observability-service.mdc`](../../../.cursor/rules/observability-service.mdc) — Operational Events

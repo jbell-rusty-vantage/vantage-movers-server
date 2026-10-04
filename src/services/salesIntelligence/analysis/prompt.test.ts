@@ -5,7 +5,7 @@ import { intelligenceCitationInventory, renderIntelligenceEvidencePrompt, segmen
 function syntheticPromptPages(): CapturedPromptPage[] {
   const empty = {
     page: { records: [], complete: true, next_cursor: null, missing_ranges: [] },
-    coverage: { known_through: null, gaps: [], capabilities: {}, ai_paused: false },
+    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } },
     speaker_refs: [], allowed_followup_ids: [], instructions: [],
   };
   return [

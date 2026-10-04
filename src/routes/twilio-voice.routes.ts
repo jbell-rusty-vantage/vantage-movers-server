@@ -7,7 +7,6 @@ import {
   isExpectedTwilioVoiceDestination,
   validateTwilioWebhook,
 } from "../services/leadMessaging";
-import { recordOperationalEvent } from "../services/observability";
 import { maskPhoneForLog } from "../utils/logging/sanitizeFormLeadForLog";
 
 const router = Router();
@@ -24,24 +23,13 @@ router.post("/api/webhooks/twilio/voice", async (req: Request, res: Response) =>
     return res.status(400).send("Unexpected called number");
   }
 
-  const config = getTwilioVoiceConfig();
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "twilio.voice.inbound_received",
-    category: "messaging",
+  logger.info({
+    msg: "twilio.voice.inbound_received",
     workflow: "twilio_voice_forwarding",
-    summary: "Inbound Twilio call is being forwarded to RingCentral.",
-    request: req,
-    entity: params.CallSid ? { type: "twilio_call", id: params.CallSid } : undefined,
-    leadIdentity: { phone: params.From || null },
-    details: {
-      call_sid: params.CallSid ?? null,
-      from: params.From ?? null,
-      to: params.To ?? null,
-      forward_to: config.forwardTo,
-      call_status: params.CallStatus ?? null,
-    },
-    notificationCandidate: false,
+    call_sid: params.CallSid ?? null,
+    from: params.From ? maskPhoneForLog(params.From) : null,
+    to: params.To ? maskPhoneForLog(params.To) : null,
+    call_status: params.CallStatus ?? null,
   });
 
   return res.type("text/xml").status(200).send(buildTwilioVoiceForwardResponse());
@@ -50,14 +38,14 @@ router.post("/api/webhooks/twilio/voice", async (req: Request, res: Response) =>
 router.post("/api/webhooks/twilio/voice/status", async (req: Request, res: Response) => {
   const params = stringParams(req.body);
   if (!validateVoiceRequest(req, params, "statusCallbackUrl", res)) return;
-  await recordVoiceCallback(req, params, "progress");
+  logVoiceCallback(params, "progress");
   return res.status(204).send();
 });
 
 router.post("/api/webhooks/twilio/voice/completed", async (req: Request, res: Response) => {
   const params = stringParams(req.body);
   if (!validateVoiceRequest(req, params, "completedCallbackUrl", res)) return;
-  await recordVoiceCallback(req, params, "completed");
+  logVoiceCallback(params, "completed");
   return res.type("text/xml").status(200).send(buildTwilioVoiceCompletedResponse());
 });
 
@@ -92,29 +80,17 @@ function validateVoiceRequest(
   }
 }
 
-async function recordVoiceCallback(
-  req: Request,
+function logVoiceCallback(
   params: Record<string, string>,
   phase: "progress" | "completed",
-): Promise<void> {
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: `twilio.voice.${phase}`,
-    category: "messaging",
+): void {
+  logger.info({
+    msg: `twilio.voice.${phase}`,
     workflow: "twilio_voice_forwarding",
-    summary: `Twilio voice forwarding ${phase} callback received.`,
-    request: req,
-    entity: params.CallSid ? { type: "twilio_call", id: params.CallSid } : undefined,
-    leadIdentity: { phone: params.From || null },
-    details: {
-      call_sid: params.CallSid ?? null,
-      dial_call_sid: params.DialCallSid ?? params.ParentCallSid ?? null,
-      call_status: params.CallStatus ?? params.DialCallStatus ?? null,
-      dial_call_duration: params.DialCallDuration ?? null,
-      from: params.From ?? null,
-      to: params.To ?? null,
-    },
-    notificationCandidate: false,
+    call_sid: params.CallSid ?? null,
+    dial_call_sid: params.DialCallSid ?? params.ParentCallSid ?? null,
+    call_status: params.CallStatus ?? params.DialCallStatus ?? null,
+    dial_call_duration: params.DialCallDuration ?? null,
   });
 }
 

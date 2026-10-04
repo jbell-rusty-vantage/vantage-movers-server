@@ -338,7 +338,6 @@ async function reconcileDiscrepancy(
       revision: result.revision,
       evidence_revision: result.evidence_revision,
     },
-    piiPolicy: "masked",
   });
   return result;
 }

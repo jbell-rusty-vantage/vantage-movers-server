@@ -61,7 +61,7 @@ export function summaryArtifactResponse() {
       move_evidence: summaryMoveEvidence(),
     },
     transcript: { conversation_id: IDS.conversation, transcript_version: "v1", source_snapshot_id: IDS.transcriptSnapshot, segments: [] },
-    coverage: { known_through: null, gaps: [], capabilities: {}, ai_paused: false },
+    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } },
     allowed_followup_ids: [], instructions: [], speaker_refs: [],
   };
 }
@@ -184,7 +184,7 @@ export const RECORD_FIXTURES: Array<{ record_type: string; record_id: string; re
 ];
 export function contextResponse() {
   return { page: { records: RECORD_FIXTURES, next_cursor: null, complete: true, missing_ranges: [] },
-    coverage: { known_through: null, gaps: [], capabilities: {}, ai_paused: false }, allowed_followup_ids: [], instructions: [], speaker_refs: [] };
+    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } }, allowed_followup_ids: [], instructions: [], speaker_refs: [] };
 }
 export const CONTEXT_SNAPSHOT = hex(23);
 export const PRIOR = { superseded: hex(90), fulfilled: hex(91), contradicted: hex(92), still_true: hex(93), cannot_determine: hex(94) } as const;

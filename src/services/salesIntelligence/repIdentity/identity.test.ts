@@ -83,7 +83,7 @@ test("period validation compares instants and rejects unknown input keys", () =>
   assert.equal(csiRepInputSchema.safeParse(link).success,false);
   assert.equal(csiRepInputSchema.safeParse({ ...link, effective_to:null, reviewed:true }).success,false);
 });
-test("registered identity worker is a flag-off no-op", async () => {
+test("registered identity worker is a flag-off no-op (it only acknowledges jobs queued before the slimming)", async () => {
   assert.equal(typeof defaultStageHandlers().rep_identity_reevaluate,"function");
   const previous = process.env.SALES_INTELLIGENCE_ENABLED;
   process.env.SALES_INTELLIGENCE_ENABLED = "false";

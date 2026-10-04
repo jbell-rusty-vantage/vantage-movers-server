@@ -1,18 +1,21 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-} from "../observability";
+import { afterEach, beforeEach, test } from "node:test";
+import { captureGranotLifecycleLogs } from "./testLifecycleLogCapture";
 import {
   getGranotLifecycleQueuePublishFailures,
   resetGranotLifecycleMetrics,
 } from "./metrics";
 import { publishGranotLifecycleReceiptWakeup } from "./queuePublisher";
 
+let logs: ReturnType<typeof captureGranotLifecycleLogs>;
+
+beforeEach(() => {
+  logs = captureGranotLifecycleLogs();
+});
+
 afterEach(() => {
   resetGranotLifecycleMetrics();
-  clearCapturedOperationalEvents();
+  logs.restore();
 });
 
 test("[AC-35] publisher is skipped in the test runner and never sends a queue message", async () => {
@@ -29,7 +32,7 @@ test("[AC-35] publisher is skipped in the test runner and never sends a queue me
   assert.deepEqual(result, { published: false });
   assert.deepEqual(sent, []);
   assert.equal(getGranotLifecycleQueuePublishFailures(), 0);
-  assert.equal(getCapturedOperationalEvents().length, 0);
+  assert.equal(logs.events().length, 0);
 });
 
 test("[AC-02][AC-35] publisher sends exactly { receipt_id } when publishing is enabled", async () => {
@@ -63,14 +66,16 @@ test("[AC-35] publish failure is observed safely and does not throw", async () =
   );
   assert.deepEqual(result, { published: false });
   assert.equal(getGranotLifecycleQueuePublishFailures(), 1);
-  const events = getCapturedOperationalEvents();
-  assert.equal(events.length, 1);
-  assert.equal(events[0]?.input.eventKey, "granot_lifecycle.queue.publish_failed");
-  assert.deepEqual(events[0]?.input.details, {
-    receipt_id: "receip...iled",
-    channel: "granot_webhook",
+  const failures = logs.records.filter((row) => row.msg === "granot_lifecycle.queue.publish_failed");
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0]?.level, "error");
+  assert.deepEqual(failures[0]?.record, {
+    msg: "granot_lifecycle.queue.publish_failed",
+    error_code: "technical_failure",
+    receipt_id: "rece…iled",
+    observation_channel: "granot_webhook",
   });
-  const serialized = JSON.stringify(events);
+  const serialized = JSON.stringify(failures);
   assert.equal(serialized.includes("synthetic-queue-unavailable"), false);
   assert.doesNotMatch(serialized, /x-api-secret|authorization|cookie/i);
 });

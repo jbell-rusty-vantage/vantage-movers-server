@@ -15,26 +15,10 @@ import { toObjectId } from "../../utils/objectId";
 import { getAdminFacets } from "../admin/adminFacets.service";
 import { sourceLabelIndexFromCatalog } from "./sourceHierarchy";
 
-const RECEIVER_AGENT_UNSUPPORTED_METADATA = {
-  receiver_agent_scope: "unsupported",
-  historical_receiver_agent_supported: false,
-  historical_excluded_from_receiver_agent_metrics: true,
-  message:
-    "Historical lead records do not include receiver_agent attribution. Switch to Production or Combined to view receiver-agent analytics.",
-};
-
-export function unsupportedReceiverAgentReport() {
-  return {
-    items: [],
-    metadata: RECEIVER_AGENT_UNSUPPORTED_METADATA,
-  };
-}
-
 export async function getReceiverAgentPerformance(models: AdminModels, query: AnalyticsQuery) {
   const rows = await receivedLeadRows(models, query, ["receiver_agent_id", "receiver_agent_name", "receiver_agent_group"]);
   return {
     items: rows.map(deriveReceiverRates).sort(receiverPerformanceSort),
-    metadata: receiverAgentMetadata(),
   };
 }
 
@@ -49,7 +33,6 @@ export async function getReceiverAgentTrend(models: AdminModels, query: Analytic
       const periodCompare = String(left.period ?? "").localeCompare(String(right.period ?? ""));
       return periodCompare || receiverPerformanceSort(left, right);
     }),
-    metadata: receiverAgentMetadata(),
   };
 }
 
@@ -61,7 +44,7 @@ export async function getReceiverAgentSourceBreakdown(models: AdminModels, query
     "source_granularity_key",
     "lead_type",
   ]);
-  const catalog = (await getAdminFacets(query.database_scope)).catalog;
+  const catalog = (await getAdminFacets()).catalog;
   const labels = sourceLabelIndexFromCatalog(catalog);
   return {
     items: rows
@@ -79,7 +62,6 @@ export async function getReceiverAgentSourceBreakdown(models: AdminModels, query
         });
       })
       .sort(receiverPerformanceSort),
-    metadata: receiverAgentMetadata(),
   };
 }
 
@@ -400,13 +382,4 @@ function receiverPerformanceSort(left: AnalyticsRow, right: AnalyticsRow): numbe
     numberValue(right.booked_leads) - numberValue(left.booked_leads) ||
     String(left.receiver_agent_name ?? "").localeCompare(String(right.receiver_agent_name ?? ""))
   );
-}
-
-function receiverAgentMetadata() {
-  return {
-    receiver_agent_scope: "production_only",
-    historical_receiver_agent_supported: false,
-    historical_excluded_from_receiver_agent_metrics: true,
-    message: "Historical lead records do not include receiver_agent attribution.",
-  };
 }

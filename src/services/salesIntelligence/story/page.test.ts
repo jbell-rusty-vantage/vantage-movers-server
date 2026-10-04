@@ -6,7 +6,7 @@ import { storyToReadContent } from "./page";
 import type { GranotLeadState, StoryEvent, StoryEventKind, SubjectStory } from "./types";
 
 const LEAD = "64b000000000000000000002";
-const coverage: CoverageDto = { known_through: "2026-09-23T15:00:00.000Z", gaps: [], capabilities: {}, ai_paused: false };
+const coverage: CoverageDto = { known_through: "2026-09-23T15:00:00.000Z", gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 const make = (kind: StoryEventKind, id: string, happened_at: string, detail: Record<string, unknown> = {}, sentence = "Something happened."): StoryEvent => ({
   id: `${kind}:${id}`, kind, happened_at, observed_at: happened_at, subject_key: `lead:FormLead:${LEAD}`,
   actor: { kind: "vantage", agent_id: null, name: null, identity_status: null }, record: { record_type: "story_event", record_id: `${kind}:${id}` },

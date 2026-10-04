@@ -143,6 +143,16 @@ test("runtime health discloses stale cache service and remaining compatibility r
       "registry.compatibility_reads_remaining",
     ],
   );
+  // The count is per process: the copy must say so and never claim a cross-instance removal gate.
+  const compatibility = findings.find((finding) => finding.code === "registry.compatibility_reads_remaining")!;
+  assert.match(compatibility.summary, /on this server instance since it started/);
+  assert.match(compatibility.summary, /operations_registry\.compatibility_read/);
+  assert.doesNotMatch(
+    `${compatibility.summary} ${compatibility.remediation?.summary ?? ""}`,
+    /blocked until|holds? at zero/,
+  );
+  assert.equal(compatibility.evidence?.observation_scope, "server_instance");
+  assert.equal(compatibility.evidence?.full_count_log_key, "operations_registry.compatibility_read");
 });
 
 test("label mapping health reports an invalid destination and a collision", () => {

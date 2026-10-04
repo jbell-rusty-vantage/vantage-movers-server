@@ -30,7 +30,6 @@ import {
 import { ConflictError, NotFoundError, ServiceUnavailableError } from "../errors";
 import { deleteFormLeadFromSheets } from "../googleSheets.service";
 import type { FormLeadIngestionOrigin } from "../granotLifecycle/types";
-import { recordOperationalEvent } from "../observability";
 import { getRegistryAgent, isRegistryError } from "../operationsRegistry";
 import {
   dispatchOrQueuePersistedLeadMessage,
@@ -304,7 +303,7 @@ export async function completeFormLeadIngestion(
     duplicate,
   });
 
-  await recordWhatTheOwnerNeedsToKnow(pending);
+  logWhatTheOwnerNeedsToKnow(pending);
   await recordFormLeadDailyOperationsFact(pending);
 
   return {
@@ -553,103 +552,45 @@ async function postTheLeadToGranotWhenDue(
   return submitFormLeadToCrm(lead, { companyLabel: crmLabel });
 }
 
-async function recordWhatTheOwnerNeedsToKnow(
-  pending: FormLeadIngestionInProgress,
-) {
-  const {
-    lead,
-    jobs,
-    shouldPostToGranot,
-    crmLabel,
-    source_company,
-    duplicate,
-    duplicateMatch,
-    crm_company_label,
-  } = pending;
+function logWhatTheOwnerNeedsToKnow(pending: FormLeadIngestionInProgress) {
+  const { lead, jobs, shouldPostToGranot, source_company, duplicate, duplicateMatch } =
+    pending;
   const leadId = lead._id.toString();
-  const leadIdentity = {
-    name: lead.name,
-    phone: lead.phone_number,
-    email: lead.email,
-  };
   const formFillJobCount = jobs.filter(
     (job) => job.operation === "call_lead.form_fill.update",
   ).length;
 
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "lead.form.created",
-    category: "lead",
+  logger.info({
+    msg: "lead.form.created",
     workflow: "form_lead_create",
-    summary: "Form lead created.",
-    leadIdentity,
-    sourceCompany: source_company,
-    entity: { type: "form_lead", id: leadId },
-    details: {
-      pickup_zip: lead.pickup_zip,
-      delivery_zip: lead.destination_zip,
-      pickup_state: lead.pickup_state,
-      delivery_state: lead.delivery_state,
-      local: lead.local,
-      duplicate,
-      cpl: lead.cpl,
-      post_to_granot: shouldPostToGranot,
-    },
+    leadId,
+    source_company,
+    pickup_state: lead.pickup_state,
+    delivery_state: lead.delivery_state,
+    local: lead.local,
+    duplicate,
+    cpl: lead.cpl,
+    post_to_granot: shouldPostToGranot,
   });
 
   if (duplicate) {
-    await recordOperationalEvent({
-      level: "warn",
-      eventKey: "lead.form.duplicate_detected",
-      category: "lead",
+    logger.warn({
+      msg: "lead.form.duplicate_detected",
       workflow: "form_lead_create",
-      summary: "Duplicate form lead detected and saved as duplicate.",
-      leadIdentity,
-      sourceCompany: source_company,
-      entity: { type: "form_lead", id: leadId },
-      details: {
-        duplicate: true,
-        matched_by: duplicateMatch.matchedBy,
-        matched_lead_count: duplicateMatch.matchedLeadIds.length,
-      },
-      notificationCandidate: false,
+      leadId,
+      source_company,
+      matched_by: duplicateMatch.matchedBy,
+      matched_lead_count: duplicateMatch.matchedLeadIds.length,
     });
   }
 
   if (formFillJobCount > 0) {
-    await recordOperationalEvent({
-      level: "info",
-      eventKey: "lead.form.call_leads_marked_form_fill",
-      category: "lead",
+    logger.info({
+      msg: "lead.form.call_leads_marked_form_fill",
       workflow: "form_lead_create",
-      summary: "Form lead marked existing call leads as form fill.",
-      leadIdentity,
-      sourceCompany: source_company,
-      entity: { type: "form_lead", id: leadId },
-      details: {
-        form_lead_id: leadId,
-        matched_call_lead_count: formFillJobCount,
-      },
-    });
-  }
-
-  if (!shouldPostToGranot) {
-    await recordOperationalEvent({
-      level: "info",
-      eventKey: "crm.form_lead.submit.skipped",
-      category: "crm",
-      workflow: "crm_submit",
-      summary: "CRM submission skipped for form lead.",
-      leadIdentity,
-      sourceCompany: source_company,
-      entity: { type: "form_lead", id: leadId },
-      details: {
-        duplicate,
-        post_to_granot: shouldPostToGranot,
-        companyLabel: crmLabel,
-        requestedCompanyLabel: crm_company_label,
-      },
-      reportable: false,
+      leadId,
+      source_company,
+      matched_call_lead_count: formFillJobCount,
     });
   }
 }

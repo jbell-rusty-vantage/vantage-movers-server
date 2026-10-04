@@ -29,7 +29,7 @@ test("Owner attachment routes and cron recovery: authority, scope, flag, strict 
   let enabled = true, connects = 0, writes = 0, scans = 0, drains = 0;
   const app = express(); app.use(express.json());
   app.use(createSalesIntelligenceCronRouter({ flag: f => f === "ATTACHMENT_REFRESH" && enabled,
-    connect: async () => { connects++; }, runAttachmentRefresh: async () => { scans++; return { skipped: false, scanned: 0, outcomes: [] }; },
+    connect: async () => { connects++; }, runAttachmentRefresh: async () => { scans++; return { skipped: false, scanned: 0, lead_changes: { scanned: 0, nominated: 0 }, outcomes: [] }; },
     drainAttachmentRefresh: async () => { drains++; return { outcomes: [] }; } }));
   app.use("/api/v1", requireApiSecret);
   app.use(createSalesIntelligenceAdminRouter({ flag: f => f === "ENABLED" || (f === "ATTACHMENT_REFRESH" && enabled),

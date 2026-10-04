@@ -6,7 +6,7 @@ import {
   readStoredCanonicalCommandResult,
 } from "../../models/DomainCommandExecution";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { assertCommandContext, type CommandContextVerifier } from "./commandContext";
 import {
   DomainCommandIdempotencyConflictError,
@@ -110,11 +110,7 @@ export function createIdempotentCanonicalCommandExecutor(input: {
       outcome = { result: raced, replayed: true };
     }
 
-    await recordCommandOperationalEvent(
-      command.command_name,
-      context,
-      outcome,
-    );
+    logCommandOutcome(command.command_name, context, outcome);
     return outcome;
   };
 }
@@ -242,50 +238,33 @@ function isDuplicateKeyError(error: unknown): boolean {
   );
 }
 
-async function recordCommandOperationalEvent(
+function logCommandOutcome(
   commandName: string,
   context: CanonicalCommandContext,
   outcome: CanonicalCommandExecutionOutcome,
-): Promise<void> {
+): void {
   const firstEntity = outcome.result.entity_refs[0];
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: outcome.replayed
-      ? "domain_command.replayed"
-      : "domain_command.applied",
-    category: "admin",
+  logger.info({
+    msg: outcome.replayed ? "domain_command.replayed" : "domain_command.applied",
     workflow: "canonical_domain_command",
-    summary: outcome.replayed
-      ? "Canonical domain command replay returned its durable outcome."
-      : "Canonical domain command applied.",
-    requestId: context.actor.request_id,
-    runId: context.provenance.run_id,
-    ...(firstEntity
-      ? {
-          entity: {
-            type: firstEntity.model,
-            id: firstEntity.id,
-          },
-        }
-      : {}),
-    details: {
-      command_name: commandName,
-      command_id: context.command_id,
-      command_status: outcome.result.status,
-      replayed: outcome.replayed,
-      actor_type: context.actor.actor_type,
-      actor_id: context.actor.actor_id,
-      initiator_type: context.initiator.actor_type,
-      initiator_id: context.initiator.actor_id,
-      origin: context.provenance.origin,
-      source_receipt_id: context.provenance.source_receipt_id,
-      source_connection_key: context.provenance.source_connection_key,
-      observation_id: context.provenance.observation_id ?? null,
-      decision_id: context.provenance.decision_id ?? null,
-      entity_ref_count: outcome.result.entity_refs.length,
-      warning_count: outcome.result.warnings.length,
-    },
-    notificationCandidate: false,
-    reportable: false,
+    request_id: context.actor.request_id,
+    run_id: context.provenance.run_id,
+    entity_type: firstEntity?.model,
+    entity_id: firstEntity?.id,
+    command_name: commandName,
+    command_id: context.command_id,
+    command_status: outcome.result.status,
+    replayed: outcome.replayed,
+    actor_type: context.actor.actor_type,
+    actor_id: context.actor.actor_id,
+    initiator_type: context.initiator.actor_type,
+    initiator_id: context.initiator.actor_id,
+    origin: context.provenance.origin,
+    source_receipt_id: context.provenance.source_receipt_id,
+    source_connection_key: context.provenance.source_connection_key,
+    observation_id: context.provenance.observation_id ?? null,
+    decision_id: context.provenance.decision_id ?? null,
+    entity_ref_count: outcome.result.entity_refs.length,
+    warning_count: outcome.result.warnings.length,
   });
 }

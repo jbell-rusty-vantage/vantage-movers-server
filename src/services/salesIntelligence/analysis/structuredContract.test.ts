@@ -13,7 +13,7 @@ const fact = { kind: "intent" as const, value: { intent: "moving_inquiry" as con
   action_status: null, speaker: "customer" as const, segment_ids: [7], quote: null };
 function inputs(): StructuredExpansionInputs {
   const data = { page: { records: [], next_cursor: null, complete: true, missing_ranges: [] },
-    coverage: { known_through: null, gaps: [], capabilities: {}, ai_paused: false },
+    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } },
     instructions: [], speaker_refs: [], allowed_followup_ids: [] };
   return { subject_key: "number:synthetic", calls: [{ snapshot_id: "summary-snapshot", data: {
     ...data, transcript: { conversation_id: "call-1", transcript_version: "v1",

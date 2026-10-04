@@ -70,7 +70,6 @@ test("fan-out: flag off means no job and no publish; a non-durable receipt is sk
 });
 
 test("fan-out: the acknowledgement waits a bounded time for the job transaction; a slow transaction is reported, not awaited forever", async () => {
-  const events: string[] = [];
   let resolveSlow: (() => void) | null = null;
   const slow = new Promise<EnsureCaptureProjectionJobResult>((resolve) => {
     resolveSlow = () => resolve({ job_id: oid(), dedupe_key: "k", created: true });
@@ -82,28 +81,19 @@ test("fan-out: the acknowledgement waits a bounded time for the job transaction;
       ensure: () => slow,
       publish: async () => assert.fail("no publish after a timeout"),
       ackTimeoutMs: 20,
-      recordEvent: (async (input: { eventKey: string }) => {
-        events.push(input.eventKey);
-      }) as never,
     },
   );
   assert.deepEqual(outcome, { status: "enqueue_timeout", error_code: "enqueue_timeout", timeout_ms: 20 });
-  assert.deepEqual(events, ["sales_intelligence.capture.fanout.enqueue_timeout"]);
   resolveSlow!();
 });
 
 test("fan-out: job is durable before publish; publish failure keeps the enqueued job; enqueue failure is bounded", async () => {
   const jobId = oid();
   const order: string[] = [];
-  const events: string[] = [];
   const ensure = async (): Promise<EnsureCaptureProjectionJobResult> => {
     order.push("ensure");
     return { job_id: jobId, dedupe_key: "csi:capture_projection:receipt:u", created: true };
   };
-  const recordEvent = (async (input: { eventKey: string }) => {
-    events.push(input.eventKey);
-  }) as never;
-
   const published = await fanOutCaptureProjection(
     { receiptId: oid(), uuid: "u", telephonySessionId: "s" },
     {
@@ -138,11 +128,9 @@ test("fan-out: job is durable before publish; publish failure keeps the enqueued
       publish: async () => {
         throw new Error("publish must not run after a failed enqueue");
       },
-      recordEvent,
     },
   );
   assert.deepEqual(failed, { status: "enqueue_failed", error_code: "enqueue_failed" });
-  assert.deepEqual(events, ["sales_intelligence.capture.fanout.enqueue_failed"]);
 });
 
 test("publish wake-up: gated, best-effort, never throws", async () => {
@@ -162,20 +150,15 @@ test("publish wake-up: gated, best-effort, never throws", async () => {
     { published: true, error_code: null },
   );
   assert.deepEqual(sent[0]?.[1], { job_id: jobId });
-  const events: string[] = [];
   assert.deepEqual(
     await publishCaptureProjectionWakeup(jobId, {
       shouldPublish: () => true,
       send: async () => {
         throw new Error("queue down");
       },
-      recordEvent: (async (input: { eventKey: string }) => {
-        events.push(input.eventKey);
-      }) as never,
     }),
     { published: false, error_code: "publish_failed" },
   );
-  assert.deepEqual(events, ["sales_intelligence.queue.publish_failed"]);
 });
 
 test("wake-up payload is exactly { job_id } with a 24-hex id", () => {
@@ -219,12 +202,11 @@ function workerHarness(input: {
   observe?: (observations: unknown[], deps: { request_id?: string | null }) => Promise<SessionObservationResult[]>;
   completeThrows?: CsiError;
 }) {
-  const calls: { claim: unknown[]; complete: unknown[]; fail: unknown[]; observeRequestIds: Array<string | null | undefined>; events: string[] } = {
+  const calls: { claim: unknown[]; complete: unknown[]; fail: unknown[]; observeRequestIds: Array<string | null | undefined> } = {
     claim: [],
     complete: [],
     fail: [],
     observeRequestIds: [],
-    events: [],
   };
   const receiptId = input.job?.input_refs[0] ? String(input.job.input_refs[0]) : oid();
   const deps: CaptureProjectionWorkerDeps = {
@@ -252,9 +234,6 @@ function workerHarness(input: {
       calls.observeRequestIds.push(deps.request_id);
       if (input.observe) return input.observe(observations, deps);
       return [{ telephony_session_id: "s-w", account_id: "800000000001", ok: true, result: applyResult() }];
-    }) as never,
-    recordEvent: (async (event: { eventKey: string }) => {
-      calls.events.push(event.eventKey);
     }) as never,
   };
   return { deps, calls };
@@ -298,7 +277,6 @@ test("worker: deterministic per-session failures (account_unresolved) complete t
   assert.ok(done.status === "completed");
   assert.equal(done.result.failed, 1);
   assert.deepEqual(done.result.results[0], { telephony_session_id: "s-1", ok: false, error_code: "account_unresolved" });
-  assert.deepEqual(deterministic.calls.events, ["sales_intelligence.capture.projection.sessions_failed"]);
   assert.equal(deterministic.calls.fail.length, 0);
 
   const retryable = workerHarness({

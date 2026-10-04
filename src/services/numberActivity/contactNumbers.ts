@@ -2,24 +2,27 @@ import type mongoose from "mongoose";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getContactNumberModel, resolveCreatedVia, type ContactNumberCreatedVia } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
+import { getSalesIntelligenceContactRestrictionModel } from "../../models/SalesIntelligenceContactRestriction";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { csiFlag } from "../../config/domain/salesIntelligence";
 import { ownerRead, readCaptureCoverage } from "./coverage";
-import { readNumberOutreach } from "../salesIntelligence/outreach/reads";
+import { loadAttachedLeadForEdges } from "./leadContext";
 import {
   numberDetailReadDtoSchema,
   numberSearchItemDtoSchema,
+  type NumberAttachedLeadDto,
   type NumberDetailReadDto,
-  type AttachedLeadProgressItemDto,
   type NumberRollupsDto,
   type NumberSearchItemDto,
 } from "./dto";
 
 /**
- * Contact Number reads (04 §1 `GET /numbers/:id`). Reads never mutate: no
- * upsert, no `$set`, no `save()`. Interactions are recounted with
- * `merged_into_id: null` because merge tombstones keep `contact_number_id`
- * after their rollup contribution was removed (CSI-02 handoff).
+ * Contact Number reads (`GET /numbers/:id`). Reads never mutate: no upsert,
+ * no `$set`, no `save()`. Interactions are recounted with `merged_into_id: null`
+ * because merge tombstones keep `contact_number_id` after their rollup
+ * contribution was removed. Every source is a retained deterministic
+ * collection: Contact Numbers, Call Interactions, attachments, the canonical
+ * Lead/Booking/Cancellation rows and contact restrictions.
  */
 export type ContactNumberLean = {
   _id: mongoose.Types.ObjectId;
@@ -46,19 +49,9 @@ export type ContactNumberLean = {
     last_human_conversation_at?: Date | null;
     attached_lead_count: number;
     candidate_lead_count: number;
-    open_outreach_count: number;
-    /** Data spec §2.1; missing on rows written before the rollup existed. */
+    /** Missing on rows written before the rollup existed. */
     recordings_total?: number;
-    conversations_analyzed_total?: number;
-    last_analyzed_at?: Date | null;
-    outreach_records_total?: number;
   };
-  running_summary: {
-    text: string;
-    run_id: mongoose.Types.ObjectId;
-    evidence_digest: string;
-    computed_at: Date;
-  } | null;
 };
 
 type AttachmentLean = {
@@ -67,6 +60,19 @@ type AttachmentLean = {
   lead_ref: { model: "FormLead" | "CallLead"; id: mongoose.Types.ObjectId };
   state: "candidate" | "ambiguous" | "attached" | "rejected";
   certainty: "exact" | "likely" | "unsure" | "owner_confirmed" | "rejected";
+  lead_snapshot?: { name?: string | null; job_no?: string | null } | null;
+  decided_at?: Date | null;
+  decided_by?: string | null;
+  decision_reason?: string | null;
+};
+
+type RestrictionLean = {
+  _id: mongoose.Types.ObjectId;
+  revision: number;
+  channels: Array<"call" | "text">;
+  until?: Date | null;
+  origin: "owner" | "intelligence";
+  state: "active" | "expired" | "resolved";
 };
 
 const iso = (value: Date | null | undefined): string | null =>
@@ -84,23 +90,18 @@ export function toRollupsDto(row: ContactNumberLean): NumberRollupsDto {
     last_human_conversation_at: iso(r.last_human_conversation_at),
     attached_lead_count: r.attached_lead_count ?? 0,
     candidate_lead_count: r.candidate_lead_count ?? 0,
-    open_outreach_count: r.open_outreach_count ?? 0,
     recordings_total: r.recordings_total ?? 0,
-    conversations_analyzed_total: r.conversations_analyzed_total ?? 0,
-    last_analyzed_at: iso(r.last_analyzed_at),
-    outreach_records_total: r.outreach_records_total ?? 0,
   };
 }
 
 /**
- * Pure mapper shared with `search.ts`. `search_terms` is deliberately not
- * copied. `attached` is the page-batched Lead progress for this Number (LP-06);
- * a non-resolved status is reduced to its bare status so no Lead field leaks.
+ * Pure mapper for one Numbers row. `search_terms` is deliberately not copied.
+ * `attached` is the page-batched Lead context for this Number (`leadContext.ts`).
  */
 export function toNumberSearchItem(
   row: ContactNumberLean,
   match: NumberSearchItemDto["match"],
-  attached?: AttachedLeadProgressItemDto,
+  attached: NumberAttachedLeadDto,
 ): NumberSearchItemDto {
   const rollups = toRollupsDto(row);
   return numberSearchItemDtoSchema.parse({
@@ -117,39 +118,16 @@ export function toNumberSearchItem(
     rollups,
     linked: rollups.attached_lead_count > 0 || rollups.candidate_lead_count > 0,
     match,
+    attached_lead: attached,
     created_via: resolveCreatedVia(row.created_via),
     has_calls: rollups.interactions_total > 0,
-    ...(attached ? { attached_lead_progress: attachedForItem(attached, rollups.outreach_records_total) } : {}),
   });
 }
 
 /**
- * Non-resolved statuses keep only `status` (and the Number's Outreach count), so no Lead field and
- * no score leaks from a Number with several Leads (final spec D5). `outreachRecordsTotal` is the
- * Number's rollup (§9.1 line 5), never a per-row query.
- */
-export function attachedForItem(value: AttachedLeadProgressItemDto, outreachRecordsTotal?: number): AttachedLeadProgressItemDto {
-  const total = outreachRecordsTotal !== undefined ? { outreach_records_total: outreachRecordsTotal } : {};
-  if (value.status !== "resolved") return { status: value.status, ...total };
-  return {
-    status: "resolved",
-    lead_ref: value.lead_ref,
-    lead_progress: value.lead_progress ?? null,
-    booking: value.booking ?? null,
-    outreach_state: value.outreach_state ?? null,
-    ...(value.lead_display !== undefined ? { lead_display: value.lead_display } : {}),
-    ...(value.lead_status !== undefined ? { lead_status: value.lead_status } : {}),
-    ...(value.move_assessment !== undefined ? { move_assessment: value.move_assessment } : {}),
-    ...total,
-  };
-}
-
-/**
- * Number detail. `null` when the id is malformed or the row is missing.
- * Data spec §7 D2: the Number and its attachment edges are read once here and
- * handed to `readNumberOutreach`, which reads restrictions, review items and the
- * pending-assessment set once each; the read count does not grow with the
- * number of Outreach records. Coverage is resolved once for the whole response.
+ * Number detail. `null` when the id is malformed or the row is missing. The
+ * Number, its attachment edges and its restrictions are each read once; the
+ * attached Lead reuses the edges, and coverage is resolved once for the response.
  */
 export async function getContactNumberDetail(
   numberId: string,
@@ -162,7 +140,7 @@ export async function getContactNumberDetail(
   if (!row) return null;
   const now = deps.now?.() ?? new Date();
 
-  const [attachments, recount, coverage] = await Promise.all([
+  const [attachments, recount, restrictions, coverage] = await Promise.all([
     getNumberLeadAttachmentModel()
       .find({ contact_number_id: row._id })
       .sort({ createdAt: 1, _id: 1 })
@@ -171,41 +149,69 @@ export async function getContactNumberDetail(
       contact_number_id: row._id,
       merged_into_id: null,
     }),
+    getSalesIntelligenceContactRestrictionModel()
+      .find({ contact_number_id: row._id })
+      .sort({ _id: 1 })
+      .lean() as unknown as Promise<RestrictionLean[]>,
     readCaptureCoverage(),
   ]);
-  const { attached_lead_progress: attached, ...outreachData } = await readNumberOutreach(numberId, { edges: attachments, number: row, now, coverage });
+  const attached = await loadAttachedLeadForEdges(attachments);
 
   const byState = (state: AttachmentLean["state"]) =>
     attachments.filter((a) => a.state === state).length;
   const id = String(row._id);
+  const attachEnabled = csiFlag("ENABLED") && csiFlag("ATTACHMENT_REFRESH");
 
   const data = {
     id,
     revision: row.revision,
     e164: row.e164,
+    national_ten: row.national_ten ?? null,
+    kind: row.kind,
     classification: row.classification,
     eligibility: row.contact_eligibility?.state ?? "unknown",
+    provider_names: [...(row.provider_names ?? [])],
+    search_terms: [...(row.search_terms ?? [])],
+    first_observed_at: new Date(row.first_observed_at).toISOString(),
+    last_activity_at: new Date(row.last_activity_at).toISOString(),
+    created_via: resolveCreatedVia(row.created_via),
+    has_calls: (row.rollups.interactions_total ?? 0) > 0,
+    rollups: toRollupsDto(row),
+    attached_lead: attached,
     attachments: attachments.map((a) => ({
       id: String(a._id),
       revision: a.revision,
       lead_ref: { model: a.lead_ref.model, id: String(a.lead_ref.id) },
       state: a.state,
       certainty: a.certainty,
+      lead_display: a.lead_snapshot
+        ? { name: a.lead_snapshot.name ?? null, job_no: a.lead_snapshot.job_no ?? null }
+        : null,
+      decided_at: iso(a.decided_at),
+      decided_by: a.decided_by ?? null,
+      decision_reason: a.decision_reason ?? null,
     })),
-    ...outreachData,
-    running_analysis: row.running_summary
-      ? {
-          text: row.running_summary.text,
-          run_id: String(row.running_summary.run_id),
-          evidence_digest: row.running_summary.evidence_digest,
-          computed_at: new Date(row.running_summary.computed_at).toISOString(),
-        }
-      : null,
+    restrictions: restrictions.map((r) => ({
+      id: String(r._id),
+      revision: r.revision,
+      channels: [...r.channels],
+      until: iso(r.until),
+      origin: r.origin,
+      state: r.state,
+    })),
+    connections: {
+      attachments_total: attachments.length,
+      attached: byState("attached"),
+      candidate: byState("candidate"),
+      ambiguous: byState("ambiguous"),
+      rejected: byState("rejected"),
+      interactions_total_recount: recount,
+    },
     allowed_actions: [
       {
         action: "attach_lead",
-        enabled: csiFlag("ENABLED") && csiFlag("ATTACHMENT_REFRESH"),
-        blocker_codes: csiFlag("ENABLED") && csiFlag("ATTACHMENT_REFRESH") ? [] : ["FEATURE_DISABLED"],
+        enabled: attachEnabled,
+        blocker_codes: attachEnabled ? [] : ["FEATURE_DISABLED"],
         target_id: id,
         expected_revision: row.revision,
       },
@@ -217,27 +223,6 @@ export async function getContactNumberDetail(
         expected_revision: row.revision,
       },
     ],
-    kind: row.kind,
-    national_ten: row.national_ten ?? null,
-    provider_names: [...(row.provider_names ?? [])],
-    search_terms: [...(row.search_terms ?? [])],
-    first_observed_at: new Date(row.first_observed_at).toISOString(),
-    last_activity_at: new Date(row.last_activity_at).toISOString(),
-    rollups: toRollupsDto(row),
-    // §9.3: the header is the Numbers row, through the same mapper (no extra read).
-    attached_lead_progress: attachedForItem(attached, row.rollups.outreach_records_total ?? 0),
-    created_via: resolveCreatedVia(row.created_via),
-    has_calls: (row.rollups.interactions_total ?? 0) > 0,
-    connections: {
-      attachments_total: attachments.length,
-      attached: byState("attached"),
-      candidate: byState("candidate"),
-      ambiguous: byState("ambiguous"),
-      rejected: byState("rejected"),
-      outreach_records_total: outreachData.outreach_records.length,
-      open_outreach: outreachData.outreach_records.filter((o) => o.state !== "closed").length,
-      interactions_total_recount: recount,
-    },
   };
 
   return numberDetailReadDtoSchema.parse(await ownerRead(data, () => now, coverage));

@@ -2,9 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   getRegistryRuntimeTelemetry,
-  mergeDurableCompatibilityTelemetry,
   recordCompatibilityRead,
-  recordDurableCompatibilityRead,
   recordRegistryResolverAttempt,
   recordRegistryResolverFailure,
   recordRegistryResolverSuccess,
@@ -43,57 +41,6 @@ test("runtime telemetry exposes bounded resolver health and compatibility counte
       consumer_category: "admin_list",
       count: 1,
       last_used_at: loadedAt.toISOString(),
-    },
-  ]);
-});
-
-test("durable compatibility recording falls back locally when persistence is unavailable", async () => {
-  resetRegistryRuntimeTelemetryForTests();
-  const usedAt = new Date("2026-07-29T12:00:00.000Z");
-
-  await recordDurableCompatibilityRead(
-    "legacy_cpl_rates",
-    "admin_list",
-    usedAt,
-  );
-
-  assert.deepEqual(
-    getRegistryRuntimeTelemetry(usedAt).compatibility_reads,
-    [
-      {
-        path: "legacy_cpl_rates",
-        consumer_category: "admin_list",
-        count: 1,
-        last_used_at: usedAt.toISOString(),
-      },
-    ],
-  );
-});
-
-test("durable compatibility events merge across process-local telemetry", () => {
-  resetRegistryRuntimeTelemetryForTests();
-  const telemetry = mergeDurableCompatibilityTelemetry(
-    getRegistryRuntimeTelemetry(new Date("2026-07-29T12:02:00.000Z")),
-    [
-      {
-        path: "legacy_cpl_rates",
-        consumer_category: "admin_list",
-        occurred_at: new Date("2026-07-29T12:01:00.000Z"),
-      },
-      {
-        path: "legacy_cpl_rates",
-        consumer_category: "admin_list",
-        occurred_at: new Date("2026-07-29T12:02:00.000Z"),
-      },
-    ],
-  );
-
-  assert.deepEqual(telemetry.compatibility_reads, [
-    {
-      path: "legacy_cpl_rates",
-      consumer_category: "admin_list",
-      count: 2,
-      last_used_at: "2026-07-29T12:02:00.000Z",
     },
   ]);
 });

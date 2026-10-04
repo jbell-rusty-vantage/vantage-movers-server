@@ -1,5 +1,4 @@
 import { logger } from "../../logger";
-import { recordOperationalEvent } from "../observability";
 import { normalizeRingCentralWebhookPayload } from "../ringcentral/webhook-event-normalizer";
 import {
   accountIdFromProviderPath,
@@ -29,7 +28,6 @@ export type ObserveDependencies = {
   directory?: (accountId: string) => Promise<DirectoryLookup>;
   resolveRoute?: RouteResolver;
   apply?: typeof applyInteractionObservation;
-  recordEvent?: typeof recordOperationalEvent;
   configuredAccountId?: string | null;
   /** Durable capture-projection job id (24-hex) recorded on every audit row this call writes. */
   request_id?: string | null;
@@ -97,7 +95,6 @@ export async function observeRingCentralWebhookEvents(
 ): Promise<SessionObservationResult[]> {
   const now = deps.now ?? (() => new Date());
   const apply = deps.apply ?? applyInteractionObservation;
-  const recordEvent = deps.recordEvent ?? recordOperationalEvent;
   const loadDirectoryOnce = deps.directory ?? loadDirectoryLookup;
   // One directory load per account for the whole delivery, not per session.
   const directoryCache = new Map<string, Promise<DirectoryLookup>>();
@@ -145,17 +142,6 @@ export async function observeRingCentralWebhookEvents(
         telephonySessionId,
         errorCode: code,
         errorName: error instanceof Error ? error.name : "Error",
-      });
-      await recordEvent({
-        level: "warn",
-        eventKey: "sales_intelligence.capture.webhook.observe_failed",
-        category: "ringcentral",
-        workflow: "sales_intelligence",
-        summary: "All-direction webhook observation could not be projected.",
-        details: { telephonySessionId, errorCode: code },
-        notificationCandidate: false,
-        reportable: false,
-        piiPolicy: "none",
       });
     }
   }

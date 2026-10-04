@@ -17,8 +17,6 @@ test("receiver-agent analytics use persisted CPL without rate-period status", as
       "call-leads": { aggregate } as never,
       "booked-leads": {} as never,
       "cancelled-leads": {} as never,
-      customers: {} as never,
-      agents: {} as never,
     },
     query,
   );

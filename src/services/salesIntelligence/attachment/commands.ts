@@ -6,7 +6,6 @@ import { appendCsiAudit, assertIndexes, executeCsiCommand } from "../transaction
 import { loadLead } from "./sources";
 import { autoAttachNumber, fanInNumber, lockNumber, rebuildAttachmentSearchTerms } from "./store";
 import { leadWindow } from "./suggest";
-import { onAttachmentChanged } from "./hooks";
 
 type AttachmentCommand = Extract<CsiCommand, { command: "attach_lead" | "reject_attachment" | "detach_attachment" }>;
 /** attach_lead/reject_lead/detach service; wire discriminators preserve CSI-01's frozen names. */
@@ -60,7 +59,6 @@ export async function commandAttachment(input: { actor: CsiActor; idempotency_ke
       // H5: an Owner decision can contest or withdraw an automatic edge; it never overrides this one.
       await autoAttachNumber(numberId, context);
       await rebuildAttachmentSearchTerms(numberId, session);
-      await onAttachmentChanged({ number_id: numberId, revision: number.revision }, session);
       await appendCsiAudit(context, { kind: "number", target_id: numberId, subject_key: `number:${numberId}`, revision: number.revision,
         event_kind: command.command, prior: prior ?? { state: "unlinked" }, current: { attachment_id: String(row._id), state: row.state, certainty: row.certainty,
           attachment_revision: row.revision, reason: command.reason } });

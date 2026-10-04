@@ -53,7 +53,7 @@ router.post(
       const data = await beginGoogleDriveOAuth({ loginHint: actor.actorLabel });
       return res.json({ ok: true, data });
     } catch (error) {
-      await recordOAuthHealthFailure(error);
+      recordOAuthHealthFailure(error);
       return sendApiError(res, error);
     }
   },
@@ -75,7 +75,7 @@ router.get(
       };
       return res.json({ ok: true, data });
     } catch (error) {
-      await recordOAuthHealthFailure(error);
+      recordOAuthHealthFailure(error);
       return sendApiError(res, error);
     }
   },
@@ -91,7 +91,7 @@ router.post(
       const data = await bootstrapGooglePicker(input.flow);
       return res.json({ ok: true, data });
     } catch (error) {
-      await recordOAuthHealthFailure(error);
+      recordOAuthHealthFailure(error);
       return sendApiError(res, error);
     }
   },
@@ -199,9 +199,9 @@ async function handleOAuthCallback(req: Request, res: Response) {
     );
   } catch (error) {
     const sanitized = sanitizeGoogleDriveCallbackLog(error);
-    await emitReportingOAuthHealthFailure({
+    emitReportingOAuthHealthFailure({
       reason: sanitized.category,
-    }).catch(() => undefined);
+    });
     logger.error({
       msg: "google_drive.oauth.callback_failed",
       category: sanitized.category,
@@ -216,12 +216,12 @@ async function handleOAuthCallback(req: Request, res: Response) {
   }
 }
 
-async function recordOAuthHealthFailure(error: unknown): Promise<void> {
+function recordOAuthHealthFailure(error: unknown): void {
   if (error instanceof ZodError) return;
   const serialized = sanitizeGoogleDriveApiError(error);
-  await emitReportingOAuthHealthFailure({
+  emitReportingOAuthHealthFailure({
     reason: String(serialized.body.code ?? "oauth_health_failed"),
-  }).catch(() => undefined);
+  });
 }
 
 function sendApiError(res: Response, error: unknown) {

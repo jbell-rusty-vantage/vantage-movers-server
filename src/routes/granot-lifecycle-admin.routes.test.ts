@@ -37,7 +37,8 @@ const HEALTH_FIXTURE = {
   ],
   open_cases: [],
   open_discrepancies: [],
-  command_conflicts_last_24h: [],
+  command_conflicts_last_24h: null,
+  counter_coverage: { counters_since: null, window_24h: "unknown" as const, window_1h: "unknown" as const },
   record_links: { active: 0, disputed: 0 },
   last_queue_run: null,
   last_cron_run: null,
@@ -74,7 +75,6 @@ let lastReleaseUpdate: Record<string, unknown> | null = null;
 let lastReleaseNoAction: Record<string, unknown> | null = null;
 let lastDiscrepancyAction: Record<string, unknown> | null = null;
 let lastDiscrepancyQuery: Record<string, unknown> | null = null;
-let lastReceiptSearchQuery: Record<string, unknown> | null = null;
 
 const app = express();
 app.use(express.json());
@@ -315,56 +315,6 @@ app.use(
         replayed: false,
       };
     },
-    listLiveReceiptSnapshot: async () => [
-      {
-        receipt_id: receiptId,
-        captured_at: "2026-08-28T15:00:00.000Z",
-        route_event_class: "lead_created",
-        observation_channel: "granot_webhook",
-        processing_state: "pending",
-        lead: {
-          display_name: "Ada Lovelace",
-          first_name: "Ada",
-          last_name: "Lovelace",
-          email: "ada@example.invalid",
-          phone: "212-555-0100",
-          job_no: "P5562401",
-          event_type: "Lead",
-          priority: null,
-          origin: null,
-          destination: null,
-          move_date: null,
-        },
-        granot_statement: { first_name: "Ada", last_name: "Lovelace", job_no: "P5562401" },
-      },
-    ],
-    listLiveReceiptsAfter: async () => [],
-    searchReceipts: async (query) => {
-      lastReceiptSearchQuery = query;
-      return {
-        items: [
-          {
-            receipt_id: receiptId,
-            captured_at: "2026-08-28T15:00:00.000Z",
-            route_event_class: "lead_created",
-            booking_action: null,
-            processing_state: "pending",
-            observation_id: null,
-            decision_outcome: null,
-            ref_no: null,
-            job_no: "P5562401",
-            contact: { display_name: "Ada Lovelace", phone: "212-555-0100", email: "ada@example.invalid" },
-            source_company: null,
-            intake_case_id: null,
-            granot_statement: { first_name: "Ada", last_name: "Lovelace", job_no: "P5562401" },
-          },
-        ],
-        next_cursor: null,
-      };
-    },
-    liveStreamSleep: async () => undefined,
-    liveStreamNow: () => Date.parse("2026-08-28T15:00:00.000Z"),
-    liveStreamMaxMs: 0,
     listDiscrepancies: async (query) => {
       lastDiscrepancyQuery = query;
       return { items: [], next_cursor: null };
@@ -423,7 +373,6 @@ afterEach(() => {
   lastReleaseNoAction = null;
   lastDiscrepancyAction = null;
   lastDiscrepancyQuery = null;
-  lastReceiptSearchQuery = null;
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = SECRET;
 });
 
@@ -878,80 +827,18 @@ test("[AC-25] [AC-32] Release Owner routes are strict, idempotent, and use exact
   assert.equal(forbidden.status, 400);
 });
 
-test("Owner can search webhook receipts; Admin cannot; unsigned is denied", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/receipts";
-  const owner = await fetch(`${baseUrl}${path}`, {
-    method: "GET",
-    headers: signedHeaders("owner", path, "GET"),
-  });
-  assert.equal(owner.status, 200);
-  const ownerBody = (await owner.json()) as {
-    ok: boolean;
-    data: { items: Array<{ receipt_id: string; contact: { phone: string; email: string } }>; next_cursor: string | null };
-  };
-  assert.equal(ownerBody.ok, true);
-  assert.equal(ownerBody.data.items[0]?.receipt_id, receiptId);
-  assert.equal(ownerBody.data.items[0]?.contact.phone, "212-555-0100");
-  assert.equal(ownerBody.data.items[0]?.contact.email, "ada@example.invalid");
-  assert.equal(JSON.stringify(ownerBody).includes("granot_statement"), true);
-  assert.equal(JSON.stringify(ownerBody).includes("212-555-0100"), true);
-  assert.equal(JSON.stringify(ownerBody).includes("ada@example.invalid"), true);
-  assert.equal(lastReceiptSearchQuery?.limit, 25);
-
-  lastReceiptSearchQuery = null;
-  const admin = await fetch(`${baseUrl}${path}`, {
-    method: "GET",
-    headers: signedHeaders("admin", path, "GET"),
-  });
-  assert.equal(admin.status, 403);
-  const adminBody = (await admin.json()) as { code: string };
-  assert.equal(adminBody.code, GRANOT_LIFECYCLE_ERROR_CODES.OWNER_REQUIRED);
-  assert.equal(lastReceiptSearchQuery, null);
-
-  const unauth = await fetch(`${baseUrl}${path}`);
-  assert.equal(unauth.status, 403);
-  assert.equal(lastReceiptSearchQuery, null);
-});
-
-test("receipt search booking_action=release with lead_created is 400; booking_action alone implies booking_status_changed", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/receipts";
-  const invalid = await fetch(`${baseUrl}${path}?booking_action=release&route_event_class=lead_created`, {
-    method: "GET",
-    headers: signedHeaders("owner", path, "GET"),
-  });
-  assert.equal(invalid.status, 400);
-  const invalidBody = (await invalid.json()) as { code: string };
-  assert.equal(invalidBody.code, GRANOT_LIFECYCLE_ERROR_CODES.VALIDATION_FAILED);
-  assert.equal(lastReceiptSearchQuery === null, true);
-
-  const implied = await fetch(`${baseUrl}${path}?booking_action=release`, {
-    method: "GET",
-    headers: signedHeaders("owner", path, "GET"),
-  });
-  assert.equal(implied.status, 200);
-  assert.equal(lastReceiptSearchQuery?.booking_action, "release");
-  assert.equal(lastReceiptSearchQuery?.route_event_class, "booking_status_changed");
-});
-
-test("Owner can open the live webhook SSE stream; Admin cannot", async () => {
-  const path = "/api/v1/admin/granot-lifecycle/receipts/live";
-  const owner = await fetch(`${baseUrl}${path}`, {
-    method: "GET",
-    headers: signedHeaders("owner", path, "GET"),
-  });
-  assert.equal(owner.status, 200);
-  assert.match(owner.headers.get("content-type") ?? "", /text\/event-stream/);
-  const body = await owner.text();
-  assert.match(body, /event: snapshot/);
-  assert.match(body, /lead_created/);
-  assert.match(body, /Ada Lovelace/);
-  assert.equal(body.includes("x-api-secret"), false);
-
-  const admin = await fetch(`${baseUrl}${path}`, {
-    method: "GET",
-    headers: signedHeaders("admin", path, "GET"),
-  });
-  assert.equal(admin.status, 403);
+test("receipt search and Live Events GET transports are retired; requeue stays", async () => {
+  for (const path of [
+    "/api/v1/admin/granot-lifecycle/receipts",
+    "/api/v1/admin/granot-lifecycle/receipts/live",
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: "GET",
+      headers: signedHeaders("owner", path, "GET"),
+    });
+    assert.equal(response.status, 404);
+    assert.doesNotMatch(response.headers.get("content-type") ?? "", /text\/event-stream/);
+  }
 });
 
 test("[AC-31][AC-35] Owner and Admin can read the health envelope without raw payload keys", async () => {

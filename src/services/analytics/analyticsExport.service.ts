@@ -158,7 +158,7 @@ export async function exportAnalyticsReportCsv(
 ): Promise<{ filename: string; csv: string }> {
   const payload = await getAnalyticsReport(report, query);
   return {
-    filename: `analytics-${report}-${query.database_scope}.csv`,
+    filename: `analytics-${report}.csv`,
     csv: toCsv(rowsForCsv(report, payload.data), CSV_COLUMNS[report]),
   };
 }

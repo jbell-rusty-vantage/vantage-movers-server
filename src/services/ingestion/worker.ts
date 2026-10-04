@@ -1,4 +1,5 @@
 import { connectMongo } from "../../db";
+import { logger } from "../../logger";
 import { ExternalDataConnection } from "../../models/ExternalDataConnection";
 import { IngestionRun } from "../../models/IngestionRun";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
@@ -10,7 +11,6 @@ import {
   planBootstrapAdoption,
 } from "../bestRelocationSheetIngest";
 import { canonicalDomainCommands } from "../domainCommands";
-import { recordOperationalEvent } from "../observability";
 import {
   createBestRelocationIngestionActor,
   computeChecksum,
@@ -165,7 +165,7 @@ export async function runBestRelocationIngestionWorker(): Promise<{
       },
     ).exec();
     if (!inspection.healthy) {
-      await emitIngestionHealthSignal({
+      emitIngestionHealthSignal({
         key: "schema_or_formula_drift",
         run_id: runId,
         blocking_checks: inspection.checks
@@ -344,7 +344,7 @@ export async function runBestRelocationIngestionWorker(): Promise<{
         ).length,
       },
     })) {
-      await emitIngestionHealthSignal(signal);
+      emitIngestionHealthSignal(signal);
     }
     if (nextStatus !== "applying") {
       return { claimed: true, run_id: runId, status: nextStatus };
@@ -433,7 +433,7 @@ export async function runBestRelocationIngestionWorker(): Promise<{
       },
     ).exec();
     if (finalStatus === "completed_with_errors") {
-      await emitIngestionHealthSignal({
+      emitIngestionHealthSignal({
         key: "completed_with_errors",
         run_id: runId,
         failures: applied.failures,
@@ -633,7 +633,7 @@ async function applyApprovedClaim(input: {
     },
   ).exec();
   if (finalStatus === "completed_with_errors") {
-    await emitIngestionHealthSignal({
+    emitIngestionHealthSignal({
       key: "completed_with_errors",
       run_id: input.runId,
       failures: applied.failures,
@@ -685,15 +685,13 @@ async function failRun(
     },
   ).exec();
   if (result.modifiedCount !== 1) return false;
-  await recordOperationalEvent({
-    level: "error",
-    eventKey: "best_relocation_ingestion.run_failed",
-    category: "google_sheets",
+  logger.error({
+    msg: "best_relocation_ingestion.run_failed",
     workflow: "best_relocation_ingestion",
+    run_id: runId,
+    error_code: code,
+    phase,
     summary,
-    details: { run_id: runId, code, phase },
-    errorMessage: summary,
-    notificationCandidate: true,
   });
   return true;
 }

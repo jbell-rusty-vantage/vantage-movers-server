@@ -8,7 +8,7 @@ import {
   observabilityLevelRank,
   type ObservabilityLevel,
 } from "../../config/domain/observability";
-import { getSendgridConfig } from "../../config/domain/observability";
+import { getAlertEmailRecipients } from "../../config/domain/observability";
 import { logger } from "../../logger";
 import {
   getOperationalIncidentModel,
@@ -76,7 +76,7 @@ function resolvePosture(event: OperationalEventDocument): NotifyPosture {
 function recipientsFor(
   type: NotificationRecipientType,
 ): { to: string[]; recipientType: NotificationRecipientType } {
-  const { ownerToEmails, developerToEmails } = getSendgridConfig();
+  const { ownerToEmails, developerToEmails } = getAlertEmailRecipients();
   if (type === "developer") {
     if (developerToEmails.length > 0) {
       return { to: developerToEmails, recipientType: "developer" };

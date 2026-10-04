@@ -23,6 +23,7 @@ import { STRUCTURED_FINDINGS_PROMPT_VERSIONS, STRUCTURED_PIPELINE, citationsOfCo
   structuredStepContracts } from "./structuredPrompt";
 import { CITATION_HANDLES_FLAG, citationHandlesEnabled } from "./citationHandles";
 import { logger } from "../../../logger";
+import { legacyNumber } from "../legacyNumberFields";
 
 export { intelligenceSchemaDigest } from "./schemaArtifact";
 const preparationSchema = z.object({
@@ -86,7 +87,7 @@ export async function prepareIntelligenceRun(lease: JobLease, raw: PrepareIntell
       stage: { $in: ["analysis", "number_refresh"] }, lease_owner: lease.owner, lease_epoch: lease.epoch,
       leased_until: { $gt: new Date() } }).session(session).lean();
     if (!job) throw new CsiError("LEASE_LOST");
-    const number = await getContactNumberModel().findById(input.contact_number_id).session(session).lean();
+    const number = legacyNumber(await getContactNumberModel().findById(input.contact_number_id).session(session).lean());
     if (!number || number.purged_at || number.content_purge_pending) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     const fenceRetention = async () => {
       const updated = await getContactNumberModel().updateOne({ _id: number._id, purged_at: null,

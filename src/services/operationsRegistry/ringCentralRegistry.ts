@@ -5,7 +5,7 @@ import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { getCallLeadModel } from "../../models/CallLead";
 import { normalizePhoneNumberToE164Like } from "../ringcentral/phone-normalization";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { RegistryError } from "./errors";
 import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
@@ -318,19 +318,13 @@ export async function validateRingCentralRoute(
     },
   });
   if (result.status !== "valid") {
-    await recordOperationalEvent({
-      level: result.status === "unavailable" ? "error" : "warn",
-      eventKey: "ringcentral.route.validation_failed",
-      category: "ringcentral",
+    logger[result.status === "unavailable" ? "error" : "warn"]({
+      msg: "ringcentral.route.validation_failed",
       workflow: "operations_registry_ringcentral_validation",
-      summary: "RingCentral route validation did not succeed.",
-      entity: { type: "ringcentral_route", id: command.id },
-      details: {
-        phoneNumber: route.phone_number,
-        validationCode: result.code,
-        validationMessage: result.message,
-      },
-      notificationCandidate: result.status === "unavailable",
+      route_id: command.id,
+      validation_status: result.status,
+      validation_code: result.code,
+      validation_message: result.message,
     });
   }
   return getRingCentralInboundRoute(command.id);

@@ -18,86 +18,29 @@ import {
   csiDateResolutionSchema,
   csiPolicySchema,
 } from "../../validation/v1/salesIntelligence";
-export const coverageDtoSchema = z
-  .object({
-    known_through: date.nullable(),
-    gaps: z.array(
-      z.object({ from: date, to: date, reason: z.string() }).strict(),
-    ),
-    capabilities: z.record(
-      z.string(),
-      z.enum(["ok", "denied", "unknown", "unavailable"]),
-    ),
-    ai_paused: z.boolean(),
-    recordings: z.object({
-      pending_discovery: z.number().int().nonnegative(),
-      media_pending: z.number().int().nonnegative(),
-      media_stored: z.number().int().nonnegative(),
-      no_recording: z.number().int().nonnegative(),
-      unavailable: z.number().int().nonnegative(),
-      failed: z.number().int().nonnegative(),
-      eligibility_undetermined: z.number().int().nonnegative(),
-    }).strict().optional(),
-  })
-  .strict();
+import { coverageDtoSchema, ownerReadSchema, type CoverageDto } from "./coverageDto";
+export { coverageDtoSchema, ownerReadSchema, type CoverageDto };
 const nonnegative = z.number().int().nonnegative();
 const unknownCount = nonnegative.nullable();
-export const ownerCoverageStageSchema = z
-  .object({
-    pending: nonnegative,
-    leased: nonnegative,
-    retry: nonnegative,
-    paused: nonnegative,
-    dead_letter: nonnegative,
-    oldest_queued_at: date.nullable(),
-  })
-  .strict();
+const callLogSweepShape = {
+  ran_at: date,
+  from: date,
+  to: date,
+  complete: z.boolean(),
+  provider_records: nonnegative,
+  stored_in_latest_version: nonnegative,
+  applied_changes: nonnegative,
+  missing_before: nonnegative,
+  stale_before: nonnegative,
+  provisional_after_horizon: nonnegative,
+  quarantined: nonnegative,
+  consecutive_drift_runs: nonnegative,
+};
+/**
+ * `GET /coverage`: capture coverage plus the Call Log, webhook and directory
+ * health behind the Numbers and RingCentral Accounts views. Provider metadata only.
+ */
 export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
-  stages: z
-    .object({
-      recording: ownerCoverageStageSchema,
-      transcription: ownerCoverageStageSchema,
-      analysis: ownerCoverageStageSchema,
-      application: ownerCoverageStageSchema,
-    })
-    .strict(),
-  budget: z
-    .object({
-      status: z.enum(["known", "unknown"]),
-      month: z.string().nullable(),
-      ceiling_cents: nonnegative,
-      actual_cents: unknownCount,
-      reserved_cents: unknownCount,
-      remaining_cents: unknownCount,
-    })
-    .strict(),
-  // Why analysis is or is not being admitted right now, with the numbers the
-  // worker evaluates, so a paused pipeline is explainable from this read alone (17 §5).
-  analysis_admission: z
-    .object({
-      status: z.enum(["admitted", "per_recording_ceiling", "monthly_budget", "no_active_period", "configuration_missing"]),
-      estimated_cents_per_conversation: unknownCount,
-      per_recording_ceiling_cents: nonnegative,
-      model: z.string().min(1),
-      pricing_version: z.string().nullable(),
-      limits: z
-        .object({
-          steps: nonnegative,
-          context_tokens: nonnegative,
-          output_tokens: nonnegative,
-          total_input_tokens: nonnegative,
-          total_output_tokens: nonnegative,
-          elapsed_ms: nonnegative,
-        })
-        .strict(),
-      paused: z
-        .object({ per_recording_ceiling: nonnegative, budget: nonnegative, configuration: nonnegative })
-        .strict(),
-      // Reservations whose invocation started but never reported complete usage.
-      // Their estimate stays reserved on purpose: unknown spend is never released.
-      unresolved_reservations: z.object({ count: nonnegative, estimated_cents: nonnegative }).strict(),
-    })
-    .strict(),
   // CC-01/CC-06: Call Log capture completeness, readable without logs.
   // Quarantined records are retried hourly and never hold the window; the
   // last sweep says how many provider calls needed correction.
@@ -106,37 +49,20 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
       quarantined_count: nonnegative,
       oldest_quarantined_at: date.nullable(),
       sync_mode: z.enum(["off", "shadow", "on"]),
-      last_sweep: z
-        .object({
-          ran_at: date,
-          from: date,
-          to: date,
-          complete: z.boolean(),
-          provider_records: nonnegative,
-          stored_in_latest_version: nonnegative,
-          applied_changes: nonnegative,
-          missing_before: nonnegative,
-          stale_before: nonnegative,
-          provisional_after_horizon: nonnegative,
-          quarantined: nonnegative,
-          consecutive_drift_runs: nonnegative,
-        })
-        .strict()
-        .nullable(),
+      last_sweep: z.object(callLogSweepShape).strict().nullable(),
     })
     .strict(),
-  // S5c-HEALTH (G6): the server-computed capture headline and the successor of
-  // `call_log_capture` (which stays unchanged for the production Admin).
+  // S5c-HEALTH (G6): the server-computed capture headline.
   // `status`: `broken` when the webhook is `down` or the oldest quarantine is
   // older than 24 h; `attention` when the webhook is `degraded`, a quarantine
   // exists or a call is pending finalization; otherwise `ok`. Stable `reasons`
   // keys, broken ones first: `webhook_down`, `quarantine_over_24h`,
   // `webhook_degraded`, `quarantine`, `pending_finalization`.
   // `webhook.state`: `off` (SALES_INTELLIGENCE_CAPTURE_WEBHOOK off), `down`
-  // (no owned subscription, expired or provider-terminal, or the latest renewal
-  // run in the last 26 h failed), `degraded` (no receipt for 30 staffed minutes
-  // while the Call Log shows calls in those minutes), else `healthy`. Only a
-  // suffix of the subscription id is exposed. Optional: older snapshots lack it.
+  // (no owned subscription, expired or provider-terminal, or the latest
+  // maintenance run in the last 26 h failed), `degraded` (no receipt for 30
+  // staffed minutes while the Call Log shows calls in those minutes), else
+  // `healthy`. Only a suffix of the subscription id is exposed.
   capture_health: z
     .object({
       as_of: date,
@@ -151,18 +77,7 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
           oldest_quarantined_at: date.nullable(),
           last_sweep: z
             .object({
-              ran_at: date,
-              from: date,
-              to: date,
-              complete: z.boolean(),
-              provider_records: nonnegative,
-              stored_in_latest_version: nonnegative,
-              applied_changes: nonnegative,
-              missing_before: nonnegative,
-              stale_before: nonnegative,
-              provisional_after_horizon: nonnegative,
-              quarantined: nonnegative,
-              consecutive_drift_runs: nonnegative,
+              ...callLogSweepShape,
               // Derived: min(applied_changes, missing_before + stale_before), the
               // measured drift the sweep actually applied (calls added or corrected).
               recovered_calls: nonnegative,
@@ -185,49 +100,13 @@ export const ownerCoverageDtoSchema = coverageDtoSchema.extend({
       in_progress_calls: nonnegative,
       pending_finalization: nonnegative,
     })
-    .strict()
-    .optional(),
+    .strict(),
   mapping_hygiene: z
     .object({
       unmapped_inbound_numbers: nonnegative,
       unmapped_directory_users: unknownCount,
       last_directory_sync_at: date.nullable(),
       directory_status: z.enum(["stored", "missing"]),
-    })
-    .strict(),
-  flags: z.record(z.string(), z.boolean()),
-  models: z
-    .object({
-      extraction: z.object({ name: z.string(), enabled: z.boolean() }).strict(),
-      transcription: z.object({ name: z.string(), enabled: z.boolean() }).strict(),
-    })
-    .strict(),
-  settings: z
-    .object({
-      persisted: z.boolean(),
-      revision: revision,
-      version: z.string().min(1),
-      source: z.enum(["persisted", "accepted_defaults"]),
-      timezone: z.string().min(1),
-      first_action_due_staffed_minutes: nonnegative,
-      missed_callback_due_staffed_minutes: nonnegative,
-      going_cold_staffed_minutes: nonnegative,
-      monthly_ceiling_cents: nonnegative,
-      per_recording_ceiling_cents: nonnegative,
-    })
-    .strict(),
-  backfill: z
-    .object({
-      available: z.boolean(),
-      owner_triggered: z.literal(true),
-      days: z.number().int().nonnegative(),
-      planned: unknownCount,
-      partial: unknownCount,
-      complete: unknownCount,
-      failed: unknownCount,
-      known_complete_through: date.nullable(),
-      gaps: z.array(z.object({ from: date, to: date, reason: z.string().min(1) }).strict()),
-      note: z.string().min(1),
     })
     .strict(),
 });
@@ -718,8 +597,6 @@ export const attentionRowDtoSchema = z
     outcome: attentionOutcomeDtoSchema.nullable().optional(),
   })
   .strict();
-export const ownerReadSchema = <T extends z.ZodType>(data: T) =>
-  z.object({ as_of: date, coverage: coverageDtoSchema, data }).strict();
 export const attentionPageDtoSchema = ownerReadSchema(
   z
     .object({
@@ -757,7 +634,6 @@ export const assessmentDtoSchema = z
     finding_ids: z.array(id),
   })
   .strict();
-export type CoverageDto = z.infer<typeof coverageDtoSchema>;
 export type OwnerCoverageDto = z.infer<typeof ownerCoverageDtoSchema>;
 export type CsiSettingsReadDto = z.infer<typeof csiSettingsReadDtoSchema>;
 export type AssignmentDto = z.infer<typeof assignmentDtoSchema>;
@@ -813,59 +689,6 @@ export const restrictionDtoSchema = z
     allowed_actions: z.array(csiActionAvailabilitySchema),
   })
   .strict();
-export const numberDetailDtoSchema = ownerReadSchema(
-  z
-    .object({
-      id,
-      revision,
-      e164: z.string().regex(/^\+[1-9]\d{6,14}$/),
-      classification: z.enum([
-        "unknown",
-        "customer",
-        "company",
-        "non_customer",
-      ]),
-      eligibility: z.enum([
-        "allowed",
-        "temporarily_blocked",
-        "suppressed",
-        "unknown",
-      ]),
-      attachments: z.array(
-        z
-          .object({
-            id,
-            revision,
-            lead_ref: z
-              .object({ model: z.enum(["FormLead", "CallLead"]), id })
-              .strict(),
-            state: z.enum(["candidate", "ambiguous", "attached", "rejected"]),
-            certainty: z.enum([
-              "exact",
-              "likely",
-              "unsure",
-              "owner_confirmed",
-              "rejected",
-            ]),
-          })
-          .strict(),
-      ),
-      outreach_records: z.array(outreachDtoSchema),
-      running_analysis: z
-        .object({
-          text: z.string(),
-          run_id: id,
-          evidence_digest: z.string(),
-          computed_at: date,
-        })
-        .strict()
-        .nullable(),
-      restrictions: z.array(restrictionDtoSchema),
-      review_items: z.array(reviewItemDtoSchema),
-      allowed_actions: z.array(csiActionAvailabilitySchema),
-    })
-    .strict(),
-);
 export const timelineEventDtoSchema = z
   .object({
     id,
@@ -949,7 +772,6 @@ export const attachedLeadProgressDtoSchema = z
 export type AttachedLeadProgressDto = z.infer<typeof attachedLeadProgressDtoSchema>;
 export type ReviewItemDto = z.infer<typeof reviewItemDtoSchema>;
 export type RestrictionDto = z.infer<typeof restrictionDtoSchema>;
-export type NumberDetailDto = z.infer<typeof numberDetailDtoSchema>;
 export type TimelineEventDto = z.infer<typeof timelineEventDtoSchema>;
 export type EvidenceSnapshotDto = z.infer<typeof evidenceSnapshotDtoSchema>;
 export type OwnerInstructionDto = z.infer<typeof ownerInstructionDtoSchema>;

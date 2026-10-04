@@ -3,7 +3,7 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import { CsiError } from "../salesIntelligence/auth";
 import { toNumberSearchItem, type ContactNumberLean } from "./contactNumbers";
-import { NUMBER_DTO_FIXTURES, numberSearchItemDtoSchema } from "./dto";
+import { numberSearchItemDtoSchema } from "./dto";
 import {
   buildNumberSearchFilter,
   buildSortedNumberSearchFilter,
@@ -28,8 +28,8 @@ import {
 
 /**
  * Data spec §4.2 (S2-NUMBERS): `last_call` / `first_call` aliases, the
- * `interactions` count sort with two-segment paging, and the `has_recording` /
- * `has_outreach` filters. The in-memory source mirrors the Mongo semantics the
+ * `interactions` count sort with two-segment paging, and the `has_recording`
+ * filter. The in-memory source mirrors the Mongo semantics the
  * Numbers filters use (null/missing equality, type-bracketed comparisons).
  */
 
@@ -105,8 +105,8 @@ const day = (n: number) => new Date(Date.UTC(2026, 8, 1 + n, 12));
 
 /**
  * 30 external Numbers plus hygiene/purged decoys. `interactions` has ties, zeros,
- * explicit nulls (`null`) and missing keys (`undefined`); recordings and Outreach
- * counts vary independently so the filters narrow to distinct sets.
+ * explicit nulls (`null`) and missing keys (`undefined`); recordings and calls
+ * vary independently so the filters narrow to distinct sets.
  */
 const INTERACTIONS: Array<number | null | undefined> = [
   5, 0, 3, null, 3, 12, 0, undefined, 1, 5, 5, 0, 7, null, 2, 3, undefined, 12, 1, 0, 9, 5, null, 4, 0, 6, 3, undefined, 8, 1,
@@ -121,11 +121,7 @@ function fixture(): Row[] {
       last_outbound_at: null,
       attached_lead_count: 0,
       candidate_lead_count: 0,
-      open_outreach_count: 0,
       recordings_total: i % 3 === 0 ? 2 : 0,
-      conversations_analyzed_total: i % 6 === 0 ? 1 : 0,
-      last_analyzed_at: i % 6 === 0 ? day(i) : null,
-      outreach_records_total: i % 4 === 0 ? 1 : 0,
     };
     if (n !== undefined) rollups.interactions_total = n;
     if (i === 29) delete rollups.recordings_total; // pre-sweep row: missing is "no recording"
@@ -143,7 +139,6 @@ function fixture(): Row[] {
       first_observed_at: day(i % 7),
       last_activity_at: day(40 + (i % 5)),
       rollups: rollups as unknown as ContactNumberLean["rollups"],
-      running_summary: null,
       purged_at: null,
     };
   });
@@ -174,15 +169,13 @@ async function pageAll(rows: Row[], input: Record<string, unknown>, limit: numbe
   throw new Error("pager did not terminate");
 }
 
-test("S2 query schema: new sorts and the two Analysis filters parse; booleans are query-string safe", () => {
+test("S2 query schema: new sorts and the recording filter parse; booleans are query-string safe; the retired Outreach filter is rejected", () => {
   for (const sort of ["last_call", "first_call", "interactions"]) assert.equal(query({ sort }).sort, sort);
   assert.equal(query({}).has_recording, false);
-  assert.equal(query({}).has_outreach, false);
   assert.equal(query({ has_recording: "true" }).has_recording, true);
   assert.equal(query({ has_recording: "false" }).has_recording, false, "`false` never inverts to true");
-  assert.equal(query({ has_outreach: true }).has_outreach, true);
   assert.throws(() => query({ has_recording: "yes" }));
-  assert.throws(() => query({ has_outreach: "1" }));
+  assert.throws(() => query({ has_outreach: "true" }), "strict schema: no Outreach filter");
   assert.throws(() => query({ sort: "calls" }));
 });
 
@@ -304,37 +297,33 @@ test("S2 cursor value is typed by sort: a date on interactions or a number on a 
   const numericOnTime = Buffer.from(JSON.stringify({ ...td, value: 5 })).toString("base64url");
   assert.throws(() => decodeNumberSortCursor(numericOnTime, t, resolveNumberSort(t)), isInvalid);
   // An interactions cursor never continues a different sort, direction or filter set.
-  for (const other of [{ sort: "interactions", direction: "asc" }, { sort: "last_call" }, { sort: "interactions", has_recording: "true" }, { sort: "interactions", has_outreach: "true" }]) {
+  for (const other of [{ sort: "interactions", direction: "asc" }, { sort: "last_call" }, { sort: "interactions", has_recording: "true" }, { sort: "interactions", has_calls: "true" }]) {
     const oq = query({ ...other, limit: 7, cursor: page.next! });
     await assert.rejects(pageNumberSearch(oq, { kind: "none" }, memorySource(rows)), isInvalid, JSON.stringify(other));
   }
 });
 
-test("S2 has_recording / has_outreach: residual > 0 predicates, bound into the digest only when set", () => {
+test("S2 has_recording: a residual > 0 predicate, bound into the digest only when set", () => {
   const plain = buildNumberSearchFilter(query({}), null);
   assert.equal(plain["rollups.recordings_total"], undefined);
-  assert.equal(plain["rollups.outreach_records_total"], undefined);
-  const both = buildNumberSearchFilter(query({ has_recording: "true", has_outreach: "true", active_from: "2026-09-01T00:00:00.000Z" }), null);
-  assert.deepEqual(both["rollups.recordings_total"], { $gt: 0 });
-  assert.deepEqual(both["rollups.outreach_records_total"], { $gt: 0 });
-  assert.deepEqual(both.last_activity_at, { $gte: new Date("2026-09-01T00:00:00.000Z") });
-  assert.equal(both.kind, "external", "kind stays the index prefix");
+  const filtered = buildNumberSearchFilter(query({ has_recording: "true", active_from: "2026-09-01T00:00:00.000Z" }), null);
+  assert.deepEqual(filtered["rollups.recordings_total"], { $gt: 0 });
+  assert.deepEqual(filtered.last_activity_at, { $gte: new Date("2026-09-01T00:00:00.000Z") });
+  assert.equal(filtered.kind, "external", "kind stays the index prefix");
   const spec: NumberSortSpec = { sort: "interactions", direction: "desc" };
   const d = (input: Record<string, unknown>) => numberSearchDigest(query({ sort: "interactions", ...input }), spec);
-  assert.equal(d({ has_recording: "false", has_outreach: "false" }), d({}), "false/absent leave the pre-S2 digest unchanged");
+  assert.equal(d({ has_recording: "false" }), d({}), "false/absent leave the pre-S2 digest unchanged");
   assert.notEqual(d({ has_recording: "true" }), d({}));
-  assert.notEqual(d({ has_outreach: "true" }), d({}));
-  assert.notEqual(d({ has_recording: "true" }), d({ has_outreach: "true" }));
+  assert.notEqual(d({ has_recording: "true" }), d({ has_calls: "true" }));
 });
 
 test("S2 filters narrow every sort and page exactly (value and null segments), including the legacy path", async () => {
   const rows = fixture();
   const hasRec = (r: Row) => ((r.rollups as { recordings_total?: number }).recordings_total ?? 0) > 0;
-  const hasOut = (r: Row) => ((r.rollups as { outreach_records_total?: number }).outreach_records_total ?? 0) > 0;
+  const called = (r: Row) => typeof r.rollups.interactions_total === "number" && r.rollups.interactions_total > 0;
   for (const [input, keep] of [
     [{ has_recording: "true" }, hasRec],
-    [{ has_outreach: "true" }, hasOut],
-    [{ has_recording: "true", has_outreach: "true" }, (r: Row) => hasRec(r) && hasOut(r)],
+    [{ has_recording: "true", has_calls: "true" }, (r: Row) => hasRec(r) && called(r)],
   ] as const) {
     for (const sort of ["interactions", "last_call", "first_call"] as const) {
       for (const direction of ["desc", "asc"] as const) {
@@ -360,20 +349,20 @@ test("S2 filters narrow every sort and page exactly (value and null segments), i
   assert.equal(seen.includes(String(oid(0x200 + 29))), false);
 });
 
-test("S2 filter hint: an unsearched has_recording/has_outreach request reads through the sort's kind index; q and unfiltered requests are unchanged", async () => {
+test("S2 filter hint: an unsearched has_recording/has_calls request reads through the sort's kind index; q and unfiltered requests are unchanged", async () => {
   const rows = fixture();
   const none = { kind: "none" } as const;
   assert.equal(numberFilterHint(query({ has_recording: "true" }), "interactions", none), "contact_number_kind_interactions");
-  assert.equal(numberFilterHint(query({ has_outreach: "true" }), "last_call", none), "contact_number_kind_activity");
-  assert.equal(numberFilterHint(query({ has_outreach: "true" }), "first_call", none), "contact_number_kind_first_observed");
-  assert.equal(numberFilterHint(query({ has_outreach: "true" }), "last_human_conversation", none), "contact_number_kind_human_conversation");
+  assert.equal(numberFilterHint(query({ has_recording: "true" }), "last_call", none), "contact_number_kind_activity");
+  assert.equal(numberFilterHint(query({ has_recording: "true" }), "first_call", none), "contact_number_kind_first_observed");
+  assert.equal(numberFilterHint(query({ has_recording: "true" }), "last_human_conversation", none), "contact_number_kind_human_conversation");
   assert.equal(numberFilterHint(query({}), "interactions", none), undefined);
   assert.equal(numberFilterHint(query({ has_recording: "true", q: "synthetic" }), "interactions", parseSearchTerm("synthetic")), undefined);
   const sorted = memorySource(rows);
   await pageAll(rows, { sort: "interactions", has_recording: "true" }, 7, sorted);
   assert.ok(sorted.hints.length > 0 && sorted.hints.every((h) => h === "contact_number_kind_interactions"), "both segments, every page");
   const legacy = memorySource(rows);
-  const r = await pageNumberSearch(query({ has_outreach: "true", limit: 3 }), none, legacy);
+  const r = await pageNumberSearch(query({ has_recording: "true", limit: 3 }), none, legacy);
   assert.equal(r.hint, "contact_number_kind_activity");
   assert.deepEqual(legacy.hints, ["contact_number_kind_activity"], "the historical path is hinted only when filtered");
   const plain = memorySource(rows);
@@ -396,22 +385,22 @@ test("S2 interactions under q: planner-sorted under the cap; above it every page
   assert.ok(lastCall.hints.every((h) => h === undefined), "last_call keeps the activity path: no candidate count, no hint");
 });
 
-test("S2 row DTO: rollups carry recordings, analysed conversations, last analysed and Outreach totals; defaults on pre-sweep rows", () => {
+test("row DTO: provider-metadata rollups only; a stored retired rollup field never reaches the item; defaults on pre-sweep rows", () => {
   const rows = fixture();
-  const item = toNumberSearchItem(rows[0]!, { kind: "none" });
+  const stale = { ...rows[0]!, rollups: { ...rows[0]!.rollups, open_outreach_count: 3, conversations_analyzed_total: 2, outreach_records_total: 1 } as ContactNumberLean["rollups"] };
+  const item = toNumberSearchItem(stale, { kind: "none" }, { status: "none" });
   assert.equal(item.rollups.recordings_total, 2);
-  assert.equal(item.rollups.conversations_analyzed_total, 1);
-  assert.equal(item.rollups.last_analyzed_at, day(0).toISOString());
-  assert.equal(item.rollups.outreach_records_total, 1);
-  assert.equal(item.rollups.interactions_total, 5, "existing fields are kept");
-  const bare = toNumberSearchItem({ ...rows[1]!, rollups: { interactions_total: 2 } as unknown as ContactNumberLean["rollups"] }, { kind: "none" });
+  assert.equal(item.rollups.interactions_total, 5);
+  assert.deepEqual(Object.keys(item.rollups).sort(), ["attached_lead_count", "candidate_lead_count", "human_conversations_total", "inbound_total",
+    "interactions_total", "last_human_conversation_at", "last_inbound_at", "last_outbound_at", "outbound_total", "recordings_total"]);
+  assert.deepEqual(item.attached_lead, { status: "none" });
+  const bare = toNumberSearchItem({ ...rows[1]!, rollups: { interactions_total: 2 } as unknown as ContactNumberLean["rollups"] }, { kind: "none" }, { status: "multiple" });
   assert.equal(bare.rollups.recordings_total, 0);
-  assert.equal(bare.rollups.conversations_analyzed_total, 0);
-  assert.equal(bare.rollups.last_analyzed_at, null);
-  assert.equal(bare.rollups.outreach_records_total, 0);
-  // Older fixtures without the new keys still parse (additive, optional in the schema).
-  numberSearchItemDtoSchema.parse(NUMBER_DTO_FIXTURES.searchItem);
-  assert.throws(() => numberSearchItemDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.searchItem, rollups: { ...NUMBER_DTO_FIXTURES.searchItem.rollups, recordings_total: -1 } }));
+  assert.deepEqual(bare.attached_lead, { status: "multiple" });
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, rollups: { ...item.rollups, recordings_total: -1 } }));
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, rollups: { ...item.rollups, outreach_records_total: 0 } }), "strict: no Outreach rollup");
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item, attached_lead: { status: "multiple", lead_ref: { model: "FormLead", id: "a".repeat(24) } } }),
+    "multiple carries no Lead field");
 });
 
 // ---------------------------------------------------------------------------
@@ -506,7 +495,7 @@ test("G7 hint: an unsearched has_calls page reads through the sort's kind index;
 
 test("G7 row DTO: created_via resolves null/absent to call; has_calls is interactions_total > 0 (null and missing are false)", () => {
   const rows = fixture();
-  const item = (row: Row) => toNumberSearchItem(row, { kind: "none" });
+  const item = (row: Row) => toNumberSearchItem(row, { kind: "none" }, { status: "none" });
   assert.equal(item(rows[0]!).created_via, "call", "absent → call");
   assert.equal(item({ ...rows[0]!, created_via: null }).created_via, "call", "null → call");
   assert.equal(item({ ...rows[1]!, created_via: "form_lead" }).created_via, "form_lead");
@@ -514,7 +503,5 @@ test("G7 row DTO: created_via resolves null/absent to call; has_calls is interac
   assert.equal(item(rows[1]!).has_calls, false, "zero");
   assert.equal(item(rows[3]!).has_calls, false, "null");
   assert.equal(item(rows[7]!).has_calls, false, "missing");
-  // Additive: an item without the two fields (older server) still parses; bad values do not.
-  numberSearchItemDtoSchema.parse(NUMBER_DTO_FIXTURES.searchItem);
-  assert.throws(() => numberSearchItemDtoSchema.parse({ ...NUMBER_DTO_FIXTURES.searchItem, created_via: "sheet" }));
+  assert.throws(() => numberSearchItemDtoSchema.parse({ ...item(rows[0]!), created_via: "sheet" }));
 });

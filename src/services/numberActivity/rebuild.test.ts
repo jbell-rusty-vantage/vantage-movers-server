@@ -27,7 +27,7 @@ test("recount replays stored canonical interactions through the CSI-02 counting 
   const human: InteractionProjection = { ...inboundProjection, started_at: at(900), contact_type: "human_conversation", contact_type_basis: "owner" };
 
   const rebuilt = recountNumber({
-    number: { first_observed_at: at(5000), last_activity_at: at(5000), rollups: { last_meaningful_contact_at: at(42) } },
+    number: { first_observed_at: at(5000), last_activity_at: at(5000) },
     interactions: [outboundProjection, inboundProjection, human],
     attachments: [
       { state: "attached", lead_snapshot: { name: "Jane Customer", job_no: "J-1001", receiver_agent_name: "Alex Agent" } },
@@ -35,7 +35,6 @@ test("recount replays stored canonical interactions through the CSI-02 counting 
       { state: "ambiguous", lead_snapshot: null },
       { state: "rejected", lead_snapshot: { name: "Wrong Person", job_no: "J-9", receiver_agent_name: null } },
     ],
-    open_outreach_count: 2,
   });
 
   assert.equal(rebuilt.rollups.interactions_total, 3, "each canonical interaction counted once");
@@ -45,20 +44,17 @@ test("recount replays stored canonical interactions through the CSI-02 counting 
   assert.equal(rebuilt.rollups.last_inbound_at?.toISOString(), at(900).toISOString());
   assert.equal(rebuilt.rollups.last_outbound_at?.toISOString(), at(500).toISOString());
   assert.equal(rebuilt.rollups.last_human_conversation_at?.toISOString(), at(900).toISOString());
-  assert.equal(rebuilt.rollups.last_meaningful_contact_at?.toISOString(), at(42).toISOString(), "Team C fact preserved, never derived");
   assert.equal(rebuilt.rollups.attached_lead_count, 1);
   assert.equal(rebuilt.rollups.candidate_lead_count, 2, "candidate + ambiguous");
-  assert.equal(rebuilt.rollups.open_outreach_count, 2);
   assert.deepEqual(rebuilt.provider_names, ["Synthetic Customer"]);
   assert.deepEqual([...rebuilt.search_terms].sort(), ["alex agent", "j-1001", "jane customer", "synthetic customer"], "rejected attachment terms are not searchable");
   assert.equal(rebuilt.first_observed_at.toISOString(), inboundProjection.started_at.toISOString(), "activity bounds come from evidence, not the stale row");
   assert.equal(rebuilt.last_activity_at.toISOString(), at(900).toISOString());
 
   const empty = recountNumber({
-    number: { first_observed_at: at(1), last_activity_at: at(2), rollups: { last_meaningful_contact_at: null } },
+    number: { first_observed_at: at(1), last_activity_at: at(2) },
     interactions: [],
     attachments: [],
-    open_outreach_count: 0,
   });
   assert.equal(empty.rollups.interactions_total, 0);
   assert.equal(empty.first_observed_at.toISOString(), at(1).toISOString(), "no evidence keeps the stored bounds");
@@ -69,16 +65,14 @@ test("recount is idempotent: recounting the rebuilt fields yields the same field
   const inbound = inboundQueueAnsweredDeliveries("s-rb-3");
   const projection = project([inbound.ringing, inbound.answered, inbound.disconnected], at(10));
   const first = recountNumber({
-    number: { first_observed_at: at(0), last_activity_at: at(0), rollups: { last_meaningful_contact_at: null } },
+    number: { first_observed_at: at(0), last_activity_at: at(0) },
     interactions: [projection],
     attachments: [],
-    open_outreach_count: 0,
   });
   const second = recountNumber({
-    number: { first_observed_at: first.first_observed_at, last_activity_at: first.last_activity_at, rollups: first.rollups },
+    number: { first_observed_at: first.first_observed_at, last_activity_at: first.last_activity_at },
     interactions: [projection],
     attachments: [],
-    open_outreach_count: 0,
   });
   assert.equal(sameRebuiltFields(first, second), true);
   // Incremental CSI-02 rollup for one inbound interaction (persistInteraction.rollupsFor semantics).
@@ -91,14 +85,9 @@ test("recount is idempotent: recounting the rebuilt fields yields the same field
       last_inbound_at: projection.started_at,
       last_outbound_at: null,
       last_human_conversation_at: null,
-      last_meaningful_contact_at: null,
       attached_lead_count: 0,
       candidate_lead_count: 0,
-      open_outreach_count: 0,
       recordings_total: projection.recordings.length,
-      conversations_analyzed_total: 0,
-      last_analyzed_at: null,
-      outreach_records_total: 0,
     },
     provider_names: ["Synthetic Customer"],
     search_terms: ["synthetic customer"],
@@ -130,8 +119,8 @@ test("LP-06 recount repairs a late first_observed_at from calls ingested out of 
   const earliest = { ...base, started_at: at(1_000) };
   const middle = { ...base, started_at: at(5_000) };
   // Stored row as the old create path left it: first_observed_at is the first *processed* call.
-  const stored = { first_observed_at: later.started_at, last_activity_at: later.started_at, rollups: { last_meaningful_contact_at: null } };
-  const repaired = recountNumber({ number: stored, interactions: [later, earliest, middle], attachments: [], open_outreach_count: 0 });
+  const stored = { first_observed_at: later.started_at, last_activity_at: later.started_at };
+  const repaired = recountNumber({ number: stored, interactions: [later, earliest, middle], attachments: [] });
   assert.equal(repaired.first_observed_at.toISOString(), at(1_000).toISOString(), "lowered to the earliest canonical interaction");
   assert.equal(repaired.last_activity_at.toISOString(), at(9_000).toISOString(), "last activity stays the latest call");
   // `loadRebuildEvidence` passes canonical rows only (`merged_into_id: null`); with the earliest row merged away the value is raised.
@@ -139,7 +128,6 @@ test("LP-06 recount repairs a late first_observed_at from calls ingested out of 
     number: { ...stored, first_observed_at: at(1_000) },
     interactions: [later, middle],
     attachments: [],
-    open_outreach_count: 0,
   });
   assert.equal(raised.first_observed_at.toISOString(), at(5_000).toISOString(), "raised when the earliest evidence is no longer canonical");
   assert.equal(
@@ -149,35 +137,27 @@ test("LP-06 recount repairs a late first_observed_at from calls ingested out of 
   );
 });
 
-test("S1-ROLLUP recount: recordings, analysed conversations and Outreach records come from the stored evidence", () => {
+test("recount: provider recordings come from canonical interactions; a stored retired rollup field is a change the rebuild drops", () => {
   const inbound = inboundQueueAnsweredDeliveries("s-rb-s1");
   const base = project([inbound.ringing, inbound.answered, inbound.disconnected], at(10));
   const withRecordings = (n: number): InteractionProjection => ({ ...base, recordings: Array.from({ length: n }, (_, i) => ({
     provider_recording_id: `r-${n}-${i}`, recording_type: null, observed_at: at(0), lead_conversation_id: null })) });
   const rebuilt = recountNumber({
-    number: { first_observed_at: at(0), last_activity_at: at(0), rollups: { last_meaningful_contact_at: null } },
+    number: { first_observed_at: at(0), last_activity_at: at(0) },
     interactions: [withRecordings(0), withRecordings(1), withRecordings(2)],
     attachments: [],
-    open_outreach_count: 1,
-    analyzed_conversations: { total: 2, last_started_at: at(700) },
-    outreach_records_total: 3,
   });
   assert.equal(rebuilt.rollups.recordings_total, 3, "0 + 1 + 2");
-  assert.equal(rebuilt.rollups.conversations_analyzed_total, 2);
-  assert.equal(rebuilt.rollups.last_analyzed_at?.toISOString(), at(700).toISOString());
-  assert.equal(rebuilt.rollups.outreach_records_total, 3);
-  assert.equal(rebuilt.rollups.open_outreach_count, 1, "open_outreach_count unchanged");
-  const legacyCaller = recountNumber({ number: { first_observed_at: at(0), last_activity_at: at(0), rollups: {} }, interactions: [], attachments: [], open_outreach_count: 0 });
-  assert.equal(legacyCaller.rollups.conversations_analyzed_total, 0);
-  assert.equal(legacyCaller.rollups.last_analyzed_at, null);
-  assert.equal(legacyCaller.rollups.outreach_records_total, 0);
-  // Idempotent on the new fields.
+  assert.deepEqual(Object.keys(rebuilt.rollups).sort(), ["attached_lead_count", "candidate_lead_count", "human_conversations_total", "inbound_total",
+    "interactions_total", "last_human_conversation_at", "last_inbound_at", "last_outbound_at", "outbound_total", "recordings_total"]);
   assert.equal(sameRebuiltFields(rebuilt, { ...rebuilt, rollups: { ...rebuilt.rollups } }), true);
-  for (const field of ["recordings_total", "conversations_analyzed_total", "outreach_records_total"] as const) {
-    assert.equal(sameRebuiltFields({ ...rebuilt, rollups: { ...rebuilt.rollups, [field]: rebuilt.rollups[field] + 1 } }, rebuilt), false, field);
+  assert.equal(sameRebuiltFields({ ...rebuilt, rollups: { ...rebuilt.rollups, recordings_total: 4 } }, rebuilt), false);
+  // A Number stored before the slimming still carries Outreach/analysis rollups: the rebuild rewrites `rollups` without them.
+  for (const field of ["open_outreach_count", "conversations_analyzed_total", "last_analyzed_at", "outreach_records_total", "last_meaningful_contact_at"]) {
+    assert.equal(sameRebuiltFields({ ...rebuilt, rollups: { ...rebuilt.rollups, [field]: 0 } as never }, rebuilt), false, field);
   }
-  assert.equal(sameRebuiltFields({ ...rebuilt, rollups: { ...rebuilt.rollups, last_analyzed_at: at(1) } }, rebuilt), false);
-  // A Number stored before S1 has no such fields: the rebuild writes them once, even when every count is zero.
-  const { recordings_total: _r, conversations_analyzed_total: _c, last_analyzed_at: _l, outreach_records_total: _o, ...legacyRollups } = legacyCaller.rollups;
-  assert.equal(sameRebuiltFields({ ...legacyCaller, rollups: legacyRollups as never }, legacyCaller), false);
+  // A Number stored before `recordings_total` existed lacks it: the rebuild writes it once, even when it is zero.
+  const empty = recountNumber({ number: { first_observed_at: at(0), last_activity_at: at(0) }, interactions: [], attachments: [] });
+  const { recordings_total: _r, ...legacyRollups } = empty.rollups;
+  assert.equal(sameRebuiltFields({ ...empty, rollups: legacyRollups as never }, empty), false);
 });

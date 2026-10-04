@@ -31,23 +31,6 @@ import {
   projectGranotLifecycleHealth,
 } from "../services/granotLifecycle/projections";
 import {
-  listLiveWebhookReceiptSnapshot,
-  listLiveWebhookReceiptsAfter,
-  listLiveWebhookReceiptsUpdated,
-  type LiveReceiptCursor,
-  type LiveWebhookReceipt,
-} from "../services/granotLifecycle/liveReceipts";
-import {
-  searchReceipts,
-  type GranotWebhookReceiptListPage,
-} from "../services/granotLifecycle/receiptSearch";
-import {
-  LIVE_RECEIPT_HEARTBEAT_MS,
-  LIVE_RECEIPT_MAX_MS,
-  LIVE_RECEIPT_POLL_MS,
-  runLiveReceiptSse,
-} from "../services/granotLifecycle/liveReceiptStream";
-import {
   confirmBooking as confirmGranotBooking,
   createReferralBooking as createGranotReferralBooking,
   updateExistingBooking as updateGranotBooking,
@@ -112,8 +95,6 @@ import {
   granotLifecycleDiscrepancyNoActionCommandSchema,
   granotLifecycleDiscrepancyParamsSchema,
   granotLifecycleReEvaluateDiscrepancyCommandSchema,
-  granotLifecycleReceiptSearchQuerySchema,
-  type GranotLifecycleReceiptSearchQuery,
 } from "../validation/v1/granotLifecycle.validation";
 
 export type GranotLifecycleAdminRouteDeps = {
@@ -142,15 +123,6 @@ export type GranotLifecycleAdminRouteDeps = {
   reEvaluateDiscrepancy?: (input: ReEvaluateDiscrepancyInput) => Promise<DiscrepancyOwnerCommandResult>;
   correctRecordLink?: (input: CorrectRecordLinkInput) => Promise<DiscrepancyOwnerCommandResult>;
   discrepancyNoAction?: (input: DiscrepancyNoActionInput) => Promise<DiscrepancyOwnerCommandResult>;
-  listLiveReceiptSnapshot?: () => Promise<LiveWebhookReceipt[]>;
-  listLiveReceiptsAfter?: (cursor: LiveReceiptCursor) => Promise<LiveWebhookReceipt[]>;
-  listLiveReceiptsUpdated?: () => Promise<LiveWebhookReceipt[]>;
-  searchReceipts?: (query: GranotLifecycleReceiptSearchQuery) => Promise<GranotWebhookReceiptListPage>;
-  liveStreamSleep?: (ms: number) => Promise<void>;
-  liveStreamNow?: () => number;
-  liveStreamPollMs?: number;
-  liveStreamHeartbeatMs?: number;
-  liveStreamMaxMs?: number;
 };
 
 type EnvelopeForRoute = {
@@ -189,70 +161,6 @@ export function createGranotLifecycleAdminRouter(
   const reEvaluateDiscrepancy = deps.reEvaluateDiscrepancy ?? reEvaluateGranotDiscrepancy;
   const correctRecordLink = deps.correctRecordLink ?? correctDiscrepancyRecordLink;
   const discrepancyNoAction = deps.discrepancyNoAction ?? resolveGranotDiscrepancyNoAction;
-  const listLiveSnapshot = deps.listLiveReceiptSnapshot ?? listLiveWebhookReceiptSnapshot;
-  const listLiveAfter = deps.listLiveReceiptsAfter ?? listLiveWebhookReceiptsAfter;
-  const listLiveUpdated = deps.listLiveReceiptsUpdated ?? listLiveWebhookReceiptsUpdated;
-  const searchWebhookReceipts = deps.searchReceipts ?? searchReceipts;
-
-  router.get("/api/v1/admin/granot-lifecycle/receipts/live", async (req, res) => {
-    try {
-      await connect();
-      requireRegistryOwnerActor(req, auth(req));
-    } catch (error) {
-      return sendError(res, error, requestId(req));
-    }
-
-    res.status(200);
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-
-    const abort = new AbortController();
-    req.on("close", () => abort.abort());
-    try {
-      await runLiveReceiptSse(
-        {
-          write: (chunk) => {
-            res.write(chunk);
-          },
-        },
-        {
-          listSnapshot: listLiveSnapshot,
-          listAfter: listLiveAfter,
-          listUpdated: listLiveUpdated,
-          sleep: deps.liveStreamSleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
-          now: deps.liveStreamNow ?? Date.now,
-          pollMs: deps.liveStreamPollMs ?? LIVE_RECEIPT_POLL_MS,
-          heartbeatMs: deps.liveStreamHeartbeatMs ?? LIVE_RECEIPT_HEARTBEAT_MS,
-          maxMs: deps.liveStreamMaxMs ?? LIVE_RECEIPT_MAX_MS,
-          signal: abort.signal,
-        },
-        req.header("last-event-id"),
-      );
-    } catch (error) {
-      if (!res.writableEnded) {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: "Live stream failed" })}\n\n`);
-      }
-      void error;
-    }
-    if (!res.writableEnded) {
-      res.end();
-    }
-  });
-
-  router.get("/api/v1/admin/granot-lifecycle/receipts", async (req, res) => {
-    try {
-      await connect();
-      requireRegistryOwnerActor(req, auth(req));
-      const query = granotLifecycleReceiptSearchQuerySchema.parse(req.query);
-      const data = await searchWebhookReceipts(query);
-      return res.status(200).json({ ok: true, data });
-    } catch (error) {
-      return sendError(res, error, requestId(req));
-    }
-  });
 
   router.get("/api/v1/admin/granot-lifecycle/discrepancies", async (req, res) => {
     try {

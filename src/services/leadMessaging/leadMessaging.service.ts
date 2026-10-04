@@ -32,7 +32,6 @@ import {
   recordLeadMessageSkipped,
 } from "../dailyOperations/recordDomainFacts";
 import { ConflictError, NotFoundError } from "../errors";
-import { recordOperationalEvent } from "../observability";
 import { toObjectId } from "../../utils/objectId";
 import {
   LEAD_CONFIRMATION_MESSAGE_KEY,
@@ -414,7 +413,7 @@ export async function dispatchPersistedLeadMessage(
       },
     );
     if (persisted.modifiedCount !== 1) {
-      await recordMessagingEvent(
+      logMessagingEvent(
         message,
         "error",
         "lead_message.accepted_after_lease_expired",
@@ -426,7 +425,7 @@ export async function dispatchPersistedLeadMessage(
       return { message_id: message._id.toString(), status: "uncertain" };
     }
   } catch (error) {
-    await recordMessagingEvent(
+    logMessagingEvent(
       message,
       "error",
       "lead_message.accepted_persistence_failed",
@@ -438,21 +437,11 @@ export async function dispatchPersistedLeadMessage(
     );
     return { message_id: message._id.toString(), status: "uncertain" };
   }
-  try {
-    await recordMessagingEvent(message, "info", "lead_message.accepted", {
-      twilio_message_sid: result.sid,
-      provider_status: providerStatus,
-      scheduled_send_at: sendInput?.sendAt?.toISOString() ?? null,
-    });
-  } catch (error) {
-    logger.error({
-      err: error,
-      msg: "lead_message.accepted_event_failed",
-      leadMessageId: message._id.toString(),
-      twilio_message_sid: result.sid,
-      provider_status: providerStatus,
-    });
-  }
+  logMessagingEvent(message, "info", "lead_message.accepted", {
+    twilio_message_sid: result.sid,
+    provider_status: providerStatus,
+    scheduled_send_at: sendInput?.sendAt?.toISOString() ?? null,
+  });
   await recordLeadMessageAfterTwilioAccept({
     message,
     sendAt: sendInput?.sendAt,
@@ -517,7 +506,7 @@ async function handleDispatchFailure(
     },
   );
   if (persisted.modifiedCount !== 1) {
-    await recordMessagingEvent(
+    logMessagingEvent(
       message,
       "error",
       "lead_message.failure_after_lease_expired",
@@ -528,7 +517,7 @@ async function handleDispatchFailure(
     );
     return { message_id: message._id.toString(), status: "uncertain" };
   }
-  await recordMessagingEvent(message, "error", "lead_message.dispatch_failed", {
+  logMessagingEvent(message, "error", "lead_message.dispatch_failed", {
     status,
     http_status: parsed.status,
     error_code: parsed.code,
@@ -602,15 +591,12 @@ export async function runLeadMessagingDrain(
     claimed += 1;
     outcomes[result.status] = (outcomes[result.status] ?? 0) + 1;
   }
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "lead_messaging.drain.completed",
-    category: "messaging",
+  logger.info({
+    msg: "lead_messaging.drain.completed",
     workflow: "lead_messaging_drain",
-    summary: "Lead messaging drain completed.",
-    details: { source, claimed, outcomes },
-    notificationCandidate: false,
-    reportable: false,
+    source,
+    claimed,
+    outcomes,
   });
   return { claimed, outcomes };
 }
@@ -969,32 +955,20 @@ export function classifyLeadMessagingFailure(
   return { status: "failed", retryable: false };
 }
 
-async function recordMessagingEvent(
+function logMessagingEvent(
   message: LeadMessageDocument,
   level: "info" | "error",
   eventKey: string,
   details: Record<string, unknown>,
-): Promise<void> {
-  await recordOperationalEvent({
-    level,
-    eventKey,
-    category: "messaging",
+): void {
+  logger[level]({
+    msg: eventKey,
     workflow: "lead_message_dispatch",
-    summary:
-      level === "info"
-        ? "Lead message accepted by provider."
-        : "Lead message dispatch failed.",
-    entity: { type: "form_lead", id: messageLeadId(message) },
-    leadIdentity: { phone: message.to },
-    details: {
-      lead_message_id: message._id.toString(),
-      channel: message.channel,
-      purpose: message.purpose,
-      to: message.to,
-      from: message.from,
-      ...details,
-    },
-    notificationCandidate: false,
+    lead_id: messageLeadId(message),
+    lead_message_id: message._id.toString(),
+    channel: message.channel,
+    purpose: message.purpose,
+    ...details,
   });
 }
 
@@ -1014,37 +988,22 @@ async function recordStatusCallbackEvent(
 ): Promise<void> {
   const failed = ["failed", "undelivered", "canceled"].includes(providerStatus);
   const deliveryFailed = failed && applied;
-  await recordOperationalEvent({
-    level: deliveryFailed ? "error" : "info",
-    eventKey: deliveryFailed
+  logger[deliveryFailed ? "error" : "info"]({
+    msg: deliveryFailed
       ? "lead_message.delivery_failed"
       : applied
         ? "lead_message.status_updated"
         : "lead_message.status_ignored",
-    category: "messaging",
     workflow: "lead_message_delivery",
-    summary: deliveryFailed
-      ? `Lead message delivery changed to ${providerStatus}.`
-      : applied
-        ? `Lead message status changed to ${providerStatus}.`
-        : `Lead message status ${providerStatus} was received but not applied.`,
-    entity: { type: "form_lead", id: messageLeadId(message) },
-    leadIdentity: { phone: message.to },
-    details: {
-      lead_message_id: message._id.toString(),
-      twilio_message_sid: input.messageSid,
-      provider_status: providerStatus,
-      status_applied: applied,
-      channel: message.channel,
-      purpose: message.purpose,
-      to: message.to,
-      from: message.from,
-      error_code: input.errorCode ?? null,
-      error_message: input.errorMessage ?? null,
-    },
-    errorMessage: deliveryFailed ? input.errorMessage ?? providerStatus : null,
-    notificationCandidate: false,
-    reportable: applied,
+    lead_id: messageLeadId(message),
+    lead_message_id: message._id.toString(),
+    twilio_message_sid: input.messageSid,
+    provider_status: providerStatus,
+    status_applied: applied,
+    channel: message.channel,
+    purpose: message.purpose,
+    error_code: input.errorCode ?? null,
+    error_message: input.errorMessage ?? null,
   });
   await recordLeadMessageAfterStatusCallback({
     message,

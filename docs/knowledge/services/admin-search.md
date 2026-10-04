@@ -1,7 +1,7 @@
 ---
 type: Service
 title: Admin Search Service
-description: Global admin free-text search across scoped resources, unlike paginated browse. Browse sibling documents Agents list metric enrichment.
+description: Global admin free-text search across the four Lead/Booking/Cancellation resources (production database only), unlike paginated browse.
 tags: [search, admin]
 status: draft
 stale_after: 2026-11-20
@@ -9,7 +9,6 @@ resource: src/services/admin/adminSearch.service.ts
 applies_to:
   - src/services/admin/adminSearch.service.ts
   - src/services/admin/adminBrowse.service.ts
-  - src/services/admin/agentBrowseMetrics.service.ts
   - src/services/admin/adminExport.service.ts
   - src/services/admin/adminScope.service.ts
   - src/validation/v1/admin.validation.ts
@@ -43,33 +42,24 @@ generated:
 | Param | Default | Notes |
 |-------|---------|-------|
 | `q` | required | Trimmed, min length 1 |
-| `database_scope` | `[REDACTED]` | `[REDACTED]` \| `historical` \| `combined` | // pragma: allowlist secret
+| `database_scope` | omitted | Transitional: omitted or `production` only. `historical` and `combined` return 400 (the historical database was retired in the 2026-10 slimming). | // pragma: allowlist secret
 | `limit` | `5` | Per resource type **after** scopes are flattened; max 25 |
 
 Unlike browse (`adminBrowse.service.ts`), search has no pagination, date filters, or facet filters — only free-text `q`. Schema uses `.strip()`.
 
 ## Database scope
 
-`concreteScopes` in `adminScope.service.ts`:
-
-| `database_scope` | Behavior |
-|------------------|----------|
-| `[REDACTED]` | Live Mongoose models | // pragma: allowlist secret
-| `historical` | `registerHistoricalModels()` |
-| `combined` | Both scopes in parallel; each item tagged with `database_scope` |
-
-Detail endpoints reject `combined` (`rejectCombinedDetailScope`). Search is one of the few reads that allow it.
+Every admin read (search, browse, detail, facets, export, Analytics, Overview) reads the live production models from `getAdminModels()` in `adminScope.service.ts`. The historical database and its models were removed (SLIM-03); handlers validate the query before connecting, so a retired scope never reaches Mongo.
 
 ## Happy path
 
-For each of 6 `SEARCH_CONFIGS` keys, in parallel:
+For each of the 4 `SEARCH_CONFIGS` keys, in parallel:
 
-1. Expand scope → one or two concrete scopes.
-2. Per scope: `q.trim()`; if `mongoose.isValidObjectId(q)` add `{ _id: toObjectId(q) }` **or** (always) regex `$or` across configured string fields (escaped, `/i`).
-3. `find(filter).sort({ createdAt: -1 }).limit(limit).lean()`.
-4. Map → `AdminSearchItem`.
-5. Flatten scopes, **`slice(0, limit)`** per resource (combined can mix scopes but still caps at `limit`).
-6. Drop groups with `items.length === 0`.
+1. `q.trim()`; if `mongoose.isValidObjectId(q)` add `{ _id: toObjectId(q) }` **or** (always) regex `$or` across configured string fields (escaped, `/i`).
+2. `find(filter).sort({ createdAt: -1 }).limit(limit).lean()`.
+3. Map → `AdminSearchItem`.
+4. At most `limit` items per resource.
+5. Drop groups with `items.length === 0`.
 
 No cross-resource ranking. Empty groups omitted (tested: one form-lead hit → one group).
 
@@ -83,8 +73,6 @@ ObjectId probe uses `mongoose.isValidObjectId` (more permissive than 24-hex) the
 | `call-leads` | live + ingested + Granot contact name / email / phone paths (`CALL_LEAD_CONTACT_*_PATHS`), source_company, **three label snapshots**, **source_granularity_key**, job_no | `/call-leads/:id` | booked/unbooked, cancelled |
 | `booked-leads` | job_no, normalized_job_no, customer_name, customer_name_snapshot, source, merchant, `agent_allocations.agent_name_snapshot` | `/bookings/:id` | booked + cancelled if ref set |
 | `cancelled-leads` | job_no, normalized_job_no, customer_name, reason, cancelled_by, source, merchant, agent | `/cancellations/:id` | cancelled |
-| `customers` | full_name, normalized_name, phone_number, email | `/customers/:id` | customer |
-| `agents` | name, normalized_name, role | `/agents/:id` | active/inactive, agent |
 
 Lead badges: `doc.booked` truthy → `booked` else `unbooked`; plus `cancelled` if the ref is set.
 
@@ -98,23 +86,20 @@ Admin browse (`adminBrowse.service.ts`) Form and Call `q` / `name` / `email` / `
 | call-leads | job_no, name, phone, `"Call lead"` | name, email, phone, sourceLabel |
 | booked-leads | job_no, `"Booking"` | customer_name, snapshot, source, merchant |
 | cancelled-leads | job_no, `"Cancellation"` | customer_name, reason, source |
-| customers | full_name, phone, `"Customer"` | email, phone |
-| agents | name, `"Agent"` | role, `"inactive"`/`"active"` |
 
 ## Response shape
 
 ```ts
-{ groups: [{ record_type, items: [{ id, database_scope, primary_label, secondary_label, badges, href }] }] }
+{ groups: [{ record_type, items: [{ id, primary_label, secondary_label, badges, href }] }] }
 ```
 
-`database_scope` on each item tells the UI which DB to open when `combined` was requested.
+Items carry no `database_scope`: every hit is a production record. Customers and Agents are not searchable (their browse resources were removed); the Agent catalog serves the Operations Registry.
 
 ## Skip / fail paths
 
 - Empty / missing `q` → Zod fail
 - No matches → `{ groups: [] }`
-- Combined cap can hide extra historical hits after the flattened `limit`
-- Does **not** filter Duplicate Leads, bad leads, or inactive agents (inactive is a badge only)
+- Does **not** filter Duplicate Leads or bad leads
 
 ## Invariants
 
@@ -126,15 +111,15 @@ Admin browse (`adminBrowse.service.ts`) Form and Call `q` / `name` / `email` / `
 
 | Module | Relationship |
 |--------|----------------|
-| `adminScope.service.ts` | Model resolution + `concreteScopes` |
-| `adminBrowse.service.ts` | Paginated list/filter/detail. Form/Call **Source Company** filter is exact `source_granularity_key` (plus snapshot / catalog id). Historical scope (including the historical half of combined) also exact-matches catalog `company_slug` on the matching channel. Leftover `source_company` is bookmark compatibility only, exact (not substring), and loses when both params are present. Form-leads / call-leads browse accept optional `no_sync`: Yes `{ no_sync: true }`, No `{ no_sync: { $ne: true } }` (missing-field counts as No), omit no clause. Not a global-search filter or badge. Owner desk copy is Hidden from Master Leads; the API field is `no_sync`. **Agents** list and detail call `enrichAgentItems` → `getAgentBrowseMetrics` (`agentBrowseMetrics.service.ts`): distinct Booking rows after unwind+group-by booking. `booking_count` and `cancellation_count` count those Bookings; `total_binder_amount` sums this Agent’s allocations; `total_deposit_amount` takes deposit once per Booking; `cancellation_rate` is `cancellation_count / booking_count` (0 when no Bookings). Date range uses booked-lead prefix (`book_date`), not Agent `createdAt`. Zero-booking Agents still return the five fields as 0. Same fields on `GET /api/v1/admin/agents/:id` detail. |
-| `adminFacets.service.ts` / `filterCatalog.ts` | Filter Catalog (`catalog`) plus compatibility arrays. `"facets"` invalidation evicts production **and** historical caches. Historical catalog attaches label snapshots onto the matching key row; overlay dedupes by `granularity_key` and drops company-slug options when a keyed child exists for that company. |
-| `adminExport.service.ts` | CSV export. Agents columns include `booking_count`, `total_binder_amount`, `total_deposit_amount`, `cancellation_count`, `cancellation_rate`. |
+| `adminScope.service.ts` | `getAdminModels()`: the four production resource models |
+| `adminBrowse.service.ts` | Paginated list/filter/detail. Form/Call **Source Company** filter is exact `source_granularity_key` (plus snapshot / catalog id). Leftover `source_company` is bookmark compatibility only, exact (not substring), and loses when both params are present. Form-leads / call-leads browse accept optional `no_sync`: Yes `{ no_sync: true }`, No `{ no_sync: { $ne: true } }` (missing-field counts as No), omit no clause. Not a global-search filter or badge. Owner desk copy is Hidden from Master Leads; the API field is `no_sync`. Customers and Agents are no longer browse resources: `GET /api/v1/admin/agents` and `/:id` serve the Agent catalog (`{ items }`, honors `include_inactive`) for the Operations Registry. |
+| `adminFacets.service.ts` / `filterCatalog.ts` | Filter Catalog (`catalog`) plus compatibility arrays, production only. `"facets"` invalidation evicts the cache. Catalog rows carry no `origin`. |
+| `adminExport.service.ts` | CSV export for the four Lead/Booking/Cancellation resources. |
 
 ## When to use search vs browse
 
 - **Admin search (this doc):** jump by name, phone, job no, ref no, granularity key, or Mongo id across types.
-- **Admin browse:** tables with pagination, sort, date range, Source Company (`source_granularity_key`), duplicate flag. Agents `/agents` rows are browse-enriched (not catalog-only) when `browseAdminResource("agents")` serves the request.
+- **Admin browse:** tables with pagination, sort, date range, Source Company (`source_granularity_key`), duplicate flag.
 - **Extension lead browse:** [`lead-browse.md`](./lead-browse.md).
 - **Extension POST search:** [`form-lead-search.md`](./form-lead-search.md), [`call-lead-search.md`](./call-lead-search.md).
 

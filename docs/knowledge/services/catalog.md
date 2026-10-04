@@ -127,7 +127,7 @@ Returned `total` is the sum. Preview does not mutate.
 |----------|--------|
 | `agentAllocation.service.ts` | `resolveActiveAgentByName` — **no auto-create** |
 | `bookedLead.service.ts`, `referralBooking.service.ts`, `leadlessBooking.service.ts`, `employeeBookingPreparation.ts` | `resolveActiveMerchantName` — stores canonical display `name` on `BookedLead.merchant` |
-| `adminFacets.service.ts` | [REDACTED] scope: `listCatalogItems` (active only) for agent + merchant dropdowns. Historical scope scans booking `agent_name_snapshot` / `merchant` instead. Combined merges both. Cache TTL 5 minutes. | // pragma: allowlist secret
+| `adminFacets.service.ts` | `listCatalogItems` (active only) for agent + merchant dropdowns, production only (the historical scope and its booking-snapshot scan were retired in the 2026-10 slimming). Cache TTL 5 minutes. | // pragma: allowlist secret
 | `getEmployeeBookingOptions.service.ts` | Active agent + merchant lists for the public employee form |
 
 ## Invariants

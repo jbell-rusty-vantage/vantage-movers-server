@@ -14,7 +14,6 @@ import {
   exportAnalyticsReportCsv,
   rowsForCsv,
 } from "./analyticsExport.service";
-import { mergeAnalyticsPayload } from "./analyticsMerge";
 
 type MutableModel = Record<string, unknown>;
 
@@ -37,7 +36,7 @@ afterEach(() => {
 
 test("analytics validation accepts report filters and rejects invalid report names", () => {
   const query = analyticsQuerySchema.parse({
-    database_scope: "combined",
+    database_scope: "production",
     from: "2026-01-01",
     to: "2026-01-31",
     source_company: "Main Site Forms",
@@ -47,7 +46,7 @@ test("analytics validation accepts report filters and rejects invalid report nam
     granularity: "day",
   });
 
-  assert.equal(query.database_scope, "combined");
+  assert.equal(query.database_scope, "production");
   assert.equal(query.receiver_agent, "507f1f77bcf86cd799439011");
   assert.equal(query.lead_type, "FormLead");
   assert.equal(query.granularity, "day");
@@ -177,7 +176,7 @@ test("booked lead source attribution falls back to the employee source snapshot"
   assert.equal(firstPresent(granularityReferences, bookedOnly), "Old Booked Source");
 });
 
-test("leadMatch matches historical slug options and channel-scoped company slugs", () => {
+test("leadMatch matches a registry granularity by key, label snapshot and id only", () => {
   const catalog: FilterCatalog = {
     source_companies: [],
     source_granularities: [
@@ -190,217 +189,25 @@ test("leadMatch matches historical slug options and channel-scoped company slugs
         channel: "form",
         owner_label: "Top10 Forms",
         active: true,
-        origin: "registry",
-      },
-      {
-        id: "",
-        source_company_id: "",
-        company_slug: "legacy_sheet",
-        company_owner_label: "legacy_sheet",
-        granularity_key: "legacy_sheet",
-        channel: "form",
-        owner_label: "legacy_sheet",
-        active: true,
-        origin: "historical_distinct",
       },
     ],
     agents: [],
     merchants: [],
   };
-  const legacy = leadMatch(
-    "FormLead",
-    analyticsQuerySchema.parse({
-      database_scope: "historical",
-      source_granularity_key: "legacy_sheet",
-    }),
-    catalog,
+
+  const formMatch = inspect(
+    leadMatch(
+      "FormLead",
+      analyticsQuerySchema.parse({ source_granularity_key: "top10_leads_form" }),
+      catalog,
+    ),
+    { depth: null },
   );
-  const legacyPreview = inspect(legacy, { depth: null });
-  assert.match(legacyPreview, /source_company/);
-  assert.match(legacyPreview, /\^legacy_sheet\$/);
 
-  const formMatch = leadMatch(
-    "FormLead",
-    analyticsQuerySchema.parse({
-      database_scope: "combined",
-      source_granularity_key: "top10_leads_form",
-    }),
-    catalog,
-  );
-  const callMatch = leadMatch(
-    "CallLead",
-    analyticsQuerySchema.parse({
-      database_scope: "combined",
-      source_granularity_key: "top10_leads_form",
-    }),
-    catalog,
-  );
-  assert.match(inspect(formMatch, { depth: null }), /\^top10_leads\$/);
-  assert.doesNotMatch(inspect(callMatch, { depth: null }), /\^top10_leads\$/);
-});
-
-test("combined source analytics merge by stable text dimension instead of ids", () => {
-  const merged = mergeAnalyticsPayload("source-company-performance", [
-    {
-      items: [
-        {
-          source_company: "Main Site Forms",
-          bookings: 2,
-          cancelled_bookings: 1,
-          total_deposit_amount: 3000,
-          total_binder_amount: 500,
-        },
-      ],
-    },
-    {
-      items: [
-        {
-          source_company: "main_site",
-          bookings: 3,
-          cancelled_bookings: 1,
-          total_deposit_amount: 4500,
-          total_binder_amount: 750,
-        },
-      ],
-    },
-  ]);
-
-  const items = merged.items as Record<string, unknown>[];
-  assert.equal(items.length, 1);
-  assert.equal(items[0].bookings, 5);
-  assert.equal(items[0].cancelled_bookings, 2);
-  assert.equal(items[0].total_deposit_amount, 7500);
-});
-
-test("combined revenue trend merges rows by date period", () => {
-  const merged = mergeAnalyticsPayload("revenue-trend", [
-    { items: [{ period: "2026-01", bookings: 1, total_deposit_amount: 1000 }] },
-    { items: [{ period: "2026-01", bookings: 2, total_deposit_amount: 2000 }] },
-  ]);
-
-  const items = merged.items as Record<string, unknown>[];
-  assert.equal(items.length, 1);
-  assert.equal(items[0].period, "2026-01");
-  assert.equal(items[0].bookings, 3);
-  assert.equal(items[0].total_deposit_amount, 3000);
-});
-
-test("combined source analytics merge parent metrics and keep company-only extras as leaves", () => {
-  const merged = mergeAnalyticsPayload("source-company-funnel", [
-    {
-      items: [
-        {
-          source_company: "main_site",
-          source_company_label: "Vantage Movers",
-          total_leads: 4,
-          reconciled_bookings: 2,
-          granularities: [
-            {
-              source_granularity_key: "main_site_form",
-              source_granularity_label: "Main Site Forms",
-              total_leads: 4,
-              reconciled_bookings: 2,
-            },
-          ],
-        },
-      ],
-    },
-    {
-      items: [
-        {
-          source_company: "main_site",
-          source_company_label: "main site",
-          total_leads: 6,
-          reconciled_bookings: 3,
-          granularities: [],
-        },
-      ],
-    },
-  ]);
-
-  const items = merged.items as Record<string, unknown>[];
-  const children = items[0].granularities as Array<{ source_granularity_key?: string }>;
-  assert.equal(items[0].total_leads, 10);
-  assert.equal(items[0].reconciled_bookings, 5);
-  assert.equal(items[0].booking_rate, 0.5);
-  assert.equal(children.length, 2);
-  assert.ok(children.some((child) => child.source_granularity_key === "main_site_form"));
-  assert.ok(children.some((child) => child.source_granularity_key === "main_site"));
-});
-
-test("combined receiver-agent analytics merge production rows and keep historical warning metadata", () => {
-  const merged = mergeAnalyticsPayload("receiver-agent-performance", [
-    {
-      items: [
-        {
-          receiver_agent_id: "507f1f77bcf86cd799439011",
-          receiver_agent_name: "Nick Smith",
-          receiver_agent_group: "assigned",
-          received_leads: 2,
-          billable_received_leads: 1,
-          booked_leads: 1,
-          cancelled_leads: 0,
-          total_lead_cost: 100,
-        },
-      ],
-    },
-    {
-      items: [],
-      metadata: {
-        receiver_agent_scope: "unsupported",
-        historical_receiver_agent_supported: false,
-      },
-    },
-  ]);
-
-  const items = merged.items as Record<string, unknown>[];
-  const metadata = merged.metadata as Record<string, unknown>;
-  assert.equal(items.length, 1);
-  assert.equal(items[0].receiver_agent_name, "Nick Smith");
-  assert.equal(items[0].booking_rate, 0.5);
-  assert.equal(items[0].average_cpl, 100);
-  assert.equal(metadata.historical_receiver_agent_supported, false);
-});
-
-test("combined SMS conversion merge keeps production rows and historical warning metadata", () => {
-  const merged = mergeAnalyticsPayload("sms-successfully-sent-then-booked", [
-    {
-      items: [
-        {
-          origin: "all",
-          label: "All",
-          texted_leads: 3,
-          booked_leads: 1,
-          not_booked_leads: 2,
-          booking_rate: 1 / 3,
-        },
-        {
-          origin: "public_form",
-          label: "Public form",
-          texted_leads: 3,
-          booked_leads: 1,
-          not_booked_leads: 2,
-          booking_rate: 1 / 3,
-        },
-      ],
-    },
-    {
-      items: [],
-      metadata: {
-        sms_conversion_scope: "unsupported",
-        historical_sms_conversion_supported: false,
-      },
-    },
-  ]);
-
-  const items = merged.items as Record<string, unknown>[];
-  const metadata = merged.metadata as Record<string, unknown>;
-  assert.equal(items.length, 2);
-  assert.equal(items[0].origin, "all");
-  assert.equal(items[0].texted_leads, 3);
-  assert.equal(items[0].booking_rate, 1 / 3);
-  assert.equal(items[0].not_booked_leads, 2);
-  assert.equal(metadata.historical_sms_conversion_supported, false);
+  assert.match(formMatch, /source_granularity_key/);
+  assert.match(formMatch, /source_granularity_label_snapshot/);
+  assert.match(formMatch, /source_granularity_id/);
+  assert.doesNotMatch(formMatch, /\^top10_leads\$/);
 });
 
 test("analytics CSV export uses the selected report rows", async () => {
@@ -467,10 +274,10 @@ test("analytics CSV export uses the selected report rows", async () => {
   (Agent as unknown as MutableModel).find = () => queryResult([]);
   (Merchant as unknown as MutableModel).find = () => queryResult([]);
 
-  const query = analyticsQuerySchema.parse({ database_scope: "production" });
+  const query = analyticsQuerySchema.parse({});
   const result = await exportAnalyticsReportCsv("source-company-performance", query);
 
-  assert.equal(result.filename, "analytics-source-company-performance-production.csv");
+  assert.equal(result.filename, "analytics-source-company-performance.csv");
   assert.match(
     result.csv,
     /^source_company,source_company_label,source_granularity_key,source_granularity_label,channel/,
@@ -526,7 +333,7 @@ test("source hierarchy CSV rows emit leaves or a childless company, never both",
   assert.equal(rows.some((row) => "granularities" in row), false);
 });
 
-test("combined hierarchy CSV does not duplicate its production contribution", () => {
+test("hierarchy CSV emits granularity leaves without the parent total", () => {
   const rows = rowsForCsv("source-company-funnel", {
     items: [
       {

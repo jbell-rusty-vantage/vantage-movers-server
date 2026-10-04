@@ -4,7 +4,6 @@ import { logger } from "../../logger";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { MongoLeaseStore, type MongoLeaseModel } from "../durableWork/leases";
 import type { LeaseToken } from "../durableWork/types";
-import { recordOperationalEvent } from "../observability";
 import { CsiError } from "../salesIntelligence/auth";
 import {
   ensureCaptureProjectionJob,
@@ -92,7 +91,6 @@ export type RecoveryDependencies = {
   listReceipts: typeof listWebhookReceiptsBetween;
   ensure: typeof ensureCaptureProjectionJob;
   publish: typeof publishCaptureProjectionWakeup;
-  recordEvent: typeof recordOperationalEvent;
   requireFlag: boolean;
 };
 
@@ -120,7 +118,6 @@ export async function runReceiptWatermarkRecovery(
     listReceipts: listWebhookReceiptsBetween,
     ensure: ensureCaptureProjectionJob,
     publish: publishCaptureProjectionWakeup,
-    recordEvent: recordOperationalEvent,
     requireFlag: true,
     ...overrides,
   };
@@ -214,7 +211,7 @@ export async function runReceiptWatermarkRecovery(
           if (ensured.created) {
             summary.created += 1;
             // Recovery-created jobs get the same best-effort wake-up as route-created ones.
-            const wake = await deps.publish(ensured.job_id, { recordEvent: deps.recordEvent });
+            const wake = await deps.publish(ensured.job_id);
             if (wake.published) summary.published += 1;
           } else {
             summary.existing += 1;
@@ -296,22 +293,13 @@ export async function runReceiptWatermarkRecovery(
     );
     if (written.modifiedCount !== 1) throw new LeaseLostError();
     if (summary.created > 0 || summary.quarantined.length > 0) {
-      await deps.recordEvent({
-        level: "warn",
-        eventKey: "sales_intelligence.capture.recovery.gap_closed",
-        category: "ringcentral",
-        workflow: "sales_intelligence",
-        summary: "Receipt watermark recovery created capture-projection jobs the route path had not.",
-        details: {
-          leaseOwnerHash: ownerHash,
-          created: summary.created,
-          scanned: summary.scanned,
-          quarantined: summary.quarantined,
-          budgetExhausted: summary.budget_exhausted,
-        },
-        notificationCandidate: false,
-        reportable: false,
-        piiPolicy: "none",
+      logger.warn({
+        msg: "sales_intelligence.capture.recovery.gap_closed",
+        leaseOwnerHash: ownerHash,
+        created: summary.created,
+        scanned: summary.scanned,
+        quarantined: summary.quarantined,
+        budgetExhausted: summary.budget_exhausted,
       });
     }
     return summary;

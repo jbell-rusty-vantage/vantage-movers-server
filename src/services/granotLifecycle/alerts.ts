@@ -1,5 +1,9 @@
 import { GRANOT_LIFECYCLE_ALERT_THRESHOLDS } from "../../config/domain/granotLifecycle";
-import { getOperationalIncidentModel } from "../../models/OperationalIncident";
+import {
+  markGranotLifecycleAlertFiring,
+  markGranotLifecycleAlertRecovered,
+  readGranotLifecycleAlertRows,
+} from "./healthState";
 import {
   GRANOT_LIFECYCLE_ALERT_CODES,
   emitGranotLifecycleEvent,
@@ -23,8 +27,9 @@ export type GranotLifecycleAlertSnapshot = {
   oldest_due_age_ms: number | null;
   oldest_due_threshold_since: Date | null;
   dead_letter_count: number;
-  capture_503_count_24h: number;
-  claim_recoveries_1h: number;
+  /** Null when the bounded Health window is not fully covered (unknown). */
+  capture_503_count_24h: number | null;
+  claim_recoveries_1h: number | null;
   capture_to_decision_samples_24h: readonly number[];
   ringcentral_lease_held: boolean;
   ringcentral_lease_age_ms: number | null;
@@ -89,20 +94,24 @@ function evaluateDeadLetter(count: number): GranotLifecycleAlertProjection {
   };
 }
 
-function evaluateCaptureUnavailable(count: number): GranotLifecycleAlertProjection {
+function evaluateCaptureUnavailable(count: number | null): GranotLifecycleAlertProjection {
   return {
     code: "capture_unavailable",
-    state: count > GRANOT_LIFECYCLE_ALERT_THRESHOLDS.capture_503_count ? "firing" : "ok",
+    state: count == null
+      ? "insufficient_data"
+      : count > GRANOT_LIFECYCLE_ALERT_THRESHOLDS.capture_503_count ? "firing" : "ok",
     observed_value: count,
     threshold: GRANOT_LIFECYCLE_ALERT_THRESHOLDS.capture_503_count,
     unit: "count",
   };
 }
 
-function evaluateClaimRecovery(count: number): GranotLifecycleAlertProjection {
+function evaluateClaimRecovery(count: number | null): GranotLifecycleAlertProjection {
   return {
     code: "claim_recovery_rate",
-    state: count > GRANOT_LIFECYCLE_ALERT_THRESHOLDS.claim_recovery_per_hour ? "firing" : "ok",
+    state: count == null
+      ? "insufficient_data"
+      : count > GRANOT_LIFECYCLE_ALERT_THRESHOLDS.claim_recovery_per_hour ? "firing" : "ok",
     observed_value: count,
     threshold: GRANOT_LIFECYCLE_ALERT_THRESHOLDS.claim_recovery_per_hour,
     unit: "count",
@@ -190,66 +199,65 @@ export function classifyAlertTransition(
   return null;
 }
 
-function alertDedupeKey(alert: GranotLifecycleAlertProjection): string {
-  return `granot_lifecycle.alert.${alert.code}.${alert.scope_ref ?? "global"}`;
+function alertStateKey(alert: GranotLifecycleAlertProjection): string {
+  return `alert:${alert.code}:${alert.scope_ref ?? "global"}`;
+}
+
+function alertTransitionDetails(alert: GranotLifecycleAlertProjection): Record<string, unknown> {
+  return {
+    alert_code: alert.code,
+    ...(alert.scope_ref ? { scope_ref: alert.scope_ref } : {}),
+    observed_value: alert.observed_value,
+    threshold: alert.threshold,
+    unit: alert.unit,
+    state: alert.state,
+  };
 }
 
 /**
- * Persist firing/recovery transitions only. Repeated evaluation updates the
- * returned projection; it must not fan out incidents.
+ * Persist firing/recovery transitions in the bounded Health state. The row is
+ * compare-and-set, so repeated evaluation, restarts and replicas never fan out
+ * a second transition. A firing alert reports the persisted `since`.
  */
 export async function persistGranotLifecycleAlertTransitions(
   alerts: GranotLifecycleAlertProjection[],
   now: Date = new Date(),
 ): Promise<void> {
   try {
-    const Incident = getOperationalIncidentModel();
-    const keys = alerts.map(alertDedupeKey);
-    const open = await Incident.find({
-      dedupe_key: { $in: keys },
-      status: { $in: ["open", "acknowledged"] },
-    }).select({ dedupe_key: 1 }).lean();
-    const openKeys = new Set(open.map((row) => row.dedupe_key).filter(Boolean));
-
+    const rows = await readGranotLifecycleAlertRows();
     for (const alert of alerts) {
-      const key = alertDedupeKey(alert);
-      const wasOpen = openKeys.has(key);
+      const key = alertStateKey(alert);
+      const row = rows.get(key);
+      const wasOpen = row?.state === "firing";
       const transition = classifyAlertTransition(alert.state, wasOpen);
+      if (alert.state === "firing" && wasOpen) {
+        if (row?.since) alert.since = row.since.toISOString();
+        continue;
+      }
       if (transition === "firing") {
+        const marked = await markGranotLifecycleAlertFiring({
+          key,
+          code: alert.code,
+          scope_ref: alert.scope_ref,
+          now,
+        });
+        if (marked.since) alert.since = marked.since.toISOString();
+        if (!marked.transitioned) continue;
         await emitGranotLifecycleEvent({
           level: "warn",
           eventKey: "granot_lifecycle.alert.firing",
           category: "admin",
           summary: "Granot lifecycle rollout alert entered firing.",
-          details: {
-            alert_code: alert.code,
-            ...(alert.scope_ref ? { scope_ref: alert.scope_ref } : {}),
-            observed_value: alert.observed_value,
-            threshold: alert.threshold,
-            unit: alert.unit,
-            state: alert.state,
-          },
-          dedupeKey: key,
-          piiPolicy: "none",
+          details: alertTransitionDetails(alert),
         });
-        alert.since = now.toISOString();
       } else if (transition === "recovered") {
+        if (!(await markGranotLifecycleAlertRecovered({ key, now }))) continue;
         await emitGranotLifecycleEvent({
           level: "info",
           eventKey: "granot_lifecycle.alert.recovered",
           category: "admin",
           summary: "Granot lifecycle rollout alert recovered.",
-          details: {
-            alert_code: alert.code,
-            ...(alert.scope_ref ? { scope_ref: alert.scope_ref } : {}),
-            observed_value: alert.observed_value,
-            threshold: alert.threshold,
-            unit: alert.unit,
-            state: alert.state,
-          },
-          dedupeKey: key,
-          autoResolveKey: key,
-          piiPolicy: "none",
+          details: alertTransitionDetails(alert),
         });
       }
     }

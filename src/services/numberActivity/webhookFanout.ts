@@ -5,7 +5,6 @@ import { isTestMode, isVantageTestRunner } from "../../config/domain/runtime";
 import { withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
-import { recordOperationalEvent } from "../observability";
 import { enqueueCsiJob } from "../salesIntelligence/jobs";
 
 /**
@@ -101,10 +100,9 @@ export function shouldPublishSalesIntelligenceQueue(): boolean {
 export type PublishDependencies = {
   shouldPublish?: () => boolean;
   send?: (topic: string, payload: { job_id: string }) => Promise<unknown>;
-  recordEvent?: typeof recordOperationalEvent;
 };
 
-/** Post-commit wake-up. Failure is logged and counted, never thrown: the pending job is the durable truth. */
+/** Post-commit wake-up. Failure is logged, never thrown: the pending job is the durable truth. */
 export async function publishCaptureProjectionWakeup(
   jobId: string,
   deps: PublishDependencies = {},
@@ -120,30 +118,18 @@ export async function publishCaptureProjectionWakeup(
       jobId,
       errorName: error instanceof Error ? error.name : "Error",
     });
-    await (deps.recordEvent ?? recordOperationalEvent)({
-      level: "warn",
-      eventKey: "sales_intelligence.queue.publish_failed",
-      category: "ringcentral",
-      workflow: "sales_intelligence",
-      summary: "Capture-projection wake-up publish failed; recovery cron will claim the pending job.",
-      details: { jobId },
-      notificationCandidate: false,
-      reportable: false,
-      piiPolicy: "none",
-    });
     return { published: false, error_code: "publish_failed" };
   }
 }
 
 /**
- * AC6-WAKE (Attention and Case File spec §8.2, P10): post-commit wake-up for the
- * `outreach_ensure` job the Granot lifecycle processor enqueues after it commits a
- * Lead EntityChange. Same topic and payload as `publishCaptureProjectionWakeup`
- * (`{ job_id }`; the consumer routes by the job row's stage). A no-op in tests and
- * off Vercel (`shouldPublishSalesIntelligenceQueue`). Failure is logged and counted,
- * never thrown: the minute Outreach scan stays the backstop and hits the same dedupe key.
+ * Post-commit wake-up for the `attachment-lead:` job the Granot lifecycle processor
+ * enqueues after it commits a Lead EntityChange (`attachment/leadTrigger.ts`). Same topic
+ * and payload as `publishCaptureProjectionWakeup` (`{ job_id }`; the consumer routes by the
+ * job row's stage). A no-op in tests and off Vercel (`shouldPublishSalesIntelligenceQueue`).
+ * Failure is logged, never thrown: the durable Lead-change scan hits the same dedupe key.
  */
-export async function publishOutreachWakeup(
+export async function publishLeadAttachmentWakeup(
   jobId: string,
   deps: PublishDependencies = {},
 ): Promise<{ published: boolean; error_code: "publish_failed" | null }> {
@@ -154,21 +140,10 @@ export async function publishOutreachWakeup(
     return { published: true, error_code: null };
   } catch (error) {
     logger.error({
-      msg: "sales_intelligence.queue.outreach_wakeup_failed",
+      msg: "sales_intelligence.queue.lead_attachment_wakeup_failed",
       jobId,
       errorName: error instanceof Error ? error.name : "Error",
     });
-    await (deps.recordEvent ?? recordOperationalEvent)({
-      level: "warn",
-      eventKey: "sales_intelligence.queue.outreach_wakeup_failed",
-      category: "ringcentral",
-      workflow: "sales_intelligence",
-      summary: "Outreach wake-up publish failed after a Granot change; the minute Outreach scan will claim the pending job.",
-      details: { jobId },
-      notificationCandidate: false,
-      reportable: false,
-      piiPolicy: "none",
-    }).catch(() => undefined);
     return { published: false, error_code: "publish_failed" };
   }
 }
@@ -270,17 +245,6 @@ export async function fanOutCaptureProjection(
   } catch (error) {
     if (error instanceof FanoutTimeoutError) {
       logger.warn({ msg: "sales_intelligence.capture.fanout.enqueue_timeout", receiptId: ref.receiptId, timeoutMs });
-      await (deps.recordEvent ?? recordOperationalEvent)({
-        level: "warn",
-        eventKey: "sales_intelligence.capture.fanout.enqueue_timeout",
-        category: "ringcentral",
-        workflow: "sales_intelligence",
-        summary: "Capture-projection enqueue exceeded the acknowledgement budget; receipt is durable and watermark recovery covers it.",
-        details: { receiptId: ref.receiptId, timeoutMs },
-        notificationCandidate: false,
-        reportable: false,
-        piiPolicy: "none",
-      });
       return { status: "enqueue_timeout", error_code: "enqueue_timeout", timeout_ms: timeoutMs };
     }
     logger.error({
@@ -288,17 +252,7 @@ export async function fanOutCaptureProjection(
       receiptId: ref.receiptId,
       errorName: error instanceof Error ? error.name : "Error",
       errorCode: (error as { code?: unknown } | null)?.code ?? null,
-    });
-    await (deps.recordEvent ?? recordOperationalEvent)({
-      level: "warn",
-      eventKey: "sales_intelligence.capture.fanout.enqueue_failed",
-      category: "ringcentral",
-      workflow: "sales_intelligence",
-      summary: "Capture-projection job could not be enqueued; receipt is durable and watermark recovery will close the gap.",
-      details: { receiptId: ref.receiptId, uuidPresent: ref.uuid !== null },
-      notificationCandidate: false,
-      reportable: false,
-      piiPolicy: "none",
+      uuidPresent: ref.uuid !== null,
     });
     return { status: "enqueue_failed", error_code: "enqueue_failed" };
   }

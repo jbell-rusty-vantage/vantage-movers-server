@@ -15,8 +15,7 @@ import {
 } from "./sourceHierarchy";
 
 export async function getSourceCompanyPerformance(models: AdminModels, query: AnalyticsQuery) {
-  const supportsSourceGranularity = query.database_scope !== "historical";
-  const leaves = await bookedBySource(models, query, supportsSourceGranularity);
+  const leaves = await bookedBySource(models, query);
   const items = await nestObservedSourceRows(leaves, query, {
     additiveFields: [
       "bookings",
@@ -30,22 +29,17 @@ export async function getSourceCompanyPerformance(models: AdminModels, query: An
 }
 
 export async function getSourceCompanyFunnel(models: AdminModels, query: AnalyticsQuery) {
-  const supportsSourceGranularity = query.database_scope !== "historical";
   const [formStats, callStats, bookedStats] = await Promise.all([
-    leadStatsBySource(models, "FormLead", query, supportsSourceGranularity),
-    leadStatsBySource(models, "CallLead", query, supportsSourceGranularity),
-    bookedBySource(models, query, supportsSourceGranularity),
+    leadStatsBySource(models, "FormLead", query),
+    leadStatsBySource(models, "CallLead", query),
+    bookedBySource(models, query),
   ]);
   const bySource = new Map<string, AnalyticsRow>();
   for (const row of [...formStats, ...callStats]) {
     const source = sourceCompanyFromRow(row);
-    const granularity = supportsSourceGranularity
-      ? sourceGranularityFromRow(row)
-      : "";
+    const granularity = sourceGranularityFromRow(row);
     const key = `${source}|${granularity}`;
-    const existing =
-      bySource.get(key) ??
-      baseSourceRow(source, supportsSourceGranularity ? granularity : undefined);
+    const existing = bySource.get(key) ?? baseSourceRow(source, granularity);
     existing.total_leads = numberValue(existing.total_leads) + numberValue(row.total_leads);
     existing.form_leads = numberValue(existing.form_leads) + (row.lead_type === "FormLead" ? numberValue(row.total_leads) : 0);
     existing.call_leads = numberValue(existing.call_leads) + (row.lead_type === "CallLead" ? numberValue(row.total_leads) : 0);
@@ -57,13 +51,9 @@ export async function getSourceCompanyFunnel(models: AdminModels, query: Analyti
   }
   for (const row of bookedStats) {
     const source = sourceCompanyFromRow(row);
-    const granularity = supportsSourceGranularity
-      ? sourceGranularityFromRow(row)
-      : "";
+    const granularity = sourceGranularityFromRow(row);
     const key = `${source}|${granularity}`;
-    const existing =
-      bySource.get(key) ??
-      baseSourceRow(source, supportsSourceGranularity ? granularity : undefined);
+    const existing = bySource.get(key) ?? baseSourceRow(source, granularity);
     existing.reconciled_bookings =
       numberValue(existing.reconciled_bookings) + numberValue(row.bookings);
     existing.reconciled_cancelled_bookings =
@@ -101,8 +91,7 @@ export async function getSourceCompanyFunnel(models: AdminModels, query: Analyti
 }
 
 export async function getLeadSourcePerformance(models: AdminModels, query: AnalyticsQuery) {
-  const supportsSourceGranularity = query.database_scope !== "historical";
-  const leaves = await bookedBySource(models, query, supportsSourceGranularity);
+  const leaves = await bookedBySource(models, query);
   const items = await nestObservedSourceRows(leaves, query, {
     additiveFields: [
       "bookings",
@@ -118,20 +107,17 @@ export async function getLeadSourcePerformance(models: AdminModels, query: Analy
 async function bookedBySource(
   models: AdminModels,
   query: AnalyticsQuery,
-  supportsSourceGranularity: boolean,
 ): Promise<AnalyticsRow[]> {
   return models["booked-leads"].aggregate([
     ...bookedLeadPrefix(query),
     {
       $group: {
-        _id: supportsSourceGranularity
-          ? {
-              source_company: "$derived_source_company",
-              source_granularity_key: {
-                $ifNull: ["$derived_source_granularity_key", "unknown"],
-              },
-            }
-          : "$derived_source_company",
+        _id: {
+          source_company: "$derived_source_company",
+          source_granularity_key: {
+            $ifNull: ["$derived_source_granularity_key", "unknown"],
+          },
+        },
         bookings: { $sum: 1 },
         cancelled_bookings: { $sum: { $cond: ["$is_cancelled", 1, 0] } },
         total_deposit_amount: { $sum: { $ifNull: ["$deposit_amount", 0] } },
@@ -145,21 +131,18 @@ async function leadStatsBySource(
   models: AdminModels,
   leadType: "FormLead" | "CallLead",
   query: AnalyticsQuery,
-  supportsSourceGranularity: boolean,
 ): Promise<AnalyticsRow[]> {
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
   return model.aggregate([
     { $match: await leadMatchForQuery(leadType, query) },
     {
       $group: {
-        _id: supportsSourceGranularity
-          ? {
-              source_company: "$source_company",
-              source_granularity_key: {
-                $ifNull: ["$source_granularity_key", "unknown"],
-              },
-            }
-          : "$source_company",
+        _id: {
+          source_company: "$source_company",
+          source_granularity_key: {
+            $ifNull: ["$source_granularity_key", "unknown"],
+          },
+        },
         total_leads: { $sum: 1 },
         booked_leads: { $sum: { $cond: [{ $ne: [{ $ifNull: ["$booked", null] }, null] }, 1, 0] } },
         cancelled_leads: { $sum: { $cond: [{ $ne: [{ $ifNull: ["$cancelled", null] }, null] }, 1, 0] } },

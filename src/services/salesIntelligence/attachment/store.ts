@@ -10,7 +10,6 @@ import { AUTO_ATTACH_CONTESTED_REASON, AUTO_ATTACH_WITHDRAWN_REASON, SOLE_MATCH_
   planSoleMatch, type PlanEdge } from "./matchSet";
 import { openReview } from "../review/items";
 import { exactEvidence, phoneEvidence, leadSnapshot, type LeadSource } from "./sources";
-import { onAttachmentChanged } from "./hooks";
 
 export type StoredAttachment = InferSchemaType<typeof NumberLeadAttachmentSchema> & { _id: mongoose.Types.ObjectId };
 export function attachmentPolicyInput(row: StoredAttachment): Attachment {
@@ -198,7 +197,6 @@ export async function persistLeadAttachments(lead: LeadSource, model: LeadRef["m
     wrote = await autoAttachNumber(numberId, audit) > 0 || wrote;
     if (wrote) {
       await rebuildAttachmentSearchTerms(numberId, session);
-      await onAttachmentChanged({ number_id: numberId, revision: number.revision }, session);
       await appendCsiAudit(audit, {
         kind: "number", target_id: numberId, subject_key: `number:${numberId}`, revision: number.revision,
         event_kind: "attachment_refreshed", prior: { attachment_revision: prior?.revision ?? null },

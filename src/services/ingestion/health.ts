@@ -1,4 +1,4 @@
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 
 export type IngestionHealthSignal =
   | {
@@ -85,20 +85,13 @@ export function shouldAlertIngestionSignal(
   }
 }
 
-export async function emitIngestionHealthSignal(
-  signal: IngestionHealthSignal,
-): Promise<void> {
+export function emitIngestionHealthSignal(signal: IngestionHealthSignal): void {
   if (!shouldAlertIngestionSignal(signal)) return;
-  const summary = summarize(signal);
-  await recordOperationalEvent({
-    level: "error",
-    eventKey: EVENT_KEYS[signal.key],
-    category: "google_sheets",
+  logger.error({
+    msg: EVENT_KEYS[signal.key],
     workflow: "best_relocation_ingestion",
-    summary,
-    details: signal as unknown as Record<string, unknown>,
-    errorMessage: summary,
-    notificationCandidate: true,
+    summary: summarize(signal),
+    signal,
   });
 }
 

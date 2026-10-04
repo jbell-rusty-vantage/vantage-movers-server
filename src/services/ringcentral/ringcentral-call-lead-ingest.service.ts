@@ -1,7 +1,6 @@
 import { logger } from "../../logger";
 import { withTransaction } from "../../db";
 import { recordAdoptionConflictDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
-import { recordOperationalEvent } from "../observability";
 import {
   beginRingCentralCallLeadIngestion,
   completeCallLeadIngestion,
@@ -96,8 +95,20 @@ export type RingCentralIngestDependencies = {
   ) => Promise<{ _id: { toString(): string } }>;
   insertShadow: typeof insertShadowCallLead;
   upsertProcessedCall: typeof upsertProcessedCall;
-  recordEvent: typeof recordOperationalEvent;
+  /** Diagnostic log sink; tests inject a silent one. */
+  recordEvent: (entry: RingCentralIngestLogEntry) => unknown;
 };
+
+export type RingCentralIngestLogEntry = {
+  level: "info" | "warn";
+  eventKey: string;
+  workflow: string;
+  fields: Record<string, unknown>;
+};
+
+function logRingCentralIngestEvent(entry: RingCentralIngestLogEntry): void {
+  logger[entry.level]({ msg: entry.eventKey, workflow: entry.workflow, ...entry.fields });
+}
 
 const defaultIngestDependencies: RingCentralIngestDependencies = {
   findProcessedCall,
@@ -109,7 +120,7 @@ const defaultIngestDependencies: RingCentralIngestDependencies = {
   createLead: ingestRingCentralCallLead,
   insertShadow: insertShadowCallLead,
   upsertProcessedCall,
-  recordEvent: recordOperationalEvent,
+  recordEvent: logRingCentralIngestEvent,
 };
 
 /**
@@ -150,25 +161,8 @@ export async function ingestRingCentralQualifiedCall(
       callLogId: call.callLogId,
       previousStatus: existing.status,
       ingestionSource: call.ingestionSource,
-    });
-    await deps.recordEvent({
-      level: "info",
-      eventKey: "ringcentral.call_lead.skipped_already_processed",
-      category: "ringcentral",
-      workflow: "ringcentral_call_lead_ingest",
-      summary: "RingCentral call already processed; ingest skipped.",
-      sourceCompany: call.sourceCompany as SourceCompany,
-      entity: existing.callLeadId
-        ? { type: "call_lead", id: existing.callLeadId }
-        : undefined,
-      details: {
-        telephonySessionId: call.telephonySessionId,
-        callLogId: call.callLogId,
-        previousStatus: existing.status,
-        ingestionSource: call.ingestionSource,
-        callLeadId: existing.callLeadId,
-      },
-      reportable: false,
+      sourceCompany: call.sourceCompany,
+      callLeadId: existing.callLeadId,
     });
     return {
       action: "skipped_already_processed",
@@ -194,17 +188,13 @@ export async function ingestRingCentralQualifiedCall(
     await deps.recordEvent({
       level: "info",
       eventKey: "ringcentral.call_lead.convergence_attempted",
-      category: "ringcentral",
       workflow: "ringcentral_call_lead_convergence",
-      summary: "Qualified RingCentral call entered Granot Call Lead convergence.",
-      sourceCompany: call.sourceCompany as SourceCompany,
-      details: {
+      fields: {
+        source_company: call.sourceCompany,
         outcome: "attempted",
         route_id: call.routeResolution.route_id,
         ingestion_source: call.ingestionSource,
       },
-      notificationCandidate: false,
-      reportable: false,
     });
   }
   const convergence = await deps.attemptConvergence({
@@ -219,20 +209,14 @@ export async function ingestRingCentralQualifiedCall(
     await deps.recordEvent({
       level: convergence.duplicate ? "warn" : "info",
       eventKey: "ringcentral.granot_adoption.adopted",
-      category: "ringcentral",
       workflow: "ringcentral_call_lead_convergence",
-      summary: convergence.duplicate
-        ? "Qualified RingCentral call adopted into a Granot-created duplicate Call Lead."
-        : "Qualified RingCentral call adopted into a Granot-created Call Lead.",
-      sourceCompany: call.sourceCompany as SourceCompany,
-      entity: { type: "call_lead", id: convergence.callLeadId },
-      details: {
+      fields: {
+        source_company: call.sourceCompany,
+        call_lead_id: convergence.callLeadId,
         outcome: action,
         route_id: call.routeResolution.route_id,
         ingestion_source: call.ingestionSource,
       },
-      notificationCandidate: false,
-      reportable: false,
     });
     return {
       action,
@@ -254,22 +238,13 @@ export async function ingestRingCentralQualifiedCall(
       eventKey: convergence.outcome === "conflict"
         ? "ringcentral.granot_adoption.conflict"
         : `ringcentral.call_lead.convergence_${convergence.outcome}`,
-      category: "ringcentral",
       workflow: "ringcentral_call_lead_convergence",
-      summary:
-        convergence.outcome === "conflict"
-          ? "Qualified RingCentral call found multiple Granot Call Lead convergence candidates."
-          : convergence.outcome === "not_found"
-            ? "Qualified RingCentral call found no Granot Call Lead convergence candidate."
-            : "Qualified RingCentral call was ineligible for Granot Call Lead convergence.",
-      sourceCompany: call.sourceCompany as SourceCompany,
-      details: {
+      fields: {
+        source_company: call.sourceCompany,
         outcome: convergence.outcome,
         route_id: call.routeResolution.route_id,
         ingestion_source: call.ingestionSource,
       },
-      notificationCandidate: false,
-      reportable: false,
     });
     if (convergence.outcome === "conflict") {
       const fingerprint =
@@ -491,23 +466,16 @@ export async function ingestRingCentralQualifiedCall(
       eventKey: isDuplicateAction
         ? "ringcentral.call_lead.duplicate_created"
         : "ringcentral.call_lead.created",
-      category: "ringcentral",
       workflow: "ringcentral_call_lead_ingest",
-      summary: isDuplicateAction
-        ? "RingCentral qualified call created a duplicate call lead."
-        : "RingCentral qualified call created a call lead.",
-      leadIdentity: { name: call.callerName, phone: call.callerPhoneNumber },
-      sourceCompany: call.sourceCompany,
-      entity: callLeadId ? { type: "call_lead", id: callLeadId } : undefined,
-      details: {
+      fields: {
+        source_company: call.sourceCompany,
+        call_lead_id: callLeadId,
         telephonySessionId: call.telephonySessionId,
         callLogId: call.callLogId,
         ingestionSource: call.ingestionSource,
-        durationSeconds: call.durationSeconds,
         duplicate: duplicate.isDuplicate,
         duplicateReason: duplicate.reason,
       },
-      notificationCandidate: false,
     });
   }
 

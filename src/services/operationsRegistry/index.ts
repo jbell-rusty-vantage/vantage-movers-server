@@ -83,9 +83,7 @@ export {
 } from "./cacheInvalidation";
 export {
   getRegistryRuntimeTelemetry,
-  mergeDurableCompatibilityTelemetry,
   recordCompatibilityRead,
-  recordDurableCompatibilityRead,
   recordRegistryResolverAttempt,
   recordRegistryResolverFailure,
   recordRegistryResolverStaleServe,

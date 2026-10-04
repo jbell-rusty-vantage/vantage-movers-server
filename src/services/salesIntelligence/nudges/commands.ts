@@ -1,17 +1,13 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../../db";
+import { logger } from "../../../logger";
 import { getOwnerRepNudgeModel, OWNER_REP_NUDGE_INDEXES } from "../../../models/OwnerRepNudge";
-import { getOutreachRecordModel } from "../../../models/OutreachRecord";
-import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getSalesIntelligencePolicyPointerModel } from "../../../models/SalesIntelligencePolicyPointer";
 import { csiNudgeCommandSchema } from "../../../validation/v1/salesIntelligence";
 import { CsiError, assertTrustedActor, type CsiActor, csiWorkerActor } from "../auth";
 import { appendCsiAudit, assertIndexes, executeCsiCommand, payloadHash, type CsiTransactionContext } from "../transactions";
 import { lockRepExtension } from "../repIdentity/propose";
-import { lockNumber } from "../attachment/store";
 import { enqueueCsiJob } from "../jobs";
-import { subjectKey } from "../outreach/types";
-import { recordOperationalEvent, type RecordOperationalEventInput } from "../../observability";
 import { ownerRead } from "../../numberActivity/coverage";
 import { checkNudge, assertNudgesEnabled, type NudgeCommand } from "./eligibility";
 import { createNudgeAdapter, assertDirectChat, NudgeProviderError, type NudgeAdapter, type NudgeSubmission } from "./adapters";
@@ -26,51 +22,33 @@ function validateInput(input: NudgeCommandInput) {
   if (!input.idempotency_key.trim() || input.idempotency_key.length > 200) throw new CsiError("INVALID_INPUT");
   return csiNudgeCommandSchema.parse(input.body);
 }
-export async function nudgeOperational(id: string, status: string, errorCode: string | null = null) {
-  await recordOperationalEvent({ level: ["sent", "fallback_sent"].includes(status) ? "info" : "error", eventKey: `sales_intelligence.nudge.${status}`,
-    category: "admin", workflow: "sales_intelligence", summary: `Owner nudge ${status}`, details: { nudge_id: id, error_code: errorCode },
-    entity: { type: "OwnerRepNudge", id }, dedupeKey: `csi:nudge:${id}:${status}`, notificationCandidate: false, piiPolicy: "none" });
+/** Terminal outcome of one message for operators: a structured log, never a stored event. */
+export function logNudgeOutcome(id: string, status: string, errorCode: string | null = null) {
+  const entry = { msg: `sales_intelligence.nudge.${status}`, nudgeId: id, errorCode };
+  if (["sent", "fallback_sent"].includes(status)) logger.info(entry);
+  else logger.error(entry);
 }
-export function nudgeDestinationRejectionEvent(outreachRecordId: string, errorCode: string): RecordOperationalEventInput {
-  return { level: "error", eventKey: "sales_intelligence.nudge.destination_rejected",
-    category: "admin", workflow: "sales_intelligence", summary: "Owner nudge destination rejected",
-    details: { outreach_record_id: outreachRecordId, error_code: errorCode }, entity: { type: "OutreachRecord", id: outreachRecordId },
-    dedupeKey: `csi:nudge:destination-rejected:${outreachRecordId}`, notificationCandidate: false, piiPolicy: "none" };
-}
-async function checked(command: NudgeCommand, actor: CsiActor, now: Date, session?: ClientSession) {
-  try { return await checkNudge(command, actor, now, session); }
-  catch (error) {
-    if (error instanceof CsiError && error.code === "NUDGE_DESTINATION_IS_CUSTOMER" && command.nudge.outreach_record_id)
-      await recordOperationalEvent(nudgeDestinationRejectionEvent(command.nudge.outreach_record_id, error.code));
-    throw error;
-  }
-}
-function rateWindow(result: Awaited<ReturnType<typeof checked>>, now: Date) {
+const directoryKey = (account: string, extension: string) => `directory:${account}:${extension}`;
+function rateWindow(result: Awaited<ReturnType<typeof checkNudge>>, now: Date) {
   return { rc_account_id: result.recipient.account, rc_extension_id: result.recipient.extension, createdAt: { $gt: new Date(+now - 3_600_000) } };
 }
 export async function previewNudge(input: NudgeCommandInput) {
   const command = validateInput(input), now = new Date();
-  const result = await checked(command, input.actor, now);
+  const result = await checkNudge(command, now);
   if (await getOwnerRepNudgeModel().countDocuments(rateWindow(result, now)) >= result.config.hourlyLimit) throw new CsiError("RATE_LIMITED");
   return ownerRead({ body: result.body, template_key: command.nudge.template_key, template_version: command.nudge.template_version, purpose: command.nudge.purpose,
-    expected_revision: result.record?.revision ?? null, expected_rep_revision: result.link?.revision ?? null,
+    expected_rep_revision: result.link?.revision ?? null,
     recipient: { rc_account_id: result.recipient.account, rc_extension_id: result.recipient.extension, directory_name: result.extension.name ?? null,
       agent_id: result.link ? String(result.link.agent_id) : null, agent_name: result.link?.agent_name_snapshot ?? null,
       rep_identity_link_id: result.link ? String(result.link._id) : null, channel: command.nudge.channel }, allowed_channels: result.channels,
     destination_evidence: "stored_checked" as const, provider_destination_verified: false, send_time_revalidation_required: true, authorizes_send: false });
 }
-/** Fence the existing aggregate and number, restoring values: no assignment/action/clock mutation. */
+/** Fence the policy pointer and the User extension, restoring values: no other aggregate is touched. */
 async function fenceEligibility(result: Awaited<ReturnType<typeof checkNudge>>, session: ClientSession) {
   const pointer = await getSalesIntelligencePolicyPointerModel().findOneAndUpdate({ key: "active", version: result.policy.version }, { $inc: { revision: 1 } }, { session, returnDocument: "before", timestamps: false });
   if (!pointer) throw new CsiError("REVISION_CONFLICT");
   await getSalesIntelligencePolicyPointerModel().updateOne({ _id: pointer._id }, { $set: { revision: pointer.revision } }, { session, timestamps: false });
   await lockRepExtension(result.recipient.account, result.recipient.extension, session);
-  if (!result.number || !result.record) return;
-  const numberLock = await lockNumber(String(result.number._id), session);
-  await getContactNumberModel().updateOne({ _id: result.number._id }, { $set: { revision: numberLock.prior_revision, updatedAt: numberLock.prior_updated_at } }, { session, timestamps: false });
-  const updated = await getOutreachRecordModel().updateOne({ _id: result.record._id, revision: result.record.revision }, { $inc: { revision: 1 } }, { session, timestamps: false });
-  if (updated.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
-  await getOutreachRecordModel().updateOne({ _id: result.record._id }, { $set: { revision: result.record.revision } }, { session, timestamps: false });
 }
 export async function scheduleNudgeRepair(id: string, session: ClientSession, at: Date, generation = 0) {
   return enqueueCsiJob({ stage: "nudge_repair", dedupe_key: `csi:nudge-repair:${id}:${generation}`, subject_key: `nudge:${id}`, input_revision: generation + 1, input_refs: [id] }, session, at);
@@ -81,25 +59,24 @@ export async function sendNudge(input: NudgeCommandInput, deps: NudgeDependencie
   assertNudgesEnabled();
   const operation = await executeCsiCommand({ actor: input.actor, idempotency_key: input.idempotency_key, command: "send_nudge", payload: command,
     operation: async context => {
-      const result = await checked(command, input.actor, new Date(), context.session);
+      const result = await checkNudge(command, new Date(), context.session);
       await fenceEligibility(result, context.session);
       await assertIndexes(getOwnerRepNudgeModel().collection, OWNER_REP_NUDGE_INDEXES);
       // All persisted states reserve the User extension rolling hour, including failed and uncertain attempts.
       const count = await getOwnerRepNudgeModel().countDocuments(rateWindow(result, context.now)).session(context.session);
       if (count >= result.config.hourlyLimit) throw new CsiError("RATE_LIMITED");
       const row = new (getOwnerRepNudgeModel())({ idempotency_key: payloadHash([input.actor.id, input.idempotency_key]), actor: input.actor, command_id: context.command_id,
-        authorized_command: command, expected_outreach_revision: command.expected_revision ?? null, outreach_record_id: result.record?._id ?? null, contact_number_id: result.number?._id ?? null,
-        lead_ref: result.record?.subject.kind === "lead" ? { model: result.record.subject.model, id: result.record.subject.id } : null,
+        authorized_command: command,
         rc_account_id: result.recipient.account, rc_extension_id: result.recipient.extension, rc_extension_number: result.extension.extension_number ?? null,
         rc_extension_name_snapshot: result.extension.name ?? null, rep_identity_link_id: result.link?._id ?? null, agent_id: result.link?.agent_id ?? null,
         channel: command.nudge.channel, destination: result.destination,
         recipient_person_id: result.recipient.person, sender_person_id: result.recipient.senderPerson, sender_extension_id: result.recipient.senderExtension, sender_extension_number: result.recipient.senderExtensionNumber, sender_did: result.recipient.senderDid, provider_account_id: result.recipient.account,
         template_key: command.nudge.template_key, template_version: command.nudge.template_version, purpose: command.nudge.purpose, body_as_sent: result.body,
-        preconditions_snapshot: { outreach_state: result.record?.state ?? "directory", overdue: result.facts.overdue, attachment_certainty: result.record?.state === "identity_review" ? "ambiguous" : "stored",
+        preconditions_snapshot: { outreach_state: "directory", overdue: false, attachment_certainty: "stored",
           rep_link_status: result.link?.status ?? "none", policy_version: result.policy.version }, status: "pending", send_expires_at: new Date(+context.now + 60_000) });
       await row.save({ session: context.session });
       await scheduleNudgeRepair(String(row._id), context.session, new Date(+context.now + 120_000));
-      await appendCsiAudit(context, { subject_key: result.record ? subjectKey(result.record.subject) : `directory:${result.recipient.account}:${result.recipient.extension}`, event_kind: "nudge.authorized", kind: "nudge", target_id: String(row._id), revision: 1, prior: {}, current: { status: "pending" } });
+      await appendCsiAudit(context, { subject_key: directoryKey(result.recipient.account, result.recipient.extension), event_kind: "nudge.authorized", kind: "nudge", target_id: String(row._id), revision: 1, prior: {}, current: { status: "pending" } });
       return { nudge_id: String(row._id) };
     } });
   const id = operation.response.nudge_id;
@@ -110,7 +87,7 @@ export async function sendNudge(input: NudgeCommandInput, deps: NudgeDependencie
 async function submitAuthorizedNudge(id: string, command: NudgeCommand, actor: CsiActor, adapter: NudgeAdapter) {
   let beganSubmission = false;
   try {
-    const initial = await checked(command, actor, new Date());
+    const initial = await checkNudge(command, new Date());
     let channel = command.nudge.channel, destination = initial.destination, fallback = false;
     if (channel === "team_messaging") {
       try { destination = assertDirectChat(await adapter.resolveDirect(initial.recipient), initial.recipient); }
@@ -122,7 +99,7 @@ async function submitAuthorizedNudge(id: string, command: NudgeCommand, actor: C
     const submission = await withTransaction(async session => {
       const current = await getOwnerRepNudgeModel().findOne({ _id: id, status: "pending", submission_started_at: null, send_expires_at: { $gt: new Date() } }).session(session).lean();
       if (!current) throw new CsiError("LEASE_LOST");
-      const check = await checked(command, actor, new Date(), session);
+      const check = await checkNudge(command, new Date(), session);
       await fenceEligibility(check, session);
       if (payloadHash(check.recipient) !== payloadHash(initial.recipient) || check.destination !== initial.destination || check.body !== current.body_as_sent ||
           (fallback && (!check.channels.includes("pager") || check.pager !== destination))) throw new CsiError("REVISION_CONFLICT");
@@ -130,7 +107,7 @@ async function submitAuthorizedNudge(id: string, command: NudgeCommand, actor: C
         { $set: { destination, channel, fallback_channel: fallback ? "pager" : null, submission_started_at: new Date() }, $inc: { revision: 1 } }, { session });
       if (changed.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
       await appendCsiAudit({ session, command_id: current.command_id!, now: new Date(), actor }, {
-        subject_key: check.record ? subjectKey(check.record.subject) : `directory:${check.recipient.account}:${check.recipient.extension}`, event_kind: "nudge.submission_started", kind: "nudge", target_id: id, revision: current.revision + 1,
+        subject_key: directoryKey(check.recipient.account, check.recipient.extension), event_kind: "nudge.submission_started", kind: "nudge", target_id: id, revision: current.revision + 1,
         prior: { status: "pending" }, current: { status: "pending", submission_started: true, channel, fallback } });
       return { ...check.recipient, channel, destination, body: current.body_as_sent } satisfies NudgeSubmission;
     });
@@ -148,15 +125,18 @@ async function submitAuthorizedNudge(id: string, command: NudgeCommand, actor: C
     if (!row?.provider_message_id) await finalizeNudge(id, status, code, actor);
   }
 }
+/**
+ * Terminal status under the row's revision fence. Rows written before this release may name an
+ * Outreach record; their audit subject stays on the directory User, and nothing is read from it.
+ */
 export async function finishNudgeInTransaction(row: NudgeRow, status: "sent" | "failed" | "unknown_delivery" | "fallback_sent", error: string | null, context: CsiTransactionContext) {
   // CSI-01 rows predate this revision field; fence their absence and advance the DTO's virtual revision 1.
   const revision = (row.revision ?? 1) + 1;
   const change = await getOwnerRepNudgeModel().updateOne({ _id: row._id, status: "pending", revision: row.revision ?? { $exists: false } },
     { $set: { status, revision, error_code: error, sent_at: ["sent", "fallback_sent"].includes(status) ? row.provider_receipt_at ?? context.now : null } }, { session: context.session });
   if (change.modifiedCount !== 1) return false;
-  const record = await getOutreachRecordModel().findById(row.outreach_record_id).session(context.session).lean();
-  await appendCsiAudit(context, { subject_key: record ? subjectKey(record.subject) : `nudge:${row._id}`, event_kind: ["sent", "fallback_sent"].includes(status) ? "nudge_sent" : `nudge.${status}`,
-    kind: "nudge", target_id: String(row._id), revision, prior: { status: "pending" }, current: { status, error_code: error, nudge_id: String(row._id), outreach_record_id: String(row.outreach_record_id) } });
+  await appendCsiAudit(context, { subject_key: directoryKey(row.rc_account_id, row.rc_extension_id), event_kind: ["sent", "fallback_sent"].includes(status) ? "nudge_sent" : `nudge.${status}`,
+    kind: "nudge", target_id: String(row._id), revision, prior: { status: "pending" }, current: { status, error_code: error, nudge_id: String(row._id) } });
   return true;
 }
 export async function finalizeNudge(id: string, status: "sent" | "failed" | "unknown_delivery" | "fallback_sent", error: string | null, actor?: CsiActor) {
@@ -165,5 +145,5 @@ export async function finalizeNudge(id: string, status: "sent" | "failed" | "unk
     if (!row || row.status !== "pending") return false;
     return finishNudgeInTransaction(row, status, error, { session, command_id: row.command_id ?? new mongoose.Types.ObjectId(id), now: new Date(), actor: actor ?? csiWorkerActor(id) });
   });
-  if (changed) await nudgeOperational(id, status, error);
+  if (changed) logNudgeOutcome(id, status, error);
 }

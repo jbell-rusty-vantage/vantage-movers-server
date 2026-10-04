@@ -22,6 +22,7 @@ import { CsiError } from "../auth";
 import { payloadHash } from "../transactions";
 import { decideAnalysisEligibility, loadEligibilityInputs } from "../conversations/eligibility";
 import { intelligenceFindingSchema } from "../../../validation/intelligence/intelligenceEnvelope.validation";
+import { legacyNumber } from "../legacyNumberFields";
 
 /**
  * AC1 (Attention and Case File spec §3.1, F2): the Outreach part of the Number fingerprint.
@@ -109,7 +110,7 @@ export function actionsOverBound(actions: readonly Pick<FingerprintOutreachActio
 
 /** Bounded source fingerprint deliberately excludes clocks, generic updatedAt and derived analysis. */
 export async function intelligenceSources(numberId: string, session: ClientSession) {
-  const number = await getContactNumberModel().findById(numberId).session(session).lean().orFail();
+  const number = legacyNumber(await getContactNumberModel().findById(numberId).session(session).lean().orFail());
   if (number.content_purge_pending || number.purged_at) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
   const calls = await getCallInteractionModel().find({ contact_number_id: numberId, merged_into_id: null }).sort({ started_at: 1, _id: 1 }).limit(201).session(session).lean();
   const conversations = await getLeadConversationModel().find({ contact_number_id: numberId, latest_transcript_version: { $ne: null } }).sort({ _id: 1 }).limit(101).session(session).lean();

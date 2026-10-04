@@ -17,7 +17,7 @@ import type { ReadContent } from "./reads";
 const summary = { overview: "Synthetic call", customer_wanted: "A move", money_and_dates: "", outcome: "Discussed", commitments: "", discrepancies: "" };
 const fact = { kind: "intent" as const, value: { intent: "moving_inquiry" as const }, claim: "Customer discussed a move", actor: "customer" as const,
   clarity: "clear" as const, action_status: null, speaker: "customer" as const, segment_ids: [7], quote: null };
-const data: ReadContent = { page: { records: [], next_cursor: null, complete: true, missing_ranges: [] }, coverage: { known_through: null, gaps: [], capabilities: {}, ai_paused: false },
+const data: ReadContent = { page: { records: [], next_cursor: null, complete: true, missing_ranges: [] }, coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } },
   instructions: [], speaker_refs: [], allowed_followup_ids: [] };
 type Records = StructuredExpansionInputs["context"][number]["data"]["page"]["records"];
 const page = (snapshot_id: string, records: Records, extra: Partial<ReadContent> = {}) => ({ snapshot_id, data: { ...data, ...extra, page: { ...data.page, records } } });

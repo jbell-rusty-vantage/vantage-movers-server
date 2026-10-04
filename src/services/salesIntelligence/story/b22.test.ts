@@ -21,7 +21,7 @@ import type { StorySubject } from "./types";
  * comparison below needs none.
  */
 process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID ||= "csi-local-proof";
-const coverage = { known_through: S4_AS_OF.toISOString(), gaps: [], capabilities: {}, ai_paused: false };
+const coverage = { known_through: S4_AS_OF.toISOString(), gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 const EARLIER = new Date("2026-08-20T12:00:00.000Z");
 
 async function subjects(): Promise<Array<[string, StorySubject]>> {

@@ -72,7 +72,7 @@ test("actual MCP transport and ToolLoopAgent enforce bounded submit repair", {
         reads.push(name);
         const data: ReadContent = {
           page: { records: [], next_cursor: null, complete: true, missing_ranges: [] },
-          coverage: { known_through: null, gaps: [], capabilities: {}, ai_paused: false },
+          coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } },
           allowed_followup_ids: [], speaker_refs: [], instructions: [],
         };
         return { snapshot_id: `captured-${name}`, data };

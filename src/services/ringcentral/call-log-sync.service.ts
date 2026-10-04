@@ -1,5 +1,4 @@
 import { logger } from "../../logger";
-import { recordOperationalEvent } from "../observability";
 import { ringCentralRequest, RingCentralApiError } from "./client";
 import { vetRingCentralCallLogRecord } from "./call-log-vetting";
 import {
@@ -121,7 +120,6 @@ export type RingCentralCallLogSyncDependencies = {
     perPage: number;
   }) => Promise<unknown[]>;
   ingestCall: typeof ingestRingCentralQualifiedCall;
-  recordEvent: typeof recordOperationalEvent;
   leaseDurationMs: number;
   renewIntervalMs: number;
   maxPages: number;
@@ -142,7 +140,6 @@ const defaultDependencies: RingCentralCallLogSyncDependencies = {
   vetRecord: vetRingCentralCallLogRecord,
   fetchCallLogPage: fetchDetailedInboundCallLogPage,
   ingestCall: ingestRingCentralQualifiedCall,
-  recordEvent: recordOperationalEvent,
   leaseDurationMs: RINGCENTRAL_CALL_LOG_LEASE_DURATION_MS,
   renewIntervalMs: RENEW_INTERVAL_MS,
   maxPages: MAX_PAGES,
@@ -220,21 +217,9 @@ export async function runRingCentralCallLogSync(
     summary.runtimeMs = elapsedMs(runStartedAt, deps.now());
     logger.info({
       msg: "ringcentral.call_log_sync.lease_contended",
-      leaseOwnerHash: ownerHash,
-    });
-    await deps.recordEvent({
-      level: "info",
-      eventKey: "ringcentral.call_log_sync.lease_contended",
-      category: "ringcentral",
-      workflow: "ringcentral_call_log_sync",
-      summary: "RingCentral Call Log sync skipped: another run holds the lease.",
       runId: summary.ranAt,
-      details: {
-        leaseOwnerHash: ownerHash,
-        reason: "lease_held",
-      },
-      notificationCandidate: false,
-      reportable: false,
+      leaseOwnerHash: ownerHash,
+      reason: "lease_held",
     });
     return summary;
   }
@@ -254,39 +239,21 @@ export async function runRingCentralCallLogSync(
   let lastRenewedAt = claim.leaseAcquiredAt;
   let stage: RunStage = "route_snapshot";
 
-  await deps.recordEvent({
-    level: "info",
-    eventKey: "ringcentral.call_log_sync.started",
-    category: "ringcentral",
-    workflow: "ringcentral_call_log_sync",
-    summary: "RingCentral Call Log sync started.",
+  logger.info({
+    msg: "ringcentral.call_log_sync.started",
     runId: summary.ranAt,
-    details: {
-      leaseOwnerHash: ownerHash,
-      windowFrom: summary.windowFrom,
-      windowTo: summary.windowTo,
-      leasedUntil: leaseExpiresAt.toISOString(),
-      recoveredExpiredLease: claim.recovered,
-    },
-    notificationCandidate: false,
-    reportable: false,
+    leaseOwnerHash: ownerHash,
+    windowFrom: summary.windowFrom,
+    windowTo: summary.windowTo,
+    leasedUntil: leaseExpiresAt.toISOString(),
+    recoveredExpiredLease: claim.recovered,
   });
 
   if (claim.recovered) {
     logger.warn({
       msg: "ringcentral.call_log_sync.lease_recovered",
-      leaseOwnerHash: ownerHash,
-    });
-    await deps.recordEvent({
-      level: "warn",
-      eventKey: "ringcentral.call_log_sync.lease_recovered",
-      category: "ringcentral",
-      workflow: "ringcentral_call_log_sync",
-      summary: "RingCentral Call Log sync recovered an expired lease.",
       runId: summary.ranAt,
-      details: { leaseOwnerHash: ownerHash },
-      notificationCandidate: false,
-      reportable: false,
+      leaseOwnerHash: ownerHash,
     });
   }
 
@@ -382,34 +349,6 @@ export async function runRingCentralCallLogSync(
 
     logger.info({ msg: "ringcentral.call_log_sync.completed", ...summary });
 
-    await deps.recordEvent({
-      level: "info",
-      eventKey: "ringcentral.call_log_sync.completed",
-      category: "ringcentral",
-      workflow: "ringcentral_call_log_sync",
-      summary: "RingCentral Call Log sync completed.",
-      runId: summary.ranAt,
-      durationMs: summary.runtimeMs,
-      details: {
-        leaseOwnerHash: ownerHash,
-        windowFrom: summary.windowFrom,
-        windowTo: summary.windowTo,
-        runtimeMs: summary.runtimeMs,
-        fetchedRecords: summary.fetchedRecords,
-        candidateRecords: summary.candidateRecords,
-        qualifiedRecords: summary.qualifiedRecords,
-        adoptedRecords: summary.adoptedRecords,
-        adoptionConflicts: summary.adoptionConflicts,
-        throttledResponses: summary.throttledResponses,
-        leadsCreated: summary.leadsCreated,
-        duplicatesFlagged: summary.duplicatesFlagged,
-        cursorAdvanced: true,
-        ingestActions: summary.ingestActions,
-      },
-      // A clean run resolves any open Call Log sync failure incident.
-      autoResolveKey: `ringcentral.call_log_sync.failed:${resolveEnvironmentName()}`,
-    });
-
     return summary;
   } catch (error) {
     const leaseLost = error instanceof RingCentralCallLogLeaseLostError;
@@ -423,28 +362,7 @@ export async function runRingCentralCallLogSync(
       // No terminal write as the former owner: a successor may already own the
       // state. Committed Unit 20 effects stay valid and are idempotent on the
       // next rescan of the same window.
-      logger.warn({
-        msg: "ringcentral.call_log_sync.lease_lost",
-        leaseOwnerHash: ownerHash,
-        stage,
-      });
-      await deps.recordEvent({
-        level: "warn",
-        eventKey: "ringcentral.call_log_sync.lease_lost",
-        category: "ringcentral",
-        workflow: "ringcentral_call_log_sync",
-        summary: "RingCentral Call Log sync lost its lease before finalizing.",
-        runId: summary.ranAt,
-        durationMs: summary.runtimeMs,
-        details: {
-          leaseOwnerHash: ownerHash,
-          stage,
-          errorCode,
-          cursorAdvanced: false,
-        },
-        notificationCandidate: false,
-        reportable: false,
-      });
+      logLeaseLost(summary, ownerHash, stage, errorCode);
       return summary;
     }
 
@@ -473,66 +391,42 @@ export async function runRingCentralCallLogSync(
 
     if (!fenced) {
       summary.leaseLost = true;
-      logger.warn({
-        msg: "ringcentral.call_log_sync.lease_lost",
-        leaseOwnerHash: ownerHash,
-        stage,
-      });
-      await deps.recordEvent({
-        level: "warn",
-        eventKey: "ringcentral.call_log_sync.lease_lost",
-        category: "ringcentral",
-        workflow: "ringcentral_call_log_sync",
-        summary:
-          "RingCentral Call Log sync could not finalize: the lease fence no longer matched.",
-        runId: summary.ranAt,
-        durationMs: summary.runtimeMs,
-        details: {
-          leaseOwnerHash: ownerHash,
-          stage,
-          errorCode,
-          cursorAdvanced: false,
-        },
-        notificationCandidate: false,
-        reportable: false,
-      });
+      logLeaseLost(summary, ownerHash, stage, errorCode);
       return summary;
     }
 
     logger.error({
       msg: "ringcentral.call_log_sync.failed",
+      runId: summary.ranAt,
       leaseOwnerHash: ownerHash,
       stage,
       errorCode,
       windowFrom: summary.windowFrom,
       windowTo: summary.windowTo,
-    });
-
-    await deps.recordEvent({
-      level: "error",
-      eventKey: "ringcentral.call_log_sync.failed",
-      category: "ringcentral",
-      workflow: "ringcentral_call_log_sync",
-      summary: "RingCentral Call Log sync failed.",
-      runId: summary.ranAt,
-      durationMs: summary.runtimeMs,
-      dedupeKey: `ringcentral.call_log_sync.failed:${resolveEnvironmentName()}`,
-      details: {
-        leaseOwnerHash: ownerHash,
-        windowFrom: summary.windowFrom,
-        windowTo: summary.windowTo,
-        stage,
-        errorCode,
-        runtimeMs: summary.runtimeMs,
-        throttledResponses: summary.throttledResponses,
-        cursorAdvanced: false,
-      },
-      errorMessage: errorCode,
-      notificationCandidate: true,
+      runtimeMs: summary.runtimeMs,
+      throttledResponses: summary.throttledResponses,
+      cursorAdvanced: false,
     });
 
     throw error;
   }
+}
+
+function logLeaseLost(
+  summary: RingCentralCallLogSyncSummary,
+  ownerHash: string | null,
+  stage: RunStage,
+  errorCode: string,
+): void {
+  logger.warn({
+    msg: "ringcentral.call_log_sync.lease_lost",
+    runId: summary.ranAt,
+    leaseOwnerHash: ownerHash,
+    stage,
+    errorCode,
+    runtimeMs: summary.runtimeMs,
+    cursorAdvanced: false,
+  });
 }
 
 function sortCallLogRecordsOldestFirst(
@@ -683,10 +577,6 @@ function classifyStageError(
 function elapsedMs(from: Date, to: Date): number {
   const elapsed = to.getTime() - from.getTime();
   return Number.isFinite(elapsed) && elapsed > 0 ? Math.floor(elapsed) : 0;
-}
-
-function resolveEnvironmentName(): string {
-  return process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development";
 }
 
 /**

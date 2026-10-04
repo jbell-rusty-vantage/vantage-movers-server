@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import { logger } from "../../logger";
-import { recordOperationalEvent } from "../observability";
 import { csiWorkerActor, CsiError } from "../salesIntelligence/auth";
 import {
   claimCsiJob,
@@ -100,7 +99,6 @@ export type CaptureProjectionWorkerDeps = {
   observe?: typeof observeRingCentralWebhookEvents;
   /** Passed through to `observeRingCentralWebhookEvents`; `request_id` is always overridden with the job id. */
   observeDeps?: Omit<ObserveDependencies, "request_id">;
-  recordEvent?: typeof recordOperationalEvent;
   /** CC-08 seams: hang-up detection, the in-transaction enqueue and the delayed wake-up. */
   refreshCandidates?: typeof sessionsNeedingRefresh;
   enqueueRefresh?: typeof enqueueCallLogRefreshJob;
@@ -200,20 +198,11 @@ export async function runCaptureProjectionJob(
       if (job.created) await publishDelayedWakeup(job.job_id, job.due_at, now(), deps.refreshPublish);
     }
     if (result.failed > 0) {
-      await (deps.recordEvent ?? recordOperationalEvent)({
-        level: "warn",
-        eventKey: "sales_intelligence.capture.projection.sessions_failed",
-        category: "ringcentral",
-        workflow: "sales_intelligence",
-        summary: "Capture-projection job completed with per-session failures.",
-        details: {
-          jobId: lease.job_id,
-          failed: result.failed,
-          errorCodes: result.results.filter((r) => !r.ok).map((r) => (r as { error_code: string }).error_code),
-        },
-        notificationCandidate: false,
-        reportable: false,
-        piiPolicy: "none",
+      logger.warn({
+        msg: "sales_intelligence.capture.projection.sessions_failed",
+        jobId: lease.job_id,
+        failed: result.failed,
+        errorCodes: result.results.filter((r) => !r.ok).map((r) => (r as { error_code: string }).error_code),
       });
     }
     return { status: "completed", job_id: lease.job_id, result };

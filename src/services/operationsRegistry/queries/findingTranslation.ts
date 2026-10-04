@@ -88,13 +88,6 @@ export const FINDING_TRANSLATION_TABLE: Record<string, FindingTranslationRow> = 
     owner_action: "Open Registry Health and restore or re-run the missing migration evidence.",
     deep_link: HEALTH,
   },
-  "registry.source_resolution_failures": {
-    severity: "blocking",
-    owner_message:
-      "Incoming leads are failing to land in a lead source, so they are not being filed.",
-    owner_action: "Open the lead source that should own those names and fix the colliding or missing spelling.",
-    deep_link: LEAD_SOURCES,
-  },
   "registry.cache_stale": {
     severity: "reviewable",
     owner_message:
@@ -105,7 +98,7 @@ export const FINDING_TRANSLATION_TABLE: Record<string, FindingTranslationRow> = 
   "registry.compatibility_reads_remaining": {
     severity: "reviewable",
     owner_message:
-      "Some incoming names are still matched through the old static list instead of the official mappings. The observation window opened on 1 Sep 2026. Removal of that list is blocked until this count holds at zero.",
+      "Some incoming names are still matched through the old static list instead of the official mappings. The count covers only the server instance that answered this check, since it last started; the full count across instances is in the server logs.",
     owner_action: "Add an official sheet or legacy name on the lead source that should own them.",
     deep_link: MAPPINGS,
   },

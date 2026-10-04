@@ -7,7 +7,6 @@ import { buildRepDayDocs, overviewRefreshDays, UNMAPPED_REP, type RepDayCall } f
 import { aggregateCohort, spendBasis, type SpendLead } from "./spend";
 import { bandFlow, callbacksKept, missedCallsReturned, percentile, speedToLead, timeInBand, type CallbackRow } from "./desk";
 import { entryOverdue, entryResponsible, tallyNow } from "./now";
-import { MEDIAN_MIN_COHORT, teamMedians } from "./read";
 import { commandRebuildOverviewDay, isCalendarDayKey } from "./commands";
 import { CsiError, type CsiActor } from "../auth";
 
@@ -169,30 +168,6 @@ test("S9 now: the Needs Attention tally with Priority and agent filters; per-rep
   assert.deepEqual([scoped.bands["4"], scoped.bands["1"], scoped.active], [1, 0, 2]);
   assert.equal(entryResponsible(entry(9, { agents: [A, B] })), null, "ambiguous without the publish key");
   assert.equal(entryOverdue(entry(9, { reasons: ["followups_due"] })), true);
-});
-
-test("S9 team medians (E23): over reps with an open assignment or a call; null metrics left out", () => {
-  const row = (id: string, open: number, calls: number, spend: number, cpb: number | null) => ({ agent: { id, name: id }, open_assignments: { open, bands: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }, overdue: 0 },
-    interactions: { outbound_attempts: calls, answered_inbound: 0, human_conversations: 0, talk_minutes: 0, attempt_conversation_rate: calls ? 0.5 : null, calls, recovered_calls: 0 },
-    outcomes: { leads: 1, quoted: 0, booked_in_granot: 0, booked_official: 0, bookings: 0, booking_rate: 0 }, spend: { leads: 1, spend, rate: spend, legacy: 0, unpriced_leads: 0, zero_leads: 0 },
-    by_source: [], cost_per_booking: cpb });
-  const medians = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 0, 4, 300, null), row("r3", 0, 0, 900, 10), row("r4", 6, 0, 200, 30), row("r5", 1, 2, 400, 40)]);
-  assert.equal(MEDIAN_MIN_COHORT, 4, "V-T3 M9: at least 3 other reps");
-  assert.equal(medians.reps, 4, "r3 has neither an open assignment nor a call");
-  assert.equal(medians.open, 1.5);
-  assert.equal(medians.outbound_attempts, 3);
-  assert.equal(medians.spend, 250);
-  assert.equal(medians.cost_per_booking, null, "only 3 known values (r2's null is left out): below the 4-rep cohort, so null (C11)");
-  assert.equal(medians.attempt_conversation_rate, null, "r4 has no attempts: 3 known values, suppressed");
-  // C11 / V-T3 M9: with three reps the median is one other rep's exact value whenever the caller is the lowest or highest.
-  const three = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 1, 4, 300, 20), row("r4", 3, 6, 200, 30)]);
-  assert.equal(three.reps, 3);
-  assert.equal(three.spend, null); assert.equal(three.outbound_attempts, null); assert.equal(three.open, null);
-  // With two reps a median would reveal the other rep's exact value (2 × median − own).
-  const two = teamMedians([row("r1", 2, 10, 100, 50), row("r2", 1, 4, 300, 20)]);
-  assert.equal(two.reps, 2);
-  assert.equal(two.spend, null);
-  assert.equal(two.open, null);
 });
 
 test("V-T3 m5: rebuild_overview_day takes only a real calendar day (round-trip), before any write", async () => {

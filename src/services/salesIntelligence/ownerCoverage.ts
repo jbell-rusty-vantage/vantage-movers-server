@@ -1,155 +1,26 @@
-import { readBackfillCoverage } from "./backfill/coverage";
-import { CSI_JOB_STAGES, csiDataset, csiFlag } from "../../config/domain/salesIntelligence";
+import { csiFlag } from "../../config/domain/salesIntelligence";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
 import { getRingCentralDirectorySnapshotModel } from "../../models/RingCentralDirectorySnapshot";
-import { getSalesIntelligenceAiBudgetModel } from "../../models/SalesIntelligenceAiBudget";
-import { getSalesIntelligenceAiReservationModel } from "../../models/SalesIntelligenceAiReservation";
-import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { readCaptureCoverage } from "../numberActivity/coverage";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE, callLogReconcileConfig } from "../numberActivity/reconcileCallLog";
 import { CALL_LOG_SWEEP_SCOPE } from "../numberActivity/callLogSweep";
-import { decideAnalysisAdmission } from "./analysis/admission";
-import type { RuntimeLimits } from "./analysis/runtime";
-import { analysisRuntimeConfiguration, estimateAnalysisCents } from "./analysis/worker";
-import { structuredAnalysisEnabled } from "./analysis/structuredPrompt";
-import {
-  ownerCoverageDtoSchema,
-  ownerCoverageStageSchema,
-  type OwnerCoverageDto,
-} from "./dto";
-import { readCsiSettings } from "./settings";
+import { SUBSCRIPTION_MISSING_CODE, WEBHOOK_SUBSCRIPTION_SCOPE } from "../numberActivity/webhookSubscriptionCron";
+import { ownerCoverageDtoSchema, type OwnerCoverageDto } from "./dto";
+import { resolvePolicy } from "./policy";
 import mongoose, { type PipelineStage } from "mongoose";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { getCallInteractionModel } from "../../models/CallInteraction";
-import { getOperationalEventModel } from "../../models/OperationalEvent";
 import { getRingCentralCollectionName } from "../ringcentral/ringcentral-config";
-import { staffedMinutesAtLeast, subtractStaffedMinutes, type Staffing } from "./outreach/staffing";
-
-type JobStage = (typeof CSI_JOB_STAGES)[number];
-const RECORDING_STAGES: readonly JobStage[] = ["recording_discovery", "media", "media_fetch"];
-const QUEUED = ["pending", "retry", "leased"] as const;
-
-export function composeBudget(
-  row: {
-    month: string;
-    ceiling_cents: number;
-    actual_cents: number;
-    reserved_cents: number;
-  } | null,
-  ceilingFromPolicy: number,
-) {
-  if (!row) {
-    return {
-      status: "unknown" as const,
-      month: null,
-      ceiling_cents: ceilingFromPolicy,
-      actual_cents: null,
-      reserved_cents: null,
-      remaining_cents: null,
-    };
-  }
-  return {
-    status: "known" as const,
-    month: row.month,
-    ceiling_cents: row.ceiling_cents,
-    actual_cents: row.actual_cents,
-    reserved_cents: row.reserved_cents,
-    remaining_cents: Math.max(0, row.ceiling_cents - row.actual_cents - row.reserved_cents),
-  };
-}
+import { staffedMinutesAtLeast, subtractStaffedMinutes, type Staffing } from "../numberActivity/staffedClock";
 
 /**
- * Pure admission picture for the Owner. `estimate` is null when pricing is not
- * configured, which is itself a distinct reason the pipeline is not running.
+ * `GET /coverage`: capture coverage plus Call Log, webhook and directory
+ * health for the Numbers and RingCentral Accounts views. Every source is
+ * retained capture/directory state; nothing here reads analysis, Outreach or
+ * operational-event collections.
  */
-export function composeAnalysisAdmission(input: {
-  estimate: number | null;
-  per_recording_ceiling_cents: number;
-  budget: { month: string; ceiling_cents: number; actual_cents: number; reserved_cents: number; activated: boolean } | null;
-  model: string;
-  pricing_version: string | null;
-  limits: RuntimeLimits;
-  paused: { per_recording_ceiling: number; budget: number; configuration: number };
-  unresolved_reservations: { count: number; estimated_cents: number };
-  structured?: boolean;
-}): OwnerCoverageDto["analysis_admission"] {
-  const { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms } = input.limits;
-  const decision = input.estimate === null ? null : decideAnalysisAdmission({
-    stage: "analysis", budget: input.budget?.activated ? input.budget : null, estimated_cents: input.estimate, structured: input.structured,
-    per_recording_ceiling_cents: input.per_recording_ceiling_cents, model_version: input.model, pricing_version: input.pricing_version ?? "", limits: input.limits,
-  });
-  return {
-    status: decision === null ? "configuration_missing" : decision.admitted ? "admitted" : decision.reason,
-    estimated_cents_per_conversation: input.estimate,
-    per_recording_ceiling_cents: input.per_recording_ceiling_cents,
-    model: input.model,
-    pricing_version: input.pricing_version,
-    limits: { steps, context_tokens, output_tokens, total_input_tokens, total_output_tokens, elapsed_ms },
-    paused: input.paused,
-    unresolved_reservations: input.unresolved_reservations,
-  };
-}
-
-async function readAnalysisAdmission(policy: { per_recording_ceiling_cents: number }, budgetRow: {
-  month: string; ceiling_cents: number; actual_cents: number; reserved_cents: number; activated_at?: Date | null;
-} | null) {
-  const configuration = analysisRuntimeConfiguration();
-  const Job = getSalesIntelligenceJobModel();
-  const analysis = { ...csiDataset(), stage: { $in: ["analysis", "number_refresh"] as JobStage[] }, status: "paused" as const };
-  const [perRecording, budget, configurationPaused, unresolved] = await Promise.all([
-    Job.countDocuments({ ...analysis, reason: "per_recording_ceiling" }),
-    Job.countDocuments({ ...analysis, reason: "budget_exhausted" }),
-    Job.countDocuments({ ...analysis, reason: "permission_denied", "result.reason": "analysis_configuration_missing" }),
-    getSalesIntelligenceAiReservationModel().aggregate<{ _id: null; count: number; estimated_cents: number }>([
-      { $match: { stage: "analysis", status: "reserved", provider_started: true, reserved_at: { $lte: new Date(Date.now() - 3_600_000) } } },
-      { $group: { _id: null, count: { $sum: 1 }, estimated_cents: { $sum: "$estimated_cents" } } },
-    ]),
-  ]);
-  return composeAnalysisAdmission({
-    estimate: configuration.pricing ? structuredAnalysisEnabled() ? 7 : estimateAnalysisCents(configuration.pricing, configuration.limits) : null,
-    structured: structuredAnalysisEnabled(),
-    per_recording_ceiling_cents: policy.per_recording_ceiling_cents,
-    budget: budgetRow ? { month: budgetRow.month, ceiling_cents: budgetRow.ceiling_cents, actual_cents: budgetRow.actual_cents,
-      reserved_cents: budgetRow.reserved_cents, activated: Boolean(budgetRow.activated_at) } : null,
-    model: configuration.model_id,
-    pricing_version: configuration.pricing?.version ?? null,
-    limits: configuration.limits,
-    paused: { per_recording_ceiling: perRecording, budget, configuration: configurationPaused },
-    unresolved_reservations: { count: unresolved[0]?.count ?? 0, estimated_cents: unresolved[0]?.estimated_cents ?? 0 },
-  });
-}
-
-export function composeStage(
-  counts: { pending: number; leased: number; retry: number; paused: number; dead_letter: number },
-  oldest: Date | null,
-) {
-  return ownerCoverageStageSchema.parse({
-    ...counts,
-    oldest_queued_at: oldest ? oldest.toISOString() : null,
-  });
-}
-
-async function readStage(stages: readonly JobStage[]) {
-  const Job = getSalesIntelligenceJobModel();
-  const filter = { ...csiDataset(), stage: { $in: stages } };
-  const [pending, leased, retry, paused, dead_letter, oldest] = await Promise.all([
-    Job.countDocuments({ ...filter, status: "pending" }),
-    Job.countDocuments({ ...filter, status: "leased" }),
-    Job.countDocuments({ ...filter, status: "retry" }),
-    Job.countDocuments({ ...filter, status: "paused" }),
-    Job.countDocuments({ ...filter, status: "dead_letter" }),
-    Job.findOne({ ...filter, status: { $in: QUEUED } }, { next_attempt_at: 1 })
-      .sort({ next_attempt_at: 1 })
-      .lean(),
-  ]);
-  return composeStage(
-    { pending, leased, retry, paused, dead_letter },
-    oldest?.next_attempt_at ?? null,
-  );
-}
-
 async function readMappingHygiene() {
   const snapshot = await getRingCentralDirectorySnapshotModel()
     .findOne({}, { taken_at: 1, provider_account_id: 1, extensions: 1 })
@@ -238,7 +109,7 @@ export function composeCallLogCapture(
   };
 }
 
-async function readCallLogRows() {
+export async function readCallLogRows() {
   const rows = (await getSalesIntelligenceSyncStateModel()
     .find(
       { scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, CALL_LOG_SWEEP_SCOPE] } },
@@ -267,15 +138,11 @@ export const PENDING_FINALIZATION_AFTER_MS = 10 * MINUTE;
 export const WEBHOOK_SILENCE_STAFFED_MINUTES = 30;
 export const QUARANTINE_BROKEN_AFTER_MS = 24 * 60 * MINUTE;
 /**
- * The daily subscription cron (06:15 UTC) records these operational events
- * (`webhookSubscriptionCron.ts` EVENT_PREFIX). A healthy `noop` run records
- * nothing, so a failure counts only while it is the newest outcome of the last
- * 26 h (one cron period plus slack); a next run that fails again keeps it.
+ * The daily subscription cron (06:15 UTC) stores every run's outcome on the
+ * `webhook_subscription_maintenance` sync-state row (`webhookSubscriptionCron.ts`).
+ * A failure counts only while it is the newest outcome and is at most 26 h old
+ * (one cron period plus slack); the next successful run clears it.
  */
-export const WEBHOOK_SUBSCRIPTION_EVENT_PREFIX = "sales_intelligence.webhook_subscription";
-const RENEWAL_OUTCOME_KEYS = ["failed", "missing", "created", "renewed", "repaired"].map(
-  (kind) => `${WEBHOOK_SUBSCRIPTION_EVENT_PREFIX}.${kind}`,
-);
 export const RENEWAL_ERROR_LOOKBACK_MS = 26 * 60 * MINUTE;
 /** The all-direction telephony filter the owned subscription carries (`buildRingCentralTelephonyEventFilters("all")`). */
 const ALL_DIRECTION_FILTER = "/restapi/v1.0/account/~/telephony/sessions";
@@ -289,7 +156,8 @@ export type OwnedSubscriptionRow = {
   eventFilters?: string[] | null;
 };
 
-export type RenewalOutcomeEvent = { event_key: string; occurred_at: Date; error_name: string | null };
+/** The newest maintenance run: `error_code` null (succeeded), `subscription_missing`, or a failure's error class name. */
+export type RenewalOutcome = { finished_at: Date; error_code: string | null };
 
 export type CaptureHealthFacts = {
   now: Date;
@@ -301,7 +169,7 @@ export type CaptureHealthFacts = {
   subscriptions: OwnedSubscriptionRow[];
   latest_receipt_at: Date | null;
   receipts_1h: number;
-  renewal_event: RenewalOutcomeEvent | null;
+  renewal_outcome: RenewalOutcome | null;
   /** Call Log calls (`call_log_state` set) that started in the last 30 staffed minutes. */
   call_log_calls_in_window: number;
   in_progress_calls: number;
@@ -362,22 +230,15 @@ export function composeCaptureHealth(facts: CaptureHealthFacts): CaptureHealth {
     : null;
 
   const subscription = facts.webhook_enabled ? pickOwnedSubscription(facts.subscriptions) : null;
-  const event = facts.webhook_enabled ? facts.renewal_event : null;
-  const eventFailed = Boolean(
-    event &&
-      (event.event_key.endsWith(".failed") || event.event_key.endsWith(".missing")) &&
-      now.getTime() - event.occurred_at.getTime() <= RENEWAL_ERROR_LOOKBACK_MS,
-  );
-  const lastRenewalError = !event || !eventFailed
-    ? null
-    : event.event_key.endsWith(".missing")
-      ? "subscription_missing"
-      : event.error_name ?? "maintenance_failed";
+  const outcome = facts.webhook_enabled ? facts.renewal_outcome : null;
+  const lastRenewalError = outcome?.error_code && now.getTime() - outcome.finished_at.getTime() <= RENEWAL_ERROR_LOOKBACK_MS
+    ? outcome.error_code
+    : null;
 
-  // A `.missing` cron outcome means the renewal cron didn't recognise an owned subscription. When this read
+  // A `subscription_missing` outcome means the renewal cron didn't recognise an owned subscription. When this read
   // finds a live, unexpired owned subscription it isn't a failure (production 2026-09-24: the cron's exact
-  // filter match misses the account-resolved filter); it stays visible as `last_renewal_error`. `.failed` is down.
-  const renewalFailed = eventFailed && !event!.event_key.endsWith(".missing");
+  // filter match misses the account-resolved filter); it stays visible as `last_renewal_error`. A failed run is down.
+  const renewalFailed = lastRenewalError !== null && lastRenewalError !== SUBSCRIPTION_MISSING_CODE;
   let state: CaptureHealth["webhook"]["state"];
   if (!facts.webhook_enabled) state = "off";
   else if (
@@ -459,12 +320,7 @@ export function captureHealthQueries(now: Date, staffing: Staffing) {
     subscriptions: { subscriptionId: { $type: "string" }, provider: "ringcentral" },
     latest_receipt: { provider: "ringcentral", receivedAt: { $lte: now } },
     receipts_1h: { provider: "ringcentral", receivedAt: { $gte: new Date(now.getTime() - 60 * MINUTE), $lte: now } },
-    renewal_event: {
-      event_key: { $in: RENEWAL_OUTCOME_KEYS },
-      occurred_at: { $gte: new Date(now.getTime() - RENEWAL_ERROR_LOOKBACK_MS), $lte: now },
-    },
-    // Pinned: `occurred_at_-1` alone would walk every event of the last 26 h.
-    renewal_event_hint: { event_key: 1, occurred_at: -1 } as Record<string, 1 | -1>,
+    renewal_outcome: { scope: WEBHOOK_SUBSCRIPTION_SCOPE },
     calls_pipeline: [
       {
         $match: {
@@ -505,7 +361,7 @@ export function captureHealthQueries(now: Date, staffing: Staffing) {
  * sync-state rows are shared with `call_log_capture`, so this adds at most
  * five: the owned subscription rows, the newest receipt and the last hour's
  * receipt count (`provider_1_receivedAt_-1`), the newest subscription cron
- * outcome (`event_key_1_occurred_at_-1`), and one `call_interactions`
+ * outcome (the `webhook_subscription_maintenance` sync-state row), and one `call_interactions`
  * aggregate whose `$or` branches use `call_interaction_started_window` and
  * `call_interaction_call_log_state_started`. With the webhook flag off only
  * the aggregate runs. Reads only: no index is created on this path, and
@@ -535,20 +391,11 @@ export async function readCaptureHealthFacts(input: {
       : Promise.resolve(null),
     webhookEnabled ? receipts().countDocuments(q.receipts_1h) : Promise.resolve(0),
     webhookEnabled
-      ? getOperationalEventModel()
-          .findOne(q.renewal_event, { event_key: 1, occurred_at: 1, "details.errorName": 1 })
-          .sort({ occurred_at: -1 })
-          .hint(q.renewal_event_hint)
-          .lean()
+      ? getSalesIntelligenceSyncStateModel().findOne(q.renewal_outcome, { last_run: 1 }).lean()
       : Promise.resolve(null),
     getCallInteractionModel().aggregate<{ in_progress: number; pending: number; window_calls: number }>(q.calls_pipeline),
   ]);
-  const event = renewal as { event_key?: string; occurred_at?: Date; details?: { errorName?: unknown } } | null;
-  // Only an error class name is surfaced (the message can carry a subscription id).
-  const errorName =
-    typeof event?.details?.errorName === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(event.details.errorName)
-      ? event.details.errorName
-      : null;
+  const lastRun = (renewal as { last_run?: { finished_at?: Date | null; error_code?: string | null } | null } | null)?.last_run ?? null;
   return {
     now,
     webhook_enabled: webhookEnabled,
@@ -559,40 +406,20 @@ export async function readCaptureHealthFacts(input: {
     subscriptions,
     latest_receipt_at: (latest?.receivedAt as Date | undefined) ?? null,
     receipts_1h: receipts1h,
-    renewal_event:
-      event?.event_key && event.occurred_at
-        ? { event_key: event.event_key, occurred_at: event.occurred_at, error_name: errorName }
-        : null,
+    renewal_outcome: lastRun?.finished_at ? { finished_at: lastRun.finished_at, error_code: lastRun.error_code ?? null } : null,
     call_log_calls_in_window: calls[0]?.window_calls ?? 0,
     in_progress_calls: calls[0]?.in_progress ?? 0,
     pending_finalization: calls[0]?.pending ?? 0,
   };
 }
 
-/** S9-READS: the `capture_health.status` headline alone (the Overview "now" block), from the same facts and rules as the coverage read. */
-export async function readCaptureHealthStatus(now: Date, staffing: Staffing): Promise<CaptureHealth["status"]> {
-  const { reconcile, sweep } = await readCallLogRows();
-  return composeCaptureHealth(await readCaptureHealthFacts({ now, staffing, reconcile, sweep })).status;
-}
-
 export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
-  const capture = await readCaptureCoverage();
-  const settings = await readCsiSettings();
+  const [capture, policy] = await Promise.all([readCaptureCoverage(), resolvePolicy()]);
   const now = new Date();
-  const staffing: Staffing = { timezone: settings.policy.timezone, staffed_hours: settings.policy.staffed_hours };
-  const budgetRow = await getSalesIntelligenceAiBudgetModel()
-    .findOne({ period_start: { $lte: now }, period_end: { $gt: now } })
-    .sort({ period_start: -1 })
-    .lean();
+  const staffing: Staffing = { timezone: policy.timezone, staffed_hours: policy.staffed_hours };
   const callLogRows = readCallLogRows();
-  const [recording, transcription, analysis, application, mapping, backfill, admission, callLogCapture, captureHealth] = await Promise.all([
-    readStage(RECORDING_STAGES),
-    readStage(["transcription"]),
-    readStage(["analysis"]),
-    readStage(["application"]),
+  const [mapping, callLogCapture, captureHealth] = await Promise.all([
     readMappingHygiene(),
-    readBackfillCoverage(),
-    readAnalysisAdmission(settings.policy, budgetRow),
     callLogRows.then(({ reconcile, sweep }) => composeCallLogCapture(reconcile, sweep, callLogReconcileConfig().syncMode)),
     callLogRows
       .then(({ reconcile, sweep }) => readCaptureHealthFacts({ now, staffing, reconcile, sweep }))
@@ -600,26 +427,8 @@ export async function readOwnerCoverage(): Promise<OwnerCoverageDto> {
   ]);
   return ownerCoverageDtoSchema.parse({
     ...capture,
-    stages: { recording, transcription, analysis, application },
-    budget: composeBudget(budgetRow, settings.policy.monthly_ceiling_cents),
-    analysis_admission: admission,
     mapping_hygiene: mapping,
     call_log_capture: callLogCapture,
     capture_health: captureHealth,
-    flags: settings.flags,
-    models: settings.models,
-    settings: {
-      persisted: settings.persisted,
-      revision: settings.revision,
-      version: settings.policy.version,
-      source: settings.source,
-      timezone: settings.policy.timezone,
-      first_action_due_staffed_minutes: settings.policy.first_action_due_staffed_minutes,
-      missed_callback_due_staffed_minutes: settings.policy.missed_callback_due_staffed_minutes,
-      going_cold_staffed_minutes: settings.policy.going_cold_staffed_minutes,
-      monthly_ceiling_cents: settings.policy.monthly_ceiling_cents,
-      per_recording_ceiling_cents: settings.policy.per_recording_ceiling_cents,
-    },
-    backfill,
   });
 }

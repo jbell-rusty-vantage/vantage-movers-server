@@ -23,7 +23,7 @@ const MUTATION_SENSITIVE_COLLECTIONS = [
   "domain_command_executions",
   "entity_changes",
   "sheet_sync_jobs",
-  "operational_events",
+  "granot_lifecycle_health_state",
   "notifications",
 ] as const;
 

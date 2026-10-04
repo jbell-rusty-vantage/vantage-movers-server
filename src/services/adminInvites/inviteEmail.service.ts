@@ -1,5 +1,5 @@
 import sgMail from "@sendgrid/mail";
-import { getSendgridConfig, type SendgridConfig } from "../../config/domain/observability";
+import { getSendgridConfig, type SendgridConfig } from "../../config/domain/mail";
 import { logger } from "../../logger";
 
 /**
@@ -8,10 +8,8 @@ import { logger } from "../../logger";
  * The admin dashboard owns the invite token; this service only delivers the
  * set-password link so the SendGrid key stays on the main server. It is a
  * transactional send: it reads `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL`
- * (and the optional `ALERT_EMAIL_REPLY_TO`) directly, independent of the
- * observability `EMAIL_NOTIFICATIONS_*` posture, and it never persists a
- * `notification_deliveries` row (that model stores the body text, which would
- * store the link).
+ * (and the optional `ALERT_EMAIL_REPLY_TO`) through the mail config, and it
+ * persists no delivery record (the body carries the link).
  *
  * The link, the token inside it and the recipient address are never logged.
  */
@@ -36,7 +34,7 @@ export type AdminInviteMailMessage = {
 };
 
 export type AdminInviteEmailDeps = {
-  config?: () => Pick<SendgridConfig, "apiKey" | "fromEmail" | "replyTo">;
+  config?: () => SendgridConfig;
   send?: (apiKey: string, message: AdminInviteMailMessage) => Promise<void>;
 };
 

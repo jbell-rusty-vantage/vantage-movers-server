@@ -10,7 +10,7 @@ import {
   CPL_BUSINESS_TIME_ZONE,
   getCplRatePeriodModel,
 } from "../../models/CplRatePeriod";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import { RegistryError } from "./errors";
 import { withRegistryMutation, type RegistryAuditDeps } from "./registryAudit";
@@ -654,19 +654,11 @@ export async function resolveSourceAttribution(
   }
   if (preview.status === "ambiguous") {
     recordRegistryResolverFailure("source", "ambiguous_resolution");
-    await recordOperationalEvent({
-      level: "error",
-      eventKey: "operations_registry.source_resolution_ambiguous",
-      category: "admin",
+    logger.error({
+      msg: "operations_registry.source_resolution_ambiguous",
       workflow: "operations_registry",
-      summary: "Source attribution failed because an identifier was ambiguous.",
-      details: {
-        identifier_kind: preview.identifier_kind,
-        identifier: preview.identifier,
-        candidate_ids: preview.candidate_ids,
-      },
-      notificationCandidate: true,
-      ownerVisible: true,
+      identifier_kind: preview.identifier_kind,
+      candidate_ids: preview.candidate_ids,
     });
     throw new RegistryError("Source attribution is ambiguous.", {
       registryCode: REGISTRY_ERROR_CODES.AMBIGUOUS_RESOLUTION,
@@ -674,18 +666,10 @@ export async function resolveSourceAttribution(
     });
   }
   recordRegistryResolverFailure("source", "not_found");
-  await recordOperationalEvent({
-    level: "warn",
-    eventKey: "operations_registry.source_resolution_not_found",
-    category: "admin",
+  logger.warn({
+    msg: "operations_registry.source_resolution_not_found",
     workflow: "operations_registry",
-    summary: "Source attribution did not match an active registry entry.",
-    details: {
-      identifier_kind: preview.identifier_kind,
-    },
-    notificationCandidate: false,
-    ownerVisible: true,
-    piiPolicy: "none",
+    identifier_kind: preview.identifier_kind,
   });
   throw new RegistryError("Source attribution was not found.", {
     registryCode: REGISTRY_ERROR_CODES.NOT_FOUND,

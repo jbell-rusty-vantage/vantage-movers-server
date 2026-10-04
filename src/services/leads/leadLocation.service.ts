@@ -1,8 +1,7 @@
 import type { LocalType } from "../../config/domain";
-import { shouldCaptureZipStateEvents } from "../../config/domain/observability";
+import { logger } from "../../logger";
 import { FORM_LEAD_UNKNOWN_STATE } from "../../models/FormLead";
 import { getStateCodeForZip } from "../../utils/location/pickupZipState";
-import { recordOperationalEvent } from "../observability";
 
 export type LocationWorkflowContext = {
   workflow?: string;
@@ -40,22 +39,15 @@ export async function resolveRequiredLocation(
 
   const missingPickup = pickup_state === FORM_LEAD_UNKNOWN_STATE;
   const missingDelivery = delivery_state === FORM_LEAD_UNKNOWN_STATE;
-  if ((missingPickup || missingDelivery) && shouldCaptureZipStateEvents()) {
-    await recordOperationalEvent({
-      level: "warn",
-      eventKey: "zip_state.lookup.missing",
-      category: "zip_state",
+  if (missingPickup || missingDelivery) {
+    logger.warn({
+      msg: "zip_state.lookup.missing",
       workflow: context.workflow ?? "form_lead_create",
-      summary: "ZIP did not resolve to a state and caller-supplied state was missing.",
-      details: {
-        pickup_zip: input.pickup_zip,
-        delivery_zip: input.destination_zip,
-        missing_pickup_state: missingPickup,
-        missing_delivery_state: missingDelivery,
-        fallback_state: FORM_LEAD_UNKNOWN_STATE,
-        workflow: context.workflow ?? "form_lead_create",
-      },
-      notificationCandidate: false,
+      pickup_zip: input.pickup_zip,
+      delivery_zip: input.destination_zip,
+      missing_pickup_state: missingPickup,
+      missing_delivery_state: missingDelivery,
+      fallback_state: FORM_LEAD_UNKNOWN_STATE,
     });
   }
 
@@ -96,22 +88,14 @@ export async function resolveOptionalLocation(
 
   const missingPickup = Boolean(input.pickup_zip) && !pickup_state;
   const missingDelivery = Boolean(input.delivery_zip) && !delivery_state;
-  if ((missingPickup || missingDelivery) && shouldCaptureZipStateEvents()) {
-    await recordOperationalEvent({
-      level: "info",
-      eventKey: "zip_state.optional_lookup.missing",
-      category: "zip_state",
+  if (missingPickup || missingDelivery) {
+    logger.info({
+      msg: "zip_state.optional_lookup.missing",
       workflow: context.workflow ?? "call_lead_create",
-      summary: "Optional call lead ZIP did not resolve to a state.",
-      details: {
-        pickup_zip: input.pickup_zip ?? null,
-        delivery_zip: input.delivery_zip ?? null,
-        missing_pickup_state: missingPickup,
-        missing_delivery_state: missingDelivery,
-        workflow: context.workflow ?? "call_lead_create",
-      },
-      notificationCandidate: false,
-      reportable: false,
+      pickup_zip: input.pickup_zip ?? null,
+      delivery_zip: input.delivery_zip ?? null,
+      missing_pickup_state: missingPickup,
+      missing_delivery_state: missingDelivery,
     });
   }
 

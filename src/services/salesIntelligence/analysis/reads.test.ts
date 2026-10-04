@@ -37,7 +37,7 @@ test("projection excludes operational secrets and redacts untrusted free text", 
 });
 test("response contract retains unknown speaker and nullable timing and rejects extra authority", () => {
   const content = { page: { records: [], complete: false, next_cursor: "next", missing_ranges: ["segments_after:1"] },
-    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false }, allowed_followup_ids: [], instructions: [], speaker_refs: [],
+    coverage: { known_through: null, gaps: [], capabilities: { call_log: "unknown", webhook: "unknown" } }, allowed_followup_ids: [], instructions: [], speaker_refs: [],
     transcript: { conversation_id: "d".repeat(24), transcript_version: "csi-transcript-v1:synthetic", source_snapshot_id: "e".repeat(24), segments: [{ sid: 1, text: "Synthetic evidence", start_ms: null, end_ms: null, timing_source: "unavailable", speaker: "unknown" }] } };
   assert.deepEqual(readContentSchema.parse(content), content);
   assert.throws(() => readContentSchema.parse({ ...content, send_message: true }));

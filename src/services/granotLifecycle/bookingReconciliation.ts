@@ -308,7 +308,6 @@ async function reconcilePreparedObservation(
         case_revision: result.case_revision,
         evidence_revision: result.evidence_revision,
       },
-      piiPolicy: "masked",
     });
     if (!result.replayed) {
       await recordGranotIntakeDailyOperationsFact({

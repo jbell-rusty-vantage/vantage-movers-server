@@ -1,10 +1,11 @@
-import {
-  recordOperationalEvent,
-  type RecordOperationalEventInput,
-} from "../observability";
+import { logger } from "../../logger";
 import { incrementGranotLifecycleCommandConflicts } from "./metrics";
 import { GRANOT_LIFECYCLE_ERROR_CODES, isGranotLifecycleError } from "./errors";
 import { DomainCommandIdempotencyConflictError } from "../domainCommands/types";
+import {
+  incrementGranotLifecycleHealthCounter,
+  recordGranotLifecycleLastRun,
+} from "./healthState";
 
 /**
  * Unit 30 / Section 33 event catalog. Literal keys are issue-author;
@@ -40,7 +41,7 @@ export const GRANOT_LIFECYCLE_EVENT_CATALOG = [
 
 export type GranotLifecycleEventKey = (typeof GRANOT_LIFECYCLE_EVENT_CATALOG)[number];
 
-/** Supporting keys used for health last-run, claim-recovery window, and alert transitions. */
+/** Supporting keys that feed Health last-run, the claim-recovery window, and alert transitions. */
 export const GRANOT_LIFECYCLE_SUPPORTING_EVENT_KEYS = [
   "granot_lifecycle.queue.run.completed",
   "granot_lifecycle.queue.run.failed",
@@ -172,12 +173,23 @@ const ALLOWED_DETAIL_KEYS = new Set([
   "rate",
   "sample_count",
   "pii_policy",
+  "skipped",
+  "scanned",
+  "claimed",
+  "completed",
+  "retried",
+  "dead_lettered",
+  "recovered",
+  "lease_lost",
 ]);
+
+export type GranotLifecycleEventLevel = "info" | "warn" | "error";
+export type GranotLifecycleEventCategory = "admin" | "booking" | "cron" | "mongo" | "queue";
 
 export type GranotLifecycleEmitInput = {
   eventKey: string;
-  level?: RecordOperationalEventInput["level"];
-  category?: RecordOperationalEventInput["category"];
+  level?: GranotLifecycleEventLevel;
+  category?: GranotLifecycleEventCategory;
   workflow?: string;
   summary: string;
   details?: Record<string, unknown>;
@@ -187,9 +199,6 @@ export type GranotLifecycleEmitInput = {
   statusCode?: number;
   durationMs?: number;
   requestId?: string;
-  dedupeKey?: string;
-  autoResolveKey?: string;
-  piiPolicy?: "none" | "masked";
 };
 
 export function normalizeGranotLifecycleEventKey(eventKey: string): string {
@@ -243,8 +252,10 @@ export function sanitizeGranotLifecycleEventDetails(
 }
 
 /**
- * Best-effort lifecycle emission. Never throws. Does not populate lead/contact
- * columns. Instrumentation failure cannot change a business outcome.
+ * Best-effort lifecycle emission. Never throws. Writes one structured log line
+ * with the closed event key and sanitized details (no payloads or contact
+ * fields), then feeds the bounded Health state for the keys Health reads.
+ * Instrumentation failure cannot change a business outcome.
  */
 export async function emitGranotLifecycleEvent(
   input: GranotLifecycleEmitInput,
@@ -255,30 +266,57 @@ export async function emitGranotLifecycleEvent(
       return;
     }
     const details = sanitizeGranotLifecycleEventDetails(input.details);
-    await recordOperationalEvent({
-      level: input.level ?? "info",
-      eventKey,
+    logger[input.level ?? "info"]({
+      msg: eventKey,
       category: input.category ?? "admin",
       workflow: input.workflow ?? "granot_lifecycle",
       summary: input.summary,
-      details,
-      entity: input.entity
-        ? { type: input.entity.type, id: maskLifecycleId(input.entity.id) ?? "***" }
-        : undefined,
-      route: input.route,
-      method: input.method,
-      statusCode: input.statusCode,
-      durationMs: input.durationMs,
-      requestId: input.requestId,
-      dedupeKey: input.dedupeKey,
-      autoResolveKey: input.autoResolveKey,
-      notificationCandidate: false,
-      reportable: true,
-      ownerVisible: false,
-      piiPolicy: input.piiPolicy ?? "none",
+      ...details,
+      ...(input.entity
+        ? { entity_type: input.entity.type, entity_id: maskLifecycleId(input.entity.id) ?? "***" }
+        : {}),
+      ...(input.route ? { route: input.route } : {}),
+      ...(input.method ? { method: input.method } : {}),
+      ...(input.statusCode != null ? { status_code: input.statusCode } : {}),
+      ...(input.durationMs != null ? { duration_ms: input.durationMs } : {}),
+      ...(input.requestId ? { request_id: input.requestId } : {}),
     });
+    await recordGranotLifecycleHealthFact(eventKey, details);
   } catch {
     // Best-effort: never roll back or fail the caller.
+  }
+}
+
+const LAST_RUN_EVENT = /^granot_lifecycle\.(queue|cron)\.run\.(completed|failed)$/;
+
+/** Maps the closed Health event keys onto bounded counters and latest-run rows. */
+async function recordGranotLifecycleHealthFact(
+  eventKey: string,
+  details: Record<string, unknown>,
+): Promise<void> {
+  const at = new Date();
+  if (eventKey === "granot_lifecycle.capture.failed") {
+    await incrementGranotLifecycleHealthCounter("capture_failed", "all", at);
+    return;
+  }
+  if (eventKey === "granot_lifecycle.claim.recovered") {
+    await incrementGranotLifecycleHealthCounter("claim_recovered", "all", at);
+    return;
+  }
+  if (eventKey === "granot_lifecycle.owner_command.conflict") {
+    const code = details.code;
+    if (typeof code === "string" && (OWNER_COMMAND_CONFLICT_CODES as readonly string[]).includes(code)) {
+      await incrementGranotLifecycleHealthCounter("owner_command_conflict", code, at);
+    }
+    return;
+  }
+  const run = LAST_RUN_EVENT.exec(eventKey);
+  if (run) {
+    await recordGranotLifecycleLastRun(
+      run[1] as "queue" | "cron",
+      run[2] as "completed" | "failed",
+      at,
+    );
   }
 }
 
@@ -304,7 +342,6 @@ export async function observeGranotOwnerCommandConflict(error: unknown): Promise
     category: "admin",
     summary: "Granot lifecycle owner command conflicted.",
     details: { code },
-    piiPolicy: "none",
   });
 }
 

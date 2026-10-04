@@ -29,7 +29,7 @@ function record(partial: Partial<SubscriptionRecord> & { id: string }): Subscrip
 
 function harness(records: SubscriptionRecord[], owned: string[], options: { autoCreate?: boolean; failCreate?: boolean } = {}) {
   const calls: string[] = [];
-  const events: Array<{ eventKey: string; level: string }> = [];
+  const outcomes: Array<string | null> = [];
   const ownedIds = new Set(owned);
   const provider: SubscriptionProvider = {
     list: async () => records,
@@ -60,12 +60,11 @@ function harness(records: SubscriptionRecord[], owned: string[], options: { auto
     now: () => NOW,
     eventFilters: async () => ALL,
     autoCreate: options.autoCreate ?? false,
-    recordEvent: (async (event: { eventKey: string; level: string }) => {
-      events.push({ eventKey: event.eventKey, level: event.level });
-      return null;
-    }) as never,
+    recordOutcome: async (outcome) => {
+      outcomes.push(outcome.error_code);
+    },
   };
-  return { deps, calls, events };
+  return { deps, calls, outcomes };
 }
 
 test("expiry: the lifecycle requests the longest WebHook lifetime (20 years)", () => {
@@ -79,7 +78,7 @@ test("owned healthy subscription: noop, no provider mutation, no event", async (
   assert.equal(summary.action, "noop");
   assert.equal(summary.subscription_id, "owned");
   assert.deepEqual(h.calls, []);
-  assert.deepEqual(h.events, []);
+  assert.deepEqual(h.outcomes, [null], "a healthy run is stored as the newest successful outcome");
 });
 
 test("owned subscription with under 7 days left is renewed; with more than 7 days it is left alone", async () => {
@@ -87,7 +86,7 @@ test("owned subscription with under 7 days left is renewed; with more than 7 day
   const summary = await runWebhookSubscriptionMaintenance(expiring.deps);
   assert.equal(summary.action, "renewed");
   assert.deepEqual(expiring.calls, ["renew:owned"]);
-  assert.deepEqual(expiring.events, [{ eventKey: "sales_intelligence.webhook_subscription.renewed", level: "info" }]);
+  assert.deepEqual(expiring.outcomes, [null]);
 
   const fine = harness([record({ id: "owned", expirationTime: new Date(NOW.getTime() + 8 * DAY) })], ["owned"]);
   assert.equal((await runWebhookSubscriptionMaintenance(fine.deps)).action, "noop");
@@ -100,18 +99,15 @@ test("blacklisted owned subscription is repaired (delete + recreate at max expir
   assert.equal(summary.action, "repaired");
   assert.equal(summary.removed_subscription_id, "owned");
   assert.deepEqual(h.calls, ["delete:owned", `create:${MAX_WEBHOOK_EXPIRES_IN_SECONDS}`]);
-  assert.deepEqual(h.events, [{ eventKey: "sales_intelligence.webhook_subscription.repaired", level: "warn" }]);
+  assert.deepEqual(h.outcomes, [null]);
 });
 
-test("foreign same-address subscription is never touched: warning event; missing owned one is reported, not created, when auto-create is off", async () => {
+test("foreign same-address subscription is never touched; missing owned one is reported, not created, when auto-create is off", async () => {
   const h = harness([record({ id: "foreign", status: "Blacklisted" })], []);
   const summary = await runWebhookSubscriptionMaintenance(h.deps);
   assert.equal(summary.action, "missing");
   assert.deepEqual(h.calls, [], "no create, no delete of the foreign one");
-  assert.deepEqual(h.events.map((e) => e.eventKey), [
-    "sales_intelligence.webhook_subscription.foreign_warning",
-    "sales_intelligence.webhook_subscription.missing",
-  ]);
+  assert.deepEqual(h.outcomes, ["subscription_missing"]);
 });
 
 test("auto-create on: creates the all-direction subscription at max expiry when none owned exists", async () => {
@@ -120,11 +116,18 @@ test("auto-create on: creates the all-direction subscription at max expiry when 
   assert.equal(summary.action, "created");
   assert.equal(summary.subscription_id, "new-1");
   assert.deepEqual(h.calls, [`create:${MAX_WEBHOOK_EXPIRES_IN_SECONDS}`]);
-  assert.deepEqual(h.events, [{ eventKey: "sales_intelligence.webhook_subscription.created", level: "info" }]);
+  assert.deepEqual(h.outcomes, [null]);
 });
 
-test("failure emits an error event and rethrows", async () => {
+test("failure stores the error class name as the newest outcome and rethrows", async () => {
   const h = harness([], [], { autoCreate: true, failCreate: true });
   await assert.rejects(() => runWebhookSubscriptionMaintenance(h.deps), /provider refused/);
-  assert.deepEqual(h.events, [{ eventKey: "sales_intelligence.webhook_subscription.failed", level: "error" }]);
+  assert.deepEqual(h.outcomes, ["Error"]);
+});
+
+test("an unavailable outcome store never changes the provider outcome", async () => {
+  const h = harness([record({ id: "owned", expirationTime: new Date(NOW.getTime() + 6 * DAY) })], ["owned"]);
+  const summary = await runWebhookSubscriptionMaintenance({ ...h.deps, recordOutcome: async () => { throw new Error("mongo down"); } });
+  assert.equal(summary.action, "renewed");
+  assert.deepEqual(h.calls, ["renew:owned"]);
 });

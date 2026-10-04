@@ -46,13 +46,10 @@ async function leadCostRowsBySource(
   models: AdminModels,
   query: AnalyticsQuery,
 ): Promise<AnalyticsRow[]> {
-  const supportsSourceGranularity = query.database_scope !== "historical";
-  const groupId = supportsSourceGranularity
-    ? {
-        source_company: "$source_company",
-        source_granularity_key: { $ifNull: ["$source_granularity_key", "unknown"] },
-      }
-    : "$source_company";
+  const groupId = {
+    source_company: "$source_company",
+    source_granularity_key: { $ifNull: ["$source_granularity_key", "unknown"] },
+  };
   const [formRows, callRows] = await Promise.all([
     models["form-leads"].aggregate([
       { $match: await billableFormLeadMatch(query) },
@@ -101,15 +98,11 @@ async function leadCostRowsBySource(
   const bySource = new Map<string, AnalyticsRow>();
   for (const row of [...formRows, ...callRows]) {
     const source = sourceCompanyFromRow(row);
-    const granularity = supportsSourceGranularity
-      ? sourceGranularityFromRow(row)
-      : "";
+    const granularity = sourceGranularityFromRow(row);
     const key = `${source}|${granularity}`;
     const existing = bySource.get(key) ?? {
       source_company: source,
-      ...(supportsSourceGranularity
-        ? { source_granularity_key: granularity }
-        : {}),
+      source_granularity_key: granularity,
       lead_count: 0,
       unresolved_cpl_count: 0,
       total_lead_cost: 0,
@@ -125,9 +118,7 @@ async function leadCostRowsBySource(
   const leaves = Array.from(bySource.values())
     .map((row) => ({
       source_company: row.source_company,
-      ...(supportsSourceGranularity
-        ? { source_granularity_key: row.source_granularity_key }
-        : {}),
+      source_granularity_key: row.source_granularity_key,
       lead_count: numberValue(row.lead_count),
       unresolved_cpl_count: numberValue(row.unresolved_cpl_count),
       total_lead_cost: roundMoney(numberValue(row.total_lead_cost)),

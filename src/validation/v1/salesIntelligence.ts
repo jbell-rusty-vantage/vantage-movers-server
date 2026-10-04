@@ -360,34 +360,31 @@ export const csiRepProposeSchema = z.object({
   ...base, rc_account_id: csiTextSchema, directory_snapshot_id: csiIdSchema,
   after_extension_id: csiTextSchema.optional(), limit: z.number().int().min(1).max(100).default(50), ...reason,
 }).strict();
+/**
+ * RingCentral Accounts message: the Owner's own `review_context` text to one directory User, by
+ * team messaging or pager. It names no customer, record or follow-up and never goes to a phone number.
+ */
 export const csiNudgeInputSchema = z
   .object({
-    outreach_record_id: csiIdSchema.optional(),
     rc_account_id: csiTextSchema,
     rc_extension_id: csiTextSchema,
     rep_identity_link_id: csiIdSchema.optional(),
-    channel: z.enum(["team_messaging", "sms_to_rep", "pager"]),
+    channel: z.enum(["team_messaging", "pager"]),
     template_key: csiTextSchema,
     template_version: csiRevisionSchema,
-    purpose: z.enum(["call_suggestion", "review_context"]),
-    followup_id: csiIdSchema.optional(),
+    purpose: z.literal("review_context"),
     allow_pager_fallback: z.boolean().default(false),
-    body: z.string().trim().min(1).max(1000).optional(),
+    body: z.string().trim().min(1).max(1000),
   })
   .strict();
 export const csiNudgeCommandSchema = z
   .object({
-    expected_revision: csiRevisionSchema.optional(),
-    expected_revisions: base.expected_revisions,
     scope: base.scope,
     nudge: csiNudgeInputSchema,
     expected_rep_revision: csiRevisionSchema.optional(),
   })
   .strict()
-  .refine((value) => Boolean(value.nudge.rep_identity_link_id) === (value.expected_rep_revision !== undefined))
-  .refine((value) => Boolean(value.nudge.outreach_record_id) === (value.expected_revision !== undefined))
-  .refine((value) => value.nudge.outreach_record_id
-    || (value.nudge.purpose === "review_context" && Boolean(value.nudge.body) && value.nudge.channel !== "sms_to_rep" && !value.nudge.followup_id));
+  .refine((value) => Boolean(value.nudge.rep_identity_link_id) === (value.expected_rep_revision !== undefined));
 export const csiBackfillCommandSchema = z
   .object({ ...base, from: csiDateSchema, to: csiDateSchema, ...reason })
   .strict()

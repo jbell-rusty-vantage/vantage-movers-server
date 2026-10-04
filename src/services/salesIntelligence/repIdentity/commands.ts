@@ -6,7 +6,6 @@ import { CsiError, type CsiActor } from "../auth";
 import { appendCsiAudit, duplicateKey, executeCsiCommand, type CsiTransactionContext } from "../transactions";
 import { assertNoRepOverlap, loadRepDirectory, lockRepExtension, proposeRepCandidates } from "./propose";
 import { toRepLinkDto } from "./reads";
-import { scheduleRepIdentityReevaluation } from "./scheduling";
 
 type CommandInput = { actor: CsiActor; idempotency_key: string; body: unknown };
 function enabled() { if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED"); }
@@ -80,7 +79,6 @@ export async function reviewRepLink(input: CommandInput & { id: string }) {
     if (row.revision !== body.expected_revision) throw new CsiError("REVISION_CONFLICT");
     if (row.rc_account_id !== link.rc_account_id || row.rc_extension_id !== link.rc_extension_id || row.status === "retired") throw new CsiError("ILLEGAL_TRANSITION");
     const prior = toRepLinkDto(row), from = new Date(link.effective_from), to = link.effective_to ? new Date(link.effective_to) : null;
-    const recheckFrom = new Date(Math.min(+row.effective_from, +from, +context.now));
     if (body.status === "retired") {
       if (!to || to > context.now || (row.effective_to && to > row.effective_to) || +from !== +row.effective_from || link.agent_id !== String(row.agent_id) ||
         link.role_kind !== row.role_kind || JSON.stringify(link.nudge_channels_allowed) !== JSON.stringify(row.nudge_channels_allowed)) throw new CsiError("INVALID_INPUT");
@@ -110,8 +108,7 @@ export async function reviewRepLink(input: CommandInput & { id: string }) {
     }
     const createdSuccessor = row.isNew;
     await row.save({ session: context.session }); await audit(row, createdSuccessor ? null : prior, context, "rep.reviewed_or_retired");
-    const job = await scheduleRepIdentityReevaluation({ account: link.rc_account_id, extension: link.rc_extension_id,
-      from: recheckFrom, through: context.now, change_id: String(context.command_id) }, context.session);
-    return { link: toRepLinkDto(row), reevaluation_job_id: String(job._id) };
+    // Call attribution reads the effective link at each call's time, so a review needs no recomputation job.
+    return { link: toRepLinkDto(row) };
   });
 }

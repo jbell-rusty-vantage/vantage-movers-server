@@ -29,19 +29,16 @@ export async function getBookingCancellationRatio(models: AdminModels, query: An
     },
   ]);
 
-  const supportsSourceGranularity = query.database_scope !== "historical";
   const leaves = await models["booked-leads"].aggregate([
     ...bookedLeadPrefix(query),
     {
       $group: {
-        _id: supportsSourceGranularity
-          ? {
-              source_company: "$derived_source_company",
-              source_granularity_key: {
-                $ifNull: ["$derived_source_granularity_key", "unknown"],
-              },
-            }
-          : "$derived_source_company",
+        _id: {
+          source_company: "$derived_source_company",
+          source_granularity_key: {
+            $ifNull: ["$derived_source_granularity_key", "unknown"],
+          },
+        },
         booked_leads: { $sum: 1 },
         cancelled_leads: { $sum: { $cond: ["$is_cancelled", 1, 0] } },
       },

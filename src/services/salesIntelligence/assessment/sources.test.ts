@@ -7,7 +7,7 @@ import {
   type AssessmentReader, type ConversationRow, type FindingRow, type LegacyRunRow, type SummaryArtifactRow,
 } from "./sources";
 
-const coverage: ReadContent["coverage"] = { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false };
+const coverage: ReadContent["coverage"] = { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 const at = (day: number) => new Date(`2026-09-${String(day).padStart(2, "0")}T15:00:00.000Z`);
 function artifact(id: string, conversationId: string, version: string): SummaryArtifactRow {
   const response: ReadContent = { page: { records: [], complete: true, next_cursor: null, missing_ranges: [] }, coverage,

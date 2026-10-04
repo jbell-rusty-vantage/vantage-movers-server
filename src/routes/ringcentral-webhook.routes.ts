@@ -30,7 +30,6 @@ import {
   resolveRingCentralInboundRoute,
 } from "../services/operationsRegistry";
 import { listProcessedCalls } from "../services/ringcentral/processed-calls-store";
-import { recordOperationalEvent } from "../services/observability";
 import { normalizeRingCentralWebhookPayload } from "../services/ringcentral/webhook-event-normalizer";
 import {
   captureRingCentralWebhookEvent,
@@ -467,23 +466,10 @@ async function ingestSessionLead(
     log.error({
       err: error,
       msg: "ringcentral.webhook.ingest_failed",
-      telephonySessionId: document.telephonySessionId,
-    });
-    await recordOperationalEvent({
-      level: "error",
-      eventKey: "ringcentral.webhook.ingest_failed",
-      category: "ringcentral",
       workflow: "ringcentral_webhook_ingest",
-      summary: "RingCentral webhook ingest failed for a qualified session.",
-      leadIdentity: { name: preview.callerName, phone: preview.callerPhoneNumber },
+      telephonySessionId: document.telephonySessionId,
       sourceCompany: preview.sourceCompany,
-      details: {
-        telephonySessionId: document.telephonySessionId,
-        durationSeconds: preview.estimatedDurationSeconds,
-        causeMessage: error instanceof Error ? error.message : String(error),
-      },
-      errorMessage: error instanceof Error ? error.message : String(error),
-      notificationCandidate: true,
+      durationSeconds: preview.estimatedDurationSeconds,
     });
     return "ingest_failed";
   }

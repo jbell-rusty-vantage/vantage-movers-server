@@ -3,7 +3,6 @@ import { test } from "node:test";
 import type { FilterCatalog } from "../admin/filterCatalog";
 import {
   buildSourceLabelIndex,
-  companyOnlySourceRows,
   nestSourceCompanyRows,
 } from "./sourceHierarchy";
 
@@ -145,7 +144,6 @@ test("nestSourceCompanyRows seeds catalog children including zeros", () => {
         company_slug: "tbm_prime_leads",
         owner_label: "TBM Prime Leads",
         active: true,
-        origin: "registry",
       },
     ],
     source_granularities: [
@@ -158,7 +156,6 @@ test("nestSourceCompanyRows seeds catalog children including zeros", () => {
         channel: "form",
         owner_label: "TBM Prime Forms",
         active: true,
-        origin: "registry",
       },
       {
         id: "g-call",
@@ -169,7 +166,6 @@ test("nestSourceCompanyRows seeds catalog children including zeros", () => {
         channel: "call",
         owner_label: "TBM Prime Inbounds",
         active: true,
-        origin: "registry",
       },
     ],
     agents: [],
@@ -189,7 +185,6 @@ test("nestSourceCompanyRows seeds catalog children including zeros", () => {
     {
       additiveFields: ["bookings", "total_deposit_amount"],
       catalog,
-      seedZeros: true,
     },
   );
 
@@ -202,13 +197,4 @@ test("nestSourceCompanyRows seeds catalog children including zeros", () => {
   assert.equal(rows[0].granularities[0].bookings, 8);
   assert.equal(rows[0].granularities[1].source_granularity_label, "TBM Prime Inbounds");
   assert.equal(rows[0].granularities[1].bookings, 0);
-});
-
-test("company-only source rows use domain labels and never create children", () => {
-  const rows = companyOnlySourceRows([
-    { _id: "tbm_prime_leads", bookings: 2, total_deposit_amount: 5000 },
-  ]);
-
-  assert.equal(rows[0].source_company_label, "TBM Prime Leads");
-  assert.deepEqual(rows[0].granularities, []);
 });

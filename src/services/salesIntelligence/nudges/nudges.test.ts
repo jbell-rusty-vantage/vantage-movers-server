@@ -5,15 +5,9 @@ import {
   NudgeProviderError,
   type NudgeRecipient,
 } from "./adapters";
-import {
-  renderNudgeTemplate,
-  reviewContextForbidsContactRequest,
-  validateNudgeBody,
-} from "./templates";
-import { collectCustomerPhones, guardDestination } from "./eligibility";
+import { renderNudgeTemplate, validateNudgeBody } from "./templates";
 import { csiNudgeConfiguration } from "../../../config/domain/salesIntelligence";
 import { csiNudgeCommandSchema } from "../../../validation/v1/salesIntelligence";
-import { nudgeDestinationRejectionEvent } from "./commands";
 
 const recipient: NudgeRecipient = {
   account: "synthetic",
@@ -183,241 +177,34 @@ test("repair receipt rejects a Direct chat response for a different chat ID", as
   }));
   assert.equal(await adapter.receipt(input), false);
 });
-test("body/customer destination policy handles canonical, formatted and full-width representations", () => {
-  for (const value of [
-    "+12025550101",
-    "2025550101",
-    "(202) 555-0101",
-    "２０２５５５０１０１",
-    "202.555.0101",
-  ])
-    assert.throws(
-      () => validateNudgeBody(`Review ${value}`, ["+12025550101"]),
-      /NUDGE_BODY_INVALID/,
-    );
-  assert.equal(
-    validateNudgeBody("Number ending 0101", ["+12025550101"]),
-    "Number ending 0101",
-  );
-  assert.throws(
-    () => guardDestination("(202) 555-0101", ["+12025550101"]),
-    /NUDGE_DESTINATION_IS_CUSTOMER/,
-  );
-  assert.throws(
-    () => collectCustomerPhones({ phone_number: "unknown" }),
-    /NUDGE_DESTINATION_EVIDENCE_INCOMPLETE/,
-  );
-  assert.deepEqual(
-    collectCustomerPhones({
-      normalized_phone_number: "+12025550101",
-      granot_contact_snapshot: { phone: "202-555-0102" },
-    }),
-    ["+12025550101", "+12025550102"],
-  );
+test("the message body is the Owner's trimmed text, 1..1000 characters", () => {
+  assert.equal(validateNudgeBody("  Review the directory entry.  "), "Review the directory entry.");
+  assert.throws(() => validateNudgeBody("   "), /NUDGE_BODY_INVALID/);
+  assert.throws(() => validateNudgeBody("x".repeat(1001)), /NUDGE_BODY_INVALID/);
 });
-test("versioned templates limit customer identity; purpose/version/client chat are strict", () => {
-  const body = renderNudgeTemplate({
-    purpose: "review_context",
-    template_key: "review_context",
-    template_version: 1,
-    repName: "Alex Reed",
-    customerName: "Taylor Morgan",
-    customerNumber: "+12025550101",
-    reasons: [],
-    lastContact: null,
-    source: null,
-    recordUrl: "https://vantage.example.test/sales-intelligence?record=abc",
-    ownerId: "synthetic-owner",
-    customerNumbers: ["+12025550101"],
-  });
-  assert.match(body, /Taylor M\./);
-  assert.ok(!body.includes("Morgan"));
-  assert.ok(!body.includes("2025550101"));
-  assert.match(body, /not a request to contact/);
-  assert.equal(
-    csiNudgeCommandSchema.safeParse({
-      expected_revision: 1,
-      expected_rep_revision: 1,
-      nudge: {
-        outreach_record_id: "a".repeat(24),
-        rc_account_id: "synthetic",
-        rc_extension_id: "101",
-        rep_identity_link_id: "b".repeat(24),
-        channel: "team_messaging",
-        template_key: "review_context",
-        template_version: 1,
-        purpose: "review_context",
-        chat_id: "arbitrary",
-      },
-    }).success,
-    false,
-  );
-  assert.equal(
-    csiNudgeCommandSchema.safeParse({
-      expected_revision: 1,
-      nudge: {
-        outreach_record_id: "a".repeat(24),
-        rc_account_id: "synthetic",
-        rc_extension_id: "101",
-        channel: "pager",
-        template_key: "review_context",
-        template_version: 1,
-        purpose: "review_context",
-      },
-    }).success,
-    true,
-  );
-  assert.equal(
-    csiNudgeCommandSchema.safeParse({
-      expected_revision: 1,
-      expected_rep_revision: 1,
-      nudge: {
-        outreach_record_id: "a".repeat(24),
-        rc_account_id: "synthetic",
-        rc_extension_id: "101",
-        channel: "pager",
-        template_key: "review_context",
-        template_version: 1,
-        purpose: "review_context",
-      },
-    }).success,
-    false,
-  );
-  assert.equal(
-    csiNudgeCommandSchema.safeParse({
-      nudge: {
-        rc_account_id: "synthetic",
-        rc_extension_id: "220",
-        channel: "pager",
-        template_key: "review_context",
-        template_version: 1,
-        purpose: "review_context",
-        body: "Joshua — please review this internal note.",
-      },
-    }).success,
-    true,
-  );
-  assert.equal(
-    csiNudgeCommandSchema.safeParse({
-      nudge: {
-        rc_account_id: "synthetic",
-        rc_extension_id: "220",
-        channel: "sms_to_rep",
-        template_key: "review_context",
-        template_version: 1,
-        purpose: "review_context",
-        body: "Joshua — please review this internal note.",
-      },
-    }).success,
-    false,
-  );
-  assert.equal(
-    csiNudgeCommandSchema.safeParse({
-      expected_revision: 1,
-      nudge: {
-        rc_account_id: "synthetic",
-        rc_extension_id: "220",
-        channel: "pager",
-        template_key: "review_context",
-        template_version: 1,
-        purpose: "review_context",
-        body: "Joshua — please review this internal note.",
-      },
-    }).success,
-    false,
-  );
+test("the review template is versioned and strict; its text may tell that User to call or message someone", () => {
+  const input = { purpose: "review_context" as const, template_key: "review_context", template_version: 1, body: "Please call the customer." };
+  assert.equal(renderNudgeTemplate(input), "Please call the customer.");
+  assert.throws(() => renderNudgeTemplate({ ...input, template_version: 2 }), /INVALID_INPUT/);
+  assert.throws(() => renderNudgeTemplate({ ...input, template_key: "call_suggestion" }), /INVALID_INPUT/);
 });
-test("directory-only review template does not require Outreach or a customer number", () => {
-  const body = renderNudgeTemplate({
-    purpose: "review_context",
-    template_key: "review_context",
-    template_version: 1,
-    repName: "Joshua L",
-    customerName: null,
-    customerNumber: null,
-    reasons: [],
-    lastContact: null,
-    source: null,
-    recordUrl: "https://vantage.example.test/sales-intelligence?view=reps",
-    ownerId: "synthetic-owner",
-    body: "Joshua — please review this internal note.",
-    customerNumbers: [],
-  });
-  assert.equal(body, "Joshua — please review this internal note.");
-});
-test("directory-only review text may tell that User to call or message someone", () => {
-  const body = renderNudgeTemplate({
-    purpose: "review_context",
-    template_key: "review_context",
-    template_version: 1,
-    repName: "Joshua L",
-    customerName: null,
-    customerNumber: null,
-    reasons: [],
-    lastContact: null,
-    source: null,
-    recordUrl: "https://vantage.example.test/sales-intelligence?view=reps",
-    ownerId: "synthetic-owner",
-    body: "Please call the customer.",
-    customerNumbers: [],
-  });
-  assert.equal(body, "Please call the customer.");
-});
-test("edited review-context bodies fail closed on contact instructions and keep restriction discussion", () => {
-  const base = {
-    purpose: "review_context" as const,
-    template_key: "review_context",
-    template_version: 1,
-    repName: "Alex Reed",
-    customerName: "Taylor Morgan",
-    customerNumber: "+12025550101",
-    reasons: [],
-    lastContact: null,
-    source: null,
-    recordUrl: "https://vantage.example.test/sales-intelligence?record=abc",
-    ownerId: "synthetic-owner",
-    customerNumbers: ["+12025550101"],
-  };
-  for (const body of [
-    "Please call the customer.",
-    "Alex, call the customer tomorrow.",
-    "Please urgently call the customer.",
-    "You should call them today.",
-    "Need you to text the customer.",
-    "Go ahead and contact the customer.",
-  ]) {
-    assert.equal(reviewContextForbidsContactRequest(body), true);
-    assert.throws(
-      () => renderNudgeTemplate({ ...base, body }),
-      /NUDGE_NOT_ACTIONABLE/,
-    );
-  }
-  for (const body of [
-    "Calling is restricted until Friday. Review internally.",
-    "The customer asked not to be called.",
-    "Please review the internal context; this is not a request to contact the customer.",
-  ]) {
-    assert.equal(reviewContextForbidsContactRequest(body), false);
-    assert.equal(renderNudgeTemplate({ ...base, body }), body);
-  }
-});
-test("customer-destination rejection is an OutreachRecord event, not a fake nudge id", () => {
-  const event = nudgeDestinationRejectionEvent(
-    "a".repeat(24),
-    "NUDGE_DESTINATION_IS_CUSTOMER",
-  );
-  assert.deepEqual(event.entity, {
-    type: "OutreachRecord",
-    id: "a".repeat(24),
-  });
-  assert.deepEqual(event.details, {
-    outreach_record_id: "a".repeat(24),
-    error_code: "NUDGE_DESTINATION_IS_CUSTOMER",
-  });
-  assert.equal(
-    event.dedupeKey,
-    `csi:nudge:destination-rejected:${"a".repeat(24)}`,
-  );
+test("the command is a directory review message only: no Outreach record, follow-up, revision fence, customer channel or chat id", () => {
+  const nudge = { rc_account_id: "synthetic", rc_extension_id: "220", channel: "pager", template_key: "review_context", template_version: 1,
+    purpose: "review_context", body: "Joshua — please review this internal note." };
+  assert.equal(csiNudgeCommandSchema.safeParse({ nudge }).success, true);
+  assert.equal(csiNudgeCommandSchema.safeParse({ nudge: { ...nudge, channel: "team_messaging" } }).success, true);
+  assert.equal(csiNudgeCommandSchema.safeParse({ nudge: { ...nudge, rep_identity_link_id: "b".repeat(24) }, expected_rep_revision: 1 }).success, true);
+  for (const [label, command] of [
+    ["sms to a phone number", { nudge: { ...nudge, channel: "sms_to_rep" } }],
+    ["an Outreach record", { nudge: { ...nudge, outreach_record_id: "a".repeat(24) } }],
+    ["an Outreach revision fence", { nudge, expected_revision: 1 }],
+    ["a follow-up", { nudge: { ...nudge, followup_id: "a".repeat(24) } }],
+    ["a call suggestion", { nudge: { ...nudge, purpose: "call_suggestion", template_key: "call_suggestion" } }],
+    ["no body", { nudge: { ...nudge, body: undefined } }],
+    ["a client-chosen chat id", { nudge: { ...nudge, chat_id: "arbitrary" } }],
+    ["a rep revision without a link", { nudge, expected_rep_revision: 1 }],
+    ["a link without its revision", { nudge: { ...nudge, rep_identity_link_id: "b".repeat(24) } }],
+  ] as const) assert.equal(csiNudgeCommandSchema.safeParse(command).success, false, label);
 });
 test("optional channels default off", () => {
   const sms = process.env.SALES_INTELLIGENCE_NUDGE_SMS_ENABLED,

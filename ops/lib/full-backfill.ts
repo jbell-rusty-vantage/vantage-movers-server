@@ -56,6 +56,7 @@ import {
 } from "../../src/services/salesIntelligence/analysis/structuredPrompt";
 import type { CitationMode } from "../../src/services/salesIntelligence/analysis/citationHandles";
 import { continueStructuredAnalysis, runBoundedBackfill, waitForBackfillPeer } from "./backfill-csi-structured-analysis.lib";
+import { legacyNumber } from "../../src/services/salesIntelligence/legacyNumberFields";
 
 export const FULL_BACKFILL_MANIFEST_VERSION = "csi-full-backfill-v1" as const;
 export const OPERATOR_HOLD_REASON = "operator_hold";
@@ -477,7 +478,7 @@ export async function selectWorkSet(target: TargetVersions, filter: { numbers: s
     const sets = [...new Set(group.convs.map(c => c.set))].sort() as Array<"a" | "b" | "c">;
     if (!sets.length) {
       // (c) no stale conversation, but the running summary is missing, on another version, or older than a conversation run.
-      const summary = number!.running_summary as { run_id?: unknown; computed_at?: Date } | null;
+      const summary = legacyNumber(number!).running_summary as { run_id?: unknown; computed_at?: Date } | null;
       const run = summary?.run_id ? await getIntelligenceRunModel().findById(summary.run_id).select("prompt_version").lean() : null;
       if (summary && acceptedFindingsVersions(target).includes(run?.prompt_version ?? "") && new Date(summary.computed_at ?? 0).getTime() >= group.newestSummary) continue;
       sets.push("c");
@@ -992,7 +993,7 @@ class FullBackfill {
 
   /** Application scheduled the Number synthesis 15 s ahead: hold it until this Number's conversations are done. */
   private async holdSchedule(numberId: string) {
-    const number = await getContactNumberModel().findById(numberId).select("intelligence_schedule").lean();
+    const number = legacyNumber(await getContactNumberModel().findById(numberId).select("intelligence_schedule").lean());
     const jobId = number?.intelligence_schedule?.job_id ? String(number.intelligence_schedule.job_id) : null;
     const job = jobId ? await this.load(jobId) : null;
     if (job && job.stage === "number_refresh" && ["pending", "retry"].includes(job.status)) await this.hold(job, numberId, null);
@@ -1054,7 +1055,7 @@ class FullBackfill {
 
   /** The scheduled synthesis, or the normal scheduling path, or (fingerprint unchanged / S10-held and left) the backfill's own job. */
   private async pickNumberJob(n: NumberEntry): Promise<Pick | { none: true }> {
-    const number = await getContactNumberModel().findById(n.number_id).select("intelligence_schedule").lean();
+    const number = legacyNumber(await getContactNumberModel().findById(n.number_id).select("intelligence_schedule").lean());
     let scheduled = number?.intelligence_schedule?.job_id ? await this.load(String(number.intelligence_schedule.job_id)) : null;
     let prior: PriorState | undefined, superseded: string | undefined;
     if (this.options.reprepareSchemaExhausted) {
@@ -1111,7 +1112,7 @@ class FullBackfill {
 
   /** The running summary points to a completed target-version run newer than every conversation run of the Number. */
   async runningSummaryCurrent(numberId: string) {
-    const number = await getContactNumberModel().findById(numberId).select("running_summary").lean();
+    const number = legacyNumber(await getContactNumberModel().findById(numberId).select("running_summary").lean());
     const summary = number?.running_summary as { run_id?: unknown } | null | undefined;
     if (!summary?.run_id) return false;
     const run = await getIntelligenceRunModel().findById(summary.run_id).select("status prompt_version createdAt").lean();
@@ -1158,7 +1159,7 @@ class FullBackfill {
   }
   /** The Number's scheduled job when it is a new, runnable generation (not `exclude`). */
   private async followupScheduled(numberId: string, exclude: string | null) {
-    const number = await getContactNumberModel().findById(numberId).select("intelligence_schedule").lean();
+    const number = legacyNumber(await getContactNumberModel().findById(numberId).select("intelligence_schedule").lean());
     const id = number?.intelligence_schedule?.job_id ? String(number.intelligence_schedule.job_id) : null;
     if (!id || id === exclude) return null;
     const job = await this.load(id);

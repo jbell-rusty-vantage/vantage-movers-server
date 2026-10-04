@@ -51,6 +51,7 @@ import {
   recordCancellationDailyOperationsFact,
 } from "../dailyOperations/recordDomainFacts";
 import { finalizeSheetSync, finalizeSheetSyncDelete } from "../sheetSync";
+import { wakeLeadAttachmentsAfterLeadCommand } from "../salesIntelligence/attachment/leadTrigger";
 import {
   BOOKED_LEAD_CHANGE_PATHS,
   CALL_LEAD_CHANGE_PATHS,
@@ -174,7 +175,18 @@ export async function runExistingCreateFormLead(input: {
       };
     },
     finalize: async (pending) => {
-      finalized = await completeFormLeadIngestion(pending);
+      try {
+        finalized = await completeFormLeadIngestion(pending);
+      } finally {
+        // Post-commit, bounded and non-throwing: mint the Contact Number promptly. A reused
+        // (duplicate) submission committed no change, so it wakes nothing.
+        if (!pending.reusedExistingLead) {
+          await wakeLeadAttachmentsAfterLeadCommand({
+            target: { model: "FormLead", id: pending.lead._id.toString() },
+            change_ids: changeIds.map(String),
+          });
+        }
+      }
     },
   });
   return { command, data: finalized! };
@@ -312,7 +324,20 @@ export async function runExistingUpdateSourceOwnedLead(input: {
             : undefined,
       };
     },
-    finalize: finalizeSheetSync,
+    // Runs only when a change committed (pending is set only for fields.length > 0, and a replay
+    // skips finalize). The Form Lead wake nominates only phone/contact/official-flag changes.
+    finalize: async (pending) => {
+      try {
+        await finalizeSheetSync(pending);
+      } finally {
+        if (input.lead_model === "FormLead") {
+          await wakeLeadAttachmentsAfterLeadCommand({
+            target: { model: "FormLead", id: input.lead_id },
+            change_ids: changeIds.map(String),
+          });
+        }
+      }
+    },
   });
   return { command, data: updated };
 }

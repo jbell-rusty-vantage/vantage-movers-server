@@ -6,7 +6,6 @@ import type { AdminResource } from "./adminScope.service";
 const CSV_COLUMNS: Record<AdminResource, string[]> = {
   "form-leads": [
     "_id",
-    "database_scope",
     "timestamp",
     "createdAt",
     "source_company",
@@ -32,7 +31,6 @@ const CSV_COLUMNS: Record<AdminResource, string[]> = {
   ],
   "call-leads": [
     "_id",
-    "database_scope",
     "timestamp",
     "createdAt",
     "source_company",
@@ -57,7 +55,6 @@ const CSV_COLUMNS: Record<AdminResource, string[]> = {
   ],
   "booked-leads": [
     "_id",
-    "database_scope",
     "book_date",
     "createdAt",
     "job_no",
@@ -72,7 +69,6 @@ const CSV_COLUMNS: Record<AdminResource, string[]> = {
   ],
   "cancelled-leads": [
     "_id",
-    "database_scope",
     "cancel_date",
     "book_date",
     "createdAt",
@@ -85,22 +81,6 @@ const CSV_COLUMNS: Record<AdminResource, string[]> = {
     "cancelled_by",
     "refund_amount",
   ],
-  customers: ["_id", "database_scope", "createdAt", "full_name", "phone_number", "email"],
-  agents: [
-    "_id",
-    "database_scope",
-    "createdAt",
-    "name",
-    "normalized_name",
-    "active",
-    "role",
-    "created_from",
-    "booking_count",
-    "total_binder_amount",
-    "total_deposit_amount",
-    "cancellation_count",
-    "cancellation_rate",
-  ],
 };
 
 export async function exportAdminResourceCsv(
@@ -111,7 +91,7 @@ export async function exportAdminResourceCsv(
   const columns = CSV_COLUMNS[resource];
   const csvRows = rows.map(flattenExportRow);
   return {
-    filename: `${resource}-${query.database_scope}.csv`,
+    filename: `${resource}.csv`,
     csv: toCsv(csvRows, columns),
   };
 }

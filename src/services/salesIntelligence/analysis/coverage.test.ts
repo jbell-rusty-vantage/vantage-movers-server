@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { capturedTranscriptsComplete } from "./coverage";
 
-const coverage = { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const }, ai_paused: false };
+const coverage = { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 const transcriptPage = (cursor: string | undefined, nextCursor: string | null, missingRanges: string[] = []) => ({
   arguments: cursor === undefined ? {} : { cursor },
   response: {

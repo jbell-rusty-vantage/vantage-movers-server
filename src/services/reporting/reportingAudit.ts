@@ -1,5 +1,5 @@
 import type { DurableActor } from "../durableWork";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 
 export type ReportingAuditAction =
   | "preview"
@@ -59,26 +59,10 @@ export function buildReportingAuditDetails(
   return details;
 }
 
-export async function recordReportingAudit(
-  input: ReportingAuditInput,
-): Promise<void> {
-  const notificationCandidate =
-    input.action === "delivery_failed" &&
-    input.outcome === "failure";
-  await recordOperationalEvent({
-    level: input.outcome === "success" ? "info" : "warn",
-    eventKey: `reporting.${input.action}.${input.outcome}`,
-    category: "admin",
+export function recordReportingAudit(input: ReportingAuditInput): void {
+  logger[input.outcome === "success" ? "info" : "warn"]({
+    msg: `reporting.${input.action}.${input.outcome}`,
     workflow: "reporting_projection",
-    summary: `Reporting ${input.action} ${input.outcome}.`,
-    details: buildReportingAuditDetails(input),
-    runId: input.runId,
-    entity: input.definitionId
-      ? { type: "reporting_definition", id: input.definitionId }
-      : undefined,
-    notificationCandidate,
-    reportable: false,
-    ownerVisible: true,
-    piiPolicy: "none",
+    ...buildReportingAuditDetails(input),
   });
 }

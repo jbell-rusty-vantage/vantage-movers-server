@@ -3,6 +3,7 @@ import {
 } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { connectMongo } from "../db";
+import { logger } from "../logger";
 import {
   claimDueBestRelocationConnection,
   createQueuedIngestionRun,
@@ -11,7 +12,6 @@ import {
   publishIngestionWakeup,
 } from "../services/ingestion";
 import { createBestRelocationIngestionActor } from "../services/durableWork";
-import { recordOperationalEvent } from "../services/observability";
 
 const router = Router();
 
@@ -57,18 +57,11 @@ router.all(
             new Date(connection.last_successful_run_at).getTime() >
             30 * 60 * 60 * 1000)
       ) {
-        await recordOperationalEvent({
-          level: "error",
-          eventKey: "best_relocation_ingestion.success_stale",
-          category: "cron",
+        logger.error({
+          msg: "best_relocation_ingestion.success_stale",
           workflow: "best_relocation_ingestion",
-          summary:
-            "Best Relocation ingestion has no successful run in the last 30 hours.",
-          details: {
-            last_successful_run_at:
-              connection.last_successful_run_at?.toISOString() ?? null,
-          },
-          notificationCandidate: true,
+          last_successful_run_at:
+            connection.last_successful_run_at?.toISOString() ?? null,
         });
       }
       const claim = await claimDueBestRelocationConnection({

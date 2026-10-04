@@ -3,7 +3,7 @@ import {
   resolveCpl,
   storedLeadTimestampToCplInstant,
 } from "../operationsRegistry";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 
 export const LEAD_CPL_RESOLUTION_VERSION = "operations-registry-cpl-v1";
 
@@ -66,33 +66,21 @@ export async function resolveLeadCplSnapshot(
   }
 }
 
-export async function recordMissingLeadCplRate(input: {
+export function recordMissingLeadCplRate(input: {
   leadModel: "FormLead" | "CallLead";
   leadId: string;
   sourceCompany: string;
   sourceGranularityId?: string | null;
   sourceGranularityKey?: string | null;
-}): Promise<void> {
-  await recordOperationalEvent({
-    level: "error",
-    eventKey: "lead.cpl.missing_rate",
-    category: "lead",
+}): void {
+  logger.error({
+    msg: "lead.cpl.missing_rate",
     workflow: "lead_cpl_resolution",
-    summary: "Lead saved without a covering CPL rate period.",
-    sourceCompany: input.sourceCompany,
-    entity: {
-      type: input.leadModel === "FormLead" ? "form_lead" : "call_lead",
-      id: input.leadId,
-    },
-    details: {
-      lead_model: input.leadModel,
-      source_granularity_id: input.sourceGranularityId ?? null,
-      source_granularity_key: input.sourceGranularityKey ?? null,
-      remediation: "Add or correct CPL schedule coverage, then run a correction job.",
-    },
-    dedupeKey: `lead.cpl.missing_rate:${input.leadModel}:${input.leadId}`,
-    notificationCandidate: true,
-    ownerVisible: true,
-    piiPolicy: "none",
+    lead_model: input.leadModel,
+    lead_id: input.leadId,
+    source_company: input.sourceCompany,
+    source_granularity_id: input.sourceGranularityId ?? null,
+    source_granularity_key: input.sourceGranularityKey ?? null,
+    remediation: "Add or correct CPL schedule coverage, then run a correction job.",
   });
 }

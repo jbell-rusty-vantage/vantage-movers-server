@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
-import { getOperationalEventModel } from "../../models/OperationalEvent";
+import { DomainCommandExecution } from "../../models/DomainCommandExecution";
 import {
   drainDueReceipts,
   drainRequestedReceipt,
@@ -12,8 +12,7 @@ import {
 } from "./drainer";
 import { GRANOT_LIFECYCLE_ERROR_CODES } from "./errors";
 import { getGranotLifecycleClaimRecoveriesTotal, resetGranotLifecycleMetrics } from "./metrics";
-import { requeueDeadLetterReceipt } from "./operations";
-import { maskLifecycleId } from "./observability";
+import { GRANOT_RECEIPT_REQUEUE_COMMAND_NAME, requeueDeadLetterReceipt } from "./operations";
 import type { RegistryActorContext } from "../operationsRegistry/types";
 
 const OWNER: RegistryActorContext = {
@@ -163,7 +162,7 @@ test("[AC-30] replica-set attempt 10 dead-letters with zero Decision", async (t)
   await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
 });
 
-test("[AC-37] replica-set concurrent requeue has one winner and one audit", async (t) => {
+test("[AC-37] replica-set concurrent requeue has one winner and one provenance record", async (t) => {
   if (!(await replicaReady(t))) {
     return;
   }
@@ -191,16 +190,20 @@ test("[AC-37] replica-set concurrent requeue has one winner and one audit", asyn
   assert.equal(row?.processing.state, "pending");
   assert.equal(row?.processing.manual_requeue_count, 1);
   assert.equal(row?.payload_sha256, "ab".repeat(32));
-  const audits = await getOperationalEventModel().countDocuments({
-    event_key: "granot_lifecycle.manual_requeue",
-    entity_id: maskLifecycleId(String(id)),
-  });
-  assert.equal(audits, 1);
+  const provenanceFilter = {
+    origin: "granot_lifecycle" as const,
+    command_name: GRANOT_RECEIPT_REQUEUE_COMMAND_NAME,
+    "provenance.source_receipt_id": String(id),
+  };
+  const provenance = await DomainCommandExecution.find(provenanceFilter).lean();
+  assert.equal(provenance.length, 1);
+  assert.equal((provenance[0]?.actor as { actor_role?: string }).actor_role, "owner");
+  assert.equal(
+    (provenance[0]?.provenance as { requeue?: { manual_requeue_count?: number } }).requeue?.manual_requeue_count,
+    1,
+  );
   await getGranotObservationReceiptModel().collection.deleteOne({ _id: id });
-  await getOperationalEventModel().deleteMany({
-    event_key: "granot_lifecycle.manual_requeue",
-    entity_id: maskLifecycleId(String(id)),
-  });
+  await DomainCommandExecution.deleteMany(provenanceFilter);
 });
 
 test("[AC-30] replica-set queue and cron due scan share the claim fence", async (t) => {

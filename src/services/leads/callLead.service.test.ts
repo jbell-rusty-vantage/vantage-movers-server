@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, test } from "node:test";
+import { afterEach, before, mock, test } from "node:test";
 import mongoose from "mongoose";
 import { SHEET_TAB_NAMES } from "../../config/domain";
 import { CallLead } from "../../models/CallLead";
+import { logger } from "../../logger";
 import { ConflictError } from "../errors";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-} from "../observability";
 import {
   completeCallLeadIngestion,
   correctCallLead,
@@ -35,6 +32,16 @@ const originalUseDb = mongoose.connection.useDb;
 const originalMasterLeadsSheetId = process.env.MASTER_LEADS_SHEET_ID;
 const originalTestMasterLeadsSheetId = process.env.TEST_MASTER_LEADS_SHEET_ID;
 const originalSheetSyncMode = process.env.SHEET_SYNC_MODE;
+const loggedKeys: string[] = [];
+
+before(() => {
+  for (const level of ["info", "warn", "error"] as const) {
+    mock.method(logger, level, (entry: unknown) => {
+      const key = (entry as { msg?: unknown } | null)?.msg;
+      if (typeof key === "string") loggedKeys.push(key);
+    });
+  }
+});
 
 afterEach(() => {
   (CallLead as unknown as StubbedCallLeadModel).findById =
@@ -46,7 +53,7 @@ afterEach(() => {
   process.env.TEST_MASTER_LEADS_SHEET_ID = originalTestMasterLeadsSheetId;
   if (originalSheetSyncMode === undefined) delete process.env.SHEET_SYNC_MODE;
   else process.env.SHEET_SYNC_MODE = originalSheetSyncMode;
-  clearCapturedOperationalEvents();
+  loggedKeys.length = 0;
 });
 
 test("rememberBothCallSheetTabsForTombstone includes Calls and Duplicate Calls fallbacks", () => {
@@ -93,30 +100,28 @@ test("rememberBothCallSheetTabsForTombstone preserves known rows from sheet_sync
   assert.equal(duplicateCallsTarget?.row_number, undefined);
 });
 
-test("completeCallLeadIngestion records lead.call.created after commit and skips form-fill when false", async () => {
+test("completeCallLeadIngestion logs lead.call.created after commit and skips form-fill when false", async () => {
   process.env.SHEET_SYNC_MODE = "disabled";
   const pending = pendingIngestion({ form_fill: false, cplStatus: "resolved" });
 
   const lead = await completeCallLeadIngestion(pending);
 
   assert.equal(lead, pending.lead);
-  const keys = capturedEventKeys();
+  const keys = loggedLeadKeys();
   assert.deepEqual(keys, ["lead.call.created"]);
   assert.equal(
-    getCapturedOperationalEvents().some((event) =>
-      event.input.eventKey.startsWith("crm."),
-    ),
+    loggedKeys.some((key) => key.startsWith("crm.")),
     false,
   );
 });
 
-test("completeCallLeadIngestion records form-fill only when Form Fill is true", async () => {
+test("completeCallLeadIngestion logs form-fill only when Form Fill is true", async () => {
   process.env.SHEET_SYNC_MODE = "disabled";
   const pending = pendingIngestion({ form_fill: true, cplStatus: "resolved" });
 
   await completeCallLeadIngestion(pending);
 
-  assert.deepEqual(capturedEventKeys(), [
+  assert.deepEqual(loggedLeadKeys(), [
     "lead.call.created",
     "lead.call.form_fill_detected",
   ]);
@@ -131,7 +136,7 @@ test("completeCallLeadIngestion reports missing CPL after the write, not as a CR
 
   await completeCallLeadIngestion(pending);
 
-  assert.deepEqual(capturedEventKeys(), [
+  assert.deepEqual(loggedLeadKeys(), [
     "lead.cpl.missing_rate",
     "lead.call.created",
   ]);
@@ -379,8 +384,8 @@ function pendingIngestion(input: {
   };
 }
 
-function capturedEventKeys() {
-  return getCapturedOperationalEvents().map((event) => event.input.eventKey);
+function loggedLeadKeys() {
+  return loggedKeys.filter((key) => key.startsWith("lead."));
 }
 
 function extractExportedFunction(source: string, name: string): string {

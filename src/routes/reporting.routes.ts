@@ -145,10 +145,10 @@ router.post(`${base}/destinations/:id/verify`, async (req, res) => {
       typeof req.params.id === "string" &&
       mongoose.isValidObjectId(req.params.id)
     ) {
-      await emitReportingDestinationHealthFailure({
+      emitReportingDestinationHealthFailure({
         destinationId: req.params.id,
         reason: reportingHealthFailureReason(error),
-      }).catch(() => undefined);
+      });
     }
     return sendError(res, error);
   }

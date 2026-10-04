@@ -21,7 +21,7 @@ import type {
   UpdatePendingEmployeeBookingInput,
 } from "../../validation/v1.validation";
 import { ConflictError, NotFoundError } from "../errors";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { finalizeSheetSync, persistSheetSyncIntent, runSheetSyncWrite } from "../sheetSync";
 import {
   LeadChangeRecorder,
@@ -206,15 +206,11 @@ export async function refreshBookingLeadCandidates(
   for (const job of jobs) {
     await finalizeSheetSync(job);
   }
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "booking.lead_reconciliation.candidates_refreshed",
-    category: "booking",
+  logger.info({
+    msg: "booking.lead_reconciliation.candidates_refreshed",
     workflow: "booking_lead_reconciliation",
-    summary: "Booking lead reconciliation candidates refreshed.",
-    entity: { type: "booking_lead_reconciliation_case", id: caseId },
-    details: { actor: context.actor },
-    notificationCandidate: false,
+    case_id: caseId,
+    actor: context.actor,
   });
   return getBookingLeadReconciliationCase(caseId);
 }
@@ -392,20 +388,17 @@ export async function resolveBookingLeadReconciliation(
   for (const job of jobs) {
     await finalizeSheetSync(job);
   }
-  await recordOperationalEvent({
-    level: command.action === "reassign" ? "warn" : command.action === "dismiss" ? "info" : "info",
-    eventKey:
+  logger[command.action === "reassign" ? "warn" : "info"]({
+    msg:
       command.action === "reassign"
         ? "booking.lead_reconciliation.reassigned"
         : command.action === "dismiss"
           ? "booking.lead_reconciliation.dismissed"
           : "booking.lead_reconciliation.resolved",
-    category: "booking",
     workflow: "booking_lead_reconciliation",
-    summary: "Booking lead reconciliation command completed.",
-    entity: { type: "booking_lead_reconciliation_case", id: caseId },
-    details: { actor: context.actor, action: command.action },
-    notificationCandidate: false,
+    case_id: caseId,
+    actor: context.actor,
+    action: command.action,
   });
   return getBookingLeadReconciliationCase(caseId);
 }
@@ -630,15 +623,11 @@ export async function reopenBookingLeadReconciliation(
     caseDoc.revision += 1;
     await caseDoc.save({ session });
   }, { forceTransaction: true });
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "booking.lead_reconciliation.reopened",
-    category: "booking",
+  logger.info({
+    msg: "booking.lead_reconciliation.reopened",
     workflow: "booking_lead_reconciliation",
-    summary: "Booking lead reconciliation case reopened.",
-    entity: { type: "booking_lead_reconciliation_case", id: caseId },
-    details: { actor: context.actor },
-    notificationCandidate: false,
+    case_id: caseId,
+    actor: context.actor,
   });
   return getBookingLeadReconciliationCase(caseId);
 }

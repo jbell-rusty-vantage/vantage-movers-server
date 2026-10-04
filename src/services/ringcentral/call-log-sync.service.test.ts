@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
-import { beforeEach, test } from "node:test";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-} from "../observability/testObservabilitySink";
+import { before, beforeEach, mock, test } from "node:test";
+import { logger } from "../../logger";
 import { RingCentralApiError } from "./client";
 import { runRingCentralCallLogSync } from "./call-log-sync.service";
 import type { RingCentralCallLogSyncDependencies } from "./call-log-sync.service";
@@ -23,8 +20,8 @@ import type { RingCentralIngestResult } from "./ringcentral-call-lead-ingest.ser
  * claim-before-work, loser no-op, renewal, stop-on-loss, cursor-on-full-success
  * only, the locked 12-hour rolling floor, and bounded PII-safe telemetry.
  *
- * Every dependency (clock, owner, state store, provider, ingest, events) is
- * injected, so nothing here touches Mongo or RingCentral. Mongo lease semantics
+ * Every dependency (clock, owner, state store, provider, ingest) is injected
+ * and the logger is spied, so nothing here touches Mongo or RingCentral. Mongo lease semantics
  * are proven separately at the replica level.
  */
 
@@ -254,12 +251,31 @@ function priorCursorState(
   };
 }
 
-function eventKeys(): string[] {
-  return getCapturedOperationalEvents().map((event) => event.input.eventKey);
+const logged: Record<string, unknown>[] = [];
+
+/** Run-level Call Log sync log entries, in emission order. */
+function runLogs(): Record<string, unknown>[] {
+  return logged.filter((entry) =>
+    String(entry.msg).startsWith("ringcentral.call_log_sync."),
+  );
 }
 
+function eventKeys(): string[] {
+  return runLogs().map((entry) => String(entry.msg));
+}
+
+before(() => {
+  for (const level of ["debug", "info", "warn", "error"] as const) {
+    mock.method(logger, level, (entry: unknown) => {
+      if (entry && typeof entry === "object") {
+        logged.push(entry as Record<string, unknown>);
+      }
+    });
+  }
+});
+
 beforeEach(() => {
-  clearCapturedOperationalEvents();
+  logged.length = 0;
   resetRingCentralMetrics();
 });
 
@@ -444,7 +460,7 @@ test("[AC-17] every failure stage leaves the cursor unchanged", async () => {
   ];
 
   for (const stage of stages) {
-    clearCapturedOperationalEvents();
+    logged.length = 0;
     resetRingCentralMetrics();
     const { calls, deps } = harness(stage.options);
     await assert.rejects(() => runRingCentralCallLogSync(T0, deps), `${stage.name}`);
@@ -637,7 +653,7 @@ test("Call Log pages across a newest-first split still ingest oldest-first in on
   assert.deepEqual(calls.ingestedCallLogIds, ["call-log-1", "call-log-2"]);
 });
 
-test("[AC-17] Call Log telemetry and events carry no caller or provider content", async () => {
+test("[AC-17] Call Log telemetry and run logs carry no caller or provider content", async () => {
   const leakyError = new Error(
     "provider rejected caller +15550001000 for Synthetic Caller with Bearer secret-token",
   );
@@ -648,7 +664,7 @@ test("[AC-17] Call Log telemetry and events carry no caller or provider content"
   await assert.rejects(() => runRingCentralCallLogSync(T0, deps));
 
   assert.equal(calls.errors[0]?.errorCode, "ingest_failed");
-  const serialized = JSON.stringify(getCapturedOperationalEvents());
+  const serialized = JSON.stringify(runLogs());
   for (const forbidden of [
     "+15550001000",
     "Synthetic Caller",
@@ -659,25 +675,24 @@ test("[AC-17] Call Log telemetry and events carry no caller or provider content"
     assert.equal(
       serialized.includes(forbidden),
       false,
-      `event stream leaked ${forbidden}`,
+      `run log leaked ${forbidden}`,
     );
   }
 });
 
-test("[AC-17] emitted lease events expose only a masked owner and bounded fields", async () => {
+test("[AC-17] emitted lease logs expose only a masked owner and bounded fields", async () => {
   const { deps, owner } = harness({ pages: [[qualifiedVet(1)]] });
   await runRingCentralCallLogSync(T0, deps);
 
-  const serialized = JSON.stringify(getCapturedOperationalEvents());
+  const serialized = JSON.stringify(runLogs());
   assert.equal(serialized.includes(owner), false, "raw lease owner leaked");
-  const started = getCapturedOperationalEvents().find(
-    (event) => event.input.eventKey === "ringcentral.call_log_sync.started",
+  const started = runLogs().find(
+    (entry) => entry.msg === "ringcentral.call_log_sync.started",
   );
   assert.ok(started);
-  const details = started.input.details as Record<string, unknown>;
-  assert.match(String(details.leaseOwnerHash), /^[0-9a-f]{12}$/);
-  assert.equal(typeof details.windowFrom, "string");
-  assert.equal(typeof details.windowTo, "string");
+  assert.match(String(started.leaseOwnerHash), /^[0-9a-f]{12}$/);
+  assert.equal(typeof started.windowFrom, "string");
+  assert.equal(typeof started.windowTo, "string");
 });
 
 test("[AC-17] the run summary itself exposes no caller data", async () => {

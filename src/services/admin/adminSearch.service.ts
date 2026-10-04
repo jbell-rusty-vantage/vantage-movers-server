@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import type { AdminSearchQuery } from "../../validation/v1.validation";
-import { concreteScopes, getAdminModels, type AdminResource, type ConcreteAdminScope } from "./adminScope.service";
+import { getAdminModels, type AdminResource } from "./adminScope.service";
 import { toObjectId } from "../../utils/objectId";
 import {
   CALL_LEAD_CONTACT_EMAIL_PATHS,
@@ -17,7 +17,6 @@ type AdminSearchDoc = Record<string, unknown> & {
 
 export type AdminSearchItem = {
   id: string;
-  database_scope: ConcreteAdminScope;
   primary_label: string;
   secondary_label: string;
   badges: string[];
@@ -88,20 +87,6 @@ const SEARCH_CONFIGS: Record<
     secondary: (doc) => label(doc.customer_name, doc.reason, doc.source),
     badges: () => ["cancelled"],
   },
-  customers: {
-    fields: ["full_name", "normalized_name", "phone_number", "email"],
-    hrefPrefix: "/customers",
-    primary: (doc) => label(doc.full_name, doc.phone_number, "Customer"),
-    secondary: (doc) => label(doc.email, doc.phone_number),
-    badges: () => ["customer"],
-  },
-  agents: {
-    fields: ["name", "normalized_name", "role"],
-    hrefPrefix: "/agents",
-    primary: (doc) => label(doc.name, "Agent"),
-    secondary: (doc) => label(doc.role, doc.active === false ? "inactive" : "active"),
-    badges: (doc) => [doc.active === false ? "inactive" : "active", "agent"],
-  },
 };
 
 export async function globalAdminSearch(query: AdminSearchQuery): Promise<{ groups: AdminSearchGroup[] }> {
@@ -116,31 +101,18 @@ export async function globalAdminSearch(query: AdminSearchQuery): Promise<{ grou
 }
 
 async function searchResource(resource: AdminResource, query: AdminSearchQuery): Promise<AdminSearchItem[]> {
-  const items = await Promise.all(
-    concreteScopes(query.database_scope).map((scope) => searchConcrete(resource, scope, query)),
-  );
-  return items.flat().slice(0, query.limit);
-}
-
-async function searchConcrete(
-  resource: AdminResource,
-  scope: ConcreteAdminScope,
-  query: AdminSearchQuery,
-): Promise<AdminSearchItem[]> {
   const config = SEARCH_CONFIGS[resource];
-  const models = getAdminModels(scope);
   const q = query.q.trim();
   const objectIdClause = mongoose.isValidObjectId(q)
     ? [{ _id: toObjectId(q) }]
     : [];
   const regex = new RegExp(escapeRegex(q), "i");
   const filter = { $or: [...objectIdClause, ...config.fields.map((field) => ({ [field]: regex }))] };
-  const docs = await models[resource].find(filter).sort({ createdAt: -1 }).limit(query.limit).lean().exec();
+  const docs = await getAdminModels()[resource].find(filter).sort({ createdAt: -1 }).limit(query.limit).lean().exec();
   return (docs as AdminSearchDoc[]).map((doc) => {
     const id = String(doc._id);
     return {
       id,
-      database_scope: scope,
       primary_label: config.primary(doc),
       secondary_label: config.secondary(doc),
       badges: config.badges(doc),

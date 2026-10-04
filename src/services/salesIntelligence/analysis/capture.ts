@@ -9,6 +9,7 @@ import { newObjectIdHex } from "../../../utils/objectId";
 import { intelligenceReadSchema, intelligenceToolArguments, type IntelligenceRead } from "./contracts";
 import { loadAuthorizedRun, fenceAuthorizedLease, type RunAuthorization } from "./lease";
 import { loadReadScope, readIntelligenceEvidence, readContentSchema, type ReadContent } from "./reads";
+import { legacyNumber } from "../legacyNumberFields";
 
 export const MAX_RUN_SNAPSHOTS = 128;
 export const MAX_RUN_EVIDENCE_BYTES = 8_000_000;
@@ -35,7 +36,7 @@ export async function captureIntelligenceRead(auth: RunAuthorization, raw: ReadI
   const tool_call_id = payloadHash(input);
   const existing = await getIntelligenceEvidenceSnapshotModel().findOne({run_id:run._id, tool_call_id, ...csiDataset()}).lean();
   if (existing) return restored(existing);
-  const number = run.contact_number_id ? await getContactNumberModel().findById(run.contact_number_id).select("retention_epoch").lean() : null;
+  const number = run.contact_number_id ? legacyNumber(await getContactNumberModel().findById(run.contact_number_id).select("retention_epoch").lean()) : null;
   let data: ReadContent;
   let retrievedAt = new Date();
   if (run.mode === "original_evidence") {

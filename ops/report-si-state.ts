@@ -9,7 +9,7 @@
  *   2. band transitions by `cause.kind` × `estimated` (`outreach_band_transitions`, S9-PUBLISH) since `--since`
  *      (default: the step-6 `as_of`, else 30 days);
  *   3. the `live_call` count (snapshot `filter_keys.live_call`);
- *   4. `capture_health` (the Owner coverage read's block, and `readCaptureHealthStatus` at `as_of`);
+ *   4. `capture_health` (the Owner coverage read's block, and the composed capture health at `as_of`);
  *   5. Numbers by `created_via` (absent = `call`) × `has_calls`;
  *   6. Outreach records by `assignment.origin` (active, and closed in the last 90 days);
  *   7. open follow-ups by `origin` × `date_resolution.precision`.
@@ -36,7 +36,7 @@ import { getOutreachRecordModel } from "../src/models/OutreachRecord";
 import { getOutreachFollowupModel } from "../src/models/OutreachFollowup";
 import { getOutreachBandTransitionModel } from "../src/models/salesIntelligence/outreach";
 import { readOverviewIndex, tallyNow } from "../src/services/salesIntelligence/overview/now";
-import { readCaptureHealthStatus, readOwnerCoverage } from "../src/services/salesIntelligence/ownerCoverage";
+import { composeCaptureHealth, readCallLogRows, readCaptureHealthFacts, readOwnerCoverage } from "../src/services/salesIntelligence/ownerCoverage";
 import { resolvePolicy } from "../src/services/salesIntelligence/policy";
 
 const arg = (name: string) => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -142,7 +142,7 @@ export async function buildSiStateReport(options: { asOf: Date; beforePath: stri
 
   // 4. capture_health.
   const policy = await resolvePolicy();
-  const status = await readCaptureHealthStatus(asOf, { timezone: policy.timezone, staffed_hours: policy.staffed_hours });
+  const status = composeCaptureHealth(await readCaptureHealthFacts({ now: asOf, staffing: { timezone: policy.timezone, staffed_hours: policy.staffed_hours }, ...await readCallLogRows() })).status;
   let block: unknown = null, error: string | null = null;
   try { block = (await readOwnerCoverage()).capture_health ?? null; } catch (e) { error = e instanceof Error ? e.message : String(e); }
 
@@ -219,7 +219,7 @@ export function renderSiStateReport(r: SiStateReport): string {
     "## Query cost", "",
     ...table(["query", "collection", "index", "docs examined", "keys examined", "rows", "ms (explain)", "ms (wall)"],
       r.costs.map(c => [c.name, c.collection, c.index.join(", ") || "—", c.docs_examined ?? "—", c.keys_examined ?? "—", c.returned ?? "—", c.ms ?? "—", c.wall_ms])), "",
-    "Plus: `capture_health` = the Owner coverage read (its bounded reads, S5c-HEALTH: ≤ 6 indexed queries for the block) and `readCaptureHealthStatus`; the transitions collection size is `estimatedDocumentCount` (metadata).", "",
+    "Plus: `capture_health` = the Owner coverage read (its bounded reads, S5c-HEALTH: ≤ 6 indexed queries for the block) and the composed capture health at `as_of`; the transitions collection size is `estimatedDocumentCount` (metadata).", "",
   ].join("\n");
 }
 

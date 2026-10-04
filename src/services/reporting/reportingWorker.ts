@@ -1717,7 +1717,7 @@ async function failRun(
   });
   if (runDoc && String(runDoc.trigger) === "manual" && runDoc.actor) {
     const executionPackage = runDoc.execution_package as ReportingExecutionPackageV1 | undefined;
-    await recordReportingAudit({
+    recordReportingAudit({
       action: "delivery_failed",
       outcome: "failure",
       actor: runDoc.actor,
@@ -1726,7 +1726,7 @@ async function failRun(
       definitionId: executionPackage?.definitionId,
       revisionId: executionPackage?.revisionId,
       reasonCode: code,
-    }).catch(() => undefined);
+    });
   }
 }
 

@@ -10,6 +10,7 @@ import { MAX_RESPONSE_BYTES, MAX_RUN_EVIDENCE_BYTES, MAX_RUN_SNAPSHOTS } from ".
 import { fenceAuthorizedLease, loadAuthorizedRun, type RunAuthorization } from "./lease";
 import { readContentSchema, type ReadContent } from "./reads";
 import type { CapturedPromptPage } from "./prompt";
+import { legacyNumber } from "../legacyNumberFields";
 
 type Snapshot = { _id: unknown; response: unknown; content_digest: string; purged_at?: Date | null; purge_started_at?: Date | null };
 export function restoreAnalysisArtifact(row: Snapshot): CapturedPromptPage {
@@ -45,7 +46,7 @@ export async function persistAnalysisArtifact(auth: RunAuthorization, input: {
   return withTransaction(async session => {
     const run = await loadAuthorizedRun(auth, session);
     if (run.finalized_at || run.status !== "running") throw new CsiError("SUBMISSION_CONFLICT");
-    const number = await getContactNumberModel().findById(run.contact_number_id).session(session).lean();
+    const number = legacyNumber(await getContactNumberModel().findById(run.contact_number_id).session(session).lean());
     if (!number || number.purged_at || number.content_purge_pending) throw new CsiError("ORIGINAL_EVIDENCE_UNAVAILABLE");
     if (data.transcript && !await getIntelligenceEvidenceSnapshotModel().exists({ _id: data.transcript.source_snapshot_id,
       conversation_id: data.transcript.conversation_id, transcript_version: data.transcript.transcript_version,

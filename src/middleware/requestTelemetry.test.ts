@@ -2,16 +2,11 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-test("request telemetry stays in HTTP/application logs while auth denials still reach the event writer", () => {
-  // A separate process exercises enabled capture flags. The normal test runner
-  // intentionally disables them. Install the in-memory writer sink BEFORE any
-  // middleware, omit database credentials, and never permit a Mongo connection.
+test("request telemetry and auth decisions stay in structured logs without secrets", () => {
+  // A separate process captures the real stdout JSON log stream. Database
+  // credentials are omitted, so no Mongo connection can be attempted.
   const result = spawnSync(process.execPath, ["--import", "tsx", "--eval", `
     const assert = require('node:assert/strict');
-    const sink = require('./src/services/observability/testObservabilitySink.ts');
-    sink.installTestObservabilitySink();
-    const { shouldCaptureAuthEvents } = require('./src/config/domain/observability.ts');
-    assert.equal(shouldCaptureAuthEvents(), true);
     const { requireApiSecret } = require('./src/middleware/requireApiSecret.ts');
     const { httpLogger } = require('./src/middleware/httpLogger.ts');
     const http = require('node:http');
@@ -27,14 +22,9 @@ test("request telemetry stays in HTTP/application logs while auth denials still 
       const accepted = await auth('scoped-secret', '/allowed');
       assert.equal(accepted.nextCalled, true);
       assert.equal(accepted.context.kind, 'scoped_key');
-      assert.equal(sink.getCapturedOperationalEvents().length, 0);
       assert.equal((await auth('scoped-secret', '/forbidden')).status, 403);
       assert.equal((await auth('wrong-secret', '/allowed')).status, 401);
       assert.equal((await auth(undefined, '/allowed')).status, 401);
-      assert.deepEqual(sink.getCapturedOperationalEvents().map(x => x.input.eventKey), [
-        'auth.scoped_key.forbidden', 'auth.api_secret.rejected', 'auth.api_secret.rejected'
-      ]);
-      sink.clearCapturedOperationalEvents();
       const server = http.createServer((req, res) => {
         httpLogger(req, res);
         setTimeout(() => { res.statusCode = req.url === '/failed' ? 503 : 200; res.end('done'); }, 15);
@@ -44,14 +34,12 @@ test("request telemetry stays in HTTP/application logs while auth denials still 
         const base = 'http://127.0.0.1:' + server.address().port;
         assert.equal((await fetch(base + '/slow')).status, 200);
         assert.equal((await fetch(base + '/failed')).status, 503);
-        assert.equal(sink.getCapturedOperationalEvents().length, 0);
       } finally {
         server.closeAllConnections();
         await new Promise(resolve => server.close(resolve));
       }
       // Exercise the real v1 error handler. Missing Mongo configuration fails
-      // locally before any connection attempt, and must still emit its 5xx.
-      process.env.OBSERVABILITY_CAPTURE_HTTP_5XX = 'true';
+      // locally before any connection attempt, and must still log its 5xx.
       process.env.VANTAGE_API_SECRET = 'global-test-secret';
       const express = require('express');
       const app = express();
@@ -70,7 +58,6 @@ test("request telemetry stays in HTTP/application logs while auth denials still 
           headers: { 'x-api-secret': 'global-test-secret' }
         });
         assert.equal(response.status, 500);
-        assert.deepEqual(sink.getCapturedOperationalEvents().map(x => x.input.eventKey), ['http.request.5xx']);
       } finally {
         api.closeAllConnections();
         await new Promise(resolve => api.close(resolve));
@@ -86,21 +73,35 @@ test("request telemetry stays in HTTP/application logs while auth denials still 
       TEST_MODE: "true",
       MONGO_URI: "",
       NODE_ENV: "production",
-      OBSERVABILITY_ENABLED: "true",
-      OBSERVABILITY_WRITE_MODE: "enabled",
-      OBSERVABILITY_CAPTURE_AUTH_EVENTS: "true",
-      OBSERVABILITY_CAPTURE_HTTP_5XX: "false",
-      OBSERVABILITY_SLOW_REQUEST_MS: "1",
       VANTAGE_SCOPED_API_KEYS: JSON.stringify([{ name: "test-key", secret: "scoped-secret", routes: [{ method: "GET", path: "/allowed" }] }]),
     },
   });
   assert.equal(result.status, 0, result.stderr || `${result.error}\n${result.stdout}`);
-  const logs = result.stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
-  assert.equal(logs.filter(log => log.msg === "auth.scoped_key.accepted").length, 1);
+  const logs = result.stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line));
+  assert.equal(logs.filter((log) => log.msg === "auth.scoped_key.accepted").length, 1);
+  assert.deepEqual(
+    logs
+      .filter((log) => log.workflow === "api_secret" && log.msg !== "auth.scoped_key.accepted")
+      .map((log) => [log.msg, log.level]),
+    [
+      ["auth.scoped_key.forbidden", "warn"],
+      ["auth.api_secret.rejected", "warn"],
+      ["auth.api_secret.rejected", "warn"],
+    ],
+  );
   for (const status of [200, 503]) {
-    const log = logs.find(log => log.http?.statusCode === status);
+    const log = logs.find((entry) => entry.http?.statusCode === status);
     assert.ok(log, `HTTP ${status} remains logged`);
     assert.ok(log.http.responseTime >= 1, "HTTP duration remains logged");
   }
+  const routeFailure = logs.find((log) => log.event_key === "http.request.5xx");
+  assert.ok(routeFailure, "unexpected 5xx keeps its route-failure event key");
+  assert.equal(routeFailure.level, "error");
+  assert.equal(routeFailure.status_code, 500);
   assert.equal(result.stdout.includes("scoped-secret"), false);
+  assert.equal(result.stdout.includes("global-test-secret"), false);
 });

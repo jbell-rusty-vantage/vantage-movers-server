@@ -15,10 +15,11 @@ test("nudge routes enforce signed Owner, feature, strict input, idempotency; GET
   let sends=0, previews=0, reads=0;
   const app=express();app.use(express.json());app.use("/api/v1",requireApiSecret);app.use(createSalesIntelligenceBoundaryRouter({connect:async()=>{}}));
   app.use(createSalesIntelligenceAdminRouter({connect:async()=>{},nudgePreview:async()=>{previews++;throw new CsiError("NUDGE_DESTINATION_IS_CUSTOMER");},
-    nudgeSend:async()=>{sends++;throw new CsiError("REVISION_CONFLICT");},nudges:async()=>{reads++;return {as_of:new Date().toISOString(),coverage:{known_through:null,gaps:[],capabilities:{},ai_paused:false},data:{items:[],next_cursor:null}};}}));
+    nudgeSend:async()=>{sends++;throw new CsiError("REVISION_CONFLICT");},nudges:async()=>{reads++;return {as_of:new Date().toISOString(),coverage:{known_through:null,gaps:[],capabilities:{call_log:"unknown" as const,webhook:"unknown" as const}},data:{items:[],next_cursor:null}};}}));
   const server=app.listen(0,"127.0.0.1");await new Promise<void>(r=>server.once("listening",r));
   const url=`http://127.0.0.1:${(server.address() as AddressInfo).port}`,path=`${CSI_ADMIN_PREFIX}/nudges`;
-  const body={expected_revision:1,expected_rep_revision:1,nudge:{outreach_record_id:"a".repeat(24),rc_account_id:"synthetic",rc_extension_id:"101",rep_identity_link_id:"b".repeat(24),channel:"team_messaging",template_key:"review_context",template_version:1,purpose:"review_context"}};
+  const body={expected_rep_revision:1,nudge:{rc_account_id:"synthetic",rc_extension_id:"101",rep_identity_link_id:"b".repeat(24),channel:"team_messaging",template_key:"review_context",template_version:1,purpose:"review_context",body:"Please review this directory entry."}};
+  const outreachShaped={...body,expected_revision:1,nudge:{...body.nudge,outreach_record_id:"a".repeat(24)}};
   async function call(method:string,target:string,payload?:unknown,role="owner",key=true,signed=true){
     const fields={adminId:"synthetic",email:"owner@example.test",role,timestamp:String(Date.now()),requestId:"csi14",method,path:target.split("?")[0]!};
     return fetch(url+target,{method,headers:{"content-type":"application/json","x-api-secret":"synthetic-global","x-api-key":"synthetic-global",
@@ -32,6 +33,7 @@ test("nudge routes enforce signed Owner, feature, strict input, idempotency; GET
       assert.equal((await call("POST",target,body,"admin")).status,403);
       assert.equal((await call("POST",target,body,"owner",false)).status,400);
       assert.equal((await call("POST",target,{...body,chat_id:"arbitrary"})).status,400);
+      assert.equal((await call("POST",target,outreachShaped)).status,400,"an Outreach-scoped message is retired");
     }
     assert.equal((await call("POST",`${path}/preview`,body)).status,422);assert.equal((await call("POST",path,body)).status,409);
     assert.equal(previews,1);assert.equal(sends,1);

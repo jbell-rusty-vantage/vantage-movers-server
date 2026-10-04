@@ -12,22 +12,21 @@ import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boun
 import { CSI_ADMIN_PREFIX, createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 
 const numberId = randomBytes(12).toString("hex");
-const coverage = { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false };
+const coverage = { known_through: null, gaps: [], capabilities: { call_log: "unknown", webhook: "unknown" } };
 const asOf = "2026-09-17T14:00:00.000Z";
 
-test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempotency, error mapping; reads never call a writer", { timeout: 20000 }, async () => {
+test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope, validation, idempotency, error mapping; retired routes are gone", { timeout: 20000 }, async () => {
   const saved = { ...process.env };
   process.env.VANTAGE_API_SECRET = "synthetic-global";
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
   process.env.SALES_INTELLIGENCE_ENABLED = "true";
-  process.env.SALES_INTELLIGENCE_OUTREACH_ENSURE = "true";
+  process.env.SALES_INTELLIGENCE_REP_ACCESS = "true";
   process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
   process.env.TEST_MODE = "true";
   process.env.TEST_MONGO_DATABASE_NAME = "testvantagemovers_csiadminroute";
   const calls: string[] = [];
   const rebuildCalls: unknown[] = [];
   let rebuildError: CsiError | null = null;
-  let outreachError = new CsiError("IDENTITY_BLOCKED");
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
@@ -54,7 +53,6 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
         if (rebuildError) throw rebuildError;
         return { job_id: "c".repeat(24), dedupe_key: "k", number_id: input.number_id, replayed: false };
       },
-      outreachCommand: async () => { throw outreachError; },
       planBackfill: async input => ({ replayed: false, response: { available: false, days: 0, windows_planned: 0,
         from: (input.command as { from: string }).from, to: (input.command as { to: string }).to, window_from: null, window_to: null } }),
     }),
@@ -92,6 +90,9 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     });
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
+  const statusOf = async (method: string, routePath: string) =>
+    (await fetch(base + routePath, { method, headers: { "content-type": "application/json", ...ownerHeaders(method, routePath, "owner", { "idempotency-key": "k-retired" }) },
+      body: method === "GET" ? undefined : "{}", signal: AbortSignal.timeout(5000) })).status;
   const numbers = `${CSI_ADMIN_PREFIX}/numbers`;
   const detailPath = `${numbers}/${numberId}`;
   const timelinePath = `${detailPath}/timeline`;
@@ -102,6 +103,12 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     assert.equal((await call("GET", numbers, { headers: { "x-api-secret": "synthetic-global" } })).status, 403);
     assert.equal((await call("GET", numbers, { headers: ownerHeaders("GET", numbers, "admin") })).status, 403);
     assert.equal((await call("GET", `${numbers}?scope=historical`, { headers: ownerHeaders("GET", numbers) })).status, 403);
+    // A rep (even with REP_ACCESS on) is never an unscoped Numbers or Accounts reader: an unsigned rep stops at the boundary,
+    // a signed one at the route, both with 403 before any service runs.
+    for (const target of [numbers, detailPath, timelinePath, `${CSI_ADMIN_PREFIX}/reps`, `${CSI_ADMIN_PREFIX}/nudges`, `${CSI_ADMIN_PREFIX}/coverage`]) {
+      const rep = await call("GET", target, { headers: ownerHeaders("GET", target, "rep") });
+      assert.equal(rep.status, 403, target);
+    }
     assert.deepEqual(calls, []);
 
     const backfill = `${CSI_ADMIN_PREFIX}/backfill`;
@@ -121,8 +128,9 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     assert.equal(searched.body.as_of, asOf);
     const lastCall: string = calls[calls.length - 1] ?? "";
     const searchCall = JSON.parse(lastCall.slice("search:".length)) as Record<string, unknown>;
-    // S2-NUMBERS: the two Analysis filters default to false like `hygiene` (absent = no filter).
-    assert.deepEqual(searchCall, { q: "0200", attachment: "unlinked", limit: 5, hygiene: false, has_recording: false, has_outreach: false });
+    // `has_recording` defaults to false like `hygiene` (absent = no filter).
+    assert.deepEqual(searchCall, { q: "0200", attachment: "unlinked", limit: 5, hygiene: false, has_recording: false });
+    assert.equal((await call("GET", `${numbers}?has_outreach=true`, { headers: ownerHeaders("GET", numbers) })).status, 400, "the Outreach filter is retired");
     const badQuery = await call("GET", `${numbers}?limit=999`, { headers: ownerHeaders("GET", numbers) });
     assert.equal(badQuery.status, 400);
     assert.equal(badQuery.body.code, "INVALID_INPUT");
@@ -168,25 +176,16 @@ test("CSI-04 admin routes: Owner guard, flag-off 404, scope, validation, idempot
     assert.equal(replayConflict.body.code, "IDEMPOTENCY_CONFLICT");
     assert.equal(replayConflict.body.request_id, "req-1");
 
-    const outreachPath = `${CSI_ADMIN_PREFIX}/outreach/${numberId}/commands`;
-    for (const [code, status] of [["IDENTITY_BLOCKED", 409], ["CONTACT_RESTRICTED", 409], ["OFFICIAL_STATE_BLOCKS_REOPEN", 409], ["EVIDENCE_SCOPE_INVALID", 400], ["SUBMISSION_CONFLICT", 409]] as const) {
-      outreachError = new CsiError(code);
-      const rejected = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath, "owner", { "idempotency-key": `reject-${code}` }), body: { command: "mark_worked", expected_revision: 1 } });
-      assert.equal(rejected.status, status); assert.equal(rejected.body.code, code);
+    // Retired Outreach, Attention, Overview, analysis, assessment and conversation routes are not registered.
+    for (const [method, target] of [["GET", `${CSI_ADMIN_PREFIX}/attention`], ["GET", `${CSI_ADMIN_PREFIX}/outreach/${numberId}`],
+      ["POST", `${CSI_ADMIN_PREFIX}/outreach/${numberId}/commands`], ["GET", `${CSI_ADMIN_PREFIX}/outreach/closed-history`], ["GET", `${CSI_ADMIN_PREFIX}/overview`],
+      ["GET", `${CSI_ADMIN_PREFIX}/roster`], ["GET", `${CSI_ADMIN_PREFIX}/review-items`], ["POST", `${CSI_ADMIN_PREFIX}/restrictions/${numberId}/resolve`],
+      ["POST", `${CSI_ADMIN_PREFIX}/interactions/${numberId}/contact-type`], ["GET", `${CSI_ADMIN_PREFIX}/analysis-runs`],
+      ["GET", `${CSI_ADMIN_PREFIX}/assessments/${numberId}`], ["GET", `${detailPath}/conversations`], ["POST", `${detailPath}/reanalyze`],
+      ["GET", `${CSI_ADMIN_PREFIX}/conversations/${numberId}/media`]] as const) {
+      assert.equal(await statusOf(method, target), 404, `${method} ${target}`);
     }
-
-    // Owner call progress rides the same handler: strict body, Idempotency-Key, CAS mapping.
-    outreachError = new CsiError("ILLEGAL_TRANSITION");
-    for (const command of ["start_call", "end_call"] as const) {
-      const rejected = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath, "owner", { "idempotency-key": `call-${command}` }),
-        body: { command, expected_revision: 2, note: "On the phone now" } });
-      assert.equal(rejected.status, 409); assert.equal(rejected.body.code, "ILLEGAL_TRANSITION");
-      const noKey = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath), body: { command, expected_revision: 2 } });
-      assert.equal(noKey.status, 400); assert.equal(noKey.body.code, "INVALID_INPUT");
-      const foreignField = await call("POST", outreachPath, { headers: ownerHeaders("POST", outreachPath, "owner", { "idempotency-key": `strict-${command}` }),
-        body: { command, expected_revision: 2, until: "2026-09-20T00:00:00.000Z" } });
-      assert.equal(foreignField.status, 400);
-    }
+    assert.ok(!(calls as string[]).some((c) => !c.startsWith("connect") && !/^(search|detail|timeline):/.test(c)), "no retired route reached a service");
 
     // Master flag off: 404 feature_disabled before any service call.
     calls.length = 0;
@@ -210,7 +209,7 @@ test("admin router is mounted in v1.routes.ts after the CSI boundary router", ()
   assert.ok(guard > -1 && boundary > guard && admin > boundary, "guard, then boundary, then CSI-04 admin routes");
 });
 
-test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET never writes", { timeout: 20000 }, async () => {
+test("coverage and settings: production scope, CAS, no flag patch, GET never writes", { timeout: 20000 }, async () => {
   const saved = { ...process.env };
   process.env.VANTAGE_API_SECRET = "synthetic-global";
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
@@ -222,34 +221,11 @@ test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET ne
   const coverage = {
     known_through: null,
     gaps: [],
-    capabilities: { call_log: "unknown", recording_content: "denied", webhook: "unavailable" },
-    ai_paused: false,
-    recordings: { pending_discovery: 0, media_pending: 0, media_stored: 0, no_recording: 0, unavailable: 0, failed: 0, eligibility_undetermined: 0 },
-    stages: {
-      recording: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
-      transcription: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
-      analysis: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
-      application: { pending: 0, leased: 0, retry: 0, paused: 0, dead_letter: 0, oldest_queued_at: null },
-    },
-    budget: { status: "unknown", month: null, ceiling_cents: 8000, actual_cents: null, reserved_cents: null, remaining_cents: null },
+    capabilities: { call_log: "unknown", webhook: "unavailable" },
     mapping_hygiene: { unmapped_inbound_numbers: 0, unmapped_directory_users: null, last_directory_sync_at: null, directory_status: "missing" },
-    flags: { ENABLED: true, STT_ENABLED: false },
-    models: { extraction: { name: "openai/gpt-5-mini", enabled: false }, transcription: { name: "openai/gpt-4o-mini-transcribe", enabled: false } },
-    settings: { persisted: false, revision: 1, version: "csi-policy-v1", source: "accepted_defaults", timezone: "America/New_York", first_action_due_staffed_minutes: 30, missed_callback_due_staffed_minutes: 15, going_cold_staffed_minutes: 1440, monthly_ceiling_cents: 8000 },
-    backfill: {
-      available: false,
-      owner_triggered: true,
-      days: 0,
-      planned: null,
-      partial: null,
-      complete: null,
-      failed: null,
-      known_complete_through: null,
-      gaps: [],
-      note: "not yet available",
-    },
   };
-  const settings = { persisted: false, revision: 1, source: "accepted_defaults", policy: { version: "csi-policy-v1" }, flags: { STT_ENABLED: false }, models: coverage.models, updated_at: null, updated_by: null };
+  const models = { extraction: { name: "openai/gpt-5-mini", enabled: false }, transcription: { name: "openai/gpt-4o-mini-transcribe", enabled: false } };
+  const settings = { persisted: false, revision: 1, source: "accepted_defaults", policy: { version: "csi-policy-v1" }, flags: { STT_ENABLED: false }, models, updated_at: null, updated_by: null };
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
@@ -292,11 +268,8 @@ test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET ne
     const read = await call("GET", coveragePath, { headers: ownerHeaders("GET", coveragePath) });
     assert.equal(read.status, 200);
     const data = (read.body.data as { coverage: typeof coverage }).coverage;
-    assert.equal(data.capabilities.recording_content, "denied");
-    assert.equal(data.budget.status, "unknown");
-    assert.equal(data.budget.actual_cents, null);
+    assert.equal(data.capabilities.webhook, "unavailable");
     assert.equal(data.mapping_hygiene.unmapped_directory_users, null);
-    assert.equal(data.backfill.available, false);
     assert.equal(settingsWrites, 0);
     const settingsRead = await call("GET", settingsPath, { headers: ownerHeaders("GET", settingsPath) });
     assert.equal(settingsRead.status, 200);
@@ -311,228 +284,6 @@ test("CSI-09 coverage and settings: production scope, CAS, no flag patch, GET ne
     });
     assert.equal(flagged.status, 400);
     assert.equal(settingsWrites, 0);
-  } finally {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    process.env = saved;
-  }
-});
-
-test("Move assessment presentation routes: Owner guard, flag-off 404, id validation, 404 for missing, reads only through the injected services", { timeout: 20000 }, async () => {
-  const saved = { ...process.env };
-  process.env.VANTAGE_API_SECRET = "synthetic-global";
-  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
-  process.env.SALES_INTELLIGENCE_ENABLED = "true";
-  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
-  process.env.TEST_MODE = "true";
-  const existing = "a".repeat(24), missing = "f".repeat(24), outputId = "b".repeat(24);
-  const calls: string[] = [];
-  const read = (name: string) => async (id: string, second?: unknown) => {
-    calls.push(`${name}:${id}${typeof second === "string" ? `:${second}` : ""}`);
-    return id === existing ? { as_of: asOf, coverage, data: { name } } : null;
-  };
-  const app = express();
-  app.use(express.json());
-  app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
-  app.use(createSalesIntelligenceAdminRouter({ connect: async () => { calls.push("connect"); },
-    outreachAssessment: read("outreach") as never, assessment: read("assessment") as never, assessmentOutput: read("output") as never,
-    assessmentEvidence: read("evidence") as never, runPresentation: read("presentation") as never,
-    runOutput: (async (id: string, second: string) => read("runOutput")(id, second)) as never }));
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const headers = (routePath: string, role = "owner") => {
-    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-ma", method: "GET", path: routePath };
-    return { "x-api-secret": "synthetic-global", "x-vantage-admin-user-id": fields.adminId, "x-vantage-admin-email": fields.email, "x-vantage-admin-role": role,
-      "x-vantage-admin-timestamp": fields.timestamp, "x-vantage-admin-request-id": fields.requestId,
-      "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!) };
-  };
-  const get = async (routePath: string, query = "", role = "owner") => {
-    const response = await fetch(base + routePath + query, { headers: headers(routePath, role), signal: AbortSignal.timeout(5000) });
-    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
-  };
-  const paths = (id: string) => [[`${CSI_ADMIN_PREFIX}/outreach/${id}/assessment`, "outreach"], [`${CSI_ADMIN_PREFIX}/assessments/${id}`, "assessment"],
-    [`${CSI_ADMIN_PREFIX}/assessments/${id}/output`, "output"], [`${CSI_ADMIN_PREFIX}/assessments/${id}/evidence`, "evidence"],
-    [`${CSI_ADMIN_PREFIX}/analysis-runs/${id}/presentation`, "presentation"], [`${CSI_ADMIN_PREFIX}/analysis-runs/${id}/output/${outputId}`, "runOutput"]] as const;
-  try {
-    for (const [routePath, name] of paths(existing)) {
-      const ok = await get(routePath);
-      assert.equal(ok.status, 200, routePath);
-      assert.deepEqual([ok.body.ok, ok.body.as_of, (ok.body.data as { name: string }).name], [true, asOf, name]);
-      assert.equal((await get(routePath, "?scope=production")).status, 200);
-      assert.equal((await get(routePath, "?scope=historical")).status, 403);
-      assert.equal((await get(routePath, "?cursor=1")).status, 400, "unknown query parameters are rejected");
-      assert.equal((await get(routePath, "", "admin")).status, 403, "Owner only");
-    }
-    for (const [routePath] of paths(missing)) assert.equal((await get(routePath)).status, 404, routePath);
-    assert.equal((await get(`${CSI_ADMIN_PREFIX}/assessments/not-an-id`)).status, 400);
-    assert.equal((await get(`${CSI_ADMIN_PREFIX}/analysis-runs/${existing}/output/not-an-id`)).status, 400);
-    assert.ok(calls.includes(`runOutput:${existing}:${outputId}`));
-    calls.length = 0;
-    process.env.SALES_INTELLIGENCE_ENABLED = "false";
-    for (const [routePath] of paths(existing)) {
-      const disabled = await get(routePath);
-      assert.deepEqual([disabled.status, disabled.body.code], [404, "FEATURE_DISABLED"]);
-    }
-    assert.deepEqual(calls, [], "flag off: no connect and no read");
-  } finally {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    process.env = saved;
-  }
-});
-
-test("S3-FINDINGS current findings route: Owner guard, flag-off 404, scope, query validation, 404 for missing, reads only through the injected service", { timeout: 20000 }, async () => {
-  const saved = { ...process.env };
-  process.env.VANTAGE_API_SECRET = "synthetic-global";
-  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
-  process.env.SALES_INTELLIGENCE_ENABLED = "true";
-  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
-  process.env.TEST_MODE = "true";
-  const existing = "a".repeat(24), missing = "f".repeat(24);
-  const calls: string[] = [];
-  const app = express();
-  app.use(express.json());
-  app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
-  app.use(createSalesIntelligenceAdminRouter({ connect: async () => { calls.push("connect"); },
-    currentFindings: (async (id: string, query: unknown) => {
-      calls.push(`findings:${id}:${JSON.stringify(query)}`);
-      return id === existing ? { as_of: asOf, coverage, data: { items: [], reason: null, truncated: false } } : null;
-    }) as never }));
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const get = async (routePath: string, query = "", role = "owner") => {
-    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-findings", method: "GET", path: routePath };
-    const response = await fetch(base + routePath + query, { signal: AbortSignal.timeout(5000), headers: { "x-api-secret": "synthetic-global",
-      "x-vantage-admin-user-id": fields.adminId, "x-vantage-admin-email": fields.email, "x-vantage-admin-role": role, "x-vantage-admin-timestamp": fields.timestamp,
-      "x-vantage-admin-request-id": fields.requestId, "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!) } });
-    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
-  };
-  const route = (id: string) => `${CSI_ADMIN_PREFIX}/outreach/${id}/findings`;
-  try {
-    const ok = await get(route(existing));
-    assert.equal(ok.status, 200);
-    assert.deepEqual([ok.body.ok, ok.body.as_of, ok.body.data], [true, asOf, { items: [], reason: null, truncated: false }]);
-    assert.equal((await get(route(existing), "?scope=production&include_superseded=true")).status, 200);
-    assert.ok(calls.includes(`findings:${existing}:${JSON.stringify({ scope: "production", include_superseded: "true" })}`), "the parsed query reaches the service");
-    assert.equal((await get(route(existing), "?scope=historical")).status, 403);
-    assert.equal((await get(route(existing), "?include_superseded=yes")).status, 400);
-    assert.equal((await get(route(existing), "?cursor=1")).status, 400, "unknown query parameters are rejected");
-    assert.equal((await get(route(existing), "", "admin")).status, 403, "Owner only");
-    assert.equal((await get(route("not-an-id"))).status, 400);
-    const absent = await get(route(missing));
-    assert.deepEqual([absent.status, absent.body.error], [404, "Outreach not found"]);
-    calls.length = 0;
-    process.env.SALES_INTELLIGENCE_ENABLED = "false";
-    const disabled = await get(route(existing));
-    assert.deepEqual([disabled.status, disabled.body.code], [404, "FEATURE_DISABLED"]);
-    assert.deepEqual(calls, [], "flag off: no connect and no read");
-  } finally {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    process.env = saved;
-  }
-});
-
-test("S4-CONV conversation routes: Owner guard, flag-off 404, validation, 404s, transcript paging params, media 200/206/416/404 streamed without the blob path", { timeout: 20000 }, async () => {
-  const saved = { ...process.env };
-  process.env.VANTAGE_API_SECRET = "synthetic-global";
-  process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
-  process.env.SALES_INTELLIGENCE_ENABLED = "true";
-  process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "route-test";
-  process.env.TEST_MODE = "true";
-  const existing = "a".repeat(24), missing = "f".repeat(24);
-  const audio = Uint8Array.from({ length: 64 }, (_, i) => i);
-  const calls: string[] = [];
-  const app = express();
-  app.use(express.json());
-  app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
-  app.use(createSalesIntelligenceAdminRouter({ connect: async () => { calls.push("connect"); },
-    conversations: (async (id: string, query: unknown) => { calls.push(`conversations:${id}:${JSON.stringify(query)}`);
-      return id === existing ? { as_of: asOf, coverage, data: { contact_number_id: id, items: [], other_calls: [], next_cursor: null } } : null; }) as never,
-    transcript: (async (id: string, query: unknown) => { calls.push(`transcript:${id}:${JSON.stringify(query)}`);
-      return id === existing ? { as_of: asOf, coverage, data: { conversation_id: id } } : null; }) as never,
-    conversationMedia: (async (input: { conversation_id: string; actor: { kind: string }; range: string | null }) => {
-      calls.push(`media:${input.conversation_id}:${input.actor.kind}:${input.range}`);
-      if (input.conversation_id !== existing) return { kind: "not_found" };
-      const base = { "Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "Content-Type": "audio/mpeg" };
-      if (input.range === "bytes=64-") return { kind: "range_not_satisfiable", headers: { ...base, "Content-Range": "bytes */64" } };
-      if (input.range === "bytes=8-15") return { kind: "stream", status: 206, headers: { ...base, "Content-Range": "bytes 8-15/64", "Content-Length": "8" }, body: new Blob([audio.slice(8, 16)]).stream() };
-      return { kind: "stream", status: 200, headers: { ...base, "Content-Length": "64" }, body: new Blob([audio]).stream() };
-    }) as never }));
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const headers = (routePath: string, role = "owner") => {
-    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-conv", method: "GET", path: routePath };
-    return { "x-api-secret": "synthetic-global", "x-vantage-admin-user-id": fields.adminId, "x-vantage-admin-email": fields.email, "x-vantage-admin-role": role,
-      "x-vantage-admin-timestamp": fields.timestamp, "x-vantage-admin-request-id": fields.requestId,
-      "x-vantage-admin-signature": computeAdminActorSignature(fields, process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET!) };
-  };
-  const fetchRoute = (routePath: string, query = "", role = "owner", extra: Record<string, string> = {}) =>
-    fetch(base + routePath + query, { headers: { ...headers(routePath, role), ...extra }, signal: AbortSignal.timeout(5000) });
-  const conversationsPath = (id: string) => `${CSI_ADMIN_PREFIX}/numbers/${id}/conversations`;
-  const transcriptPath = (id: string) => `${CSI_ADMIN_PREFIX}/conversations/${id}/transcript`;
-  const mediaPath = (id: string) => `${CSI_ADMIN_PREFIX}/conversations/${id}/media`;
-  try {
-    const cursor = "1726844400000.bbbbbbbbbbbbbbbbbbbbbbbb";
-    const list = await fetchRoute(conversationsPath(existing), `?limit=5&cursor=${cursor}`);
-    assert.equal(list.status, 200);
-    assert.deepEqual(await list.json(), { ok: true, as_of: asOf, coverage, data: { contact_number_id: existing, items: [], other_calls: [], next_cursor: null } });
-    assert.equal(calls.at(-1), `conversations:${existing}:${JSON.stringify({ cursor, limit: 5 })}`);
-    assert.equal((await fetchRoute(conversationsPath(existing))).status, 200);
-    assert.equal(calls.at(-1), `conversations:${existing}:${JSON.stringify({ limit: 50 })}`);
-    for (const bad of ["?limit=101", "?cursor=nope", "?nope=1"]) assert.equal((await fetchRoute(conversationsPath(existing), bad)).status, 400, bad);
-    assert.equal((await fetchRoute(conversationsPath(missing))).status, 404);
-    assert.equal((await fetchRoute(conversationsPath("not-an-id"))).status, 400);
-
-    const transcript = await fetchRoute(transcriptPath(existing), "?offset=100&limit=50");
-    assert.equal(transcript.status, 200);
-    assert.equal(calls.at(-1), `transcript:${existing}:${JSON.stringify({ offset: 100, limit: 50 })}`);
-    assert.equal((await fetchRoute(transcriptPath(existing))).status, 200);
-    assert.equal(calls.at(-1), `transcript:${existing}:${JSON.stringify({ offset: 0, limit: 100 })}`);
-    for (const bad of ["?limit=101", "?offset=-1", "?cursor=1"]) assert.equal((await fetchRoute(transcriptPath(existing), bad)).status, 400, bad);
-    assert.equal((await fetchRoute(transcriptPath(missing))).status, 404);
-
-    const full = await fetchRoute(mediaPath(existing));
-    assert.equal(full.status, 200);
-    assert.equal(full.headers.get("content-type"), "audio/mpeg");
-    assert.equal(full.headers.get("accept-ranges"), "bytes");
-    assert.equal(full.headers.get("cache-control"), "private, no-store");
-    assert.equal(full.headers.get("content-length"), "64");
-    assert.deepEqual(new Uint8Array(await full.arrayBuffer()), audio);
-    assert.equal(calls.at(-1), `media:${existing}:owner:null`);
-    const partial = await fetchRoute(mediaPath(existing), "", "owner", { Range: "bytes=8-15" });
-    assert.equal(partial.status, 206);
-    assert.equal(partial.headers.get("content-range"), "bytes 8-15/64");
-    assert.deepEqual(new Uint8Array(await partial.arrayBuffer()), audio.slice(8, 16));
-    assert.equal(calls.at(-1), `media:${existing}:owner:bytes=8-15`);
-    const unsatisfiable = await fetchRoute(mediaPath(existing), "", "owner", { Range: "bytes=64-" });
-    assert.equal(unsatisfiable.status, 416);
-    assert.equal(unsatisfiable.headers.get("content-range"), "bytes */64");
-    const gone = await fetchRoute(mediaPath(missing));
-    assert.equal(gone.status, 404);
-    const goneBody = await gone.text();
-    assert.doesNotMatch(goneBody + JSON.stringify([...full.headers, ...partial.headers]), /blob|conversations\//i);
-    assert.equal((await fetchRoute(mediaPath(existing), "?scope=historical")).status, 403);
-    assert.equal((await fetchRoute(mediaPath(existing), "?x=1")).status, 400);
-
-    // Owner only, and flag off: nothing reaches a service.
-    calls.length = 0;
-    for (const routePath of [conversationsPath(existing), transcriptPath(existing), mediaPath(existing)]) {
-      assert.equal((await fetchRoute(routePath, "", "admin")).status, 403, routePath);
-      assert.equal((await fetch(base + routePath, { headers: { "x-api-secret": "synthetic-global" }, signal: AbortSignal.timeout(5000) })).status, 403, routePath);
-    }
-    process.env.SALES_INTELLIGENCE_ENABLED = "false";
-    for (const routePath of [conversationsPath(existing), transcriptPath(existing), mediaPath(existing)]) {
-      const disabled = await fetchRoute(routePath);
-      assert.deepEqual([disabled.status, ((await disabled.json()) as { code: string }).code], [404, "FEATURE_DISABLED"]);
-    }
-    assert.deepEqual(calls, [], "Owner guard and flag off: no connect and no read");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

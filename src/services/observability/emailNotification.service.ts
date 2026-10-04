@@ -3,9 +3,9 @@ import type mongoose from "mongoose";
 import {
   getEmailNotificationsMode,
   getEmailProvider,
-  getSendgridConfig,
   isEmailNotificationsEnabled,
 } from "../../config/domain/observability";
+import { getSendgridConfig } from "../../config/domain/mail";
 import { connectMongo } from "../../db";
 import { logger } from "../../logger";
 import {

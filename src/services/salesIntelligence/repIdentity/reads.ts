@@ -7,7 +7,7 @@ import { csiIdSchema, csiTextSchema } from "../../../validation/v1/salesIntellig
 import { loadRepDirectory } from "./propose";
 import { getSalesIntelligenceCommandExecutionModel } from "../../../models/SalesIntelligenceCommandExecution";
 import { readCaptureCoverage } from "../../numberActivity/coverage";
-import { coverageDtoSchema } from "../dto";
+import { coverageDtoSchema } from "../coverageDto";
 
 export const repListQuerySchema = z.object({ scope: z.literal("production").optional(), rc_account_id: csiTextSchema.optional(),
   cursor: csiIdSchema.optional(), directory_cursor: csiTextSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();

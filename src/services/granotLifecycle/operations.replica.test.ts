@@ -3,8 +3,7 @@ import { after, test } from "node:test";
 import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
-import { getOperationalEventModel } from "../../models/OperationalEvent";
-import { getOperationalIncidentModel } from "../../models/OperationalIncident";
+import { getGranotLifecycleHealthStateModel } from "../../models/GranotLifecycleHealthState";
 import { projectGranotLifecycleHealth } from "./projections";
 
 const seededIds = new Map<string, mongoose.Types.ObjectId[]>();
@@ -51,6 +50,9 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
   if (!(await replicaReady(t))) return;
 
   const now = new Date("2026-08-19T16:00:00.000Z");
+  // Bounded Health state is a singleton per database: snapshot and restore it.
+  const HealthState = getGranotLifecycleHealthStateModel();
+  const healthStateBefore = await HealthState.find({}).lean();
   const before = await projectGranotLifecycleHealth(now);
   const suffix = Date.now().toString().slice(-8);
   const pendingId = new mongoose.Types.ObjectId();
@@ -60,7 +62,6 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
   const bookingCaseId = new mongoose.Types.ObjectId();
   const releaseCaseId = new mongoose.Types.ObjectId();
   const discrepancyId = new mongoose.Types.ObjectId();
-  const conflictEventId = new mongoose.Types.ObjectId();
   const sourceId = new mongoose.Types.ObjectId();
   const granularityId = new mongoose.Types.ObjectId();
 
@@ -169,25 +170,25 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
     opened_at: now,
     last_evidence_at: now,
   });
-  const Event = getOperationalEventModel();
-  remember(Event.collection.collectionName, conflictEventId);
-  await Event.collection.insertOne({
-    _id: conflictEventId,
-    event_key: "granot_lifecycle.owner_command.conflict",
-    occurred_at: now,
-    received_at: now,
-    details: { code: "DOMAIN_REVISION_CONFLICT" },
-    level: "warn",
-    category: "admin",
-    workflow: "granot_lifecycle",
-    summary: "synthetic conflict",
-    fingerprint: `unit30-conflict-${conflictEventId.toHexString()}`,
-    environment: "test",
-    service: "vantage-main-server",
-    pii_policy: "none",
-    notification_candidate: false,
-    reportable: true,
-  });
+  await HealthState.deleteMany({});
+  const conflictBucketId = `bucket:owner_command_conflict:DOMAIN_REVISION_CONFLICT:${now.toISOString()}`;
+  await HealthState.collection.insertMany([
+    {
+      _id: "coverage",
+      kind: "coverage",
+      counters_since: new Date(now.getTime() - 25 * 60 * 60 * 1000),
+      last_write_at: now,
+    },
+    {
+      _id: conflictBucketId,
+      kind: "bucket",
+      metric: "owner_command_conflict",
+      dimension: "DOMAIN_REVISION_CONFLICT",
+      bucket_start: now,
+      count: 1,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000),
+    },
+  ] as never[]);
 
   const bookedBefore = await mongoose.connection.db!.collection("booked_leads").countDocuments();
   const cancelledBefore = await mongoose.connection.db!.collection("cancelled_leads").countDocuments();
@@ -195,7 +196,6 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
   const beforeBooking = before.open_cases.find((row) => row.kind === "booking" && row.mode === "create_missing_booking")?.count ?? 0;
   const beforeRelease = before.open_cases.find((row) => row.kind === "release")?.count ?? 0;
   const beforeDiscrepancy = before.open_discrepancies.find((row) => row.reason_code === "booked_record_link_conflict")?.count ?? 0;
-  const beforeConflict = before.command_conflicts_last_24h.find((row) => row.code === "DOMAIN_REVISION_CONFLICT")?.count ?? 0;
 
   assert.equal(health.receipts.due_count, before.receipts.due_count + 2);
   assert.equal(health.receipts.claimed_count, before.receipts.claimed_count + 2);
@@ -210,10 +210,10 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
     health.open_discrepancies.find((row) => row.reason_code === "booked_record_link_conflict")?.count ?? 0,
     beforeDiscrepancy + 1,
   );
-  assert.equal(
-    health.command_conflicts_last_24h.find((row) => row.code === "DOMAIN_REVISION_CONFLICT")?.count ?? 0,
-    beforeConflict + 1,
-  );
+  assert.deepEqual(health.command_conflicts_last_24h, [{ code: "DOMAIN_REVISION_CONFLICT", count: 1 }]);
+  assert.equal(health.counter_coverage.window_24h, "covered");
+  assert.equal(health.alerts.find((alert) => alert.code === "capture_unavailable")?.state, "ok");
+  assert.equal(health.alerts.find((alert) => alert.code === "claim_recovery_rate")?.state, "ok");
   assert.equal(health.flags.GRANOT_LIFECYCLE_SHADOW_MODE, true);
   assert.equal(health.flags.GRANOT_LIFECYCLE_BOOKING_COMMANDS_ENABLED, false);
   assert.equal(health.alerts.find((alert) => alert.code === "dead_letter_present")?.state, "firing");
@@ -222,11 +222,14 @@ test("[AC-31][AC-35][AC-37][AC-38] replica health counts come from Mongo and do 
   assert.equal(JSON.stringify(health).includes("payload"), false);
   assert.equal(await mongoose.connection.db!.collection("booked_leads").countDocuments(), bookedBefore);
   assert.equal(await mongoose.connection.db!.collection("cancelled_leads").countDocuments(), cancelledBefore);
-  await getOperationalEventModel().deleteMany({
-    event_key: { $in: ["granot_lifecycle.alert.firing", "granot_lifecycle.alert.recovered"] },
-    occurred_at: { $gte: now },
-  });
-  await getOperationalIncidentModel().deleteMany({
-    dedupe_key: { $regex: /^granot_lifecycle\.alert\./ },
-  });
+  const deadLetterAlert = await HealthState.findById("alert:dead_letter_present:global").lean();
+  assert.equal(deadLetterAlert?.state, "firing");
+  assert.equal(
+    health.alerts.find((alert) => alert.code === "dead_letter_present")?.since,
+    deadLetterAlert?.since?.toISOString(),
+  );
+  await HealthState.deleteMany({});
+  if (healthStateBefore.length > 0) {
+    await HealthState.collection.insertMany(healthStateBefore as never[]);
+  }
 });

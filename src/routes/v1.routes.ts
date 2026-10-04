@@ -2,13 +2,12 @@ import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boun
 import { createSalesIntelligenceInternalRouter } from "./sales-intelligence-internal.routes";
 import { createSalesIntelligenceHistoryRouter } from "./sales-intelligence-history.routes";
 import { createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
-import { Router, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import mongoose from "mongoose";
 import type { Logger } from "pino";
 import { ZodError, type ZodType } from "zod";
 import { connectMongo } from "../db";
 import { withRuntimeDomainOverrides } from "../config/domain";
-import { shouldCaptureHttp5xx } from "../config/domain/observability";
 import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
@@ -23,26 +22,6 @@ import extensionUsersAdminRoutes from "./extension-users-admin.routes";
 import adminInviteEmailInternalRoutes from "./admin-invite-email-internal.routes";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
 import { createTariffAdjustmentsRouter } from "./tariff-adjustments.routes";
-import {
-  recordOperationalEvent,
-  getObservabilityOverview,
-  getObservabilityFacets,
-  listOperationalEvents,
-  getOperationalEventDetail,
-  listOperationalIncidents,
-  getOperationalIncidentDetail,
-  updateOperationalIncidentStatus,
-  updateOperationalIncidentStatuses,
-  deleteObservabilityRecord,
-  deleteObservabilityRecords,
-  listNotificationDeliveries,
-  exportOperationalEventsCsv,
-  exportOperationalIncidentsCsv,
-  runOperationalReport,
-  listOperationalReportRuns,
-  getOperationalReportRunDetail,
-  exportReportRunCsv,
-} from "../services/observability";
 import { searchFormLeads } from "../services/formLeadSearch.service";
 import {
   resolveGranotFormLead,
@@ -156,9 +135,9 @@ import {
   createLeadlessBookingSchema,
   analyticsQuerySchema,
   analyticsReportSchema,
-  agentSalesReportQuerySchema,
   overviewQuerySchema,
   adminBrowseQuerySchema,
+  adminScopeOnlyQuerySchema,
   adminSearchQuerySchema,
   catalogCreateSchema,
   catalogListQuerySchema,
@@ -211,17 +190,6 @@ import {
   updateCancelledLeadSchema,
   updateCustomerSchema,
   updateFormLeadSchema,
-  observabilityOverviewQuerySchema,
-  observabilityFacetsQuerySchema,
-  observabilityEventsQuerySchema,
-  observabilityIncidentsQuerySchema,
-  observabilityNotificationsQuerySchema,
-  observabilityIncidentStatusSchema,
-  observabilityIncidentBatchStatusSchema,
-  observabilityDeleteCollectionSchema,
-  observabilityBatchDeleteSchema,
-  observabilityReportsQuerySchema,
-  observabilityReportRunSchema,
   leadMessagesQuerySchema,
   leadMessageRetrySchema,
   registryChangesQuerySchema,
@@ -260,9 +228,7 @@ import {
 } from "../services/catalog";
 import { listCplRates } from "../services/cpl/cplRate.service";
 import {
-  exportAgentSalesReportCsv,
   exportAnalyticsReportCsv,
-  getAgentSalesReport,
   getAnalyticsReport,
   getOverviewReport,
 } from "../services/analytics";
@@ -323,8 +289,6 @@ const adminResources = [
   "call-leads",
   "booked-leads",
   "cancelled-leads",
-  "customers",
-  "agents",
 ] as const satisfies readonly AdminResource[];
 
 const analyticsReports = [
@@ -350,9 +314,11 @@ router.get("/api/v1/admin/search", handleAdminSearch);
 router.get("/api/v1/admin/facets", handleAdminFacets);
 router.get("/api/v1/admin/catalog/agents", handleCatalogList("agents"));
 router.get("/api/v1/admin/catalog/merchants", handleCatalogList("merchants"));
-// GET /api/v1/admin/agents and /:id are browse/detail (metrics). Do not
-// register catalog list/detail on those paths — Express first-match would
-// hide handleAdminBrowse and the Agents table would omit booking metrics.
+// The Operations Registry Agents and Users tabs read the Agent catalog here.
+// These two paths were the Agent browse/detail reads (which took database_scope); they now serve
+// the Agent catalog, so they keep the transitional 400 for a retired historical/combined scope.
+router.get("/api/v1/admin/agents", rejectRetiredDatabaseScope, handleCatalogList("agents"));
+router.get("/api/v1/admin/agents/:id", rejectRetiredDatabaseScope, handleCatalogDetail("agents"));
 router.post("/api/v1/admin/agents", handleCatalogCreate("agents"));
 router.patch("/api/v1/admin/agents/:id", handleCatalogUpdate("agents"));
 router.post(
@@ -500,11 +466,6 @@ router.get(
   "/api/v1/admin/exports/analytics/:report.csv",
   handleAnalyticsExport,
 );
-router.get("/api/v1/admin/reports/agent-sales", handleAgentSalesReport);
-router.get(
-  "/api/v1/admin/exports/reports/agent-sales.csv",
-  handleAgentSalesReportExport,
-);
 
 router.get("/api/v1/admin/sheet-sync/health", handleSheetSyncHealth);
 router.get(
@@ -575,63 +536,6 @@ router.get(
 router.get(
   "/api/v1/admin/operations-registry/changes",
   handleOperationsRegistryChanges,
-);
-
-router.get("/api/v1/admin/observability/overview", handleObservabilityOverview);
-router.get("/api/v1/admin/observability/facets", handleObservabilityFacets);
-router.get("/api/v1/admin/observability/events", handleObservabilityEvents);
-router.get(
-  "/api/v1/admin/observability/events/:id",
-  handleObservabilityEventDetail,
-);
-router.get(
-  "/api/v1/admin/observability/incidents",
-  handleObservabilityIncidents,
-);
-router.patch(
-  "/api/v1/admin/observability/incidents/status",
-  handleObservabilityIncidentBatchStatus,
-);
-router.get(
-  "/api/v1/admin/observability/incidents/:id",
-  handleObservabilityIncidentDetail,
-);
-router.patch(
-  "/api/v1/admin/observability/incidents/:id/status",
-  handleObservabilityIncidentStatus,
-);
-router.get(
-  "/api/v1/admin/observability/notifications",
-  handleObservabilityNotifications,
-);
-router.get("/api/v1/admin/observability/reports", handleObservabilityReports);
-router.post(
-  "/api/v1/admin/observability/reports/run",
-  handleObservabilityReportRun,
-);
-router.get(
-  "/api/v1/admin/observability/reports/:id",
-  handleObservabilityReportDetail,
-);
-router.post(
-  "/api/v1/admin/observability/:collection/delete",
-  handleObservabilityBatchDelete,
-);
-router.delete(
-  "/api/v1/admin/observability/:collection/:id",
-  handleObservabilityRecordDelete,
-);
-router.get(
-  "/api/v1/admin/exports/observability/events.csv",
-  handleObservabilityEventsExport,
-);
-router.get(
-  "/api/v1/admin/exports/observability/incidents.csv",
-  handleObservabilityIncidentsExport,
-);
-router.get(
-  "/api/v1/admin/exports/observability/reports/:id.csv",
-  handleObservabilityReportExport,
 );
 
 router.get("/api/v1/granot-crm/csv/sources", handleGranotCrmCsvSources);
@@ -815,8 +719,8 @@ function handleFindAll(findAll: () => Promise<unknown>) {
 function handleAdminBrowse(resource: AdminResource) {
   return async (req: Request, res: Response) => {
     try {
-      await connectMongo();
       const parsed = adminBrowseQuerySchema.parse(req.query);
+      await connectMongo();
       const data = await browseAdminResource(resource, parsed);
       return res.json({ ok: true, data });
     } catch (error) {
@@ -829,14 +733,9 @@ function handleAdminDetail(resource: AdminResource) {
   return async (req: Request, res: Response) => {
     try {
       const id = getValidObjectId(req);
+      adminBrowseQuerySchema.pick({ database_scope: true }).parse(req.query);
       await connectMongo();
-      const parsed = adminBrowseQuerySchema.parse(req.query);
-      const data = await getAdminResourceDetail(
-        resource,
-        id,
-        parsed.database_scope,
-        parsed,
-      );
+      const data = await getAdminResourceDetail(resource, id);
       return res.json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
@@ -846,8 +745,8 @@ function handleAdminDetail(resource: AdminResource) {
 
 async function handleAdminSearch(req: Request, res: Response) {
   try {
-    await connectMongo();
     const parsed = adminSearchQuerySchema.parse(req.query);
+    await connectMongo();
     const data = await globalAdminSearch(parsed);
     return res.json({ ok: true, data });
   } catch (error) {
@@ -857,12 +756,20 @@ async function handleAdminSearch(req: Request, res: Response) {
 
 async function handleAdminFacets(req: Request, res: Response) {
   try {
+    adminBrowseQuerySchema.pick({ database_scope: true }).parse(req.query);
     await connectMongo();
-    const parsed = adminBrowseQuerySchema
-      .pick({ database_scope: true })
-      .parse(req.query);
-    const data = await getAdminFacets(parsed.database_scope);
+    const data = await getAdminFacets();
     return res.json({ ok: true, data });
+  } catch (error) {
+    return sendError(req, res, error);
+  }
+}
+
+/** Validates only `database_scope`, before any Mongo connection: omitted or "production" passes. */
+function rejectRetiredDatabaseScope(req: Request, res: Response, next: NextFunction) {
+  try {
+    adminScopeOnlyQuerySchema.parse({ database_scope: req.query.database_scope });
+    return next();
   } catch (error) {
     return sendError(req, res, error);
   }
@@ -1660,8 +1567,8 @@ function toSourceCompanyCommand(
 function handleAdminExport(resource: AdminResource) {
   return async (req: Request, res: Response) => {
     try {
-      await connectMongo();
       const parsed = adminBrowseQuerySchema.parse(req.query);
+      await connectMongo();
       const data = await exportAdminResourceCsv(resource, parsed);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
@@ -1770,199 +1677,6 @@ async function handleOperationsRegistryChanges(req: Request, res: Response) {
     requireRegistryReadActor(req, getVantageAuth(req));
     const data = await listRegistryChanges(parsed);
     return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityOverview(req: Request, res: Response) {
-  try {
-    const parsed = observabilityOverviewQuerySchema.parse(req.query);
-    const data = await getObservabilityOverview(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityFacets(req: Request, res: Response) {
-  try {
-    const parsed = observabilityFacetsQuerySchema.parse(req.query);
-    const data = await getObservabilityFacets(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityEvents(req: Request, res: Response) {
-  try {
-    const parsed = observabilityEventsQuerySchema.parse(req.query);
-    const data = await listOperationalEvents(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityEventDetail(req: Request, res: Response) {
-  try {
-    const data = await getOperationalEventDetail(getValidObjectId(req));
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityIncidents(req: Request, res: Response) {
-  try {
-    const parsed = observabilityIncidentsQuerySchema.parse(req.query);
-    const data = await listOperationalIncidents(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityIncidentDetail(req: Request, res: Response) {
-  try {
-    const data = await getOperationalIncidentDetail(getValidObjectId(req));
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityIncidentStatus(req: Request, res: Response) {
-  try {
-    const id = getValidObjectId(req);
-    const parsed = observabilityIncidentStatusSchema.parse(req.body);
-    const data = await updateOperationalIncidentStatus(id, parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityIncidentBatchStatus(
-  req: Request,
-  res: Response,
-) {
-  try {
-    const parsed = observabilityIncidentBatchStatusSchema.parse(req.body);
-    const data = await updateOperationalIncidentStatuses(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityNotifications(req: Request, res: Response) {
-  try {
-    const parsed = observabilityNotificationsQuerySchema.parse(req.query);
-    const data = await listNotificationDeliveries(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityReports(req: Request, res: Response) {
-  try {
-    const parsed = observabilityReportsQuerySchema.parse(req.query);
-    const data = await listOperationalReportRuns(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityReportRun(req: Request, res: Response) {
-  try {
-    const parsed = observabilityReportRunSchema.parse(req.body);
-    const data = await runOperationalReport(parsed);
-    return res.status(201).json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityReportDetail(req: Request, res: Response) {
-  try {
-    const data = await getOperationalReportRunDetail(getValidObjectId(req));
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityRecordDelete(req: Request, res: Response) {
-  try {
-    const collection = observabilityDeleteCollectionSchema.parse(
-      req.params.collection,
-    );
-    const data = await deleteObservabilityRecord(
-      collection,
-      getValidObjectId(req),
-    );
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityBatchDelete(req: Request, res: Response) {
-  try {
-    const collection = observabilityDeleteCollectionSchema.parse(
-      req.params.collection,
-    );
-    const parsed = observabilityBatchDeleteSchema.parse(req.body);
-    const data = await deleteObservabilityRecords(collection, parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityReportExport(req: Request, res: Response) {
-  try {
-    const data = await exportReportRunCsv(getValidObjectId(req));
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${data.filename}"`,
-    );
-    return res.status(200).send(data.csv);
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityEventsExport(req: Request, res: Response) {
-  try {
-    const parsed = observabilityEventsQuerySchema.parse(req.query);
-    const data = await exportOperationalEventsCsv(parsed);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${data.filename}"`,
-    );
-    return res.status(200).send(data.csv);
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleObservabilityIncidentsExport(req: Request, res: Response) {
-  try {
-    const parsed = observabilityIncidentsQuerySchema.parse(req.query);
-    const data = await exportOperationalIncidentsCsv(parsed);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${data.filename}"`,
-    );
-    return res.status(200).send(data.csv);
   } catch (error) {
     return sendError(req, res, error);
   }
@@ -2121,9 +1835,9 @@ async function handleGranotCrmCsvUpload(req: Request, res: Response) {
 function handleOverviewReport() {
   return async (req: Request, res: Response) => {
     try {
+      overviewQuerySchema.parse(req.query);
       await connectMongo();
-      const parsed = overviewQuerySchema.parse(req.query);
-      const data = await getOverviewReport(parsed);
+      const data = await getOverviewReport();
       return res.json({ ok: true, data });
     } catch (error) {
       return sendError(req, res, error);
@@ -2134,8 +1848,8 @@ function handleOverviewReport() {
 function handleAnalyticsReport(report: (typeof analyticsReports)[number]) {
   return async (req: Request, res: Response) => {
     try {
-      await connectMongo();
       const parsed = analyticsQuerySchema.parse(req.query);
+      await connectMongo();
       const data = await getAnalyticsReport(report, parsed);
       return res.json({ ok: true, data });
     } catch (error) {
@@ -2146,37 +1860,10 @@ function handleAnalyticsReport(report: (typeof analyticsReports)[number]) {
 
 async function handleAnalyticsExport(req: Request, res: Response) {
   try {
-    await connectMongo();
     const report = analyticsReportSchema.parse(req.params.report);
     const parsed = analyticsQuerySchema.parse(req.query);
+    await connectMongo();
     const data = await exportAnalyticsReportCsv(report, parsed);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${data.filename}"`,
-    );
-    return res.status(200).send(data.csv);
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleAgentSalesReport(req: Request, res: Response) {
-  try {
-    await connectMongo();
-    const parsed = agentSalesReportQuerySchema.parse(req.query);
-    const data = await getAgentSalesReport(parsed);
-    return res.json({ ok: true, data });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleAgentSalesReportExport(req: Request, res: Response) {
-  try {
-    await connectMongo();
-    const parsed = agentSalesReportQuerySchema.parse(req.query);
-    const data = await exportAgentSalesReportCsv(parsed);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
@@ -2963,10 +2650,14 @@ async function sendError(req: Request, res: Response, error: unknown) {
     // 4xx AppErrors stay quiet -- they are expected outcomes.
     if (error.statusCode >= 500) {
       log.error(
-        { err: error, requestId: rid, ...error.toLog() },
+        {
+          err: error,
+          requestId: rid,
+          ...routeFailureLogFields(req, error.statusCode),
+          ...error.toLog(),
+        },
         "Request failed with server-side AppError",
       );
-      await captureRouteFailureEvent(req, error, error.statusCode);
     }
     if (isRegistryError(error)) {
       return res.status(error.statusCode).json(error.toHttpBody());
@@ -2981,10 +2672,9 @@ async function sendError(req: Request, res: Response, error: unknown) {
   // preserves name/message/stack) so operators can see the real cause
   // rather than pino-http's synthetic "failed with status code 500".
   log.error(
-    { err: error, requestId: rid },
+    { err: error, requestId: rid, ...routeFailureLogFields(req, 500) },
     "Unhandled error while processing request",
   );
-  await captureRouteFailureEvent(req, error, 500);
   const message = error instanceof Error ? error.message : "Unknown API error";
   return res.status(500).json({
     ok: false,
@@ -2993,71 +2683,32 @@ async function sendError(req: Request, res: Response, error: unknown) {
 }
 
 /**
- * Records an unexpected 5xx as an operational event, classified by route so the
- * owner sees `lead.route.failed`, `booking.route.failed`, etc. Best-effort and
- * gated by `OBSERVABILITY_CAPTURE_HTTP_5XX`.
+ * Classifies an unexpected 5xx by route so log search finds
+ * `lead.route.failed`, `booking.route.failed`, etc.
  */
-async function captureRouteFailureEvent(
+function routeFailureLogFields(
   req: Request,
-  error: unknown,
   statusCode: number,
-): Promise<void> {
-  if (!shouldCaptureHttp5xx()) {
-    return;
-  }
+): { event_key: string; workflow: string; method: string; route: string; status_code: number } {
   const path = requestPath(req);
-  const { eventKey, category, workflow } = classifyRouteFailure(path);
-  const errorName = error instanceof Error ? error.name : "Error";
-  const errorCode = error instanceof AppError ? error.code : undefined;
-  await recordOperationalEvent({
-    level: "error",
-    eventKey,
-    category,
-    workflow,
-    summary: `Unexpected ${statusCode} on ${req.method} ${path}.`,
-    request: req,
-    statusCode,
-    details: {
-      errorName,
-      errorCode,
-      causeMessage: error instanceof Error ? error.message : String(error),
-    },
-    errorMessage: error instanceof Error ? error.message : String(error),
-    notificationCandidate: true,
-  });
+  const { eventKey, workflow } = classifyRouteFailure(path);
+  return { event_key: eventKey, workflow, method: req.method, route: path, status_code: statusCode };
 }
 
 function classifyRouteFailure(path: string): {
   eventKey: string;
-  category: "lead" | "booking" | "cancellation" | "http";
   workflow: string;
 } {
   if (path.includes("/booked-leads")) {
-    return {
-      eventKey: "booking.route.failed",
-      category: "booking",
-      workflow: "booking_route",
-    };
+    return { eventKey: "booking.route.failed", workflow: "booking_route" };
   }
   if (path.includes("/cancelled-leads")) {
-    return {
-      eventKey: "cancellation.route.failed",
-      category: "cancellation",
-      workflow: "cancellation_route",
-    };
+    return { eventKey: "cancellation.route.failed", workflow: "cancellation_route" };
   }
   if (path.includes("/form-leads") || path.includes("/call-leads")) {
-    return {
-      eventKey: "lead.route.failed",
-      category: "lead",
-      workflow: "lead_route",
-    };
+    return { eventKey: "lead.route.failed", workflow: "lead_route" };
   }
-  return {
-    eventKey: "http.request.5xx",
-    category: "http",
-    workflow: "http_request",
-  };
+  return { eventKey: "http.request.5xx", workflow: "http_request" };
 }
 
 export default router;

@@ -28,11 +28,7 @@ import {
   DomainRevisionConflictError,
 } from "../domainCommands/types";
 import { createGranotWebhookInitiator } from "../durableWork/actors";
-import { csiFlag } from "../../config/domain/salesIntelligence";
-import { getEntityChangeModel } from "../../models/EntityChange";
-import { enqueueCsiJob } from "../salesIntelligence/jobs";
-import type { outreachChangeNomination } from "../salesIntelligence/outreach/worker";
-import { publishOutreachWakeup } from "../numberActivity/webhookFanout";
+import { wakeLeadAttachmentsAfterChange } from "../salesIntelligence/attachment/leadTrigger";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
   createLeadFromGranot,
@@ -199,10 +195,10 @@ export type GranotLifecycleProcessorDeps = {
   ) => ReturnType<typeof createLeadFromGranot>;
   synchronizeLead?: typeof synchronizeLeadFromGranot;
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
-  /** AC6-WAKE seam: post-commit Outreach wake-up after a Lead EntityChange (default `wakeOutreachAfterGranotApply`). */
-  wakeOutreach?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
-  /** AC6-WAKE seam: how long receipt processing waits for the wake-up (default `OUTREACH_WAKE_TIMEOUT_MS`). */
-  wakeOutreachTimeoutMs?: number;
+  /** Seam: post-commit Lead attachment wake-up after a Lead EntityChange (default `wakeLeadAttachmentsAfterChange`). */
+  wakeLeadAttachments?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
+  /** Seam: how long receipt processing waits for the wake-up (default `LEAD_ATTACHMENT_WAKE_TIMEOUT_MS`). */
+  wakeLeadAttachmentsTimeoutMs?: number;
   bookingReconciliationStore?: BookingReconciliationPersistenceStore;
   reconcileBooking?: (
     ids: { observation_id: string; decision_id: string },
@@ -231,28 +227,28 @@ export function createGranotObservationProcessor(
   return {
     async process(input) {
       const result = await processGranotObservation(input, deps);
-      // AC6-WAKE: after the lifecycle transaction(s) committed. Additive and best-effort: it never
-      // changes the decision, never throws, and holds receipt finalization for at most
-      // `wakeOutreachTimeoutMs` (the minute Outreach scan stays the backstop).
-      await boundedOutreachWake(() => (deps.wakeOutreach ?? wakeOutreachAfterGranotApply)(result), result.observation_id,
-        deps.wakeOutreachTimeoutMs ?? OUTREACH_WAKE_TIMEOUT_MS);
+      // After the lifecycle transaction(s) committed. Additive and best-effort: it never changes the
+      // decision, never throws, and holds receipt finalization for at most `wakeLeadAttachmentsTimeoutMs`
+      // (the durable Lead-change scan on the attachment-refresh cron stays the backstop).
+      await boundedLeadAttachmentWake(() => (deps.wakeLeadAttachments ?? wakeLeadAttachmentsAfterChange)(result), result.observation_id,
+        deps.wakeLeadAttachmentsTimeoutMs ?? LEAD_ATTACHMENT_WAKE_TIMEOUT_MS);
       return result;
     },
   };
 }
 
 /**
- * V-AC N2: the longest the drainer waits for the post-commit Outreach wake-up. Normally one indexed
+ * The longest the drainer waits for the post-commit Lead attachment wake-up. Normally one indexed
  * read, one small transaction and one publish (tens of ms). On timeout the receipt is finalized anyway;
  * the wake-up keeps running in the background (its own failures are caught and logged) and, if it is
- * lost with the invocation, the minute Outreach scan enqueues the same dedupe key.
+ * lost with the invocation, the durable Lead-change scan enqueues the same dedupe key.
  */
-export const OUTREACH_WAKE_TIMEOUT_MS = 2_000;
+export const LEAD_ATTACHMENT_WAKE_TIMEOUT_MS = 2_000;
 
 /** Waits for `wake` at most `timeoutMs`; never throws and never rejects. Resolves "done" | "timeout" | "failed". */
-export async function boundedOutreachWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number): Promise<"done" | "timeout" | "failed"> {
+export async function boundedLeadAttachmentWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number): Promise<"done" | "timeout" | "failed"> {
   let timer: NodeJS.Timeout | undefined;
-  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.outreach_wakeup_${outcome}`,
+  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.lead_attachment_wakeup_${outcome}`,
     observationId: maskLifecycleId(observationId), timeoutMs, errorName: error instanceof Error ? error.name : null });
   const running = Promise.resolve().then(wake).then(() => "done" as const, (error: unknown) => { log("failed", error); return "failed" as const; });
   const timeout = new Promise<"timeout">(resolve => { timer = setTimeout(() => resolve("timeout"), Math.max(0, timeoutMs)); timer.unref?.(); });
@@ -260,61 +256,6 @@ export async function boundedOutreachWake(wake: () => Promise<unknown>, observat
   if (timer) clearTimeout(timer);
   if (outcome === "timeout") log("timeout");
   return outcome;
-}
-
-export type OutreachWakeDependencies = {
-  enabled?: () => boolean;
-  findLeadChanges?: (target: { model: "FormLead" | "CallLead"; id: string }, observationId: string) =>
-    Promise<Array<{ _id: unknown; entity: { model: string; id: string }; revision_after: number }>>;
-  enqueue?: (nomination: ReturnType<typeof outreachChangeNomination>) => Promise<{ _id: unknown; status: string }>;
-  publish?: (jobId: string) => Promise<unknown>;
-};
-
-/** A processed observation writes at most a handful of Lead EntityChanges (create, sync, booking). */
-const OUTREACH_WAKE_CHANGE_LIMIT = 10;
-
-/**
- * AC6-WAKE (Attention and Case File spec §8.2, P10). Post-commit and additive only: the Granot
- * lifecycle decision and its writes are unchanged. For every Lead EntityChange this observation
- * committed, enqueue the `outreach-lead:` ensure job with the SAME nomination and dedupe key the
- * minute scan uses (`outreachChangeNomination`), so the scan later finds it already queued, then
- * publish a queue wake-up. Gated like the scan (`SALES_INTELLIGENCE_OUTREACH_ENSURE`). Failure is
- * logged, never thrown: a lost wake-up, or a crash before the enqueue, only waits for the scan.
- */
-export async function wakeOutreachAfterGranotApply(
-  result: { observation_id: string; target?: EntityRef },
-  deps: OutreachWakeDependencies = {},
-): Promise<{ job_ids: string[] }> {
-  const job_ids: string[] = [];
-  const target = result.target;
-  if (!target || (target.model !== "FormLead" && target.model !== "CallLead")) return { job_ids };
-  if (!(deps.enabled ?? (() => csiFlag("OUTREACH_ENSURE")))()) return { job_ids };
-  try {
-    const changes = deps.findLeadChanges
-      ? await deps.findLeadChanges({ model: target.model, id: target.id }, result.observation_id)
-      : await getEntityChangeModel().find({ "entity.model": target.model, "entity.id": target.id,
-        "provenance.observation_id": toObjectId(result.observation_id) })
-        .select({ _id: 1, entity: 1, revision_after: 1 }).sort({ applied_at: 1, _id: 1 }).limit(OUTREACH_WAKE_CHANGE_LIMIT).lean();
-    // Loaded lazily: a static import closes a cycle (outreach/worker → analysis → structuredPrompt).
-    const { outreachChangeNomination: nominate } = await import("../salesIntelligence/outreach/worker.js");
-    for (const change of changes) {
-      const nomination = nominate({ _id: change._id, entity: { model: change.entity.model, id: String(change.entity.id) },
-        revision_after: change.revision_after });
-      const row = deps.enqueue ? await deps.enqueue(nomination) : await defaultWithTransaction(session => enqueueCsiJob(nomination, session));
-      // A replayed observation finds its job already claimed or completed: nothing to wake.
-      if (row.status !== "pending" && row.status !== "retry") continue;
-      job_ids.push(String(row._id));
-      await (deps.publish ?? publishOutreachWakeup)(String(row._id));
-    }
-  } catch (error) {
-    logger.warn({
-      msg: "granot_lifecycle.outreach_wakeup_failed",
-      observationId: maskLifecycleId(result.observation_id),
-      errorName: error instanceof Error ? error.name : "Error",
-      errorCode: error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : null,
-    });
-  }
-  return { job_ids };
 }
 
 export async function processGranotObservation(
@@ -1907,7 +1848,6 @@ function logProcessingCompletion(input: {
       duration_ms: input.duration_ms,
     },
     durationMs: input.duration_ms,
-    piiPolicy: "masked",
   });
   void recordGranotProcessorOutcomeDailyOperationsFact({
     receipt_id: input.receipt_id,

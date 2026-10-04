@@ -10,7 +10,7 @@ import { easternDateTimeParts, easternWallClockToUtc } from "../../../utils/east
  * - **Real instant**: Leads created from Granot (`createLeadFromGranot` stores `observation.captured_at`),
  *   the only writers with `ingestion_origin: "granot_lead_created"`; and any row whose `timestamp` cannot be a
  *   wall clock because read that way the Lead would have arrived after its own row was created. Those are rows
- *   written without `toFloridaTimestamp`: the historical consolidation (`historicalConsolidation/planner.ts`
+ *   written without `toFloridaTimestamp`: the historical consolidation (its planner, retired in the 2026-10 slimming,
  *   stores `easternWallClockToUtc(sheet time)` with `createdAt` = the same instant, later labelled
  *   `legacy_unknown`), a `timestamp` left to the schema default `Date.now`, and synthetic rows.
  *

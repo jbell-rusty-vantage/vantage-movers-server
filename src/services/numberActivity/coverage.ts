@@ -1,11 +1,8 @@
 import mongoose from "mongoose";
 import { csiDataset } from "../../config/domain/salesIntelligence";
 import { getMongoDatabaseName, isTestMode } from "../../config/domain/runtime";
-import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
-import { getLeadConversationModel } from "../../models/LeadConversation";
-import { getCallInteractionModel } from "../../models/CallInteraction";
-import { coverageDtoSchema, type CoverageDto } from "../salesIntelligence/dto";
+import { coverageDtoSchema, type CoverageDto } from "../salesIntelligence/coverageDto";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "./reconcileCallLog";
 import { WEBHOOK_RECEIPTS_SCOPE } from "./webhookFanout";
 
@@ -14,8 +11,7 @@ import { WEBHOOK_RECEIPTS_SCOPE } from "./webhookFanout";
  *
  * Honest by construction: without a `call_log_all_directions` sync state the
  * watermark is `null` and `call_log` is `unknown`; open gaps are reported as
- * ranges that are "not yet observed", never "no call". CSI-11 recording
- * capability derives from stored outcomes, never from seed audio alone. Reads only; no upsert, no `$set`.
+ * ranges that are "not yet observed", never "no call". Reads only; no upsert, no `$set`.
  * Collection read failures propagate (the route maps them to 500); provider
  * content is never part of the result.
  */
@@ -40,10 +36,9 @@ function streamCapability(
 
 /**
  * Coverage is a dashboard health strip, not per-row truth, and `ownerRead`
- * wraps it around every Owner payload: one number search, one timeline page,
- * one Attention GET and one Outreach detail each used to pay the same
- * thirteen-query tax, and a single paginated analysis preflight multiplied it
- * by the page count (14 §1).
+ * wraps it around every Owner payload (number search, Number detail, timeline
+ * page, Accounts reads), so it is derived once and stored rather than recounted
+ * per read (14 §1).
  *
  * The counters are derived from evidence the Owner is already reading behind a
  * watermark that lags, so a value that lags one short window is honest. The
@@ -147,30 +142,6 @@ async function deriveCaptureCoverage(): Promise<CoverageDto> {
   const callLog = rows.find((row) => row.scope === CALL_LOG_ALL_DIRECTIONS_SCOPE) ?? null;
   const webhook = rows.find((row) => row.scope === WEBHOOK_RECEIPTS_SCOPE) ?? null;
   const knownThrough = callLog?.known_complete_through ?? null;
-
-  // Either admission pause means analysis is not running; the Owner coverage
-  // read explains which one and with which numbers (`analysis_admission`).
-  const paused = await getSalesIntelligenceJobModel().countDocuments({
-    ...csiDataset(),
-    status: "paused",
-    reason: { $in: ["budget_exhausted", "per_recording_ceiling"] },
-  });
-  const Conversations = getLeadConversationModel();
-  const [denied, unavailable, stored, mediaPending, missing, failed, undetermined, pendingDiscovery, exhaustedDiscovery, verifiedStored] = await Promise.all([
-    Conversations.countDocuments({ availability_reason: "permission_denied", state: "unavailable" }),
-    Conversations.countDocuments({ state: "unavailable" }),
-    Conversations.countDocuments({ "media.blob_pathname": { $type: "string" }, "media.purged_at": null }),
-    Conversations.countDocuments({ state: "discovered" }),
-    Conversations.countDocuments({ state: "no_recording" }),
-    Conversations.countDocuments({ state: { $in: ["failed", "dead_letter"] } }),
-    Conversations.countDocuments({ "analysis_eligibility.status": "undetermined" }),
-    // `recordings: { $size: 0 }` can never use an index; `recordings.0` can,
-    // and `call_interaction_discovery_state` serves the rest of the predicate.
-    getCallInteractionModel().countDocuments({ merged_into_id: null, terminal: true, "recordings.0": { $exists: false }, direction: { $ne: "Internal" }, "recording_discovery.state": { $ne: "no_recording" } }),
-    getCallInteractionModel().countDocuments({ merged_into_id: null, "recording_discovery.state": "no_recording" }),
-    Conversations.countDocuments({ call_interaction_id: { $ne: null }, provider_account_id: { $type: "string" }, media_digest_sha256: { $type: "string" }, "media.blob_pathname": { $type: "string" }, "media.purged_at": null }),
-  ]);
-
   return coverageDtoSchema.parse({
     known_through: knownThrough ? knownThrough.toISOString() : null,
     gaps: (callLog?.gaps ?? []).map((gap) => ({
@@ -180,12 +151,8 @@ async function deriveCaptureCoverage(): Promise<CoverageDto> {
     })),
     capabilities: {
       call_log: streamCapability(callLog, (row) => Boolean(row.known_complete_through)),
-      recording_content: denied ? "denied" : unavailable || failed ? "unavailable" : verifiedStored ? "ok" : "unknown",
       webhook: streamCapability(webhook, (row) => Boolean(row.cursor?.last_sync_to)),
     },
-    ai_paused: paused > 0,
-    recordings: { pending_discovery: pendingDiscovery, media_pending: mediaPending, media_stored: stored,
-      no_recording: missing + exhaustedDiscovery, unavailable, failed, eligibility_undetermined: undetermined },
   });
 }
 

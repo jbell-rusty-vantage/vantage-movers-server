@@ -7,7 +7,7 @@ import {
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { normalizePhoneNumberToE164Like } from "../ringcentral/phone-normalization";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { onRegistryCacheInvalidation } from "./cacheInvalidation";
 import {
   recordRegistryResolverAttempt,
@@ -88,22 +88,15 @@ export async function loadRingCentralRouteSnapshot(
   if (refreshPromise) return refreshPromise;
   recordRegistryResolverAttempt("ringcentral");
   const pendingRefresh = refreshSnapshot(now)
-    .catch(async (error) => {
+    .catch((error) => {
       const staleAge = cachedSnapshot
         ? now.getTime() - cachedSnapshot.built_at.getTime()
         : Number.POSITIVE_INFINITY;
-      await recordOperationalEvent({
-        level: "error",
-        eventKey: "ringcentral.route_cache.refresh_failed",
-        category: "ringcentral",
+      logger.error({
+        msg: "ringcentral.route_cache.refresh_failed",
         workflow: "operations_registry_ringcentral_cache",
-        summary: "RingCentral route registry cache refresh failed.",
-        details: {
-          staleAgeMs: Number.isFinite(staleAge) ? staleAge : null,
-          causeMessage: error instanceof Error ? error.message : String(error),
-        },
-        errorMessage: error instanceof Error ? error.message : String(error),
-        notificationCandidate: true,
+        stale_age_ms: Number.isFinite(staleAge) ? staleAge : null,
+        err: error,
       });
       recordRegistryResolverFailure(
         "ringcentral",

@@ -10,7 +10,7 @@ import { ownerRead } from "../../numberActivity/coverage";
 function page(): ReadContent {
   return { page: { records: [], complete: true, next_cursor: null, missing_ranges: [] },
     coverage: { known_through: null, gaps: [{ from: "2026-09-01T00:00:00.000Z", to: "2026-09-02T00:00:00.000Z",
-      reason: "call_log_unavailable" }], capabilities: { call_log: "unknown" }, ai_paused: false },
+      reason: "call_log_unavailable" }], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } },
     instructions: [], speaker_refs: [], allowed_followup_ids: [] };
 }
 function summaryPage(): ReadContent {

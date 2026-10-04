@@ -1,4 +1,3 @@
-import { overviewEnabled, readDetailBandSince } from "./bandTransitions";
 import { getOutreachRecordModel } from "../../../models/OutreachRecord";
 import { z } from "zod";
 import { getOutreachFollowupModel } from "../../../models/OutreachFollowup";
@@ -8,7 +7,6 @@ import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getLeadConversationModel } from "../../../models/LeadConversation";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import { getSalesIntelligenceReviewItemModel } from "../../../models/SalesIntelligenceReviewItem";
-import { getSalesIntelligenceOwnerInstructionModel } from "../../../models/SalesIntelligenceOwnerInstruction";
 import { getSalesIntelligenceAuditEventModel } from "../../../models/SalesIntelligenceAuditEvent";
 import mongoose, { type InferSchemaType } from "mongoose";
 import type { SalesIntelligenceReviewItemSchema } from "../../../models/SalesIntelligenceReviewItem";
@@ -26,19 +24,19 @@ import { stateWithActions } from "./transitions";
 import { receiverAssignmentEnabled, subjectKey, type RecordRow, type FollowupRow } from "./types";
 import { SUPERSEDED_BY_SPECIFIC_PLAN } from "./store";
 import { CONTACT_FACT_FIELDS } from "./types";
-import { nudgeHistoryPage, toNudgeDto, type NudgeDto, type NudgeRow } from "../nudges/reads";
+import { toNudgeDto, type NudgeDto, type NudgeRow } from "../nudges/reads";
 import { getOwnerRepNudgeModel } from "../../../models/OwnerRepNudge";
 import { basisLabel, dispositionLabel, isTerminal, priorityLabel, progressExplanation, CRM_CLOSURE_REASONS, type LeadProgressRow } from "./leadProgress";
 import { moveAssessmentProjectionDto } from "../assessment/presentation";
 import type { LeadMoveSource } from "../assessment/views";
-import { outreachFacts, outreachMoveSummary } from "./facts";
+import { outreachFacts } from "./facts";
 import { moveJobKey, readJobMoveObservations, type JobMoveObservation } from "../story/granot";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { csiDataset } from "../../../config/domain/salesIntelligence";
-import { getIntelligenceRunModel } from "../../../models/IntelligenceRun";
-import { latestSummaryFromRun, officialStatus, outreachDetailDtoSchema, receiverAgentDto } from "./detailDto";
+import { latestSummaryFromRun, officialStatus, receiverAgentDto } from "./detailDto";
 import { spendBasis } from "../overview/spend";
 import { EMPTY_SUGGESTION_SIDE, loadSuggestionSide, suggestedNextStep, type SuggestionSide } from "./suggestion";
+import { legacyNumber } from "../legacyNumberFields";
 
 const iso = (value: Date | null | undefined) => value?.toISOString() ?? null;
 
@@ -479,22 +477,11 @@ export async function toOutreachDto(record: RecordRow, now = new Date(), coverag
         blocker_codes: overrideEnabled ? [] : !csiFlag("LEAD_PROGRESS") ? ["FEATURE_DISABLED" as const] : ["ILLEGAL_TRANSITION" as const] },
       ...callAvailability] });
 }
-/**
- * Data spec §4.1 / V21: the newest completed, unpurged run of the Number, newest by
- * `createdAt` then `_id` on `csi_run_number`. One read serves `newest_run_id` and
- * `latest_summary`; only the overview and the summary ids are projected.
- */
-function newestCompletedRun(numberId: unknown) {
-  if (!numberId) return Promise.resolve(null);
-  return getIntelligenceRunModel().findOne({ contact_number_id: numberId, status: "completed", ...csiDataset(), output: { $ne: null }, purged_at: null, purge_started_at: null })
-    .select({ _id: 1, conversation_id: 1, completed_at: 1, "output.summary.overview": 1, "step_artifacts.summaries": 1 })
-    .sort({ createdAt: -1, _id: -1 }).lean();
-}
 
-/** The §4.1 additions from reads `readOutreach` already made plus the one run read. Pure. */
+/** The §4.1 detail additions over one record and its newest run. Pure. */
 export function outreachDetailAdditions(record: RecordRow, side: OutreachSideData, number: OutreachInputs["number"], run: Parameters<typeof latestSummaryFromRun>[0]) {
   // A Number whose content purge is pending shows no model text (the run read's own guard, `readOwnerRun`).
-  const usable = run && !number?.content_purge_pending ? run : null;
+  const usable = run && !(number && legacyNumber(number).content_purge_pending) ? run : null;
   const ref = record.subject.kind === "lead" && record.subject.model && record.subject.id ? leadKey(record.subject.model, record.subject.id) : null;
   const bookings = ref ? side.bookings.get(ref) ?? [] : [];
   const cancelled = new Set(bookings.filter(b => (side.cancellations.get(String(b._id)) ?? []).length > 0).map(b => String(b._id)));
@@ -518,32 +505,6 @@ export async function repNudgePage(outreachId: string, agentId: string): Promise
   return { items: rows.map(row => toNudgeDto(row as unknown as NudgeRow)), next_cursor: null };
 }
 
-/** `nudges_for_agent` (S12-REPNUDGE): a rep's read; `nudges` then holds only that rep's nudges on the record. */
-export async function readOutreach(id: string, options: { nudges_for_agent?: string | null } = {}) {
-  const record = await getOutreachRecordModel().findOne({ _id: id, purged_at: null }).lean();
-  if (!record) return null;
-  const numberId = record.primary_contact_number_id ?? (record.subject.kind === "number_review" ? record.subject.contact_number_id : null);
-  const now = new Date(), [coverage, policy, instructions, inputs, nudges, run] = await Promise.all([
-    readCaptureCoverage(), resolvePolicy(),
-    getSalesIntelligenceOwnerInstructionModel().find({ subject_key: subjectKey(record.subject) }).sort({ happened_at: 1 }).lean(),
-    loadOutreachInputs(record, now),
-    options.nudges_for_agent !== undefined ? (options.nudges_for_agent ? repNudgePage(id, options.nudges_for_agent) : Promise.resolve({ items: [] as NudgeDto[], next_cursor: null }))
-      : nudgeHistoryPage({ outreach_record_id: id, limit: 20 }),
-    newestCompletedRun(numberId)]);
-  const side = await loadOutreachSideData([record], new Map([[String(record._id), inputs]]), { now });
-  const base = await toOutreachDto(record, now, coverage, { policy, inputs, side });
-  // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): `band_since` from the record's newest band transition (one indexed read).
-  const bandSince = overviewEnabled() ? { band_since: await readDetailBandSince(String(record._id), base.derived.attention_band ?? null) } : {};
-  const lead = record.subject.kind === "lead" ? side.leads.get(leadKey(String(record.subject.model), record.subject.id)) : null;
-  const granot = lead ? side.granot?.get(moveJobKey(lead) ?? "") : null;
-  const outreach = outreachDetailDtoSchema.parse({ ...base, ...bandSince, ...outreachDetailAdditions(record, side, inputs.number, run),
-    move_summary: outreachMoveSummary(base.facts!.move!, granot) });
-  return { as_of: now.toISOString(), coverage, data: { outreach, owner_instructions: instructions, nudges } };
-}
-export async function readOutreachByLead(model: "FormLead" | "CallLead", id: string) {
-  const row = await getOutreachRecordModel().findOne({ "subject.model": model, "subject.id": id, purged_at: null }).lean();
-  return row ? readOutreach(String(row._id)) : null;
-}
 /** Data spec §7 D2: the one pending-assessment read for a set of subjects (the publish's queued-set rule, scoped by `csiDataset()`). */
 async function pendingAssessmentKeys(keys: readonly string[]): Promise<Set<string>> {
   if (!keys.length) return new Set();

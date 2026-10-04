@@ -24,33 +24,3 @@ export { sanitizeEventDetails } from "./operationalEventSanitizer";
 export { normalizeLeadIdentity } from "./leadIdentity";
 export { buildRequestEventContext } from "./requestEventContext";
 export { computeFingerprint, buildDedupeKey } from "./fingerprint";
-export {
-  getObservabilityOverview,
-  getObservabilityFacets,
-  listOperationalEvents,
-  getOperationalEventDetail,
-  listOperationalIncidents,
-  getOperationalIncidentDetail,
-  updateOperationalIncidentStatus,
-  updateOperationalIncidentStatuses,
-  deleteObservabilityRecord,
-  deleteObservabilityRecords,
-  listNotificationDeliveries,
-  exportOperationalEventsCsv,
-  exportOperationalIncidentsCsv,
-} from "./adminObservability.service";
-export {
-  runOperationalReport,
-  listOperationalReportRuns,
-  getOperationalReportRunDetail,
-  exportReportRunCsv,
-  computeResultHash,
-  canonicalize,
-  isOperationalReportKey,
-  OPERATIONAL_REPORT_KEYS,
-  type OperationalReportKey,
-} from "./operationalReports.service";
-export {
-  sendDailyOwnerDigest,
-  retryFailedNotifications,
-} from "./notificationDigest.service";

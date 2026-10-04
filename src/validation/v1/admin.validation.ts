@@ -8,9 +8,20 @@ import {
   requireAtLeastOne,
 } from "./common";
 
+// The separate historical database was retired. During the transitional release an
+// omitted scope or an explicit "production" stays valid; "historical" and "combined"
+// are rejected with a 400 instead of silently reading production.
 export const adminDatabaseScopeSchema = z
-  .enum(["production", "historical", "combined"])
-  .default("production");
+  .literal("production", {
+    error: 'The historical database was retired; database_scope accepts only "production".',
+  })
+  .optional();
+
+/**
+ * The scope check alone, for reads whose own query schema has no scope field (the Agent catalog list and
+ * detail now serve the retired Agent browse paths): an explicit historical/combined scope still gets a 400.
+ */
+export const adminScopeOnlyQuerySchema = z.object({ database_scope: adminDatabaseScopeSchema });
 
 const directionSchema = z
   .preprocess((value) => (typeof value === "string" ? value.toLowerCase() : value), z.enum(["asc", "desc"]))
@@ -50,8 +61,6 @@ const adminQueryBase = {
   agent: optionalTrimmedString,
   receiver_agent: optionalObjectIdString,
   customer_name: optionalTrimmedString,
-  customer_phone: optionalTrimmedString,
-  customer_email: optionalTrimmedString,
   job_no: optionalTrimmedString,
   merchant: optionalTrimmedString,
   local: optionalTrimmedString,
@@ -81,8 +90,6 @@ const adminQueryBase = {
   duplicate: booleanInput.optional(),
   /** Form leads only: move_date calendar day is ≥1 day before submission `timestamp`. */
   past_move_date: booleanInput.optional(),
-  active: booleanInput.optional(),
-  role: optionalTrimmedString,
   limit: z.coerce.number().int().min(1).max(250).default(50),
   page: z.coerce.number().int().min(1).default(1),
   sort: optionalTrimmedString,
@@ -397,7 +404,6 @@ export const sourceResolutionPreviewSchema = z
 
 export type AdminBrowseQuery = z.infer<typeof adminBrowseQuerySchema>;
 export type AdminSearchQuery = z.infer<typeof adminSearchQuerySchema>;
-export type AdminDatabaseScope = z.infer<typeof adminDatabaseScopeSchema>;
 export type CatalogListQuery = z.infer<typeof catalogListQuerySchema>;
 export type CatalogCreateInput = z.infer<typeof catalogCreateSchema>;
 export type CatalogUpdateInput = z.infer<typeof catalogUpdateSchema>;

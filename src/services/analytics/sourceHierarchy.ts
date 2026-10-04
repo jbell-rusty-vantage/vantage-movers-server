@@ -36,15 +36,9 @@ export type NestSourceRowsOptions = {
   additiveFields: readonly string[];
   catalog?: FilterCatalog;
   channel?: "form" | "call";
-  seedZeros?: boolean;
   derive?: (row: AnalyticsRow) => AnalyticsRow;
   sort?: (left: SourceCompanyMetricRow, right: SourceCompanyMetricRow) => number;
 };
-
-export async function loadProductionSourceLabelIndex(): Promise<SourceLabelIndex> {
-  const facets = await getAdminFacets("production");
-  return sourceLabelIndexFromCatalog(facets.catalog);
-}
 
 export function sourceLabelIndexFromCatalog(catalog: FilterCatalog): SourceLabelIndex {
   const companyBySlug = new Map<string, { label: string }>();
@@ -77,24 +71,16 @@ export function catalogChannelFromLeadType(
 
 export async function nestObservedSourceRows(
   leaves: readonly AnalyticsRow[],
-  query: { database_scope: "production" | "historical" | "combined"; lead_type?: string },
+  query: { lead_type?: string },
   options: NestSourceRowsOptions,
 ): Promise<SourceCompanyMetricRow[]> {
-  const catalog = (await getAdminFacets(query.database_scope)).catalog;
+  const catalog = (await getAdminFacets()).catalog;
   const channel = catalogChannelFromLeadType(query.lead_type);
   const labels = sourceLabelIndexFromCatalog(catalog);
-  const hasGranularityKeys = leaves.some((leaf) => {
-    const key = sourceGranularityFromRow(leaf);
-    return Boolean(key && key !== "unknown");
-  });
-  if (query.database_scope === "historical" && !hasGranularityKeys) {
-    return companyOnlySourceRows(leaves, { ...options, catalog });
-  }
   return nestSourceCompanyRows(leaves, labels, {
     ...options,
     catalog,
     channel,
-    seedZeros: query.database_scope !== "historical",
   });
 }
 
@@ -205,27 +191,6 @@ export function nestSourceCompanyRows(
   return rows.sort(options.sort ?? defaultSourceSort);
 }
 
-export function companyOnlySourceRows(
-  rows: readonly AnalyticsRow[],
-  options: Pick<NestSourceRowsOptions, "derive" | "sort" | "catalog"> = {},
-): SourceCompanyMetricRow[] {
-  const labels = options.catalog ? sourceLabelIndexFromCatalog(options.catalog) : undefined;
-  return rows
-    .map((input) => {
-      const sourceCompany = sourceCompanyFromRow(input);
-      const base: SourceCompanyMetricRow = {
-        ...withoutAggregateId(input),
-        source_company: sourceCompany,
-        source_company_label: labels
-          ? resolveCompanyLabel(sourceCompany, labels)
-          : fallbackCompanyLabel(sourceCompany),
-        granularities: [],
-      };
-      return (options.derive?.(base) ?? base) as SourceCompanyMetricRow;
-    })
-    .sort(options.sort ?? defaultSourceSort);
-}
-
 export function sourceCompanyFromRow(row: AnalyticsRow): string {
   const aggregateId = objectValue(row._id);
   return normalizeSourceDimension(
@@ -299,7 +264,6 @@ function seedCatalogLeaves(
       });
       continue;
     }
-    if (options.seedZeros === false) continue;
     const zeroLeaf: AnalyticsRow = {
       source_company: candidate.company_slug,
       source_granularity_key: candidate.granularity_key,

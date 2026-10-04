@@ -4,7 +4,6 @@ import { send as queueSend } from "@vercel/queue";
 import { logger } from "../../logger";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
-import { recordOperationalEvent } from "../observability";
 import { ringCentralRequest } from "../ringcentral/client";
 import { csiWorkerActor, CsiError } from "../salesIntelligence/auth";
 import {
@@ -285,7 +284,6 @@ export type CallLogRefreshDeps = {
   directory?: (accountId: string) => Promise<DirectoryLookup>;
   resolveRoute?: RouteResolver;
   configuredAccountId?: string | null;
-  recordEvent?: typeof recordOperationalEvent;
   publish?: DelayedPublishDeps;
   /** Jitter source for throttle deferrals (tests pin it). */
   random?: () => number;
@@ -302,7 +300,6 @@ export async function runCallLogRefreshJob(
   const claim = deps.claim ?? claimCsiJob;
   const complete = deps.complete ?? completeCsiJob;
   const fail = deps.fail ?? failCsiJob;
-  const recordEvent = deps.recordEvent ?? recordOperationalEvent;
 
   if (jobId !== undefined && !mongoose.Types.ObjectId.isValid(jobId)) return { status: "not_claimable", job_id: jobId };
   const row = await claim(owner, jobId, deps.ttlMs ?? 120_000, CALL_LOG_REFRESH_STAGE);
@@ -415,7 +412,7 @@ export async function runCallLogRefreshJob(
       );
     } catch (error) {
       result.error_code = error instanceof ProviderAccountError ? error.code : "account_unresolved";
-      await warn(recordEvent, lease.job_id, telephonySessionId, result.error_code);
+      warn(lease.job_id, telephonySessionId, result.error_code);
       return await finish();
     }
     const directory = await (deps.directory ?? loadDirectoryLookup)(accountId);
@@ -435,7 +432,7 @@ export async function runCallLogRefreshJob(
         const code = error instanceof InteractionPersistenceError ? error.code : "persist_failed";
         result.error_code = code;
         if (!DETERMINISTIC_APPLY_CODES.has(code)) return await retry("transient", undefined);
-        await warn(recordEvent, lease.job_id, telephonySessionId, code);
+        warn(lease.job_id, telephonySessionId, code);
       }
     }
     result.state = result.applied.length ? "applied" : "failed";
@@ -513,22 +510,6 @@ function startMs(record: CallLogRecordInput): number {
   return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
 }
 
-async function warn(
-  recordEvent: typeof recordOperationalEvent,
-  jobId: string,
-  telephonySessionId: string,
-  errorCode: string,
-): Promise<void> {
+function warn(jobId: string, telephonySessionId: string, errorCode: string): void {
   logger.warn({ msg: "sales_intelligence.call_log_refresh.apply_failed", jobId, telephonySessionId, errorCode });
-  await recordEvent({
-    level: "warn",
-    eventKey: "sales_intelligence.call_log_refresh.apply_failed",
-    category: "ringcentral",
-    workflow: "sales_intelligence",
-    summary: "Targeted Call Log refresh could not apply the session's record; the reconcile window covers it.",
-    details: { jobId, telephonySessionId, errorCode },
-    notificationCandidate: false,
-    reportable: false,
-    piiPolicy: "none",
-  }).catch(() => undefined);
 }

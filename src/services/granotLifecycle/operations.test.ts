@@ -6,9 +6,12 @@ import {
   activateGranotLifecycle,
   durableActorFromOwnerActor,
   projectActivation,
+  GRANOT_RECEIPT_REQUEUE_COMMAND_NAME,
+  receiptRequeueIdempotencyKey,
   requeueDeadLetterReceipt,
   type ActivationCommandDeps,
   type RequeueCommandDeps,
+  type RequeueProvenanceInput,
 } from "./operations";
 import { getGranotLifecycleActivationsTotal, resetGranotLifecycleMetrics } from "./metrics";
 import type { RegistryActorContext } from "../operationsRegistry/types";
@@ -35,14 +38,11 @@ const ADMIN: RegistryActorContext = {
 
 function memoryActivation(existing?: GranotLifecycleActivationDocument | null): ActivationCommandDeps & {
   stored: GranotLifecycleActivationDocument[];
-  audits: GranotLifecycleActivationDocument[];
 } {
   const stored: GranotLifecycleActivationDocument[] = existing ? [existing] : [];
-  const audits: GranotLifecycleActivationDocument[] = [];
   let draft: GranotLifecycleActivationDocument | null = null;
   return {
     stored,
-    audits,
     now: () => new Date("2026-08-17T16:00:00.000Z"),
     findActivation: async () => stored[0] ?? draft,
     persistActivation: async (document) => {
@@ -52,9 +52,6 @@ function memoryActivation(existing?: GranotLifecycleActivationDocument | null): 
         throw error;
       }
       draft = document;
-    },
-    persistAudit: async (document) => {
-      audits.push(document);
     },
     withTransaction: async (fn) => {
       try {
@@ -87,7 +84,9 @@ test("[AC-31] foundation Owner activation is write-once and returns a safe proje
   assert.equal(created.processor_version, "granot-lifecycle-processor-v1");
   assert.equal("reason" in created, false);
   assert.equal("activated_by" in created, false);
-  assert.equal(deps.audits.length, 1);
+  assert.equal(deps.stored.length, 1);
+  assert.equal(deps.stored[0]?.activated_by.actor_id, OWNER.actorId);
+  assert.equal(deps.stored[0]?.reason, "Synthetic activation for local classification proof");
   assert.equal(getGranotLifecycleActivationsTotal(), 1);
   await assert.rejects(
     () =>
@@ -114,22 +113,6 @@ test("[AC-31] foundation Admin without Owner cannot activate", () => {
       "code" in error &&
       (error as { code: string }).code === GRANOT_LIFECYCLE_ERROR_CODES.OWNER_REQUIRED,
   );
-});
-
-test("[AC-31] activation audit failure cannot roll back the committed activation", async () => {
-  const deps = memoryActivation();
-  deps.persistAudit = async () => {
-    throw new Error("audit unavailable");
-  };
-  await activateGranotLifecycle(
-        {
-          reason: "Synthetic activation for local classification proof",
-          processor_version: "granot-lifecycle-processor-v1",
-        },
-        OWNER,
-        deps,
-      );
-  assert.equal(deps.stored.length, 1);
 });
 
 test("[AC-31] foundation replica-set concurrent activation has one winner", async (t) => {
@@ -181,8 +164,8 @@ function memoryRequeue(existing?: {
   payload_sha256?: string;
   channel_operation_id?: string;
 }): RequeueCommandDeps & {
-  audits: number;
-  storedState: string | null;
+  provenance: RequeueProvenanceInput[];
+  currentState: () => string;
 } {
   const receiptId = new mongoose.Types.ObjectId();
   let state = existing?.state ?? "dead_letter";
@@ -190,10 +173,11 @@ function memoryRequeue(existing?: {
   const payload_sha256 = existing?.payload_sha256 ?? "b".repeat(64);
   const channel_operation_id = existing?.channel_operation_id ?? "synthetic-op-1";
   let manual_requeue_count = 0;
-  const audits: unknown[] = [];
+  const provenance: RequeueProvenanceInput[] = [];
+  const sessions: unknown[] = [];
   return {
-    audits: 0,
-    storedState: state,
+    provenance,
+    currentState: () => state,
     now: () => new Date("2026-08-17T18:00:00.000Z"),
     findReceipt: async () =>
       existing
@@ -204,7 +188,8 @@ function memoryRequeue(existing?: {
             channel_operation_id,
           }
         : null,
-    transitionDeadLetter: async () => {
+    transitionDeadLetter: async (_id, _now, session) => {
+      sessions.push(session);
       if (state !== "dead_letter") {
         return null;
       }
@@ -222,17 +207,23 @@ function memoryRequeue(existing?: {
         channel_operation_id,
       };
     },
-    persistRequeueAudit: async () => {
-      audits.push(1);
+    persistRequeueProvenance: async (input, session) => {
+      assert.equal(session, sessions.at(-1), "provenance shares the transition session");
+      provenance.push(input);
     },
     withTransaction: async (fn) => {
-      const result = await fn({} as never);
-      return result;
+      const snapshot = { state, manual_requeue_count, provenance: provenance.length };
+      const session = { id: Symbol("session") };
+      try {
+        return await fn(session as never);
+      } catch (error) {
+        state = snapshot.state;
+        manual_requeue_count = snapshot.manual_requeue_count;
+        provenance.length = snapshot.provenance;
+        throw error;
+      }
     },
-    get auditsCount() {
-      return audits.length;
-    },
-  } as RequeueCommandDeps & { audits: number; storedState: string | null; auditsCount: number };
+  };
 }
 
 test("[AC-37] Owner requeue moves dead_letter to pending without replacing evidence", async () => {
@@ -252,17 +243,38 @@ test("[AC-37] Owner requeue moves dead_letter to pending without replacing evide
   assert.equal(result.payload_sha256, "c".repeat(64));
   assert.equal(result.channel_operation_id, "synthetic-channel-op");
   assert.equal(result.manual_requeue_count, 1);
+  assert.equal(deps.provenance.length, 1);
+  assert.equal(deps.provenance[0]?.reason, "Owner requeue of synthetic dead letter");
+  assert.equal(deps.provenance[0]?.actor.actor_id, OWNER.actorId);
+  assert.equal(deps.provenance[0]?.actor.actor_role, "owner");
+  assert.equal(deps.provenance[0]?.priorState, "dead_letter");
+  assert.equal(deps.provenance[0]?.newState, "pending");
+  assert.equal(deps.provenance[0]?.manual_requeue_count, 1);
 });
 
-test("[AC-37] requeue audit failure cannot roll back the receipt transition", async () => {
+test("[AC-37] requeue provenance failure aborts the receipt transition in the same transaction", async () => {
   const deps = memoryRequeue({ state: "dead_letter" });
-  deps.persistRequeueAudit = async () => { throw new Error("audit unavailable"); };
-  const result = await requeueDeadLetterReceipt(
-    { id: new mongoose.Types.ObjectId().toHexString(), reason: "Owner requeue despite audit outage" },
-    OWNER,
-    deps,
+  deps.persistRequeueProvenance = async () => { throw new Error("provenance unavailable"); };
+  await assert.rejects(
+    () =>
+      requeueDeadLetterReceipt(
+        { id: new mongoose.Types.ObjectId().toHexString(), reason: "Owner requeue during provenance outage" },
+        OWNER,
+        deps,
+      ),
+    /provenance unavailable/,
   );
-  assert.equal(result.state, "pending");
+  assert.equal(deps.currentState(), "dead_letter");
+  assert.equal(deps.provenance.length, 0);
+});
+
+test("[AC-37] requeue idempotency key is fenced by receipt and requeue revision", () => {
+  const id = new mongoose.Types.ObjectId();
+  assert.equal(
+    receiptRequeueIdempotencyKey(id, 2),
+    `${GRANOT_RECEIPT_REQUEUE_COMMAND_NAME}:${id.toHexString()}:2`,
+  );
+  assert.notEqual(receiptRequeueIdempotencyKey(id, 2), receiptRequeueIdempotencyKey(id, 3));
 });
 
 test("[AC-37] requeue of completed or claimed work conflicts and creates no audit", async () => {
@@ -283,6 +295,7 @@ test("[AC-37] requeue of completed or claimed work conflicts and creates no audi
         "code" in error &&
         (error as { code: string }).code === GRANOT_LIFECYCLE_ERROR_CODES.REQUEUE_STATE_CONFLICT,
     );
+    assert.equal(deps.provenance.length, 0);
   }
 });
 

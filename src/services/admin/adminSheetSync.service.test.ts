@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-} from "../observability";
 import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { SheetSyncRun } from "../../models/SheetSyncRun";
 import {
@@ -32,7 +28,6 @@ afterEach(() => {
     (SheetSyncJob as any)[key] = value;
   }
   (SheetSyncRun as any).findOne = originalRunFindOne;
-  clearCapturedOperationalEvents();
   restoreEnv("VERCEL", originalEnv.vercel);
   restoreEnv("VERCEL_ENV", originalEnv.vercelEnv);
   restoreEnv("SHEET_SYNC_QUEUE_TOPIC", originalEnv.sheetSyncQueueTopic);
@@ -145,12 +140,6 @@ test("retrySheetSyncJobs starts an admin drain instead of publishing a queue wak
   assert.equal(result.requeued, 1);
   assert.equal(result.drain_started, true);
   assert.equal(drainStarted, true);
-  assert.equal(
-    getCapturedOperationalEvents().some(
-      (event) => event.input.eventKey === "sheet_sync.queue.publish_failed",
-    ),
-    false,
-  );
 });
 
 test("retrySheetSyncJobs is a no-op when nothing matches", async () => {

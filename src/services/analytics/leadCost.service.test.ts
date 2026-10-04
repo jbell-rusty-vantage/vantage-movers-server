@@ -82,8 +82,6 @@ test("lead cost excludes duplicate form leads and unmatched call leads", async (
       "call-leads": CallLead as never,
       "booked-leads": {} as never,
       "cancelled-leads": {} as never,
-      customers: {} as never,
-      agents: {} as never,
     },
     query,
   );

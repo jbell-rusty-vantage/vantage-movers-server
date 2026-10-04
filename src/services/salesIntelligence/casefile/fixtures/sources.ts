@@ -14,7 +14,7 @@ export const AS_OF = "2026-09-23T20:10:00.000Z";
 const NUMBER = "6c0000000000000000000001", E164 = "+17575550143", ACCOUNT = "acct-synthetic";
 const hex = (n: number) => `6c00000000000000000${String(n).padStart(5, "0")}`;
 const at = (iso: string, plusMs = 0) => new Date(Date.parse(iso) + plusMs).toISOString();
-const coverage: ReadContent["coverage"] = { known_through: "2026-09-23T20:05:00.000Z", gaps: [], capabilities: {}, ai_paused: false };
+const coverage: ReadContent["coverage"] = { known_through: "2026-09-23T20:05:00.000Z", gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 const staffing = (() => { const p = defaultCsiPolicy(); return { timezone: p.timezone, staffed_hours: p.staffed_hours }; })();
 
 export function emptyVantage(): VantageSideContext {

@@ -1,15 +1,7 @@
-import type { AdminDatabaseScope } from "../../validation/v1.validation";
-import type { OverviewQuery } from "../../validation/v1/analytics.validation";
 import { analyticsQuerySchema } from "../../validation/v1.validation";
-import {
-  concreteScopes,
-  getAdminModels,
-  type AdminModels,
-  type ConcreteAdminScope,
-} from "../admin/adminScope.service";
+import { getAdminModels, type AdminModels } from "../admin/adminScope.service";
 import { getTopAgentsByDeposit } from "./agentPerformance.service";
 import { bookedLeadPrefix, type AnalyticsRow } from "./analyticsFilters";
-import { mergeAnalyticsPayload, mergeRows, type AnalyticsPayload } from "./analyticsMerge";
 import { getLeadCost, type LeadCostResult } from "./leadCost.service";
 import { getSummary } from "./summary.service";
 import { nestObservedSourceRows } from "./sourceHierarchy";
@@ -23,7 +15,7 @@ export type OverviewTotals = AnalyticsRow;
 
 export type OverviewAllTime = {
   totals: OverviewTotals;
-  lead_cost: LeadCostResult | null;
+  lead_cost: LeadCostResult;
   top_agents: AnalyticsRow[];
 };
 
@@ -36,10 +28,9 @@ export type OverviewLast7Days = {
 };
 
 export type OverviewResponse = {
-  database_scope: AdminDatabaseScope;
   generated_at: string;
   all_time: OverviewAllTime;
-  last_7_days: OverviewLast7Days | null;
+  last_7_days: OverviewLast7Days;
 };
 
 export function rollingLast7DaysWindow(): { from: Date; to: Date } {
@@ -50,57 +41,30 @@ export function rollingLast7DaysWindow(): { from: Date; to: Date } {
   return { from, to };
 }
 
-export async function getOverviewReport(query: OverviewQuery): Promise<OverviewResponse> {
-  const scopes = concreteScopes(query.database_scope);
-  const allTimePayloads = await Promise.all(
-    scopes.map((scope) =>
-      buildAllTimeSection(
-        getAdminModels(scope),
-        scope,
-        query.database_scope,
-      ),
-    ),
-  );
-  const all_time = mergeOverviewAllTime(allTimePayloads, query.database_scope);
-
-  let last_7_days: OverviewLast7Days | null = null;
-  if (query.database_scope === "production") {
-    const { from, to } = rollingLast7DaysWindow();
-    const rangeQuery = analyticsQuerySchema.parse({
-      database_scope: "production",
-      from: from.toISOString(),
-      to: to.toISOString(),
-    });
-    last_7_days = await buildLast7DaysSection(
-      getAdminModels("production"),
-      rangeQuery,
-      { from, to },
-    );
-  }
+export async function getOverviewReport(): Promise<OverviewResponse> {
+  const models = getAdminModels();
+  const { from, to } = rollingLast7DaysWindow();
+  const rangeQuery = analyticsQuerySchema.parse({
+    from: from.toISOString(),
+    to: to.toISOString(),
+  });
+  const all_time = await buildAllTimeSection(models);
+  const last_7_days = await buildLast7DaysSection(models, rangeQuery, { from, to });
 
   return {
-    database_scope: query.database_scope,
     generated_at: new Date().toISOString(),
     all_time,
     last_7_days,
   };
 }
 
-async function buildAllTimeSection(
-  models: AdminModels,
-  scope: ConcreteAdminScope,
-  requestedScope: AdminDatabaseScope,
-): Promise<OverviewAllTime> {
-  const emptyQuery = analyticsQuerySchema.parse({ database_scope: scope });
-  const [summary, topAgents] = await Promise.all([
+async function buildAllTimeSection(models: AdminModels): Promise<OverviewAllTime> {
+  const emptyQuery = analyticsQuerySchema.parse({});
+  const [summary, topAgents, lead_cost] = await Promise.all([
     getSummary(models, emptyQuery),
     getTopAgentsByDeposit(models, emptyQuery, 5),
+    getLeadCost(models, emptyQuery),
   ]);
-
-  const lead_cost =
-    requestedScope === "production" && scope === "production"
-      ? await getLeadCost(models, emptyQuery)
-      : null;
 
   return {
     totals: (summary.totals ?? {}) as OverviewTotals,
@@ -164,33 +128,4 @@ async function getSalesBySourceCompany(
       Number(right.bookings) - Number(left.bookings) ||
       left.source_company.localeCompare(right.source_company),
   });
-}
-
-export function mergeOverviewAllTime(
-  payloads: OverviewAllTime[],
-  requestedScope: AdminDatabaseScope,
-): OverviewAllTime {
-  if (payloads.length === 1) {
-    return {
-      ...payloads[0],
-      lead_cost: requestedScope === "production" ? payloads[0].lead_cost : null,
-    };
-  }
-
-  const mergedTotals = mergeSummaryTotals(payloads.map((payload) => ({ totals: payload.totals })));
-  const top_agents = mergeRows(
-    payloads.flatMap((payload) => payload.top_agents),
-    ["agent_name"],
-  ).slice(0, 5);
-
-  return {
-    totals: mergedTotals,
-    lead_cost: null,
-    top_agents,
-  };
-}
-
-function mergeSummaryTotals(payloads: AnalyticsPayload[]): OverviewTotals {
-  const merged = mergeAnalyticsPayload("summary", payloads);
-  return (merged.totals ?? {}) as OverviewTotals;
 }

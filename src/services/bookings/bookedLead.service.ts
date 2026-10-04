@@ -57,7 +57,7 @@ import {
 } from "../domainCommands/leadChangeEmission";
 import { recordBookingDailyOperationsFact } from "../dailyOperations/recordDomainFacts";
 import { V1ServiceError } from "../v1ServiceError";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import {
   clearBookingFromLead,
   mirrorBookingToLead,
@@ -413,20 +413,15 @@ export async function finalizeBookedLeadCreateAfterCommit(
 ) {
   if (outcome.kind === "duplicate") {
     const booking = await populateBookedLead(outcome.bookingId);
-    await recordOperationalEvent({
-      level: "warn",
-      eventKey: "booking.duplicate_submission_ignored",
-      category: "booking",
+    logger.warn({
+      msg: "booking.duplicate_submission_ignored",
       workflow: "booking_create",
-      summary: "Duplicate booking submission ignored.",
-      ...bookingEventContext(booking, outcome.sourceCompany),
-      details: {
-        submission_id: input.submission_id ?? null,
-        job_no: booking.job_no ?? null,
-        lead_ref: input.lead_ref,
-        lead_model: input.lead_model,
-      },
-      notificationCandidate: false,
+      booking_id: booking._id.toString(),
+      source_company: outcome.sourceCompany ?? undefined,
+      submission_id: input.submission_id ?? null,
+      job_no: booking.job_no ?? null,
+      lead_ref: input.lead_ref,
+      lead_model: input.lead_model,
     });
     return {
       booking,
@@ -453,24 +448,16 @@ export async function finalizeBookedLeadCreateAfterCommit(
     lead_id: input.lead_ref,
     lead_model: input.lead_model,
   });
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: isCreate ? "booking.created" : "booking.upserted",
-    category: "booking",
+  logger.info({
+    msg: isCreate ? "booking.created" : "booking.upserted",
     workflow: "booking_create",
-    summary: isCreate ? "Booking created." : "Existing booking upserted.",
-    ...bookingEventContext(booking, outcome.sourceCompany),
-    details: {
-      job_no: booking.job_no ?? null,
-      lead_model: input.lead_model,
-      lead_ref: input.lead_ref,
-      deposit_amount: input.deposit_amount,
-      total_binder_amount: outcome.totalBinderAmount,
-      merchant,
-      local: booking.local ?? null,
-      warnings,
-      ...(isCreate ? {} : { previous_booking_id: outcome.bookingId.toString() }),
-    },
+    booking_id: booking._id.toString(),
+    source_company: outcome.sourceCompany ?? undefined,
+    job_no: booking.job_no ?? null,
+    lead_model: input.lead_model,
+    lead_ref: input.lead_ref,
+    merchant,
+    warning_count: warnings.length,
   });
 
   return {

@@ -411,16 +411,7 @@ async function applyOnce(
   });
 
   const captureSource = input.kind === "webhook" ? undefined : input.source;
-  const jobs = await scheduleDownstream(
-    outcome,
-    existing,
-    String(interactionId),
-    number,
-    revision,
-    session,
-    now,
-    captureSource,
-  );
+  const jobs = await scheduleDownstream(outcome, String(interactionId), number, session, now, captureSource);
 
   return {
     interaction_id: String(interactionId),
@@ -539,15 +530,9 @@ function rollupsFor(projection: InteractionProjection) {
     last_inbound_at: projection.direction === "Inbound" ? projection.started_at : null,
     last_outbound_at: projection.direction === "Outbound" ? projection.started_at : null,
     last_human_conversation_at: null,
-    last_meaningful_contact_at: null,
     attached_lead_count: 0,
     candidate_lead_count: 0,
-    open_outreach_count: 0,
     recordings_total: projection.recordings.length,
-    // Owned by analysis apply and Outreach ensure (Number rollups Service doc); a new Number has neither yet.
-    conversations_analyzed_total: 0,
-    last_analyzed_at: null,
-    outreach_records_total: 0,
   };
 }
 
@@ -620,16 +605,10 @@ async function applyRollupDelta(
     { _id: numberId, revision: row.revision },
     {
       // Dotted paths for the capture-owned rollups only, never the whole `rollups`
-      // object. `conversations_analyzed_total`, `last_analyzed_at` and
-      // `outreach_records_total` are `$inc`/`$max`-ed by analysis apply and
-      // Outreach ensure without a revision bump, so replacing the object from
-      // this read would be a read-modify-write of fields capture does not own.
-      // Two guarantees keep those increments: (1) this write never names them;
-      // (2) every rollup writer runs in a transaction, and a transaction that
-      // writes this document after another write to it committed since its
-      // snapshot aborts with a WriteConflict and is retried from a fresh read.
-      // The revision CAS still fences the read-modify-write writers (capture,
-      // rebuild) against each other. See "Number rollups" in the capture doc.
+      // object: the attachment counts and the human-conversation rollups belong
+      // to the attachment refresh and the rebuild. Every rollup writer runs in a
+      // transaction, and the revision CAS fences the read-modify-write writers
+      // (capture, rebuild) against each other. See "Number rollups" in the capture doc.
       $set: {
         "rollups.interactions_total": rollups.interactions_total,
         "rollups.inbound_total": rollups.inbound_total,
@@ -665,17 +644,15 @@ function laterOf(a: Date | null | undefined, b: Date | null): Date | null {
 }
 
 /**
- * Durable downstream intent, in the same transaction as the projection.
- * Keys carry the interaction revision (operational work) or the recording id
- * (discovery), so replays dedupe and delayed recording evidence still
- * schedules discovery after the call became terminal.
+ * Durable downstream intent, in the same transaction as the projection: the
+ * attachment refresh of a newly created Contact Number, so every Lead on that
+ * phone gets its edge. Keys are per Number (and per interaction for backfill),
+ * so replays dedupe. Capture nominates no other stage.
  */
 async function scheduleDownstream(
   outcome: ProjectionOutcome,
-  existing: InteractionProjection | null,
   interactionId: string,
   number: NumberRef,
-  revision: number,
   session: ClientSession,
   now: Date,
   captureSource?: CaptureSource,
@@ -689,88 +666,20 @@ async function scheduleDownstream(
       input_revision: 1, input_refs: [interactionId], priority: -100 }, session, now);
     return [key];
   }
-  const jobs: string[] = [];
-  const next = outcome.next;
-  const internal = next.direction === "Internal" || next.external_endpoint_kind === "company_did" || next.external_endpoint_kind === "extension";
-  // The first settled revision of a provisional row is its first final
-  // observation: downstream treats it like a creation (CC-04).
-  const firstFinal = outcome.newly_terminal || outcome.newly_settled;
-  const material =
-    outcome.created ||
-    firstFinal ||
-    (existing?.provider_connected ?? false) !== next.provider_connected ||
-    existing?.contact_type !== next.contact_type ||
-    existing?.direction !== next.direction ||
-    existing?.external_e164 !== next.external_e164 ||
-    existing?.provider_result !== next.provider_result;
-
-  if (number.id && material) {
-    const key = `csi:outreach_ensure:interaction:${interactionId}:${revision}`;
-    await enqueueCsiJob(
-      {
-        dedupe_key: key,
-        stage: "outreach_ensure",
-        subject_key: `number:${String(number.id)}`,
-        input_revision: revision,
-        input_refs: [interactionId],
-      },
-      session,
-      now,
-    );
-    jobs.push(key);
-  }
-  if (number.created && number.id) {
-    const key = `csi:attachment_refresh:number:${String(number.id)}:1`;
-    await enqueueCsiJob(
-      {
-        dedupe_key: key,
-        stage: "attachment_refresh",
-        subject_key: `number:${String(number.id)}`,
-        input_revision: 1,
-        input_refs: [interactionId],
-      },
-      session,
-      now,
-    );
-    jobs.push(key);
-  }
-  if (next.terminal && !internal) {
-    const recordingIds = firstFinal
-      ? next.recordings.map((r) => r.provider_recording_id)
-      : outcome.new_recording_ids;
-    for (const recordingId of recordingIds) {
-      const key = `csi:recording_discovery:interaction:${interactionId}:recording:${recordingId}`;
-      await enqueueCsiJob(
-        {
-          dedupe_key: key,
-          stage: "recording_discovery",
-          subject_key: `interaction:${interactionId}`,
-          input_revision: 1,
-          input_refs: [interactionId],
-        },
-        session,
-        now,
-      );
-      jobs.push(key);
-    }
-    if (firstFinal && next.recordings.length === 0) {
-      // Pending discovery: not proof that no recording will ever exist.
-      const key = `csi:recording_discovery:interaction:${interactionId}:pending`;
-      await enqueueCsiJob(
-        {
-          dedupe_key: key,
-          stage: "recording_discovery",
-          subject_key: `interaction:${interactionId}`,
-          input_revision: 1,
-          input_refs: [interactionId],
-        },
-        session,
-        now,
-      );
-      jobs.push(key);
-    }
-  }
-  return jobs;
+  if (!number.created || !number.id) return [];
+  const key = `csi:attachment_refresh:number:${String(number.id)}:1`;
+  await enqueueCsiJob(
+    {
+      dedupe_key: key,
+      stage: "attachment_refresh",
+      subject_key: `number:${String(number.id)}`,
+      input_revision: 1,
+      input_refs: [interactionId],
+    },
+    session,
+    now,
+  );
+  return [key];
 }
 
 function summarize(

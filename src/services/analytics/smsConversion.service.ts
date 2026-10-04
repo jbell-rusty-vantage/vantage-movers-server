@@ -10,21 +10,6 @@ import {
   type AnalyticsRow,
 } from "./analyticsFilters";
 
-const SMS_CONVERSION_UNSUPPORTED_METADATA = {
-  sms_conversion_scope: "unsupported",
-  historical_sms_conversion_supported: false,
-  historical_excluded_from_sms_conversion_metrics: true,
-  message:
-    "Lead Messages live on production only. Switch to Production or Combined to view the texted-lead booking rate.",
-} as const;
-
-const SMS_CONVERSION_PRODUCTION_METADATA = {
-  sms_conversion_scope: "production_only",
-  historical_sms_conversion_supported: false,
-  historical_excluded_from_sms_conversion_metrics: true,
-  message: "This rate counts production Leads that successfully received a confirmation text.",
-} as const;
-
 export type SmsConversionOriginRow = {
   origin: string;
   texted_leads: number;
@@ -40,13 +25,6 @@ export type SmsConversionItem = AnalyticsRow & {
   booking_rate: number;
 };
 
-export function unsupportedSmsConversionReport() {
-  return {
-    items: [] as SmsConversionItem[],
-    metadata: SMS_CONVERSION_UNSUPPORTED_METADATA,
-  };
-}
-
 export function smsConversionOriginLabel(origin: string): string {
   if (origin === "all") return "All";
   if (origin === "public_form") return "Public form";
@@ -58,7 +36,7 @@ export function smsConversionOriginLabel(origin: string): string {
 
 export function smsConversionFromOriginRows(
   rows: ReadonlyArray<SmsConversionOriginRow>,
-): { items: SmsConversionItem[]; metadata: typeof SMS_CONVERSION_PRODUCTION_METADATA } {
+): { items: SmsConversionItem[] } {
   const origins = rows
     .map((row) => toItem(row.origin, numberValue(row.texted_leads), numberValue(row.booked_leads)))
     .filter((row) => row.texted_leads > 0)
@@ -67,7 +45,6 @@ export function smsConversionFromOriginRows(
   const booked = origins.reduce((sum, row) => sum + row.booked_leads, 0);
   return {
     items: [toItem("all", texted, booked), ...origins],
-    metadata: SMS_CONVERSION_PRODUCTION_METADATA,
   };
 }
 

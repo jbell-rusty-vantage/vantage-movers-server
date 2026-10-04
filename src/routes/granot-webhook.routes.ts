@@ -13,7 +13,7 @@ import {
 import { incrementGranotLifecycleCaptureFailures } from "../services/granotLifecycle/metrics";
 import { emitGranotLifecycleEvent } from "../services/granotLifecycle/observability";
 import { publishGranotLifecycleReceiptWakeup } from "../services/granotLifecycle/queuePublisher";
-import { safeLifecycleFailureLog } from "../services/granotLifecycle/safeLogging";
+import { granotLifecycleSafeErrorCode, safeLifecycleFailureLog } from "../services/granotLifecycle/safeLogging";
 
 type CaptureGranotLifecycleWebhook = (
   input: CaptureGranotLifecycleWebhookInput,
@@ -75,12 +75,7 @@ export function createGranotWebhookRouter(deps: GranotWebhookRouterDeps = {}) {
           });
         } catch (error) {
           incrementGranotLifecycleCaptureFailures();
-          logger.error(safeLifecycleFailureLog({
-            error,
-            msg: "granot_lifecycle.capture.failed",
-            observation_channel: "granot_webhook",
-            route_event_class: route.event_type,
-          }));
+          // One log line (the closed event key) that also feeds the Health capture_unavailable counter.
           await emitGranotLifecycleEvent({
             level: "error",
             eventKey: "granot_lifecycle.capture.failed",
@@ -90,6 +85,7 @@ export function createGranotWebhookRouter(deps: GranotWebhookRouterDeps = {}) {
             details: {
               channel: "granot_webhook",
               event_class: route.event_type,
+              code: granotLifecycleSafeErrorCode(error),
             },
             statusCode: 503,
           });

@@ -5,8 +5,6 @@ import { logger } from "../../logger";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../models/NumberLeadAttachment";
-import { getOutreachRecordModel } from "../../models/OutreachRecord";
-import { getLeadConversationModel } from "../../models/LeadConversation";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { CsiError, csiWorkerActor, type CsiActor } from "../salesIntelligence/auth";
@@ -21,15 +19,14 @@ import type { InteractionProjection } from "./types";
  *
  * Recomputes a Contact Number's rollups, provider names, search terms and
  * activity bounds from stored evidence only: canonical `call_interactions`
- * (`merged_into_id: null`), `number_lead_attachments`, `outreach_records` and
- * analysed `lead_conversations` (data spec §8: the rebuild is the source of truth
- * for every rollup, including the ones analysis apply and Outreach ensure keep
- * incrementally).
+ * (`merged_into_id: null`) and `number_lead_attachments` (the rebuild is the
+ * source of truth for every rollup).
  * It replays stored rows through the same pure shape CSI-02 persists
  * (`toProjection`) and applies the same counting rules, so a rebuilt number
  * equals what incremental capture would have produced. No new business fact
- * is created: classification, eligibility, `last_meaningful_contact_at`,
- * `running_summary` and Owner-set fields are left exactly as stored.
+ * is created: classification, eligibility and Owner-set fields are left
+ * exactly as stored. Writing the whole `rollups` object also drops any rollup
+ * field the schema no longer has.
  *
  * The Owner command only enqueues a durable `rebuild` job through the
  * idempotent command ledger; the worker (`runRebuildJob`) does the recount
@@ -53,22 +50,11 @@ export type RebuildRollups = {
   last_inbound_at: Date | null;
   last_outbound_at: Date | null;
   last_human_conversation_at: Date | null;
-  last_meaningful_contact_at: Date | null;
   attached_lead_count: number;
   candidate_lead_count: number;
-  open_outreach_count: number;
   /** Σ `recordings.length` over canonical interactions (purged interactions hold none). */
   recordings_total: number;
-  /** Lead Conversations with `latest_completed_run_id` set and `content_purged_at` null. */
-  conversations_analyzed_total: number;
-  /** Newest `started_at` among those conversations. */
-  last_analyzed_at: Date | null;
-  /** Outreach Records with this Number as primary or as subject, `purged_at` null. */
-  outreach_records_total: number;
 };
-
-/** The rebuild's reads of analysed conversations on one Number. */
-export type AnalyzedConversationEvidence = { total: number; last_started_at: Date | null };
 
 export type RebuiltFields = {
   rollups: RebuildRollups;
@@ -87,15 +73,10 @@ export type RecountInput = {
   number: {
     first_observed_at: Date;
     last_activity_at: Date;
-    rollups: { last_meaningful_contact_at?: Date | null };
   };
   /** Canonical interactions only (`merged_into_id: null`), any order. */
   interactions: readonly InteractionProjection[];
   attachments: readonly AttachmentEvidence[];
-  open_outreach_count: number;
-  /** Absent in callers that predate S1; the recount then reads zero. */
-  analyzed_conversations?: AnalyzedConversationEvidence;
-  outreach_records_total?: number;
 };
 
 export function recountNumber(input: RecountInput): RebuiltFields {
@@ -108,15 +89,9 @@ export function recountNumber(input: RecountInput): RebuiltFields {
     last_inbound_at: latest(ordered.filter((i) => i.direction === "Inbound")),
     last_outbound_at: latest(ordered.filter((i) => i.direction === "Outbound")),
     last_human_conversation_at: latest(ordered.filter((i) => i.contact_type === "human_conversation")),
-    // Team C semantics; never derived here.
-    last_meaningful_contact_at: input.number.rollups.last_meaningful_contact_at ?? null,
     attached_lead_count: input.attachments.filter((a) => a.state === "attached").length,
     candidate_lead_count: input.attachments.filter((a) => a.state === "candidate" || a.state === "ambiguous").length,
-    open_outreach_count: input.open_outreach_count,
     recordings_total: ordered.reduce((sum, i) => sum + i.recordings.length, 0),
-    conversations_analyzed_total: input.analyzed_conversations?.total ?? 0,
-    last_analyzed_at: input.analyzed_conversations?.last_started_at ?? null,
-    outreach_records_total: input.outreach_records_total ?? 0,
   };
   const providerNames: string[] = [];
   for (const interaction of ordered) {
@@ -148,11 +123,18 @@ function latest(rows: readonly InteractionProjection[]): Date | null {
   return out;
 }
 
+/** Rollup keys a rebuild writes; a stored rollup with any other key differs, so the rebuild drops it. */
+const REBUILD_ROLLUP_KEYS = new Set<string>([
+  "interactions_total", "inbound_total", "outbound_total", "human_conversations_total", "last_inbound_at",
+  "last_outbound_at", "last_human_conversation_at", "attached_lead_count", "candidate_lead_count", "recordings_total",
+]);
+
 export function sameRebuiltFields(current: RebuiltFields, next: RebuiltFields): boolean {
   const time = (d: Date | null | undefined) => (d ? d.getTime() : null);
   const a = current.rollups;
   const b = next.rollups;
   return (
+    Object.keys(a).every((key) => REBUILD_ROLLUP_KEYS.has(key)) &&
     a.interactions_total === b.interactions_total &&
     a.inbound_total === b.inbound_total &&
     a.outbound_total === b.outbound_total &&
@@ -160,16 +142,11 @@ export function sameRebuiltFields(current: RebuiltFields, next: RebuiltFields): 
     time(a.last_inbound_at) === time(b.last_inbound_at) &&
     time(a.last_outbound_at) === time(b.last_outbound_at) &&
     time(a.last_human_conversation_at) === time(b.last_human_conversation_at) &&
-    time(a.last_meaningful_contact_at) === time(b.last_meaningful_contact_at) &&
     a.attached_lead_count === b.attached_lead_count &&
     a.candidate_lead_count === b.candidate_lead_count &&
-    a.open_outreach_count === b.open_outreach_count &&
-    // A row stored before S1 lacks these fields (lean reads apply no defaults); that
-    // is a difference, so the sweep materialises them once, and a rerun is a no-op.
+    // A row stored before the rollup existed lacks it (lean reads apply no defaults); that
+    // is a difference, so the sweep materialises it once, and a rerun is a no-op.
     a.recordings_total === b.recordings_total &&
-    a.conversations_analyzed_total === b.conversations_analyzed_total &&
-    (a.last_analyzed_at === undefined ? undefined : time(a.last_analyzed_at)) === time(b.last_analyzed_at) &&
-    a.outreach_records_total === b.outreach_records_total &&
     JSON.stringify(current.provider_names) === JSON.stringify(next.provider_names) &&
     JSON.stringify([...current.search_terms].sort()) === JSON.stringify([...next.search_terms].sort()) &&
     time(current.first_observed_at) === time(next.first_observed_at) &&
@@ -304,45 +281,20 @@ export async function loadRebuildEvidence(numberId: string, session?: ClientSess
   const numberQuery = getContactNumberModel().findById(oid);
   const interactionsQuery = getCallInteractionModel().find({ contact_number_id: oid, merged_into_id: null });
   const attachmentsQuery = getNumberLeadAttachmentModel().find({ contact_number_id: oid }, { state: 1, lead_snapshot: 1 });
-  const outreachQuery = getOutreachRecordModel().countDocuments({
-    state: { $ne: "closed" },
-    $or: [{ "subject.contact_number_id": oid }, { primary_contact_number_id: oid }],
-  });
-  // One record counts once even when the Number is both its primary and its subject.
-  const outreachTotalQuery = getOutreachRecordModel().countDocuments({
-    purged_at: null,
-    $or: [{ "subject.contact_number_id": oid }, { primary_contact_number_id: oid }],
-  });
-  // `lead_conversation_number_started` {contact_number_id, started_at:-1, _id:-1}: the newest
-  // analysed row gives `last_analyzed_at`, the count gives the total.
-  const analyzedFilter = { contact_number_id: oid, latest_completed_run_id: { $ne: null }, content_purged_at: null };
-  const analyzedCountQuery = getLeadConversationModel().countDocuments(analyzedFilter);
-  const analyzedLatestQuery = getLeadConversationModel().findOne(analyzedFilter, { started_at: 1 }).sort({ started_at: -1, _id: -1 });
   if (session) {
     numberQuery.session(session);
     interactionsQuery.session(session);
     attachmentsQuery.session(session);
-    outreachQuery.session(session);
-    outreachTotalQuery.session(session);
-    analyzedCountQuery.session(session);
-    analyzedLatestQuery.session(session);
   }
-  const [number, interactions, attachments, openOutreach, outreachTotal, analyzedTotal, analyzedLatest] = await Promise.all([
+  const [number, interactions, attachments] = await Promise.all([
     numberQuery.lean(),
     interactionsQuery.lean(),
     attachmentsQuery.lean(),
-    outreachQuery,
-    outreachTotalQuery,
-    analyzedCountQuery,
-    analyzedLatestQuery.lean(),
   ]);
   return {
     number,
     interactions: interactions.map((row) => toProjection(row as unknown as Record<string, unknown>)),
     attachments: attachments.map((a) => ({ state: a.state, lead_snapshot: a.lead_snapshot ?? null })) as AttachmentEvidence[],
-    open_outreach_count: openOutreach,
-    outreach_records_total: outreachTotal,
-    analyzed_conversations: { total: analyzedTotal, last_started_at: analyzedLatest?.started_at ?? null } as AnalyzedConversationEvidence,
   };
 }
 
@@ -384,9 +336,6 @@ export async function runRebuildJob(jobId: string | undefined, deps: RebuildWork
           number: evidence.number,
           interactions: evidence.interactions,
           attachments: evidence.attachments,
-          open_outreach_count: evidence.open_outreach_count,
-          analyzed_conversations: evidence.analyzed_conversations,
-          outreach_records_total: evidence.outreach_records_total,
         });
         const summary: RebuildJobResult = {
           kind: "number",

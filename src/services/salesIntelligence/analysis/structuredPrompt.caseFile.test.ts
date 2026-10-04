@@ -30,7 +30,7 @@ test("flag off: the pinned contracts are exactly the pre-Case-File object; the p
     assert.equal(contracts.summary.prompt_version, "csi-summary-v2");
     assert.equal(contracts.context.prompt_version, "csi-context-v2");
     assert.equal(contracts.findings.prompt_version, "sales_intelligence_analyze_v4");
-    assert.equal(payloadHash(contracts), "a3c4c1608f914d8224d738447d26d7ae3522e5e5a79bebc88cb2f887fc174641", "the 01bcf18 step_contracts hash");
+    assert.equal(payloadHash(contracts), "543fb1ee2745f5a60a81fdc6c5c69be168c31aac03c7529487677f023db4980d", "the 01bcf18 step_contracts hash (re-pinned in slimming wave 1 for the coverage DTO change)");
   });
   assert.equal(STRUCTURED_PIPELINE, "csi-analysis-steps-v1");
   assert.equal(FINDINGS_PROMPT_VERSION, "sales_intelligence_analyze_v4");
@@ -87,8 +87,13 @@ const withFlags = <T>(flags: { CASE_FILE?: string; CITATION_HANDLES?: string }, 
   set(names[0], flags.CASE_FILE); set(names[1], flags.CITATION_HANDLES);
   try { return run(); } finally { names.forEach((name, i) => set(name, saved[i])); }
 };
-/** Digests computed at `c99b011e`: the contracts, prompts and provider schema a flag-off run pins. */
-const C99 = { legacy: "a3c4c1608f914d8224d738447d26d7ae3522e5e5a79bebc88cb2f887fc174641", case_file: "969a6a28fb8582aa85a1a4cb52da40a404830fab7aabc2eea87aa25423997ae4",
+/**
+ * Digests computed at `c99b011e`: the contracts, prompts and provider schema a flag-off run pins. The two
+ * step_contracts digests (legacy, case_file) were re-pinned in slimming wave 1: `readContentSchema` embeds the
+ * shared coverage DTO, which lost `ai_paused` and gained `capabilities.webhook` (S-NUM). Prompts and output
+ * schemas are unchanged. This legacy pipeline is deleted in wave 2.
+ */
+const C99 = { legacy: "543fb1ee2745f5a60a81fdc6c5c69be168c31aac03c7529487677f023db4980d", case_file: "5a227bbf881286fdeeaafe441787a5ad9cf5295280d32f82202b01602c2b160b",
   v5_prompt: "80a9ba6199a59ae3059352e8ea7c6954c977894bc212c639dfce72fb2079cfb2", v4_prompt: "e2ee3fe776e6e4acdd7f6827c447427cb0d4db48dad754d3a6dccf1afbd73277",
   summary_v3: "5fac831236f141a6038887e5b729b6dc433ce87b2a2fad5d8213e1198187c202", findings_schema: "d448572510744b143c89250f4a9ca8b94350f783dba1e41fdbfdcc882b2e5a11",
   provider_findings: "776fb17b4957666f93c21fffe307c5c732c26160f6647bbe2bd94956cdd6fca0" };

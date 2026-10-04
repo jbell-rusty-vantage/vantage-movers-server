@@ -6,7 +6,6 @@ import {
 } from "../../../config/domain";
 import { connectMongo } from "../../../db";
 import { logger } from "../../../logger";
-import { recordOperationalEvent } from "../../observability";
 import { recordSheetSyncDailyOperationsFact } from "../../dailyOperations/recordDomainFacts";
 import {
   mergeSheetSyncEntries,
@@ -224,20 +223,13 @@ export async function runSheetSyncDrain(
       } else if (anyDeferred) {
         await deferJob(job, retryTargetsFor(jobOutcomes));
         deferredJobs += 1;
-        await recordOperationalEvent({
-          level: "warn",
-          eventKey: "sheet_sync.write.deferred_quota",
-          category: "sheet_sync",
+        logger.warn({
+          msg: "sheet_sync.write.deferred_quota",
           workflow: "sheet_sync_drain",
-          summary: "Sheet write deferred due to Google Sheets quota.",
-          entity: { type: "sheet_sync_job", id: job._id.toString() },
-          details: {
-            jobId: job._id.toString(),
-            resource: job.resource,
-            operation: job.operation,
-            quota_budget_exhausted: true,
-          },
-          notificationCandidate: false,
+          jobId: job._id.toString(),
+          resource: job.resource,
+          operation: job.operation,
+          quota_budget_exhausted: true,
         });
       } else {
         await markJobSynced(job);
@@ -276,38 +268,12 @@ export async function runSheetSyncDrain(
       failed: failedJobs,
       deferred: deferredJobs,
     });
-
-    const env = drainEnvironment();
-    const drainDetails = {
-      trigger,
-      runId: runId.toString(),
-      claimed: claimedCount,
-      synced: syncedJobs,
-      failed: failedJobs,
-      deferred: deferredJobs,
-    };
     if (status === "partial_failure") {
-      await recordOperationalEvent({
-        level: "warn",
-        eventKey: "sheet_sync.drain.partial_failure",
-        category: "sheet_sync",
+      logger.warn({
+        msg: "sheet_sync.drain.partial_failure",
         workflow: "sheet_sync_drain",
-        summary: "Sheet sync drain completed with failed or deferred jobs.",
+        trigger,
         runId: runId.toString(),
-        dedupeKey: `sheet_sync.drain.partial_failure:${env}`,
-        details: drainDetails,
-        notificationCandidate: false,
-      });
-    } else {
-      await recordOperationalEvent({
-        level: "info",
-        eventKey: "sheet_sync.drain.completed",
-        category: "sheet_sync",
-        workflow: "sheet_sync_drain",
-        summary: "Sheet sync drain completed cleanly.",
-        runId: runId.toString(),
-        details: drainDetails,
-        autoResolveKey: `sheet_sync.drain.partial_failure:${env}`,
       });
     }
 
@@ -334,26 +300,16 @@ export async function runSheetSyncDrain(
         error_summary: error instanceof Error ? error.message : String(error),
       },
     });
-    await recordOperationalEvent({
-      level: "error",
-      eventKey: "sheet_sync.drain.failed",
-      category: "sheet_sync",
+    logger.error({
+      msg: "sheet_sync.drain.failed",
       workflow: "sheet_sync_drain",
-      summary: "Sheet sync drain run failed.",
+      trigger,
       runId: runId.toString(),
-      dedupeKey: `sheet_sync.drain.failed:${drainEnvironment()}`,
-      details: {
-        trigger,
-        runId: runId.toString(),
-        claimed: claimedCount,
-        synced: syncedJobs,
-        failed: failedJobs,
-        deferred: deferredJobs,
-        causeMessage: error instanceof Error ? error.message : String(error),
-        releasedJobs,
-      },
-      errorMessage: error instanceof Error ? error.message : String(error),
-      notificationCandidate: true,
+      claimed: claimedCount,
+      synced: syncedJobs,
+      failed: failedJobs,
+      deferred: deferredJobs,
+      releasedJobs,
     });
     return {
       ok: false,
@@ -608,10 +564,6 @@ async function markJobFailure(
   return { terminal, attempts, message };
 }
 
-function drainEnvironment(): string {
-  return process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development";
-}
-
 /**
  * Daily Operations Sheet Sync panel: one `sheet_sync.completed` fact per job
  * that reached `synced` (spec §15.9). After-commit, never throws.
@@ -621,9 +573,9 @@ async function recordJobCompletedFact(job: SheetSyncJobDocument): Promise<void> 
 }
 
 /**
- * Records a per-job sheet write failure (and an `exhausted` event when the job
- * has reached its max attempts). Best-effort. Also leaves the Daily Operations
- * `sheet_sync.failed` fact (deduped per job, so retries stay quiet).
+ * Leaves the Daily Operations `sheet_sync.failed` fact (deduped per job, so
+ * retries stay quiet) and logs the write failure, plus `exhausted` when the
+ * job has reached its max attempts.
  */
 async function recordJobFailureEvent(
   job: SheetSyncJobDocument,
@@ -635,42 +587,17 @@ async function recordJobFailureEvent(
     attempts: outcome.attempts,
     error: outcome.message,
   });
-  await recordOperationalEvent({
-    level: "error",
-    eventKey: "sheet_sync.write.failed",
-    category: "sheet_sync",
+  const fields = {
     workflow: "sheet_sync_drain",
-    summary: "Sheet sync job write failed.",
-    entity: { type: "sheet_sync_job", id: job._id.toString() },
-    details: {
-      jobId: job._id.toString(),
-      resource: job.resource,
-      operation: job.operation,
-      attempts: outcome.attempts,
-      error: outcome.message,
-    },
-    errorMessage: outcome.message,
-    notificationCandidate: outcome.terminal,
-  });
-
+    jobId: job._id.toString(),
+    resource: job.resource,
+    operation: job.operation,
+    attempts: outcome.attempts,
+    error: outcome.message,
+  };
+  logger.error({ msg: "sheet_sync.write.failed", ...fields });
   if (outcome.terminal) {
-    await recordOperationalEvent({
-      level: "error",
-      eventKey: "sheet_sync.job.exhausted",
-      category: "sheet_sync",
-      workflow: "sheet_sync_drain",
-      summary: "Sheet sync job exhausted its retry attempts.",
-      entity: { type: "sheet_sync_job", id: job._id.toString() },
-      details: {
-        jobId: job._id.toString(),
-        resource: job.resource,
-        operation: job.operation,
-        attempts: outcome.attempts,
-        last_error: outcome.message,
-      },
-      errorMessage: outcome.message,
-      notificationCandidate: true,
-    });
+    logger.error({ msg: "sheet_sync.job.exhausted", ...fields });
   }
 }
 

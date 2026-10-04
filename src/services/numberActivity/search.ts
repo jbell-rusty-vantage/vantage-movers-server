@@ -6,14 +6,14 @@ import { getContactNumberModel } from "../../models/ContactNumber";
 import { csiDateSchema, csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { canonicalJson } from "../durableWork/checksum";
 import { CsiError } from "../salesIntelligence/auth";
-import { loadAttachedLeadProgressForNumbers } from "../salesIntelligence/outreach/reads";
 import { toNumberSearchItem, type ContactNumberLean } from "./contactNumbers";
 import { ownerRead } from "./coverage";
+import { loadAttachedLeadsForNumbers } from "./leadContext";
 import {
   NUMBER_SEARCH_DIRECTIONS,
   NUMBER_SEARCH_SORTS,
   numberSearchPageDtoSchema,
-  type AttachedLeadProgressItemDto,
+  type NumberAttachedLeadDto,
   type NumberSearchDirection,
   type NumberSearchPageDto,
   type NumberSearchSort,
@@ -63,12 +63,10 @@ export const numberSearchQuerySchema = z
     /** Query-string safe (`queryBoolean`): `?hygiene=false` keeps the Owner default. */
     hygiene: queryBoolean,
     /**
-     * Data spec §4.2 (final spec §9.2 region Analysis). `true` narrows to
-     * `rollups.recordings_total > 0` / `rollups.outreach_records_total > 0`;
-     * `false` or absent does not narrow (there is no "has none" filter).
+     * `true` narrows to `rollups.recordings_total > 0` (the provider reported a
+     * recording); `false` or absent does not narrow (there is no "has none" filter).
      */
     has_recording: queryBoolean,
-    has_outreach: queryBoolean,
     /**
      * G7 (reconciliation §3.5): `true` narrows to `rollups.interactions_total > 0` (the Number has
      * a call; a form-created Number without one is hidden). `false` does not narrow, like
@@ -202,7 +200,6 @@ export function buildNumberSearchFilter(
   }
   // Residual predicates on the `kind`-prefixed indexes (no index of their own).
   if (query.has_recording) filter["rollups.recordings_total"] = { $gt: 0 };
-  if (query.has_outreach) filter["rollups.outreach_records_total"] = { $gt: 0 };
   // G7: null or missing counts are "no call" (`$gt` never matches them).
   if (query.has_calls === true) filter["rollups.interactions_total"] = { $gt: 0 };
   if (term.kind === "e164") {
@@ -280,14 +277,14 @@ const DEFAULT_SORT: NumberSortSpec = { sort: "last_activity", direction: "desc" 
 
 /**
  * Hint for an unsearched (`q`-less) request that carries `has_recording` or
- * `has_outreach`. Those are residual predicates with no index of their own,
+ * `has_calls`. Those are residual predicates with no index of their own,
  * and on a positioned page the planner can otherwise plan the keyset `$or`
  * through `_id_` and sort the survivors in memory (seen on the replica). The
  * hint keeps the page on the sort's own `kind`-prefixed index. `q` requests
  * keep the candidate-cap rule; unfiltered requests are unchanged.
  */
 export function numberFilterHint(query: NumberSearchQuery, sort: NumberSearchSort, parsed: ParsedSearchTerm): string | undefined {
-  if (parsed.kind !== "none" || !(query.has_recording || query.has_outreach || query.has_calls === true)) return undefined;
+  if (parsed.kind !== "none" || !(query.has_recording || query.has_calls === true)) return undefined;
   return NUMBER_SORT_KIND_INDEXES[canonicalNumberSort(sort)];
 }
 
@@ -335,7 +332,7 @@ export function resolveNumberSort(query: Pick<NumberSearchQuery, "sort" | "direc
 
 /**
  * Filters that change the result set, plus the canonical order. `limit` and
- * `cursor` are excluded. `has_recording` / `has_outreach` enter only when set,
+ * `cursor` are excluded. `has_recording` / `has_calls` enter only when set,
  * so a digest minted before those filters existed is unchanged.
  */
 export function numberSearchDigest(query: NumberSearchQuery, requested: NumberSortSpec): string {
@@ -350,7 +347,6 @@ export function numberSearchDigest(query: NumberSearchQuery, requested: NumberSo
         active_to: query.active_to ?? null,
         hygiene: query.hygiene,
         ...(query.has_recording ? { has_recording: true } : {}),
-        ...(query.has_outreach ? { has_outreach: true } : {}),
         ...(query.has_calls === true ? { has_calls: true } : {}),
         sort: canonicalNumberSort(requested.sort),
         direction: requested.direction,
@@ -588,11 +584,8 @@ export async function pageNumberSearch(
 
 export type NumberSearchDeps = {
   now?: () => Date;
-  /** Injection seam for tests; production uses the Outreach batch helper. */
-  attachedLeadProgress?: (
-    numberIds: readonly string[],
-    now: Date,
-  ) => Promise<ReadonlyMap<string, AttachedLeadProgressItemDto>>;
+  /** Injection seam for tests; production uses the batched attachment + canonical Lead read. */
+  attachedLeads?: (numberIds: readonly string[]) => Promise<ReadonlyMap<string, NumberAttachedLeadDto>>;
   source?: NumberRowSource;
   /** Test seam for `SALES_INTELLIGENCE_NUMBERS_HAS_CALLS_DEFAULT`; production reads the flag. */
   hasCallsDefault?: boolean;
@@ -611,19 +604,15 @@ export async function searchNumberActivity(
   // render its state. Flag off with neither param: absent, and the page is today's.
   const echo = defaultOn || query.has_calls !== undefined || query.include_form_only !== undefined;
 
-  // One batched Lead progress read per page, never one per card.
+  // One batched Lead context read per page, never one per card.
   const now = deps.now?.() ?? new Date();
-  const loadAttached = deps.attachedLeadProgress ?? loadAttachedLeadProgressForNumbers;
-  const attached: ReadonlyMap<string, AttachedLeadProgressItemDto> = page.length
-    ? await loadAttached(
-        page.map((row) => String(row._id)),
-        now,
-      )
+  const attached: ReadonlyMap<string, NumberAttachedLeadDto> = page.length
+    ? await (deps.attachedLeads ?? loadAttachedLeadsForNumbers)(page.map((row) => String(row._id)))
     : new Map();
   return numberSearchPageDtoSchema.parse(
     await ownerRead(
       {
-        items: page.map((row) => toNumberSearchItem(row, match, attached.get(String(row._id)))),
+        items: page.map((row) => toNumberSearchItem(row, match, attached.get(String(row._id)) ?? { status: "none" })),
         cursor: next,
         sort: applied,
         ...(echo ? { filters: { has_calls } } : {}),

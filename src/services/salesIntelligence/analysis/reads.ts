@@ -30,6 +30,7 @@ import { subjectKey } from "../outreach/types";
 import { CsiError } from "../auth";
 import { readPageSchema, type EvidenceRecord, type IntelligenceRead, type ReadPage, type ReadScope } from "./contracts";
 import { summaryStepSchema } from "./structuredContract";
+import { legacyNumber } from "../legacyNumberFields";
 
 const segmentSchema = z.object({ sid: z.number().int().nonnegative(), start_ms: z.number().nullable(), end_ms: z.number().nullable(), timing_source: z.enum(["provider", "unavailable"]), speaker: z.enum(["rep", "customer", "unknown"]), text: z.string() }).strict();
 /** The Subject Story prose beside its `story_event` records (context provenance spec §4.6/§5.4). Data, never instruction. */
@@ -74,7 +75,7 @@ export const isCurrentTranscriptVersion = (requested: string | undefined, curren
 /** Authority is loaded from the stored run and authoritative joins; arguments never widen it. */
 export async function loadReadScope(run: StoredRun): Promise<ReadScope> {
   if (!run.contact_number_id) return fail();
-  const number = await getContactNumberModel().findById(run.contact_number_id).lean();
+  const number = legacyNumber(await getContactNumberModel().findById(run.contact_number_id).lean());
   if (!number || number.purged_at || number.content_purge_pending) return fail();
   const scope: ReadScope = { run_id: String(run._id), subject_key: run.subject_key, contact_number_id: String(number._id), e164: number.e164,
     conversation_id: run.conversation_id ? String(run.conversation_id) : null, outreach_record_id: run.outreach_record_id ? String(run.outreach_record_id) : null, account_id: null, lead_refs: [] };
@@ -206,7 +207,7 @@ export async function readCancellations(scope: ReadScope, args: SearchArgs): Pro
 }
 
 async function context(scope: ReadScope, result: ReadContent) {
-  const number = await getContactNumberModel().findById(scope.contact_number_id).lean();
+  const number = legacyNumber(await getContactNumberModel().findById(scope.contact_number_id).lean());
   if (!number || number.purged_at || number.content_purge_pending) return fail();
   result.page.records.push({ record_type: "contact_number", record_id: String(number._id), revision: String(number.revision), fields: { phone: number.e164, status: number.contact_eligibility.state, certainty: number.classification } });
   const outreach = scope.outreach_record_id ? await getOutreachRecordModel().findOne({ _id: scope.outreach_record_id, primary_contact_number_id: scope.contact_number_id }).lean() : null;
@@ -283,7 +284,7 @@ export async function readIntelligenceEvidence(scope: ReadScope, input: { tool: 
       const page = await getNumberTimeline(scope.contact_number_id, { ...input.args, cursor: timelineCursor }, { coverage: result.coverage });
       if (!page) return fail();
       result.coverage = page.coverage;
-      result.page = { records: page.data.items.map(r => ({ record_type: r.kind === "interaction" ? "interaction" : r.kind === "owner_note" ? "owner_note" : "job_timeline", record_id: r.id,
+      result.page = { records: page.data.items.map(r => ({ record_type: r.kind === "interaction" ? "interaction" : "job_timeline", record_id: r.id,
         revision: typeof r.detail.projection_revision === "number" ? String(r.detail.projection_revision) : null,
         fields: { occurred_at: r.happened_at, description: text(r.description), status: r.kind, details: detailsText(r.detail) } })),
         complete: !page.data.cursor, next_cursor: page.data.cursor ? Buffer.from(JSON.stringify({ key, cursor: page.data.cursor })).toString("base64url") : null, missing_ranges: [] }; break;

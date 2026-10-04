@@ -30,7 +30,7 @@ import {
   collectDocumentFieldChanges,
 } from "../domainCommands/entityChange";
 import { V1ServiceError } from "../v1ServiceError";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { getLinkedLead } from "../leads";
 import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import {
@@ -70,24 +70,13 @@ export async function createCancelledLead(
 
   await finalizeSheetSync(job);
 
-  await recordOperationalEvent({
-    level: "info",
-    eventKey: "cancellation.created",
-    category: "cancellation",
+  logger.info({
+    msg: "cancellation.created",
     workflow: "cancellation_create",
-    summary: "Cancellation created.",
-    leadIdentity: { name: cancellation.customer_name ?? null },
-    sourceCompany: (booking.source as string | undefined) ?? null,
-    entity: { type: "cancelled_lead", id: cancellation._id.toString() },
-    details: {
-      booking_id: booking._id.toString(),
-      job_no: cancellation.job_no ?? null,
-      reason: cancellation.reason ?? null,
-      refund_amount: cancellation.refund_amount ?? null,
-      cancelled_by: cancellation.cancelled_by ?? null,
-      agent: cancellation.agent ?? null,
-      merchant: cancellation.merchant ?? null,
-    },
+    cancelled_lead_id: cancellation._id.toString(),
+    booking_id: booking._id.toString(),
+    source_company: (booking.source as string | undefined) ?? undefined,
+    job_no: cancellation.job_no ?? null,
   });
 
   return cancellation;

@@ -52,6 +52,7 @@ import {
 import type { RouteResolver } from "../../src/services/numberActivity/types";
 import { waitForBackfillPeer } from "./backfill-csi-structured-analysis.lib";
 import { recoveryKindFor, stampCaptureRecovery } from "./call-log-repair-recovery";
+import { legacyNumber } from "../../src/services/salesIntelligence/legacyNumberFields";
 
 export const REPAIR_MANIFEST_VERSION = "call-log-repair-v1" as const;
 export const OPERATOR_HOLD_REASON = "operator_hold";
@@ -426,7 +427,7 @@ class Downstream {
    * before it is due, so this runner makes it due and claims it by id in the same moment.
    */
   private async driveNumberRefresh(entry: InteractionEntry, numberId: string): Promise<boolean> {
-    const number = await getContactNumberModel().findById(numberId).select("intelligence_schedule").lean();
+    const number = legacyNumber(await getContactNumberModel().findById(numberId).select("intelligence_schedule").lean());
     const jobId = number?.intelligence_schedule?.job_id ? String(number.intelligence_schedule.job_id) : null;
     if (!jobId) return true;
     const job = await this.load(jobId);

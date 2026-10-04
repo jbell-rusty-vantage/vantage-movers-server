@@ -17,7 +17,7 @@ test("all five Rep routes enforce Owner, strict contracts, scope, flags and idem
   const app=express(); app.use(express.json()); app.use("/api/v1",requireApiSecret);
   app.use(createSalesIntelligenceBoundaryRouter({ connect:async()=>{} }));
   app.use(createSalesIntelligenceAdminRouter({ connect:async()=>{},
-    reps:async()=>{ reads.push("list"); return { as_of:new Date().toISOString(),coverage:{ known_through:null,gaps:[],capabilities:{},ai_paused:false },items:[],next_cursor:null,
+    reps:async()=>{ reads.push("list"); return { as_of:new Date().toISOString(),coverage:{ known_through:null,gaps:[],capabilities:{ call_log:"unknown" as const,webhook:"unknown" as const } },items:[],next_cursor:null,
       directory:{ status:"missing",snapshot_id:null,taken_at:null,completeness:"provider_completeness_unverified",users:[],next_cursor:null } }; },
     rep:async()=>{ reads.push("detail"); return null; },
     createRep:async()=>write("create"),proposeReps:async()=>write("propose"),reviewRep:async()=>write("review"),

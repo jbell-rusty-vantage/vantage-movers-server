@@ -10,8 +10,6 @@ import {
   type CurrentExtensionRole,
 } from "../auth/extension";
 import { resolveSourceCompany } from "../config/domain";
-import { shouldCaptureAuthEvents } from "../config/domain/observability";
-import { recordOperationalEvent } from "../services/observability";
 import { logger } from "../logger";
 
 type ScopedApiRoute = {
@@ -69,12 +67,10 @@ export async function requireVantageAuth(
   const hasScopedKeys = Boolean(process.env.VANTAGE_SCOPED_API_KEYS?.trim());
 
   if (!expectedSecret && !hasScopedKeys && !bearerToken) {
-    await recordAuthEvent(req, {
+    logAuthEvent(req, {
       level: "error",
       eventKey: "auth.scoped_key.config_invalid",
-      summary: "API auth configuration is invalid.",
       details: { reason: "no_auth_configured" },
-      notificationCandidate: true,
     });
     return res.status(500).json({
       ok: false,
@@ -83,9 +79,8 @@ export async function requireVantageAuth(
     });
   }
 
-  // Fast path: the primary API secret matches. No event is recorded here to
-  // keep the hot path latency-free; observability focuses on scoped keys and
-  // rejections.
+  // Fast path: the primary API secret matches. Nothing is logged here to keep
+  // the hot path quiet; auth logs focus on scoped keys and rejections.
   if (
     expectedSecret &&
     providedSecret &&
@@ -103,17 +98,14 @@ export async function requireVantageAuth(
         !hasExtensionRole(user.roles, "owner") &&
         !isAnyLimitedExtensionRoleAllowedRoute(req, user.roles)
       ) {
-        await recordAuthEvent(req, {
+        logAuthEvent(req, {
           level: "warn",
           eventKey: "auth.user.forbidden",
-          summary: "Extension user denied protected API route.",
           details: {
             user_id: user.id,
             roles: user.roles,
             forbidden_reason: "role_route_not_allowed",
           },
-          notificationCandidate: false,
-          reportable: false,
         });
         return res.status(403).json({ ok: false, error: "Forbidden" });
       }
@@ -129,13 +121,10 @@ export async function requireVantageAuth(
   }
 
   if (!providedSecret) {
-    await recordAuthEvent(req, {
+    logAuthEvent(req, {
       level: "warn",
       eventKey: "auth.api_secret.rejected",
-      summary: "Request rejected: missing API credentials.",
       details: { reject_reason: "missing_credentials" },
-      notificationCandidate: false,
-      reportable: false,
     });
     return res.status(401).json({
       ok: false,
@@ -147,12 +136,10 @@ export async function requireVantageAuth(
   try {
     scopedKeys = parseScopedApiKeys(process.env.VANTAGE_SCOPED_API_KEYS);
   } catch {
-    await recordAuthEvent(req, {
+    logAuthEvent(req, {
       level: "error",
       eventKey: "auth.scoped_key.config_invalid",
-      summary: "Scoped API key configuration is invalid.",
       details: { reason: "scoped_keys_parse_error" },
-      notificationCandidate: true,
     });
     return res.status(500).json({
       ok: false,
@@ -165,13 +152,10 @@ export async function requireVantageAuth(
   );
 
   if (!matchingKey) {
-    await recordAuthEvent(req, {
+    logAuthEvent(req, {
       level: "warn",
       eventKey: "auth.api_secret.rejected",
-      summary: "Request rejected: unknown API secret.",
       details: { reject_reason: "unknown_secret" },
-      notificationCandidate: false,
-      reportable: false,
     });
     return res.status(401).json({
       ok: false,
@@ -191,39 +175,34 @@ export async function requireVantageAuth(
   const sourceCompany = readSourceCompany(req);
 
   if (!isRouteAllowed(req, matchingKey)) {
-    await recordAuthEvent(req, {
+    logAuthEvent(req, {
       level: "warn",
       eventKey: "auth.scoped_key.forbidden",
-      summary: "Scoped API key denied: route not allowed.",
       details: {
         scoped_key_name: matchingKey.name,
         forbidden_reason: "route_not_allowed",
       },
       sourceCompany,
-      notificationCandidate: false,
     });
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
 
   if (!isSourceCompanyAllowed(req, matchingKey)) {
-    await recordAuthEvent(req, {
+    logAuthEvent(req, {
       level: "warn",
       eventKey: "auth.scoped_key.forbidden",
-      summary: "Scoped API key denied: source company not allowed.",
       details: {
         scoped_key_name: matchingKey.name,
         forbidden_reason: "source_company_not_allowed",
       },
       sourceCompany,
-      notificationCandidate: false,
     });
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
 
-  await recordAuthEvent(req, {
+  logAuthEvent(req, {
     level: "info",
     eventKey: "auth.scoped_key.accepted",
-    summary: "Scoped API key accepted on allowed route.",
     details: { scoped_key_name: matchingKey.name },
     sourceCompany,
   });
@@ -266,43 +245,29 @@ function isAnyLimitedExtensionRoleAllowedRoute(
 type AuthEventInput = {
   level: "info" | "warn" | "error";
   eventKey: string;
-  summary: string;
   details: Record<string, unknown>;
   sourceCompany?: string | null;
-  notificationCandidate?: boolean;
-  reportable?: boolean;
 };
 
 /**
- * Records a source-scoped API key auth decision (no secrets are ever stored).
- * Best-effort and gated by `OBSERVABILITY_CAPTURE_AUTH_EVENTS`.
+ * Logs a source-scoped API key auth decision. Details carry only closed
+ * reasons, key names, user ids and roles; secrets and tokens are never logged.
  */
-async function recordAuthEvent(
-  req: Request,
-  input: AuthEventInput,
-): Promise<void> {
-  if (!shouldCaptureAuthEvents()) {
-    return;
-  }
-  // A successful scoped-key check happens on every authenticated request.
-  // That is request telemetry, not a business fact, and persisting it filled
-  // operational_events. Denials still become Operational Events.
-  if (input.eventKey === "auth.scoped_key.accepted") {
-    logger.info({ msg: input.eventKey, workflow: "api_secret", ...input.details });
-    return;
-  }
-  await recordOperationalEvent({
-    request: req,
-    category: "auth",
+function logAuthEvent(req: Request, input: AuthEventInput): void {
+  logger[input.level]({
+    msg: input.eventKey,
     workflow: "api_secret",
-    level: input.level,
-    eventKey: input.eventKey,
-    summary: input.summary,
-    details: input.details,
-    sourceCompany: input.sourceCompany ?? null,
-    notificationCandidate: input.notificationCandidate,
-    reportable: input.reportable,
+    request_id: requestId(req),
+    method: req.method,
+    route: normalizePath((req.originalUrl ?? req.url).split("?")[0]),
+    source_company: input.sourceCompany ?? undefined,
+    ...input.details,
   });
+}
+
+function requestId(req: Request): string | undefined {
+  const id = (req as Request & { id?: unknown }).id;
+  return typeof id === "string" ? id : undefined;
 }
 
 function readSourceCompany(req: Request): string | null {

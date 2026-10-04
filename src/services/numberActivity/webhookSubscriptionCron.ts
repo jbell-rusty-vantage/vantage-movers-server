@@ -1,6 +1,6 @@
 import { csiFlag } from "../../config/domain/salesIntelligence";
 import { logger } from "../../logger";
-import { recordOperationalEvent } from "../observability";
+import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import {
   applyAllDirectionSubscriptionPlan,
   DEFAULT_RENEW_WITHIN_MS,
@@ -26,6 +26,11 @@ import {
  * Creating one when none owned exists requires
  * `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE=true`; otherwise the run reports
  * `missing` and the operator creates it with the ops command.
+ *
+ * Every run stores its outcome on the `webhook_subscription_maintenance`
+ * sync-state row (`last_run.error_code`: null, `subscription_missing`, or the
+ * failure's error class name), which the capture health read uses. Logs carry
+ * the same outcome for operators.
  */
 export type WebhookSubscriptionMaintenanceSummary = {
   address: string;
@@ -37,37 +42,43 @@ export type WebhookSubscriptionMaintenanceSummary = {
   warnings: string[];
 };
 
+/** The sync-state scope holding the newest maintenance outcome. */
+export const WEBHOOK_SUBSCRIPTION_SCOPE = "webhook_subscription_maintenance";
+/** `last_run.error_code` of a run that found no owned subscription with auto-create off. */
+export const SUBSCRIPTION_MISSING_CODE = "subscription_missing";
+export type WebhookSubscriptionOutcome = { started_at: Date; finished_at: Date; error_code: string | null };
+
 export type WebhookSubscriptionMaintenanceDeps = Partial<Pick<LifecycleDeps, "provider" | "store" | "now" | "eventFilters">> & {
   address?: string;
   autoCreate?: boolean;
   renewWithinMs?: number;
   expiresInSeconds?: number;
-  recordEvent?: typeof recordOperationalEvent;
+  recordOutcome?: (outcome: WebhookSubscriptionOutcome) => Promise<unknown>;
 };
 
 const EVENT_PREFIX = "sales_intelligence.webhook_subscription";
+/** Only an error class name is stored (a message can carry a subscription id). */
+const errorClassName = (error: unknown) => {
+  const name = error instanceof Error ? error.name : "Error";
+  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : "Error";
+};
+
+export async function recordWebhookSubscriptionOutcome(outcome: WebhookSubscriptionOutcome): Promise<void> {
+  await getSalesIntelligenceSyncStateModel().updateOne(
+    { scope: WEBHOOK_SUBSCRIPTION_SCOPE },
+    { $set: { last_run: { started_at: outcome.started_at, finished_at: outcome.finished_at, error_code: outcome.error_code } } },
+    { upsert: true },
+  );
+}
 
 export async function runWebhookSubscriptionMaintenance(
   deps: WebhookSubscriptionMaintenanceDeps = {},
 ): Promise<WebhookSubscriptionMaintenanceSummary> {
-  const recordEvent = deps.recordEvent ?? recordOperationalEvent;
-  const emit = (
-    level: "info" | "warn" | "error",
-    kind: string,
-    summary: string,
-    details: Record<string, unknown>,
-  ) =>
-    recordEvent({
-      level,
-      eventKey: `${EVENT_PREFIX}.${kind}`,
-      category: "ringcentral",
-      workflow: "sales_intelligence",
-      summary,
-      details,
-      notificationCandidate: level !== "info",
-      reportable: false,
-      piiPolicy: "none",
-    }).catch(() => null);
+  const startedAt = deps.now?.() ?? new Date();
+  // Best effort: an unavailable store must not turn a provider outcome into a different one.
+  const record = (errorCode: string | null) =>
+    (deps.recordOutcome ?? recordWebhookSubscriptionOutcome)({ started_at: startedAt, finished_at: new Date(), error_code: errorCode })
+      .catch((error: unknown) => logger.error({ msg: `${EVENT_PREFIX}.outcome_store_failed`, errorName: errorClassName(error) }));
 
   let address = deps.address ?? null;
   try {
@@ -90,14 +101,12 @@ export async function runWebhookSubscriptionMaintenance(
       warnings: plan.warnings,
     };
     if (plan.warnings.length) {
-      await emit("warn", "foreign_warning", "Webhook subscription plan reported warnings (foreign or unmanaged subscriptions); nothing foreign was touched.", {
-        address,
-        warnings: plan.warnings,
-      });
+      logger.warn({ msg: `${EVENT_PREFIX}.foreign_warning`, address, warnings: plan.warnings });
     }
     const autoCreate = deps.autoCreate ?? csiFlag("WEBHOOK_AUTO_CREATE");
     if (plan.action === "create" && !autoCreate) {
-      await emit("warn", "missing", "No owned all-direction webhook subscription exists and auto-create is off; webhook capture receives nothing.", { address });
+      logger.warn({ msg: `${EVENT_PREFIX}.missing`, address });
+      await record(SUBSCRIPTION_MISSING_CODE);
       return { ...base, action: "missing", subscription_id: null };
     }
     const result: LifecycleResult = await applyAllDirectionSubscriptionPlan(plan, lifecycle);
@@ -108,29 +117,23 @@ export async function runWebhookSubscriptionMaintenance(
       removed_subscription_id: result.action === "repaired" ? result.removed_subscription_id : null,
     };
     if (result.action !== "noop") {
-      await emit(
-        result.action === "repaired" ? "warn" : "info",
-        result.action,
-        `All-direction webhook subscription ${result.action}.`,
-        {
-          address,
-          subscriptionId: result.subscription_id,
-          removedSubscriptionId: summary.removed_subscription_id,
-          priorExpiration: summary.expiration_time,
-        },
-      );
+      const entry = {
+        msg: `${EVENT_PREFIX}.${result.action}`,
+        address,
+        subscriptionId: result.subscription_id,
+        removedSubscriptionId: summary.removed_subscription_id,
+        priorExpiration: summary.expiration_time,
+      };
+      if (result.action === "repaired") logger.warn(entry);
+      else logger.info(entry);
     }
+    await record(null);
     return summary;
   } catch (error) {
-    const errorName = error instanceof Error ? error.name : "Error";
+    const errorName = errorClassName(error);
     const subscriptionId = (error as { subscriptionId?: unknown } | null)?.subscriptionId ?? null;
-    logger.error({ msg: `${EVENT_PREFIX}.failed`, errorName, subscriptionId });
-    await emit("error", "failed", "All-direction webhook subscription maintenance failed.", {
-      address,
-      errorName,
-      subscriptionId,
-      message: error instanceof Error ? error.message.slice(0, 300) : null,
-    });
+    logger.error({ msg: `${EVENT_PREFIX}.failed`, errorName, subscriptionId, address });
+    await record(errorName);
     throw error;
   }
 }

@@ -9,6 +9,7 @@ import { getMongoDatabaseName } from "../src/config/domain/runtime";
 import { CSI_MODEL_REGISTRY } from "../src/models/salesIntelligence/registry";
 import { LEAD_CONVERSATION_INDEXES } from "../src/models/LeadConversation";
 import { getContactNumberModel } from "../src/models/ContactNumber";
+import { legacyNumber } from "../src/services/salesIntelligence/legacyNumberFields";
 import { getLeadConversationModel } from "../src/models/LeadConversation";
 import { getIntelligenceRunModel } from "../src/models/IntelligenceRun";
 import { getIntelligenceSubmissionModel } from "../src/models/IntelligenceSubmission";
@@ -333,7 +334,7 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
   for (const number of [n1, n2, n3, n4, n7]) assert.equal(count("number_refresh", number), 1, "exactly one Number synthesis");
   assert.equal(count("number_refresh", n8), 0, "a submitted synthesis awaiting application is applied, not paid for again");
   for (const number of [n1, n2, n4, n7, n8]) {
-    const row = await Numbers.findById(number).lean();
+    const row = legacyNumber(await Numbers.findById(number).lean());
     assert.equal(row?.intelligence_schedule?.fingerprint, await fingerprintOf(number), "the scheduled synthesis updated intelligence_schedule.fingerprint");
     const synthesis = await Runs.findById(row?.running_summary?.run_id).lean();
     assert.equal(synthesis?.status, "completed");
@@ -421,7 +422,7 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
   assert.deepEqual(driven.foreign_holds.filter(h => h.number_id === n6).map(h => h.action), ["driven", "driven"]);
   assert.equal(driven.foreign_holds.find(h => h.job_id === String(s10n3._id))?.action, "left", "other S10 holds are listed, never released");
   assert.equal((await Jobs.findById(s10n6._id).lean())?.status, "completed");
-  assert.equal((await Numbers.findById(n6).lean())?.intelligence_schedule?.fingerprint, await fingerprintOf(n6));
+  assert.equal(legacyNumber(await Numbers.findById(n6).lean())?.intelligence_schedule?.fingerprint, await fingerprintOf(n6));
   assert.deepEqual([drive.complete, drive.peer_paid_units, driven.holds.length], [true, 0, 0]);
   assert.equal(repairRuns, 2, "no repair manifest: phase 1 is skipped");
   assert.deepEqual(await jobState(jobD._id), ["paused", OPERATOR_HOLD_REASON]);
@@ -495,7 +496,7 @@ test("full backfill: one analysis per conversation, one synthesis per Number, ho
   const n10Unit = reprepBy.get(n10)!.synthesis.find(u => u.stage === "number_refresh")!;
   assert.deepEqual([n10Unit.prior?.action, n10Unit.prior?.result_reason, n10Unit.superseded_job_id, n10Unit.outcome], ["superseded", "schema_exhausted", String(n10Stuck._id), "done"]);
   assert.equal((await Runs.findById(n10StuckRun).lean())?.status, "stale");
-  assert.equal((await Runs.findById((await Numbers.findById(n10).lean())?.running_summary?.run_id).lean())?.prompt_version, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION);
+  assert.equal((await Runs.findById(legacyNumber(await Numbers.findById(n10).lean())?.running_summary?.run_id).lean())?.prompt_version, CASE_FILE_FINDINGS_HANDLES_PROMPT_VERSION);
   assert.equal(count("number_refresh", n10), 1);
 
   // Run 8: the same v6 target without --reprepare: M's paused v5 own job is re-armed by id and resumes under its own (v5) contracts.

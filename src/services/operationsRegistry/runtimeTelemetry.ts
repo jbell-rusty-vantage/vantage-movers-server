@@ -1,4 +1,4 @@
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 
 export type RegistryResolverName = "source" | "cpl" | "ringcentral";
 export type RegistryResolverMode = "direct_db" | "snapshot";
@@ -86,6 +86,12 @@ export function recordCompatibilityRead(
   consumer: RegistryCompatibilityConsumer,
   usedAt = new Date(),
 ): void {
+  logger.info({
+    msg: "operations_registry.compatibility_read",
+    workflow: "operations_registry",
+    compatibility_path: path,
+    consumer_category: consumer,
+  });
   const key = `${path}:${consumer}`;
   const current = compatibilityReads.get(key);
   compatibilityReads.set(key, {
@@ -94,37 +100,6 @@ export function recordCompatibilityRead(
     count: (current?.count ?? 0) + 1,
     lastUsedAt: new Date(usedAt),
   });
-}
-
-export async function recordDurableCompatibilityRead(
-  path: string,
-  consumer: RegistryCompatibilityConsumer,
-  usedAt = new Date(),
-): Promise<void> {
-  try {
-    const persisted = await recordOperationalEvent({
-      level: "info",
-      eventKey: "operations_registry.compatibility_read",
-      category: "admin",
-      workflow: "operations_registry",
-      summary: "A retained Operations Registry compatibility path was read.",
-      details: {
-        compatibility_path: path,
-        consumer_category: consumer,
-      },
-      occurredAt: usedAt,
-      notificationCandidate: false,
-      ownerVisible: true,
-      reportable: false,
-      piiPolicy: "none",
-    });
-    if (!persisted) {
-      recordCompatibilityRead(path, consumer, usedAt);
-    }
-  } catch {
-    // Compatibility telemetry must never make a retained read unavailable.
-    recordCompatibilityRead(path, consumer, usedAt);
-  }
 }
 
 export function getRegistryRuntimeTelemetry(
@@ -148,44 +123,6 @@ export function getRegistryRuntimeTelemetry(
           left.path.localeCompare(right.path) ||
           left.consumer_category.localeCompare(right.consumer_category),
       ),
-  };
-}
-
-export function mergeDurableCompatibilityTelemetry(
-  telemetry: RegistryRuntimeTelemetry,
-  events: readonly {
-    path: string;
-    consumer_category: RegistryCompatibilityConsumer;
-    occurred_at: Date;
-  }[],
-): RegistryRuntimeTelemetry {
-  const merged = new Map(
-    telemetry.compatibility_reads.map((item) => [
-      `${item.path}:${item.consumer_category}`,
-      { ...item },
-    ]),
-  );
-  for (const event of events) {
-    const key = `${event.path}:${event.consumer_category}`;
-    const current = merged.get(key);
-    const occurredAt = event.occurred_at.toISOString();
-    merged.set(key, {
-      path: event.path,
-      consumer_category: event.consumer_category,
-      count: (current?.count ?? 0) + 1,
-      last_used_at:
-        !current || occurredAt > current.last_used_at
-          ? occurredAt
-          : current.last_used_at,
-    });
-  }
-  return {
-    ...telemetry,
-    compatibility_reads: [...merged.values()].sort(
-      (left, right) =>
-        left.path.localeCompare(right.path) ||
-        left.consumer_category.localeCompare(right.consumer_category),
-    ),
   };
 }
 

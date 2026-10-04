@@ -84,7 +84,7 @@ export async function leadMatchForQuery(
   if (!query.source_granularity_key) {
     return leadMatch(leadType, query);
   }
-  const catalog = (await getAdminFacets(query.database_scope)).catalog;
+  const catalog = (await getAdminFacets()).catalog;
   return leadMatch(leadType, query, catalog);
 }
 
@@ -101,9 +101,7 @@ export function leadMatch(
   if (dateClauses[0]) clauses.push(dateClauses[0].$match);
   if (query.local) clauses.push({ local: exactRegex(query.local) });
   if (query.source_granularity_key) {
-    clauses.push(
-      sourceGranularityLeadClause(leadType, query.source_granularity_key, catalog, query.database_scope),
-    );
+    clauses.push(sourceGranularityLeadClause(query.source_granularity_key, catalog));
   } else if (query.source_company) {
     clauses.push({ source_company: { $in: sourceCompanyRegexes(query.source_company) } });
   }
@@ -292,10 +290,8 @@ function sourceCompanyExpression() {
 }
 
 function sourceGranularityLeadClause(
-  leadType: "FormLead" | "CallLead",
   submitted: string,
   catalog?: FilterCatalog,
-  databaseScope?: AnalyticsQuery["database_scope"],
 ): Record<string, unknown> {
   const orClauses: Record<string, unknown>[] = [
     { source_granularity_key: exactRegex(submitted) },
@@ -305,16 +301,6 @@ function sourceGranularityLeadClause(
   const row = catalog ? findCatalogGranularity(catalog, submitted) : undefined;
   if (row?.id && isObjectIdString(row.id)) {
     orClauses.push({ source_granularity_id: toObjectId(row.id) });
-  }
-  const expectedChannel = leadType === "FormLead" ? "form" : "call";
-  const historicalScope = databaseScope === "historical" || databaseScope === "combined";
-  if (
-    historicalScope &&
-    row?.company_slug &&
-    row.channel === expectedChannel &&
-    row.company_slug.trim().toLowerCase() !== submitted.trim().toLowerCase()
-  ) {
-    orClauses.push({ source_company: exactRegex(row.company_slug) });
   }
   return { $or: orClauses };
 }

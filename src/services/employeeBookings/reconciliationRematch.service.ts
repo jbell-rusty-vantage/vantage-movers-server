@@ -8,7 +8,7 @@ import {
   snapshotEmployeeBookingAutoMatchPolicy,
 } from "../../config/domain";
 import { finalizeSheetSync, persistSheetSyncIntent, runSheetSyncWrite } from "../sheetSync";
-import { recordOperationalEvent } from "../observability";
+import { logger } from "../../logger";
 import { attachLeadToEmployeeBooking } from "./bookingLeadAttachment.service";
 import {
   BOOKING_RECONCILIATION_REMATCH_ACTOR_ID,
@@ -265,29 +265,22 @@ export async function runDueBookingLeadRematches(context: { actor: string }) {
             },
           },
         ).exec();
-        await recordOperationalEvent({
-          level: "error",
-          eventKey: "booking.lead_reconciliation.retry_failed",
-          category: "booking",
+        logger.error({
+          msg: "booking.lead_reconciliation.retry_failed",
           workflow: "booking_lead_reconciliation",
-          summary: "Booking lead reconciliation retry failed.",
-          entity: { type: "booking_lead_reconciliation_case", id: leased._id.toString() },
-          details: {
-            actor: context.actor,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          notificationCandidate: false,
+          case_id: leased._id.toString(),
+          actor: context.actor,
+          err: error,
         });
       }
     }
-    await recordOperationalEvent({
-      level: "info",
-      eventKey: "booking.lead_reconciliation.resolved",
-      category: "booking",
+    logger.info({
+      msg: "booking.lead_reconciliation.resolved",
       workflow: "booking_lead_reconciliation",
-      summary: "Booking reconciliation rematch drain completed.",
-      details: { claimed, attached, updated, skipped },
-      notificationCandidate: false,
+      claimed,
+      attached,
+      updated,
+      skipped,
     });
     return { claimed, attached, updated, skipped };
   } finally {

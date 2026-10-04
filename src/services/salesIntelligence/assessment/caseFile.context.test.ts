@@ -13,7 +13,7 @@ import type { CaseFileInput, RenderedCaseFile } from "../casefile/types";
 import type { AssessmentReader, AttachmentRow, ConversationRow, FindingRow, InstructionRow, LeadRow, SubjectRecordRow } from "./sources";
 
 const leadId = new Types.ObjectId("650000000000000000000a01"), numberId = new Types.ObjectId("650000000000000000000a02"), recordId = new Types.ObjectId("650000000000000000000a03");
-const coverage: ReadContent["coverage"] = { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false };
+const coverage: ReadContent["coverage"] = { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 function summaryArtifact() {
   const response: ReadContent = { page: { records: [], complete: true, next_cursor: null, missing_ranges: [] }, coverage,
     instructions: [], speaker_refs: [], allowed_followup_ids: [],
@@ -56,8 +56,12 @@ function reader(w: World): AssessmentReader {
   };
 }
 const now = new Date("2026-09-22T12:00:00Z");
-/** assessment/context.ts at 01bcf18 on this fixture (base worktree run, identical to this tree with the flag off). */
-const LEGACY_FINGERPRINT = "4d06d265052e28962f14909cda0297ed7fe3423ae831795b0976d190c1c30b3a";
+/**
+ * assessment/context.ts at 01bcf18 on this fixture, re-pinned in slimming wave 1: the shared coverage DTO
+ * lost `ai_paused` and gained `capabilities.webhook` (S-NUM), so the read content in the fingerprint changed.
+ * Everything else is the 01bcf18 layout. This legacy module is deleted in wave 2.
+ */
+const LEGACY_FINGERPRINT = "e8306afad9fa7a5fff16a42b2402136c9fbc44d533aec4a4cfbae94682efe3d4";
 const LEGACY_PAYLOAD_HASH = "f61c39968d19b62ba221637d586858ff1b72830f41f4968b1a08d23e582da25e";
 type Built = { input: CaseFileInput };
 function fakeCaseFile(text: string, customerEvidence: string, calls: Built[] = []): NonNullable<AssessmentContextDeps["caseFile"]> {

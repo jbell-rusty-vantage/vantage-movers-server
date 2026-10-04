@@ -126,9 +126,9 @@ export {
   granotCrmSourceOutboundSmsRecentQuerySchema,
   ownerGranotNameCreateSchema,
   adminDatabaseScopeSchema,
+  adminScopeOnlyQuerySchema,
   adminSearchQuerySchema,
   type AdminBrowseQuery,
-  type AdminDatabaseScope,
   type AdminSearchQuery,
   type CatalogCreateInput,
   type CatalogListQuery,
@@ -167,11 +167,9 @@ export {
 export {
   analyticsQuerySchema,
   analyticsReportSchema,
-  agentSalesReportQuerySchema,
   overviewQuerySchema,
   type AnalyticsQuery,
   type AnalyticsReport,
-  type AgentSalesReportQuery,
   type OverviewQuery,
 } from "./v1/analytics.validation";
 
@@ -210,31 +208,6 @@ export {
   type ListGranotCrmSourcesQuery,
   type UploadGranotCrmCsvInput,
 } from "./v1/granotCsv.validation";
-
-export {
-  observabilityOverviewQuerySchema,
-  observabilityFacetsQuerySchema,
-  observabilityEventsQuerySchema,
-  observabilityIncidentsQuerySchema,
-  observabilityNotificationsQuerySchema,
-  observabilityIncidentStatusSchema,
-  observabilityIncidentBatchStatusSchema,
-  observabilityDeleteCollectionSchema,
-  observabilityBatchDeleteSchema,
-  observabilityReportsQuerySchema,
-  observabilityReportRunSchema,
-  type ObservabilityOverviewQuery,
-  type ObservabilityFacetsQuery,
-  type ObservabilityEventsQuery,
-  type ObservabilityIncidentsQuery,
-  type ObservabilityNotificationsQuery,
-  type ObservabilityIncidentStatusInput,
-  type ObservabilityIncidentBatchStatusInput,
-  type ObservabilityDeleteCollection,
-  type ObservabilityBatchDeleteInput,
-  type ObservabilityReportsQuery,
-  type ObservabilityReportRunInput,
-} from "./v1/observability.validation";
 
 export {
   leadMessagesQuerySchema,
@@ -283,11 +256,8 @@ export {
 export {
   granotLifecycleActivationCommandSchema,
   granotLifecycleRequeueCommandSchema,
-  granotLifecycleReceiptSearchQuerySchema,
-  GRANOT_WEBHOOK_RECEIPT_SEARCH_QUERY_KEYS,
   type GranotLifecycleActivationCommandInput,
   type GranotLifecycleRequeueCommandInput,
-  type GranotLifecycleReceiptSearchQuery,
 } from "./v1/granotLifecycle.validation";
 
 export {

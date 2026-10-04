@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { withTransaction } from "../../../db";
+import { logger } from "../../../logger";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
+import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { leadPhoneMatchClauses } from "../../../models/leadContactPhoneIndexes";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getSalesIntelligenceSyncStateModel, SALES_INTELLIGENCE_SYNC_STATE_INDEXES } from "../../../models/SalesIntelligenceSyncState";
@@ -12,13 +14,12 @@ import { activeTokenFilter, MongoLeaseStore } from "../../durableWork/leases";
 import { CsiError } from "../auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob } from "../jobs";
 import { assertIndexes } from "../transactions";
-import { loadCanonicalInteraction } from "../conversations/workerSupport";
 import { leadAttachmentJobInput, loadLead, type LeadSource } from "./sources";
 import type { LeadRef } from "./suggest";
 import { persistLeadAttachments } from "./store";
 import { numberLookupDigits, SOLE_MATCH_POLICY_VERSION } from "./matchSet";
-import { rediscoverAttachmentPage } from "./hooks";
 import { ensureFormLeadContactNumber } from "./formLeadNumber";
+import { scanLeadChangesForAttachments } from "./leadTrigger";
 
 const PAGE = 250;
 
@@ -77,6 +78,21 @@ export async function attachLeadsOnNumber(numberId: string, session: ClientSessi
   }
   return count;
 }
+/** The canonical row of an interaction id, following merge tombstones within one provider account. */
+async function canonicalInteraction(id: string, session: ClientSession) {
+  const seen = new Set<string>();
+  let account: string | null = null;
+  for (let hop = 0; hop < 20; hop++) {
+    if (!mongoose.isValidObjectId(id) || seen.has(id)) throw new CsiError("INVALID_INPUT");
+    seen.add(id);
+    const row = await getCallInteractionModel().findById(id, { merged_into_id: 1, provider_account_id: 1, contact_number_id: 1 }).session(session).lean();
+    if (!row || (account !== null && row.provider_account_id !== account)) throw new CsiError("INVALID_INPUT");
+    account = row.provider_account_id;
+    if (!row.merged_into_id) return row;
+    id = String(row.merged_into_id);
+  }
+  throw new CsiError("INVALID_INPUT");
+}
 /** Queue payload remains {job_id}. Only durable input_refs and current documents supply inputs. */
 export async function runAttachmentRefreshJob(jobId?: string) {
   if (!csiFlag("ATTACHMENT_REFRESH")) return { status: "disabled" };
@@ -88,9 +104,10 @@ export async function runAttachmentRefreshJob(jobId?: string) {
       if (!csiFlag("ATTACHMENT_REFRESH")) throw new CsiError("FEATURE_DISABLED");
       const refs = row.input_refs.map(String), first = refs[0];
       if (!first) throw new CsiError("INVALID_INPUT");
-      if (row.subject_key.startsWith("attachment-change:")) {
-        return rediscoverAttachmentPage({ number_id: first, revision: row.input_revision }, session, refs[1]);
-      }
+      // An attachment change re-derives nothing outside its own transaction (search terms and the
+      // Number's attachment counts are written there), so a queued `attachment-change:` job from an
+      // earlier release completes without work.
+      if (row.subject_key.startsWith("attachment-change:")) return 0;
       if (row.subject_key.startsWith("attachment-lead:")) {
         const model = row.subject_key.split(":")[1];
         if (model !== "FormLead" && model !== "CallLead") throw new CsiError("INVALID_INPUT");
@@ -116,7 +133,7 @@ export async function runAttachmentRefreshJob(jobId?: string) {
         return count;
       }
       // B's frozen number job references an interaction, including merge tombstones.
-      const interaction = await loadCanonicalInteraction(first, session);
+      const interaction = await canonicalInteraction(first, session);
       if (!interaction.contact_number_id) return 0;
       for (const model of ["FormLead", "CallLead"] as const) await enqueueNumberScan(String(interaction.contact_number_id), row.input_revision, session, model);
       return 0;
@@ -138,12 +155,32 @@ export async function drainAttachmentRefreshJobs(max = 20) {
   }
   return { outcomes };
 }
+/**
+ * One pass of the Lead EntityChange trigger that never throws. The pass is the primary trigger,
+ * but its failure must not stall the watermark backstop or the drain that follow it: the error
+ * is logged, the result is null, and the next run re-scans from the same cursor.
+ */
+export async function guardedLeadChangeScan(
+  scan: () => Promise<{ scanned: number; nominated: number }> = scanLeadChangesForAttachments,
+): Promise<{ scanned: number; nominated: number } | null> {
+  try {
+    return await scan();
+  } catch (error) {
+    logger.warn({
+      msg: "sales_intelligence.attachment.lead_change_scan_failed",
+      errorName: error instanceof Error ? error.name : "Error",
+      errorCode: error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : null,
+    });
+    return null;
+  }
+}
+
 /** Bounded 500-source scan: 200 Form Leads, 200 Call Leads, 100 Contact Numbers.
  * Keyset (updatedAt,_id) prevents equal-timestamp loss. Checkpoints commit with job intents.
- * Since H5/H2 (September 22, 2026) the Outreach entity-change scan is the primary trigger: it
- * consumes Lead EntityChanges and enqueues `attachment-lead:` jobs (same policy-versioned
- * fingerprint key) for creates and phone/snapshot/duplicate/bad_lead/no_sync changes. This
- * watermark stays as the backstop. CSI still never writes EntityChange.
+ * Each run first takes one bounded pass of the Lead EntityChange trigger (`leadTrigger.ts`), the
+ * primary durable trigger: it enqueues `attachment-lead:` jobs (same policy-versioned fingerprint
+ * key) for creates and phone/snapshot/duplicate/bad_lead/no_sync changes. This watermark stays
+ * as the backstop. CSI still never writes EntityChange.
  * Dedupe keys carry `SOLE_MATCH_POLICY_VERSION` so completed pre-H5 jobs never fence a
  * sole-match evaluation.
  */
@@ -155,6 +192,7 @@ export async function runAttachmentRefreshOnce() {
   const token = await store.acquire({ scope: "attachment_suggest", owner: randomUUID(), now: new Date(), ttl_ms: 300_000 });
   if (!token) return { skipped: true, reason: "lease_held", scanned: 0 };
   try {
+    const leadChanges = await guardedLeadChangeScan();
     const scanned = await withTransaction(async session => {
       let count = 0;
       for (const model of ["FormLead", "CallLead", "ContactNumber"] as const) {
@@ -188,6 +226,6 @@ export async function runAttachmentRefreshOnce() {
       if (fence.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
       return count;
     });
-    return { skipped: false, scanned, ...(await drainAttachmentRefreshJobs()) };
+    return { skipped: false, scanned, lead_changes: leadChanges, ...(await drainAttachmentRefreshJobs()) };
   } finally { await store.release({ token, now: new Date() }); }
 }

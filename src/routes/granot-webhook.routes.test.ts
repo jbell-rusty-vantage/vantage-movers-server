@@ -7,10 +7,7 @@ import {
   getGranotLifecycleCaptureFailures,
   resetGranotLifecycleMetrics,
 } from "../services/granotLifecycle/metrics";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-} from "../services/observability";
+import { captureGranotLifecycleLogs } from "../services/granotLifecycle/testLifecycleLogCapture";
 import { createGranotWebhookRouter } from "./granot-webhook.routes";
 
 const SYNTHETIC_SECRET = "synthetic-expected-secret";
@@ -69,7 +66,6 @@ afterEach(() => {
   publishShouldFail = false;
   publishShouldThrow = false;
   resetGranotLifecycleMetrics();
-  clearCapturedOperationalEvents();
   restoreSecret();
 });
 
@@ -261,9 +257,11 @@ test("[AC-02] capture happens before 202 and uses the invoked route class", asyn
   assert.equal(published.length, 3);
 });
 
-test("[AC-01] capture failure returns safe 503, creates no publish, and stays distinct from queue failure", async () => {
+test("[AC-01] capture failure returns safe 503, creates no publish, and stays distinct from queue failure", async (t) => {
   process.env.GRANOT_WEBHOOK_SECRET = SYNTHETIC_SECRET;
   captureShouldFail = true;
+  const logs = captureGranotLifecycleLogs();
+  t.after(() => logs.restore());
   const response = await post("priority-updated", { priority: 7 }, SYNTHETIC_SECRET);
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), {
@@ -273,10 +271,9 @@ test("[AC-01] capture failure returns safe 503, creates no publish, and stays di
   assert.equal(captures.length, 0);
   assert.equal(published.length, 0);
   assert.equal(getGranotLifecycleCaptureFailures(), 1);
-  const events = getCapturedOperationalEvents();
-  assert.equal(events.length, 1);
-  assert.equal(events[0]?.input.eventKey, "granot_lifecycle.capture.failed");
-  assert.notEqual(events[0]?.input.eventKey, "granot_lifecycle.queue.publish_failed");
+  // One structured log line; the same emit feeds the Health capture_unavailable counter.
+  assert.deepEqual(logs.keys(), ["granot_lifecycle.capture.failed"]);
+  assert.equal(logs.find("granot_lifecycle.queue.publish_failed"), undefined);
 });
 
 test("[AC-02] publish failure cannot change 202 or the accepted receipt", async () => {

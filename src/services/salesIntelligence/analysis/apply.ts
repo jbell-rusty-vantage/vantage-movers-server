@@ -32,6 +32,7 @@ import { renderEnvelopeSummary } from "../dto";
 import { scheduleNumberIntelligence } from "./scheduling";
 import { capturedTranscriptsComplete } from "./coverage";
 import { capturedTranscriptSourcesCurrent } from "./sources";
+import { legacyNumber } from "../legacyNumberFields";
 
 type Finding = IntelligenceEnvelope["findings"][number];
 export function resolveQuotedMoney(text: string, currency: string | null): number | null {
@@ -254,7 +255,7 @@ async function publishCurrent(run: { _id: unknown; started_at?: Date | null; cre
     if (result.matchedCount !== 1) throw new CsiError("REVISION_CONFLICT");
     await countNewlyAnalyzedConversation(conversation, session);
   } else {
-    const number = await getContactNumberModel().findById(run.contact_number_id).session(session).orFail();
+    const number = legacyNumber(await getContactNumberModel().findById(run.contact_number_id).session(session).orFail());
     if (await newer(number.running_summary?.run_id)) return false;
     const result = await getContactNumberModel().updateOne({ _id: number._id, revision: number.revision }, { $set: { running_summary: {
       text: renderEnvelopeSummary(envelope.summary), run_id: run._id, evidence_digest: run.manifest_digest, computed_at: new Date() } }, $inc: { revision: 1 } }, { session });

@@ -1,0 +1,749 @@
+{
+  "version": "slimming-deletion-manifest-v1",
+  "generated_at": "2026-10-04T03:07:09.343Z",
+  "source": {
+    "server_head": "6a374faba9e1a67834173593b85c03d469c98da4",
+    "server_branch": "slim/server-admin",
+    "admin_head": "adda9e182d42d31b13172af6b6e2ae4e5831a549"
+  },
+  "manifest_hash": "948420886cf908482fb4e4325d1c16724759705b36471dd6d5de7e3114497143",
+  "targets": {
+    "cluster": {
+      "fingerprint": "a88bf1acb403fe0b",
+      "replica_set": "atlas-khw1wz-shard-0"
+    },
+    "main_database": "vantagemovers",
+    "admin_auth_database": "vantageadmin",
+    "drop_databases": [
+      {
+        "name": "vantagemovershistorical",
+        "spec": "§3",
+        "gate": "SLIM-03 deployed: zero useDb('vantagemovershistorical') readers/writers; separate verified backup",
+        "size_on_disk": 14782464,
+        "collections": [
+          {
+            "name": "agents",
+            "uuid": "804c379ce9ef4c3ca396c7095bf43206",
+            "count": 48
+          },
+          {
+            "name": "booked_leads",
+            "uuid": "ba063665fd754beebdb320d63bfdcef3",
+            "count": 4769
+          },
+          {
+            "name": "call_leads",
+            "uuid": "9ee48843970f459b9ee137d7d6651bf1",
+            "count": 3354
+          },
+          {
+            "name": "cancelled_leads",
+            "uuid": "8b2ce1b885fa49ce9d93f448f43999af",
+            "count": 365
+          },
+          {
+            "name": "customers",
+            "uuid": "dce3f9297b17404c95cfab3152cf1402",
+            "count": 4535
+          },
+          {
+            "name": "form_leads",
+            "uuid": "7382f73305d449cab8917cd8c145e370",
+            "count": 10223
+          }
+        ]
+      }
+    ],
+    "drop_collections": [
+      {
+        "db": "vantagemovers",
+        "name": "operational_events",
+        "uuid": "6c05b1bb9263471180bb9824ee030e35",
+        "count": 13800,
+        "size": 12771598,
+        "storage_size": 2568192,
+        "index_size": 5427200,
+        "ttl": false,
+        "spec": "§4",
+        "owner": "src/models/OperationalEvent.ts",
+        "gate": "SLIM-04: Health replaced, every OperationalEvents writer removed and deployed"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "operational_incidents",
+        "uuid": "231e82663e57480db8dbd7b45607f6be",
+        "count": 26,
+        "size": 31367,
+        "storage_size": 45056,
+        "index_size": 368640,
+        "ttl": false,
+        "spec": "§4",
+        "owner": "src/models/OperationalIncident.ts",
+        "gate": "SLIM-04"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "notification_deliveries",
+        "uuid": "db1fa7f7519643ef98482d7d592c28ec",
+        "count": 118,
+        "size": 175746,
+        "storage_size": 81920,
+        "index_size": 266240,
+        "ttl": false,
+        "spec": "§4",
+        "owner": "src/models/NotificationDelivery.ts",
+        "gate": "SLIM-04: digest cron and notification writers removed"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "lead_conversations",
+        "uuid": "0797c498e6a04209baff424ead9f8f11",
+        "count": 4088,
+        "size": 23997887,
+        "storage_size": 8859648,
+        "index_size": 1683456,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/LeadConversation.ts",
+        "gate": "SLIM-06: no transcript/media/STT reader or worker; Blob keys manifested"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "intelligence_runs",
+        "uuid": "9ee9718d898449b1b852647249efcaa1",
+        "count": 10523,
+        "size": 343400825,
+        "storage_size": 100233216,
+        "index_size": 974848,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/intelligence.ts",
+        "gate": "SLIM-06: run tokens/submissions fenced"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "intelligence_evidence_snapshots",
+        "uuid": "c54e97dd81e34c42818737a8aa22c8c9",
+        "count": 53161,
+        "size": 837569103,
+        "storage_size": 244703232,
+        "index_size": 7020544,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/intelligence.ts",
+        "gate": "SLIM-06"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "intelligence_submissions",
+        "uuid": "ea6caa6a2e244a66a981acf7063ce9e9",
+        "count": 9183,
+        "size": 177746804,
+        "storage_size": 45301760,
+        "index_size": 421888,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/intelligence.ts",
+        "gate": "SLIM-06"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "intelligence_findings",
+        "uuid": "c0b7f415c247407ab4905518920cd69f",
+        "count": 74971,
+        "size": 110635322,
+        "storage_size": 25894912,
+        "index_size": 5705728,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/intelligence.ts",
+        "gate": "SLIM-06 + HUMAN-FACTS restriction facts preserved"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "intelligence_effects",
+        "uuid": "2e6d4f6ad9854d199cdd723bef2da2a1",
+        "count": 17176,
+        "size": 11596091,
+        "storage_size": 2437120,
+        "index_size": 2076672,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/intelligence.ts",
+        "gate": "SLIM-06"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "intelligence_owner_assessments",
+        "uuid": "d7395e19654944958d21851d2c43c400",
+        "count": 12,
+        "size": 3723,
+        "storage_size": 36864,
+        "index_size": 73728,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/intelligence.ts",
+        "gate": "SLIM-06"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "move_assessment_artifacts",
+        "uuid": "cea0ea3098c749cf94483e06d42fc7b4",
+        "count": 2490,
+        "size": 34401165,
+        "storage_size": 8892416,
+        "index_size": 794624,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/assessment.ts",
+        "gate": "SLIM-06: assessment producers removed"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_ai_budget",
+        "uuid": "69fa7435d261421c8613d0958848904e",
+        "count": 2,
+        "size": 592,
+        "storage_size": 36864,
+        "index_size": 73728,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/infrastructure.ts",
+        "gate": "SLIM-06: in-flight reservations settled"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_ai_reservations",
+        "uuid": "85f79a3b432d4889a5e0a03c4a607a76",
+        "count": 33409,
+        "size": 23592336,
+        "storage_size": 4988928,
+        "index_size": 4788224,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/infrastructure.ts",
+        "gate": "SLIM-06"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_attention_snapshots",
+        "uuid": "5d51df3ed24349ada47771144ea97f10",
+        "count": 5,
+        "size": 387869,
+        "storage_size": 880640,
+        "index_size": 184320,
+        "ttl": true,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/infrastructure.ts",
+        "gate": "SLIM-07: Attention publishers/readers retired"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_attention_artifacts",
+        "uuid": "b7d968b2bccd4215854e2e3ece907c4c",
+        "count": 1025,
+        "size": 7694614,
+        "storage_size": 19361792,
+        "index_size": 294912,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/attentionArtifact.ts",
+        "gate": "SLIM-07"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "outreach_records",
+        "uuid": "f216214c855442cba465c4a187be52b1",
+        "count": 8696,
+        "size": 15101434,
+        "storage_size": 3698688,
+        "index_size": 2060288,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/outreach.ts",
+        "gate": "SLIM-07: legacy planner removed, Numbers independent, HUMAN-FACTS disposition done"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "outreach_followups",
+        "uuid": "4ec544009a224a9ea575eecfe5799e91",
+        "count": 585,
+        "size": 669053,
+        "storage_size": 192512,
+        "index_size": 405504,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/outreach.ts",
+        "gate": "SLIM-07 + HUMAN-FACTS: exported to the pre-purge backup, never replayed"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "outreach_band_transitions",
+        "uuid": "c9a06fb28462431fa46f002eb733fd86",
+        "count": 7110,
+        "size": 2937647,
+        "storage_size": 835584,
+        "index_size": 806912,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/outreach.ts",
+        "gate": "SLIM-07"
+      },
+      {
+        "db": "vantagemovers",
+        "name": "outreach_rep_days",
+        "uuid": "52ce7182ef384a81aaeada10be456e29",
+        "count": 72,
+        "size": 22216,
+        "storage_size": 45056,
+        "index_size": 73728,
+        "ttl": false,
+        "spec": "§7.2",
+        "owner": "src/models/salesIntelligence/overview.ts",
+        "gate": "SLIM-07"
+      },
+      {
+        "db": "vantageadmin",
+        "name": "admin_audit_logs",
+        "uuid": "9009883807f44730b8fe4099fc2c4671",
+        "count": 2537,
+        "size": 1679868,
+        "storage_size": 720896,
+        "index_size": 540672,
+        "ttl": false,
+        "spec": "§6",
+        "owner": "vantage-admin server/models/AdminAuditLog.ts",
+        "gate": "SLIM-08: Admin page/API/auth/proxy writers removed and deployed"
+      }
+    ],
+    "absent_targets": [
+      {
+        "db": "vantagemovers",
+        "name": "operational_report_runs",
+        "spec": "§4"
+      }
+    ],
+    "cleanups": [
+      {
+        "id": "C1-contact-numbers-dead-fields",
+        "kind": "unset_fields",
+        "db": "vantagemovers",
+        "collection": "contact_numbers",
+        "fields": [
+          "running_summary",
+          "intelligence_schedule",
+          "rollups.open_outreach_count",
+          "rollups.conversations_analyzed_total",
+          "rollups.last_analyzed_at",
+          "rollups.outreach_records_total"
+        ],
+        "expected_matches": 7028,
+        "status": "pending_wave3",
+        "spec": "SPEC §7.4, DATA §1.3"
+      },
+      {
+        "id": "C2-legacy-stage-jobs",
+        "kind": "retire_jobs",
+        "db": "vantagemovers",
+        "collection": "sales_intelligence_jobs",
+        "stages": [
+          "outreach_ensure",
+          "outreach_derive",
+          "recording_discovery",
+          "media",
+          "media_fetch",
+          "transcription",
+          "analysis",
+          "application",
+          "move_assessment"
+        ],
+        "expected_by_status": {
+          "completed": 122386,
+          "dead_letter": 1112,
+          "paused": 548,
+          "retry": 334,
+          "pending": 1
+        },
+        "reason": "slimming_retired_stage",
+        "status": "final",
+        "spec": "SPEC §7.3/§7.4, DATA §1.3"
+      },
+      {
+        "id": "C3-retired-sync-scopes",
+        "kind": "delete_exact",
+        "db": "vantagemovers",
+        "collection": "sales_intelligence_sync_state",
+        "key_field": "scope",
+        "key_values": [
+          "attention_artifacts:csi-production:vantagemovers",
+          "attention_publish",
+          "attention_publish_fence:csi-production:vantagemovers",
+          "intelligence_source_scan",
+          "outreach_repair:OutreachRecord",
+          "overview_refresh"
+        ],
+        "expected_matches": 6,
+        "status": "final",
+        "spec": "CODE-MAP §7.1, SPEC §7.4"
+      },
+      {
+        "id": "C6-outreach-cursor-sync-scopes",
+        "kind": "delete_exact",
+        "db": "vantagemovers",
+        "collection": "sales_intelligence_sync_state",
+        "key_field": "scope",
+        "key_values": [
+          "outreach_ensure",
+          "outreach_entity_changes",
+          "outreach_repair:CallInteraction",
+          "outreach_repair:CallLead",
+          "outreach_repair:FormLead"
+        ],
+        "expected_matches": 5,
+        "status": "pending_wave3",
+        "spec": "SPEC §7.4 (watermark backstop moves to the independent nomination path)"
+      },
+      {
+        "id": "C4-retired-audit-events",
+        "kind": "delete_filter",
+        "db": "vantagemovers",
+        "collection": "sales_intelligence_audit_events",
+        "filter": {
+          "event_kind": {
+            "$in": [
+              "analysis.reanalysis_requested",
+              "assessment_followup_created",
+              "attachment_identity_changed",
+              "call_fulfilled_action",
+              "clock_boundary",
+              "closure_cancelled_action",
+              "conversation.failed",
+              "conversation.media_skipped",
+              "conversation.media_stored",
+              "conversation.transcribed",
+              "conversation.unavailable",
+              "followup_receiver_inherited",
+              "followup_superseded_by_plan",
+              "identity_blocked",
+              "identity_resolved",
+              "intelligence.published",
+              "intelligence.submitted",
+              "intelligence_effect",
+              "intelligence_followup_created",
+              "lead_progress_updated",
+              "media_played",
+              "missed_call_episode",
+              "move_assessment_engagement",
+              "move_assessment_published",
+              "number_review_opened",
+              "outreach_call_applied",
+              "outreach_closed",
+              "outreach_contact_facts",
+              "outreach_created",
+              "outreach_interaction",
+              "outreach_lead_attachment_mirrored",
+              "outreach_number_linked",
+              "outreach_receiver_assigned",
+              "progress_default_created",
+              "recording_discovery.completed",
+              "recording_discovery.no_recording",
+              "wait_expired"
+            ]
+          },
+          "actor.kind": {
+            "$in": [
+              "worker",
+              "intelligence"
+            ]
+          }
+        },
+        "expected_matches": 107435,
+        "status": "pending_wave3",
+        "spec": "SPEC §6 (legacy AI audit payloads), §7.3"
+      },
+      {
+        "id": "C5-contact-numbers-retention-fields",
+        "kind": "unset_fields",
+        "db": "vantagemovers",
+        "collection": "contact_numbers",
+        "fields": [
+          "content_purge_pending",
+          "retention_epoch",
+          "evidence_fence",
+          "purged_at"
+        ],
+        "expected_matches": 7028,
+        "status": "pending_wave3",
+        "spec": "SPEC §7.4"
+      }
+    ],
+    "blob": {
+      "prefix": "conversations/",
+      "keys_file": "ops/slimming/conversation-blob-keys.json",
+      "keys_sha256": "a0b6f4b19d10e47e107538d9a3873487fbafb284592e7262dce339705ece8322",
+      "count": 3017,
+      "bytes": 1813126869,
+      "unreferenced_count": 0
+    },
+    "protected": [
+      {
+        "db": "vantagemovers",
+        "name": "granot_webhook_receipts",
+        "uuid": "97e709f83d6a4c3b9f19d5613e3ac58d",
+        "count": 7372
+      },
+      {
+        "db": "vantagemovers",
+        "name": "entity_changes",
+        "uuid": "84979e73755f464a85545e08d3ae81bc",
+        "count": 11058
+      },
+      {
+        "db": "vantagemovers",
+        "name": "daily_operations_events",
+        "uuid": "20368704a47f470a8a7a4566740f5e59",
+        "count": 18565
+      },
+      {
+        "db": "vantagemovers",
+        "name": "daily_operations_days",
+        "uuid": "703e992a2a9d41d3a5d7b78ac9b9a7c2",
+        "count": 26
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_jobs",
+        "uuid": "94abd2ea72bd4f83a845d393bd94ce43",
+        "count": 235093
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_sync_state",
+        "uuid": "fda62786d36b4708b68bf1ea736cb024",
+        "count": 45
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_sync_windows",
+        "uuid": "d686c4e9eac442fe83f1058d332cf145",
+        "count": 0
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_audit_events",
+        "uuid": "c36cdd76239e47d0880e7a546fd6a3b8",
+        "count": 273199
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_command_executions",
+        "uuid": "05b2da9d20464cfa847e413c1bf24e7e",
+        "count": 813
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_policy_versions",
+        "uuid": "077e25b96dbe4a259a93f51fa6d64c92",
+        "count": 4
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_policy_pointers",
+        "uuid": "ef2a7db2a6af45b1b070ea0b32fb6a3a",
+        "count": 1
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_contact_restrictions",
+        "uuid": "9b04170f4ad646a78471659aee98cd5f",
+        "count": 16
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_owner_instructions",
+        "uuid": "a6386b022f0141f6a670a6a6b5965072",
+        "count": 4
+      },
+      {
+        "db": "vantagemovers",
+        "name": "sales_intelligence_review_items",
+        "uuid": "0110852cb1de4b89afd8c0bda0a4dfa2",
+        "count": 12202
+      },
+      {
+        "db": "vantagemovers",
+        "name": "owner_rep_nudges",
+        "uuid": "78dceafcb9a64692b9101b4beb922bfc",
+        "count": 12
+      },
+      {
+        "db": "vantagemovers",
+        "name": "contact_numbers",
+        "uuid": "d15a485aa8b84ce1b3ee6f01d647d2d4",
+        "count": 7028
+      },
+      {
+        "db": "vantagemovers",
+        "name": "call_interactions",
+        "uuid": "a8cc6040ec1c484c8a94e1e4e65694a8",
+        "count": 8613
+      },
+      {
+        "db": "vantagemovers",
+        "name": "call_interaction_aliases",
+        "uuid": "a71587a5c5e44cb086c34c8de58d3fed",
+        "count": 25840
+      },
+      {
+        "db": "vantagemovers",
+        "name": "number_lead_attachments",
+        "uuid": "54ef6cd3c2474153aaceac215deaa3c9",
+        "count": 6736
+      },
+      {
+        "db": "vantagemovers",
+        "name": "rep_identity_links",
+        "uuid": "04a0b415560141c39dbe903099b76b93",
+        "count": 12
+      },
+      {
+        "db": "vantagemovers",
+        "name": "ringcentral_directory_snapshots",
+        "uuid": "1e18f0ac321b418e8dc8a3ff3bedc1e8",
+        "count": 2
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_definitions",
+        "uuid": "e6577e4d33e44db49af5e7a130807124",
+        "count": 7
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_definition_revisions",
+        "uuid": "c532914d57694ca78a5b855135788990",
+        "count": 7
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_deliveries",
+        "uuid": "b6e4f1e53e3a4edca65e004c518b5e82",
+        "count": 4
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_destinations",
+        "uuid": "5c0ee26258784b5fb523777100280f4f",
+        "count": 2
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_previews",
+        "uuid": "37cbdc1c14814cf59711cc9ee13c41cc",
+        "count": 0
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_run_confirmations",
+        "uuid": "4f4a2bf0196f4aa4b50525212efffafa",
+        "count": 0
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_run_manifests",
+        "uuid": "ec9c25f05f5c455bbdd5db7c9fc770a0",
+        "count": 0
+      },
+      {
+        "db": "vantagemovers",
+        "name": "reporting_runs",
+        "uuid": "ce6b3c23c54c4f3f87b6052e0783cc05",
+        "count": 4
+      },
+      {
+        "db": "vantagemovers",
+        "name": "customers",
+        "uuid": "08c5db2774ff4e7eb9ea82b932ed8ae3",
+        "count": 851
+      },
+      {
+        "db": "vantagemovers",
+        "name": "agents",
+        "uuid": "c4a0142d1f2946be99576aaa96dae429",
+        "count": 20
+      },
+      {
+        "db": "vantagemovers",
+        "name": "form_leads",
+        "uuid": "f95b45a20fb6441f9cc9d20840bb4320",
+        "count": 6758
+      },
+      {
+        "db": "vantagemovers",
+        "name": "call_leads",
+        "uuid": "7ef727ddc1cd4cd9984bd5a57dfb84da",
+        "count": 1773
+      },
+      {
+        "db": "vantagemovers",
+        "name": "booked_leads",
+        "uuid": "86d773ab8afc46529485fdccd5f97984",
+        "count": 859
+      },
+      {
+        "db": "vantagemovers",
+        "name": "cancelled_leads",
+        "uuid": "c099795e522d42dd874d2cae3de60f19",
+        "count": 48
+      },
+      {
+        "db": "vantagemovers",
+        "name": "granot_observations",
+        "uuid": "3b5d2cfbb8d64ee687c80a15f2048ab3",
+        "count": 7372
+      },
+      {
+        "db": "vantagemovers",
+        "name": "synchronization_decisions",
+        "uuid": "694bac606c164b86918368a8e968aca4",
+        "count": 13236
+      },
+      {
+        "db": "vantagemovers",
+        "name": "granot_record_links",
+        "uuid": "feda738e0d5c4db4a37076ece6479448",
+        "count": 3030
+      },
+      {
+        "db": "vantagemovers",
+        "name": "granot_lifecycle_activations",
+        "uuid": "852618f097e945bd94023851e2000552",
+        "count": 1
+      },
+      {
+        "db": "vantagemovers",
+        "name": "domain_command_executions",
+        "uuid": "a596653fe06b4809849f91708cde13f8",
+        "count": 7481
+      },
+      {
+        "db": "vantagemovers",
+        "name": "operations_registry_changes",
+        "uuid": "f4650adaf48144ab8b50f6b00c390ab0",
+        "count": 71
+      },
+      {
+        "db": "vantageadmin",
+        "name": "admin_users",
+        "uuid": "4fca2558565d4dcbbc0e03828213fdda",
+        "count": 9
+      },
+      {
+        "db": "vantageadmin",
+        "name": "admin_user_invites",
+        "uuid": "b583d060ff2d42f5b7589e2262742b7c",
+        "count": 0
+      }
+    ]
+  }
+}

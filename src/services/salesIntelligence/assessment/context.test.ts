@@ -7,7 +7,7 @@ import { assembleAssessmentContext, type AssessmentContext, type AssessmentSkip 
 import type { AssessmentReader, AttachmentRow, ConversationRow, FindingRow, InstructionRow, LeadRow, SubjectRecordRow } from "./sources";
 
 const leadId = new Types.ObjectId(), numberId = new Types.ObjectId(), recordId = new Types.ObjectId();
-const coverage: ReadContent["coverage"] = { known_through: null, gaps: [], capabilities: { call_log: "unknown" }, ai_paused: false };
+const coverage: ReadContent["coverage"] = { known_through: null, gaps: [], capabilities: { call_log: "unknown" as const, webhook: "unknown" as const } };
 function summaryArtifact() {
   const response: ReadContent = { page: { records: [], complete: true, next_cursor: null, missing_ranges: [] }, coverage,
     instructions: [], speaker_refs: [], allowed_followup_ids: [],

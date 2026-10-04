@@ -15,10 +15,6 @@ import { BookedLead, BOOKED_LEAD_NORMALIZED_JOB_INDEX } from "./BookedLead";
 import { CallLead } from "./CallLead";
 import { CancelledLead } from "./CancelledLead";
 import { FormLead } from "./FormLead";
-import { HistoricalFormLeadSchema } from "./historical/FormLead";
-import { HistoricalCallLeadSchema } from "./historical/CallLead";
-import { HistoricalBookedLeadSchema } from "./historical/BookedLead";
-import { HistoricalCancelledLeadSchema } from "./historical/CancelledLead";
 
 const MODELS = [
   { name: "FormLead", Model: FormLead, hasOptimisticConcurrency: true },
@@ -197,17 +193,4 @@ test("[AC-21] Booking unique normalized-Job index is named and is not a unique L
     callIndexes.some((index) => index[1]?.unique === true && "normalized_job_no" in (index[0] ?? {})),
     false,
   );
-});
-
-test("[AC-32] historical schemas remain readable and do not gain revision fields", () => {
-  for (const schema of [
-    HistoricalFormLeadSchema,
-    HistoricalCallLeadSchema,
-    HistoricalBookedLeadSchema,
-    HistoricalCancelledLeadSchema,
-  ]) {
-    for (const field of AGGREGATE_REVISION_FIELD_NAMES) {
-      assert.equal(schema.path(field), undefined);
-    }
-  }
 });

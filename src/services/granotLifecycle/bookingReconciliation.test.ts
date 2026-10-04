@@ -35,10 +35,7 @@ it("[AC-35] candidate browser preserves source scope metadata and override warni
 });
 import type { GranotBookingReconciliationCaseDocument } from "../../models/GranotBookingReconciliationCase";
 import type { SynchronizationDecisionDocument } from "../../models/SynchronizationDecision";
-import {
-  clearCapturedOperationalEvents,
-  getCapturedOperationalEvents,
-} from "../observability";
+import { captureGranotLifecycleLogs } from "./testLifecycleLogCapture";
 import { getGranotLifecycleOpenBookingCases } from "./metrics";
 import {
   clearCapturedDailyOperationsFacts,
@@ -376,7 +373,7 @@ describe("Booking Reconciliation persistence", () => {
   }
 
   it("[AC-19] atomically opens one create-missing case with causal evidence and Decision", async () => {
-    clearCapturedOperationalEvents();
+    const logs = captureGranotLifecycleLogs();
     const current = context({ booking_action: "booked" });
     const memory = memoryStore(current);
     const decisionId = oid();
@@ -396,9 +393,8 @@ describe("Booking Reconciliation persistence", () => {
     assert.equal(String(memory.cases[0]!.evidence[0]!.decision_id), decisionId);
     assert.equal(memory.decisions[0]!.reason_code, "booking_case_opened");
     assert.equal(memory.decisions[0]!.effects[0]!.kind, "booking_case_opened");
-    const audit = getCapturedOperationalEvents().find(
-      (event) => event.input.eventKey === "granot_lifecycle.booking_case.opened",
-    );
+    const audit = logs.find("granot_lifecycle.booking_case.opened");
+    logs.restore();
     assert.ok(audit);
     assert.equal(JSON.stringify(audit).includes(current.observation_id), false);
     assert.equal(JSON.stringify(audit).includes(decisionId), false);

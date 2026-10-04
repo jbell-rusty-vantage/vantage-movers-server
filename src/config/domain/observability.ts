@@ -1,3 +1,4 @@
+import { getSendgridConfig } from "./mail";
 import { isTestMode, isVantageTestRunner } from "./runtime";
 
 /**
@@ -414,9 +415,10 @@ export function validateObservabilityConfig(): ObservabilityConfigValidation {
 
   const mode = getEmailNotificationsMode();
   const email = getSendgridConfig();
+  const recipients = getAlertEmailRecipients();
   if (isEmailNotificationsEnabled() && mode !== "log_only") {
     if (!email.fromEmail) warnings.push("SENDGRID_FROM_EMAIL is not set");
-    if (email.ownerToEmails.length === 0 && email.developerToEmails.length === 0) {
+    if (recipients.ownerToEmails.length === 0 && recipients.developerToEmails.length === 0) {
       warnings.push("No SendGrid recipients are configured");
     }
     if ((mode === "live" || mode === "sandbox") && !email.apiKey) {
@@ -467,21 +469,15 @@ export function getEmailNotificationsMode(): EmailNotificationMode {
   return "log_only";
 }
 
-export type SendgridConfig = {
-  apiKey: string | null;
-  fromEmail: string | null;
+export type AlertEmailRecipients = {
   ownerToEmails: string[];
   developerToEmails: string[];
-  replyTo: string | null;
 };
 
-export function getSendgridConfig(): SendgridConfig {
+export function getAlertEmailRecipients(): AlertEmailRecipients {
   return {
-    apiKey: process.env.SENDGRID_API_KEY?.trim() || null,
-    fromEmail: process.env.SENDGRID_FROM_EMAIL?.trim() || null,
     ownerToEmails: envCsv("SENDGRID_TO_EMAIL"),
     developerToEmails: envCsv("SENDGRID_DEVELOPER_TO_EMAIL"),
-    replyTo: process.env.ALERT_EMAIL_REPLY_TO?.trim() || null,
   };
 }
 

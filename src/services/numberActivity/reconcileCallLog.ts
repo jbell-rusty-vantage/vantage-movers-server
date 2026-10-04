@@ -4,7 +4,6 @@ import { csiFlag } from "../../config/domain/salesIntelligence";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { MongoLeaseStore, type MongoLeaseModel } from "../durableWork/leases";
 import type { LeaseToken } from "../durableWork/types";
-import { recordOperationalEvent } from "../observability";
 import {
   accountIdFromProviderPath,
   configuredRingCentralAccountId,
@@ -219,7 +218,6 @@ export type ReconcileDependencies = {
   directory: (accountId: string) => Promise<DirectoryLookup>;
   resolveRoute?: RouteResolver;
   configuredAccountId: string | null;
-  recordEvent: typeof recordOperationalEvent;
   owner: string;
   config: ReconcileConfig;
   requireFlag: boolean;
@@ -273,7 +271,6 @@ export async function runCallLogReconcileOnce(
     apply: applyInteractionObservation,
     directory: loadDirectoryLookup,
     configuredAccountId: configuredRingCentralAccountId(),
-    recordEvent: recordOperationalEvent,
     owner: `csi-call-log:${randomBytes(8).toString("hex")}`,
     config: callLogReconcileConfig(),
     requireFlag: true,
@@ -327,7 +324,7 @@ export async function runCallLogReconcileOnce(
     summary.skipped = true;
     summary.skip_reason = "lease_held";
     summary.runtime_ms = elapsed(startedAt, deps.now());
-    await deps.recordEvent(event("lease_contended", "info", summary.ran_at, { leaseOwnerHash: ownerHash }));
+    event("lease_contended", "info", summary.ran_at, { leaseOwnerHash: ownerHash });
     return summary;
   }
   summary.lease_owner_hash = ownerHash;
@@ -436,14 +433,12 @@ export async function runCallLogReconcileOnce(
         deps.now(),
       );
       if (outcome === "newly_quarantined") {
-        await deps.recordEvent(
-          event("record_quarantined", "warn", summary.ran_at, {
-            leaseOwnerHash: ownerHash,
-            errorCode: code,
-            errorName: failureLogFields(error).errorName,
-            quarantineAfter: deps.config.quarantineAfter,
-          }),
-        );
+        event("record_quarantined", "warn", summary.ran_at, {
+          leaseOwnerHash: ownerHash,
+          errorCode: code,
+          errorName: failureLogFields(error).errorName,
+          quarantineAfter: deps.config.quarantineAfter,
+        });
       }
       return { ok: false, quarantined: outcome !== "counted", code };
     }
@@ -632,7 +627,7 @@ export async function runCallLogReconcileOnce(
         error_code: syncStep.error_code,
       };
       if (syncStep.expired) {
-        await deps.recordEvent(event("sync_token_expired", "warn", summary.ran_at, { leaseOwnerHash: ownerHash }));
+        event("sync_token_expired", "warn", summary.ran_at, { leaseOwnerHash: ownerHash });
       }
     }
     // With a stored `on` token the window is only a net for what ISync does
@@ -643,15 +638,13 @@ export async function runCallLogReconcileOnce(
     const windowFrom = plan.from;
     summary.window_from = windowFrom.toISOString();
     summary.window_to = windowTo.toISOString();
-    await deps.recordEvent(
-      event("started", "info", summary.ran_at, {
-        leaseOwnerHash: ownerHash,
-        windowFrom: summary.window_from,
-        windowTo: summary.window_to,
-        openGaps: state.gaps?.length ?? 0,
-        quarantined: book.quarantinedCount,
-      }),
-    );
+    event("started", "info", summary.ran_at, {
+      leaseOwnerHash: ownerHash,
+      windowFrom: summary.window_from,
+      windowTo: summary.window_to,
+      openGaps: state.gaps?.length ?? 0,
+      quarantined: book.quarantinedCount,
+    });
 
     // A throttle during the sync step ends the run before the window.
     const rolling =
@@ -810,64 +803,56 @@ export async function runCallLogReconcileOnce(
     if (written.modifiedCount !== 1) throw new LeaseLostError();
 
     for (const opened of next.opened) {
-      await deps.recordEvent(
-        event("gap_opened", "warn", summary.ran_at, {
-          leaseOwnerHash: ownerHash,
-          from: opened.from.toISOString(),
-          to: opened.to.toISOString(),
-          reason: opened.reason,
-        }),
-      );
+      event("gap_opened", "warn", summary.ran_at, {
+        leaseOwnerHash: ownerHash,
+        from: opened.from.toISOString(),
+        to: opened.to.toISOString(),
+        reason: opened.reason,
+      });
     }
     for (const closed of next.closed) {
-      await deps.recordEvent(
-        event("gap_closed", "info", summary.ran_at, {
-          leaseOwnerHash: ownerHash,
-          from: closed.from.toISOString(),
-          to: closed.to.toISOString(),
-        }),
-      );
+      event("gap_closed", "info", summary.ran_at, {
+        leaseOwnerHash: ownerHash,
+        from: closed.from.toISOString(),
+        to: closed.to.toISOString(),
+      });
     }
     const oldestQuarantine = book.oldestFirstFailedAt();
     if (oldestQuarantine && finishedAt.getTime() - oldestQuarantine.getTime() > QUARANTINE_STALE_MS) {
-      await deps.recordEvent(
-        event("quarantine_stale", "warn", summary.ran_at, {
-          leaseOwnerHash: ownerHash,
-          quarantined: summary.quarantined,
-          oldestFirstFailedAt: oldestQuarantine.toISOString(),
-        }),
-      );
-    }
-    // D10: three consecutive failed runs (15 min) escalate to `error`, which
-    // makes the event a notification candidate.
-    const failedLevel = consecutiveFailures >= 3 ? "error" : "warn";
-    await deps.recordEvent(
-      event(rolling.complete ? "completed" : "failed", rolling.complete ? "info" : failedLevel, summary.ran_at, {
+      event("quarantine_stale", "warn", summary.ran_at, {
         leaseOwnerHash: ownerHash,
-        windowFrom: summary.window_from,
-        windowTo: summary.window_to,
-        pages: summary.pages,
-        records: summary.records,
-        upserts: summary.upserts,
-        noops: summary.noops,
-        failures: summary.failures,
         quarantined: summary.quarantined,
-        quarantineRetries: summary.quarantine_retries,
-        stragglerReads: summary.straggler_reads,
-        settledFromStore: summary.settled_from_store,
-        syncMode: summary.sync?.mode ?? "off",
-        syncRecords: summary.sync?.records ?? null,
-        syncChanged: summary.sync?.changed ?? null,
-        syncErrorCode: summary.sync?.error_code ?? null,
-        throttledCount: summary.throttled_count,
-        cursorAdvanced: summary.cursor_advanced,
-        knownCompleteThrough: summary.known_complete_through,
-        gapsAfter: summary.gaps_after,
-        consecutiveFailures,
-        errorCode: summary.error_code,
-        runtimeMs: summary.runtime_ms,
-      }),
-    );
+        oldestFirstFailedAt: oldestQuarantine.toISOString(),
+      });
+    }
+    // D10: three consecutive failed runs (15 min) escalate the log to `error`,
+    // so platform alerting can page on it.
+    const failedLevel = consecutiveFailures >= 3 ? "error" : "warn";
+    event(rolling.complete ? "completed" : "failed", rolling.complete ? "info" : failedLevel, summary.ran_at, {
+      leaseOwnerHash: ownerHash,
+      windowFrom: summary.window_from,
+      windowTo: summary.window_to,
+      pages: summary.pages,
+      records: summary.records,
+      upserts: summary.upserts,
+      noops: summary.noops,
+      failures: summary.failures,
+      quarantined: summary.quarantined,
+      quarantineRetries: summary.quarantine_retries,
+      stragglerReads: summary.straggler_reads,
+      settledFromStore: summary.settled_from_store,
+      syncMode: summary.sync?.mode ?? "off",
+      syncRecords: summary.sync?.records ?? null,
+      syncChanged: summary.sync?.changed ?? null,
+      syncErrorCode: summary.sync?.error_code ?? null,
+      throttledCount: summary.throttled_count,
+      cursorAdvanced: summary.cursor_advanced,
+      knownCompleteThrough: summary.known_complete_through,
+      gapsAfter: summary.gaps_after,
+      consecutiveFailures,
+      errorCode: summary.error_code,
+      runtimeMs: summary.runtime_ms,
+    });
     return summary;
   } catch (error) {
     summary.runtime_ms = elapsed(startedAt, deps.now());
@@ -877,7 +862,7 @@ export async function runCallLogReconcileOnce(
       summary.known_complete_through = null;
       summary.gaps_after = state.gaps?.length ?? 0;
       logger.warn({ msg: "sales_intelligence.call_log_reconcile.lease_lost", leaseOwnerHash: ownerHash });
-      await deps.recordEvent(event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: "lease_lost" }));
+      event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: "lease_lost" });
       return summary;
     }
     summary.error_code = "state_write_failed";
@@ -892,7 +877,7 @@ export async function runCallLogReconcileOnce(
     } catch {
       /* lease expiry is the recovery path */
     }
-    await deps.recordEvent(event("failed", "error", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code }));
+    event("failed", "error", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: summary.error_code });
     return summary;
   }
 }
@@ -1070,24 +1055,14 @@ type ReconcileEventKind =
   | "quarantine_stale"
   | "sync_token_expired";
 
+/** Structured log of one reconcile run event (`sales_intelligence.call_log_reconcile.<kind>`). */
 function event(
   kind: ReconcileEventKind,
   level: "info" | "warn" | "error",
   runId: string,
   details: Record<string, unknown>,
-) {
-  return {
-    level,
-    eventKey: `sales_intelligence.call_log_reconcile.${kind}`,
-    category: "ringcentral" as const,
-    workflow: "sales_intelligence",
-    summary: `All-direction Call Log reconcile ${kind.replace(/_/g, " ")}.`,
-    runId,
-    details,
-    notificationCandidate: kind === "failed" && level === "error",
-    reportable: false,
-    piiPolicy: "none" as const,
-  };
+): void {
+  logger[level]({ msg: `sales_intelligence.call_log_reconcile.${kind}`, runId, ...details });
 }
 
 function elapsed(from: Date, to: Date): number {

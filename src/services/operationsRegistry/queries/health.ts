@@ -20,7 +20,6 @@ import { getCplCorrectionJobModel } from "../../../models/CplCorrectionJob";
 import { getRingCentralInboundRouteModel } from "../../../models/RingCentralInboundRoute";
 import { getRingCentralInboundRouteAssignmentModel } from "../../../models/RingCentralInboundRouteAssignment";
 import { OperationsRegistryChange } from "../../../models/OperationsRegistryChange";
-import { getOperationalEventModel } from "../../../models/OperationalEvent";
 import { getAdminProxySigningSecret } from "../config";
 import {
   validateCplSchedule,
@@ -29,8 +28,6 @@ import {
 import type { RegistryHealthFinding, RegistryHealthResult } from "../types";
 import {
   getRegistryRuntimeTelemetry,
-  mergeDurableCompatibilityTelemetry,
-  type RegistryCompatibilityConsumer,
   type RegistryRuntimeTelemetry,
 } from "../runtimeTelemetry";
 
@@ -49,7 +46,6 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
   await connectMongo();
 
   const findings: RegistryHealthFindingDraft[] = [];
-  const observationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   if (!getAdminProxySigningSecret()) {
     findings.push({
@@ -75,8 +71,6 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     stalledCorrectionJobs,
     ringCentralRoutes,
     ringCentralAssignments,
-    sourceResolutionEvents,
-    compatibilityEvents,
     latestMigrationChange,
     labelMappings,
     granotSources,
@@ -105,29 +99,6 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
     getRingCentralInboundRouteAssignmentModel().find({
       effective_until: { $exists: false },
     }).lean().exec(),
-    getOperationalEventModel()
-      .find({
-        event_key: {
-          $in: [
-            "operations_registry.source_resolution_ambiguous",
-            "operations_registry.source_resolution_not_found",
-          ],
-        },
-        occurred_at: { $gte: observationCutoff },
-      })
-      .sort({ occurred_at: -1 })
-      .limit(100)
-      .lean()
-      .exec(),
-    getOperationalEventModel()
-      .find({
-        event_key: "operations_registry.compatibility_read",
-        occurred_at: { $gte: observationCutoff },
-      })
-      .sort({ occurred_at: -1 })
-      .limit(100)
-      .lean()
-      .exec(),
     OperationsRegistryChange.findOne({
       actor_id: { $regex: /^operations-registry-m\d+$/ },
     })
@@ -235,39 +206,7 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
       stalledCorrectionJobs,
     ),
   );
-  const runtimeTelemetry = mergeDurableCompatibilityTelemetry(
-    getRegistryRuntimeTelemetry(),
-    compatibilityEvents
-      .map((event) => {
-        const path = event.details.compatibility_path;
-        const consumer = event.details.consumer_category;
-        return typeof path === "string" && isCompatibilityConsumer(consumer)
-          ? {
-              path,
-              consumer_category: consumer,
-              occurred_at: event.occurred_at,
-            }
-          : null;
-      })
-      .filter(
-        (
-          event,
-        ): event is {
-          path: string;
-          consumer_category: RegistryCompatibilityConsumer;
-          occurred_at: Date;
-        } => event !== null,
-      ),
-  );
-  findings.push(...buildRuntimeRegistryHealthFindings(runtimeTelemetry));
-  findings.push(
-    ...buildSourceResolutionEventFindings(
-      sourceResolutionEvents.map((event) => ({
-        event_key: event.event_key,
-        occurred_at: event.occurred_at,
-      })),
-    ),
-  );
+  findings.push(...buildRuntimeRegistryHealthFindings(getRegistryRuntimeTelemetry()));
   findings.push(
     latestMigrationChange
       ? {
@@ -368,40 +307,6 @@ export async function getRegistryHealth(): Promise<RegistryHealthResult> {
   };
 }
 
-export function buildSourceResolutionEventFindings(
-  events: readonly { event_key: string; occurred_at: Date }[],
-): RegistryHealthFindingDraft[] {
-  if (!events.length) return [];
-  const ordered = [...events].sort(
-    (left, right) => left.occurred_at.getTime() - right.occurred_at.getTime(),
-  );
-  const ambiguous = events.filter((event) =>
-    event.event_key.endsWith("_ambiguous"),
-  ).length;
-  const missing = events.length - ambiguous;
-  return [
-    {
-      code: "registry.source_resolution_failures",
-      severity: "error",
-      summary: `${missing} missing and ${ambiguous} ambiguous source resolution event(s) were observed in the latest bounded sample.`,
-      entity_type: "source_granularity",
-      first_observed_at: ordered[0]!.occurred_at.toISOString(),
-      last_observed_at: ordered.at(-1)!.occurred_at.toISOString(),
-      actionable: true,
-      evidence: {
-        sample_size: events.length,
-        missing,
-        ambiguous,
-      },
-      remediation: {
-        summary:
-          "Add or correct active source identifiers, aliases, priorities, and defaults.",
-        action: "review_source_resolution",
-      },
-    },
-  ];
-}
-
 export function buildRuntimeRegistryHealthFindings(
   telemetry: RegistryRuntimeTelemetry,
 ): RegistryHealthFindingDraft[] {
@@ -446,19 +351,21 @@ export function buildRuntimeRegistryHealthFindings(
     findings.push({
       code: "registry.compatibility_reads_remaining",
       severity: "warn",
-      summary: `${readCount} compatibility read(s) used the old static list since the observation window opened on 2026-09-01. Removal is blocked until this count holds at zero.`,
+      // A per-process counter: it says what this instance saw, never that the list is unused
+      // everywhere. The cross-instance count is the operations_registry.compatibility_read log key.
+      summary: `${readCount} compatibility read(s) used the old static list on this server instance since it started. Other instances are not counted here; search the logs for operations_registry.compatibility_read for the full count.`,
       entity_type: "registry_compatibility",
       last_observed_at: lastUsedAt,
       actionable: true,
       evidence: {
         path_count: telemetry.compatibility_reads.length,
         read_count: readCount,
-        observation_window_started_at: "2026-09-01",
-        removal_blocked_until_zero: true,
+        observation_scope: "server_instance",
+        full_count_log_key: "operations_registry.compatibility_read",
       },
       remediation: {
         summary:
-          "Removal of the old static list is blocked until compatibility reads hold at zero. Add official sheet or leftover names on the lead source that should own them.",
+          "Add official sheet or leftover names on the lead source that should own them. Before removing the old static list, confirm in log search (operations_registry.compatibility_read) that no server instance still reads it.",
         action: "review_compatibility_reads",
       },
     });
@@ -1061,19 +968,6 @@ function fallbackCollisionFindings(
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function isCompatibilityConsumer(
-  value: unknown,
-): value is RegistryCompatibilityConsumer {
-  return [
-    "admin_list",
-    "booking_legacy_parse",
-    "enrichment",
-    "reconciliation",
-    "sheet_legacy_resolution",
-    "unknown",
-  ].includes(String(value));
 }
 
 function finalizeHealthFindings(

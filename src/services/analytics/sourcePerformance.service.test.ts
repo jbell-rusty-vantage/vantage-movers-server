@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { Agent } from "../../models/Agent";
 import { Merchant } from "../../models/Merchant";
-import { registerHistoricalModels } from "../../models/historical";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { analyticsQuerySchema } from "../../validation/v1.validation";
@@ -16,16 +15,11 @@ import {
 type MutableModel = Record<string, unknown>;
 const SourceCompany = getLeadSourceCompanyModel();
 const SourceGranularity = getLeadSourceGranularityModel();
-const historical = registerHistoricalModels();
 const originals = {
   companyFind: SourceCompany.find as unknown,
   granularityFind: SourceGranularity.find as unknown,
   agentFind: Agent.find as unknown,
   merchantFind: Merchant.find as unknown,
-  formDistinct: historical.FormLead.distinct as unknown,
-  callDistinct: historical.CallLead.distinct as unknown,
-  bookedDistinct: historical.BookedLead.distinct as unknown,
-  bookedAggregate: historical.BookedLead.aggregate as unknown,
 };
 
 afterEach(() => {
@@ -33,39 +27,54 @@ afterEach(() => {
   (SourceGranularity as unknown as MutableModel).find = originals.granularityFind;
   (Agent as unknown as MutableModel).find = originals.agentFind;
   (Merchant as unknown as MutableModel).find = originals.merchantFind;
-  (historical.FormLead as unknown as MutableModel).distinct = originals.formDistinct;
-  (historical.CallLead as unknown as MutableModel).distinct = originals.callDistinct;
-  (historical.BookedLead as unknown as MutableModel).distinct = originals.bookedDistinct;
-  (historical.BookedLead as unknown as MutableModel).aggregate = originals.bookedAggregate;
   resetAdminFacetsCacheForTests();
 });
 
-function stubEmptyCatalog(): void {
-  const query = {
-    sort: () => query,
-    lean: () => query,
-    exec: () => Promise.resolve([]),
+function stubCatalog(
+  companies: Record<string, unknown>[] = [],
+  granularities: Record<string, unknown>[] = [],
+): void {
+  const queryResult = (rows: Record<string, unknown>[]) => {
+    const query = {
+      sort: () => query,
+      lean: () => query,
+      exec: () => Promise.resolve(rows),
+    };
+    return query;
   };
-  (SourceCompany as unknown as MutableModel).find = () => query;
-  (SourceGranularity as unknown as MutableModel).find = () => query;
-  (Agent as unknown as MutableModel).find = () => query;
-  (Merchant as unknown as MutableModel).find = () => query;
-  (historical.FormLead as unknown as MutableModel).distinct = () => Promise.resolve([]);
-  (historical.CallLead as unknown as MutableModel).distinct = () => Promise.resolve([]);
-  (historical.BookedLead as unknown as MutableModel).distinct = () => Promise.resolve([]);
-  (historical.BookedLead as unknown as MutableModel).aggregate = () => Promise.resolve([]);
+  (SourceCompany as unknown as MutableModel).find = () => queryResult(companies);
+  (SourceGranularity as unknown as MutableModel).find = () => queryResult(granularities);
+  (Agent as unknown as MutableModel).find = () => queryResult([]);
+  (Merchant as unknown as MutableModel).find = () => queryResult([]);
 }
 
-test("historical source performance stays company-only without registry data", async () => {
-  stubEmptyCatalog();
+const SOURCE_GRANULARITY_GROUP = {
+  source_company: "$derived_source_company",
+  source_granularity_key: { $ifNull: ["$derived_source_granularity_key", "unknown"] },
+};
+
+test("source performance groups bookings by source company and granularity", async () => {
+  stubCatalog(
+    [{ _id: "company-tbm-prime", company_slug: "tbm_prime_leads", owner_label: "TBM Prime Leads", active: true }],
+    [
+      {
+        _id: "granularity-tbm-prime-form",
+        source_company: "company-tbm-prime",
+        granularity_key: "tbm_prime_leads_form",
+        owner_label: "TBM Prime Forms",
+        channel: "form",
+        active: true,
+      },
+    ],
+  );
   const aggregate = (pipeline: Record<string, unknown>[]) => {
     const group = pipeline.find((stage) => "$group" in stage) as {
       $group: { _id: unknown };
     };
-    assert.equal(group.$group._id, "$derived_source_company");
+    assert.deepEqual(group.$group._id, SOURCE_GRANULARITY_GROUP);
     return Promise.resolve([
       {
-        _id: "tbm_prime_leads",
+        _id: { source_company: "tbm_prime_leads", source_granularity_key: "tbm_prime_leads_form" },
         bookings: 2,
         cancelled_bookings: 1,
         total_deposit_amount: 5000,
@@ -75,22 +84,25 @@ test("historical source performance stays company-only without registry data", a
   };
   const result = await getSourceCompanyPerformance(
     fakeModels({ bookedAggregate: aggregate }),
-    analyticsQuerySchema.parse({ database_scope: "historical" }),
+    analyticsQuerySchema.parse({}),
   );
 
   assert.equal(result.items[0].source_company_label, "TBM Prime Leads");
   assert.equal(result.items[0].cancellation_rate, 0.5);
-  assert.deepEqual(result.items[0].granularities, []);
+  assert.deepEqual(
+    result.items[0].granularities.map((row) => row.source_granularity_label),
+    ["TBM Prime Forms"],
+  );
 });
 
-test("historical funnel recomputes company rates and has no children", async () => {
-  stubEmptyCatalog();
+test("source funnel recomputes company rates from granularity leaves", async () => {
+  stubCatalog();
   const result = await getSourceCompanyFunnel(
     fakeModels({
       formAggregate: () =>
         Promise.resolve([
           {
-            _id: "main_site",
+            _id: { source_company: "main_site", source_granularity_key: "main_site_form" },
             lead_type: "FormLead",
             total_leads: 8,
             booked_leads: 3,
@@ -101,7 +113,7 @@ test("historical funnel recomputes company rates and has no children", async () 
       bookedAggregate: () =>
         Promise.resolve([
           {
-            _id: "main_site",
+            _id: { source_company: "main_site", source_granularity_key: "main_site_form" },
             bookings: 4,
             cancelled_bookings: 1,
             total_deposit_amount: 9000,
@@ -109,12 +121,12 @@ test("historical funnel recomputes company rates and has no children", async () 
           },
         ]),
     }),
-    analyticsQuerySchema.parse({ database_scope: "historical" }),
+    analyticsQuerySchema.parse({}),
   );
 
   assert.equal(result.items[0].booking_rate, 0.5);
   assert.equal(result.items[0].cancellation_rate, 0.25);
-  assert.deepEqual(result.items[0].granularities, []);
+  assert.equal(result.items[0].granularities.length, 1);
 });
 
 function fakeModels(
@@ -129,7 +141,5 @@ function fakeModels(
     "call-leads": { aggregate: overrides.callAggregate ?? (() => Promise.resolve([])) } as never,
     "booked-leads": { aggregate: overrides.bookedAggregate ?? (() => Promise.resolve([])) } as never,
     "cancelled-leads": {} as never,
-    customers: {} as never,
-    agents: {} as never,
   };
 }

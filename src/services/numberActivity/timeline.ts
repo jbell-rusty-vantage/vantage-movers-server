@@ -2,14 +2,14 @@ import mongoose from "mongoose";
 import { z } from "zod";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getContactNumberModel } from "../../models/ContactNumber";
-import { getLeadConversationModel } from "../../models/LeadConversation";
 import { getLeadMessageModel } from "../../models/LeadMessage";
+import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
 import { csiDateSchema, csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { CsiError } from "../salesIntelligence/auth";
 import type { ContactNumberLean } from "./contactNumbers";
 import { ownerRead } from "./coverage";
-import type { CoverageDto } from "../salesIntelligence/dto";
-import { outreachTimelineSource } from "../salesIntelligence/outreach/timeline";
+import type { CoverageDto } from "../salesIntelligence/coverageDto";
+import { resolveRepIdentityAt, type TemporalRepLink } from "../salesIntelligence/repIdentity/resolve";
 import {
   numberTimelineEventDtoSchema,
   numberTimelinePageDtoSchema,
@@ -18,11 +18,11 @@ import {
 } from "./dto";
 
 /**
- * Number timeline (04 §1 `GET /numbers/:id/timeline`): a k-way merge of
- * independent, already-sorted sources over one total order
- * `(happened_at desc, kind asc, id desc)`. Each source returns up to `limit`
- * events strictly after the cursor; the merge dedupes on `(kind, id)`.
- * Team C plugs Outreach/nudge events in through `TimelineSource`.
+ * Number timeline (`GET /numbers/:id/timeline`): a k-way merge of independent,
+ * already-sorted sources over one total order `(happened_at desc, kind asc, id desc)`.
+ * Each source returns up to `limit` events strictly after the cursor; the merge
+ * dedupes on `(kind, id)`. The sources are canonical Call Interactions (provider
+ * call metadata, legs and the reviewed rep at call time) and Lead Messages.
  *
  * Reads never mutate. Merge tombstones (`merged_into_id != null`) are
  * excluded so a canonical interaction appears once; recordings are counted
@@ -53,24 +53,12 @@ export type TimelineSourceInput = {
   national_ten: string | null;
   limit: number;
   cursor: TimelineCursor | null;
-  /** D4: reach legacy conversations (no `contact_number_id`) through the recording link. Default true. */
-  legacy_conversations?: boolean;
 };
-
-/**
- * D4 gate (data spec §7). The legacy conversation scan stays **on** by default: the production
- * count of unlinked conversations is 4, not 0 (DECISIONS 2026-09-23). The operator turns it off
- * with `SALES_INTELLIGENCE_LEGACY_CONVERSATION_FALLBACK_DISABLED=true` after
- * `migration:csi:conversation-number` and a zero re-count. Same env semantics as `csiFlag`.
- */
-export function legacyConversationFallbackEnabled(): boolean {
-  return process.env.SALES_INTELLIGENCE_LEGACY_CONVERSATION_FALLBACK_DISABLED?.trim().toLowerCase() !== "true";
-}
 
 /** Returns up to `limit` events strictly after `cursor` in the total order, already sorted. */
 export type TimelineSource = (input: TimelineSourceInput) => Promise<NumberTimelineEventDto[]>;
 
-/** The three ordering keys; `kind` is open so cursors and Team C sources need no enum change here. */
+/** The three ordering keys. */
 type Ordered = { happened_at: string; kind: string; id: string };
 
 const compareStrings = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -144,6 +132,20 @@ const iso = (value: Date | string | null | undefined): string | null =>
 const objectId = (id: string) => new mongoose.Types.ObjectId(id);
 const subjectKey = (numberId: string) => `number:${numberId}`;
 
+type InteractionParty = {
+  role: string;
+  connected?: boolean;
+  extension_id?: string | null;
+  extension_number?: string | null;
+};
+type InteractionLeg = {
+  leg_type?: string | null;
+  direction?: string | null;
+  result?: string | null;
+  start_time?: Date | null;
+  duration_seconds?: number | null;
+  extension_id?: string | null;
+};
 type InteractionLean = {
   _id: mongoose.Types.ObjectId;
   provider_account_id: string;
@@ -158,11 +160,10 @@ type InteractionLean = {
   answered_at: Date | null;
   ended_at: Date | null;
   company_e164: string | null;
-  recordings: Array<{
-    provider_recording_id: string;
-    recording_type: string | null;
-    lead_conversation_id: mongoose.Types.ObjectId | null;
-  }>;
+  parties?: InteractionParty[];
+  legs?: InteractionLeg[];
+  legs_overflow_count?: number;
+  recordings: Array<{ provider_recording_id: string; recording_type: string | null }>;
   sources: string[];
   projection_revision: number;
   last_observed_at: Date;
@@ -171,7 +172,56 @@ type InteractionLean = {
   queue_fanout: boolean;
 };
 
-function interactionEvent(numberId: string, row: InteractionLean): NumberTimelineEventDto {
+/**
+ * The Vantage user on a call, through the Rep Identity Link effective at the call time. Only a
+ * reviewed sales-rep link names an Agent; anything else keeps the extension and says why.
+ */
+export type CallRepAttribution = {
+  status: "reviewed" | "unreviewed" | "excluded_role" | "no_extension";
+  agent_id: string | null;
+  agent_name: string | null;
+  extension_id: string | null;
+  extension_number: string | null;
+};
+type RepLinkLean = TemporalRepLink & { agent_name_snapshot?: string | null };
+
+/** The user party that answered (connected, with an extension), else the first user party with an extension. */
+function userParty(row: Pick<InteractionLean, "parties">): InteractionParty | null {
+  const parties = row.parties ?? [];
+  return parties.find((p) => p.role === "user" && p.connected && p.extension_id) ?? parties.find((p) => p.role === "user" && p.extension_id) ?? null;
+}
+
+/** Pure: the rep of one call from the page's Rep Identity Links. */
+export function callRepAttribution(
+  row: Pick<InteractionLean, "parties" | "provider_account_id" | "started_at">,
+  links: readonly RepLinkLean[],
+): CallRepAttribution {
+  const party = userParty(row);
+  if (!party?.extension_id) return { status: "no_extension", agent_id: null, agent_name: null, extension_id: null, extension_number: null };
+  const extension = { extension_id: party.extension_id, extension_number: party.extension_number ?? null };
+  const resolution = resolveRepIdentityAt(links, row.provider_account_id, party.extension_id, new Date(row.started_at));
+  if (resolution.status === "reviewed") {
+    const link = links.find((l) => String(l._id) === resolution.link_id) ?? null;
+    return { status: "reviewed", agent_id: resolution.agent_id, agent_name: link?.agent_name_snapshot ?? null, ...extension };
+  }
+  return { status: resolution.status === "excluded_role" ? "excluded_role" : "unreviewed", agent_id: null, agent_name: null, ...extension };
+}
+
+/** One bounded read of the Rep Identity Links a page of calls names (account + extension). */
+async function loadRepLinks(rows: readonly InteractionLean[]): Promise<RepLinkLean[]> {
+  const accounts = [...new Set(rows.map((row) => row.provider_account_id))];
+  const extensions = [...new Set(rows.flatMap((row) => {
+    const party = userParty(row);
+    return party?.extension_id ? [party.extension_id] : [];
+  }))];
+  if (!accounts.length || !extensions.length) return [];
+  return (await getRepIdentityLinkModel()
+    .find({ rc_account_id: { $in: accounts }, rc_extension_id: { $in: extensions } })
+    .limit(500)
+    .lean()) as unknown as RepLinkLean[];
+}
+
+function interactionEvent(numberId: string, row: InteractionLean, rep: CallRepAttribution): NumberTimelineEventDto {
   const id = String(row._id);
   const recordingIds = (row.recordings ?? []).map((r) => r.provider_recording_id);
   const parts = [
@@ -198,7 +248,7 @@ function interactionEvent(numberId: string, row: InteractionLean): NumberTimelin
       duration_seconds: row.duration_seconds ?? null,
       terminal: Boolean(row.terminal),
       // CC-04: "provisional" = the Call Log has only shown a mid-call snapshot (not final);
-      // null = never seen in the Call Log. Additive; readers that ignore it are unaffected.
+      // null = never seen in the Call Log.
       call_log_state: row.call_log_state ?? null,
       recording_count: recordingIds.length,
       recording_ids: recordingIds,
@@ -209,6 +259,16 @@ function interactionEvent(numberId: string, row: InteractionLean): NumberTimelin
       company_e164: row.company_e164 ?? null,
       transfer: Boolean(row.transfer),
       queue_fanout: Boolean(row.queue_fanout),
+      rep,
+      legs: (row.legs ?? []).map((leg) => ({
+        leg_type: leg.leg_type ?? null,
+        direction: leg.direction ?? null,
+        result: leg.result ?? null,
+        start_time: iso(leg.start_time),
+        duration_seconds: leg.duration_seconds ?? null,
+        extension_id: leg.extension_id ?? null,
+      })),
+      legs_overflow_count: row.legs_overflow_count ?? 0,
     },
   });
 }
@@ -225,7 +285,8 @@ export const interactionSource: TimelineSource = async ({ number_id, limit, curs
     .sort({ started_at: -1, _id: -1 })
     .limit(limit)
     .lean()) as unknown as InteractionLean[];
-  return rows.map((row) => interactionEvent(number_id, row));
+  const links = await loadRepLinks(rows);
+  return rows.map((row) => interactionEvent(number_id, row, callRepAttribution(row, links)));
 };
 
 type LeadMessageLean = {
@@ -294,160 +355,14 @@ export const leadMessageSource: TimelineSource = async ({ number_id, e164, natio
   return rows.map((row) => leadMessageEvent(number_id, row));
 };
 
-type ConversationLean = {
-  _id: mongoose.Types.ObjectId;
-  provider_account_id: string | null;
-  provider_recording_id: string;
-  call_interaction_id: mongoose.Types.ObjectId | null;
-  state: string;
-  direction: string;
-  contact_type: string | null;
-  duration_seconds: number | null;
-  started_at: Date;
-  createdAt: Date;
-  lead_ref: { model: string; id: mongoose.Types.ObjectId } | null;
-};
-
-function conversationEvent(numberId: string, row: ConversationLean): NumberTimelineEventDto {
-  const id = String(row._id);
-  return numberTimelineEventDtoSchema.parse({
-    id,
-    kind: "conversation",
-    happened_at: new Date(row.started_at).toISOString(),
-    observed_at: new Date(row.createdAt).toISOString(),
-    subject_key: subjectKey(numberId),
-    description: `Recorded conversation, state ${row.state}`,
-    evidence_refs: [`conversation:${id}`, `recording:${row.provider_recording_id}`],
-    detail: {
-      provider_recording_id: row.provider_recording_id,
-      started_at: new Date(row.started_at).toISOString(),
-      state: row.state,
-      direction: row.direction,
-      contact_type: row.contact_type ?? "unknown",
-      duration_seconds: row.duration_seconds ?? null,
-      call_interaction_id: row.call_interaction_id ? String(row.call_interaction_id) : null,
-      lead_ref:
-        row.lead_ref && row.lead_ref.model && row.lead_ref.id
-          ? { model: row.lead_ref.model, id: String(row.lead_ref.id) }
-          : null,
-    },
-  });
-}
-
-const CONVERSATION_PROJECTION = {
-  provider_account_id: 1,
-  provider_recording_id: 1,
-  call_interaction_id: 1,
-  state: 1,
-  direction: 1,
-  contact_type: 1,
-  duration_seconds: 1,
-  started_at: 1,
-  createdAt: 1,
-  lead_ref: 1,
-} as const;
-
-/**
- * Legacy `lead_conversations` rows written before discovery stamped
- * `contact_number_id` are reached through the recording link instead. The
- * fallback is bounded by the page window: it used to scan up to 2,000
- * recording-bearing interactions and build a `$in` of that size on *every*
- * timeline page, including every page of the analysis preflight (14 §9).
- *
- * `scripts/migrations/csi-conversation-contact-number.ts` backfills the link,
- * after which this branch finds nothing in steady state.
- */
-async function legacyLinkedConversations(
-  numberId: string,
-  limit: number,
-  cursor: TimelineCursor | null,
-): Promise<ConversationLean[]> {
-  const scanFilter: Record<string, unknown> = {
-    purged_at: null,
-    contact_number_id: objectId(numberId),
-    merged_into_id: null,
-    "recordings.0": { $exists: true },
-  };
-  if (cursor) scanFilter.started_at = { $lte: new Date(cursor.happened_at) };
-  const interactions = (await getCallInteractionModel()
-    .find(scanFilter, { provider_account_id: 1, recordings: 1 })
-    .sort({ started_at: -1, _id: -1 })
-    .limit(limit)
-    .lean()) as unknown as Array<Pick<InteractionLean, "provider_account_id" | "recordings">>;
-  const linkedIds: mongoose.Types.ObjectId[] = [];
-  const byAccount = new Map<string, Set<string>>();
-  for (const row of interactions) {
-    for (const recording of row.recordings ?? []) {
-      if (recording.lead_conversation_id) {
-        linkedIds.push(recording.lead_conversation_id);
-        continue;
-      }
-      const ids = byAccount.get(row.provider_account_id) ?? new Set<string>();
-      ids.add(recording.provider_recording_id);
-      byAccount.set(row.provider_account_id, ids);
-    }
-  }
-  const or: Array<Record<string, unknown>> = [];
-  if (linkedIds.length) or.push({ _id: { $in: linkedIds } });
-  for (const [account, ids] of byAccount) {
-    or.push({
-      provider: "ringcentral",
-      provider_account_id: account,
-      provider_recording_id: { $in: [...ids] },
-    });
-  }
-  if (!or.length) return [];
-  const keyset = keysetAfterCursor(cursor, "conversation", "started_at", "_id", objectId);
-  return (await getLeadConversationModel()
-    .find(
-      { $and: [{ $or: or }, { contact_number_id: null }, ...(cursor ? [keyset] : [])] },
-      CONVERSATION_PROJECTION,
-    )
-    .sort({ started_at: -1, _id: -1 })
-    .limit(limit)
-    .lean()) as unknown as ConversationLean[];
-}
-
-/**
- * `lead_conversations` for this number. Discovery stamps `contact_number_id`
- * on every conversation it writes, so the primary read is a keyset scan of
- * `lead_conversation_number_started` with no sort stage and no join.
- */
-export const conversationSource: TimelineSource = async ({ number_id, limit, cursor, legacy_conversations }) => {
-  const keyset = keysetAfterCursor(cursor, "conversation", "started_at", "_id", objectId);
-  const [direct, legacy] = await Promise.all([
-    getLeadConversationModel()
-      .find({ contact_number_id: objectId(number_id), ...keyset }, CONVERSATION_PROJECTION)
-      .sort({ started_at: -1, _id: -1 })
-      .limit(limit)
-      .lean() as unknown as Promise<ConversationLean[]>,
-    legacy_conversations === false ? Promise.resolve([] as ConversationLean[]) : legacyLinkedConversations(number_id, limit, cursor),
-  ]);
-  const merged = new Map<string, ConversationLean>();
-  for (const row of [...direct, ...legacy]) merged.set(String(row._id), row);
-  return [...merged.values()]
-    .sort((a, b) => +new Date(b.started_at) - +new Date(a.started_at) || (String(a._id) < String(b._id) ? 1 : -1))
-    .slice(0, limit)
-    .map((row) => conversationEvent(number_id, row));
-};
-
-export const DEFAULT_TIMELINE_SOURCES: readonly TimelineSource[] = [
-  interactionSource,
-  leadMessageSource,
-  conversationSource,
-  outreachTimelineSource,
-];
+export const DEFAULT_TIMELINE_SOURCES: readonly TimelineSource[] = [interactionSource, leadMessageSource];
 
 export type TimelineDependencies = {
   /** Reuse the worker's captured watermark across evidence pages. */
   coverage?: CoverageDto;
   /** Replaces the default source set (tests). */
   sources?: TimelineSource[];
-  /** Appended to the source set (Team C: outreach events, nudges). */
-  extraSources?: TimelineSource[];
   now?: () => Date;
-  /** D4 override; defaults to `legacyConversationFallbackEnabled()`. */
-  legacyConversations?: boolean;
 };
 
 const DEFAULT_LIMIT = 50;
@@ -466,14 +381,13 @@ export async function getNumberTimeline(
   if (!number) return null;
   const limit = Math.min(MAX_LIMIT, Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)));
   const cursor = opts.cursor ? decodeTimelineCursor(opts.cursor) : null;
-  const sources = [...(deps.sources ?? DEFAULT_TIMELINE_SOURCES), ...(deps.extraSources ?? [])];
+  const sources = deps.sources ?? DEFAULT_TIMELINE_SOURCES;
   const input: TimelineSourceInput = {
     number_id: numberId,
     e164: number.e164,
     national_ten: number.national_ten ?? null,
     limit: limit + 1,
     cursor,
-    legacy_conversations: deps.legacyConversations ?? legacyConversationFallbackEnabled(),
   };
   const pages = await Promise.all(sources.map((source) => source(input)));
   const merged = mergeTimeline(pages, limit);

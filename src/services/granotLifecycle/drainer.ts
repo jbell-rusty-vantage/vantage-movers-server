@@ -4,13 +4,11 @@ import {
   getGranotLifecycleFlags,
   type GranotLifecycleFlags,
 } from "../../config/domain/granotLifecycle";
-import { logger } from "../../logger";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { toObjectId } from "../../utils/objectId";
 import { SYNCHRONIZATION_OUTCOMES } from "../../models/granotLifecycleSchemas";
 import type { DurableActor } from "../durableWork/types";
-import { recordOperationalEvent } from "../observability";
 import { emitGranotLifecycleEvent } from "./observability";
 import { ProcessingDisabledError } from "./errors";
 import { classifyTechnicalFailureCode, sanitizeLastError } from "./lastError";
@@ -951,10 +949,6 @@ async function defaultRecordEvent(input: {
   details: Record<string, unknown>;
   entityId?: string;
 }): Promise<void> {
-  logger[input.level === "info" ? "info" : input.level]({
-    msg: input.eventKey,
-    ...input.details,
-  });
   await emitGranotLifecycleEvent({
     level: input.level,
     eventKey: input.eventKey,
