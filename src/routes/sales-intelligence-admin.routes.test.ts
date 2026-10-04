@@ -30,7 +30,7 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceBoundaryRouter());
   app.use(
     createSalesIntelligenceAdminRouter({
       connect: async () => {
@@ -53,8 +53,6 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
         if (rebuildError) throw rebuildError;
         return { job_id: "c".repeat(24), dedupe_key: "k", number_id: input.number_id, replayed: false };
       },
-      planBackfill: async input => ({ replayed: false, response: { available: false, days: 0, windows_planned: 0,
-        from: (input.command as { from: string }).from, to: (input.command as { to: string }).to, window_from: null, window_to: null } }),
     }),
   );
   const server = app.listen(0, "127.0.0.1");
@@ -111,15 +109,6 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
     }
     assert.deepEqual(calls, []);
 
-    const backfill = `${CSI_ADMIN_PREFIX}/backfill`;
-    const plan = { expected_revision: 1, from: "2026-01-01T00:00:00.000Z", to: "2026-01-02T00:00:00.000Z", reason: "Synthetic history" };
-    assert.equal((await call("POST", backfill, { headers: ownerHeaders("POST", backfill, "admin"), body: plan })).status, 403);
-    assert.equal((await call("POST", `${backfill}?scope=historical`, { headers: ownerHeaders("POST", backfill), body: plan })).status, 403);
-    assert.equal((await call("POST", backfill, { headers: ownerHeaders("POST", backfill), body: plan })).status, 400);
-    const planned = await call("POST", backfill, { headers: ownerHeaders("POST", backfill, "owner", { "Idempotency-Key": "synthetic-plan" }), body: plan });
-    assert.equal(planned.status, 202);
-    assert.equal((planned.body.data as { response: { windows_planned: number } }).response.windows_planned, 0);
-    calls.length = 0;
 
     // Search: query parsed strictly; defaults applied; full customer numbers are an Owner-only concern handled by the service.
     const searched = await call("GET", `${numbers}?q=0200&attachment=unlinked&limit=5`, { headers: ownerHeaders("GET", numbers) });
@@ -182,7 +171,8 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
       ["GET", `${CSI_ADMIN_PREFIX}/roster`], ["GET", `${CSI_ADMIN_PREFIX}/review-items`], ["POST", `${CSI_ADMIN_PREFIX}/restrictions/${numberId}/resolve`],
       ["POST", `${CSI_ADMIN_PREFIX}/interactions/${numberId}/contact-type`], ["GET", `${CSI_ADMIN_PREFIX}/analysis-runs`],
       ["GET", `${CSI_ADMIN_PREFIX}/assessments/${numberId}`], ["GET", `${detailPath}/conversations`], ["POST", `${detailPath}/reanalyze`],
-      ["GET", `${CSI_ADMIN_PREFIX}/conversations/${numberId}/media`]] as const) {
+      ["GET", `${CSI_ADMIN_PREFIX}/conversations/${numberId}/media`], ["POST", `${CSI_ADMIN_PREFIX}/backfill`],
+      ["GET", `${CSI_ADMIN_PREFIX}/followups`], ["POST", `${CSI_ADMIN_PREFIX}/overview/presets`]] as const) {
       assert.equal(await statusOf(method, target), 404, `${method} ${target}`);
     }
     assert.ok(!(calls as string[]).some((c) => !c.startsWith("connect") && !/^(search|detail|timeline):/.test(c)), "no retired route reached a service");
@@ -224,12 +214,11 @@ test("coverage and settings: production scope, CAS, no flag patch, GET never wri
     capabilities: { call_log: "unknown", webhook: "unavailable" },
     mapping_hygiene: { unmapped_inbound_numbers: 0, unmapped_directory_users: null, last_directory_sync_at: null, directory_status: "missing" },
   };
-  const models = { extraction: { name: "openai/gpt-5-mini", enabled: false }, transcription: { name: "openai/gpt-4o-mini-transcribe", enabled: false } };
-  const settings = { persisted: false, revision: 1, source: "accepted_defaults", policy: { version: "csi-policy-v1" }, flags: { STT_ENABLED: false }, models, updated_at: null, updated_by: null };
+  const settings = { persisted: false, revision: 1, source: "accepted_defaults", policy: { version: "csi-policy-v1" }, flags: { NUDGE_ENABLED: false }, updated_at: null, updated_by: null };
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceBoundaryRouter());
   app.use(createSalesIntelligenceAdminRouter({
     connect: async () => {},
     coverage: async () => coverage as never,
@@ -280,7 +269,7 @@ test("coverage and settings: production scope, CAS, no flag patch, GET never wri
     assert.equal(noKey.status, 400);
     const flagged = await call("PATCH", settingsPath, {
       headers: ownerHeaders("PATCH", settingsPath, { "idempotency-key": "k-flags" }),
-      body: { command: "update_settings", expected_revision: 1, policy: { version: "x" }, reason: "Owner", flags: { STT_ENABLED: true } },
+      body: { command: "update_settings", expected_revision: 1, policy: { version: "x" }, reason: "Owner", flags: { NUDGE_ENABLED: true } },
     });
     assert.equal(flagged.status, 400);
     assert.equal(settingsWrites, 0);

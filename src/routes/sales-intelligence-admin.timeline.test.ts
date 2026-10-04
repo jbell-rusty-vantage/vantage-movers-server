@@ -9,9 +9,9 @@ import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boun
 import { CSI_ADMIN_PREFIX, createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 
 /**
- * `GET /numbers/:id/timeline` serves the retained deterministic read (calls and Lead Messages)
- * whatever `SALES_INTELLIGENCE_TIMELINE_V2` says; the story-catalog `kinds[]` query and the
- * Outreach-scoped timeline are retired.
+ * `GET /numbers/:id/timeline` serves the retained deterministic read (calls and Lead Messages). The
+ * `SALES_INTELLIGENCE_TIMELINE_V2` switch, the story-catalog `kinds[]` query and the Outreach-scoped
+ * timeline are retired.
  */
 const numberId = randomBytes(12).toString("hex");
 const outreachId = randomBytes(12).toString("hex");
@@ -26,10 +26,10 @@ test("Number timeline route: the retained read with its strict query, flag-indep
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect: async () => {} }));
+  app.use(createSalesIntelligenceBoundaryRouter());
   app.use(createSalesIntelligenceAdminRouter({
     connect: async () => {},
-    flag: flag => flag === "ENABLED" || flag === "TIMELINE_V2",
+    flag: flag => flag === "ENABLED",
     timeline: async (id, opts) => {
       calls.push(`${id}:${JSON.stringify(opts)}`);
       return id === numberId ? { as_of: asOf, coverage, data: { number_id: id, items: [], cursor: null } } as never : null;

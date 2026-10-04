@@ -1,24 +1,16 @@
 import { Schema } from "mongoose";
 import { CSI_JOB_STAGES } from "../../config/domain/salesIntelligence";
-import {
-  intelligenceEnvelopeSchema,
-  intelligenceFindingSchema,
-} from "../../validation/intelligence/intelligenceEnvelope.validation";
-import { csiPolicySchema } from "../../validation/v1/salesIntelligence";
-import { attentionMetricsDtoSchema, attentionPriorityCountsDtoSchema, attentionPublishMetaSchema, attentionRowDtoSchema } from "../../services/salesIntelligence/dto";
+import { csiPersistedPolicySchema } from "../../validation/v1/salesIntelligence";
 import { z } from "zod";
-import { attentionManifestSchema } from "../../services/salesIntelligence/outreach/attentionManifest";
 import {
   defineCsiModel,
   str,
   text,
-  oid,
   ref,
   date,
   at,
   revision,
   count,
-  strings,
   refs,
   enumeration,
   actor,
@@ -29,8 +21,9 @@ import {
 /**
  * Completed queue rows are operational exhaust, not the audit trail (that
  * lives in `sales_intelligence_audit_events`). `completed_at` is written only
- * by `completeCsiJob`, and Mongo's TTL monitor ignores documents whose indexed
- * field is not a date, so pending/leased/retry rows are never expired (14 §7).
+ * by `completeCsiJob` and by the retired-stage fence (`retireLegacyCsiJobs`),
+ * and Mongo's TTL monitor ignores documents whose indexed field is not a date,
+ * so pending/leased/retry/paused/dead-letter rows are never expired (14 §7).
  */
 export const CSI_JOB_RETENTION_SECONDS = 14 * 24 * 60 * 60;
 export const SALES_INTELLIGENCE_JOB_INDEXES = [
@@ -59,13 +52,16 @@ export const SalesIntelligenceJobSchema = new Schema(
   {
     dedupe_key: str,
     payload_hash: str,
+    // Retained stages only. Rows of a retired stage written by earlier releases are read and
+    // terminalized by raw filters (`retireLegacyCsiJobs`); nothing writes that value again.
     stage: enumeration(CSI_JOB_STAGES),
     subject_key: str,
     input_revision: revision,
     deployment: str,
     database: str,
     status: enumeration(
-      ["pending", "leased", "retry", "paused", "completed", "dead_letter"],
+      // `paused` is held only by rows of retired stages until the fence marks them `retired`.
+      ["pending", "leased", "retry", "paused", "completed", "dead_letter", "retired"],
       "pending",
     ),
     attempts: count,
@@ -74,11 +70,8 @@ export const SalesIntelligenceJobSchema = new Schema(
     next_attempt_at: at,
     lease_owner: text,
     lease_epoch: count,
-    // CSI-17 transaction fence serializes evidence/submission with lease revocation.
-    evidence_fence: count,
     leased_until: date,
     reason: text,
-    result_ref: ref,
     // CSI-03 additive: bounded JSON summary written with completion (per-session outcomes, counts). Never provider bodies.
     result: {
       type: Schema.Types.Mixed,
@@ -90,15 +83,6 @@ export const SalesIntelligenceJobSchema = new Schema(
     },
     completed_at: date,
     input_refs: refs,
-    owner_reanalysis: {
-      type: new Schema({ run_id: oid, source_run_id: oid, mode: enumeration(["original_evidence", "current_context"]), owner_correction_ids: refs, focus_finding_id: ref,
-        application_disabled: { type: Boolean, default: false } }, { _id: false, strict: "throw" }),
-      default: null,
-    },
-    rep_identity_window: {
-      type: new Schema({ account: str, extension: str, from: str, through: str, change_id: str, after: text, after_at: text }, { _id: false, strict: "throw" }),
-      default: null,
-    },
   },
   { collection: "sales_intelligence_jobs" },
 );
@@ -194,80 +178,13 @@ export const getSalesIntelligenceCommandExecutionModel = defineCsiModel(
   SALES_INTELLIGENCE_COMMAND_EXECUTION_INDEXES,
   true,
 );
-export const SALES_INTELLIGENCE_AI_BUDGET_INDEXES = [
-  unique("csi_budget_month_unique", { month: 1 }),
-];
-export const SalesIntelligenceAiBudgetSchema = new Schema(
-  {
-    month: { ...str, match: /^\d{4}-(0[1-9]|1[0-2])$/ },
-    ceiling_cents: { ...count, default: 8000 },
-    reserved_cents: count,
-    actual_cents: count,
-    policy_version: str,
-    timezone: str,
-    period_start: at,
-    period_end: at,
-    activated_at: date,
-  },
-  { collection: "sales_intelligence_ai_budget" },
-);
-export const getSalesIntelligenceAiBudgetModel = defineCsiModel(
-  "SalesIntelligenceAiBudget",
-  SalesIntelligenceAiBudgetSchema,
-  SALES_INTELLIGENCE_AI_BUDGET_INDEXES,
-);
-export const SALES_INTELLIGENCE_AI_RESERVATION_INDEXES = [
-  unique("csi_reservation_unique", { reservation_id: 1 }),
-  index("csi_reservation_pending", { month: 1, status: 1 }),
-  unique("csi_reservation_step_unique", { job_id: 1, run_id: 1, step: 1 }),
-];
-export const SalesIntelligenceAiReservationSchema = new Schema(
-  {
-    reservation_id: str,
-    month: str,
-    job_id: oid,
-    run_id: ref,
-    step: str,
-    stage: enumeration(["transcription", "analysis"]),
-    estimated_cents: count,
-    model_version: text,
-    pricing_snapshot: { ...validatedJson(), required: false, default: null },
-    provider_started: { type: Boolean, default: false },
-    observed_steps: count,
-    input_tokens: count,
-    output_tokens: count,
-    reasoning_tokens: { type: Number, default: null, min: 0 },
-    /** Prefix tokens the provider served from cache, or null when it reported none (22 §4.3). */
-    cached_input_tokens: { type: Number, default: null, min: 0 },
-    observed_cents: count,
-    settled_cents: count,
-    usage_complete: { type: Boolean, default: true },
-    actual_cents: {
-      type: Number,
-      default: null,
-      min: 0,
-      validate: (v: number | null) => v === null || Number.isSafeInteger(v),
-    },
-    status: enumeration(["reserved", "reconciled", "released"], "reserved"),
-    /** Which ledger this spend belongs to. `personal` (an operator's own gateway key) never counts against the Owner's monthly ceiling. */
-    ledger: enumeration(["owner", "personal"], "owner"),
-    reserved_at: at,
-    reconciled_at: date,
-  },
-  { collection: "sales_intelligence_ai_reservations" },
-);
-export const getSalesIntelligenceAiReservationModel = defineCsiModel(
-  "SalesIntelligenceAiReservation",
-  SalesIntelligenceAiReservationSchema,
-  SALES_INTELLIGENCE_AI_RESERVATION_INDEXES,
-);
 export const SALES_INTELLIGENCE_POLICY_VERSION_INDEXES = [
   unique("csi_policy_version_unique", { version: 1 }),
 ];
 export const SalesIntelligencePolicyVersionSchema = new Schema(
   {
     version: str,
-    policy: validatedJson(csiPolicySchema),
+    policy: validatedJson(csiPersistedPolicySchema),
     actor: { type: actor, required: true },
     effective_at: at,
   },
@@ -294,69 +211,4 @@ export const getSalesIntelligencePolicyPointerModel = defineCsiModel(
   "SalesIntelligencePolicyPointer",
   SalesIntelligencePolicyPointerSchema,
   SALES_INTELLIGENCE_POLICY_POINTER_INDEXES,
-);
-export const SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES = [
-  unique("csi_attention_snapshot_unique", { snapshot_id: 1 }),
-  {
-    name: "csi_attention_expiry",
-    key: { expires_at: 1 as const },
-    expireAfterSeconds: 0,
-  },
-  // Newest live snapshot for the dataset, without a sort stage (14 §10).
-  index("csi_attention_dataset_asof", { deployment: 1, database: 1, as_of: -1 }),
-  // Chunk siblings of one header, in order. Not unique: a missing index still
-  // reads a handful of documents, and a new unique fence would refuse the
-  // first publish until a migration ran.
-  index("csi_attention_parent_chunk", { parent_snapshot_id: 1, chunk_index: 1 }),
-];
-export const SalesIntelligenceAttentionSnapshotSchema = new Schema(
-  {
-    snapshot_id: str,
-    owner_id: str,
-    filter_digest: str,
-    policy_version: str,
-    deployment: str,
-    database: str,
-    as_of: at,
-    rows: validatedJson(z.array(attentionRowDtoSchema)),
-    // Lossless cache encoding; legacy inline/chunk rows remain readable during rollout.
-    rows_gzip_base64: { type: String, default: null },
-    manifest: { type: Schema.Types.Mixed, default: null,
-      validate: { validator: (v: unknown) => v == null || attentionManifestSchema.safeParse(v).success, message: "Invalid Attention manifest" } },
-    cursor_expires_at: date,
-    counts: validatedJson(z.record(z.string(), z.number().int().nonnegative())),
-    // The latest successful list has no deletion deadline. Superseded snapshots
-    // receive a TTL only after their replacement has committed.
-    expires_at: date,
-    // Null on the header (and on older single-document snapshots). A number
-    // marks a chunk sibling whose rows belong to parent_snapshot_id.
-    chunk_index: { type: Number, default: null },
-    parent_snapshot_id: { type: String, default: null },
-    // Data spec §2.4 / §3.6–§3.7 (S2, SALES_INTELLIGENCE_ATTENTION_V2). Null on chunk siblings, on
-    // flag-off publishes and on older headers; the read then decodes the rows as before.
-    metrics: {
-      type: Schema.Types.Mixed,
-      default: null,
-      validate: { validator: (v: unknown) => v == null || attentionMetricsDtoSchema.safeParse(v).success, message: "Invalid Attention metrics" },
-    },
-    index_gzip_base64: { type: String, default: null },
-    // S7-PRIO (addendum §5): Priority chip counts per view; null on flag-off publishes and older headers.
-    priority_counts: {
-      type: Schema.Types.Mixed,
-      default: null,
-      validate: { validator: (v: unknown) => v == null || attentionPriorityCountsDtoSchema.safeParse(v).success, message: "Invalid Attention priority counts" },
-    },
-    // S9-PUBLISH (SALES_INTELLIGENCE_OVERVIEW): `{ policy_version, flags }`. No default, so flag-off headers stay byte-identical.
-    publish_meta: {
-      type: Schema.Types.Mixed,
-      validate: { validator: (v: unknown) => v == null || attentionPublishMetaSchema.safeParse(v).success, message: "Invalid Attention publish meta" },
-    },
-  },
-  { collection: "sales_intelligence_attention_snapshots" },
-);
-export const getSalesIntelligenceAttentionSnapshotModel = defineCsiModel(
-  "SalesIntelligenceAttentionSnapshot",
-  SalesIntelligenceAttentionSnapshotSchema,
-  SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES,
-  true,
 );

@@ -56,7 +56,6 @@ export type ProjectedRecording = {
   provider_recording_id: string;
   recording_type: string | null;
   observed_at: Date;
-  lead_conversation_id: string | null;
 };
 
 /**

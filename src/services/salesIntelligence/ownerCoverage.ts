@@ -311,8 +311,8 @@ export function captureHealthQueries(now: Date, staffing: Staffing) {
   const windowFrom = webhookSilenceWindowStart(now, staffing);
   const callLogStates = ["provisional", "settled"];
   // Merged rows are excluded in `$group`, not `$match`: a top-level
-  // `merged_into_id: null` lets the planner pick `call_interaction_discovery_state`
-  // (every unmerged row) instead of the two bounded `$or` branches.
+  // `merged_into_id: null` could let the planner pick an index over every
+  // unmerged row instead of the two bounded `$or` branches.
   const unmerged = { $eq: [{ $ifNull: ["$merged_into_id", null] }, null] };
   return {
     window_from: windowFrom,

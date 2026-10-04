@@ -5,7 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectId } from "mongodb";
-import { HISTORICAL_DATABASE, RETIRED_AUDIT_ACTOR_KINDS, RETIRED_AUDIT_EVENT_KINDS } from "../policy";
+import { CSI_RETIRED_JOB_STAGES } from "../../../src/config/domain/salesIntelligence";
+import {
+  CLEANUP_STATUS,
+  CONTACT_NUMBER_DEAD_FIELDS,
+  CONTACT_NUMBER_REVIEW_FIELDS,
+  HISTORICAL_DATABASE,
+  LEGACY_JOB_STAGES,
+  RETIRED_AUDIT_ACTOR_KINDS,
+  RETIRED_AUDIT_EVENT_KINDS,
+} from "../policy";
+import type { Cleanup } from "./manifest";
 import { verifyBackupFile, verifyBlobBackupFile, writeBackupFile } from "./backup";
 import { GUARD_EXIT_CODE, assertReadOnlyPipeline, isCommandAllowed } from "./guarded-mongo";
 import { type ManifestTargets, assertManifestInvariants, canonicalJson, dropCountMatches, loadManifest, manifestHash } from "./manifest";
@@ -15,6 +25,8 @@ import {
   assertClosedFilter,
   cleanupFilter,
   deploymentProblems,
+  manifestPolicyDrift,
+  terminalJobsFilter,
   terminalizeFilter,
   unlistedBlobProblems,
   verifiedFullBackupProblem,
@@ -123,6 +135,37 @@ describe("deletion manifest invariants", () => {
 });
 
 describe("purge rules", () => {
+  it("purges exactly the server's retired job stages, including rows the fence marked retired", () => {
+    assert.deepEqual([...LEGACY_JOB_STAGES].sort(), [...CSI_RETIRED_JOB_STAGES].sort());
+    assert.deepEqual(terminalJobsFilter(["analysis"]), { stage: { $in: ["analysis"] }, status: { $in: ["completed", "dead_letter", "retired"] } });
+  });
+
+  it("never unsets a retained Number field", () => {
+    for (const field of ["purged_at", "e164", "rollups", "rollups.interactions_total", "rollups.recordings_total"]) {
+      assert.equal(([...CONTACT_NUMBER_DEAD_FIELDS, ...CONTACT_NUMBER_REVIEW_FIELDS] as string[]).includes(field), false, field);
+    }
+  });
+
+  it("reports a manifest that is stale against policy.ts", () => {
+    const current: Cleanup[] = [
+      { id: "C1-contact-numbers-dead-fields", kind: "unset_fields", db: "vantagemovers", collection: "contact_numbers", fields: [...CONTACT_NUMBER_DEAD_FIELDS], expected_matches: 1, status: CLEANUP_STATUS["C1-contact-numbers-dead-fields"], spec: "" },
+      { id: "C2-legacy-stage-jobs", kind: "retire_jobs", db: "vantagemovers", collection: "sales_intelligence_jobs", stages: [...LEGACY_JOB_STAGES], expected_by_status: {}, reason: "r", status: CLEANUP_STATUS["C2-legacy-stage-jobs"], spec: "" },
+      { id: "C4-retired-audit-events", kind: "delete_filter", db: "vantagemovers", collection: "sales_intelligence_audit_events", filter: { event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS] }, "actor.kind": { $in: [...RETIRED_AUDIT_ACTOR_KINDS] } }, expected_matches: 1, status: CLEANUP_STATUS["C4-retired-audit-events"], spec: "" },
+    ];
+    assert.deepEqual(manifestPolicyDrift(current), []);
+    const stale: Cleanup[] = [
+      { ...current[0]!, fields: ["running_summary", "purged_at"] } as Cleanup,
+      { ...current[1]!, stages: ["analysis"] } as Cleanup,
+      { ...current[2]!, status: "pending_wave3" } as Cleanup,
+      { ...current[2]!, id: "C9-unknown" } as Cleanup,
+    ];
+    const drift = manifestPolicyDrift(stale);
+    assert.ok(drift.some((p) => p.includes("unsets purged_at")));
+    assert.ok(drift.some((p) => p.includes("stages differ")));
+    assert.ok(drift.some((p) => p.includes("is pending_wave3 in the manifest but final")));
+    assert.ok(drift.some((p) => p.includes("C9-unknown is not in policy.ts")));
+  });
+
   it("only accepts closed delete filters", () => {
     assert.doesNotThrow(() => assertClosedFilter({ event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS] }, "actor.kind": { $in: [...RETIRED_AUDIT_ACTOR_KINDS] } }));
     assert.doesNotThrow(() => assertClosedFilter({ scope: "attention_publish" }));

@@ -14,10 +14,6 @@ export const OWNER_REP_NUDGE_INDEXES = [
     unique: true as const,
   },
   {
-    name: "nudge_outreach_created",
-    key: { outreach_record_id: 1, createdAt: -1 },
-  },
-  {
     name: "nudge_link_created",
     key: { rep_identity_link_id: 1, createdAt: -1 },
   },
@@ -46,11 +42,9 @@ export const OwnerRepNudgeSchema = new Schema(
     provider_account_id: { type: String, default: null },
     purpose: { type: String, enum: ["call_suggestion", "review_context"], default: "review_context" },
     actor: { type: registryActorSnapshotSchema, required: true }, // reuse Operations Registry actor snapshot shape
-    outreach_record_id: {
-      type: Schema.Types.ObjectId,
-      ref: "OutreachRecord",
-      default: null,
-    },
+    // Historical rows only: Outreach records are retired (SLIM-07) and the
+    // command schema refuses an `outreach_record_id`; nothing reads by it.
+    outreach_record_id: { type: Schema.Types.ObjectId, default: null },
     contact_number_id: {
       type: Schema.Types.ObjectId,
       ref: "ContactNumber",

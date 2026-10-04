@@ -1147,7 +1147,6 @@ function mergeRecordings(
       provider_recording_id: recording.id,
       recording_type: previous?.recording_type ?? recording.type,
       observed_at: previous?.observed_at ?? now,
-      lead_conversation_id: previous?.lead_conversation_id ?? null,
     });
   }
   return [...map.values()].sort((a, b) => a.provider_recording_id.localeCompare(b.provider_recording_id));

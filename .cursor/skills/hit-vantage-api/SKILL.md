@@ -1,6 +1,6 @@
 ---
 name: hit-vantage-api
-description: Call the Vantage main-server HTTP API from operator scripts using VANTAGE_API_SECRET and x-api-secret. Use when hitting production or local /api/v1 routes, writing a scripts/api script, curling vantage-movers-main-server.vercel.app, probing form-leads, admin, Granot lifecycle, or observability, or when the user asks to hit our own API.
+description: Call the Vantage main-server HTTP API from operator scripts using VANTAGE_API_SECRET and x-api-secret. Use when hitting production or local /api/v1 routes, writing a scripts/api script, curling vantage-movers-main-server.vercel.app, probing form-leads, admin, Granot lifecycle, or Granot Health, or when the user asks to hit our own API.
 ---
 
 # Hit the Vantage API
@@ -212,7 +212,7 @@ GET    /api/v1/admin/exports/reports/agent-sales.csv
 
 `{report}`: `summary` | `revenue-trend` | `source-company-performance` | `agent-performance` | `booking-cancellation-ratio` | `source-company-funnel` | `cancellation-reasons` | `lead-source-performance` | `local-vs-long-distance` | `geographic-lanes` | `pickup-state-performance` | `delivery-state-performance` | `receiver-agent-performance` | `receiver-agent-trend` | `receiver-agent-source-breakdown` | `sms-successfully-sent-then-booked`
 
-### Admin ops, messages, Drive, registry, observability
+### Admin ops, messages, Drive, registry
 
 ```
 GET    /api/v1/admin/testimonials
@@ -248,23 +248,6 @@ POST   /api/v1/admin/booking-lead-reconciliations/:id/reopen
 GET    /api/v1/admin/operations-registry/overview
 GET    /api/v1/admin/operations-registry/health
 GET    /api/v1/admin/operations-registry/changes
-GET    /api/v1/admin/observability/overview
-GET    /api/v1/admin/observability/facets
-GET    /api/v1/admin/observability/events
-GET    /api/v1/admin/observability/events/:id
-GET    /api/v1/admin/observability/incidents
-GET    /api/v1/admin/observability/incidents/:id
-PATCH  /api/v1/admin/observability/incidents/status
-PATCH  /api/v1/admin/observability/incidents/:id/status
-GET    /api/v1/admin/observability/notifications
-GET    /api/v1/admin/observability/reports
-POST   /api/v1/admin/observability/reports/run
-GET    /api/v1/admin/observability/reports/:id
-POST   /api/v1/admin/observability/:collection/delete
-DELETE /api/v1/admin/observability/:collection/:id
-GET    /api/v1/admin/exports/observability/events.csv
-GET    /api/v1/admin/exports/observability/incidents.csv
-GET    /api/v1/admin/exports/observability/reports/:id.csv
 ```
 
 ### RingCentral inbound routes

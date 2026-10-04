@@ -52,15 +52,6 @@ export const validatedJson = (validator: z.ZodType = z.json()) => ({
     message: "Invalid CSI structured value",
   },
 });
-export const subject = new Schema(
-  {
-    kind: enumeration(["lead", "number_review"]),
-    model: { type: String, enum: ["FormLead", "CallLead"], default: null },
-    id: ref,
-    contact_number_id: ref,
-  },
-  { _id: false, strict: "throw" },
-);
 export const leadRef = new Schema(
   { model: enumeration(["FormLead", "CallLead"]), id: oid },
   { _id: false, strict: "throw" },
@@ -72,38 +63,6 @@ export const actor = new Schema(
     id: str,
     request_id: str,
     run_id: ref,
-  },
-  { _id: false, strict: "throw" },
-);
-export const assignment = new Schema(
-  {
-    origin: enumeration([
-      "owner",
-      "first_conversation",
-      "rep_promise",
-      "inherited_outreach",
-      // Team 4 AC5-ACTIVITY (spec §7.2): two or more attributable attempts by one reviewed rep.
-      "first_attempts",
-      // S6-AGENT (assignment addendum §3.2, E4): the record follows the Lead's `receiver_agent`.
-      "crm_receiver",
-    ]),
-    // S6-AGENT: on a `crm_receiver` assignment, the Lead's `receiver_agent_source` it followed (its rank,
-    // `outreach/types.ts`). No default, so every other assignment is stored exactly as before.
-    receiver_source: { type: String },
-    actor_id: text,
-    evidence_id: ref,
-    assigned_at: at,
-    instruction_id: ref,
-  },
-  { _id: false, strict: "throw" },
-);
-export const dateResolution = new Schema(
-  {
-    precision: enumeration(["exact", "day", "unresolved"]),
-    timezone: str,
-    assumption: text,
-    anchor: date,
-    policy_version: str,
   },
   { _id: false, strict: "throw" },
 );

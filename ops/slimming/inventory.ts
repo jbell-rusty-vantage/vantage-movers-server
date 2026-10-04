@@ -374,12 +374,23 @@ async function main(): Promise<void> {
 
     // 7. Lead Conversations media references and the Blob store.
     log("[inventory] conversation media references");
-    const mediaRefs = (await c.distinct(MAIN_DATABASE, "lead_conversations", "media.blob_pathname", { "media.blob_pathname": { $type: "string" } })).map(String);
+    const conversationRefs = (await c.distinct(MAIN_DATABASE, "lead_conversations", "media.blob_pathname", { "media.blob_pathname": { $type: "string" } })).map(String);
+    // Superseded audio a completed media_fetch job handed to the (now removed) retention Blob delete; these keys
+    // need not appear in lead_conversations any more, so the manifest takes the union.
+    const pendingDeleteRefs = (
+      await c.distinct(MAIN_DATABASE, "sales_intelligence_jobs", "result.pending_blob_delete", {
+        stage: "media_fetch",
+        status: "completed",
+        "result.pending_blob_delete": { $type: "string" },
+      })
+    ).map(String);
+    const mediaRefs = [...new Set([...conversationRefs, ...pendingDeleteRefs])];
     const conversationMedia = {
       docs: await c.count(MAIN_DATABASE, "lead_conversations"),
       with_blob_pathname: await c.count(MAIN_DATABASE, "lead_conversations", { "media.blob_pathname": { $type: "string" } }),
       with_media_purged_at: await c.count(MAIN_DATABASE, "lead_conversations", { "media.purged_at": { $type: "date" } }),
       distinct_pathnames: mediaRefs.length,
+      pending_blob_delete_pathnames: pendingDeleteRefs.length,
       pathnames_outside_prefix: mediaRefs.filter((p) => !p.startsWith(CONVERSATION_BLOB_PREFIX)).length,
     };
     let blob: Document | null = null;

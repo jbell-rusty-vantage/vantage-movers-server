@@ -83,7 +83,7 @@ function classify(result: { status: number; json: { code?: string } | null }): O
 
 /** The interim contract (`docs/server-admin-slimming/evidence/S-NUM-CONTRACT.md`): no other admin route may exist. */
 const INTERIM_ADMIN_ROUTES = [
-  "GET /live", "GET /coverage", "GET /settings", "POST /backfill", "PATCH /settings",
+  "GET /live", "GET /coverage", "GET /settings", "PATCH /settings",
   "GET /numbers", "GET /numbers/:id", "GET /numbers/:id/timeline", "POST /numbers/:id/rebuild",
   "GET /attachments", "POST /attachments/attach", "POST /attachments/:id/reject", "POST /attachments/:id/detach",
   "GET /reps", "GET /reps/:id", "POST /reps", "POST /reps/propose", "POST /reps/:id/review",
@@ -95,7 +95,7 @@ test("interim access matrix: every Sales Intelligence admin route × Owner / Adm
   const admin = createSalesIntelligenceAdminRouter({ connect: marker, live: marker as never });
   const cron = createSalesIntelligenceCronRouter();
   const invite = createAdminInviteEmailRouter({ send: async () => ({ status: "not_configured" }) as never });
-  const boundary = createSalesIntelligenceBoundaryRouter({ connect: async () => {} });
+  const boundary = createSalesIntelligenceBoundaryRouter();
   const { base, close } = await serve([boundary, admin, invite, cron]);
   const rows: string[] = [];
   try {
@@ -139,7 +139,7 @@ test("a validly signed rep reaches the route and is refused there; tampered, uns
   env({ rep: true });
   let searches = 0;
   const admin = createSalesIntelligenceAdminRouter({ connect: async () => {}, search: (async () => { searches++; return { as_of: "x", coverage: {}, data: {} }; }) as never });
-  const { base, close } = await serve([createSalesIntelligenceBoundaryRouter({ connect: async () => {} }), admin]);
+  const { base, close } = await serve([createSalesIntelligenceBoundaryRouter(), admin]);
   const url = `${CSI_ADMIN_PREFIX}/numbers`;
   try {
     const rep = await call(base, "GET", url, "rep");

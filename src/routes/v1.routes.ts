@@ -1,5 +1,4 @@
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
-import { createSalesIntelligenceInternalRouter } from "./sales-intelligence-internal.routes";
 import { createSalesIntelligenceHistoryRouter } from "./sales-intelligence-history.routes";
 import { createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -17,7 +16,6 @@ import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import dailyOperationsAdminRoutes from "./daily-operations-admin.routes";
 import jobNumberTimelineAdminRoutes from "./job-number-timeline-admin.routes";
-import conversationsAdminRoutes from "./conversations-admin.routes";
 import extensionUsersAdminRoutes from "./extension-users-admin.routes";
 import adminInviteEmailInternalRoutes from "./admin-invite-email-internal.routes";
 import { createExtensionGranotApplyRouter } from "./extension-granot-apply.routes";
@@ -260,18 +258,15 @@ const router = Router();
 router.use(extensionAuthRoutes);
 router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
-// History reads (MCP general endpoint) sit behind the broad secret only; the boundary router
-// below denies every other `/internal/sales-intelligence` path, so this must precede it.
+// Canonical history reads (MCP general endpoint) sit behind the broad secret only.
 router.use(createSalesIntelligenceHistoryRouter());
 router.use(createSalesIntelligenceBoundaryRouter());
-router.use(createSalesIntelligenceInternalRouter());
 // CSI-04 Owner reads and the rebuild command; mounted after the CSI boundary (flag + Owner + scope).
 router.use(createSalesIntelligenceAdminRouter());
 router.use(ringCentralRegistryRoutes);
 router.use(granotLifecycleAdminRoutes);
 router.use(dailyOperationsAdminRoutes);
 router.use(jobNumberTimelineAdminRoutes);
-router.use(conversationsAdminRoutes);
 router.use(extensionUsersAdminRoutes);
 // S8-USERS: signed-Owner internal send of an Admin user invite email.
 router.use(adminInviteEmailInternalRoutes);

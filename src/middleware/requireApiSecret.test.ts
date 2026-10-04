@@ -1,18 +1,11 @@
 import assert from "node:assert/strict";
-import test, { afterEach, beforeEach } from "node:test";
+import test, { afterEach } from "node:test";
 import type { NextFunction, Request, Response } from "express";
 import type { PublicExtensionUser } from "../auth/extension";
 import { requireApiSecret, vantageAuthLookups } from "./requireApiSecret";
 
 const originalApiSecret = process.env.VANTAGE_API_SECRET;
 const originalScopedApiKeys = process.env.VANTAGE_SCOPED_API_KEYS;
-const originalObservabilityEnabled = process.env.OBSERVABILITY_ENABLED;
-
-beforeEach(() => {
-  // Auth decisions still flow; disabling observability keeps these unit tests
-  // free of Mongo connection attempts and event persistence.
-  process.env.OBSERVABILITY_ENABLED = "false";
-});
 
 const originalLookup = vantageAuthLookups.getExtensionUserFromAccessToken;
 
@@ -20,11 +13,6 @@ afterEach(() => {
   vantageAuthLookups.getExtensionUserFromAccessToken = originalLookup;
   process.env.VANTAGE_API_SECRET = originalApiSecret;
   process.env.VANTAGE_SCOPED_API_KEYS = originalScopedApiKeys;
-  if (originalObservabilityEnabled === undefined) {
-    delete process.env.OBSERVABILITY_ENABLED;
-  } else {
-    process.env.OBSERVABILITY_ENABLED = originalObservabilityEnabled;
-  }
 });
 
 test("requireApiSecret accepts the global API secret on any v1 route", async () => {

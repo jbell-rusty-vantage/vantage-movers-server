@@ -211,10 +211,12 @@ export const MAIN_CLASSIFICATION: Record<string, Classification> = {
 };
 
 /**
- * Legacy job stages SPEC §7.4 removes outright. Rows of these stages are terminalized (pending/retry/paused,
- * and leased rows whose lease has expired) and then deleted. A live lease aborts the purge: an old worker is
- * still running. `number_refresh`, `backfill`, `retention` and `rebuild` are split, not removed, so their rows
- * stay until wave 3 finalizes which payloads are legacy.
+ * Legacy job stages SPEC §7.4 removes outright: exactly the server's `CSI_RETIRED_JOB_STAGES`
+ * (`src/config/domain/salesIntelligence.ts`; a unit test pins the equality). Rows of these stages are
+ * terminalized (pending/retry/paused, and leased rows whose lease has expired) and then deleted, together with
+ * the rows the slim server's fence already marked `retired`. A live lease aborts the purge: an old worker is
+ * still running. Wave 2 settled the former split stages: `number_refresh`, `backfill` and `retention` are
+ * retired (retention runs in the cron, not as a job), and `rebuild` is retained whole.
  */
 export const LEGACY_JOB_STAGES = [
   "outreach_ensure",
@@ -225,12 +227,17 @@ export const LEGACY_JOB_STAGES = [
   "transcription",
   "analysis",
   "application",
+  "number_refresh",
+  "backfill",
+  "retention",
+  "rep_identity_reevaluate",
   "move_assessment",
 ] as const;
-export const SPLIT_JOB_STAGES = ["number_refresh", "backfill", "retention", "rebuild"] as const;
+/** No job stage is split any more (see `LEGACY_JOB_STAGES`); kept so the inventory report shape is stable. */
+export const SPLIT_JOB_STAGES: readonly string[] = [];
 export const RETIRED_JOB_REASON = "slimming_retired_stage";
 
-/** ContactNumber paths the slim schema drops (SPEC §7.4). Final list follows the S-NUM/S-OUT schema cut. */
+/** ContactNumber paths the slim schema drops (SPEC §7.4). Final after the S-NUM/S-AI/S-OUT schema cut (wave 2). */
 export const CONTACT_NUMBER_DEAD_FIELDS = [
   "running_summary",
   "intelligence_schedule",
@@ -238,9 +245,14 @@ export const CONTACT_NUMBER_DEAD_FIELDS = [
   "rollups.conversations_analyzed_total",
   "rollups.last_analyzed_at",
   "rollups.outreach_records_total",
+  "rollups.last_meaningful_contact_at",
 ] as const;
-/** Content-retention bookkeeping that only served conversation content purges; decided in wave 3. */
-export const CONTACT_NUMBER_REVIEW_FIELDS = ["content_purge_pending", "retention_epoch", "evidence_fence", "purged_at"] as const;
+/**
+ * Content-retention bookkeeping that only served conversation content purges; no retained reader (wave 2).
+ * `purged_at` is NOT here: the retained Call-activity retention writes it as the purge marker, and Numbers
+ * search, timeline and history reads filter on it, so unsetting it would resurface purged Numbers.
+ */
+export const CONTACT_NUMBER_REVIEW_FIELDS = ["content_purge_pending", "retention_epoch", "evidence_fence"] as const;
 
 /**
  * `sales_intelligence_sync_state` scopes, exact. Owners: `outreach/worker.ts` (ensure, entity-change cursor,
@@ -255,10 +267,13 @@ export const RETIRED_SYNC_SCOPES = [
   "intelligence_source_scan",
   "overview_refresh",
   "outreach_repair:OutreachRecord",
+  // Wave 2: the retired Call Log backfill's lease and cursor (no retained reader).
+  "backfill",
+  "backfill:call_log",
 ] as const;
 /**
- * Outreach-owned cursors that S-NUM may carry into the independent Lead-Number/attachment nomination path
- * (SPEC §7.4 keeps the watermark backstop). Deleted only once wave 3 confirms no retained reader.
+ * Outreach-owned cursors. Wave 2 confirmed no retained reader (the attachment path keeps its own
+ * `attachment_watermark:*` scopes), so C6 is final.
  */
 export const PENDING_SYNC_SCOPES = [
   "outreach_ensure",
@@ -289,6 +304,7 @@ export const KEPT_SYNC_SCOPE_FAMILY = "rep_identity:";
  */
 export const RETIRED_AUDIT_EVENT_KINDS = [
   "analysis.reanalysis_requested",
+  "analysis.suggestion_applied",
   "assessment_followup_created",
   "attachment_identity_changed",
   "call_fulfilled_action",
@@ -324,6 +340,7 @@ export const RETIRED_AUDIT_EVENT_KINDS = [
   "progress_default_created",
   "recording_discovery.completed",
   "recording_discovery.no_recording",
+  "rep_identity.reevaluated",
   "wait_expired",
 ] as const;
 export const RETIRED_AUDIT_ACTOR_KINDS = ["worker", "intelligence"] as const;
@@ -333,12 +350,12 @@ export const RETIRED_AUDIT_ACTOR_KINDS = ["worker", "intelligence"] as const;
  * entry to `final` (or removes it) once the owning lane's schema cut is merged, then regenerates the manifest.
  */
 export const CLEANUP_STATUS = {
-  "C1-contact-numbers-dead-fields": "pending_wave3",
+  "C1-contact-numbers-dead-fields": "final",
   "C2-legacy-stage-jobs": "final",
   "C3-retired-sync-scopes": "final",
-  "C4-retired-audit-events": "pending_wave3",
-  "C5-contact-numbers-retention-fields": "pending_wave3",
-  "C6-outreach-cursor-sync-scopes": "pending_wave3",
+  "C4-retired-audit-events": "final",
+  "C5-contact-numbers-retention-fields": "final",
+  "C6-outreach-cursor-sync-scopes": "final",
 } as const satisfies Record<string, "final" | "pending_wave3">;
 
 /** Blob prefix written only by conversation media (`src/config/domain/conversations.ts`). */

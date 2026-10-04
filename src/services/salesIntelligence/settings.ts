@@ -1,13 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import {
-  CSI_FLAGS,
-  csiBootstrapNumbers,
-  csiFlag,
-  csiProviderConfiguration,
-} from "../../config/domain/salesIntelligence";
+import { CSI_FLAGS, csiFlag } from "../../config/domain/salesIntelligence";
 import { getSalesIntelligencePolicyPointerModel } from "../../models/SalesIntelligencePolicyPointer";
 import { getSalesIntelligencePolicyVersionModel } from "../../models/SalesIntelligencePolicyVersion";
-import { csiSettingsCommandSchema } from "../../validation/v1/salesIntelligence";
+import { csiSettingsCommandSchema, csiStoredPolicySchema } from "../../validation/v1/salesIntelligence";
 import { CsiError, type CsiActor } from "./auth";
 import { csiSettingsReadDtoSchema, type CsiSettingsReadDto } from "./dto";
 import { defaultCsiPolicy, initializeCsiPolicy, updateCsiPolicy } from "./policy";
@@ -28,26 +23,17 @@ export function displayFlags() {
   >;
 }
 
-export function displayModels() {
-  const config = csiProviderConfiguration();
-  return {
-    extraction: { name: config.extractionModel, enabled: csiFlag("EXTRACTION_ENABLED") },
-    transcription: { name: config.transcriptionModel, enabled: csiFlag("STT_ENABLED") },
-  };
-}
-
+/** The retained policy only; settings of retired capabilities in older stored versions are not shown. */
 export async function readCsiSettings(): Promise<CsiSettingsReadDto> {
   const flags = displayFlags();
-  const models = displayModels();
   const pointer = await getSalesIntelligencePolicyPointerModel().findOne({ key: "active" }).lean();
   if (!pointer) {
     return csiSettingsReadDtoSchema.parse({
       persisted: false,
       revision: 1,
       source: "accepted_defaults",
-      policy: { ...defaultCsiPolicy(), ...csiBootstrapNumbers() },
+      policy: defaultCsiPolicy(),
       flags,
-      models,
       updated_at: null,
       updated_by: null,
     });
@@ -58,9 +44,8 @@ export async function readCsiSettings(): Promise<CsiSettingsReadDto> {
     persisted: true,
     revision: pointer.revision,
     source: "persisted",
-    policy: row.policy,
+    policy: csiStoredPolicySchema.parse(row.policy),
     flags,
-    models,
     updated_at: row.effective_at.toISOString(),
     updated_by: row.actor?.id ?? null,
   });

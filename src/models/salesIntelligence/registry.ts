@@ -1,9 +1,3 @@
-import { getOutreachRecordModel, OUTREACH_RECORD_INDEXES } from "./outreach";
-import { getAttentionArtifactModel, ATTENTION_ARTIFACT_INDEXES } from "./attentionArtifact";
-import {
-  getOutreachFollowupModel,
-  OUTREACH_FOLLOWUP_INDEXES,
-} from "./outreach";
 import {
   getSalesIntelligenceJobModel,
   SALES_INTELLIGENCE_JOB_INDEXES,
@@ -17,14 +11,6 @@ import {
   SALES_INTELLIGENCE_COMMAND_EXECUTION_INDEXES,
 } from "./infrastructure";
 import {
-  getSalesIntelligenceAiBudgetModel,
-  SALES_INTELLIGENCE_AI_BUDGET_INDEXES,
-} from "./infrastructure";
-import {
-  getSalesIntelligenceAiReservationModel,
-  SALES_INTELLIGENCE_AI_RESERVATION_INDEXES,
-} from "./infrastructure";
-import {
   getSalesIntelligencePolicyVersionModel,
   SALES_INTELLIGENCE_POLICY_VERSION_INDEXES,
 } from "./infrastructure";
@@ -33,45 +19,17 @@ import {
   SALES_INTELLIGENCE_POLICY_POINTER_INDEXES,
 } from "./infrastructure";
 import {
-  getSalesIntelligenceAttentionSnapshotModel,
-  SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES,
-} from "./infrastructure";
-import {
-  getIntelligenceRunModel,
-  INTELLIGENCE_RUN_INDEXES,
-} from "./intelligence";
-import {
-  getIntelligenceEvidenceSnapshotModel,
-  INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES,
-} from "./intelligence";
-import {
-  getIntelligenceSubmissionModel,
-  INTELLIGENCE_SUBMISSION_INDEXES,
-} from "./intelligence";
-import {
-  getIntelligenceFindingModel,
-  INTELLIGENCE_FINDING_INDEXES,
-} from "./intelligence";
-import {
-  getIntelligenceEffectModel,
-  INTELLIGENCE_EFFECT_INDEXES,
-} from "./intelligence";
-import {
   getSalesIntelligenceOwnerInstructionModel,
   SALES_INTELLIGENCE_OWNER_INSTRUCTION_INDEXES,
-} from "./intelligence";
-import {
-  getIntelligenceOwnerAssessmentModel,
-  INTELLIGENCE_OWNER_ASSESSMENT_INDEXES,
-} from "./intelligence";
+} from "./review";
 import {
   getSalesIntelligenceReviewItemModel,
   SALES_INTELLIGENCE_REVIEW_ITEM_INDEXES,
-} from "./intelligence";
+} from "./review";
 import {
   getSalesIntelligenceContactRestrictionModel,
   SALES_INTELLIGENCE_CONTACT_RESTRICTION_INDEXES,
-} from "./intelligence";
+} from "./review";
 import {
   getCallInteractionAliasModel,
   CALL_INTERACTION_ALIAS_INDEXES,
@@ -88,10 +46,6 @@ import {
   getSalesIntelligenceSyncWindowModel,
   SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
 } from "./capture";
-import {
-  getMoveAssessmentArtifactModel,
-  MOVE_ASSESSMENT_ARTIFACT_INDEXES,
-} from "./assessment";
 import {
   getContactNumberModel,
   CONTACT_NUMBER_INDEXES,
@@ -112,18 +66,7 @@ import {
   getOwnerRepNudgeModel,
   OWNER_REP_NUDGE_INDEXES,
 } from "../OwnerRepNudge";
-import { getOutreachRepDayModel, OUTREACH_REP_DAY_INDEXES } from "./overview";
 export const CSI_MODEL_REGISTRY = [
-  {
-    name: "OutreachRecord",
-    model: getOutreachRecordModel,
-    indexes: OUTREACH_RECORD_INDEXES,
-  },
-  {
-    name: "OutreachFollowup",
-    model: getOutreachFollowupModel,
-    indexes: OUTREACH_FOLLOWUP_INDEXES,
-  },
   {
     name: "SalesIntelligenceJob",
     model: getSalesIntelligenceJobModel,
@@ -140,16 +83,6 @@ export const CSI_MODEL_REGISTRY = [
     indexes: SALES_INTELLIGENCE_COMMAND_EXECUTION_INDEXES,
   },
   {
-    name: "SalesIntelligenceAiBudget",
-    model: getSalesIntelligenceAiBudgetModel,
-    indexes: SALES_INTELLIGENCE_AI_BUDGET_INDEXES,
-  },
-  {
-    name: "SalesIntelligenceAiReservation",
-    model: getSalesIntelligenceAiReservationModel,
-    indexes: SALES_INTELLIGENCE_AI_RESERVATION_INDEXES,
-  },
-  {
     name: "SalesIntelligencePolicyVersion",
     model: getSalesIntelligencePolicyVersionModel,
     indexes: SALES_INTELLIGENCE_POLICY_VERSION_INDEXES,
@@ -160,45 +93,9 @@ export const CSI_MODEL_REGISTRY = [
     indexes: SALES_INTELLIGENCE_POLICY_POINTER_INDEXES,
   },
   {
-    name: "SalesIntelligenceAttentionSnapshot",
-    model: getSalesIntelligenceAttentionSnapshotModel,
-    indexes: SALES_INTELLIGENCE_ATTENTION_SNAPSHOT_INDEXES,
-  },
-  { name: "AttentionArtifact", model: getAttentionArtifactModel, indexes: ATTENTION_ARTIFACT_INDEXES },
-  {
-    name: "IntelligenceRun",
-    model: getIntelligenceRunModel,
-    indexes: INTELLIGENCE_RUN_INDEXES,
-  },
-  {
-    name: "IntelligenceEvidenceSnapshot",
-    model: getIntelligenceEvidenceSnapshotModel,
-    indexes: INTELLIGENCE_EVIDENCE_SNAPSHOT_INDEXES,
-  },
-  {
-    name: "IntelligenceSubmission",
-    model: getIntelligenceSubmissionModel,
-    indexes: INTELLIGENCE_SUBMISSION_INDEXES,
-  },
-  {
-    name: "IntelligenceFinding",
-    model: getIntelligenceFindingModel,
-    indexes: INTELLIGENCE_FINDING_INDEXES,
-  },
-  {
-    name: "IntelligenceEffect",
-    model: getIntelligenceEffectModel,
-    indexes: INTELLIGENCE_EFFECT_INDEXES,
-  },
-  {
     name: "SalesIntelligenceOwnerInstruction",
     model: getSalesIntelligenceOwnerInstructionModel,
     indexes: SALES_INTELLIGENCE_OWNER_INSTRUCTION_INDEXES,
-  },
-  {
-    name: "IntelligenceOwnerAssessment",
-    model: getIntelligenceOwnerAssessmentModel,
-    indexes: INTELLIGENCE_OWNER_ASSESSMENT_INDEXES,
   },
   {
     name: "SalesIntelligenceReviewItem",
@@ -231,11 +128,6 @@ export const CSI_MODEL_REGISTRY = [
     indexes: SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
   },
   {
-    name: "MoveAssessmentArtifact",
-    model: getMoveAssessmentArtifactModel,
-    indexes: MOVE_ASSESSMENT_ARTIFACT_INDEXES,
-  },
-  {
     name: "ContactNumber",
     model: getContactNumberModel,
     indexes: CONTACT_NUMBER_INDEXES,
@@ -259,11 +151,5 @@ export const CSI_MODEL_REGISTRY = [
     name: "OwnerRepNudge",
     model: getOwnerRepNudgeModel,
     indexes: OWNER_REP_NUDGE_INDEXES,
-  },
-  // S9-READS (addendum §6.4): per-rep ET day documents.
-  {
-    name: "OutreachRepDay",
-    model: getOutreachRepDayModel,
-    indexes: OUTREACH_REP_DAY_INDEXES,
   },
 ] as const;

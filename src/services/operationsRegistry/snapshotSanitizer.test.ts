@@ -32,3 +32,27 @@ test("sanitizeRegistrySnapshot returns null for empty snapshots", () => {
   assert.equal(sanitizeRegistrySnapshot(null), null);
   assert.equal(sanitizeRegistrySnapshot(undefined), null);
 });
+
+test("sanitizeRegistrySnapshot truncates long strings and marks functions unsupported", () => {
+  const out = sanitizeRegistrySnapshot({
+    note: "x".repeat(600),
+    fn: () => 1,
+  });
+
+  assert.equal((out?.note as string).length, 501);
+  assert.ok((out?.note as string).endsWith("…"));
+  assert.equal(out?.fn, "[unsupported]");
+});
+
+test("sanitizeRegistrySnapshot replaces a snapshot over the 16 KB budget with a truncation marker", () => {
+  const snapshot: Record<string, unknown> = {};
+  for (let index = 0; index < 45; index += 1) {
+    snapshot[`field_${index}`] = "y".repeat(450);
+  }
+
+  const out = sanitizeRegistrySnapshot(snapshot);
+
+  assert.equal(out?._truncated, true);
+  assert.ok(Array.isArray(out?._keys));
+  assert.equal((out?._keys as string[]).length, 20);
+});

@@ -1239,7 +1239,6 @@ function earliestStart(records: CallLogRecordInput[]): Date | null {
   return out;
 }
 
-export const BACKFILL_LEASE_SCOPE = "backfill";
 export const RETENTION_LEASE_SCOPE = "retention";
 
 export function syncStateLeaseModel(): MongoLeaseModel {

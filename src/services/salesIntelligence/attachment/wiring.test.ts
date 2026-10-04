@@ -13,14 +13,14 @@ import { autoAttachNumber } from "./store";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
 import { CsiError } from "../auth";
 
-test("actual attachment queue and five-minute cron registrations, disabled worker skips without Mongo", async () => {
+test("actual attachment queue and every-minute cron registrations, disabled worker skips without Mongo", async () => {
   const before = process.env.SALES_INTELLIGENCE_ATTACHMENT_REFRESH;
   process.env.SALES_INTELLIGENCE_ATTACHMENT_REFRESH = "false";
   try {
     assert.equal((await runAttachmentRefreshJob()).status, "disabled");
     assert.ok(defaultStageHandlers().attachment_refresh);
     const config = JSON.parse(readFileSync("vercel.json", "utf8"));
-    assert.ok(config.crons.some((r: { path: string; schedule: string }) => r.path === CSI_CRON_PATHS.attachmentRefresh && r.schedule === "*/5 * * * *"));
+    assert.ok(config.crons.some((r: { path: string; schedule: string }) => r.path === CSI_CRON_PATHS.attachmentRefresh && r.schedule === "* * * * *"));
   } finally { if (before === undefined) delete process.env.SALES_INTELLIGENCE_ATTACHMENT_REFRESH; else process.env.SALES_INTELLIGENCE_ATTACHMENT_REFRESH = before; }
 });
 test("Owner attachment routes and cron recovery: authority, scope, flag, strict payload, CAS mapping and read-only GET", async () => {

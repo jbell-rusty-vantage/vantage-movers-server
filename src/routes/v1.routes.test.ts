@@ -150,15 +150,21 @@ test("Owner Extension User routes are registered", () => {
   assert.equal(routes.has("/api/v1/admin/extension-users"), true);
 });
 
-test("Owner conversation read routes are registered", () => {
+test("retired conversation playback, scoped AI-run and analysis history routes are not registered", () => {
   const stack = (router as { stack?: RouteLayer[] }).stack ?? [];
-  const routes = new Set(
+  const routes = [...new Set(
     collectRoutes(stack).map((route) => route.path).filter((path): path is string => Boolean(path)),
+  )];
+  assert.deepEqual(routes.filter((path) => path.startsWith("/api/v1/admin/conversations")), []);
+  assert.deepEqual(routes.filter((path) => path.startsWith("/api/v1/internal/sales-intelligence/runs")), []);
+  assert.deepEqual(
+    routes.filter((path) => path.startsWith("/api/v1/internal/sales-intelligence/history")).sort(),
+    [
+      "/api/v1/internal/sales-intelligence/history/contact-number",
+      "/api/v1/internal/sales-intelligence/history/lead",
+      "/api/v1/internal/sales-intelligence/history/lead-candidates",
+    ],
   );
-  assert.equal(routes.has("/api/v1/admin/conversations"), true);
-  assert.equal(routes.has("/api/v1/admin/conversations/:id"), true);
-  assert.equal(routes.has("/api/v1/admin/conversations/:id/audio-url"), true);
-  assert.equal(routes.has("/api/v1/admin/conversations/by-lead/:model/:id"), true);
 });
 
 test("employee booking reconciliation routes are registered", () => {

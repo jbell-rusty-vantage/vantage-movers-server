@@ -4,7 +4,7 @@ import { at } from "./fixtures";
 import { captureRollupDelta } from "./persistInteraction";
 
 // S1-ROLLUP (data spec §8): capture's incremental rollup arithmetic, with fixed values.
-const rec = (n: number) => Array.from({ length: n }, (_, i) => ({ provider_recording_id: `r${i}`, recording_type: null, observed_at: at(0), lead_conversation_id: null }));
+const rec = (n: number) => Array.from({ length: n }, (_, i) => ({ provider_recording_id: `r${i}`, recording_type: null, observed_at: at(0) }));
 const call = (direction: "Inbound" | "Outbound", recordings: number, startedAt = at(100)) => ({ direction, recordings: rec(recordings), started_at: startedAt });
 const stored = { interactions_total: 5, inbound_total: 3, outbound_total: 2, recordings_total: 4, last_inbound_at: at(50), last_outbound_at: at(60) };
 

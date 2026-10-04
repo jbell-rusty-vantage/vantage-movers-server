@@ -117,3 +117,124 @@ The third failure, `teamIntelligence.test.ts` "OI-C … warm pure read p95 budge
    Run them once `csi01` responds.
 6. **Attachment latency:** Form Lead creates and phone changes now wake their attachment job post-commit. Without a queue, the backstop is the `*/5` attachment-refresh cron. S-NUM recommends moving that cron to every minute when wave 2 removes `sales-intelligence-outreach-ensure`.
 7. **Wave 2:** delete the observability core, models and the `ops/test-setup.ts` sink install; delete the legacy AI/Outreach modules together with `legacyNumberFields.ts`.
+
+## Integration (wave 2)
+
+Date: 2026-10-04. Inputs: lanes S-AI and S-OUT, their reviews (S-AI: no findings; S-OUT: 3 findings), their cross-lane requests, and the S-OBS wave-2 hand-off. The integrator owned the whole server tree. No stash, checkout, reset, commit, add or install was run. Daily Operations was not edited: `git status --short -- src/services/dailyOperations 'src/models/DailyOperations*' src/config/domain/dailyOperations.ts` prints 0 lines.
+
+### Recovery
+
+The host crashed again before this run. Nothing from the wave-2 integration had started: no tracked file was newer than `evidence/S-OUT.md`, and this file ended at wave 1. This run started from the lanes' finished tree.
+
+### Review findings (S-OUT)
+
+| # | Finding | Decision | Change |
+|---|---|---|---|
+| 1 (medium) | The fence's `retired` status was not terminal for the purge, and the fence's `completed_at` let the 14-day TTL delete rows before the purge backed them up | Fixed | `ops/slimming/lib/purge-rules.ts`: `TERMINAL_JOB_STATUSES` adds `retired`. `policy.ts`: `LEGACY_JOB_STAGES` now equals the server's `CSI_RETIRED_JOB_STAGES` (13 stages, adding `number_refresh`, `backfill`, `retention` and `rep_identity_reevaluate`); `SPLIT_JOB_STAGES` is empty. `jobs.ts` `retireLegacyCsiJobs` no longer sets `completed_at`, so the TTL never removes a fenced row and purge C2 backs it up and deletes it. Tests: `slimming.test.ts` (the stage list equals `CSI_RETIRED_JOB_STAGES`; the terminal filter includes `retired`) and a new `src/services/salesIntelligence/jobs.retire.test.ts` (exact filter and update, no `completed_at`, epoch +1, no write when nothing is runnable). |
+| 2 (low) | The replica proof `proveRetiredStageFence` would fail on a leftover runnable retained row | Fixed, **not run** | `ops/test-csi-enqueue-replica.ts`: the proof first completes every runnable row left by `main()`, so the undirected-claim assertion is valid. It now asserts that a fenced row has no `completed_at`. Not run: the replica is down (below). |
+| 3 (low) | A slim policy version written by `PATCH /settings` breaks a pre-slim rollback | Fixed for updates | New `CSI_RETIRED_POLICY_FIELDS`, `csiPersistedPolicySchema` and `withRetiredPolicyFields` (`validation/v1/salesIntelligence.ts`). `updateCsiPolicy` reads the active version and carries its 13 retired top-level fields and `retention.{audio_days,redacted_days}` forward. Retained values always win, retired capabilities are never re-enabled, and unknown fields are dropped. The version model validates with the persisted schema, so nothing else can be stored. The slim reader still ignores the carried fields, and `GET /settings` does not return them. Proof: `settings.test.ts` (+2 tests). A one-off check parsed a carried version with the **baseline `6a374fab` strict `csiPolicySchema`** (extracted from git into a temporary file under the gitignored `scripts/`, then deleted): `true`. Residual: `initializeCsiPolicy` with no previous version (a fresh environment only; production has an active pointer) still writes a version the old reader rejects. |
+
+### Cross-lane requests resolved in this repo
+
+- **S-AI → CallInteraction trim.** Removed `recordings[].lead_conversation_id` (it referenced `LeadConversation`) from the schema, `ProjectedRecording`, the projection merge and the stored mapper together. Both sides of the change check drop it, so no spurious `projection_revision` bump. Also removed the `recording_discovery` sub-document and the `call_interaction_discovery_state` index declaration. `efficiency.test.ts` now asserts the index is gone; the `ownerCoverage.ts` comment was updated.
+- **S-AI → `migration:csi:indexes`.** The gitignored `scripts/migrations/sales-intelligence{.lib,-indexes}.ts` were rewritten to the retained registry (originals backed up to the scratchpad `local-scripts-backup/migrations/`). Removed: the `lead_conversations` inventory entry (so `--apply` can never recreate it), the conversation account back-fill and `--account-mappings`, the `outreach_followups` retired-unique check and the legacy recording-fence drop. Report version `csi-migration-v2`. It loads, and its printed inventory lists only retained collections. It typechecks (`tsc -p` with a temporary config, exit 0).
+- **S-AI / S-OUT → purge policy** (`ops/slimming/policy.ts`, `inventory.ts`):
+  - C4 audit kinds add `analysis.suggestion_applied` and `rep_identity.reevaluated` (39 kinds; `rg` finds no producer of any of them in `src`/`api`).
+  - C3 adds the retired `backfill` and `backfill:call_log` scopes (deleted only if present).
+  - C6 (Outreach cursors) is `final`.
+  - C1 adds `rollups.last_meaningful_contact_at` and is `final`.
+  - C4 and C5 are `final`.
+  - **C5 no longer unsets `purged_at`.** The previous list would have unset the live purge marker that retention, Numbers search, timeline and history reads filter on, which would have resurfaced purged Numbers.
+  - The Blob manifest takes the union of `lead_conversations.media.blob_pathname` and `result.pending_blob_delete` on completed `media_fetch` jobs.
+- **Stale-manifest guard.** New `manifestPolicyDrift()` (purge-rules.ts). The dry run prints every difference between the manifest's cleanups and `policy.ts` (status, unset fields, C2 stages, C4 kinds), and `--apply` aborts on any of them. The checked-in `deletion-manifest.json` now reports 7 differences, including `C5 unsets purged_at` and `C2 stages differ`, so **it must be regenerated after quiescence**. `DELETION-MANIFEST.md` §2 was updated to match.
+- **S-OUT → `BACKFILL_LEASE_SCOPE`.** Removed from `reconcileCallLog.ts` (no reader).
+- **S-OUT → OwnerRepNudge.** Removed the `nudge_outreach_created` index declaration and the dangling `ref: "OutreachRecord"`. The `outreach_record_id` field stays, for historical rows only (the command schema refuses it).
+- **`.gitattributes`** (its only rule targeted the deleted Case File fixtures): deleted.
+- **Not done here (coordinator or other lanes):** dependency removal, the env inventory, the MCP contract (MCP lane) and the Service docs (wave 3). They are listed in the structured output.
+
+### OperationalEvents subsystem deleted (step 2)
+
+- Before deleting, `rg` over `src api ops scripts` (including gitignored files) found importers in only three places: `ops/test-setup.ts`, the local `scripts/dev_ops/test-setup.ts` and `scripts/dev_ops/test-csi-nudges.replica.test.ts` (sink), plus **one retained runtime caller**, `operationsRegistry/snapshotSanitizer.ts` (`sanitizeEventDetails`). No `src` code read the observability config exports through the `config/domain` barrel.
+- The bounding logic moved into `snapshotSanitizer.ts`, with the former default byte budget of 16 KB fixed instead of `OBSERVABILITY_DETAILS_MAX_BYTES`. `snapshotSanitizer.test.ts` gained 2 tests (string truncation and unsupported values; truncation marker over budget): 5/5 pass.
+- Deleted (all tracked and unmodified): `src/services/observability/**` (16 files, including both `.md` notes), `src/models/{OperationalEvent,OperationalIncident,NotificationDelivery,OperationalReportRun,observabilityModelFactory}.ts`, `src/config/domain/observability.ts` and its test, and `.cursor/rules/observability-service.mdc`. The `export * from "./domain/observability"` line was removed from `config/domain.ts`.
+- Test bootstrap: `ops/test-setup.ts` and the local `scripts/dev_ops/test-setup.ts` no longer install the sink or set `OBSERVABILITY_*`, `ALLOW_*OBSERVABILITY*` or `EMAIL_NOTIFICATIONS_*`. They still mark the test runner, install the Daily Operations sink and disable sheet-sync publishes. Invite email never read the notification switches (its tests inject the sender).
+- Stale env lines removed from `requireApiSecret.test.ts`, `crm.service.test.ts` and `ops/test-csi-enqueue-replica.ts`.
+- Rules and skills: `project-organization.mdc`, `production-url.mdc`, `codebase.mdc`, `.cursor/index.md`, `.cursor/agents/docs-keeper.md` and `.cursor/skills/hit-vantage-api/SKILL.md` no longer list the observability subsystem or the `/admin/observability/**` routes. `.cursor/story-refactor-workspace/**` is a historical archive and was left as is.
+- Retained mail config (`config/domain/mail.ts`: `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `ALERT_EMAIL_REPLY_TO`) is unchanged.
+- The local `.env` still sets `OBSERVABILITY_ENABLED` and `ALLOW_TEST_OBSERVABILITY`. Nothing reads them; the file was not edited.
+
+### Replica suites (step 4)
+
+`timeout 20 docker exec csi01 mongosh --port 27189 --quiet --eval 'rs.status().ok'` → **exit 124 (no answer)**. Every replica suite is **NOT RUN (replica down)**: `test:granot-lifecycle:replica`, the retired-stage fence proof and the Numbers slim proof.
+
+The `package.json` replica entries were audited anyway. All 17 `test:csi:*` / `test:si:*` replica entries pointed at gitignored `scripts/dev_ops` runners, and none could load:
+
+- The runner file is missing: `csi:capture`, `csi:fanout`, `si:rollups`, `si:facts`, `si:suggest`, `si:numbers`, `si:numbers:form-only`, `si:reads`, `si:timeline`, `si:number`.
+- The replica test file is missing: `csi:numbers`, `csi:attachment`.
+- The suite imports deleted modules, and every runner loads the removed `./scripts/test-setup.ts` (pre-existing, also noted by S-NUM): `csi:replica` (foundation, 11 deleted imports), `csi:reads`, `csi:rep-identity`, `csi:nudges` (also the deleted observability sink), `csi:settings`.
+
+All 17 entries were removed. Two tracked retained proofs got entries instead: `test:csi:fence:replica` (`ops/test-csi-enqueue-replica.ts`, local rs0) and `test:numbers:replica` (`ops/numbers-slim.replica.ts`, csi01).
+
+Local runners of deleted subjects (25 gitignored files: csi15-budget/period/retention, csi-backfill, csi-intelligence(-reads), csi-media, csi-owner, csi-runtime, csi-transcription, si-desk, si-s11-prov-search, si-time-base) were copied to the scratchpad `local-scripts-backup/dev_ops/` and deleted. The local runners of retained subjects (foundation, reads, rep-identity, nudges, settings, the `*-local.ts` HTTP probes) were kept for a later port.
+
+### Leftover proof (step 5)
+
+Per term, `rg -c --fixed-strings <term> src api ops`, then the same with `--glob '!ops/slimming/**'`:
+
+| Term | All | Outside `ops/slimming` | Remaining hits |
+|---|---:|---:|---|
+| `LeadConversation` | 4 | 1 | `aiRetirement.test.ts` (deleted-import guard) |
+| `lead_conversations` | 17 | 4 | absence guards: `aiRetirement.test.ts`, `foundation.test.ts`, `live.test.ts`, `numbers-slim.replica.test.ts` |
+| `intelligence_runs` | 6 | 4 | the same four guards |
+| `move_assessment` | 14 | 6 | `CSI_RETIRED_JOB_STAGES`; fence replica fixture; absence guards (`reads.test.ts`, `foundation`, `aiRetirement`, `numbers-slim`) |
+| `attention_snapshots` | 5 | 3 | absence guards |
+| `attention_artifacts` | 7 | 2 | absence guards |
+| `outreach_records` | 17 | 11 | absence guards, plus pre-slim rollup fixtures in `search`/`rebuild`/`history reads`/`numbers-slim` tests that prove the field is dropped |
+| `outreach_followups` | 10 | 3 | absence guards |
+| `outreach_band_transitions` | 4 | 2 | absence guards |
+| `outreach_rep_days` | 4 | 2 | absence guards |
+| `recordOperationalEvent` | 0 | 0 | none |
+| `getOperationalEventModel` | 0 | 0 | none |
+| `vantagemovershistorical` | 6 | 1 | `noHistoricalDb.test.ts` (driver-spy guard) |
+| `@ai-sdk` | 1 | 1 | `aiRetirement.test.ts` vendor-import regex |
+| `generateObject` | 0 | 0 | none |
+
+No runtime reference remains. Also checked:
+
+- `rg -e operational_events -e OperationalIncident -e NotificationDelivery -e OperationalReportRun -e observabilityModelFactory -e installTestObservabilitySink -e getCapturedOperationalEvents -e services/observability src api ops --glob '!ops/slimming/**'` → 1 hit, the `numbers-slim.replica.test.ts` absence list.
+- `rg -n "recording_discovery|lead_conversation_id" src api ops --glob '!ops/slimming/**'` → only `CSI_RETIRED_JOB_STAGES`.
+- **Local, gitignored:** `rg --no-ignore -l <deleted-module imports> scripts` → **55 files** still import deleted modules (they no longer load). This includes `scripts/dev_ops/test-csi-nudges.replica.test.ts`, which imports the deleted observability sink. Deleting them is the user's call.
+
+### Commands and results
+
+Heavy commands ran through the scratchpad `heavy.sh` lock.
+
+| Command | Result |
+|---|---|
+| `heavy.sh env NODE_OPTIONS=--max-old-space-size=6144 node node_modules/typescript/bin/tsc --noEmit` | first run 5 errors (a newline inserted into a template literal in `purge.ts` by this run's edit), fixed; **final run exit 0, 0 errors** |
+| `tsc --noEmit -p` (temporary config: `scripts/migrations/sales-intelligence{-indexes,.lib}.ts`, `scripts/dev_ops/test-setup.ts`) | exit 0 |
+| `heavy.sh env NODE_OPTIONS=--max-old-space-size=6144 node node_modules/eslint/bin/eslint.js src api ops/quality --max-warnings 0` (`pnpm lint`) | **exit 0** |
+| `heavy.sh env DOTENV_CONFIG_PATH=C:/nonexistent.env NODE_OPTIONS=--max-old-space-size=6144 node --import tsx --import ./ops/test-setup.ts --test --test-concurrency=2 "src/**/*.test.ts" "api/queues/**/*.test.ts" "ops/lib/*.test.ts"` | **2592 tests: 2455 pass, 0 fail, 0 cancelled, 137 skipped** (replica/env-gated), 1205 s, exit 0 |
+| `node --import tsx --test ops/slimming/lib/slimming.test.ts ops/numbers-slim.replica.test.ts` | 22 tests: 21 pass, 0 fail, 1 skipped (the replica test skips without `CSI_REPLICA_TEST`) |
+| Focused: `snapshotSanitizer.test.ts` 5/5; `jobs.retire.test.ts` 2/2; `settings.test.ts` + `foundation.test.ts` 12/12 | pass |
+| `timeout 20 docker exec csi01 mongosh --port 27189 ...` | exit 124: replica down |
+
+### Baseline comparison
+
+| | Baseline (`6a374fab`) | Wave 1 | Wave 2 |
+|---|---|---|---|
+| Typecheck | exit 0 | exit 0 | exit 0 |
+| Tests | 3119 | 3146 | 2592 |
+| Pass | 2950 | 3006 | 2455 |
+| Fail | 34 | 3 | **0** |
+| Skipped | 135 | 137 | 137 |
+
+None of the 34 baseline failures remains. Most were load-induced file crashes and spawn timeouts; others were in files deleted since (`LeadConversation.test.ts`, `config/domain/observability.test.ts`, `ops/lib/{attention-storage-guard,backfill-csi-structured-analysis.lib,call-log-repair,full-backfill,form-lead-numbers-backfill}.test.ts`). The test count fell by 554, the net of the AI, Outreach, observability and backfill tests deleted with their modules and the tests added.
+
+### Remaining known issues
+
+1. **Regenerate the deletion manifest** after the slim server is deployed and quiescent. The checked-in manifest is stale against `policy.ts` (7 differences), and `purge.ts --apply` now refuses it.
+2. **Replica proofs not run:** `test:granot-lifecycle:replica`, `test:csi:fence:replica` (the fixed fence proof), `test:numbers:replica`, and the DATA purge, which has only ever run as a dry run.
+3. **No runnable replica suite** for the foundation, reads, rep-identity, nudges and settings subjects: the local runners need porting to retained modules and to `ops/test-setup.ts`.
+4. **Policy rollback:** an update carries the retired fields forward; a first `initialize_settings` in a fresh environment does not.
+5. **Wave 3 docs** still describe deleted modules and removed scripts. Examples: `services/number-activity-{reads,capture}.md` and `sales-intelligence-webhook-fanout.md` cite the removed `test:csi:*:replica` entries, and `project-organization.mdc` still describes CSI transcription.

@@ -141,7 +141,7 @@ test("recount: provider recordings come from canonical interactions; a stored re
   const inbound = inboundQueueAnsweredDeliveries("s-rb-s1");
   const base = project([inbound.ringing, inbound.answered, inbound.disconnected], at(10));
   const withRecordings = (n: number): InteractionProjection => ({ ...base, recordings: Array.from({ length: n }, (_, i) => ({
-    provider_recording_id: `r-${n}-${i}`, recording_type: null, observed_at: at(0), lead_conversation_id: null })) });
+    provider_recording_id: `r-${n}-${i}`, recording_type: null, observed_at: at(0) })) });
   const rebuilt = recountNumber({
     number: { first_observed_at: at(0), last_activity_at: at(0) },
     interactions: [withRecordings(0), withRecordings(1), withRecordings(2)],

@@ -9,6 +9,13 @@ import type { Document, Filter } from "mongodb";
 import { type BackupEntry, verifyBackupFile } from "./backup";
 import { SERVER_ROOT, WORKSPACE_ROOT } from "./env";
 import type { Cleanup } from "./manifest";
+import {
+  CLEANUP_STATUS,
+  CONTACT_NUMBER_DEAD_FIELDS,
+  CONTACT_NUMBER_REVIEW_FIELDS,
+  LEGACY_JOB_STAGES,
+  RETIRED_AUDIT_EVENT_KINDS,
+} from "../policy";
 
 /** Pre-slimming server commit; a deployed commit must descend from it and must no longer carry retired models. */
 export const BASELINE_COMMIT = "6a374fab";
@@ -20,13 +27,48 @@ export const RETIRED_MARKER_PATHS = [
   "src/models/salesIntelligence/assessment.ts",
 ] as const;
 export const NON_TERMINAL_JOB_STATUSES = ["pending", "retry", "paused"] as const;
-export const TERMINAL_JOB_STATUSES = ["completed", "dead_letter"] as const;
+/** `retired` is written by the server's retired-stage fence (`retireLegacyCsiJobs`, reason `stage_retired`). */
+export const TERMINAL_JOB_STATUSES = ["completed", "dead_letter", "retired"] as const;
 
 export class PurgeAbort extends Error {
   constructor(message: string) {
     super(message);
     this.name = "PurgeAbort";
   }
+}
+
+/**
+ * Differences between a manifest's cleanups and the current `policy.ts`. A manifest generated before a policy
+ * change (new legacy stages, a field moved out of a dead list, a status flip) must be regenerated, so
+ * `purge.ts --apply` aborts on any of these and the dry run prints them.
+ */
+export function manifestPolicyDrift(cleanups: readonly Cleanup[]): string[] {
+  const problems: string[] = [];
+  const statuses = CLEANUP_STATUS as Record<string, string>;
+  const deadFields = new Set<string>([...CONTACT_NUMBER_DEAD_FIELDS, ...CONTACT_NUMBER_REVIEW_FIELDS]);
+  const sameSet = (a: readonly string[], b: readonly string[]) => canonicalSet(a) === canonicalSet(b);
+  for (const cleanup of cleanups) {
+    const expected = statuses[cleanup.id];
+    if (!expected) problems.push(`cleanup ${cleanup.id} is not in policy.ts CLEANUP_STATUS`);
+    else if (cleanup.status !== expected) problems.push(`cleanup ${cleanup.id} is ${cleanup.status} in the manifest but ${expected} in policy.ts`);
+    if (cleanup.kind === "unset_fields") {
+      for (const field of cleanup.fields) if (!deadFields.has(field)) problems.push(`cleanup ${cleanup.id} unsets ${field}, which policy.ts does not list as dead`);
+    }
+    if (cleanup.kind === "retire_jobs" && !sameSet(cleanup.stages, LEGACY_JOB_STAGES)) {
+      problems.push(`cleanup ${cleanup.id} stages differ from policy.ts LEGACY_JOB_STAGES`);
+    }
+    if (cleanup.kind === "delete_filter" && cleanup.collection === "sales_intelligence_audit_events") {
+      const kinds = (cleanup.filter.event_kind as { $in?: unknown } | undefined)?.$in;
+      if (!Array.isArray(kinds) || !sameSet(kinds.map(String), RETIRED_AUDIT_EVENT_KINDS)) {
+        problems.push(`cleanup ${cleanup.id} event kinds differ from policy.ts RETIRED_AUDIT_EVENT_KINDS`);
+      }
+    }
+  }
+  return problems;
+}
+
+function canonicalSet(values: readonly string[]): string {
+  return JSON.stringify([...new Set(values)].sort());
 }
 
 /** A `delete_filter` may only use equality on scalars or a non-empty `$in` of scalars, so it cannot match broadly. */

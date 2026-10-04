@@ -198,3 +198,142 @@ No real leftovers remain. Every hit is in one of these groups:
   - `CONTEXT.md`
   - `.cursor/rules/project-organization.mdc`
 - **Server docs:** `evidence/A-DEST.md` (superseded markers) and this file.
+
+## Integration (wave 2)
+
+Date: 2026-10-04, after the second orchestrator crash. Lane A-SI had finished (`evidence/A-SI.md`). The integrator was the only agent editing `vantage-admin`. It did not touch any Daily Operations file. It ran no git stash, checkout, reset, commit, add or install.
+
+### State found on resume
+
+- No Admin source file was newer than `evidence/A-SI.md` (09:49), and this file had no wave-2 section. The integration therefore started from A-SI's finished tree and its independent review.
+- `heavy.lock` was not held.
+
+### Review findings (A-SI reviewer)
+
+| Finding | Decision | Change |
+|---|---|---|
+| Medium: an old desk link keeps its Outreach/Closed `cursor`, so `GET /numbers` returns 400 INVALID_INPUT. Retry and the Numbers tab resend the same cursor, and the old cursor-reset recovery was lost. | Confirmed. `parseSiUrl` kept `cursor` whatever the `view`, and `serializeSiUrl` never writes `view` for Numbers. | **URL** (`components/sales-intelligence/data/url-state.ts`): `parseSiUrl` now drops `cursor`, and with it `before`, when the query names a `view` other than `reps`. Such a link always comes from the old desk, so `view=all_outreach&cursor=x` canonicalizes to `/sales-intelligence`.<br>**Recovery** (`components/sales-intelligence/primitives/region.tsx`): `RegionBoundary`/`Region` take an optional `onError`, called from `componentDidCatch`, and a `resetKey`. A failed region clears itself when the key changes.<br>**Numbers view** (`components/sales-intelligence/numbers/numbers-view.tsx`): it passes `resetKey={requestKey}`. Its `onError` acts on `INVALID_INPUT` while a cursor is set: it removes the failed query and calls `update({ cursor: null, before: [] })`. That restarts at page one, and the region resets because the request changed. This also covers a stale Numbers cursor, for example after a server digest change. With no cursor set, the error stays on screen as before. |
+| Low: `instant()` keeps any readable date (`2026-09-01`, `…-04:00`), but the server's `z.iso.datetime()` rejects anything that is not a Z instant. | Confirmed. | `instant()` now returns `new Date(value).toISOString()`, so the route redirects to a value the server accepts. Values the UI writes (`easternInstant` → `toISOString()`) are unchanged, so the redirect is idempotent. |
+| Low: the Users-tab copy says Reps see their own Sales Intelligence records, but a Rep now gets only the not-available page. | Confirmed. | In `sales-intelligence-copy.ts`, `ui2.users.intro` now reads "…Reps can sign in, but Sales Intelligence is being rebuilt and is not available to Rep accounts yet." `roleHint.rep` reads "Can sign in; Sales Intelligence is not available to Rep accounts yet." No test pinned the old text. |
+
+The reviewer also noted that A-SI's cross-lane note about server `live.ts` is out of date. The integrator agrees: the server working tree's `CSI_LIVE_TOPICS` maps only the retained collections, so nothing is owed there.
+
+### Tests added
+
+- `tests/sales-intelligence/desk.test.ts`, old-link normalization cases:
+  - `view=all_outreach&cursor=x` and `view=closed&cursor=x&before=w` go to Numbers.
+  - `view=all_outreach&sort=lead_received&cursor=x&q=smith` goes to `?q=smith`.
+  - `active_from=2026-09-01` becomes `…T00:00:00.000Z`, and `active_to=2026-09-01T00:00:00-04:00` becomes `…T04:00:00.000Z`.
+  - An unreadable date is dropped.
+  - A Numbers `cursor` written with no `view` is kept.
+- `tests/sales-intelligence/primitives.test.ts`: the new test `RegionBoundary: reports a caught error once and resets itself when the request (resetKey) changes`.
+
+### Endpoint cross-check (Admin → server after the wave-2 server lanes)
+
+**Sales Intelligence.** Every Admin call goes to a route that exists in `src/routes/sales-intelligence-admin.routes.ts` (paths are under `${CSI_ADMIN_PREFIX}`):
+
+| Admin call | Server route |
+|---|---|
+| `GET coverage` | `/coverage` |
+| `GET numbers` | `/numbers` |
+| `GET numbers/:id` | `/numbers/:id` |
+| `GET numbers/:id/timeline` | `/numbers/:id/timeline` |
+| `POST numbers/:id/rebuild` | `/numbers/:id/rebuild` |
+| `GET attachments` | `/attachments` |
+| `POST attachments/attach` | `/attachments/attach` |
+| `POST attachments/:id/reject` | `/attachments/:id/reject` |
+| `POST attachments/:id/detach` | `/attachments/:id/detach` |
+| `GET reps` | `/reps` |
+| `POST reps/:id/review` | `/reps/:id/review` |
+| `POST nudges` | `/nudges` |
+| `GET live` (server-side SSE, `CSI_LIVE_PATH`) | `/live` |
+
+The manual Lead search uses `fetchGlobalSearch` → `/api/v1/admin/search`, which stays.
+
+**Removed by the wave-2 server lanes.** Compared with `de0fe15f`, the working tree removes:
+- `POST /sales-intelligence/backfill`;
+- `/admin/conversations/**` (the whole `conversations-admin.routes.ts`);
+- the history routes `story`, `analyses`, `analyses/:id`, `conversations/:id`, `move-assessment` and `prior`;
+- `/internal/sales-intelligence/**`.
+
+No Admin call reaches any of them. The check was `rg "backfill|/settings|nudges/preview|reps/propose|history/|conversations"` over the Admin SI code, `lib/api/salesIntelligence.ts`, `lib/query`, `app/api`, the SI pages and `server`, excluding tests. The only hits are the kept `human_conversations_total` rollup and a page path in `routeGuard.ts`.
+
+**Everything else.** The check collected all 97 `api/v1/...` literals in non-test files under `lib`, `app`, `components`, `server` and `proxy.ts` (`scratchpad/admin-paths.txt`). For each literal, it confirmed that the last fixed path segment appears in a non-test server `src/**/*.ts` file. Every literal matched at least one server source. **No mismatches.**
+
+### Retired-surface sweep
+
+`rg -n -i "attention_cursor|AttentionSnapshot|use-attention|view=attention|all_outreach|outreach_record|OutreachRecord|outreach/\[|/outreach/|admin/conversations|lead_conversations|LeadConversation|team-overview|use-overview|running.?summary|runningSummary|move.?assessment|owner.?assessment|use-findings|intelligence_findings|audit-log|AdminAuditLog|live-events|LIVE_EVENTS|observational|database_scope|historical_db|historicalDb|scope=combined|scope=historical" app components lib server proxy.ts next.config.ts`, excluding tests, returns 10 lines. None of them is a live surface:
+- `lib/state/database-scope.tsx` and `lib/api/filters.ts` are the retirement cleanup that strips a stored or URL `database_scope`.
+- The doc comments in `components/sales-intelligence/data/url-state.ts` and `desk/route-decision.ts` describe old links that redirect to Numbers.
+- The other hit is the SLIM-02 comment in `server/auth/authorization.ts`.
+
+The 18 test files that match are guards. They assert that these surfaces are absent or redirect: for example `retired-destinations`, `retired-database-scope`, `routeGuard`, the forbidden-pattern list in `numbers.test.ts`, `proxyForwardHeaders` and `salesIntelligenceOfficial`.
+
+A broader `rg -i "overview|historical|combined"` also matches kept code:
+- the Home Overview;
+- the Analytics Overview tab;
+- the "Historical Release cases" comments in intakes;
+- a local variable named `combined`.
+
+### Commands and results
+
+All commands were run in `C:/Users/Pinda/Proyectos/vantage/vantage-admin` through `scratchpad/heavy.sh`. Available memory was 4,600 MB before the run and 4,363 MB before the build.
+
+| Command | Result |
+|---|---|
+| `node node_modules/typescript/bin/tsc --noEmit` | **exit 0, 0 errors** (`scratchpad/int2-tsc.txt`) |
+| `node --import tsx --test --test-concurrency=2 "{lib,server,tests}/**/*.test.ts"` | **701 tests: 686 pass, 0 fail, 0 cancelled, 15 skipped**, exit 0 (`scratchpad/int2-tests.txt`) |
+| `node --import tsx --test` on the desk, numbers, primitives and operations-registry/users tests | pass; primitives 7/7 after a type-only fix to the new test |
+| `node node_modules/eslint/bin/eslint.js . -f json` | exit 1: **18 problems (11 errors, 7 warnings)**, all of them already in the baseline. Compared with `scratchpad/lint-base.norm` (26 problems), no file has more problems than in the baseline (`scratchpad/int2_lintcmp.cjs`). The 8 missing problems were in deleted SI files. The touched SI paths have none. |
+| `NODE_OPTIONS=--max-old-space-size=6144 next build` | **exit 0**: compiled in 10.5 s, 48/48 static pages, routes include `/sales-intelligence` and `/sales-intelligence/legacy` (`scratchpad/int2-build.txt`) |
+
+### Baseline comparison (`scratchpad/baseline/`)
+
+| Check | Baseline | Wave 1 | Wave 2 |
+|---|---|---|---|
+| Typecheck | exit 0 | exit 0 | exit 0 |
+| Tests | 1132: 948 pass, 0 fail, 184 skipped | 1080: 896 pass, 0 fail, 184 skipped | 701: 686 pass, 0 fail, 15 skipped |
+| Lint | 26 problems | 26 (same set) | 18 (a subset) |
+| Build | — | — | exit 0 |
+
+- **Tests:** the drop is A-SI's deletion of the tests for the retired SI code: 32 `tests/sales-intelligence/*` files, 5 `tests/legacy/*` files, 6 `lib/api/salesIntelligence*.test.ts` files and the fixtures.
+- **Skips:** the 15 skipped tests are fixture tests that skip because the contracts folder is absent.
+- **Failures:** `admin-baseline-failures.txt` is empty, and there are no new failures.
+
+### Wave-1 open items now closed
+
+Wave-1 Remaining issue 4 is done. A-SI did the work and this run verified it:
+- `REP_PROXY_ROUTES` and the `/admin/conversations/**` Admin denial are gone.
+- `currentCsiScope` checks only `scope`.
+- `salesIntelligenceLeadHref` and the `database_scope` fixtures are deleted.
+- The page is built against `S-NUM-CONTRACT.md`.
+
+### Files changed by the integrator (wave 2)
+
+- `vantage-admin/components/sales-intelligence/data/url-state.ts`
+- `vantage-admin/components/sales-intelligence/numbers/numbers-view.tsx`
+- `vantage-admin/components/sales-intelligence/primitives/region.tsx`
+- `vantage-admin/components/sales-intelligence/sales-intelligence-copy.ts`
+- `vantage-admin/tests/sales-intelligence/desk.test.ts`
+- `vantage-admin/tests/sales-intelligence/primitives.test.ts`
+- this file
+
+### Remaining known issues (wave 2)
+
+1. **Deploy order:**
+   - Deploy the S-NUM server before this Admin. A Number read from a server without S-NUM has no `attached_lead`, so the page shows a load error.
+   - The Admin no longer denies the Admin role on `/api/v1/admin/conversations/**`. S-AI's deletion of `conversations-admin.routes.ts` must ship with or before this Admin build.
+   - Wave-1 issue 1 (S-GRANOT/S-OBS) still stands.
+2. **Owner browser walk owed.** It was not run, because the lane rules forbid dev servers here. It should cover:
+   - the Numbers list, filters, sort and paging;
+   - an old `?view=all_outreach&cursor=…` link, which should land on page one;
+   - a Number whose Lead is resolved, one with multiple Leads and one with none;
+   - attach, reject and detach;
+   - Recount;
+   - an Accounts message;
+   - `/sales-intelligence/outreach/<id>`, which should be not-found;
+   - a Rep login, which should show the not-available page.
+3. **Stylesheet pruning was automated** (A-SI's risk). A class assembled entirely at runtime could lose its style. The walk above should catch it.
+4. **Wave 3 docs:** `vantage-admin/CONTEXT.md`, `.cursor/rules/project-organization.mdc` and `uxdocs/` still describe the Outreach desk, Overview, Closed, Guide, Coverage, the rep desk and the dev gallery. `scripts/csi07-local.mjs` still sets `SALES_INTELLIGENCE_OUTREACH_ENSURE`.
+5. **Server classification only, not a deletion request:** the Admin no longer calls `GET`/`PATCH /settings`, `GET /nudges` (history), `POST /nudges/preview`, `POST /reps`, `POST /reps/propose` or `GET /reps/:id`.
+6. **Coordinator:** `heavy.sh` treats a lock older than 900 s as stale, so a server full suite longer than 15 minutes lets a waiting job start beside it (reported by A-SI). No overlap happened in this run.

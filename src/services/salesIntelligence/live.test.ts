@@ -34,6 +34,14 @@ test('real HTTP CSI live auth, current scope, clock invalidations and cleanup',a
 type Frame={version:number;reason:string;topics:string[];refetch:string};
 const frames=(text:string):Frame[]=>text.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)) as Frame);
 
+test('CSI live watches only Numbers and RingCentral Accounts collections',()=>{
+ for(const retired of ['sales_intelligence_attention_snapshots','lead_conversations','outreach_records','outreach_followups','intelligence_runs',
+  'intelligence_findings','intelligence_effects','intelligence_owner_assessments','sales_intelligence_owner_instructions','sales_intelligence_review_items']) {
+  assert.equal((CSI_LIVE_COLLECTIONS as readonly string[]).includes(retired),false,retired);
+ }
+ assert.deepEqual([...new Set(Object.values(CSI_LIVE_TOPICS))].sort(),['attachment','nudge','number','rep','restriction']);
+});
+
 test('CSI live topics map changed collections only, coalesce and de-duplicate',async()=>{
  for(const [coll,topic] of Object.entries(CSI_LIVE_TOPICS)) assert.equal(csiLiveTopic({ns:{db:'x',coll}}),topic);
  for(const coll of CSI_LIVE_COLLECTIONS.filter(c=>!(c in CSI_LIVE_TOPICS))) assert.equal(csiLiveTopic({ns:{db:'x',coll}}),'other');
@@ -51,9 +59,9 @@ test('CSI live topics map changed collections only, coalesce and de-duplicate',a
   const read=async(match:(frame:Frame)=>boolean)=>{let text='';for(;;){text+=new TextDecoder().decode((await reader.read()).value);const frame=frames(text).find(match);if(frame) return frame;}};
   assert.deepEqual((await read(f=>f.reason==='connect')).topics,[]);
   // Two collections inside one 250ms window become one frame; the repeat never duplicates a slug.
-  emit({ns:{db:'x',coll:'outreach_followups'}});emit({ns:{db:'x',coll:'intelligence_runs'}});emit({ns:{db:'x',coll:'outreach_records'}});
+  emit({ns:{db:'x',coll:'rep_identity_links'}});emit({ns:{db:'x',coll:'owner_rep_nudges'}});emit({ns:{db:'x',coll:'rep_identity_links'}});
   const change=await read(f=>f.reason==='change');
-  assert.deepEqual(change.topics,['analysis','outreach']);assert.equal(change.version,2);assert.equal(change.refetch,'all');
+  assert.deepEqual(change.topics,['nudge','rep']);assert.equal(change.version,2);assert.equal(change.refetch,'all');
   emit({ns:{db:'x',coll:'number_lead_attachments'}});
   assert.deepEqual((await read(f=>f.reason==='change'&&f.topics.includes('attachment'))).topics,['attachment']);
   emit({ns:{db:'x',coll:'sales_intelligence_policy_pointers'}});

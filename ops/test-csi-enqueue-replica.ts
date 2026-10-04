@@ -12,7 +12,6 @@ process.env.MONGO_URI = csiEnqueueReplicaTarget(process.argv);
 process.env.TEST_MODE = "true";
 process.env.TEST_MONGO_DATABASE_NAME = database;
 process.env.SALES_INTELLIGENCE_DEPLOYMENT_ID = "enqueue-replica";
-process.env.OBSERVABILITY_ENABLED = "false";
 process.env.SHEET_SYNC_MODE = "disabled";
 
 async function main() {
@@ -23,7 +22,7 @@ async function main() {
   assert.equal(mongoose.connection.name, database);
   const Model = getSalesIntelligenceJobModel();
   await Model.createCollection(); await Model.createIndexes();
-  const input = { dedupe_key: "test:insert", stage: "outreach_ensure" as const, subject_key: "test:subject", input_revision: 1 };
+  const input = { dedupe_key: "test:insert", stage: "attachment_refresh" as const, subject_key: "test:subject", input_revision: 1 };
   const now = new Date(Date.now() - 60_000);
   const first = await withTransaction(session => enqueueCsiJob(input, session, now));
   assert.equal(+first.createdAt, +now); assert.equal(+first.updatedAt, +now);
@@ -70,8 +69,70 @@ async function main() {
   const completeBytes = await bytes(); await withTransaction(s => enqueueCsiJob(input, s)); assert.deepEqual(await bytes(), completeBytes);
   assert.equal(await claimCsiJob("worker", String(first._id)), null);
   assert.equal((await Model.collection.indexes()).find(i => i.name === "csi_job_completed_ttl")?.expireAfterSeconds, 14 * 86400);
-  console.log("PASS: insert timestamps, byte-stable pending/leased/completed duplicates, payload conflicts, transaction requirement, concurrent inserts, dataset fences, claims, renewal, retry, continuation, completion, lease rejection and unchanged TTL");
+  await proveRetiredStageFence(Model, withTransaction);
+  console.log("PASS: insert timestamps, byte-stable pending/leased/completed duplicates, payload conflicts, transaction requirement, concurrent inserts, dataset fences, claims, renewal, retry, continuation, completion, lease rejection, unchanged TTL and the retired-stage fence");
 }
+/**
+ * Slimming SPEC §7.4: rows of retired stages written by an earlier release (pending, retry, paused and a
+ * lease an old deployment still holds) are terminalized as `retired`; terminal rows are untouched; nothing
+ * claims them; the old holder's completion loses its lease and its effect rolls back; a late queue wake-up
+ * is acknowledged without a handler; enqueue refuses the stage; no collection appears.
+ */
+async function proveRetiredStageFence(
+  Model: Awaited<typeof import("../src/models/SalesIntelligenceJob.js")>["getSalesIntelligenceJobModel"] extends () => infer M ? M : never,
+  withTransaction: Awaited<typeof import("../src/db.js")>["withTransaction"],
+) {
+  const { enqueueCsiJob, claimCsiJob, completeCsiJob, retireLegacyCsiJobs } = await import("../src/services/salesIntelligence/jobs.js");
+  const { dispatchCsiWakeup } = await import("../src/services/numberActivity/jobDispatch.js");
+  const collections = async () => (await mongoose.connection.db!.listCollections().toArray()).map(c => c.name).sort();
+  const before = await collections();
+  const now = new Date();
+  // Start from a clean retained queue: main() leaves runnable retained rows (e.g. the `test:concurrent`
+  // attachment_refresh job), which an undirected claim below would rightly lease.
+  await Model.collection.updateMany(
+    { status: { $in: ["pending", "leased", "retry", "paused"] } },
+    { $set: { status: "completed", completed_at: now, lease_owner: null, leased_until: null } },
+  );
+  const row = (stage: string, status: string, extra: Record<string, unknown> = {}) => ({
+    _id: new mongoose.Types.ObjectId(), dedupe_key: `legacy:${stage}:${status}:${randomUUID()}`, payload_hash: "legacy", stage,
+    subject_key: "number:legacy", input_revision: 1, deployment: "enqueue-replica", database, status, attempts: 1, max_attempts: 8,
+    priority: 0, next_attempt_at: new Date(now.getTime() - 60_000), lease_owner: null, lease_epoch: 3, leased_until: null, reason: null,
+    result: null, completed_at: null, input_refs: [], createdAt: now, updatedAt: now, ...extra,
+  });
+  const pending = row("analysis", "pending"), retry = row("transcription", "retry"), paused = row("media_fetch", "paused");
+  const leased = row("outreach_ensure", "leased", { lease_owner: "old-deployment", leased_until: new Date(now.getTime() + 300_000) });
+  const dead = row("move_assessment", "dead_letter"), done = row("application", "completed", { completed_at: now });
+  await Model.collection.insertMany([pending, retry, paused, leased, dead, done]);
+  // Nothing claims a retired row, even by id and even once its lease would have expired.
+  for (const target of [pending, retry]) assert.equal(await claimCsiJob("retained-worker", String(target._id)), null);
+  assert.equal(await claimCsiJob("retained-worker"), null, "an undirected claim takes no retired row");
+  // A late queue wake-up for a pending retired row: acknowledged and terminalized, no handler.
+  let handled = 0;
+  const wake = await dispatchCsiWakeup({ job_id: String(pending._id) }, { handlers: { attachment_refresh: async () => { handled++; } } });
+  assert.deepEqual(wake, { status: "retired", job_id: String(pending._id), stage: "analysis", retired: 1 });
+  assert.equal(handled, 0);
+  const swept = await retireLegacyCsiJobs({ now });
+  assert.equal(swept.retired, 3);
+  assert.deepEqual(swept.stages, { transcription: 1, media_fetch: 1, outreach_ensure: 1 });
+  for (const target of [pending, retry, paused, leased]) {
+    const stored = await Model.collection.findOne({ _id: target._id });
+    assert.equal(stored?.status, "retired"); assert.equal(stored?.reason, "stage_retired");
+    assert.equal(stored?.lease_owner, null); assert.equal(stored?.leased_until, null);
+    assert.equal(stored?.completed_at ?? null, null, "no completed_at: the TTL never removes a fenced row before the purge backs it up");
+    assert.equal(stored?.lease_epoch, 4, "the epoch moved, so an old lease can never write again");
+  }
+  assert.equal((await Model.collection.findOne({ _id: dead._id }))?.status, "dead_letter", "terminal rows are untouched");
+  assert.equal((await Model.collection.findOne({ _id: done._id }))?.status, "completed");
+  // The old deployment's completion with the epoch it claimed loses the lease; its effect rolls back.
+  let effect = false;
+  await assert.rejects(completeCsiJob({ job_id: String(leased._id), owner: "old-deployment", epoch: 3 }, async () => { effect = true; }), /LEASE_LOST/);
+  assert.equal(effect, false, "the fence is read before the mutation runs");
+  assert.equal((await retireLegacyCsiJobs()).retired, 0, "idempotent");
+  await assert.rejects(withTransaction(session => enqueueCsiJob({ dedupe_key: "legacy:new", stage: "analysis" as never, subject_key: "number:legacy", input_revision: 1 }, session)), /INVALID_INPUT/);
+  assert.equal(await Model.collection.countDocuments({ dedupe_key: "legacy:new" }), 0);
+  assert.deepEqual(await collections(), before, "no collection was created");
+}
+
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (mongoose.connection.name === database) await mongoose.connection.dropDatabase();
   await mongoose.disconnect();

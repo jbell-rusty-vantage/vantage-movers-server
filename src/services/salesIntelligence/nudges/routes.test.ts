@@ -13,7 +13,7 @@ import { CsiError } from "../auth";
 test("nudge routes enforce signed Owner, feature, strict input, idempotency; GET never dispatches", async () => {
   const saved={...process.env}; Object.assign(process.env,{VANTAGE_API_SECRET:"synthetic-global",VANTAGE_ADMIN_PROXY_SIGNING_SECRET:"synthetic-signature",SALES_INTELLIGENCE_ENABLED:"true",SALES_INTELLIGENCE_NUDGE_ENABLED:"true"});
   let sends=0, previews=0, reads=0;
-  const app=express();app.use(express.json());app.use("/api/v1",requireApiSecret);app.use(createSalesIntelligenceBoundaryRouter({connect:async()=>{}}));
+  const app=express();app.use(express.json());app.use("/api/v1",requireApiSecret);app.use(createSalesIntelligenceBoundaryRouter());
   app.use(createSalesIntelligenceAdminRouter({connect:async()=>{},nudgePreview:async()=>{previews++;throw new CsiError("NUDGE_DESTINATION_IS_CUSTOMER");},
     nudgeSend:async()=>{sends++;throw new CsiError("REVISION_CONFLICT");},nudges:async()=>{reads++;return {as_of:new Date().toISOString(),coverage:{known_through:null,gaps:[],capabilities:{call_log:"unknown" as const,webhook:"unknown" as const}},data:{items:[],next_cursor:null}};}}));
   const server=app.listen(0,"127.0.0.1");await new Promise<void>(r=>server.once("listening",r));

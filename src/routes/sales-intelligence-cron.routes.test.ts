@@ -8,7 +8,9 @@ import type { ReconcileSummary } from "../services/numberActivity/reconcileCallL
 import type { RecoverySummary } from "../services/numberActivity/webhookRecovery";
 import type { DirectorySyncSummary } from "../services/numberActivity/directorySync";
 import { createSalesIntelligenceCronRouter, CSI_CRON_PATHS } from "./sales-intelligence-cron.routes";
-import { CSI_FUNCTION_MAX_DURATION_MS } from "../services/salesIntelligence/analysis/worker";
+
+/** The cron entry point declares this ceiling (seconds) in vercel.json instead of inheriting a platform default. */
+const CRON_FUNCTION_MAX_DURATION_SECONDS = 800;
 
 function reconcileSummary(partial: Partial<ReconcileSummary>): ReconcileSummary {
   return {
@@ -119,7 +121,10 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       return { claimed: 1, completed: 1, failed: 0, lease_lost: 0, deadline_reached: false };
     },
     rebuildDrainMax: 3,
-    drainRepIdentity: async () => ({ outcomes: [] }),
+    retireLegacyJobs: async () => {
+      calls.push("retire");
+      return { retired: 2, stages: { analysis: 1, outreach_ensure: 1 } };
+    },
     refreshCoverage: async () => {
       calls.push("coverage");
     },
@@ -184,7 +189,8 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(recoveryHeld.status, 200);
       assert.equal((recoveryHeld.body.receipt_recovery as RecoverySummary).skip_reason, "lease_held");
       assert.deepEqual(recoveryHeld.body.capture_projection, { claimed: 2, completed: 1, failed: 1, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "coverage", "message-index", "recovery", "drain:7:1234", "call-log-refresh"], "the scan lease being held never blocks job draining; CC-08 refresh drains under CAPTURE_WEBHOOK");
+      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "recovery", "drain:7:1234", "call-log-refresh"], "retired stages are fenced first; the scan lease being held never blocks job draining; CC-08 refresh drains under CAPTURE_WEBHOOK");
+      assert.deepEqual(recoveryHeld.body.retired_jobs, { retired: 2, stages: { analysis: 1, outreach_ensure: 1 } });
       assert.deepEqual(recoveryHeld.body.call_log_refresh, { claimed: 0 });
 
       // CC-08: daily subscription maintenance under CAPTURE_WEBHOOK.
@@ -213,7 +219,7 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(rebuildOnly.body.skipped, false);
       assert.equal(rebuildOnly.body.receipt_recovery, null);
       assert.deepEqual(rebuildOnly.body.rebuild, { claimed: 1, completed: 1, failed: 0, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "coverage", "message-index", "rebuild:3:1234"]);
+      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "rebuild:3:1234"]);
 
       // CSI-04: directory sync cron — flag-off, lease_held, then a run.
       calls.length = 0;
@@ -269,24 +275,30 @@ test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a h
   // cadence buys fresher capture at lower total provider cost.
   assert.equal(schedules.get(CSI_CRON_PATHS.callLogReconcile), "3-59/5 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.jobRecovery), "* * * * *");
-  assert.equal(schedules.get(CSI_CRON_PATHS.outreachEnsure), "* * * * *");
-  // CSI-14 §5: publish owns its own cron, lease and invocation budget, so an
-  // ensure drain backlog can never starve the Needs Attention desk.
-  assert.equal(schedules.get(CSI_CRON_PATHS.attentionPublish), "*/3 * * * *");
+  // The durable backstop for Lead attachment wake-ups now that the Outreach ensure minute cron is gone.
+  assert.equal(schedules.get(CSI_CRON_PATHS.attachmentRefresh), "* * * * *");
   assert.equal(
     manifest.functions["api/index.ts"]?.maxDuration,
-    CSI_FUNCTION_MAX_DURATION_MS / 1000,
+    CRON_FUNCTION_MAX_DURATION_SECONDS,
     "the cron entry point declares its ceiling instead of inheriting a platform default",
   );
   assert.equal(schedules.get(CSI_CRON_PATHS.directorySync), "20 5 * * *", "CSI-04 directory sync is registered and handled by the same router");
-  assert.equal(schedules.get(CSI_CRON_PATHS.backfillStep), "*/15 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.retention), "30 4 * * *");
+  assert.equal(schedules.get(CSI_CRON_PATHS.nudgeRepair), "*/5 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.webhookSubscription), "15 6 * * *", "CC-08 daily subscription renewal");
   assert.equal(schedules.get("/api/cron/ringcentral-call-log-sync"), "*/30 * * * *", "qualified-call sync schedule unchanged");
   const triggers = manifest.functions["api/queues/sales-intelligence-consumer.ts"]?.experimentalTriggers;
   assert.ok(triggers, "consumer function trigger registered");
   assert.equal(triggers[0]?.type, "queue/v2beta");
   assert.equal(triggers[0]?.topic, "sales-intelligence-events*");
+  // Every Sales Intelligence schedule is a retained route of this router; the retired pipeline has none.
+  const registered = new Set<string>(Object.values(CSI_CRON_PATHS));
+  for (const cron of manifest.crons.filter((c) => c.path.startsWith("/api/cron/sales-intelligence-"))) {
+    assert.ok(registered.has(cron.path), `${cron.path} is a retained route`);
+  }
+  for (const retired of ["extract", "apply", "transcribe", "media-fetch", "attention-publish", "outreach-ensure", "overview-refresh", "backfill-step"]) {
+    assert.equal(schedules.has(`/api/cron/sales-intelligence-${retired}`), false, retired);
+  }
 });
 
 test("app.ts mounts the CSI cron router before the v1 guard like the other cron routers", () => {
@@ -357,6 +369,7 @@ test("job recovery settles provisional rows from the store only when webhook cap
     drainCaptureProjection: async () => ({ claimed: 0, completed: 0, failed: 0, lease_lost: 0, deadline_reached: false, outcomes: [] }),
     refreshCoverage: async () => {},
     ensureLeadMessageIndex: async () => {},
+    retireLegacyJobs: async () => ({ retired: 0, stages: {} }),
     extraRecovery: [],
     settleProvisional: async () => {
       settles += 1;
@@ -376,4 +389,39 @@ test("job recovery settles provisional rows from the store only when webhook cap
     process.env = saved;
   }
   assert.equal(settles, 1);
+});
+
+test("job recovery fences retired stages first and keeps recovering when the sweep fails", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  const order: string[] = [];
+  let failSweep = false;
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {},
+    flag: ((name: string) => name === "ATTACHMENT_REFRESH") as never,
+    refreshCoverage: async () => {},
+    ensureLeadMessageIndex: async () => {},
+    recordDeployment: async () => {},
+    retireLegacyJobs: async () => {
+      order.push("retire");
+      if (failSweep) throw new Error("mongo down");
+      return { retired: 1, stages: { transcription: 1 } };
+    },
+    drainAttachmentRefresh: async () => { order.push("attachment"); return { outcomes: [] }; },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      const first = await call(CSI_CRON_PATHS.jobRecovery, auth);
+      assert.equal(first.status, 200);
+      assert.deepEqual(first.body.retired_jobs, { retired: 1, stages: { transcription: 1 } });
+      failSweep = true;
+      const second = await call(CSI_CRON_PATHS.jobRecovery, auth);
+      assert.equal(second.status, 200);
+      assert.equal(second.body.retired_jobs, null);
+      assert.deepEqual(order, ["retire", "attachment", "retire", "attachment"]);
+    });
+  } finally {
+    process.env = saved;
+  }
 });

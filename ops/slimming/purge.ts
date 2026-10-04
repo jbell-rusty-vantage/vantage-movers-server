@@ -42,6 +42,7 @@ import {
   liveLeaseFilter,
   terminalJobsFilter,
   terminalizeFilter,
+  manifestPolicyDrift,
   unlistedBlobProblems,
   verifiedFullBackupProblem,
 } from "./lib/purge-rules";
@@ -418,9 +419,11 @@ async function main(): Promise<void> {
   const { manifest, computedHash } = loadManifest();
   const blobKeys = manifest.targets.blob ? loadBlobKeys() : [];
   const pending = manifest.targets.cleanups.filter((cl) => cl.status !== "final").map((cl) => cl.id);
+  const drift = manifestPolicyDrift(manifest.targets.cleanups);
   const batch = Math.min(Math.max(Number(argValue(argv, "batch") ?? 500) || 500, 1), 2_000);
 
   out(`[purge] mode=${apply ? "APPLY" : "dry-run"} manifest_hash=${computedHash} generated_at=${manifest.generated_at}`);
+  if (drift.length) out(`[purge] the manifest is stale against policy.ts (regenerate it with inventory.ts):\n  - ${drift.join("\n  - ")}`);
   let runDir = "";
   let log: RunLog | null = null;
   if (apply) {
@@ -428,6 +431,7 @@ async function main(): Promise<void> {
     if (given !== computedHash) throw new PurgeAbort(`--manifest-hash ${given ?? "(missing)"} does not match the manifest (${computedHash})`);
     if (!hasFlag(argv, "i-confirm-slim-deployed")) throw new PurgeAbort("--i-confirm-slim-deployed is required");
     if (pending.length) throw new PurgeAbort(`cleanups still pending wave 3: ${pending.join(", ")}; finalize policy.ts and regenerate the manifest`);
+    if (drift.length) throw new PurgeAbort(`the manifest is stale against policy.ts (${drift.length} difference(s)); regenerate it`);
     const backupDir = assertBackupDir(argValue(argv, "backup-dir"));
     const resume = argValue(argv, "resume");
     if (resume) {

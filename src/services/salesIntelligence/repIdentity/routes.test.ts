@@ -15,7 +15,7 @@ test("all five Rep routes enforce Owner, strict contracts, scope, flags and idem
   const writes:string[]=[], reads:string[]=[]; let failure:CsiError|null=null;
   const write=async (action:string)=>{ writes.push(action); if(failure) throw failure; return { response:{ accepted:true },replayed:false }; };
   const app=express(); app.use(express.json()); app.use("/api/v1",requireApiSecret);
-  app.use(createSalesIntelligenceBoundaryRouter({ connect:async()=>{} }));
+  app.use(createSalesIntelligenceBoundaryRouter());
   app.use(createSalesIntelligenceAdminRouter({ connect:async()=>{},
     reps:async()=>{ reads.push("list"); return { as_of:new Date().toISOString(),coverage:{ known_through:null,gaps:[],capabilities:{ call_log:"unknown" as const,webhook:"unknown" as const } },items:[],next_cursor:null,
       directory:{ status:"missing",snapshot_id:null,taken_at:null,completeness:"provider_completeness_unverified",users:[],next_cursor:null } }; },
@@ -55,15 +55,17 @@ test("all five Rep routes enforce Owner, strict contracts, scope, flags and idem
     for(const route of routes) assert.equal((await call("POST",CSI_ADMIN_PREFIX+route.path,route.body)).status,404);
   } finally { server.closeAllConnections(); await new Promise<void>(r=>server.close(()=>r())); process.env=saved; }
 });
-test("minute recovery invokes registered bounded rep stage, honors flag and cron authentication",async()=>{
-  const saved=process.env.CRON_SECRET; process.env.CRON_SECRET="synthetic-cron"; let enabled=false,calls=0;
+test("minute recovery runs no rep re-evaluation stage; a queued one is terminalized by the retired-stage fence",async()=>{
+  const saved=process.env.CRON_SECRET; process.env.CRON_SECRET="synthetic-cron"; let enabled=false,retires=0;
   const app=express(); app.use(createSalesIntelligenceCronRouter({ connect:async()=>{},flag:f=>enabled&&f==="ENABLED",
-    drainRepIdentity:async()=>{ calls++; return { outcomes:["not_claimable"] }; },
+    refreshCoverage:async()=>{}, ensureLeadMessageIndex:async()=>{}, recordDeployment:async()=>{},
+    retireLegacyJobs:async()=>{ retires++; return { retired:1, stages:{ rep_identity_reevaluate:1 } }; },
     drainRebuild:async()=>({ claimed:0,completed:0,failed:0,lease_lost:0,deadline_reached:false }) }));
   const server=app.listen(0,"127.0.0.1"); await new Promise<void>(r=>server.once("listening",r));
   const url=`http://127.0.0.1:${(server.address() as AddressInfo).port}${CSI_CRON_PATHS.jobRecovery}`;
   try { assert.equal((await fetch(url)).status,401); const headers={ authorization:"Bearer synthetic-cron" };
-    await fetch(url,{ headers }); assert.equal(calls,0); enabled=true;
-    const result=await (await fetch(url,{ headers })).json(); assert.deepEqual(result.rep_identity_reevaluate,{ outcomes:["not_claimable"] }); assert.equal(calls,1);
+    await fetch(url,{ headers }); assert.equal(retires,0); enabled=true;
+    const result=await (await fetch(url,{ headers })).json();
+    assert.equal("rep_identity_reevaluate" in result,false); assert.deepEqual(result.retired_jobs,{ retired:1, stages:{ rep_identity_reevaluate:1 } }); assert.equal(retires,1);
   } finally { server.closeAllConnections(); await new Promise<void>(r=>server.close(()=>r())); if(saved===undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET=saved; }
 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, test } from "node:test";
+import { afterEach, test } from "node:test";
 import mongoose from "mongoose";
 import { FormLead, type FormLeadDocument } from "../../models/FormLead";
 import { submitFormLeadToCrm } from "./crm.service";
@@ -7,24 +7,13 @@ import { CRM_FORM_LEAD_ENDPOINT } from "./crmConfig";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
-  allowTestObservability: process.env.ALLOW_TEST_OBSERVABILITY,
   nodeTestContext: process.env.NODE_TEST_CONTEXT,
-  observabilityEnabled: process.env.OBSERVABILITY_ENABLED,
-  observabilityWriteMode: process.env.OBSERVABILITY_WRITE_MODE,
   vercelEnv: process.env.VERCEL_ENV,
 };
 
-beforeEach(() => {
-  process.env.OBSERVABILITY_ENABLED = "false";
-  process.env.OBSERVABILITY_WRITE_MODE = "disabled";
-});
-
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  restoreEnv("ALLOW_TEST_OBSERVABILITY", originalEnv.allowTestObservability);
   restoreEnv("NODE_TEST_CONTEXT", originalEnv.nodeTestContext);
-  restoreEnv("OBSERVABILITY_ENABLED", originalEnv.observabilityEnabled);
-  restoreEnv("OBSERVABILITY_WRITE_MODE", originalEnv.observabilityWriteMode);
   restoreEnv("VERCEL_ENV", originalEnv.vercelEnv);
 });
 

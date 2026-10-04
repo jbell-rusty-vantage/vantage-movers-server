@@ -1,33 +1,10 @@
 import { z } from "zod";
-import {
-  CSI_ACTION_KINDS,
-  CSI_ERROR_CODES,
-  CSI_OUTREACH_STATES,
-  CONTACT_NUMBER_CLASSIFICATIONS,
-  CONTACT_ELIGIBILITY_STATES,
-} from "../../config/domain/salesIntelligence";
-import { intelligenceFindingSchema } from "../intelligence/intelligenceEnvelope.validation";
+import { CSI_ERROR_CODES } from "../../config/domain/salesIntelligence";
 
 export const csiIdSchema = z.string().regex(/^[a-f\d]{24}$/i);
 export const csiTextSchema = z.string().trim().min(1).max(500);
 export const csiDateSchema = z.iso.datetime();
 export const csiRevisionSchema = z.number().int().positive();
-export const csiSubjectSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("lead"),
-      model: z.enum(["FormLead", "CallLead"]),
-      id: csiIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("number_review"),
-      contact_number_id: csiIdSchema,
-    })
-    .strict(),
-]);
-export type CsiSubject = z.infer<typeof csiSubjectSchema>;
 export const csiErrorSchema = z
   .object({
     ok: z.literal(false),
@@ -36,41 +13,13 @@ export const csiErrorSchema = z
     request_id: z.string().min(1).max(200),
   })
   .strict();
-export const csiDateResolutionSchema = z
-  .object({
-    precision: z.enum(["exact", "day", "unresolved"]),
-    timezone: z.string().min(1),
-    assumption: csiTextSchema.nullable(),
-    anchor: csiDateSchema.nullable(),
-    policy_version: z.string().min(1),
-  })
-  .strict();
-export const csiFollowupInputSchema = z
-  .object({
-    kind: z.enum(CSI_ACTION_KINDS),
-    description: csiTextSchema,
-    due_at: csiDateSchema.nullable(),
-    responsible_agent_id: csiIdSchema.nullable().optional(),
-    date_note: csiTextSchema.optional(),
-  })
-  .strict();
 const base = {
   expected_revision: csiRevisionSchema,
   expected_revisions: z
     .array(
       z
         .object({
-          target: z.enum([
-            "outreach",
-            "followup",
-            "instruction",
-            "review",
-            "restriction",
-            "finding",
-            "attachment",
-            "number",
-            "rep",
-          ]),
+          target: z.enum(["attachment", "number", "rep"]),
           id: csiIdSchema,
           revision: csiRevisionSchema,
         })
@@ -81,95 +30,12 @@ const base = {
   scope: z.literal("production").optional(),
 };
 const reason = { reason: csiTextSchema };
-const reanalysis = {
-  reanalysis_mode: z.enum(["original_evidence", "current_context"]).optional(),
-};
 const command = <K extends string, S extends z.ZodRawShape>(
   kind: K,
   shape: S,
 ) => z.object({ command: z.literal(kind), ...base, ...shape }).strict();
+/** Owner commands of the retained Numbers surface: rebuild and reviewed Number↔Lead attachment. */
 export const csiCommandSchema = z.discriminatedUnion("command", [
-  command("mark_worked", { note: csiTextSchema.optional() }),
-  command("assign", {
-    responsible_agent_id: csiIdSchema.nullable(),
-    reason: csiTextSchema.optional(),
-  }),
-  command("set_waiting", { until: csiDateSchema, ...reason }),
-  // Owner call progress. Separate from CSI_OUTREACH_STATES, which carries closure meaning.
-  command("start_call", { note: csiTextSchema.optional() }),
-  command("end_call", { note: csiTextSchema.optional() }),
-  command("close", {
-    reason: z.enum(["lost", "not_sales", "owner_dismissed", "suppressed"]),
-    note: csiTextSchema.optional(),
-  }),
-  command("reopen", reason),
-  // LP-01 §3.3: explicit, revision-scoped Owner override of a CRM disposition.
-  command("override_disposition", { disposition_revision: z.string().min(1).max(200), ...reason }),
-  command("add_note", { text: csiTextSchema }),
-  command("create_followup", {
-    outreach_record_id: csiIdSchema,
-    action: csiFollowupInputSchema,
-  }),
-  command("patch_followup", {
-    changes: csiFollowupInputSchema
-      .partial()
-      .refine((v) => Object.keys(v).length > 0),
-    ...reason,
-  }),
-  command("complete_followup", {
-    disposition: z.enum([
-      "no_answer",
-      "left_voicemail",
-      "spoke_with_customer",
-      "connected_contact_unknown",
-      "completed",
-      "customer_called",
-    ]),
-    note: csiTextSchema.optional(),
-    evidence_ref: csiIdSchema.optional(),
-    next: csiFollowupInputSchema.optional(),
-  }),
-  command("snooze_followup", { until: csiDateSchema, ...reason }),
-  command("cancel_followup", reason),
-  command("confirm_finding", { expected_output_digest: csiTextSchema }),
-  command("confirm_run", { expected_output_digest: csiTextSchema }),
-  command("correct_finding", {
-    expected_output_digest: csiTextSchema,
-    replacement: intelligenceFindingSchema,
-    action_changes: csiFollowupInputSchema.partial().refine(v => Object.keys(v).length > 0).optional(),
-    target_effect_id: csiIdSchema.nullable(),
-    target_followup_id: csiIdSchema.nullable(),
-    ...reason,
-    ...reanalysis,
-  }),
-  command("retract_finding", { expected_output_digest: csiTextSchema, ...reason, ...reanalysis }),
-  command("apply_suggestion", {
-    run_id: csiIdSchema,
-    suggestion_output_digest: csiTextSchema,
-    due_at: csiDateSchema.nullable().optional(),
-    responsible_agent_id: csiIdSchema.nullable().optional(),
-  }),
-  command("reanalyze", {
-    mode: z.enum(["original_evidence", "current_context"]),
-    source_run_id: csiIdSchema.optional(),
-    owner_correction_ids: z.array(csiIdSchema).max(100),
-    // Provenance for why the rerun was asked for; it never changes run scoping or evidence rules.
-    focus_finding_id: csiIdSchema.optional(),
-    ...reason,
-  }).refine(
-    (v) => v.mode !== "original_evidence" || v.source_run_id !== undefined,
-    {
-      message: "Original evidence requires source_run_id",
-      path: ["source_run_id"],
-    },
-  ),
-  command("classify_number", {
-    classification: z.enum(CONTACT_NUMBER_CLASSIFICATIONS),
-    eligibility: z.enum(CONTACT_ELIGIBILITY_STATES),
-    until: csiDateSchema.nullable(),
-    ...reason,
-  }),
-  command("open_number_review", reason),
   command("rebuild_number", reason),
   command("attach_lead", {
     contact_number_id: csiIdSchema,
@@ -180,26 +46,6 @@ export const csiCommandSchema = z.discriminatedUnion("command", [
   }),
   command("reject_attachment", reason),
   command("detach_attachment", reason),
-  command("resolve_review", {
-    resolution: z.enum(["no_action", "command_completed"]),
-    completed_command_id: csiIdSchema.nullable(),
-    ...reason,
-  }),
-  command("resolve_restriction", {
-    resolution: z.enum(["confirm", "edit", "lift"]),
-    channels: z
-      .array(z.enum(["call", "text"]))
-      .min(1)
-      .max(2),
-    until: csiDateSchema.nullable(),
-    ...reason,
-  }),
-  command("set_contact_type", {
-    contact_type: z.enum(["unknown", "voicemail", "human_conversation"]),
-    ...reason,
-  }),
-  command("process_conversation", {}),
-  command("retry_job", reason),
 ]);
 export type CsiCommand = z.infer<typeof csiCommandSchema>;
 export const CSI_OWNER_ACTIONS = [
@@ -210,7 +56,6 @@ export const CSI_OWNER_ACTIONS = [
   "preview_nudge",
   "send_nudge",
   "update_settings",
-  "plan_backfill",
 ] as const;
 export const csiActionAvailabilitySchema = z
   .object({
@@ -230,101 +75,128 @@ const shift = z
   })
   .strict()
   .refine((v) => v.start_minute < v.end_minute);
+const policyTimezone = z.string().refine((v) => {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: v });
+    return true;
+  } catch {
+    return false;
+  }
+});
+const staffedHours = z
+  .array(shift)
+  .min(1)
+  .max(28)
+  .refine((shifts) =>
+    shifts.every((s, i) =>
+      shifts.every(
+        (other, j) =>
+          i === j ||
+          s.day !== other.day ||
+          s.end_minute <= other.start_minute ||
+          other.end_minute <= s.start_minute,
+      ),
+    ),
+  );
+/** Capabilities a policy can enable. Messages to RingCentral directory Users require `nudges`. */
+export const CSI_POLICY_CAPABILITIES = ["capture", "nudges", "live"] as const;
+export type CsiPolicyCapability = (typeof CSI_POLICY_CAPABILITIES)[number];
+/**
+ * Owner policy of the retained Numbers and RingCentral Accounts surface: the staffed clock (capture
+ * health), the enabled capabilities and how long Call activity is kept (`retention.audit_days`).
+ * Every new version is written with exactly these fields.
+ */
 export const csiPolicySchema = z
   .object({
     version: z.string().min(1).max(100),
-    timezone: z.string().refine((v) => {
-      try {
-        new Intl.DateTimeFormat("en", { timeZone: v });
-        return true;
-      } catch {
-        return false;
-      }
-    }),
-    staffed_hours: z
-      .array(shift)
-      .min(1)
-      .max(28)
-      .refine((shifts) =>
-        shifts.every((s, i) =>
-          shifts.every(
-            (other, j) =>
-              i === j ||
-              s.day !== other.day ||
-              s.end_minute <= other.start_minute ||
-              other.end_minute <= s.start_minute,
-          ),
-        ),
-      ),
-    first_action_due_staffed_minutes: minutes.positive(),
-    missed_callback_due_staffed_minutes: minutes.positive(),
-    going_cold_staffed_minutes: minutes.positive(),
-    monthly_ceiling_cents: minutes,
-    per_recording_ceiling_cents: minutes,
-    cooldown_attempts_24h: minutes.positive(),
-    enabled_capabilities: z.array(
-      z.enum([
-        "capture",
-        "media",
-        "transcription",
-        "analysis",
-        "nudges",
-        "live",
-      ]),
-    ),
-    retention: z
-      .object({
-        audio_days: minutes.positive(),
-        redacted_days: minutes.positive(),
-        audit_days: minutes.positive(),
-      })
-      .strict(),
-    // Team 4 AC3–AC5 (Attention evolution spec §5.3). Optional with no schema default, so a stored
-    // policy without them stays valid and the settings read stays byte-identical with the flag off;
-    // `csiPolicyEvolution()` resolves each one to its default.
-    inbound_followup_staffed_minutes: minutes.positive().optional(),
-    callback_early_window_staffed_minutes: minutes.optional(),
-    callback_retry_staffed_minutes: minutes.positive().optional(),
-    callback_max_retries: minutes.max(10).optional(),
-    quote_followup_staffed_minutes: minutes.positive().optional(),
-    unreached_multiplier: minutes.positive().max(20).optional(),
-    first_attempts_threshold: minutes.positive().max(20).optional(),
+    timezone: policyTimezone,
+    staffed_hours: staffedHours,
+    enabled_capabilities: z.array(z.enum(CSI_POLICY_CAPABILITIES)),
+    retention: z.object({ audit_days: minutes.positive() }).strict(),
   })
   .strict();
 export type CsiPolicy = z.infer<typeof csiPolicySchema>;
-/** Spec §5.3 defaults for the optional Attention-evolution policy fields. */
-export const CSI_POLICY_EVOLUTION_DEFAULTS = Object.freeze({
-  inbound_followup_staffed_minutes: 240,
-  callback_early_window_staffed_minutes: 60,
-  callback_retry_staffed_minutes: 120,
-  callback_max_retries: 2,
-  quote_followup_staffed_minutes: 1440,
-  unreached_multiplier: 2,
-  first_attempts_threshold: 2,
-});
-export type CsiPolicyEvolution = { -readonly [K in keyof typeof CSI_POLICY_EVOLUTION_DEFAULTS]: number };
-/** The Attention-evolution values of a (possibly older) stored policy, each resolved to its default when absent. Pure. */
-export function csiPolicyEvolution(policy: Partial<Pick<CsiPolicy, keyof CsiPolicyEvolution>>): CsiPolicyEvolution {
-  const out: CsiPolicyEvolution = { ...CSI_POLICY_EVOLUTION_DEFAULTS };
-  for (const key of Object.keys(out) as (keyof CsiPolicyEvolution)[]) {
-    const value = policy[key];
-    if (typeof value === "number") out[key] = value;
+/**
+ * Policy fields only a pre-slimming build reads (AI ceilings, Outreach due times, media/transcript
+ * retention, Attention evolution). The slim server never reads or accepts them from the Owner. A new
+ * stored version carries the previous version's values forward unchanged (`withRetiredPolicyFields`),
+ * so a build rolled back during the observation window can still parse the active version.
+ */
+export const CSI_RETIRED_POLICY_FIELDS = [
+  "first_action_due_staffed_minutes",
+  "missed_callback_due_staffed_minutes",
+  "going_cold_staffed_minutes",
+  "monthly_ceiling_cents",
+  "per_recording_ceiling_cents",
+  "cooldown_attempts_24h",
+  "inbound_followup_staffed_minutes",
+  "callback_early_window_staffed_minutes",
+  "callback_retry_staffed_minutes",
+  "callback_max_retries",
+  "quote_followup_staffed_minutes",
+  "unreached_multiplier",
+  "first_attempts_threshold",
+] as const;
+export const CSI_RETIRED_POLICY_RETENTION_FIELDS = ["audio_days", "redacted_days"] as const;
+type RetiredPolicyFields = Partial<Record<(typeof CSI_RETIRED_POLICY_FIELDS)[number], number>>;
+type RetiredRetentionFields = Partial<Record<(typeof CSI_RETIRED_POLICY_RETENTION_FIELDS)[number], number>>;
+export type CsiPersistedPolicy = CsiPolicy & RetiredPolicyFields & { retention: CsiPolicy["retention"] & RetiredRetentionFields };
+const retiredPolicyValue = minutes.optional();
+/**
+ * What a stored policy version may hold: the retained policy, validated exactly, plus the carried
+ * retired values. Nothing else, so a typo or a new field cannot slip into a stored version.
+ */
+export const csiPersistedPolicySchema = csiPolicySchema
+  .extend({
+    ...(Object.fromEntries(CSI_RETIRED_POLICY_FIELDS.map((field) => [field, retiredPolicyValue])) as Record<
+      (typeof CSI_RETIRED_POLICY_FIELDS)[number],
+      typeof retiredPolicyValue
+    >),
+    retention: z
+      .object({ audit_days: minutes.positive(), audio_days: retiredPolicyValue, redacted_days: retiredPolicyValue })
+      .strict(),
+  })
+  .strict();
+/** The retained `policy` with the retired values of `previous` (a stored version, any shape) carried forward. */
+export function withRetiredPolicyFields(policy: CsiPolicy, previous: unknown): CsiPersistedPolicy {
+  const source = previous && typeof previous === "object" ? (previous as Record<string, unknown>) : {};
+  const sourceRetention =
+    source.retention && typeof source.retention === "object" ? (source.retention as Record<string, unknown>) : {};
+  const carried: RetiredPolicyFields = {};
+  for (const field of CSI_RETIRED_POLICY_FIELDS) {
+    if (typeof source[field] === "number") carried[field] = source[field];
   }
-  return out;
+  const carriedRetention: RetiredRetentionFields = {};
+  for (const field of CSI_RETIRED_POLICY_RETENTION_FIELDS) {
+    if (typeof sourceRetention[field] === "number") carriedRetention[field] = sourceRetention[field];
+  }
+  return csiPersistedPolicySchema.parse({
+    ...carried,
+    ...policy,
+    retention: { ...carriedRetention, ...policy.retention },
+  }) as CsiPersistedPolicy;
 }
+/**
+ * Reads a stored policy version. Versions written before the slimming also carry settings of
+ * retired capabilities (AI budget, Outreach due times, media and transcript retention, Attention
+ * evolution); those fields and capability names are ignored, never validated or written again.
+ */
+export const csiStoredPolicySchema = z.object({
+  version: z.string().min(1).max(100),
+  timezone: policyTimezone,
+  staffed_hours: staffedHours,
+  enabled_capabilities: z
+    .array(z.string())
+    .transform((values) =>
+      values.filter((value): value is CsiPolicyCapability =>
+        (CSI_POLICY_CAPABILITIES as readonly string[]).includes(value),
+      ),
+    ),
+  retention: z.object({ audit_days: minutes.positive() }),
+});
 export const csiSettingsCommandSchema = z
   .object({ command: z.literal("update_settings"), ...base, policy: csiPolicySchema, ...reason })
   .strict();
-export const csiListQuerySchema = z
-  .object({
-    scope: z.literal("production").optional(),
-    cursor: z.string().max(2000).optional(),
-    limit: z.coerce.number().int().min(1).max(200).default(50),
-    state: z.enum(CSI_OUTREACH_STATES).optional(),
-    q: z.string().max(200).optional(),
-  })
-  .strict();
-
 export const csiRepInputSchema = z
   .object({
     agent_id: csiIdSchema,
@@ -385,15 +257,3 @@ export const csiNudgeCommandSchema = z
   })
   .strict()
   .refine((value) => Boolean(value.nudge.rep_identity_link_id) === (value.expected_rep_revision !== undefined));
-export const csiBackfillCommandSchema = z
-  .object({ ...base, from: csiDateSchema, to: csiDateSchema, ...reason })
-  .strict()
-  .refine((v) => v.from < v.to);
-export const csiSubmissionReceiptSchema = z
-  .object({
-    run_id: csiIdSchema,
-    submission_id: csiIdSchema,
-    application_job_id: csiIdSchema,
-    status: z.literal("submitted"),
-  })
-  .strict();

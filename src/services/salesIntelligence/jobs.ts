@@ -1,12 +1,13 @@
-import mongoose, { type ClientSession } from "mongoose";
+import { Types, type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import {
-  CSI_BACKFILL_JOB_PRIORITY,
-  CSI_LIVE_JOB_PRIORITY,
+  CSI_JOB_STAGES,
+  CSI_RETIRED_JOB_STAGES,
   csiDataset,
-  type CSI_JOB_STAGES,
+  isRetainedCsiJobStage,
+  type CsiJobStage,
 } from "../../config/domain/salesIntelligence";
-export { CSI_BACKFILL_JOB_PRIORITY, CSI_LIVE_JOB_PRIORITY };
+import { logger } from "../../logger";
 import {
   getSalesIntelligenceJobModel,
   SALES_INTELLIGENCE_JOB_INDEXES,
@@ -15,13 +16,11 @@ import { CsiError } from "./auth";
 import { assertIndexes, payloadHash } from "./transactions";
 export type JobInput = {
   dedupe_key: string;
-  stage: (typeof CSI_JOB_STAGES)[number];
+  stage: CsiJobStage;
   subject_key: string;
   input_revision: number;
   input_refs?: string[];
   priority?: number;
-  owner_reanalysis?: { run_id: string; source_run_id: string; mode: "original_evidence" | "current_context"; owner_correction_ids: string[]; focus_finding_id?: string | null; application_disabled?: boolean };
-  rep_identity_window?: { account: string; extension: string; from: string; through: string; change_id: string; after: string | null; after_at: string | null };
 };
 export type JobLease = { job_id: string; owner: string; epoch: number };
 export async function enqueueCsiJob(
@@ -29,6 +28,8 @@ export async function enqueueCsiJob(
   session: ClientSession,
   now = new Date(),
 ) {
+  // Producer fence: a retired stage is never written again, whatever the caller's type says.
+  if (!isRetainedCsiJobStage(input.stage)) throw new CsiError("INVALID_INPUT", [{ path: "stage", code: "stage_retired" }]);
   if (!session.inTransaction()) throw new CsiError("INVALID_INPUT");
   const Model = getSalesIntelligenceJobModel();
   await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
@@ -39,8 +40,6 @@ export async function enqueueCsiJob(
     subject_key: input.subject_key,
     input_revision: input.input_revision,
     input_refs: input.input_refs ?? [],
-    ...(input.owner_reanalysis ? { owner_reanalysis: input.owner_reanalysis } : {}),
-    ...(input.rep_identity_window ? { rep_identity_window: input.rep_identity_window } : {}),
   });
   const row = await Model.findOneAndUpdate(
     { dedupe_key: input.dedupe_key },
@@ -88,8 +87,7 @@ function fence(lease: JobLease, now = new Date()) {
  * already carries `attempts < max_attempts`, so an exhausted row can never be
  * claimed whether or not it has been dead-lettered yet. The sweep only makes
  * it *visible*, which is why it runs on a cadence instead of as a
- * collection-wide `updateMany` in front of every single claim — up to 150 a
- * minute across the ensure and recovery drains (14 §7).
+ * collection-wide `updateMany` in front of every single claim (14 §7).
  */
 const SWEEP_INTERVAL_MS = 60_000;
 let lastSweepAt = 0;
@@ -128,47 +126,28 @@ export async function sweepExhaustedCsiJobs(now = new Date()) {
   );
   return { dead_lettered: result.modifiedCount };
 }
+/**
+ * Claims one runnable row of a retained stage. A row of a retired stage is
+ * never leased, even by an undirected claim or a wake-up naming its id.
+ */
 export async function claimCsiJob(
   owner: string,
   jobId?: string,
   ttlMs = 300_000,
-  /**
-   * CSI-03 additive: a worker that only knows how to run one stage claims
-   * only that stage, so a consumer never leases work it cannot process.
-   */
-  stage?: JobInput["stage"],
-  /**
-   * MA-03: a live consumer that must never run historical work (the assessment-only backfill
-   * runs its own jobs in process on the personal key) claims only rows at or above this priority.
-   */
-  minPriority?: number,
-  /**
-   * An in-process backfill runner claiming its own historical row by id is a separate
-   * consumer: it never jumps ahead of the cron's sorted live queue, so the live-work gate
-   * does not apply. Only valid with an explicit `jobId`.
-   */
-  options: { historical?: boolean } = {},
+  /** A worker that only knows how to run one stage claims only that stage. */
+  stage?: CsiJobStage,
 ) {
-  if (!owner.trim() || ttlMs <= 0 || ttlMs > 900_000 || (options.historical && !jobId))
+  if (!owner.trim() || ttlMs <= 0 || ttlMs > 900_000 || (stage !== undefined && !isRetainedCsiJobStage(stage)))
     throw new CsiError("INVALID_INPUT");
   const Model = getSalesIntelligenceJobModel();
   await assertIndexes(Model.collection, SALES_INTELLIGENCE_JOB_INDEXES);
   const now = new Date();
-  // A queue wake-up for a particular historical job cannot jump ahead of
-  // current STT/analysis simply by bypassing the sorted cron claim.
-  const aiStages: JobInput["stage"][] = ["transcription", "analysis", "number_refresh"];
-  const liveAiDue = !options.historical && (!stage || aiStages.includes(stage)) && await Model.exists({
-    ...csiDataset(), stage: { $in: aiStages }, priority: { $gte: CSI_LIVE_JOB_PRIORITY },
-    $or: [{ status: { $in: ["pending", "retry"] }, next_attempt_at: { $lte: now } },
-      { status: "leased" }],
-  });
   await sweepExhaustedCsiJobsOnCadence(now);
   return Model.findOneAndUpdate(
     {
       ...csiDataset(),
       ...(jobId ? { _id: jobId } : {}),
-      ...(stage ? { stage } : {}),
-      ...(liveAiDue || minPriority !== undefined ? { priority: { $gte: liveAiDue ? Math.max(CSI_LIVE_JOB_PRIORITY, minPriority ?? CSI_LIVE_JOB_PRIORITY) : minPriority! } } : {}),
+      stage: stage ?? { $in: [...CSI_JOB_STAGES] },
       $expr: { $lt: ["$attempts", "$max_attempts"] },
       $or: [
         {
@@ -195,6 +174,52 @@ export async function claimCsiJob(
     },
   );
 }
+/** Rows of a retired stage that still hold work: anything not already terminal. */
+const RETIRABLE_STATUSES = ["pending", "leased", "retry", "paused"] as const;
+export const CSI_JOB_RETIREMENT_BATCH = 500;
+/**
+ * Global fence for the retired AI/media/Outreach stages (slimming SPECIFICATION §7.4). Each
+ * matched row becomes `retired` with no provider call and no effect. Bumping `lease_epoch` and
+ * clearing the lease revokes a lease an earlier deployment still holds: its renew, continue,
+ * complete and fail writes all require `status: "leased"` with the epoch it claimed, so they find
+ * no row and its transaction rolls back. The row gets no `completed_at`, so the completed-job TTL never
+ * removes it: the slimming purge (C2, `status: "retired"` is terminal there) backs it up and deletes it.
+ * Bounded per call; job recovery runs it every minute, so a backlog drains over several runs.
+ */
+export async function retireLegacyCsiJobs(options: { jobId?: string; limit?: number; now?: Date } = {}) {
+  // Raw collection: stored rows of retired stages are outside the retained schema enum by design.
+  const collection = getSalesIntelligenceJobModel().collection;
+  const now = options.now ?? new Date();
+  const filter = {
+    ...csiDataset(),
+    ...(options.jobId ? { _id: new Types.ObjectId(options.jobId) } : {}),
+    stage: { $in: [...CSI_RETIRED_JOB_STAGES] as string[] },
+    status: { $in: [...RETIRABLE_STATUSES] as string[] },
+  };
+  const rows = await collection
+    .find(filter, { projection: { _id: 1, stage: 1 } })
+    .sort({ _id: 1 })
+    .limit(Math.max(1, Math.min(CSI_JOB_RETIREMENT_BATCH, options.limit ?? CSI_JOB_RETIREMENT_BATCH)))
+    .toArray();
+  const stages: Record<string, number> = {};
+  if (!rows.length) return { retired: 0, stages };
+  const result = await collection.updateMany(
+    { ...filter, _id: { $in: rows.map((row) => row._id) } },
+    {
+      $set: {
+        status: "retired",
+        reason: "stage_retired",
+        lease_owner: null,
+        leased_until: null,
+        updatedAt: now,
+      },
+      $inc: { lease_epoch: 1 },
+    },
+  );
+  for (const row of rows) stages[String(row.stage)] = (stages[String(row.stage)] ?? 0) + 1;
+  logger.info({ msg: "sales_intelligence.jobs.retired", retired: result.modifiedCount, stages });
+  return { retired: result.modifiedCount, stages };
+}
 export async function renewCsiJob(lease: JobLease, ttlMs = 300_000) {
   if (ttlMs <= 0 || ttlMs > 900_000) throw new CsiError("INVALID_INPUT");
   const now = new Date();
@@ -218,21 +243,10 @@ export async function continueCsiJob<T>(lease: JobLease, mutation: (session: Cli
     return value;
   });
 }
-/** Commit bounded resumable application progress without completing the durable job. */
-export async function checkpointCsiJob<T>(lease: JobLease, mutation: (session: ClientSession) => Promise<T>) {
-  return withTransaction(async session => {
-    const Model = getSalesIntelligenceJobModel();
-    if (!await Model.exists(fence(lease)).session(session)) throw new CsiError("LEASE_LOST");
-    const value = await mutation(session);
-    const changed = await Model.updateOne(fence(lease), { $inc: { evidence_fence: 1 } }, { session });
-    if (changed.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
-    return value;
-  });
-}
 /**
  * All effect writes use this session. Final lease write occurs AFTER mutations so expiry during the callback rolls everything back. No network calls in callback.
- * CSI-03 additive: `options.result` is a bounded JSON summary persisted on the job row with the completion write;
- * `options.resultFrom` derives it from the mutation's return value inside the same transaction (CSI-04).
+ * `options.result` is a bounded JSON summary persisted on the job row with the completion write;
+ * `options.resultFrom` derives it from the mutation's return value inside the same transaction.
  */
 export async function completeCsiJob<T>(
   lease: JobLease,
@@ -264,21 +278,13 @@ export async function completeCsiJob<T>(
 }
 export async function failCsiJob(
   lease: JobLease,
-  reason:
-    | "transient"
-    | "schema_invalid"
-    | "permission_denied"
-    | "budget_exhausted"
-    /** One invocation's reservation exceeds the Owner's per-recording ceiling. Monthly headroom cannot resume it; only a higher ceiling or smaller limits can (17 §5). */
-    | "per_recording_ceiling"
-    | "recording_pending"
-    | "eligibility_pending"
-    | "throttled",
+  /** `throttled` defers without spending an attempt; the others back off and dead-letter when exhausted. */
+  reason: "transient" | "schema_invalid" | "throttled",
   retryAfterMs = 0,
-  /** CSI-03 additive: bounded JSON summary of the partial outcome kept visible on the retried/paused/dead-lettered row. */
+  /** Bounded JSON summary of the partial outcome kept visible on the retried or dead-lettered row. */
   options: {
     result?: unknown;
-    /** Timed capability pauses resume through the normal claim path. */
+    /** An explicit retry instant (a provider-published time) instead of the backoff. */
     resumeAt?: Date;
     mutation?: (session: ClientSession, outcome: { status: string; next_attempt_at: Date }) => Promise<void>;
   } = {},
@@ -287,9 +293,7 @@ export async function failCsiJob(
     const Model = getSalesIntelligenceJobModel();
     const row = await Model.findOne(fence(lease)).session(session);
     if (!row) throw new CsiError("LEASE_LOST");
-    const paused =
-      reason === "permission_denied" || reason === "budget_exhausted" || reason === "per_recording_ceiling";
-    const deferred = paused || ["recording_pending", "eligibility_pending", "throttled"].includes(reason);
+    const deferred = reason === "throttled";
     const exhausted =
       row.attempts >= (reason === "schema_invalid" ? 2 : row.max_attempts);
     const delay = Math.max(
@@ -300,7 +304,7 @@ export async function failCsiJob(
     if (!Number.isFinite(delay) || delay < 0) throw new CsiError("INVALID_INPUT");
     const next_attempt_at = options.resumeAt ?? new Date(Date.now() + delay);
     if (!Number.isFinite(next_attempt_at.getTime())) throw new CsiError("INVALID_INPUT");
-    const status = paused && !options.resumeAt ? "paused" : !deferred && exhausted ? "dead_letter" : "retry";
+    const status = !deferred && exhausted ? "dead_letter" : "retry";
     await options.mutation?.(session, { status, next_attempt_at });
     const result = await Model.updateOne(
       fence(lease),

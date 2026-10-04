@@ -180,23 +180,6 @@ POST   /api/v1/admin/operations-registry/lead-source-setups/preview
 POST   /api/v1/admin/operations-registry/lead-source-setups
 GET    /api/v1/admin/operations-registry/health
 GET    /api/v1/admin/operations-registry/changes
-GET    /api/v1/admin/observability/overview
-GET    /api/v1/admin/observability/facets
-GET    /api/v1/admin/observability/events
-GET    /api/v1/admin/observability/events/:id
-GET    /api/v1/admin/observability/incidents
-GET    /api/v1/admin/observability/incidents/:id
-PATCH  /api/v1/admin/observability/incidents/status
-PATCH  /api/v1/admin/observability/incidents/:id/status
-GET    /api/v1/admin/observability/notifications
-GET    /api/v1/admin/observability/reports
-POST   /api/v1/admin/observability/reports/run
-GET    /api/v1/admin/observability/reports/:id
-POST   /api/v1/admin/observability/:collection/delete
-DELETE /api/v1/admin/observability/:collection/:id
-GET    /api/v1/admin/exports/observability/events.csv
-GET    /api/v1/admin/exports/observability/incidents.csv
-GET    /api/v1/admin/exports/observability/reports/:id.csv
 ```
 
 ## RingCentral inbound routes

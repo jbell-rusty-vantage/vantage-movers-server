@@ -1,7 +1,3 @@
-import {
-  isCsiServiceRoute,
-  matchesCsiServiceRouteTemplate,
-} from "../config/domain/salesIntelligence";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import {
@@ -163,11 +159,9 @@ export async function requireVantageAuth(
     });
   }
 
-  if (
-    matchingKey.name ===
-      process.env.SALES_INTELLIGENCE_SCOPED_KEY_NAME?.trim() &&
-    !isCsiServiceRoute(req.method, (req.originalUrl ?? req.url).split("?")[0]!)
-  ) {
+  // The Sales Intelligence scoped key served only the retired scoped AI-run endpoints. It is
+  // refused on every route, whatever routes a deployment still lists for it.
+  if (matchingKey.name === process.env.SALES_INTELLIGENCE_SCOPED_KEY_NAME?.trim()) {
     return res
       .status(403)
       .json({ ok: false, code: "RUN_SCOPE_DENIED", error: "Forbidden" });
@@ -377,11 +371,7 @@ function isRouteAllowed(req: Request, key: ScopedApiKey): boolean {
   const path = normalizePath((req.originalUrl ?? req.url).split("?")[0]);
 
   return key.routes.some(
-    (route) =>
-      route.method === method &&
-      (route.path === path ||
-        (key.name === process.env.SALES_INTELLIGENCE_SCOPED_KEY_NAME &&
-          matchesCsiServiceRouteTemplate(method, route.path, path))),
+    (route) => route.method === method && route.path === path,
   );
 }
 

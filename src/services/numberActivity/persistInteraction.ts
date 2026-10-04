@@ -763,7 +763,6 @@ export function toProjection(row: StoredInteraction | Record<string, unknown>): 
       provider_recording_id: rec.provider_recording_id,
       recording_type: rec.recording_type ?? null,
       observed_at: rec.observed_at,
-      lead_conversation_id: rec.lead_conversation_id ? String(rec.lead_conversation_id) : null,
     })),
     sources: [...(r.sources ?? [])] as CaptureSource[],
     provider_last_modified_at: r.provider_last_modified_at ?? null,

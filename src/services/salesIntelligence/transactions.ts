@@ -198,14 +198,11 @@ export async function appendCsiAudit(
     target_id: string;
     revision: number;
     happened_at?: Date;
+    /** Retained writers only; stored rows also carry the retired `outreach`, `followup`, `analysis` and `restriction` kinds. */
     kind:
       | "number"
-      | "outreach"
-      | "followup"
       | "review"
       | "policy"
-      | "analysis"
-      | "restriction"
       | "rep"
       | "nudge"
       | "interaction"

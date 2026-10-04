@@ -75,24 +75,6 @@
     }
   },
   "crons": [
-    { "path": "/api/cron/sales-intelligence-extract", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sales-intelligence-apply", "schedule": "*/5 * * * *" },
-    {
-      "path": "/api/cron/sales-intelligence-outreach-ensure",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/sales-intelligence-attention-publish",
-      "schedule": "*/3 * * * *"
-    },
-    {
-      "path": "/api/cron/sales-intelligence-transcribe",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/sales-intelligence-media-fetch",
-      "schedule": "*/5 * * * *"
-    },
     {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
@@ -150,10 +132,6 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/sales-intelligence-backfill-step",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/cron/sales-intelligence-retention",
       "schedule": "30 4 * * *"
     },
@@ -179,15 +157,11 @@
     },
     {
       "path": "/api/cron/sales-intelligence-attachment-refresh",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/sales-intelligence-webhook-subscription",
       "schedule": "15 6 * * *"
-    },
-    {
-      "path": "/api/cron/sales-intelligence-overview-refresh",
-      "schedule": "*/5 * * * *"
     }
   ]
 }

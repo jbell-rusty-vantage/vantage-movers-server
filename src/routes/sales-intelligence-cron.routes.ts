@@ -10,23 +10,13 @@ import {
 } from "../services/numberActivity/captureProjectionWorker";
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
 import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
-import { runOutreachEnsureOnce, drainOutreachEnsureJobs, runAttentionPublishOnce } from "../services/salesIntelligence/outreach/worker";
-import { drainRecordingDiscoveryJobs } from "../services/salesIntelligence/conversations/discover";
-import { drainRepIdentityReevaluationJobs } from "../services/salesIntelligence/repIdentity/worker";
 import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repair";
-import { drainMediaFetchJobs } from "../services/salesIntelligence/conversations/media";
-import { drainTranscriptionJobs } from "../services/salesIntelligence/conversations/transcribe";
-import { drainIntelligenceJobs } from "../services/salesIntelligence/analysis/worker";
-import { drainMoveAssessmentJobs } from "../services/salesIntelligence/assessment/runtime";
-import { drainIntelligenceApplications } from "../services/salesIntelligence/analysis/apply";
+import { retireLegacyCsiJobs } from "../services/salesIntelligence/jobs";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { callLogReconcileConfig, runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import { settleProvisionalFromStore } from "../services/numberActivity/settleProvisional";
 import { runCallLogSweepOnce } from "../services/numberActivity/callLogSweep";
-import { runBackfillStepOnce } from "../services/salesIntelligence/backfill/step";
-import { drainBackfillActivationJobs } from "../services/salesIntelligence/backfill/worker";
 import { runRetentionOnce } from "../services/salesIntelligence/retention";
-import { csiBackfillDays } from "../config/domain/salesIntelligence";
 import {
   runReceiptWatermarkRecovery,
   type RecoverySummary,
@@ -36,7 +26,6 @@ import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
-import { runOverviewRefreshOnce } from "../services/salesIntelligence/overview/repDays";
 
 /**
  * Sales Intelligence cron routes (03 §11). Mounted before the `/api/v1`
@@ -50,7 +39,13 @@ import { runOverviewRefreshOnce } from "../services/salesIntelligence/overview/r
  * Job recovery is gated per stage (03 §11 "stages honor their flags"): the
  * capture drain runs under `CAPTURE_WEBHOOK`, each `extraRecovery` step under
  * its own flag. Capture is operational work that does not depend on the
- * master Owner read switch `SALES_INTELLIGENCE_ENABLED`.
+ * master Owner read switch `SALES_INTELLIGENCE_ENABLED`. Whenever recovery
+ * runs it first terminalizes rows of retired stages (`retireLegacyCsiJobs`),
+ * so a backlog left by an earlier release is never claimed by anyone.
+ *
+ * Only retained schedules exist here. The AI/media/Outreach crons (extract,
+ * apply, transcribe, media fetch, Outreach ensure, Attention publish, Overview
+ * refresh, legacy backfill step) are retired with their pipeline.
  */
 export type SalesIntelligenceCronRouteDeps = {
   connect?: typeof connectMongo;
@@ -81,20 +76,10 @@ export type SalesIntelligenceCronRouteDeps = {
   runDirectorySync?: typeof runDirectorySyncOnce;
   runAttachmentRefresh?: typeof runAttachmentRefreshOnce;
   drainAttachmentRefresh?: typeof drainAttachmentRefreshJobs;
-  runMediaFetch?: typeof drainMediaFetchJobs;
-  runTranscription?: typeof drainTranscriptionJobs;
-  drainRecordingDiscovery?: typeof drainRecordingDiscoveryJobs;
-  runOutreachEnsure?: typeof runOutreachEnsureOnce;
-  drainOutreachEnsure?: typeof drainOutreachEnsureJobs;
-  runAttentionPublish?: typeof runAttentionPublishOnce;
-  runBackfillStep?: typeof runBackfillStepOnce;
-  drainBackfillActivation?: typeof drainBackfillActivationJobs;
   runRetention?: typeof runRetentionOnce;
-  drainRepIdentity?: typeof drainRepIdentityReevaluationJobs;
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
-  runIntelligence?: () => ReturnType<typeof drainIntelligenceJobs> | Promise<{ status: string }>;
-  drainMoveAssessment?: typeof drainMoveAssessmentJobs;
-  runApplication?: typeof drainIntelligenceApplications;
+  /** Terminalizes rows of retired stages; job recovery runs it first. */
+  retireLegacyJobs?: () => Promise<{ retired: number; stages: Record<string, number> }>;
   /** Recounts the Owner coverage strip. Job recovery calls it once a minute. */
   refreshCoverage?: () => Promise<unknown>;
   /** Creates `lead_messages.to` if it is missing. Reads do not. */
@@ -104,27 +89,17 @@ export type SalesIntelligenceCronRouteDeps = {
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
   /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
   recordDeployment?: () => Promise<unknown>;
-  /** S9-READS: `outreach_rep_days` refresh under `SALES_INTELLIGENCE_OVERVIEW` (own lease). */
-  runOverviewRefresh?: typeof runOverviewRefreshOnce;
 };
 
 export const CSI_CRON_PATHS = {
-  extract: "/api/cron/sales-intelligence-extract",
-  apply: "/api/cron/sales-intelligence-apply",
   nudgeRepair: "/api/cron/sales-intelligence-nudge-repair",
-  backfillStep: "/api/cron/sales-intelligence-backfill-step",
   retention: "/api/cron/sales-intelligence-retention",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   callLogSweep: "/api/cron/sales-intelligence-call-log-sweep",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
-  mediaFetch: "/api/cron/sales-intelligence-media-fetch",
-  transcribe: "/api/cron/sales-intelligence-transcribe",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
-  outreachEnsure: "/api/cron/sales-intelligence-outreach-ensure",
-  attentionPublish: "/api/cron/sales-intelligence-attention-publish",
   webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
-  overviewRefresh: "/api/cron/sales-intelligence-overview-refresh",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -146,27 +121,10 @@ export function createSalesIntelligenceCronRouter(
     ((max: number, deadlineMs: number) => drainRebuildJobs(max, deps.rebuildWorkerDeps, { deadlineMs }));
   const rebuildMax = deps.rebuildDrainMax ?? 100;
   const directorySync = deps.runDirectorySync ?? runDirectorySyncOnce;
-  const mediaFetch = deps.runMediaFetch ?? drainMediaFetchJobs;
-  const transcribe = deps.runTranscription ?? drainTranscriptionJobs;
+  const retireLegacyJobs = deps.retireLegacyJobs ?? (() => retireLegacyCsiJobs());
   const extraRecovery: NonNullable<SalesIntelligenceCronRouteDeps["extraRecovery"]> = deps.extraRecovery ?? [
-    { name: "intelligence", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runIntelligence ?? drainIntelligenceJobs)() },
-    { name: "application", flag: "EXTRACTION_ENABLED" as const, run: () => (deps.runApplication ?? drainIntelligenceApplications)() },
-    { name: "move_assessment", flag: "MOVE_ASSESSMENT" as const, run: () => (deps.drainMoveAssessment ?? drainMoveAssessmentJobs)() },
     { name: "nudge_repair", flag: "NUDGE_ENABLED" as const, run: () => (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() },
-    { name: "rep_identity_reevaluate", flag: "ENABLED" as const, run: () => (deps.drainRepIdentity ?? drainRepIdentityReevaluationJobs)() },
-    { name: "outreach_ensure", flag: "OUTREACH_ENSURE" as const, run: () => (deps.drainOutreachEnsure ?? drainOutreachEnsureJobs)() },
     { name: "attachment_refresh", flag: "ATTACHMENT_REFRESH" as const, run: () => (deps.drainAttachmentRefresh ?? drainAttachmentRefreshJobs)() },
-    { name: "recording_discovery", flag: "MEDIA_ENABLED" as const, run: () => (deps.drainRecordingDiscovery ?? drainRecordingDiscoveryJobs)() },
-    { name: "media_fetch", flag: "MEDIA_ENABLED" as const, run: mediaFetch },
-    { name: "transcription", flag: "STT_ENABLED" as const, run: transcribe },
-    {
-      name: "backfill_activation",
-      flag: "ENABLED" as const,
-      run: async () => {
-        if (csiBackfillDays() <= 0) return { skipped: true, reason: "backfill_disabled" };
-        return (deps.drainBackfillActivation ?? drainBackfillActivationJobs)();
-      },
-    },
   ];
 
   // CC-08 webhook acceleration: the `call_log_refresh` drain rides job
@@ -188,15 +146,6 @@ export function createSalesIntelligenceCronRouter(
     } catch {
       return res.status(500).json({ ok: false, error: "Webhook subscription maintenance failed" });
     }
-  });
-
-  for (const [path, work] of [
-    [CSI_CRON_PATHS.extract, () => (deps.runIntelligence ?? drainIntelligenceJobs)()],
-    [CSI_CRON_PATHS.apply, () => (deps.runApplication ?? drainIntelligenceApplications)()],
-  ] as const) router.all(path, requireCronAuth, async (_req, res) => {
-    if (!flag("ENABLED") || !flag("EXTRACTION_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try { await connect(); return res.json({ ok: true, summary: await work() }); }
-    catch { return res.status(500).json({ ok: false, error: "Intelligence processing failed" }); }
   });
 
   router.all(CSI_CRON_PATHS.callLogReconcile, requireCronAuth, async (_req, res) => {
@@ -251,6 +200,15 @@ export function createSalesIntelligenceCronRouter(
     }
     try {
       await connect();
+      // Retired-stage fence first: neither the drains below nor an earlier deployment can claim those rows
+      // afterwards. A failed sweep never blocks retained recovery; claims exclude retired stages anyway.
+      const retiredJobs = await retireLegacyJobs().catch((error: unknown) => {
+        logger.error({
+          msg: "sales_intelligence.cron.retire_legacy_jobs.failed",
+          errorName: error instanceof Error ? error.name : "Error",
+        });
+        return null;
+      });
       await (deps.recordDeployment ?? recordDeploymentCommitOnce)();
       await (deps.refreshCoverage ?? refreshCaptureCoverage)().catch((error: unknown) => {
         logger.error({
@@ -290,6 +248,7 @@ export function createSalesIntelligenceCronRouter(
       return res.json({
         ok: true,
         skipped: false,
+        retired_jobs: retiredJobs,
         receipt_recovery: receiptRecovery
           ? {
               skipped: receiptRecovery.skipped,
@@ -347,28 +306,6 @@ export function createSalesIntelligenceCronRouter(
     }
   });
 
-  router.all(CSI_CRON_PATHS.mediaFetch, requireCronAuth, async (_req, res) => {
-    if (!flag("MEDIA_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try {
-      await connect();
-      const summary = await mediaFetch();
-      if (summary.status === "not_claimable" || summary.status === "lease_lost") return res.json({ ok: true, skipped: true, reason: "lease_held", summary });
-      if (summary.status === "disabled") return res.json({ ok: true, skipped: true, reason: "disabled", summary });
-      return res.json({ ok: true, skipped: false, summary });
-    } catch {
-      return res.status(500).json({ ok: false, error: "Media fetch failed" });
-    }
-  });
-  router.all(CSI_CRON_PATHS.transcribe, requireCronAuth, async (_req, res) => {
-    if (!flag("STT_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try {
-      await connect();
-      const summary = await transcribe();
-      return res.json({ ok: true, skipped: ["disabled", "not_claimable", "lease_lost"].includes(summary.status), summary });
-    } catch {
-      return res.status(500).json({ ok: false, error: "Transcription failed" });
-    }
-  });
   router.all(CSI_CRON_PATHS.attachmentRefresh, requireCronAuth, async (_req, res) => {
     if (!flag("ATTACHMENT_REFRESH")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try {
@@ -376,46 +313,10 @@ export function createSalesIntelligenceCronRouter(
       return res.json({ ok: true, ...(await (deps.runAttachmentRefresh ?? runAttachmentRefreshOnce)()) });
     } catch { return res.status(500).json({ ok: false, error: "Attachment refresh failed" }); }
   });
-  router.all(CSI_CRON_PATHS.outreachEnsure, requireCronAuth, async (_req, res) => {
-    if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try { await connect(); return res.json({ ok: true, ...(await (deps.runOutreachEnsure ?? runOutreachEnsureOnce)()) }); }
-    catch { return res.status(500).json({ ok: false, error: "Outreach ensure failed" }); }
-  });
-  // Publish owns its lease and its invocation so an ensure drain backlog can
-  // never starve the Needs Attention desk (14 §5).
-  router.all(CSI_CRON_PATHS.attentionPublish, requireCronAuth, async (_req, res) => {
-    if (!flag("OUTREACH_ENSURE")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try { await connect(); return res.json({ ok: true, ...(await (deps.runAttentionPublish ?? runAttentionPublishOnce)()) }); }
-    catch { return res.status(500).json({ ok: false, error: "Attention publish failed" }); }
-  });
-  // S9-READS (addendum §6.4): today's (and until 06:00 ET yesterday's) per-rep day documents; a no-op with the flag off.
-  router.all(CSI_CRON_PATHS.overviewRefresh, requireCronAuth, async (_req, res) => {
-    if (!flag("OVERVIEW")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try {
-      await connect();
-      const summary = await (deps.runOverviewRefresh ?? runOverviewRefreshOnce)();
-      return res.json({ ok: true, ...(summary.skipped ? { skipped: true, reason: summary.reason } : { skipped: false, summary }) });
-    } catch { return res.status(500).json({ ok: false, error: "Overview refresh failed" }); }
-  });
   router.all(CSI_CRON_PATHS.nudgeRepair, requireCronAuth, async (_req, res) => {
     if (!flag("ENABLED") || !flag("NUDGE_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try { await connect(); return res.json({ ok: true, summary: await (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() }); }
     catch { return res.status(500).json({ ok: false, error: "Nudge repair failed" }); }
-  });
-
-  router.all(CSI_CRON_PATHS.backfillStep, requireCronAuth, async (_req, res) => {
-    if (!flag("ENABLED") || csiBackfillDays() <= 0) {
-      return res.json({ ok: true, skipped: true, reason: "disabled" });
-    }
-    try {
-      await connect();
-      const step = deps.runBackfillStep ?? runBackfillStepOnce;
-      const summary = await step();
-      await (deps.drainBackfillActivation ?? drainBackfillActivationJobs)();
-      return res.json({ ok: true, skipped: summary.skipped, summary });
-    } catch {
-      return res.status(500).json({ ok: false, error: "Backfill step failed" });
-    }
   });
 
   router.all(CSI_CRON_PATHS.retention, requireCronAuth, async (_req, res) => {

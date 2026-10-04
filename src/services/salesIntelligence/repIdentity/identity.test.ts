@@ -5,7 +5,7 @@ import { attachedAgentForUser, collectDirectoryUsers, repProposalDtoSchema } fro
 import { resolveRepIdentityAt, type TemporalRepLink } from "./resolve";
 import { csiRepInputSchema } from "../../../validation/v1/salesIntelligence";
 import { defaultStageHandlers } from "../../numberActivity/jobDispatch";
-import { runRepIdentityReevaluationJob } from "./worker";
+import { CSI_RETIRED_JOB_STAGES } from "../../../config/domain/salesIntelligence";
 
 const agents = [{ _id: "a", name: "Alex Reed", name_aliases: ["Alex R"] }, { _id: "b", name: "Jordan Lee", name_aliases: ["Alex R"] }];
 test("directory User DTO carries snapshot destination facts without inventing a person id", () => {
@@ -83,10 +83,8 @@ test("period validation compares instants and rejects unknown input keys", () =>
   assert.equal(csiRepInputSchema.safeParse(link).success,false);
   assert.equal(csiRepInputSchema.safeParse({ ...link, effective_to:null, reviewed:true }).success,false);
 });
-test("registered identity worker is a flag-off no-op (it only acknowledges jobs queued before the slimming)", async () => {
-  assert.equal(typeof defaultStageHandlers().rep_identity_reevaluate,"function");
-  const previous = process.env.SALES_INTELLIGENCE_ENABLED;
-  process.env.SALES_INTELLIGENCE_ENABLED = "false";
-  try { assert.deepEqual(await runRepIdentityReevaluationJob(), { status:"disabled" }); }
-  finally { if (previous === undefined) delete process.env.SALES_INTELLIGENCE_ENABLED; else process.env.SALES_INTELLIGENCE_ENABLED=previous; }
+test("identity re-evaluation is a retired stage: no consumer, and old rows are terminalized by the fence", () => {
+  // Call attribution resolves the Rep Identity Link effective at the call, at read time, so a review needs no job.
+  assert.equal("rep_identity_reevaluate" in defaultStageHandlers(), false);
+  assert.ok((CSI_RETIRED_JOB_STAGES as readonly string[]).includes("rep_identity_reevaluate"));
 });

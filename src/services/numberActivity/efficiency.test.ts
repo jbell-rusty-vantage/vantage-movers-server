@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CALL_INTERACTION_INDEXES } from "../../models/CallInteraction";
 import { CONTACT_NUMBER_INDEXES } from "../../models/ContactNumber";
-import { LEAD_CONVERSATION_INDEXES } from "../../models/LeadConversation";
 import { SALES_INTELLIGENCE_JOB_INDEXES } from "../../models/salesIntelligence/infrastructure";
 import {
   CALL_LEAD_ATTACHMENT_PHONE_PATHS,
@@ -95,23 +94,16 @@ test("every selective number-search prefix carries the listing sort (14 §8)", (
   }
 });
 
-test("timeline sources read by number with the total order in the index (14 §9)", () => {
+test("the timeline source reads by number with the total order in the index (14 §9)", () => {
   assert.deepEqual(keyOf(CALL_INTERACTION_INDEXES, "call_interaction_number_started_id"), {
-    contact_number_id: 1,
-    started_at: -1,
-    _id: -1,
-  });
-  assert.deepEqual(keyOf(LEAD_CONVERSATION_INDEXES, "lead_conversation_number_started"), {
     contact_number_id: 1,
     started_at: -1,
     _id: -1,
   });
 });
 
-test("the Coverage counters and the job claim are index-served (14 §1, §7)", () => {
-  assert.ok(indexNames(CALL_INTERACTION_INDEXES).includes("call_interaction_discovery_state"));
-  assert.ok(indexNames(LEAD_CONVERSATION_INDEXES).includes("lead_conversation_eligibility"));
-  assert.ok(indexNames(LEAD_CONVERSATION_INDEXES).includes("lead_conversation_media_stored"));
+test("the job claim is index-served and the retired discovery index is gone (14 §7, SLIM-06)", () => {
+  assert.equal(indexNames(CALL_INTERACTION_INDEXES).includes("call_interaction_discovery_state"), false);
 
   // The claim leads with the dataset and stage, then sorts
   // `priority desc, next_attempt_at asc, _id asc`.

@@ -91,7 +91,6 @@ When patching an OKF concept: set `generated.by` to the keeper process (not `pro
 | `src/services/customers/**` | `docs/knowledge/services/customer.md` |
 | `src/services/testimonials/**` | `docs/knowledge/services/testimonial.md` |
 | `src/services/operationsRegistry/**`, registry models, `scripts/migrations/operations-registry-*.ts` | `docs/knowledge/services/operations-registry.md`; `rules/operations-registry.mdc`; `rules/cpl-operations.mdc` when CPL schedules/corrections/snapshots change |
-| `src/services/observability/**`, operational models, notification cron | `rules/observability-service.mdc` |
 | `src/models/**`, `src/validation/**` | `rules/schema-and-crud-inputs.mdc`; plus the Service doc whose payload/invariants changed |
 | `src/services/jobNumberTimeline/**`, `src/routes/job-number-timeline-admin.routes.ts`, `scripts/prototypes/job-number-timeline/**` | `docs/knowledge/services/job-number-timeline.md`; `rules/job-number-timeline.mdc`; `rules/project-organization.mdc` Job Number timeline row. Enhancement issues stay in `docs/job-number-timeline/` — update the Service doc when primary code moves, not when an issue is only authored |
 | `src/routes/**`, `src/app.ts`, `api/index.ts`, `api/queues/**` | `rules/project-organization.mdc` (launch map, auth, mounts) |

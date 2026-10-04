@@ -31,11 +31,6 @@ export const CALL_INTERACTION_INDEXES = [
     name: "call_interaction_number_started_id",
     key: { contact_number_id: 1, started_at: -1, _id: -1 },
   },
-  // Serves the Coverage discovery counters without a collection scan (14 §1).
-  {
-    name: "call_interaction_discovery_state",
-    key: { merged_into_id: 1, terminal: 1, "recording_discovery.state": 1 },
-  },
   { name: "call_interaction_started_window", key: { started_at: -1, _id: -1 } },
   {
     name: "call_interaction_extension_started",
@@ -184,11 +179,6 @@ export const CallInteractionSchema = new Schema(
             provider_recording_id: { type: String, required: true, trim: true },
             recording_type: { type: String, default: null, trim: true },
             observed_at: { type: Date, required: true },
-            lead_conversation_id: {
-              type: Schema.Types.ObjectId,
-              ref: "LeadConversation",
-              default: null,
-            },
           },
           { _id: false },
         ),
@@ -197,10 +187,6 @@ export const CallInteractionSchema = new Schema(
     },
 
     // provenance
-    recording_discovery: {
-      type: new Schema({ state: { type: String, enum: ["pending", "discovered", "no_recording"] }, reason: String, checked_at: Date, next_attempt_at: Date }, { _id: false }),
-      default: null,
-    },
     sources: { type: [String], default: [] }, // ["webhook","call_log_reconcile","backfill"]
     provider_last_modified_at: { type: Date, default: null },
     // CC-04: null = never seen in the Call Log; "provisional" = the latest Call Log

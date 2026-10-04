@@ -128,11 +128,6 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           attachment_source_id: ref,
           entity_change_applied_at: date,
           entity_change_id: ref,
-          // CSI-14: durable position in the CSI audit stream, so number
-          // synthesis follows committed change rather than a round-robin
-          // poll that laps in days (14 §10).
-          audit_recorded_at: date,
-          audit_event_id: ref,
         },
         { _id: false, strict: "throw" },
       ),
@@ -266,12 +261,6 @@ export const SalesIntelligenceSyncWindowSchema = new Schema(
     work_lease_epoch: count,
     work_leased_until: date,
     retry_after_until: date,
-    activation_status: { type: String, enum: ["pending", "complete"], default: null },
-    permission_paused: { type: Boolean, default: false },
-    activation_contact_cursor: ref,
-    activation_number_id: ref,
-    activation_call_at: date,
-    activation_call_id: ref,
   },
   { collection: "sales_intelligence_sync_windows" },
 );
