@@ -47,3 +47,6 @@ Existing analysis/assessment paths above are inspected legacy code to remove fro
 ## P05h eligibility seam — October 3, 2026
 
 Legacy src/services/salesIntelligence/outreach/transitions.ts officialClosure closes no_sync alongside booked/cancelled/duplicate/bad_lead. P05h requires viable No-Sync Leads to remain eligible in the new desk without changing reporting semantics or silently reopening already-closed records. Add/test the explicit new-desk seam and preserve unrelated legacy consumers/history. Form Fill is not automatic exclusion/merge.
+
+
+D01 removal scope: retire outreach LLM/transcription/summary/assessment/extracted-promise/suggestion admission and producers feature-wide, including unseeded existing Leads. A small cadence pilot does not authorize continued legacy AI processing outside the pilot. Retain existing historical evidence and deterministic provider capture/authoritative restrictions. MCP remains separate.

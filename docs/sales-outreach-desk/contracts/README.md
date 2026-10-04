@@ -103,3 +103,6 @@ configuration-defaults.json is a schema design/default fixture, not database see
 
 
 [P06f precedence/collisions](fixtures/p06f-precedence-collisions.json) covers closure/restriction/schedule/priority/goal order, one explicit plan, restriction-caused rescheduling and no automatic missed-inbound obligation.
+
+
+Finalization: POLICY-APPROVAL.json records FINAL-01 complete business-policy adoption and P10b manual launch under the explicit finalization instruction. Bootstrap approval_ref stays null/controls false; historical fixtures preserve original approval scope. See [P10b launch fixture](fixtures/p10b-manual-start.json) and END-TO-END-RUN.md.

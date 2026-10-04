@@ -9,4 +9,7 @@ Do not start legacy media/AI backfills to finish cadence work. Use only approved
 
 ## Current policy authority — 14-question checkpoint
 
-P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements. Consume FINAL-POLICY-REVIEW.md and operative specification/contracts; all earlier open-choice notes above retain historical scope only. P06f completes substantive policy. No AI functionality in outreach; MCP separate. Final ratification is Question 15. Provider/runtime/production proofs remain unverified, controls false, migration paused.
+P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements. Consume FINAL-POLICY-REVIEW.md and operative specification/contracts; all earlier open-choice notes above retain historical scope only. P06f completes substantive policy. No AI functionality in outreach; MCP separate. final policy baseline is adopted by the finalization instruction. Provider/runtime/production proofs remain unverified, controls false, migration paused.
+
+
+FINAL-01/P10b finalization: use [final handback](../FINAL-HANDBACK.md) and [end-to-end checklist](../END-TO-END-RUN.md). Add exact selected-ID pilot/report/shadow/apply/verify, fixed cohort boundary, separate Owner prospective intake-admission gate, canonical membership dedup and full daily-goal coverage/partial labels. No unseeded-subject AI exception. Complete business policy is adopted; runtime/release acceptance remains unverified.

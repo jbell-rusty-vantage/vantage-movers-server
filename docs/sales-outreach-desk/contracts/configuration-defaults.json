@@ -12,7 +12,10 @@
     "transition": {
       "legacy_planning_paused": false,
       "migrated_cohort_id": null,
-      "activation_at": null
+      "activation_at": null,
+      "intake_admission_enabled": false,
+      "intake_admission_at": null,
+      "intake_admission_watermark": null
     },
     "cadence": {
       "policy_version": null,

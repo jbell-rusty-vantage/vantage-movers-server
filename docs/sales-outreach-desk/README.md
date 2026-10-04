@@ -18,4 +18,10 @@ The existing implementation branch convention is sales-intelligence in both repo
 
 Before launching feature agents, use the [pre-implementation readiness assessment](READINESS-PREPARATION.md) for prioritized inspections, bounded proofs, Owner decisions, parallel work and protected late-sprint gates. This follow-up is an assessment; proposed executable proofs have not run.
 
-The capped 15-question continuation has approved Questions 1–14. Read [final policy review](FINAL-POLICY-REVIEW.md) for the consolidated business outcome; Question 15 ratification is pending. P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements. Earlier checkpoint scope flags retain historical provenance only. Runtime/provider/auth/configuration/migration/production proofs remain gated; no runtime activation or live work is authorized.
+Finalized October 3, 2026 under the user's instruction to finalize all additions faithfully for the end-to-end run tomorrow morning (October 4, 2026, America/New_York). This finalization adopts the consolidated business policy and manual-start design as the documentation baseline. It does not record a prior yes answer to Question 15 or claim that live deployment, activation, migration or provider operations occurred. Runtime release remains subject to implemented proof gates and deliberate Owner-controlled admission. Read [final policy review](FINAL-POLICY-REVIEW.md), [manual start](MANUAL-START.md) and [tomorrow's end-to-end checklist](END-TO-END-RUN.md).
+
+
+The user requested an additional launch question beyond the cap. P10b manual-start design is adopted by the finalization instruction; the original tentative/pending history is retained in DECISIONS, while current docs are finalized.
+
+
+[Final handback and decision map](FINAL-HANDBACK.md) records this session's policy/launch decisions, exact scope and remaining implementation proofs.

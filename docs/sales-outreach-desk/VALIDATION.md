@@ -22,3 +22,8 @@ Required integrated matrix is SPECIFICATION.md Section 21 plus:
 - S5/S6 all replay/crash/CAS/partition/credit/catch-up/readiness gates and S7 rollback rehearsal.
 
 Latency objectives remain provisional: evidence commit-to-browser p95 <=10s; hangup-to-confirmed goal p95 <=3min (provider settlement); available SMS notification-to-visible p95 <=60s; missed webhook recovery <=10min under admitted capacity. Record p50/p95/max, source availability/quota waits and source/projection revisions. Synthetic timing cannot certify production access/latency.
+
+
+## Finalized-policy and launch checks
+
+Use FINAL-POLICY-REVIEW.md and POLICY-APPROVAL.json as current approval authority alongside DECISIONS provenance. P10b requires exact selected-ID scope, preview zero writes, immutable boundary, membership dedup, shadow/activation/verify sequencing, separate prospective intake gate and full-scope goal coverage. END-TO-END-RUN.md defines tomorrow's evidence checklist. Historical partial fixture approval flags remain unchanged; complete baseline approval does not enable controls.

@@ -19,3 +19,11 @@ Critical path: config+schema+auth -> evaluator/evidence -> integration -> indexe
 
 
 D01 scope clarification: outreach contains no LLM analysis, transcription, summaries, assessments, extracted promises or AI suggestions. S2 producer fencing and S4 negative tests must prove their absence for this feature. Preserve deterministic provider metadata capture and authoritative human/provider restrictions. MCP remains separate; future call-analysis capabilities are outside the sprint. P06e adds explicit human timed callbacks; P10 still owns legacy callback migration.
+
+
+## Finalization and next run — October 3, 2026
+
+Finalized October 3, 2026 under the user's instruction to finalize all additions faithfully for the end-to-end run tomorrow morning (October 4, 2026, America/New_York). This finalization adopts the consolidated business policy and manual-start design as the documentation baseline. It does not record a prior yes answer to Question 15 or claim that live deployment, activation, migration or provider operations occurred. Runtime release remains subject to implemented proof gates and deliberate Owner-controlled admission. P10b adds selected-ID manual seeding and separate prospective intake admission. Use END-TO-END-RUN.md for the October 4 morning run. S5–S7 remain protected; accelerated isolated clock tests do not substitute for observed production shadow/working-date verification.
+
+
+D01 removal scope: retire outreach LLM/transcription/summary/assessment/extracted-promise/suggestion admission and producers feature-wide, including unseeded existing Leads. A small cadence pilot does not authorize continued legacy AI processing outside the pilot. Retain existing historical evidence and deterministic provider capture/authoritative restrictions. MCP remains separate.

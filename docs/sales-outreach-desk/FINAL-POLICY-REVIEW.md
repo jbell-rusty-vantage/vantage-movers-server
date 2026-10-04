@@ -1,8 +1,8 @@
-# Sales Outreach Desk — consolidated policy for final approval
+# Sales Outreach Desk — finalized policy
 
-Prepared October 3, 2026. Questions 1–14 of this continuation are approved. Question 15 final ratification is pending. This is the readable business-policy review; [SPECIFICATION.md](SPECIFICATION.md) and [CONTRACTS.md](CONTRACTS.md) retain engineering detail, [DECISIONS.md](DECISIONS.md) retains approval provenance, and [OWNER-REQUEST.md](OWNER-REQUEST.md) preserves the original message and both screenshots.
+Finalized October 3, 2026 under the user's instruction to finalize all additions faithfully for the end-to-end run tomorrow morning (October 4, 2026, America/New_York). This finalization adopts the consolidated business policy and manual-start design as the documentation baseline. It does not record a prior yes answer to Question 15 or claim that live deployment, activation, migration or provider operations occurred. Runtime release remains subject to implemented proof gates and deliberate Owner-controlled admission. This is the readable business policy; [SPECIFICATION.md](SPECIFICATION.md)/[CONTRACTS.md](CONTRACTS.md) supply engineering detail, [DECISIONS.md](DECISIONS.md) preserves provenance, and [OWNER-REQUEST.md](OWNER-REQUEST.md) preserves the original message/screenshots.
 
-Approved authority: P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c, P10a, D01 and V01/V02. All policy values and behavior controls are persisted, editable, audited, versioned and reloadable without deployment or environment-variable authority. The numbers below are approved starting values, not hard-coded invariants or automatic bootstrap defaults.
+Approved authority: P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c, P10a–P10b, D01 and V01/V02. All policy values and behavior controls are persisted, editable, audited, versioned and reloadable without deployment or environment-variable authority. The numbers below are approved starting values, not hard-coded invariants or automatic bootstrap defaults.
 
 ## Scope and workflow
 
@@ -104,10 +104,17 @@ Admin/Manager team desks look nearly identical, using the Owner screenshots' sof
 
 Cutover uses a fixed cohort activation boundary. Preserve reliable original age; uncertain age goes to review. No new-policy preactivation misses/debt, no fresh initial-response clock for old Leads. New uses partial-day allowances and verified same-date credit. Quoted preserves verified future human dates; active schedules can owe one activation-date call through 19:30, due closing; no verified selected schedule uses next-working-date default. Preserve verified pending human callbacks/restrictions; past-due legacy callbacks go to review without automatic new-policy penalties. AI plans/summaries/suggestions never migrate into actionable work. Launch-day goals use verified calls for that date; reductions require explicit override. Reruns cannot reprice the boundary.
 
+## Manual pilot and ongoing enrollment
+
+Approved P10b launch-design baseline (October 3, 2026, adopted by finalization instruction): manually select approximately 20 current eligible Leads across two or three reps; report/preview exact starting facts and expected work; reconcile shadow behavior for one working date; prefer fixed 08:00 New York cohort activation; verify one full working date afterward; then enable prospective automatic eligible intake and expand remaining existing Leads in reviewed bounded cohorts. Preserve full approved daily-goal scope or explicit pending/partial coverage. Pilot size and observation controls are editable starting choices; selected IDs, policy/input versions and cohort/intake boundaries are fixed audited manifest inputs. Seeding builds current outreach state for existing canonical Leads without replacing them, resetting age or creating preactivation debt. P10a governs actual cutover. No production execution is performed or separately scheduled here. See [MANUAL-START.md](MANUAL-START.md) for exact operator stages and [END-TO-END-RUN.md](END-TO-END-RUN.md) for tomorrow's implementation/rehearsal checklist.
+
 ## Final approval and remaining engineering proofs
 
-Questions 1–14 resolve all substantive policy choices. Question 15 ratifies this consolidated policy; it does not deploy or activate it. Until separately authorized and proven, runtime controls remain false, migration remains paused and no live migration/provider/customer-send operation is permitted by this documentation interview.
+All policy bundles plus the manual-start design are finalized by the user's October 3 instruction. Documentation approval is separate from runtime release. All bootstrap controls remain false, migration paused; no live deployment/migration/provider/customer-send operation was performed in this session.
 
 Engineering must prove provider timestamp/status/origin/initiator/handling/association and every intended SMS mailbox, historical priority/assignment/age quality, server/BFF/stream authorization, configuration reload/CAS/versioning, no legacy/AI competing producers, synthetic boundary/DST and replica/browser behavior, Daily Operations live/rebuild parity, actual latency/capacity/headroom and migration/reconciliation/rollback. Missing evidence becomes pending/review or blocks the affected release cohort, not a guessed policy. Reserve at least 40% capacity and S5–S7 for rehearsal, backfill/catch-up, reconciliation, readiness and rollback.
 
 Packet validators establish hashes, portable links and synthetic expectations only. They do not prove deployed behavior, provider grants, visual acceptance or production readiness.
+
+
+D01 removal scope: retire outreach LLM/transcription/summary/assessment/extracted-promise/suggestion admission and producers feature-wide, including unseeded existing Leads. A small cadence pilot does not authorize continued legacy AI processing outside the pilot. Retain existing historical evidence and deterministic provider capture/authoritative restrictions. MCP remains separate.

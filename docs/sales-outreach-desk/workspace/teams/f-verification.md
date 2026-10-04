@@ -1,6 +1,6 @@
 # F / SOD-F
 
-Current approved policy: P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements. Read FINAL-POLICY-REVIEW.md, SPECIFICATION and DECISIONS. Questions 1–14 are integrated; final ratification is Question 15. Technical proofs remain gated.
+Current approved policy: P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements. Read FINAL-POLICY-REVIEW.md, SPECIFICATION and DECISIONS. Questions 1–14 are integrated; final policy baseline is adopted by the finalization instruction. Technical proofs remain gated.
 
 Purpose: Independent contract/interface/replica/browser/data readiness verifier. Own acceptance matrix execution, two-instance config reload, authorizations, no side effects, latency and migration crash/replay/races, rollback rehearsal and final operational handoff evidence.
 
@@ -18,3 +18,6 @@ Consume all approved policy bundles in [final policy review](../../FINAL-POLICY-
 Implement source defaults/uncertainty/reentry (P05e/P05f), passed/unknown-date review (P05g), advisory cooldown (P06b), restrictions (P06c), continuous assignment responsibility (P06d), human callbacks (P06e/P06f), event-time/window/originating-inbound rules (P07g), scheduled goals (P08a) and prospective fixed-boundary migration (P10a). Earlier approval-copy paragraphs are consolidated here; consult ledger for exact history rather than treating old pending flags as open policy.
 
 Required verification includes permitted-role command/read/stream matrix; current-assignment revocation; historical actor/policy/assignment provenance; channel-independent requirement/goal credit; genuine versus apparent misses; restriction-caused waiver/rescheduling; no preactivation debt; config reload/CAS/immutable versions; no competing legacy/AI/missed-inbound planner writes; provider origin/status/timestamp/identity proof; migration/reconciliation/rollback/headroom and measured freshness. Synthetic packet checks alone do not establish those proofs. Preserve S5–S7 and at least 40% sprint capacity. No runtime implementation/live operation authorized by the interview.
+
+
+FINAL-01/P10b finalization: use [final handback](../../FINAL-HANDBACK.md) and [end-to-end checklist](../../END-TO-END-RUN.md). Add exact selected-ID pilot/report/shadow/apply/verify, fixed cohort boundary, separate Owner prospective intake-admission gate, canonical membership dedup and full daily-goal coverage/partial labels. No unseeded-subject AI exception. Complete business policy is adopted; runtime/release acceptance remains unverified.

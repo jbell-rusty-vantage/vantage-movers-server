@@ -1,6 +1,6 @@
 # Sales Outreach Desk — final implementation specification
 
-Status: final engineering and agent execution contract; Owner interview checkpoint 2026-10-03. Production enforcement remains gated on recorded Owner policy decisions and capability proofs. No guessed policy is approved by this document.
+Status: finalized business policy and implementation specification, October 3, 2026. Complete policy baseline adopted by the finalization instruction; runtime/provider/authorization/migration/release acceptance remains pending.
 
 ## 1. Authority, precedence and preparation outcome
 
@@ -14,7 +14,7 @@ Use docs/sales-outreach-desk/README.md as the entry point from either repository
 
 ### Owner interview checkpoint — 2026-10-03
 
-Questions 1–14 of the capped continuation interview are approved and integrated. The original message/screenshots remain preserved. P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements are current. DECISIONS.md retains exact approval provenance and historical scope; older partial-fixture approval flags do not reopen later decisions. The consolidated [final policy review](FINAL-POLICY-REVIEW.md) is ready for Question 15 ratification.
+Questions 1–14 of the capped continuation interview are approved and integrated. The original message/screenshots remain preserved. P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements are current. DECISIONS.md retains exact approval provenance and historical scope; older partial-fixture approval flags do not reopen later decisions. The [final policy review](FINAL-POLICY-REVIEW.md) and [manual start](MANUAL-START.md) are finalized under the user's finalization instruction.
 
 | Approved scope | Decision references / current rule |
 | --- | --- |
@@ -35,9 +35,9 @@ Questions 1–14 of the capped continuation interview are approved and integrate
 | Late and corrected evidence | P07f: credit actual contact time and verified historical policy/identity, correct historical totals/catch-up with audit, remove disproven apparent misses but retain genuine misses; no receipt-day duplicate credit |
 | Owner-declared goal and queue behavior | 100 outbound New/Quoted calls per rep; actual totals may exceed 100, bar capped at 100%; inbound/SMS excluded. Lead coverage remains independent. Needs contact defaults to overdue first then next action due. Independent Call/SMS completion/deadlines/overdue, Job Number above phone, Copy job #, read-only history and outreach performed in moving software |
 
-Remaining business step: Question 15 ratification of the consolidated policy. No substantive Owner policy choice remains open after P06f. Runtime/provider/authorization/configuration/migration/production proofs remain unverified and are separate from business approval. Existing authoritative closures/reopening remain preserved, with the explicit P05h new-desk No-Sync eligibility distinction.
+All business-policy bundles and the manual-start design are finalized. No substantive Owner policy choice or final-ratification interview gate remains. Provider/runtime/authorization/configuration/migration/production evidence is still unverified and separate from policy approval. Preserve established closure/reopening authority and the explicit P05h No-Sync distinction.
 
-Behavior values and activation controls stay persisted, editable, audited/versioned and effective after reload; no deployment-dependent environment authority. Complete-policy ratification is pending Question 15; runtime activation remains disabled and requires release proof/authority. S5–S7 remain reserved for migration rehearsal, backfill/catch-up, reconciliation, readiness and rollback. No runtime implementation or live operation is authorized by this checkpoint.
+Behavior values and activation controls stay persisted, editable, audited/versioned and effective after reload; no deployment-dependent environment authority. Complete-policy baseline is approved for implementation; runtime activation remains disabled and requires proven readiness and deliberate Owner release controls. S5–S7 remain reserved for migration rehearsal, backfill/catch-up, reconciliation, readiness and rollback. No runtime implementation or live operation is authorized by this checkpoint.
 
 ### Settled architecture changes from the proposal
 
@@ -45,7 +45,7 @@ Behavior values and activation controls stay persisted, editable, audited/versio
 - Keep /sales-intelligence and /sales-intelligence/outreach/[id] as canonical admin routes. Introduce focused ?view=team and ?view=my frames. /daily remains the existing board, accessible to the Owner and authorized Managers under P09b; the sales shell links to it and reuses its summary. No duplicate Daily Operations board or authentication system.
 - Add isolated /api/v1/admin/sales-outreach read/command contracts. Preserve signed trusted actor proxying, including the explicit Manager read capability required by P09a. New Rep scope is current authoritative assignment only; legacy historical-followup/number-wide access is insufficient.
 - Reuse Outreach identities, canonical call evidence, reviewed temporal rep identity, capture coverage and durable jobs. Add dedicated cadence periods/projections, a narrowly attributed outbound goal, and rep SMS metadata capture. Existing broad/per-involved-rep outbound totals and automated lead_messages are not this feature's counts.
-- Fence competing planners per migrated subject before activating cadence. Preserve capture, restrictions, official closure and historical records. D01 excludes all LLM analysis, transcription, summaries and AI suggestions from outreach; keep the MCP server as a separate capability.
+- Fence competing planners per migrated subject before activating cadence. Preserve capture, restrictions, official closure and historical records. D01 excludes all LLM analysis, transcription, summaries and AI suggestions from outreach; retire its legacy AI admission/producers/workers across the outreach feature, including unseeded subjects. Keep the MCP server as a separate capability.
 - Schema and dry-run design start early. The last three sprint stages are reserved for index/migration execution rehearsal, backfill/catch-up/reconciliation, and readiness/rollback/operational handoff. They are release gates, not optional cleanup.
 
 No live writes, provider subscriptions, sending, deployments, commits, pushes or provisioning are authorized by this packet. This preparation adds documentation and synthetic contract material only; no model scaffold was necessary to define the collection safely. Read-only code investigation found the actual existing persisted-policy mechanism.
@@ -106,7 +106,7 @@ Hide unused UI first, detach new desk dependencies second, disable obsolete auto
 
 Team outreach is the Owner's default sales frame. My outreach is the Rep's default. Daily Operations is an app-level frame, not a separate tab per event category: keep category panels, with a compact summary available in Team outreach. Preserve links to Intakes, Bookings, Cancellations and other existing workflows rather than reproduce their mutation forms.
 
-**Role gate:** generic Admin is currently denied some Sales Intelligence and Owner-only Daily Operations surfaces. A visual label of Manager/Admin does not grant permission. P09a approves Manager team-wide outreach reads and individual-rep filters; implementation must prove an explicit trusted Manager capability. Reps never receive company-wide Daily Operations events, customer lists or raw receipts. P09b grants Manager coordination commands, Unassigned visibility and Daily Operations access; advanced policy controls remain Owner-only.
+**Role gate:** the inspected legacy runtime denied generic Admin on some Sales Intelligence and Daily Operations surfaces. P09b intentionally extends Daily Operations to explicitly trusted Managers; P09c binds Admin to Owner only for intended trusted accounts. A visual label of Manager/Admin does not grant permission. P09a approves Manager team-wide outreach reads and individual-rep filters; implementation must prove an explicit trusted Manager capability. Reps never receive company-wide Daily Operations events, customer lists or raw receipts. P09b grants Manager coordination commands, Unassigned visibility and Daily Operations access; advanced policy controls remain Owner-only.
 
 Approved P09a (2026-10-03): Managers can view outreach across all reps and filter by individual rep, as explicitly restated in the Owner statement. This resolves the Owner-only team-read proposal conflict in favor of Manager visibility. Implement an explicit trusted Manager read capability for team progress, rep-filtered assigned lead queues and their read-only activity detail; Rep reads remain limited to current assigned leads. P09b grants reassignment, Quoted date/callback commands, prospective absence/partial-day overrides, Unassigned visibility and Daily Operations access; advanced policy controls remain Owner-only. A generic Admin label does not grant Manager capability; exact role binding is an engineering/auth contract to prove. No runtime permission has been changed.
 
@@ -648,7 +648,13 @@ P10a applies P05f partial-day allowances to New, with age retained and verified 
 
 P05h explicitly defines Duplicate/Bad/No-Sync/Form Fill/Unmatched/number-only eligibility below; legacy closed records still require authorized reopening.
 
-### 18.3 Batch mechanics
+### 18.3 Manual pilot and automatic intake
+
+Approved P10b launch-design baseline (October 3, 2026, adopted by finalization instruction): manually select approximately 20 current eligible Leads across two or three reps; report/preview exact starting facts and expected work; reconcile shadow behavior for one working date; prefer fixed 08:00 New York cohort activation; verify one full working date afterward; then enable prospective automatic eligible intake and expand remaining existing Leads in reviewed bounded cohorts. Preserve full approved daily-goal scope or explicit pending/partial coverage. Pilot size and observation controls are editable starting choices; selected IDs, policy/input versions and cohort/intake boundaries are fixed audited manifest inputs. Seeding builds current outreach state for existing canonical Leads without replacing them, resetting age or creating preactivation debt. P10a governs actual cutover. No production execution is performed or separately scheduled here.
+
+Use [manual start](MANUAL-START.md). Automatic intake admission is distinct from historical migration pause/cohort activation; it enrolls only prospective eligible intake at its audited effective boundary/watermark. Unselected existing/historical Leads remain in reviewed migration/review partitions. Goal metrics retain full approved eligible daily scope for roster reps, rather than silently using pilot-only counts.
+
+### 18.4 Batch mechanics
 
 1. Generate a read-only manifest with scope, algorithm/policy versions, cutoff, input watermarks, expected counts, timestamp assumptions, skip reasons and projected write/byte estimates.
 2. Build required indexes before enabling writers; verify query plans and unique fences. Apply no new writer without its unique prerequisites.
@@ -662,7 +668,7 @@ P05h explicitly defines Duplicate/Bad/No-Sync/Form Fill/Unmatched/number-only el
 
 Rate-limit provider history separately from Mongo writes. Provider backfill and Mongo projection backfill are different budgets and checkpoints. Do not rerun the older backfill path that invokes media/transcription/analysis as part of this deterministic migration.
 
-### 18.4 Oplog and replication safeguards
+### 18.5 Oplog and replication safeguards
 
 Before applying, measure actual oplog retention window, recent write-byte rate, replication lag, change-stream consumer lag, storage/CPU, job backlog and ordinary daily traffic. A record-count limit alone is inadequate: new inserts, update size, audit writes and deleted/reinserted snapshots all consume headroom.
 
@@ -751,11 +757,11 @@ Record actual p50/p95/max latency, provider availability, quota waits, count rec
 
 ## 22. Critical decisions and proof gates
 
-### Owner policy completion
+### Finalized Owner policy
 
-P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements are approved. Questions 1–14 resolve all remaining substantive policy bundles; [FINAL-POLICY-REVIEW.md](FINAL-POLICY-REVIEW.md) presents the consolidated outcome for Question 15. DECISIONS.md is provenance, and operative Sections 4–13/18 define mechanics. No previously settled calendar, evidence, restriction, roster, role or cutover choice is reopened by historical notes.
+P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c and P10a; D01 deterministic-only scope and V01/V02 visual requirements are approved. Questions 1–14 resolve all remaining substantive policy bundles; [FINAL-POLICY-REVIEW.md](FINAL-POLICY-REVIEW.md) presents the finalized consolidated outcome. DECISIONS.md is provenance, and operative Sections 4–13/18 define mechanics. No previously settled calendar, evidence, restriction, roster, role or cutover choice is reopened by historical notes.
 
-Complete-policy ratification remains pending. Runtime activation, live migration, deployment, provider changes and customer sending remain unauthorized. Controls stay false; migration stays paused; no runtime model or live behavior was changed here.
+Final policy ratification is recorded by the user's finalization instruction. Runtime activation, live migration, deployment, provider changes and customer sending remain unauthorized. Controls stay false; migration stays paused; no runtime model or live behavior was changed here.
 
 ### Engineering gates
 
@@ -774,3 +780,15 @@ These gates do not prevent implementation preparation or an approved prototype. 
 See CODE-MAP.md and sources/PROVENANCE.json for inspected paths, pinned repository SHAs and bundled reference hashes. The full shared glossary, Mongo authority ADR, root tracker contracts, hidden Daily Operations specification and screenshot references are included inside both packets. SOURCE-LIMITS.md records historical reference limitations. Existing code and Service documents remain authoritative for unchanged runtime behavior.
 
 The original preparation could not retrieve “Model sales outreach rules” (01a0fcfc-fc1f-70e0-a972-225a67154391). This Owner interview retrieved it through the supported read_thread tool; explicit user requirements were checked separately from advisory replies. No restricted transcript paths were read. Current approvals/provenance are in DECISIONS.md; original source snapshots remain historical. RingCentral provider URLs are historical reference pointers from the proposal, not fresh proof of production grants; Team C must check official documentation and prove authorized mailbox scope before activation.
+
+
+### Finalized manual-start design — P10b
+
+Approved P10b launch-design baseline (October 3, 2026, adopted by finalization instruction): manually select approximately 20 current eligible Leads across two or three reps; report/preview exact starting facts and expected work; reconcile shadow behavior for one working date; prefer fixed 08:00 New York cohort activation; verify one full working date afterward; then enable prospective automatic eligible intake and expand remaining existing Leads in reviewed bounded cohorts. Preserve full approved daily-goal scope or explicit pending/partial coverage. Pilot size and observation controls are editable starting choices; selected IDs, policy/input versions and cohort/intake boundaries are fixed audited manifest inputs. Seeding builds current outreach state for existing canonical Leads without replacing them, resetting age or creating preactivation debt. P10a governs actual cutover. No production execution is performed or separately scheduled here.
+
+[MANUAL-START.md](MANUAL-START.md) is the detailed launch runbook. [END-TO-END-RUN.md](END-TO-END-RUN.md) separates tomorrow's implementation/rehearsal checks from measured production shadow/activation and full-day observation. [POLICY-APPROVAL.json](POLICY-APPROVAL.json) records documentation approval with runtime controls disabled.
+
+
+### Final handback
+
+See [FINAL-HANDBACK.md](FINAL-HANDBACK.md) for the continuation decision map and faithful finalization provenance. Business policy is finalized; engineering/runtime proof remains pending.

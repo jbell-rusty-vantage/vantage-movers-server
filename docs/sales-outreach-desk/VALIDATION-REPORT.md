@@ -113,3 +113,21 @@ Precedence/collisions approved; all substantive policy bundles resolved. Current
 
 
 Final review preparation: FINAL-POLICY-REVIEW.md consolidates all approved starting policy, roles, deterministic scope, reference fidelity and cutover. Corrected stale operative priority/transition/Manager/Operations wording; removed competing historical policy copies from contract introduction; froze callback and prospective day-override target routes and documented additional strict policy/goal schema fields. Bootstrap additions stay null with controls false/migration paused. Exact parser/DTO/index/evidence implementation remains required.
+
+
+## Additional manual-launch proposal — October 3, 2026
+
+MANUAL-START.md records the requested additional launch/seeding decision as pending, separately from unanswered Question 15 ratification. It proposes selected current canonical Leads, preview/shadow, fixed-boundary activation, verification and prospective new intake with deliberate existing-Lead expansion. No runtime/live operations. Packet hash/link/mirror checks rerun for this documentation proposal.
+
+
+## Final baseline FINAL-01 and launch P10b — October 3, 2026
+
+User finalization instruction adopts the complete business policy/manual-start design as the documentation baseline, with exact provenance recorded rather than inventing prior yes replies. POLICY-APPROVAL.json separates complete business approval from unproven runtime/provider/readiness and disabled bootstrap/live controls. Integrated manual selected-ID seeding, independent prospective intake gate, full daily-goal scope and October 4 morning END-TO-END-RUN.md. Retirement of outreach AI admission/producers is feature-wide, including unseeded subjects; cadence pilot scope does not permit legacy AI fallback. Replaced current O01–O04 open-choice summaries; historical DECISIONS/fixtures remain unchanged in original scope. Dedicated approval/launch assertions added.
+
+Validation is packet integrity/portability/synthetic declaration scope only. Runtime implementation, provider grants, browser/visual acceptance, production telemetry and migration/rollout have not been performed by this interview. Full shared manifest/card bytes are compared across server/admin; final validator commands are run from each repository root after export.
+
+
+Final pre-handback validators passed in both repositories: 90 shared release files and 224 operative local links, scope packet integrity/portability/synthetic declarations only. An initial newly added wording assertion failed because it expected a phrase different from the preserved manual-runbook text; corrected the assertion to the actual full-scope wording and reran both successfully. The handback artifact/links are included in the final export, and validators will be rerun to record the final totals. No runtime test or live proof claimed.
+
+
+Final export result: both repository-root `node docs/sales-outreach-desk/validate.mjs` commands passed with 91 shared release files and 250 operative local links. All manifest files, six task cards, manifest bytes and repository-root pointers match between server/admin. Original Owner request/screenshots are retained; final approval is documentary, bootstrap controls remain false and migration/intake paused/disabled. No runtime/provider/browser/production acceptance performed in this session.

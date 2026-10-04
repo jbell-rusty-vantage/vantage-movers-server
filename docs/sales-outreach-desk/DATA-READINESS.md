@@ -56,3 +56,11 @@ Operator receives exact versioned manifest, target/cohort, decisions/proofs, mea
 | rollback requires old planner | explicit review of task effects and old snapshot compatibility before unpausing; no automatic AI restart |
 
 Migration rollback is behavior/read routing, not delete-all. Data corrections are versioned bounded compensation/rebuild with prior fingerprints and retained history. Final handoff names who can approve production actions; no credential values are written into artifacts.
+
+
+## Finalized manual launch — P10b
+
+[MANUAL-START.md](MANUAL-START.md) defines a selected-ID current-Lead pilot, preview/shadow, fixed-boundary activation, working-date verification, prospective automatic intake and reviewed existing-Lead expansion. No new actual Leads/contacts or live writes here. Goal metrics retain full approved daily scope or honest pending/partial coverage. Existing admission/headroom/report/apply/verify/rollback safeguards remain mandatory.
+
+
+Automatic prospective intake uses its own disabled-by-default persisted admission gate, effective boundary/watermark and membership dedup. Historical migration pause/selection never silently becomes automatic full-corpus enrollment. Run [end-to-end checklist](END-TO-END-RUN.md) before production promotion.
