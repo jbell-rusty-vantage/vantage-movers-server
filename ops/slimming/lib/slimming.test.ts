@@ -17,6 +17,7 @@ import {
 } from "../policy";
 import type { Cleanup } from "./manifest";
 import { verifyBackupFile, verifyBlobBackupFile, writeBackupFile } from "./backup";
+import { SERVER_ROOT, loadSlimmingEnv } from "./env";
 import { GUARD_EXIT_CODE, assertReadOnlyPipeline, isCommandAllowed } from "./guarded-mongo";
 import { type ManifestTargets, assertManifestInvariants, canonicalJson, dropCountMatches, loadManifest, manifestHash } from "./manifest";
 import {
@@ -31,6 +32,7 @@ import {
   unlistedBlobProblems,
   verifiedFullBackupProblem,
 } from "./purge-rules";
+import { PRODUCTION_MANIFEST_PATH, loadRehearsalEnv, resolveSlimmingTarget } from "./rehearsal";
 
 const baseTargets = (): ManifestTargets => ({
   cluster: { fingerprint: "f", replica_set: "rs" },
@@ -298,5 +300,89 @@ describe("purge hardening", () => {
     assert.match(source, /await reconcileAbsentDrops\(c, manifest, runDir, log\)/);
     assert.match(source, /e\.drop_collection_already_absent/);
     assert.match(source, /f\.drop_database_already_absent/);
+  });
+});
+
+describe("loopback rehearsal (SLIM-09)", () => {
+  const scratch = join(tmpdir(), "slimming-rehearsal-test");
+  const rehearsalArgv = (...extra: string[]) => [
+    "node",
+    "purge.ts",
+    "--rehearsal",
+    "--rehearsal-main-db=slimrehearsal_main",
+    "--rehearsal-admin-db=slimrehearsal_admin",
+    `--manifest=${join(scratch, "deletion-manifest.json")}`,
+    ...extra,
+  ];
+  const missingDotenv = join(scratch, "does-not-exist.env");
+  const loopbackEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
+    MONGO_URI: "mongodb://127.0.0.1:27189/?replicaSet=csi01",
+    DOTENV_CONFIG_PATH: missingDotenv,
+    ...extra,
+  });
+  const rehearsalTargets = (): ManifestTargets => ({
+    ...baseTargets(),
+    rehearsal: true,
+    main_database: "slimrehearsal_main",
+    admin_auth_database: "slimrehearsal_admin",
+    drop_collections: [{ ...baseTargets().drop_collections[0]!, db: "slimrehearsal_main" }],
+  });
+
+  it("defaults to production and refuses rehearsal-only flags without --rehearsal", () => {
+    const target = resolveSlimmingTarget(["node", "purge.ts"]);
+    assert.deepEqual([target.rehearsal, target.mainDatabase, target.adminAuthDatabase], [false, "vantagemovers", "vantageadmin"]);
+    assert.equal(target.manifestPath, PRODUCTION_MANIFEST_PATH);
+    for (const flag of ["--rehearsal-main-db=slimrehearsal_main", "--rehearsal-admin-db=slimrehearsal_admin", `--manifest=${join(scratch, "m.json")}`])
+      assert.throws(() => resolveSlimmingTarget(["node", "purge.ts", flag]), /only with --rehearsal/, flag);
+  });
+
+  it("accepts only distinct slimrehearsal_ databases and a manifest outside the workspace", () => {
+    const target = resolveSlimmingTarget(rehearsalArgv());
+    assert.deepEqual([target.rehearsal, target.mainDatabase, target.adminAuthDatabase], [true, "slimrehearsal_main", "slimrehearsal_admin"]);
+    assert.equal(target.blobKeysPath, join(scratch, "conversation-blob-keys.json"));
+    for (const name of ["vantagemovers", "vantageadmin", "testvantagemovers_x", "slimrehearsal_", "slimrehearsal_Main", "slimrehearsal_a_b"])
+      assert.throws(() => resolveSlimmingTarget(rehearsalArgv().map((a) => (a.startsWith("--rehearsal-main-db=") ? `--rehearsal-main-db=${name}` : a))), /must match/, name);
+    const replace = (flag: string, value: string) => rehearsalArgv().map((a) => (a.startsWith(`--${flag}=`) ? `--${flag}=${value}` : a));
+    assert.throws(() => resolveSlimmingTarget(replace("rehearsal-admin-db", "slimrehearsal_main")), /must differ/);
+    for (const manifest of [PRODUCTION_MANIFEST_PATH, "relative/deletion-manifest.json", join(SERVER_ROOT, "tmp", "m.json")])
+      assert.throws(() => resolveSlimmingTarget(replace("manifest", manifest)), /outside the workspace/, manifest);
+  });
+
+  it("refuses a non-loopback cluster, a Blob token and a loadable dotenv", () => {
+    const target = resolveSlimmingTarget(rehearsalArgv());
+    const env = loadRehearsalEnv(target, loopbackEnv());
+    assert.deepEqual(env, { serverMongoUri: "mongodb://127.0.0.1:27189/?replicaSet=csi01", adminMongoUri: "mongodb://127.0.0.1:27189/?replicaSet=csi01", adminAuthDbName: "slimrehearsal_admin", blobToken: null, dnsServers: [] });
+    for (const uri of ["mongodb+srv://cluster0.example.mongodb.net/", "mongodb://127.0.0.1:27189,db.example.com:27017/?replicaSet=rs", "", undefined])
+      assert.throws(() => loadRehearsalEnv(target, loopbackEnv({ MONGO_URI: uri })), /loopback/, String(uri));
+    assert.throws(() => loadRehearsalEnv(target, loopbackEnv({ BLOB_READ_WRITE_TOKEN: "vercel_blob_rw_x" })), /BLOB_READ_WRITE_TOKEN must be unset/);
+    assert.throws(() => loadRehearsalEnv(target, loopbackEnv({ DOTENV_CONFIG_PATH: undefined })), /DOTENV_CONFIG_PATH/);
+    assert.throws(() => loadRehearsalEnv(target, loopbackEnv({ DOTENV_CONFIG_PATH: join(SERVER_ROOT, "package.json") })), /DOTENV_CONFIG_PATH/);
+    assert.throws(() => loadRehearsalEnv(resolveSlimmingTarget(["node", "purge.ts"]), loopbackEnv()), /production target/);
+    assert.throws(() => loadSlimmingEnv(rehearsalArgv()), /reads no \.env file/);
+  });
+
+  it("keeps rehearsal manifests apart from production ones", () => {
+    assert.doesNotThrow(() => assertManifestInvariants(rehearsalTargets()));
+    assert.throws(() => assertManifestInvariants({ ...rehearsalTargets(), blob: { prefix: "conversations/", keys_file: "k", keys_sha256: "s", count: 0, bytes: 0, unreferenced_count: 0 } }), /never has a Blob target/);
+    assert.throws(() => assertManifestInvariants({ ...rehearsalTargets(), main_database: "vantagemovers" }), /slimrehearsal_/);
+    assert.throws(() => assertManifestInvariants({ ...rehearsalTargets(), admin_auth_database: "slimrehearsal_main" }), /distinct/);
+    const { rehearsal: _flag, ...unflagged } = rehearsalTargets();
+    assert.throws(() => assertManifestInvariants(unflagged), /main database must be vantagemovers/);
+    assert.throws(() => assertManifestInvariants({ ...rehearsalTargets(), drop_databases: [{ ...baseTargets().drop_databases[0]!, name: "slimrehearsal_main" }] }), /can never be dropped/);
+    assert.throws(() => assertManifestInvariants({ ...rehearsalTargets(), drop_collections: [{ ...rehearsalTargets().drop_collections[0]!, name: "contact_numbers" }] }), /protected/);
+    // An absent flag adds nothing to the canonical JSON, so production hashes are unchanged.
+    assert.equal(canonicalJson(baseTargets()).includes("rehearsal"), false);
+    assert.notEqual(manifestHash(rehearsalTargets()), manifestHash({ ...rehearsalTargets(), rehearsal: undefined }));
+  });
+
+  it("wires the target into inventory.ts and purge.ts and closes the Blob-less production manifest", () => {
+    const inventory = readFileSync(join(__dirname, "..", "inventory.ts"), "utf8");
+    const purge = readFileSync(join(__dirname, "..", "purge.ts"), "utf8");
+    assert.match(inventory, /if \(!target\.rehearsal && typeof blob\?\.objects !== "number"\)/);
+    assert.match(inventory, /writeFileSync\(target\.manifestPath/);
+    assert.doesNotMatch(inventory, /MANIFEST_PATH|BLOB_KEYS_PATH/);
+    assert.match(purge, /assertTargetMatchesManifest\(target, manifest\)/);
+    assert.match(purge, /!target\.rehearsal && !manifest\.targets\.blob/);
+    assert.doesNotMatch(purge, /MANIFEST_PATH/);
   });
 });

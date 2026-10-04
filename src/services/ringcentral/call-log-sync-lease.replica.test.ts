@@ -90,6 +90,13 @@ before(async () => {
   assert.match(mongoose.connection.name, /^testvantagemovers/i);
   assert.equal(process.env.RINGCENTRAL_COLLECTION_MODE, "test");
   assert.equal(process.env.SHEET_SYNC_MODE, "disabled");
+  // A fresh disposable database: the processed-call index check lists the collection's indexes, which
+  // throws NamespaceNotFound until the collection exists.
+  await (await getRingCentralDb())
+    .createCollection(getRingCentralCollectionName("processedCalls"))
+    .catch((error: { codeName?: string }) => {
+      if (error.codeName !== "NamespaceExists") throw error;
+    });
   // Unit 21 proves overlap safety around real Lead creation; adoption stays at
   // its checked-in default so no Unit 20 gate is widened here.
   process.env.RINGCENTRAL_CREATE_CALL_LEADS = "true";

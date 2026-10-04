@@ -238,3 +238,37 @@ None of the 34 baseline failures remains. Most were load-induced file crashes an
 3. **No runnable replica suite** for the foundation, reads, rep-identity, nudges and settings subjects: the local runners need porting to retained modules and to `ops/test-setup.ts`.
 4. **Policy rollback:** an update carries the retired fields forward; a first `initialize_settings` in a fresh environment does not.
 5. **Wave 3 docs** still describe deleted modules and removed scripts. Examples: `services/number-activity-{reads,capture}.md` and `sales-intelligence-webhook-fanout.md` cite the removed `test:csi:*:replica` entries, and `project-organization.mdc` still describes CSI transcription.
+
+## Wave 3 fixes
+
+Server FIX lane, 2026-10-04, on `slim/server-admin` at `9007f43f` plus the uncommitted wave-3 changes. No cross-lane findings were confirmed for this wave. The two `src/` defects reported by the PROOF lane (`REHEARSAL.md`) were re-verified and fixed. The PROOF lane's other notes are not code defects: the SLIM-10 manifest regeneration, the missing production-shaped rehearsal, and Blob covered only by unit tests. They stay open in the release work. Nothing was committed.
+
+### Fixes
+
+| Defect | Re-verification | Fix | Tests |
+|---|---|---|---|
+| `src/models/Agent.ts`: the `granot_identity.username` index was `unique + sparse + partialFilterExpression`. Mongo 8 refuses that spec, and Mongoose autoIndex swallows the error. | With the old spec, the new replica test fails on `csi01` with `MongoServerError … cannot mix "partialFilterExpression" and "sparse" options`, code 67 `CannotCreateIndex`. **Production check (read-only, 2026-10-04):** Mongo `8.0.34`. `agents` has 20 rows and 13 have a string `granot_identity.username`. No row has an empty-string username, and no username appears twice. The `agents` indexes are `_id_`, `name_aliases_1`, `normalized_name_1` (unique) and `granot_crm_username_1` (unique, sparse). **`granot_identity.username_1` does not exist**, which confirms the report. | Removed `sparse: true`. The partial filter `{ $type: "string" }` already skips Agents without a username. | `src/models/Agent.test.ts` (new, 2 tests): the spec is unique and partial and never sparse, and no Agent index mixes the two. `src/models/Agent.replica.test.ts` (new; skips without `CSI_REPLICA_TEST=true`): on `csi01` (database `testvantagemovers_agentidx`, dropped afterwards), `createIndexes()` builds the index. A second Agent with the same username (`repone` / `REPONE` after uppercasing) is rejected with E11000. Agents without a username are not affected. **Passes with the fix and fails without it.** |
+| `src/services/ringcentral/processed-calls-store.ts`: `createIndexes` called `collection.indexes()`, which throws `NamespaceNotFound` (26) when the collection does not exist. | Confirmed on `csi01`: a raw `indexes()` on a missing collection returns `NamespaceNotFound`. | Moved the logic into the exported `reconcileProcessedCallIndexes(collection, { testRunner })`. It lists indexes through `listIndexesOrEmpty`, which treats code 26 or `NamespaceNotFound` as no indexes and rethrows any other error. The test runner now builds the indexes on a fresh database. Production now reports `RingCentral processed-call indexes are not predeployed.` instead of the raw driver error. | `processed-calls-store.test.ts` has 3 new tests (6 total): the test runner builds all 4 indexes on a missing collection; outside the test runner a missing collection gives the "not predeployed" error and creates nothing; predeployed indexes pass; other listing errors (`Unauthorized`) still propagate. One-off proof on `csi01` (database `testvantagemovers_pcidx`, dropped): missing collection in production mode gives "not predeployed"; test mode builds `_id_` plus the 4 named indexes; production mode then passes. |
+
+**Agent index rollout:** `Agent` keeps Mongoose's default `autoIndex`. The first slim-server deploy therefore builds `granot_identity.username_1` (unique, partial) on production `agents`. The read-only check above found no duplicates, so the build should succeed. Re-run the duplicate check right before the deploy (`agents` aggregate grouped by `granot_identity.username` where the value is a string, keeping groups with `n > 1`). If a duplicate appears, the build fails, and Mongoose only logs the failure, which is the same as today. The `createOrUpdateAgent` path already refuses duplicates through `assertGranotUsernameAvailable`. The index is the database backstop for races.
+
+### Commands and results
+
+Heavy commands ran through the scratchpad `heavy.sh` lock.
+
+| Command | Result |
+|---|---|
+| `heavy.sh env NODE_OPTIONS=--max-old-space-size=6144 node node_modules/typescript/bin/tsc --noEmit` | **exit 0, 0 errors** |
+| `heavy.sh env NODE_OPTIONS=--max-old-space-size=6144 node node_modules/eslint/bin/eslint.js src api ops/quality --max-warnings 0` (`pnpm lint`) | **exit 0** |
+| `heavy.sh env DOTENV_CONFIG_PATH=C:/nonexistent.env NODE_OPTIONS=--max-old-space-size=6144 node --import tsx --import ./ops/test-setup.ts --test --test-concurrency=2 "src/**/*.test.ts" "api/queues/**/*.test.ts" "ops/lib/*.test.ts"` | **2599 tests: 2461 pass, 0 fail, 0 cancelled, 138 skipped** (replica/env-gated; +1 is the new `Agent.replica.test.ts`), 669 s, exit 0 |
+| `CSI_REPLICA_TEST=true MONGO_URI=mongodb://127.0.0.1:27189/?replicaSet=csi01 DOTENV_CONFIG_PATH=C:/nonexistent.env node --import tsx --import ./ops/test-setup.ts --test src/models/Agent.replica.test.ts` | 1/1 pass; with `sparse: true` temporarily restored: fail, code 67 |
+| `node --import tsx --import ./ops/test-setup.ts --test src/models/Agent.test.ts src/services/ringcentral/processed-calls-store.test.ts` | 2/2 and 6/6 pass |
+
+| | Wave 2 | Wave 3 fixes |
+|---|---|---|
+| Typecheck | exit 0 | exit 0 |
+| Lint | exit 0 | exit 0 |
+| Tests | 2592 | 2599 |
+| Pass | 2455 | 2461 |
+| Fail | 0 | **0** |
+| Skipped | 137 | 138 |

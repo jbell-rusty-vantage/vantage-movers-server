@@ -92,7 +92,7 @@ Owner candidate search (`searchBookingLeadCandidates` / `searchCandidates`) is a
 
 ## Lead EntityChange emission (LP-03, 2026-09-22)
 
-These paths run outside the canonical command executor, so each emits one Lead `EntityChange` per affected Lead inside its own transaction through `LeadChangeRecorder` (`src/services/domainCommands/leadChangeEmission.ts`). Outreach then learns of a Booked / linked / cleared Lead through the EntityChange scan instead of the repair sweep.
+These paths run outside the canonical command executor, so each emits one Lead `EntityChange` per affected Lead inside its own transaction through `LeadChangeRecorder` (`src/services/domainCommands/leadChangeEmission.ts`). Sales Intelligence's Lead attachment trigger (`salesIntelligence/attachment/leadTrigger.ts`) learns of a Booked / linked / cleared Lead through the durable EntityChange scan. (The Outreach consumer of these changes was retired in the 2026-10 server/admin slimming.)
 
 | Write path | Lead change | Actor |
 |---|---|---|

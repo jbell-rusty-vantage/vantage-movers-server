@@ -109,8 +109,7 @@ All routes under `/api/v1/customers` (require `x-api-secret`).
 
 ## Admin UI
 
-- Browse/search/export: `customers` admin resource (`adminBrowse.service.ts`, [`admin-search.md`](./admin-search.md)).
-- Detail loads attached booked + cancelled leads (limit 25 each).
+- The Admin Customers page, its browse/detail/export resource and global-search group were removed in the 2026-10 server/admin slimming. The `Customer` model, `/api/v1/customers` routes, booking-time upserts and customer linkage on Bookings and Cancellations remain.
 
 ## Manual CRUD vs upsert helpers
 

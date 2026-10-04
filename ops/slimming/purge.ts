@@ -8,6 +8,10 @@
  *   node --import tsx ops/slimming/purge.ts --apply --manifest-hash=<sha256> --backup-dir=<dir outside the repo> \
  *     --i-confirm-slim-deployed [--batch=500] [--skip-blob-backup] [--resume=<run dir>]
  *
+ * Rehearsal (SLIM-09; loopback replica only, never Blob; preconditions in `lib/rehearsal.ts`): add `--rehearsal
+ * --rehearsal-main-db=slimrehearsal_<x> --rehearsal-admin-db=slimrehearsal_<y> --manifest=<the rehearsal manifest>`
+ * to either form. It executes only a manifest that `inventory.ts --rehearsal` wrote.
+ *
  * Steps, each verified, aborting on the first mismatch:
  *   (a) assert cluster, database names, collection UUIDs and counts against `deletion-manifest.json`, the
  *       deployed server commit, and that no legacy job holds a live lease;
@@ -33,7 +37,7 @@ import { type BackupEntry, verifyBackupFile, verifyBlobBackupFile, writeBackupFi
 import { deleteBlobKeys, downloadBlob, listBlobs } from "./lib/blob";
 import { argValue, clusterFingerprint, hasFlag, loadSlimmingEnv, type SlimmingEnv } from "./lib/env";
 import { PurgeCluster, ReadOnlyCluster } from "./lib/guarded-mongo";
-import { type Manifest, MANIFEST_PATH, canonicalJson, dropCountMatches, loadBlobKeys, loadManifest, sha256 } from "./lib/manifest";
+import { type Manifest, canonicalJson, dropCountMatches, loadBlobKeys, loadManifest, sha256 } from "./lib/manifest";
 import {
   PurgeAbort,
   assertBackupDir,
@@ -46,6 +50,7 @@ import {
   unlistedBlobProblems,
   verifiedFullBackupProblem,
 } from "./lib/purge-rules";
+import { type SlimmingTarget, loadRehearsalEnv, resolveSlimmingTarget } from "./lib/rehearsal";
 import { FORBIDDEN_DATABASE_DROPS, HISTORICAL_DATABASE } from "./policy";
 
 type RunLog = {
@@ -167,6 +172,21 @@ async function assertState(
     }
   }
   return { problems, facts };
+}
+
+/**
+ * A rehearsal run only executes a rehearsal manifest (and a production run only a production one). A rehearsal never
+ * calls Blob: its manifest has no Blob target and its key list file, when present, is empty.
+ */
+function assertTargetMatchesManifest(target: SlimmingTarget, manifest: Manifest): void {
+  const t = manifest.targets;
+  if (target.rehearsal !== Boolean(t.rehearsal))
+    throw new PurgeAbort(target.rehearsal ? "--rehearsal refuses a production manifest" : "a rehearsal manifest is refused without --rehearsal");
+  if (!target.rehearsal) return;
+  if (t.main_database !== target.mainDatabase || t.admin_auth_database !== target.adminAuthDatabase)
+    throw new PurgeAbort(`rehearsal databases ${target.mainDatabase}/${target.adminAuthDatabase} differ from the manifest's ${t.main_database}/${t.admin_auth_database}`);
+  if (t.blob !== null) throw new PurgeAbort("a rehearsal manifest must not carry a Blob target");
+  if (existsSync(target.blobKeysPath) && loadBlobKeys(target.blobKeysPath).length !== 0) throw new PurgeAbort("a rehearsal Blob key list must be empty");
 }
 
 async function readDeploymentStamp(c: ReadOnlyCluster, mainDb: string): Promise<string | null> {
@@ -415,14 +435,16 @@ function printDryRun(report: Document): void {
 async function main(): Promise<void> {
   const argv = process.argv;
   const apply = hasFlag(argv, "apply");
-  const env = loadSlimmingEnv(argv);
-  const { manifest, computedHash } = loadManifest();
-  const blobKeys = manifest.targets.blob ? loadBlobKeys() : [];
+  const target = resolveSlimmingTarget(argv);
+  const env = target.rehearsal ? loadRehearsalEnv(target) : loadSlimmingEnv(argv);
+  const { manifest, computedHash } = loadManifest(target.manifestPath);
+  const blobKeys = manifest.targets.blob ? loadBlobKeys(target.blobKeysPath) : [];
+  assertTargetMatchesManifest(target, manifest);
   const pending = manifest.targets.cleanups.filter((cl) => cl.status !== "final").map((cl) => cl.id);
   const drift = manifestPolicyDrift(manifest.targets.cleanups);
   const batch = Math.min(Math.max(Number(argValue(argv, "batch") ?? 500) || 500, 1), 2_000);
 
-  out(`[purge] mode=${apply ? "APPLY" : "dry-run"} manifest_hash=${computedHash} generated_at=${manifest.generated_at}`);
+  out(`[purge] mode=${apply ? "APPLY" : "dry-run"}${target.rehearsal ? " REHEARSAL (loopback replica, no Blob)" : ""} manifest_hash=${computedHash} generated_at=${manifest.generated_at}`);
   if (drift.length) out(`[purge] the manifest is stale against policy.ts (regenerate it with inventory.ts):\n  - ${drift.join("\n  - ")}`);
   let runDir = "";
   let log: RunLog | null = null;
@@ -445,7 +467,7 @@ async function main(): Promise<void> {
       log = { manifest_hash: computedHash, started_at: new Date().toISOString(), steps: [], backup_done: false, backups: [], cleanups_done: [], checkpoints: {}, blob_done: false, dropped: [], database_dropped: false, finished_at: null };
       saveLog(runDir, log);
     }
-    writeFileSync(join(runDir, "deletion-manifest.json"), readFileSync(MANIFEST_PATH));
+    writeFileSync(join(runDir, "deletion-manifest.json"), readFileSync(target.manifestPath));
   }
 
   const c = apply ? await PurgeCluster.connectForPurge(env.serverMongoUri, env) : await ReadOnlyCluster.connect(env.serverMongoUri, env);
@@ -455,7 +477,12 @@ async function main(): Promise<void> {
     out(`[purge] deployed server commit: ${deployed ?? "(none recorded)"}`);
     if (apply && log && argValue(argv, "resume")) await reconcileAbsentDrops(c, manifest, runDir, log);
     const { problems, facts } = await assertState(c, manifest, env, blobKeys, log);
-    const allProblems = [...problems, ...deploymentProblems(deployed), ...pending.map((id) => `cleanup ${id} is pending wave 3`)];
+    const allProblems = [
+      ...problems,
+      ...deploymentProblems(deployed),
+      ...pending.map((id) => `cleanup ${id} is pending wave 3`),
+      ...(!target.rehearsal && !manifest.targets.blob ? ["the manifest has no Blob target: regenerate it with the Blob listing (never purge lead_conversations without its media keys)"] : []),
+    ];
     const before = await stats(c, manifest);
     const report = { mode: apply ? "apply" : "dry-run", observed_at: new Date().toISOString(), manifest_hash: computedHash, deployed_server_commit: deployed, problems: allProblems, plan: planSummary(manifest, blobKeys, batch), facts, before };
     if (!apply || !log) {

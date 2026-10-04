@@ -3,6 +3,12 @@
  *
  *   node --import tsx ops/slimming/inventory.ts [--write-manifest] [--skip-blob] [--out=<json path>]
  *
+ * `--write-manifest` refuses a skipped Blob listing (no token or `--skip-blob`): a production manifest always
+ * carries the exact Blob keys. Rehearsal (loopback replica only; every precondition is in `lib/rehearsal.ts`):
+ *   MONGO_URI=mongodb://127.0.0.1:27189/?replicaSet=csi01 DOTENV_CONFIG_PATH=<missing file> (no BLOB_READ_WRITE_TOKEN)
+ *   node --import tsx ops/slimming/inventory.ts --rehearsal --rehearsal-main-db=slimrehearsal_<x>
+ *     --rehearsal-admin-db=slimrehearsal_<y> --manifest=<absolute path outside the repo> --write-manifest
+ *
  * Reads the server `.env` (MONGO_URI, MONGO_DNS_SERVERS, BLOB_READ_WRITE_TOKEN) and the Admin `.env`
  * (MONGODB_URI, ADMIN_AUTH_DB_NAME) without printing them. Every Mongo call goes through `ReadOnlyCluster`, whose
  * driver guard exits before any non-read command is sent; Blob access is `list` only.
@@ -22,13 +28,12 @@ import { type Document, ObjectId } from "mongodb";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { listBlobs, listTopLevelFolders } from "./lib/blob";
 import { clusterFingerprint, hasFlag, argValue, loadSlimmingEnv, SERVER_ROOT, WORKSPACE_ROOT } from "./lib/env";
+import { loadRehearsalEnv, resolveSlimmingTarget } from "./lib/rehearsal";
 import { type CollectionInfo, type CollStats, type IndexInfo, ReadOnlyCluster } from "./lib/guarded-mongo";
 import {
-  BLOB_KEYS_PATH,
   type Cleanup,
   type CollectionTarget,
   type Manifest,
-  MANIFEST_PATH,
   type ManifestTargets,
   assertManifestInvariants,
   canonicalJson,
@@ -58,6 +63,9 @@ import {
   RETIRED_SYNC_SCOPES,
   SPLIT_JOB_STAGES,
 } from "./policy";
+
+/** Database names in use: production policy names, or the explicit rehearsal names (set once in `main`). */
+let DB = { main: MAIN_DATABASE, admin: ADMIN_AUTH_DATABASE };
 
 const RETIRED_AUDIT_FILTER = {
   event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS] },
@@ -172,10 +180,10 @@ async function nonNullCounts(c: ReadOnlyCluster, db: string, name: string, paths
 
 /** Kind/review state of the findings behind contact restrictions (the reason the restriction exists). */
 async function restrictionFindingKinds(c: ReadOnlyCluster): Promise<Document[]> {
-  const rows = await c.find(MAIN_DATABASE, "sales_intelligence_contact_restrictions", { finding_id: { $type: "objectId" } }, { projection: { finding_id: 1 }, limit: 1_000 });
+  const rows = await c.find(DB.main, "sales_intelligence_contact_restrictions", { finding_id: { $type: "objectId" } }, { projection: { finding_id: 1 }, limit: 1_000 });
   const ids = rows.map((r) => r.finding_id as ObjectId);
   if (!ids.length) return [];
-  const found = await c.find(MAIN_DATABASE, "intelligence_findings", { _id: { $in: ids } }, { projection: { kind: 1, review_state: 1 }, limit: 1_000 });
+  const found = await c.find(DB.main, "intelligence_findings", { _id: { $in: ids } }, { projection: { kind: 1, review_state: 1 }, limit: 1_000 });
   const tallyBy = new Map<string, number>();
   for (const f of found) tallyBy.set(`${f.kind}|${f.review_state}`, (tallyBy.get(`${f.kind}|${f.review_state}`) ?? 0) + 1);
   const kinds: Document[] = [...tallyBy].map(([key, count]) => ({ kind: key.split("|")[0], review_state: key.split("|")[1], count }));
@@ -187,12 +195,16 @@ const group = (c: ReadOnlyCluster, db: string, name: string, keys: Record<string
 
 async function main(): Promise<void> {
   const argv = process.argv;
-  const env = loadSlimmingEnv(argv);
   const observedAt = new Date().toISOString();
-  const runtimeDb = withProductionRuntime(() => getMongoDatabaseName());
-  if (runtimeDb !== MAIN_DATABASE) throw new Error(`runtime database resolves to ${runtimeDb}, policy expects ${MAIN_DATABASE}`);
-  if (env.adminAuthDbName && env.adminAuthDbName !== ADMIN_AUTH_DATABASE)
-    throw new Error(`ADMIN_AUTH_DB_NAME is ${env.adminAuthDbName}, policy expects ${ADMIN_AUTH_DATABASE}`);
+  const target = resolveSlimmingTarget(argv);
+  DB = { main: target.mainDatabase, admin: target.adminAuthDatabase };
+  const env = target.rehearsal ? loadRehearsalEnv(target) : loadSlimmingEnv(argv);
+  // Production resolves the runtime database as a deployment would; a rehearsal names its databases explicitly.
+  const runtimeDb = target.rehearsal ? null : withProductionRuntime(() => getMongoDatabaseName());
+  if (!target.rehearsal && runtimeDb !== MAIN_DATABASE) throw new Error(`runtime database resolves to ${runtimeDb}, policy expects ${MAIN_DATABASE}`);
+  if (env.adminAuthDbName && env.adminAuthDbName !== DB.admin)
+    throw new Error(`ADMIN_AUTH_DB_NAME is ${env.adminAuthDbName}, policy expects ${DB.admin}`);
+  if (target.rehearsal) log(`[inventory] REHEARSAL on a loopback replica: main=${DB.main} admin=${DB.admin} manifest=${target.manifestPath}`);
   const fingerprint = clusterFingerprint(env.serverMongoUri);
   const adminSameCluster = env.adminMongoUri ? clusterFingerprint(env.adminMongoUri) === fingerprint : null;
   if (adminSameCluster === false) throw new Error("the Admin auth DB is on a different cluster; extend the inventory before relying on it");
@@ -206,18 +218,18 @@ async function main(): Promise<void> {
     // 1. Namespaces: the three in-scope databases in full; any other database by name, count and size.
     const main = await describeNamespaces(
       c,
-      MAIN_DATABASE,
+      DB.main,
       (name) => MAIN_CLASSIFICATION[name] ?? { decision: "unknown", owner: "no reader/writer found in workspace source", reason: "Protected until classified (DATA §1.2)" },
       (name) => MAIN_CLASSIFICATION[name]?.decision !== "keep",
     );
-    log(`[inventory] ${MAIN_DATABASE}: ${main.length} namespaces`);
+    log(`[inventory] ${DB.main}: ${main.length} namespaces`);
     const historical = databases.some((d) => d.name === HISTORICAL_DATABASE)
       ? await describeNamespaces(c, HISTORICAL_DATABASE, () => ({ decision: "drop", owner: "src/models/historical/*", reason: "SPEC §3: whole database" }), () => true)
       : [];
-    const adminAuth = databases.some((d) => d.name === ADMIN_AUTH_DATABASE)
+    const adminAuth = databases.some((d) => d.name === DB.admin)
       ? await describeNamespaces(
           c,
-          ADMIN_AUTH_DATABASE,
+          DB.admin,
           (name) =>
             ADMIN_DROP_COLLECTIONS[name]
               ? { decision: "drop", owner: ADMIN_DROP_COLLECTIONS[name]!.owner, reason: `SPEC ${ADMIN_DROP_COLLECTIONS[name]!.spec}` }
@@ -229,7 +241,7 @@ async function main(): Promise<void> {
       : [];
     const otherDatabases = [];
     for (const d of databases) {
-      if (SYSTEM_DATABASES.has(d.name) || [MAIN_DATABASE, HISTORICAL_DATABASE, ADMIN_AUTH_DATABASE].includes(d.name)) continue;
+      if (SYSTEM_DATABASES.has(d.name) || [DB.main, HISTORICAL_DATABASE, DB.admin].includes(d.name)) continue;
       const cols = await c.listCollections(d.name);
       let docs = 0;
       for (const col of cols) if (col.type === "collection") docs += (await c.collStats(d.name, col.name)).count;
@@ -239,7 +251,7 @@ async function main(): Promise<void> {
     // 2. Shared SI jobs: stage × status, lease state, payload markers.
     log("[inventory] sales_intelligence_jobs breakdown");
     const now = new Date();
-    const jobsByStageStatus = await group(c, MAIN_DATABASE, "sales_intelligence_jobs", { stage: "$stage", status: "$status" }, {
+    const jobsByStageStatus = await group(c, DB.main, "sales_intelligence_jobs", { stage: "$stage", status: "$status" }, {
       first_id: { $min: "$_id" },
       last_id: { $max: "$_id" },
       bytes: { $sum: { $bsonSize: "$$ROOT" } },
@@ -255,15 +267,15 @@ async function main(): Promise<void> {
     const legacyStages = [...LEGACY_JOB_STAGES];
     const jobs = {
       by_stage_status: jobsByStageStatus,
-      legacy_live_leases: await c.count(MAIN_DATABASE, "sales_intelligence_jobs", { stage: { $in: legacyStages }, status: "leased", leased_until: { $gt: now } }),
-      legacy_expired_leases: await c.count(MAIN_DATABASE, "sales_intelligence_jobs", { stage: { $in: legacyStages }, status: "leased", $or: [{ leased_until: { $lte: now } }, { leased_until: null }] }),
-      legacy_runnable: await c.count(MAIN_DATABASE, "sales_intelligence_jobs", { stage: { $in: legacyStages }, status: { $in: ["pending", "retry", "paused"] } }),
-      owner_reanalysis_rows: await c.count(MAIN_DATABASE, "sales_intelligence_jobs", { owner_reanalysis: { $nin: [null] } }),
-      completed_without_completed_at: await c.count(MAIN_DATABASE, "sales_intelligence_jobs", { status: "completed", completed_at: null }),
+      legacy_live_leases: await c.count(DB.main, "sales_intelligence_jobs", { stage: { $in: legacyStages }, status: "leased", leased_until: { $gt: now } }),
+      legacy_expired_leases: await c.count(DB.main, "sales_intelligence_jobs", { stage: { $in: legacyStages }, status: "leased", $or: [{ leased_until: { $lte: now } }, { leased_until: null }] }),
+      legacy_runnable: await c.count(DB.main, "sales_intelligence_jobs", { stage: { $in: legacyStages }, status: { $in: ["pending", "retry", "paused"] } }),
+      owner_reanalysis_rows: await c.count(DB.main, "sales_intelligence_jobs", { owner_reanalysis: { $nin: [null] } }),
+      completed_without_completed_at: await c.count(DB.main, "sales_intelligence_jobs", { status: "completed", completed_at: null }),
     };
 
     // 3. Sync state rows: scope identity, field names and lease state only.
-    const syncRows = await c.find(MAIN_DATABASE, "sales_intelligence_sync_state", {}, { limit: 1_000, sort: { _id: 1 } });
+    const syncRows = await c.find(DB.main, "sales_intelligence_sync_state", {}, { limit: 1_000, sort: { _id: 1 } });
     const syncState = syncRows.map((row) => {
       const scope = String(row.scope);
       return {
@@ -300,85 +312,85 @@ async function main(): Promise<void> {
       "agents",
     ]) {
       if (!main.some((n) => n.name === name)) continue;
-      const { sampled, paths } = await samplePaths(c, MAIN_DATABASE, name);
+      const { sampled, paths } = await samplePaths(c, DB.main, name);
       const flagged = Object.keys(paths).filter((p) => AI_PATH.test(p)).sort();
       const required = name === "contact_numbers" ? [...CONTACT_NUMBER_DEAD_FIELDS, ...CONTACT_NUMBER_REVIEW_FIELDS] : [];
       discovery[name] = {
         sampled,
         all_paths: name === "contact_numbers" ? Object.keys(paths).sort() : undefined,
         flagged_paths: flagged,
-        exists_counts: await existsCounts(c, MAIN_DATABASE, name, [...new Set([...flagged, ...required])].sort()),
-        non_null_counts: await nonNullCounts(c, MAIN_DATABASE, name, [...new Set([...flagged, ...required])].filter((p) => !p.includes("[]")).sort()),
+        exists_counts: await existsCounts(c, DB.main, name, [...new Set([...flagged, ...required])].sort()),
+        non_null_counts: await nonNullCounts(c, DB.main, name, [...new Set([...flagged, ...required])].filter((p) => !p.includes("[]")).sort()),
       };
     }
-    const contactNumbersDeadMatches = await c.count(MAIN_DATABASE, "contact_numbers", { $or: CONTACT_NUMBER_DEAD_FIELDS.map((f) => ({ [f]: { $exists: true } })) });
-    const contactNumbersReviewMatches = await c.count(MAIN_DATABASE, "contact_numbers", { $or: CONTACT_NUMBER_REVIEW_FIELDS.map((f) => ({ [f]: { $exists: true } })) });
+    const contactNumbersDeadMatches = await c.count(DB.main, "contact_numbers", { $or: CONTACT_NUMBER_DEAD_FIELDS.map((f) => ({ [f]: { $exists: true } })) });
+    const contactNumbersReviewMatches = await c.count(DB.main, "contact_numbers", { $or: CONTACT_NUMBER_REVIEW_FIELDS.map((f) => ({ [f]: { $exists: true } })) });
 
     // 5. Human/provider facts and their provenance.
     log("[inventory] human facts");
     const humanFacts = {
       contact_restrictions: {
-        by_origin_state_actor: await group(c, MAIN_DATABASE, "sales_intelligence_contact_restrictions", { origin: "$origin", state: "$state", actor: "$actor.kind" }),
-        active_unexpired: await c.count(MAIN_DATABASE, "sales_intelligence_contact_restrictions", { state: "active", $or: [{ until: null }, { until: { $gt: now } }] }),
-        refs: await nonNullCounts(c, MAIN_DATABASE, "sales_intelligence_contact_restrictions", ["run_id", "finding_id", "source_interaction_id"]),
+        by_origin_state_actor: await group(c, DB.main, "sales_intelligence_contact_restrictions", { origin: "$origin", state: "$state", actor: "$actor.kind" }),
+        active_unexpired: await c.count(DB.main, "sales_intelligence_contact_restrictions", { state: "active", $or: [{ until: null }, { until: { $gt: now } }] }),
+        refs: await nonNullCounts(c, DB.main, "sales_intelligence_contact_restrictions", ["run_id", "finding_id", "source_interaction_id"]),
         source_findings: await restrictionFindingKinds(c),
       },
       owner_instructions: {
-        by_field_state_actor: await group(c, MAIN_DATABASE, "sales_intelligence_owner_instructions", { field: "$field", state: "$state", actor: "$actor.kind" }),
-        refs: await nonNullCounts(c, MAIN_DATABASE, "sales_intelligence_owner_instructions", ["followup_id", "finding_id"]),
+        by_field_state_actor: await group(c, DB.main, "sales_intelligence_owner_instructions", { field: "$field", state: "$state", actor: "$actor.kind" }),
+        refs: await nonNullCounts(c, DB.main, "sales_intelligence_owner_instructions", ["followup_id", "finding_id"]),
       },
       review_items: {
-        by_cause_state: await group(c, MAIN_DATABASE, "sales_intelligence_review_items", { cause: "$cause_kind", state: "$state", resolver: "$resolution_actor.kind" }),
-        refs: await nonNullCounts(c, MAIN_DATABASE, "sales_intelligence_review_items", ["evidence_ids"]),
+        by_cause_state: await group(c, DB.main, "sales_intelligence_review_items", { cause: "$cause_kind", state: "$state", resolver: "$resolution_actor.kind" }),
+        refs: await nonNullCounts(c, DB.main, "sales_intelligence_review_items", ["evidence_ids"]),
       },
       owner_rep_nudges: {
-        by_purpose_status_channel: await group(c, MAIN_DATABASE, "owner_rep_nudges", { purpose: "$purpose", status: "$status", channel: "$channel" }),
-        refs: await nonNullCounts(c, MAIN_DATABASE, "owner_rep_nudges", ["outreach_record_id", "contact_number_id", "rep_identity_link_id", "agent_id"]),
+        by_purpose_status_channel: await group(c, DB.main, "owner_rep_nudges", { purpose: "$purpose", status: "$status", channel: "$channel" }),
+        refs: await nonNullCounts(c, DB.main, "owner_rep_nudges", ["outreach_record_id", "contact_number_id", "rep_identity_link_id", "agent_id"]),
       },
       outreach_followups: {
-        by_origin_status_requested: await group(c, MAIN_DATABASE, "outreach_followups", { origin: "$origin", status: "$status", requested_by: "$requested_by" }),
-        by_assignment_origin: await group(c, MAIN_DATABASE, "outreach_followups", { assignment_origin: "$assignment.origin", status: "$status" }),
-        open_due_future: await c.count(MAIN_DATABASE, "outreach_followups", { status: "open", due_at: { $gt: now } }),
-        refs: await nonNullCounts(c, MAIN_DATABASE, "outreach_followups", ["owner_instruction_ids", "source_finding_ids", "origin_run_id"]),
+        by_origin_status_requested: await group(c, DB.main, "outreach_followups", { origin: "$origin", status: "$status", requested_by: "$requested_by" }),
+        by_assignment_origin: await group(c, DB.main, "outreach_followups", { assignment_origin: "$assignment.origin", status: "$status" }),
+        open_due_future: await c.count(DB.main, "outreach_followups", { status: "open", due_at: { $gt: now } }),
+        refs: await nonNullCounts(c, DB.main, "outreach_followups", ["owner_instruction_ids", "source_finding_ids", "origin_run_id"]),
       },
       outreach_records: {
-        by_state_assignment: await group(c, MAIN_DATABASE, "outreach_records", { state: "$state", assignment_origin: "$assignment.origin" }),
+        by_state_assignment: await group(c, DB.main, "outreach_records", { state: "$state", assignment_origin: "$assignment.origin" }),
       },
       number_lead_attachments: {
-        by_state_certainty: await group(c, MAIN_DATABASE, "number_lead_attachments", { state: "$state", certainty: "$certainty" }),
-        refs: await nonNullCounts(c, MAIN_DATABASE, "number_lead_attachments", ["decided_by", "auto_decision"]),
+        by_state_certainty: await group(c, DB.main, "number_lead_attachments", { state: "$state", certainty: "$certainty" }),
+        refs: await nonNullCounts(c, DB.main, "number_lead_attachments", ["decided_by", "auto_decision"]),
       },
-      rep_identity_links: { count: await c.count(MAIN_DATABASE, "rep_identity_links") },
+      rep_identity_links: { count: await c.count(DB.main, "rep_identity_links") },
     };
 
     // 6. Mixed audit/command/policy breakdowns (bytes via $bsonSize).
     log("[inventory] audit/command/policy breakdowns");
-    const auditEvents = await group(c, MAIN_DATABASE, "sales_intelligence_audit_events", { event_kind: "$event_kind", invalidation_kind: "$invalidation.kind", actor: "$actor.kind" }, {
+    const auditEvents = await group(c, DB.main, "sales_intelligence_audit_events", { event_kind: "$event_kind", invalidation_kind: "$invalidation.kind", actor: "$actor.kind" }, {
       bytes: { $sum: { $bsonSize: "$$ROOT" } },
       first: { $min: "$happened_at" },
       last: { $max: "$happened_at" },
     });
-    const auditRetiredMatches = await c.count(MAIN_DATABASE, "sales_intelligence_audit_events", RETIRED_AUDIT_FILTER);
+    const auditRetiredMatches = await c.count(DB.main, "sales_intelligence_audit_events", RETIRED_AUDIT_FILTER);
     const unclassifiedAuditKinds = auditEvents
       .map((r) => String(r.event_kind))
       .filter((kind, i, all) => all.indexOf(kind) === i && !(RETIRED_AUDIT_EVENT_KINDS as readonly string[]).includes(kind));
-    const commandExecutions = await group(c, MAIN_DATABASE, "sales_intelligence_command_executions", { command: "$command", actor: "$actor.kind" }, { bytes: { $sum: { $bsonSize: "$$ROOT" } } });
-    const policyVersions = (await c.find(MAIN_DATABASE, "sales_intelligence_policy_versions", {}, { projection: { version: 1, effective_at: 1, "actor.kind": 1 }, sort: { effective_at: 1 }, limit: 100 })).map((r) => ({
+    const commandExecutions = await group(c, DB.main, "sales_intelligence_command_executions", { command: "$command", actor: "$actor.kind" }, { bytes: { $sum: { $bsonSize: "$$ROOT" } } });
+    const policyVersions = (await c.find(DB.main, "sales_intelligence_policy_versions", {}, { projection: { version: 1, effective_at: 1, "actor.kind": 1 }, sort: { effective_at: 1 }, limit: 100 })).map((r) => ({
       version: r.version,
       effective_at: r.effective_at instanceof Date ? r.effective_at.toISOString() : null,
       actor: r.actor?.kind ?? null,
     }));
-    const policyPointers = (await c.find(MAIN_DATABASE, "sales_intelligence_policy_pointers", {}, { projection: { key: 1, version: 1 }, limit: 10 })).map((r) => ({ key: r.key, version: r.version }));
-    const auditRefs = await nonNullCounts(c, MAIN_DATABASE, "sales_intelligence_audit_events", ["run_id"]);
-    const contactNumberRefs = await nonNullCounts(c, MAIN_DATABASE, "contact_numbers", ["running_summary.run_id", "intelligence_schedule.job_id", "contact_eligibility.evidence_ref"]);
+    const policyPointers = (await c.find(DB.main, "sales_intelligence_policy_pointers", {}, { projection: { key: 1, version: 1 }, limit: 10 })).map((r) => ({ key: r.key, version: r.version }));
+    const auditRefs = await nonNullCounts(c, DB.main, "sales_intelligence_audit_events", ["run_id"]);
+    const contactNumberRefs = await nonNullCounts(c, DB.main, "contact_numbers", ["running_summary.run_id", "intelligence_schedule.job_id", "contact_eligibility.evidence_ref"]);
 
     // 7. Lead Conversations media references and the Blob store.
     log("[inventory] conversation media references");
-    const conversationRefs = (await c.distinct(MAIN_DATABASE, "lead_conversations", "media.blob_pathname", { "media.blob_pathname": { $type: "string" } })).map(String);
+    const conversationRefs = (await c.distinct(DB.main, "lead_conversations", "media.blob_pathname", { "media.blob_pathname": { $type: "string" } })).map(String);
     // Superseded audio a completed media_fetch job handed to the (now removed) retention Blob delete; these keys
     // need not appear in lead_conversations any more, so the manifest takes the union.
     const pendingDeleteRefs = (
-      await c.distinct(MAIN_DATABASE, "sales_intelligence_jobs", "result.pending_blob_delete", {
+      await c.distinct(DB.main, "sales_intelligence_jobs", "result.pending_blob_delete", {
         stage: "media_fetch",
         status: "completed",
         "result.pending_blob_delete": { $type: "string" },
@@ -386,16 +398,17 @@ async function main(): Promise<void> {
     ).map(String);
     const mediaRefs = [...new Set([...conversationRefs, ...pendingDeleteRefs])];
     const conversationMedia = {
-      docs: await c.count(MAIN_DATABASE, "lead_conversations"),
-      with_blob_pathname: await c.count(MAIN_DATABASE, "lead_conversations", { "media.blob_pathname": { $type: "string" } }),
-      with_media_purged_at: await c.count(MAIN_DATABASE, "lead_conversations", { "media.purged_at": { $type: "date" } }),
+      docs: await c.count(DB.main, "lead_conversations"),
+      with_blob_pathname: await c.count(DB.main, "lead_conversations", { "media.blob_pathname": { $type: "string" } }),
+      with_media_purged_at: await c.count(DB.main, "lead_conversations", { "media.purged_at": { $type: "date" } }),
       distinct_pathnames: mediaRefs.length,
       pending_blob_delete_pathnames: pendingDeleteRefs.length,
       pathnames_outside_prefix: mediaRefs.filter((p) => !p.startsWith(CONVERSATION_BLOB_PREFIX)).length,
     };
     let blob: Document | null = null;
     let blobKeys: string[] = [];
-    if (hasFlag(argv, "skip-blob")) blob = { skipped: "--skip-blob" };
+    if (target.rehearsal) blob = { skipped: "rehearsal: Vercel Blob is never called" };
+    else if (hasFlag(argv, "skip-blob")) blob = { skipped: "--skip-blob" };
     else if (!env.blobToken) blob = { skipped: "BLOB_READ_WRITE_TOKEN not set" };
     else {
       log("[inventory] Blob list (read-only)");
@@ -435,7 +448,7 @@ async function main(): Promise<void> {
       runtime_database: runtimeDb,
       admin_auth_database: env.adminAuthDbName,
       databases,
-      namespaces: { [MAIN_DATABASE]: main, [HISTORICAL_DATABASE]: historical, [ADMIN_AUTH_DATABASE]: adminAuth },
+      namespaces: { [DB.main]: main, [HISTORICAL_DATABASE]: historical, [DB.admin]: adminAuth },
       other_databases: otherDatabases,
       jobs,
       sync_state: syncState,
@@ -458,16 +471,21 @@ async function main(): Promise<void> {
       conversation_media: conversationMedia,
       blob,
     };
-    const out = argValue(argv, "out") ?? resolve(SERVER_ROOT, "docs/server-admin-slimming/evidence/inventory.json");
+    const out = argValue(argv, "out") ?? (target.rehearsal ? resolve(dirname(target.manifestPath), "inventory.json") : resolve(SERVER_ROOT, "docs/server-admin-slimming/evidence/inventory.json"));
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, `${JSON.stringify(inventory, null, 2)}\n`);
     log(`[inventory] wrote ${out}`);
 
     if (hasFlag(argv, "write-manifest")) {
-      const manifest = buildManifest({ observedAt, fingerprint, replicaSet, main, historical, adminAuth, jobsByStageStatus, syncState, contactNumbersDeadMatches, contactNumbersReviewMatches, auditRetiredMatches, blobKeys, blob, source: inventory.source, databases });
-      writeFileSync(BLOB_KEYS_PATH, `${JSON.stringify(blobKeys, null, 1)}\n`);
-      writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
-      log(`[inventory] wrote ${MANIFEST_PATH}`);
+      // A production manifest without the Blob listing would drop lead_conversations and orphan its media objects:
+      // never a general skip. Only a loopback rehearsal (no Blob, empty key list) writes a manifest without it.
+      if (!target.rehearsal && typeof blob?.objects !== "number")
+        throw new Error(`--write-manifest needs the Blob listing (${String(blob?.skipped ?? "no listing")}); set BLOB_READ_WRITE_TOKEN and drop --skip-blob`);
+      const manifest = buildManifest({ rehearsal: target.rehearsal, observedAt, fingerprint, replicaSet, main, historical, adminAuth, jobsByStageStatus, syncState, contactNumbersDeadMatches, contactNumbersReviewMatches, auditRetiredMatches, blobKeys, blob, source: inventory.source, databases });
+      mkdirSync(dirname(target.manifestPath), { recursive: true });
+      writeFileSync(target.blobKeysPath, `${JSON.stringify(blobKeys, null, 1)}\n`);
+      writeFileSync(target.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      log(`[inventory] wrote ${target.manifestPath}`);
       log(`[inventory] manifest_hash=${manifest.manifest_hash}`);
     }
   } finally {
@@ -487,6 +505,7 @@ function withProductionRuntime<T>(fn: () => T): T {
 }
 
 type BuildInput = {
+  rehearsal: boolean;
   observedAt: string;
   fingerprint: string;
   replicaSet: string | null;
@@ -525,12 +544,12 @@ function buildManifest(input: BuildInput): Manifest {
   for (const [name, spec] of Object.entries(MAIN_DROP_COLLECTIONS)) {
     const row = input.main.find((r) => r.name === name);
     if (row) dropCollections.push(collectionTarget(row, spec));
-    else absent.push({ db: MAIN_DATABASE, name, spec: spec.spec });
+    else absent.push({ db: DB.main, name, spec: spec.spec });
   }
   for (const [name, spec] of Object.entries(ADMIN_DROP_COLLECTIONS)) {
     const row = input.adminAuth.find((r) => r.name === name);
     if (row) dropCollections.push(collectionTarget(row, spec));
-    else absent.push({ db: ADMIN_AUTH_DATABASE, name, spec: spec.spec });
+    else absent.push({ db: DB.admin, name, spec: spec.spec });
   }
   const historicalSize = input.databases.find((d) => d.name === HISTORICAL_DATABASE)?.sizeOnDisk ?? 0;
   const dropDatabases = input.historical.length
@@ -561,7 +580,7 @@ function buildManifest(input: BuildInput): Manifest {
     {
       id: "C1-contact-numbers-dead-fields",
       kind: "unset_fields",
-      db: MAIN_DATABASE,
+      db: DB.main,
       collection: "contact_numbers",
       fields: [...CONTACT_NUMBER_DEAD_FIELDS],
       expected_matches: input.contactNumbersDeadMatches,
@@ -571,7 +590,7 @@ function buildManifest(input: BuildInput): Manifest {
     {
       id: "C2-legacy-stage-jobs",
       kind: "retire_jobs",
-      db: MAIN_DATABASE,
+      db: DB.main,
       collection: "sales_intelligence_jobs",
       stages: [...LEGACY_JOB_STAGES],
       expected_by_status: expectedByStatus,
@@ -582,7 +601,7 @@ function buildManifest(input: BuildInput): Manifest {
     {
       id: "C3-retired-sync-scopes",
       kind: "delete_exact",
-      db: MAIN_DATABASE,
+      db: DB.main,
       collection: "sales_intelligence_sync_state",
       key_field: "scope",
       key_values: retiredScopes,
@@ -593,7 +612,7 @@ function buildManifest(input: BuildInput): Manifest {
     {
       id: "C6-outreach-cursor-sync-scopes",
       kind: "delete_exact",
-      db: MAIN_DATABASE,
+      db: DB.main,
       collection: "sales_intelligence_sync_state",
       key_field: "scope",
       key_values: pendingScopes,
@@ -604,7 +623,7 @@ function buildManifest(input: BuildInput): Manifest {
     {
       id: "C4-retired-audit-events",
       kind: "delete_filter",
-      db: MAIN_DATABASE,
+      db: DB.main,
       collection: "sales_intelligence_audit_events",
       filter: RETIRED_AUDIT_FILTER,
       expected_matches: input.auditRetiredMatches,
@@ -614,7 +633,7 @@ function buildManifest(input: BuildInput): Manifest {
     {
       id: "C5-contact-numbers-retention-fields",
       kind: "unset_fields",
-      db: MAIN_DATABASE,
+      db: DB.main,
       collection: "contact_numbers",
       fields: [...CONTACT_NUMBER_REVIEW_FIELDS],
       expected_matches: input.contactNumbersReviewMatches,
@@ -626,15 +645,15 @@ function buildManifest(input: BuildInput): Manifest {
   const protectedRows: ManifestTargets["protected"] = [];
   for (const name of NEVER_DROP) {
     const row = input.main.find((r) => r.name === name);
-    protectedRows.push({ db: MAIN_DATABASE, name, uuid: row?.uuid ?? null, count: row?.stats?.count ?? 0 });
+    protectedRows.push({ db: DB.main, name, uuid: row?.uuid ?? null, count: row?.stats?.count ?? 0 });
   }
   for (const name of ADMIN_NEVER_DROP) {
     const row = input.adminAuth.find((r) => r.name === name);
-    protectedRows.push({ db: ADMIN_AUTH_DATABASE, name, uuid: row?.uuid ?? null, count: row?.stats?.count ?? 0 });
+    protectedRows.push({ db: DB.admin, name, uuid: row?.uuid ?? null, count: row?.stats?.count ?? 0 });
   }
 
   const blobTarget =
-    input.blob && typeof input.blob.objects === "number"
+    !input.rehearsal && input.blob && typeof input.blob.objects === "number"
       ? {
           prefix: CONVERSATION_BLOB_PREFIX,
           keys_file: "ops/slimming/conversation-blob-keys.json",
@@ -646,9 +665,10 @@ function buildManifest(input: BuildInput): Manifest {
       : null;
 
   const targets: ManifestTargets = {
+    ...(input.rehearsal ? { rehearsal: true as const } : {}),
     cluster: { fingerprint: input.fingerprint, replica_set: input.replicaSet },
-    main_database: MAIN_DATABASE,
-    admin_auth_database: ADMIN_AUTH_DATABASE,
+    main_database: DB.main,
+    admin_auth_database: DB.admin,
     drop_databases: dropDatabases,
     drop_collections: dropCollections,
     absent_targets: absent,

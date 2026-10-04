@@ -8,6 +8,10 @@ import { csiEnqueueReplicaTarget } from "./lib/csi-enqueue-replica-target";
 
 const database = `testvantagemovers_enqueue${randomUUID().replaceAll("-", "")}`;
 // Do not inherit a configurable target: this harness creates indexes and drops its test database.
+// Provider credentials are dropped and dotenv points at a file that does not exist, so no `import "dotenv/config"`
+// reached through `src/` can load the production `.env` (dotenv only fills unset keys, so it would add secrets).
+for (const key of Object.keys(process.env)) if (/RINGCENTRAL|^RC_|BLOB|GATEWAY|OPENAI|ANTHROPIC|VERCEL|KV_REST|REDIS|UPSTASH|QSTASH|GOOGLE|MONGO|DOTENV/i.test(key)) delete process.env[key];
+process.env.DOTENV_CONFIG_PATH = `${__dirname}/.csi-enqueue-replica-no-dotenv.env`;
 process.env.MONGO_URI = csiEnqueueReplicaTarget(process.argv);
 process.env.TEST_MODE = "true";
 process.env.TEST_MONGO_DATABASE_NAME = database;
@@ -85,6 +89,10 @@ async function proveRetiredStageFence(
   const { enqueueCsiJob, claimCsiJob, completeCsiJob, retireLegacyCsiJobs } = await import("../src/services/salesIntelligence/jobs.js");
   const { dispatchCsiWakeup } = await import("../src/services/numberActivity/jobDispatch.js");
   const collections = async () => (await mongoose.connection.db!.listCollections().toArray()).map(c => c.name).sort();
+  // Importing the dispatcher registers retained models whose `autoCreate` runs in the background; settle every
+  // registered model first, so the snapshot below cannot race a retained collection's creation.
+  // allSettled: a pre-existing invalid Agent index spec (unique+sparse+partialFilterExpression) rejects its init.
+  await Promise.allSettled(mongoose.modelNames().map(name => mongoose.model(name).init()));
   const before = await collections();
   const now = new Date();
   // Start from a clean retained queue: main() leaves runnable retained rows (e.g. the `test:concurrent`
@@ -131,9 +139,15 @@ async function proveRetiredStageFence(
   await assert.rejects(withTransaction(session => enqueueCsiJob({ dedupe_key: "legacy:new", stage: "analysis" as never, subject_key: "number:legacy", input_revision: 1 }, session)), /INVALID_INPUT/);
   assert.equal(await Model.collection.countDocuments({ dedupe_key: "legacy:new" }), 0);
   assert.deepEqual(await collections(), before, "no collection was created");
+  const retired = (await collections()).filter(name => RETIRED_COLLECTION.test(name));
+  assert.deepEqual(retired, [], "no retired collection exists in the proof database");
 }
+/** Every collection the slimming retires (SPEC §4, §6, §7.2), with the test-mode `test_` aliases. */
+const RETIRED_COLLECTION = /^(test_)?(lead_conversations|intelligence_[a-z_]+|move_assessment_artifacts|sales_intelligence_ai_(budget|reservations)|sales_intelligence_attention_[a-z_]+|outreach_(records|followups|band_transitions|rep_days)|operational_(events|incidents|report_runs)|notification_deliveries|admin_audit_logs)$/;
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
+  // Settle background model init first, or a late autoCreate/autoIndex recreates collections after the drop.
+  await Promise.allSettled(mongoose.modelNames().map(name => mongoose.model(name).init()));
   if (mongoose.connection.name === database) await mongoose.connection.dropDatabase();
   await mongoose.disconnect();
 });

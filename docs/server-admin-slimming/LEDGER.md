@@ -44,3 +44,15 @@ Replica proofs were not run because the Docker `csi01` replica hung: Granot life
 - Admin-role Sheet Sync retry is denied at the proxy, because its only UI was Observational. The Owner and the server route are unchanged.
 
 Loss to report to the user: lane S-HIST deleted the gitignored local `scripts/historical/` and `scripts/historical_production_db_staged_merge_ingestion/`, including local audit reports. No copy was found.
+
+## User decisions (2026-10-04)
+
+- Deletion of the local gitignored historical scripts and reports is accepted.
+- Ship the slim server, Admin and MCP after wave 3.
+- No recovery copy of the conversation audio. Run the purge with `--skip-blob-backup`, so the Blob audio objects are deleted without a backup. The Mongo targets are still backed up.
+- Purge window: about 15 to 30 minutes after the deploy instead of 48 hours. Before the deploy, run a final no-writer / no-recreation audit. Purge only when all of these hold:
+  - the live commit is verified;
+  - job recovery has fenced every legacy job (zero runnable or leased);
+  - two inventory snapshots about 10 minutes apart show zero growth and no write after the deploy.
+
+  Then check for recreation at +30 minutes, +2 hours and +1 day, and re-drop idempotently if a collection reappears.

@@ -29,7 +29,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/admin/adminSearch.service.ts`  
-**Domain terms used:** [Admin Dashboard](../../../../CONTEXT.md), [Workflow Observational](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
+**Domain terms used:** [Admin Dashboard](../../../../CONTEXT.md), [Lead ID](../../../../CONTEXT.md), [Form Lead](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Booking](../../../../CONTEXT.md), [Cancellation](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md)
 
 # Admin Search Service
 

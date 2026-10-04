@@ -51,6 +51,7 @@ test("[SLIM-04] a capture failure while Mongo is down is logged, then fences the
     t.skip("This proof must run before the suite connects to Mongo.");
     return;
   }
+  const missedAt = Date.now();
   const logs = captureGranotLifecycleLogs();
   await emitGranotLifecycleEvent({
     level: "error",
@@ -64,16 +65,26 @@ test("[SLIM-04] a capture failure while Mongo is down is logged, then fences the
   assert.equal(logs.find("granot_lifecycle.health_state.write_missed")?.record.reason, "mongo_unavailable");
   if (!(await replicaReady(t))) return;
   const HealthState = getGranotLifecycleHealthStateModel();
-  await HealthState.deleteMany({});
-  await HealthState.collection.insertOne({
-    _id: "coverage",
-    kind: "coverage",
-    counters_since: new Date(Date.now() - 30 * 60 * 60 * 1000),
-    last_write_at: new Date(),
-  } as never);
+  // The first connection after the miss fences it as the coverage `gap_at` (healthState `installReconnectFence`),
+  // before any health write: an instance that saw one capture failure may never write health state again.
+  const fenced = async () => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const row = await HealthState.findById("coverage").lean();
+      if (row?.gap_at && new Date(row.gap_at).getTime() >= missedAt) return row;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return null;
+  };
+  const coverage = await fenced();
+  assert.ok(coverage?.gap_at, "the reconnection records the missed write as a coverage gap");
+  const gapAt = new Date(coverage.gap_at).getTime();
+  // Warm counters (30 h of coverage) still read unknown while the gap is inside their window, and a later
+  // successful write keeps the fenced gap.
+  await HealthState.deleteMany({ _id: { $ne: "coverage" } });
+  await HealthState.updateOne({ _id: "coverage" }, { $set: { counters_since: new Date(Date.now() - 30 * 60 * 60 * 1000) } });
   await incrementGranotLifecycleHealthCounter("capture_failed");
-  const coverage = await HealthState.findById("coverage").lean();
-  assert.ok(coverage?.gap_at, "the next successful write records the missed write");
+  const afterWrite = await HealthState.findById("coverage").lean();
+  assert.equal(afterWrite?.gap_at ? new Date(afterWrite.gap_at).getTime() : null, gapAt, "the next successful write keeps the gap");
   const counters = await readGranotLifecycleHealthCounters(new Date());
   assert.equal(counters.capture_failures_24h, null);
   assert.equal(counters.claim_recoveries_1h, null);

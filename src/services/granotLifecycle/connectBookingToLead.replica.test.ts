@@ -76,7 +76,7 @@ async function seedLeadless(suffix: string) {
   const leadId = id();
   const bookingId = id();
   const jobNo = `${jobPrefix}-${suffix}`;
-  await Agent.create({ _id: agentId, name: "Connect Agent", active: true });
+  await Agent.create({ _id: agentId, name: "Connect Agent", normalized_name: `connect-agent-${String(agentId)}`, active: true });
   await getFormLeadModel().create({
     _id: leadId,
     timestamp: new Date(),
@@ -87,6 +87,7 @@ async function seedLeadless(suffix: string) {
     email: "connect@example.invalid",
     pickup_zip: "33101",
     destination_zip: "10001",
+    local: "long_distance",
     source_company: "best-relocation",
     duplicate: false,
     domain_revision: 0,
@@ -206,7 +207,7 @@ test("Connect rejects Referral, cancelled, already-booked Lead, and stale revisi
   );
 
   const cancelled = await seedLeadless("can");
-  await BookedLead.updateOne({ _id: cancelled.bookingId }, { $set: { cancelled: new Date() } });
+  await BookedLead.updateOne({ _id: cancelled.bookingId }, { $set: { cancelled: id() } });
   await assert.rejects(
     () => connectBookingToLead({
       booking_id: cancelled.bookingId,

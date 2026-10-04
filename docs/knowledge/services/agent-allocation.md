@@ -152,7 +152,7 @@ Best Relocation from-source create may stamp the source lead’s receiver from a
 - Agent catalog CRUD + lookup: [`catalog.md`](./catalog.md) (`resolveAgentByName`, admin routes)
 - Cancellations: [`cancelled-lead.md`](./cancelled-lead.md) (`primaryAgentName`)
 - Validation: `validation/v1/bookings.validation.ts` (`agentAllocationInputSchema`, `agent_allocation_mode`)
-- Historical repair: `scripts/historical/repair-historical-agent-allocations.ts` (may use different agent upsert patterns)
+- Historical repair scripts (`scripts/historical/`) were deleted with the historical database in the 2026-10 server/admin slimming (SLIM-03).
 
 ## Operational notes
 

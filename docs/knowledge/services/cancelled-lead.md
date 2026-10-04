@@ -194,7 +194,9 @@ Delete tombstone coalesces with pending `cancellation_chain` upserts for the sam
 - Cancellation create/update/delete are high-risk; add focused tests when changing unwind order or referral/leadless guards.
 - `domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision metadata. Canonical create/update/delete adapters persist append-only `EntityChange` rows and stamp `last_change_*` in the executor transaction.
 
-## Operational events
+## Structured log events
+
+Logger `msg` keys only; nothing is persisted (the Operational Events ledger was retired in the 2026-10 server/admin slimming).
 
 | Path | Event |
 |------|-------|

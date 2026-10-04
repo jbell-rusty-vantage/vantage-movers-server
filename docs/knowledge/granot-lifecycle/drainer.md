@@ -51,11 +51,11 @@ Processing disabled: no claim, safe skipped run (`claimAndProcessOrPoll` returns
 
 ## Requeue
 
-`POST /api/v1/admin/granot-lifecycle/receipts/:id/requeue` is Owner-only. Body is `{ reason }` (trim 10–500, unknown keys rejected). Only `dead_letter` is eligible. One replica-set transaction sets `pending`, due now, clears lease/error/completion, resets the technical budget, increments `manual_requeue_count`, preserves evidence/`match_attempt`/latest Decision, and writes one PII-safe audit. Requeue itself runs no processor.
+`POST /api/v1/admin/granot-lifecycle/receipts/:id/requeue` is Owner-only. Body is `{ reason }` (trim 10–500, unknown keys rejected). Only `dead_letter` is eligible. One replica-set transaction sets `pending`, due now, clears lease/error/completion, resets the technical budget, increments `manual_requeue_count`, preserves evidence/`match_attempt`/latest Decision, and writes one PII-safe provenance row in the same transaction: a `domain_command_executions` row `granot_lifecycle.receipt.requeue` with the Owner actor, reason, `dead_letter` → `pending` and the new count, idempotent on `granot_lifecycle.receipt.requeue:<receipt id>:<manual_requeue_count>`. (It was an Operational Event before the 2026-10 server/admin slimming.) Requeue itself runs no processor.
 
 ## Observability
 
-Metrics: `granot_lifecycle_queue_due`, `granot_lifecycle_oldest_due_seconds`, `granot_lifecycle_claim_recoveries_total`, `granot_lifecycle_technical_retries_total{code}`, `granot_lifecycle_dead_letters_total{code}`. Labels are bounded error codes only. Last queue/cron run is derived from durable Operational Events.
+Metrics: `granot_lifecycle_queue_due`, `granot_lifecycle_oldest_due_seconds`, `granot_lifecycle_claim_recoveries_total`, `granot_lifecycle_technical_retries_total{code}`, `granot_lifecycle_dead_letters_total{code}`. Labels are bounded error codes only. Last queue/cron run and the claim-recovery window come from the bounded `granot_lifecycle_health_state` collection (`last_run:<queue|cron>` rows and `claim_recovered` minute buckets), not from Operational Events, which were retired. See [observability.md](./observability.md).
 
 ## Related
 

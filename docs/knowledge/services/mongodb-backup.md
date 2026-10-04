@@ -87,5 +87,5 @@ Local package tests: `cd ops/cloud/mongodb-backup && npm test` (fakes only).
 ## Not this service
 
 - Application Mongo writes, Sheet Sync, Reporting, or Granot lifecycle
-- Historical / `testvantagemovers` dumps
+- `testvantagemovers` dumps. The historical database `vantagemovershistorical` is not dumped here; it is deleted by the server/admin slimming purge after its own verified backup ([DATA-AND-STORAGE.md](../../server-admin-slimming/DATA-AND-STORAGE.md)). // pragma: allowlist secret
 - Widening the Atlas IP allowlist or adding VPC/NAT (owner approval; changes cost)

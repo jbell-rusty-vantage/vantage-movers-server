@@ -57,6 +57,13 @@ before(async () => {
   assert.match(mongoose.connection.name, /^testvantagemovers/i);
   assert.equal(process.env.RINGCENTRAL_COLLECTION_MODE, "test");
   assert.equal(process.env.SHEET_SYNC_MODE, "disabled");
+  // A fresh disposable database: the processed-call index check lists the collection's indexes, which
+  // throws NamespaceNotFound until the collection exists.
+  await (await getRingCentralDb())
+    .createCollection(getRingCentralCollectionName("processedCalls"))
+    .catch((error: { codeName?: string }) => {
+      if (error.codeName !== "NamespaceExists") throw error;
+    });
   await cleanup();
   await getLeadSourceCompanyModel().create({
     _id: COMPANY_ID,
@@ -249,22 +256,25 @@ test(
           start,
         );
         assert.equal(result.action, "lead_created");
-        const candidates =
-          await findPreCreationRingCentralConvergenceCandidates({
-            source_granularity_id: String(GRANULARITY_ID),
-            normalized_phone_number: "5550002005",
-          });
-        assert.deepEqual(candidates, [
-          {
-            call_lead_id: result.callLeadId,
-            domain_revision: 0,
-          },
-        ]);
         const stored = await getCallLeadModel()
           .findById(result.callLeadId)
           .lean()
           .exec();
         assert.equal(stored?.ingestion_origin, "ringcentral");
+        // The creation commit is the Lead's first change stamp (`emitLeadChange` with `before: null`).
+        assert.equal(stored?.domain_revision, 1);
+        const candidates =
+          await findPreCreationRingCentralConvergenceCandidates({
+            source_granularity_id: String(GRANULARITY_ID),
+            normalized_phone_number: "5550002005",
+          });
+        // Pre-creation adoption compares against the stored revision, so the candidate carries it exactly.
+        assert.deepEqual(candidates, [
+          {
+            call_lead_id: result.callLeadId,
+            domain_revision: stored?.domain_revision,
+          },
+        ]);
       },
     );
 

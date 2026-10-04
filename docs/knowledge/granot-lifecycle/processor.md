@@ -123,17 +123,16 @@ After commit, `finalize` may send one Granot create-if-missing confirmation Lead
 
 Creation never opens a Booking/Release case, writes a Booking or Cancellation, sends email, or invokes RingCentral adoption. Checked-in flags stay processing true, shadow true, Lead writes/creation false. Unit 19 adds no migration, backfill, or index.
 
-## Post-commit Outreach wake-up (AC6-WAKE, 2026-09-23)
+## Post-commit Lead attachment wake-up
 
-Additive and outside every lifecycle transaction; no Decision, gate, desired-state or write above changes. `createGranotObservationProcessor().process` (the drainer's entry point) calls `wakeOutreachAfterGranotApply(result)` **after** `processGranotObservation` returns, that is after its transaction(s) committed:
+Additive and outside every lifecycle transaction; no Decision, gate, desired-state or write above changes. `createGranotObservationProcessor().process` (the drainer's entry point) calls `wakeLeadAttachmentsAfterChange(result)` (`salesIntelligence/attachment/leadTrigger.ts`) **after** `processGranotObservation` returns, that is after its transaction(s) committed, through `boundedLeadAttachmentWake`:
 
-- Only when `result.target` is a FormLead/CallLead and `SALES_INTELLIGENCE_OUTREACH_ENSURE` is on (the same gate as the minute Outreach scan).
-- Reads the Lead's `EntityChange` rows whose `provenance.observation_id` is this Observation (index `entity_change_entity_applied`, at most 10).
-- For each one, enqueues `outreachChangeNomination(change)` (`salesIntelligence/outreach/worker.ts`): the **same** `outreach_ensure` job and dedupe key (`csi:outreach:entity-change:v2:<change id>`) the minute scan would insert, so the scan later hits the key and creates nothing. Then `publishOutreachWakeup(jobId)` (`numberActivity/webhookFanout.ts`) sends `{ job_id }` to `salesIntelligenceQueueTopic()`; the Sales Intelligence consumer already dispatches stage `outreach_ensure`. The publisher is a no-op in tests and off Vercel (`shouldPublishSalesIntelligenceQueue`).
-- A replay of the same receipt finds the job already there (claimed or completed) and publishes nothing.
-- Failures are logged (`granot_lifecycle.outreach_wakeup_failed`, masked Observation id) and never thrown, so processing and receipt finalization are unaffected. A crash between the commit and the enqueue only waits for the minute scan, which stays the backstop; the Attention publish stays the one-minute walk.
+- Only when `result.target` is a FormLead/CallLead and `SALES_INTELLIGENCE_ATTACHMENT_REFRESH` is on.
+- Reads the Lead's `EntityChange` rows whose `provenance.observation_id` is this Observation (at most 10). For each change that can move an attachment (`changeTriggersAttachment`), it enqueues the Lead's `attachment-lead:` job, the same job identity the durable Lead-change scan raises, and publishes one `{ job_id }` wake-up per runnable job to `salesIntelligenceQueueTopic()` (`publishLeadAttachmentWakeup`; a no-op in tests and off Vercel).
+- A replay of the same receipt finds the job already claimed or completed and publishes nothing.
+- Receipt finalization waits at most `LEAD_ATTACHMENT_WAKE_TIMEOUT_MS` (2 s); after that the wake keeps running in the background. Failures and timeouts are logged (`granot_lifecycle.lead_attachment_wakeup_failed` / `_timeout`, `sales_intelligence.attachment.lead_wakeup_failed`) and never thrown. The durable Lead-change scan on the one-minute attachment-refresh cron stays the backstop. See [sales-intelligence-attachment.md](../services/sales-intelligence-attachment.md).
 
-Source: Attention and Case File specification §8.2 (P10). Replica proof: `scripts/dev_ops/test-granot-outreach-wake.ts`.
+The earlier Outreach wake-up (`wakeOutreachAfterGranotApply`, `outreach_ensure` jobs, `SALES_INTELLIGENCE_OUTREACH_ENSURE`) was retired with the Outreach planner in the 2026-10 server/admin slimming ([specification](../../server-admin-slimming/SPECIFICATION.md) §7.4).
 
 ## Flags
 

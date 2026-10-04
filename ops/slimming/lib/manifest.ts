@@ -18,6 +18,7 @@ import {
   NEVER_DROP,
 } from "../policy";
 
+/** The tracked production manifest; a rehearsal passes its own path (`lib/rehearsal.ts`). */
 export const MANIFEST_PATH = resolve(__dirname, "../deletion-manifest.json");
 export const BLOB_KEYS_PATH = resolve(__dirname, "../conversation-blob-keys.json");
 
@@ -109,6 +110,11 @@ export type BlobTarget = {
 };
 
 export type ManifestTargets = {
+  /**
+   * Present (true) only in a loopback rehearsal manifest (`inventory.ts --rehearsal`). It is part of the hash, a
+   * production run refuses it, and it switches the database-name invariant to the `slimrehearsal_<suffix>` names.
+   */
+  rehearsal?: true;
   cluster: { fingerprint: string; replica_set: string | null };
   main_database: string;
   admin_auth_database: string;
@@ -151,21 +157,31 @@ export function assertManifestInvariants(targets: ManifestTargets): void {
   const fail = (message: string): never => {
     throw new Error(`manifest invariant violated: ${message}`);
   };
-  if (targets.main_database !== MAIN_DATABASE) fail(`main database must be ${MAIN_DATABASE}`);
-  if (targets.admin_auth_database !== ADMIN_AUTH_DATABASE) fail(`admin auth database must be ${ADMIN_AUTH_DATABASE}`);
+  if (targets.rehearsal !== undefined && targets.rehearsal !== true) fail("rehearsal must be true or absent");
+  if (targets.rehearsal) {
+    const pattern = /^slimrehearsal_[a-z0-9]+$/;
+    if (!pattern.test(targets.main_database) || !pattern.test(targets.admin_auth_database) || targets.main_database === targets.admin_auth_database)
+      fail("a rehearsal manifest needs two distinct slimrehearsal_<suffix> databases");
+    if (targets.blob !== null) fail("a rehearsal manifest never has a Blob target");
+  } else {
+    if (targets.main_database !== MAIN_DATABASE) fail(`main database must be ${MAIN_DATABASE}`);
+    if (targets.admin_auth_database !== ADMIN_AUTH_DATABASE) fail(`admin auth database must be ${ADMIN_AUTH_DATABASE}`);
+  }
+  const mainDb = targets.main_database;
+  const adminDb = targets.admin_auth_database;
   for (const db of targets.drop_databases) {
-    if ((FORBIDDEN_DATABASE_DROPS as readonly string[]).includes(db.name)) fail(`database ${db.name} can never be dropped`);
+    if ((FORBIDDEN_DATABASE_DROPS as readonly string[]).includes(db.name) || db.name === mainDb || db.name === adminDb) fail(`database ${db.name} can never be dropped`);
     if (db.name !== HISTORICAL_DATABASE) fail(`only ${HISTORICAL_DATABASE} may be dropped as a database, got ${db.name}`);
   }
-  const allowedDropDbs = new Set([MAIN_DATABASE, ADMIN_AUTH_DATABASE]);
+  const allowedDropDbs = new Set([mainDb, adminDb]);
   for (const c of targets.drop_collections) {
     if (!allowedDropDbs.has(c.db)) fail(`collection drop outside the main/admin databases: ${c.db}.${c.name}`);
-    if (c.db === MAIN_DATABASE && (NEVER_DROP as readonly string[]).includes(c.name)) fail(`${c.db}.${c.name} is protected`);
-    if (c.db === ADMIN_AUTH_DATABASE && (ADMIN_NEVER_DROP as readonly string[]).includes(c.name)) fail(`${c.db}.${c.name} is protected`);
+    if (c.db === mainDb && (NEVER_DROP as readonly string[]).includes(c.name)) fail(`${c.db}.${c.name} is protected`);
+    if (c.db === adminDb && (ADMIN_NEVER_DROP as readonly string[]).includes(c.name)) fail(`${c.db}.${c.name} is protected`);
     if (!/^[a-z0-9_]+$/.test(c.name) || !c.uuid) fail(`collection target ${c.db}.${c.name} lacks an exact name or UUID`);
   }
   for (const cleanup of targets.cleanups) {
-    if (cleanup.db !== MAIN_DATABASE) fail(`cleanup ${cleanup.id} outside the main database`);
+    if (cleanup.db !== mainDb) fail(`cleanup ${cleanup.id} outside the main database`);
     if (targets.drop_collections.some((c) => c.db === cleanup.db && c.name === cleanup.collection))
       fail(`cleanup ${cleanup.id} targets a collection that is also dropped`);
   }

@@ -1,66 +1,100 @@
 ---
 type: Service
 title: Call and Sales Intelligence foundation
-description: Shared CSI-01 contracts, persistence, authorization and transaction primitives; feature services remain downstream.
-tags: [sales-intelligence, conversations, durable-work]
+description: Shared CSI contracts, persistence, Owner/rep authorization, durable jobs with the retired-stage fence, policy/settings, Call activity retention and Owner live SSE for the retained Numbers and RingCentral Accounts surface.
+tags: [sales-intelligence, durable-work]
 status: draft
-stale_after: 2026-12-17
+stale_after: 2027-01-31
 resource: src/services/salesIntelligence/
 applies_to:
-  - src/services/salesIntelligence/
+  - src/services/salesIntelligence/jobs.ts
+  - src/services/salesIntelligence/transactions.ts
+  - src/services/salesIntelligence/auth.ts
+  - src/services/salesIntelligence/policy.ts
+  - src/services/salesIntelligence/settings.ts
+  - src/services/salesIntelligence/retention.ts
+  - src/services/salesIntelligence/retentionPolicy.ts
+  - src/services/salesIntelligence/live.ts
+  - src/services/salesIntelligence/deploymentStamp.ts
+  - src/config/domain/salesIntelligence.ts
   - src/models/salesIntelligence/
+  - src/routes/sales-intelligence-boundary.routes.ts
+  - src/routes/sales-intelligence-cron.routes.ts
+  - api/queues/sales-intelligence-consumer.ts
 owners: [team:main-server]
 sources:
-  - id: specification
-    resource: docs/call-sales-intelligence/01-specification.md
-  - id: contracts
-    resource: docs/call-sales-intelligence/workspace/CONTRACTS.md
+  - id: slimming
+    resource: docs/server-admin-slimming/SPECIFICATION.md
+    title: Server and Admin slimming specification (§7.3–7.4)
+  - id: interim-contract
+    resource: docs/server-admin-slimming/evidence/S-NUM-CONTRACT.md
+    title: Interim Numbers and RingCentral Accounts contract
+generated:
+  by: process:docs-keeper
+  at: 2026-10-04T00:00:00Z
 ---
 
 # Call and Sales Intelligence foundation
 
-OI-S3/S4 add reader-scoped GET `/roster`, `/overview/team`, `/overview/activity` and `/overview/outcomes` under the CSI admin prefix. They use the existing signed Owner/rep reader boundary and master ENABLED flag; Admin remains denied and rep access still requires REP_ACCESS. These reads are enabled in code without new flags or an OVERVIEW dependency. Old `/overview` keeps its existing flag and contract. Rep roster/workload return self only, activity only self attribution, and outcomes only Leads currently received by self. Strict query schemas reject unknown scope-widening parameters. Capabilities advertise `roster`, `team_workload`, `activity` and `outcomes`.
+Shared primitives for the retained Sales Intelligence surface: **Numbers and RingCentral Accounts only**. The 2026-10 server/admin slimming removed recording media, transcription, analysis, Move assessment, the Outreach/Attention planner, the AI budget and the scoped AI-run routes ([slimming specification](../../server-admin-slimming/SPECIFICATION.md) §7). Their Service docs are marked retired. Feature behavior lives in [number-activity-capture.md](./number-activity-capture.md), [number-activity-reads.md](./number-activity-reads.md), [sales-intelligence-attachment.md](./sales-intelligence-attachment.md), [sales-intelligence-rep-identity.md](./sales-intelligence-rep-identity.md), [sales-intelligence-nudges.md](./sales-intelligence-nudges.md) and [sales-intelligence-live.md](./sales-intelligence-live.md).
 
-CSI-01 is complete; G1 foundation contracts are frozen after independent GPT-6 review and resolution of all five findings. Downstream feature integration remains open. All feature flags default off. The [contract pack](../../call-sales-intelligence/README.md) is authoritative for product behavior; [concrete imports](../../call-sales-intelligence/workspace/CONTRACTS.md) and the [review packet](../../call-sales-intelligence/workspace/evidence/csi-01/STEP2-HANDOFF.md) describe implemented boundaries.
+## Flags
 
-Mongo is authoritative. Commands atomically combine CAS, idempotency receipts, CSI audit and downstream jobs when callers use the supplied transaction session. Jobs fence lease owner, epoch and expiry at effect commit. Budget reservations atomically enforce remaining allowance and reconcile once. Reuse `db.withTransaction`, runtime database routing and canonical payload hashing. Do not add CSI origins or entities to official domain-command enums.
+`csiFlag` (`src/config/domain/salesIntelligence.ts`) reads `SALES_INTELLIGENCE_<NAME>`; a flag is on only when the trimmed value is `true`. Every flag defaults off. Retained names (`CSI_FLAGS`): `ENABLED` (Owner reads/commands and the retention cron), `CAPTURE_WEBHOOK`, `CAPTURE_CALL_LOG`, `DIRECTORY_SYNC`, `ATTACHMENT_REFRESH`, `AUTO_ATTACH`, `NUDGE_ENABLED`, `WEBHOOK_AUTO_CREATE`, `FORM_LEAD_NUMBERS`, `NUMBERS_HAS_CALLS_DEFAULT`, `RECEIVER_LATEST_WINS` (read by the Granot lifecycle Lead planner) and `REP_ACCESS`. Capture is operational work and does not depend on `ENABLED`. Names and the retired list: [environment.md](../environment.md).
 
-CSI-12 adds optional `kind: stt` on transcription reservations and an optional existing transaction session on `reconcileCsiBudget`, allowing cost, transcript evidence and next-stage work to commit together. Unknown provider spend remains reserved; no estimated charge is recorded as actual. Since September 21, 2026 `failCsiJob` has a third paused reason beside `permission_denied` and `budget_exhausted`: `per_recording_ceiling`, used by analysis and transcription when one invocation's reservation exceeds the Owner's per-recording ceiling. A monthly increase or period activation wakes only `budget_exhausted`; a per-recording increase wakes both. See [analysis](sales-intelligence-analysis.md) and [transcription](sales-intelligence-transcription.md).
+## Mongo, commands and audit
 
-Completed jobs remain on the 14-day TTL. The dominant growth was not retention but insertion: cycle-keyed Outreach repair jobs ([outreach](sales-intelligence-outreach.md)), per-call attachment fan-out ([attachment](sales-intelligence-attachment.md)) and `updatedAt`-keyed Lead watermark jobs. Those keys are now semantic, so an idle corpus inserts nothing; `scripts/measure-csi-efficiency.ts` reproduces the job, run, pause and reservation aggregates read-only for before/after comparison.
+Mongo is authoritative. `executeCsiCommand` (`transactions.ts`) combines revision CAS (`csiCas`), the idempotency receipt in `sales_intelligence_command_executions`, the CSI audit row and any downstream job in one transaction. Same key + same payload hash replays the stored result; a different payload is `IDEMPOTENCY_CONFLICT`. `assertIndexes` fails closed with `INDEX_REQUIRED` when a unique fence is missing; runtime never creates indexes. `appendCsiAudit` accepts only the retained invalidation kinds; the stored enum still accepts historical kinds. Reuse `db.withTransaction`, runtime database routing and canonical payload hashing. Do not add CSI origins or entities to official domain-command enums. CSI never writes `EntityChange`.
 
-`enqueueCsiJob` initializes `createdAt` and `updatedAt` from its `now` argument only on insertion. Its upsert disables Mongoose timestamps for that operation, so a matching duplicate returns the original job without changing any stored bytes. The active transaction, unique dedupe index, payload hash and dataset conflict checks still apply. Shared model timestamps remain enabled for claim, renewal, retry, continuation and completion; the completed-job TTL is unchanged.
+## Durable jobs (`jobs.ts`)
 
-`node --import tsx ops/test-csi-enqueue-replica.ts` verifies these boundaries using a unique disposable test database on the documented local/Cloud `rs0` replica at `127.0.0.1:27017` (setup: [CLOUD_AGENTS.md](../../../CLOUD_AGENTS.md#mongodb-must-be-running-and-must-be-a-replica-set)). It accepts no target override and replaces `MONGO_URI`, so it cannot be directed to a remote cluster by arguments or environment configuration. It only drops its own randomly named test database. A loopback listener can still be an operator-created tunnel; do not route `127.0.0.1:27017` to a remote deployment before running this destructive harness.
+Retained stages (`CSI_JOB_STAGES`): `capture_projection`, `call_log_reconcile`, `call_log_refresh`, `directory`, `attachment_refresh`, `rebuild`, `nudge_repair`.
 
-Owner routes use the signed Registry Owner verifier after the unchanged v1 authentication chain. Agent routes require both a dedicated scoped key and a signed token bound to the stored run, subject, tools, dataset and active lease. A broad API secret is insufficient. Envelope parsing only validates shape; evidence authorization uses a trusted snapshot manifest; Team C separately validates business effects.
+- `enqueueCsiJob` dedupes on the unique key inside the caller's transaction and initializes `createdAt`/`updatedAt` from its `now` only on insertion, so a matching duplicate changes no stored bytes. Payload hash and dataset conflicts still apply.
+- Claims fence lease owner, epoch and expiry; renew/continue/complete/fail all require `status: "leased"` with the claimed epoch. `continueCsiJob` commits a bounded batch and returns the job to pending without charging an attempt. `failCsiJob` reasons are `transient`, `schema_invalid` (back off, dead-letter when exhausted) and `throttled` (defers without spending an attempt; optional provider `resumeAt`).
+- **Retired-stage fence.** `CSI_RETIRED_JOB_STAGES` lists what earlier releases wrote: `outreach_ensure`, `outreach_derive`, `recording_discovery`, `media`, `media_fetch`, `transcription`, `analysis`, `application`, `number_refresh`, `backfill`, `retention`, `rep_identity_reevaluate`, `move_assessment`. `enqueueCsiJob` refuses them (`INVALID_INPUT`, `stage_retired`); claims only lease retained stages. `retireLegacyCsiJobs` (batches of 500) sets runnable rows of a retired stage to `status: "retired"`, `reason: "stage_retired"`, clears the lease and bumps `lease_epoch`, so an old deployment's in-flight lease can no longer commit. It does **not** set `completed_at`: the 14-day completed TTL never removes a fenced row, and the slimming purge backs it up and deletes it. Job recovery runs this sweep first; the queue dispatcher terminalizes a wake-up for a retired-stage row the same way and acknowledges it with no provider call.
+- Completed jobs keep the 14-day `completed_at` TTL. Pending, leased, retry, paused and dead-letter rows never expire.
 
-Run the report/apply/verify migration before enabling writers. Missing unique indexes fail closed. Account-scoped recording identity requires evidence-backed legacy attribution. No automatic production migration or data deletion is performed. Multiple follow-ups may have null dates; no single-active-action index is permitted. Existing LeadConversation text summaries and nullable provider metadata remain readable.
+`node --import tsx ops/test-csi-enqueue-replica.ts` (`pnpm test:csi:fence:replica`) proves enqueue dedupe and the retired-stage fence on a disposable test database on the local `rs0` replica at `127.0.0.1:27017` ([CLOUD_AGENTS.md](../../../CLOUD_AGENTS.md#mongodb-must-be-running-and-must-be-a-replica-set)). It accepts no target override and drops only its own randomly named database. Do not route that port to a remote deployment.
 
-Owner HTTP GET/PATCH `/settings` now consume `readCsiSettings` / `commandCsiSettings` over `resolvePolicy`, `initializeCsiPolicy` and `updateCsiPolicy`. GET never writes. Environment bootstrap numbers persist only on first initialize; later Owner edits win. Deployment `csiFlag` kill switches are displayed and are not PATCH-able.
+## Queue and crons
 
-Call reconciliation, clocks, Outreach effects, MCP tools, provider orchestration, queue dispatch and Owner screens are not supplied by this foundation. Team B/C/D handlers must use these primitives and revalidate business preconditions. Privileged raw collection migration/retention operations are outside application immutability hooks.
+`api/queues/sales-intelligence-consumer.ts` handles `{ job_id }` wake-ups on `sales-intelligence-events*` through `numberActivity/jobDispatch.ts` (handlers: `capture_projection`, `rebuild`, `attachment_refresh`, `nudge_repair`, `call_log_refresh`). Cron recovery claims the same jobs, so a lost wake-up loses nothing and a duplicate hits the claim fence.
 
-## CSI-15 integration
+`sales-intelligence-cron.routes.ts` (Bearer `CRON_SECRET` or `x-cron-secret`; disabled → `{ ok: true, skipped: true, reason: "disabled" }`, lease held → `reason: "lease_held"`):
 
-`jobs.ts:continueCsiJob` commits a bounded batch under the existing lease fence and returns the same job to pending without charging a failed attempt. Historical work uses priority -100; existing priority 0 remains live. Claim admission also checks due/leased live AI work when a historical queue wake-up supplies an explicit job id. Budget and provider admission pauses retain the saved stage and do not count toward the eight genuine-failure limit.
+| Path | Schedule | Work |
+| --- | --- | --- |
+| `/api/cron/sales-intelligence-job-recovery` | every minute | retire legacy jobs, deployment stamp, coverage refresh, `lead_messages.to` index ensure; then receipt recovery + capture drain (`CAPTURE_WEBHOOK`, plus provisional settle when `CAPTURE_CALL_LOG` is off), rebuild drain (`ENABLED`), and the `nudge_repair` (`NUDGE_ENABLED`), `attachment_refresh` (`ATTACHMENT_REFRESH`) and `call_log_refresh` (`CAPTURE_WEBHOOK`) drains |
+| `/api/cron/sales-intelligence-attachment-refresh` | every minute | `ATTACHMENT_REFRESH`: durable Lead-change scan, then the `updatedAt` / `last_activity_at` watermark backstop under the `attachment_suggest` lease |
+| `/api/cron/sales-intelligence-call-log-reconcile` | `3-59/5` | Call Log reconcile (`CAPTURE_CALL_LOG`) |
+| `/api/cron/sales-intelligence-call-log-sweep` | 07:40 UTC | nightly authoritative sweep (`CAPTURE_CALL_LOG`) |
+| `/api/cron/sales-intelligence-directory-sync` | 05:20 UTC | directory snapshot (`DIRECTORY_SYNC`) |
+| `/api/cron/sales-intelligence-webhook-subscription` | 06:15 UTC | renew/repair the owned all-direction subscription (`CAPTURE_WEBHOOK`; create only with `WEBHOOK_AUTO_CREATE`) |
+| `/api/cron/sales-intelligence-nudge-repair` | every 5 minutes | nudge receipt repair (`ENABLED` and `NUDGE_ENABLED`) |
+| `/api/cron/sales-intelligence-retention` | 04:30 UTC | Call activity retention (`ENABLED`) |
 
-`budgetPeriod.ts:ensureCurrentCsiBudgetPeriod` is the runtime period seam for enabled drains. Any existing covering period retains its original bounds, timezone, ceiling, actual spend and reservations even after policy changes. An unactivated covering period activates once and resumes budget-paused jobs; otherwise the helper computes the policy timezone's calendar month with the shared staffing clock and initializes it idempotently. Multiple overlapping periods fail closed. The helper does not reset a current allowance or repeatedly wake paused jobs merely because a drain runs. `budgetPeriod.test.ts` covers local month/year boundaries and DST; `scripts/test-csi15-period.ts` verifies activation, preservation and rollover on the isolated replica.
+The extract, apply, transcribe, media-fetch, Outreach ensure, Attention publish, Overview refresh and backfill-step crons were removed with their pipeline.
 
-`backfill/plan.ts` reuses Owner command receipts and daily Sync Window uniqueness. `backfill/step.ts` uses a separate backfill lease and per-window epoch; page checkpoint, complete marker, upper capture watermark and activation job commit atomically. The live reconcile lease is never held across historical pages. `retention.ts` uses its own lease and privileged raw transactions because application immutability hooks must not prevent required erasure; independent default clocks are 90-day audio, 365-day redacted content and 730-day activity. Persisted retention policy wins over engineering defaults. Validation and exact limits: [CSI-15 packet](../../call-sales-intelligence/workspace/evidence/csi-15/HANDOFF.md).
-`CSI-15` media cleanup: if purge wins while audio uploads, the completed media job retains a private `result.pending_blob_delete` pointer. Immediate deletion is best effort; daily retention retries pending pointers in a bounded, lease-fenced pass and clears them only after deletion succeeds. No evidence pointer is restored.
+## Authorization (`auth.ts`)
 
+- `/api/v1/admin/sales-intelligence/*` passes the boundary router (`ENABLED`, signed reader, production scope; any other `scope` is 403 `UNSUPPORTED_SCOPE`). Every interim route then calls `requireCsiOwner`: the signed Registry Owner verifier after the unchanged v1 chain. The Admin role, a scoped key and a signed rep get 403 `OWNER_REQUIRED`, because Numbers carry full customer numbers and no rep scope exists for them.
+- `requireCsiReader` still admits a signed rep when `REP_ACCESS` is on (the admin proxy signs `x-vantage-admin-agent-id` as an eighth canonical line), but no retained admin route accepts one. The old rep reads and follow-up commands left with Outreach.
+- The scoped AI-run routes `/api/v1/internal/sales-intelligence/runs/:id/*`, their run tokens and the scoped key's access are retired: no router serves them. `SALES_INTELLIGENCE_SCOPED_KEY_NAME` remains only so the scoped key entry in `VANTAGE_SCOPED_API_KEYS` is refused (`RUN_SCOPE_DENIED`) until that entry is removed.
+- The MCP history reads `/api/v1/internal/sales-intelligence/history/*` accept the broad secret or a signed-in user, never the scoped key or a rep ([number-activity-reads.md](./number-activity-reads.md)).
 
-## CSI-16 evidence restamp
+## Policy and settings
 
-Current local certification is recorded in [CSI-16 checks](../../call-sales-intelligence/workspace/evidence/csi-16/CHECKS.md) and the [execution matrix](../../call-sales-intelligence/workspace/ACCEPTANCE.md). CSI-15 backfill/retention/budget recovery is landed on main. Fresh synthetic and isolated browser evidence does not certify production grants or deployed revisions. G4 retains the media Retry-After clock failure; G5 remains partial and the generic conversation replay label fails integration. Exact owners are in [GAPS](../../call-sales-intelligence/workspace/evidence/csi-16/GAPS.md). [G6](../../call-sales-intelligence/workspace/evidence/csi-16/G6.md) is not probed. Owner full rollout follows separately in AFTER-16 D+E; no capability was enabled by this restamp.
+`GET`/`PATCH /api/v1/admin/sales-intelligence/settings` use `readCsiSettings` / `commandCsiSettings` over `resolvePolicy`, `initializeCsiPolicy` and `updateCsiPolicy`. GET never writes. The policy (`csiPolicySchema`, strict on write) is `{ version, timezone, staffed_hours, enabled_capabilities: ("capture"|"nudges"|"live")[], retention: { audit_days } }`. Older stored versions are read through `csiStoredPolicySchema`, which ignores retired fields and capability names without rewriting them. `PATCH` rejects a retired field. A new version carries the active version's retired fields forward unchanged (`withRetiredPolicyFields`) so a pre-slimming build rolled back during the observation window can still parse it; a first `initializeCsiPolicy` in a fresh environment does not. Deployment `csiFlag` switches are displayed and are not PATCH-able. Retained policy readers: Owner coverage (staffed clock), nudge eligibility (`nudges` capability) and retention (`audit_days`).
 
-## S8-REP rep access (2026-09-24)
+## Retention (`retention.ts`)
 
-Behind `SALES_INTELLIGENCE_REP_ACCESS` (default off), a rep AdminUser linked to one Agent reads its own scope (assignment addendum §4.2, E8–E11, E23). Off, a request signed as `rep` takes the Owner path and gets `OWNER_REQUIRED` exactly as before.
+The daily cron purges Call activity only. Under its own lease (fenced inside each transaction), `call_interactions` older than the activity window lose parties, legs, recordings, external number and provider names; provider ids and aliases stay so replay cannot resurrect a call. Stale `contact_numbers` are tombstoned with the retained rollup shape, their attachments are deleted, and nudge content tied to that Number is redacted. The window is the persisted policy's `retention.audit_days`, else `SALES_INTELLIGENCE_RETENTION_ACTIVITY_DAYS` (default 730; `0` disables). It never reads a retired collection and never touches `sales_intelligence_jobs`. Blob audio deletion, transcript/analysis purges and Outreach writes were removed.
 
-- **Signed scope.** The admin proxy adds `x-vantage-admin-agent-id` for a rep only and signs it as an eighth line of the canonical actor payload (`buildCanonicalRepActorPayload`). Owner and Admin payloads stay seven lines, so their signatures are unchanged. `requireCsiReader` verifies it; the Registry never admits `rep`. A trusted actor's `role` and `agent_id` are non-enumerable, so persisted actors keep `{ kind, id, request_id, run_id }`; a rep's persisted `kind` is `rep`.
-- **Reads.** `GET /attention`, `/outreach/closed-history` and `/overview` are forced to the rep's Agent (client `agent_id` / `unassigned` ignored; cursors bind to it; the desk's tiles and chip counts are recomputed over the rep's index entries). Record-, Number- and conversation-keyed reads (`/outreach/:id`, its timeline, assessment and findings; `/numbers/:id/conversations`; `/conversations/:id/transcript` and `/media`) answer 404 outside the E11 scope (`repScope.ts`: responsible, or any follow-up responsible or promised by the rep; a Number is in scope when one of its records is). The detail carries an empty nudge page for a rep. Media plays are audited with the rep.
-- **Commands.** Only `complete_followup`, `snooze_followup` and a re-date (`patch_followup` changing `due_at` only), each with a note, on a follow-up whose `responsible_agent_id` is the rep's Agent. Anything else is `FORBIDDEN` (403). A rep change writes no Owner instruction (no Owner precedence), completes with `completion_basis: rep_confirmation`, audits the rep and its note, and enqueues no job directly; like an Owner edit, a completion or re-date of a fingerprinted follow-up changes the Number fingerprint, so the next scan may re-analyse (budget-gated). A snooze doesn't. A re-date or snooze lands at most 60 days out (`REP_DATE_CAP_DAYS`); later is `INVALID_INPUT`, never cancel-by-proxy (E9).
-- **Live.** Frames carry no subject for anyone; a rep's stream forwards only the `attention`, `outreach`, `analysis` and `number` topics.
-- Every other Sales Intelligence route stays Owner-only (`OWNER_REQUIRED` for a rep, as for Admin). The access matrix is `src/routes/sales-intelligence-rep-access.test.ts`.
+## Deployment stamp
+
+`deploymentStamp.ts` records the deployed commit once per process in `sales_intelligence_sync_state` scope `deployment` (Vercel production only; `VERCEL_GIT_COMMIT_SHA`, or `DEPLOYMENT_COMMIT_SHA` for CLI deploys, plus `VERCEL_DEPLOYMENT_ID`). Operator scripts that write production compare against it and refuse a different tree. It never throws.
+
+## Models
+
+`src/models/salesIntelligence/` keeps capture, infrastructure (jobs with the `retired` status), review (owner instructions, review items, contact restrictions) and common schemas. Outreach, follow-up, Attention, overview, intelligence and assessment models were deleted. The Job model no longer has `evidence_fence`, `result_ref`, `owner_reanalysis` or `rep_identity_window`; the purge unsets them on old rows ([DELETION-MANIFEST.md](../../server-admin-slimming/DELETION-MANIFEST.md)).

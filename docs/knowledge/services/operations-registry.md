@@ -42,7 +42,7 @@ generated:
 
 - `company_slug` and `granularity_key` are immutable.
 - Exact granularity key, CRM label, and source-site identifiers must resolve uniquely among active records for the requested Lead Channel.
-- Fallback aliases use highest priority. Equal-priority ambiguity fails and records an actionable Operational Event.
+- Fallback aliases use highest priority. Equal-priority ambiguity fails and logs an actionable structured event.
 - Active channel defaults belong to the same active Source Company and point to an active same-channel Source Granularity.
 - A current default cannot be deactivated without a same-command replacement or explicit removal of automatic channel use.
 - Source Company projection mode defaults to `derived_import`; `direct_write` requires complete workbook metadata and does not itself enable Sheet Sync writes.
@@ -75,7 +75,7 @@ generated:
 
 - Approved signed dashboard roles may read. Only a verified Owner may mutate.
 - Domain mutation and Registry Change insert commit in one transaction. Cache invalidation runs after commit.
-- Registry Changes are authoritative successful mutation history. Operational Events are reserved for failures, ambiguity, drift, and migration outcomes.
+- Registry Changes are authoritative successful mutation history. Failures, ambiguity, drift, and migration outcomes are structured logger lines (the persisted Operational Events ledger was retired in the 2026-10 server/admin slimming).
 
 ## Compatibility and migration
 

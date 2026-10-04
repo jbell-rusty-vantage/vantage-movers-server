@@ -22,7 +22,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/ringcentral/`  
-**Domain terms used:** [Call Qualification](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [RingCentral Call Adoption](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [Operational Event](../../../../CONTEXT.md), [Main Site](../../../../CONTEXT.md)
+**Domain terms used:** [Call Qualification](../../../../CONTEXT.md), [Call Lead Ingestion](../../../../CONTEXT.md), [Call Lead](../../../../CONTEXT.md), [Duplicate Lead](../../../../CONTEXT.md), [Caller Match Key](../../../../CONTEXT.md), [RingCentral Call Adoption](../../../../CONTEXT.md), [Source Granularity](../../../../CONTEXT.md), [Main Site](../../../../CONTEXT.md)
 
 # RingCentral Call Lead Qualification
 
@@ -250,7 +250,9 @@ Duplicate Call Leads still persist and **Sheet Sync** to `Duplicate Calls` tab (
 
 `pnpm migration:ringcentral:processed-call-indexes -- --report|--apply|--verify` owns the call-log refinement. Report is default and emits only collision counts, hashes, masked IDs, and null/empty sparse-placeholder counts. Apply refuses collisions, unsets non-identifying call-log/session placeholders, and requires the standard explicit database/apply authorization plus matching `RINGCENTRAL_COLLECTION_MODE`; verify fails when collisions/placeholders remain or the required index is absent. Unit 20 added the migration but did **not** authorize or perform a production apply. // pragma: allowlist secret
 
-### Operational events
+### Structured log events
+
+Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operational Events ledger was retired in the 2026-10 server/admin slimming). Adoption outcomes also log through the Granot lifecycle catalog (`ringcentral.granot_adoption.*`).
 
 | Event | When |
 |-------|------|

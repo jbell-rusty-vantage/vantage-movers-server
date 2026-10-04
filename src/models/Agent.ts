@@ -37,11 +37,14 @@ const AgentSchema = new Schema(
   },
 );
 
+// One Agent per Granot CRM username. The partial filter already skips Agents
+// without a username, so the index must not also be `sparse`: Mongo refuses
+// to build an index that mixes the two (CannotCreateIndex 67), and Mongoose
+// autoIndex would swallow that error and leave uniqueness unenforced.
 AgentSchema.index(
   { "granot_identity.username": 1 },
   {
     unique: true,
-    sparse: true,
     partialFilterExpression: { "granot_identity.username": { $type: "string" } },
   },
 );

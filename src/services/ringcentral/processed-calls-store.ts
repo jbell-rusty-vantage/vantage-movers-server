@@ -95,11 +95,57 @@ export function ensureProcessedCallIndexes(): Promise<void> {
 
 async function createIndexes(): Promise<void> {
   const db = await getRingCentralDb();
-  const collection = db.collection<RingCentralProcessedCallDocument>(
-    getRingCentralCollectionName("processedCalls"),
+  await reconcileProcessedCallIndexes(
+    db.collection<RingCentralProcessedCallDocument>(
+      getRingCentralCollectionName("processedCalls"),
+    ),
+    { testRunner: isVantageTestRunner() },
   );
-  if (isVantageTestRunner()) {
-    const existing = await collection.indexes();
+}
+
+type ProcessedCallIndexCollection = {
+  indexes(): Promise<
+    Array<{
+      name?: string;
+      key: Record<string, unknown>;
+      unique?: boolean;
+      sparse?: boolean;
+    }>
+  >;
+  dropIndex(name: string): Promise<unknown>;
+  createIndex(
+    key: Record<string, 1 | -1>,
+    options: { name: string; unique?: boolean; sparse?: boolean },
+  ): Promise<unknown>;
+};
+
+/**
+ * Lists a collection's indexes, treating a collection that does not exist yet
+ * as having none. `listIndexes` fails with `NamespaceNotFound` (code 26) on a
+ * missing collection, which would otherwise surface as a raw driver error.
+ */
+async function listIndexesOrEmpty(collection: ProcessedCallIndexCollection) {
+  try {
+    return await collection.indexes();
+  } catch (error) {
+    const { code, codeName } = (error ?? {}) as { code?: unknown; codeName?: unknown };
+    if (code === 26 || codeName === "NamespaceNotFound") return [];
+    throw error;
+  }
+}
+
+/**
+ * The test runner builds the processed-call indexes itself (dropping any
+ * same-key index under another name). Every other runtime requires them to be
+ * predeployed and refuses to start the pipeline without them, including when
+ * the collection does not exist yet.
+ */
+export async function reconcileProcessedCallIndexes(
+  collection: ProcessedCallIndexCollection,
+  options: { testRunner: boolean },
+): Promise<void> {
+  if (options.testRunner) {
+    const existing = await listIndexesOrEmpty(collection);
     for (const index of RINGCENTRAL_PROCESSED_CALL_INDEXES) {
       const conflict = existing.find(
         (row) =>
@@ -117,7 +163,7 @@ async function createIndexes(): Promise<void> {
     }
     return;
   }
-  const actual = await collection.indexes();
+  const actual = await listIndexesOrEmpty(collection);
   const missing = RINGCENTRAL_PROCESSED_CALL_INDEXES.filter((expected) => !actual.some((index) =>
     index.name === expected.name &&
     JSON.stringify(index.key) === JSON.stringify(expected.key) &&

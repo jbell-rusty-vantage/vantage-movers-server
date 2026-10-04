@@ -44,7 +44,7 @@ generated:
 
 This file is a **Reference** pointer only. It does not copy contract rules.
 
-- [Release into booking intake](../../granot-lead-lifecycle/release-into-booking-intake-specification.md) — Releas / Release land on the booking intake; Live Events can link to that case. **Wins on Release routing.**
+- [Release into booking intake](../../granot-lead-lifecycle/release-into-booking-intake-specification.md) — Releas / Release land on the booking intake. The Live Events link to that case left with the Live Events page (retired in the 2026-10 server/admin slimming; see [slimming specification](../../server-admin-slimming/SPECIFICATION.md)). **Wins on Release routing.**
 - [Owner booking intake and lead attachment](../../granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md) — even Binder, Confirm without a required Lead, Connect Booking to Lead, owner-readable Intakes. **Prerequisite for Owner Daily.**
 - [Booking intake robustness pack](../../booking-intake-lead-attachment/README.md) — BILA-01–BILA-03 shipped. **Wins on the Connect surface** (`/bookings`, also Owner `/manual`; not `/bookings/reconciliation`). Live values: [`PROGRESS.md`](../../booking-intake-lead-attachment/PROGRESS.md).
 - [Exact Job Booking Attach pack](../../exact-job-booking-attach/README.md) — [Precise Booking Form](../../../../CONTEXT.md) pending is **not** Granot official [Leadless Booking](../../../../CONTEXT.md). Connect Booking to Lead for Confirm is unchanged. Do not copy rules here.

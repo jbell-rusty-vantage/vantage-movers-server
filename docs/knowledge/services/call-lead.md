@@ -140,7 +140,9 @@ Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 | Helpers | Do not bypass phone normalization, Form Fill, Source Company parsing, or Sheet Sync scheduling |
 | Granot synchronize | Operational phone stays the ingested caller; snapshot coalesces by Job. Not a live-contact upsert |
 
-## Operational Events
+## Structured log events
+
+Logger `msg` keys only; nothing is persisted (the Operational Events ledger was retired in the 2026-10 server/admin slimming).
 
 | Path | Events |
 |------|--------|

@@ -143,11 +143,11 @@ Form cards stay live-field cards (headline Form submitted). Call cards stay live
 
 | | Lead browse (this doc) | POST lead search | Admin search |
 |--|------------------------|------------------|--------------|
-| Audience | Extension Search workspace | Extension identify / CSV / Granot-match fallback | Observational admin UI |
+| Audience | Extension Search workspace | Extension identify / CSV / Granot-match fallback | Admin dashboard global search |
 | Pagination | `skip`/`limit` + `count` | Limit only | Per-type cap |
 | Duplicate form leads | **Included** | Excluded by default | Included |
 | Source labels | `q` + `source_company` hit snapshots | No | Search fields include snapshots |
-| Historical DB | Production only | Production only | Optional scope | // pragma: allowlist secret
+| Historical DB | Production only | Production only | Production only (historical database retired 2026-10) | // pragma: allowlist secret
 
 ## Invariants
 

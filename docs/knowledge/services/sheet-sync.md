@@ -33,7 +33,7 @@ generated:
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
 **Primary code:** `src/services/sheetSync/`  
-**Domain terms used:** [Sheet Sync](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Cancellation Chain](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md), [Master Sheets](../../../../CONTEXT.md), [Operational Event](../../../../CONTEXT.md)
+**Domain terms used:** [Sheet Sync](../../../../CONTEXT.md), [Booking Chain](../../../../CONTEXT.md), [Cancellation Chain](../../../../CONTEXT.md), [No-Sync Lead](../../../../CONTEXT.md), [Unmatched Call Lead](../../../../CONTEXT.md), [System of Record](../../../../CONTEXT.md), [Reporting Sheets](../../../../CONTEXT.md), [Master Sheets](../../../../CONTEXT.md)
 
 # Sheet Sync (`sheetSync/`)
 
@@ -153,7 +153,7 @@ Supersede keys (not “any job for the same Mongo id”):
 
 - Topic: prod `sheet-sync-events`, else `sheet-sync-events-dev` (`SHEET_SYNC_QUEUE_TOPIC` override).
 - **Publishes only** when `shouldPublishSheetSyncQueue()` is true: not a Vantage test runner, hosted function runtime (`VERCEL=1` **and** `VERCEL_REGION`), **and** non-preview `VERCEL_ENV` (`shouldPublishSheetSyncQueue`). Preview/local/tests never publish. `SHEET_SYNC_QUEUE_LOCAL_PUBLISH` does **not** enable publish.
-- **Never throws** — failed publish is logged + operational event `sheet_sync.queue.publish_failed`; domain write already committed.
+- **Never throws** — failed publish is logged as `sheet_sync.queue.publish_failed`; domain write already committed.
 
 Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin retry does not use this path.
 
@@ -168,7 +168,7 @@ Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin
 5. **Batch write** per tab via `batchWriter.ts` + `QuotaLimiter`.
 6. **Persist** `sheet_sync[]` with direct `updateOne` (must not abort the run). Metadata persist failure flips those outcomes to `failed`.
 7. **Finalize** jobs: empty plan (doc gone / unmatched skip) → `synced`; all writes ok → `synced`; any `failed` → `retrying` with exponential backoff (30s × 2^(attempts-1), cap 15 min) until `maxAttempts` (8) then `failed`; quota `deferred` → `retrying` in 60s **without** burning an attempt, `target_hints` = failed/deferred targets only.
-8. Run timeout releases **unplanned** remaining claims back to `pending`. Run-level exception releases that run's still-`processing` jobs to `retrying` and records `sheet_sync.drain.failed` (notification candidate).
+8. Run timeout releases **unplanned** remaining claims back to `pending`. Run-level exception releases that run's still-`processing` jobs to `retrying` and logs `sheet_sync.drain.failed`.
 
 Planner skip/fail paths (also true on the legacy `syncSourceLead` path):
 

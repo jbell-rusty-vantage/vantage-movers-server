@@ -337,3 +337,86 @@ Wave-1 Remaining issue 4 is done. A-SI did the work and this run verified it:
 4. **Wave 3 docs:** `vantage-admin/CONTEXT.md`, `.cursor/rules/project-organization.mdc` and `uxdocs/` still describe the Outreach desk, Overview, Closed, Guide, Coverage, the rep desk and the dev gallery. `scripts/csi07-local.mjs` still sets `SALES_INTELLIGENCE_OUTREACH_ENSURE`.
 5. **Server classification only, not a deletion request:** the Admin no longer calls `GET`/`PATCH /settings`, `GET /nudges` (history), `POST /nudges/preview`, `POST /reps`, `POST /reps/propose` or `GET /reps/:id`.
 6. **Coordinator:** `heavy.sh` treats a lock older than 900 s as stale, so a server full suite longer than 15 minutes lets a waiting job start beside it (reported by A-SI). No overlap happened in this run.
+
+## Wave 3 fixes
+
+This was the FIX-ADMIN lane on `slim/server-admin`. The changes are uncommitted in the working tree. I did not touch the user's uncommitted `docs/sales-outreach-desk/**` and `SALES-OUTREACH-DESK.md` edits, or the DOCS lane's doc edits.
+
+### Findings
+
+Three findings came in. I re-checked each against the code before fixing it, and all three still held.
+
+**admin-ux-1 (medium): the Number dialog lost its panel-shell styling.**
+- **Cause:** `numbers/number-detail.tsx` reuses the legacy dialog markup. Its only rules were in `_legacy/styles/assessment.css` (lines 12-20 at adda9e1), which wave 2 deleted.
+- **Effect:** `.si-panel__dtitle` had no rule anywhere, and the header was not sticky. Region's `div.si-region` sits between the dialog and `.si-panel__body`, so the body never bounded its own height. The whole dialog scrolled, and Close scrolled out of view.
+- **Fix:** the panel-shell rules now live in `components/sales-intelligence/styles/sales-intelligence.css`:
+  - `--si-dialog-head`
+  - `[open]` with `overflow-y:auto` and `overscroll-behavior:contain`
+  - `> *{flex:none}`
+  - `.si-panel__body{flex:none;overflow:visible}`
+  - the sticky 52px `.si-panel__header`
+  - the ellipsis heading `.si-panel__dtitle`
+  - `.si-panel__headeractions`
+  - `.si-tl__day{top:var(--si-dialog-head)}`
+
+  The analysis-only rules (`.si-now`, `.is-expanded`, `.si-sections`) were not moved.
+- **Tests:**
+  - `tests/sales-intelligence/css.test.ts`: asserts each of those rules.
+  - `tests/sales-intelligence/class-coverage.test.ts` (new): reads every literal `si-*` class inside a `className=` expression under `components/sales-intelligence` and `app/(dashboard)/sales-intelligence`. It fails when a class has no stylesheet rule. Six hook classes never had a rule, not even at adda9e1, and are listed explicitly as markers: `si-tipportal`, `si-tip__body`, `si-routetabs`, `si-filters__set`, `si-liveind__word` and `si-regionerror__code`. The test also fails if a marker later gets a rule.
+  - Before this fix, the scan reported `si-panel__dtitle` as the only real gap.
+
+**admin-ux-2 (low): a Rep saw the Owner tab bar flash.**
+- **Cause:** `loading.tsx` always rendered the Owner desk frame, with the title and the Numbers and RingCentral Accounts tabs. It shows while `page.tsx` awaits `routeViewer()`, which is a session database read.
+- **Fix:**
+  - `route-viewer.ts` gains `skeletonRoleFromToken` and `skeletonRole()`. They read the role from the access token alone, with no database read, like base adda9e1. Only a verified Owner token gives `"owner"`. A Rep, an Admin, or a missing or invalid token gives `"neutral"`.
+  - `loading.tsx` renders `<SiRouteSkeleton role={await skeletonRole()} />`.
+  - The skeletons moved to the new `components/sales-intelligence/desk/route-skeleton.tsx`, because node cannot load `desk.tsx` with its CSS import. They are `DeskRouteSkeleton`, a new `NeutralRouteSkeleton` with no title and no tabs, and `SiRouteSkeleton`. `desk/index.ts` re-exports them.
+  - An Admin now also gets the neutral skeleton before the redirect to `/`. At base, an Admin saw the Owner frame.
+- **Tests:** `tests/sales-intelligence/route-loading.test.ts` (new) signs real access tokens for owner, rep and admin, plus null, undefined and garbage tokens. It also renders both skeletons and checks that the neutral one contains no `Sales Intelligence`, `Numbers`, `RingCentral Accounts`, `si-desk__views` or `si-tab`.
+
+**admin-ux-3 (low): a stale cursor trapped the Back button.**
+- **Cause:** the stale-cursor recovery called `update`, and `update` always pushed. The rejected URL stayed in history, so Back loaded it again, it failed again, and the page pushed page one again.
+- **Fix:**
+  - `useSiUrlState().update(patch, { replace: true })` now calls `router.replace(…, { scroll: false })`.
+  - The navigation choice is the pure `siNavigation()`.
+  - The recovery is the exported `recoverStaleNumbersCursor()` in `numbers/numbers-view.tsx`. It passes `{ replace: true }`.
+  - Ordinary filter and paging changes still push.
+  - `NumbersView` and `NumbersPage` take the `SiUrlUpdate` type.
+- **Tests:** `tests/sales-intelligence/numbers.test.ts` gained two tests:
+  - The recovery drops the failed page once and calls `update({cursor:null,before:[]},{replace:true})`. With no cursor, or with a different error code, it does nothing.
+  - `siNavigation` pushes by default, replaces when asked, and returns `null` for an unchanged URL.
+
+### Commands and results
+
+All commands ran in `C:/Users/Pinda/Proyectos/vantage/vantage-admin` through `scratchpad/heavy.sh` with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+| Command | Result |
+|---|---|
+| `node --import tsx --test --test-concurrency=2` on class-coverage, css, route-loading, numbers and desk tests | **24 tests, 24 pass, 0 fail** (`scratchpad/w3fix-targeted.txt`). The first attempt failed because `route-loading.test.ts` imported `desk.tsx` and node cannot load its CSS import. Moving the skeletons to `route-skeleton.tsx` fixed it. |
+| `node node_modules/typescript/bin/tsc --noEmit` | **exit 0, 0 errors** (`scratchpad/w3fix-tsc.txt`) |
+| `node --import tsx --test --test-concurrency=2 "{lib,server,tests}/**/*.test.ts"` | **708 tests: 693 pass, 0 fail, 0 cancelled, 15 skipped**, exit 0 (`scratchpad/w3fix-tests.txt`). That is wave 2's 701 plus the 7 new tests. The 15 skips are the same contracts-folder fixture skips as before. |
+| `node node_modules/eslint/bin/eslint.js . -f json` | exit 1: **18 problems (11 errors, 7 warnings)**, the same set as wave 2. Compared with `scratchpad/lint-base.norm` (26 problems), no file has more problems than in the baseline (`scratchpad/w3fix_lintcmp.cjs`). The touched files have none. The jsx-ast-utils "AwaitExpression could not be resolved" notice comes from `role={await skeletonRole()}`, the same expression base adda9e1 had. |
+| `node node_modules/next/dist/bin/next build` | **exit 0**: compiled in 12.2 s, 48/48 static pages, `/sales-intelligence` and `/sales-intelligence/legacy` present (`scratchpad/w3fix-build.txt`) |
+
+### Files changed (wave 3, admin)
+
+- `vantage-admin/components/sales-intelligence/styles/sales-intelligence.css`
+- `vantage-admin/components/sales-intelligence/data/use-url-state.ts`
+- `vantage-admin/components/sales-intelligence/numbers/numbers-view.tsx`
+- `vantage-admin/components/sales-intelligence/desk/desk.tsx`
+- `vantage-admin/components/sales-intelligence/desk/route-skeleton.tsx` (new)
+- `vantage-admin/components/sales-intelligence/desk/index.ts`
+- `vantage-admin/app/(dashboard)/sales-intelligence/loading.tsx`
+- `vantage-admin/app/(dashboard)/sales-intelligence/route-viewer.ts`
+- `vantage-admin/tests/sales-intelligence/class-coverage.test.ts` (new)
+- `vantage-admin/tests/sales-intelligence/route-loading.test.ts` (new)
+- `vantage-admin/tests/sales-intelligence/css.test.ts`
+- `vantage-admin/tests/sales-intelligence/numbers.test.ts`
+- this file
+
+### Still owed
+
+The Owner browser walk from wave-2 issue 2 was not run, because the lane rules forbid dev servers here. It should also cover three checks:
+- On a Number with a long timeline, the dialog header and Close stay pinned and the day bands stick beneath the header.
+- A Rep login shows the neutral skeleton and then the not-available page, with no Owner tabs.
+- A `?cursor=<garbage>` link lands on page one, and a single Back returns to the previous page.

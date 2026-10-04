@@ -31,6 +31,7 @@ const arg = (argv: readonly string[], name: string) =>
   argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 
 export function loadSlimmingEnv(argv: readonly string[] = process.argv): SlimmingEnv {
+  if (argv.includes("--rehearsal")) throw new Error("a rehearsal reads no .env file; use loadRehearsalEnv");
   const server = readEnvFile(arg(argv, "server-env") ?? resolve(SERVER_ROOT, ".env"));
   const admin = readEnvFile(arg(argv, "admin-env") ?? resolve(WORKSPACE_ROOT, "vantage-admin/.env"));
   const serverMongoUri = (process.env.MONGO_URI ?? server.MONGO_URI ?? "").trim();
