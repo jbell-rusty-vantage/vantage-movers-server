@@ -1,0 +1,131 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07a-v1",
+  "approval_ref": "owner-session-2026-10-03-P07a",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_status_mapping_proven": false,
+  "helping_rep_rule_approved": false,
+  "transfer_rule_approved": false,
+  "cases": [
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": true,
+      "id": "outbound_answered",
+      "direction": "outbound",
+      "actual_attempt_verified": true,
+      "goal_credit": 1,
+      "cadence_credit": 1
+    },
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": true,
+      "id": "outbound_no_answer",
+      "direction": "outbound",
+      "actual_attempt_verified": true,
+      "goal_credit": 1,
+      "cadence_credit": 1
+    },
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": true,
+      "id": "outbound_busy",
+      "direction": "outbound",
+      "actual_attempt_verified": true,
+      "goal_credit": 1,
+      "cadence_credit": 1
+    },
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": true,
+      "id": "outbound_voicemail",
+      "direction": "outbound",
+      "actual_attempt_verified": true,
+      "goal_credit": 1,
+      "cadence_credit": 1
+    },
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": true,
+      "id": "verified_failed_connection",
+      "direction": "outbound",
+      "actual_attempt_verified": true,
+      "goal_credit": 1,
+      "cadence_credit": 1
+    },
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": false,
+      "id": "too_close_outbound",
+      "direction": "outbound",
+      "actual_attempt_verified": true,
+      "goal_credit": 1,
+      "cadence_credit": 0
+    },
+    {
+      "eligible_lead": true,
+      "rep_identity_unambiguous": true,
+      "assignment_eligible": true,
+      "cadence_window_eligible": true,
+      "spacing_eligible": true,
+      "id": "answered_inbound",
+      "direction": "inbound",
+      "answered_by_assigned_rep": true,
+      "goal_credit": 0,
+      "cadence_credit": 1,
+      "clears_call_catchup": true,
+      "ordinary_calls_today": 2,
+      "ordinary_calls_remaining": 1,
+      "clears_sms_catchup": false
+    },
+    {
+      "id": "missed_inbound",
+      "goal_credit": 0,
+      "cadence_credit": 0
+    },
+    {
+      "id": "api_error_without_attempt",
+      "goal_credit": 0,
+      "cadence_credit": 0
+    },
+    {
+      "id": "button_press_only",
+      "goal_credit": 0,
+      "cadence_credit": 0
+    },
+    {
+      "id": "duplicate_receipt",
+      "goal_credit": 0,
+      "cadence_credit": 0
+    },
+    {
+      "id": "internal_call",
+      "goal_credit": 0,
+      "cadence_credit": 0
+    },
+    {
+      "id": "in_progress",
+      "goal_credit": 0,
+      "cadence_credit": 0
+    }
+  ]
+}

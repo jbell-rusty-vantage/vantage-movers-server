@@ -1,0 +1,19 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P01-v1",
+  "approval_ref": "owner-session-2026-10-02-P01",
+  "approved_on": "2026-10-02",
+  "scope": "New Days 1-3 required-call count only; resolved full-day windows and qualifying evidence assumed",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "timing_approved": false,
+  "evidence_eligibility_approved": false,
+  "cases": [
+    { "id": "day_1_one_call", "schedule_day": 1, "verified_calls": 1, "required_calls": 2, "remaining_required_calls": 1, "optional_additional_calls": 0 },
+    { "id": "day_2_two_calls", "schedule_day": 2, "verified_calls": 2, "required_calls": 2, "remaining_required_calls": 0, "optional_additional_calls": 0 },
+    { "id": "day_3_three_calls", "schedule_day": 3, "verified_calls": 3, "required_calls": 2, "remaining_required_calls": 0, "optional_additional_calls": 1 },
+    { "id": "day_2_calls_without_sms", "schedule_day": 2, "verified_calls": 2, "required_calls": 2, "remaining_required_calls": 0, "optional_additional_calls": 0, "required_sms": 1, "verified_sms": 0, "remaining_required_sms": 1 }
+  ],
+  "unresolved_examples": ["Friday 19:45 arrival quota and first deadline", "Sunday and holiday schedule age", "Three back-to-back calls and spacing", "Third-call goal eligibility under P07"]
+}

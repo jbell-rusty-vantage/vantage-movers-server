@@ -1,0 +1,64 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05h-v1",
+  "approval_ref": "owner-session-2026-10-03-P05h",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "runtime_eligibility_proven": false,
+  "cases": [
+    {
+      "id": "eligible_new",
+      "routine_eligible": true
+    },
+    {
+      "id": "duplicate",
+      "separate_cadence": false,
+      "duplicate_credit": 0
+    },
+    {
+      "id": "bad_lead",
+      "routine_eligible": false
+    },
+    {
+      "id": "official_booking_cancellation",
+      "routine_eligible": false
+    },
+    {
+      "id": "crm_owner_closed",
+      "routine_eligible": false,
+      "auto_reopened": false
+    },
+    {
+      "id": "viable_no_sync",
+      "routine_eligible": true,
+      "reporting_changed": false
+    },
+    {
+      "id": "legacy_closed_no_sync",
+      "review_required": true,
+      "authorized_reopening_required": true,
+      "auto_reopened": false
+    },
+    {
+      "id": "form_fill",
+      "flag_alone_excludes": false,
+      "flag_alone_merges": false
+    },
+    {
+      "id": "unmatched_booking_anchor",
+      "automatic_cadence": false
+    },
+    {
+      "id": "number_only",
+      "guessed_cadence": false,
+      "guessed_goal_credit": 0
+    },
+    {
+      "id": "shared_phone",
+      "auto_merge": false,
+      "multiplied_contact_credit": false,
+      "ambiguous_association": "pending"
+    }
+  ]
+}

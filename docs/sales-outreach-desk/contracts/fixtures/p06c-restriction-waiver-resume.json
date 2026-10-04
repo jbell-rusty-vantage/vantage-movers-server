@@ -1,0 +1,44 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P06c-v1",
+  "approval_ref": "owner-session-2026-10-03-P06c",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "callback_mechanics_approved": false,
+  "unassigned_treatment_approved": false,
+  "configuration_authority": "persisted editable reloadable policy",
+  "cases": [
+    {
+      "id": "release_at_opening",
+      "channel": "call",
+      "release_local": "Friday 08:00",
+      "routine_resumes": "Friday",
+      "new_blocked_interval_misses": 0,
+      "unfinished_blocked_requirements_waived": true,
+      "sms_affected": false,
+      "original_age_retained": true,
+      "fixed_sms_sequence_shifted": false
+    },
+    {
+      "id": "release_after_opening",
+      "release_local": "Friday 14:00",
+      "next_working_date": "Saturday",
+      "routine_resumes": "Saturday",
+      "permitted_call_after_release": true
+    },
+    {
+      "id": "old_misses",
+      "prior_genuine_misses": 2,
+      "prior_genuine_misses_after": 2,
+      "catchup_while_restricted": "blocked",
+      "new_blocked_interval_catchup": 0
+    },
+    {
+      "id": "initial_response",
+      "remaining_working_minutes_at_block": 15,
+      "remaining_working_minutes_at_release": 15,
+      "clock_resumes_when_permitted": true
+    }
+  ]
+}

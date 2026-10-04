@@ -1,0 +1,80 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07c-v1",
+  "approval_ref": "owner-session-2026-10-03-P07c",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_evidence_proven": false,
+  "helping_rep_sms_approved": false,
+  "assignment_changed": false,
+  "rep_access_expanded": false,
+  "cases": [
+    {
+      "id": "bob_answers_alices_lead",
+      "assigned_rep": "alice",
+      "handling_reps": [
+        "bob"
+      ],
+      "reviewed_sales_reps": true,
+      "unique_lead": true,
+      "applicable_cadence_credit": 1,
+      "call_catchup_cleared": true,
+      "sms_catchup_cleared": false,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 0
+      },
+      "ordinary_calls_today": 2,
+      "ordinary_calls_remaining": 1
+    },
+    {
+      "id": "bob_transfers_to_alice",
+      "assigned_rep": "alice",
+      "handling_reps": [
+        "bob",
+        "alice"
+      ],
+      "applicable_cadence_credit": 1,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 0
+      }
+    },
+    {
+      "id": "duplicate_inbound_legs",
+      "applicable_cadence_credit": 1,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 0
+      }
+    },
+    {
+      "id": "missed_inbound",
+      "applicable_cadence_credit": 0,
+      "call_catchup_cleared": false,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 0
+      }
+    },
+    {
+      "id": "ambiguous_rep",
+      "applicable_cadence_credit": 0,
+      "call_catchup_cleared": false,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 0
+      }
+    },
+    {
+      "id": "ambiguous_lead",
+      "applicable_cadence_credit": 0,
+      "call_catchup_cleared": false,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 0
+      }
+    }
+  ]
+}

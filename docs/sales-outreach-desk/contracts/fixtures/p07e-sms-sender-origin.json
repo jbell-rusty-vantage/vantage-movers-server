@@ -1,0 +1,57 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07e-v1",
+  "approval_ref": "owner-session-2026-10-03-P07e",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_origin_identity_proven": false,
+  "assignment_changed": false,
+  "rep_access_expanded": false,
+  "cases": [
+    {
+      "id": "typed_assigned_rep",
+      "deliberately_initiated": true,
+      "reviewed_sender": true,
+      "status": "confirmed_sent",
+      "expected_sms_credit": 1
+    },
+    {
+      "id": "typed_helping_rep",
+      "assigned_rep": "alice",
+      "sender": "bob",
+      "deliberately_initiated": true,
+      "reviewed_sender": true,
+      "status": "confirmed_sent",
+      "expected_sms_credit": 1,
+      "clears_sms_catchup": true
+    },
+    {
+      "id": "manually_sent_template",
+      "deliberately_initiated": true,
+      "reviewed_sender": true,
+      "status": "confirmed_delivered",
+      "expected_sms_credit": 1
+    },
+    {
+      "id": "automatic_confirmation",
+      "expected_sms_credit": 0
+    },
+    {
+      "id": "unattended_automation",
+      "expected_sms_credit": 0
+    },
+    {
+      "id": "inbound_reply",
+      "expected_sms_credit": 0
+    },
+    {
+      "id": "ambiguous_shared_sender",
+      "expected_sms_credit": 0,
+      "pending_verification": true
+    }
+  ],
+  "all_outbound_goal_credits": 0,
+  "one_logical_message_max_cadence_credit": 1,
+  "fixed_sms_sequence_shifted": false
+}

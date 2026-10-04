@@ -1,0 +1,50 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07f-v1",
+  "approval_ref": "owner-session-2026-10-03-P07f",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_timestamps_proven": false,
+  "cases": [
+    {
+      "id": "on_time_contact_captured_next_day",
+      "contact_at": "2026-10-02T15:00:00Z",
+      "captured_at": "2026-10-03T16:00:00Z",
+      "credited_date": "2026-10-02",
+      "capture_date_goal_credit": 0,
+      "apparent_miss_removed": true
+    },
+    {
+      "id": "genuinely_late_contact",
+      "contact_at": "2026-10-02T17:00:00Z",
+      "deadline_at": "2026-10-02T16:00:00Z",
+      "captured_at": "2026-10-03T16:00:00Z",
+      "credited_date": "2026-10-02",
+      "capture_date_goal_credit": 0,
+      "genuine_deadline_miss_retained": true
+    },
+    {
+      "id": "corrected_initiator",
+      "before": {
+        "alice": 1,
+        "bob": 0
+      },
+      "after": {
+        "alice": 0,
+        "bob": 1
+      },
+      "total_goal_credit": 1,
+      "audit_retained": true
+    },
+    {
+      "id": "ambiguous_timestamp",
+      "guessed": false,
+      "credit_pending": true
+    }
+  ],
+  "historical_policy_identity_used": true,
+  "receipt_day_duplicate_credit": false,
+  "current_lifecycle_rewound": false,
+  "fixed_sms_sequence_shifted": false
+}

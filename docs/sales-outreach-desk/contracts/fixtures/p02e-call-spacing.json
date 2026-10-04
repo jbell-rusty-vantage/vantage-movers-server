@@ -1,0 +1,25 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02e-v1",
+  "approval_ref": "owner-session-2026-10-02-P02e",
+  "approved_on": "2026-10-02",
+  "configuration_field": "cadence.new_call_min_spacing_minutes",
+  "initial_spacing_minutes": 60,
+  "duration_basis": "elapsed minutes between cadence-credited call starts",
+  "configuration_authority": "persisted reloadable configuration",
+  "deployment_required_for_edit": false,
+  "environment_fallback": false,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "goal_eligibility_approved": false,
+  "scope": "Same Outreach record and active New period; all input calls assumed otherwise qualifying",
+  "cases": [
+    { "id": "at_sixty_minutes", "call_offsets_minutes": [0, 60], "expected_cadence_credit_indices": [0, 1] },
+    { "id": "at_fifty_nine_minutes", "call_offsets_minutes": [0, 59], "expected_cadence_credit_indices": [0] },
+    { "id": "retry_does_not_reset", "call_offsets_minutes": [0, 5, 60], "expected_cadence_credit_indices": [0, 2] },
+    { "id": "burst", "call_offsets_minutes": [0, 5, 10], "expected_cadence_credit_indices": [0] }
+  ],
+  "config_edit_example": { "synthetic_only": true, "new_spacing_minutes": 90, "owner_policy_approved": false, "call_offsets_minutes": [0, 60, 90], "expected_cadence_credit_indices": [0, 2], "historic_periods_rewritten": false },
+  "unresolved": ["Second-call deadline", "Partial-day quota", "P07 goal/credit eligibility", "Three-unsuccessful-attempts-in-24-hours restriction reconciliation"]
+}

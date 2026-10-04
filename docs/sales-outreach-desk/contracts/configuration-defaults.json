@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "version": "synthetic-unapproved-v1",
+  "value": {
+    "controls": {
+      "desk_enabled": false,
+      "cadence_shadow_enabled": false,
+      "cadence_enforcement_enabled": false,
+      "rep_sms_capture_enabled": false,
+      "goal_metrics_enabled": false
+    },
+    "transition": {
+      "legacy_planning_paused": false,
+      "migrated_cohort_id": null,
+      "activation_at": null
+    },
+    "cadence": {
+      "policy_version": null,
+      "approval_ref": null,
+      "timezone": "America/New_York",
+      "calendar_mode": null,
+      "working_days": null,
+      "holidays": null,
+      "new_days_1_3_calls": null,
+      "new_call_slots": null,
+      "new_call_min_spacing_minutes": null,
+      "sms_cutoff_minute": null,
+      "sms_mode": null,
+      "quoted_due_minute": null,
+      "quoted_same_day_cutoff_minute": null,
+      "return_to_new_mode": null,
+      "late_arrival_rule": null,
+      "catchup_mode": null,
+      "restriction_clock_rule": null,
+      "callback_window_minutes": null,
+      "callback_mode": null,
+      "cooldown_warning_threshold": null,
+      "cooldown_warning_hours": null,
+      "cooldown_mode": null,
+      "assignment_timeline_rule": null,
+      "intake_default_rule": null,
+      "uncertain_priority_rule": null,
+      "transition_day_rule": null,
+      "move_date_rule": null,
+      "lead_eligibility_rule": null,
+      "precedence_rule": null
+    },
+    "evidence": {
+      "qualifying_call_rule": null,
+      "goal_rep_rule": null,
+      "helping_rep_rule": null,
+      "sms_success_rule": null,
+      "sms_failure_correction_rule": null,
+      "roster_version": null,
+      "event_time_rule": null,
+      "operating_window_rule": null,
+      "originating_inbound_rule": null,
+      "restricted_contact_rule": null
+    },
+    "migration": {
+      "paused": true,
+      "batch_size": 25,
+      "batch_ceiling": 100,
+      "interval_seconds": 10,
+      "max_batch_bytes": null,
+      "max_batch_ms": null,
+      "min_oplog_window_seconds": null,
+      "warning_oplog_window_seconds": null,
+      "max_replication_lag_seconds": null,
+      "max_consumer_lag_seconds": null,
+      "max_incremental_write_bytes_per_second": null
+    },
+    "goals": {
+      "roster_version": null,
+      "rep_work_schedules": null,
+      "default_scheduled_goal": null,
+      "effective_day_overrides": null,
+      "zero_goal_rule": null
+    }
+  }
+}

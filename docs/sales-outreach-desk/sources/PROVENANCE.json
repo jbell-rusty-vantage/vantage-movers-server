@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-02",
+  "references": [
+    {
+      "original_path": "CONTEXT.md",
+      "packet_path": "sources/CONTEXT.md",
+      "sha256": "bc142e0c18705b0d04f71cecabf2ef0a8e6d7094636acef4aea09e060b670fd1",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/agents/domain.md",
+      "packet_path": "sources/docs/agents/domain.md",
+      "sha256": "6c4cdd8654465b67790632a1fb9bd9f74c7f209d98dfc402f9a70d69e2fdbadd",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/adr/0001-mongodb-system-of-record.md",
+      "packet_path": "sources/docs/adr/0001-mongodb-system-of-record.md",
+      "sha256": "cf0c18e811a36cb666d1db20e83dac1e185cc7c5b1966daa7fb6b1d9912c3f6c",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/adr/0002-granot-crm-post-despite-downstream-failures.md",
+      "packet_path": "sources/docs/adr/0002-granot-crm-post-despite-downstream-failures.md",
+      "sha256": "04e35cfc8ee806f7608702f0ff95f725ce31981acbfd6f1eaff11e8581e4eff6",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md",
+      "packet_path": "sources/docs/adr/0003-lead-id-granot-leadno-ref-no-contract.md",
+      "sha256": "b85b567db5757b04b56cc8bec20192c396005924f59cdc012e92f6bf3bf3ccd5",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/sales-rep-tracker/SPECIFICATION.md",
+      "packet_path": "sources/docs/sales-rep-tracker/SPECIFICATION.md",
+      "sha256": "4afc701e18b20cd904fdba4ce6d80571abc3874335f28323a484e61996fd70aa",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/sales-rep-tracker/IMPLEMENTATION-DESIGN.md",
+      "packet_path": "sources/docs/sales-rep-tracker/IMPLEMENTATION-DESIGN.md",
+      "sha256": "e0bed3700f5c0a1890df25951259414e6150b65a6aaf30950c5f3db2b703b9d3",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "docs/sales-rep-tracker/RELEASE.md",
+      "packet_path": "sources/docs/sales-rep-tracker/RELEASE.md",
+      "sha256": "53450d1f067cb466355553895cbf316f386048f9a04a886351fd67d484783cf5",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/internal_hidden_docs/daily-operations/README.md",
+      "packet_path": "sources/daily-operations/README.md",
+      "sha256": "1699c622b3d204ba97dcb46f9864a87ecf3bfe3250220c7759a876f8a1ffc358",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/internal_hidden_docs/daily-operations/daily-operations-specification.md",
+      "packet_path": "sources/daily-operations/daily-operations-specification.md",
+      "sha256": "631f20ca9006e8d521735ecf19115e1b63dc2c47c57ba9fc426a1c72cd6aea98",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/CLOUD_AGENTS.md",
+      "packet_path": "sources/vantage-main-server/CLOUD_AGENTS.md",
+      "sha256": "75651da719a623d6eda47bf04a8971cd9cb0305d32ee5a7ac8fd0899d53cd26e",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-admin/.cursor/rules/project-organization.mdc",
+      "packet_path": "sources/vantage-admin/.cursor/rules/project-organization.mdc",
+      "sha256": "a964a9fdaf51be9516cd26a7bd9de7badc36efec26377b8b608b2a6fe690e3a6",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-admin/docs/knowledge/environment.md",
+      "packet_path": "sources/vantage-admin/docs/knowledge/environment.md",
+      "sha256": "be95ff543ab129c55e4b92545a85bbc42e08ce2b80ef558e1d03ef1d21f08e62",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-admin/CONTEXT.md",
+      "packet_path": "sources/vantage-admin/CONTEXT.md",
+      "sha256": "3889d9db5abea3f53f0b9c7da6e5ad645c1ce241efc55655e3413b9881bfb156",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md",
+      "packet_path": "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md",
+      "sha256": "6f457d67c93e23e25bfe0b35c7031139f5d9ca4c8e49a0d840b1154c7eb6e14b",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/docs/knowledge/services/sales-intelligence-live.md",
+      "packet_path": "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-live.md",
+      "sha256": "db6da3a1b7ce46ecc7f9c4671f60f3f4f90992240af91db90babdc75b9b12825",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/docs/knowledge/services/number-activity-capture.md",
+      "packet_path": "sources/vantage-main-server/docs/knowledge/services/number-activity-capture.md",
+      "sha256": "00871e925b593b01d0ec7e0eb62d2232b4a41d66df7c502906e2bad96b2cfc96",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md",
+      "packet_path": "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md",
+      "sha256": "9792a6920fea12947718d42d92897e2f88f6683a7d8b4996409dc7c4265150ea",
+      "status": "snapshot"
+    },
+    {
+      "original_path": "vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md",
+      "packet_path": "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md",
+      "sha256": "5e233c47ea3736990e11d850398e4c3974e56a63b0dbd726bfeeba3e72e277fc",
+      "status": "snapshot"
+    }
+  ]
+}

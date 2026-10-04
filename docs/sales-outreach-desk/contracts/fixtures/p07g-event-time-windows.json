@@ -1,0 +1,57 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07g-v1",
+  "approval_ref": "owner-session-2026-10-03-P07g",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_timestamp_handling_proof": false,
+  "goal_day_basis": "outbound_start_new_york_date",
+  "inbound_credit_basis": "reviewed_rep_answer_handling",
+  "sms_credit_basis": "confirmed_sent_time",
+  "cases": [
+    {
+      "id": "closing_cross",
+      "start_local": "19:59",
+      "end_local": "20:10",
+      "routine_credit": 1
+    },
+    {
+      "id": "midnight_cross",
+      "start_at": "2026-10-02T23:58:00-04:00",
+      "end_at": "2026-10-03T00:10:00-04:00",
+      "goal_date": "2026-10-02",
+      "goal_credit": 1,
+      "next_date_routine_credit": 0
+    },
+    {
+      "id": "sms_later_delivery",
+      "sent_local": "19:59",
+      "delivery_evidence_local": "20:05",
+      "credit_time": "19:59"
+    },
+    {
+      "id": "too_close_inbound",
+      "cadence_credit": 0,
+      "anchor_reset": false
+    },
+    {
+      "id": "originating_answered_inbound",
+      "verified_rep_lead_association": true,
+      "initial_response_satisfied": true,
+      "maximum_arrival_call_credit": 1,
+      "goal_credit": 0
+    },
+    {
+      "id": "after_hours_catchup",
+      "existing_channel_catchup_cleared": true,
+      "next_date_routine_credit": 0
+    },
+    {
+      "id": "restricted_outbound",
+      "history_retained": true,
+      "goal_credit": 0,
+      "cadence_credit": 0
+    }
+  ]
+}

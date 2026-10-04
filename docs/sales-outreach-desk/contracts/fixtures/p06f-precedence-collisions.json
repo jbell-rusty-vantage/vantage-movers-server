@@ -1,0 +1,55 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P06f-v1",
+  "approval_ref": "owner-session-2026-10-03-P06f",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "runtime_precedence_proven": false,
+  "precedence": [
+    "authoritative_closure",
+    "channel_restriction",
+    "explicit_human_schedule",
+    "accepted_priority_routine_cadence"
+  ],
+  "daily_goal_overrides_precedence": false,
+  "maximum_active_human_plans_per_lead": 1,
+  "replacement_requires_explicit_audited_command": true,
+  "cases": [
+    {
+      "id": "closure",
+      "pending_callback_cancelled": true,
+      "routine_cancelled": true,
+      "auto_reopened": false
+    },
+    {
+      "id": "restricted_callback",
+      "label": "Callback blocked—rescheduling needed",
+      "restriction_caused_callback_miss": false,
+      "prior_genuine_misses_retained": true
+    },
+    {
+      "id": "nonterminal_priority_three",
+      "routine_required": false,
+      "pending_human_callback_preserved": true
+    },
+    {
+      "id": "accepted_unmapped",
+      "routine_required": false,
+      "pending_human_callback_preserved": true
+    },
+    {
+      "id": "genuine_missed_callback",
+      "callback_overdue": true,
+      "ordinary_resumes": "next_working_date",
+      "single_later_qualifying_call_clears_callback": true,
+      "ordinary_credit_maximum": 1,
+      "goal_credit_maximum": 1
+    },
+    {
+      "id": "missed_inbound",
+      "history_retained": true,
+      "automatic_callback_created": false
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P09c-v1",
+  "approval_ref": "owner-session-2026-10-03-P09c",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "runtime_binding_proven": false,
+  "admin_means_owner_in_feature": true,
+  "separate_intermediate_admin_tier": false,
+  "generic_admin_automatically_elevated": false,
+  "platform_wide_role_rename": false,
+  "manager_permissions": "P09b",
+  "rep_scope": "current_assignment_only",
+  "explicit_trusted_account_binding_required": true
+}

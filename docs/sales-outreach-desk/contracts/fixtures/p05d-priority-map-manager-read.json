@@ -1,0 +1,57 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05d-v1+P09a-v1",
+  "approval_refs": [
+    "owner-session-2026-10-03-P05d",
+    "owner-session-2026-10-03-P09a"
+  ],
+  "known_priority_map": {
+    "0": "new",
+    "1": "quoted",
+    "3": "rep_discretion_no_routine_cadence",
+    "5": "booked_in_granot_stop_cadence",
+    "7": "crm_bad_unusable_stop_cadence",
+    "8": "crm_dead_opportunity_stop_cadence"
+  },
+  "accepted_sources": [
+    "granot_webhook",
+    "browser_extension",
+    "granot_http_automation"
+  ],
+  "source_specific_cadence_rules": false,
+  "raw_payload_is_transition_authority": false,
+  "priority_five": {
+    "routine_cadence_stopped": true,
+    "official_booking_created": false,
+    "official_booked_flag_inferred": false
+  },
+  "official_booking": {
+    "routine_cadence_stopped": true
+  },
+  "seven_eight": {
+    "official_duplicate_flag_inferred": false,
+    "booked_elsewhere_reason_inferred": false
+  },
+  "transition": {
+    "historical_misses_preserved": true,
+    "cancellation_is_fulfillment": false,
+    "implicit_reopen": false
+  },
+  "manager": {
+    "team_reads": true,
+    "individual_rep_filter": true,
+    "trusted_capability_required": true,
+    "policy_edit_approved": false,
+    "reassignment_approved": false,
+    "date_command_approved": false,
+    "unassigned_scope_approved": false,
+    "daily_operations_approved": false
+  },
+  "rep": {
+    "current_assignment_only": true
+  },
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "last_verified_policy_retention_approved": false
+}

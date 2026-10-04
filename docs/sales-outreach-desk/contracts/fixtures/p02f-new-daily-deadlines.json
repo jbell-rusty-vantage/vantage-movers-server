@@ -1,0 +1,27 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02f-v1",
+  "approval_ref": "owner-session-2026-10-02-P02f",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "two_call_deadline_minutes": [720, 1200],
+  "one_call_deadline_minute": 1200,
+  "minimum_spacing_minutes": 60,
+  "configurable": true,
+  "configuration_authority": "persisted reloadable configuration",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "arrival_day_allowance_approved": false,
+  "sms_deadline_approved": false,
+  "quoted_deadline_approved": false,
+  "scope": "Eligible full New working days with qualifying canonical calls and complete evidence; call starts are New York minutes of day",
+  "cases": [
+    { "id": "two_calls_on_time", "schedule_day": 2, "as_of_minute": 840, "call_start_minutes": [600, 660], "required_calls": 2, "verified_completed": 2, "remaining": 0, "first_deadline_missed": false, "current_overdue": false },
+    { "id": "noon_missed_second_not_due", "schedule_day": 3, "as_of_minute": 721, "call_start_minutes": [], "required_calls": 2, "verified_completed": 0, "remaining": 2, "first_deadline_missed": true, "current_overdue": true, "second_requirement_due_minute": 1200 },
+    { "id": "both_calls_after_noon", "schedule_day": 4, "as_of_minute": 900, "call_start_minutes": [780, 840], "required_calls": 2, "verified_completed": 2, "remaining": 0, "first_deadline_missed": true, "current_overdue": false },
+    { "id": "first_done_second_pending", "schedule_day": 5, "as_of_minute": 721, "call_start_minutes": [660], "required_calls": 2, "verified_completed": 1, "remaining": 1, "first_deadline_missed": false, "current_overdue": false, "second_requirement_due_minute": 1200 },
+    { "id": "day_six_evening_call", "schedule_day": 6, "as_of_minute": 1190, "call_start_minutes": [1140], "required_calls": 1, "verified_completed": 1, "remaining": 0, "current_overdue": false }
+  ],
+  "unresolved_examples": ["Afternoon receipt has no automatic past-noon deadline", "19:45 receipt has first-response deadline next day 08:15, but daily quota unapproved", "Quoted and SMS deadlines remain separate"]
+}

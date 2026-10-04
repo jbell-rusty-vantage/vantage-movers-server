@@ -1,0 +1,62 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05c-v1",
+  "approval_ref": "owner-session-2026-10-03-P05c",
+  "approved_on": "2026-10-03",
+  "synthetic_unmapped_code": "42",
+  "meaning_inferred": false,
+  "display_raw_code": true,
+  "display_label": "No policy configured",
+  "routine_calls_required": 0,
+  "routine_sms_required": 0,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "missing_or_uncertain_evidence_policy_approved": false,
+  "reentry_policy_approved": false,
+  "goal_credit_approved": false,
+  "cases": [
+    {
+      "id": "new_to_unmapped",
+      "accepted_priority": true,
+      "prior_routine_requirements_superseded": true,
+      "fulfillment_created": false,
+      "historical_misses_retained": true,
+      "contact_history_retained": true,
+      "lead_remains_open": true,
+      "visible": true,
+      "owner_review_visible": true
+    },
+    {
+      "id": "quoted_to_unmapped",
+      "accepted_priority": true,
+      "prior_routine_requirements_superseded": true,
+      "fulfillment_created": false,
+      "historical_misses_retained": true,
+      "contact_history_retained": true,
+      "lead_remains_open": true,
+      "visible": true,
+      "owner_review_visible": true
+    },
+    {
+      "id": "initial_unmapped",
+      "accepted_priority": true,
+      "routine_requirements_created": 0,
+      "visible": true,
+      "owner_review_visible": true,
+      "lead_remains_open": true
+    },
+    {
+      "id": "closed_to_unmapped",
+      "accepted_priority": true,
+      "implicit_reopen": false,
+      "lead_remains_closed": true
+    },
+    {
+      "id": "unvouched_unmapped",
+      "accepted_priority": false,
+      "transition_authorized": false,
+      "prior_routine_requirements_superseded": false
+    }
+  ]
+}

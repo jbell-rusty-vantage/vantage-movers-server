@@ -6,6 +6,12 @@ build/
 .env.*
 !.env.example
 /sales-intelligence.env
+/env.salesintelligence
+
+# Local scratch scripts. Do not commit.
+/.cleanup-*.cjs
+/.cleanup-*.txt
+/.storage-*.cjs
 
 # OS junk
 .DS_Store

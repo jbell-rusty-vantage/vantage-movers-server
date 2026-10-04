@@ -1,0 +1,37 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P09b-v1",
+  "approval_ref": "owner-session-2026-10-03-P09b",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "runtime_role_binding_proven": false,
+  "generic_admin_advanced_authority_approved": false,
+  "rep_scope_expanded": false,
+  "manager_allowed": [
+    "team_reads",
+    "individual_rep_filter",
+    "unassigned_reads",
+    "assign_reassign",
+    "quoted_date_commands",
+    "explicit_callback_commands",
+    "prospective_absence_override",
+    "prospective_partial_day_override",
+    "daily_operations_access"
+  ],
+  "owner_only": [
+    "base_goal_edits",
+    "roster_edits",
+    "work_schedule_edits",
+    "cadence_policy_edits",
+    "lift_contact_restriction",
+    "override_authoritative_closure",
+    "historical_responsibility_goal_setting_edits",
+    "activation",
+    "migration",
+    "rollback"
+  ],
+  "manager_and_admin_nearly_identical_desk": true,
+  "advanced_options_capability_gated": true,
+  "daily_operations_metrics_changed": false
+}

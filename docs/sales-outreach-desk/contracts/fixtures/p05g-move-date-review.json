@@ -1,0 +1,41 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05g-v1",
+  "approval_ref": "owner-session-2026-10-03-P05g",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "move_fact_proof": false,
+  "cases": [
+    {
+      "id": "passed_new",
+      "accepted_priority": "0",
+      "move_date": "yesterday",
+      "cadence": "new",
+      "label": "Move date passed—review",
+      "auto_closed": false,
+      "priority_changed": false
+    },
+    {
+      "id": "passed_quoted",
+      "accepted_priority": "1",
+      "move_date": "yesterday",
+      "cadence": "quoted",
+      "label": "Move date passed—review",
+      "auto_closed": false
+    },
+    {
+      "id": "unknown",
+      "move_date": null,
+      "cadence_continues": true,
+      "label": "Move date unknown"
+    },
+    {
+      "id": "corrected_date",
+      "age_reset": false,
+      "contact_history_erased": false
+    }
+  ],
+  "canonical_move_source_precedence_changed": false,
+  "closure_authority_changed": false
+}

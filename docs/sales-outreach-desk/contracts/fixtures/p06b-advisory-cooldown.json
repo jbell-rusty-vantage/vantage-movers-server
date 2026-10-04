@@ -1,0 +1,45 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P06b-v1",
+  "approval_ref": "owner-session-2026-10-03-P06b",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "configuration_authority": "persisted editable reloadable policy",
+  "warning_threshold": 3,
+  "rolling_hours": 24,
+  "minimum_cadence_start_spacing_minutes": 60,
+  "cases": [
+    {
+      "id": "three_unanswered",
+      "unsuccessful_attempts_last_24h": 3,
+      "warning": true,
+      "hard_pause": false,
+      "routine_work_remains_due": true
+    },
+    {
+      "id": "too_close_retry",
+      "credited_start": "10:10",
+      "retry_start": "10:20",
+      "goal_credit": 1,
+      "cadence_credit": 0,
+      "anchor_after": "10:10"
+    },
+    {
+      "id": "spaced_second",
+      "credited_start": "10:10",
+      "next_start": "11:10",
+      "goal_credit": 1,
+      "cadence_credit": 1
+    },
+    {
+      "id": "actual_restriction",
+      "warning": true,
+      "call_restricted": true,
+      "ready_to_call": false
+    }
+  ],
+  "restriction_deadline_treatment_approved": false,
+  "callback_mechanics_approved": false,
+  "provider_outcome_mapping_proven": false
+}

@@ -1,0 +1,45 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P06d-v1",
+  "approval_ref": "owner-session-2026-10-03-P06d",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "callback_mechanics_approved": false,
+  "manager_permissions_changed": false,
+  "assignment_evidence_proven": false,
+  "configuration_authority": "persisted editable reloadable policy",
+  "cases": [
+    {
+      "id": "first_assignment_after_deadline",
+      "received_local": "10:00",
+      "deadline_before": "10:30",
+      "assigned_local": "11:00",
+      "deadline_after": "10:30",
+      "current_rep": "alice",
+      "historical_miss_responsibility": "Unassigned",
+      "current_label": "Inherited overdue",
+      "fresh_response_clock": false
+    },
+    {
+      "id": "inherited_catchup_contact",
+      "contact_local": "11:10",
+      "ordinary_call_credit": 1,
+      "call_catchup_after": 0,
+      "genuine_1030_miss_retained": true
+    },
+    {
+      "id": "reassignment",
+      "from": "alice",
+      "to": "bob",
+      "prior_miss_responsibility": "alice",
+      "next_miss_responsibility": "bob",
+      "age_reset": false,
+      "deadlines_reset": false,
+      "completed_contacts_reset": false,
+      "spacing_anchor_reset": false,
+      "catchup_reset": false,
+      "prior_goal_credit_moved": false
+    }
+  ]
+}
