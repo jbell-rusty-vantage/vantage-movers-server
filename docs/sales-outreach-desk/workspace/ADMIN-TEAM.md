@@ -34,7 +34,7 @@ What to build (IMPLEMENTATION-PLAN §7 ADM-1..8):
 - All owner-visible strings in components/outreach-desk/outreach-desk-copy.ts. Never print snake_case identifiers. Unknown/pending is shown as such, never as zero.
 - Add Playwright (devDependency) with e2e specs that render team and my desks at 1186x742 against the mock API and save screenshots next to the references for comparison; plus keyboard/focus and 403/reassignment cache-clear tests.
 
-Rules: no deploy, no push to main, no production data. Keep Numbers/Accounts behaviour unchanged when moving them. Mutations invalidate the right query keys.
+Rules: build lanes do not deploy or push to main; the RELEASE agent ships under FAST-TRACK.md (FAST-01). Ship the M1 Call progress pieces first (manager role, /outreach-desk shell, goal cards, Daily call goals table, freshness chips), merge them, then continue to M2. No production data in tests. Keep Numbers/Accounts behaviour unchanged when moving them. Mutations invalidate the right query keys.
 
 Finish: pnpm typecheck, pnpm lint, pnpm test, Playwright run green; screenshots + commands recorded in docs/sales-outreach-desk/workspace/evidence/<lane>.md; update .cursor/rules/project-organization.mdc (Sales Intelligence section -> Outreach Desk) and CONTEXT.md; merge into feat/outreach-desk; LEDGER + handoff listing any DTO assumption the server must confirm.
 ```

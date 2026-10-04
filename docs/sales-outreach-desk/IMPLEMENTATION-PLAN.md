@@ -109,7 +109,7 @@ As CONTRACTS, written by the SMS capture in RINGCENTRAL-CAPTURE.md. Per-mailbox 
 
 ### 4.8 `sales_outreach_configuration` (CONTRACTS, unchanged) and `sales_outreach_enrollment_runs`
 
-Configuration exactly as CONTRACTS (version/pointer CAS, fail closed, no env authority). `sales_outreach_migration_runs/checkpoints` are renamed **`sales_outreach_enrollment_runs`** (one doc per run: manifest hash, selected ids, boundary, mode `report|apply|verify`, results). There is no legacy history to migrate, so enrollment is building subjects from current Lead facts plus provider evidence from the activation date (P10a).
+Configuration exactly as CONTRACTS (version/pointer CAS, fail closed, no env authority). Add to `transition`: `backfill_lookback_days` (90) and `backfill_include_upcoming_moves` (true) per FAST-01. `sales_outreach_migration_runs/checkpoints` are renamed **`sales_outreach_enrollment_runs`** (one doc per run: manifest hash, selected ids, boundary, mode `report|apply|verify`, results). There is no legacy history to migrate, so enrollment is building subjects from current Lead facts plus provider evidence from the activation date (P10a).
 
 ### 4.9 Kept collections the desk writes to
 
@@ -159,7 +159,7 @@ All stages: config pointer read at admission and rechecked before writes (CONTRA
 
 ## 7. Work packages
 
-Branches: `feat/outreach-desk` in **both** repos, from current `main`. One integration branch per repo; lanes work on `feat/outreach-desk-<lane>` and merge into it. Never push to `main`, never deploy, never touch production data without the user's explicit go.
+Branches: `feat/outreach-desk` in **both** repos, from current `main`. One integration branch per repo; lanes work on `feat/outreach-desk-<lane>` and merge into it. Only the RELEASE agent merges to `main`, deploys and operates production, under [FAST-TRACK.md](FAST-TRACK.md).
 
 ### Server (team SERVER — see [workspace/SERVER-TEAM.md](workspace/SERVER-TEAM.md))
 
@@ -196,7 +196,10 @@ Order for parallel cloud agents: **S1 (SRV-1→2→3→7→8), S2 (SRV-4) and S3
 
 Integrated replica run of END-TO-END-RUN §3–§5 with provider mocks and a seeded synthetic pilot (≈20 Leads, 3 reps). Record evidence in `workspace/evidence/`.
 
-## 8. Release path (after implementation; user-authorized steps only)
+## 8. Release path
+
+> **Superseded by [FAST-TRACK.md](FAST-TRACK.md) (FAST-01).** Agents deploy with controls on, run the 90-day/upcoming-move backfill and fix forward. M1 Call progress ships first. The steps below are kept as the order of operations; the pilot, shadow day and observation day are dropped.
+
 
 1. Merge `feat/outreach-desk` server then admin; deploy with all controls false (desk invisible to Reps until `desk_enabled`).
 2. Build new indexes (script, reviewed target).

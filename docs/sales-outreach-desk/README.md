@@ -4,7 +4,7 @@ Start here from either vantage-main-server or vantage-admin. Business policy is 
 
 ## Build it (cloud or local agent teams)
 
-**Run the sprint end to end with [SPRINT-RUNBOOK.md](SPRINT-RUNBOOK.md)** (phases P1 build → P2 integrate → P3 verify → P4 PRs → P5 user-run release and pilot; local and cloud instructions).
+**[FAST-TRACK.md](FAST-TRACK.md) (FAST-01) governs release: agents deploy with flags on, run the backfill and fix forward; M1 Call progress ships first.** Run the sprint end to end with **[SPRINT-RUNBOOK.md](SPRINT-RUNBOOK.md)** (phases P1 build → P2 integrate → P3 verify → P4 PRs → P5 user-run release and pilot; local and cloud instructions).
 
 1. Read repository AGENTS.md and this packet's [working rules](workspace/AGENTS.md).
 2. Read the **[post-slimming implementation plan](IMPLEMENTATION-PLAN.md)**. It covers what changed, settled decisions IMPL-01…07, data model, API, engine, work packages and release path.
@@ -26,6 +26,6 @@ The server copy is canonical. The admin copy is a byte-identical mirror verified
 
 No sibling directory is needed for validation, fixtures, contracts, screenshots or the glossary. An integrated browser run needs both services. Admin can start on local mock DTOs.
 
-Branches: `feat/outreach-desk` in both repositories, with lane branches merged into it. Use no reset, clean or force-push. No production writes, deploys, provider subscriptions or customer sends happen without the user's explicit go.
+Branches: `feat/outreach-desk` in both repositories, with lane branches merged into it. Use no reset, clean or force-push. Production release, backfill and operation are done by the RELEASE agent under FAST-TRACK.md. Nothing ever contacts customers.
 
 History: [final handback](FINAL-HANDBACK.md) (October 3 policy finalization) and [validation report](VALIDATION-REPORT.md).

@@ -38,7 +38,8 @@ Rules:
 - Business policy lives on the server; values are persisted in sales_outreach_configuration (never env vars, never hard-coded defaults that activate behaviour). Missing/invalid config fails closed.
 - Deterministic code only: no LLM, transcription, summaries or AI suggestions. Do not touch retired job stages.
 - Every contract fixture in docs/sales-outreach-desk/contracts/fixtures/*.json that your lane covers becomes an automated test. Add the END-TO-END-RUN.md §3 scenarios your lane covers as named tests.
-- No provider calls in tests (mock RingCentral). No production database, no deploy, no push to main, no subscription creation, no customer sends. The only production-touching artifact you may write is a read-only proof script for the operator to run.
+- No provider calls in tests (mock RingCentral). Build lanes do not touch production or push to main: the RELEASE agent deploys and operates under FAST-TRACK.md (FAST-01), so make your work releasable (scripts for indexes, policy install, enrollment report/apply/verify, RingCentral proof and subscription update must accept a named production target and be idempotent). Never contact customers.
+- Priority: ship the M1 Call progress pieces first (FAST-TRACK.md Milestones), merge them, and tell the integrator; then continue to M2.
 - Use existing seams: executeCsiCommand/csiCas/command ledger, entity_changes + domain command executor, sales_intelligence_jobs + jobDispatch + cron recovery, salesIntelligence/live.ts machinery, rateLimitGate. Register new job stages and command kinds explicitly.
 - Indexes: model files declare them; a script builds them; nothing builds indexes at startup or in a GET.
 - Keep services small and in src/services/salesOutreach/**. Update docs/knowledge/services with a new `sales-outreach-desk.md` Service doc (OKF frontmatter, status: draft) describing what you built.

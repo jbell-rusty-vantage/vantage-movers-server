@@ -10,6 +10,8 @@ Preparation state as of 2026-10-04: ready for cloud implementation, with no task
 | SRV-6 | Server S3 goals/evidence | SRV-3 models | ready | unclaimed | → S1 reads |
 | ADM-1/2/7 | Admin A1 roles/route/BFF | none | ready | unclaimed | → A2 |
 | ADM-3/4/5/6/8 | Admin A2 desks | mock DTOs; server DTOs later | ready | unclaimed | → VERIFY |
+| RELEASE M1 | Deploy + operate call progress (FAST-01) | M1 pieces merged + verified on replica | blocked | — | evidence/RELEASE.md |
+| RELEASE M2 | Deploy full desk + backfill + controls on | M2 verified on replica | blocked | — | evidence/RELEASE.md |
 | VERIFY | Integrated replica + browser | server + admin merged into feat/outreach-desk | blocked | — | END-TO-END-RUN §3–§5 evidence |
 
 Allowed states: ready, claimed, in_progress, review, blocked, accepted. Only VERIFY or the coordinator marks a cross-service item accepted, and only with evidence. A blocking issue names the decision or proof ID, the concrete failing scenario, the owning lane and what it depends on. A skipped test is not accepted.

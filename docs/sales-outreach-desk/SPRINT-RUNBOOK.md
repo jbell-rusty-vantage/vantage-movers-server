@@ -11,10 +11,10 @@ Starting point: both repositories have `feat/outreach-desk` pushed from `main`, 
 | P1 Build | 5 lanes in parallel: server S1, S2, S3 and admin A1, A2 | Cloud (recommended) or local | Each lane is merged into `feat/outreach-desk` with green typecheck, lint and tests, plus evidence |
 | P2 Integrate | Integrator (one agent) | Wherever both repos are checked out side by side | Admin talks to the real server API on a replica. Contract drift is fixed |
 | P3 Verify | VERIFY (one agent, not a lane author) | Same as P2 | END-TO-END-RUN §3–§5 scenarios pass on replica + browser; evidence recorded |
-| P4 Release prep | Integrator | Same | PRs `feat/outreach-desk → main` open in both repos; release checklist filled; no deploy |
-| P5 Release and pilot | **The user (operator)**, agent assists on request | Production | Deployed dark → indexes → RingCentral proof → policy → pilot shadow → activation → intake |
+| P4 Release | RELEASE agent | Machine with production credentials (local recommended) | Merged to `main` (auto-deploys), indexes built, RingCentral proof, policy installed, controls on |
+| P5 Backfill and operate | RELEASE agent | Same | Enrollment backfill applied (90 days + upcoming moves), SMS history, enforcement and intake on, fixes deployed |
 
-Agents never cross the P4/P5 line on their own. Every P5 step needs the user's explicit go in that session.
+**FAST-01 ([FAST-TRACK.md](FAST-TRACK.md)):** agents are authorized to deploy, turn controls on, run the backfill and fix forward. Ship **M1 Call progress** (goal cards + Daily call goals) as the first deploy, as soon as its pieces pass. Do not wait for the cadence engine. Then ship M2 (full desk + backfill). P2/P3 apply to each milestone, sized to what it contains.
 
 ## P1 — Build
 
@@ -99,29 +99,25 @@ Also prove: generic admin and foreign rep denied at API, BFF and stream; no reti
 For each failure: file it in LEDGER as blocked with the scenario, owning lane and fix; fix it (or hand back) and re-run. Record docs/sales-outreach-desk/workspace/evidence/VERIFY.md with pass/fail per scenario, screenshots and exact commands. Mark items accepted only with evidence.
 ```
 
-## P4 — Release prep (Integrator)
+## P4/P5 — Release, backfill and operate (RELEASE agent, FAST-01)
 
-- Run `pnpm finish-work --provider <provider>` in the server repo, per its AGENTS.md. Run the equivalent quality pass in admin.
-- Open PRs `feat/outreach-desk → main` in both repos. Each PR body includes: the summary, the migrations/indexes list, the new env names (add them to `docs/knowledge/environment.md` first), new crons, the release checklist below, and a rollback note. Rollback: every control is false by default, so reverting the deploy plus flipping `desk_enabled` off is enough; the new collections are additive.
-- Do not merge or deploy.
+Run this where production credentials already exist: this machine, which has the Vercel CLI, the server `.env`/ops credentials and the RingCentral JWT. A cloud session can do it instead if those secrets are provided to it. Run it once for **M1**, then again for **M2**.
 
-## P5 — Release and pilot (the user runs or explicitly authorizes each step)
+```text
+You are RELEASE for the Sales Outreach Desk. You are authorized by FAST-01 (docs/sales-outreach-desk/FAST-TRACK.md) to merge to main (which auto-deploys through the Vercel Production workflows), build production indexes, run the RingCentral proof, create/update the app-owned rep_sms subscription, install configuration, turn on controls, run the enrollment backfill and fix forward. Read FAST-TRACK.md fully, then IMPLEMENTATION-PLAN.md, RINGCENTRAL-CAPTURE.md and the evidence/LEDGER of both repos.
+Milestone: <M1|M2>.
+Run the FAST-TRACK "Operating sequence" steps that belong to this milestone:
+- M1: steps 1–5.
+- M2: steps 1–7, skipping anything already done.
+Deploy the server before admin. Wait for each GitHub Actions production run to go green (gh run watch) and smoke-test the existing features before turning anything on.
+Never contact customers, never delete or rewrite existing production data, never clear a contact restriction, never print secrets.
+If an existing feature breaks, revert the merge commit on main at once, then fix on feat/outreach-desk and redeploy. If only the desk breaks, fix and redeploy (or switch the control off as a quick mute).
+Record every command, deploy URL/run id, count, reconciliation and fix in docs/sales-outreach-desk/workspace/evidence/RELEASE.md and commit it on feat/outreach-desk. Finish with: what is live, the counts per enrollment partition, the one-rep reconciliation result, open issues.
+```
 
-| # | Step | Command / where | Check |
-| --- | --- | --- | --- |
-| 1 | Merge the server PR, then the admin PR | GitHub | CI green |
-| 2 | Deploy server, then admin, with all controls false | Vercel (existing workflow) | Desk shows "not available yet"; Numbers and Accounts still work at `/outreach-desk?view=numbers` |
-| 3 | Build the new indexes on production | Server index script, named target, report first | Each index present; query plans use them |
-| 4 | RingCentral SMS access proof (E01, read-only) | `ops/ringcentral/prove-rep-sms-access.ts` | 200s for every rep mailbox; a rep's app-sent SMS is visible as Outbound/Sent |
-| 5 | Create or update the `rep_sms` subscription and add `verificationToken` to `calls` | Subscription ops command (dry run, then apply) | Both subscriptions `Active`; health check green |
-| 6 | Install the approved policy (FINAL-01). Set roster, work schedules and goals. Create the Manager users. Review the 15 inert restrictions | Install script, then `/outreach-desk?view=settings` and the Users tab | Configuration revision 1+; no validation blockers |
-| 7 | Turn on `rep_sms_capture_enabled`, `goal_metrics_enabled` and `cadence_shadow_enabled` | Settings | Freshness chips healthy; goal counts reconcile against the RingCentral call log for one rep |
-| 8 | Enrollment **report** for about 20 Leads across 2–3 reps | Settings → Enrollment (or CLI) | Preview reviewed; zero writes |
-| 9 | **Apply** in shadow, then observe one full working date | Same | Projections match expectation; mismatches fixed |
-| 10 | Activate the cohort at an 08:00 New York boundary (`cadence_enforcement_enabled`, `desk_enabled`); reps sign in | Settings | One full working date verified (MANUAL-START step 6) |
-| 11 | Turn on intake admission; expand existing Leads in reviewed cohorts | Settings | Before cohorts larger than a few hundred, measure oplog/headroom (SPECIFICATION §18.5) |
-
-An agent can prepare any of these steps for the user, as a dry run or as exact commands. It runs one only after the user says go for that specific step.
+After each release:
+- The Owner reviews the 15 inert restrictions and creates Manager users in Settings and the Users tab.
+- Agents keep fixing defects found in use, on `feat/outreach-desk`, then merge and deploy.
 
 ## Coordination rules (all phases)
 
@@ -132,5 +128,5 @@ An agent can prepare any of these steps for the user, as a dry run or as exact c
 - **Packet changes:**
   - The server copy is canonical. After any edit, regenerate `PACKET-MANIFEST.json` and copy the packet to admin, then run `validate.mjs` in both repos.
   - Lanes do not edit the packet except for LEDGER and evidence.
-- **When to stop and ask the user:** a business rule that isn't in SPECIFICATION or FINAL-POLICY-REVIEW. A need for production data or credentials. A change to Numbers/Accounts behaviour. Anything in P5.
-- **Branch hygiene:** no force-push, reset or clean on shared branches, and no pushes to `main` except through the P4 PRs.
+- **When to stop and ask the user:** a business rule that isn't in SPECIFICATION or FINAL-POLICY-REVIEW. A change to Numbers/Accounts behaviour. Anything FAST-TRACK.md lists as "Still not allowed".
+- **Branch hygiene:** no force-push, reset or clean on shared branches, and no pushes to `main` except by the RELEASE agent.
