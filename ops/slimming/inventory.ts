@@ -29,6 +29,7 @@ import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { listBlobs, listTopLevelFolders } from "./lib/blob";
 import { clusterFingerprint, hasFlag, argValue, loadSlimmingEnv, SERVER_ROOT, WORKSPACE_ROOT } from "./lib/env";
 import { loadRehearsalEnv, resolveSlimmingTarget } from "./lib/rehearsal";
+import { manifestPolicyDrift, unsetPathFilter } from "./lib/purge-rules";
 import { type CollectionInfo, type CollStats, type IndexInfo, ReadOnlyCluster } from "./lib/guarded-mongo";
 import {
   type Cleanup,
@@ -44,6 +45,7 @@ import {
   ADMIN_AUTH_DATABASE,
   ADMIN_DROP_COLLECTIONS,
   ADMIN_NEVER_DROP,
+  CALL_INTERACTION_DEAD_PATHS,
   CLEANUP_STATUS,
   CONTACT_NUMBER_DEAD_FIELDS,
   CONTACT_NUMBER_REVIEW_FIELDS,
@@ -325,6 +327,11 @@ async function main(): Promise<void> {
     }
     const contactNumbersDeadMatches = await c.count(DB.main, "contact_numbers", { $or: CONTACT_NUMBER_DEAD_FIELDS.map((f) => ({ [f]: { $exists: true } })) });
     const contactNumbersReviewMatches = await c.count(DB.main, "contact_numbers", { $or: CONTACT_NUMBER_REVIEW_FIELDS.map((f) => ({ [f]: { $exists: true } })) });
+    // C7: pointers into the dropped lead_conversations, per path and in total (the cleanup's own selection).
+    const callInteractionPointerMatches = await c.count(DB.main, "call_interactions", { $or: CALL_INTERACTION_DEAD_PATHS.map(unsetPathFilter) });
+    const callInteractionPointerPaths = Object.fromEntries(
+      await Promise.all(CALL_INTERACTION_DEAD_PATHS.map(async (path) => [path, await c.count(DB.main, "call_interactions", unsetPathFilter(path))] as const)),
+    );
 
     // 5. Human/provider facts and their provenance.
     log("[inventory] human facts");
@@ -454,6 +461,7 @@ async function main(): Promise<void> {
       sync_state: syncState,
       field_discovery: discovery,
       contact_numbers_cleanup: { dead_field_matches: contactNumbersDeadMatches, review_field_matches: contactNumbersReviewMatches },
+      call_interactions_cleanup: { pointer_matches: callInteractionPointerMatches, by_path: callInteractionPointerPaths },
       human_facts: humanFacts,
       audit_events: {
         by_kind: auditEvents,
@@ -481,7 +489,7 @@ async function main(): Promise<void> {
       // never a general skip. Only a loopback rehearsal (no Blob, empty key list) writes a manifest without it.
       if (!target.rehearsal && typeof blob?.objects !== "number")
         throw new Error(`--write-manifest needs the Blob listing (${String(blob?.skipped ?? "no listing")}); set BLOB_READ_WRITE_TOKEN and drop --skip-blob`);
-      const manifest = buildManifest({ rehearsal: target.rehearsal, observedAt, fingerprint, replicaSet, main, historical, adminAuth, jobsByStageStatus, syncState, contactNumbersDeadMatches, contactNumbersReviewMatches, auditRetiredMatches, blobKeys, blob, source: inventory.source, databases });
+      const manifest = buildManifest({ rehearsal: target.rehearsal, observedAt, fingerprint, replicaSet, main, historical, adminAuth, jobsByStageStatus, syncState, contactNumbersDeadMatches, contactNumbersReviewMatches, callInteractionPointerMatches, auditRetiredMatches, blobKeys, blob, source: inventory.source, databases });
       mkdirSync(dirname(target.manifestPath), { recursive: true });
       writeFileSync(target.blobKeysPath, `${JSON.stringify(blobKeys, null, 1)}\n`);
       writeFileSync(target.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -516,6 +524,7 @@ type BuildInput = {
   syncState: Array<{ scope: string; class: string }>;
   contactNumbersDeadMatches: number;
   contactNumbersReviewMatches: number;
+  callInteractionPointerMatches: number;
   auditRetiredMatches: number;
   blobKeys: string[];
   blob: Document | null;
@@ -640,6 +649,16 @@ function buildManifest(input: BuildInput): Manifest {
       status: CLEANUP_STATUS["C5-contact-numbers-retention-fields"],
       spec: "SPEC §7.4",
     },
+    {
+      id: "C7-call-interactions-conversation-pointers",
+      kind: "unset_fields",
+      db: DB.main,
+      collection: "call_interactions",
+      fields: [...CALL_INTERACTION_DEAD_PATHS],
+      expected_matches: input.callInteractionPointerMatches,
+      status: CLEANUP_STATUS["C7-call-interactions-conversation-pointers"],
+      spec: "SPEC §7.2/§7.4 (pointers into the dropped lead_conversations; S-AI CallInteraction trim)",
+    },
   ];
 
   const protectedRows: ManifestTargets["protected"] = [];
@@ -677,6 +696,8 @@ function buildManifest(input: BuildInput): Manifest {
     protected: protectedRows,
   };
   assertManifestInvariants(targets);
+  const drift = manifestPolicyDrift(targets);
+  if (drift.length) throw new Error(`the generated manifest differs from policy.ts (a generator bug):\n  - ${drift.join("\n  - ")}`);
   return {
     version: "slimming-deletion-manifest-v1",
     generated_at: input.observedAt,

@@ -229,12 +229,23 @@ export class PurgeCluster extends ReadOnlyCluster {
     return new PurgeCluster(await openClient(uri, env, "purge"), "purge");
   }
 
-  /** `$unset` on the given ids, re-checking `filter` so a concurrently changed document is skipped. */
-  async unsetFields(db: string, name: string, ids: ObjectId[], filter: Filter<Document>, fields: readonly string[]): Promise<number> {
-    if (!ids.length || !fields.length) return 0;
-    const unset = Object.fromEntries(fields.map((f) => [f, ""]));
-    const result = await this.client.db(db).collection(name).updateMany({ $and: [{ _id: { $in: ids } }, filter] }, { $unset: unset });
-    return result.modifiedCount;
+  /**
+   * `$unset` on the given ids, one update per path, each re-checking that path's own filter (so an all-elements
+   * `a.$[].b` path only runs where `a` is an array that carries `b`). Returns how many of `ids` matched `filter` before
+   * the updates, i.e. the documents this page cleaned.
+   */
+  async unsetPaths(
+    db: string,
+    name: string,
+    ids: ObjectId[],
+    filter: Filter<Document>,
+    paths: ReadonlyArray<{ path: string; filter: Filter<Document> }>,
+  ): Promise<number> {
+    if (!ids.length || !paths.length) return 0;
+    const collection = this.client.db(db).collection(name);
+    const touched = await collection.countDocuments({ $and: [{ _id: { $in: ids } }, filter] });
+    for (const { path, filter: pathFilter } of paths) await collection.updateMany({ $and: [{ _id: { $in: ids } }, pathFilter] }, { $unset: { [path]: "" } });
+    return touched;
   }
 
   async updateByIds(db: string, name: string, ids: ObjectId[], filter: Filter<Document>, update: UpdateFilter<Document>): Promise<number> {

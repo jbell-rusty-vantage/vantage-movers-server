@@ -20,7 +20,22 @@ export type BackupEntry = {
   sha256: string;
   bytes: number;
   indexes: Document[];
+  /** Set on cleanup selections: the cleanup whose mutations this file covers (the initial selection and any extras). */
+  cleanup_id?: string;
 };
+
+/** Stable identity of a document `_id` (any BSON type) for backup-coverage checks. */
+export const idKey = (id: unknown): string => BSON.EJSON.stringify({ id } as Document, { relaxed: true });
+
+/** The `_id` keys (see `idKey`) of every document in a backup file. */
+export async function readBackupIdKeys(file: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  for await (const line of createInterface({ input: createReadStream(file).pipe(createGunzip()), crlfDelay: Infinity })) {
+    if (!line) continue;
+    keys.add(idKey((BSON.EJSON.parse(line, { relaxed: false }) as Document)._id));
+  }
+  return keys;
+}
 
 export async function writeBackupFile(source: AsyncIterable<Document>, file: string): Promise<{ documents: number; sha256: string; bytes: number }> {
   let documents = 0;

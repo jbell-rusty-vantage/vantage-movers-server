@@ -57,8 +57,9 @@ export type Cleanup =
       kind: "unset_fields";
       db: string;
       collection: string;
+      /** Dotted paths; at most one inner all-elements `$[]` (`recordings.$[].lead_conversation_id`), see `unsetPathFilter`. */
       fields: string[];
-      /** Documents carrying at least one field (an `$or` of `$exists`). */
+      /** Documents carrying at least one field (an `$or` of each path's `unsetPathFilter`). */
       expected_matches: number;
       status: CleanupStatus;
       spec: string;

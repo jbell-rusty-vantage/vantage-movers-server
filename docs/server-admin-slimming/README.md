@@ -12,6 +12,8 @@ Read in this order:
 4. [Data deletion and storage runbook](DATA-AND-STORAGE.md): collection classification, exact-manifest deletion process, restore boundary, and capacity controls.
 5. [Source inventory](SOURCE-INVENTORY.md): generated search inventory for follow-up implementation; references include retained callers and must not be treated as a deletion list.
 6. [Execution ledger](LEDGER.md), [evidence](evidence/) and the [deletion manifest](DELETION-MANIFEST.md): what was implemented (branch `slim/server-admin`), verified and still owed.
+7. [Cutover runbook](CUTOVER.md): the ordered deploy, old-deployment removal, fence, quiet-snapshot, purge and recreation-check steps with exact commands. Why the old deployments must go first is in the [pre-deploy audit](evidence/PREDEPLOY-AUDIT.md).
+8. [New-desk contract delta](NEW-DESK-DELTA.md): what the Sales Outreach Desk coordinator must record (deleted evidence, retired `/outreach/:id` ids, inert human facts, retained authorities).
 
 **Execution status (2026-10-04):** waves 1 and 2 are implemented on `slim/server-admin` in the server, Admin and MCP repositories; the ledger is authoritative for status. The Service docs under `docs/knowledge/` now describe the slim code: removed capabilities are kept as `status: retired` stubs (`pnpm okf:query --status retired`), and [`docs/knowledge/environment.md`](../knowledge/environment.md) lists the environment names to delete from Vercel after the deploy.
 

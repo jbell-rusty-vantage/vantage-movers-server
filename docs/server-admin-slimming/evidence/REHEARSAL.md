@@ -195,3 +195,146 @@ Dropped only databases this lane created, on loopback `csi01`:
 - **Agent `granot_identity.username` unique index never builds** (§1). It needs an owner decision and a production duplicate check before the spec is fixed.
 - **Production `--write-manifest` now requires `BLOB_READ_WRITE_TOKEN`.** That is intended: the tracked manifest already carries 3,017 keys. Regenerate it after the deploy and quiesce, immediately before `--apply`, because the hash includes storage bytes.
 - **This rehearsal ran on synthetic data, not a restored production copy.** SLIM-09 also asks for a run on a restored production-shaped dataset, plus storage and latency comparisons; neither is covered here. Blob backup and delete paths were not exercised: the rehearsal never calls Blob by design, and they are covered only by unit tests.
+
+## 8. Lane HARDEN: C7 and the purge-safety fixes (2026-10-04)
+
+Branch `slim/server-admin` at server `709480d3` plus this lane's uncommitted changes. The rules are the same as above:
+
+- every write went to the loopback replica `csi01`;
+- `BLOB_READ_WRITE_TOKEN` was unset and `DOTENV_CONFIG_PATH=C:/nonexistent.env`;
+- no production system was touched.
+
+The driver scripts and logs are in the session scratchpad `harden-rehearsal/` (`run1.sh`, `run2.sh`, `*.log`; synthetic data only).
+
+### 8.1 What changed in `ops/slimming`
+
+**Cleanup gap (new C7).** `call_interactions` still carried `recordings[].lead_conversation_id` and the `recording_discovery` sub-document. Both point into the dropped `lead_conversations`, and the slim schema no longer declares either.
+
+- C7 is defined in `policy.ts` (`CALL_INTERACTION_DEAD_PATHS`, `CLEANUP_STATUS`/`CLEANUP_SCOPES`). It runs `$unset recording_discovery` and `$unset recordings.$[].lead_conversation_id`.
+- Each path is a separate update with its own filter (`unsetPathFilter`). The `$[]` update runs only where `recordings` is an array and some element carries the field, so it can never fail on a document.
+- `assertUnsetPath` validates the paths: dotted names, with at most one inner `$[]`.
+- `inventory.ts` counts and manifests C7. Backup before mutation applies as for C1–C6.
+- The stale `call_interaction_discovery_state` index is left alone: the guard never sends `dropIndexes`.
+
+**purge-safety-1: the manifest scope was not tied to the policy.** `manifestPolicyDrift(targets)` now re-derives the whole allowed scope from `policy.ts`:
+
+- Every drop or absent target must be in `MAIN_/ADMIN_DROP_COLLECTIONS` for its own database, and every policy target must appear exactly once.
+- The only database drop allowed is `vantagemovershistorical`.
+- The protected list must equal `NEVER_DROP` + `ADMIN_NEVER_DROP`.
+- Every `CLEANUP_SCOPES` id must appear exactly once, with the policy's status, kind, collection, fields, stages, reason, key field and filter. Sync-scope key values may be a subset of the policy list, never another value.
+- `inventory.ts` refuses to write a manifest that drifts.
+
+**purge-safety-6: drift was only printed in a dry run.** Drift is now a problem. The dry-run verdict lists it (`manifest/policy drift: …`), and `--apply` aborts on it before connecting or creating a run directory.
+
+**purge-safety-2: a cleanup could mutate documents its backup does not hold.**
+
+- Each cleanup loads the `_id`s of every backup file this run recorded for it (`cleanup_id` on the backup entry).
+- Every page is checked before it is mutated, in the terminalize, delete and generic cleanup paths.
+- An id not yet backed up is first written to a verified `cleanup-<id>-extra-<n>.ejson.gz` (count and sha256 read back) and logged as `c.cleanup_extra_backup`.
+- If an id cannot be backed up and the document still exists, the run aborts.
+- An interrupted step (b) restarts from an empty backup list, so no partial entry survives.
+
+**purge-safety-5: `--resume` trusted old backups.** Before the purge client connects, `--resume` re-verifies every backup file of the run: Mongo files by count and sha256, Blob files by size and sha256 on disk (via `blob-backup.json`). The first mismatch refuses the resume (`resume refused: this run's backups no longer verify`).
+
+**purge-safety-4: Blob delete scope with `--skip-blob-backup`.**
+
+- Step (d) now takes a fresh listing immediately before deleting (`blobDeletePlan`).
+- Any object under `conversations/` that the manifest does not list aborts step (d) before anything is deleted. A manifest key outside the prefix is also a problem.
+- `del` only ever receives present manifest keys, so `--skip-blob-backup` changes step (b) only.
+- Steps (a) and (g) still fail on unlisted objects.
+- This path is not exercised here (a rehearsal never calls Blob); unit tests cover it.
+
+**Tests.** `ops/slimming/lib/slimming.test.ts` has 9 new or rewritten tests:
+
+- policy drift on cleanups, including a manifest without C7;
+- policy drift on drop targets, absent targets, the database drop and the protected list;
+- the C7 path filters and the refused path shapes;
+- the Blob delete plan;
+- backup `_id` coverage;
+- resume re-verification of Mongo and Blob files;
+- the `purge.ts` wiring.
+
+**New read-only tool, `ops/slimming/cutover-check.ts`**, used by CUTOVER.md. It is guarded like `inventory.ts`, and its Blob access is `list` only. It has three modes:
+
+- `--agents`: duplicate `granot_identity.username` check, run before the deploy;
+- `--snapshot [--since] [--compare]`: per-target counts and last insert/update times, legacy jobs (with a by-dataset breakdown), the deployment stamp and the Blob prefix;
+- `--recreation`: run after the purge.
+
+A loopback run (`slimrehearsal_cmain`/`cadmin`, dropped afterwards) checked `--agents`, a `--compare` that caught a late write and `--recreation`. Two unit tests cover its findings logic.
+
+`node --import tsx --test --test-concurrency=2 ops/slimming/lib/slimming.test.ts ops/lib/*.test.ts` passes **42/42**. Server `tsc --noEmit` reports **0 errors**.
+
+### 8.2 Rehearsal run
+
+Databases: `slimrehearsal_hmain` and `slimrehearsal_hadmin`, plus the literal `vantagemovershistorical`.
+
+The seed is as in §4.1, without the live-lease row. It adds **`call_interactions` with 5 rows**:
+
+1. `recording_discovery` plus 2 recordings, one with a `lead_conversation_id` ObjectId and one with `null`;
+2. `recording_discovery: null` with `recordings: []`;
+3. one recording with no pointer and no discovery (C7 must leave it alone);
+4. one recording with a pointer and no discovery;
+5. a call with neither (`purged_at: null` only).
+
+It also creates the stale `call_interaction_discovery_state` index.
+
+1. **Manifest** (`inventory.ts --rehearsal --write-manifest`), hash `bfa0e1863b837a75…cddf`:
+   - 21 drop collections;
+   - the historical DB (3 collections);
+   - 43 protected names;
+   - 7 cleanups: C1 2, C2 9 `{pending 2, retry 1, paused 1, leased 1, dead_letter 1, completed 2, retired 1}`, C3 8, C6 5, C4 6, C5 2, **C7 3** (rows 1, 2 and 4).
+2. **Dry run:** `no problems`.
+3. **Tampered manifest, refused.** A copy of the manifest added `testimonials` as a drop target and removed `daily_operations_days` from the protected list. It was then rehashed, so the hash check alone would have accepted it.
+   - The dry run listed `manifest/policy drift: drop target slimrehearsal_hmain.testimonials is not in policy.ts MAIN_/ADMIN_DROP_COLLECTIONS` and `protected main namespaces differ from policy.ts NEVER_DROP`.
+   - `--apply` with the matching hash **ABORTED** with exit 1 (`the manifest is stale against policy.ts (2 difference(s))`). This happened before connecting, and no run directory was created.
+4. **Apply** (`--batch=2`): exit 0, deployed commit `709480d3`.
+   - 31 verified backups, 108 documents, including `cleanup-C7-call-interactions-conversation-pointers.ejson.gz` (3 docs, sha `764da9f4915c2c86…`).
+   - Cleanups: C1 2; C2 terminalized 5 and deleted 9; C3 8; C6 5; C4 6; C5 2; **C7 3**.
+   - 21 collections dropped and `vantagemovershistorical` dropped. Step (g) passed.
+5. **`rehearsal/verify.ts`: 138/138 checks passed.** The 6 new C7 checks:
+   - no `recording_discovery` remains;
+   - no `recordings.lead_conversation_id` remains;
+   - all 5 calls are kept;
+   - all 4 recordings are kept, in order (`r1,r2,r3,r4`);
+   - every recording still has exactly `observed_at` + `provider_recording_id` + `recording_type`;
+   - the unrelated `purged_at: null` is kept.
+
+   `call_interactions` kept its indexes, including the stale one. Every untouched namespace is byte-identical: Daily Operations, receipts, entity changes and Admin auth.
+6. **`--resume` of the finished run:** exit 0, `resume.backups_verified {"files":31}`. The before and after snapshots are identical.
+
+### 8.3 Coverage, corrupted resume and idempotency
+
+**Documents that start matching after step (b).** This simulates a crash after the backups.
+
+- On a copy of the run directory, C7 was rewound: removed from `cleanups_done`, checkpoint removed, run marked unfinished.
+- 2 new calls with pointers were then inserted. They are not in the C7 backup.
+- `--resume` exited 0. It logged `resume.backups_verified` (31 files), then `c.cleanup_extra_backup {"ids":2,"documents":2}`, then C7 processed 2, then step (g) passed.
+- The extra file holds both calls **before** mutation: `extra-a` with `recording_discovery`, `extra-b` with `lead_conversation_id`.
+- Afterwards, 0 documents carry a pointer.
+
+**Corrupted backup on resume.**
+
+- The same rewind was applied to another copy, 2 more pointer calls were inserted, and one byte of the C7 backup was flipped.
+- `--resume` **refused** with exit 1: `resume refused: this run's backups no longer verify: backup cleanup-C7-…ejson.gz does not verify (incorrect data check)`.
+- The 2 pointer calls were still present afterwards, so no mutation ran.
+
+**Fresh manifests on the purged state (C7 is idempotent end to end).**
+
+- Manifest 2: 0 drop collections, 21 absent targets, 0 databases, **C7 expected 2** (the calls left by the refused resume). The dry run reported `no problems`. Apply exited 0: C7 processed 2 and step (g) passed.
+- Manifest 3: **C7 expected 0**. Apply exited 0: C7 processed 0 and step (g) passed.
+- 0 documents carried a pointer throughout.
+
+### 8.4 Cleanup
+
+Dropped on loopback `csi01`:
+
+- `slimrehearsal_hmain` (43 collections) and `slimrehearsal_hadmin` (3), both created by this lane;
+- the leftover walk databases `testvantagemovers_walk09` (59) and `testvantagemovers_walk09admin` (1).
+
+`vantagemovershistorical` was already dropped by the rehearsal purge. The final listing is `admin`, `config` and `local`, with 0 collections under a retired name. The replica process was not stopped.
+
+### 8.5 Still open
+
+- The tracked `ops/slimming/deletion-manifest.json` predates wave 2 and C7, and the new drift check reports it as stale. The cutover regenerates it (CUTOVER.md); it is never applied as is.
+- Blob paths (`blobDeletePlan`, Blob re-verification on resume) are covered by unit tests only.
+- Index `call_interaction_discovery_state` stays in production after C7. It is harmless (every key is null) but wasted. Dropping it needs a separate, explicit operator step.

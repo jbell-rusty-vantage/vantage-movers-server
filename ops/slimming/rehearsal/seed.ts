@@ -2,13 +2,15 @@
  * SLIM-09 purge rehearsal: seeds a synthetic production-shaped dataset on a LOOPBACK replica.
  *
  *   MONGO_URI=mongodb://127.0.0.1:27189/?replicaSet=csi01 node --import tsx ops/slimming/rehearsal/seed.ts \
- *     --main-db=slimrehearsal_main --admin-db=slimrehearsal_admin --deployment-commit=<sha> [--live-legacy-lease]
+ *     --main-db=slimrehearsal_main --admin-db=slimrehearsal_admin --deployment-commit=<sha> [--live-legacy-lease] \n *     [--vercel-deployment-id=dpl_<id>]
  *
  * Creates, in the rehearsal main DB, every policy drop target, every protected collection, the mixed cleanup
- * collections with rows each cleanup must and must not touch, an unclassified collection, and the deployment stamp;
+ * collections with rows each cleanup must and must not touch (including the C7 `call_interactions` pointers into
+ * `lead_conversations`), an unclassified collection, and the deployment stamp;
  * the literal `vantagemovershistorical` database; and the rehearsal Admin auth DB (audit log + kept auth). Refuses
  * when any of the three databases already exists. Synthetic values only; no production data is read.
  * `--live-legacy-lease` adds one legacy-stage job whose lease is still live (the purge must abort on it).
+ * `--vercel-deployment-id` sets the stamp's `vercel_deployment_id` (default null), for the purge's old-deployment gate.
  */
 import { ObjectId } from "mongodb";
 import {
@@ -35,6 +37,8 @@ async function main(): Promise<void> {
   if (!REHEARSAL_DATABASE_PATTERN.test(mainDb) || !REHEARSAL_DATABASE_PATTERN.test(adminDb) || mainDb === adminDb)
     throw new Error("--main-db and --admin-db must be two distinct slimrehearsal_<suffix> names");
   if (!/^[0-9a-f]{7,40}$/.test(commit)) throw new Error("--deployment-commit must be a commit sha");
+  const vercelDeploymentId = arg("vercel-deployment-id") ?? null;
+  if (vercelDeploymentId !== null && !/^dpl_[A-Za-z0-9]+$/.test(vercelDeploymentId)) throw new Error("--vercel-deployment-id must be dpl_<id>");
   for (const db of [mainDb, adminDb, HISTORICAL_DATABASE]) assertRehearsalWritableDatabase(db);
 
   const client = await connectLoopbackReplica();
@@ -63,7 +67,7 @@ async function main(): Promise<void> {
     await main.collection("notification_deliveries").updateMany({}, { $set: { expires_at: new Date(now.getTime() + 365 * 24 * 60 * MINUTE) } });
 
     // 2. Protected namespaces: every NEVER_DROP name holds documents.
-    const special = new Set(["contact_numbers", "sales_intelligence_jobs", "sales_intelligence_sync_state", "sales_intelligence_audit_events", "daily_operations_events", "daily_operations_days", "granot_webhook_receipts", "entity_changes"]);
+    const special = new Set(["contact_numbers", "call_interactions", "sales_intelligence_jobs", "sales_intelligence_sync_state", "sales_intelligence_audit_events", "daily_operations_events", "daily_operations_days", "granot_webhook_receipts", "entity_changes"]);
     for (const name of NEVER_DROP) if (!special.has(name)) await insert(mainDb, name, many(2, (i) => ({ synthetic: "slim-rehearsal", seq: i })));
     await insert(mainDb, "testimonials", many(1, () => ({ synthetic: "slim-rehearsal" })));
     await insert(mainDb, "rehearsal_unclassified_collection", many(2, (i) => ({ synthetic: "slim-rehearsal", seq: i })));
@@ -84,6 +88,17 @@ async function main(): Promise<void> {
       { e164: "+15550000005", rollups: { calls_total: 4 } },
     ]);
     await main.collection("contact_numbers").createIndex({ e164: 1 }, { unique: true, name: "e164_1" });
+
+    // 3b. call_interactions (C7): the pointers into lead_conversations in every combination, plus calls C7 must leave alone.
+    const rec = (id: string, extra: Record<string, unknown> = {}) => ({ provider_recording_id: id, recording_type: "Automatic", observed_at: now, ...extra });
+    await insert(mainDb, "call_interactions", [
+      { session_key: "rehearsal-ci-1", recording_discovery: { state: "discovered", checked_at: now }, recordings: [rec("r1", { lead_conversation_id: new ObjectId() }), rec("r2", { lead_conversation_id: null })] },
+      { session_key: "rehearsal-ci-2", recording_discovery: null, recordings: [] },
+      { session_key: "rehearsal-ci-3", recordings: [rec("r3")] },
+      { session_key: "rehearsal-ci-4", recordings: [rec("r4", { lead_conversation_id: new ObjectId() })] },
+      { session_key: "rehearsal-ci-5", purged_at: null },
+    ]);
+    await main.collection("call_interactions").createIndex({ merged_into_id: 1, terminal: 1, "recording_discovery.state": 1 }, { name: "call_interaction_discovery_state" });
 
     // 4. sales_intelligence_jobs: legacy stages in every status, retained stages that must stay untouched.
     const job = (stage: string, status: string, extra: Record<string, unknown> = {}) => ({
@@ -119,7 +134,7 @@ async function main(): Promise<void> {
       ...[...RETIRED_SYNC_SCOPES, ...PENDING_SYNC_SCOPES].map((scope) => ({ scope, cursor: { at: now }, updatedAt: now })),
       ...KEPT_SYNC_SCOPES.filter((s) => s !== "deployment").map((scope) => ({ scope, cursor: { at: now }, updatedAt: now })),
       { scope: "rep_identity:rehearsal", cursor: { at: now }, updatedAt: now },
-      { scope: "deployment", deployment_commit: commit, commit_source: "rehearsal", vercel_deployment_id: null, recorded_at: now },
+      { scope: "deployment", deployment_commit: commit, commit_source: "rehearsal", vercel_deployment_id: vercelDeploymentId, recorded_at: now },
     ]);
     await main.collection("sales_intelligence_sync_state").createIndex({ scope: 1 }, { unique: true, name: "scope_1" });
 

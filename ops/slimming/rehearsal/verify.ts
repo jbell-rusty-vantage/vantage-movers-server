@@ -28,7 +28,7 @@ import { arg } from "./guard";
 
 type Snapshot = Record<string, "absent" | Record<string, { count: number; sha256: string; indexes: string[] }>>;
 /** Collections a cleanup legitimately changes; every other protected namespace must be byte-identical. */
-const CLEANED = new Set(["contact_numbers", "sales_intelligence_jobs", "sales_intelligence_sync_state", "sales_intelligence_audit_events"]);
+const CLEANED = new Set(["contact_numbers", "call_interactions", "sales_intelligence_jobs", "sales_intelligence_sync_state", "sales_intelligence_audit_events"]);
 
 async function main(): Promise<void> {
   const uri = (process.env.MONGO_URI ?? "").trim();
@@ -75,6 +75,17 @@ async function main(): Promise<void> {
     check((await c.count(main, "contact_numbers", { purged_at: { $type: "date" } })) === 3, "contact_numbers: purged_at kept on all 3 seeded rows");
     check((await c.count(main, "contact_numbers", { "rollups.calls_total": { $exists: true } })) === 5, "contact_numbers: retained rollups.calls_total kept on all 5 rows");
     check((await c.count(main, "contact_numbers")) === 5, "contact_numbers: no document deleted");
+
+    // call_interactions (C7): no pointer into lead_conversations remains; every call and every other recording field stays.
+    check((await c.count(main, "call_interactions", { recording_discovery: { $exists: true } })) === 0, "call_interactions: recording_discovery unset everywhere");
+    check((await c.count(main, "call_interactions", { "recordings.lead_conversation_id": { $exists: true } })) === 0, "call_interactions: recordings[].lead_conversation_id unset everywhere");
+    check((await c.count(main, "call_interactions")) === 5, "call_interactions: no document deleted");
+    const calls = await c.find(main, "call_interactions", {}, { sort: { session_key: 1 }, limit: 10 });
+    const recordingIds = calls.flatMap((call) => ((call.recordings as Array<Record<string, unknown>> | undefined) ?? []).map((r) => r.provider_recording_id));
+    check(recordingIds.join() === "r1,r2,r3,r4", "call_interactions: all 4 recordings kept, in order", recordingIds);
+    const keptFields = calls.flatMap((call) => ((call.recordings as Array<Record<string, unknown>> | undefined) ?? []).map((r) => Object.keys(r).sort().join("+")));
+    check(keptFields.every((f) => f === "observed_at+provider_recording_id+recording_type"), "call_interactions: recording_type/observed_at kept on every recording", keptFields);
+    check(calls.find((call) => call.session_key === "rehearsal-ci-5")?.purged_at === null, "call_interactions: unrelated purged_at:null kept");
 
     // Jobs: no legacy-stage row left; retained-stage rows untouched (status, lease, epoch, timestamps as seeded).
     check((await c.count(main, "sales_intelligence_jobs", { stage: { $in: [...LEGACY_JOB_STAGES] } })) === 0, "jobs: 0 legacy-stage rows remain");

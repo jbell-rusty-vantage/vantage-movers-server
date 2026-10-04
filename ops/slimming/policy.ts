@@ -255,6 +255,15 @@ export const CONTACT_NUMBER_DEAD_FIELDS = [
 export const CONTACT_NUMBER_REVIEW_FIELDS = ["content_purge_pending", "retention_epoch", "evidence_fence"] as const;
 
 /**
+ * CallInteraction pointers into the dropped `lead_conversations` (C7). The slim schema (`src/models/CallInteraction.ts`)
+ * no longer declares `recordings[].lead_conversation_id` or the `recording_discovery` sub-document, and no retained
+ * reader or writer names either (S-AI → CallInteraction trim, INTEGRATION-SERVER.md). `recordings.$[]...` is an
+ * all-elements `$unset`: every other recording field (`provider_recording_id`, `recording_type`, `observed_at`) stays.
+ * The stale `call_interaction_discovery_state` index is not touched here (the purge guard never sends `dropIndexes`).
+ */
+export const CALL_INTERACTION_DEAD_PATHS = ["recording_discovery", "recordings.$[].lead_conversation_id"] as const;
+
+/**
  * `sales_intelligence_sync_state` scopes, exact. Owners: `outreach/worker.ts` (ensure, entity-change cursor,
  * repair watermarks, `attention_publish`), `outreach/bandTransitions.ts` (`attention_publish_fence:*`),
  * `outreach/attentionArtifactStore.ts` (`attention_artifacts:*`), `analysis/scheduling.ts`
@@ -356,7 +365,33 @@ export const CLEANUP_STATUS = {
   "C4-retired-audit-events": "final",
   "C5-contact-numbers-retention-fields": "final",
   "C6-outreach-cursor-sync-scopes": "final",
+  "C7-call-interactions-conversation-pointers": "final",
 } as const satisfies Record<string, "final" | "pending_wave3">;
+
+/**
+ * The exact scope of every cleanup, keyed by id. `inventory.ts` builds the manifest cleanups from this table and
+ * `manifestPolicyDrift` (lib/purge-rules.ts) refuses a manifest whose cleanup differs from it in kind, collection,
+ * fields, stages, key field, key values (a manifest may list fewer scopes than the policy, never another one) or filter.
+ * Every id here must appear in the manifest: a manifest generated before a cleanup was added is stale.
+ */
+export type CleanupScope =
+  | { kind: "unset_fields"; collection: string; fields: readonly string[] }
+  | { kind: "retire_jobs"; collection: "sales_intelligence_jobs"; stages: readonly string[]; reason: string }
+  | { kind: "delete_exact"; collection: string; key_field: string; key_values: readonly string[] }
+  | { kind: "delete_filter"; collection: string; filter: Record<string, unknown> };
+export const CLEANUP_SCOPES = {
+  "C1-contact-numbers-dead-fields": { kind: "unset_fields", collection: "contact_numbers", fields: CONTACT_NUMBER_DEAD_FIELDS },
+  "C2-legacy-stage-jobs": { kind: "retire_jobs", collection: "sales_intelligence_jobs", stages: LEGACY_JOB_STAGES, reason: RETIRED_JOB_REASON },
+  "C3-retired-sync-scopes": { kind: "delete_exact", collection: "sales_intelligence_sync_state", key_field: "scope", key_values: RETIRED_SYNC_SCOPES },
+  "C4-retired-audit-events": {
+    kind: "delete_filter",
+    collection: "sales_intelligence_audit_events",
+    filter: { event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS] }, "actor.kind": { $in: [...RETIRED_AUDIT_ACTOR_KINDS] } },
+  },
+  "C5-contact-numbers-retention-fields": { kind: "unset_fields", collection: "contact_numbers", fields: CONTACT_NUMBER_REVIEW_FIELDS },
+  "C6-outreach-cursor-sync-scopes": { kind: "delete_exact", collection: "sales_intelligence_sync_state", key_field: "scope", key_values: PENDING_SYNC_SCOPES },
+  "C7-call-interactions-conversation-pointers": { kind: "unset_fields", collection: "call_interactions", fields: CALL_INTERACTION_DEAD_PATHS },
+} as const satisfies Record<keyof typeof CLEANUP_STATUS, CleanupScope>;
 
 /** Blob prefix written only by conversation media (`src/config/domain/conversations.ts`). */
 export const CONVERSATION_BLOB_PREFIX = "conversations/";

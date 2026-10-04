@@ -1,22 +1,28 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectId } from "mongodb";
 import { CSI_RETIRED_JOB_STAGES } from "../../../src/config/domain/salesIntelligence";
 import {
+  ADMIN_DROP_COLLECTIONS,
+  ADMIN_NEVER_DROP,
+  CALL_INTERACTION_DEAD_PATHS,
+  CLEANUP_SCOPES,
   CLEANUP_STATUS,
   CONTACT_NUMBER_DEAD_FIELDS,
   CONTACT_NUMBER_REVIEW_FIELDS,
   HISTORICAL_DATABASE,
   LEGACY_JOB_STAGES,
+  MAIN_DROP_COLLECTIONS,
+  NEVER_DROP,
   RETIRED_AUDIT_ACTOR_KINDS,
   RETIRED_AUDIT_EVENT_KINDS,
 } from "../policy";
 import type { Cleanup } from "./manifest";
-import { verifyBackupFile, verifyBlobBackupFile, writeBackupFile } from "./backup";
+import { idKey, readBackupIdKeys, verifyBackupFile, verifyBlobBackupFile, writeBackupFile } from "./backup";
 import { SERVER_ROOT, loadSlimmingEnv } from "./env";
 import { GUARD_EXIT_CODE, assertReadOnlyPipeline, isCommandAllowed } from "./guarded-mongo";
 import { type ManifestTargets, assertManifestInvariants, canonicalJson, dropCountMatches, loadManifest, manifestHash } from "./manifest";
@@ -24,15 +30,31 @@ import {
   BASELINE_COMMIT,
   assertBackupDir,
   assertClosedFilter,
+  blobDeletePlan,
   cleanupFilter,
   deploymentProblems,
+  idsMissingFromBackup,
   manifestPolicyDrift,
+  runBackupProblems,
+  unsetPathFilter,
   terminalJobsFilter,
   terminalizeFilter,
   unlistedBlobProblems,
   verifiedFullBackupProblem,
 } from "./purge-rules";
 import { PRODUCTION_MANIFEST_PATH, loadRehearsalEnv, resolveSlimmingTarget } from "./rehearsal";
+import { type Snapshot, snapshotFindings } from "../cutover-check";
+import {
+  CLAIMABLE_JOB_STATUSES,
+  type CutoverGate,
+  type NewestWrite,
+  OLD_DEPLOYMENT_DRAIN_MS,
+  WRITE_TIMESTAMP_FIELDS,
+  claimableBeforeFilter,
+  cutoverGateProblems,
+  newestWritePipeline,
+  writesAfterProblems,
+} from "./write-gate";
 
 const baseTargets = (): ManifestTargets => ({
   cluster: { fingerprint: "f", replica_set: "rs" },
@@ -45,6 +67,39 @@ const baseTargets = (): ManifestTargets => ({
   blob: null,
   protected: [],
 });
+
+/** A manifest exactly as `inventory.ts` would build it from `policy.ts` (counts and UUIDs synthetic). */
+const policyTargets = (mainDb = "vantagemovers", adminDb = "vantageadmin"): ManifestTargets => {
+  const target = (db: string, name: string, t: { spec: string; owner: string; gate: string }) => ({ db, name, uuid: `u-${name}`, count: 1, size: 1, storage_size: 1, index_size: 1, ttl: false, ...t });
+  const cleanups = Object.entries(CLEANUP_SCOPES).map(([id, scope]): Cleanup => {
+    const base = { id, db: mainDb, status: (CLEANUP_STATUS as Record<string, "final" | "pending_wave3">)[id]!, spec: "" };
+    switch (scope.kind) {
+      case "unset_fields":
+        return { ...base, kind: "unset_fields", collection: scope.collection, fields: [...scope.fields], expected_matches: 1 };
+      case "retire_jobs":
+        return { ...base, kind: "retire_jobs", collection: "sales_intelligence_jobs", stages: [...scope.stages], expected_by_status: {}, reason: scope.reason };
+      case "delete_exact":
+        return { ...base, kind: "delete_exact", collection: scope.collection, key_field: scope.key_field, key_values: [...scope.key_values], expected_matches: 1 };
+      case "delete_filter":
+        return { ...base, kind: "delete_filter", collection: scope.collection, filter: JSON.parse(JSON.stringify(scope.filter)) as Record<string, unknown>, expected_matches: 1 };
+    }
+  });
+  return {
+    ...(mainDb === "vantagemovers" ? {} : { rehearsal: true as const }),
+    cluster: { fingerprint: "f", replica_set: "rs" },
+    main_database: mainDb,
+    admin_auth_database: adminDb,
+    drop_databases: [{ name: HISTORICAL_DATABASE, spec: "§3", gate: "g", size_on_disk: 1, collections: [{ name: "form_leads", uuid: "u1", count: 1 }] }],
+    drop_collections: [
+      ...Object.entries(MAIN_DROP_COLLECTIONS).map(([name, t]) => target(mainDb, name, t)),
+      ...Object.entries(ADMIN_DROP_COLLECTIONS).map(([name, t]) => target(adminDb, name, t)),
+    ],
+    absent_targets: [],
+    cleanups,
+    blob: null,
+    protected: [...NEVER_DROP.map((name) => ({ db: mainDb, name, uuid: `p-${name}`, count: 1 })), ...ADMIN_NEVER_DROP.map((name) => ({ db: adminDb, name, uuid: `p-${name}`, count: 1 }))],
+  };
+};
 
 describe("slimming driver guard", () => {
   it("allows reads and refuses every write in read mode", () => {
@@ -148,24 +203,78 @@ describe("purge rules", () => {
     }
   });
 
-  it("reports a manifest that is stale against policy.ts", () => {
-    const current: Cleanup[] = [
-      { id: "C1-contact-numbers-dead-fields", kind: "unset_fields", db: "vantagemovers", collection: "contact_numbers", fields: [...CONTACT_NUMBER_DEAD_FIELDS], expected_matches: 1, status: CLEANUP_STATUS["C1-contact-numbers-dead-fields"], spec: "" },
-      { id: "C2-legacy-stage-jobs", kind: "retire_jobs", db: "vantagemovers", collection: "sales_intelligence_jobs", stages: [...LEGACY_JOB_STAGES], expected_by_status: {}, reason: "r", status: CLEANUP_STATUS["C2-legacy-stage-jobs"], spec: "" },
-      { id: "C4-retired-audit-events", kind: "delete_filter", db: "vantagemovers", collection: "sales_intelligence_audit_events", filter: { event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS] }, "actor.kind": { $in: [...RETIRED_AUDIT_ACTOR_KINDS] } }, expected_matches: 1, status: CLEANUP_STATUS["C4-retired-audit-events"], spec: "" },
-    ];
+  it("reports a manifest whose cleanups are stale against policy.ts", () => {
+    const current = policyTargets();
     assert.deepEqual(manifestPolicyDrift(current), []);
+    const byId = (id: string) => current.cleanups.find((c) => c.id === id)!;
     const stale: Cleanup[] = [
-      { ...current[0]!, fields: ["running_summary", "purged_at"] } as Cleanup,
-      { ...current[1]!, stages: ["analysis"] } as Cleanup,
-      { ...current[2]!, status: "pending_wave3" } as Cleanup,
-      { ...current[2]!, id: "C9-unknown" } as Cleanup,
+      { ...byId("C1-contact-numbers-dead-fields"), fields: ["running_summary", "purged_at"] } as Cleanup,
+      { ...byId("C2-legacy-stage-jobs"), stages: ["analysis"] } as Cleanup,
+      { ...byId("C4-retired-audit-events"), status: "pending_wave3" } as Cleanup,
+      { ...byId("C4-retired-audit-events"), id: "C9-unknown" } as Cleanup,
+      byId("C3-retired-sync-scopes"),
+      byId("C5-contact-numbers-retention-fields"),
+      byId("C6-outreach-cursor-sync-scopes"),
     ];
-    const drift = manifestPolicyDrift(stale);
+    const drift = manifestPolicyDrift({ ...current, cleanups: stale });
     assert.ok(drift.some((p) => p.includes("unsets purged_at")));
     assert.ok(drift.some((p) => p.includes("stages differ")));
     assert.ok(drift.some((p) => p.includes("is pending_wave3 in the manifest but final")));
     assert.ok(drift.some((p) => p.includes("C9-unknown is not in policy.ts")));
+    // A manifest generated before C7 existed is stale: every policy cleanup must be present.
+    assert.ok(drift.some((p) => p.includes("C7-call-interactions-conversation-pointers appears 0 times")));
+  });
+
+  it("ties every cleanup's collection, kind, scope and filter to policy.ts", () => {
+    const t = policyTargets();
+    const swap = (id: string, change: Record<string, unknown>) =>
+      manifestPolicyDrift({ ...t, cleanups: t.cleanups.map((c) => (c.id === id ? ({ ...c, ...change } as Cleanup) : c)) });
+    assert.ok(swap("C1-contact-numbers-dead-fields", { collection: "customers" }).some((p) => p.includes("unset_fields on customers in the manifest")));
+    assert.ok(swap("C7-call-interactions-conversation-pointers", { fields: ["recording_discovery"] }).some((p) => p.includes("fields differ")));
+    assert.ok(swap("C7-call-interactions-conversation-pointers", { fields: ["recording_discovery", "recordings"] }).some((p) => p.includes("unsets recordings")));
+    assert.ok(swap("C3-retired-sync-scopes", { key_values: ["deployment"] }).some((p) => p.includes("deletes scope=deployment")));
+    assert.ok(swap("C3-retired-sync-scopes", { key_field: "_id" }).some((p) => p.includes("key field _id")));
+    // Fewer scopes than the policy (absent at observation) is fine.
+    assert.deepEqual(swap("C6-outreach-cursor-sync-scopes", { key_values: ["outreach_ensure"] }), []);
+    assert.ok(
+      swap("C4-retired-audit-events", { filter: { event_kind: { $in: ["intelligence.published"] }, "actor.kind": { $in: ["worker", "intelligence"] } } }).some((p) =>
+        p.includes("filter differs"),
+      ),
+    );
+    assert.ok(
+      swap("C4-retired-audit-events", { filter: { event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS] }, "actor.kind": { $in: ["worker", "intelligence", "owner"] } } }).some((p) =>
+        p.includes("filter differs"),
+      ),
+    );
+    // `$in` order does not matter.
+    assert.deepEqual(swap("C4-retired-audit-events", { filter: { "actor.kind": { $in: ["intelligence", "worker"] }, event_kind: { $in: [...RETIRED_AUDIT_EVENT_KINDS].reverse() } } }), []);
+    assert.ok(swap("C2-legacy-stage-jobs", { reason: "other" }).some((p) => p.includes("reason differs")));
+    assert.ok(manifestPolicyDrift({ ...t, cleanups: [...t.cleanups, t.cleanups[0]!] }).some((p) => p.includes("appears 2 times")));
+  });
+
+  it("ties drop targets, the database drop and the protected list to the policy allowlist", () => {
+    const t = policyTargets();
+    const extra = { ...t.drop_collections[0]!, name: "testimonials", uuid: "u-x" };
+    assert.ok(manifestPolicyDrift({ ...t, drop_collections: [...t.drop_collections, extra] }).some((p) => p.includes("vantagemovers.testimonials is not in policy.ts")));
+    assert.ok(
+      manifestPolicyDrift({ ...t, drop_collections: [...t.drop_collections, { ...extra, db: "vantageadmin", name: "operational_events" }] }).some((p) =>
+        p.includes("vantageadmin.operational_events is not in policy.ts"),
+      ),
+    );
+    const missing = manifestPolicyDrift({ ...t, drop_collections: t.drop_collections.filter((c) => c.name !== "outreach_followups") });
+    assert.ok(missing.some((p) => p.includes("vantagemovers.outreach_followups is neither dropped nor recorded absent")));
+    // Recording a target as absent instead of dropped is fine; listing it in both is not.
+    const absent = [{ db: "vantagemovers", name: "operational_report_runs", spec: "§4" }];
+    assert.deepEqual(manifestPolicyDrift({ ...t, drop_collections: t.drop_collections.filter((c) => c.name !== "operational_report_runs"), absent_targets: absent }), []);
+    assert.ok(manifestPolicyDrift({ ...t, absent_targets: absent }).some((p) => p.includes("appears 2 times")));
+    assert.ok(manifestPolicyDrift({ ...t, absent_targets: [{ db: "vantagemovers", name: "customers", spec: "x" }] }).some((p) => p.includes("vantagemovers.customers is not in policy.ts")));
+    assert.ok(manifestPolicyDrift({ ...t, drop_databases: [{ ...t.drop_databases[0]!, name: "vantagemovers_old" }] }).some((p) => p.includes("database drop vantagemovers_old")));
+    assert.ok(manifestPolicyDrift({ ...t, protected: t.protected.filter((p) => p.name !== "daily_operations_events") }).some((p) => p.includes("NEVER_DROP")));
+    assert.ok(manifestPolicyDrift({ ...t, protected: t.protected.filter((p) => p.name !== "admin_users") }).some((p) => p.includes("ADMIN_NEVER_DROP")));
+    // A rehearsal manifest is checked against its own database names.
+    const rehearsal = policyTargets("slimrehearsal_main", "slimrehearsal_admin");
+    assert.deepEqual(manifestPolicyDrift(rehearsal), []);
+    assert.ok(manifestPolicyDrift({ ...rehearsal, cleanups: rehearsal.cleanups.map((c) => ({ ...c, db: "vantagemovers" })) }).some((p) => p.includes("not the main database")));
   });
 
   it("only accepts closed delete filters", () => {
@@ -177,6 +286,21 @@ describe("purge rules", () => {
     assert.throws(() => assertClosedFilter({ scope: { $in: [] } }));
     assert.throws(() => assertClosedFilter({ scope: { $exists: true } }));
     assert.throws(() => assertClosedFilter({ scope: { $in: [{ $gt: 1 }] } }));
+  });
+
+  it("selects and unsets exact C7 paths, including the all-elements recordings path", () => {
+    assert.deepEqual([...CALL_INTERACTION_DEAD_PATHS], ["recording_discovery", "recordings.$[].lead_conversation_id"]);
+    assert.deepEqual(unsetPathFilter("recording_discovery"), { recording_discovery: { $exists: true } });
+    assert.deepEqual(unsetPathFilter("recordings.$[].lead_conversation_id"), { recordings: { $type: "array" }, "recordings.lead_conversation_id": { $exists: true } });
+    const c7 = policyTargets().cleanups.find((c) => c.id === "C7-call-interactions-conversation-pointers")!;
+    assert.equal(c7.collection, "call_interactions");
+    assert.deepEqual(cleanupFilter(c7), {
+      $or: [{ recording_discovery: { $exists: true } }, { recordings: { $type: "array" }, "recordings.lead_conversation_id": { $exists: true } }],
+    });
+    for (const bad of ["recordings.$.x", "recordings.$[i].x", "recordings.$[]", "a.$[].b.$[].c", "$set", "", "a..b", "A"]) assert.throws(() => unsetPathFilter(bad), bad);
+    // Never a retained recording field or the call itself.
+    for (const kept of ["recordings", "recordings.$[].provider_recording_id", "recordings.$[].observed_at", "recordings.$[].recording_type", "purged_at", "contact_number_id"])
+      assert.equal((CALL_INTERACTION_DEAD_PATHS as readonly string[]).includes(kept), false, kept);
   });
 
   it("builds exact cleanup filters", () => {
@@ -254,6 +378,19 @@ describe("purge hardening", () => {
     }
   });
 
+  it("deletes exactly the present manifest Blob keys and refuses before deleting when an unlisted object exists", () => {
+    const keys = ["conversations/a.mp3", "conversations/b.mp3", "conversations/c.mp3"];
+    const plan = blobDeletePlan([{ pathname: "conversations/a.mp3" }, { pathname: "conversations/c.mp3" }, { pathname: "dev-ops/keep.json" }], keys, "conversations/");
+    assert.deepEqual(plan, { toDelete: ["conversations/a.mp3", "conversations/c.mp3"], alreadyAbsent: 1, problems: [] });
+    const unlisted = blobDeletePlan([{ pathname: "conversations/a.mp3" }, { pathname: "conversations/new.mp3" }], keys, "conversations/");
+    assert.equal(unlisted.problems.length, 1);
+    assert.match(unlisted.problems[0]!, /conversations\/new\.mp3/);
+    assert.equal(unlisted.toDelete.includes("conversations/new.mp3"), false);
+    const outside = blobDeletePlan([{ pathname: "reports/x.pdf" }], ["reports/x.pdf"], "conversations/");
+    assert.deepEqual(outside.toDelete, []);
+    assert.match(outside.problems[0]!, /outside conversations\//);
+  });
+
   it("treats any object under conversations/ that the manifest does not list as a problem", () => {
     const keys = ["conversations/a.mp3", "conversations/b.mp3"];
     assert.deepEqual(unlistedBlobProblems([{ pathname: "conversations/a.mp3" }], keys, "conversations/"), []);
@@ -292,6 +429,72 @@ describe("purge hardening", () => {
     }
   });
 
+  it("finds the cleanup ids no backup holds, by _id identity", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "slimming-cover-"));
+    try {
+      const a = new ObjectId();
+      const b = new ObjectId();
+      async function* source() {
+        yield { _id: a, recording_discovery: null };
+        yield { _id: b, recordings: [{ lead_conversation_id: new ObjectId() }] };
+      }
+      const file = join(dir, "cleanup-C7.ejson.gz");
+      await writeBackupFile(source(), file);
+      const keys = await readBackupIdKeys(file);
+      assert.equal(keys.size, 2);
+      assert.ok(keys.has(idKey(new ObjectId(a.toHexString()))));
+      const extra = new ObjectId();
+      assert.deepEqual(idsMissingFromBackup([a, b, extra], keys), [extra]);
+      assert.deepEqual(idsMissingFromBackup([b], keys), []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("re-verifies every backup of a run on resume (Mongo and Blob files)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "slimming-resume-verify-"));
+    try {
+      async function* source() {
+        yield { _id: new ObjectId() };
+      }
+      const written = await writeBackupFile(source(), join(dir, "cleanup-C1.ejson.gz"));
+      const entry = { namespace: "vantagemovers.contact_numbers", filter: { x: 1 }, file: "cleanup-C1.ejson.gz", indexes: [], cleanup_id: "C1", ...written };
+      mkdirSync(join(dir, "blob", "conversations"), { recursive: true });
+      writeFileSync(join(dir, "blob", "conversations", "a.mp3"), Buffer.from("audio"));
+      const blob = await verifyBlobBackupFile(join(dir, "blob", "conversations", "a.mp3"), { listedSize: 5 });
+      const blobFiles = [{ key: "conversations/a.mp3", ...blob }];
+      assert.deepEqual(await runBackupProblems({ backup_done: true, backups: [entry] }, dir, blobFiles), []);
+      writeFileSync(join(dir, "blob", "conversations", "a.mp3"), Buffer.from("AUDIO"));
+      assert.match((await runBackupProblems({ backup_done: true, backups: [entry] }, dir, blobFiles))[0]!, /blob backup conversations\/a\.mp3 does not verify/);
+      const bytes = readFileSync(join(dir, entry.file));
+      bytes[bytes.length - 5] ^= 0xff;
+      writeFileSync(join(dir, entry.file), bytes);
+      const problems = await runBackupProblems({ backup_done: true, backups: [entry] }, dir, []);
+      assert.match(problems[0]!, /backup cleanup-C1\.ejson\.gz does not verify/);
+      rmSync(join(dir, entry.file));
+      assert.equal((await runBackupProblems({ backup_done: true, backups: [entry] }, dir, [])).length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("wires backup coverage, policy drift, resume re-verification and the Blob delete plan into purge.ts", () => {
+    const source = readFileSync(join(__dirname, "..", "purge.ts"), "utf8");
+    // Every mutation callback covers its ids first: terminalize, delete of terminal jobs, and the generic cleanups.
+    assert.equal(source.match(/await cover\(ids\);/g)?.length, 3);
+    assert.match(source, /const cover = await cleanupCoverage\(c, cleanup, runDir, log\);/);
+    assert.doesNotMatch(source, /unsetFields/);
+    // Drift is computed over the whole manifest, aborts apply and is a dry-run problem.
+    assert.match(source, /const drift = manifestPolicyDrift\(manifest\.targets\);/);
+    assert.match(source, /if \(drift\.length\) throw new PurgeAbort/);
+    assert.match(source, /\.\.\.drift\.map\(\(d\) => `manifest\/policy drift: \$\{d\}`\)/);
+    // Resume re-verifies the run's backups before anything else touches the cluster.
+    assert.ok(source.indexOf("runBackupProblems(log, runDir, blobFiles)") < source.indexOf("PurgeCluster.connectForPurge"));
+    assert.match(source, /blobDeletePlan\(await listBlobs\(env\.blobToken!, t\.blob\.prefix\), blobKeys, t\.blob\.prefix\)/);
+    assert.match(source, /deleteBlobKeys\(env\.blobToken!, toDelete\)/);
+    assert.match(source, /log\.backups = \[\];/);
+  });
+
   it("wires the hardening into purge.ts: unlisted Blob objects in (a)/(g), disk-checked Blob backups, idempotent drops", () => {
     const source = readFileSync(join(__dirname, "..", "purge.ts"), "utf8");
     assert.match(source, /problems\.push\(\.\.\.unlistedBlobProblems\(listed, blobKeys, t\.blob\.prefix\)\)/);
@@ -300,6 +503,41 @@ describe("purge hardening", () => {
     assert.match(source, /await reconcileAbsentDrops\(c, manifest, runDir, log\)/);
     assert.match(source, /e\.drop_collection_already_absent/);
     assert.match(source, /f\.drop_database_already_absent/);
+  });
+});
+
+describe("cutover check (read-only)", () => {
+  const row = (ns: string, extra: Partial<Snapshot["targets"][number]> = {}) => ({ ns, exists: true, uuid: "u", count: 3, last_insert_at: "2026-10-04T10:00:00.000Z", last_updated_at: "2026-10-04T10:05:00.000Z", ...extra });
+  const snap = (extra: Partial<Snapshot> = {}): Snapshot => ({
+    version: "slimming-cutover-snapshot-v1",
+    observed_at: "2026-10-04T12:00:00.000Z",
+    deployment: null,
+    targets: [row("vantagemovers.outreach_records"), row("vantagemovers.operational_report_runs", { exists: false, uuid: null, count: 0, last_insert_at: null, last_updated_at: null })],
+    historical: { exists: true, collections: [row("vantagemovershistorical.form_leads")] },
+    legacy_jobs: { by_status: { completed: 5, retired: 2 }, runnable: 0, live_leases: 0, expired_leases: 0, nonterminal_by_dataset: {} },
+    blob: { objects: 2, bytes: 10, last_uploaded_at: "2026-10-04T09:00:00.000Z" },
+    ...extra,
+  });
+
+  it("is quiet when nothing was written after the deploy and nothing changed between snapshots", () => {
+    assert.deepEqual(snapshotFindings(snap(), { since: "2026-10-04T11:00:00.000Z", earlier: snap() }), []);
+  });
+
+  it("flags writes after the deploy, growth between snapshots, recreation and runnable or leased legacy jobs", () => {
+    const later = snap({
+      targets: [row("vantagemovers.outreach_records", { count: 4, last_insert_at: "2026-10-04T11:30:00.000Z" }), row("vantagemovers.operational_report_runs", { uuid: "new", count: 0, last_insert_at: null, last_updated_at: null })],
+      legacy_jobs: { by_status: { pending: 1 }, runnable: 1, live_leases: 1, expired_leases: 1, nonterminal_by_dataset: { "csi-production/vantagemovers": 3 } },
+      blob: { objects: 3, bytes: 12, last_uploaded_at: "2026-10-04T11:45:00.000Z" },
+    });
+    const findings = snapshotFindings(later, { since: "2026-10-04T11:00:00.000Z", earlier: snap() });
+    assert.ok(findings.some((f) => f.includes("outreach_records: insert at 2026-10-04T11:30")));
+    assert.ok(findings.some((f) => f.includes("outreach_records: count 3 -> 4")));
+    assert.ok(findings.some((f) => f.includes("operational_report_runs: appeared")));
+    assert.ok(findings.some((f) => f.includes("Blob conversations/: upload at")));
+    assert.ok(findings.some((f) => f.includes("Blob conversations/: 2 -> 3 objects")));
+    assert.ok(findings.some((f) => f.includes("runnable")));
+    assert.ok(findings.some((f) => f.includes("live lease")));
+    assert.ok(findings.some((f) => f.includes("expired lease")));
   });
 });
 
@@ -384,5 +622,85 @@ describe("loopback rehearsal (SLIM-09)", () => {
     assert.match(purge, /assertTargetMatchesManifest\(target, manifest\)/);
     assert.match(purge, /!target\.rehearsal && !manifest\.targets\.blob/);
     assert.doesNotMatch(purge, /MANIFEST_PATH/);
+  });
+});
+
+describe("old-deployment and late-write gate (pre-deploy audit)", () => {
+  const now = new Date("2026-10-05T12:30:00.000Z");
+  const gate = (extra: Partial<CutoverGate> = {}): CutoverGate => ({
+    cutoverAt: "2026-10-05T12:00:00.000Z",
+    quietSince: "2026-10-05T12:10:00.000Z",
+    removedDeployments: ["dpl_old1", "dpl_adminOld2"],
+    oldDeploymentsKept: false,
+    ...extra,
+  });
+  const ctx = (extra: Partial<Parameters<typeof cutoverGateProblems>[1]> = {}) => ({ now, stampDeploymentId: "dpl_slim", claimableBeforeCutover: 7, ...extra });
+
+  it("passes with T0, a quiet window after T0 and the removed old deployments (pre-cutover jobs then run on slim code only)", () => {
+    assert.deepEqual(cutoverGateProblems(gate(), ctx()), []);
+  });
+
+  it("requires T0, the quiet instant and exactly one old-deployment disposition", () => {
+    const missing = cutoverGateProblems({ cutoverAt: undefined, quietSince: "nope", removedDeployments: [], oldDeploymentsKept: false }, ctx());
+    assert.ok(missing.some((p) => p.includes("--cutover-at=<ISO> is required")));
+    assert.ok(missing.some((p) => p.includes("--quiet-since=<ISO> is required")));
+    assert.ok(missing.some((p) => p.includes("exactly one of --old-deployments-removed")));
+    assert.ok(cutoverGateProblems(gate({ oldDeploymentsKept: true }), ctx()).some((p) => p.includes("exactly one of")));
+  });
+
+  it("refuses a quiet window before T0, instants in the future, bad ids and removing the slim deployment", () => {
+    assert.ok(cutoverGateProblems(gate({ quietSince: "2026-10-05T11:59:00.000Z" }), ctx()).some((p) => p.includes("is before --cutover-at")));
+    assert.ok(cutoverGateProblems(gate({ quietSince: "2026-10-05T13:00:00.000Z" }), ctx()).some((p) => p.includes("in the future")));
+    assert.ok(cutoverGateProblems(gate({ removedDeployments: ["https://old.vercel.app"] }), ctx()).some((p) => p.includes("not a Vercel deployment id")));
+    assert.ok(cutoverGateProblems(gate({ removedDeployments: ["dpl_old1", "dpl_slim"] }), ctx()).some((p) => p.includes("the slim deployment that wrote the stamp")));
+    assert.ok(cutoverGateProblems(gate(), ctx({ stampDeploymentId: null })).some((p) => p.includes("no vercel_deployment_id")));
+  });
+
+  it("with the old deployments kept, waits out queue retention + refresh max age + maxDuration and needs no claimable pre-T0 job", () => {
+    const kept = gate({ removedDeployments: [], oldDeploymentsKept: true });
+    const early = cutoverGateProblems(kept, ctx({ claimableBeforeCutover: 0 }));
+    assert.equal(early.length, 1);
+    assert.match(early[0]!, /can still be delivered until 2026-10-06T12:58:20\.000Z/);
+    assert.equal(OLD_DEPLOYMENT_DRAIN_MS, (24 * 3_600 + 45 * 60 + 800) * 1_000);
+    const later = new Date(Date.parse("2026-10-05T12:00:00.000Z") + OLD_DEPLOYMENT_DRAIN_MS);
+    assert.deepEqual(cutoverGateProblems(kept, ctx({ now: later, claimableBeforeCutover: 0 })), []);
+    assert.ok(cutoverGateProblems(kept, ctx({ now: later, claimableBeforeCutover: 2 })).some((p) => p.includes("2 sales_intelligence_jobs created before --cutover-at")));
+  });
+
+  it("selects pre-T0 jobs an old consumer can claim (pending/retry/leased, by ObjectId time)", () => {
+    const filter = claimableBeforeFilter(new Date("2026-10-05T12:00:00.900Z")) as { _id: { $lt: ObjectId }; status: { $in: string[] } };
+    assert.equal(filter._id.$lt.getTimestamp().toISOString(), "2026-10-05T12:00:00.000Z");
+    assert.deepEqual(filter.status.$in, ["pending", "retry", "leased"]);
+    assert.deepEqual([...CLAIMABLE_JOB_STATUSES], ["pending", "retry", "leased"]);
+  });
+
+  it("flags any insert or write timestamp at or after --quiet-since, inserts at whole-second precision", () => {
+    const quiet = new Date("2026-10-05T12:10:00.500Z");
+    const rows: NewestWrite[] = [
+      { ns: "vantagemovers.operational_events", last_insert_at: "2026-10-05T12:10:00.000Z", last_write_field_at: null, field: null },
+      { ns: "vantageadmin.admin_audit_logs", last_insert_at: "2026-10-05T11:00:00.000Z", last_write_field_at: "2026-10-05T12:11:00.000Z", field: "createdAt" },
+      { ns: "vantagemovers.outreach_records", last_insert_at: "2026-10-05T12:09:59.000Z", last_write_field_at: "2026-10-05T12:10:00.400Z", field: "updatedAt" },
+    ];
+    const problems = writesAfterProblems(rows, quiet);
+    assert.equal(problems.length, 2);
+    assert.match(problems[0]!, /operational_events: insert at 2026-10-05T12:10:00\.000Z/);
+    assert.match(problems[1]!, /admin_audit_logs: createdAt 2026-10-05T12:11:00\.000Z/);
+  });
+
+  it("finds the newest write with one read-only $group over date-typed timestamp fields", () => {
+    const [stage] = newestWritePipeline();
+    assert.deepEqual(Object.keys(stage!.$group).sort(), ["_id", ...WRITE_TIMESTAMP_FIELDS].sort());
+    assert.doesNotThrow(() => assertReadOnlyPipeline(newestWritePipeline()));
+  });
+
+  it("wires the gate into purge.ts: required in production, re-checked immediately before every drop, logged", () => {
+    const source = readFileSync(join(__dirname, "..", "purge.ts"), "utf8");
+    assert.match(source, /const gateRequired = !target\.rehearsal \|\| cutoverGateGiven\(gate\);/);
+    assert.match(source, /\.\.\.gateProblems,/);
+    assert.equal(source.match(/await assertQuietBeforeDrop\(/g)?.length, 2);
+    assert.ok(source.indexOf("await assertQuietBeforeDrop(c, target.db") < source.indexOf("await c.dropCollectionExact"));
+    assert.ok(source.indexOf("await assertQuietBeforeDrop(c, db.name") < source.indexOf("await c.dropDatabaseExact"));
+    assert.match(source, /await dropTargets\(purge, manifest, runDir, log, quietSince\);/);
+    assert.match(source, /cutover_gate: facts\.cutover_gate \?\? null/);
   });
 });

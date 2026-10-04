@@ -348,20 +348,51 @@ GET    /api/v1/admin/reporting/runs/:id
 POST   /api/v1/admin/reporting/runs/:id/cancel
 ```
 
-## CSI-15 historical planning and retention (local implementation)
+## Interim Sales Intelligence (Numbers + RingCentral Accounts)
 
-Sales Intelligence routes require the master flag, signed Owner headers and production scope. `POST /backfill` also requires `Idempotency-Key`; its strict body contains `expected_revision`, `from`, `to`, and `reason`. It plans no windows when `SALES_INTELLIGENCE_BACKFILL_DAYS=0` (default). Coverage GET is read-only. Listing these routes does not authorize production execution or flag enablement.
+The server/Admin slimming retired the server AI, media and Outreach pipeline and the CSI-15 historical backfill. `POST /api/v1/admin/sales-intelligence/backfill` and the `sales-intelligence-backfill-step` cron are no longer registered, and the `backfill` job stage is retired. Do not call or re-create them.
+
+Every route needs `x-api-secret`, the `SALES_INTELLIGENCE_ENABLED` flag, signed **Owner** headers (`--sign-admin`; the Admin role, a Rep or a scoped key gets `403 OWNER_REQUIRED`) and `scope=production`. Commands also need an `Idempotency-Key`.
+
+- Contract: `docs/server-admin-slimming/evidence/S-NUM-CONTRACT.md`.
+- Keep/remove rationale for routes without an Admin caller: `docs/server-admin-slimming/evidence/ENDPOINTS.md`.
+
+Listing these routes does not authorize a production write.
 
 ```text
+GET    /api/v1/admin/sales-intelligence/live
 GET    /api/v1/admin/sales-intelligence/coverage
-POST   /api/v1/admin/sales-intelligence/backfill
+GET    /api/v1/admin/sales-intelligence/settings
+PATCH  /api/v1/admin/sales-intelligence/settings
+GET    /api/v1/admin/sales-intelligence/numbers
+GET    /api/v1/admin/sales-intelligence/numbers/:id
+GET    /api/v1/admin/sales-intelligence/numbers/:id/timeline
+POST   /api/v1/admin/sales-intelligence/numbers/:id/rebuild
+GET    /api/v1/admin/sales-intelligence/attachments
+POST   /api/v1/admin/sales-intelligence/attachments/attach
+POST   /api/v1/admin/sales-intelligence/attachments/:id/reject
+POST   /api/v1/admin/sales-intelligence/attachments/:id/detach
+GET    /api/v1/admin/sales-intelligence/reps
+GET    /api/v1/admin/sales-intelligence/reps/:id
+POST   /api/v1/admin/sales-intelligence/reps
+POST   /api/v1/admin/sales-intelligence/reps/propose
+POST   /api/v1/admin/sales-intelligence/reps/:id/review
+GET    /api/v1/admin/sales-intelligence/nudges
+POST   /api/v1/admin/sales-intelligence/nudges/preview
+POST   /api/v1/admin/sales-intelligence/nudges
 ```
 
-Cron-secret endpoints (not API-secret operator calls):
+The Sales Intelligence crons use `CRON_SECRET` (`Authorization: Bearer`), not this skill's API secret. Schedules are in `vercel.json`:
 
 ```text
-/api/cron/sales-intelligence-backfill-step   */15 * * * *
-/api/cron/sales-intelligence-retention       30 4 * * *
+/api/cron/sales-intelligence-job-recovery           * * * * *
+/api/cron/sales-intelligence-attachment-refresh     * * * * *
+/api/cron/sales-intelligence-call-log-reconcile     3-59/5 * * * *
+/api/cron/sales-intelligence-nudge-repair           */5 * * * *
+/api/cron/sales-intelligence-retention              30 4 * * *
+/api/cron/sales-intelligence-directory-sync         20 5 * * *
+/api/cron/sales-intelligence-webhook-subscription   15 6 * * *
+/api/cron/sales-intelligence-call-log-sweep         40 7 * * *
 ```
 
-Canonical implementation/contract: `docs/knowledge/services/sales-intelligence-foundation.md` and `docs/call-sales-intelligence/workspace/CONTRACTS.md` (CSI-15). Separate Owner authorization is required for production operations; CSI-15 proof uses disposable loopback replicas only.
+The cutover runbook (`docs/server-admin-slimming/CUTOVER.md`) triggers the job-recovery cron once by hand after the slim deploy.
