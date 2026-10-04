@@ -101,3 +101,20 @@ Nothing is committed yet: the coordinator commits.
     - recreation checks run at +0, +5 min, +30 min, +2 h and +1 day.
   - Fixed in code: the `purge.ts` old-deployment and late-write gate (`ops/slimming/lib/write-gate.ts`), with 8 unit tests and a loopback rehearsal. Details are in `evidence/PREDEPLOY-AUDIT.md`.
   - The Admin preview launcher `scripts/csi07-local.mjs` now starts the server's `ops/dev-server.ts`.
+
+## Cutover (2026-10-04), following CUTOVER.md
+
+| Step | Result |
+| --- | --- |
+| 1. Pre-deploy | Duplicate Agent usernames: 0 (13 with a username). Baseline snapshot at 22:04Z: old production `becf8de0` (`dpl_AgiK1Hx…`) was still writing the retired collections, and there were 943 runnable legacy jobs. |
+| Previews | The user approved deleting every Preview deployment. All 199 server and 15 Admin Previews were removed, and 0 remain. Neither repo has an open PR, so the Preview workflow will not create new ones. |
+| 2. Deploy | MCP `bd93b18` deployed by CLI and Ready; `/api/intelligence-mcp` returns 404. Server `6123f85e`: GitHub run 37238710028 green, `dpl_Bv8nqwGNDFsCn95PC5rVmTAjdUN2` (Ready 22:15Z). Admin `058adbc`: run 37239393538 green, `dpl_2a9JkuKJyQhGLiuZL4z96Nyhfk8t`. |
+| 3. Live | T0 = 2026-10-04T22:19:00Z. The deployment stamp reads `6123f85e`, `dpl_Bv8nq…`. Admin `/customers` and `/audit-log` return 404. |
+| 3b. Old deployments removed | Server `dpl_AgiK1HxTyUbwo9Qr3454xT6nqgWZ` at 22:17:29Z; Admin `dpl_DAmEV9zuT7QHifd2wtPpBHYP13Xc` at 22:19:36Z (Tr). Production deployments older than 48 hours are kept; their pinned messages had already expired. |
+| 4. Fence | Job recovery retired 446 rows on the first call and 0 after that. Legacy jobs: 0 runnable, 0 leases, 946 retired. |
+| 5.1 Snapshot 1 | Taken at 22:20:18Z. No findings, and no target has been written since T0 (the last write was at 22:16:17Z). |
+| 5.2 Snapshot 2 | Taken at 22:33:30Z. The only change was `sales_intelligence_attention_snapshots` going from 3 to 1. That was a deletion by the TTL monitor (index `csi_attention_expiry`, `expires_at`, `expireAfterSeconds: 0`), not a writer: no insert or update happened on any target. The coordinator accepted the pair as quiet; QUIET = 2026-10-04T22:20:18.396Z. |
+| 6. Manifest and dry run | Manifest hash `6f4c91c1c854d9fe66c151432184e73673554ab3b557cbf19ba17636639b14f9` (generated 22:34:29Z): 20 drop collections, 1 absent (`operational_report_runs`), the historical database (6 collections), cleanups C1–C7 (all final), and 3,032 Blob keys with 0 unreferenced. Dry run: no problems. |
+| 7. Apply | Run `slimming-purge-2026-10-04T22-36-23-489Z`; log in `evidence/PURGE-APPLY.log`. Every Mongo target and cleanup selection was backed up and verified. The Blob audio was not backed up (the user's decision). Cleanups: C1 7,073; C2 deleted 130,840 job rows; C3 6; C6 5; C4 108,109; C5 7,073; C7 8,836. Deleted 3,032 Blob objects (1.75 GB), with 0 left under `conversations/`. Dropped the 20 collections and `vantagemovershistorical`. `g.verify ok: true`, and all 43 protected namespaces are present. |
+| 8. Result | `vantagemovers` size on disk went from 857.2 MB to 551.2 MB. Data went from 2,610 MB to 738 MB logical, and storage from 698 MB to 357 MB. Collections went from 119 to 100, and objects from 1.03 M to 0.55 M. The 14.1 MB `vantagemovershistorical` database is gone. `vantageadmin` went from 1.4 MB to 0.2 MB. Blob is down 1.75 GB. The reported index size rose from 158.8 MB to 193.8 MB; this needs a follow-up look (possibly index builds on the slim server's first boot, or stats lag). |
+| 8. Recreation at +0 | No findings. |

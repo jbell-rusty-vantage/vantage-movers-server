@@ -1,12 +1,12 @@
 {
   "version": "slimming-deletion-manifest-v1",
-  "generated_at": "2026-10-04T03:07:09.343Z",
+  "generated_at": "2026-10-04T22:34:29.887Z",
   "source": {
-    "server_head": "6a374faba9e1a67834173593b85c03d469c98da4",
-    "server_branch": "slim/server-admin",
-    "admin_head": "adda9e182d42d31b13172af6b6e2ae4e5831a549"
+    "server_head": "6123f85e919cb329203eb541ad38b3c280d22576",
+    "server_branch": "main",
+    "admin_head": "058adbc5dee9d75cb319aea2712a237bd9e0f9f3"
   },
-  "manifest_hash": "948420886cf908482fb4e4325d1c16724759705b36471dd6d5de7e3114497143",
+  "manifest_hash": "6f4c91c1c854d9fe66c151432184e73673554ab3b557cbf19ba17636639b14f9",
   "targets": {
     "cluster": {
       "fingerprint": "a88bf1acb403fe0b",
@@ -59,10 +59,10 @@
         "db": "vantagemovers",
         "name": "operational_events",
         "uuid": "6c05b1bb9263471180bb9824ee030e35",
-        "count": 13800,
-        "size": 12771598,
-        "storage_size": 2568192,
-        "index_size": 5427200,
+        "count": 15852,
+        "size": 14661027,
+        "storage_size": 2953216,
+        "index_size": 6701056,
         "ttl": false,
         "spec": "§4",
         "owner": "src/models/OperationalEvent.ts",
@@ -72,9 +72,9 @@
         "db": "vantagemovers",
         "name": "operational_incidents",
         "uuid": "231e82663e57480db8dbd7b45607f6be",
-        "count": 26,
-        "size": 31367,
-        "storage_size": 45056,
+        "count": 29,
+        "size": 34704,
+        "storage_size": 53248,
         "index_size": 368640,
         "ttl": false,
         "spec": "§4",
@@ -85,9 +85,9 @@
         "db": "vantagemovers",
         "name": "notification_deliveries",
         "uuid": "db1fa7f7519643ef98482d7d592c28ec",
-        "count": 118,
-        "size": 175746,
-        "storage_size": 81920,
+        "count": 135,
+        "size": 201037,
+        "storage_size": 77824,
         "index_size": 266240,
         "ttl": false,
         "spec": "§4",
@@ -98,10 +98,10 @@
         "db": "vantagemovers",
         "name": "lead_conversations",
         "uuid": "0797c498e6a04209baff424ead9f8f11",
-        "count": 4088,
-        "size": 23997887,
+        "count": 4153,
+        "size": 24097972,
         "storage_size": 8859648,
-        "index_size": 1683456,
+        "index_size": 1671168,
         "ttl": false,
         "spec": "§7.2",
         "owner": "src/models/LeadConversation.ts",
@@ -111,10 +111,10 @@
         "db": "vantagemovers",
         "name": "intelligence_runs",
         "uuid": "9ee9718d898449b1b852647249efcaa1",
-        "count": 10523,
-        "size": 343400825,
-        "storage_size": 100233216,
-        "index_size": 974848,
+        "count": 10547,
+        "size": 343625544,
+        "storage_size": 100302848,
+        "index_size": 1011712,
         "ttl": false,
         "spec": "§7.2",
         "owner": "src/models/salesIntelligence/intelligence.ts",
@@ -189,10 +189,10 @@
         "db": "vantagemovers",
         "name": "move_assessment_artifacts",
         "uuid": "cea0ea3098c749cf94483e06d42fc7b4",
-        "count": 2490,
-        "size": 34401165,
-        "storage_size": 8892416,
-        "index_size": 794624,
+        "count": 2512,
+        "size": 34432567,
+        "storage_size": 8908800,
+        "index_size": 811008,
         "ttl": false,
         "spec": "§7.2",
         "owner": "src/models/salesIntelligence/assessment.ts",
@@ -215,10 +215,10 @@
         "db": "vantagemovers",
         "name": "sales_intelligence_ai_reservations",
         "uuid": "85f79a3b432d4889a5e0a03c4a607a76",
-        "count": 33409,
-        "size": 23592336,
-        "storage_size": 4988928,
-        "index_size": 4788224,
+        "count": 33852,
+        "size": 23911152,
+        "storage_size": 5062656,
+        "index_size": 4841472,
         "ttl": false,
         "spec": "§7.2",
         "owner": "src/models/salesIntelligence/infrastructure.ts",
@@ -228,9 +228,9 @@
         "db": "vantagemovers",
         "name": "sales_intelligence_attention_snapshots",
         "uuid": "5d51df3ed24349ada47771144ea97f10",
-        "count": 5,
-        "size": 387869,
-        "storage_size": 880640,
+        "count": 1,
+        "size": 77561,
+        "storage_size": 802816,
         "index_size": 184320,
         "ttl": true,
         "spec": "§7.2",
@@ -241,10 +241,10 @@
         "db": "vantagemovers",
         "name": "sales_intelligence_attention_artifacts",
         "uuid": "b7d968b2bccd4215854e2e3ece907c4c",
-        "count": 1025,
-        "size": 7694614,
+        "count": 1032,
+        "size": 7878696,
         "storage_size": 19361792,
-        "index_size": 294912,
+        "index_size": 323584,
         "ttl": false,
         "spec": "§7.2",
         "owner": "src/models/salesIntelligence/attentionArtifact.ts",
@@ -254,10 +254,10 @@
         "db": "vantagemovers",
         "name": "outreach_records",
         "uuid": "f216214c855442cba465c4a187be52b1",
-        "count": 8696,
-        "size": 15101434,
+        "count": 8721,
+        "size": 15150029,
         "storage_size": 3698688,
-        "index_size": 2060288,
+        "index_size": 2031616,
         "ttl": false,
         "spec": "§7.2",
         "owner": "src/models/salesIntelligence/outreach.ts",
@@ -267,8 +267,8 @@
         "db": "vantagemovers",
         "name": "outreach_followups",
         "uuid": "4ec544009a224a9ea575eecfe5799e91",
-        "count": 585,
-        "size": 669053,
+        "count": 593,
+        "size": 678862,
         "storage_size": 192512,
         "index_size": 405504,
         "ttl": false,
@@ -280,8 +280,8 @@
         "db": "vantagemovers",
         "name": "outreach_band_transitions",
         "uuid": "c9a06fb28462431fa46f002eb733fd86",
-        "count": 7110,
-        "size": 2937647,
+        "count": 7160,
+        "size": 2961629,
         "storage_size": 835584,
         "index_size": 806912,
         "ttl": false,
@@ -293,8 +293,8 @@
         "db": "vantagemovers",
         "name": "outreach_rep_days",
         "uuid": "52ce7182ef384a81aaeada10be456e29",
-        "count": 72,
-        "size": 22216,
+        "count": 78,
+        "size": 24028,
         "storage_size": 45056,
         "index_size": 73728,
         "ttl": false,
@@ -306,10 +306,10 @@
         "db": "vantageadmin",
         "name": "admin_audit_logs",
         "uuid": "9009883807f44730b8fe4099fc2c4671",
-        "count": 2537,
-        "size": 1679868,
+        "count": 2561,
+        "size": 1699049,
         "storage_size": 720896,
-        "index_size": 540672,
+        "index_size": 544768,
         "ttl": false,
         "spec": "§6",
         "owner": "vantage-admin server/models/AdminAuditLog.ts",
@@ -335,10 +335,11 @@
           "rollups.open_outreach_count",
           "rollups.conversations_analyzed_total",
           "rollups.last_analyzed_at",
-          "rollups.outreach_records_total"
+          "rollups.outreach_records_total",
+          "rollups.last_meaningful_contact_at"
         ],
-        "expected_matches": 7028,
-        "status": "pending_wave3",
+        "expected_matches": 7073,
+        "status": "final",
         "spec": "SPEC §7.4, DATA §1.3"
       },
       {
@@ -355,14 +356,16 @@
           "transcription",
           "analysis",
           "application",
+          "number_refresh",
+          "backfill",
+          "retention",
+          "rep_identity_reevaluate",
           "move_assessment"
         ],
         "expected_by_status": {
-          "completed": 122386,
-          "dead_letter": 1112,
-          "paused": 548,
-          "retry": 334,
-          "pending": 1
+          "completed": 128415,
+          "dead_letter": 1691,
+          "retired": 946
         },
         "reason": "slimming_retired_stage",
         "status": "final",
@@ -400,7 +403,7 @@
           "outreach_repair:FormLead"
         ],
         "expected_matches": 5,
-        "status": "pending_wave3",
+        "status": "final",
         "spec": "SPEC §7.4 (watermark backstop moves to the independent nomination path)"
       },
       {
@@ -412,6 +415,7 @@
           "event_kind": {
             "$in": [
               "analysis.reanalysis_requested",
+              "analysis.suggestion_applied",
               "assessment_followup_created",
               "attachment_identity_changed",
               "call_fulfilled_action",
@@ -447,6 +451,7 @@
               "progress_default_created",
               "recording_discovery.completed",
               "recording_discovery.no_recording",
+              "rep_identity.reevaluated",
               "wait_expired"
             ]
           },
@@ -457,8 +462,8 @@
             ]
           }
         },
-        "expected_matches": 107435,
-        "status": "pending_wave3",
+        "expected_matches": 108109,
+        "status": "final",
         "spec": "SPEC §6 (legacy AI audit payloads), §7.3"
       },
       {
@@ -469,20 +474,32 @@
         "fields": [
           "content_purge_pending",
           "retention_epoch",
-          "evidence_fence",
-          "purged_at"
+          "evidence_fence"
         ],
-        "expected_matches": 7028,
-        "status": "pending_wave3",
+        "expected_matches": 7073,
+        "status": "final",
         "spec": "SPEC §7.4"
+      },
+      {
+        "id": "C7-call-interactions-conversation-pointers",
+        "kind": "unset_fields",
+        "db": "vantagemovers",
+        "collection": "call_interactions",
+        "fields": [
+          "recording_discovery",
+          "recordings.$[].lead_conversation_id"
+        ],
+        "expected_matches": 8836,
+        "status": "final",
+        "spec": "SPEC §7.2/§7.4 (pointers into the dropped lead_conversations; S-AI CallInteraction trim)"
       }
     ],
     "blob": {
       "prefix": "conversations/",
       "keys_file": "ops/slimming/conversation-blob-keys.json",
-      "keys_sha256": "a0b6f4b19d10e47e107538d9a3873487fbafb284592e7262dce339705ece8322",
-      "count": 3017,
-      "bytes": 1813126869,
+      "keys_sha256": "ac2545015c845f9c13bb665933da8f20d2202df49ce30f3236110492a8ac9581",
+      "count": 3032,
+      "bytes": 1830387096,
       "unreferenced_count": 0
     },
     "protected": [
@@ -490,37 +507,37 @@
         "db": "vantagemovers",
         "name": "granot_webhook_receipts",
         "uuid": "97e709f83d6a4c3b9f19d5613e3ac58d",
-        "count": 7372
+        "count": 7436
       },
       {
         "db": "vantagemovers",
         "name": "entity_changes",
         "uuid": "84979e73755f464a85545e08d3ae81bc",
-        "count": 11058
+        "count": 11175
       },
       {
         "db": "vantagemovers",
         "name": "daily_operations_events",
         "uuid": "20368704a47f470a8a7a4566740f5e59",
-        "count": 18565
+        "count": 18853
       },
       {
         "db": "vantagemovers",
         "name": "daily_operations_days",
         "uuid": "703e992a2a9d41d3a5d7b78ac9b9a7c2",
-        "count": 26
+        "count": 27
       },
       {
         "db": "vantagemovers",
         "name": "sales_intelligence_jobs",
         "uuid": "94abd2ea72bd4f83a845d393bd94ce43",
-        "count": 235093
+        "count": 222878
       },
       {
         "db": "vantagemovers",
         "name": "sales_intelligence_sync_state",
         "uuid": "fda62786d36b4708b68bf1ea736cb024",
-        "count": 45
+        "count": 46
       },
       {
         "db": "vantagemovers",
@@ -532,7 +549,7 @@
         "db": "vantagemovers",
         "name": "sales_intelligence_audit_events",
         "uuid": "c36cdd76239e47d0880e7a546fd6a3b8",
-        "count": 273199
+        "count": 280206
       },
       {
         "db": "vantagemovers",
@@ -568,7 +585,7 @@
         "db": "vantagemovers",
         "name": "sales_intelligence_review_items",
         "uuid": "0110852cb1de4b89afd8c0bda0a4dfa2",
-        "count": 12202
+        "count": 12206
       },
       {
         "db": "vantagemovers",
@@ -580,25 +597,25 @@
         "db": "vantagemovers",
         "name": "contact_numbers",
         "uuid": "d15a485aa8b84ce1b3ee6f01d647d2d4",
-        "count": 7028
+        "count": 7074
       },
       {
         "db": "vantagemovers",
         "name": "call_interactions",
         "uuid": "a8cc6040ec1c484c8a94e1e4e65694a8",
-        "count": 8613
+        "count": 8836
       },
       {
         "db": "vantagemovers",
         "name": "call_interaction_aliases",
         "uuid": "a71587a5c5e44cb086c34c8de58d3fed",
-        "count": 25840
+        "count": 26509
       },
       {
         "db": "vantagemovers",
         "name": "number_lead_attachments",
         "uuid": "54ef6cd3c2474153aaceac215deaa3c9",
-        "count": 6736
+        "count": 6763
       },
       {
         "db": "vantagemovers",
@@ -676,19 +693,19 @@
         "db": "vantagemovers",
         "name": "form_leads",
         "uuid": "f95b45a20fb6441f9cc9d20840bb4320",
-        "count": 6758
+        "count": 6781
       },
       {
         "db": "vantagemovers",
         "name": "call_leads",
         "uuid": "7ef727ddc1cd4cd9984bd5a57dfb84da",
-        "count": 1773
+        "count": 1777
       },
       {
         "db": "vantagemovers",
         "name": "booked_leads",
         "uuid": "86d773ab8afc46529485fdccd5f97984",
-        "count": 859
+        "count": 867
       },
       {
         "db": "vantagemovers",
@@ -700,19 +717,19 @@
         "db": "vantagemovers",
         "name": "granot_observations",
         "uuid": "3b5d2cfbb8d64ee687c80a15f2048ab3",
-        "count": 7372
+        "count": 7436
       },
       {
         "db": "vantagemovers",
         "name": "synchronization_decisions",
         "uuid": "694bac606c164b86918368a8e968aca4",
-        "count": 13236
+        "count": 13331
       },
       {
         "db": "vantagemovers",
         "name": "granot_record_links",
         "uuid": "feda738e0d5c4db4a37076ece6479448",
-        "count": 3030
+        "count": 3056
       },
       {
         "db": "vantagemovers",
@@ -724,7 +741,7 @@
         "db": "vantagemovers",
         "name": "domain_command_executions",
         "uuid": "a596653fe06b4809849f91708cde13f8",
-        "count": 7481
+        "count": 7565
       },
       {
         "db": "vantagemovers",

@@ -1,15 +1,15 @@
 {
   "version": "slimming-inventory-v1",
-  "observed_at": "2026-10-04T03:07:09.343Z",
+  "observed_at": "2026-10-04T22:34:29.887Z",
   "cluster": {
     "fingerprint": "a88bf1acb403fe0b",
     "replica_set": "atlas-khw1wz-shard-0",
     "admin_auth_same_cluster": true
   },
   "source": {
-    "server_head": "6a374faba9e1a67834173593b85c03d469c98da4",
-    "server_branch": "slim/server-admin",
-    "admin_head": "adda9e182d42d31b13172af6b6e2ae4e5831a549"
+    "server_head": "6123f85e919cb329203eb541ad38b3c280d22576",
+    "server_branch": "main",
+    "admin_head": "058adbc5dee9d75cb319aea2712a237bd9e0f9f3"
   },
   "runtime_database": "vantagemovers",
   "admin_auth_database": "vantageadmin",
@@ -21,7 +21,7 @@
     },
     {
       "name": "config",
-      "sizeOnDisk": 610304,
+      "sizeOnDisk": 667648,
       "empty": false
     },
     {
@@ -41,12 +41,12 @@
     },
     {
       "name": "vantageadmin",
-      "sizeOnDisk": 1462272,
+      "sizeOnDisk": 1466368,
       "empty": false
     },
     {
       "name": "vantagemovers",
-      "sizeOnDisk": 888139776,
+      "sizeOnDisk": 898895872,
       "empty": false
     },
     {
@@ -69,13 +69,14 @@
           "count": 20,
           "size": 4806,
           "storageSize": 36864,
-          "totalIndexSize": 135168,
+          "totalIndexSize": 155648,
           "avgObjSize": 240,
           "indexSizes": {
             "_id_": 36864,
             "name_aliases_1": 32768,
             "normalized_name_1": 32768,
-            "granot_crm_username_1": 32768
+            "granot_crm_username_1": 32768,
+            "granot_identity.username_1": 20480
           }
         },
         "indexes": [
@@ -114,6 +115,15 @@
             "unique": true,
             "expireAfterSeconds": null,
             "partial": false
+          },
+          {
+            "name": "granot_identity.username_1",
+            "key": {
+              "granot_identity.username": 1
+            },
+            "unique": true,
+            "expireAfterSeconds": null,
+            "partial": true
           }
         ],
         "id_range": null
@@ -127,14 +137,14 @@
         "owner": "src/models/BookedLead.ts",
         "reason": "Official record / Registry linkage (SPEC §1, DATA §1.2)",
         "stats": {
-          "count": 859,
-          "size": 727055,
+          "count": 867,
+          "size": 734152,
           "storageSize": 294912,
-          "totalIndexSize": 634880,
+          "totalIndexSize": 651264,
           "avgObjSize": 846,
           "indexSizes": {
             "_id_": 53248,
-            "lead_ref_1_lead_model_1": 61440,
+            "lead_ref_1_lead_model_1": 77824,
             "is_referral_booking_1": 45056,
             "booking_origin_1": 45056,
             "submission_id_1": 45056,
@@ -457,15 +467,15 @@
         "owner": "Number activity",
         "reason": "Canonical call aliases (SPEC §7.3)",
         "stats": {
-          "count": 25840,
-          "size": 6720142,
-          "storageSize": 1761280,
-          "totalIndexSize": 1421312,
+          "count": 26509,
+          "size": 6894967,
+          "storageSize": 1835008,
+          "totalIndexSize": 1417216,
           "avgObjSize": 260,
           "indexSizes": {
-            "_id_": 438272,
-            "csi_alias_unique": 720896,
-            "csi_alias_interaction": 262144
+            "_id_": 446464,
+            "csi_alias_unique": 704512,
+            "csi_alias_interaction": 266240
           }
         },
         "indexes": [
@@ -511,24 +521,24 @@
         "owner": "Number activity",
         "reason": "Canonical provider call metadata (SPEC §7.3)",
         "stats": {
-          "count": 8613,
-          "size": 28601061,
-          "storageSize": 5881856,
-          "totalIndexSize": 3366912,
-          "avgObjSize": 3320,
+          "count": 8836,
+          "size": 29553147,
+          "storageSize": 6008832,
+          "totalIndexSize": 3481600,
+          "avgObjSize": 3344,
           "indexSizes": {
             "_id_": 184320,
-            "call_interaction_session_unique": 339968,
+            "call_interaction_session_unique": 356352,
             "call_interaction_call_log_ids": 290816,
             "call_interaction_recording": 172032,
-            "call_interaction_provider_modified": 167936,
-            "call_interaction_updated": 512000,
-            "call_interaction_number_started_id": 376832,
-            "call_interaction_session_id": 200704,
-            "call_interaction_started_window": 327680,
-            "call_interaction_extension_started": 516096,
+            "call_interaction_provider_modified": 176128,
+            "call_interaction_updated": 524288,
+            "call_interaction_number_started_id": 393216,
+            "call_interaction_session_id": 217088,
+            "call_interaction_started_window": 335872,
+            "call_interaction_extension_started": 548864,
             "call_interaction_discovery_state": 126976,
-            "call_interaction_call_log_state_started": 151552
+            "call_interaction_call_log_state_started": 155648
           }
         },
         "indexes": [
@@ -666,11 +676,11 @@
         "owner": "src/models/CallLead.ts",
         "reason": "Official record / Registry linkage (SPEC §1, DATA §1.2)",
         "stats": {
-          "count": 1773,
-          "size": 3295218,
+          "count": 1777,
+          "size": 3304022,
           "storageSize": 1347584,
-          "totalIndexSize": 2097152,
-          "avgObjSize": 1858,
+          "totalIndexSize": 2162688,
+          "avgObjSize": 1859,
           "indexSizes": {
             "_id_": 110592,
             "source_granularity_id_1": 53248,
@@ -679,15 +689,15 @@
             "local_1": 45056,
             "source_company_1_createdAt_-1": 65536,
             "ringcentral.route_assignment_id_1": 53248,
-            "phone_number_1": 61440,
+            "phone_number_1": 77824,
             "duplicate_1": 45056,
             "lead_source_company_1_source_granularity_key_1_normalized_job_no_1": 65536,
             "call_lead_attach_ingested_contact_snapshot_normalized_phone_number": 94208,
             "created_on_unmatched_1": 45056,
             "source_company_1_normalized_phone_number_1_duplicate_1_timestamp_-1": 90112,
             "lead_source_company_1_source_granularity_key_1_createdAt_-1": 65536,
-            "normalized_phone_number_1_createdAt_-1": 77824,
-            "source_company_1_normalized_phone_number_1_duplicate_1": 69632,
+            "normalized_phone_number_1_createdAt_-1": 94208,
+            "source_company_1_normalized_phone_number_1_duplicate_1": 86016,
             "source_granularity_key_1": 45056,
             "ringcentral.target_phone_number_1": 53248,
             "call_lead_source_granularity_normalized_job_no": 65536,
@@ -697,7 +707,7 @@
             "lead_source_company_1_createdAt_-1": 69632,
             "receiver_agent_1": 53248,
             "call_lead_source_granularity_normalized_phone_created": 86016,
-            "call_lead_origin_source_ingested_phone_created": 86016,
+            "call_lead_origin_source_ingested_phone_created": 102400,
             "ringcentral.telephony_session_id_1": 94208,
             "normalized_job_no_1": 61440,
             "call_lead_attach_granot_contact_snapshot_normalized_phone_number": 77824,
@@ -1101,20 +1111,20 @@
         "owner": "src/models/ContactNumber.ts",
         "reason": "Kept; dead summary/schedule/AI/outreach fields are unset (SPEC §7.4, DATA §1.3)",
         "stats": {
-          "count": 7028,
-          "size": 9773101,
+          "count": 7074,
+          "size": 9829518,
           "storageSize": 3936256,
-          "totalIndexSize": 3801088,
-          "avgObjSize": 1390,
+          "totalIndexSize": 3674112,
+          "avgObjSize": 1389,
           "indexSizes": {
             "_id_": 278528,
-            "contact_number_last_activity": 319488,
-            "contact_number_eligibility": 86016,
-            "contact_number_digits_activity": 421888,
-            "contact_number_terms_activity": 974848,
+            "contact_number_last_activity": 303104,
+            "contact_number_eligibility": 94208,
+            "contact_number_digits_activity": 405504,
+            "contact_number_terms_activity": 888832,
             "contact_number_classification_activity_id": 307200,
             "contact_number_kind_activity": 315392,
-            "contact_number_e164_unique": 217088,
+            "contact_number_e164_unique": 200704,
             "contact_number_kind_human_conversation": 253952,
             "contact_number_kind_first_observed": 376832,
             "contact_number_kind_interactions": 249856
@@ -1238,7 +1248,7 @@
         ],
         "id_range": {
           "first": "2026-09-20T18:33:33.000Z",
-          "last": "2026-10-04T01:43:34.000Z"
+          "last": "2026-10-04T22:18:20.000Z"
         }
       },
       {
@@ -1522,8 +1532,8 @@
         "owner": "Daily Operations",
         "reason": "Protected byte-for-byte (SPEC §4.1)",
         "stats": {
-          "count": 26,
-          "size": 93838,
+          "count": 27,
+          "size": 97448,
           "storageSize": 69632,
           "totalIndexSize": 110592,
           "avgObjSize": 3609,
@@ -1574,18 +1584,18 @@
         "owner": "Daily Operations",
         "reason": "Protected byte-for-byte (SPEC §4.1)",
         "stats": {
-          "count": 18565,
-          "size": 12936005,
+          "count": 18853,
+          "size": 13138196,
           "storageSize": 3104768,
-          "totalIndexSize": 3325952,
+          "totalIndexSize": 3346432,
           "avgObjSize": 696,
           "indexSizes": {
             "_id_": 544768,
             "day_1_lane_1_occurred_at_-1": 262144,
-            "parent_receipt_id_1_occurred_at_1": 397312,
-            "entity_type_1_entity_id_1": 675840,
-            "dedupe_key_1": 909312,
-            "day_1_occurred_at_-1__id_-1": 536576
+            "parent_receipt_id_1_occurred_at_1": 393216,
+            "entity_type_1_entity_id_1": 667648,
+            "dedupe_key_1": 929792,
+            "day_1_occurred_at_-1__id_-1": 548864
           }
         },
         "indexes": [
@@ -1695,17 +1705,17 @@
         "owner": "domain commands",
         "reason": "Command replay (SPEC §6)",
         "stats": {
-          "count": 7481,
-          "size": 9974795,
+          "count": 7565,
+          "size": 10088726,
           "storageSize": 3137536,
-          "totalIndexSize": 1155072,
+          "totalIndexSize": 1167360,
           "avgObjSize": 1333,
           "indexSizes": {
             "_id_": 331776,
             "domain_command_origin_idempotency_unique": 344064,
             "domain_command_origin": 77824,
             "domain_command_command_id_unique": 266240,
-            "domain_command_applied_at": 135168
+            "domain_command_applied_at": 147456
           }
         },
         "indexes": [
@@ -1767,17 +1777,17 @@
         "owner": "src/models/EntityChange.ts",
         "reason": "Job Timeline + attachment wakeups (SPEC §6)",
         "stats": {
-          "count": 11058,
-          "size": 23465870,
+          "count": 11175,
+          "size": 23712047,
           "storageSize": 4595712,
-          "totalIndexSize": 4235264,
-          "avgObjSize": 2122,
+          "totalIndexSize": 4468736,
+          "avgObjSize": 2121,
           "indexSizes": {
             "_id_": 376832,
-            "entity_change_changed_paths_applied": 2600960,
-            "entity_change_entity_revision_unique": 335872,
-            "entity_change_applied_scan": 249856,
-            "entity_change_command_execution_id": 192512,
+            "entity_change_changed_paths_applied": 2789376,
+            "entity_change_entity_revision_unique": 364544,
+            "entity_change_applied_scan": 258048,
+            "entity_change_command_execution_id": 200704,
             "entity_change_entity_applied": 479232
           }
         },
@@ -1906,10 +1916,10 @@
         "reason": "Retained Reporting (SPEC §2, DATA §1.2)",
         "stats": {
           "count": 1,
-          "size": 1860,
+          "size": 1870,
           "storageSize": 36864,
           "totalIndexSize": 143360,
-          "avgObjSize": 1860,
+          "avgObjSize": 1870,
           "indexSizes": {
             "_id_": 36864,
             "external_connection_health": 36864,
@@ -1967,42 +1977,42 @@
         "owner": "src/models/FormLead.ts",
         "reason": "Official record / Registry linkage (SPEC §1, DATA §1.2)",
         "stats": {
-          "count": 6758,
-          "size": 14268689,
+          "count": 6781,
+          "size": 14325033,
           "storageSize": 5537792,
-          "totalIndexSize": 4956160,
-          "avgObjSize": 2111,
+          "totalIndexSize": 5111808,
+          "avgObjSize": 2112,
           "indexSizes": {
             "_id_": 393216,
             "duplicate_1": 69632,
             "receiver_agent_1": 86016,
             "lead_source_company_1_source_granularity_key_1_normalized_lid_1": 126976,
-            "lead_source_company_1_source_granularity_key_1_createdAt_-1": 151552,
+            "lead_source_company_1_source_granularity_key_1_createdAt_-1": 143360,
             "form_lead_attach_normalized_phone_number": 278528,
             "form_lead_attach_ingested_contact_snapshot_normalized_phone_number": 245760,
-            "ref_no_1": 241664,
+            "ref_no_1": 258048,
             "bad_lead_1": 69632,
-            "source_company_1_createdAt_-1": 122880,
-            "phone_number_1": 151552,
+            "source_company_1_createdAt_-1": 139264,
+            "phone_number_1": 167936,
             "lead_source_company_1_source_granularity_key_1_email_1_normalized_contact_name_1": 393216,
-            "email_1": 245760,
+            "email_1": 262144,
             "source_granularity_id_1": 81920,
-            "lead_source_company_1_createdAt_-1": 143360,
+            "lead_source_company_1_createdAt_-1": 151552,
             "normalized_lid_1": 102400,
-            "normalized_contact_name_1": 192512,
+            "normalized_contact_name_1": 176128,
             "form_lead_source_granularity_normalized_job_no": 122880,
-            "form_lead_ref_no_duplicate": 270336,
-            "form_lead_attach_granot_contact_snapshot_normalized_phone_number": 188416,
-            "lead_source_company_1_source_granularity_key_1_normalized_phone_number_1": 172032,
+            "form_lead_ref_no_duplicate": 286720,
+            "form_lead_attach_granot_contact_snapshot_normalized_phone_number": 221184,
+            "lead_source_company_1_source_granularity_key_1_normalized_phone_number_1": 180224,
             "form_lead_normalized_job_no": 110592,
             "source_company_1": 77824,
-            "local_1": 81920,
-            "lid_1": 139264,
+            "local_1": 94208,
+            "lid_1": 155648,
             "lead_source_company_1": 81920,
             "source_granularity_key_1": 77824,
-            "normalized_phone_number_1": 139264,
-            "form_lead_source_granularity_normalized_phone_duplicate": 180224,
-            "form_lead_overview_timestamp_receiver": 217088
+            "normalized_phone_number_1": 167936,
+            "form_lead_source_granularity_normalized_phone_duplicate": 188416,
+            "form_lead_overview_timestamp_receiver": 200704
           }
         },
         "indexes": [
@@ -2734,15 +2744,15 @@
         "owner": "src/models/GranotBookingDiscrepancy.ts",
         "reason": "Granot lifecycle evidence, Health, intakes, timeline (SPEC §5, DATA §1.2)",
         "stats": {
-          "count": 3,
-          "size": 1433,
+          "count": 4,
+          "size": 1910,
           "storageSize": 36864,
-          "totalIndexSize": 90112,
+          "totalIndexSize": 110592,
           "avgObjSize": 477,
           "indexSizes": {
             "_id_": 36864,
-            "granot_booking_discrepancy_state_last_evidence": 32768,
-            "granot_booking_discrepancy_open_fingerprint_unique": 20480
+            "granot_booking_discrepancy_state_last_evidence": 36864,
+            "granot_booking_discrepancy_open_fingerprint_unique": 36864
           }
         },
         "indexes": [
@@ -2788,16 +2798,16 @@
         "owner": "src/models/GranotBookingReconciliationCase.ts",
         "reason": "Granot lifecycle evidence, Health, intakes, timeline (SPEC §5, DATA §1.2)",
         "stats": {
-          "count": 356,
-          "size": 614922,
+          "count": 359,
+          "size": 627918,
           "storageSize": 303104,
-          "totalIndexSize": 303104,
-          "avgObjSize": 1727,
+          "totalIndexSize": 307200,
+          "avgObjSize": 1749,
           "indexSizes": {
             "_id_": 45056,
             "granot_booking_case_open_job_kind_unique": 36864,
             "granot_booking_case_job_kind_sequence_unique": 45056,
-            "granot_booking_case_evidence_observation_id": 49152,
+            "granot_booking_case_evidence_observation_id": 53248,
             "granot_booking_case_state_last_evidence": 36864,
             "granot_booking_case_booking_state": 45056,
             "granot_booking_case_suggested_lead_state": 45056
@@ -3252,6 +3262,63 @@
       },
       {
         "db": "vantagemovers",
+        "name": "granot_lifecycle_health_state",
+        "type": "collection",
+        "uuid": "7723de7da6964361ab7824bfffb7e4b9",
+        "decision": "unknown",
+        "owner": "no reader/writer found in workspace source",
+        "reason": "Protected until classified (DATA §1.2)",
+        "stats": {
+          "count": 5,
+          "size": 599,
+          "storageSize": 36864,
+          "totalIndexSize": 77824,
+          "avgObjSize": 119,
+          "indexSizes": {
+            "_id_": 36864,
+            "granot_lifecycle_health_bucket_unique": 4096,
+            "granot_lifecycle_health_expires_ttl": 36864
+          }
+        },
+        "indexes": [
+          {
+            "name": "_id_",
+            "key": {
+              "_id": 1
+            },
+            "unique": false,
+            "expireAfterSeconds": null,
+            "partial": false
+          },
+          {
+            "name": "granot_lifecycle_health_bucket_unique",
+            "key": {
+              "kind": 1,
+              "metric": 1,
+              "dimension": 1,
+              "bucket_start": 1
+            },
+            "unique": true,
+            "expireAfterSeconds": null,
+            "partial": true
+          },
+          {
+            "name": "granot_lifecycle_health_expires_ttl",
+            "key": {
+              "expires_at": 1
+            },
+            "unique": false,
+            "expireAfterSeconds": 0,
+            "partial": false
+          }
+        ],
+        "id_range": {
+          "first": null,
+          "last": null
+        }
+      },
+      {
+        "db": "vantagemovers",
         "name": "granot_observations",
         "type": "collection",
         "uuid": "3b5d2cfbb8d64ee687c80a15f2048ab3",
@@ -3259,19 +3326,19 @@
         "owner": "src/models/GranotObservation.ts",
         "reason": "Granot lifecycle evidence, Health, intakes, timeline (SPEC §5, DATA §1.2)",
         "stats": {
-          "count": 7372,
-          "size": 8912065,
+          "count": 7436,
+          "size": 8989763,
           "storageSize": 3096576,
-          "totalIndexSize": 1617920,
+          "totalIndexSize": 1572864,
           "avgObjSize": 1208,
           "indexSizes": {
             "_id_": 344064,
-            "granot_observation_normalized_phone_captured": 290816,
+            "granot_observation_normalized_phone_captured": 229376,
             "granot_observation_receipt_id_unique": 176128,
             "granot_observation_kind_captured": 135168,
-            "granot_observation_normalized_job_no_captured": 233472,
-            "granot_observation_source_route_captured": 155648,
-            "granot_observation_normalized_form_ref_captured": 282624
+            "granot_observation_normalized_job_no_captured": 204800,
+            "granot_observation_source_route_captured": 212992,
+            "granot_observation_normalized_form_ref_captured": 270336
           }
         },
         "indexes": [
@@ -3356,8 +3423,8 @@
         "owner": "src/models/GranotRecordLink.ts",
         "reason": "Granot lifecycle evidence, Health, intakes, timeline (SPEC §5, DATA §1.2)",
         "stats": {
-          "count": 3030,
-          "size": 1442622,
+          "count": 3056,
+          "size": 1455172,
           "storageSize": 503808,
           "totalIndexSize": 409600,
           "avgObjSize": 476,
@@ -3421,15 +3488,15 @@
         "owner": "src/models/GranotReleaseDiscrepancy.ts",
         "reason": "Granot lifecycle evidence, Health, intakes, timeline (SPEC §5, DATA §1.2)",
         "stats": {
-          "count": 11,
-          "size": 5815,
+          "count": 12,
+          "size": 6294,
           "storageSize": 36864,
-          "totalIndexSize": 90112,
-          "avgObjSize": 528,
+          "totalIndexSize": 110592,
+          "avgObjSize": 524,
           "indexSizes": {
             "_id_": 36864,
-            "granot_release_discrepancy_state_last_evidence": 32768,
-            "granot_release_discrepancy_open_fingerprint_unique": 20480
+            "granot_release_discrepancy_state_last_evidence": 36864,
+            "granot_release_discrepancy_open_fingerprint_unique": 36864
           }
         },
         "indexes": [
@@ -3563,18 +3630,18 @@
         "owner": "src/models/GranotObservationReceipt.ts",
         "reason": "Observation Receipts, channel-neutral (SPEC §5)",
         "stats": {
-          "count": 7372,
-          "size": 9375805,
+          "count": 7436,
+          "size": 9456595,
           "storageSize": 4063232,
-          "totalIndexSize": 1855488,
+          "totalIndexSize": 1859584,
           "avgObjSize": 1271,
           "indexSizes": {
             "_id_": 344064,
             "granot_observation_receipt_channel_operation_id_unique": 12288,
             "granot_observation_receipt_processing_due": 217088,
             "granot_observation_receipt_leased_until": 69632,
-            "granot_observation_receipt_route_event_captured": 135168,
-            "granot_observation_receipt_payload_sha256_diag": 1077248
+            "granot_observation_receipt_route_event_captured": 151552,
+            "granot_observation_receipt_payload_sha256_diag": 1064960
           }
         },
         "indexes": [
@@ -4336,16 +4403,16 @@
         "owner": "src/models/salesIntelligence/intelligence.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 10523,
-          "size": 343400825,
-          "storageSize": 100233216,
-          "totalIndexSize": 974848,
-          "avgObjSize": 32633,
+          "count": 10547,
+          "size": 343625544,
+          "storageSize": 100302848,
+          "totalIndexSize": 1011712,
+          "avgObjSize": 32580,
           "indexSizes": {
-            "_id_": 229376,
+            "_id_": 241664,
             "csi_run_subject": 299008,
             "csi_run_job_unique": 229376,
-            "csi_run_number": 217088
+            "csi_run_number": 241664
           }
         },
         "indexes": [
@@ -4390,7 +4457,7 @@
         ],
         "id_range": {
           "first": "2026-09-20T18:55:09.000Z",
-          "last": "2026-10-03T23:49:15.000Z"
+          "last": "2026-10-04T20:34:35.000Z"
         }
       },
       {
@@ -4446,21 +4513,21 @@
         "owner": "src/models/LeadConversation.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 4088,
-          "size": 23997887,
+          "count": 4153,
+          "size": 24097972,
           "storageSize": 8859648,
-          "totalIndexSize": 1683456,
-          "avgObjSize": 5870,
+          "totalIndexSize": 1671168,
+          "avgObjSize": 5802,
           "indexSizes": {
             "_id_": 110592,
-            "lead_conversation_lead": 106496,
-            "lead_conversation_booking": 98304,
+            "lead_conversation_lead": 135168,
+            "lead_conversation_booking": 102400,
             "lead_conversation_account_recording_unique": 131072,
-            "lead_conversation_media_stored": 397312,
-            "lead_conversation_work": 118784,
+            "lead_conversation_media_stored": 380928,
+            "lead_conversation_work": 102400,
             "lead_conversation_window": 208896,
-            "lead_conversation_agent": 98304,
-            "lead_conversation_call_log": 163840,
+            "lead_conversation_agent": 102400,
+            "lead_conversation_call_log": 147456,
             "lead_conversation_number_started": 180224,
             "lead_conversation_eligibility": 69632
           }
@@ -4580,7 +4647,7 @@
         ],
         "id_range": {
           "first": "2026-08-27T15:44:28.000Z",
-          "last": "2026-10-04T02:03:03.000Z"
+          "last": "2026-10-04T22:14:01.000Z"
         }
       },
       {
@@ -4592,14 +4659,14 @@
         "owner": "Lead messaging",
         "reason": "Lead Message rate limit (DATA §1.2)",
         "stats": {
-          "count": 0,
-          "size": 0,
-          "storageSize": 32768,
-          "totalIndexSize": 65536,
-          "avgObjSize": 0,
+          "count": 3,
+          "size": 682,
+          "storageSize": 36864,
+          "totalIndexSize": 73728,
+          "avgObjSize": 227,
           "indexSizes": {
-            "_id_": 32768,
-            "expires_at_1": 32768
+            "_id_": 36864,
+            "expires_at_1": 36864
           }
         },
         "indexes": [
@@ -4633,20 +4700,20 @@
         "owner": "src/models/LeadMessage.ts",
         "reason": "Lead Message delivery (DATA §1.2)",
         "stats": {
-          "count": 3500,
-          "size": 5748932,
+          "count": 3523,
+          "size": 5786263,
           "storageSize": 1720320,
-          "totalIndexSize": 1712128,
+          "totalIndexSize": 1724416,
           "avgObjSize": 1642,
           "indexSizes": {
             "_id_": 188416,
             "form_lead_1_createdAt_-1": 143360,
-            "twilio_message_sid_1": 229376,
+            "twilio_message_sid_1": 221184,
             "status_1_next_attempt_at_1_createdAt_1": 102400,
-            "purpose_1_status_1_createdAt_-1": 102400,
+            "purpose_1_status_1_createdAt_-1": 110592,
             "lead_message_lead_ref_created": 143360,
             "lead_message_granot_crm_source_created": 90112,
-            "lead_message_to": 114688,
+            "lead_message_to": 126976,
             "form_lead_1": 110592,
             "twilio_message_sids_1": 233472,
             "leased_until_1": 61440,
@@ -5114,15 +5181,15 @@
         "owner": "src/models/salesIntelligence/assessment.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 2490,
-          "size": 34401165,
-          "storageSize": 8892416,
-          "totalIndexSize": 794624,
-          "avgObjSize": 13815,
+          "count": 2512,
+          "size": 34432567,
+          "storageSize": 8908800,
+          "totalIndexSize": 811008,
+          "avgObjSize": 13707,
           "indexSizes": {
             "_id_": 86016,
-            "csi_move_assessment_key": 376832,
-            "csi_move_assessment_subject": 110592,
+            "csi_move_assessment_key": 380928,
+            "csi_move_assessment_subject": 122880,
             "csi_move_assessment_number": 135168,
             "csi_move_assessment_job": 86016
           }
@@ -5183,7 +5250,7 @@
         ],
         "id_range": {
           "first": "2026-09-23T04:40:09.000Z",
-          "last": "2026-10-04T02:02:02.000Z"
+          "last": "2026-10-04T21:06:01.000Z"
         }
       },
       {
@@ -5298,9 +5365,9 @@
         "owner": "src/models/NotificationDelivery.ts",
         "reason": "SPEC §4 exclusive target",
         "stats": {
-          "count": 118,
-          "size": 175746,
-          "storageSize": 81920,
+          "count": 135,
+          "size": 201037,
+          "storageSize": 77824,
           "totalIndexSize": 266240,
           "avgObjSize": 1489,
           "indexSizes": {
@@ -5386,7 +5453,7 @@
         ],
         "id_range": {
           "first": "2026-09-29T22:52:14.000Z",
-          "last": "2026-10-04T01:41:10.000Z"
+          "last": "2026-10-04T22:14:34.000Z"
         }
       },
       {
@@ -5398,11 +5465,11 @@
         "owner": "src/models/NumberLeadAttachment.ts",
         "reason": "Reviewed Number↔Lead attachments (SPEC §7.3)",
         "stats": {
-          "count": 6736,
-          "size": 8808467,
+          "count": 6763,
+          "size": 8857934,
           "storageSize": 1855488,
           "totalIndexSize": 1671168,
-          "avgObjSize": 1307,
+          "avgObjSize": 1309,
           "indexSizes": {
             "_id_": 253952,
             "nla_pair_unique": 499712,
@@ -5475,27 +5542,27 @@
         "owner": "src/models/OperationalEvent.ts",
         "reason": "SPEC §4 exclusive target",
         "stats": {
-          "count": 13800,
-          "size": 12771598,
-          "storageSize": 2568192,
-          "totalIndexSize": 5427200,
-          "avgObjSize": 925,
+          "count": 15852,
+          "size": 14661027,
+          "storageSize": 2953216,
+          "totalIndexSize": 6701056,
+          "avgObjSize": 924,
           "indexSizes": {
-            "_id_": 266240,
-            "occurred_at_-1": 237568,
-            "level_1_occurred_at_-1": 245760,
-            "category_1_workflow_1_occurred_at_-1": 331776,
-            "event_key_1_occurred_at_-1": 311296,
-            "source_company_1_occurred_at_-1": 262144,
-            "lead_phone_1_occurred_at_-1": 303104,
-            "lead_email_1_occurred_at_-1": 258048,
-            "entity_type_1_entity_id_1_occurred_at_-1": 270336,
-            "request_id_1_occurred_at_-1": 294912,
-            "run_id_1_occurred_at_-1": 319488,
-            "incident_id_1_occurred_at_-1": 270336,
-            "reportable_1_occurred_at_-1": 270336,
-            "fingerprint_1_occurred_at_-1": 360448,
-            "event_key_text_workflow_text_summary_text_source_company_text_lead_name_text_lead_phone_text_lead_email_text_job_no_text_entity_id_text": 1425408
+            "_id_": 303104,
+            "occurred_at_-1": 274432,
+            "level_1_occurred_at_-1": 299008,
+            "category_1_workflow_1_occurred_at_-1": 425984,
+            "event_key_1_occurred_at_-1": 425984,
+            "source_company_1_occurred_at_-1": 307200,
+            "lead_phone_1_occurred_at_-1": 294912,
+            "lead_email_1_occurred_at_-1": 282624,
+            "entity_type_1_entity_id_1_occurred_at_-1": 356352,
+            "request_id_1_occurred_at_-1": 372736,
+            "run_id_1_occurred_at_-1": 372736,
+            "incident_id_1_occurred_at_-1": 307200,
+            "reportable_1_occurred_at_-1": 303104,
+            "fingerprint_1_occurred_at_-1": 536576,
+            "event_key_text_workflow_text_summary_text_source_company_text_lead_name_text_lead_phone_text_lead_email_text_job_no_text_entity_id_text": 1839104
           }
         },
         "indexes": [
@@ -5652,7 +5719,7 @@
         ],
         "id_range": {
           "first": "2026-09-29T22:52:09.000Z",
-          "last": "2026-10-04T03:05:46.000Z"
+          "last": "2026-10-04T22:15:46.000Z"
         }
       },
       {
@@ -5664,11 +5731,11 @@
         "owner": "src/models/OperationalIncident.ts",
         "reason": "SPEC §4 exclusive target",
         "stats": {
-          "count": 26,
-          "size": 31367,
-          "storageSize": 45056,
+          "count": 29,
+          "size": 34704,
+          "storageSize": 53248,
           "totalIndexSize": 368640,
-          "avgObjSize": 1206,
+          "avgObjSize": 1196,
           "indexSizes": {
             "_id_": 36864,
             "status_1_severity_1_last_seen_at_-1": 36864,
@@ -5787,7 +5854,7 @@
         ],
         "id_range": {
           "first": "2026-09-29T23:02:58.000Z",
-          "last": "2026-10-03T22:41:55.000Z"
+          "last": "2026-10-04T20:46:08.000Z"
         }
       },
       {
@@ -5903,8 +5970,8 @@
         "owner": "src/models/salesIntelligence/outreach.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 7110,
-          "size": 2937647,
+          "count": 7160,
+          "size": 2961629,
           "storageSize": 835584,
           "totalIndexSize": 806912,
           "avgObjSize": 413,
@@ -5946,7 +6013,7 @@
         ],
         "id_range": {
           "first": "2026-09-25T22:24:20.000Z",
-          "last": "2026-10-04T02:10:11.000Z"
+          "last": "2026-10-04T22:16:17.000Z"
         }
       },
       {
@@ -5958,11 +6025,11 @@
         "owner": "src/models/salesIntelligence/outreach.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 585,
-          "size": 669053,
+          "count": 593,
+          "size": 678862,
           "storageSize": 192512,
           "totalIndexSize": 405504,
-          "avgObjSize": 1143,
+          "avgObjSize": 1144,
           "indexSizes": {
             "_id_": 53248,
             "followup_commitment_unique": 81920,
@@ -6058,7 +6125,7 @@
         ],
         "id_range": {
           "first": "2026-09-20T18:39:52.000Z",
-          "last": "2026-10-04T02:00:46.000Z"
+          "last": "2026-10-04T21:05:02.000Z"
         }
       },
       {
@@ -6070,17 +6137,17 @@
         "owner": "src/models/salesIntelligence/outreach.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 8696,
-          "size": 15101434,
+          "count": 8721,
+          "size": 15150029,
           "storageSize": 3698688,
-          "totalIndexSize": 2060288,
-          "avgObjSize": 1736,
+          "totalIndexSize": 2031616,
+          "avgObjSize": 1737,
           "indexSizes": {
             "_id_": 401408,
             "outreach_updated": 524288,
             "outreach_subject_unique": 212992,
-            "outreach_state_due": 147456,
-            "outreach_agent_state": 135168,
+            "outreach_state_due": 135168,
+            "outreach_agent_state": 118784,
             "outreach_number": 225280,
             "outreach_state_closed": 270336,
             "outreach_trigger": 143360
@@ -6170,7 +6237,7 @@
         ],
         "id_range": {
           "first": "2026-09-19T21:56:43.000Z",
-          "last": "2026-10-04T02:00:29.000Z"
+          "last": "2026-10-04T22:14:37.000Z"
         }
       },
       {
@@ -6182,8 +6249,8 @@
         "owner": "src/models/salesIntelligence/overview.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 72,
-          "size": 22216,
+          "count": 78,
+          "size": 24028,
           "storageSize": 45056,
           "totalIndexSize": 73728,
           "avgObjSize": 308,
@@ -6989,8 +7056,8 @@
         "owner": "ringcentral-config",
         "reason": "RingCentral Call Lead ingest/capture state (DATA §1.2)",
         "stats": {
-          "count": 122,
-          "size": 753826,
+          "count": 123,
+          "size": 760015,
           "storageSize": 151552,
           "totalIndexSize": 36864,
           "avgObjSize": 6178,
@@ -7292,8 +7359,8 @@
         "owner": "ringcentral-config",
         "reason": "RingCentral Call Lead ingest/capture state (DATA §1.2)",
         "stats": {
-          "count": 405,
-          "size": 69660,
+          "count": 409,
+          "size": 70348,
           "storageSize": 98304,
           "totalIndexSize": 77824,
           "avgObjSize": 172,
@@ -7581,11 +7648,11 @@
         "owner": "ringcentral-config",
         "reason": "RingCentral Call Lead ingest/capture state (DATA §1.2)",
         "stats": {
-          "count": 1490,
-          "size": 821020,
+          "count": 1494,
+          "size": 823187,
           "storageSize": 401408,
           "totalIndexSize": 389120,
-          "avgObjSize": 551,
+          "avgObjSize": 550,
           "indexSizes": {
             "_id_": 86016,
             "ringcentral_processed_call_telephony_session_id_unique": 94208,
@@ -7685,18 +7752,18 @@
         "owner": "src/services/ringcentral/ringcentral-config.ts",
         "reason": "RingCentral Call Lead ingest/capture state (DATA §1.2)",
         "stats": {
-          "count": 58084,
-          "size": 265404483,
-          "storageSize": 50966528,
-          "totalIndexSize": 6930432,
-          "avgObjSize": 4569,
+          "count": 61041,
+          "size": 279003179,
+          "storageSize": 53551104,
+          "totalIndexSize": 7503872,
+          "avgObjSize": 4570,
           "indexSizes": {
-            "_id_": 1032192,
-            "provider_1_receivedAt_-1": 892928,
-            "uuid_1": 2457600,
-            "telephonySessionId_1": 536576,
-            "sessionId_1": 561152,
-            "provider_1_receivedAt_1__id_1": 1449984
+            "_id_": 1077248,
+            "provider_1_receivedAt_-1": 942080,
+            "uuid_1": 2846720,
+            "telephonySessionId_1": 581632,
+            "sessionId_1": 552960,
+            "provider_1_receivedAt_1__id_1": 1503232
           }
         },
         "indexes": [
@@ -7946,16 +8013,16 @@
         "owner": "src/models/salesIntelligence/infrastructure.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 33409,
-          "size": 23592336,
-          "storageSize": 4988928,
-          "totalIndexSize": 4788224,
+          "count": 33852,
+          "size": 23911152,
+          "storageSize": 5062656,
+          "totalIndexSize": 4841472,
           "avgObjSize": 706,
           "indexSizes": {
-            "_id_": 602112,
-            "csi_reservation_unique": 2052096,
-            "csi_reservation_pending": 225280,
-            "csi_reservation_step_unique": 1908736
+            "_id_": 622592,
+            "csi_reservation_unique": 2080768,
+            "csi_reservation_pending": 221184,
+            "csi_reservation_step_unique": 1916928
           }
         },
         "indexes": [
@@ -8001,7 +8068,7 @@
         ],
         "id_range": {
           "first": "2026-09-20T18:55:04.000Z",
-          "last": "2026-10-04T03:05:02.000Z"
+          "last": "2026-10-04T22:02:02.000Z"
         }
       },
       {
@@ -8013,14 +8080,14 @@
         "owner": "src/models/salesIntelligence/attentionArtifact.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 1025,
-          "size": 7694614,
+          "count": 1032,
+          "size": 7878696,
           "storageSize": 19361792,
-          "totalIndexSize": 294912,
-          "avgObjSize": 7506,
+          "totalIndexSize": 323584,
+          "avgObjSize": 7634,
           "indexSizes": {
-            "_id_": 65536,
-            "attention_artifact_content": 163840,
+            "_id_": 69632,
+            "attention_artifact_content": 188416,
             "attention_artifact_collection": 65536
           }
         },
@@ -8060,7 +8127,7 @@
         ],
         "id_range": {
           "first": "2026-09-29T23:04:12.000Z",
-          "last": "2026-10-04T02:22:14.000Z"
+          "last": "2026-10-04T22:16:16.000Z"
         }
       },
       {
@@ -8072,11 +8139,11 @@
         "owner": "src/models/salesIntelligence/infrastructure.ts",
         "reason": "SPEC §7.2 exclusive target",
         "stats": {
-          "count": 5,
-          "size": 387869,
-          "storageSize": 880640,
+          "count": 1,
+          "size": 77561,
+          "storageSize": 802816,
           "totalIndexSize": 184320,
-          "avgObjSize": 77573,
+          "avgObjSize": 77561,
           "indexSizes": {
             "_id_": 36864,
             "csi_attention_dataset_asof": 36864,
@@ -8136,8 +8203,8 @@
           }
         ],
         "id_range": {
-          "first": "2026-10-04T02:55:12.000Z",
-          "last": "2026-10-04T03:07:15.000Z"
+          "first": "2026-10-04T22:16:16.000Z",
+          "last": "2026-10-04T22:16:16.000Z"
         }
       },
       {
@@ -8149,17 +8216,17 @@
         "owner": "src/models/salesIntelligence/infrastructure.ts",
         "reason": "Mixed append-only audit; retired-feature kinds proposed for deletion (SPEC §6, §7.3)",
         "stats": {
-          "count": 273199,
-          "size": 444421886,
-          "storageSize": 84791296,
-          "totalIndexSize": 37257216,
-          "avgObjSize": 1626,
+          "count": 280206,
+          "size": 453394461,
+          "storageSize": 86528000,
+          "totalIndexSize": 38105088,
+          "avgObjSize": 1618,
           "indexSizes": {
-            "_id_": 4947968,
-            "csi_audit_stream": 6795264,
-            "csi_audit_subject": 6606848,
-            "csi_audit_semantic_unique": 15540224,
-            "csi_audit_kind_happened": 3366912
+            "_id_": 5066752,
+            "csi_audit_stream": 6991872,
+            "csi_audit_subject": 6590464,
+            "csi_audit_semantic_unique": 15970304,
+            "csi_audit_kind_happened": 3485696
           }
         },
         "indexes": [
@@ -8214,7 +8281,7 @@
         ],
         "id_range": {
           "first": "2026-09-19T14:48:43.000Z",
-          "last": "2026-10-04T03:05:02.000Z"
+          "last": "2026-10-04T22:30:45.000Z"
         }
       },
       {
@@ -8318,10 +8385,10 @@
         "reason": "Numbers coverage/freshness",
         "stats": {
           "count": 1,
-          "size": 425,
+          "size": 224,
           "storageSize": 36864,
           "totalIndexSize": 69632,
-          "avgObjSize": 425,
+          "avgObjSize": 224,
           "indexSizes": {
             "_id_": 36864,
             "csi_coverage_projection_dataset": 32768
@@ -8359,18 +8426,18 @@
         "owner": "src/models/salesIntelligence/infrastructure.ts",
         "reason": "Mixed; legacy-stage rows terminalized then deleted (SPEC §7.3, DATA §1.3)",
         "stats": {
-          "count": 235093,
-          "size": 188589370,
-          "storageSize": 53256192,
-          "totalIndexSize": 29261824,
-          "avgObjSize": 802,
+          "count": 222878,
+          "size": 180874777,
+          "storageSize": 55513088,
+          "totalIndexSize": 29302784,
+          "avgObjSize": 811,
           "indexSizes": {
-            "_id_": 4313088,
-            "csi_job_dedupe_unique": 10190848,
-            "csi_job_due": 3534848,
+            "_id_": 4288512,
+            "csi_job_dedupe_unique": 10153984,
+            "csi_job_due": 3588096,
             "csi_job_lease": 1687552,
-            "csi_job_claim": 6787072,
-            "csi_job_completed_ttl": 2748416
+            "csi_job_claim": 6828032,
+            "csi_job_completed_ttl": 2756608
           }
         },
         "indexes": [
@@ -8439,8 +8506,8 @@
           }
         ],
         "id_range": {
-          "first": "2026-09-19T21:56:44.000Z",
-          "last": "2026-10-04T02:58:15.000Z"
+          "first": "2026-09-20T18:33:33.000Z",
+          "last": "2026-10-04T22:30:45.000Z"
         }
       },
       {
@@ -8593,9 +8660,9 @@
         "owner": "src/models/salesIntelligence/intelligence.ts",
         "reason": "Kept minimal human facts (HUMAN-FACTS.md)",
         "stats": {
-          "count": 12202,
-          "size": 4108959,
-          "storageSize": 913408,
+          "count": 12206,
+          "size": 4110471,
+          "storageSize": 917504,
           "totalIndexSize": 1146880,
           "avgObjSize": 336,
           "indexSizes": {
@@ -8627,7 +8694,7 @@
         ],
         "id_range": {
           "first": "2026-09-20T19:00:14.000Z",
-          "last": "2026-10-03T23:03:37.000Z"
+          "last": "2026-10-04T17:30:29.000Z"
         }
       },
       {
@@ -8639,11 +8706,11 @@
         "owner": "src/models/salesIntelligence/capture.ts",
         "reason": "Mixed; exact Attention fence rows deleted (CODE-MAP §7.1)",
         "stats": {
-          "count": 45,
-          "size": 18090,
+          "count": 46,
+          "size": 18318,
           "storageSize": 45056,
           "totalIndexSize": 73728,
-          "avgObjSize": 402,
+          "avgObjSize": 398,
           "indexSizes": {
             "_id_": 36864,
             "sales_intelligence_sync_state_scope_unique": 36864
@@ -8671,7 +8738,7 @@
         ],
         "id_range": {
           "first": "2026-09-19T14:47:29.000Z",
-          "last": "2026-09-26T18:22:11.000Z"
+          "last": "2026-10-04T22:16:45.000Z"
         }
       },
       {
@@ -8725,8 +8792,8 @@
         "owner": "Sheet Sync",
         "reason": "Retained Sheet Sync durable state (DATA §1.2)",
         "stats": {
-          "count": 7921,
-          "size": 2336158,
+          "count": 8008,
+          "size": 2361846,
           "storageSize": 1732608,
           "totalIndexSize": 3117056,
           "avgObjSize": 294,
@@ -8789,8 +8856,8 @@
         "owner": "Sheet Sync",
         "reason": "Retained Sheet Sync durable state (DATA §1.2)",
         "stats": {
-          "count": 6687,
-          "size": 2969620,
+          "count": 6759,
+          "size": 3001500,
           "storageSize": 2506752,
           "totalIndexSize": 4272128,
           "avgObjSize": 444,
@@ -8917,15 +8984,15 @@
         "owner": "Sheet Sync",
         "reason": "Retained Sheet Sync durable state (DATA §1.2)",
         "stats": {
-          "count": 0,
-          "size": 0,
-          "storageSize": 32768,
-          "totalIndexSize": 98304,
-          "avgObjSize": 0,
+          "count": 8,
+          "size": 1100,
+          "storageSize": 36864,
+          "totalIndexSize": 110592,
+          "avgObjSize": 137,
           "indexSizes": {
-            "_id_": 32768,
-            "scope_1_op_class_1_window_start_1": 32768,
-            "window_start_1": 32768
+            "_id_": 36864,
+            "scope_1_op_class_1_window_start_1": 36864,
+            "window_start_1": 36864
           }
         },
         "indexes": [
@@ -8970,15 +9037,15 @@
         "owner": "Sheet Sync",
         "reason": "Retained Sheet Sync durable state (DATA §1.2)",
         "stats": {
-          "count": 51207,
-          "size": 12359389,
+          "count": 51515,
+          "size": 12433693,
           "storageSize": 4587520,
-          "totalIndexSize": 3817472,
+          "totalIndexSize": 3805184,
           "avgObjSize": 241,
           "indexSizes": {
             "_id_": 2514944,
-            "status_1_started_at_-1": 647168,
-            "started_at_-1": 655360
+            "status_1_started_at_-1": 651264,
+            "started_at_-1": 638976
           }
         },
         "indexes": [
@@ -9169,14 +9236,14 @@
         "owner": "Synchronization Decisions",
         "reason": "Granot lifecycle evidence, Health, intakes, timeline (SPEC §5, DATA §1.2)",
         "stats": {
-          "count": 13236,
-          "size": 17444662,
+          "count": 13331,
+          "size": 17571847,
           "storageSize": 3530752,
-          "totalIndexSize": 1687552,
-          "avgObjSize": 1317,
+          "totalIndexSize": 1703936,
+          "avgObjSize": 1318,
           "indexSizes": {
             "_id_": 536576,
-            "synchronization_decision_outcome_decided": 258048,
+            "synchronization_decision_outcome_decided": 274432,
             "synchronization_decision_target_decided": 376832,
             "synchronization_decision_source_decided": 274432,
             "synchronization_decision_observation_attempt_unique": 241664
@@ -10200,16 +10267,16 @@
         "owner": "vantage-admin server/models/AdminAuditLog.ts",
         "reason": "SPEC §6",
         "stats": {
-          "count": 2537,
-          "size": 1679868,
+          "count": 2561,
+          "size": 1699049,
           "storageSize": 720896,
-          "totalIndexSize": 540672,
-          "avgObjSize": 662,
+          "totalIndexSize": 544768,
+          "avgObjSize": 663,
           "indexSizes": {
             "_id_": 139264,
             "ok_1": 53248,
             "timestamp_-1": 73728,
-            "admin_user_id_1_timestamp_-1": 73728,
+            "admin_user_id_1_timestamp_-1": 77824,
             "action_1_timestamp_-1": 77824,
             "timestamp_1": 69632,
             "action_1": 53248
@@ -10284,7 +10351,7 @@
         ],
         "id_range": {
           "first": "2026-06-01T01:52:58.000Z",
-          "last": "2026-10-04T01:07:29.000Z"
+          "last": "2026-10-04T20:41:58.000Z"
         }
       },
       {
@@ -10425,110 +10492,110 @@
       {
         "stage": "outreach_ensure",
         "status": "completed",
-        "count": 91411,
-        "first_id": "2026-09-20T18:27:38.000Z",
-        "last_id": "2026-10-04T02:52:36.000Z",
-        "bytes": 63164915,
+        "count": 79397,
+        "first_id": "2026-09-20T22:35:36.000Z",
+        "last_id": "2026-10-04T22:15:46.000Z",
+        "bytes": 54605005,
         "legacy": true,
         "split": false
       },
       {
         "stage": "capture_projection",
         "status": "completed",
-        "count": 58081,
+        "count": 61038,
         "first_id": "2026-09-24T04:40:41.000Z",
-        "last_id": "2026-10-04T02:05:41.000Z",
-        "bytes": 59935892,
+        "last_id": "2026-10-04T22:11:50.000Z",
+        "bytes": 62981264,
         "legacy": false,
         "split": false
       },
       {
         "stage": "attachment_refresh",
         "status": "completed",
-        "count": 26384,
-        "first_id": "2026-09-20T18:30:30.000Z",
-        "last_id": "2026-10-04T02:02:03.000Z",
-        "bytes": 18690991,
+        "count": 23037,
+        "first_id": "2026-09-20T19:10:58.000Z",
+        "last_id": "2026-10-04T22:30:45.000Z",
+        "bytes": 16314395,
         "legacy": false,
         "split": false
       },
       {
         "stage": "number_refresh",
         "status": "completed",
-        "count": 18140,
-        "first_id": "2026-09-19T21:56:44.000Z",
-        "last_id": "2026-10-04T02:03:01.000Z",
-        "bytes": 12682377,
-        "legacy": false,
-        "split": true
+        "count": 18099,
+        "first_id": "2026-09-20T18:37:02.000Z",
+        "last_id": "2026-10-04T21:54:00.000Z",
+        "bytes": 12660640,
+        "legacy": true,
+        "split": false
       },
       {
         "stage": "application",
         "status": "completed",
-        "count": 8800,
-        "first_id": "2026-09-20T19:00:08.000Z",
+        "count": 8795,
+        "first_id": "2026-09-20T23:03:25.000Z",
         "last_id": "2026-09-29T20:06:46.000Z",
-        "bytes": 6298424,
+        "bytes": 6294835,
         "legacy": true,
         "split": false
       },
       {
         "stage": "recording_discovery",
         "status": "completed",
-        "count": 8119,
+        "count": 8065,
         "first_id": "2026-09-20T18:33:33.000Z",
-        "last_id": "2026-10-04T02:02:04.000Z",
-        "bytes": 6392163,
+        "last_id": "2026-10-04T22:13:21.000Z",
+        "bytes": 6349580,
         "legacy": true,
         "split": false
       },
       {
         "stage": "call_log_refresh",
         "status": "completed",
-        "count": 6102,
+        "count": 6325,
         "first_id": "2026-09-24T04:41:40.000Z",
-        "last_id": "2026-10-04T02:05:41.000Z",
-        "bytes": 5534593,
+        "last_id": "2026-10-04T22:11:50.000Z",
+        "bytes": 5738644,
         "legacy": false,
         "split": false
       },
       {
         "stage": "analysis",
         "status": "completed",
-        "count": 4657,
+        "count": 4653,
         "first_id": "2026-09-20T18:55:07.000Z",
         "last_id": "2026-09-29T20:05:23.000Z",
-        "bytes": 4027730,
+        "bytes": 4024366,
         "legacy": true,
         "split": false
       },
       {
         "stage": "move_assessment",
         "status": "completed",
-        "count": 3919,
+        "count": 3920,
         "first_id": "2026-09-23T04:40:08.000Z",
-        "last_id": "2026-10-03T16:38:36.000Z",
-        "bytes": 3028645,
+        "last_id": "2026-10-04T19:31:36.000Z",
+        "bytes": 3029418,
         "legacy": true,
         "split": false
       },
       {
         "stage": "media_fetch",
         "status": "completed",
-        "count": 3182,
+        "count": 3177,
         "first_id": "2026-09-20T18:35:23.000Z",
-        "last_id": "2026-10-04T02:03:03.000Z",
-        "bytes": 2631363,
+        "last_id": "2026-10-04T20:28:15.000Z",
+        "bytes": 2626979,
         "legacy": true,
         "split": false
       },
       {
         "stage": "transcription",
         "status": "completed",
-        "count": 2298,
-        "first_id": "2026-09-20T18:37:18.000Z",
+        "count": 2277,
+        "first_id": "2026-09-20T22:55:04.000Z",
         "last_id": "2026-09-29T20:05:22.000Z",
-        "bytes": 2070500,
+        "bytes": 2051228,
         "legacy": true,
         "split": false
       },
@@ -10540,65 +10607,55 @@
         "last_id": "2026-09-29T19:39:33.000Z",
         "bytes": 2267791,
         "legacy": false,
-        "split": true
+        "split": false
       },
       {
         "stage": "transcription",
         "status": "dead_letter",
-        "count": 710,
+        "count": 730,
         "first_id": "2026-09-20T22:28:29.000Z",
-        "last_id": "2026-10-04T01:27:02.000Z",
-        "bytes": 521140,
+        "last_id": "2026-10-04T20:29:02.000Z",
+        "bytes": 535820,
         "legacy": true,
         "split": false
       },
       {
         "stage": "number_refresh",
         "status": "dead_letter",
-        "count": 524,
+        "count": 539,
         "first_id": "2026-09-20T23:51:01.000Z",
-        "last_id": "2026-10-03T23:38:01.000Z",
-        "bytes": 360865,
-        "legacy": false,
-        "split": true
+        "last_id": "2026-10-04T19:42:02.000Z",
+        "bytes": 371194,
+        "legacy": true,
+        "split": false
+      },
+      {
+        "stage": "media_fetch",
+        "status": "retired",
+        "count": 499,
+        "first_id": "2026-09-20T18:35:15.000Z",
+        "last_id": "2026-10-04T22:14:01.000Z",
+        "bytes": 335071,
+        "legacy": true,
+        "split": false
       },
       {
         "stage": "application",
-        "status": "paused",
+        "status": "retired",
         "count": 383,
         "first_id": "2026-09-22T16:38:54.000Z",
         "last_id": "2026-09-22T18:10:26.000Z",
-        "bytes": 270781,
+        "bytes": 269632,
         "legacy": true,
         "split": false
       },
       {
         "stage": "move_assessment",
         "status": "dead_letter",
-        "count": 339,
+        "count": 359,
         "first_id": "2026-09-23T20:50:34.000Z",
-        "last_id": "2026-10-04T01:02:36.000Z",
-        "bytes": 266194,
-        "legacy": true,
-        "split": false
-      },
-      {
-        "stage": "media_fetch",
-        "status": "retry",
-        "count": 321,
-        "first_id": "2026-09-20T18:35:17.000Z",
-        "last_id": "2026-10-04T01:44:05.000Z",
-        "bytes": 215865,
-        "legacy": true,
-        "split": false
-      },
-      {
-        "stage": "media_fetch",
-        "status": "paused",
-        "count": 141,
-        "first_id": "2026-09-20T18:35:15.000Z",
-        "last_id": "2026-09-24T15:14:00.000Z",
-        "bytes": 93979,
+        "last_id": "2026-10-04T20:41:36.000Z",
+        "bytes": 281874,
         "legacy": true,
         "split": false
       },
@@ -10619,26 +10676,26 @@
         "first_id": "2026-09-23T19:09:50.000Z",
         "last_id": "2026-09-25T23:57:08.000Z",
         "bytes": 32306,
-        "legacy": false,
+        "legacy": true,
         "split": false
       },
       {
         "stage": "number_refresh",
-        "status": "paused",
-        "count": 23,
+        "status": "retired",
+        "count": 27,
         "first_id": "2026-09-21T22:56:35.000Z",
-        "last_id": "2026-10-01T15:04:02.000Z",
-        "bytes": 16035,
-        "legacy": false,
-        "split": true
+        "last_id": "2026-10-04T22:15:05.000Z",
+        "bytes": 18676,
+        "legacy": true,
+        "split": false
       },
       {
         "stage": "analysis",
-        "status": "paused",
+        "status": "retired",
         "count": 23,
         "first_id": "2026-09-20T21:08:44.000Z",
         "last_id": "2026-09-26T12:46:29.000Z",
-        "bytes": 18581,
+        "bytes": 18532,
         "legacy": true,
         "split": false
       },
@@ -10653,59 +10710,39 @@
         "split": false
       },
       {
-        "stage": "transcription",
-        "status": "retry",
-        "count": 8,
-        "first_id": "2026-10-04T02:04:17.000Z",
-        "last_id": "2026-10-04T02:58:15.000Z",
-        "bytes": 5824,
-        "legacy": true,
-        "split": false
-      },
-      {
         "stage": "recording_discovery",
-        "status": "retry",
-        "count": 4,
-        "first_id": "2026-10-01T07:28:34.000Z",
-        "last_id": "2026-10-03T20:23:31.000Z",
-        "bytes": 2852,
-        "legacy": true,
-        "split": false
-      },
-      {
-        "stage": "move_assessment",
-        "status": "pending",
-        "count": 1,
-        "first_id": "2026-09-23T04:56:34.000Z",
-        "last_id": "2026-09-23T04:56:34.000Z",
-        "bytes": 688,
-        "legacy": true,
-        "split": false
-      },
-      {
-        "stage": "move_assessment",
-        "status": "retry",
-        "count": 1,
-        "first_id": "2026-10-04T02:01:36.000Z",
-        "last_id": "2026-10-04T02:01:36.000Z",
-        "bytes": 778,
-        "legacy": true,
-        "split": false
-      },
-      {
-        "stage": "recording_discovery",
-        "status": "paused",
-        "count": 1,
+        "status": "retired",
+        "count": 9,
         "first_id": "2026-09-24T03:32:32.000Z",
-        "last_id": "2026-09-24T03:32:32.000Z",
-        "bytes": 710,
+        "last_id": "2026-10-04T20:05:13.000Z",
+        "bytes": 6399,
+        "legacy": true,
+        "split": false
+      },
+      {
+        "stage": "transcription",
+        "status": "retired",
+        "count": 3,
+        "first_id": "2026-10-04T16:08:02.000Z",
+        "last_id": "2026-10-04T21:41:00.000Z",
+        "bytes": 2250,
+        "legacy": true,
+        "split": false
+      },
+      {
+        "stage": "move_assessment",
+        "status": "retired",
+        "count": 2,
+        "first_id": "2026-09-23T04:56:34.000Z",
+        "last_id": "2026-10-04T21:05:36.000Z",
+        "bytes": 1490,
         "legacy": true,
         "split": false
       }
     ],
     "legacy_live_leases": 0,
     "legacy_expired_leases": 0,
-    "legacy_runnable": 883,
+    "legacy_runnable": 0,
     "owner_reanalysis_rows": 765,
     "completed_without_completed_at": 0
   },
@@ -10736,7 +10773,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-03T05:20:33.916Z"
+      "updated_at": "2026-10-04T05:20:29.158Z"
     },
     {
       "scope": "rep_identity:22e1a34ccf9ac45d9c77ce6e6e23f707e63dd3764fedecb8788ab2a9ea087180",
@@ -11436,7 +11473,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-03T04:30:41.554Z"
+      "updated_at": "2026-10-04T04:30:41.610Z"
     },
     {
       "scope": "webhook_receipts",
@@ -11457,8 +11494,6 @@
       ],
       "cursor_fields": [
         "attachment_source_id",
-        "audit_event_id",
-        "audit_recorded_at",
         "entity_change_applied_at",
         "entity_change_id",
         "last_sync_from",
@@ -11466,7 +11501,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:07:00.857Z"
+      "updated_at": "2026-10-04T22:34:00.330Z"
     },
     {
       "scope": "intelligence_source_scan",
@@ -11496,7 +11531,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:07:01.232Z"
+      "updated_at": "2026-10-04T22:16:01.977Z"
     },
     {
       "scope": "outreach_ensure",
@@ -11524,7 +11559,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:06:37.246Z"
+      "updated_at": "2026-10-04T22:15:37.291Z"
     },
     {
       "scope": "outreach_entity_changes",
@@ -11548,7 +11583,7 @@
         "entity_change_id"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T02:01:36.476Z"
+      "updated_at": "2026-10-04T22:14:36.353Z"
     },
     {
       "scope": "outreach_repair:FormLead",
@@ -11572,7 +11607,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:06:36.593Z"
+      "updated_at": "2026-10-04T22:15:36.588Z"
     },
     {
       "scope": "outreach_repair:CallLead",
@@ -11596,7 +11631,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:06:36.809Z"
+      "updated_at": "2026-10-04T22:15:36.811Z"
     },
     {
       "scope": "outreach_repair:CallInteraction",
@@ -11620,7 +11655,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:06:37.020Z"
+      "updated_at": "2026-10-04T22:15:37.039Z"
     },
     {
       "scope": "outreach_repair:OutreachRecord",
@@ -11644,7 +11679,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:06:37.234Z"
+      "updated_at": "2026-10-04T22:15:37.253Z"
     },
     {
       "scope": "attachment_suggest",
@@ -11672,7 +11707,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:05:29.307Z"
+      "updated_at": "2026-10-04T22:34:45.643Z"
     },
     {
       "scope": "attachment_watermark:FormLead",
@@ -11696,7 +11731,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T01:50:29.559Z"
+      "updated_at": "2026-10-04T22:25:45.413Z"
     },
     {
       "scope": "attachment_watermark:CallLead",
@@ -11720,7 +11755,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T02:05:29.662Z"
+      "updated_at": "2026-10-04T22:30:45.236Z"
     },
     {
       "scope": "call_log_all_directions",
@@ -11744,8 +11779,6 @@
       ],
       "cursor_fields": [
         "attachment_source_id",
-        "audit_event_id",
-        "audit_recorded_at",
         "entity_change_applied_at",
         "entity_change_id",
         "last_sync_from",
@@ -11753,7 +11786,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:03:34.512Z"
+      "updated_at": "2026-10-04T22:33:34.432Z"
     },
     {
       "scope": "attachment_watermark:ContactNumber",
@@ -11777,7 +11810,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T02:10:29.503Z"
+      "updated_at": "2026-10-04T22:15:29.360Z"
     },
     {
       "scope": "attention_publish",
@@ -11807,7 +11840,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:07:15.361Z"
+      "updated_at": "2026-10-04T22:16:17.111Z"
     },
     {
       "scope": "deployment",
@@ -11852,7 +11885,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-03T07:40:46.700Z"
+      "updated_at": "2026-10-04T07:40:42.458Z"
     },
     {
       "scope": "attention_publish_fence:csi-production:vantagemovers",
@@ -11894,7 +11927,7 @@
         "provider_modified_watermark"
       ],
       "lease_live": false,
-      "updated_at": "2026-10-04T03:05:22.358Z"
+      "updated_at": "2026-10-04T22:15:22.229Z"
     },
     {
       "scope": "attention_artifacts:csi-production:vantagemovers",
@@ -11907,6 +11940,30 @@
       "cursor_fields": [],
       "lease_live": false,
       "updated_at": null
+    },
+    {
+      "scope": "attachment_entity_changes",
+      "class": "unknown",
+      "fields": [
+        "__v",
+        "consecutive_failures",
+        "createdAt",
+        "cursor",
+        "gaps",
+        "known_complete_through",
+        "last_run",
+        "lease_epoch",
+        "lease_owner",
+        "leased_until",
+        "scope",
+        "updatedAt"
+      ],
+      "cursor_fields": [
+        "entity_change_applied_at",
+        "entity_change_id"
+      ],
+      "lease_live": false,
+      "updated_at": "2026-10-04T22:30:45.191Z"
     }
   ],
   "field_discovery": {
@@ -11992,22 +12049,23 @@
         "running_summary.text"
       ],
       "exists_counts": {
-        "contact_eligibility.evidence_ref": 7028,
-        "content_purge_pending": 7028,
-        "evidence_fence": 7028,
-        "intelligence_schedule": 7028,
-        "intelligence_schedule.fingerprint": 7028,
-        "intelligence_schedule.generation": 7028,
-        "intelligence_schedule.job_id": 7028,
-        "purged_at": 7028,
-        "retention_epoch": 7028,
-        "rollups.conversations_analyzed_total": 7028,
-        "rollups.human_conversations_total": 7028,
-        "rollups.last_analyzed_at": 7028,
-        "rollups.last_human_conversation_at": 7028,
-        "rollups.open_outreach_count": 7028,
-        "rollups.outreach_records_total": 7028,
-        "running_summary": 7028,
+        "contact_eligibility.evidence_ref": 7074,
+        "content_purge_pending": 7073,
+        "evidence_fence": 7073,
+        "intelligence_schedule": 7073,
+        "intelligence_schedule.fingerprint": 7073,
+        "intelligence_schedule.generation": 7073,
+        "intelligence_schedule.job_id": 7073,
+        "purged_at": 7074,
+        "retention_epoch": 7073,
+        "rollups.conversations_analyzed_total": 7073,
+        "rollups.human_conversations_total": 7074,
+        "rollups.last_analyzed_at": 7073,
+        "rollups.last_human_conversation_at": 7074,
+        "rollups.last_meaningful_contact_at": 7073,
+        "rollups.open_outreach_count": 7073,
+        "rollups.outreach_records_total": 7073,
+        "running_summary": 7073,
         "running_summary.computed_at": 898,
         "running_summary.evidence_digest": 898,
         "running_summary.run_id": 898,
@@ -12015,20 +12073,21 @@
       },
       "non_null_counts": {
         "contact_eligibility.evidence_ref": 0,
-        "content_purge_pending": 7028,
-        "evidence_fence": 7028,
-        "intelligence_schedule": 7028,
-        "intelligence_schedule.fingerprint": 7028,
-        "intelligence_schedule.generation": 7028,
-        "intelligence_schedule.job_id": 7028,
+        "content_purge_pending": 7073,
+        "evidence_fence": 7073,
+        "intelligence_schedule": 7073,
+        "intelligence_schedule.fingerprint": 7073,
+        "intelligence_schedule.generation": 7073,
+        "intelligence_schedule.job_id": 7073,
         "purged_at": 0,
-        "retention_epoch": 7028,
-        "rollups.conversations_analyzed_total": 7028,
-        "rollups.human_conversations_total": 7028,
+        "retention_epoch": 7073,
+        "rollups.conversations_analyzed_total": 7073,
+        "rollups.human_conversations_total": 7074,
         "rollups.last_analyzed_at": 899,
         "rollups.last_human_conversation_at": 469,
-        "rollups.open_outreach_count": 7028,
-        "rollups.outreach_records_total": 7028,
+        "rollups.last_meaningful_contact_at": 0,
+        "rollups.open_outreach_count": 7073,
+        "rollups.outreach_records_total": 7073,
         "running_summary": 898,
         "running_summary.computed_at": 898,
         "running_summary.evidence_digest": 898,
@@ -12045,7 +12104,7 @@
       ],
       "exists_counts": {
         "capture_recovery.run_id": 55,
-        "purged_at": 8613
+        "purged_at": 8836
       },
       "non_null_counts": {
         "capture_recovery.run_id": 55,
@@ -12081,14 +12140,14 @@
         "lead_ref.model"
       ],
       "exists_counts": {
-        "evidence": 6736,
-        "history": 6736,
-        "lead_ref.model": 6736
+        "evidence": 6763,
+        "history": 6763,
+        "lead_ref.model": 6763
       },
       "non_null_counts": {
-        "evidence": 6736,
-        "history": 6736,
-        "lead_ref.model": 6736
+        "evidence": 6763,
+        "history": 6763,
+        "lead_ref.model": 6763
       }
     },
     "rep_identity_links": {
@@ -12111,6 +12170,12 @@
       "flagged_paths": [
         "evidence_fence",
         "owner_reanalysis",
+        "owner_reanalysis.application_disabled",
+        "owner_reanalysis.focus_finding_id",
+        "owner_reanalysis.mode",
+        "owner_reanalysis.owner_correction_ids",
+        "owner_reanalysis.run_id",
+        "owner_reanalysis.source_run_id",
         "result.backfill_run_id",
         "result.conversation_id",
         "result.conversations",
@@ -12121,49 +12186,70 @@
         "result.rollups_after.last_human_conversation_at",
         "result.rollups_after.open_outreach_count",
         "result.rollups_after.outreach_records_total",
+        "result.rollups_before.conversations_analyzed_total",
         "result.rollups_before.human_conversations_total",
+        "result.rollups_before.last_analyzed_at",
         "result.rollups_before.last_human_conversation_at",
         "result.rollups_before.open_outreach_count",
+        "result.rollups_before.outreach_records_total",
         "result.run_id",
         "result.transcript_version"
       ],
       "exists_counts": {
-        "evidence_fence": 235093,
-        "owner_reanalysis": 235093,
+        "evidence_fence": 222872,
+        "owner_reanalysis": 222872,
+        "owner_reanalysis.application_disabled": 765,
+        "owner_reanalysis.focus_finding_id": 765,
+        "owner_reanalysis.mode": 765,
+        "owner_reanalysis.owner_correction_ids": 765,
+        "owner_reanalysis.run_id": 765,
+        "owner_reanalysis.source_run_id": 765,
         "result.backfill_run_id": 500,
-        "result.conversation_id": 5430,
-        "result.conversations": 8119,
-        "result.findings": 8800,
+        "result.conversation_id": 5425,
+        "result.conversations": 8065,
+        "result.findings": 8795,
         "result.rollups_after.conversations_analyzed_total": 1304,
         "result.rollups_after.human_conversations_total": 1414,
         "result.rollups_after.last_analyzed_at": 1304,
         "result.rollups_after.last_human_conversation_at": 1414,
         "result.rollups_after.open_outreach_count": 1414,
         "result.rollups_after.outreach_records_total": 1304,
+        "result.rollups_before.conversations_analyzed_total": 408,
         "result.rollups_before.human_conversations_total": 1414,
+        "result.rollups_before.last_analyzed_at": 408,
         "result.rollups_before.last_human_conversation_at": 1414,
         "result.rollups_before.open_outreach_count": 1414,
-        "result.run_id": 17983,
-        "result.transcript_version": 2252
+        "result.rollups_before.outreach_records_total": 400,
+        "result.run_id": 17973,
+        "result.transcript_version": 2231
       },
       "non_null_counts": {
-        "evidence_fence": 235093,
+        "evidence_fence": 222872,
         "owner_reanalysis": 765,
+        "owner_reanalysis.application_disabled": 765,
+        "owner_reanalysis.focus_finding_id": 0,
+        "owner_reanalysis.mode": 765,
+        "owner_reanalysis.owner_correction_ids": 0,
+        "owner_reanalysis.run_id": 765,
+        "owner_reanalysis.source_run_id": 765,
         "result.backfill_run_id": 500,
-        "result.conversation_id": 5430,
-        "result.conversations": 8119,
-        "result.findings": 8800,
+        "result.conversation_id": 5425,
+        "result.conversations": 8065,
+        "result.findings": 8795,
         "result.rollups_after.conversations_analyzed_total": 1304,
         "result.rollups_after.human_conversations_total": 1414,
         "result.rollups_after.last_analyzed_at": 898,
         "result.rollups_after.last_human_conversation_at": 710,
         "result.rollups_after.open_outreach_count": 1414,
         "result.rollups_after.outreach_records_total": 1304,
+        "result.rollups_before.conversations_analyzed_total": 408,
         "result.rollups_before.human_conversations_total": 1414,
+        "result.rollups_before.last_analyzed_at": 404,
         "result.rollups_before.last_human_conversation_at": 241,
         "result.rollups_before.open_outreach_count": 1414,
-        "result.run_id": 17983,
-        "result.transcript_version": 2252
+        "result.rollups_before.outreach_records_total": 400,
+        "result.run_id": 17973,
+        "result.transcript_version": 2231
       }
     },
     "sales_intelligence_review_items": {
@@ -12173,11 +12259,11 @@
         "resolution_actor.run_id"
       ],
       "exists_counts": {
-        "evidence_ids": 12202,
-        "resolution_actor.run_id": 15
+        "evidence_ids": 12206,
+        "resolution_actor.run_id": 16
       },
       "non_null_counts": {
-        "evidence_ids": 11719,
+        "evidence_ids": 11720,
         "resolution_actor.run_id": 0
       }
     },
@@ -12300,14 +12386,14 @@
         "ingested_move_snapshot.evidence_status"
       ],
       "exists_counts": {
-        "change_history_started_at": 6758,
-        "ingested_contact_snapshot.evidence_status": 6758,
-        "ingested_move_snapshot.evidence_status": 6758
+        "change_history_started_at": 6781,
+        "ingested_contact_snapshot.evidence_status": 6781,
+        "ingested_move_snapshot.evidence_status": 6781
       },
       "non_null_counts": {
-        "change_history_started_at": 6758,
-        "ingested_contact_snapshot.evidence_status": 6758,
-        "ingested_move_snapshot.evidence_status": 6758
+        "change_history_started_at": 6781,
+        "ingested_contact_snapshot.evidence_status": 6781,
+        "ingested_move_snapshot.evidence_status": 6781
       }
     },
     "call_leads": {
@@ -12317,12 +12403,12 @@
         "ingested_contact_snapshot.evidence_status"
       ],
       "exists_counts": {
-        "change_history_started_at": 1773,
-        "ingested_contact_snapshot.evidence_status": 1771
+        "change_history_started_at": 1777,
+        "ingested_contact_snapshot.evidence_status": 1775
       },
       "non_null_counts": {
-        "change_history_started_at": 1773,
-        "ingested_contact_snapshot.evidence_status": 1771
+        "change_history_started_at": 1777,
+        "ingested_contact_snapshot.evidence_status": 1775
       }
     },
     "booked_leads": {
@@ -12332,12 +12418,12 @@
         "lead_model"
       ],
       "exists_counts": {
-        "change_history_started_at": 859,
-        "lead_model": 763
+        "change_history_started_at": 867,
+        "lead_model": 770
       },
       "non_null_counts": {
-        "change_history_started_at": 859,
-        "lead_model": 763
+        "change_history_started_at": 867,
+        "lead_model": 770
       }
     },
     "cancelled_leads": {
@@ -12369,8 +12455,15 @@
     }
   },
   "contact_numbers_cleanup": {
-    "dead_field_matches": 7028,
-    "review_field_matches": 7028
+    "dead_field_matches": 7073,
+    "review_field_matches": 7073
+  },
+  "call_interactions_cleanup": {
+    "pointer_matches": 8836,
+    "by_path": {
+      "recording_discovery": 8836,
+      "recordings.$[].lead_conversation_id": 7153
+    }
   },
   "human_facts": {
     "contact_restrictions": {
@@ -12431,7 +12524,7 @@
         {
           "cause": "identity",
           "state": "open",
-          "count": 3922
+          "count": 3925
         },
         {
           "cause": "prior_contradiction",
@@ -12459,15 +12552,15 @@
           "count": 35
         },
         {
-          "cause": "restriction",
-          "state": "open",
-          "count": 16
-        },
-        {
           "cause": "disposition_reopen",
           "state": "resolved",
           "resolver": "worker",
-          "count": 15
+          "count": 16
+        },
+        {
+          "cause": "restriction",
+          "state": "open",
+          "count": 16
         },
         {
           "cause": "disposition_reopen",
@@ -12476,7 +12569,7 @@
         }
       ],
       "refs": {
-        "evidence_ids": 11719
+        "evidence_ids": 11720
       }
     },
     "owner_rep_nudges": {
@@ -12519,7 +12612,7 @@
           "origin": "system_default",
           "status": "open",
           "requested_by": null,
-          "count": 117
+          "count": 120
         },
         {
           "origin": "customer_wait",
@@ -12549,7 +12642,7 @@
           "origin": "system_default",
           "status": "cancelled",
           "requested_by": null,
-          "count": 30
+          "count": 33
         },
         {
           "origin": "rep_promise",
@@ -12561,7 +12654,7 @@
           "origin": "system_default",
           "status": "completed",
           "requested_by": null,
-          "count": 21
+          "count": 23
         },
         {
           "origin": "system_default",
@@ -12592,25 +12685,21 @@
         {
           "assignment_origin": "inherited_outreach",
           "status": "open",
-          "count": 279
+          "count": 283
         },
         {
           "assignment_origin": "inherited_outreach",
           "status": "cancelled",
-          "count": 89
+          "count": 92
         },
         {
           "status": "open",
-          "count": 79
+          "count": 78
         },
         {
           "assignment_origin": "inherited_outreach",
           "status": "completed",
-          "count": 49
-        },
-        {
-          "status": "cancelled",
-          "count": 39
+          "count": 50
         },
         {
           "assignment_origin": "inherited_outreach",
@@ -12618,8 +12707,12 @@
           "count": 39
         },
         {
+          "status": "cancelled",
+          "count": 39
+        },
+        {
           "status": "completed",
-          "count": 10
+          "count": 11
         },
         {
           "assignment_origin": "rep_promise",
@@ -12627,7 +12720,7 @@
           "count": 1
         }
       ],
-      "open_due_future": 38,
+      "open_due_future": 43,
       "refs": {
         "owner_instruction_ids": 0,
         "source_finding_ids": 12,
@@ -12639,38 +12732,38 @@
         {
           "state": "closed",
           "assignment_origin": "crm_receiver",
-          "count": 2214
+          "count": 2225
         },
         {
           "state": "unworked",
-          "count": 2183
+          "count": 2180
         },
         {
           "state": "unworked",
           "assignment_origin": "crm_receiver",
-          "count": 1555
+          "count": 1554
         },
         {
           "state": "open",
           "assignment_origin": "crm_receiver",
-          "count": 1064
+          "count": 1069
         },
         {
           "state": "closed",
-          "count": 845
+          "count": 848
         },
         {
           "state": "open",
-          "count": 448
+          "count": 454
         },
         {
           "state": "open",
           "assignment_origin": "first_attempts",
-          "count": 143
+          "count": 146
         },
         {
           "state": "identity_review",
-          "count": 105
+          "count": 106
         },
         {
           "state": "open",
@@ -12699,16 +12792,16 @@
         },
         {
           "state": "open",
-          "assignment_origin": "owner",
-          "count": 1
-        },
-        {
-          "state": "open",
           "assignment_origin": "rep_promise",
           "count": 1
         },
         {
           "state": "unworked",
+          "assignment_origin": "owner",
+          "count": 1
+        },
+        {
+          "state": "open",
           "assignment_origin": "owner",
           "count": 1
         }
@@ -12719,7 +12812,7 @@
         {
           "state": "attached",
           "certainty": "likely",
-          "count": 6105
+          "count": 6127
         },
         {
           "state": "candidate",
@@ -12729,12 +12822,12 @@
         {
           "state": "ambiguous",
           "certainty": "unsure",
-          "count": 253
+          "count": 256
         },
         {
           "state": "attached",
           "certainty": "exact",
-          "count": 103
+          "count": 105
         },
         {
           "state": "attached",
@@ -12744,7 +12837,7 @@
       ],
       "refs": {
         "decided_by": 2,
-        "auto_decision": 6106
+        "auto_decision": 6128
       }
     },
     "rep_identity_links": {
@@ -12757,37 +12850,37 @@
         "event_kind": "interaction.updated",
         "invalidation_kind": "interaction",
         "actor": "worker",
-        "count": 58689,
-        "bytes": 81301912,
+        "count": 61536,
+        "bytes": 85238047,
         "first": "2026-09-20T18:43:47.269Z",
-        "last": "2026-10-04T02:07:12.227Z"
+        "last": "2026-10-04T22:13:21.145Z"
       },
       {
         "event_kind": "capture_projection.completed",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 58081,
-        "bytes": 59310967,
+        "count": 61038,
+        "bytes": 62324492,
         "first": "2026-09-24T04:40:41.563Z",
-        "last": "2026-10-04T02:05:41.764Z"
+        "last": "2026-10-04T22:11:50.628Z"
       },
       {
         "event_kind": "review_opened",
         "invalidation_kind": "review",
         "actor": "worker",
-        "count": 12624,
-        "bytes": 8809968,
+        "count": 12630,
+        "bytes": 8814188,
         "first": "2026-09-20T19:00:13.959Z",
-        "last": "2026-10-03T23:03:37.223Z"
+        "last": "2026-10-04T17:52:27.981Z"
       },
       {
         "event_kind": "lead_progress_updated",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 9769,
-        "bytes": 35995007,
+        "count": 9818,
+        "bytes": 36218494,
         "first": "2026-09-23T00:49:16.367Z",
-        "last": "2026-10-04T02:00:46.846Z"
+        "last": "2026-10-04T22:14:37.575Z"
       },
       {
         "event_kind": "outreach_contact_facts",
@@ -12808,6 +12901,15 @@
         "last": "2026-09-29T20:06:46.130Z"
       },
       {
+        "event_kind": "interaction.created",
+        "invalidation_kind": "interaction",
+        "actor": "worker",
+        "count": 8836,
+        "bytes": 10687574,
+        "first": "2026-09-20T18:33:33.866Z",
+        "last": "2026-10-04T22:01:15.475Z"
+      },
+      {
         "event_kind": "intelligence.published",
         "invalidation_kind": "analysis",
         "actor": "worker",
@@ -12817,139 +12919,130 @@
         "last": "2026-09-29T20:06:47.573Z"
       },
       {
-        "event_kind": "interaction.created",
-        "invalidation_kind": "interaction",
-        "actor": "worker",
-        "count": 8613,
-        "bytes": 10421275,
-        "first": "2026-09-20T18:33:33.866Z",
-        "last": "2026-10-04T02:04:53.069Z"
-      },
-      {
         "event_kind": "outreach_created",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 8531,
-        "bytes": 13266068,
+        "count": 8556,
+        "bytes": 13310355,
         "first": "2026-04-30T00:49:42.000Z",
-        "last": "2026-10-04T01:41:10.151Z"
+        "last": "2026-10-04T22:14:33.612Z"
       },
       {
         "event_kind": "attachment_refreshed",
         "invalidation_kind": "number",
         "actor": "worker",
-        "count": 8137,
-        "bytes": 5734705,
+        "count": 8206,
+        "bytes": 5783474,
         "first": "2026-09-20T20:34:37.206Z",
-        "last": "2026-10-04T02:02:03.103Z"
+        "last": "2026-10-04T22:30:45.265Z"
       },
       {
         "event_kind": "conversation.unavailable",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 7901,
-        "bytes": 5124238,
+        "count": 8053,
+        "bytes": 5223305,
         "first": "2026-09-20T18:37:00.257Z",
-        "last": "2026-10-04T03:05:02.248Z"
+        "last": "2026-10-04T22:14:01.341Z"
       },
       {
         "event_kind": "outreach_interaction",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 7840,
-        "bytes": 39927752,
+        "count": 7929,
+        "bytes": 40401240,
         "first": "2026-09-20T18:39:52.561Z",
-        "last": "2026-10-04T02:07:17.206Z"
+        "last": "2026-10-04T21:03:37.224Z"
       },
       {
         "event_kind": "outreach_call_applied",
         "invalidation_kind": "interaction",
         "actor": "worker",
-        "count": 7840,
-        "bytes": 7318981,
+        "count": 7929,
+        "bytes": 7402453,
         "first": "2026-09-20T11:28:03.216Z",
-        "last": "2026-10-04T02:04:52.619Z"
+        "last": "2026-10-04T21:02:59.672Z"
       },
       {
         "event_kind": "recording_discovery.completed",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 7405,
-        "bytes": 5013206,
+        "count": 7493,
+        "bytes": 5072782,
         "first": "2026-09-20T18:35:14.998Z",
-        "last": "2026-10-04T02:03:03.466Z"
+        "last": "2026-10-04T22:14:00.994Z"
       },
       {
         "event_kind": "outreach_number_linked",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 6501,
-        "bytes": 24484203,
+        "count": 6520,
+        "bytes": 24563555,
         "first": "2026-09-20T20:34:37.735Z",
-        "last": "2026-10-04T01:42:01.508Z"
+        "last": "2026-10-04T22:15:01.211Z"
       },
       {
         "event_kind": "attachment_auto_attached",
         "invalidation_kind": "number",
         "actor": "worker",
-        "count": 6124,
-        "bytes": 7856521,
+        "count": 6148,
+        "bytes": 7888258,
         "first": "2026-09-21T17:19:05.149Z",
-        "last": "2026-10-04T02:00:29.222Z"
+        "last": "2026-10-04T22:18:20.485Z"
       },
       {
         "event_kind": "call_log_refresh.completed",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 5662,
-        "bytes": 4863615,
+        "count": 5885,
+        "bytes": 5056195,
         "first": "2026-09-24T04:43:10.659Z",
-        "last": "2026-10-04T02:07:12.278Z"
+        "last": "2026-10-04T22:13:21.220Z"
       },
       {
         "event_kind": "contact_number_created_from_form_lead",
         "invalidation_kind": "number",
         "actor": "worker",
-        "count": 5457,
-        "bytes": 4065465,
+        "count": 5479,
+        "bytes": 4081855,
         "first": "2026-09-24T16:58:06.583Z",
-        "last": "2026-10-04T01:42:01.414Z"
+        "last": "2026-10-04T22:18:20.424Z"
       },
       {
         "event_kind": "outreach_lead_attachment_mirrored",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 5382,
-        "bytes": 21887431,
+        "count": 5407,
+        "bytes": 21999260,
         "first": "2026-09-21T16:59:05.503Z",
-        "last": "2026-10-04T02:00:29.305Z"
+        "last": "2026-10-04T22:15:01.211Z"
       },
       {
         "event_kind": "outreach_receiver_assigned",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 5007,
-        "bytes": 24877502,
+        "count": 5023,
+        "bytes": 24966530,
         "first": "2026-09-25T03:03:37.590Z",
-        "last": "2026-10-04T02:00:46.846Z"
+        "last": "2026-10-04T21:05:02.062Z"
       },
       {
         "event_kind": "outreach_closed",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 3173,
-        "bytes": 10267145,
+        "count": 3194,
+        "bytes": 10378780,
         "first": "2026-09-19T21:56:43.606Z",
-        "last": "2026-10-03T18:03:28.666Z"
+        "last": "2026-10-04T20:47:47.408Z"
       },
       {
         "event_kind": "conversation.media_stored",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 3016,
-        "bytes": 2280121,
+        "count": 3031,
+        "bytes": 2291461,
         "first": "2026-09-20T18:36:31.061Z",
-        "last": "2026-10-04T02:58:14.653Z"
+        "last": "2026-10-04T21:40:01.428Z"
       },
       {
         "event_kind": "conversation.transcribed",
@@ -12988,22 +13081,22 @@
         "last": "2026-09-22T20:00:06.957Z"
       },
       {
-        "event_kind": "recording_discovery.no_recording",
-        "invalidation_kind": "job",
-        "actor": "worker",
-        "count": 714,
-        "bytes": 503137,
-        "first": "2026-09-23T18:34:02.884Z",
-        "last": "2026-10-03T18:30:01.946Z"
-      },
-      {
         "event_kind": "conversation.failed",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 710,
-        "bytes": 443750,
+        "count": 730,
+        "bytes": 456250,
         "first": "2026-09-20T23:43:57.129Z",
-        "last": "2026-10-04T02:49:15.487Z"
+        "last": "2026-10-04T21:42:01.279Z"
+      },
+      {
+        "event_kind": "recording_discovery.no_recording",
+        "invalidation_kind": "job",
+        "actor": "worker",
+        "count": 715,
+        "bytes": 503842,
+        "first": "2026-09-23T18:34:02.884Z",
+        "last": "2026-10-04T08:04:01.221Z"
       },
       {
         "event_kind": "assessment_followup_created",
@@ -13027,10 +13120,10 @@
         "event_kind": "progress_default_created",
         "invalidation_kind": "followup",
         "actor": "worker",
-        "count": 207,
-        "bytes": 398781,
+        "count": 215,
+        "bytes": 413977,
         "first": "2026-09-24T17:29:39.665Z",
-        "last": "2026-10-04T02:00:46.846Z"
+        "last": "2026-10-04T21:05:02.062Z"
       },
       {
         "event_kind": "intelligence_effect",
@@ -13045,10 +13138,10 @@
         "event_kind": "attachment_identity_changed",
         "invalidation_kind": "outreach",
         "actor": "worker",
-        "count": 178,
-        "bytes": 759606,
+        "count": 179,
+        "bytes": 764224,
         "first": "2026-09-21T02:20:34.244Z",
-        "last": "2026-10-02T17:08:02.857Z"
+        "last": "2026-10-04T17:30:29.579Z"
       },
       {
         "event_kind": "number_review_opened",
@@ -13063,37 +13156,37 @@
         "event_kind": "conversation.media_skipped",
         "invalidation_kind": "job",
         "actor": "worker",
-        "count": 155,
-        "bytes": 104937,
+        "count": 159,
+        "bytes": 107645,
         "first": "2026-09-20T21:06:48.352Z",
-        "last": "2026-10-03T22:36:01.109Z"
+        "last": "2026-10-04T21:34:01.378Z"
       },
       {
         "event_kind": "followup_receiver_inherited",
         "invalidation_kind": "followup",
         "actor": "worker",
-        "count": 148,
-        "bytes": 476900,
+        "count": 154,
+        "bytes": 496514,
         "first": "2026-09-25T03:08:39.901Z",
-        "last": "2026-10-04T02:00:46.846Z"
+        "last": "2026-10-04T21:05:02.062Z"
       },
       {
         "event_kind": "closure_cancelled_action",
         "invalidation_kind": "followup",
         "actor": "worker",
-        "count": 128,
-        "bytes": 406605,
+        "count": 131,
+        "bytes": 417017,
         "first": "2026-09-21T14:00:29.703Z",
-        "last": "2026-10-03T17:54:00.850Z"
+        "last": "2026-10-04T20:17:23.236Z"
       },
       {
         "event_kind": "call_fulfilled_action",
         "invalidation_kind": "followup",
         "actor": "worker",
-        "count": 60,
-        "bytes": 201730,
+        "count": 62,
+        "bytes": 208476,
         "first": "2026-09-22T19:12:18.270Z",
-        "last": "2026-10-03T17:03:30.044Z"
+        "last": "2026-10-04T18:04:05.817Z"
       },
       {
         "event_kind": "identity_resolved",
@@ -13153,10 +13246,10 @@
         "event_kind": "attachment_auto_contested",
         "invalidation_kind": "number",
         "actor": "worker",
-        "count": 18,
-        "bytes": 28554,
+        "count": 20,
+        "bytes": 31717,
         "first": "2026-09-23T01:15:13.187Z",
-        "last": "2026-10-01T17:30:30.251Z"
+        "last": "2026-10-04T17:30:29.468Z"
       },
       {
         "event_kind": "channel_paused",
@@ -13171,10 +13264,10 @@
         "event_kind": "review_resolved",
         "invalidation_kind": "review",
         "actor": "worker",
-        "count": 15,
-        "bytes": 10455,
+        "count": 16,
+        "bytes": 11152,
         "first": "2026-09-24T21:20:24.786Z",
-        "last": "2026-09-30T19:23:03.123Z"
+        "last": "2026-10-04T16:06:22.292Z"
       },
       {
         "event_kind": "media_played",
@@ -13186,13 +13279,13 @@
         "last": "2026-09-27T02:38:48.189Z"
       },
       {
-        "event_kind": "rep.reviewed_or_retired",
+        "event_kind": "rep.proposed",
         "invalidation_kind": "rep",
         "actor": "owner",
         "count": 12,
-        "bytes": 28036,
-        "first": "2026-09-19T14:49:10.799Z",
-        "last": "2026-09-25T23:53:06.321Z"
+        "bytes": 16044,
+        "first": "2026-09-19T14:48:43.397Z",
+        "last": "2026-09-25T23:53:05.837Z"
       },
       {
         "event_kind": "intelligence_followup_created",
@@ -13204,6 +13297,15 @@
         "last": "2026-09-21T17:29:50.325Z"
       },
       {
+        "event_kind": "rep.reviewed_or_retired",
+        "invalidation_kind": "rep",
+        "actor": "owner",
+        "count": 12,
+        "bytes": 28036,
+        "first": "2026-09-19T14:49:10.799Z",
+        "last": "2026-09-25T23:53:06.321Z"
+      },
+      {
         "event_kind": "nudge.submission_started",
         "invalidation_kind": "nudge",
         "actor": "owner",
@@ -13213,13 +13315,13 @@
         "last": "2026-09-28T16:55:39.947Z"
       },
       {
-        "event_kind": "rep.proposed",
-        "invalidation_kind": "rep",
+        "event_kind": "nudge.authorized",
+        "invalidation_kind": "nudge",
         "actor": "owner",
         "count": 12,
-        "bytes": 16044,
-        "first": "2026-09-19T14:48:43.397Z",
-        "last": "2026-09-25T23:53:05.837Z"
+        "bytes": 7568,
+        "first": "2026-09-21T00:53:54.791Z",
+        "last": "2026-09-28T16:55:39.378Z"
       },
       {
         "event_kind": "nudge_sent",
@@ -13229,15 +13331,6 @@
         "bytes": 8782,
         "first": "2026-09-21T00:53:58.792Z",
         "last": "2026-09-28T16:55:40.137Z"
-      },
-      {
-        "event_kind": "nudge.authorized",
-        "invalidation_kind": "nudge",
-        "actor": "owner",
-        "count": 12,
-        "bytes": 7568,
-        "first": "2026-09-21T00:53:54.791Z",
-        "last": "2026-09-28T16:55:39.378Z"
       },
       {
         "event_kind": "wait_expired",
@@ -13276,15 +13369,6 @@
         "last": "2026-09-23T20:28:15.181Z"
       },
       {
-        "event_kind": "attach_lead",
-        "invalidation_kind": "number",
-        "actor": "owner",
-        "count": 2,
-        "bytes": 1621,
-        "first": "2026-09-23T01:25:00.581Z",
-        "last": "2026-09-23T02:04:48.903Z"
-      },
-      {
         "event_kind": "assign",
         "invalidation_kind": "outreach",
         "actor": "owner",
@@ -13292,6 +13376,15 @@
         "bytes": 7635,
         "first": "2026-09-22T19:50:49.526Z",
         "last": "2026-09-28T16:53:51.953Z"
+      },
+      {
+        "event_kind": "attach_lead",
+        "invalidation_kind": "number",
+        "actor": "owner",
+        "count": 2,
+        "bytes": 1621,
+        "first": "2026-09-23T01:25:00.581Z",
+        "last": "2026-09-23T02:04:48.903Z"
       },
       {
         "event_kind": "end_call",
@@ -13303,15 +13396,6 @@
         "last": "2026-09-22T14:51:23.505Z"
       },
       {
-        "event_kind": "start_call",
-        "invalidation_kind": "outreach",
-        "actor": "owner",
-        "count": 1,
-        "bytes": 2873,
-        "first": "2026-09-22T14:50:35.754Z",
-        "last": "2026-09-22T14:50:35.754Z"
-      },
-      {
         "event_kind": "policy_initialized",
         "invalidation_kind": "policy",
         "actor": "owner",
@@ -13319,12 +13403,22 @@
         "bytes": 598,
         "first": "2026-09-20T19:29:42.142Z",
         "last": "2026-09-20T19:29:42.142Z"
+      },
+      {
+        "event_kind": "start_call",
+        "invalidation_kind": "outreach",
+        "actor": "owner",
+        "count": 1,
+        "bytes": 2873,
+        "first": "2026-09-22T14:50:35.754Z",
+        "last": "2026-09-22T14:50:35.754Z"
       }
     ],
     "retired_filter": {
       "event_kind": {
         "$in": [
           "analysis.reanalysis_requested",
+          "analysis.suggestion_applied",
           "assessment_followup_created",
           "attachment_identity_changed",
           "call_fulfilled_action",
@@ -13360,6 +13454,7 @@
           "progress_default_created",
           "recording_discovery.completed",
           "recording_discovery.no_recording",
+          "rep_identity.reevaluated",
           "wait_expired"
         ]
       },
@@ -13370,8 +13465,8 @@
         ]
       }
     },
-    "retired_matches": 107435,
-    "retired_bytes": 258550093,
+    "retired_matches": 108109,
+    "retired_bytes": 260035106,
     "kept_kinds": [
       "interaction.updated",
       "capture_projection.completed",
@@ -13382,22 +13477,21 @@
       "call_log_refresh.completed",
       "contact_number_created_from_form_lead",
       "number.rebuilt",
-      "rep_identity.reevaluated",
       "attachment_auto_contested",
       "channel_paused",
       "review_resolved",
+      "rep.proposed",
       "rep.reviewed_or_retired",
       "nudge.submission_started",
-      "rep.proposed",
-      "nudge_sent",
       "nudge.authorized",
+      "nudge_sent",
       "rep.team_messaging_backfill",
       "policy_changed",
-      "attach_lead",
       "assign",
+      "attach_lead",
       "end_call",
-      "start_call",
-      "policy_initialized"
+      "policy_initialized",
+      "start_call"
     ],
     "refs": {
       "run_id": 0
@@ -13459,16 +13553,16 @@
       "bytes": 606
     },
     {
-      "command": "initialize_settings",
-      "actor": "owner",
-      "count": 1,
-      "bytes": 577
-    },
-    {
       "command": "propose_reps",
       "actor": "owner",
       "count": 1,
       "bytes": 4857
+    },
+    {
+      "command": "initialize_settings",
+      "actor": "owner",
+      "count": 1,
+      "bytes": 577
     },
     {
       "command": "end_call",
@@ -13510,15 +13604,16 @@
   "reference_edges": {
     "contact_numbers": {
       "running_summary.run_id": 898,
-      "intelligence_schedule.job_id": 7028,
+      "intelligence_schedule.job_id": 7073,
       "contact_eligibility.evidence_ref": 0
     }
   },
   "conversation_media": {
-    "docs": 4088,
-    "with_blob_pathname": 3017,
+    "docs": 4153,
+    "with_blob_pathname": 3032,
     "with_media_purged_at": 0,
-    "distinct_pathnames": 3017,
+    "distinct_pathnames": 3032,
+    "pending_blob_delete_pathnames": 0,
     "pathnames_outside_prefix": 0
   },
   "blob": {
@@ -13528,12 +13623,12 @@
     ],
     "store_root_objects": 0,
     "prefix": "conversations/",
-    "objects": 3017,
-    "bytes": 1813126869,
+    "objects": 3032,
+    "bytes": 1830387096,
     "uploaded_first": "2026-08-27T15:44:49.000Z",
-    "uploaded_last": "2026-10-04T02:58:16.000Z",
-    "referenced_and_present": 3017,
-    "referenced_and_present_bytes": 1813126869,
+    "uploaded_last": "2026-10-04T21:40:10.000Z",
+    "referenced_and_present": 3032,
+    "referenced_and_present_bytes": 1830387096,
     "referenced_but_missing": 0,
     "unreferenced_under_prefix": 0,
     "unreferenced_bytes": 0
