@@ -2,6 +2,15 @@
 
 These are target contracts, not claims of deployed endpoints. Team A owns changes. All Mongo/API fields are snake_case; ISO timestamps are true UTC instants, business dates are YYYY-MM-DD interpreted in America/New_York. Each read uses one server reference instant. Never derive cadence, rank or authorization in admin.
 
+> **Post-slimming amendment (October 4, 2026):** [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) §4–§6 amends this file. The changes:
+> - `outreach_id` becomes `subject_id`, keyed on the new `sales_outreach_subjects`. `outreach_records` was purged.
+> - Add `sales_outreach_contact_events`. Migration runs become `sales_outreach_enrollment_runs`.
+> - Add an assignment command (writes `Lead.receiver_agent`, source `manual`) and Owner restriction and enrollment endpoints.
+> - Add a `manager` signed role.
+> - The scoped live stream is `GET /api/v1/admin/sales-outreach/live`, replacing the Sales Intelligence stream.
+> - The admin route is `/outreach-desk`.
+> The rest stands.
+
 ## Current Owner policy decisions
 
 Approved: P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a, P09a–P09c, P10a, D01 and V01/V02. Questions 1–14 resolve all substantive policy choices; Final business-policy baseline adopted by the October 3 finalization instruction. [FINAL-POLICY-REVIEW.md](FINAL-POLICY-REVIEW.md) provides consolidated business rules; SPECIFICATION provides operational tables; DECISIONS preserves exact original approval scope and provenance. Earlier partial fixtures are historical, not reopened decisions.

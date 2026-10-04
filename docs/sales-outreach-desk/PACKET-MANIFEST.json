@@ -1,17 +1,17 @@
 {
   "contract_version": "sod-v1",
-  "date": "2026-10-02",
+  "date": "2026-10-04",
   "canonical": "vantage-main-server/docs/sales-outreach-desk",
   "mirror": "vantage-admin/docs/sales-outreach-desk",
   "files": {
-    "CODE-MAP.md": "12115699c4178a4693c8c86110852c2087439268873ddbeb9075c04d8e94737a",
+    "CODE-MAP.md": "d3fe7f8122a4952d7c160320048571490d858b2ad2802ce2c7c2f18238633f26",
     "contracts/configuration-defaults.json": "39599122b52a26f94b54d9f0d0aaf57548113b389d6653b96a9c61e2ac7da84b",
     "contracts/fixtures/synthetic.json": "39ba3a5d96ba724c8d35f11dd6bcd6b755e3e936a4aeb0f819be394cd66ead9e",
     "contracts/README.md": "43954ff27943e25fb9538b6391028b674f315b1761f5cdefa2cc1cabaa5b7566",
-    "CONTRACTS.md": "66cd293a8c08961e1ea88804a3700bfe73b1bfeb81862bb42bfb54ad02ead879",
+    "CONTRACTS.md": "52a3066c9d4ff0c204ec63635442bbc5ec1210be678787055971f76fa70367e3",
     "DATA-READINESS.md": "3341a5c2dc216741309b6aeb9189f74617786c6cedb141dcb5ec47f102012d17",
     "DECISIONS.md": "5eadda0ce804e96cf9a3d191096430ac9a2bde4b214874585c97da826ab414b1",
-    "README.md": "0e23d51959976ab95b1a2f9ca60a168e2d1bfe1ebdc36234c122a88a5de5b034",
+    "README.md": "bf37ce8129f2aef36d4c00c6dcb7f93b6226869be3abd0e7a2cb7bd92fb16bcf",
     "references/manager-desk.webp": "7b0dc083020c03f6c35e1cc7ee847d6276590d998624d3587bb6400c46865546",
     "references/sales-rep-desk.webp": "59414960b4a7a5c0ebd3c31e7f472925a01f112c74027f99f29f65f2bd547e05",
     "SOURCE-LIMITS.md": "01238b722ca3b422fadf9d341b34702ff7172451ea862955b28dd6119115fd8b",
@@ -35,8 +35,8 @@
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md": "6f457d67c93e23e25bfe0b35c7031139f5d9ca4c8e49a0d840b1154c7eb6e14b",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md": "5e233c47ea3736990e11d850398e4c3974e56a63b0dbd726bfeeba3e72e277fc",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md": "9792a6920fea12947718d42d92897e2f88f6683a7d8b4996409dc7c4265150ea",
-    "SPECIFICATION.md": "6c7b986b3c226cf8fd9a96e52a5ed5e24fd0abeb1a432df91d6bd1bbcc2d77ca",
-    "SPRINT.md": "d49ba576d01c9c27a982bbcfdbbfd33858b3a8869b47539df3c7d409776c11f7",
+    "SPECIFICATION.md": "b9bf185b92e9fe6310b999881accbb30c5ca2dd9c86c70ca37b795af77982c3f",
+    "SPRINT.md": "3389e0bd30c317da90b36088908eccad163dab34588bfc348c38ce770c31d657",
     "validate.mjs": "335d9686e7ee66702b950c777e55fca1c50043f8a862630df2f3e547be58a118",
     "VALIDATION.md": "960eced36b69351abf369c15440504530aa9dbceaa9b85714bc1fe4ff8b40937",
     "READINESS-PREPARATION.md": "09518bcc7c66d9206e895bbf3e1535f4290d30b9985aa74d0056779f3476a712",
@@ -81,7 +81,7 @@
     "contracts/fixtures/p07g-event-time-windows.json": "8b0eef4784034b057a2492e5c40a24c97f7c9cf6916c5b5af0396bafa475f1d8",
     "contracts/fixtures/p10a-prospective-cutover.json": "8ef4e48ff2cb7b05121be6736204af3eccd514f0d84814d8daff7a66b2c59358",
     "contracts/fixtures/p05h-lead-eligibility.json": "c749e6fef3c7934fb8db3dfed3056a4a7fa7f264e6142e5d8ae9c5c2d4457b17",
-    "workspace/AGENTS.md": "1641b205eca29325679e97003705a8d52d32cbc15a8e647aa6c08e1ab6cd513e",
+    "workspace/AGENTS.md": "b3a4205a901b0432f7d20623a0f12b389d8ef63f1fe88f4d720813b4f4c56a19",
     "workspace/teams/a-coordinator.md": "9ea56875086a72857696af38e341344907bc4a4bec447c3ea8a1dd5343609f32",
     "workspace/teams/b-cadence.md": "bfe20fb6c92c7e90cb74989507c9045dc9baf862ca2291cd259e5d2ee117e00a",
     "workspace/teams/c-evidence-goals.md": "876bcc528f62269c53a3320e3bc51fc9f24ec37d0811c61312f6ed187a1384b9",
@@ -94,8 +94,14 @@
     "POLICY-APPROVAL.json": "326f6a3c7f164186118fb54f7b0bd59d71447d358df98b71860658d895af9e21",
     "contracts/fixtures/p10b-manual-start.json": "58072b95bb37970ed71c276b161286023da15ba8f22d54228e39c3fbc4cc2c8d",
     "END-TO-END-RUN.md": "40603c6fb2a70fb3e630963e7c16769909776d71bac077bc1a6317a25a0ab8fe",
-    "FINAL-HANDBACK.md": "d8654a9bc72c71487ac438fb80939cda86ebd518315005826b7384763184f78a"
+    "FINAL-HANDBACK.md": "d8654a9bc72c71487ac438fb80939cda86ebd518315005826b7384763184f78a",
+    "IMPLEMENTATION-PLAN.md": "6b768b701659882acfa902e00ac529032fec8842e6e670c19a18e2f9112328b5",
+    "RINGCENTRAL-CAPTURE.md": "8693988ed3b7978bcf7cd5840c796ca28db16b240e6d093f09319fcb63fd97bf",
+    "workspace/SERVER-TEAM.md": "dc765b5735cc7b4c842fbaaa3b630a61d38c91cbdb66a7f354589861ae9294a2",
+    "workspace/ADMIN-TEAM.md": "3765ced131ed3441ccfae752d6fd12edcef41731f4b572857b85d8f5d2b812df",
+    "SPRINT-RUNBOOK.md": "5f16c6e23a758ebad24ad060bb56a062545bea5d590069701f81395d0346d2eb"
   },
   "preparation_assessment_version": 1,
-  "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1"
+  "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1",
+  "release_note": "sod-v1.1 post-slimming re-base: IMPLEMENTATION-PLAN, RINGCENTRAL-CAPTURE, team briefs, rewritten CODE-MAP"
 }

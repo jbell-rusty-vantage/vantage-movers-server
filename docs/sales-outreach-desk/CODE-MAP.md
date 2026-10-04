@@ -1,52 +1,65 @@
-# Inspected code and source map
+# Code map — post-slimming (re-inspected 2026-10-04)
 
-Inspection date 2026-10-02. Root C:/Users/Pinda/Proyectos/vantage. Admin HEAD 0993e3151dd08fe4edea7baf348ad9339dacdbd5; server HEAD becf8de02ed46aa6a4625e8188c299af6caa98ba. Remotes verified jbell-rusty-vantage/vantage-admin and jbell-rusty-vantage/vantage-movers-server. Admin initially clean; server initially had a modified .gitignore. No reset/switch/commit occurred. Reinspect working tree and pin cloud revisions before work; these local SHAs do not prove deployed behavior.
+Server `vantage-main-server` `main@ecc76257` (jbell-rusty-vantage/vantage-movers-server). Admin `vantage-admin` `main@058adbc` (jbell-rusty-vantage/vantage-admin). Both after the server/admin slimming deploy and production purge. Re-pin your cloud checkout's SHA before work. The pre-slimming map (server `becf8de`, admin `0993e31`) is obsolete; see [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) §1 for what changed.
 
-Paths below are relative to the named repository and intentionally displayed as code, not links to an inaccessible sibling. Actual local repository instructions win for unchanged code. Imported source authority in sources/ is separately hashed.
+Paths are relative to the named repository.
 
-| Existing server path | Use / necessary change |
+## Server — existing code to read or extend
+
+| Path | Use |
 | --- | --- |
-| src/models/salesIntelligence/{infrastructure,outreach}.ts; src/models/CallInteraction.ts | Existing policy/job/audit/Outreach/call schema and index conventions; add isolated models, do not expand old strict policy |
-| src/services/salesIntelligence/{policy,settings,transactions,auth,repScope}.ts | Reuse immutable pointer/CAS/idempotency/signed actor; replace legacy historical-followup/shared-number access for new desk |
-| src/config/domain/salesIntelligence.ts | Existing synchronous csiFlag reads env; inventory/migrate new-desk dependencies, do not retain hidden gate |
-| src/services/salesIntelligence/outreach/{leadInstant,leadProgress,attention,ensure,derive,worker}.ts | Timestamp adapter/accepted priority/search patterns; Attention AI/ranking and old planners not new cadence authority |
-| src/services/salesIntelligence/overview/repDays.ts | Eastern-day/identity helpers; broad per-involved-rep counts are incompatible with new goal |
-| src/services/salesIntelligence/{analysis/apply,assessment/engagement,assessment/runtime}.ts | AI followup/planning producers to fence for migrated subjects |
-| src/routes/sales-intelligence-admin.routes.ts; src/routes/v1.routes.ts; src/routes/sales-intelligence-cron.routes.ts; api/queues/sales-intelligence-consumer.ts | Transport/cron/job admission must load persisted snapshot; exact new router registration owned by A |
-| src/services/salesIntelligence/backfill/{worker,activate,windowWork,step,livePriority}.ts | Reuse bounded/checkpoint patterns only; activation invokes media discovery and is unsafe for deterministic migration |
-| src/services/ringcentral/{rateLimitGate,webhook-subscriptions}.ts | Preserve settlement/recovery; add measured SMS admission and application-owned subscriptions |
-| src/services/dailyOperations/{recordDomainFacts,rebuild}.ts | Existing shipped board; repair mixed-time Lead facts, sent-day reconstruction and rebuild live-race fence before parity certification |
-| scripts/migrations/granot-lifecycle-migration.lib.ts | Report/apply/verify target and manifest conventions, not authorization to run production |
-| ops/{backfill-outreach-trigger-instant,reensure-outreach}.ts | Existing operations have effects; inspect/adapt only in isolated rehearsal; no blind legacy replay |
-| CLOUD_AGENTS.md; .cursor/scripts/start-api.sh; vercel.json | Safe isolated runtime startup and checked-in schedules, not proof of deployment |
+| `docs/server-admin-slimming/NEW-DESK-DELTA.md`, `evidence/HUMAN-FACTS.md` | What was purged and what the desk inherits (restrictions, review items, Owner instructions) |
+| `docs/knowledge/environment.md`, `CLOUD_AGENTS.md`, `.cursor/scripts/start-api.sh` | Env inventory, replica runtime, how to start/verify the API |
+| `src/models/FormLead.ts`, `src/models/CallLead.ts`, `src/models/granotLifecycleSchemas.ts` | Lead facts: `granot_priority`, `receiver_agent*`, closures, `job_no`, phone, `move_date`, `timestamp`, `domain_revision` |
+| `src/models/EntityChange.ts`, `src/services/domainCommands/{entityChange,leadChangeEmission,index,leads}.ts` | Lead change feed (`entity_changes`) and canonical command executor; add the reassign command here |
+| `src/services/granotLifecycle/{leadDesiredState,processor,normalization}.ts` | How priority and `receiver_agent` are accepted; `receiverReplaceableByGranot` protects `manual` |
+| `src/models/CallInteraction.ts`, `src/models/salesIntelligence/capture.ts` | Canonical calls, aliases, sync state/windows, directory snapshots |
+| `src/services/numberActivity/{capture,interactionProjection,reconcileCallLog,callLogClient,callLogRefresh,jobDispatch,timeline,staffedClock}.ts` | Capture pipeline; `timeline.ts:191-202` is today's read-time rep attribution |
+| `src/services/ringcentral/{webhook-subscriptions,webhook-subscription-lifecycle,rateLimitGate,auth}.ts`, `src/routes/ringcentral-webhook.routes.ts`, `src/services/numberActivity/webhookFanout.ts` | Subscriptions, webhook receipt, fan-out, rate gate ([RINGCENTRAL-CAPTURE.md](RINGCENTRAL-CAPTURE.md)) |
+| `src/models/ContactNumber.ts`, `src/models/NumberLeadAttachment.ts`, `src/services/salesIntelligence/attachment/*` | Number ↔ Lead association |
+| `src/models/RepIdentityLink.ts`, `src/services/salesIntelligence/repIdentity/{resolve,reads,commands}.ts` | Reviewed effective-dated Agent ↔ RingCentral extension |
+| `src/models/salesIntelligence/review.ts` | `sales_intelligence_contact_restrictions` (inert, 15 active AI-origin), review items, Owner instructions |
+| `src/models/salesIntelligence/{registry,infrastructure}.ts` | `defineCsiModel`, jobs, audit events, command executions |
+| `src/services/salesIntelligence/{transactions,auth,live,jobs,ownerCoverage,coverageDto}.ts` | Command/CAS/idempotency, signed actor (`requireCsiOwner`), SSE machinery, job enqueue/claim/recovery, capture coverage |
+| `src/services/operationsRegistry/trustedActorCanonical.ts` | Signed actor headers; add `manager` |
+| `src/config/domain/salesIntelligence.ts` | Retained/retired job stage lists, flags; register new desk stages |
+| `src/routes/{sales-intelligence-admin,sales-intelligence-boundary,sales-intelligence-cron,daily-operations-admin}.routes.ts`, `src/app.ts`, `vercel.json` | Router registration patterns, cron guard, Daily Operations guard (`requireRegistryOwnerActor`) |
+| `api/queues/sales-intelligence-consumer.ts` | Queue consumer → `jobDispatch` |
+| `src/services/dailyOperations/{recordDomainFacts,recordGranotFacts,rebuild,snapshot,liveStream}.ts` | Daily Operations; SPECIFICATION §14 repairs |
+| `src/services/durableWork/` | Generic leases/checkpoints |
+| git `6a374fab:src/services/salesIntelligence/outreach/leadInstant.ts` (+ test) | **Restore** the Lead timestamp adapter into `src/services/salesOutreach/` |
 
-| Existing admin path | Use / necessary change |
+## Server — new code (target)
+
+`src/services/salesOutreach/` (`engine/`, `subjects/`, `evidence/`, `goals/`, `commands/`, `reads/`, `enrollment/`, `config/`, `jobs/`), `src/models/salesOutreach/`, `src/validation/v1/salesOutreach.ts`, `src/routes/sales-outreach.routes.ts`, `src/routes/sales-outreach-cron.routes.ts`, `src/services/ringcentral/repSms/`, `ops/sales-outreach/*`, `ops/ringcentral/prove-rep-sms-access.ts`. Collections and routes: [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) §4–§5.
+
+## Admin — existing code to read or extend
+
+| Path | Use |
 | --- | --- |
-| app/(dashboard)/sales-intelligence/page.tsx; route-viewer.ts; desk-root.tsx | Owner/Rep canonical desk; normalize view URLs rather than parallel app |
-| components/sales-intelligence/desk/desk.tsx; data/{url-state,use-attention,use-sales-features}.ts | Existing tabs/pagination/capabilities; new cadence DTOs and config revision invalidation |
-| app/(dashboard)/sales-intelligence/outreach/[id]/ | Keep identity/deep links; reduce rendered panels |
-| components/sales-intelligence/settings-form.tsx | Existing legacy CSI settings; new isolated Owner config editor without two cadence authorities |
-| lib/api/salesIntelligence.ts; lib/query/salesIntelligence.ts | Zod/no-store/signed command bridge and live query invalidation |
-| app/api/proxy/[...path]/route.ts; server/auth/{authorization,proxyForwardHeaders}.ts | Exact Rep endpoint allowlists; include new namespace scope/signature guards |
-| server/sales-intelligence-live.ts; proxy.ts | Scoped streaming and request-boundary session checks |
-| app/(dashboard)/daily/page.tsx; components/daily/daily-shell.tsx | Reuse Owner board/summary; retain five-minute contract and one mounted stream |
-| tests/sales-intelligence/contracts-dir.ts | Legacy tests skip if sibling fixtures absent; new acceptance uses this packet's local fixtures and treats skipped required tests as blocked |
+| `.cursor/rules/project-organization.mdc`, `AGENTS.md` (Next 16 — read `node_modules/next/dist/docs/` first) | Structure and boundaries |
+| `server/models/{adminRoles,AdminUser}.ts`, `server/users/*`, `components/operations-registry/users/*` | Roles (`owner/admin/rep`) and user create/edit — add `manager` |
+| `server/auth/{authorization,routeGuard,trustedProxyHeaders,proxyForwardHeaders}.ts`, `app/api/proxy/[...path]/route.ts`, `proxy.ts` | ACL, page guard, signed headers, BFF |
+| git `0993e31:server/auth/rep-routes/*` | Pattern for exact Rep method+path allowlists |
+| `app/(dashboard)/layout.tsx`, `components/sales-intelligence/rep/rep-frame.tsx`, `components/layout/dashboard-nav.tsx` | Shell, Rep frame, sidebar |
+| `app/(dashboard)/sales-intelligence/*`, `components/sales-intelligence/{numbers,desk,data,primitives,atoms,lib}/*`, `reps.tsx`, `message-account-panel.tsx`, `styles/sales-intelligence.css` | Today's Numbers + RingCentral Accounts (move under `/outreach-desk`); reusable primitives (eastern time, paging, live indicator) |
+| `app/api/sales-intelligence-live/route.ts`, `server/sales-intelligence-live.ts`, `lib/query/salesIntelligence.ts` | Live BFF pattern for the new outreach stream |
+| `app/(dashboard)/daily/page.tsx`, `components/daily/*`, `app/api/daily-operations-live/route.ts` | Daily Operations; open to Manager |
+| `app/globals.css`, `components/ui/*`, `components.json` | Tokens (Tailwind v4), thin shadcn set; `recharts` available; no animation library |
+| `next.config.ts` | Permanent redirects (`/sales-intelligence*` → `/outreach-desk`) |
 
-Existing collections: outreach_records/outreach_followups/outreach_rep_days, call_interactions/call_interaction_aliases, rep_identity_links, ringcentral_directory_snapshots, sales_intelligence_sync_state, sales_intelligence_sync_windows, sales_intelligence_jobs, sales_intelligence_audit_events, sales_intelligence_command_executions, sales_intelligence_policy_versions, sales_intelligence_policy_pointers. lead_messages are app-dispatched automated messages, not rep SMS Message Store. New model names and exact HTTP target interface are in CONTRACTS.md.
+## Admin — new code (target)
 
-Producer fence matrix: ensure first-action/quoted/progress nominations; derive going-cold/promise/cooldown generation; analysis apply and engagement extracted promises; assessment runtime effects/replans; worker sweeps/clock nominations. Fence routine writes for migrated cohort. Keep restriction checks, Owner explicit instructions, official closure, canonical evidence and durable recovery. Each path gets a negative test proving no new competing task with new policy on. Disabling UI mounts alone is insufficient.
+`app/(dashboard)/outreach-desk/*`, `components/outreach-desk/*` (shell, team, my, activity, settings, copy file `outreach-desk-copy.ts`), `lib/api/salesOutreach.ts`, `lib/query/salesOutreach.ts`, `app/api/outreach-desk-live/route.ts`, `server/auth/rep-routes/outreach.ts` (+ manager routes), `tests/outreach-desk/*`, `e2e/` (Playwright).
 
+## Collections
 
-## D01 deterministic-only scope clarification — October 3, 2026
+Kept and read: `form_leads`, `call_leads`, `booked_leads`, `cancelled_leads`, `entity_changes`, `granot_observations`, `call_interactions`, `call_interaction_aliases`, `contact_numbers`, `number_lead_attachments`, `rep_identity_links`, `ringcentral_directory_snapshots`, `sales_intelligence_sync_state`, `_sync_windows`, `_jobs`, `_command_executions`, `_audit_events`, `sales_intelligence_contact_restrictions`, `ringcentral_webhook_events`, `ringcentral_webhook_subscriptions`, `ringcentral_rate_limit_gates`, `lead_messages` (automated texts; never rep credit).
 
-Confirmed D01 (October 3, 2026): the Sales Outreach Desk is entirely deterministic code. Remove LLM agent analysis, transcription, summaries, assessments, extracted promises and AI suggestions from this outreach feature, including background producers and UI dependencies. Canonical provider call/SMS metadata, accepted priority facts, human commands, restrictions, assignment and audited policy drive the feature. Retain the Vantage MCP server. A future agent capability to find RingCentral call files, transcribe or summarize is separate, outside this outreach specification, and is neither implemented nor authorized here. Preserve historical evidence without creating an AI pipeline or displaying new AI suggestions. Human/provider-derived restrictions remain authoritative; runtime planner/analysis fencing must prevent legacy AI activity from creating new outreach effects for the migrated cohort.
+Dropped (do not read, do not recreate): `outreach_records`, `outreach_followups`, `outreach_rep_days`, `outreach_band_transitions`, `lead_conversations`, `intelligence_*`, `move_assessment_artifacts`, Attention snapshots/artifacts, AI budget/reservations.
 
-Existing analysis/assessment paths above are inspected legacy code to remove from the feature dependency graph and fence for the migrated cohort. They are not reusable outreach functionality. Restriction evidence already recorded stays authoritative until resolved; no new AI extraction producer is required or permitted by this feature. MCP remains a separate package and is not removed.
+New: `sales_outreach_configuration`, `sales_outreach_subjects`, `sales_outreach_policy_periods`, `sales_outreach_followup_schedules`, `sales_outreach_contact_events`, `sales_outreach_projections`, `sales_outreach_rep_day_projections`, `sales_outreach_enrollment_runs`, `ringcentral_rep_sms_evidence`.
 
+## D01 status
 
-## P05h eligibility seam — October 3, 2026
-
-Legacy src/services/salesIntelligence/outreach/transitions.ts officialClosure closes no_sync alongside booked/cancelled/duplicate/bad_lead. P05h requires viable No-Sync Leads to remain eligible in the new desk without changing reporting semantics or silently reopening already-closed records. Add/test the explicit new-desk seam and preserve unrelated legacy consumers/history. Form Fill is not automatic exclusion/merge.
-
-
-D01 removal scope: retire outreach LLM/transcription/summary/assessment/extracted-promise/suggestion admission and producers feature-wide, including unseeded existing Leads. A small cadence pilot does not authorize continued legacy AI processing outside the pilot. Retain existing historical evidence and deterministic provider capture/authoritative restrictions. MCP remains separate.
+The AI/LLM/transcription/assessment/planner producers that D01 asked to fence were deleted by the slimming; retired job stages are refused. The desk adds only deterministic code and one regression test that keeps it that way (IMPLEMENTATION-PLAN SRV-T). MCP stays separate.

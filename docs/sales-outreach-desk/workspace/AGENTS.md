@@ -13,3 +13,13 @@ P01, P02a–P02i, P03, P04a–P04d, P05a–P05h, P06a–P06f, P07a–P07g, P08a,
 
 
 FINAL-01/P10b finalization: use [final handback](../FINAL-HANDBACK.md) and [end-to-end checklist](../END-TO-END-RUN.md). Add exact selected-ID pilot/report/shadow/apply/verify, fixed cohort boundary, separate Owner prospective intake-admission gate, canonical membership dedup and full daily-goal coverage/partial labels. No unseeded-subject AI exception. Complete business policy is adopted; runtime/release acceptance remains unverified.
+
+
+## Post-slimming build rules — October 4, 2026
+
+Build from [IMPLEMENTATION-PLAN.md](../IMPLEMENTATION-PLAN.md), [SERVER-TEAM.md](SERVER-TEAM.md) and [ADMIN-TEAM.md](ADMIN-TEAM.md). The team cards under `teams/` keep their purpose, acceptance intent and policy references, but their file paths, reuse instructions and branch convention are superseded. The new mapping is:
+- A, B, C and D are now the server lanes: A and D become S1, B becomes S2, C becomes S3.
+- E is now the ADMIN team.
+- F is now the VERIFY step.
+
+The branch is `feat/outreach-desk`, not `sales-intelligence`. Legacy producer fencing is complete: the slimming deleted those producers. Do not read, migrate or recreate purged collections.

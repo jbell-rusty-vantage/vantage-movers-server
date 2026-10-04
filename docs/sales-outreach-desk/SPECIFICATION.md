@@ -2,6 +2,8 @@
 
 Status: finalized business policy and implementation specification, October 3, 2026. Complete policy baseline adopted by the finalization instruction; runtime/provider/authorization/migration/release acceptance remains pending.
 
+> **Post-slimming note (October 4, 2026):** business rules below are unchanged. Code reuse, collection names, the "Outreach ID", admin routes (`/outreach-desk`), the Manager role and RingCentral mechanics are re-based in [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md), [CODE-MAP.md](CODE-MAP.md) and [RINGCENTRAL-CAPTURE.md](RINGCENTRAL-CAPTURE.md), which win where they differ.
+
 ## 1. Authority, precedence and preparation outcome
 
 The [original Owner message and two screenshots](OWNER-REQUEST.md) are preserved as the product brief. This specification supplies the approved refinements; the source message remains available for comparison.
