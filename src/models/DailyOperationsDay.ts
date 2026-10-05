@@ -59,6 +59,8 @@ export type DailyOperationsDayDocument = {
     deferred: number;
     skipped: number;
     failed: number;
+    /** Rebuild only: scheduled confirmations that were sent but whose send time is not recorded (SRV-9). */
+    unreconstructable_sent_day?: number;
   };
   bookings: {
     total: number;
@@ -143,6 +145,7 @@ const DailyOperationsDaySchema = new Schema<DailyOperationsDayDocument>(
       deferred: { type: Number, default: 0 },
       skipped: { type: Number, default: 0 },
       failed: { type: Number, default: 0 },
+      unreconstructable_sent_day: { type: Number, default: 0 },
     },
     bookings: {
       total: { type: Number, default: 0 },

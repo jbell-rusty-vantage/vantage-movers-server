@@ -62,16 +62,21 @@
         "progress": 1,
         "goal_reached": true,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": 41,
         "computed_as_of": "2026-10-05T14:58:30.000Z"
       },
@@ -92,23 +97,28 @@
         },
         "count_scope": "all_outbound",
         "count_scope_label": "Outbound calls",
-        "actual_confirmed": 0,
-        "actual_awaiting_confirmation": 0,
-        "actual_basis": "no_activity_recorded",
-        "remaining": 100,
-        "progress": 0,
-        "goal_reached": false,
+        "actual_confirmed": null,
+        "actual_awaiting_confirmation": null,
+        "actual_basis": "pending",
+        "remaining": null,
+        "progress": null,
+        "goal_reached": null,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": null,
         "computed_as_of": null
       },
@@ -136,16 +146,21 @@
         "progress": 0.37,
         "goal_reached": false,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": 39,
         "computed_as_of": "2026-10-05T14:58:30.000Z"
       },
@@ -177,16 +192,21 @@
         "progress": 0.5,
         "goal_reached": false,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": 40,
         "computed_as_of": "2026-10-05T14:58:30.000Z"
       },
@@ -218,16 +238,21 @@
         "progress": null,
         "goal_reached": false,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": 33,
         "computed_as_of": "2026-10-05T14:58:30.000Z"
       },
@@ -255,16 +280,21 @@
         "progress": null,
         "goal_reached": null,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": 12,
         "computed_as_of": "2026-10-05T14:58:30.000Z"
       }

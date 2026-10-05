@@ -46,6 +46,8 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   calls: CaptureSyncRow | null = null;
   mailboxes: CaptureSyncRow[] = [];
   granot: Date | null = null;
+  /** Contact-event derivation watermark; null = S3's sweep has not run (every missing row is pending). */
+  derivation: { known_complete_through: Date | null; coverage_from: Date | null } | null = null;
   queries: Array<{ business_day: string; agent_ids: readonly string[] | null }> = [];
 
   async findRepDayRows(businessDay: string, agentIds: readonly string[] | null) {
@@ -63,6 +65,9 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   }
   async readLatestGranotObservationAt() {
     return this.granot;
+  }
+  async readContactDerivation() {
+    return this.derivation;
   }
 }
 

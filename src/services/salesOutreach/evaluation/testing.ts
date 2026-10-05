@@ -64,6 +64,7 @@ export class MemoryEvaluationStore implements EvaluationStore {
       publication_revision: Number(row.doc.publication_revision ?? 0),
       result_fingerprint: row.doc.result_fingerprint,
       policy_fingerprint: (row.doc.policy_fingerprint as string | undefined) ?? null,
+      assigned_agent_id: (row.doc.assigned_agent_id as string | null | undefined) ?? null,
     };
   }
   async insertProjection(subjectId: string, doc: ProjectionWrite) {

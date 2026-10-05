@@ -14,6 +14,7 @@ import { getSynchronizationDecisionModel } from "../../models/SynchronizationDec
 import { normalizeSourceCompany } from "../../config/domain/sources";
 import type { GranotRouteEventClass } from "../granotLifecycle/types";
 import { classifyGranotBookingActionFromPayload } from "./recordGranotFacts";
+import { leadDayOf, leadTimestampScanRange } from "./leadDay";
 import { zipMissSides } from "./recordDomainFacts";
 import {
   buildDaySeed,
@@ -161,68 +162,144 @@ async function defaultReplaceCounters(input: {
   return revision;
 }
 
+/** The Lead Message fields a rebuild reads. */
+export type RebuildMessageRow = {
+  status: string;
+  provider_status?: string | null;
+  createdAt: Date;
+  accepted_at?: Date | null;
+  sent_at?: Date | null;
+  delivered_at?: Date | null;
+  status_history?: ReadonlyArray<{ status?: string | null; received_at?: Date | null }> | null;
+};
+
+export type MessageDayEvents = {
+  skipped?: Date;
+  failed?: Date;
+  deferred?: Date;
+  successful?: Date;
+  /** A scheduled message that was sent, with no recorded send time: labelled on its accept day, never shifted. */
+  unreconstructable?: Date;
+};
+
+/**
+ * The instants of a Lead Message's Daily Operations events, matching live recording (SPECIFICATION §14):
+ * - skipped / failed: as before (the creation day);
+ * - accepted with a schedule (`status_history` "scheduled", or still `provider_status: scheduled`):
+ *   `deferred` on the accept day, and — once sent — `successful` on the day of the first sent/delivered
+ *   status (else `sent_at`/`delivered_at`); a sent scheduled message with none of those is
+ *   `unreconstructable` (counted on its accept day as a label, not moved to a guessed day);
+ * - accepted for immediate send: `successful` on the accept day (live records it on Twilio accept).
+ */
+export function messageDayEvents(message: RebuildMessageRow): MessageDayEvents {
+  if (message.status === "skipped") return { skipped: message.createdAt };
+  if (message.status === "failed" || message.status === "undelivered") return { failed: message.createdAt };
+  const history = message.status_history ?? [];
+  const acceptedAt = message.accepted_at ?? message.createdAt;
+  const scheduled = history.some((h) => h.status === "scheduled") || (message.status === "accepted" && message.provider_status === "scheduled");
+  const sentStatuses = new Set(["sent", "delivered"]);
+  if (!scheduled) return sentStatuses.has(message.status) || message.status === "accepted" ? { successful: acceptedAt } : {};
+  const events: MessageDayEvents = { deferred: acceptedAt };
+  const sentEntry = history
+    .filter((h) => sentStatuses.has(h.status ?? "") && h.received_at instanceof Date)
+    .sort((a, b) => +a.received_at! - +b.received_at!)[0];
+  const sentAt = sentEntry?.received_at ?? message.sent_at ?? message.delivered_at ?? null;
+  if (sentAt) events.successful = sentAt;
+  else if (sentStatuses.has(message.status)) events.unreconstructable = acceptedAt;
+  return events;
+}
+
+/** Applies the selected Lead Message rows to `day` (pure; the agreement tests call it directly). */
+export function applyMessageRows(
+  day: string,
+  seed: DailyOperationsDaySeed,
+  hourly: ReturnType<typeof seedHourlyBuckets>,
+  rows: readonly RebuildMessageRow[],
+): void {
+  const onDay = (at: Date | undefined): at is Date => at !== undefined && easternDayKey(at) === day;
+  for (const message of rows) {
+    const events = messageDayEvents(message);
+    if (onDay(events.skipped)) seed.messages.skipped += 1;
+    if (onDay(events.failed)) seed.messages.failed += 1;
+    if (onDay(events.deferred)) seed.messages.deferred += 1;
+    if (onDay(events.unreconstructable)) seed.messages.unreconstructable_sent_day = (seed.messages.unreconstructable_sent_day ?? 0) + 1;
+    if (onDay(events.successful)) {
+      seed.messages.successful += 1;
+      hourly[easternHour(events.successful)]!.messages += 1;
+    }
+  }
+}
+
+/** The Lead fields a rebuild reads (FormLead uses `destination_zip`, CallLead `delivery_zip`). */
+export type RebuildLeadRow = {
+  duplicate?: boolean | null;
+  created_on_unmatched?: boolean | null;
+  ingestion_origin?: string | null;
+  source_company?: string | null;
+  timestamp?: Date | null;
+  createdAt?: Date | null;
+  pickup_zip?: string | null;
+  pickup_state?: string | null;
+  destination_zip?: string | null;
+  delivery_zip?: string | null;
+  delivery_state?: string | null;
+};
+
+/**
+ * Applies the scanned Lead rows of `day` (pure; the live-vs-rebuild agreement tests call it directly).
+ * Only rows whose arrival instant is on `day` count; the hour is that instant's New York hour.
+ */
+export function applyLeadRows(
+  day: string,
+  seed: DailyOperationsDaySeed,
+  hourly: ReturnType<typeof seedHourlyBuckets>,
+  rows: { form: readonly RebuildLeadRow[]; call: readonly RebuildLeadRow[] },
+): void {
+  for (const [kind, leads] of [["form", rows.form], ["call", rows.call]] as const) {
+    for (const lead of leads) {
+      const at = leadDayOf(lead);
+      if (!at || at.day !== day) continue;
+      applyLeadCounters(seed, hourly, {
+        kind,
+        duplicate: Boolean(lead.duplicate),
+        unmatched: kind === "call" && Boolean(lead.created_on_unmatched),
+        origin: lead.ingestion_origin ?? undefined,
+        sourceCompany: lead.source_company ?? undefined,
+        hour: at.hour,
+        zipMiss: zipMissSides({
+          pickup_zip: lead.pickup_zip,
+          pickup_state: lead.pickup_state,
+          delivery_zip: kind === "form" ? lead.destination_zip : lead.delivery_zip,
+          delivery_state: lead.delivery_state,
+        }),
+      });
+    }
+  }
+}
+
 async function defaultAggregateOpenDay(
   input: AggregateOpenDayInput,
 ): Promise<DailyOperationsRebuildCounters> {
   const seed = buildDaySeed(input.day);
   const hourly = seedHourlyBuckets();
+  // SRV-9: scan both timestamp conventions, then keep the Leads whose real arrival instant falls on the
+  // day (`leadDay.ts`, the rule live recording uses), so Granot-created Leads land on the right day.
+  const scan = leadTimestampScanRange(input.floridaTimestampRange);
   const formLeads = await getFormLeadModel()
-    .find({
-      timestamp: {
-        $gte: input.floridaTimestampRange.start,
-        $lt: input.floridaTimestampRange.end,
-      },
-    })
+    .find({ timestamp: { $gte: scan.start, $lt: scan.end } })
     .select(
-      "duplicate ingestion_origin source_company timestamp pickup_zip pickup_state destination_zip delivery_state",
+      "duplicate ingestion_origin source_company timestamp createdAt pickup_zip pickup_state destination_zip delivery_state",
     )
     .lean()
     .exec();
   const callLeads = await getCallLeadModel()
-    .find({
-      timestamp: {
-        $gte: input.floridaTimestampRange.start,
-        $lt: input.floridaTimestampRange.end,
-      },
-    })
+    .find({ timestamp: { $gte: scan.start, $lt: scan.end } })
     .select(
-      "duplicate created_on_unmatched ingestion_origin source_company timestamp pickup_zip pickup_state delivery_zip delivery_state",
+      "duplicate created_on_unmatched ingestion_origin source_company timestamp createdAt pickup_zip pickup_state delivery_zip delivery_state",
     )
     .lean()
     .exec();
-
-  for (const lead of formLeads) {
-    applyLeadCounters(seed, hourly, {
-      kind: "form",
-      duplicate: Boolean(lead.duplicate),
-      unmatched: false,
-      origin: lead.ingestion_origin,
-      sourceCompany: lead.source_company,
-      hour: floridaHour(lead.timestamp),
-      zipMiss: zipMissSides({
-        pickup_zip: lead.pickup_zip,
-        pickup_state: lead.pickup_state,
-        delivery_zip: lead.destination_zip,
-        delivery_state: lead.delivery_state,
-      }),
-    });
-  }
-  for (const lead of callLeads) {
-    applyLeadCounters(seed, hourly, {
-      kind: "call",
-      duplicate: Boolean(lead.duplicate),
-      unmatched: Boolean(lead.created_on_unmatched),
-      origin: lead.ingestion_origin,
-      sourceCompany: lead.source_company,
-      hour: floridaHour(lead.timestamp),
-      zipMiss: zipMissSides({
-        pickup_zip: lead.pickup_zip,
-        pickup_state: lead.pickup_state,
-        delivery_zip: lead.delivery_zip,
-        delivery_state: lead.delivery_state,
-      }),
-    });
-  }
+  applyLeadRows(input.day, seed, hourly, { form: formLeads as RebuildLeadRow[], call: callLeads as RebuildLeadRow[] });
 
   const receipts = await getGranotObservationReceiptModel()
     .find({
@@ -275,44 +352,15 @@ async function defaultAggregateOpenDay(
     }
   }
 
+  // SRV-9: a message counts on the day each of its events happened (the live rule), so select every
+  // message with an event instant on the day, not only those created on it.
+  const range = { $gte: input.instantRange.start, $lt: input.instantRange.end };
   const messages = await getLeadMessageModel()
-    .find({
-      createdAt: {
-        $gte: input.instantRange.start,
-        $lt: input.instantRange.end,
-      },
-    })
-    .select("status provider_status createdAt accepted_at sent_at delivered_at")
+    .find({ $or: [{ createdAt: range }, { accepted_at: range }, { sent_at: range }, { delivered_at: range }] })
+    .select("status provider_status createdAt accepted_at sent_at delivered_at status_history.status status_history.received_at")
     .lean()
     .exec();
-  for (const message of messages) {
-    const hour = easternHour(message.accepted_at ?? message.createdAt);
-    if (message.status === "skipped") {
-      seed.messages.skipped += 1;
-      continue;
-    }
-    if (
-      message.status === "failed" ||
-      message.status === "undelivered"
-    ) {
-      seed.messages.failed += 1;
-      continue;
-    }
-    const held =
-      message.status === "accepted" && message.provider_status === "scheduled";
-    if (held) {
-      seed.messages.deferred += 1;
-      continue;
-    }
-    if (
-      message.status === "accepted" ||
-      message.status === "sent" ||
-      message.status === "delivered"
-    ) {
-      seed.messages.successful += 1;
-      hourly[hour]!.messages += 1;
-    }
-  }
+  applyMessageRows(input.day, seed, hourly, messages as RebuildMessageRow[]);
 
   const bookings = await BookedLead.find({
     createdAt: {
@@ -377,11 +425,6 @@ async function defaultAggregateOpenDay(
     exceptions: seed.exceptions,
     hourly,
   };
-}
-
-function floridaHour(timestamp: Date | undefined): number {
-  if (!timestamp) return 0;
-  return timestamp.getUTCHours();
 }
 
 function applyLeadCounters(

@@ -2,6 +2,7 @@ import { FORM_LEAD_UNKNOWN_STATE } from "../../models/FormLead";
 import { FLORIDA_TIME_ZONE } from "../../utils/easternTime";
 import type { DailyOperationsCard, DailyOperationsLinks } from "../../models/DailyOperationsEvent";
 import { buildMetricTouches, titleForKind, type DailyOperationsKind } from "./kinds";
+import { leadArrivalInstant } from "./leadDay";
 import { recordDailyOperationsFact } from "./recordDailyOperationsFact";
 
 const UNKNOWN_STATES = new Set(["", FORM_LEAD_UNKNOWN_STATE]);
@@ -92,6 +93,8 @@ export type LeadDailyOperationsSnapshot = {
     delivery_state?: string | null;
     local?: unknown;
     timestamp?: Date | string | null;
+    /** Row creation time; lets the Lead-instant rule recognise a non-wall-clock legacy timestamp. */
+    createdAt?: Date | null;
     job_no?: string | null;
     created_on_unmatched?: boolean;
     duplicate?: boolean;
@@ -187,7 +190,8 @@ export async function recordFormLeadDailyOperationsFact(
     delivery_zip: deliveryZip,
     delivery_state: lead.delivery_state,
   });
-  const occurredAt = asDate(lead.timestamp);
+  // SRV-9: the day/hour of the Lead's real arrival instant (the same rule the rebuild uses).
+  const occurredAt = leadArrivalInstant(lead) ?? asDate(lead.timestamp);
 
   await recordDailyOperationsFact({
     kind,
@@ -245,7 +249,8 @@ export async function recordCallLeadDailyOperationsFact(
     delivery_zip: deliveryZip,
     delivery_state: lead.delivery_state,
   });
-  const occurredAt = asDate(lead.timestamp);
+  // SRV-9: the day/hour of the Lead's real arrival instant (the same rule the rebuild uses).
+  const occurredAt = leadArrivalInstant(lead) ?? asDate(lead.timestamp);
 
   await recordDailyOperationsFact({
     kind,

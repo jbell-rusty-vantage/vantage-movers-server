@@ -1,4 +1,3 @@
-import { SALES_OUTREACH_CONTRACT_VERSION, SALES_OUTREACH_TIMEZONE } from "../../../config/domain/salesOutreach";
 import type {
   SalesOutreachCapabilitiesDto,
   SalesOutreachRepDaysDto,
@@ -7,12 +6,12 @@ import type {
   SalesOutreachTeamQuery,
 } from "../../../validation/v1/salesOutreachReads";
 import type { OutreachActor } from "../auth";
-import type { ActiveConfiguration, ConfigurationLoader } from "../config/load";
+import type { ActiveConfiguration } from "../config/load";
 import { configurationActivationBlockers } from "../config/reads";
 import { OutreachError } from "../errors";
-import { newYorkBusinessDay } from "./businessDay";
 import { composeCapabilities } from "./capabilities";
-import { callsCoverageForDay, composeFreshness, requiredCoverageThrough, type SalesOutreachFreshness } from "./freshness";
+import { baseRead, commonRead, readFreshness, requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
+import { repDayCoverage } from "../contacts/repDay";
 import {
   composeRepDay,
   composeTeamGoals,
@@ -21,64 +20,16 @@ import {
   resolveRepDayGoal,
   type RepDayRow,
 } from "./goals";
-import { mongoSalesOutreachReadStore, type SalesOutreachReadStore } from "./store";
+import { mongoDeskQueueStore } from "./deskStore";
+import { mongoSalesOutreachReadStore, type ContactDerivationMark, type SalesOutreachReadStore } from "./store";
+import { composeTeamCadence } from "./teamCadence";
+
+export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
 
 /**
- * Sales Outreach Desk M1 reads (FAST-TRACK M1; CONTRACTS "HTTP interface", "Common read data").
- * Each read takes one server reference instant (`now`), reads the configuration pointer once and
- * never writes, initializes configuration or calls a provider.
+ * Sales Outreach Desk reads: capabilities, rep-days and team (CONTRACTS "HTTP interface", "Common read
+ * data"). The queue and the outreach view live in `queue.ts` and `detail.ts`.
  */
-export type DeskReadDeps = Readonly<{
-  loader: ConfigurationLoader;
-  store?: SalesOutreachReadStore;
-  now: Date;
-}>;
-
-const NOT_AVAILABLE_IN_M1 = { value: null, unknown_reason: "not_available_in_m1" } as const;
-
-function baseRead(actor: OutreachActor, now: Date, scopedAgent: string | null) {
-  return {
-    contract_version: SALES_OUTREACH_CONTRACT_VERSION,
-    as_of: now.toISOString(),
-    timezone: SALES_OUTREACH_TIMEZONE,
-    scope: { role: actor.role, agent_id: scopedAgent },
-  };
-}
-
-/**
- * The active configuration for a desk read, or a fail-closed refusal: uninitialized or broken
- * configuration and `controls.desk_enabled = false` all answer 503 `CONFIGURATION_UNAVAILABLE`
- * (with an issue naming why). The Owner's configuration and capabilities routes stay open.
- */
-export async function requireDeskConfiguration(loader: ConfigurationLoader): Promise<ActiveConfiguration> {
-  const loaded = await loader.load();
-  if (loaded.state !== "active")
-    throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "configuration", code: "configuration_uninitialized" }]);
-  if (!loaded.value.controls.desk_enabled)
-    throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "controls.desk_enabled", code: "desk_disabled" }]);
-  return loaded;
-}
-
-/** The requested business day (default: today in New York at `now`); future days are refused. */
-export function resolveBusinessDay(requested: string | undefined, now: Date): { business_day: string; today: string } {
-  const today = newYorkBusinessDay(now);
-  const business_day = requested ?? today;
-  if (business_day > today) throw new OutreachError("INVALID_INPUT", [{ path: "business_day", code: "future_business_day" }]);
-  return { business_day, today };
-}
-
-async function readFreshness(store: SalesOutreachReadStore, configuration: ActiveConfiguration, now: Date) {
-  const smsEnabled = configuration.value.controls.rep_sms_capture_enabled;
-  const [calls, mailboxes, granot] = await Promise.all([
-    store.readCallsCapture(),
-    smsEnabled ? store.readSmsMailboxes() : Promise.resolve([]),
-    store.readLatestGranotObservationAt(),
-  ]);
-  return {
-    calls,
-    freshness: composeFreshness({ now, calls, sms_capture_enabled: smsEnabled, sms_mailboxes: mailboxes, granot_last_observed_at: granot }),
-  };
-}
 
 /**
  * Per-rep goal rows for one day. `agentId` narrows to one rep; otherwise roster reps (in roster
@@ -92,6 +43,8 @@ async function composeRepDays(input: {
   now: Date;
   agent_id: string | null;
   calls_known_complete_through: Date | null;
+  /** The contact-event derivation watermark (`outreach_contact_calls`); null until S3's sweep has run. */
+  derivation: ContactDerivationMark | null;
 }) {
   const { store, configuration, business_day, today, now } = input;
   const roster = (configuration.value.goals.rep_work_schedules ?? []).map((row) => row.agent_id);
@@ -101,7 +54,13 @@ async function composeRepDays(input: {
     ? [input.agent_id]
     : [...roster, ...rows.map((row) => row.agent_id).filter((id) => !roster.includes(id)).sort()];
   const names = await store.findReviewedRepNames(agents, now);
-  const coverage = callsCoverageForDay(input.calls_known_complete_through, requiredCoverageThrough(business_day, today, now));
+  // A missing rep-day row is a confirmed 0 only when capture (minus the settlement allowance) AND the
+  // contact-event derivation cover the day, and the day starts on/after the derivation's coverage start.
+  const coverage = repDayCoverage(business_day, today, now, {
+    capture_known_complete_through: input.calls_known_complete_through,
+    derived_through: input.derivation?.known_complete_through ?? null,
+    coverage_from: input.derivation?.coverage_from ?? null,
+  });
   const fallback = fallbackCountScope(rows);
   const reps = agents.map((agent_id) => {
     const row = rowByAgent.get(agent_id) ?? null;
@@ -126,23 +85,6 @@ async function composeRepDays(input: {
   return { reps, scope: dayCountScope(rows), projection_revision };
 }
 
-function commonRead(
-  actor: OutreachActor,
-  now: Date,
-  scopedAgent: string | null,
-  configuration: ActiveConfiguration,
-  projection_revision: number | null,
-  freshness: SalesOutreachFreshness,
-) {
-  return {
-    ...baseRead(actor, now, scopedAgent),
-    configuration_state: "active" as const,
-    configuration_version: configuration.version,
-    configuration_revision: configuration.revision,
-    projection_revision,
-    freshness,
-  };
-}
 
 /** `GET /capabilities` — Owner, Manager and linked Rep; answers even when the desk is off or broken. */
 export async function readDeskCapabilities(actor: OutreachActor, deps: DeskReadDeps): Promise<SalesOutreachCapabilitiesDto> {
@@ -180,6 +122,7 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
     now: deps.now,
     agent_id,
     calls_known_complete_through: calls?.known_complete_through ?? null,
+    derivation: await store.readContactDerivation(),
   });
   return {
     ...commonRead(actor, deps.now, agent_id, configuration, days.projection_revision, freshness),
@@ -210,20 +153,26 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
         now: deps.now,
         agent_id: null,
         calls_known_complete_through: calls?.known_complete_through ?? null,
+        derivation: await store.readContactDerivation(),
       })
     : null;
+  const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore: deps.queueStore ?? mongoDeskQueueStore, readStore: store });
+  const attentionRevision = (cadence.leads_needing_attention.rows ?? []).reduce<number | null>((max, row) => Math.max(max ?? 0, row.publication_revision), null);
+  const projection_revision =
+    days?.projection_revision === null || days?.projection_revision === undefined ? attentionRevision : Math.max(days.projection_revision, attentionRevision ?? 0);
   return {
-    ...commonRead(actor, deps.now, null, configuration, days?.projection_revision ?? null, freshness),
+    ...commonRead(actor, deps.now, null, configuration, projection_revision, freshness),
     business_day,
     is_today: business_day === today,
     goal_metrics_enabled: goalMetrics,
     goals: days ? composeTeamGoals(days.reps, days.scope) : null,
     goals_unknown_reason: days ? null : "goal_metrics_disabled",
-    daily_call_goals: days ? days.reps.map((rep) => ({ ...rep, overdue_leads: NOT_AVAILABLE_IN_M1 })) : null,
-    distinct_overdue_leads: NOT_AVAILABLE_IN_M1,
-    quoted_overdue_leads: NOT_AVAILABLE_IN_M1,
-    unassigned: NOT_AVAILABLE_IN_M1,
-    leads_needing_attention: NOT_AVAILABLE_IN_M1,
+    daily_call_goals: days ? days.reps.map((rep) => ({ ...rep, overdue_leads: cadence.overdueFor(rep.agent_id) })) : null,
+    distinct_overdue_leads: cadence.distinct_overdue_leads,
+    quoted_overdue_leads: cadence.quoted_overdue_leads,
+    unassigned: cadence.unassigned,
+    leads_needing_attention: cadence.leads_needing_attention,
+    cadence_exposure: cadence.exposure,
     readiness:
       actor.role === "owner"
         ? { configuration_state: "active", activation_blockers: configurationActivationBlockers(configuration.value) }

@@ -176,6 +176,7 @@ export function buildDaySeed(day: string): DailyOperationsDaySeed {
       deferred: 0,
       skipped: 0,
       failed: 0,
+      unreconstructable_sent_day: 0,
     },
     bookings: {
       total: 0,

@@ -14,7 +14,7 @@ import {
 } from "../config/store";
 import { OutreachError, zodIssues } from "../errors";
 import { newYorkBusinessDay } from "../reads/businessDay";
-import { commandLoader, type DeskCommandDeps } from "./common";
+import { commandLoader, publishCommandLive, type DeskCommandDeps } from "./common";
 
 /**
  * `PATCH /goals/:agent_id/day-override` — Owner, or Manager prospectively (P08a, P09b).
@@ -107,6 +107,15 @@ export async function setGoalDayOverride(input: DayOverrideInput, deps: DayOverr
         return { ...base, revision, version, changed: true };
       },
     });
+    // After commit: the rep's goal day changed, and so did the configuration pointer.
+    if (!replayed && response.changed)
+      await publishCommandLive(
+        [
+          { topic: "outreach_goal", agent_ids: [response.agent_id], business_day: response.business_date, revision: null, cause: "command" },
+          { topic: "outreach_configuration", revision: response.revision, cause: "configuration" },
+        ],
+        deps,
+      );
     return { ...response, replayed };
   } catch (error) {
     if (duplicateKey(error)) throw new OutreachError("REVISION_CONFLICT");

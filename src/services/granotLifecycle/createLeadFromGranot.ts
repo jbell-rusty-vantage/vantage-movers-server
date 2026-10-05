@@ -45,6 +45,11 @@ import {
 import { logger } from "../../logger";
 import { sendGranotCreatedLeadConfirmation } from "../leadMessaging/granotCreatedLead";
 import { enqueueSheetSyncJob, finalizeSheetSync } from "../sheetSync";
+import {
+  recordCallLeadDailyOperationsFact,
+  recordFormLeadDailyOperationsFact,
+  type LeadDailyOperationsSnapshot,
+} from "../dailyOperations/recordDomainFacts";
 import { recordGranotMintedDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
 import {
   createMongoLeadIdentityStore,
@@ -221,6 +226,11 @@ export async function createLeadFromGranot(
         lead_id: pending.lead_id,
         lead_model: pending.lead_model,
       });
+      // SPECIFICATION §14 (SRV-9): a Granot-created Lead is a Lead received like any other, so it records
+      // the same canonical Lead fact after commit (not on `granot.minted`, which counts the decision).
+      const leadFact = { source_company: pending.source_company, lead: pending.daily_operations_lead };
+      if (pending.lead_model === "FormLead") await recordFormLeadDailyOperationsFact(leadFact);
+      else await recordCallLeadDailyOperationsFact(leadFact);
     },
   });
   return {
@@ -265,6 +275,8 @@ async function executeCreation(
   source_company: string | null;
   lead_id: string;
   lead_model: LeadModel;
+  /** The created Lead as the Daily Operations Lead fact reads it (SRV-9). */
+  daily_operations_lead: LeadDailyOperationsSnapshot["lead"];
 }> {
   const observation = await getGranotObservationModel()
     .findById(input.observation_id)
@@ -607,6 +619,30 @@ async function executeCreation(
     source_company: company.company_slug ?? null,
     lead_id: String(lead._id),
     lead_model: selectedModel,
+    daily_operations_lead: dailyOperationsLeadOf(leadRaw),
+  };
+}
+
+const optionalString = (value: unknown) => (typeof value === "string" ? value : null);
+
+/** The created Lead's fields the Daily Operations Lead fact reads (day, card, ZIP check, classification). */
+export function dailyOperationsLeadOf(raw: Record<string, unknown>): LeadDailyOperationsSnapshot["lead"] {
+  return {
+    _id: { toString: () => String(raw._id) },
+    name: optionalString(raw.name),
+    phone_number: optionalString(raw.phone_number),
+    ingestion_origin: optionalString(raw.ingestion_origin),
+    pickup_zip: optionalString(raw.pickup_zip),
+    pickup_state: optionalString(raw.pickup_state),
+    destination_zip: optionalString(raw.destination_zip),
+    delivery_zip: optionalString(raw.delivery_zip),
+    delivery_state: optionalString(raw.delivery_state),
+    timestamp: raw.timestamp instanceof Date ? raw.timestamp : null,
+    createdAt: raw.createdAt instanceof Date ? raw.createdAt : null,
+    job_no: optionalString(raw.job_no),
+    created_on_unmatched: raw.created_on_unmatched === true,
+    duplicate: raw.duplicate === true,
+    source_company: optionalString(raw.source_company),
   };
 }
 

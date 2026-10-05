@@ -28,8 +28,26 @@
       "rep_days": [
         "business_day"
       ],
-      "team": []
+      "team": [],
+      "queue": [
+        "search",
+        "priority",
+        "workflow",
+        "move_date_from",
+        "move_date_to",
+        "move_date_unknown",
+        "state",
+        "sort",
+        "direction",
+        "cursor",
+        "limit"
+      ]
     },
+    "live_topics": [
+      "outreach_desk",
+      "outreach_goal",
+      "outreach_configuration"
+    ],
     "permitted_commands": [
       "quoted_followup",
       "callback"
@@ -42,7 +60,10 @@
     "deployed_reads": [
       "capabilities",
       "rep_days",
-      "team"
+      "team",
+      "queue",
+      "outreach_detail",
+      "live"
     ]
   }
 }

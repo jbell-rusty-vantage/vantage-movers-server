@@ -75,6 +75,8 @@ export type StoredContactEvent = Readonly<{
   goal_agent_id: string | null;
   restricted_at_contact: boolean;
   outcome?: string | null;
+  /** P07g: S3 marks the answered inbound call that created this subject's Call Lead. */
+  originating_inbound?: boolean;
 }>;
 
 /** Capture coverage the engine reads (RINGCENTRAL-CAPTURE §8). */
@@ -85,7 +87,14 @@ export type CoverageFacts = Readonly<{
   sms_known_complete_through: Date | null;
 }>;
 
-export type ProjectionHead = Readonly<{ revision: number; publication_revision: number; result_fingerprint: string | null; policy_fingerprint: string | null }>;
+export type ProjectionHead = Readonly<{
+  revision: number;
+  publication_revision: number;
+  result_fingerprint: string | null;
+  policy_fingerprint: string | null;
+  /** The assignee the stored row carries (the live publish also notifies a previous assignee). */
+  assigned_agent_id?: string | null;
+}>;
 
 /** The projection document the evaluator writes (subject id excluded; see `projection.ts`). */
 export type ProjectionWrite = Readonly<Record<string, unknown> & { exposure: SalesOutreachCadenceExposure; result_fingerprint: string }>;
@@ -248,6 +257,7 @@ export const mongoEvaluationStore: EvaluationStore = {
       goal_agent_id: idOrNull(row.goal_agent_id),
       restricted_at_contact: row.restricted_at_contact === true,
       outcome: (row.outcome as string | null | undefined) ?? null,
+      originating_inbound: row.originating_inbound === true,
     }));
   },
 
@@ -268,7 +278,7 @@ export const mongoEvaluationStore: EvaluationStore = {
 
   async readProjection(subjectId, session) {
     const row = await getSalesOutreachProjectionModel()
-      .findOne({ subject_id: oid(subjectId) }, { revision: 1, publication_revision: 1, result_fingerprint: 1, policy_fingerprint: 1 })
+      .findOne({ subject_id: oid(subjectId) }, { revision: 1, publication_revision: 1, result_fingerprint: 1, policy_fingerprint: 1, assigned_agent_id: 1 })
       .session(session)
       .lean();
     if (!row) return null;
@@ -277,6 +287,7 @@ export const mongoEvaluationStore: EvaluationStore = {
       publication_revision: Number(row.publication_revision ?? 0),
       result_fingerprint: (row as { result_fingerprint?: string }).result_fingerprint ?? null,
       policy_fingerprint: (row as { policy_fingerprint?: string }).policy_fingerprint ?? null,
+      assigned_agent_id: idOrNull((row as { assigned_agent_id?: unknown }).assigned_agent_id),
     };
   },
 

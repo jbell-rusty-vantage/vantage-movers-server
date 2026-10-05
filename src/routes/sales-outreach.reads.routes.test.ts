@@ -8,11 +8,15 @@ import { buildDtoExamples, DTO_EXAMPLES_DIR } from "../../ops/sales-outreach/wri
 import { computeAdminActorSignature, signAdminActorPayload } from "../services/operationsRegistry/trustedActor";
 import { buildCanonicalRepActorPayload } from "../services/operationsRegistry/trustedActorCanonical";
 import type { ConfigurationInspection } from "../services/salesOutreach/config/load";
+import { MemoryDeskReadStore } from "../services/salesOutreach/reads/deskTesting";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow } from "../services/salesOutreach/reads/testing";
 import type { SalesOutreachConfigurationInput } from "../validation/v1/salesOutreach";
 import {
   salesOutreachCapabilitiesSchema,
+  salesOutreachDetailSchema,
   salesOutreachErrorEnvelopeSchema,
+  salesOutreachLiveFrameSchema,
+  salesOutreachQueueSchema,
   salesOutreachReadEnvelope,
   salesOutreachRepDaysSchema,
   salesOutreachTeamSchema,
@@ -62,6 +66,7 @@ app.use(
       requireActive: () => fixedConfigurationLoader(inspection).requireActive(),
     },
     readStore: store,
+    queueStore: new MemoryDeskReadStore(),
     auth: { hasReviewedSalesRepLink: async (agent) => agent === REP_A || agent === REP_B },
     now: () => NOW,
   }),
@@ -96,6 +101,8 @@ beforeEach(() => {
   store.calls = { scope: "call_log_all_directions", known_complete_through: new Date("2026-10-05T14:57:00Z"), last_finished_at: new Date("2026-10-05T14:58:00Z"), last_error_code: null };
   store.mailboxes = [];
   store.granot = new Date("2026-10-05T14:56:00Z");
+  // S3's contact-event sweep has covered capture since the 1st (a missing row may then read as 0).
+  store.derivation = { known_complete_through: new Date("2026-10-05T14:58:00Z"), coverage_from: new Date("2026-10-01T04:00:00Z") };
   store.queries = [];
 });
 
@@ -151,7 +158,11 @@ test("capabilities: role-shaped views/filters/commands and safe controls only", 
   const owner = salesOutreachReadEnvelope(salesOutreachCapabilitiesSchema).parse((await get("owner", "/capabilities")).body).data;
   assert.deepEqual(owner.permitted_views, ["team", "my", "settings", "numbers", "accounts"]);
   assert.deepEqual(owner.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override", "restrictions", "configuration_edit"]);
-  assert.deepEqual(owner.permitted_filters, { rep_days: ["business_day", "agent_id"], team: ["business_day"] });
+  assert.deepEqual(owner.permitted_filters.rep_days, ["business_day", "agent_id"]);
+  assert.deepEqual(owner.permitted_filters.team, ["business_day"]);
+  assert.ok(owner.permitted_filters.queue.includes("agent_id") && owner.permitted_filters.queue.includes("unassigned"));
+  assert.deepEqual(owner.live_topics, ["outreach_desk", "outreach_goal", "outreach_configuration"]);
+  assert.deepEqual(owner.deployed_reads, ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live"]);
   assert.deepEqual([owner.configuration_state, owner.configuration_version, owner.configuration_revision, owner.desk_available], ["active", "v-test", 3, true]);
   assert.ok(owner.role_capabilities.includes("activation"));
   assert.equal(JSON.stringify(owner).includes("batch_size"), false, "no migration budgets");
@@ -165,7 +176,8 @@ test("capabilities: role-shaped views/filters/commands and safe controls only", 
   const rep = salesOutreachCapabilitiesSchema.parse((await get("rep-a", "/capabilities")).body.data);
   assert.deepEqual(rep.permitted_views, ["my"]);
   assert.deepEqual(rep.permitted_commands, ["quoted_followup", "callback"]);
-  assert.deepEqual(rep.permitted_filters, { rep_days: ["business_day"], team: [] });
+  assert.deepEqual([rep.permitted_filters.rep_days, rep.permitted_filters.team], [["business_day"], []]);
+  assert.equal(rep.permitted_filters.queue.includes("agent_id") || rep.permitted_filters.queue.includes("unassigned"), false, "no rep/Unassigned filter for a Rep");
   assert.deepEqual(rep.scope, { role: "rep", agent_id: REP_A });
   assert.deepEqual(rep.controls, {
     desk_enabled: true,
@@ -225,13 +237,15 @@ test("rep-days: query validation, past days and future refusal", async () => {
   assert.equal(past.projection_revision, null);
 });
 
-test("team: goal cards, Daily call goals rows, M1-unavailable parts explicit, readiness Owner-only", async () => {
+test("team: goal cards, Daily call goals rows, cadence parts honest while cadence is off, readiness Owner-only", async () => {
   const owner = salesOutreachReadEnvelope(salesOutreachTeamSchema).parse((await get("owner", "/team")).body).data;
   assert.deepEqual([owner.goals?.outbound_calls.actual, owner.goals?.outbound_calls.goal], [128, 150]);
   assert.deepEqual(owner.goals?.reps_at_goal, { count: 1, of: 2, pending: 0 });
   assert.equal(owner.daily_call_goals?.length, 2);
-  assert.deepEqual(owner.daily_call_goals?.[0]?.overdue_leads, { value: null, unknown_reason: "not_available_in_m1" });
-  assert.deepEqual(owner.unassigned, { value: null, unknown_reason: "not_available_in_m1" });
+  assert.deepEqual(owner.daily_call_goals?.[0]?.overdue_leads, { value: null, unknown_reason: "cadence_disabled" });
+  assert.deepEqual(owner.unassigned, { count: 0, overdue: { value: null, unknown_reason: "cadence_disabled" } });
+  assert.deepEqual(owner.leads_needing_attention, { rows: null, limit: 10, unknown_reason: "cadence_disabled" });
+  assert.equal(owner.cadence_exposure, null);
   assert.ok(owner.readiness?.activation_blockers.includes("cadence_policy_incomplete"));
   const manager = salesOutreachTeamSchema.parse((await get("manager", "/team")).body.data);
   assert.equal(manager.readiness, null);
@@ -286,7 +300,13 @@ test("DTO examples for the admin team parse with the exported schemas and match 
         ? salesOutreachReadEnvelope(salesOutreachCapabilitiesSchema)
         : name.startsWith("rep-days.")
           ? salesOutreachReadEnvelope(salesOutreachRepDaysSchema)
-          : salesOutreachReadEnvelope(salesOutreachTeamSchema);
+          : name.startsWith("queue.")
+            ? salesOutreachReadEnvelope(salesOutreachQueueSchema)
+            : name.startsWith("outreach.")
+              ? salesOutreachReadEnvelope(salesOutreachDetailSchema)
+              : name.startsWith("live.")
+                ? salesOutreachLiveFrameSchema
+                : salesOutreachReadEnvelope(salesOutreachTeamSchema);
   const built = await buildDtoExamples();
   const files = readdirSync(DTO_EXAMPLES_DIR).filter((name) => name.endsWith(".json")).sort();
   assert.deepEqual(files, Object.keys(built).sort(), "regenerate with ops/sales-outreach/write-dto-examples.ts");
@@ -295,6 +315,21 @@ test("DTO examples for the admin team parse with the exported schemas and match 
     schemaFor(name).parse(onDisk);
     assert.deepEqual(onDisk, JSON.parse(JSON.stringify(built[name])), `${name} drifted; regenerate it`);
   }
+});
+
+test("derivation watermark: before S3's contact-event sweep covers a day, a rep without a row is pending, never 0", async () => {
+  store.derivation = null;
+  const none = salesOutreachTeamSchema.parse((await get("owner", "/team?business_day=2026-10-04")).body.data);
+  assert.deepEqual(none.daily_call_goals?.map((r) => [r.actual_confirmed, r.actual_basis]), [[null, "pending"], [null, "pending"]]);
+  // The sweep started on the 5th: the 4th is outside its coverage (unknown), the 5th is covered.
+  store.derivation = { known_complete_through: new Date("2026-10-05T14:58:00Z"), coverage_from: new Date("2026-10-05T04:00:00Z") };
+  const before = salesOutreachTeamSchema.parse((await get("owner", "/team?business_day=2026-10-04")).body.data);
+  assert.deepEqual(before.daily_call_goals?.map((r) => [r.actual_confirmed, r.coverage.state]), [[null, "unknown"], [null, "unknown"]]);
+  // Derivation lags capture: coverage is the smaller watermark.
+  store.rows = [];
+  store.derivation = { known_complete_through: new Date("2026-10-05T14:00:00Z"), coverage_from: new Date("2026-10-01T04:00:00Z") };
+  const lagging = salesOutreachTeamSchema.parse((await get("owner", "/team")).body.data);
+  assert.deepEqual(lagging.daily_call_goals?.map((r) => r.actual_basis), ["pending", "pending"]);
 });
 
 test("stale capture: today's rep without a row is pending, never a confirmed zero", async () => {

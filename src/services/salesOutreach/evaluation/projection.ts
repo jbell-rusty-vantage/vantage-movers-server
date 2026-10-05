@@ -41,10 +41,58 @@ function channel(requirement: EngineChannelRequirement, coverage: ReturnType<typ
 const sha256 = (value: unknown) => createHash("sha256").update(stableStringify(value)).digest("hex");
 const toDate = (value: string | null) => (value ? new Date(value) : null);
 
+/** Queue sort sentinels: unknown instants never reach the database's own null ordering. */
+export const QUEUE_KEY_FAR_FUTURE = new Date("9999-12-31T00:00:00.000Z");
+export const QUEUE_KEY_EPOCH = new Date(0);
+
+/** Case-insensitive literal name key (NFKC, lower case, trimmed). */
+export const foldName = (name: string | null) => (name ? name.normalize("NFKC").trim().toLowerCase() || null : null);
+
+/** The subject facts a projection row copies for queue filtering and search (IMPLEMENTATION-PLAN §4.5). */
+export function projectionDisplayOf(subject: DeskSubjectRow) {
+  const display = subject.display;
+  return {
+    job_no: display.job_no,
+    normalized_job_no: display.normalized_job_no,
+    phone: display.phone,
+    normalized_phone: display.normalized_phone,
+    name: display.name,
+    name_folded: foldName(display.name),
+    move_date: display.move_date,
+  };
+}
+
+/** A channel's earliest unsatisfied actionable deadline: overdue, or due and unmet; never a blocked channel's. */
+function channelUrgency(requirement: EngineChannelRequirement): string | null {
+  if (requirement.status === "blocked") return null;
+  const dues = [requirement.oldest_actionable_due_at, requirement.status === "due" || requirement.status === "overdue" ? requirement.due_at : null];
+  return dues.filter((v): v is string => v !== null).sort()[0] ?? null;
+}
+
+/**
+ * Never-null queue sort keys (CONTRACTS "Queue sort enums"). Urgency = the earliest unsatisfied actionable
+ * deadline (overdue deadlines are always earlier than due-today ones, so the order stays right as time
+ * passes without a rewrite), then the next future action, then received time (unknown last).
+ */
+export function queueKeysOf(result: EvaluateSubjectResult, receivedAt: Date | null) {
+  const call = channelUrgency(result.requirements.call);
+  const sms = channelUrgency(result.requirements.sms);
+  const urgency = [call, sms].filter((v): v is string => v !== null).sort()[0] ?? null;
+  return {
+    urgency_due: toDate(urgency) ?? QUEUE_KEY_FAR_FUTURE,
+    urgency_next: toDate(result.next_action_due_at) ?? QUEUE_KEY_FAR_FUTURE,
+    call_due: toDate(call) ?? QUEUE_KEY_FAR_FUTURE,
+    received_asc: receivedAt ?? QUEUE_KEY_FAR_FUTURE,
+    received_desc: receivedAt ?? QUEUE_KEY_EPOCH,
+    last_interaction: toDate(result.last_interaction_at) ?? QUEUE_KEY_EPOCH,
+  };
+}
+
 /**
  * The fields that decide whether a row is rewritten: the engine result (which already excludes
  * `computed_as_of`), the resolved policy + exposure and the subject facts the row carries but the
- * engine does not read. Capture coverage advancing alone never rewrites a row.
+ * engine does not read (assignee, status, display/search copy). Capture coverage advancing alone
+ * never rewrites a row.
  */
 export function resultFingerprint(result: EvaluateSubjectResult, subject: DeskSubjectRow, policyFingerprint: string): string {
   return sha256({
@@ -53,6 +101,8 @@ export function resultFingerprint(result: EvaluateSubjectResult, subject: DeskSu
     assigned_agent_id: subject.assigned_agent_id,
     received_at: subject.received_at?.toISOString() ?? null,
     job_pending: !subject.display.job_no,
+    subject_status: subject.status,
+    display: projectionDisplayOf(subject),
   });
 }
 
@@ -68,6 +118,9 @@ export function toProjectionWrite(subject: DeskSubjectRow, result: EvaluateSubje
     last_interaction_at: toDate(result.last_interaction_at),
     received_at: subject.received_at,
     assigned_agent_id: subject.assigned_agent_id,
+    subject_status: subject.status,
+    display: projectionDisplayOf(subject),
+    queue_keys: queueKeysOf(result, subject.received_at),
     workflow: result.workflow,
     priority_raw: result.priority_raw,
     status_flags: {

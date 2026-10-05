@@ -3,6 +3,7 @@ import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/sa
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { appendCsiAudit, duplicateKey, executeCsiCommand } from "../../salesIntelligence/transactions";
 import { OutreachError, zodIssues } from "../errors";
+import { publishOutreachLive } from "../live/publish";
 import {
   configurationContentHash,
   configurationVersionFor,
@@ -27,6 +28,8 @@ export type ConfigurationCommandDeps = {
   store?: ConfigurationStore;
   writer?: ConfigurationWriter;
   audit?: typeof appendCsiAudit;
+  /** After-commit live publish (tests inject a recorder). */
+  publishLive?: typeof publishOutreachLive;
 };
 
 /**
@@ -53,7 +56,7 @@ export async function patchSalesOutreachConfiguration(
   const writer = deps.writer ?? mongoConfigurationWriter;
   const audit = deps.audit ?? appendCsiAudit;
   try {
-    return await (deps.run ?? executeCsiCommand)<ConfigurationPatchResult>({
+    const committed = await (deps.run ?? executeCsiCommand)<ConfigurationPatchResult>({
       actor: input.actor,
       command: SALES_OUTREACH_CONFIGURATION_COMMAND,
       idempotency_key: input.idempotency_key,
@@ -94,6 +97,10 @@ export async function patchSalesOutreachConfiguration(
         return { revision, version, content_hash, changed: true };
       },
     });
+    // After commit: every desk viewer refetches capabilities and configuration-derived reads.
+    if (!committed.replayed && committed.response.changed)
+      await (deps.publishLive ?? publishOutreachLive)({ topic: "outreach_configuration", revision: committed.response.revision, cause: "configuration" });
+    return committed;
   } catch (error) {
     // A concurrent initialization (unique pointer key) lost the race: the Owner must re-read.
     if (duplicateKey(error)) throw new OutreachError("REVISION_CONFLICT");

@@ -6,6 +6,7 @@ import type { OutreachActor } from "../auth";
 import { salesOutreachConfigurationLoader, type ActiveConfiguration, type ConfigurationLoader } from "../config/load";
 import { BusinessCalendar, type EnginePolicy } from "../engine";
 import { OutreachError } from "../errors";
+import { publishOutreachLive, type OutreachLivePublication } from "../live/publish";
 import { deskEnginePolicy } from "../evaluation/policyAdapter";
 import type { DeskPlanRow } from "../evaluation/store";
 import type { DeskSubjectRow } from "../subjects/store";
@@ -19,7 +20,15 @@ export type DeskCommandDeps = {
   audit?: typeof appendCsiAudit;
   /** After-commit wake of the jobs a command created (Vercel Queue publish); never throws into the command. */
   publish?: (jobIds: readonly string[]) => Promise<unknown>;
+  /** After-commit live invalidation (`GET /live`); never throws into the command. */
+  publishLive?: typeof publishOutreachLive;
 };
+
+/** Publishes a committed desk command's live invalidations (ids and revisions only). */
+export async function publishCommandLive(publications: readonly OutreachLivePublication[], deps: DeskCommandDeps): Promise<void> {
+  if (!publications.length) return;
+  await (deps.publishLive ?? publishOutreachLive)(publications);
+}
 
 export const subjectAuditKey = (subjectId: string) => `outreach-subject:${subjectId}`;
 

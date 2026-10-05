@@ -62,16 +62,21 @@
         "progress": 1,
         "goal_reached": true,
         "other_outbound": {
-          "count": 0,
+          "count": null,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "state": "unknown",
+          "known_complete_through": null,
           "required_through": "2026-10-05T14:50:00.000Z",
-          "gaps": []
+          "gaps": [
+            {
+              "from": null,
+              "to": "2026-10-05T14:50:00.000Z"
+            }
+          ]
         },
-        "unknown_reason": null,
+        "unknown_reason": "coverage_incomplete",
         "projection_revision": 41,
         "computed_as_of": "2026-10-05T14:58:30.000Z"
       }

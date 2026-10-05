@@ -9,7 +9,16 @@ import type { OutreachActor } from "../auth";
 import { OutreachError } from "../errors";
 import { evaluationJob } from "../evaluation/evaluateJob";
 import { leadChangeJobInput } from "../subjects/feed";
-import { authorizedSubject, commandLoader, commandStore, requireCommandConfiguration, subjectAuditKey, wakeCommandJobs, type DeskCommandDeps } from "./common";
+import {
+  authorizedSubject,
+  commandLoader,
+  commandStore,
+  publishCommandLive,
+  requireCommandConfiguration,
+  subjectAuditKey,
+  wakeCommandJobs,
+  type DeskCommandDeps,
+} from "./common";
 
 /**
  * `PATCH /outreach/:id/assignment` — Owner or Manager (IMPL-01, P09b).
@@ -124,5 +133,19 @@ export async function assignSubject(input: AssignmentInput, deps: DeskCommandDep
     },
   });
   if (!replayed) await wakeCommandJobs(wake, deps.publish);
+  // After commit: the previous assignee loses the row now, the new one gains it (IMPL-01, P06d).
+  if (!replayed && response.changed)
+    await publishCommandLive(
+      [
+        {
+          topic: "outreach_desk",
+          subject_ids: [response.subject_id],
+          agent_ids: [response.previous_agent_id, response.assigned_agent_id],
+          revision: response.assignment_revision,
+          cause: "command",
+        },
+      ],
+      deps,
+    );
   return { ...response, replayed };
 }

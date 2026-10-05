@@ -46,6 +46,7 @@ const SNAPSHOT_FIXTURE = {
       held_now: 3,
       skipped: 4,
       failed: 1,
+      unreconstructable_sent_day: 0,
     },
     webhooks: {
       lead_created: { today: 55, yesterday: 49, day_before: 49 },

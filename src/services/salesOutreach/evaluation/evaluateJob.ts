@@ -8,6 +8,7 @@ import { claimCsiJob, completeCsiJob, failCsiJob, type JobInput, type JobLease }
 import { salesOutreachConfigurationLoader, type ActiveConfiguration, type ConfigurationLoader } from "../config/load";
 import { evaluateSubject, type EnginePolicy } from "../engine";
 import { OutreachError } from "../errors";
+import { publishOutreachLive } from "../live/publish";
 import type { ReadSession } from "../subjects/store";
 import { buildEngineInput } from "./inputs";
 import { cadenceExposureOf, deskEnginePolicy, policyFingerprint } from "./policyAdapter";
@@ -55,6 +56,8 @@ export type EvaluationOutcome = Readonly<{
   subject_id: string;
   publication_revision: number | null;
   next_evaluation_at: string | null;
+  /** Agents whose scoped views a written row touches: the new assignee and the previous one. */
+  agent_ids?: Array<string | null>;
 }>;
 
 /** Evaluates one subject at `asOf` and persists the projection when its result changed. */
@@ -105,7 +108,13 @@ export async function evaluateAndProject(
   } else {
     await store.insertProjection(subject.id, write, session);
   }
-  return { outcome: head ? "updated" : "created", subject_id: subject.id, publication_revision, next_evaluation_at: result.next_evaluation_at };
+  return {
+    outcome: head ? "updated" : "created",
+    subject_id: subject.id,
+    publication_revision,
+    next_evaluation_at: result.next_evaluation_at,
+    agent_ids: [subject.assigned_agent_id, head?.assigned_agent_id ?? null],
+  };
 }
 
 /** One evaluation job identity per subject and cause (the handler always evaluates current state). */
@@ -126,6 +135,8 @@ export type EvaluateJobDeps = {
   claim?: typeof claimCsiJob;
   complete?: typeof completeCsiJob;
   fail?: typeof failCsiJob;
+  /** After-commit live publish (tests inject a recorder). */
+  publishLive?: typeof publishOutreachLive;
 };
 
 export type EvaluateJobStatus = "configuration_unavailable" | "cadence_disabled" | "policy_unavailable" | "not_claimable" | "completed" | "lease_lost" | "retry";
@@ -154,6 +165,15 @@ export async function runOutreachEvaluateJob(jobId?: string, deps: EvaluateJobDe
       },
       { resultFrom: (value) => value },
     );
+    // After commit: a written row invalidates the desk views of its subject and Agents (never throws).
+    if (result.outcome === "created" || result.outcome === "updated")
+      await (deps.publishLive ?? publishOutreachLive)({
+        topic: "outreach_desk",
+        subject_ids: [result.subject_id],
+        agent_ids: result.agent_ids ?? [],
+        revision: result.publication_revision,
+        cause: "evaluation",
+      });
     return { status: "completed", result };
   } catch (error) {
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };

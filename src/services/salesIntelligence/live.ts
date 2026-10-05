@@ -40,32 +40,54 @@ export function watchCsiChanges(): LiveChanges {
   return db.watch([{ $match: { "ns.coll": { $in: [...CSI_LIVE_COLLECTIONS] } } }], { maxAwaitTimeMS: 1000 });
 }
 
-/** Cursor is advisory: every connection explicitly resyncs, including unknown/expired cursors.
- * Oplog delivery accelerates reads; periodic resync also closes the initial watch/read race.
- * Clock frames trigger server DTO reads, never client deadline/ranking calculations.
- * `topics` narrows those reads; `refetch: "all"` stays so a version 1 client keeps resyncing.
- * The stream is Owner-only (the admin router refuses a rep), so no per-viewer topic filter exists.
- * A connect, reconnect or clock frame carries no topics, so the client resyncs everything.
+export type LiveFrameReason = "connect" | "reconnect" | "change" | "clock";
+
+/**
+ * The shared SSE invalidation transport (CSI Numbers/Accounts stream and the Sales Outreach Desk stream).
+ * - Every connect, reconnect and clock frame asks for a full scoped refetch; the cursor is advisory.
+ * - Changes are classified into small hints (`classify` never forwards a raw change), collected for
+ *   250 ms and sent as one `change` frame (`frame` decides the payload).
+ * - The stream closes after `lifetimeMs` (~240 s) so EventSource reconnects and re-authorizes, when the
+ *   consumer is slow (no unbounded transport buffer), when `enabled` turns false, when `revalidate`
+ *   (run on every clock tick) answers false or throws, and on any watch error. Nothing about a database
+ *   or provider error is exposed.
  */
-export function streamCsiInvalidations(req: Request, res: Response, deps: {
-  watch?: () => LiveChanges; clockMs?: number; lifetimeMs?: number; enabled?: () => boolean;
-} = {}) {
-  const changes = (deps.watch ?? watchCsiChanges)();
-  let closed = false, pending = false, sequence = 0;
-  const topics = new Set<string>();
+export type LiveStreamOptions<H> = {
+  watch: () => LiveChanges;
+  /** A change to the hint it contributes, or null to drop it. */
+  classify: (change: unknown) => H | null;
+  /** The JSON payload of one frame from the hints collected since the last change frame. */
+  frame: (reason: LiveFrameReason, hints: readonly H[]) => unknown;
+  enabled?: () => boolean;
+  revalidate?: () => Promise<boolean>;
+  clockMs?: number;
+  lifetimeMs?: number;
+  coalesceMs?: number;
+};
+
+export function streamLiveInvalidations<H>(req: Request, res: Response, options: LiveStreamOptions<H>) {
+  const changes = options.watch();
+  let closed = false, pending = false, sequence = 0, revalidating = false;
+  let hints: H[] = [];
   const connection = Date.now().toString(36);
   res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.flushHeaders();
-  const send = (reason: "connect" | "reconnect" | "change" | "clock", changed: readonly string[] = []) => {
+  const send = (reason: LiveFrameReason, collected: readonly H[] = []) => {
     if (closed) return;
-    if (!(deps.enabled ?? (() => csiFlag("ENABLED")))()) { close(); return; }
+    if (!(options.enabled ?? (() => true))()) { close(); return; }
     // Slow consumers reconnect/refetch rather than accumulate an unbounded transport buffer.
-    if (!res.write(`id: ${connection}:${++sequence}\nevent: invalidation\ndata: ${JSON.stringify({ version: 2, reason, as_of: new Date().toISOString(), refetch: "all", topics: [...changed].sort() })}\n\n`)) close();
+    if (!res.write(`id: ${connection}:${++sequence}\nevent: invalidation\ndata: ${JSON.stringify(options.frame(reason, collected))}\n\n`)) close();
   };
-  const clock = setInterval(() => send("clock"), deps.clockMs ?? 15_000);
-  const lifetime = setTimeout(() => close(), deps.lifetimeMs ?? 240_000);
-  const coalesce = setInterval(() => { if (pending) { pending = false; const changed = [...topics]; topics.clear(); send("change", changed); } }, 250);
+  const tick = () => {
+    if (!options.revalidate) { send("clock"); return; }
+    if (revalidating) return;
+    revalidating = true;
+    options.revalidate().then((ok) => (ok ? send("clock") : close()), () => close()).finally(() => { revalidating = false; });
+  };
+  const clock = setInterval(tick, options.clockMs ?? 15_000);
+  const lifetime = setTimeout(() => close(), options.lifetimeMs ?? 240_000);
+  const coalesce = setInterval(() => { if (pending) { pending = false; const collected = hints; hints = []; send("change", collected); } }, options.coalesceMs ?? 250);
   function close() {
     if (closed) return;
     closed = true;
@@ -80,10 +102,31 @@ export function streamCsiInvalidations(req: Request, res: Response, deps: {
   void (async () => {
     try {
       while (!closed) {
-        topics.add(csiLiveTopic(await changes.next())); pending = true;
+        const hint = options.classify(await changes.next());
+        if (hint !== null) { hints.push(hint); pending = true; }
       }
     }
     catch { close(); } // No provider/database errors are exposed. EventSource reconnects and refetches.
   })();
   return close;
+}
+
+/** Cursor is advisory: every connection explicitly resyncs, including unknown/expired cursors.
+ * Oplog delivery accelerates reads; periodic resync also closes the initial watch/read race.
+ * Clock frames trigger server DTO reads, never client deadline/ranking calculations.
+ * `topics` narrows those reads; `refetch: "all"` stays so a version 1 client keeps resyncing.
+ * The stream is Owner-only (the admin router refuses a rep), so no per-viewer topic filter exists.
+ * A connect, reconnect or clock frame carries no topics, so the client resyncs everything.
+ */
+export function streamCsiInvalidations(req: Request, res: Response, deps: {
+  watch?: () => LiveChanges; clockMs?: number; lifetimeMs?: number; enabled?: () => boolean;
+} = {}) {
+  return streamLiveInvalidations<string>(req, res, {
+    watch: deps.watch ?? watchCsiChanges,
+    classify: csiLiveTopic,
+    frame: (reason, topics) => ({ version: 2, reason, as_of: new Date().toISOString(), refetch: "all", topics: [...new Set(topics)].sort() }),
+    enabled: deps.enabled ?? (() => csiFlag("ENABLED")),
+    clockMs: deps.clockMs,
+    lifetimeMs: deps.lifetimeMs,
+  });
 }

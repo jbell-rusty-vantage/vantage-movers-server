@@ -38,7 +38,7 @@
     "test:granot-lifecycle:replica": "node --import tsx --import ./ops/test-setup.ts ops/test-granot-lifecycle-replica.ts",
     "test:csi:fence:replica": "node --import tsx ops/test-csi-enqueue-replica.ts",
     "test:numbers:replica": "node --import tsx ops/numbers-slim.replica.ts",
-    "test:outreach:replica": "node --import tsx ops/sales-outreach/configuration.replica.ts && node --import tsx ops/sales-outreach/subjects.replica.ts && node --import tsx ops/sales-outreach/commands.replica.ts && node --import tsx ops/sales-outreach/rep-sms-capture.replica.ts && node --import tsx ops/sales-outreach/contact-events.replica.ts",
+    "test:outreach:replica": "node --import tsx ops/sales-outreach/configuration.replica.ts && node --import tsx ops/sales-outreach/subjects.replica.ts && node --import tsx ops/sales-outreach/commands.replica.ts && node --import tsx ops/sales-outreach/rep-sms-capture.replica.ts && node --import tsx ops/sales-outreach/contact-events.replica.ts && node --import tsx ops/sales-outreach/reads.replica.ts",
     "verify:granot-lifecycle:unit33-cleanup": "node --import tsx scripts/verify-granot-lifecycle-unit33-cleanup.ts",
     "test:reporting-live-safety": "node --import tsx --import ./ops/test-setup.ts --test \"src/services/reporting/live/*.test.ts\" \"src/services/reporting/reportingObservability.test.ts\"",
     "reporting:live-google-harness": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/reporting/run-live-google-harness.ts",

@@ -17,6 +17,7 @@ import {
   commandStore,
   newYorkLocal,
   planRevisionOf,
+  publishCommandLive,
   requireCommandConfiguration,
   requireCommandPolicy,
   subjectAuditKey,
@@ -175,6 +176,7 @@ export type QuotedFollowupInput = Readonly<{
  */
 export async function setQuotedFollowup(input: QuotedFollowupInput, deps: DeskCommandDeps = {}): Promise<SalesOutreachPlanCommandResponse> {
   const wake: string[] = [];
+  let assignee: string | null = null;
   const { response, replayed } = await (deps.run ?? executeCsiCommand)<PlanResult>({
     actor: input.actor.actor,
     command: SALES_OUTREACH_COMMAND_KINDS.quoted_followup,
@@ -189,6 +191,7 @@ export async function setQuotedFollowup(input: QuotedFollowupInput, deps: DeskCo
     operation: async (context) => {
       wake.length = 0;
       const c = await planContext(input.actor, input.subject_id, input.expected_revision, deps, context.session);
+      assignee = c.subject.assigned_agent_id;
       if (c.period.workflow !== "quoted") throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "not_quoted" }]);
       if (c.period.id !== input.period_id) throw new OutreachError("REVISION_CONFLICT", [{ path: "period_id", code: "period_changed" }]);
       if (c.active?.kind === "callback" && !input.replace_active_plan)
@@ -223,7 +226,16 @@ export async function setQuotedFollowup(input: QuotedFollowupInput, deps: DeskCo
     },
   });
   if (!replayed) await wakeCommandJobs(wake, deps.publish);
+  if (!replayed && response.changed) await publishPlanLive(response, assignee, deps);
   return { ...response, replayed };
+}
+
+/** A committed plan change invalidates the subject for its assignee, the team views and the acting Rep. */
+function publishPlanLive(response: PlanResult, assignee: string | null, deps: DeskCommandDeps) {
+  return publishCommandLive(
+    [{ topic: "outreach_desk", subject_ids: [response.subject_id], agent_ids: [assignee], revision: response.plan_revision, cause: "command" }],
+    deps,
+  );
 }
 
 export type CallbackInput = Readonly<
@@ -248,6 +260,7 @@ export type CallbackInput = Readonly<
  */
 export async function commandCallback(input: CallbackInput, deps: DeskCommandDeps = {}): Promise<SalesOutreachPlanCommandResponse> {
   const wake: string[] = [];
+  let assignee: string | null = null;
   const appointment = input.operation === "cancel" ? null : new Date(input.appointment_at);
   const { response, replayed } = await (deps.run ?? executeCsiCommand)<PlanResult>({
     actor: input.actor.actor,
@@ -263,6 +276,7 @@ export async function commandCallback(input: CallbackInput, deps: DeskCommandDep
     operation: async (context) => {
       wake.length = 0;
       const c = await planContext(input.actor, input.subject_id, input.expected_revision, deps, context.session);
+      assignee = c.subject.assigned_agent_id;
       const activeCallback = c.active?.kind === "callback" ? c.active : null;
       if (input.operation !== "set" && !activeCallback)
         throw new OutreachError("INVALID_INPUT", [{ path: "operation", code: "no_active_callback" }]);

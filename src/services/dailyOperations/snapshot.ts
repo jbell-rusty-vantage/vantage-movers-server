@@ -69,6 +69,8 @@ export type DailyOperationsSnapshot = {
       held_now: number;
       skipped: number;
       failed: number;
+      /** Scheduled confirmations sent on an unrecorded day (rebuild label, SPECIFICATION §14); 0 live. */
+      unreconstructable_sent_day: number;
     };
     webhooks: {
       lead_created: DailyOperationsWebhookClassCount;
@@ -219,6 +221,7 @@ export async function getDailyOperationsSnapshot(
         held_now: heldNow,
         skipped: today.messages.skipped,
         failed: today.messages.failed,
+        unreconstructable_sent_day: today.messages.unreconstructable_sent_day ?? 0,
       },
       webhooks: {
         lead_created: webhookClass("lead_created"),

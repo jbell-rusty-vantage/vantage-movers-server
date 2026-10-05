@@ -2,6 +2,7 @@ import { getSalesOutreachConfigurationModel, SALES_OUTREACH_CONFIGURATION_INDEXE
 import { getSalesOutreachContactEventModel, SALES_OUTREACH_CONTACT_EVENT_INDEXES } from "./contactEvents";
 import { getSalesOutreachEnrollmentRunModel, SALES_OUTREACH_ENROLLMENT_RUN_INDEXES } from "./enrollmentRuns";
 import { getSalesOutreachFollowupScheduleModel, SALES_OUTREACH_FOLLOWUP_SCHEDULE_INDEXES } from "./followupSchedules";
+import { getSalesOutreachLiveEventModel, SALES_OUTREACH_LIVE_EVENT_INDEXES } from "./liveEvents";
 import { getSalesOutreachPolicyPeriodModel, SALES_OUTREACH_POLICY_PERIOD_INDEXES } from "./policyPeriods";
 import {
   getSalesOutreachProjectionModel,
@@ -28,6 +29,8 @@ export const SALES_OUTREACH_MODEL_REGISTRY = [
   { name: "SalesOutreachProjection", model: getSalesOutreachProjectionModel, indexes: SALES_OUTREACH_PROJECTION_INDEXES },
   { name: "SalesOutreachRepDayProjection", model: getSalesOutreachRepDayProjectionModel, indexes: SALES_OUTREACH_REP_DAY_PROJECTION_INDEXES },
   { name: "SalesOutreachEnrollmentRun", model: getSalesOutreachEnrollmentRunModel, indexes: SALES_OUTREACH_ENROLLMENT_RUN_INDEXES },
+  // S1 (SRV-8): committed live invalidation hints for GET /live (TTL one day).
+  { name: "SalesOutreachLiveEvent", model: getSalesOutreachLiveEventModel, indexes: SALES_OUTREACH_LIVE_EVENT_INDEXES },
   // S3 (SRV-5): rep SMS capture evidence (RINGCENTRAL-CAPTURE §5, IMPLEMENTATION-PLAN §4.7).
   { name: "RingCentralRepSmsEvidence", model: getRingCentralRepSmsEvidenceModel, indexes: RINGCENTRAL_REP_SMS_EVIDENCE_INDEXES },
 ] as const;
