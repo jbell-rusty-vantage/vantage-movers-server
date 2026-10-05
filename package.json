@@ -75,6 +75,7 @@
     "granot:lifecycle:unit34:sanitize": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/sanitize-current-payloads.ts",
     "granot:lifecycle:unit34:seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/seed-disposable-certification.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
+    "outreach:indexes": "node --env-file=.env --import tsx ops/sales-outreach/build-indexes.ts",
     "lint": "eslint src api ops/quality --max-warnings 0",
     "quality:install": "node ops/quality/cli.mjs install",
     "quality:uninstall": "node ops/quality/cli.mjs uninstall",
