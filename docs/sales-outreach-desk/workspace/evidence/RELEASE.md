@@ -48,3 +48,9 @@ Dry runs before the deploy finished (both read-only):
 | not_new_or_quoted | 51 | priority "3" (Rep discretion) |
 
 The apply (`pnpm outreach:enrollment apply --target=vantagemovers --run-key=backfill-2026-10-05`) also needs `migration.paused: false` first. Left for the user's go (see the session report): it fixes the activation boundary (P10a) and narrows M1's count scope to eligible New/Quoted from that moment.
+
+## 8. Fix-forward deploy and RingCentral apply (17:00–17:15Z)
+
+- `b3d19d09` (filters compared on the `~` account form) merged as `main@21ca7b92`, run **37345049057** succeeded 17:10Z, health 200. The dry run then planned `calls → update (verification_token_missing)` and `rep_sms → create`, as intended.
+- `ops/ringcentral/outreach-subscriptions.ts --purpose=all --apply` (guard `commit_matches`): `calls` `882f9c2b…` **updated** (verification token now stored and `PUT`, so a `PUT` can add a token to an existing subscription — the open question from S3 is answered: yes); `rep_sms` **created** `8bcce435-fbff-4184-b9cc-9dd2bf803519` with 12 mailbox filters. No foreign subscription touched.
+- Configuration revision **2** (`sod-config-188e99ec5513297fd0db22cd`): `rep_sms_capture_enabled: true` (E01 had passed). Cadence shadow/enforcement and intake admission remain off until the backfill.
