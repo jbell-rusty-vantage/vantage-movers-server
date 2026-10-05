@@ -97,6 +97,7 @@ export function repDayJob(key: RepDayKey, marks: readonly string[]): JobInput {
 
 export const repDayKeyOf = (key: RepDayKey) => `${key.agent_id}|${key.business_day}`;
 
+/** Also used by the operator desk-receiver backfill (re-derives pre-activation calls). */
 export function contextRequest(calls: readonly CallSourceRow[], sms: readonly SmsSourceRow[]): ContextRequest {
   const extensions = new Map<string, { account: string; extension: string }>();
   for (const row of calls) {

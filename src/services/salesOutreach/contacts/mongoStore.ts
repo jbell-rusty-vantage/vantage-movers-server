@@ -142,8 +142,9 @@ const LEAD_MODELS = ["FormLead", "CallLead"] as const;
 
 /**
  * Writes a `ringcentral_rep_call` receiver for each candidate whose subject is unassigned and whose Lead
- * has no receiver (the write's compare-and-set on an empty field). Shared by the live contact apply and
- * `scripts/backfill-receiver-from-rep-calls.ts`. Returns how many Leads were written.
+ * has no receiver (the write's compare-and-set on an empty field). Subject and Agent lookups are batched;
+ * the Lead writes run one after another because they share the caller's transaction session. Returns how
+ * many Leads were written.
  */
 export async function writeRepCallReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number> {
   if (!candidates.length) return 0;

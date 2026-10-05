@@ -65,32 +65,26 @@ export async function writeReceiverAgent(input: ReceiverAgentWrite): Promise<Lea
   return stamp;
 }
 
-/** The RingCentral-origin context of a `ringcentral_answered` fill (EntityChange `source_system: ringcentral`). */
-export function ringCentralAnsweredContext(input: { lead_id: string; telephony_session_id: string; interaction_id: string }): CanonicalCommandContext {
-  const identity = input.telephony_session_id;
+/** RingCentral-origin context shared by the call-inferred receiver fills (EntityChange `source_system: ringcentral`). */
+function ringCentralReceiverContext(fill: "answered" | "rep-call", leadId: string, interactionId: string, identity: string): CanonicalCommandContext {
   const actor = createRingCentralCallIngestActor(identity);
   return {
     command_id: new mongoose.Types.ObjectId().toHexString(),
-    idempotency_key: `ringcentral:receiver-answered:${input.lead_id}:${input.interaction_id}`,
+    idempotency_key: `ringcentral:receiver-${fill}:${leadId}:${interactionId}`,
     payload_checksum: "0".repeat(64),
     actor,
     initiator: actor,
-    provenance: { origin: "ringcentral", run_id: null, source_receipt_id: identity, source_connection_key: `ringcentral:receiver-answered:${identity}`,
+    provenance: { origin: "ringcentral", run_id: null, source_receipt_id: identity, source_connection_key: `ringcentral:receiver-${fill}:${identity}`,
       observation_id: null, decision_id: null, case_id: null, discrepancy_id: null, observation_channel: null },
   };
 }
 
+/** The RingCentral-origin context of a `ringcentral_answered` fill. */
+export function ringCentralAnsweredContext(input: { lead_id: string; telephony_session_id: string; interaction_id: string }): CanonicalCommandContext {
+  return ringCentralReceiverContext("answered", input.lead_id, input.interaction_id, input.telephony_session_id);
+}
+
 /** The RingCentral-origin context of a `ringcentral_rep_call` fill: the call that named the rep. */
 export function ringCentralRepCallContext(input: { lead_id: string; interaction_id: string }): CanonicalCommandContext {
-  const identity = `call:${input.interaction_id}`;
-  const actor = createRingCentralCallIngestActor(identity);
-  return {
-    command_id: new mongoose.Types.ObjectId().toHexString(),
-    idempotency_key: `ringcentral:receiver-rep-call:${input.lead_id}:${input.interaction_id}`,
-    payload_checksum: "0".repeat(64),
-    actor,
-    initiator: actor,
-    provenance: { origin: "ringcentral", run_id: null, source_receipt_id: identity, source_connection_key: `ringcentral:receiver-rep-call:${identity}`,
-      observation_id: null, decision_id: null, case_id: null, discrepancy_id: null, observation_channel: null },
-  };
+  return ringCentralReceiverContext("rep-call", input.lead_id, input.interaction_id, `call:${input.interaction_id}`);
 }
