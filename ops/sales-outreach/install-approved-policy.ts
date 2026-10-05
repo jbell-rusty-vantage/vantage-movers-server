@@ -4,6 +4,7 @@
  *   pnpm outreach:install-policy --target=<database>                       # dry run: prints the plan, writes nothing
  *   pnpm outreach:install-policy --target=<database> --apply               # installs through the PATCH service path
  *   pnpm outreach:install-policy --target=<database> --apply --enable=desk_enabled,goal_metrics_enabled
+ *   pnpm outreach:install-policy --target=<database> --apply --migration-paused=false   # unpause enrollment
  *
  * - The target is named and must equal the database this process resolves; unnamed runs are refused.
  * - The value is FINAL-01 cadence/evidence (approval_ref owner-session-2026-10-03-FINAL-01), the
@@ -55,6 +56,7 @@ async function main() {
     rosterAgentIds,
     installedOn: floridaCalendarDateInputValue(now),
     enableControls: args.enableControls,
+    migrationPaused: args.migrationPaused,
   });
   const content_hash = configurationContentHash(value);
   const plan = {
@@ -67,6 +69,7 @@ async function main() {
     roster_version: value.goals.roster_version,
     roster_agents: rosterAgentIds,
     controls: value.controls,
+    migration_paused: value.migration.paused,
     transition: { backfill_lookback_days: value.transition.backfill_lookback_days, backfill_include_upcoming_moves: value.transition.backfill_include_upcoming_moves },
   };
   console.log(JSON.stringify(plan, null, 2));
