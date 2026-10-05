@@ -18,7 +18,14 @@ import {
 } from "./rateLimitGate";
 
 const NOW = new Date("2026-09-25T03:30:00.000Z");
-const CONFIG = { enabled: true, heavyPerMinute: 8, heavyLowPriorityPerMinute: 4, highPriorityMaxWaitMs: 70_000 };
+const CONFIG = {
+  enabled: true,
+  heavyPerMinute: 8,
+  heavyLowPriorityPerMinute: 4,
+  highPriorityMaxWaitMs: 70_000,
+  lightPerMinute: 40,
+  lightLowPriorityPerMinute: 10,
+};
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
 
 after(() => setRingCentralRateGateForTests(null));
@@ -35,9 +42,57 @@ test("group: Call Log, Call Log Sync and recording reads are Heavy; everything e
   for (const endpoint of [
     "/restapi/v1.0/account/~/extension?page=1",
     "/restapi/v1.0/subscription",
+    "/restapi/v1.0/subscription/sub-1",
+    "/restapi/v1.0/account/~/extension/101/sms",
     "/restapi/v1.0/account/~",
     "/analytics/calls/v1/accounts/~/aggregation/fetch?page=1&perPage=200",
   ]) assert.equal(ringCentralGateGroup(endpoint), "other", endpoint);
+});
+
+test("RINGCENTRAL-CAPTURE §9.5 group: Active Calls and account presence are Heavy; message list, message sync, extension presence and subscription renew are Light", () => {
+  for (const endpoint of [
+    "/restapi/v1.0/account/~/active-calls?view=Detailed",
+    "/restapi/v1.0/account/~/extension/101/active-calls",
+    "/restapi/v1.0/account/~/presence?detailedTelephonyState=true",
+  ]) assert.equal(ringCentralGateGroup(endpoint), "heavy", endpoint);
+  for (const endpoint of [
+    "/restapi/v1.0/account/~/extension/101/message-store?messageType=SMS&perPage=1",
+    "/restapi/v1.0/account/~/extension/101/message-store/555",
+    "/restapi/v1.0/account/~/extension/101/message-sync?syncType=ISync&syncToken=t",
+    "/restapi/v1.0/account/~/extension/101/presence",
+    "/restapi/v1.0/subscription/sub-1/renew",
+  ]) assert.equal(ringCentralGateGroup(endpoint), "light", endpoint);
+});
+
+test("light lane budget: 40/min for high priority, 10/min for low (the SMS safety poll), sliding window like Heavy", () => {
+  const grants = (n: number) => Array.from({ length: n }, (_, i) => ago(50_000 - i * 100));
+  assert.deepEqual(decideGate({ grants: grants(9) }, { group: "light", priority: "low", now: NOW, config: CONFIG }), { granted: true });
+  const lowFull = decideGate({ grants: grants(10) }, { group: "light", priority: "low", now: NOW, config: CONFIG });
+  assert.equal(lowFull.granted, false);
+  assert.deepEqual(decideGate({ grants: grants(39) }, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: true });
+  const highFull = decideGate({ grants: grants(40) }, { group: "light", priority: "high", now: NOW, config: CONFIG });
+  assert.ok(!highFull.granted && highFull.reason === "budget" && highFull.waitMs === 10_000, "frees when the oldest live grant leaves the window");
+  assert.deepEqual(decideGate({ grants: [ago(61_000), ...grants(39)] }, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: true });
+  // The light budget never spends Heavy headroom and vice versa (separate documents per group).
+  assert.deepEqual(decideGate({ grants: grants(8) }, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: true });
+});
+
+test("light lane honours Retry-After: a provider 429 naming the Light group closes it for every Light caller", async () => {
+  const provider = fakeGate([]);
+  const { recordRingCentralThrottle } = await import("./rateLimitGate");
+  await recordRingCentralThrottle("/restapi/v1.0/account/~/extension/101/message-sync?syncType=ISync", {
+    retryAfterMs: 60_000,
+    headerGroup: "Light",
+    gate: provider.gate,
+    now: NOW,
+  });
+  assert.deepEqual(provider.calls.trip, [{ group: "light", retryAfterMs: 60_000 }]);
+  // A Light 429 seen on an unclassified endpoint still closes the Light bucket the provider named.
+  const other = fakeGate([]);
+  await recordRingCentralThrottle("/restapi/v1.0/account/~/extension/101/message-store/5/content", { retryAfterMs: 30_000, headerGroup: "light", gate: other.gate, now: NOW });
+  assert.deepEqual(other.calls.trip, [{ group: "other", retryAfterMs: 30_000 }, { group: "light", retryAfterMs: 30_000 }]);
+  const open = { open_until: new Date(NOW.getTime() + 60_000), grants: [] };
+  assert.deepEqual(decideGate(open, { group: "light", priority: "high", now: NOW, config: CONFIG }), { granted: false, reason: "gate_open", waitMs: 60_000 });
 });
 
 test("config: defaults 8/min Heavy, 4/min for low priority, 70 s wait; limits clamp to the provider's 10", () => {
@@ -218,6 +273,13 @@ test("replica: concurrent acquires never exceed the budget; a trip refuses every
     // `other` is never budgeted, and records no grants.
     for (let i = 0; i < 12; i += 1) assert.equal((await gate.tryAcquire("other", "low", NOW)).granted, true);
     assert.equal((await collection.findOne({ _id: "ringcentral:other" }))?.grants?.length, 0);
+
+    // Light (RINGCENTRAL-CAPTURE §7): 10 low, then high up to 40, recorded in its own document.
+    const lightLow = await Promise.all(Array.from({ length: 30 }, () => gate.tryAcquire("light", "low", NOW)));
+    assert.equal(lightLow.filter((d) => d.granted).length, 10);
+    const lightHigh = await Promise.all(Array.from({ length: 40 }, () => gate.tryAcquire("light", "high", NOW)));
+    assert.equal(lightHigh.filter((d) => d.granted).length, 30);
+    assert.equal((await collection.findOne({ _id: "ringcentral:light" }))?.grants?.length, 40);
 
     const later = new Date(NOW.getTime() + 120_000);
     await gate.trip("heavy", 60_000, later, { header_group: "heavy" });
