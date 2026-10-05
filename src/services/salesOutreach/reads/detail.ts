@@ -212,7 +212,12 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
   if (subject.assigned_agent_id) agentIds.add(subject.assigned_agent_id);
   if (receiver) agentIds.add(receiver);
   for (const e of sortedEvents.slice(0, CONTACT_EVENTS_SHOWN)) if (e.actor_agent_id) agentIds.add(e.actor_agent_id);
+  const changeAgents = new Set(sortedChanges.flatMap((c) => [c.before, c.after]).filter((id): id is string => id !== null));
+  for (const id of changeAgents) agentIds.add(id);
   const names = await readStore.findReviewedRepNames([...agentIds], deps.now);
+  // History names fall back to the Agent record (a former rep may no longer hold a reviewed link).
+  const agentNames = await readStore.findAgentNames([...changeAgents].filter((id) => !names.has(id)));
+  const changeName = (id: string | null) => (id ? (names.get(id) ?? agentNames.get(id) ?? null) : null);
 
   const activePlan = plans.find((p) => p.status === "active") ?? null;
   const planHistory = plans
@@ -331,7 +336,13 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
       missed_labels_hidden: hideMissed,
       contact_events: sortedEvents.slice(0, CONTACT_EVENTS_SHOWN).map((e) => contactEventDto(e, names)),
       contact_events_truncated: sortedEvents.length > CONTACT_EVENTS_SHOWN,
-      assignment_changes: sortedChanges.map((c) => ({ applied_at: c.applied_at.toISOString(), from_agent_id: c.before, to_agent_id: c.after })),
+      assignment_changes: sortedChanges.map((c) => ({
+        applied_at: c.applied_at.toISOString(),
+        from_agent_id: c.before,
+        to_agent_id: c.after,
+        from_agent_name: changeName(c.before),
+        to_agent_name: changeName(c.after),
+      })),
     },
     restrictions,
     computed_as_of: iso(shown?.computed_as_of ?? null),

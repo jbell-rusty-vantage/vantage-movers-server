@@ -63,6 +63,8 @@ export type StoredQueueRow = QueueMatchable &
     computed_as_of: Date;
     publication_revision: number;
     policy_fingerprint: string | null;
+    /** The evaluator's stored `detail.schedule_day` (New schedule day at `computed_as_of`); null when absent. */
+    schedule_day: number | null;
   }>;
 
 /** A stored row plus the bounded detail the outreach view reads. */
@@ -137,6 +139,7 @@ export function toStoredProjection(subjectId: string, doc: Readonly<Record<strin
     computed_as_of: dateOrNull(doc.computed_as_of) ?? new Date(0),
     publication_revision: numOrNull(doc.publication_revision) ?? 0,
     policy_fingerprint: strOrNull(doc.policy_fingerprint),
+    schedule_day: numOrNull((doc.detail as Record<string, unknown> | null | undefined)?.schedule_day),
     period_id: idOrNull(doc.period_id),
     configuration_version: strOrNull(doc.configuration_version),
     detail: (doc.detail as Record<string, unknown> | null | undefined) ?? null,
@@ -269,5 +272,7 @@ export function presentQueueRow(
     exposure: row.exposure,
     computed_as_of: row.computed_as_of.toISOString(),
     publication_revision: row.publication_revision,
+    // The New cadence's day; other workflows have no schedule day to show.
+    schedule_day: row.workflow === "new" ? row.schedule_day : null,
   };
 }

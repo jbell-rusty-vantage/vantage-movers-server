@@ -190,6 +190,9 @@ export function fallbackCountScope(rows: readonly RepDayRow[]): SalesOutreachGoa
   return latest.count_scope;
 }
 
+/** A rep-day row's goal parts; the cadence counts are composed separately (`teamCadence.ts` `composeRepCadence`). */
+export type RepDayGoalDto = Omit<SalesOutreachRepDayDto, "overdue_leads" | "calls_due_today" | "sms_due_today">;
+
 export function composeRepDay(input: {
   agent_id: string;
   agent_name: string | null;
@@ -198,7 +201,7 @@ export function composeRepDay(input: {
   row: RepDayRow | null;
   fallback_scope: SalesOutreachGoalCountScope;
   capture_coverage: SalesOutreachCoverage;
-}): SalesOutreachRepDayDto {
+}): RepDayGoalDto {
   const { row, goal } = input;
   const coverage = row ? mergeRowCoverage(row.coverage, input.capture_coverage) : input.capture_coverage;
   const complete = coverage.state === "complete";
@@ -251,7 +254,7 @@ export function composeRepDay(input: {
 
 /** The team goal cards (Team outreach cards 1–2) from the composed per-rep rows. */
 export function composeTeamGoals(
-  reps: readonly SalesOutreachRepDayDto[],
+  reps: readonly RepDayGoalDto[],
   scope: SalesOutreachGoalCountScope | "mixed" | null,
 ): NonNullable<SalesOutreachTeamDto["goals"]> {
   const roster = reps.filter((rep) => rep.goal_state !== "not_on_roster");

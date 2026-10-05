@@ -14,9 +14,32 @@ export type TeamOverdueCounts = Readonly<{
   quoted_call_overdue: number;
   unassigned_total: number;
   unassigned_overdue: number;
-  /** Agent id → overdue active Leads currently assigned to it. */
-  per_agent: ReadonlyMap<string, number>;
 }>;
+
+/**
+ * One Agent's cadence counts at a reference instant (rep-days and the team's Daily call goals rows):
+ * overdue Leads by the same rule as `teamOverdue`, and the remaining attempts/sends of due or overdue
+ * Call/SMS requirements on its active Leads. `*_unknown` counts due requirements whose remaining count
+ * is unknown (no capture coverage on that channel yet).
+ */
+export type AgentCadenceCounts = Readonly<{
+  overdue_leads: number;
+  call_due_remaining: number;
+  call_due_unknown: number;
+  sms_due_remaining: number;
+  sms_due_unknown: number;
+}>;
+
+export const NO_AGENT_CADENCE: AgentCadenceCounts = {
+  overdue_leads: 0,
+  call_due_remaining: 0,
+  call_due_unknown: 0,
+  sms_due_remaining: 0,
+  sms_due_unknown: 0,
+};
+
+/** Stored channel statuses whose remaining attempts are due now or today (read-time derivation only turns `due` into `overdue`). */
+export const DUE_CHANNEL_STATUSES = ["due", "overdue"] as const;
 
 /**
  * Every read behind `GET /queue`, `GET /outreach/:id` and the team cadence cards. Read-only, bounded
@@ -43,6 +66,8 @@ export type DeskQueueStore = Pick<
   leadAssignees(subjectIds: readonly string[]): Promise<Map<string, string | null>>;
   leadAssignee(lead: DeskLeadRef): Promise<string | null | undefined>;
   teamOverdue(asOf: Date): Promise<TeamOverdueCounts>;
+  /** Per-Agent cadence counts for the named Agents (an Agent with no active Lead is absent from the map). */
+  agentCadence(asOf: Date, agentIds: readonly string[]): Promise<ReadonlyMap<string, AgentCadenceCounts>>;
   loadProjectionDetail(subjectId: string): Promise<StoredProjectionDetail | null>;
 };
 
@@ -52,7 +77,7 @@ const LISTED = { $in: ["active", "review"] };
 /** Filters are built as plain records (the typed mongoose filter does not model dotted keys and sentinels). */
 type Filter = Record<string, unknown>;
 
-/** The queue row fields (no window history, detail or fingerprints). */
+/** The queue row fields (no window history, fingerprints or detail beyond the schedule day). */
 const QUEUE_PROJECTION = {
   subject_id: 1,
   assigned_agent_id: 1,
@@ -72,6 +97,7 @@ const QUEUE_PROJECTION = {
   computed_as_of: 1,
   publication_revision: 1,
   policy_fingerprint: 1,
+  "detail.schedule_day": 1,
 } as const;
 
 /** Digest of `(subject id, assignment revision)` pairs; equal sets ⇒ equal digests. */
@@ -79,6 +105,29 @@ export function assignmentDigest(pairs: ReadonlyArray<readonly [string, number]>
   const sorted = [...pairs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return createHash("sha256").update(JSON.stringify(sorted)).digest("hex").slice(0, 32);
 }
+
+/** Active Leads overdue at `asOf`: the earliest unsatisfied actionable deadline (blocked channels excluded) has passed. */
+const overdueFilter = (asOf: Date): Filter => ({ subject_status: "active", "queue_keys.urgency_due": { $lte: asOf } });
+
+/** Overdue active Leads per assigned Agent among `agentIds` (the team card's rule, scoped). */
+async function overdueByAgent(asOf: Date, agentIds: readonly string[]): Promise<Map<string, number>> {
+  const rows = await getSalesOutreachProjectionModel().aggregate<{ _id: unknown; n: number }>([
+    { $match: { ...overdueFilter(asOf), assigned_agent_id: { $in: agentIds.map(oid) } } },
+    { $group: { _id: "$assigned_agent_id", n: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((row) => [String(row._id), row.n]));
+}
+
+const DUE = [...DUE_CHANNEL_STATUSES];
+/** `$sum` terms for one channel: remaining of a due requirement, and 1 per due requirement with an unknown remaining. */
+const dueSums = (channel: "call" | "sms") => {
+  const due = { $in: [`$${channel}.status`, DUE] };
+  const known = { $isNumber: `$${channel}.remaining` };
+  return {
+    [`${channel}_due_remaining`]: { $sum: { $cond: [{ $and: [due, known] }, `$${channel}.remaining`, 0] } },
+    [`${channel}_due_unknown`]: { $sum: { $cond: [{ $and: [due, { $not: [known] }] }, 1, 0] } },
+  };
+};
 
 /** Assigned scopes larger than this fall back to a count + revision-sum digest (still changes on any move). */
 const GENERATION_EXACT_LIMIT = 5000;
@@ -153,28 +202,36 @@ export const mongoDeskQueueStore: DeskQueueStore = {
 
   async teamOverdue(asOf) {
     const Projection = getSalesOutreachProjectionModel();
-    const overdue: Filter = { subject_status: "active", "queue_keys.urgency_due": { $lte: asOf } };
+    const overdue = overdueFilter(asOf);
     const quoted: Filter = { subject_status: "active", workflow: "quoted", "queue_keys.call_due": { $lte: asOf } };
     const unassigned: Filter = { subject_status: LISTED, assigned_agent_id: null };
     const unassignedOverdue: Filter = { ...overdue, assigned_agent_id: null };
-    const [distinct_overdue, quoted_call_overdue, unassigned_total, unassigned_overdue, perAgent] = await Promise.all([
+    const [distinct_overdue, quoted_call_overdue, unassigned_total, unassigned_overdue] = await Promise.all([
       Projection.countDocuments(overdue),
       Projection.countDocuments(quoted),
       Projection.countDocuments(unassigned),
       Projection.countDocuments(unassignedOverdue),
-      Projection.aggregate<{ _id: unknown; n: number }>([
-        { $match: { ...overdue, assigned_agent_id: { $ne: null } } },
-        { $group: { _id: "$assigned_agent_id", n: { $sum: 1 } } },
-        { $limit: 1000 },
+    ]);
+    return { distinct_overdue, quoted_call_overdue, unassigned_total, unassigned_overdue };
+  },
+
+  async agentCadence(asOf, agentIds) {
+    const ids = agentIds.filter((id) => mongoose.isValidObjectId(id));
+    if (!ids.length) return new Map();
+    const [overdue, due] = await Promise.all([
+      overdueByAgent(asOf, ids),
+      getSalesOutreachProjectionModel().aggregate<{ _id: unknown } & Omit<AgentCadenceCounts, "overdue_leads">>([
+        { $match: { subject_status: "active", assigned_agent_id: { $in: ids.map(oid) } } },
+        { $group: { _id: "$assigned_agent_id", ...dueSums("call"), ...dueSums("sms") } },
       ]),
     ]);
-    return {
-      distinct_overdue,
-      quoted_call_overdue,
-      unassigned_total,
-      unassigned_overdue,
-      per_agent: new Map(perAgent.map((row) => [String(row._id), row.n])),
-    };
+    const out = new Map<string, AgentCadenceCounts>();
+    for (const row of due) {
+      const { _id, ...sums } = row;
+      out.set(String(_id), { ...NO_AGENT_CADENCE, ...sums, overdue_leads: overdue.get(String(_id)) ?? 0 });
+    }
+    for (const [agent, n] of overdue) if (!out.has(agent)) out.set(agent, { ...NO_AGENT_CADENCE, overdue_leads: n });
+    return out;
   },
 
   async loadProjectionDetail(subjectId) {

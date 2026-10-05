@@ -9,8 +9,8 @@
       "agent_id": null
     },
     "configuration_state": "active",
-    "configuration_version": "sod-cfg-7f3a",
-    "configuration_revision": 4,
+    "configuration_version": "sod-cfg-9d4e",
+    "configuration_revision": 6,
     "projection_revision": 41,
     "freshness": {
       "calls": {
@@ -47,7 +47,7 @@
         "goal": 100,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
+          "configuration_version": "sod-cfg-9d4e",
           "roster_version": "m1-roster-2026-10-05",
           "basis": "default_goal",
           "scheduled_working_day": true,
@@ -80,16 +80,16 @@
         "projection_revision": 41,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 1,
+          "unknown_reason": null
         },
         "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 3,
+          "unknown_reason": null
         },
         "sms_due_today": {
           "value": null,
-          "unknown_reason": "cadence_disabled"
+          "unknown_reason": "coverage_incomplete"
         }
       },
       {
@@ -101,7 +101,7 @@
         "goal": 100,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
+          "configuration_version": "sod-cfg-9d4e",
           "roster_version": "m1-roster-2026-10-05",
           "basis": "default_goal",
           "scheduled_working_day": true,
@@ -134,16 +134,16 @@
         "projection_revision": null,
         "computed_as_of": null,
         "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "sms_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         }
       },
       {
@@ -155,7 +155,7 @@
         "goal": 100,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
+          "configuration_version": "sod-cfg-9d4e",
           "roster_version": "m1-roster-2026-10-05",
           "basis": "default_goal",
           "scheduled_working_day": true,
@@ -188,16 +188,16 @@
         "projection_revision": 39,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 1,
+          "unknown_reason": null
         },
         "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 2,
+          "unknown_reason": null
         },
         "sms_due_today": {
           "value": null,
-          "unknown_reason": "cadence_disabled"
+          "unknown_reason": "coverage_incomplete"
         }
       },
       {
@@ -209,7 +209,7 @@
         "goal": 50,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
+          "configuration_version": "sod-cfg-9d4e",
           "roster_version": "m1-roster-2026-10-05",
           "basis": "override",
           "scheduled_working_day": true,
@@ -246,16 +246,16 @@
         "projection_revision": 40,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "sms_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         }
       },
       {
@@ -267,7 +267,7 @@
         "goal": 0,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
+          "configuration_version": "sod-cfg-9d4e",
           "roster_version": "m1-roster-2026-10-05",
           "basis": "override",
           "scheduled_working_day": true,
@@ -304,16 +304,16 @@
         "projection_revision": 33,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "sms_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         }
       },
       {
@@ -325,7 +325,7 @@
         "goal": null,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
+          "configuration_version": "sod-cfg-9d4e",
           "roster_version": "m1-roster-2026-10-05",
           "basis": "not_on_roster",
           "scheduled_working_day": null,
@@ -358,16 +358,16 @@
         "projection_revision": 12,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         },
         "sms_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
+          "value": 0,
+          "unknown_reason": null
         }
       }
     ],

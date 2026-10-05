@@ -340,6 +340,24 @@ test("read-time status: a due requirement past its deadline reads overdue under 
   assert.deepEqual(store.evaluation.writes, [], "reads never write projections");
 });
 
+test("schedule_day (S4): the stored New schedule day, null for other workflows or when the evaluator stored none; never recomputed", async () => {
+  const store = new MemoryDeskReadStore();
+  const withDay = (id: string, day: unknown) => ((store.evaluation.projections.get(id)!.doc as Record<string, unknown>).detail = { schedule_day: day });
+  const fresh = seed(store, { urgency: "2026-10-05T14:30:00.000Z" });
+  const old = seed(store, { urgency: "2026-10-05T14:40:00.000Z", received: "2026-09-20T14:00:00.000Z" });
+  const quoted = seed(store, { urgency: "2026-10-05T14:50:00.000Z", workflow: "quoted", priority: "1" });
+  const unknownAge = seed(store, { urgency: "2026-10-05T14:55:00.000Z" });
+  withDay(fresh, 1);
+  // A stored day that disagrees with the received date wins: the read copies, it does not compute.
+  withDay(old, 9);
+  withDay(quoted, 12);
+  withDay(unknownAge, null);
+  alignSnapshot(store, config());
+  const body = salesOutreachQueueSchema.parse(await readQueue(owner, q({}), deps(store)));
+  const day = (id: string) => body.rows.find((r) => r.subject_id === id)!.schedule_day;
+  assert.deepEqual([day(fresh), day(old), day(quoted), day(unknownAge)], [1, 9, null, null]);
+});
+
 test("fail closed: desk off or uninitialized is 503 CONFIGURATION_UNAVAILABLE; cadence off is 503 PROJECTION_PENDING; pending subjects are counted", async () => {
   const store = new MemoryDeskReadStore();
   seed(store, { urgency: "2026-10-05T13:00:00.000Z" });

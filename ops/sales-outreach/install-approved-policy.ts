@@ -6,6 +6,7 @@
  *   pnpm outreach:install-policy --target=<database> --apply --enable=desk_enabled,goal_metrics_enabled
  *   pnpm outreach:install-policy --target=<database> --apply --migration-paused=false   # unpause enrollment
  *   pnpm outreach:install-policy --target=<database> --apply --intake-admission-at=now   # open prospective intake
+ *   pnpm outreach:install-policy --target=<database> --apply --migration=running        # alias of --migration-paused=false
  *
  * - The target is named and must equal the database this process resolves; unnamed runs are refused.
  * - The value is FINAL-01 cadence/evidence (approval_ref owner-session-2026-10-03-FINAL-01), the
