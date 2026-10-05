@@ -35,7 +35,7 @@ export const CSI_JOB_STAGES = [
   "attachment_refresh",
   "rebuild",
   "nudge_repair",
-  // Sales Outreach Desk (S3): desk wake for changed call/SMS evidence (consumer lands with SRV-6).
+  // Sales Outreach Desk (S3, SRV-6): derive `sales_outreach_contact_events` for one changed call/SMS.
   "outreach_contact_change",
   // Sales Outreach Desk (S3): coalesced per-mailbox rep SMS message sync (RINGCENTRAL-CAPTURE §5).
   "rep_sms_sync",
@@ -44,6 +44,8 @@ export const CSI_JOB_STAGES = [
   // engine for one subject revision (its consumer lands with the evaluator wiring).
   "outreach_lead_change",
   "outreach_evaluate",
+  // Sales Outreach Desk (S3, SRV-6): recount one rep's outbound-goal day from its contact events.
+  "outreach_rep_day",
 ] as const;
 export type CsiJobStage = (typeof CSI_JOB_STAGES)[number];
 /**
