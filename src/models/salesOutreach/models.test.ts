@@ -23,6 +23,7 @@ const EXPECTED_COLLECTIONS = [
   "sales_outreach_projections",
   "sales_outreach_rep_day_projections",
   "sales_outreach_enrollment_runs",
+  "sales_outreach_live_events",
   "ringcentral_rep_sms_evidence",
 ];
 
@@ -53,16 +54,18 @@ test("the plan's uniqueness fences and queue sort indexes are declared", () => {
   assert.deepEqual(byName.get("sod_followup_active_unique")?.partialFilterExpression, { status: "active" });
   assert.deepEqual(byName.get("sod_contact_source_unique")?.key, { source_kind: 1, source_id: 1, subject_id: 1 });
   assert.deepEqual(byName.get("sod_rep_day_unique")?.key, { agent_id: 1, business_day: 1 });
-  assert.deepEqual(byName.get("sod_projection_queue_urgency")?.key, {
+  assert.deepEqual(byName.get("sod_projection_q_urgency")?.key, {
     assigned_agent_id: 1,
     "status_flags.needs_contact": 1,
-    oldest_actionable_due_at: 1,
-    next_action_due_at: 1,
-    received_at: 1,
+    "queue_keys.urgency_due": 1,
+    "queue_keys.urgency_next": 1,
+    "queue_keys.received_asc": 1,
     subject_id: 1,
   });
-  assert.ok(byName.get("sod_projection_queue_received"));
-  assert.ok(byName.get("sod_projection_queue_interaction"));
+  assert.ok(byName.get("sod_projection_q_team_urgency"));
+  assert.ok(byName.get("sod_projection_q_received_asc"));
+  assert.ok(byName.get("sod_projection_q_received_desc"));
+  assert.ok(byName.get("sod_projection_q_interaction"));
   assert.ok(byName.get("sod_projection_next_evaluation"));
   assert.deepEqual(byName.get("sod_configuration_key_unique")?.key, { key: 1 });
 });

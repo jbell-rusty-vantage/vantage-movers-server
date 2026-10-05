@@ -1,10 +1,15 @@
+import { SALES_OUTREACH_LIVE_TOPICS, SALES_OUTREACH_QUEUE_FILTERS } from "../../../config/domain/salesOutreach";
 import type { SalesOutreachCapabilitiesDto } from "../../../validation/v1/salesOutreachReads";
 import type { OutreachActor } from "../auth";
 import type { ConfigurationInspection } from "../config/load";
 import { ROLE_CAPABILITIES } from "../permissions";
 
-/** Desk reads this server build serves (phase 2 / M1). Capabilities never advertise undeployed work. */
-export const DEPLOYED_DESK_READS = ["capabilities", "rep_days", "team"] as const;
+/** Desk reads this server build serves. Capabilities never advertise undeployed work. */
+export const DEPLOYED_DESK_READS = ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live"] as const;
+
+/** Queue filters per role: a Rep never gets the rep or Unassigned filters (CONTRACTS, P09a/P09b). */
+const COORDINATOR_QUEUE_FILTERS = SALES_OUTREACH_QUEUE_FILTERS;
+const REP_QUEUE_FILTERS = SALES_OUTREACH_QUEUE_FILTERS.filter((f) => f !== "agent_id" && f !== "unassigned");
 
 type View = SalesOutreachCapabilitiesDto["permitted_views"][number];
 
@@ -74,7 +79,10 @@ export function composeCapabilities(
     permitted_filters: {
       rep_days: available ? (coordinator ? ["business_day", "agent_id"] : ["business_day"]) : [],
       team: available && coordinator ? ["business_day"] : [],
+      queue: available ? [...(coordinator ? COORDINATOR_QUEUE_FILTERS : REP_QUEUE_FILTERS)] : [],
     },
+    // Configuration invalidation reaches every desk role (it is how a muted desk is noticed).
+    live_topics: available ? [...SALES_OUTREACH_LIVE_TOPICS] : ["outreach_configuration"],
     permitted_commands: permittedCommands(actor.role, available, inspected.state === "active"),
     role_capabilities: [...ROLE_CAPABILITIES[actor.role]].sort(),
     deployed_reads: [...DEPLOYED_DESK_READS],

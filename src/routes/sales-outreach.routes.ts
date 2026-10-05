@@ -25,8 +25,12 @@ import {
   verifyEnrollment,
   type EnrollmentDeps,
 } from "../services/salesOutreach/enrollment/service";
-import { readDeskCapabilities, readRepDays, readTeam } from "../services/salesOutreach/reads/service";
+import { readOutreachDetail } from "../services/salesOutreach/reads/detail";
+import type { DeskQueueStore } from "../services/salesOutreach/reads/deskStore";
+import { readQueue } from "../services/salesOutreach/reads/queue";
+import { readDeskCapabilities, readRepDays, readTeam, requireDeskConfiguration } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
+import { negotiateLiveVersion, streamOutreachLive, type OutreachLiveDeps } from "../services/salesOutreach/live/stream";
 import {
   salesOutreachAgentIdSchema,
   salesOutreachConfigurationPatchSchema,
@@ -48,7 +52,13 @@ import {
   salesOutreachRestrictionLiftRequestSchema,
   salesOutreachRestrictionsQuerySchema,
 } from "../validation/v1/salesOutreachCommands";
-import { salesOutreachRepDaysQuerySchema, salesOutreachTeamQuerySchema } from "../validation/v1/salesOutreachReads";
+import {
+  salesOutreachDetailQuerySchema,
+  salesOutreachLiveQuerySchema,
+  salesOutreachQueueQuerySchema,
+  salesOutreachRepDaysQuerySchema,
+  salesOutreachTeamQuerySchema,
+} from "../validation/v1/salesOutreachReads";
 
 export type SalesOutreachRouteDeps = {
   connect?: typeof connectMongo;
@@ -57,6 +67,12 @@ export type SalesOutreachRouteDeps = {
   auth?: OutreachAuthDeps;
   /** Desk read store (tests inject an in-memory one). */
   readStore?: SalesOutreachReadStore;
+  /** Queue / outreach-view / team-cadence store (tests inject an in-memory one). */
+  queueStore?: DeskQueueStore;
+  /** Queue cursor HMAC secret override (tests); production derives it from the admin proxy signing secret. */
+  cursorSecret?: string | null;
+  /** Live stream seams (tests inject the change source, clock and lifetime). */
+  live?: Omit<OutreachLiveDeps, "revalidate">;
   /** Enrollment stores/ledger (tests inject in-memory ones); loader and clock come from above. */
   enrollment?: Omit<EnrollmentDeps, "loader" | "now">;
   /** SRV-7 command stores/ledger (tests inject in-memory ones); the loader comes from above. */
@@ -103,7 +119,7 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
   const guard = (capability: OutreachCapability) => requireOutreachActor(rolesWithCapability(capability), fail, authDeps);
   /** Owner, Manager and linked Rep; the read itself narrows a Rep to its own scope. */
   const anyDeskRole = requireOutreachActor(SALES_OUTREACH_ROLES, fail, authDeps);
-  const readDeps = () => ({ loader, store: deps.readStore, now: now() });
+  const readDeps = () => ({ loader, store: deps.readStore, queueStore: deps.queueStore, now: now() });
 
   router.use(SALES_OUTREACH_API_PREFIX, requireApiSecret, (req, res, next) => {
     try {
@@ -142,6 +158,47 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       return res.json({ ok: true, data: await readTeam(outreachActorOf(res), query, readDeps()) });
     } catch (error) {
       return fail(req, res, error);
+    }
+  });
+
+  // SRV-8: queue, outreach view and the scoped live stream (Owner, Manager, linked Rep; scope enforced in the services).
+  router.get(`${SALES_OUTREACH_API_PREFIX}/queue`, anyDeskRole, async (req, res) => {
+    try {
+      const query = salesOutreachQueueQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readQueue(outreachActorOf(res), query, { ...readDeps(), cursorSecret: deps.cursorSecret }) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.get(`${SALES_OUTREACH_API_PREFIX}/outreach/:id`, anyDeskRole, async (req, res) => {
+    try {
+      salesOutreachDetailQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readOutreachDetail(outreachActorOf(res), String(req.params.id), readDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.get(`${SALES_OUTREACH_API_PREFIX}/live`, anyDeskRole, async (req, res) => {
+    try {
+      const query = salesOutreachLiveQuerySchema.parse(req.query);
+      negotiateLiveVersion(query.version);
+      await connect();
+      await requireDeskConfiguration(loader);
+      const actor = outreachActorOf(res);
+      const scope = { role: actor.role, agent_id: actor.agent_id };
+      // Re-checked on every clock tick: a muted desk or a Rep whose reviewed link ended closes the stream.
+      const revalidate = async () => {
+        const loaded = await loader.load();
+        if (loaded.state !== "active" || !loaded.value.controls.desk_enabled) return false;
+        return actor.role !== "rep" || (await authDeps.hasReviewedSalesRepLink!(actor.agent_id!, now()));
+      };
+      streamOutreachLive(req, res, scope, { ...deps.live, revalidate });
+    } catch (error) {
+      fail(req, res, error);
     }
   });
 

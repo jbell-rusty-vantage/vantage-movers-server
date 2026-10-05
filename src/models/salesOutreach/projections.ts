@@ -5,6 +5,7 @@ import {
   SALES_OUTREACH_CHANNEL_STATUSES,
   SALES_OUTREACH_GOAL_COUNT_SCOPES,
   SALES_OUTREACH_GOAL_STATES,
+  SALES_OUTREACH_SUBJECT_STATUSES,
   SALES_OUTREACH_WORKFLOWS,
 } from "../../config/domain/salesOutreach";
 import { at, count, date, defineCsiModel, enumeration, index, oid, ref, revision, str, text, unique, validatedJson } from "../salesIntelligence/common";
@@ -57,18 +58,68 @@ const statusFlagsSchema = new Schema(
  */
 export const SALES_OUTREACH_PROJECTION_INDEXES = [
   unique("sod_projection_subject_unique", { subject_id: 1 }),
-  index("sod_projection_queue_urgency", {
+  // Queue sorts (CONTRACTS "Queue sort enums") over never-null `queue_keys`, so null ordering is never
+  // left to the database: one index per sort for an assigned scope (Rep, rep filter, Unassigned) and
+  // the team default (Most overdue + Needs contact) across every rep.
+  index("sod_projection_q_urgency", {
     assigned_agent_id: 1,
     "status_flags.needs_contact": 1,
-    oldest_actionable_due_at: 1,
-    next_action_due_at: 1,
-    received_at: 1,
+    "queue_keys.urgency_due": 1,
+    "queue_keys.urgency_next": 1,
+    "queue_keys.received_asc": 1,
     subject_id: 1,
   }),
-  index("sod_projection_queue_received", { assigned_agent_id: 1, received_at: 1, subject_id: 1 }),
-  index("sod_projection_queue_interaction", { assigned_agent_id: 1, last_interaction_at: 1, subject_id: 1 }),
+  index("sod_projection_q_team_urgency", {
+    "status_flags.needs_contact": 1,
+    "queue_keys.urgency_due": 1,
+    "queue_keys.urgency_next": 1,
+    "queue_keys.received_asc": 1,
+    subject_id: 1,
+  }),
+  index("sod_projection_q_received_asc", { assigned_agent_id: 1, "queue_keys.received_asc": 1, subject_id: 1 }),
+  index("sod_projection_q_received_desc", { assigned_agent_id: 1, "queue_keys.received_desc": 1, subject_id: 1 }),
+  index("sod_projection_q_interaction", { assigned_agent_id: 1, "queue_keys.last_interaction": 1, subject_id: 1 }),
   index("sod_projection_next_evaluation", { next_evaluation_at: 1 }),
 ];
+
+/** Subject facts the queue filters and searches on, copied from the subject at the projection's write. */
+const projectionDisplaySchema = new Schema(
+  {
+    job_no: text,
+    normalized_job_no: text,
+    phone: text,
+    normalized_phone: text,
+    name: text,
+    /** Lower-cased NFKC name for case-insensitive literal substring search. */
+    name_folded: text,
+    /** Canonical move date `YYYY-MM-DD`, or null when unknown (P05g). */
+    move_date: text,
+  },
+  { _id: false, strict: "throw" },
+);
+
+/**
+ * Never-null queue sort keys (sentinels replace unknowns). Time-derived status is resolved at read
+ * time; these keys keep ordering correct without a rewrite as deadlines pass, because an overdue
+ * deadline is always earlier than an upcoming one.
+ */
+const queueKeysSchema = new Schema(
+  {
+    /** Earliest unsatisfied actionable deadline across unblocked channels (overdue or due); far future when none. */
+    urgency_due: at,
+    /** Next future scheduled action due; far future when none. */
+    urgency_next: at,
+    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card). */
+    call_due: at,
+    /** Received instant; unknown sorts last ascending (far future). */
+    received_asc: at,
+    /** Received instant; unknown sorts last descending (epoch). */
+    received_desc: at,
+    /** Last interaction; never contacted = epoch (first ascending, last descending). */
+    last_interaction: at,
+  },
+  { _id: false, strict: "throw" },
+);
 
 export const SalesOutreachProjectionSchema = new Schema(
   {
@@ -82,6 +133,10 @@ export const SalesOutreachProjectionSchema = new Schema(
     last_interaction_at: date,
     received_at: date,
     assigned_agent_id: ref,
+    /** The subject's status at the write; the queue lists `active` and `review` rows, never `closed`. */
+    subject_status: enumeration(SALES_OUTREACH_SUBJECT_STATUSES, "active"),
+    display: { type: projectionDisplaySchema, required: true, default: () => ({}) },
+    queue_keys: { type: queueKeysSchema, required: true },
     workflow: { type: String, enum: [...SALES_OUTREACH_WORKFLOWS], default: null },
     priority_raw: text,
     status_flags: { type: statusFlagsSchema, required: true, default: () => ({}) },
