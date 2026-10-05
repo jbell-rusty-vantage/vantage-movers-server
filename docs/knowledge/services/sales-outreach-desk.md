@@ -2,7 +2,7 @@
 okf_version: "0.2"
 type: Service
 title: Sales Outreach Desk
-description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk collections and their index build, and the pure cadence engine. Built in lanes; this doc grows per lane.
+description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk subjects (eligibility, priority periods, Lead-change feed, intake) and enrollment, desk collections and their index build, and the pure cadence engine. Built in lanes; this doc grows per lane.
 status: draft
 stale_after: 2026-11-04
 tags: [sales-outreach-desk, sales-intelligence]
@@ -11,8 +11,10 @@ applies_to:
   - src/services/salesOutreach/**
   - src/models/salesOutreach/**
   - src/routes/sales-outreach.routes.ts
+  - src/routes/sales-outreach-cron.routes.ts
   - src/validation/v1/salesOutreach.ts
   - src/validation/v1/salesOutreachReads.ts
+  - src/validation/v1/salesOutreachEnrollment.ts
   - src/config/domain/salesOutreach.ts
   - ops/sales-outreach/**
 owners: [team:main-server]
@@ -22,7 +24,7 @@ owners: [team:main-server]
 
 The build contract is the packet in [`docs/sales-outreach-desk/`](../../sales-outreach-desk/README.md): start at [IMPLEMENTATION-PLAN.md](../../sales-outreach-desk/IMPLEMENTATION-PLAN.md). Business rules are SPECIFICATION §§2–14 and FINAL-POLICY-REVIEW; this doc describes only what is built. The desk is deterministic code: no LLM, transcription, summaries or AI suggestions (D01).
 
-## S1 — foundation and API (phase 1: roles, configuration, models; phase 2: M1 reads)
+## S1 — foundation and API (phase 1: roles, configuration, models; phase 2: M1 reads; phase 3: subjects and enrollment)
 
 ### Roles and the guard (SRV-1)
 
@@ -75,6 +77,55 @@ Per-rep row (`sales_outreach_rep_day_projections` is read only; lane S3 writes i
 - **Arithmetic**: `remaining = max(0, goal − actual)`, `progress = min(1, actual / goal)` (null without a positive goal), `goal_reached = actual ≥ goal` (false on a zero-goal day). 108/100 → progress 1, remaining 0.
 - **Team**: goal = sum of roster goals (never 100 × staff); actual = sum of roster actuals including zero-goal reps (not-on-roster Agents excluded); `reps_at_goal.of` counts only positive-goal reps. A pending rep makes the card `incomplete` and is listed in `pending_agent_ids`; a day whose rows mix count scopes reports `actual: null` (`mixed_count_scope`).
 
+### Desk subjects (SRV-3: `src/services/salesOutreach/subjects/`)
+
+One `sales_outreach_subjects` row per enrolled canonical Lead (IMPL-04). The Lead stays the system of record; the desk never writes it here.
+
+- **Facts** (`leadFacts.ts`): one projection of `form_leads`/`call_leads`: received `timestamp`, origin, accepted `granot_priority` + `last_accepted_granot_observation`, `booked`/`cancelled`/`duplicate`/`bad_lead`/`no_sync`/`created_on_unmatched`/`form_fill`, `receiver_agent`, Job Number, phone, name, Form Lead `move_date` (its UTC date) and `domain_revision`.
+- **Received time**: the restored `leadInstant` adapter (`subjects/leadInstant.ts`, from `6a374fab`, rule unchanged). `received_quality` is `wall_clock` or `instant`; `missing` without a timestamp; `unreliable` when the arrival is after the reference instant or before 2010. Missing/unreliable → review, never a guessed age.
+- **Eligibility (P05h, `eligibility.ts`)**: official Booking, official Cancellation and Bad Lead close; a Duplicate and an unmatched Booking-anchor Call Lead are excluded (no subject of their own); No-Sync and Form Fill are not read (a viable No-Sync Lead stays eligible); a legacy-closed record goes to review (none exist after the slimming purge); a number-only record is review with no cadence.
+- **Policy decision (P05d/P05e, `policyMapping.ts`)**: reads only `cadence.priority_map` and `cadence.intake_default_rule` from the persisted configuration (missing → fail closed). An accepted canonical code maps through the map (unmapped → `none`; 5/7/8 → `closed`, with no Booking, duplicate flag or reason inferred). With no accepted code, the source's intake default applies: `website_form` ← `wordpress_form`, `best_relocation` ← `best_relocation_sheet`, `ringcentral_call` ← `ringcentral`, `manual` ← `vantage_admin`, `granot_created` ← `granot_lead_created`. Legacy/unknown origins and a Granot-created Lead without a priority → review ("Priority needs review"). Granot Priority 0 is never written.
+- **Subject fields** (`subjectBuilder.ts`):
+  - `display`: Job Number, phone, name, canonical move date (the P05g labels come from the engine);
+  - `priority {raw, accepted_at, observation_id, basis, uncertain}`: `uncertain` = a newer blank/malformed Granot priority observation for the Job Number, or a non-canonical stored value;
+  - `assigned_agent_id` = `receiver_agent` only when that Agent has a reviewed `sales_rep` link now, else Unassigned (IMPL-01); `assignment_revision` bumps on change;
+  - `contact_number_ids` = the numbers the Lead is `attached` to (IMPL-07 input);
+  - `lead_revision_seen`, `status` (`active`/`review`/`closed`; closed is final) and recomputed `review_reasons`.
+- **Policy periods** (`periodPlanner.ts`, `sync.ts`):
+  - The first period opens at the enrollment boundary: `start_kind` `activation` for a cohort, `intake` for intake; `time_basis: activation_boundary`.
+  - A different workflow closes the active period and opens the new one (`transition`) in the same transaction, at the fact's effective time (accepted observation `captured_at`, else the Lead change time; never before the active period).
+  - Same workflow = no-op (a repeated accepted code, or 0 confirming an intake-default New). A recorded `transition_key` = replay no-op. Keys: `priority:observation:<id>:<workflow>:<code>`, `closure:<reason>:<ref>`, `intake_default:<source>`.
+  - An active `closed` period never reopens. No decidable policy retains the last verified period (P05e).
+  - Subject writes are CAS on `revision`; identical facts write nothing; every desk-relevant new revision nominates `outreach_evaluate` (`sod:evaluate:<subject>:r<revision>`).
+
+### Lead-change feed and intake (IMPL-05, `subjects/feed.ts`, `subjects/leadChangeJob.ts`)
+
+| Piece | Behaviour |
+| --- | --- |
+| `/api/cron/sales-outreach-lead-changes` (every minute) | One tail pass over `entity_changes` (Form/Call Leads) with a durable `(applied_at, _id)` cursor in `sales_intelligence_sync_state` scope `outreach_entity_changes`: the first pass starts at now − 2 min, each pass re-scans a 2-minute overlap for late commits, takes ≤ 100 new changes, and commits cursor and job nominations together. Then it drains ≤ 100 `outreach_lead_change` jobs (40 s). Nominates every change of a subject's Lead, and a Lead creation (`revision_before` 0) only while the intake gate is on. |
+| `/api/cron/sales-outreach-revision-reconcile` (every 5 minutes) | Open subjects (`active`/`review`) in pages of 100 by `_id` (cursor `outreach_subject_id` and a lease in scope `outreach_revision_reconcile`; ≤ 50 pages per run). Lead `domain_revision` ≠ `lead_revision_seen` → an `outreach_lead_change` job. |
+| Job stage `outreach_lead_change` | Identity `sod:lead-change:<model>:<id>:r<revision>`, so the tail, the reconcile and a future wake converge. The configuration pointer is read at admission (inactive → nothing claimed) and again inside the job transaction (moved → retry). Refreshes the subject from current facts, or runs the intake gate. Also dispatched from the `sales-intelligence-events` queue. |
+| Intake gate (`outreach_intake`, inside the job) | Only when `transition.intake_admission_enabled` and `intake_admission_at` are set, for a Lead **created and received** at/after `intake_admission_at`, from a non-legacy origin, eligible, not closed by priority, with an unambiguous Job Number. Enrolled once (`kind: intake`, cohort `intake:<gate>`, boundary = received time). A fresh Lead whose priority needs review is enrolled as a visible `review` subject with no period. |
+| Job stage `outreach_evaluate` | Nominated per subject revision. **No consumer yet**: it arrives with the evaluator wiring. |
+
+Both crons answer `{ ok: true, skipped: true, reason: "configuration_<state>" }` while the configuration is not active. There is no env flag.
+
+### Enrollment (P10a/P10b, FAST-01 backfill; `src/services/salesOutreach/enrollment/`)
+
+Owner-only (`migration` capability) under `/api/v1/admin/sales-outreach`; request schemas in `src/validation/v1/salesOutreachEnrollment.ts`.
+
+- **`POST /enrollment/report`**: body `{ selection: {mode: "backfill_scope"} | {mode: "selected", lead_refs: [{model, id}]}, kind?: "pilot" | "expansion", cohort_id? }`. **Zero writes.**
+  - Backfill scope = received on/after today − `transition.backfill_lookback_days` (New York dates), or, with `backfill_include_upcoming_moves`, a move date today or later. Both fields are required, else 503.
+  - Returns `counts` per partition (`in_scope`, `older`, `already_enrolled`, `closed`, `excluded`, `review`, `not_new_or_quoted`), `reasons`, the frozen `lead_refs`, `manifest_hash` (sha-256 of algorithm version, kind, cohort, configuration version and the canonical ids), a review sample and `writes: 0`.
+  - Review reasons: `received_time_missing`/`_unreliable`, `ambiguous_identity` (another non-duplicate Lead carries the Job Number), `priority_needs_review`, `unsupported_intake_source`, `malformed_priority`, `unmapped_priority`, `legacy_closed_reopening_required`, `lead_not_found`.
+- **`POST /enrollment/apply`**: header `Idempotency-Key` = the run key; body `{ kind, cohort_id, lead_refs, manifest_hash, deadline_seconds? }` exactly as reported.
+  - Refused while `migration.paused` (503, `migration_paused`) or when the manifest no longer matches (409 `REVISION_CONFLICT`).
+  - The start commits in one transaction: the run row (activation boundary = the moment of apply), ledger command `sales_outreach_enrollment_apply` and audit `sales_outreach_enrollment_started`.
+  - Batches of `migration.batch_size` (25, ≤ 100) run under a single-writer lease on the run. Each batch re-validates every Lead and writes its subjects, activation periods, evaluate nominations and the checkpoint in one transaction; `migration.interval_seconds` separates batches; the pause stops new batches.
+  - Returns `status` `running` (call again), `completed`, `paused` or `lease_held`. The same key resumes; a different manifest under it is 409 `IDEMPOTENCY_CONFLICT`; the boundary and the scope never change on retry.
+- **`POST /enrollment/verify`**: `{ run_key }` → counts (`enrolled_by_run`, `enrolled_elsewhere`, `not_enrolled`), mismatches (`boundary_mismatch`, `no_active_period`, `multiple_active_periods`, `first_period_not_at_boundary`, `received_missing`), `consistent` and `complete`. Writes only `verify:<run_key>`.
+- **`GET /enrollment/candidates?partition&cursor&limit`**: one page (≤ 100, default 25) of a partition, Form Leads then Call Leads, newest first. At most 1,000 Leads are examined per request; `next_cursor` is opaque (a bad cursor → 409 `CURSOR_EXPIRED`). `partition=older` is the Owner Settings "Not enrolled — older" list; one-click Enroll = report/apply with `selection: selected`.
+
 ### Desk collections (SRV-3 models)
 
 Models in `src/models/salesOutreach/` use `defineCsiModel` (strict, `autoIndex`/`autoCreate` off, unique-fence check before writes) and are listed in `SALES_OUTREACH_MODEL_REGISTRY` (also spread into `CSI_MODEL_REGISTRY`):
@@ -83,7 +134,7 @@ Models in `src/models/salesOutreach/` use `defineCsiModel` (strict, `autoIndex`/
 | --- | --- |
 | `sales_outreach_configuration` | unique `key` |
 | `sales_outreach_subjects` | unique `{lead_model, lead_id}`; `{status, assigned_agent_id, _id}`, `display.normalized_job_no`, `display.normalized_phone`, `lead_revision_seen` |
-| `sales_outreach_policy_periods` | unique active `{subject_id}` where `ended_at: null`; unique `{subject_id, transition_key}` |
+| `sales_outreach_policy_periods` | unique active `{subject_id}` where `ended_at: null`; unique `{subject_id, transition_key}`; each period records `workflow`, `start_kind` (`intake`/`transition`/`activation`) and `time_basis` |
 | `sales_outreach_followup_schedules` | unique active `{subject_id}` where `status: "active"` |
 | `sales_outreach_contact_events` | unique `{source_kind, source_id, subject_id}`; `{subject_id, event_at}`, `{goal_agent_id, business_date}` |
 | `sales_outreach_projections` | unique `subject_id`; queue indexes for urgency / received / last interaction, `next_evaluation_at` |
@@ -98,7 +149,8 @@ Models in `src/models/salesOutreach/` use `defineCsiModel` (strict, `autoIndex`/
 | --- | --- |
 | `pnpm outreach:indexes --target=<db> [--apply]` | Plans (default, read-only) or builds the desk indexes. Refuses a target that is not the resolved database, refuses same-name/same-key mismatches and probes unique indexes for duplicates before building; identical indexes are skipped. Production `--apply` passes the production-writer guard. |
 | `pnpm outreach:install-policy --target=<db> [--apply] [--enable=desk_enabled,goal_metrics_enabled]` | Dry run by default. Installs FINAL-01 cadence/evidence (`approval_ref owner-session-2026-10-03-FINAL-01`), the FAST-01 backfill scope (90 days + upcoming moves) and the M1 roster (every reviewed `sales_rep` link effective now, all seven days, default goal 100) through the PATCH service path; carries controls/migration/intake fields over; no-op when the same content is active; verifies after writing. |
-| `pnpm test:outreach:replica` | Replica proof of the configuration path on the local `csi01` loopback replica only. |
+| `pnpm outreach:enrollment --target=<db> [report\|apply\|verify] [--leads=<file>] [--kind=pilot\|expansion] [--cohort=<id>] [--run-key=<key>] [--out=<file>]` | Enrollment (above). `report` is the default and read-only. `apply` re-runs the report, freezes its selection under `--run-key` and loops bounded apply calls until the run completes or pauses; re-running the same key resumes the stored run with its stored selection and manifest. `verify` reconciles a run. Apply and verify pass the production-writer guard. |
+| `pnpm test:outreach:replica` | Replica proofs on the local `csi01` loopback replica only: the configuration path (`configuration.replica.ts`) and the subject/enrollment paths (`subjects.replica.ts`). |
 | `node --import tsx ops/sales-outreach/write-dto-examples.ts` | Rewrites the M1 read example payloads in `docs/sales-outreach-desk/workspace/evidence/dto-examples/` from the real read services over a synthetic in-memory store (no database, no env). |
 
 ## S2 — Cadence engine (`src/services/salesOutreach/engine/`)
