@@ -24,7 +24,7 @@ describe("P04a Quoted deferral (fixture p04a-quoted-deferral.json)", () => {
     assert.equal(ob.due_at, new Date(fx.due_at).toISOString());
   });
   test("before_selected_date", () => {
-    const c = byId.before_selected_date as { business_date: string; ordinary_required_calls: number; scheduled: boolean; actionable_countdown_active: boolean };
+    const c = byId.before_selected_date as unknown as { business_date: string; ordinary_required_calls: number; scheduled: boolean; actionable_countdown_active: boolean };
     const r = evaluate(build(), ny(c.business_date, "15:00"));
     assert.equal(r.requirements.call.required, c.ordinary_required_calls);
     assert.equal(r.requirements.call.status === "scheduled", c.scheduled);
@@ -32,27 +32,27 @@ describe("P04a Quoted deferral (fixture p04a-quoted-deferral.json)", () => {
     assert.equal(r.quoted?.selected_date, S);
   });
   test("selected_date_opening", () => {
-    const c = byId.selected_date_opening as { as_of: string; ordinary_required_calls: number; actionable_countdown_active: boolean; overdue: boolean };
+    const c = byId.selected_date_opening as unknown as { as_of: string; ordinary_required_calls: number; actionable_countdown_active: boolean; overdue: boolean };
     const r = evaluate(build(), c.as_of);
     assert.equal(r.requirements.call.required, c.ordinary_required_calls);
     assert.equal(r.requirements.call.due_at !== null, c.actionable_countdown_active);
     assert.equal(r.requirements.call.status === "overdue", c.overdue);
   });
   test("call_on_selected_date", () => {
-    const c = byId.call_on_selected_date as { call_started_at: string; verified_completed: number; remaining: number; next_due_at: string };
+    const c = byId.call_on_selected_date as unknown as { call_started_at: string; verified_completed: number; remaining: number; next_due_at: string };
     const r = evaluate(build([outbound(c.call_started_at)]), "2026-10-08T16:00:00Z");
     assert.equal(r.requirements.call.verified_completed, c.verified_completed);
     assert.equal(r.requirements.call.remaining, c.remaining);
     assert.equal(r.next_action_due_at, new Date(c.next_due_at).toISOString());
   });
   test("early_extra_call", () => {
-    const c = byId.early_extra_call as { call_started_at: string; selected_date_verified_completed: number };
+    const c = byId.early_extra_call as unknown as { call_started_at: string; selected_date_verified_completed: number };
     const r = evaluate(build([outbound(c.call_started_at)]), "2026-10-08T16:00:00Z");
     assert.equal(r.requirements.call.verified_completed, c.selected_date_verified_completed);
     assert.equal(r.quoted?.selected_date, S, "selected date unchanged");
   });
   test("missed_selected_date", () => {
-    const c = byId.missed_selected_date as { next_business_date: string; next_date_ordinary_required_calls: number };
+    const c = byId.missed_selected_date as unknown as { next_business_date: string; next_date_ordinary_required_calls: number };
     const r = evaluate(build(), ny(c.next_business_date, "12:00"));
     assert.equal(obligationsOn(r, S, "call")[0]!.outcome, "missed");
     assert.equal(r.requirements.call.required, c.next_date_ordinary_required_calls);
@@ -61,7 +61,7 @@ describe("P04a Quoted deferral (fixture p04a-quoted-deferral.json)", () => {
 
 describe("P04b Quoted permissions — engine parts (fixture p04b-quoted-permissions.json)", () => {
   const fx = fixture<{ reassignment_preserves_schedule: boolean; cases: Array<Record<string, unknown> & { id: string }> }>("p04b-quoted-permissions.json");
-  const c = fx.cases.find((x) => x.id === "post_miss_reschedule") as { old_miss_retained: boolean; contact_credit_created: boolean };
+  const c = fx.cases.find((x) => x.id === "post_miss_reschedule") as unknown as { old_miss_retained: boolean; contact_credit_created: boolean };
   const base = (plans: ReturnType<typeof quotedPlan>[], assignments?: Parameters<typeof scenario>[0]["assignments"]) =>
     scenario({ periods: periods(["n1", "new", ny("2026-10-02", "09:00"), "intake"], ["q1", "quoted", ny("2026-10-05", "15:00"), "transition"]), plans, assignments });
   test("post_miss_reschedule keeps the old miss and creates no contact credit", () => {

@@ -82,7 +82,7 @@ describe("P02i Owner closures (fixture p02i-closures.json, calendar parts)", () 
   const byId = Object.fromEntries(fx.cases.map((c) => [c.id, c]));
 
   test("first_call_skips_monday", () => {
-    const c = byId.first_call_skips_monday as { received_at: string; closed_dates: string[]; first_call_due_at: string; schedule_day_at_due: number };
+    const c = byId.first_call_skips_monday as unknown as { received_at: string; closed_dates: string[]; first_call_due_at: string; schedule_day_at_due: number };
     const policy = policyWith({ holidays: c.closed_dates });
     const r = evaluate(scenario({ periods: [period("p1", "new", c.received_at, "intake")] }), c.received_at, policy);
     assert.equal(r.initial_response?.due_at, new Date(c.first_call_due_at).toISOString());
@@ -90,7 +90,7 @@ describe("P02i Owner closures (fixture p02i-closures.json, calendar parts)", () 
   });
 
   test("arrival_on_closed_sunday", () => {
-    const c = byId.arrival_on_closed_sunday as { received_at: string; closed_dates: string[]; routine_calls_required_on_receipt_date: number; routine_sms_required_on_receipt_date: number; first_call_due_at: string; schedule_day_at_due: number };
+    const c = byId.arrival_on_closed_sunday as unknown as { received_at: string; closed_dates: string[]; routine_calls_required_on_receipt_date: number; routine_sms_required_on_receipt_date: number; first_call_due_at: string; schedule_day_at_due: number };
     const policy = policyWith({ holidays: c.closed_dates });
     const r = evaluate(scenario({ periods: [period("p1", "new", c.received_at, "intake")] }), c.received_at, policy);
     assert.equal(r.requirements.call.required, c.routine_calls_required_on_receipt_date);

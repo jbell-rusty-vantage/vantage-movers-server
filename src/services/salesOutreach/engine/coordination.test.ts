@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { addDays } from "./calendar";
 import { goalCreditAgent, goalCreditsByAgent } from "./credit";
+import { PRECEDENCE } from "./precedence";
 import { callbackPlan, evaluate, fixture, inbound, ny, nyMinute, obligationsOn, outbound, period, periods, restriction, scenario, sms, TZ, type FixtureFile } from "./testSupport";
 
 type Case = Record<string, unknown> & { id: string };
@@ -148,7 +149,7 @@ describe("P06c restriction waiver and resume (fixture p06c-restriction-waiver-re
 describe("P06d continuous assignment timeline (fixture p06d-assignment-responsibility.json)", () => {
   const c = cases("p06d-assignment-responsibility.json");
   const TUE = "2026-10-06";
-  const assignments = [{ agent_id: null, from: "2000-01-01T00:00:00Z", to: ny(TUE, "11:00") }, { agent_id: "alice", from: ny(TUE, "11:00"), to: null }];
+  const assignments: Array<{ agent_id: string | null; from: string; to: string | null }> = [{ agent_id: null, from: "2000-01-01T00:00:00Z", to: ny(TUE, "11:00") }, { agent_id: "alice", from: ny(TUE, "11:00"), to: null }];
   const base = (events: ReturnType<typeof outbound>[] = [], list = assignments) => scenario({ periods: [period("n1", "new", ny(TUE, "10:00"), "intake")], assignments: list, events });
   test("first_assignment_after_deadline", () => {
     const k = c.first_assignment_after_deadline as Record<string, unknown>;
@@ -252,8 +253,7 @@ describe("P06f deterministic precedence (fixture p06f-precedence-collisions.json
   const R = "2026-10-03";
   const TUE = "2026-10-06", THU = "2026-10-08", FRI = "2026-10-09";
   const plan = callbackPlan("cb1", "n1", ny(THU, "15:00"), ny(TUE, "10:00"));
-  test("precedence order", async () => {
-    const { PRECEDENCE } = await import("./precedence");
+  test("precedence order", () => {
     assert.deepEqual([...PRECEDENCE], fx.precedence);
   });
   test("closure", () => {
