@@ -25,6 +25,9 @@ export type DeskEnrollment = Readonly<{
   manifest_hash: string | null;
 }>;
 
+/** Reads run inside the caller's transaction, or with no session for read-only reports. */
+export type ReadSession = ClientSession | null;
+
 export type DeskSubjectStatus = "active" | "closed" | "review";
 
 export type DeskSubjectRow = DeskSubjectFacts &
@@ -66,17 +69,17 @@ export type PeriodProvenance = Readonly<{
  * tests use `MemoryDeskSubjectStore` (`testing.ts`).
  */
 export type DeskSubjectStore = {
-  loadLeads(refs: readonly DeskLeadRef[], session: ClientSession): Promise<DeskLeadFacts[]>;
-  findSubjects(refs: readonly DeskLeadRef[], session: ClientSession): Promise<DeskSubjectRow[]>;
-  findPeriods(subjectId: string, session: ClientSession): Promise<DeskPeriodRow[]>;
+  loadLeads(refs: readonly DeskLeadRef[], session: ReadSession): Promise<DeskLeadFacts[]>;
+  findSubjects(refs: readonly DeskLeadRef[], session: ReadSession): Promise<DeskSubjectRow[]>;
+  findPeriods(subjectId: string, session: ReadSession): Promise<DeskPeriodRow[]>;
   /** Agents (of `agentIds`) with a reviewed `sales_rep` identity link effective at `at`. */
-  reviewedRepIds(agentIds: readonly string[], at: Date, session: ClientSession): Promise<Set<string>>;
+  reviewedRepIds(agentIds: readonly string[], at: Date, session: ReadSession): Promise<Set<string>>;
   /** Lead key → Contact Number ids the Lead is `attached` to. */
-  attachedNumberIds(refs: readonly DeskLeadRef[], session: ClientSession): Promise<Map<string, string[]>>;
+  attachedNumberIds(refs: readonly DeskLeadRef[], session: ReadSession): Promise<Map<string, string[]>>;
   /** Normalized Job Number → how many non-duplicate Form/Call Leads carry it. */
-  jobNumberLeadCounts(jobNumbers: readonly string[], session: ClientSession): Promise<Map<string, number>>;
+  jobNumberLeadCounts(jobNumbers: readonly string[], session: ReadSession): Promise<Map<string, number>>;
   /** Lead keys with a blank/malformed Granot priority update newer than their last accepted one (P05e). */
-  priorityUncertainLeads(facts: readonly DeskLeadFacts[], session: ClientSession): Promise<Set<string>>;
+  priorityUncertainLeads(facts: readonly DeskLeadFacts[], session: ReadSession): Promise<Set<string>>;
   insertSubject(subject: NewSubject, session: ClientSession): Promise<string>;
   /** CAS on `revision`; false when another writer moved it first. */
   updateSubject(id: string, expectedRevision: number, update: SubjectUpdate, session: ClientSession): Promise<boolean>;

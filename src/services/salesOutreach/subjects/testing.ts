@@ -23,6 +23,11 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
   evaluations: Array<{ subject_id: string; revision: number }> = [];
   writes: string[] = [];
 
+  /** Transaction stand-in: the writes of a failed callback are rolled back. */
+  snapshot() {
+    const saved = structuredClone({ subjects: this.subjects, periods: this.periods, evaluations: this.evaluations, writes: this.writes });
+    return () => Object.assign(this, saved);
+  }
   addLead(facts: DeskLeadFacts) {
     this.leads.set(deskLeadKey(facts.ref), facts);
     return facts;

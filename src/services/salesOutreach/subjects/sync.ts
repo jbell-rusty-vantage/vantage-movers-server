@@ -5,7 +5,7 @@ import { evaluateDeskEligibility, type DeskEligibility } from "./eligibility";
 import { deskLeadKey, type DeskLeadFacts } from "./leadFacts";
 import { planPeriodTransition, type PeriodPlan } from "./periodPlanner";
 import { resolveDeskPolicy, type DeskPolicyDecision } from "./policyMapping";
-import type { DeskEnrollment, DeskSubjectRow, DeskSubjectStore, SubjectUpdate } from "./store";
+import type { DeskEnrollment, DeskSubjectRow, DeskSubjectStore, ReadSession, SubjectUpdate } from "./store";
 import {
   buildSubjectFacts,
   desiredPeriodOf,
@@ -28,7 +28,7 @@ export async function loadSubjectPageContext(
   store: DeskSubjectStore,
   facts: readonly DeskLeadFacts[],
   asOf: Date,
-  session: ClientSession,
+  session: ReadSession,
 ): Promise<DeskSubjectPageContext> {
   const refs = facts.map((f) => f.ref);
   const [reviewed, numbers, uncertain, jobCounts] = await Promise.all([
@@ -41,7 +41,7 @@ export async function loadSubjectPageContext(
 }
 
 /** Another non-duplicate Lead carries the same Job Number: the opportunity's identity is ambiguous. */
-export const hasAmbiguousIdentity = (facts: DeskLeadFacts, context: DeskSubjectPageContext) =>
+export const hasAmbiguousIdentity = (facts: DeskLeadFacts, context: Pick<DeskSubjectPageContext, "job_number_counts">) =>
   Boolean(facts.normalized_job_no && !facts.duplicate && (context.job_number_counts.get(facts.normalized_job_no) ?? 0) > 1);
 
 export type SubjectSyncOutcome = Readonly<{

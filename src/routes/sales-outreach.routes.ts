@@ -14,12 +14,25 @@ import { salesOutreachConfigurationLoader, type ConfigurationLoader } from "../s
 import { readSalesOutreachConfiguration } from "../services/salesOutreach/config/reads";
 import { OutreachError, sendOutreachError } from "../services/salesOutreach/errors";
 import { rolesWithCapability, type OutreachCapability } from "../services/salesOutreach/permissions";
+import {
+  applyEnrollment,
+  listEnrollmentCandidates,
+  reportEnrollment,
+  verifyEnrollment,
+  type EnrollmentDeps,
+} from "../services/salesOutreach/enrollment/service";
 import { readDeskCapabilities, readRepDays, readTeam } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
 import {
   salesOutreachConfigurationPatchSchema,
   salesOutreachScopeQuerySchema,
 } from "../validation/v1/salesOutreach";
+import {
+  salesOutreachEnrollmentApplySchema,
+  salesOutreachEnrollmentCandidatesQuerySchema,
+  salesOutreachEnrollmentReportSchema,
+  salesOutreachEnrollmentVerifySchema,
+} from "../validation/v1/salesOutreachEnrollment";
 import { salesOutreachRepDaysQuerySchema, salesOutreachTeamQuerySchema } from "../validation/v1/salesOutreachReads";
 
 export type SalesOutreachRouteDeps = {
@@ -29,6 +42,8 @@ export type SalesOutreachRouteDeps = {
   auth?: OutreachAuthDeps;
   /** Desk read store (tests inject an in-memory one). */
   readStore?: SalesOutreachReadStore;
+  /** Enrollment stores/ledger (tests inject in-memory ones); loader and clock come from above. */
+  enrollment?: Omit<EnrollmentDeps, "loader" | "now">;
   now?: () => Date;
 };
 
@@ -130,6 +145,65 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
         value: body.value,
       });
       return res.json({ ok: true, data: { contract_version: "sod-v1", ...response, replayed } });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  // Enrollment (P10a/P10b, FAST-01 backfill): Owner-only `migration` capability.
+  const enrollmentDeps = () => ({ ...deps.enrollment, loader, now });
+  router.get(`${SALES_OUTREACH_API_PREFIX}/enrollment/candidates`, guard("migration"), async (req, res) => {
+    try {
+      const query = salesOutreachEnrollmentCandidatesQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await listEnrollmentCandidates(query, enrollmentDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(`${SALES_OUTREACH_API_PREFIX}/enrollment/report`, guard("migration"), async (req, res) => {
+    try {
+      salesOutreachScopeQuerySchema.parse(req.query);
+      const body = salesOutreachEnrollmentReportSchema.parse(req.body);
+      await connect();
+      return res.json({ ok: true, data: await reportEnrollment(body, enrollmentDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(`${SALES_OUTREACH_API_PREFIX}/enrollment/apply`, guard("migration"), async (req, res) => {
+    try {
+      salesOutreachScopeQuerySchema.parse(req.query);
+      const run_key = req.header("idempotency-key")?.trim();
+      if (!run_key || run_key.length > 120) throw new OutreachError("IDEMPOTENCY_KEY_REQUIRED");
+      const body = salesOutreachEnrollmentApplySchema.parse(req.body);
+      await connect();
+      const data = await applyEnrollment(
+        {
+          actor: outreachActorOf(res).actor,
+          run_key,
+          kind: body.kind,
+          cohort_id: body.cohort_id,
+          lead_refs: body.lead_refs,
+          manifest_hash: body.manifest_hash,
+          deadline_ms: body.deadline_seconds === undefined ? undefined : body.deadline_seconds * 1000,
+        },
+        enrollmentDeps(),
+      );
+      return res.json({ ok: true, data });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(`${SALES_OUTREACH_API_PREFIX}/enrollment/verify`, guard("migration"), async (req, res) => {
+    try {
+      salesOutreachScopeQuerySchema.parse(req.query);
+      const body = salesOutreachEnrollmentVerifySchema.parse(req.body);
+      await connect();
+      return res.json({ ok: true, data: await verifyEnrollment({ actor: outreachActorOf(res).actor, run_key: body.run_key }, enrollmentDeps()) });
     } catch (error) {
       return fail(req, res, error);
     }
