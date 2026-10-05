@@ -47,13 +47,13 @@ export function minutesAfter(iso: string, minutes: number): string {
   return new Date(Date.parse(iso) + minutes * 60_000).toISOString();
 }
 
-export function period(id: string, workflow: OutreachWorkflow, startedAt: string, startKind: PeriodStartKind, endedAt: string | null = null, priority: string | null = null): EnginePolicyPeriod {
-  return { period_id: id, workflow, priority_raw: priority ?? (workflow === "new" ? "0" : workflow === "quoted" ? "1" : null), start_kind: startKind, started_at: startedAt, ended_at: endedAt };
+export function period(id: string, workflow: OutreachWorkflow, startedAt: string, startKind: PeriodStartKind, endedAt: string | null = null, priority?: string | null): EnginePolicyPeriod {
+  return { period_id: id, workflow, priority_raw: priority !== undefined ? priority : workflow === "new" ? "0" : workflow === "quoted" ? "1" : null, start_kind: startKind, started_at: startedAt, ended_at: endedAt };
 }
 
 /** Sequential periods: each ends when the next starts. */
 export function periods(...list: Array<[id: string, workflow: OutreachWorkflow, startedAt: string, startKind: PeriodStartKind, priority?: string]>): EnginePolicyPeriod[] {
-  return list.map(([id, workflow, startedAt, startKind, priority], i) => period(id, workflow, startedAt, startKind, list[i + 1]?.[2] ?? null, priority ?? null));
+  return list.map(([id, workflow, startedAt, startKind, priority], i) => period(id, workflow, startedAt, startKind, list[i + 1]?.[2] ?? null, priority));
 }
 
 let seq = 0;
