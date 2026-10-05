@@ -10,6 +10,7 @@ import {
   SALES_OUTREACH_REP_DAY_PROJECTION_INDEXES,
 } from "./projections";
 import { getSalesOutreachSubjectModel, SALES_OUTREACH_SUBJECT_INDEXES } from "./subjects";
+import { getRingCentralRepSmsEvidenceModel, RINGCENTRAL_REP_SMS_EVIDENCE_INDEXES } from "./repSmsEvidence";
 
 /**
  * Every collection the Sales Outreach Desk owns, with its declared indexes. The index build script
@@ -27,4 +28,6 @@ export const SALES_OUTREACH_MODEL_REGISTRY = [
   { name: "SalesOutreachProjection", model: getSalesOutreachProjectionModel, indexes: SALES_OUTREACH_PROJECTION_INDEXES },
   { name: "SalesOutreachRepDayProjection", model: getSalesOutreachRepDayProjectionModel, indexes: SALES_OUTREACH_REP_DAY_PROJECTION_INDEXES },
   { name: "SalesOutreachEnrollmentRun", model: getSalesOutreachEnrollmentRunModel, indexes: SALES_OUTREACH_ENROLLMENT_RUN_INDEXES },
+  // S3 (SRV-5): rep SMS capture evidence (RINGCENTRAL-CAPTURE §5, IMPLEMENTATION-PLAN §4.7).
+  { name: "RingCentralRepSmsEvidence", model: getRingCentralRepSmsEvidenceModel, indexes: RINGCENTRAL_REP_SMS_EVIDENCE_INDEXES },
 ] as const;
