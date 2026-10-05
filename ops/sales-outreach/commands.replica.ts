@@ -68,7 +68,7 @@ async function main() {
     await Model.createIndexes();
   }
   const db = mongoose.connection.useDb(database, { useCache: true }).db!;
-  for (const name of ["form_leads", "call_leads", "number_lead_attachments", "rep_identity_links", "granot_observations", "contact_numbers"]) await db.createCollection(name);
+  for (const name of ["form_leads", "call_leads", "rep_identity_links", "granot_observations", "contact_numbers"]) await db.createCollection(name);
 
   const ownerCsi = csiOperatorActor("sod-commands-replica");
   const owner = { role: "owner" as const, actor: ownerCsi, agent_id: null };

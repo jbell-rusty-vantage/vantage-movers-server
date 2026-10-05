@@ -97,7 +97,7 @@ export class ContextBuilder {
     this.links.push(reviewedLink(agentId, extension, undefined, extra));
     return this;
   }
-  /** Attaches a new Lead to `numberId` and, unless `subject` is null, enrolls it. */
+  /** Links a new Lead to `numberId` and, unless `subject` is null, enrolls it. */
   lead(numberId: string, subject: SubjectFacts | null = subjectFacts()): { key: DeskLeadKey; subject: SubjectFacts | null } {
     const key = `FormLead:${newId()}` as DeskLeadKey;
     this.attached.set(numberId, [...(this.attached.get(numberId) ?? []), key]);
@@ -113,7 +113,7 @@ export class ContextBuilder {
     return this;
   }
   build(): DerivationContext {
-    return { links: this.links, attached_leads: this.attached, subjects: this.subjects, restrictions: this.restrictions, numbers_by_e164: this.numbers };
+    return { links: this.links, linked_leads: this.attached, subjects: this.subjects, restrictions: this.restrictions, numbers_by_e164: this.numbers };
   }
 }
 

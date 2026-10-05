@@ -4,8 +4,8 @@ import { resolveRepIdentityAt, type TemporalRepLink } from "../salesIntelligence
 /**
  * Who on our side took or made a call: the user party of a Call Interaction and the Agent its
  * extension resolves to through the Rep Identity Link effective at the call time. Reads only.
- * Shared by the Number timeline, the All Numbers call summary (`last_call.rc_extension_id`) and the
- * All Numbers reads, so they agree on the party and the name.
+ * Shared by the All Numbers call summary (`last_call.rc_extension_id`) and the All Numbers reads,
+ * so they agree on the party and the name.
  */
 export type CallPartyLike = { role: string; connected?: boolean | null; extension_id?: string | null; extension_number?: string | null };
 
@@ -15,34 +15,7 @@ export function callUserParty<P extends CallPartyLike>(row: { parties?: readonly
   return parties.find((p) => p.role === "user" && p.connected && p.extension_id) ?? parties.find((p) => p.role === "user" && p.extension_id) ?? null;
 }
 
-/**
- * The Vantage user on a call, through the Rep Identity Link effective at the call time. Only a
- * reviewed sales-rep link names an Agent; anything else keeps the extension and says why.
- */
-export type CallRepAttribution = {
-  status: "reviewed" | "unreviewed" | "excluded_role" | "no_extension";
-  agent_id: string | null;
-  agent_name: string | null;
-  extension_id: string | null;
-  extension_number: string | null;
-};
 export type RepLinkLean = TemporalRepLink & { agent_name_snapshot?: string | null };
-
-/** Pure: the rep of one call from the page's Rep Identity Links. */
-export function callRepAttribution(
-  row: { parties?: readonly CallPartyLike[] | null; provider_account_id: string; started_at: Date | string },
-  links: readonly RepLinkLean[],
-): CallRepAttribution {
-  const party = callUserParty(row);
-  if (!party?.extension_id) return { status: "no_extension", agent_id: null, agent_name: null, extension_id: null, extension_number: null };
-  const extension = { extension_id: party.extension_id, extension_number: party.extension_number ?? null };
-  const resolution = resolveRepIdentityAt(links, row.provider_account_id, party.extension_id, new Date(row.started_at));
-  if (resolution.status === "reviewed") {
-    const link = links.find((l) => String(l._id) === resolution.link_id) ?? null;
-    return { status: "reviewed", agent_id: resolution.agent_id, agent_name: link?.agent_name_snapshot ?? null, ...extension };
-  }
-  return { status: resolution.status === "excluded_role" ? "excluded_role" : "unreviewed", agent_id: null, agent_name: null, ...extension };
-}
 
 /**
  * The Agent name of one extension at one instant, for All Numbers rows (CONTRACT §2 `last_call`).

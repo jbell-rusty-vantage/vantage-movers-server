@@ -123,32 +123,6 @@ export async function publishCaptureProjectionWakeup(
 }
 
 /**
- * Post-commit wake-up for the `attachment-lead:` job the Granot lifecycle processor
- * enqueues after it commits a Lead EntityChange (`attachment/leadTrigger.ts`). Same topic
- * and payload as `publishCaptureProjectionWakeup` (`{ job_id }`; the consumer routes by the
- * job row's stage). A no-op in tests and off Vercel (`shouldPublishSalesIntelligenceQueue`).
- * Failure is logged, never thrown: the durable Lead-change scan hits the same dedupe key.
- */
-export async function publishLeadAttachmentWakeup(
-  jobId: string,
-  deps: PublishDependencies = {},
-): Promise<{ published: boolean; error_code: "publish_failed" | null }> {
-  const shouldPublish = deps.shouldPublish ?? shouldPublishSalesIntelligenceQueue;
-  if (!shouldPublish()) return { published: false, error_code: null };
-  try {
-    await (deps.send ?? queueSend)(salesIntelligenceQueueTopic(), { job_id: jobId });
-    return { published: true, error_code: null };
-  } catch (error) {
-    logger.error({
-      msg: "sales_intelligence.queue.lead_attachment_wakeup_failed",
-      jobId,
-      errorName: error instanceof Error ? error.name : "Error",
-    });
-    return { published: false, error_code: "publish_failed" };
-  }
-}
-
-/**
  * Wake-ups for jobs that became runnable without being newly enqueued.
  *
  * Every durable job needs exactly one thing to start promptly: a message. The

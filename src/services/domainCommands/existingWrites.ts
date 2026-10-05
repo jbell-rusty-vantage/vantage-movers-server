@@ -51,7 +51,7 @@ import {
   recordCancellationDailyOperationsFact,
 } from "../dailyOperations/recordDomainFacts";
 import { finalizeSheetSync, finalizeSheetSyncDelete } from "../sheetSync";
-import { wakeLeadAttachmentsAfterLeadCommand } from "../salesIntelligence/attachment/leadTrigger";
+
 import { wakeLeadLinksAfterLeadCommand } from "../numberActivity/leadLinkJobs";
 import {
   BOOKED_LEAD_CHANGE_PATHS,
@@ -182,9 +182,8 @@ export async function runExistingCreateFormLead(input: {
         // Post-commit, bounded and non-throwing: mint the Contact Number promptly. A reused
         // (duplicate) submission committed no change, so it wakes nothing.
         if (!pending.reusedExistingLead) {
-          const wake = { target: { model: "FormLead", id: pending.lead._id.toString() }, change_ids: changeIds.map(String) };
-          // Both are bounded and never throw; All Numbers' lead link rides the same change ids.
-          await Promise.all([wakeLeadAttachmentsAfterLeadCommand(wake), wakeLeadLinksAfterLeadCommand(wake)]);
+          // Bounded and never throws: the Lead's `lead_link` job mints its number and links it.
+          await wakeLeadLinksAfterLeadCommand({ target: { model: "FormLead", id: pending.lead._id.toString() }, change_ids: changeIds.map(String) });
         }
       }
     },
@@ -330,12 +329,8 @@ export async function runExistingUpdateSourceOwnedLead(input: {
       try {
         await finalizeSheetSync(pending);
       } finally {
-        const wake = { target: { model: input.lead_model, id: input.lead_id }, change_ids: changeIds.map(String) };
         // The lead link refreshes for either Lead model (its snapshot shows name, Job Number, rep and state).
-        await Promise.all([
-          input.lead_model === "FormLead" ? wakeLeadAttachmentsAfterLeadCommand(wake) : Promise.resolve(),
-          wakeLeadLinksAfterLeadCommand(wake),
-        ]);
+        await wakeLeadLinksAfterLeadCommand({ target: { model: input.lead_model, id: input.lead_id }, change_ids: changeIds.map(String) });
       }
     },
   });

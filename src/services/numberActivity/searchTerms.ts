@@ -2,7 +2,7 @@
  * One cap and one owner for `contact_numbers.search_terms` (14 §6).
  *
  * `search_terms` is what makes a Contact Number findable by customer name,
- * Job Number and agent name (`buildNumberSearchFilter`). Three writers used to
+ * Job Number and agent name (the All Numbers `q`). Three writers used to
  * maintain it under two different caps: the attachment rebuild and the durable
  * rebuild filled it to fifty from the attached Leads, then the next inbound or
  * outbound call on the number shifted the list down to twenty and dropped the
@@ -11,12 +11,13 @@
  * refresh or an Owner rebuild restored the set.
  *
  * Contract:
- *  - `rebuildAttachmentSearchTerms` and `recountNumber` own the set. They see
- *    every edge, so they may replace it wholesale, bounded by `MAX_SEARCH_TERMS`.
- *  - Capture (`applyRollupDelta`) may only *add* an observed caller-ID name.
+ *  - The All Numbers lead-link recompute (`leadLink.ts`) owns the set: caller-ID
+ *    names, then the Lead name, Job Number and rep of `lead` and `other_leads`,
+ *    replaced wholesale and bounded by `MAX_SEARCH_TERMS`.
+ *  - Capture (`observeOnNumber` in `persistInteraction.ts`) may only *add* an observed caller-ID name.
  *    It never truncates, never reorders, and never evicts a term it did not
  *    write. At the cap it declines the addition; `provider_names` still records
- *    the name, and the owning rebuild seeds terms from `provider_names`, so the
+ *    the name, and the owning recompute seeds terms from `provider_names`, so the
  *    name is not lost — only deferred.
  */
 export const MAX_SEARCH_TERMS = 50;

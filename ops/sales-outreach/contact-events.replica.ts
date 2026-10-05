@@ -37,7 +37,7 @@ async function main() {
   const { connectMongo, withTransaction } = await import("../../src/db.js");
   const { getCallInteractionModel } = await import("../../src/models/CallInteraction.js");
   const { getRepIdentityLinkModel } = await import("../../src/models/RepIdentityLink.js");
-  const { getNumberLeadAttachmentModel } = await import("../../src/models/NumberLeadAttachment.js");
+
   const { getContactNumberModel } = await import("../../src/models/ContactNumber.js");
   const { getSalesIntelligenceJobModel } = await import("../../src/models/SalesIntelligenceJob.js");
   const { getSalesIntelligenceSyncStateModel } = await import("../../src/models/SalesIntelligenceSyncState.js");
@@ -59,7 +59,7 @@ async function main() {
   for (const Model of [
     getCallInteractionModel(),
     getRepIdentityLinkModel(),
-    getNumberLeadAttachmentModel(),
+
     getContactNumberModel(),
     getSalesIntelligenceJobModel(),
     getSalesIntelligenceSyncStateModel(),
@@ -85,7 +85,9 @@ async function main() {
     agent_id: alice, agent_name_snapshot: "Alice", rc_account_id: account, rc_extension_id: "101", role_kind: "sales_rep", status: "reviewed",
     effective_from: new Date("2026-01-01T00:00:00Z"), reviewed_at: new Date("2026-01-01T00:00:00Z"), reviewed_by: "owner",
   });
-  await getNumberLeadAttachmentModel().create({ contact_number_id: number, lead_ref: { model: "FormLead", id: leadId }, state: "attached", certainty: "exact" });
+  // All Numbers: the call credits the number's current Lead.
+  await getContactNumberModel().create({ _id: number, e164: "+15550100000", digits_reversed: "00001005551", first_observed_at: activation, last_activity_at: activation,
+    lead: { model: "FormLead", id: leadId, received_at: activation, state: "open" }, lead_link: { source: "automatic", set_at: activation } });
   await models.getSalesOutreachSubjectModel().create({
     _id: subjectId, lead_model: "FormLead", lead_id: leadId,
     enrollment: { cohort_id: "c1", kind: "pilot", enrolled_at: activation, activation_at: activation, manifest_hash: null },

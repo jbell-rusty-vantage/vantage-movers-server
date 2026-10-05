@@ -164,10 +164,6 @@
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/sales-intelligence-attachment-refresh",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/sales-intelligence-webhook-subscription",
       "schedule": "15 6 * * *"
     },

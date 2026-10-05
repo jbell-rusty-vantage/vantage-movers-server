@@ -81,15 +81,12 @@ function classify(result: { status: number; json: { code?: string } | null }): O
   return "reached";
 }
 
-/** The interim contract (`docs/server-admin-slimming/evidence/S-NUM-CONTRACT.md`): no other admin route may exist. */
+/** All Numbers + Accounts (`all-numbers/CONTRACT.md` §4) plus coverage, settings, live and messages: no other admin route may exist. */
 const INTERIM_ADMIN_ROUTES = [
   "GET /live", "GET /coverage", "GET /settings", "PATCH /settings",
-  "GET /numbers", "GET /numbers/:id", "GET /numbers/:id/timeline", "POST /numbers/:id/rebuild",
-  "GET /attachments", "POST /attachments/attach", "POST /attachments/:id/reject", "POST /attachments/:id/detach",
-  "GET /reps", "GET /reps/:id", "POST /reps", "POST /reps/propose", "POST /reps/:id/review",
+  "GET /numbers", "GET /numbers/lead-search", "GET /numbers/:id", "POST /numbers/:id/lead",
+  "GET /accounts", "POST /accounts/suggest", "POST /accounts/:extension_id/agent",
   "GET /nudges", "POST /nudges/preview", "POST /nudges",
-  // All Numbers + Accounts (all-numbers CONTRACT §4).
-  "GET /numbers/lead-search", "POST /numbers/:id/lead", "GET /accounts", "POST /accounts/suggest", "POST /accounts/:extension_id/agent",
 ];
 
 test("interim access matrix: every Sales Intelligence admin route × Owner / Admin / rep (REP_ACCESS on) / rep (off)", { timeout: 120_000 }, async () => {
@@ -140,8 +137,7 @@ test("a validly signed rep reaches the route and is refused there; tampered, uns
   const saved = { ...process.env };
   env({ rep: true });
   let searches = 0;
-  const admin = createSalesIntelligenceAdminRouter({ connect: async () => {}, search: (async () => { searches++; return { as_of: "x", coverage: {}, data: {} }; }) as never,
-    allNumbers: (async () => { searches++; return { as_of: "x", data: {} }; }) as never });
+  const admin = createSalesIntelligenceAdminRouter({ connect: async () => {}, allNumbers: (async () => { searches++; return { as_of: "x", data: {} }; }) as never });
   const { base, close } = await serve([createSalesIntelligenceBoundaryRouter(), admin]);
   const url = `${CSI_ADMIN_PREFIX}/numbers`;
   try {

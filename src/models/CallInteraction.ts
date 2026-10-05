@@ -5,8 +5,6 @@ import {
   leadRef as leadRefSchema,
 } from "./salesIntelligence/common";
 import {
-  CONTACT_NUMBER_CLASSIFICATIONS,
-  CONTACT_ELIGIBILITY_STATES,
   CONTACT_NUMBER_KINDS,
 } from "../config/domain/salesIntelligence";
 // src/models/CallInteraction.ts

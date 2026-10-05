@@ -14,7 +14,7 @@ import { newYorkBusinessDay } from "../reads/businessDay";
 
 /**
  * Contact-event derivation (IMPLEMENTATION-PLAN §4.4, IMPL-06, IMPL-07, P07a–P07g). Pure: the caller
- * loads one source row and its context (rep identity links, number ↔ Lead attachments, desk subjects
+ * loads one source row and its context (rep identity links, the numbers' current Leads, desk subjects
  * with their policy periods, contact restrictions) and gets back the one `sales_outreach_contact_events`
  * row the source should have. No Mongo, no clock: re-deriving the same inputs gives the same row and
  * the same fingerprint, so the consumer and the sweep converge and an identical re-derivation writes
@@ -29,8 +29,8 @@ import { newYorkBusinessDay } from "../reads/businessDay";
  *   monitoring participants therefore earn nothing, and the call itself still earns its one credit;
  * - IMPL-06: credit only for a terminal call present in the Call Log; webhook-only is
  *   `awaiting_confirmation`, never a miss;
- * - IMPL-07: exactly one `attached` (non-rejected) Lead on the number, which is a desk subject active
- *   at contact time; several Leads are `ambiguous` (pending association), none is `none`;
+ * - IMPL-07 (All Numbers): the number's current Lead (`contact_numbers.lead`), when it is a desk subject
+ *   active at contact time; several Leads across an SMS's numbers are `ambiguous`, none is `none`;
  * - P07g: outbound at the verified start (a call crossing midnight belongs to its start date),
  *   answered inbound at the reviewed handler's answer, SMS at the confirmed sent time;
  * - restricted contact (an active restriction on the number covering the channel at contact time)
@@ -109,8 +109,8 @@ export type RestrictionInterval = Readonly<{ channels: readonly ("call" | "text"
 
 export type DerivationContext = Readonly<{
   links: readonly TemporalRepLink[];
-  /** Contact number id → the distinct Leads attached to it (`state: attached`, certainty ≠ rejected). */
-  attached_leads: ReadonlyMap<string, readonly DeskLeadKey[]>;
+  /** Contact number id → the number's current Lead (`contact_numbers.lead`; at most one per number). */
+  linked_leads: ReadonlyMap<string, readonly DeskLeadKey[]>;
   /** Lead key → its desk subject (absent when the Lead is not enrolled). */
   subjects: ReadonlyMap<DeskLeadKey, SubjectFacts>;
   /** Contact number id → restriction intervals. */
@@ -239,7 +239,7 @@ function periodAt(subject: SubjectFacts, at: Date): SubjectPeriodFacts | null {
 /** IMPL-07 over the source's contact numbers. */
 export function associate(numberIds: readonly string[], at: Date, context: DerivationContext): Association {
   const leads = new Set<DeskLeadKey>();
-  for (const id of numberIds) for (const lead of context.attached_leads.get(id) ?? []) leads.add(lead);
+  for (const id of numberIds) for (const lead of context.linked_leads.get(id) ?? []) leads.add(lead);
   if (leads.size === 0) return { state: "none", subject: null, workflow: null };
   if (leads.size > 1) return { state: "ambiguous", subject: null, workflow: null };
   const subject = context.subjects.get([...leads][0]!) ?? null;

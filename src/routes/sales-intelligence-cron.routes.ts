@@ -9,11 +9,9 @@ import {
   type DrainSummary,
 } from "../services/numberActivity/captureProjectionWorker";
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
-import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
 import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repair";
 import { runLeadLinkRecovery } from "../services/numberActivity/leadLinkJobs";
 import { retireLegacyCsiJobs } from "../services/salesIntelligence/jobs";
-import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { callLogReconcileConfig, runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import { settleProvisionalFromStore } from "../services/numberActivity/settleProvisional";
 import { runCallLogSweepOnce } from "../services/numberActivity/callLogSweep";
@@ -69,21 +67,15 @@ export type SalesIntelligenceCronRouteDeps = {
   runCallLogSweep?: typeof runCallLogSweepOnce;
   runReceiptRecovery?: typeof runReceiptWatermarkRecovery;
   drainCaptureProjection?: (max: number, deadlineMs: number) => Promise<DrainSummary>;
-  /** Additional per-stage recovery steps (e.g. the CSI-04 rebuild drain), each run only when its own flag is on. */
+  /** Additional per-stage recovery steps (e.g. the All Numbers lead-link step), each run only when its own flag is on. */
   extraRecovery?: Array<{ name: string; flag: Parameters<typeof csiFlag>[0]; run: () => Promise<unknown> }>;
   captureWorkerDeps?: CaptureProjectionWorkerDeps;
   /** Jobs drained per invocation (default 200, at least the recovery scan's per-run creation capacity in steady state). */
   captureDrainMax?: number;
   /** Wall-clock budget for the drain so a long invocation checkpoints instead of being killed mid-job (default 40 s). */
   captureDrainDeadlineMs?: number;
-  /** CSI-04: rebuild jobs drained under `SALES_INTELLIGENCE_ENABLED` (the Owner command that creates them is behind the same flag). */
-  drainRebuild?: (max: number, deadlineMs: number) => Promise<RebuildDrainSummary>;
-  rebuildWorkerDeps?: RebuildWorkerDeps;
-  rebuildDrainMax?: number;
   /** CSI-04: daily directory snapshot sync under `SALES_INTELLIGENCE_DIRECTORY_SYNC`. */
   runDirectorySync?: typeof runDirectorySyncOnce;
-  runAttachmentRefresh?: typeof runAttachmentRefreshOnce;
-  drainAttachmentRefresh?: typeof drainAttachmentRefreshJobs;
   /** All Numbers: Lead-change scan + `lead_link` drain (job recovery, under `ENABLED`). */
   runLeadLinkRecovery?: typeof runLeadLinkRecovery;
   runRetention?: typeof runRetentionOnce;
@@ -116,7 +108,6 @@ export const CSI_CRON_PATHS = {
   callLogIsync: "/api/cron/sales-intelligence-call-log-isync",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
-  attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
   webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
   subscriptionHealth: "/api/cron/sales-intelligence-subscription-health",
   repSmsPoll: "/api/cron/sales-intelligence-rep-sms-poll",
@@ -136,15 +127,10 @@ export function createSalesIntelligenceCronRouter(
       drainCaptureProjectionJobs(max, deps.captureWorkerDeps, { deadlineMs }));
   const drainMax = deps.captureDrainMax ?? 200;
   const drainDeadlineMs = deps.captureDrainDeadlineMs ?? 40_000;
-  const drainRebuild =
-    deps.drainRebuild ??
-    ((max: number, deadlineMs: number) => drainRebuildJobs(max, deps.rebuildWorkerDeps, { deadlineMs }));
-  const rebuildMax = deps.rebuildDrainMax ?? 100;
   const directorySync = deps.runDirectorySync ?? runDirectorySyncOnce;
   const retireLegacyJobs = deps.retireLegacyJobs ?? (() => retireLegacyCsiJobs());
   const extraRecovery: NonNullable<SalesIntelligenceCronRouteDeps["extraRecovery"]> = deps.extraRecovery ?? [
     { name: "nudge_repair", flag: "NUDGE_ENABLED" as const, run: () => (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() },
-    { name: "attachment_refresh", flag: "ATTACHMENT_REFRESH" as const, run: () => (deps.drainAttachmentRefresh ?? drainAttachmentRefreshJobs)() },
     // All Numbers: the Lead-change scan and the `lead_link` drain, under the Numbers switch.
     { name: "lead_link", flag: "ENABLED" as const, run: () => (deps.runLeadLinkRecovery ?? runLeadLinkRecovery)() },
   ];
@@ -271,9 +257,8 @@ export function createSalesIntelligenceCronRouter(
 
   router.all(CSI_CRON_PATHS.jobRecovery, requireCronAuth, async (_req, res) => {
     const captureOn = flag("CAPTURE_WEBHOOK");
-    const rebuildOn = flag("ENABLED");
     const extras = extraRecovery.filter((step) => flag(step.flag));
-    if (!captureOn && !rebuildOn && extras.length === 0) {
+    if (!captureOn && extras.length === 0) {
       return res.json({ ok: true, skipped: true, reason: "disabled" });
     }
     try {
@@ -303,7 +288,6 @@ export function createSalesIntelligenceCronRouter(
       let receiptRecovery: RecoverySummary | null = null;
       let capture: DrainSummary | null = null;
       let provisionalSettle: unknown = null;
-      let rebuild: RebuildDrainSummary | null = null;
       if (captureOn) {
         receiptRecovery = await recovery();
         capture = await drainCapture(drainMax, drainDeadlineMs);
@@ -315,9 +299,6 @@ export function createSalesIntelligenceCronRouter(
               limit: 50,
             })))();
         }
-      }
-      if (rebuildOn) {
-        rebuild = await drainRebuild(rebuildMax, drainDeadlineMs);
       }
       const extraResults: Record<string, unknown> = {};
       for (const step of extras) {
@@ -351,7 +332,6 @@ export function createSalesIntelligenceCronRouter(
               deadline_reached: capture.deadline_reached,
             }
           : null,
-        rebuild,
         provisional_settle: provisionalSettle,
         ...extraResults,
       });
@@ -384,13 +364,6 @@ export function createSalesIntelligenceCronRouter(
     }
   });
 
-  router.all(CSI_CRON_PATHS.attachmentRefresh, requireCronAuth, async (_req, res) => {
-    if (!flag("ATTACHMENT_REFRESH")) return res.json({ ok: true, skipped: true, reason: "disabled" });
-    try {
-      await connect();
-      return res.json({ ok: true, ...(await (deps.runAttachmentRefresh ?? runAttachmentRefreshOnce)()) });
-    } catch { return res.status(500).json({ ok: false, error: "Attachment refresh failed" }); }
-  });
   router.all(CSI_CRON_PATHS.nudgeRepair, requireCronAuth, async (_req, res) => {
     if (!flag("ENABLED") || !flag("NUDGE_ENABLED")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try { await connect(); return res.json({ ok: true, summary: await (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() }); }

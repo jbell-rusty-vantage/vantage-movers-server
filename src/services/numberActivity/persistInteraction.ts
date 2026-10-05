@@ -45,8 +45,9 @@ import type {
  *
  * One Mongo transaction per observation carries: alias reservation (the
  * account-scoped unique identity fence), interaction insert or revision-CAS
- * update, merge-with-proof tombstones, Contact Number rollups, the CSI audit
- * invalidation row and durable downstream job intent. Either all of it
+ * update, merge-with-proof tombstones, the Contact Number observation, the CSI audit
+ * invalidation row, the All Numbers call summary of every touched number and the
+ * durable lead-link job intent. Either all of it
  * commits or none of it does. No provider or network call happens inside.
  *
  * Identical semantic input is detected before any write and returns
@@ -317,12 +318,6 @@ async function applyOnce(
     now,
     session,
   );
-  for (const other of others) {
-    if (other.contact_number_id) {
-      await applyRollupDelta(other.contact_number_id, toProjection(other), null, now, session);
-    }
-  }
-
   const revision = canonical ? canonical.projection_revision + 1 : 1;
   const stored = {
     ...outcome.next,
@@ -421,16 +416,8 @@ async function applyOnce(
   for (const other of others) if (other.contact_number_id) touchedNumbers.add(String(other.contact_number_id));
   for (const id of [...touchedNumbers].sort()) await recomputeCallSummary(id, session);
 
-  const captureSource = input.kind === "webhook" ? undefined : input.source;
-  const jobs = await scheduleDownstream(outcome, String(interactionId), number, session, now, captureSource);
-  // A call that joined a number (a new number, a new call, a call re-pointed here) can bring the
-  // Call Lead it created into the number's link: recompute it in a `lead_link` job.
-  const joined = number.id && (!canonical?.contact_number_id || !canonical.contact_number_id.equals(number.id) || others.length > 0);
-  if (number.id && joined && outcome.next.call_log_state !== "provisional" && csiFlag("ENABLED")) {
-    const job = leadLinkNumberJobInput(String(number.id), `call:${String(interactionId)}`);
-    await enqueueCsiJob(job, session, now);
-    jobs.push(job.dedupe_key);
-  }
+  const joined = Boolean(number.id && (!canonical?.contact_number_id || !canonical.contact_number_id.equals(number.id) || others.length > 0));
+  const jobs = await scheduleDownstream(outcome, String(interactionId), number, joined, session, now);
 
   return {
     interaction_id: String(interactionId),
@@ -498,10 +485,9 @@ async function upsertContactNumber(
     next.external_endpoint_kind === "external" &&
     next.direction !== "Internal" &&
     next.call_log_state !== "provisional";
-  if (!eligible) {
-    if (prevNumberId && prev) await applyRollupDelta(prevNumberId, prev, null, now, session);
-    return { id: null, created: false };
-  }
+  // A call leaving its number (no longer eligible, re-pointed, merged away) needs no write here:
+  // the touched numbers' summaries are recomputed from their calls after the interaction is written.
+  if (!eligible) return { id: null, created: false };
   const existing = await ContactNumber.findOne({ e164 }).session(session);
   const externalName = next.parties.find((p) => p.role === "external")?.name_raw ?? null;
   if (!existing) {
@@ -513,98 +499,37 @@ async function upsertContactNumber(
           national_ten: toNationalTenDigit(e164),
           digits_reversed: reverseDigits(e164),
           country: "US",
-          kind: "external",
-          classification: "unknown",
-          contact_eligibility: { state: "allowed" },
           provider_names: externalName ? [externalName] : [],
           search_terms: externalName ? [externalName.toLowerCase()] : [],
           first_observed_at: next.started_at,
           last_activity_at: next.started_at,
-          rollups: rollupsFor(next),
           // Born under All Numbers v2: this transaction computes its call summary and lead link.
           summary_version: CONTACT_NUMBER_SUMMARY_VERSION,
         },
       ],
       { session },
     );
-    const id = created[0]!._id;
-    if (prevNumberId && prev && !prevNumberId.equals(id)) {
-      await applyRollupDelta(prevNumberId, prev, null, now, session);
-    }
-    return { id, created: true };
+    return { id: created[0]!._id, created: true };
   }
-  if (prevNumberId && !prevNumberId.equals(existing._id) && prev) {
-    await applyRollupDelta(prevNumberId, prev, null, now, session);
-    await applyRollupDelta(existing._id, null, next, now, session, externalName);
-  } else {
-    await applyRollupDelta(existing._id, prevNumberId ? prev : null, next, now, session, externalName);
-  }
+  await observeOnNumber(existing._id, next, session, externalName);
   return { id: existing._id, created: false };
 }
 
-function rollupsFor(projection: InteractionProjection) {
-  return {
-    interactions_total: 1,
-    inbound_total: projection.direction === "Inbound" ? 1 : 0,
-    outbound_total: projection.direction === "Outbound" ? 1 : 0,
-    human_conversations_total: 0,
-    last_inbound_at: projection.direction === "Inbound" ? projection.started_at : null,
-    last_outbound_at: projection.direction === "Outbound" ? projection.started_at : null,
-    last_human_conversation_at: null,
-    attached_lead_count: 0,
-    candidate_lead_count: 0,
-    recordings_total: projection.recordings.length,
-  };
-}
-
-/** The rollup fields capture owns incrementally (data spec §8). */
-export type CaptureRollups = {
-  interactions_total: number;
-  inbound_total: number;
-  outbound_total: number;
-  recordings_total: number;
-  last_inbound_at: Date | null;
-  last_outbound_at: Date | null;
-};
-
 /**
- * Pure delta: removes `prev`'s contribution and adds `next`'s. A null `prev` is a new
- * canonical interaction on this Number; a null `next` is one leaving it (merged away,
- * re-pointed or no longer eligible). Counts never go below zero: a Number written before
- * `recordings_total` existed reads 0 until the rebuild sweep, and must not go negative
- * when an older interaction leaves it.
+ * The capture-owned facts of a number a call lands on: caller-ID names, the search-term addition and
+ * the activity window. Counts live in the All Numbers call summary (`callSummary.ts`), recomputed from
+ * the calls, so nothing here is incremental. No `revision` bump: that revision fences the Owner's
+ * lead-link commands, and concurrent writers of this row all run in transactions, where a write to a
+ * row another transaction changed since the snapshot aborts with `WriteConflict` and is retried.
  */
-export function captureRollupDelta(
-  current: Partial<CaptureRollups> | null | undefined,
-  prev: Pick<InteractionProjection, "direction" | "recordings"> | null,
-  next: Pick<InteractionProjection, "direction" | "recordings" | "started_at"> | null,
-): CaptureRollups {
-  const count = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
-  const dir = (row: typeof prev, direction: string) => (row?.direction === direction ? 1 : 0);
-  const out: CaptureRollups = {
-    interactions_total: Math.max(0, count(current?.interactions_total) - (prev ? 1 : 0) + (next ? 1 : 0)),
-    inbound_total: Math.max(0, count(current?.inbound_total) - dir(prev, "Inbound") + dir(next, "Inbound")),
-    outbound_total: Math.max(0, count(current?.outbound_total) - dir(prev, "Outbound") + dir(next, "Outbound")),
-    recordings_total: Math.max(0, count(current?.recordings_total) - (prev?.recordings.length ?? 0) + (next?.recordings.length ?? 0)),
-    last_inbound_at: current?.last_inbound_at ?? null,
-    last_outbound_at: current?.last_outbound_at ?? null,
-  };
-  if (next?.direction === "Inbound") out.last_inbound_at = laterOf(out.last_inbound_at, next.started_at);
-  if (next?.direction === "Outbound") out.last_outbound_at = laterOf(out.last_outbound_at, next.started_at);
-  return out;
-}
-
-/** Applies the difference between `prev` and `next` for one number under revision CAS. */
-async function applyRollupDelta(
+async function observeOnNumber(
   numberId: mongoose.Types.ObjectId,
-  prev: InteractionProjection | null,
-  next: InteractionProjection | null,
-  now: Date,
+  next: InteractionProjection,
   session: ClientSession,
-  providerName: string | null = null,
+  providerName: string | null,
 ) {
   const ContactNumber = getContactNumberModel();
-  const row = await ContactNumber.findById(numberId).session(session).lean();
+  const row = await ContactNumber.findById(numberId, { provider_names: 1, search_terms: 1, last_activity_at: 1, first_observed_at: 1 }).session(session).lean();
   if (!row) {
     // Not a race: the referenced Contact Number row does not exist. Fail
     // without burning the retry budget on a conflict that cannot resolve.
@@ -613,43 +538,28 @@ async function applyRollupDelta(
       "Interaction references a Contact Number row that does not exist",
     );
   }
-  const rollups = captureRollupDelta(row.rollups, prev, next);
-  const providerNames = [...row.provider_names];
+  const providerNames = [...(row.provider_names ?? [])];
   if (providerName && !providerNames.includes(providerName)) {
     providerNames.push(providerName);
     while (providerNames.length > 10) providerNames.shift();
   }
-  // Bounded display cache (02 §17); the rebuild paths own the full term set,
+  // Bounded display cache (02 §17); the lead-link recompute owns the full term set,
   // so capture only ever adds and never evicts a lead-derived term (14 §6).
-  const searchTerms = addObservedSearchTerm(row.search_terms, providerName);
-  const result = await ContactNumber.updateOne(
-    { _id: numberId, revision: row.revision },
+  const searchTerms = addObservedSearchTerm(row.search_terms ?? [], providerName);
+  await ContactNumber.updateOne(
+    { _id: numberId },
     {
-      // Dotted paths for the capture-owned rollups only, never the whole `rollups`
-      // object: the attachment counts and the human-conversation rollups belong
-      // to the attachment refresh and the rebuild. Every rollup writer runs in a
-      // transaction, and the revision CAS fences the read-modify-write writers
-      // (capture, rebuild) against each other. See "Number rollups" in the capture doc.
       $set: {
-        "rollups.interactions_total": rollups.interactions_total,
-        "rollups.inbound_total": rollups.inbound_total,
-        "rollups.outbound_total": rollups.outbound_total,
-        "rollups.recordings_total": rollups.recordings_total,
-        "rollups.last_inbound_at": rollups.last_inbound_at,
-        "rollups.last_outbound_at": rollups.last_outbound_at,
         provider_names: providerNames,
         search_terms: searchTerms,
-        last_activity_at: laterOf(row.last_activity_at, next?.started_at ?? null) ?? row.last_activity_at,
+        last_activity_at: laterOf(row.last_activity_at, next.started_at) ?? row.last_activity_at,
         // Only ever lowered: a backfill that processes a later call first
-        // must not pin a late date (LP-06, spec §14.2). The rebuild restores
-        // the exact earliest canonical interaction when evidence moves away.
-        first_observed_at: earlierOf(row.first_observed_at, next?.started_at ?? null) ?? row.first_observed_at,
+        // must not pin a late date (LP-06, spec §14.2).
+        first_observed_at: earlierOf(row.first_observed_at, next.started_at) ?? row.first_observed_at,
       },
-      $inc: { revision: 1 },
     },
     { session, runValidators: true },
   );
-  if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
 }
 
 export function earlierOf(a: Date | null | undefined, b: Date | null | undefined): Date | null {
@@ -665,42 +575,23 @@ function laterOf(a: Date | null | undefined, b: Date | null): Date | null {
 }
 
 /**
- * Durable downstream intent, in the same transaction as the projection: the
- * attachment refresh of a newly created Contact Number, so every Lead on that
- * phone gets its edge. Keys are per Number (and per interaction for backfill),
- * so replays dedupe. Capture nominates no other stage.
+ * Durable downstream intent, in the same transaction as the projection: a call that joined a number
+ * (a new number, a new call, a call re-pointed or merged onto it) can bring the Call Lead it created
+ * into the number's link, so the number gets a `lead_link` job keyed by the call. A provisional row
+ * drives nothing until it settles (CC-04). Capture nominates no other stage.
  */
 async function scheduleDownstream(
   outcome: ProjectionOutcome,
   interactionId: string,
   number: NumberRef,
+  joined: boolean,
   session: ClientSession,
   now: Date,
-  captureSource?: CaptureSource,
 ): Promise<string[]> {
-  // R2: a mid-call snapshot drives no downstream work until it settles (CC-04).
-  if (outcome.next.call_log_state === "provisional") return [];
-  if (captureSource === "backfill") {
-    if (!number.id) return [];
-    const key = `csi:backfill:attachment:number:${String(number.id)}:interaction:${interactionId}`;
-    await enqueueCsiJob({ dedupe_key: key, stage: "attachment_refresh", subject_key: `number:${String(number.id)}`,
-      input_revision: 1, input_refs: [interactionId], priority: -100 }, session, now);
-    return [key];
-  }
-  if (!number.created || !number.id) return [];
-  const key = `csi:attachment_refresh:number:${String(number.id)}:1`;
-  await enqueueCsiJob(
-    {
-      dedupe_key: key,
-      stage: "attachment_refresh",
-      subject_key: `number:${String(number.id)}`,
-      input_revision: 1,
-      input_refs: [interactionId],
-    },
-    session,
-    now,
-  );
-  return [key];
+  if (outcome.next.call_log_state === "provisional" || !number.id || !joined || !csiFlag("ENABLED")) return [];
+  const job = leadLinkNumberJobInput(String(number.id), `call:${interactionId}`);
+  await enqueueCsiJob(job, session, now);
+  return [job.dedupe_key];
 }
 
 function summarize(

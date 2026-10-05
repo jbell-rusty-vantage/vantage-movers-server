@@ -14,6 +14,7 @@ import { commandAccountAgent, readAccounts } from "../../src/services/salesIntel
 import { csiOperatorActor, CsiError } from "../../src/services/salesIntelligence/auth";
 import { allNumbersQuerySchema } from "../../src/validation/v1/allNumbers";
 import { runNumbersV2Migration } from "./migrate";
+import { runNumbersV2Cleanup } from "./cleanup";
 
 /**
  * All Numbers v2 replica proof on the csi01 loopback replica (all-numbers CONTRACT §2–§5, phase A):
@@ -313,4 +314,23 @@ test("All Numbers v2: migration, capture summary, lead link, reads, Owner comman
   assert.equal(await db.collection("rep_identity_links").countDocuments({ rc_extension_id: "e101", effective_to: null }), 0);
   const stillNamed = await readNumberDetail(String(N1._id));
   assert.equal(stillNamed!.data.calls.at(-1)!.agent_name, "Dana Rep", "a call keeps the Agent of its time after the change");
+
+  // ── Phase B cleanup: dry run writes nothing; apply unsets the retired fields, drops their indexes and the attachments ──
+  await db.collection("contact_numbers").createIndex({ kind: 1, last_activity_at: -1, _id: -1 }, { name: "contact_number_kind_activity" });
+  const cleanupDry = await runNumbersV2Cleanup(["--target=testvantagemovers_allnumbers"], quiet) as { plan: Record<string, unknown> };
+  assert.equal(cleanupDry.plan.numbers_with_retired_fields, 5, "the five seeded legacy rows, the purged one included");
+  assert.deepEqual(cleanupDry.plan.indexes_to_drop, ["contact_number_kind_activity"]);
+  assert.equal(cleanupDry.plan.attachments, 3);
+  assert.equal(await db.collection("contact_numbers").countDocuments({ kind: { $exists: true } }), 5, "dry run unsets nothing");
+  const cleaned = await runNumbersV2Cleanup(["--target=testvantagemovers_allnumbers", "--apply"], quiet) as { after: Record<string, unknown> };
+  assert.equal(cleaned.after.numbers_with_retired_fields, 0);
+  assert.equal(await db.collection("contact_numbers").countDocuments({ $or: [{ rollups: { $exists: true } }, { contact_eligibility: { $exists: true } }, { classification: { $exists: true } }] }), 0);
+  assert.equal((await db.listCollections({ name: "number_lead_attachments" }).toArray()).length, 0);
+  assert.ok(!(await db.collection("contact_numbers").indexes()).some((index) => index.name === "contact_number_kind_activity"));
+  const again2 = await runNumbersV2Cleanup(["--target=testvantagemovers_allnumbers", "--apply"], quiet) as { applied: Record<string, unknown> };
+  assert.deepEqual(again2.applied, { indexes_dropped: [], numbers_unset: 0, attachments_dropped: false }, "a second cleanup finds nothing");
+  const afterCleanup = await listAllNumbers(allNumbersQuerySchema.parse({}));
+  assert.equal(afterCleanup.data.counts.all, 7, "reads work on cleaned rows");
+  const rerun = await runNumbersV2Migration(["--target=testvantagemovers_allnumbers", "--apply", "--all"], quiet);
+  assert.equal(rerun.failures_total, 0, "the migration still runs after the cleanup (nothing left to seed)");
 });

@@ -8,6 +8,8 @@ import { changeTriggersLeadLink, leadLinkFingerprint } from "./leadLinkJobs";
 import { allNumbersFilter, decodeAllNumbersCursor, displayPhone, encodeAllNumbersCursor, leadSearchFilters, toNumberRow } from "./allNumbers";
 import { canMessage, strongestCandidate } from "../salesIntelligence/repIdentity/accounts";
 import { CsiError } from "../salesIntelligence/auth";
+import { enqueueDeskWakeForLeadLink, movedLeads } from "../salesOutreach/capture/leadLinkWake";
+import { parseSearchTerm } from "./numberSearch";
 
 const id = () => new mongoose.Types.ObjectId();
 const at = (iso: string) => new Date(iso);
@@ -161,4 +163,23 @@ test("Accounts: strongest unique name candidate and the Message availability", (
   const link = { status: "reviewed" as const, role_kind: "sales_rep" as const, nudge_channels_allowed: ["team_messaging"], rc_team_messaging_person_id: "77" };
   assert.equal(canMessage({ extension: { ...extension, extension_number: null }, link, account: "acc", nudgesOn: true, config }), true, "Team Messaging through the link");
   assert.equal(canMessage({ extension: { ...extension, extension_number: null }, link: { ...link, nudge_channels_allowed: [] }, account: "acc", nudgesOn: true, config }), false);
+});
+
+test("search term: long digits are exact-or-suffix, short digits a suffix, anything else a term prefix", () => {
+  assert.deepEqual(parseSearchTerm("(555) 010-0200"), { kind: "e164", e164: "+15550100200", reversed: "0020010555" });
+  assert.deepEqual(parseSearchTerm(" 0200 "), { kind: "suffix", reversed: "0020" });
+  assert.deepEqual(parseSearchTerm("Smith"), { kind: "term", term: "smith" });
+  assert.deepEqual(parseSearchTerm("12"), { kind: "term", term: "12" });
+  assert.deepEqual(parseSearchTerm("   "), { kind: "none" });
+});
+
+test("desk wake: only Leads that entered or left the link move; nothing is enqueued when the desk wants no evidence", async () => {
+  const a = { model: "FormLead", id: "a" }, b = { model: "CallLead", id: "b" }, c = { model: "FormLead", id: "c" };
+  assert.deepEqual(movedLeads({ before: { lead: a, leads: [a, b] }, after: { lead: b, leads: [b, a] } }), [], "a swap of lead and other Lead moves no membership");
+  assert.deepEqual(movedLeads({ before: { lead: a, leads: [a, b] }, after: { lead: c, leads: [c, b] } }), [a, c]);
+  const session = {} as never;
+  assert.deepEqual(await enqueueDeskWakeForLeadLink({ number_id: "n", changed: false, revision: 2, before: { lead: a, leads: [a] }, after: { lead: c, leads: [c] } },
+    session, new Date(), { wanted: async () => { throw new Error("not consulted"); } }), []);
+  assert.deepEqual(await enqueueDeskWakeForLeadLink({ number_id: "n", changed: true, revision: 2, before: { lead: a, leads: [a] }, after: { lead: c, leads: [c] } },
+    session, new Date(), { wanted: async () => false }), []);
 });

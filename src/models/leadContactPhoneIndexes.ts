@@ -1,10 +1,9 @@
 import type { CsiIndex } from "./salesIntelligence/common";
 
 /**
- * The Lead phone paths `phoneEvidence` (CSI-05 `attachment/sources.ts`) turns
- * into Contact Number evidence, and the indexes that let the attachment worker
- * ask for them by key instead of walking the Lead corpus once per number
- * (14 §3).
+ * The Lead phone paths the All Numbers lead link matches a Contact Number on
+ * (`numberActivity/leadLink.ts`), and the indexes that let it ask for them by key
+ * instead of walking the Lead corpus once per number (14 §3).
  *
  * Every path stores the ten-digit NANP form produced by
  * `normalizePhoneNumberForMatch`, which is exactly `contact_numbers.national_ten`.
@@ -12,9 +11,8 @@ import type { CsiIndex } from "./salesIntelligence/common";
  * order instead of buffering and sorting the union in memory.
  *
  * A Granot snapshot that carries only a raw, unnormalized `phone_number` is
- * deliberately not indexed here: raw provider formatting is not a key. Those
- * leads are still attached through the lead-driven `attachment-lead:` job,
- * which the attachment watermark sweep raises for every Lead.
+ * deliberately not indexed here: raw provider formatting is not a key, so such
+ * a Lead is not a lead-link candidate until its snapshot is normalized.
  */
 export const FORM_LEAD_ATTACHMENT_PHONE_PATHS = [
   "normalized_phone_number",

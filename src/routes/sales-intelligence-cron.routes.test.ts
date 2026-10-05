@@ -116,11 +116,10 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
     },
     captureDrainMax: 7,
     captureDrainDeadlineMs: 1234,
-    drainRebuild: async (max, deadlineMs) => {
-      calls.push(`rebuild:${max}:${deadlineMs}`);
-      return { claimed: 1, completed: 1, failed: 0, lease_lost: 0, deadline_reached: false };
+    runLeadLinkRecovery: async () => {
+      calls.push("lead-link");
+      return { scanned: 2, nominated: 1, outcomes: { completed: 1 } };
     },
-    rebuildDrainMax: 3,
     retireLegacyJobs: async () => {
       calls.push("retire");
       return { retired: 2, stages: { analysis: 1, outreach_ensure: 1 } };
@@ -218,17 +217,18 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       recoveryResult = recoverySummary({ scanned: 3, created: 1, existing: 2, watermark_after: "2026-09-17T13:59:55.000Z" });
       const recovered = await call(CSI_CRON_PATHS.jobRecovery, auth);
       assert.equal((recovered.body.receipt_recovery as RecoverySummary).created, 1);
-      assert.equal(recovered.body.rebuild, null, "rebuild drain is gated by SALES_INTELLIGENCE_ENABLED");
+      assert.equal(recovered.body.lead_link, undefined, "the All Numbers lead-link step is gated by SALES_INTELLIGENCE_ENABLED");
 
-      // CSI-04: rebuild drain under the master flag, alone or alongside capture.
+      // All Numbers: the Lead-change scan and lead-link drain run under the master flag, alone or alongside capture.
       calls.length = 0;
       flags.CAPTURE_WEBHOOK = false;
       flags.ENABLED = true;
-      const rebuildOnly = await call(CSI_CRON_PATHS.jobRecovery, auth);
-      assert.equal(rebuildOnly.body.skipped, false);
-      assert.equal(rebuildOnly.body.receipt_recovery, null);
-      assert.deepEqual(rebuildOnly.body.rebuild, { claimed: 1, completed: 1, failed: 0, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "rebuild:3:1234"]);
+      const leadLinkOnly = await call(CSI_CRON_PATHS.jobRecovery, auth);
+      assert.equal(leadLinkOnly.body.skipped, false);
+      assert.equal(leadLinkOnly.body.receipt_recovery, null);
+      assert.deepEqual(leadLinkOnly.body.lead_link, { scanned: 2, nominated: 1, outcomes: { completed: 1 } });
+      assert.equal("rebuild" in leadLinkOnly.body, false, "the Number rollup rebuild drain is retired");
+      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "lead-link"]);
 
       // CSI-04: directory sync cron — flag-off, lease_held, then a run.
       calls.length = 0;
@@ -284,8 +284,8 @@ test("vercel.json registers the CSI-03 crons and the queue consumer trigger (a h
   // cadence buys fresher capture at lower total provider cost.
   assert.equal(schedules.get(CSI_CRON_PATHS.callLogReconcile), "3-59/5 * * * *");
   assert.equal(schedules.get(CSI_CRON_PATHS.jobRecovery), "* * * * *");
-  // The durable backstop for Lead attachment wake-ups now that the Outreach ensure minute cron is gone.
-  assert.equal(schedules.get(CSI_CRON_PATHS.attachmentRefresh), "* * * * *");
+  // All Numbers phase B: the attachment refresh cron left with the attachments; job recovery runs the lead link.
+  assert.equal(schedules.has("/api/cron/sales-intelligence-attachment-refresh"), false);
   assert.equal(
     manifest.functions["api/index.ts"]?.maxDuration,
     CRON_FUNCTION_MAX_DURATION_SECONDS,
@@ -407,7 +407,7 @@ test("job recovery fences retired stages first and keeps recovering when the swe
   let failSweep = false;
   const router = createSalesIntelligenceCronRouter({
     connect: async () => {},
-    flag: ((name: string) => name === "ATTACHMENT_REFRESH") as never,
+    flag: ((name: string) => name === "ENABLED") as never,
     refreshCoverage: async () => {},
     ensureLeadMessageIndex: async () => {},
     recordDeployment: async () => {},
@@ -416,7 +416,7 @@ test("job recovery fences retired stages first and keeps recovering when the swe
       if (failSweep) throw new Error("mongo down");
       return { retired: 1, stages: { transcription: 1 } };
     },
-    drainAttachmentRefresh: async () => { order.push("attachment"); return { outcomes: [] }; },
+    runLeadLinkRecovery: async () => { order.push("lead-link"); return { scanned: 0, nominated: 0, outcomes: {} }; },
   });
   try {
     await withServer(router, async (call) => {
@@ -428,7 +428,7 @@ test("job recovery fences retired stages first and keeps recovering when the swe
       const second = await call(CSI_CRON_PATHS.jobRecovery, auth);
       assert.equal(second.status, 200);
       assert.equal(second.body.retired_jobs, null);
-      assert.deepEqual(order, ["retire", "attachment", "retire", "attachment"]);
+      assert.deepEqual(order, ["retire", "lead-link", "retire", "lead-link"]);
     });
   } finally {
     process.env = saved;

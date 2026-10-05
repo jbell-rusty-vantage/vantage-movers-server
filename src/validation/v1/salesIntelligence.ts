@@ -219,15 +219,6 @@ export const csiRepInputSchema = z
   })
   .strict()
   .refine((v) => v.effective_to === null || new Date(v.effective_to) > new Date(v.effective_from));
-export const csiRepCommandSchema = z
-  .object({
-    ...base,
-    link: csiRepInputSchema,
-    status: z.enum(["reviewed", "retired"]),
-    ...reason,
-  })
-  .strict();
-export const csiRepCreateSchema = z.object({ ...base, link: csiRepInputSchema, ...reason }).strict();
 export const csiRepProposeSchema = z.object({
   ...base, rc_account_id: csiTextSchema, directory_snapshot_id: csiIdSchema,
   after_extension_id: csiTextSchema.optional(), limit: z.number().int().min(1).max(100).default(50), ...reason,

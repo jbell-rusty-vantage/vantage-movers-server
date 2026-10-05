@@ -6,7 +6,7 @@ import { logger } from "../../logger";
 import { getEntityChangeModel } from "../../models/EntityChange";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { CsiError } from "../salesIntelligence/auth";
-import { ensureFormLeadContactNumber } from "../salesIntelligence/attachment/formLeadNumber";
+import { ensureFormLeadContactNumber } from "./formLeadNumber";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput } from "../salesIntelligence/jobs";
 import { payloadHash } from "../salesIntelligence/transactions";
 import { loadLeadRow, numbersForLead, recomputeLeadLink, type LeadLinkChange, type LeadModel, type LeadRow } from "./leadLink";

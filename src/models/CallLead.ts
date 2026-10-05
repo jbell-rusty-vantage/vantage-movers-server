@@ -232,7 +232,7 @@ export const CALL_LEAD_S08_INDEXES = [
   },
 ] as const;
 
-// CSI attachment reverse lookup (14 §3): one keyed read per Contact Number.
+// All Numbers lead-link candidate lookup (14 §3): one keyed read per Contact Number.
 for (const { key, ...options } of CALL_LEAD_ATTACHMENT_INDEXES) {
   CallLeadSchema.index(key as Record<string, 1>, options);
 }

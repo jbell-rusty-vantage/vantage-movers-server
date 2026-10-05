@@ -116,16 +116,14 @@ Flags are read by `csiFlag` in `src/config/domain/salesIntelligence.ts`: `SALES_
 
 | Name | What it gates |
 | --- | --- |
-| `SALES_INTELLIGENCE_ENABLED` | Owner Numbers/Accounts routes, MCP history reads, rebuild drain, retention. |
+| `SALES_INTELLIGENCE_ENABLED` | Owner All Numbers/Accounts routes, MCP history reads, the All Numbers lead link (capture's `lead_link` nomination, Lead wakes, the job-recovery scan and drain), retention. |
 | `SALES_INTELLIGENCE_CAPTURE_WEBHOOK` | Webhook fan-out, receipt recovery, capture drain, `call_log_refresh` and `rep_sms_sync` drains, subscription cron. Rep SMS capture (and the `rep_sms` subscription step) is additionally gated by the desk control `controls.rep_sms_capture_enabled`, never by an env flag. |
 | `SALES_INTELLIGENCE_CAPTURE_CALL_LOG` | Call Log reconcile, nightly sweep and the staffed-hours minute ISync lane. |
 | `SALES_INTELLIGENCE_DIRECTORY_SYNC` | Daily directory snapshot. |
-| `SALES_INTELLIGENCE_ATTACHMENT_REFRESH` | Number↔Lead attachment refresh, Lead attachment wake-ups, attachment commands. |
-| `SALES_INTELLIGENCE_AUTO_ATTACH` | Sole-match automatic attach. Off keeps Owner commands only. |
+
 | `SALES_INTELLIGENCE_NUDGE_ENABLED` | RingCentral Accounts messages and their repair. |
 | `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE` | Subscription cron may create the owned all-direction subscription. |
-| `SALES_INTELLIGENCE_FORM_LEAD_NUMBERS` | A non-duplicate Form Lead's phone creates a Contact Number. |
-| `SALES_INTELLIGENCE_NUMBERS_HAS_CALLS_DEFAULT` | Numbers list hides form-only Numbers unless `include_form_only`. |
+| `SALES_INTELLIGENCE_FORM_LEAD_NUMBERS` | A non-duplicate Form Lead's phone creates a Contact Number (in the Lead's `lead_link` job). |
 | `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS` | Granot lifecycle Lead planner: Granot's latest rep replaces an automatic `receiver_agent` (`granotLifecycle/leadDesiredState.ts`). |
 | `SALES_INTELLIGENCE_REP_ACCESS` | A signed rep passes the CSI boundary; every retained route then refuses it. |
 
@@ -260,6 +258,8 @@ The 2026-10 server/admin slimming removed every reader of the names below. Statu
 **`BLOB_READ_WRITE_TOKEN`:** no server reader remains, but the one-time purge (`ops/slimming`) reads it from the local `.env` to back up and delete the `conversations/` Blob objects. Delete it from Vercel after the purge has run and its backup is verified.
 
 **Retired Sales Intelligence flags:** `SALES_INTELLIGENCE_{MEDIA_ENABLED,STT_ENABLED,EXTRACTION_ENABLED,EXACT_EVIDENCE_VERIFICATION,PROVIDER_READS,MOVE_ASSESSMENT,CITATION_HANDLES,CASE_FILE,OUTREACH_ENSURE,ATTENTION_MANIFEST,ATTENTION_V2,ATTENTION_EVOLUTION,LEAD_PROGRESS,PROGRESS_PLAN,PRIORITY5_CLOSURE,RECEIVER_ASSIGNMENT,OVERVIEW,TIMELINE_V2,LIVE_SSE}`.
+
+**Retired by All Numbers phase B (delete from Vercel after phase B is deployed):** `SALES_INTELLIGENCE_ATTACHMENT_REFRESH`, `SALES_INTELLIGENCE_AUTO_ATTACH`, `SALES_INTELLIGENCE_NUMBERS_HAS_CALLS_DEFAULT`. No code reads them; the lead link runs under `SALES_INTELLIGENCE_ENABLED`.
 
 **Retired Sales Intelligence settings:** `SALES_INTELLIGENCE_BACKFILL_DAYS`, `SALES_INTELLIGENCE_FIRST_ACTION_DUE_STAFFED_MINUTES`, `SALES_INTELLIGENCE_MISSED_CALLBACK_DUE_STAFFED_MINUTES`, `SALES_INTELLIGENCE_GOING_COLD_STAFFED_MINUTES`.
 

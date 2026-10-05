@@ -36,7 +36,7 @@ test("vercel.json registers queue/v2beta topic sales-intelligence-events*", () =
 
 test("only retained stages have a consumer", () => {
   assert.deepEqual(Object.keys(defaultStageHandlers()).sort(),
-    ["attachment_refresh", "call_log_refresh", "capture_projection", "lead_link", "nudge_repair", "outreach_contact_change", "outreach_evaluate", "outreach_lead_change", "outreach_rep_day", "rebuild", "rep_sms_sync"]);
+    ["call_log_refresh", "capture_projection", "lead_link", "nudge_repair", "outreach_contact_change", "outreach_evaluate", "outreach_lead_change", "outreach_rep_day", "rep_sms_sync"]);
   for (const stage of CSI_RETIRED_JOB_STAGES) assert.equal((CSI_JOB_STAGES as readonly string[]).includes(stage), false, stage);
 });
 
@@ -72,11 +72,11 @@ test("a retained stage is dispatched to its handler and never retired", async ()
   const jobId = String(new mongoose.Types.ObjectId());
   let retireCalls = 0;
   const outcome = await dispatchCsiWakeup({ job_id: jobId }, {
-    loadJob: async () => ({ stage: "attachment_refresh" }),
+    loadJob: async () => ({ stage: "lead_link" }),
     retire: async () => { retireCalls++; return { retired: 0, stages: {} }; },
-    handlers: { attachment_refresh: async (id) => `handled:${id}` },
+    handlers: { lead_link: async (id) => `handled:${id}` },
   });
-  assert.deepEqual(outcome, { status: "dispatched", job_id: jobId, stage: "attachment_refresh", outcome: `handled:${jobId}` });
+  assert.deepEqual(outcome, { status: "dispatched", job_id: jobId, stage: "lead_link", outcome: `handled:${jobId}` });
   assert.equal(retireCalls, 0);
 });
 

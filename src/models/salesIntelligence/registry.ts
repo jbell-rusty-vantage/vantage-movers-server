@@ -55,10 +55,6 @@ import {
   CALL_INTERACTION_INDEXES,
 } from "../CallInteraction";
 import {
-  getNumberLeadAttachmentModel,
-  NUMBER_LEAD_ATTACHMENT_INDEXES,
-} from "../NumberLeadAttachment";
-import {
   getRepIdentityLinkModel,
   REP_IDENTITY_LINK_INDEXES,
 } from "../RepIdentityLink";
@@ -137,11 +133,6 @@ export const CSI_MODEL_REGISTRY = [
     name: "CallInteraction",
     model: getCallInteractionModel,
     indexes: CALL_INTERACTION_INDEXES,
-  },
-  {
-    name: "NumberLeadAttachment",
-    model: getNumberLeadAttachmentModel,
-    indexes: NUMBER_LEAD_ATTACHMENT_INDEXES,
   },
   {
     name: "RepIdentityLink",

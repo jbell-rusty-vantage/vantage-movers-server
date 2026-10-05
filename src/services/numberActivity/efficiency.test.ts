@@ -8,7 +8,7 @@ import {
   FORM_LEAD_ATTACHMENT_PHONE_PATHS,
   leadPhoneMatchClauses,
 } from "../../models/leadContactPhoneIndexes";
-import { numberLookupDigits } from "../salesIntelligence/attachment/refresh";
+import { numberLookupDigits } from "./leadLink";
 import { MAX_SEARCH_TERMS, addObservedSearchTerm, boundSearchTerms } from "./searchTerms";
 
 /**
@@ -53,7 +53,7 @@ test("the owning rebuild bounds, dedupes and lowercases the whole set", () => {
   assert.deepEqual(boundSearchTerms(["", "   "]), [], "blank terms are not searchable");
 });
 
-// --- 14 §3: the attachment scan is a keyed lookup, not a corpus walk -------
+// --- 14 §3: the lead-link candidate lookup is a keyed lookup, not a corpus walk -------
 
 test("a number scan asks the phone index for its own join key (14 §3)", () => {
   assert.deepEqual(numberLookupDigits({ national_ten: "5550100200", e164: "+15550100200" }), ["5550100200"],
@@ -64,7 +64,7 @@ test("a number scan asks the phone index for its own join key (14 §3)", () => {
     "no key means no scan, never an unfiltered walk of the corpus");
 });
 
-test("every contact path phoneEvidence reads is a lookup clause on both models", () => {
+test("every Lead contact path is a lookup clause on both models", () => {
   const form = leadPhoneMatchClauses("FormLead", ["5550100200"]);
   assert.deepEqual(form, FORM_LEAD_ATTACHMENT_PHONE_PATHS.map((p) => ({ [p]: "5550100200" })));
 
@@ -84,8 +84,7 @@ test("every selective number-search prefix carries the listing sort (14 §8)", (
   for (const name of [
     "contact_number_digits_activity",
     "contact_number_terms_activity",
-    "contact_number_classification_activity_id",
-    "contact_number_kind_activity",
+    "contact_number_last_activity",
   ]) {
     const key = keyOf(CONTACT_NUMBER_INDEXES, name) as Record<string, number> | undefined;
     assert.ok(key, `${name} is registered`);
@@ -94,7 +93,7 @@ test("every selective number-search prefix carries the listing sort (14 §8)", (
   }
 });
 
-test("the timeline source reads by number with the total order in the index (14 §9)", () => {
+test("the All Numbers calls of a number read by number with the total order in the index (14 §9)", () => {
   assert.deepEqual(keyOf(CALL_INTERACTION_INDEXES, "call_interaction_number_started_id"), {
     contact_number_id: 1,
     started_at: -1,

@@ -7,17 +7,11 @@ import { requireApiSecret } from "../middleware/requireApiSecret";
 import { computeAdminActorSignature } from "../services/operationsRegistry/trustedActor";
 import { CsiError } from "../services/salesIntelligence/auth";
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
-import { CSI_ADMIN_PREFIX, createSalesIntelligenceAdminRouter, isInterimNumbersQuery } from "./sales-intelligence-admin.routes";
+import { CSI_ADMIN_PREFIX, createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 
 const numberId = randomBytes(12).toString("hex");
 const asOf = "2026-10-05T14:00:00.000Z";
 
-test("interim Numbers queries are recognised by their keys; a `view` always means All Numbers", () => {
-  assert.equal(isInterimNumbersQuery({ sort: "last_activity", direction: "desc", limit: "50" }), true);
-  assert.equal(isInterimNumbersQuery({ attachment: "unlinked" }), true);
-  assert.equal(isInterimNumbersQuery({ limit: "50", q: "0200" }), false);
-  assert.equal(isInterimNumbersQuery({ view: "waiting", sort: "x" }), false);
-});
 
 test("All Numbers + Accounts routes (CONTRACT §4): Owner only, strict queries and bodies, envelopes, error mapping", { timeout: 20000 }, async () => {
   const saved = { ...process.env };
@@ -36,10 +30,8 @@ test("All Numbers + Accounts routes (CONTRACT §4): Owner only, strict queries a
   app.use(createSalesIntelligenceBoundaryRouter());
   app.use(createSalesIntelligenceAdminRouter({
     connect: async () => undefined,
-    search: async (query) => { calls.push(["interim", query]); return { as_of: asOf, coverage: {}, data: { items: [], cursor: null } } as never; },
-    detail: async (id) => (id === numberId ? ({ as_of: asOf, coverage: {}, data: { id, kind: "external" } } as never) : null),
     allNumbers: async (query) => { calls.push(["list", query]); return { as_of: asOf, data: { items: [], cursor: null, counts: { all: 0, waiting: 0 } } }; },
-    numberDetailV2: async (id) => (id === numberId ? ({ as_of: asOf, data: { number: { id }, other_leads: [], excluded_leads: [], calls: [], more_calls: false } } as never) : null),
+    numberDetail: async (id) => (id === numberId ? ({ as_of: asOf, data: { number: { id }, other_leads: [], excluded_leads: [], calls: [], more_calls: false } } as never) : null),
     leadSearch: async (q) => { calls.push(["search", q]); return { as_of: asOf, data: { items: [] } }; },
     numberLead: async (input) => {
       calls.push(["lead", { body: input.body, key: input.idempotency_key, kind: input.actor.kind }]);
@@ -76,7 +68,7 @@ test("All Numbers + Accounts routes (CONTRACT §4): Owner only, strict queries a
     }
     assert.deepEqual(calls, []);
 
-    // §4.1: defaults, strict query; the interim keys still reach the interim list.
+    // §4.1: defaults, strict query; the interim list's keys are refused (phase B removed it).
     const listed = await call("GET", numbers);
     assert.equal(listed.status, 200);
     assert.deepEqual(Object.keys(listed.body).sort(), ["as_of", "data", "ok"]);
@@ -94,8 +86,7 @@ test("All Numbers + Accounts routes (CONTRACT §4): Owner only, strict queries a
     assert.equal((await call("GET", `${numbers}/${numberId}?scope=production`)).status, 200);
     assert.equal((await call("POST", `${CSI_ADMIN_PREFIX}/accounts/suggest?scope=production`, { body: {} })).status, 200);
     assert.equal((await call("GET", `${numbers}?scope=historical`)).status, 403);
-    await call("GET", `${numbers}?sort=last_activity&direction=desc&limit=50`);
-    assert.equal(calls.at(-1)![0], "interim");
+    assert.equal((await call("GET", `${numbers}?sort=last_activity&direction=desc&limit=50`)).status, 400);
 
     // §4.4 is matched before `/numbers/:id`.
     const searched = await call("GET", `${numbers}/lead-search?q=J-100`);
@@ -104,12 +95,10 @@ test("All Numbers + Accounts routes (CONTRACT §4): Owner only, strict queries a
     assert.equal((await call("GET", `${numbers}/lead-search`)).status, 400);
     assert.equal((await call("GET", `${numbers}/lead-search?q=a&x=1`)).status, 400);
 
-    // §4.2: phase A serves both details side by side.
+    // §4.2.
     const detail = await call("GET", `${numbers}/${numberId}`);
     assert.equal(detail.status, 200);
-    const data = detail.body.data as Record<string, unknown>;
-    assert.deepEqual(data.number, { id: numberId });
-    assert.equal(data.kind, "external", "the interim detail fields are still there in phase A");
+    assert.deepEqual(detail.body.data, { number: { id: numberId }, other_leads: [], excluded_leads: [], calls: [], more_calls: false });
     assert.equal((await call("GET", `${numbers}/${"f".repeat(24)}`)).status, 404);
     assert.equal((await call("GET", `${numbers}/${numberId}?x=1`)).status, 400);
 

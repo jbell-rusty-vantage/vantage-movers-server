@@ -1,18 +1,7 @@
 import { getMongoDatabaseName } from "./runtime";
 
 export const SALES_INTELLIGENCE_POLICY_VERSION = "csi-policy-v1" as const;
-export const CONTACT_NUMBER_CLASSIFICATIONS = [
-  "unknown",
-  "customer",
-  "company",
-  "non_customer",
-] as const;
-export const CONTACT_ELIGIBILITY_STATES = [
-  "allowed",
-  "temporarily_blocked",
-  "suppressed",
-  "unknown",
-] as const;
+/** Call endpoint kinds (`call_interactions.external_endpoint_kind`); only `external` creates a Contact Number. */
 export const CONTACT_NUMBER_KINDS = [
   "external",
   "company_did",
@@ -23,8 +12,8 @@ export const CONTACT_NUMBER_KINDS = [
 ] as const;
 /**
  * Durable job stages that may be enqueued, claimed and dispatched. Retained capabilities only:
- * provider capture, Call Log reconcile/refresh, directory, Number↔Lead attachment, Number
- * rebuild and the receipt-only repair of RingCentral Accounts messages.
+ * provider capture, Call Log reconcile/refresh, directory, the All Numbers lead link and the
+ * receipt-only repair of RingCentral Accounts messages.
  */
 export const CSI_JOB_STAGES = [
   "capture_projection",
@@ -32,10 +21,8 @@ export const CSI_JOB_STAGES = [
   // CC-08: targeted Call Log re-read of one telephony session after webhook hang-up.
   "call_log_refresh",
   "directory",
-  "attachment_refresh",
   // All Numbers (all-numbers CONTRACT §3): recompute the lead link of a Lead's numbers or of one number.
   "lead_link",
-  "rebuild",
   "nudge_repair",
   // Sales Outreach Desk (S3, SRV-6): derive `sales_outreach_contact_events` for one changed call/SMS.
   "outreach_contact_change",
@@ -70,6 +57,10 @@ export const CSI_RETIRED_JOB_STAGES = [
   "retention",
   "rep_identity_reevaluate",
   "move_assessment",
+  // All Numbers phase B: the Number↔Lead attachment refresh and the Number rollup rebuild left with
+  // the attachments and the rollups (the lead link and the v2 migration replace them).
+  "attachment_refresh",
+  "rebuild",
 ] as const;
 export function isRetainedCsiJobStage(stage: unknown): stage is CsiJobStage {
   return typeof stage === "string" && (CSI_JOB_STAGES as readonly string[]).includes(stage);
@@ -103,17 +94,13 @@ export const CSI_FLAGS = [
   "CAPTURE_WEBHOOK",
   "CAPTURE_CALL_LOG",
   "DIRECTORY_SYNC",
-  "ATTACHMENT_REFRESH",
-  "AUTO_ATTACH",
   "NUDGE_ENABLED",
   // CC-08: the daily webhook-subscription cron may create the all-direction
   // subscription when none owned exists. Off: it only renews/repairs owned ones.
   "WEBHOOK_AUTO_CREATE",
-  // Form Lead Contact Numbers: the `attachment-lead:` job creates the Contact Number for a
-  // non-duplicate Form Lead's submitted phone before attachment. Off: only calls create numbers.
+  // Form Lead Contact Numbers: the Lead's `lead_link` job creates the Contact Number for a
+  // non-duplicate Form Lead's submitted phone before it links it. Off: only calls create numbers.
   "FORM_LEAD_NUMBERS",
-  // S5c-NUMBERS: the Numbers list hides form-only Numbers (`has_calls = false`) unless `include_form_only`.
-  "NUMBERS_HAS_CALLS_DEFAULT",
   // S6-AGENT: Granot's latest rep replaces an automatic Lead `receiver_agent` (E3/E6). Read by the
   // Granot lifecycle Lead projection (`granotLifecycle/leadDesiredState.ts`); listed for the settings display.
   "RECEIVER_LATEST_WINS",

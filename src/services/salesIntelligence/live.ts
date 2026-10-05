@@ -9,7 +9,7 @@ import { csiFlag } from "../../config/domain/salesIntelligence";
  */
 export const CSI_LIVE_COLLECTIONS = [
   "sales_intelligence_audit_events",
-  "contact_numbers", "call_interactions", "number_lead_attachments",
+  "contact_numbers", "call_interactions",
   "sales_intelligence_contact_restrictions",
   "sales_intelligence_policy_versions", "sales_intelligence_policy_pointers",
   "rep_identity_links", "owner_rep_nudges", "sales_intelligence_sync_state",
@@ -19,7 +19,6 @@ export const CSI_LIVE_COLLECTIONS = [
  * coalesce to "other", which the client treats as "refetch everything" — a new collection is never
  * silently ignored. */
 export const CSI_LIVE_TOPICS: Readonly<Record<string, string>> = {
-  number_lead_attachments: "attachment",
   contact_numbers: "number", call_interactions: "number",
   sales_intelligence_contact_restrictions: "restriction",
   rep_identity_links: "rep", owner_rep_nudges: "nudge",

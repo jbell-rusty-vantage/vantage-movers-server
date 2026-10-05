@@ -39,7 +39,7 @@ export interface CallEvidenceFacts {
   initiator: { agent_id: string | null; identity: IdentityState };
   /** Inbound: the reviewed rep that actually answered/handled the call, if any. */
   handler: { agent_id: string | null; identity: IdentityState } | null;
-  /** IMPL-07: exactly one attached eligible subject at contact time. */
+  /** IMPL-07: the number's current Lead is an eligible subject at contact time. */
   association: AssociationState;
 }
 

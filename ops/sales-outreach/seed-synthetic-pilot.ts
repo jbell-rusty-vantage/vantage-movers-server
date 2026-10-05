@@ -10,7 +10,7 @@
  *   `createdAt` 3 s after the instant, `domain_revision` 1, an accepted Granot observation) covering New
  *   Day 1/3/4/6, Quoted with and without a selected date, Unassigned, Priority 3, an unmapped priority, a
  *   restricted number, a shared phone, a missing Job Number and one Lead outside the 90-day backfill scope;
- * - one Contact Number per distinct phone with an attached `number_lead_attachments` row per Lead;
+ * - one Contact Number per distinct phone, linked (All Numbers `lead` / `other_leads`) to its Leads;
  * - one active, unconfirmed `intelligence`-origin contact restriction on the restricted Lead's number.
  *
  * Refuses: a missing or non-`testvantagemovers_<alnum>` database, a non-loopback URI, a connection whose
@@ -72,7 +72,6 @@ const SEEDED_COLLECTIONS = [
   "rep_identity_links",
   "form_leads",
   "contact_numbers",
-  "number_lead_attachments",
   "sales_intelligence_contact_restrictions",
 ] as const;
 
@@ -116,7 +115,7 @@ const CASE_LABELS: Record<LeadCase, string> = {
   priority_3_discretion: "Priority 3 (discretion, no routine cadence)",
   unmapped_priority_9: "Unmapped accepted priority 9 (workflow none: No policy configured)",
   restricted_number: "New on a number with an active, unconfirmed intelligence-origin restriction (needs review)",
-  shared_phone: "Shared phone: two Leads, one Contact Number attached to both",
+  shared_phone: "Shared phone: two Leads, one Contact Number linked to both (the newest is its Lead)",
   missing_job_number: "New with no Job Number",
   not_enrolled_older: "Received 100 days ago with a past move date (outside the 90-day backfill scope: Not enrolled - older)",
 };
@@ -166,7 +165,7 @@ async function main() {
   const { Agent } = await import("../../src/models/Agent.js");
   const { getRepIdentityLinkModel } = await import("../../src/models/RepIdentityLink.js");
   const { getContactNumberModel } = await import("../../src/models/ContactNumber.js");
-  const { getNumberLeadAttachmentModel } = await import("../../src/models/NumberLeadAttachment.js");
+
   const { getSalesIntelligenceContactRestrictionModel } = await import("../../src/models/SalesIntelligenceContactRestriction.js");
   const { toE164, toNationalTenDigit, reverseDigits } = await import("../../src/services/numberActivity/phone.js");
   const { normalizePhoneNumberForMatch } = await import("../../src/utils/phone.js");
@@ -277,11 +276,10 @@ async function main() {
   });
   await db.collection("form_leads").insertMany(leads.map((l) => l.doc));
 
-  // --- Contact Numbers + attachments ----------------------------------------------------------------------
+  // --- Contact Numbers and their All Numbers lead link --------------------------------------------------
   const byPhone = new Map<string, typeof leads>();
   for (const lead of leads) byPhone.set(lead.normalizedPhone, [...(byPhone.get(lead.normalizedPhone) ?? []), lead]);
   const numbers: Array<{ _id: mongoose.Types.ObjectId; e164: string; lead_ids: string[] }> = [];
-  const attachments: Record<string, unknown>[] = [];
   for (const [normalizedPhone, attached] of byPhone) {
     const e164 = toE164(normalizedPhone);
     if (!e164) throw new Error(`phone ${normalizedPhone} has no E.164 form`);
@@ -292,29 +290,20 @@ async function main() {
     await db.collection("contact_numbers").insertOne(
       validated(getContactNumberModel(), stamp({
         _id, purged_at: null, revision: 1, e164, national_ten: toNationalTenDigit(e164), digits_reversed: reverseDigits(e164), country: "US",
-        kind: "external", classification: "unknown", classification_reason: null, classification_set_by: null, classification_set_at: null,
-        contact_eligibility: { state: "allowed", reason: null, until: null, evidence_ref: null, set_by: null, set_at: null },
         provider_names: [],
         search_terms: [...new Set(attached.flatMap((l) => [l.name.toLowerCase(), ...(l.jobNo ? [l.jobNo.toLowerCase()] : [])]))],
         first_observed_at: firstObserved, last_activity_at: lastObserved, created_via: "form_lead",
-        rollups: { attached_lead_count: attached.length },
+        // The automatic link: the newest Lead on the phone is the number's Lead, the rest are other Leads.
+        ...(() => {
+          const linked = [...attached].sort((a, b) => +b.receivedInstant - +a.receivedInstant).map((lead) => ({
+            model: "FormLead", id: lead._id, name: lead.name, job_no: lead.jobNo, receiver_agent_id: lead.agent?._id ?? null,
+            receiver_agent_name: lead.agent?.name ?? null, received_at: lead.receivedInstant, state: "open",
+          }));
+          return { lead: linked[0] ?? null, other_leads: linked.slice(1), lead_link: { source: "automatic", set_at: firstObserved, set_by: null, excluded: [] }, summary_version: 1 };
+        })(),
       }, firstObserved)),
     );
-    for (const lead of attached)
-      attachments.push(
-        validated(getNumberLeadAttachmentModel(), stamp({
-          _id: oid(`attachment:${e164}:${lead.spec.key}`), contact_number_id: _id, lead_ref: { model: "FormLead", id: lead._id },
-          state: "attached", certainty: "exact",
-          evidence: [{ source: "lead_phone_live", field_path: "form_leads.normalized_phone_number", observed_at: lead.receivedInstant }],
-          lead_snapshot: {
-            name: lead.name, job_no: lead.jobNo, source_label: "WordPress form", lead_timestamp: lead.receivedInstant,
-            receiver_agent_name: lead.agent?.name ?? null, refreshed_at: lead.receivedInstant,
-          },
-          revision: 1, auto_decision: { confidence: 1, reason: "synthetic pilot seed: Form Lead phone", decided_at: lead.receivedInstant },
-        }, lead.receivedInstant)),
-      );
   }
-  await db.collection("number_lead_attachments").insertMany(attachments);
 
   // --- One active, unconfirmed intelligence-origin restriction (P06c "needs review") ----------------------
   const restrictedLead = leads.find((l) => l.spec.case === "restricted_number")!;

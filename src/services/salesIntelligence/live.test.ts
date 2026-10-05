@@ -39,7 +39,7 @@ test('CSI live watches only Numbers and RingCentral Accounts collections',()=>{
   'intelligence_findings','intelligence_effects','intelligence_owner_assessments','sales_intelligence_owner_instructions','sales_intelligence_review_items']) {
   assert.equal((CSI_LIVE_COLLECTIONS as readonly string[]).includes(retired),false,retired);
  }
- assert.deepEqual([...new Set(Object.values(CSI_LIVE_TOPICS))].sort(),['attachment','nudge','number','rep','restriction']);
+ assert.deepEqual([...new Set(Object.values(CSI_LIVE_TOPICS))].sort(),['nudge','number','rep','restriction']);
 });
 
 test('CSI live topics map changed collections only, coalesce and de-duplicate',async()=>{
@@ -62,8 +62,8 @@ test('CSI live topics map changed collections only, coalesce and de-duplicate',a
   emit({ns:{db:'x',coll:'rep_identity_links'}});emit({ns:{db:'x',coll:'owner_rep_nudges'}});emit({ns:{db:'x',coll:'rep_identity_links'}});
   const change=await read(f=>f.reason==='change');
   assert.deepEqual(change.topics,['nudge','rep']);assert.equal(change.version,2);assert.equal(change.refetch,'all');
-  emit({ns:{db:'x',coll:'number_lead_attachments'}});
-  assert.deepEqual((await read(f=>f.reason==='change'&&f.topics.includes('attachment'))).topics,['attachment']);
+  emit({ns:{db:'x',coll:'sales_intelligence_contact_restrictions'}});
+  assert.deepEqual((await read(f=>f.reason==='change'&&f.topics.includes('restriction'))).topics,['restriction']);
   emit({ns:{db:'x',coll:'sales_intelligence_policy_pointers'}});
   assert.deepEqual((await read(f=>f.reason==='change'&&f.topics.includes('other'))).topics,['other']);
   // Nothing but the slug leaves the process: no id, phone number or provider body.

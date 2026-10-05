@@ -33,7 +33,7 @@ export async function loadSubjectPageContext(
   const refs = facts.map((f) => f.ref);
   // Sequential: the session may be inside a transaction, and a session runs one operation at a time.
   const reviewed = await store.reviewedRepIds(facts.flatMap((f) => (f.receiver_agent_id ? [f.receiver_agent_id] : [])), asOf, session);
-  const numbers = await store.attachedNumberIds(refs, session);
+  const numbers = await store.linkedNumberIds(refs, session);
   const uncertain = await store.priorityUncertainLeads(facts, session);
   const jobCounts = await store.jobNumberLeadCounts(facts.flatMap((f) => (f.normalized_job_no && !f.duplicate ? [f.normalized_job_no] : [])), session);
   return { as_of: asOf, reviewed_rep_ids: reviewed, numbers_by_lead: numbers, uncertain_leads: uncertain, job_number_counts: jobCounts };
@@ -56,7 +56,7 @@ export type SubjectSyncOutcome = Readonly<{
  * Brings one desk subject in line with its Lead's current facts, in the caller's transaction
  * (IMPLEMENTATION-PLAN §6.2 `outreach_lead_change`, enrollment apply, intake):
  * - subject facts from the Lead (received time via `leadInstant`, display, priority, IMPL-01
- *   assignment, IMPL-07 attached numbers);
+ *   assignment, IMPL-07 linked numbers);
  * - P05h eligibility and the P05d/P05e policy decision, from the persisted configuration only;
  * - the policy-period plan: close + open in this same session (one transaction), a repeated accepted
  *   priority or a replayed transition is a no-op, a closure is final;

@@ -26,7 +26,7 @@ async function main() {
   assert.equal(mongoose.connection.name, database);
   const Model = getSalesIntelligenceJobModel();
   await Model.createCollection(); await Model.createIndexes();
-  const input = { dedupe_key: "test:insert", stage: "attachment_refresh" as const, subject_key: "test:subject", input_revision: 1 };
+  const input = { dedupe_key: "test:insert", stage: "lead_link" as const, subject_key: "test:subject", input_revision: 1 };
   const now = new Date(Date.now() - 60_000);
   const first = await withTransaction(session => enqueueCsiJob(input, session, now));
   assert.equal(+first.createdAt, +now); assert.equal(+first.updatedAt, +now);
@@ -96,7 +96,7 @@ async function proveRetiredStageFence(
   const before = await collections();
   const now = new Date();
   // Start from a clean retained queue: main() leaves runnable retained rows (e.g. the `test:concurrent`
-  // attachment_refresh job), which an undirected claim below would rightly lease.
+  // lead_link job), which an undirected claim below would rightly lease.
   await Model.collection.updateMany(
     { status: { $in: ["pending", "leased", "retry", "paused"] } },
     { $set: { status: "completed", completed_at: now, lease_owner: null, leased_until: null } },
@@ -116,7 +116,7 @@ async function proveRetiredStageFence(
   assert.equal(await claimCsiJob("retained-worker"), null, "an undirected claim takes no retired row");
   // A late queue wake-up for a pending retired row: acknowledged and terminalized, no handler.
   let handled = 0;
-  const wake = await dispatchCsiWakeup({ job_id: String(pending._id) }, { handlers: { attachment_refresh: async () => { handled++; } } });
+  const wake = await dispatchCsiWakeup({ job_id: String(pending._id) }, { handlers: { lead_link: async () => { handled++; } } });
   assert.deepEqual(wake, { status: "retired", job_id: String(pending._id), stage: "analysis", retired: 1 });
   assert.equal(handled, 0);
   const swept = await retireLegacyCsiJobs({ now });

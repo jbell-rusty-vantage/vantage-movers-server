@@ -26,11 +26,8 @@ async function readMappingHygiene() {
     .findOne({}, { taken_at: 1, provider_account_id: 1, extensions: 1 })
     .sort({ taken_at: -1 })
     .lean();
-  const unmapped_inbound_numbers = await getContactNumberModel().countDocuments({
-    kind: "external",
-    classification: { $in: ["customer", "unknown"] },
-    "rollups.attached_lead_count": 0,
-  });
+  // All Numbers: a number with no Lead (its link found no candidate and the Owner pinned none).
+  const unmapped_inbound_numbers = await getContactNumberModel().countDocuments({ purged_at: null, lead: null });
   if (!snapshot) {
     return {
       unmapped_inbound_numbers,

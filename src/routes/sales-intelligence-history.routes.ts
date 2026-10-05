@@ -17,7 +17,7 @@ import { csiIdSchema } from "../validation/v1/salesIntelligence";
  * `x-api-secret` or a signed-in user, never by the Sales Intelligence scoped key. Each handler
  * re-checks the flag and the verified credential so the router is safe if mounted alone.
  * Responses carry canonical records and provider metadata only (names, E.164, job numbers,
- * attachments, entity changes); never a transcript, an analysis, a Lead Message body or an email.
+ * lead links, entity changes); never a transcript, an analysis, a Lead Message body or an email.
  */
 export const CSI_HISTORY_PREFIX = "/api/v1/internal/sales-intelligence/history";
 

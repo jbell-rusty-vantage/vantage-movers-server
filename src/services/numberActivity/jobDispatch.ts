@@ -4,8 +4,6 @@ import { logger } from "../../logger";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { runCaptureProjectionJob, type CaptureProjectionWorkerDeps } from "./captureProjectionWorker";
-import { runRebuildJob, type RebuildWorkerDeps } from "./rebuild";
-import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh";
 import { runLeadLinkJob } from "./leadLinkJobs";
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
@@ -37,21 +35,15 @@ export type DispatchOutcome =
 export type DispatchDependencies = {
   handlers?: Partial<Record<CsiStage, StageHandler>>;
   capture?: CaptureProjectionWorkerDeps;
-  rebuild?: RebuildWorkerDeps;
   retire?: typeof retireLegacyCsiJobs;
   /** Reads the authoritative row's stage. Default: the dataset's job row. */
   loadJob?: (jobId: string) => Promise<{ stage: string } | null>;
 };
 
 /** The retained consumers. `call_log_reconcile` and `directory` run from their crons, not as queued jobs. */
-export function defaultStageHandlers(
-  capture: CaptureProjectionWorkerDeps = {},
-  rebuild: RebuildWorkerDeps = {},
-): Partial<Record<CsiStage, StageHandler>> {
+export function defaultStageHandlers(capture: CaptureProjectionWorkerDeps = {}): Partial<Record<CsiStage, StageHandler>> {
   return {
     capture_projection: (jobId) => runCaptureProjectionJob(jobId, capture),
-    rebuild: (jobId) => runRebuildJob(jobId, rebuild),
-    attachment_refresh: (jobId) => runAttachmentRefreshJob(jobId),
     // All Numbers lead link (job recovery also drains these, after its Lead-change scan).
     lead_link: (jobId) => runLeadLinkJob(jobId),
     nudge_repair: (jobId) => runNudgeRepairJob(jobId),
@@ -92,7 +84,7 @@ export async function dispatchCsiWakeup(
     logger.info({ msg: "sales_intelligence.queue.retired_stage", jobId, stage, retired });
     return { status: "retired", job_id: jobId, stage, retired };
   }
-  const handlers = deps.handlers ?? defaultStageHandlers(deps.capture, deps.rebuild);
+  const handlers = deps.handlers ?? defaultStageHandlers(deps.capture);
   const handler = handlers[stage];
   if (!handler) {
     logger.info({ msg: "sales_intelligence.queue.no_consumer", jobId, stage });

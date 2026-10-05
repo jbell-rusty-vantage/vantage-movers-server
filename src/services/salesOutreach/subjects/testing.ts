@@ -45,7 +45,7 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
   async reviewedRepIds(agentIds: readonly string[]) {
     return new Set(agentIds.filter((id) => this.reviewedReps.has(id)));
   }
-  async attachedNumberIds(refs: readonly DeskLeadRef[]) {
+  async linkedNumberIds(refs: readonly DeskLeadRef[]) {
     return new Map(refs.flatMap((ref) => (this.numbers.has(deskLeadKey(ref)) ? [[deskLeadKey(ref), this.numbers.get(deskLeadKey(ref))!] as const] : [])));
   }
   async jobNumberLeadCounts(jobNumbers: readonly string[]) {

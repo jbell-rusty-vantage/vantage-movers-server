@@ -4,8 +4,9 @@ import { getCallLeadModel } from "../../models/CallLead";
 import { getContactNumberModel } from "../../models/ContactNumber";
 import { getFormLeadModel } from "../../models/FormLead";
 import { leadPhoneMatchClauses } from "../../models/leadContactPhoneIndexes";
-import { attachmentSearchTerms } from "../salesIntelligence/attachment/store";
+
 import { CsiError } from "../salesIntelligence/auth";
+import { enqueueDeskWakeForLeadLink } from "../salesOutreach/capture/leadLinkWake";
 import { stableJson } from "./callSummary";
 import { toE164 } from "./phone";
 import { boundSearchTerms, leadLinkSearchTerms } from "./searchTerms";
@@ -26,8 +27,9 @@ import { boundSearchTerms, leadLinkSearchTerms } from "./searchTerms";
  *   recompute; a Lead change re-runs the recompute (`leadLinkJobs.ts`), so the copy stays fresh.
  *
  * Every write runs in the caller's transaction and bumps `revision` (the Owner's `POST /numbers/:id/lead`
- * fence) only when the link changed. Reads on the session run one at a time (a session never runs two
- * operations concurrently).
+ * fence) only when the link changed; a change also wakes the Sales Outreach Desk in the same transaction
+ * (`salesOutreach/capture/leadLinkWake.ts`). Reads on the session run one at a time (a session never runs
+ * two operations concurrently).
  */
 export type LeadModel = "FormLead" | "CallLead";
 export type LeadKey = { model: LeadModel; id: string };
@@ -267,7 +269,6 @@ export async function recomputeLeadLink(numberId: mongoose.Types.ObjectId | stri
   const terms = boundSearchTerms([
     ...(number.provider_names ?? []).map((name) => name.toLowerCase()),
     ...leadLinkSearchTerms(next),
-    ...(await attachmentSearchTerms(String(number._id), session)),
   ]);
   const before = linkKeys(number);
   const after = linkKeys(next);
@@ -281,7 +282,10 @@ export async function recomputeLeadLink(numberId: mongoose.Types.ObjectId | stri
     { session: session ?? undefined, runValidators: true },
   );
   if (result.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
-  return { number_id: String(number._id), changed: true, revision: number.revision + 1, before, after, next };
+  const change = { number_id: String(number._id), changed: true, revision: number.revision + 1, before, after, next };
+  // The desk credits calls to `lead` and scopes subjects by `lead`/`other_leads`: wake it in this transaction.
+  if (session) await enqueueDeskWakeForLeadLink(change, session, now);
+  return change;
 }
 
 /** The E.164 numbers a Lead's phone paths carry (live, ingested, Granot, RingCentral original caller). */

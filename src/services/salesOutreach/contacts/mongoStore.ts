@@ -3,7 +3,7 @@ import { Agent } from "../../../models/Agent";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
-import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
+
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import {
@@ -26,7 +26,7 @@ import type { ReceiverFillCandidate } from "./receiverFill";
  * existing index:
  * - `call_interactions` by `_id`; `ringcentral_rep_sms_evidence` by `_id` and `sod_rsms_logical`;
  * - `rep_identity_links` by `ril_extension_current_unique` prefix `{rc_account_id, rc_extension_id}`;
- * - `number_lead_attachments` by `nla_number_state`; `contact_numbers` by `contact_number_e164_unique`;
+ * - `contact_numbers` by `_id` (the number's current `lead`) and `contact_number_e164_unique`;
  * - `sales_outreach_subjects` by `sod_subject_lead_unique`; periods by `sod_period_subject_started`;
  * - `sales_intelligence_contact_restrictions` by `csi_restriction_number`;
  * - `sales_outreach_contact_events` by `_id`.
@@ -235,19 +235,17 @@ export const mongoContactEventStore: ContactEventStore = {
     }
     const numberIds = [...new Set([...request.number_ids, ...numbersByE164.values()])];
 
-    const attached = new Map<string, DeskLeadKey[]>();
+    // All Numbers: a call credits the number's current Lead (`contact_numbers.lead`), when that Lead is a desk subject.
+    const linked = new Map<string, DeskLeadKey[]>();
     const restrictions = new Map<string, RestrictionInterval[]>();
     const subjects = new Map<DeskLeadKey, SubjectFacts>();
     if (numberIds.length) {
-      const attachments = await getNumberLeadAttachmentModel()
-        .find({ contact_number_id: { $in: numberIds.map(oid) }, state: "attached", certainty: { $ne: "rejected" } }, { contact_number_id: 1, lead_ref: 1 })
+      const numbers = await getContactNumberModel()
+        .find({ _id: { $in: numberIds.map(oid) } }, { "lead.model": 1, "lead.id": 1 })
         .session(session)
         .lean();
-      for (const row of attachments as Array<{ contact_number_id: unknown; lead_ref: { model: string; id: unknown } }>) {
-        const key = `${row.lead_ref.model}:${String(row.lead_ref.id)}` as DeskLeadKey;
-        const list = attached.get(String(row.contact_number_id)) ?? [];
-        if (!list.includes(key)) list.push(key);
-        attached.set(String(row.contact_number_id), list);
+      for (const row of numbers as Array<{ _id: unknown; lead?: { model: string; id: unknown } | null }>) {
+        if (row.lead) linked.set(String(row._id), [`${row.lead.model}:${String(row.lead.id)}` as DeskLeadKey]);
       }
       const restrictionRows = await getSalesIntelligenceContactRestrictionModel()
         .find({ contact_number_id: { $in: numberIds.map(oid) } }, { contact_number_id: 1, channels: 1, until: 1, resolved_at: 1, createdAt: 1 })
@@ -261,7 +259,7 @@ export const mongoContactEventStore: ContactEventStore = {
         list.push({ channels: row.channels, from: row.createdAt, to });
         restrictions.set(String(row.contact_number_id), list);
       }
-      const leads = [...new Set([...attached.values()].flat())];
+      const leads = [...new Set([...linked.values()].flat())];
       if (leads.length) {
         const or = LEAD_MODELS.flatMap((model) => {
           const ids = leads.filter((key) => key.startsWith(`${model}:`)).map((key) => oid(key.slice(model.length + 1)));
@@ -299,7 +297,7 @@ export const mongoContactEventStore: ContactEventStore = {
         }
       }
     }
-    return { links, attached_leads: attached, subjects, restrictions, numbers_by_e164: numbersByE164 };
+    return { links, linked_leads: linked, subjects, restrictions, numbers_by_e164: numbersByE164 };
   },
 
   async loadEvents(ids, session) {

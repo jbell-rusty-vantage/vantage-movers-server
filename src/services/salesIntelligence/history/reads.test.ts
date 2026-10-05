@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import mongoose from "mongoose";
 import { getContactNumberModel } from "../../../models/ContactNumber";
-import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { readContactNumberHistory, serialize } from "./reads";
 
 /** A lean query chain (`select`/`sort`/`limit` then `lean`) that resolves to `rows`. */
@@ -23,44 +22,41 @@ test("serialize redacts every string, stringifies ids and dates and drops buffer
   });
 });
 
-test("Contact Number history carries provider-metadata rollups and attachments only: no summary, Outreach or retired rollup", async (t) => {
+test("Contact Number history carries the All Numbers summary and lead link only: no classification, rollup, summary or Outreach", async (t) => {
   const saved = { ...process.env };
   t.after(() => { process.env = saved; });
   process.env.TEST_MODE = "true";
   process.env.TEST_MONGO_DATABASE_NAME = "testvantagemovers_historyunit";
   const numberId = new mongoose.Types.ObjectId();
-  const seen: string[] = [];
+  const leadId = new mongoose.Types.ObjectId(), otherId = new mongoose.Types.ObjectId(), excludedId = new mongoose.Types.ObjectId();
   const stored = {
-    _id: numberId, e164: "+15551234567", national_ten: "5551234567", country: "US", kind: "external", classification: "customer",
-    classification_reason: null, contact_eligibility: { state: "allowed" }, provider_names: ["ADA L"], first_observed_at: new Date("2026-09-01T00:00:00Z"),
-    last_activity_at: new Date("2026-09-30T00:00:00Z"), revision: 4, purged_at: null,
-    // Stored before the slimming purge: none of these may be returned.
-    running_summary: { text: "Customer said ...", run_id: new mongoose.Types.ObjectId() }, content_purge_pending: false, intelligence_schedule: { due_at: new Date() },
-    rollups: { interactions_total: 3, inbound_total: 2, outbound_total: 1, human_conversations_total: 1, last_inbound_at: new Date("2026-09-30T00:00:00Z"),
-      last_outbound_at: null, last_human_conversation_at: null, attached_lead_count: 1, candidate_lead_count: 0, recordings_total: 1,
-      conversations_analyzed_total: 1, last_analyzed_at: new Date(), open_outreach_count: 1, outreach_records_total: 1 },
+    _id: numberId, e164: "+15551234567", national_ten: "5551234567", country: "US", provider_names: ["ADA L"], first_observed_at: new Date("2026-09-01T00:00:00Z"),
+    last_activity_at: new Date("2026-09-30T00:00:00Z"), revision: 4, purged_at: null, created_via: "form_lead",
+    lead: { model: "FormLead", id: leadId, name: "Ada pat@example.com", job_no: "J-1", receiver_agent_id: null, receiver_agent_name: "Dana", received_at: new Date("2026-09-01T00:00:00Z"), state: "open" },
+    other_leads: [{ model: "CallLead", id: otherId, name: "Ada", job_no: null, receiver_agent_id: null, receiver_agent_name: null, received_at: new Date("2026-08-01T00:00:00Z"), state: "booked" }],
+    lead_link: { source: "owner", set_at: new Date("2026-09-02T00:00:00Z"), set_by: "owner-1", excluded: [{ model: "FormLead", id: excludedId }] },
+    last_call: { interaction_id: new mongoose.Types.ObjectId(), at: new Date("2026-09-30T00:00:00Z"), direction: "inbound", result: "missed", duration_seconds: 0, rc_extension_id: "e1" },
+    calls: { inbound: 2, outbound: 1, missed: 1 }, last_inbound_at: new Date("2026-09-30T00:00:00Z"), last_outbound_at: null, waiting_since: new Date("2026-09-30T00:00:00Z"),
+    // Stored before the phase B cleanup or the slimming purge: none of these may be returned.
+    kind: "external", classification: "customer", contact_eligibility: { state: "allowed" }, rollups: { interactions_total: 3, open_outreach_count: 1 },
+    running_summary: { text: "Customer said ...", run_id: new mongoose.Types.ObjectId() },
   };
-  const edge = { _id: new mongoose.Types.ObjectId(), lead_ref: { model: "FormLead", id: new mongoose.Types.ObjectId() }, state: "attached", certainty: "exact",
-    evidence: [{ source: "form_lead", field_path: "normalized_phone_number", observed_at: new Date("2026-09-02T00:00:00Z"), extra: "dropped" }],
-    lead_snapshot: { name: "Ada" }, decided_by: null, decided_at: null, decision_reason: null, auto_decision: null, updatedAt: new Date("2026-09-02T00:00:00Z") };
-  const findById = mock.method(getContactNumberModel(), "findById", (() => chain(stored, seen)) as never);
-  const find = mock.method(getNumberLeadAttachmentModel(), "find", (() => chain([edge])) as never);
-  t.after(() => { findById.mock.restore(); find.mock.restore(); });
+  const findById = mock.method(getContactNumberModel(), "findById", (() => chain(stored)) as never);
+  t.after(() => { findById.mock.restore(); });
 
-  const history = await readContactNumberHistory(String(numberId)) as Record<string, Record<string, unknown> & { rollups: Record<string, unknown> }>;
-  assert.deepEqual(Object.keys(history).sort(), ["attachments", "contact_number"]);
-  assert.equal(history.contact_number!.e164, "+15551234567");
-  assert.equal("running_summary" in history.contact_number!, false);
-  assert.equal("content_purge_pending" in history.contact_number!, false);
-  assert.deepEqual(Object.keys(history.contact_number!.rollups).sort(), [
-    "attached_lead_count", "candidate_lead_count", "human_conversations_total", "inbound_total", "interactions_total",
-    "last_human_conversation_at", "last_inbound_at", "last_outbound_at", "outbound_total", "recordings_total",
-  ]);
-  assert.equal(history.contact_number!.rollups.interactions_total, 3);
-  const [attachment] = history.attachments as unknown as Array<Record<string, unknown>>;
-  assert.equal(attachment!.state, "attached");
-  assert.deepEqual(attachment!.evidence, [{ source: "form_lead", field_path: "normalized_phone_number", observed_at: "2026-09-02T00:00:00.000Z" }]);
-  assert.ok(seen.includes("select:-search_terms -digits_reversed"));
+  const history = await readContactNumberHistory(String(numberId)) as Record<string, Record<string, unknown>>;
+  assert.deepEqual(Object.keys(history).sort(), ["contact_number", "lead", "lead_link", "other_leads"]);
+  const number = history.contact_number!;
+  assert.equal(number.e164, "+15551234567");
+  assert.equal(number.source, "form_lead");
+  assert.deepEqual(number.calls, { inbound: 2, outbound: 1, missed: 1 });
+  assert.deepEqual(number.last_call, { at: "2026-09-30T00:00:00.000Z", direction: "inbound", result: "missed", duration_seconds: 0 });
+  assert.equal(number.waiting_since, "2026-09-30T00:00:00.000Z");
+  for (const retired of ["kind", "classification", "contact_eligibility", "rollups", "running_summary"]) assert.equal(retired in number, false, retired);
+  assert.deepEqual(history.lead, { model: "FormLead", id: String(leadId), name: "Ada [REDACTED:EMAIL]", job_no: "J-1", rep_name: "Dana",
+    received_at: "2026-09-01T00:00:00.000Z", state: "open" });
+  assert.deepEqual((history.other_leads as unknown as Array<Record<string, unknown>>).map((lead) => lead.id), [String(otherId)]);
+  assert.deepEqual(history.lead_link, { source: "owner", set_at: "2026-09-02T00:00:00.000Z", set_by: "owner-1", excluded: [{ model: "FormLead", id: String(excludedId) }] });
 
   findById.mock.mockImplementation((() => chain({ ...stored, purged_at: new Date() })) as never);
   assert.equal(await readContactNumberHistory(String(numberId)), null);

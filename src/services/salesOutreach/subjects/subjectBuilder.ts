@@ -65,7 +65,7 @@ export type DeskSubjectFacts = DeskReceivedFacts &
     priority: DeskSubjectPriority;
     /** IMPL-01: `receiver_agent` only when that Agent has a reviewed `sales_rep` link now; else Unassigned. */
     assigned_agent_id: string | null;
-    /** IMPL-07 inputs: Contact Numbers this Lead is `attached` to. */
+    /** IMPL-07 inputs: Contact Numbers whose `lead` or `other_leads` hold this Lead (All Numbers). */
     contact_number_ids: string[];
     lead_revision_seen: number;
   }>;

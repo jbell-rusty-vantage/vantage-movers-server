@@ -7,7 +7,7 @@ import type {
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getGranotObservationModel } from "../../../models/GranotObservation";
-import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
+import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { enqueueCsiJob } from "../../salesIntelligence/jobs";
@@ -74,8 +74,8 @@ export type DeskSubjectStore = {
   findPeriods(subjectId: string, session: ReadSession): Promise<DeskPeriodRow[]>;
   /** Agents (of `agentIds`) with a reviewed `sales_rep` identity link effective at `at`. */
   reviewedRepIds(agentIds: readonly string[], at: Date, session: ReadSession): Promise<Set<string>>;
-  /** Lead key → Contact Number ids the Lead is `attached` to. */
-  attachedNumberIds(refs: readonly DeskLeadRef[], session: ReadSession): Promise<Map<string, string[]>>;
+  /** Lead key → Contact Number ids whose `lead` or `other_leads` hold the Lead (All Numbers, IMPL-07). */
+  linkedNumberIds(refs: readonly DeskLeadRef[], session: ReadSession): Promise<Map<string, string[]>>;
   /** Normalized Job Number → how many non-duplicate Form/Call Leads carry it. */
   jobNumberLeadCounts(jobNumbers: readonly string[], session: ReadSession): Promise<Map<string, number>>;
   /** Lead keys with a blank/malformed Granot priority update newer than their last accepted one (P05e). */
@@ -205,20 +205,25 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
     return new Set(rows.map((row) => String(row.agent_id)));
   },
 
-  async attachedNumberIds(refs, session) {
+  async linkedNumberIds(refs, session) {
     const byLead = new Map<string, string[]>();
     if (!refs.length) return byLead;
-    const rows = await getNumberLeadAttachmentModel()
-      .find(
-        { $or: refs.map((ref) => ({ "lead_ref.model": ref.model, "lead_ref.id": oid(ref.id), state: "attached" })) },
-        { contact_number_id: 1, lead_ref: 1 },
-      )
+    const ids = refs.map((ref) => oid(ref.id));
+    // Indexes `contact_number_lead` and `contact_number_other_leads`.
+    const rows = (await getContactNumberModel()
+      .find({ purged_at: null, $or: [{ "lead.id": { $in: ids } }, { "other_leads.id": { $in: ids } }] }, { lead: 1, other_leads: 1 })
       .session(session)
-      .lean();
-    for (const row of rows as Array<{ contact_number_id: unknown; lead_ref: { model: SalesOutreachLeadModel; id: unknown } }>) {
-      const key = deskLeadKey({ model: row.lead_ref.model, id: String(row.lead_ref.id) });
-      byLead.set(key, [...(byLead.get(key) ?? []), String(row.contact_number_id)]);
+      .lean()) as unknown as Array<{ _id: unknown; lead?: { model: SalesOutreachLeadModel; id: unknown } | null; other_leads?: Array<{ model: SalesOutreachLeadModel; id: unknown }> }>;
+    for (const row of rows) {
+      for (const lead of [...(row.lead ? [row.lead] : []), ...(row.other_leads ?? [])]) {
+        if (!refs.some((ref) => ref.model === lead.model && ref.id === String(lead.id))) continue;
+        const key = deskLeadKey({ model: lead.model, id: String(lead.id) });
+        const list = byLead.get(key) ?? [];
+        if (!list.includes(String(row._id))) list.push(String(row._id));
+        byLead.set(key, list);
+      }
     }
+    for (const list of byLead.values()) list.sort();
     return byLead;
   },
 

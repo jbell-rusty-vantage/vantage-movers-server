@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getContactNumberModel } from "../../../models/ContactNumber";
-import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { leadPhoneMatchClauses, CALL_LEAD_ATTACHMENT_PHONE_PATHS, FORM_LEAD_ATTACHMENT_PHONE_PATHS } from "../../../models/leadContactPhoneIndexes";
 import { toObjectId } from "../../../utils/objectId";
 import { normalizePhoneNumberForMatch } from "../../../utils/phone";
@@ -33,9 +32,11 @@ export type LeadCandidate = {
   booked: boolean;
   cancelled: boolean;
   bad_lead: boolean;
-  /** Existing attachment edge, when one exists (candidate/ambiguous). */
-  attachment_state: "candidate" | "ambiguous" | "attached" | null;
-  certainty: string | null;
+  /**
+   * The Lead's place in the number's All Numbers link: `lead` (the number's Lead), `other_lead` (another
+   * matching Lead), `excluded` (the Owner unlinked it), or null.
+   */
+  link: "lead" | "other_lead" | "excluded" | null;
 };
 export type CandidateOptions = { stated_name?: string | null; reference_mentions?: string[]; window_anchor?: Date };
 
@@ -111,7 +112,7 @@ export async function findLeadCandidates(subject: HistorySubject, options: Candi
   };
   const models = ["FormLead", "CallLead"] as const;
 
-  // 1. Phone paths, exactly the keys the attachment worker joins on.
+  // 1. Phone paths, exactly the keys the All Numbers lead link joins on.
   const digits = subject.e164 ? normalizePhoneNumberForMatch(subject.e164) : undefined;
   if (digits) {
     for (const model of models) {
@@ -154,16 +155,20 @@ export async function findLeadCandidates(subject: HistorySubject, options: Candi
   }
   if (!found.size) return [];
 
-  // Existing edges are reported, never hidden: a candidate/ambiguous edge is what the Owner decides on.
-  const edges = subject.contact_number_id
-    ? await getNumberLeadAttachmentModel().find({ contact_number_id: toObjectId(subject.contact_number_id) }).select("lead_ref state certainty").limit(101).lean() : [];
-  const edgeByLead = new Map(edges.map(e => [`${e.lead_ref.model}:${e.lead_ref.id}`, e]));
+  // The number's link is reported, never hidden: which candidate is its Lead, which are other matches, which the Owner unlinked.
+  const linked = subject.contact_number_id
+    ? (await getContactNumberModel().findById(toObjectId(subject.contact_number_id), { lead: 1, other_leads: 1, lead_link: 1 }).lean()) as unknown as {
+      lead?: { model: string; id: unknown } | null; other_leads?: Array<{ model: string; id: unknown }>; lead_link?: { excluded?: Array<{ model: string; id: unknown }> } | null } | null
+    : null;
+  const linkByLead = new Map<string, LeadCandidate["link"]>();
+  for (const lead of linked?.lead_link?.excluded ?? []) linkByLead.set(`${lead.model}:${String(lead.id)}`, "excluded");
+  for (const lead of linked?.other_leads ?? []) linkByLead.set(`${lead.model}:${String(lead.id)}`, "other_lead");
+  if (linked?.lead) linkByLead.set(`${linked.lead.model}:${String(linked.lead.id)}`, "lead");
 
   return [...found.entries()].map(([key, { row, basis }]): LeadCandidate => {
-    const edge = edgeByLead.get(key) ?? null;
     const received = row.timestamp instanceof Date ? row.timestamp.toISOString() : row.createdAt instanceof Date ? row.createdAt.toISOString() : null;
     return { lead_ref: { model: row.model, id: String(row._id) }, basis: [...basis].sort(), name: text(leadCustomerName(row)), received_at: received,
       source_company_label: text(leadSourceLabel(row), 80), job_no: text(row.job_no, 40), duplicate: Boolean(row.duplicate), booked: Boolean(row.booked), cancelled: Boolean(row.cancelled),
-      bad_lead: Boolean(row.bad_lead), attachment_state: edge && edge.state !== "rejected" ? edge.state : null, certainty: edge?.certainty ?? null };
+      bad_lead: Boolean(row.bad_lead), link: linkByLead.get(key) ?? null };
   }).sort((a, b) => (b.received_at ?? "").localeCompare(a.received_at ?? "") || a.lead_ref.id.localeCompare(b.lead_ref.id)).slice(0, TOTAL_MAX);
 }

@@ -35,7 +35,7 @@ import {
   type NumberLeadSnapshot,
   type StoredLeadLink,
 } from "./leadLink";
-import { escapeRegex, parseSearchTerm } from "./search";
+import { escapeRegex, parseSearchTerm } from "./numberSearch";
 
 /**
  * All Numbers reads and the Owner's link command (all-numbers CONTRACT §4.1–§4.4). Reads never

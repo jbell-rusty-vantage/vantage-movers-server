@@ -28,7 +28,6 @@ import {
   DomainRevisionConflictError,
 } from "../domainCommands/types";
 import { createGranotWebhookInitiator } from "../durableWork/actors";
-import { wakeLeadAttachmentsAfterChange } from "../salesIntelligence/attachment/leadTrigger";
 import { wakeLeadLinksAfterChange } from "../numberActivity/leadLinkJobs";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
@@ -196,10 +195,10 @@ export type GranotLifecycleProcessorDeps = {
   ) => ReturnType<typeof createLeadFromGranot>;
   synchronizeLead?: typeof synchronizeLeadFromGranot;
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
-  /** Seam: post-commit Lead attachment wake-up after a Lead EntityChange (default `wakeLeadAttachmentsAfterChange`). */
-  wakeLeadAttachments?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
-  /** Seam: how long receipt processing waits for the wake-up (default `LEAD_ATTACHMENT_WAKE_TIMEOUT_MS`). */
-  wakeLeadAttachmentsTimeoutMs?: number;
+  /** Seam: post-commit All Numbers lead-link wake-up after a Lead EntityChange (default `wakeLeadLinksAfterChange`). */
+  wakeLeadLinks?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
+  /** Seam: how long receipt processing waits for the wake-up (default `LEAD_LINK_WAKE_TIMEOUT_MS`). */
+  wakeLeadLinksTimeoutMs?: number;
   bookingReconciliationStore?: BookingReconciliationPersistenceStore;
   reconcileBooking?: (
     ids: { observation_id: string; decision_id: string },
@@ -229,33 +228,29 @@ export function createGranotObservationProcessor(
     async process(input) {
       const result = await processGranotObservation(input, deps);
       // After the lifecycle transaction(s) committed. Additive and best-effort: it never changes the
-      // decision, never throws, and holds receipt finalization for at most `wakeLeadAttachmentsTimeoutMs`
-      // (the durable Lead-change scan on the attachment-refresh cron stays the backstop).
-      // The default wakes the attachment refresh and the All Numbers lead link for the same Lead changes.
-      await boundedLeadAttachmentWake(() => (deps.wakeLeadAttachments ?? wakeLeadChangeConsumers)(result), result.observation_id,
-        deps.wakeLeadAttachmentsTimeoutMs ?? LEAD_ATTACHMENT_WAKE_TIMEOUT_MS);
+      // decision, never throws, and holds receipt finalization for at most `wakeLeadLinksTimeoutMs`
+      // (the durable Lead-change scan in job recovery stays the backstop).
+      // The default wakes the All Numbers lead link of the observation's Lead changes.
+      await boundedLeadLinkWake(() => (deps.wakeLeadLinks ?? wakeLeadLinksAfterChange)(result), result.observation_id,
+        deps.wakeLeadLinksTimeoutMs ?? LEAD_LINK_WAKE_TIMEOUT_MS);
       return result;
     },
   };
 }
 
-/** Default post-commit wake: the attachment refresh and the All Numbers lead link, side by side; neither throws. */
-function wakeLeadChangeConsumers(result: { observation_id: string; target?: EntityRef }) {
-  return Promise.all([wakeLeadAttachmentsAfterChange(result), wakeLeadLinksAfterChange(result)]);
-}
 
 /**
- * The longest the drainer waits for the post-commit Lead attachment wake-up. Normally one indexed
+ * The longest the drainer waits for the post-commit lead-link wake-up. Normally one indexed
  * read, one small transaction and one publish (tens of ms). On timeout the receipt is finalized anyway;
  * the wake-up keeps running in the background (its own failures are caught and logged) and, if it is
  * lost with the invocation, the durable Lead-change scan enqueues the same dedupe key.
  */
-export const LEAD_ATTACHMENT_WAKE_TIMEOUT_MS = 2_000;
+export const LEAD_LINK_WAKE_TIMEOUT_MS = 2_000;
 
 /** Waits for `wake` at most `timeoutMs`; never throws and never rejects. Resolves "done" | "timeout" | "failed". */
-export async function boundedLeadAttachmentWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number): Promise<"done" | "timeout" | "failed"> {
+export async function boundedLeadLinkWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number): Promise<"done" | "timeout" | "failed"> {
   let timer: NodeJS.Timeout | undefined;
-  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.lead_attachment_wakeup_${outcome}`,
+  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.lead_link_wakeup_${outcome}`,
     observationId: maskLifecycleId(observationId), timeoutMs, errorName: error instanceof Error ? error.name : null });
   const running = Promise.resolve().then(wake).then(() => "done" as const, (error: unknown) => { log("failed", error); return "failed" as const; });
   const timeout = new Promise<"timeout">(resolve => { timer = setTimeout(() => resolve("timeout"), Math.max(0, timeoutMs)); timer.unref?.(); });

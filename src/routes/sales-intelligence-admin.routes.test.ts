@@ -7,7 +7,6 @@ import { test } from "node:test";
 import express from "express";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import { computeAdminActorSignature } from "../services/operationsRegistry/trustedActor";
-import { CsiError } from "../services/salesIntelligence/auth";
 import { createSalesIntelligenceBoundaryRouter } from "./sales-intelligence-boundary.routes";
 import { CSI_ADMIN_PREFIX, createSalesIntelligenceAdminRouter } from "./sales-intelligence-admin.routes";
 
@@ -15,7 +14,7 @@ const numberId = randomBytes(12).toString("hex");
 const coverage = { known_through: null, gaps: [], capabilities: { call_log: "unknown", webhook: "unknown" } };
 const asOf = "2026-09-17T14:00:00.000Z";
 
-test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope, validation, idempotency, error mapping; retired routes are gone", { timeout: 20000 }, async () => {
+test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope, validation, error mapping; retired routes are gone", { timeout: 20000 }, async () => {
   const saved = { ...process.env };
   process.env.VANTAGE_API_SECRET = "synthetic-global";
   process.env.VANTAGE_ADMIN_PROXY_SIGNING_SECRET = "synthetic-owner-signature";
@@ -25,8 +24,6 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
   process.env.TEST_MODE = "true";
   process.env.TEST_MONGO_DATABASE_NAME = "testvantagemovers_csiadminroute";
   const calls: string[] = [];
-  const rebuildCalls: unknown[] = [];
-  let rebuildError: CsiError | null = null;
   const app = express();
   app.use(express.json());
   app.use("/api/v1", requireApiSecret);
@@ -36,26 +33,13 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
       connect: async () => {
         calls.push("connect");
       },
-      search: async (query) => {
-        calls.push(`search:${JSON.stringify(query)}`);
-        return { as_of: asOf, coverage, data: { items: [], cursor: null } } as never;
+      allNumbers: async (query) => {
+        calls.push(`list:${JSON.stringify(query)}`);
+        return { as_of: asOf, data: { items: [], cursor: null, counts: { all: 0, waiting: 0 } } };
       },
-      detail: async (id) => {
+      numberDetail: async (id) => {
         calls.push(`detail:${id}`);
-        return id === numberId ? ({ as_of: asOf, coverage, data: { id } } as never) : null;
-      },
-      numberDetailV2: async (id) => {
-        calls.push(`detail:v2:${id}`);
         return id === numberId ? ({ as_of: asOf, data: { number: { id } } } as never) : null;
-      },
-      timeline: async (id, opts) => {
-        calls.push(`timeline:${id}:${JSON.stringify(opts)}`);
-        return id === numberId ? ({ as_of: asOf, coverage, data: { number_id: id, items: [], cursor: null } } as never) : null;
-      },
-      enqueueRebuild: async (input) => {
-        rebuildCalls.push(input);
-        if (rebuildError) throw rebuildError;
-        return { job_id: "c".repeat(24), dedupe_key: "k", number_id: input.number_id, replayed: false };
       },
     }),
   );
@@ -63,15 +47,7 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const ownerHeaders = (method: string, routePath: string, role = "owner", extra: Record<string, string> = {}) => {
-    const fields = {
-      adminId: "owner",
-      email: "owner@example.test",
-      role,
-      timestamp: String(Date.now()),
-      requestId: "req-1",
-      method,
-      path: routePath,
-    };
+    const fields = { adminId: "owner", email: "owner@example.test", role, timestamp: String(Date.now()), requestId: "req-1", method, path: routePath };
     return {
       "x-api-secret": "synthetic-global",
       "x-vantage-admin-user-id": fields.adminId,
@@ -97,8 +73,6 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
       body: method === "GET" ? undefined : "{}", signal: AbortSignal.timeout(5000) })).status;
   const numbers = `${CSI_ADMIN_PREFIX}/numbers`;
   const detailPath = `${numbers}/${numberId}`;
-  const timelinePath = `${detailPath}/timeline`;
-  const rebuildPath = `${detailPath}/rebuild`;
 
   try {
     // Authority: broad secret alone, admin role and scoped keys are denied by the boundary; nothing reaches a service.
@@ -107,70 +81,39 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
     assert.equal((await call("GET", `${numbers}?scope=historical`, { headers: ownerHeaders("GET", numbers) })).status, 403);
     // A rep (even with REP_ACCESS on) is never an unscoped Numbers or Accounts reader: an unsigned rep stops at the boundary,
     // a signed one at the route, both with 403 before any service runs.
-    for (const target of [numbers, detailPath, timelinePath, `${CSI_ADMIN_PREFIX}/reps`, `${CSI_ADMIN_PREFIX}/nudges`, `${CSI_ADMIN_PREFIX}/coverage`]) {
+    for (const target of [numbers, detailPath, `${CSI_ADMIN_PREFIX}/accounts`, `${CSI_ADMIN_PREFIX}/nudges`, `${CSI_ADMIN_PREFIX}/coverage`]) {
       const rep = await call("GET", target, { headers: ownerHeaders("GET", target, "rep") });
       assert.equal(rep.status, 403, target);
     }
     assert.deepEqual(calls, []);
 
+    // List: strict query; the interim filters are gone (400).
+    const listed = await call("GET", `${numbers}?q=0200&limit=5&scope=production`, { headers: ownerHeaders("GET", numbers) });
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.as_of, asOf);
+    assert.equal(calls.at(-1), `list:${JSON.stringify({ scope: "production", view: "all", q: "0200", limit: 5 })}`);
+    for (const query of ["attachment=unlinked", "sort=last_activity", "classification=customer", "has_outreach=true", "limit=999", "nope=1"]) {
+      const refused = await call("GET", `${numbers}?${query}`, { headers: ownerHeaders("GET", numbers) });
+      assert.equal(refused.status, 400, query);
+      assert.equal(refused.body.code, "INVALID_INPUT");
+    }
 
-    // Search: query parsed strictly; defaults applied; full customer numbers are an Owner-only concern handled by the service.
-    const searched = await call("GET", `${numbers}?q=0200&attachment=unlinked&limit=5`, { headers: ownerHeaders("GET", numbers) });
-    assert.equal(searched.status, 200);
-    assert.equal(searched.body.ok, true);
-    assert.equal(searched.body.as_of, asOf);
-    const lastCall: string = calls[calls.length - 1] ?? "";
-    const searchCall = JSON.parse(lastCall.slice("search:".length)) as Record<string, unknown>;
-    // `has_recording` defaults to false like `hygiene` (absent = no filter).
-    assert.deepEqual(searchCall, { q: "0200", attachment: "unlinked", limit: 5, hygiene: false, has_recording: false });
-    assert.equal((await call("GET", `${numbers}?has_outreach=true`, { headers: ownerHeaders("GET", numbers) })).status, 400, "the Outreach filter is retired");
-    const badQuery = await call("GET", `${numbers}?limit=999`, { headers: ownerHeaders("GET", numbers) });
-    assert.equal(badQuery.status, 400);
-    assert.equal(badQuery.body.code, "INVALID_INPUT");
-    const unknownParam = await call("GET", `${numbers}?nope=1`, { headers: ownerHeaders("GET", numbers) });
-    assert.equal(unknownParam.status, 400);
-
-    // Detail and timeline: 404 for a missing row, 400 for a malformed id.
-    assert.equal((await call("GET", detailPath, { headers: ownerHeaders("GET", detailPath) })).status, 200);
+    // Detail: 404 for a missing row, 400 for a malformed id.
+    const detail = await call("GET", detailPath, { headers: ownerHeaders("GET", detailPath) });
+    assert.equal(detail.status, 200);
+    assert.deepEqual(detail.body.data, { number: { id: numberId } });
     const missing = `${numbers}/${"f".repeat(24)}`;
     assert.equal((await call("GET", missing, { headers: ownerHeaders("GET", missing) })).status, 404);
     const malformed = `${numbers}/not-an-id`;
     assert.equal((await call("GET", malformed, { headers: ownerHeaders("GET", malformed) })).status, 400);
-    const timeline = await call("GET", `${timelinePath}?limit=10`, { headers: ownerHeaders("GET", timelinePath) });
-    assert.equal(timeline.status, 200);
-    assert.equal(calls.at(-1), `timeline:${numberId}:${JSON.stringify({ cursor: undefined, limit: 10 })}`);
-    assert.equal(rebuildCalls.length, 0, "no read invoked the command path");
 
-    // Rebuild: Idempotency-Key required; body is the closed command union; only rebuild_number is accepted here.
-    const body = { command: "rebuild_number", expected_revision: 3, reason: "Owner requested recount" };
-    const noKey = await call("POST", rebuildPath, { headers: ownerHeaders("POST", rebuildPath), body });
-    assert.equal(noKey.status, 400);
-    assert.equal(noKey.body.code, "INVALID_INPUT");
-    const wrongCommand = await call("POST", rebuildPath, {
-      headers: ownerHeaders("POST", rebuildPath, "owner", { "idempotency-key": "k1" }),
-      body: { command: "mark_worked", expected_revision: 3 },
-    });
-    assert.equal(wrongCommand.status, 400);
-    assert.equal(rebuildCalls.length, 0);
-    const accepted = await call("POST", rebuildPath, { headers: ownerHeaders("POST", rebuildPath, "owner", { "idempotency-key": "k1" }), body });
-    assert.equal(accepted.status, 202);
-    assert.deepEqual(accepted.body.data, { job_id: "c".repeat(24), dedupe_key: "k", number_id: numberId, replayed: false });
-    const passed = rebuildCalls[0] as { actor: { kind: string }; idempotency_key: string; expected_revision: number; reason: string };
-    assert.equal(passed.actor.kind, "owner", "the trusted Owner actor, never a header-selected one");
-    assert.equal(passed.idempotency_key, "k1");
-    assert.equal(passed.expected_revision, 3);
-    rebuildError = new CsiError("REVISION_CONFLICT");
-    const conflict = await call("POST", rebuildPath, { headers: ownerHeaders("POST", rebuildPath, "owner", { "idempotency-key": "k2" }), body });
-    assert.equal(conflict.status, 409);
-    assert.equal(conflict.body.code, "REVISION_CONFLICT");
-    rebuildError = new CsiError("IDEMPOTENCY_CONFLICT");
-    const replayConflict = await call("POST", rebuildPath, { headers: ownerHeaders("POST", rebuildPath, "owner", { "idempotency-key": "k1" }), body: { ...body, reason: "changed payload" } });
-    assert.equal(replayConflict.status, 409);
-    assert.equal(replayConflict.body.code, "IDEMPOTENCY_CONFLICT");
-    assert.equal(replayConflict.body.request_id, "req-1");
-
-    // Retired Outreach, Attention, Overview, analysis, assessment and conversation routes are not registered.
-    for (const [method, target] of [["GET", `${CSI_ADMIN_PREFIX}/attention`], ["GET", `${CSI_ADMIN_PREFIX}/outreach/${numberId}`],
+    // Retired routes are not registered: the interim timeline/rebuild, attachments and reps (All Numbers phase B),
+    // and the earlier Outreach, Attention, Overview, analysis, assessment and conversation routes.
+    for (const [method, target] of [["GET", `${detailPath}/timeline`], ["POST", `${detailPath}/rebuild`], ["GET", `${CSI_ADMIN_PREFIX}/attachments`],
+      ["POST", `${CSI_ADMIN_PREFIX}/attachments/attach`], ["POST", `${CSI_ADMIN_PREFIX}/attachments/${numberId}/reject`],
+      ["POST", `${CSI_ADMIN_PREFIX}/attachments/${numberId}/detach`], ["GET", `${CSI_ADMIN_PREFIX}/reps`], ["GET", `${CSI_ADMIN_PREFIX}/reps/${numberId}`],
+      ["POST", `${CSI_ADMIN_PREFIX}/reps`], ["POST", `${CSI_ADMIN_PREFIX}/reps/propose`], ["POST", `${CSI_ADMIN_PREFIX}/reps/${numberId}/review`],
+      ["GET", `${CSI_ADMIN_PREFIX}/attention`], ["GET", `${CSI_ADMIN_PREFIX}/outreach/${numberId}`],
       ["POST", `${CSI_ADMIN_PREFIX}/outreach/${numberId}/commands`], ["GET", `${CSI_ADMIN_PREFIX}/outreach/closed-history`], ["GET", `${CSI_ADMIN_PREFIX}/overview`],
       ["GET", `${CSI_ADMIN_PREFIX}/roster`], ["GET", `${CSI_ADMIN_PREFIX}/review-items`], ["POST", `${CSI_ADMIN_PREFIX}/restrictions/${numberId}/resolve`],
       ["POST", `${CSI_ADMIN_PREFIX}/interactions/${numberId}/contact-type`], ["GET", `${CSI_ADMIN_PREFIX}/analysis-runs`],
@@ -179,7 +122,7 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
       ["GET", `${CSI_ADMIN_PREFIX}/followups`], ["POST", `${CSI_ADMIN_PREFIX}/overview/presets`]] as const) {
       assert.equal(await statusOf(method, target), 404, `${method} ${target}`);
     }
-    assert.ok(!(calls as string[]).some((c) => !c.startsWith("connect") && !/^(search|detail|timeline):/.test(c)), "no retired route reached a service");
+    assert.ok(!(calls as string[]).some((c) => !c.startsWith("connect") && !/^(list|detail):/.test(c)), "no retired route reached a service");
 
     // Master flag off: 404 feature_disabled before any service call.
     calls.length = 0;

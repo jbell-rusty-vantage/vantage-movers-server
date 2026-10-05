@@ -1,5 +1,5 @@
 import { getContactNumberModel } from "../../../models/ContactNumber";
-import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
+
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { BookedLead } from "../../../models/BookedLead";
@@ -14,18 +14,15 @@ import type { HistoryLeadRef } from "./candidates";
 
 /**
  * Read-only canonical history for the MCP history tools (`find_contact_number`,
- * `get_lead_history`). Sources are canonical records and provider metadata only: Contact Numbers,
- * Number↔Lead attachments, Leads, Bookings, Cancellations, EntityChanges, Granot observations and
- * Lead Message delivery metadata. Every read is bounded and served by an existing index. No email
+ * `get_lead_history`). Sources are canonical records and provider metadata only: Contact Numbers
+ * (with their All Numbers call summary and lead link), Leads, Bookings, Cancellations, EntityChanges,
+ * Granot observations and Lead Message delivery metadata. Every read is bounded and served by an existing index. No email
  * or Lead Message body leaves this module, and `serialize` redacts every string.
  */
 type Row = Record<string, unknown>;
 type LeadModel = HistoryLeadRef["model"];
 
-const LIMITS = { attachments: 50, changes: 50, observations: 20, bookings: 10, messages: 50 } as const;
-/** Provider-metadata rollups of a Contact Number. A stored key outside this list (a retired AI/Outreach rollup) is never returned. */
-const NUMBER_ROLLUPS = ["interactions_total", "inbound_total", "outbound_total", "human_conversations_total", "last_inbound_at", "last_outbound_at",
-  "last_human_conversation_at", "attached_lead_count", "candidate_lead_count", "recordings_total"] as const;
+const LIMITS = { numbers: 50, changes: 50, observations: 20, bookings: 10, messages: 50 } as const;
 
 const isOid = (v: object) => ["ObjectId", "ObjectID"].includes(String((v as { _bsontype?: unknown })._bsontype));
 const sid = (v: unknown) => v == null ? null : String(v);
@@ -67,14 +64,12 @@ function leadProjection(lead: Row, model: LeadModel) {
   };
 }
 const hashed = (field: Row) => field.value_mode !== undefined && field.value_mode !== "plain" && field.before === undefined && field.after === undefined;
-const evidenceView = (edge: Row) => ((edge.evidence as Row[] | undefined) ?? [])
-  .map((item) => ({ source: item.source, field_path: item.field_path, observed_at: iso(item.observed_at) }));
-const decisionView = (edge: Row) => ({
-  lead_snapshot: edge.lead_snapshot ?? null, decided_by: edge.decided_by ?? null, decided_at: iso(edge.decided_at), decision_reason: edge.decision_reason ?? null,
-  auto_decision: edge.auto_decision ?? null, updated_at: iso(edge.updatedAt),
-});
+const leadView = (lead: Row) => ({ model: lead.model, id: sid(lead.id), name: lead.name ?? null, job_no: lead.job_no ?? null,
+  rep_name: lead.receiver_agent_name ?? null, received_at: iso(lead.received_at), state: lead.state ?? null });
+const linkView = (link: Row | null | undefined) => link ? ({ source: link.source ?? "automatic", set_at: iso(link.set_at), set_by: link.set_by ?? null,
+  excluded: ((link.excluded as Row[] | undefined) ?? []).map((e) => ({ model: e.model, id: sid(e.id) })) }) : null;
 
-/** Lead projection, attachment edges, entity changes, Granot observations, bookings, cancellations and messages (no bodies). */
+/** Lead projection, linked Contact Numbers, entity changes, Granot observations, bookings, cancellations and messages (no bodies). */
 export async function readLeadHistory(lead: HistoryLeadRef) {
   const oid = toObjectId(lead.id);
   const hidden = "-email -sheet_sync -ingested_contact_snapshot -granot_contact_snapshot -ringcentral";
@@ -83,8 +78,9 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
   if (!row) return null;
   const leadRef = { "lead_ref.model": lead.model, "lead_ref.id": oid };
   const jobNo = str(row.normalized_job_no);
-  const [attachments, changes, observations, bookings, cancellations, messages] = await Promise.all([
-    getNumberLeadAttachmentModel().find(leadRef).sort({ _id: 1 }).limit(LIMITS.attachments).lean(),
+  const [numbers, changes, observations, bookings, cancellations, messages] = await Promise.all([
+    getContactNumberModel().find({ purged_at: null, $or: [{ "lead.id": oid }, { "other_leads.id": oid }] }, { e164: 1, lead: 1, lead_link: 1 })
+      .sort({ _id: 1 }).limit(LIMITS.numbers).lean(),
     getEntityChangeModel().find({ "entity.model": lead.model, "entity.id": lead.id } as Row).sort({ applied_at: -1 }).limit(LIMITS.changes)
       .select("changed_paths fields applied_at provenance command_name revision_before revision_after").lean(),
     jobNo ? getGranotObservationModel().find({ "identity.normalized_job_no": jobNo }).sort({ captured_at: -1 })
@@ -98,8 +94,12 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
   ]);
   return serialize({
     lead: leadProjection(row, lead.model),
-    attachments: (attachments as unknown as Row[]).map((edge) => ({ id: String(edge._id), contact_number_id: sid(edge.contact_number_id), state: edge.state,
-      certainty: edge.certainty, evidence: evidenceView(edge), ...decisionView(edge) })),
+    contact_numbers: (numbers as unknown as Row[]).map((number) => {
+      const current = number.lead as Row | null | undefined;
+      const isLead = Boolean(current && current.model === lead.model && sid(current.id) === lead.id);
+      return { contact_number_id: String(number._id), e164: number.e164, link: isLead ? "lead" : "other_lead",
+        link_source: (number.lead_link as Row | null | undefined)?.source ?? "automatic" };
+    }),
     changes: (changes as unknown as Row[]).map((change) => ({ id: String(change._id), applied_at: iso(change.applied_at), command_name: change.command_name,
       source_system: (change.provenance as Row | null)?.source_system ?? null, changed_paths: change.changed_paths ?? [],
       revision_before: change.revision_before ?? null, revision_after: change.revision_after ?? null,
@@ -116,18 +116,24 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
   });
 }
 
-/** Contact Number (no search terms) with provider-metadata rollups and its attachment edges. */
+/** Contact Number (no search terms) with its All Numbers call summary and lead link (the Lead, other matches, Owner exclusions). */
 export async function readContactNumberHistory(contact_number_id: string) {
-  const number = (await getContactNumberModel().findById(contact_number_id).select("-search_terms -digits_reversed").lean()) as unknown as Row | null;
+  const number = (await getContactNumberModel().findById(contact_number_id, { e164: 1, national_ten: 1, country: 1, provider_names: 1, first_observed_at: 1,
+    last_activity_at: 1, revision: 1, purged_at: 1, created_via: 1, lead: 1, other_leads: 1, lead_link: 1, last_call: 1, calls: 1, last_inbound_at: 1,
+    last_outbound_at: 1, waiting_since: 1 }).lean()) as unknown as Row | null;
   if (!number || number.purged_at) return null;
-  const attachments = (await getNumberLeadAttachmentModel().find({ contact_number_id }).sort({ _id: 1 }).limit(LIMITS.attachments).lean()) as unknown as Row[];
+  const lastCall = number.last_call as Row | null | undefined;
+  const calls = (number.calls ?? {}) as Row;
   return serialize({
-    contact_number: { id: String(number._id), e164: number.e164, national_ten: number.national_ten ?? null, country: number.country, kind: number.kind,
-      classification: number.classification, classification_reason: number.classification_reason ?? null, contact_eligibility: number.contact_eligibility,
-      provider_names: number.provider_names ?? [], first_observed_at: iso(number.first_observed_at), last_activity_at: iso(number.last_activity_at),
-      rollups: number.rollups ? Object.fromEntries(NUMBER_ROLLUPS.map((key) => [key, (number.rollups as Row)[key] ?? null])) : null,
+    contact_number: { id: String(number._id), e164: number.e164, national_ten: number.national_ten ?? null, country: number.country,
+      source: number.created_via === "form_lead" ? "form_lead" : "call", provider_names: number.provider_names ?? [],
+      first_observed_at: iso(number.first_observed_at), last_activity_at: iso(number.last_activity_at),
+      calls: { inbound: calls.inbound ?? 0, outbound: calls.outbound ?? 0, missed: calls.missed ?? 0 },
+      last_call: lastCall ? { at: iso(lastCall.at), direction: lastCall.direction, result: lastCall.result, duration_seconds: lastCall.duration_seconds ?? null } : null,
+      last_inbound_at: iso(number.last_inbound_at), last_outbound_at: iso(number.last_outbound_at), waiting_since: iso(number.waiting_since),
       revision: number.revision },
-    attachments: attachments.map((edge) => ({ id: String(edge._id), lead_ref: edge.lead_ref, state: edge.state, certainty: edge.certainty,
-      evidence: evidenceView(edge), ...decisionView(edge) })),
+    lead: number.lead ? leadView(number.lead as Row) : null,
+    other_leads: ((number.other_leads as Row[] | undefined) ?? []).map(leadView),
+    lead_link: linkView(number.lead_link as Row | null | undefined),
   });
 }
