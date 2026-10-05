@@ -30,7 +30,10 @@
       ],
       "team": []
     },
-    "permitted_commands": [],
+    "permitted_commands": [
+      "quoted_followup",
+      "callback"
+    ],
     "role_capabilities": [
       "explicit_callback_commands",
       "own_assigned_reads",

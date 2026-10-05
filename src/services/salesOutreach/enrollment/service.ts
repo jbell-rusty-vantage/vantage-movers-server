@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ClientSession } from "mongoose";
 import { withTransaction } from "../../../db";
+import { SALES_OUTREACH_COMMAND_KINDS } from "../../../config/domain/salesOutreach";
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { appendCsiAudit, executeCsiCommand } from "../../salesIntelligence/transactions";
 import { salesOutreachConfigurationLoader, type ActiveConfiguration, type ConfigurationLoader } from "../config/load";
@@ -26,7 +27,7 @@ import {
 import { mongoEnrollmentStore, type EnrollmentLease, type EnrollmentRunRow, type EnrollmentSkip, type EnrollmentStore } from "./store";
 
 /** Registered command kind of the enrollment apply start (CSI command ledger; never a legacy name). */
-export const SALES_OUTREACH_ENROLLMENT_APPLY_COMMAND = "sales_outreach_enrollment_apply" as const;
+export const SALES_OUTREACH_ENROLLMENT_APPLY_COMMAND = SALES_OUTREACH_COMMAND_KINDS.enrollment_apply;
 const REPORT_PAGE = 500;
 const CANDIDATE_SCAN_BUDGET = 1_000;
 const CANDIDATE_PAGE = 200;

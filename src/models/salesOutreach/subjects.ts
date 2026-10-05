@@ -19,6 +19,8 @@ export const SALES_OUTREACH_SUBJECT_INDEXES = [
   index("sod_subject_job_no", { "display.normalized_job_no": 1 }),
   index("sod_subject_phone", { "display.normalized_phone": 1 }),
   index("sod_subject_lead_revision", { lead_revision_seen: 1 }),
+  // Restriction commands wake every subject attached to the restricted number (multikey).
+  index("sod_subject_contact_numbers", { contact_number_ids: 1 }),
 ];
 
 const enrollmentSchema = new Schema(

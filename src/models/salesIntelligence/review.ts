@@ -121,6 +121,12 @@ export const SalesIntelligenceContactRestrictionSchema = new Schema(
     actor: { type: actor, required: true },
     run_id: ref,
     finding_id: ref,
+    // Sales Outreach Desk (P06c, IMPLEMENTATION-PLAN §4.9): the Owner's reason for an added restriction,
+    // and the Owner's review of an existing row. Confirming keeps it active and blocking; only an
+    // explicit lift releases it. Rows written before the desk carry none of these (null).
+    reason: text,
+    confirmed_at: date,
+    confirmation_actor: { type: actor, default: null },
     resolution_actor: { type: actor, default: null },
     resolved_at: date,
     resolution_reason: text,

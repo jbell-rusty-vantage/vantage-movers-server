@@ -94,7 +94,7 @@ const oid = (id: string) => new mongoose.Types.ObjectId(id);
 const leadModel = (model: SalesOutreachLeadModel) => (model === "FormLead" ? getFormLeadModel() : getCallLeadModel());
 const MAX_OBSERVATIONS = 500;
 
-type SubjectLean = Record<string, unknown> & {
+export type SubjectLean = Record<string, unknown> & {
   _id: unknown;
   lead_model: SalesOutreachLeadModel;
   lead_id: unknown;
@@ -103,7 +103,7 @@ type SubjectLean = Record<string, unknown> & {
   priority: Record<string, unknown>;
 };
 
-function toSubjectRow(row: SubjectLean): DeskSubjectRow {
+export function toSubjectRow(row: SubjectLean): DeskSubjectRow {
   const enrollment = row.enrollment as { cohort_id: string; kind: DeskEnrollment["kind"]; enrolled_at: Date; activation_at: Date; manifest_hash: string | null };
   const priority = row.priority as { raw: string | null; accepted_at: Date | null; observation_id: unknown; basis: DeskSubjectRow["priority"]["basis"]; uncertain?: boolean };
   return {

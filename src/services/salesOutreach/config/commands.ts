@@ -1,3 +1,4 @@
+import { SALES_OUTREACH_COMMAND_KINDS } from "../../../config/domain/salesOutreach";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { appendCsiAudit, duplicateKey, executeCsiCommand } from "../../salesIntelligence/transactions";
@@ -12,7 +13,7 @@ import {
 } from "./store";
 
 /** Registered command kind in the CSI command ledger (never a legacy name). */
-export const SALES_OUTREACH_CONFIGURATION_COMMAND = "sales_outreach_configuration_update" as const;
+export const SALES_OUTREACH_CONFIGURATION_COMMAND = SALES_OUTREACH_COMMAND_KINDS.configuration_update;
 
 export type ConfigurationPatchResult = {
   revision: number;

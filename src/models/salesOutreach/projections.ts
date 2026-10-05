@@ -1,6 +1,7 @@
 import { Schema } from "mongoose";
 import { z } from "zod";
 import {
+  SALES_OUTREACH_CADENCE_EXPOSURES,
   SALES_OUTREACH_CHANNEL_STATUSES,
   SALES_OUTREACH_GOAL_COUNT_SCOPES,
   SALES_OUTREACH_GOAL_STATES,
@@ -87,7 +88,20 @@ export const SalesOutreachProjectionSchema = new Schema(
     /** Last 30 business dates of window outcomes; older dates are folded into `window_history_summary`. */
     window_history: { ...validatedJson(z.array(z.json()).max(30)), default: () => [] },
     window_history_summary: jsonOrNull,
+    /**
+     * Bounded engine detail the queue row does not index (subject state, schedule day, initial response,
+     * callback, Quoted basis, advisory cooldown, catch-up, every engine flag, blocked-until per channel).
+     */
+    detail: jsonOrNull,
+    /** `shadow` rows hold the full computation; reads must not expose overdue/missed labels from them. */
+    exposure: enumeration(SALES_OUTREACH_CADENCE_EXPOSURES),
+    engine_version: str,
+    /** Engine `input_fingerprint` (inputs + policy version) at the last write. */
     input_fingerprint: str,
+    /** Hash of the engine result fingerprint, the resolved policy and the exposure: equal ⇒ no write. */
+    result_fingerprint: str,
+    /** Hash of the resolved engine policy + exposure; the evaluation reconcile re-evaluates rows that differ. */
+    policy_fingerprint: str,
     configuration_version: str,
     computed_as_of: at,
     publication_revision: count,
