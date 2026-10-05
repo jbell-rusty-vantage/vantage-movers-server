@@ -85,6 +85,9 @@ test("M1 roster/goals (P08a, FAST-01): every reviewed rep, all seven days, defau
   const unpaused = buildFinal01Configuration({ current: bootstrap(), rosterAgentIds: [A], installedOn: "2026-10-04", migrationPaused: false });
   assert.deepEqual({ ...unpaused.migration, paused: true }, bootstrap().migration);
   assert.equal(unpaused.migration.paused, false);
+  assert.equal(value.transition.intake_admission_enabled, false);
+  const opened = buildFinal01Configuration({ current: bootstrap(), rosterAgentIds: [A], installedOn: "2026-10-04", intakeAdmissionAt: new Date("2026-10-05T18:00:00.000Z") });
+  assert.deepEqual([opened.transition.intake_admission_enabled, opened.transition.intake_admission_at], [true, "2026-10-05T18:00:00.000Z"]);
 });
 
 test("the installer refuses unnamed targets and unknown controls", () => {
@@ -93,6 +96,8 @@ test("the installer refuses unnamed targets and unknown controls", () => {
   assert.throws(() => parseInstallArgs(["--target=vantagemovers", "--enable=everything"]), /Unknown control/);
   assert.throws(() => parseInstallArgs(["--target=vantagemovers", "--yes"]), /Unknown argument/);
   assert.throws(() => parseInstallArgs(["--target=vantagemovers", "--migration-paused=no"]), /--migration-paused/);
+  assert.throws(() => parseInstallArgs(["--target=vantagemovers", "--intake-admission-at=yesterday"]), /--intake-admission-at/);
+  assert.deepEqual(parseInstallArgs(["--target=vantagemovers", "--intake-admission-at=2026-10-05T18:00:00Z"]).intakeAdmissionAt, new Date("2026-10-05T18:00:00Z"));
   assert.deepEqual(parseInstallArgs(["--target=vantagemovers", "--apply", "--migration-paused=false"]), { target: "vantagemovers", apply: true, enableControls: [], migrationPaused: false });
   assert.deepEqual(parseInstallArgs(["--target=vantagemovers"]), { target: "vantagemovers", apply: false, enableControls: [] });
   assert.deepEqual(parseInstallArgs(["--target=testvantagemovers", "--apply", "--enable=desk_enabled,goal_metrics_enabled"]), {
