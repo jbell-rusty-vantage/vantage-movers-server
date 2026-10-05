@@ -8,6 +8,10 @@ import { createConfigurationLoader } from "../../src/services/salesOutreach/conf
 import { configurationActivationBlockers } from "../../src/services/salesOutreach/config/reads";
 import { configurationContentHash } from "../../src/services/salesOutreach/config/store";
 import { MemoryConfigurationDb } from "../../src/services/salesOutreach/config/testing";
+import { FINAL_01_CADENCE_VALUE } from "../../src/services/salesOutreach/engine/approvedStartingValues";
+import { resolveEnginePolicy } from "../../src/services/salesOutreach/engine";
+import { deskEnginePolicy } from "../../src/services/salesOutreach/evaluation/policyAdapter";
+import { TEST_FINAL01_CADENCE } from "../../src/services/salesOutreach/evaluation/testing";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
 import {
   buildFinal01Configuration,
@@ -124,4 +128,14 @@ test("installing through the PATCH path is idempotent: same content writes nothi
   // A newly reviewed rep changes the roster → a new revision.
   const grown = await install([A, B]);
   assert.equal(grown.skipped || grown.first.response.revision, 2);
+});
+
+test("the installed FINAL-01 cadence adapts to S2's FINAL-01 engine policy (same rules, our approval labels)", () => {
+  const value = buildFinal01Configuration({ current: salesOutreachConfigurationValueSchema.parse({}), rosterAgentIds: ["a".repeat(24)], installedOn: "2026-10-05" });
+  assert.deepEqual(value.cadence, salesOutreachConfigurationValueSchema.parse({ cadence: TEST_FINAL01_CADENCE }).cadence, "the evaluator tests use the installed values");
+  const ours = deskEnginePolicy(value);
+  const theirs = resolveEnginePolicy(FINAL_01_CADENCE_VALUE);
+  assert.ok(ours.ok && theirs.ok);
+  assert.deepEqual({ ...ours.policy, policy_version: "", approval_ref: "" }, { ...theirs.policy, policy_version: "", approval_ref: "" });
+  assert.deepEqual([ours.policy.policy_version, ours.policy.approval_ref], [FINAL01_POLICY_VERSION, FINAL01_APPROVAL_REF]);
 });

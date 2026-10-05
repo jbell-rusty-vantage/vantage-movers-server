@@ -10,6 +10,7 @@ import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
 import { retireLegacyCsiJobs } from "../salesIntelligence/jobs";
 import { runOutreachLeadChangeJob } from "../salesOutreach/subjects/leadChangeJob";
+import { runOutreachEvaluateJob } from "../salesOutreach/evaluation/evaluateJob";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -51,8 +52,9 @@ export function defaultStageHandlers(
     nudge_repair: (jobId) => runNudgeRepairJob(jobId),
     call_log_refresh: (jobId) => runCallLogRefreshJob(jobId),
     // Sales Outreach Desk: a post-commit wake for a Lead change (the minute tail cron also drains these).
-    // `outreach_evaluate` has no consumer yet: its rows wait for the evaluator wiring.
     outreach_lead_change: (jobId) => runOutreachLeadChangeJob(jobId),
+    // Sales Outreach Desk: re-run the cadence engine for one subject (the minute evaluate cron also drains these).
+    outreach_evaluate: (jobId) => runOutreachEvaluateJob(jobId),
   };
 }
 
