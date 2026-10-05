@@ -108,9 +108,12 @@ test("configuration documents are kind-checked; versions are insert-only and bul
   await new Configuration(version).validate();
   await assert.rejects(new Configuration({ ...version, key: "version:other" }).validate());
   await assert.rejects(new Configuration({ ...version, value: { controls: { desk_enabled: "yes" } } }).validate());
-  await new Configuration({ kind: "pointer", key: "active", version: "v1", revision: 1, updated_by: "owner-1" }).validate();
-  await assert.rejects(new Configuration({ kind: "pointer", key: "active", version: "v1", revision: 0 }).validate());
-  await assert.rejects(new Configuration({ kind: "pointer", key: "other", version: "v1", revision: 1 }).validate());
+  const pointer = { kind: "pointer", key: "active", version: "v1", content_hash: "h", revision: 1, updated_by: "owner-1" };
+  await new Configuration(pointer).validate();
+  await assert.rejects(new Configuration({ ...pointer, revision: 0 }).validate());
+  await assert.rejects(new Configuration({ ...pointer, key: "other" }).validate());
+  await assert.rejects(new Configuration({ ...pointer, content_hash: null }).validate());
+  await assert.rejects(new Configuration({ ...pointer, value }).validate());
   // Query guards run before any database access.
   await assert.rejects(Configuration.updateOne({ key: "version:v1" }, { $set: { content_hash: "x" } }).exec(), /immutable/);
   await assert.rejects(Configuration.deleteMany({}).exec(), /immutable/);
