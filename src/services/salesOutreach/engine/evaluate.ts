@@ -200,7 +200,8 @@ function newPeriodObligations(ctx: Context, period: TimedPeriod, endMs: number):
           const active = periodAt(ctx.periods, at);
           return active !== null && active.period_id !== period.period_id && (active.workflow === "new" || active.workflow === "quoted");
         });
-  const future = () => out.some((ob) => ob.opens > ctx.asOf);
+  // Generate past `as_of` until both channels show their next requirement (SMS dates are sparse).
+  const future = () => out.some((ob) => ob.opens > ctx.asOf && ob.channel === "call") && out.some((ob) => ob.opens > ctx.asOf && ob.channel === "sms");
   for (const date of periodDates(ctx, startDate, endMs, future)) {
     if (!cal.isWorkingDate(date)) continue;
     const dayCtx = { cal, policy, period_id: period.period_id, date, scheduleDay: calendarScheduleDay(receivedDate, date) };
