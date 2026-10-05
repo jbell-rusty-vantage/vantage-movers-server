@@ -111,6 +111,8 @@ export function buildFinal01Configuration(input: {
   rosterAgentIds: readonly string[];
   installedOn: string;
   enableControls?: readonly InstallableControl[];
+  /** `--migration-paused=<bool>`: switches enrollment pacing; omitted = carried over (FAST-TRACK step 6). */
+  migrationPaused?: boolean;
 }): SalesOutreachConfigurationValue {
   const agents = [...new Set(input.rosterAgentIds.map((id) => id.toLowerCase()))].sort();
   const rosterVersion = rosterVersionFor(agents, input.installedOn);
@@ -122,7 +124,7 @@ export function buildFinal01Configuration(input: {
     transition: { ...input.current.transition, backfill_lookback_days: 90, backfill_include_upcoming_moves: true },
     cadence: FINAL01_CADENCE,
     evidence: final01Evidence(rosterVersion),
-    migration: input.current.migration,
+    migration: input.migrationPaused === undefined ? input.current.migration : { ...input.current.migration, paused: input.migrationPaused },
     goals: {
       roster_version: rosterVersion,
       rep_work_schedules: agents.map((agent_id) => ({ agent_id, working_days: ALL_WEEKDAYS, scheduled_goal: null })),
@@ -137,16 +139,20 @@ export type InstallArgs = {
   target: string;
   apply: boolean;
   enableControls: InstallableControl[];
+  /** Present only when `--migration-paused=true|false` was given. */
+  migrationPaused?: boolean;
 };
 
 /**
  * `--target=<database>` is required; dry run unless `--apply`. `--enable=desk_enabled,goal_metrics_enabled`
- * switches listed controls on in the same version. Unknown flags are refused.
+ * switches listed controls on in the same version; `--migration-paused=false` unpauses enrollment (the
+ * FAST-TRACK step-6 gate `apply` checks). Unknown flags are refused.
  */
 export function parseInstallArgs(argv: readonly string[]): InstallArgs {
   let target: string | null = null;
   let apply = false;
   let enableControls: InstallableControl[] = [];
+  let migrationPaused: boolean | undefined;
   for (const arg of argv) {
     if (arg.startsWith("--target=")) target = arg.slice("--target=".length).trim();
     else if (arg === "--apply") apply = true;
@@ -156,12 +162,16 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
       for (const name of names)
         if (!(INSTALLABLE_CONTROLS as readonly string[]).includes(name)) throw new Error(`Unknown control: ${name}`);
       enableControls = names as InstallableControl[];
+    } else if (arg.startsWith("--migration-paused=")) {
+      const raw = arg.slice("--migration-paused=".length).trim();
+      if (raw !== "true" && raw !== "false") throw new Error(`--migration-paused must be true or false, got: ${raw}`);
+      migrationPaused = raw === "true";
     } else if (arg === "--allow-schema-drift") continue;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (!target) throw new Error("--target=<database name> is required (for example --target=vantagemovers)");
   if (!/^[A-Za-z0-9_]+$/.test(target)) throw new Error("--target must be a plain database name");
-  return { target, apply, enableControls };
+  return migrationPaused === undefined ? { target, apply, enableControls } : { target, apply, enableControls, migrationPaused };
 }
 
 /** Deterministic Idempotency-Key: a re-run after a lost response replays instead of writing twice. */
