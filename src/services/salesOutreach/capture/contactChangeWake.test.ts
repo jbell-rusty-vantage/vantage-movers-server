@@ -3,8 +3,6 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import {
   contactChangeDedupeKey,
-  enqueueOutreachContactChangeJobs,
-  OUTREACH_CONTACT_CHANGE_CONSUMER_READY,
   OUTREACH_CONTACT_CHANGE_STAGE,
   sourcesFromTouchedCalls,
   wakeOutreachContactChange,
@@ -28,40 +26,23 @@ test("wake sources: one per (row, revision); a merged-away row carries its winne
   assert.equal(contactChangeDedupeKey(sources[0]!), `sod:contact_change:call:${A}:r4`);
 });
 
-test("wake seam is inert until the SRV-6 consumer is registered: no configuration read, no job, no publish", async () => {
-  assert.equal(OUTREACH_CONTACT_CHANGE_CONSUMER_READY, false, "phase A ships the seam only");
-  const touched: string[] = [];
-  const deps: ContactChangeDeps = {
-    wanted: async () => {
-      touched.push("wanted");
-      return true;
-    },
-    enqueue: (async () => {
-      touched.push("enqueue");
-      throw new Error("must not enqueue");
-    }) as never,
-    transaction: async () => {
-      touched.push("transaction");
-      throw new Error("must not open a transaction");
-    },
-  };
-  const outcome = await wakeOutreachContactChange([{ source_kind: "call", source_id: A, source_revision: "r1" }], deps);
-  assert.deepEqual(outcome, { status: "skipped", reason: "consumer_pending" });
-  assert.deepEqual(await enqueueOutreachContactChangeJobs([{ source_kind: "call", source_id: A, source_revision: "r1" }], {} as never, NOW, deps), []);
-  assert.deepEqual(touched, []);
+test("wake seam: the stage has a registered consumer (no code or env readiness switch)", async () => {
+  const { defaultStageHandlers } = await import("../../numberActivity/jobDispatch.js");
+  const handlers = defaultStageHandlers();
+  assert.equal(typeof handlers[OUTREACH_CONTACT_CHANGE_STAGE], "function");
+  assert.equal(typeof handlers.outreach_rep_day, "function");
 });
 
-test("wake seam with a consumer: fails closed when the desk does not want contact evidence", async () => {
+test("wake seam: fails closed when the desk does not want contact evidence", async () => {
   const outcome = await wakeOutreachContactChange([{ source_kind: "call", source_id: A, source_revision: "r1" }], {
-    consumerReady: true,
     wanted: async () => false,
     transaction: async () => assert.fail("no transaction when not wanted"),
   });
   assert.deepEqual(outcome, { status: "skipped", reason: "not_wanted" });
-  assert.deepEqual(await wakeOutreachContactChange([], { consumerReady: true }), { status: "skipped", reason: "nothing_touched" });
+  assert.deepEqual(await wakeOutreachContactChange([], {}), { status: "skipped", reason: "nothing_touched" });
 });
 
-test("wake seam with a consumer: one deduplicated outreach_contact_change job per source, only newly created ones are published", async () => {
+test("wake seam: one deduplicated outreach_contact_change job per source, only newly created ones are published", async () => {
   const enqueued: Array<{ dedupe_key: string; stage: string; subject_key: string; input_refs?: string[] }> = [];
   const existing = new Map<string, Date>([[`sod:contact_change:call:${B}:r2`, new Date(NOW.getTime() - 60_000)]]);
   const published: string[][] = [];
@@ -71,8 +52,7 @@ test("wake seam with a consumer: one deduplicated outreach_contact_change job pe
       { source_kind: "call", source_id: B, source_revision: "r2" },
     ],
     {
-      consumerReady: true,
-      wanted: async () => true,
+        wanted: async () => true,
       now: () => NOW,
       transaction: async (work) => work({} as never),
       enqueue: (async (input: { dedupe_key: string; stage: string; subject_key: string; input_refs?: string[] }, _session: unknown, now: Date) => {
@@ -95,7 +75,6 @@ test("wake seam with a consumer: one deduplicated outreach_contact_change job pe
 
 test("wake seam never throws into capture: a failing transaction is reported as failed", async () => {
   const outcome = await wakeOutreachContactChange([{ source_kind: "sms", source_id: A, source_revision: "r1" }], {
-    consumerReady: true,
     wanted: async () => true,
     transaction: async () => {
       throw new TypeError("mongo down");

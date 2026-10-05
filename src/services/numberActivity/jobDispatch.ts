@@ -11,6 +11,7 @@ import { runCallLogRefreshJob } from "./callLogRefresh";
 import { runRepSmsSyncJob } from "../ringcentral/repSms/intent";
 import { retireLegacyCsiJobs } from "../salesIntelligence/jobs";
 import { runOutreachLeadChangeJob } from "../salesOutreach/subjects/leadChangeJob";
+import { runOutreachContactChangeJob, runOutreachRepDayJob } from "../salesOutreach/contacts/jobs";
 import { runOutreachEvaluateJob } from "../salesOutreach/evaluation/evaluateJob";
 
 /**
@@ -54,6 +55,10 @@ export function defaultStageHandlers(
     call_log_refresh: (jobId) => runCallLogRefreshJob(jobId),
     // Sales Outreach Desk: a post-commit wake for a Lead change (the minute tail cron also drains these).
     outreach_lead_change: (jobId) => runOutreachLeadChangeJob(jobId),
+    // Sales Outreach Desk (S3, SRV-6): contact-event derivation and the rep-day recount (the
+    // contact-events minute cron also drains both).
+    outreach_contact_change: (jobId) => runOutreachContactChangeJob(jobId),
+    outreach_rep_day: (jobId) => runOutreachRepDayJob(jobId),
     // RINGCENTRAL-CAPTURE §5: coalesced per-mailbox rep SMS sync (gated by the desk control).
     rep_sms_sync: (jobId) => runRepSmsSyncJob(jobId),
     // Sales Outreach Desk: re-run the cadence engine for one subject (the minute evaluate cron also drains these).

@@ -180,6 +180,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/sales-outreach-contact-events",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/sales-outreach-evaluate",
       "schedule": "* * * * *"
     }

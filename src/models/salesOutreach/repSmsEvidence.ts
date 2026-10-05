@@ -23,6 +23,8 @@ export const RINGCENTRAL_REP_SMS_EVIDENCE_INDEXES = [
   index("sod_rsms_counterpart_created", { counterpart_numbers: 1, provider_created_at: 1 }),
   index("sod_rsms_rep_send", { "reviewed_rep_ref.agent_id": 1, send_at: 1 }),
   index("sod_rsms_updated", { updatedAt: 1, _id: 1 }),
+  // SRV-6: mailbox copies of one logical message (one credit per logical send).
+  index("sod_rsms_logical", { canonical_logical_id: 1, _id: 1 }),
 ];
 
 export const REP_SMS_STATUS_HISTORY_LIMIT = 20;
