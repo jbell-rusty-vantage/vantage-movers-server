@@ -128,6 +128,14 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           attachment_source_id: ref,
           entity_change_applied_at: date,
           entity_change_id: ref,
+          // Sales Outreach Desk revision reconcile: the last subject id of its bounded pass.
+          outreach_subject_id: ref,
+          // Sales Outreach Desk contact-event sweep (S3, SRV-6): `(updatedAt, _id)` of the last
+          // source row derived (scopes `outreach_contact_calls` / `outreach_contact_sms`) and the
+          // first instant the derived evidence covers (the bootstrap start).
+          outreach_source_updated_at: date,
+          outreach_source_id: ref,
+          outreach_coverage_from: date,
         },
         { _id: false, strict: "throw" },
       ),
@@ -213,6 +221,39 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           sync_time: date,
           last_full_sync_at: date,
           consecutive_expiries: count,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: undefined,
+    },
+    // RINGCENTRAL-CAPTURE §4: the staffed-hours minute ISync lane's last outcome
+    // (scope `call_log_all_directions`). Freshness reads use `last_success_at`.
+    isync_lane: {
+      type: new Schema(
+        {
+          last_run_at: date,
+          last_success_at: date,
+          last_error_code: text,
+          last_records: { type: Number, min: 0, default: 0 },
+          last_applied: { type: Number, min: 0, default: 0 },
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: undefined,
+    },
+    // RINGCENTRAL-CAPTURE §5: one rep mailbox's message-sync position and coverage
+    // (scope `rep_sms:<extensionId>`). The token is provider state and never logged.
+    message_sync: {
+      type: new Schema(
+        {
+          extension_id: text,
+          token: text,
+          sync_time: date,
+          last_full_sync_at: date,
+          last_success_at: date,
+          /** Oldest instant the stored history is complete from (FSync `dateFrom`, or the oldest record when older ones exist). */
+          coverage_from: date,
+          consecutive_expiries: { type: Number, min: 0, default: 0 },
         },
         { _id: false, strict: "throw" },
       ),

@@ -1,8 +1,7 @@
 import type { Request } from "express";
 import { type VantageAuthContext } from "../../middleware/requireApiSecret";
-import { requireRegistryOwnerActor, signAdminActorPayload, verifyAdminActorSignature } from "../operationsRegistry/trustedActor";
-import { ADMIN_PROXY_AGENT_HEADER, ADMIN_PROXY_HEADER_NAMES, buildCanonicalRepActorPayload, normalizeAdminPath } from "../operationsRegistry/trustedActorCanonical";
-import { getAdminProxySignatureMaxAgeMs, getAdminProxySigningSecret } from "../operationsRegistry/config";
+import { requireRegistryOwnerActor, verifySignedDashboardActor } from "../operationsRegistry/trustedActor";
+import { ADMIN_PROXY_HEADER_NAMES } from "../operationsRegistry/trustedActorCanonical";
 import {
   csiFlag,
   type CsiErrorCode,
@@ -26,10 +25,13 @@ export class CsiError extends Error {
     super(code);
   }
 }
-/** S8-REP (addendum §4.2): the signed dashboard role. `admin` is never admitted to Sales Intelligence. */
-export type CsiActorRole = "owner" | "admin" | "rep";
+/**
+ * S8-REP (addendum §4.2): the signed dashboard role. `admin` is never admitted to Sales Intelligence.
+ * `manager` (IMPL-03) is admitted only by the Sales Outreach Desk and Daily Operations reads.
+ */
+export type CsiActorRole = "owner" | "admin" | "manager" | "rep";
 export type CsiActor = Readonly<{
-  kind: "owner" | "worker" | "intelligence" | "rep";
+  kind: "owner" | "worker" | "intelligence" | "manager" | "rep";
   id: string;
   request_id: string;
   run_id: string | null;
@@ -87,25 +89,30 @@ export function requireCsiOwner(req: Request): CsiActor {
 export function requireCsiReader(req: Request, now = Date.now()): CsiActor {
   const role = req.header(ADMIN_PROXY_HEADER_NAMES.role)?.trim().toLowerCase();
   if (role !== "rep" || !csiFlag("REP_ACCESS")) return requireCsiOwner(req);
-  const auth = getVantageAuth(req);
-  if (!auth || auth.kind === "scoped_key") throw new CsiError("OWNER_REQUIRED");
-  const rep = verifyCsiRepSignature(req, now);
-  if (!rep) throw new CsiError("OWNER_REQUIRED");
-  return trust({ kind: "rep", id: rep.adminId, request_id: rep.requestId, run_id: null }, { role: "rep", agent_id: rep.agentId });
+  return requireSignedCsiRep(req, now, "OWNER_REQUIRED");
 }
 
-function verifyCsiRepSignature(req: Request, now: number): { adminId: string; requestId: string; agentId: string } | null {
-  const secret = getAdminProxySigningSecret();
-  if (!secret) return null;
-  const header = (name: string) => req.header(name)?.trim() || null;
-  const adminId = header(ADMIN_PROXY_HEADER_NAMES.userId), email = header(ADMIN_PROXY_HEADER_NAMES.email);
-  const requestId = header(ADMIN_PROXY_HEADER_NAMES.requestId), timestamp = header(ADMIN_PROXY_HEADER_NAMES.timestamp);
-  const signature = header(ADMIN_PROXY_HEADER_NAMES.signature), agentId = header(ADMIN_PROXY_AGENT_HEADER)?.toLowerCase() ?? null;
-  if (!adminId || !email || !requestId || !timestamp || !signature || !agentId || !/^[a-f\d]{24}$/.test(agentId)) return null;
-  if (!/^\d+$/.test(timestamp) || Math.abs(now - Number(timestamp)) > getAdminProxySignatureMaxAgeMs()) return null;
-  const path = normalizeAdminPath((req.originalUrl ?? req.url).split("?")[0] ?? "");
-  const expected = signAdminActorPayload(buildCanonicalRepActorPayload({ adminId, email, role: "rep", timestamp, requestId, method: req.method, path, agentId }), secret);
-  return verifyAdminActorSignature(signature, expected) ? { adminId, requestId, agentId } : null;
+/**
+ * A signed rep with its linked Agent, independent of the Sales Intelligence `REP_ACCESS` env flag
+ * (the Sales Outreach Desk gates on its persisted configuration instead). Callers still check the
+ * rep's reviewed `sales_rep` link before serving anything.
+ */
+export function requireSignedCsiRep(req: Request, now = Date.now(), refusal: CsiErrorCode = "FORBIDDEN"): CsiRepActor {
+  const auth = getVantageAuth(req);
+  if (!auth || auth.kind === "scoped_key") throw new CsiError(refusal);
+  const rep = verifySignedDashboardActor(req, "rep", now);
+  if (!rep?.agentId) throw new CsiError(refusal);
+  return trust({ kind: "rep", id: rep.adminId, request_id: rep.requestId, run_id: null }, { role: "rep", agent_id: rep.agentId }) as CsiRepActor;
+}
+
+/** IMPL-03: a signed `manager` (seven-line payload). Admitted only where a surface lists the role. */
+export type CsiManagerActor = CsiActor & { kind: "manager"; role: "manager" };
+export function requireCsiManager(req: Request, now = Date.now()): CsiManagerActor {
+  const auth = getVantageAuth(req);
+  if (!auth || auth.kind === "scoped_key") throw new CsiError("FORBIDDEN");
+  const manager = verifySignedDashboardActor(req, "manager", now);
+  if (!manager) throw new CsiError("FORBIDDEN");
+  return trust({ kind: "manager", id: manager.adminId, request_id: manager.requestId, run_id: null }, { role: "manager", agent_id: null }) as CsiManagerActor;
 }
 export function assertCurrentScope(query: unknown, body: unknown = undefined) {
   for (const scope of [query, body])

@@ -1,0 +1,12 @@
+{
+  "ok": false,
+  "code": "CONFIGURATION_UNAVAILABLE",
+  "error": "Sales Outreach request rejected",
+  "request_id": "req-example",
+  "issues": [
+    {
+      "path": "controls.desk_enabled",
+      "code": "desk_disabled"
+    }
+  ]
+}

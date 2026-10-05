@@ -66,6 +66,7 @@ import {
   getOwnerRepNudgeModel,
   OWNER_REP_NUDGE_INDEXES,
 } from "../OwnerRepNudge";
+import { SALES_OUTREACH_MODEL_REGISTRY } from "../salesOutreach/registry";
 export const CSI_MODEL_REGISTRY = [
   {
     name: "SalesIntelligenceJob",
@@ -152,4 +153,6 @@ export const CSI_MODEL_REGISTRY = [
     model: getOwnerRepNudgeModel,
     indexes: OWNER_REP_NUDGE_INDEXES,
   },
+  // Sales Outreach Desk collections (sod-v1); built by `ops/sales-outreach/build-indexes.ts`.
+  ...SALES_OUTREACH_MODEL_REGISTRY,
 ] as const;

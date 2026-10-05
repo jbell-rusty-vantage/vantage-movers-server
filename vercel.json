@@ -144,6 +144,14 @@
       "schedule": "40 7 * * *"
     },
     {
+      "path": "/api/cron/sales-intelligence-call-log-isync",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-rep-sms-poll",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/sales-intelligence-job-recovery",
       "schedule": "* * * * *"
     },
@@ -162,6 +170,26 @@
     {
       "path": "/api/cron/sales-intelligence-webhook-subscription",
       "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/sales-intelligence-subscription-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/sales-outreach-lead-changes",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-outreach-revision-reconcile",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/sales-outreach-contact-events",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-outreach-evaluate",
+      "schedule": "* * * * *"
     }
   ]
 }

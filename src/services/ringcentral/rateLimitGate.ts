@@ -20,6 +20,10 @@ import { logger } from "../../logger";
  *   priority work (per-session refreshes, recording downloads, model-driven
  *   provider reads) may use only part of the budget, so the authoritative
  *   Call Log reconcile always has headroom.
+ * - Light (rep SMS message-store / message-sync reads, subscription renew,
+ *   extension presence) has its own budget below the provider's 50/min, so the
+ *   per-mailbox SMS sync and its safety poll never crowd each other out
+ *   (RINGCENTRAL-CAPTURE §7: 40/min high, 10/min low).
  *
  * The decision is one atomic `findOneAndUpdate` with a pipeline update, so
  * concurrent invocations cannot overspend. Without a Mongo connection (unit
@@ -28,7 +32,7 @@ import { logger } from "../../logger";
  * provider budget, it must never stop capture on a Mongo hiccup.
  */
 
-export type RingCentralGateGroup = "heavy" | "other";
+export type RingCentralGateGroup = "heavy" | "light" | "other";
 export type RingCentralCallPriority = "high" | "low";
 
 export const RINGCENTRAL_RATE_WINDOW_MS = 60_000;
@@ -36,16 +40,30 @@ const COLLECTION = "ringcentral_rate_limit_gates";
 const MAX_OPEN_MS = 15 * 60_000;
 
 /**
- * Heavy group endpoints this server calls: Call Log list / by id, Call Log
- * Sync and recording metadata / content. Everything else is `other`: never
- * budgeted, but a 429 on it still opens its gate.
+ * Heavy: Call Log list / by id, Call Log Sync, recording metadata / content,
+ * and — for safety, should a caller ever use them — Active Calls (account or
+ * extension) and account presence.
  */
+const HEAVY_PATH =
+  /\/restapi\/v1\.0\/account\/[^/]+\/(?:call-log(?:-sync)?(?:\/[^/]+)?|recording\/[^/]+(?:\/content)?|active-calls|extension\/[^/]+\/active-calls|presence)$/;
+/**
+ * Light (RingCentral rate-limit docs): per-extension message list / message by
+ * id, message sync, extension presence, and subscription renew.
+ */
+const LIGHT_PATH =
+  /^\/restapi\/v1\.0\/(?:account\/[^/]+\/extension\/[^/]+\/(?:message-store(?:\/[^/]+)?|message-sync|presence)|subscription\/[^/]+\/renew)$/;
+
+/** Budgeted groups (Heavy, Light) and everything else (`other`: never budgeted, but a 429 still opens its gate). */
 export function ringCentralGateGroup(endpoint: string): RingCentralGateGroup {
   const path = endpoint.split("?")[0] ?? endpoint;
-  return /\/restapi\/v1\.0\/account\/[^/]+\/(?:call-log(?:-sync)?(?:\/[^/]+)?|recording\/[^/]+(?:\/content)?)$/.test(path)
-    ? "heavy"
-    : "other";
+  if (HEAVY_PATH.test(path)) return "heavy";
+  if (LIGHT_PATH.test(path)) return "light";
+  return "other";
 }
+
+/** RINGCENTRAL-CAPTURE §7 Light lane budget (provider limit 50/min per user + app). */
+export const LIGHT_REQUESTS_PER_MINUTE = 40;
+export const LIGHT_LOW_PRIORITY_PER_MINUTE = 10;
 
 export type RingCentralGateConfig = {
   enabled: boolean;
@@ -55,6 +73,10 @@ export type RingCentralGateConfig = {
   heavyLowPriorityPerMinute: number;
   /** How long a high-priority caller may wait for a slot before it reports a throttle. */
   highPriorityMaxWaitMs: number;
+  /** Light sends per sliding minute for high-priority callers (provider limit 50). */
+  lightPerMinute: number;
+  /** Light sends per sliding minute low-priority callers (the SMS safety poll) may reach. */
+  lightLowPriorityPerMinute: number;
 };
 
 export function ringCentralGateConfig(env: NodeJS.ProcessEnv = process.env): RingCentralGateConfig {
@@ -70,7 +92,16 @@ export function ringCentralGateConfig(env: NodeJS.ProcessEnv = process.env): Rin
     heavyPerMinute,
     heavyLowPriorityPerMinute: Math.min(heavyPerMinute, int("RINGCENTRAL_HEAVY_LOW_PRIORITY_PER_MINUTE", 4, 0, 10)),
     highPriorityMaxWaitMs: int("RINGCENTRAL_RATE_GATE_MAX_WAIT_MS", 70_000, 0, 300_000),
+    lightPerMinute: LIGHT_REQUESTS_PER_MINUTE,
+    lightLowPriorityPerMinute: LIGHT_LOW_PRIORITY_PER_MINUTE,
   };
+}
+
+/** Sends per sliding minute a caller of this group and priority may reach; `other` is unbudgeted. */
+export function gateLimit(group: RingCentralGateGroup, priority: RingCentralCallPriority, config: RingCentralGateConfig): number {
+  if (group === "heavy") return priority === "low" ? config.heavyLowPriorityPerMinute : config.heavyPerMinute;
+  if (group === "light") return priority === "low" ? config.lightLowPriorityPerMinute : config.lightPerMinute;
+  return Number.MAX_SAFE_INTEGER;
 }
 
 export type GateDecision =
@@ -106,8 +137,8 @@ export function decideGate(
   const now = input.now.getTime();
   const openUntil = state.open_until?.getTime() ?? 0;
   if (openUntil > now) return { granted: false, reason: "gate_open", waitMs: openUntil - now };
-  if (input.group !== "heavy") return { granted: true };
-  const limit = input.priority === "low" ? input.config.heavyLowPriorityPerMinute : input.config.heavyPerMinute;
+  if (input.group === "other") return { granted: true };
+  const limit = gateLimit(input.group, input.priority, input.config);
   const live = (state.grants ?? []).map((d) => d.getTime()).filter((t) => t > now - RINGCENTRAL_RATE_WINDOW_MS).sort((a, b) => a - b);
   if (live.length < limit) return { granted: true };
   if (limit <= 0) return { granted: false, reason: "budget", waitMs: RINGCENTRAL_RATE_WINDOW_MS };
@@ -130,7 +161,7 @@ export function createMongoRingCentralRateGate(
   return {
     async tryAcquire(group, priority, now) {
       const cutoff = new Date(now.getTime() - RINGCENTRAL_RATE_WINDOW_MS);
-      const limit = group !== "heavy" ? Number.MAX_SAFE_INTEGER : priority === "low" ? config.heavyLowPriorityPerMinute : config.heavyPerMinute;
+      const limit = gateLimit(group, priority, config);
       const live = { $filter: { input: { $ifNull: ["$grants", []] }, cond: { $gt: ["$$this", cutoff] } } };
       const doc = await collection().findOneAndUpdate(
         { _id: `ringcentral:${group}` },
@@ -146,8 +177,8 @@ export function createMongoRingCentralRateGate(
               },
             },
           },
-          // Only budgeted (Heavy) sends are recorded; `other` keeps an empty log.
-          { $set: { grants: { $cond: [{ $and: ["$last_granted", group === "heavy"] }, { $concatArrays: ["$grants", [now]] }, "$grants"] } } },
+          // Only budgeted (Heavy, Light) sends are recorded; `other` keeps an empty log.
+          { $set: { grants: { $cond: [{ $and: ["$last_granted", group !== "other"] }, { $concatArrays: ["$grants", [now]] }, "$grants"] } } },
         ],
         { upsert: true, returnDocument: "after" },
       );
@@ -254,7 +285,9 @@ export async function recordRingCentralThrottle(
   const gate = input.gate ?? currentRingCentralRateGate();
   const now = input.now ?? new Date();
   const groups = new Set<RingCentralGateGroup>([ringCentralGateGroup(endpoint)]);
-  if (input.headerGroup?.toLowerCase() === "heavy") groups.add("heavy");
+  // The provider's `X-Rate-Limit-Group` names the bucket it actually penalized.
+  const headerGroup = input.headerGroup?.toLowerCase();
+  if (headerGroup === "heavy" || headerGroup === "light") groups.add(headerGroup);
   for (const group of groups) {
     try {
       await gate.trip(group, input.retryAfterMs, now, { header_group: input.headerGroup, endpoint_kind: ringCentralGateGroup(endpoint) });

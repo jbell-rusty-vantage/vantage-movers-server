@@ -1,0 +1,354 @@
+---
+okf_version: "0.2"
+type: Service
+title: Sales Outreach Desk
+description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk subjects (eligibility, priority periods, Lead-change feed, intake) and enrollment, the evaluator wiring (outreach_evaluate, projections), the desk commands (Quoted date, callback, assignment, day override, restriction review), the queue / outreach view / team cadence cards and the scoped live stream, desk collections and their index build, the pure cadence engine, RingCentral capture for the desk, and contact events with rep-day goal projections. Built in lanes; this doc grows per lane.
+status: draft
+stale_after: 2026-11-04
+tags: [sales-outreach-desk, sales-intelligence]
+resource: src/services/salesOutreach/
+applies_to:
+  - src/services/salesOutreach/**
+  - src/models/salesOutreach/**
+  - src/routes/sales-outreach.routes.ts
+  - src/routes/sales-outreach-cron.routes.ts
+  - src/routes/sales-outreach-contact-cron.routes.ts
+  - src/config/domain/salesOutreachContacts.ts
+  - src/validation/v1/salesOutreach.ts
+  - src/validation/v1/salesOutreachReads.ts
+  - src/validation/v1/salesOutreachEnrollment.ts
+  - src/validation/v1/salesOutreachCommands.ts
+  - src/config/domain/salesOutreach.ts
+  - ops/sales-outreach/**
+owners: [team:main-server]
+---
+
+# Sales Outreach Desk (sod-v1, draft)
+
+The build contract is the packet in [`docs/sales-outreach-desk/`](../../sales-outreach-desk/README.md): start at [IMPLEMENTATION-PLAN.md](../../sales-outreach-desk/IMPLEMENTATION-PLAN.md). Business rules are SPECIFICATION §§2–14 and FINAL-POLICY-REVIEW; this doc describes only what is built. The desk is deterministic code: no LLM, transcription, summaries or AI suggestions (D01).
+
+## S1 — foundation and API (phase 1: roles, configuration, models; phase 2: M1 reads; phase 3: subjects and enrollment; phase 4a: evaluator wiring and commands; phase 4b: queue, outreach view, live stream, Daily Operations repairs)
+
+### Roles and the guard (SRV-1)
+
+- The admin proxy may sign `owner`, `admin`, `manager` and `rep` (`TRUSTED_ADMIN_ACTOR_ROLES`). `manager` uses the seven-line payload; `rep` adds its Agent line. Signing a role grants nothing by itself: the registry still admits only `owner`/`admin`.
+- `requireOutreachActor(roles)` (`src/services/salesOutreach/auth.ts`) resolves the desk actor from the signed headers only:
+  - `owner` — the signed Owner, verified like every Owner surface (P09c: "Admin" in this feature means the Owner);
+  - `manager` — a signed manager (`requireCsiManager`);
+  - `rep` — a signed rep whose Agent has a `reviewed` `sales_rep` `rep_identity_links` row effective at the request instant; otherwise **403 `REP_NOT_LINKED`**;
+  - generic `admin`, unsigned, forged, tampered, stale or unknown roles — **403 `FORBIDDEN`**.
+- Routes declare a capability (`permissions.ts`); the guard admits the roles that hold it. Manager holds exactly the P09b coordination set; Owner-only controls (policy, roster, base goals, restriction lift, activation, migration, rollback, full configuration) stay Owner-only. A Rep holds only its own assigned reads and Quoted date / callback commands (current-assignment checks are service work).
+- Desk commands from a manager run through `executeCsiCommand` in their own idempotency scope `manager:<admin id>`; the strict CSI `actor` schema accepts kind `manager`.
+- Daily Operations `GET /api/v1/admin/daily-operations`, `/live` and `/events` admit the Owner **and a signed Manager**; `POST /rebuild` stays Owner-only; Rep and generic Admin stay 403.
+
+### Configuration (SRV-2)
+
+`sales_outreach_configuration` is the desk's only policy authority. No env variable, startup default or GET initializes or overrides it.
+
+- Two document kinds: immutable `version` documents (`key: version:<v>`, full value, content hash, approval ref, actor) and one `pointer` (`key: active`, version, content hash, revision). Version documents are insert-only (query guards refuse updates/deletes that do not target `kind: "pointer"`; bulk writes are refused).
+- Strict value schema `salesOutreachConfigurationValueSchema` (`src/validation/v1/salesOutreach.ts`): namespaces `controls`, `transition` (incl. FAST-01 `backfill_lookback_days`, `backfill_include_upcoming_moves`), `cadence`, `evidence`, `migration`, `goals`. Missing keys take the CONTRACTS bootstrap defaults (controls false, migration paused, everything else null). Unknown keys are rejected; "rule" fields are closed enums. Turning on `cadence_shadow_enabled`/`cadence_enforcement_enabled` requires complete cadence, evidence and roster; `goal_metrics_enabled` requires the roster/goals; `intake_admission_enabled` requires `intake_admission_at`.
+- Load semantics (`config/load.ts`): the pointer is read from the primary on every request and job admission; only immutable versions are cached (by version + hash), so a committed PATCH is seen by every instance on its next read. No pointer → `uninitialized` (everything off). Dangling pointer, hash mismatch or invalid stored value → `unavailable`; desk reads/writes then fail with **503 `CONFIGURATION_UNAVAILABLE`**. A database failure propagates (no stale value served).
+- `GET /api/v1/admin/sales-outreach/configuration` (Owner): `{ ok, data: { contract_version: "sod-v1", as_of, timezone, configuration_state, revision, version, content_hash, approval_ref, updated_at, updated_by, unavailable_reason, value, activation_blockers } }`. `uninitialized` shows the bootstrap defaults at revision 0; `unavailable` keeps the revision visible with `value: null` so the Owner can repair it.
+- `PATCH /api/v1/admin/sales-outreach/configuration` (Owner): body `{ expected_revision, value }` (full replacement), header `Idempotency-Key` (400 `IDEMPOTENCY_KEY_REQUIRED` without it). `expected_revision: 0` is the explicit first initialization (creates revision 1). The version, pointer CAS, audit event (`kind: policy`, subject `sales_outreach_configuration:active`) and command ledger row (command `sales_outreach_configuration_update`) commit in one transaction. Replay returns the committed result; same key + different payload → 409 `IDEMPOTENCY_CONFLICT`; stale revision → 409 `REVISION_CONFLICT`; identical content → `changed: false` with no new version. Response `{ ok, data: { contract_version, revision, version, content_hash, changed, replayed } }`.
+- Manager has no configuration access (CONTRACTS); safe effective booleans for other roles come with `GET /capabilities` (below).
+
+Errors use the CSI envelope `{ ok: false, code, error, request_id, issues? }` with sod-v1 statuses (400 invalid input, 403 forbidden / `REP_NOT_LINKED`, 404, 409 conflicts / `CURSOR_EXPIRED`, 503 `CONFIGURATION_UNAVAILABLE` / `PROJECTION_PENDING`).
+
+### M1 Call progress reads (S1 phase 2, SRV-8 part)
+
+Services in `src/services/salesOutreach/reads/`; response DTOs (Zod) in `src/validation/v1/salesOutreachReads.ts`; example payloads in [`workspace/evidence/dto-examples/`](../../sales-outreach-desk/workspace/evidence/dto-examples/) (regenerate with `node --import tsx ops/sales-outreach/write-dto-examples.ts`; a test fails when they drift). Each read uses one server reference instant, reads the configuration pointer once, and never writes, initializes configuration or calls a provider.
+
+| Route | Who | Answers |
+| --- | --- | --- |
+| `GET /capabilities` | Owner, Manager, linked Rep | Role, `permitted_views` (`team`/`my` while the desk is available; Owner always `settings`, `numbers`, `accounts`), `permitted_filters`, `permitted_commands` (deployed only: Owner `configuration_edit`), `role_capabilities` (P09 set), `deployed_reads`, configuration state/version/revision, `desk_available` + `unavailable_reason`, and the safe effective booleans (`desk_enabled`, `goal_metrics_enabled`, `rep_sms_capture_enabled`, `cadence_shadow_enabled`, `cadence_enforcement_enabled`, `intake_admission_enabled`). Answers 200 even when configuration is uninitialized, broken or the desk is off, so the Owner keeps the recovery path. |
+| `GET /rep-days?business_day&agent_id` | Owner/Manager any rep (no `agent_id` = every roster rep, then Agents with a row who are not on the roster); Rep self only | Per-rep goal rows (below). A Rep's foreign `agent_id` → 403 `FORBIDDEN` (issue `foreign_agent`), never broadened. |
+| `GET /team?business_day` | Owner, Manager | Goal cards 1–2 (`outbound_calls` actual/goal, `reps_at_goal`), the Daily call goals rows, freshness, and (phase 4b) the cadence cards 3–4, Unassigned and Leads needing attention (see "Queue, outreach view…"). `readiness` (activation blockers) is Owner-only; null for a Manager. |
+
+Gating (fail closed): uninitialized or unavailable configuration, and `controls.desk_enabled = false`, answer `/rep-days` and `/team` with **503 `CONFIGURATION_UNAVAILABLE`** (issue `configuration_uninitialized` / `desk_disabled`). With `controls.goal_metrics_enabled = false` the reads answer 200 with `reps`/`goals`/`daily_call_goals` null and `goal_metrics_disabled`, and read no rep-day rows. `business_day` is a New York date, default today at the reference instant; a future day → 400 `INVALID_INPUT` (`future_business_day`).
+
+Common read data: `contract_version: "sod-v1"`, `as_of`, `timezone`, `scope {role, agent_id}`, `configuration_state/version/revision`, `projection_revision` (highest `publication_revision` of the rows read, null when none) and `freshness`:
+
+- `calls` — from the `call_log_all_directions` sync-state row: `fresh` when `known_complete_through` is within 10 minutes of `as_of`, else `delayed`; `unknown` without a row.
+- `sms` — `not_connected` while `controls.rep_sms_capture_enabled` is false; otherwise the worst `rep_sms:<extension>` mailbox row (any mailbox without coverage → `unknown`).
+- `granot` — newest `granot_observations.captured_at` (`observed`/`unknown`; no staleness threshold).
+
+Per-rep row (`sales_outreach_rep_day_projections` is read only; lane S3 writes it):
+
+- **Goal** (P08a): an effective-dated override for the date wins (`basis: override`, reason `absence`/`partial_day`); else on a scheduled working day the rep's `scheduled_goal` (`work_schedule`) or `default_scheduled_goal` (`default_goal`); else 0 (`not_scheduled`). Goal 0 → `goal_state: no_goal_today`, label "No goal today". Not in `rep_work_schedules` → `not_on_roster`, goal null. Past days prefer the row's frozen `goal_snapshot` (when it carries a `configuration_version`; `source: projection_snapshot`); today, and past days without one, resolve from the active configuration (`source: configuration`).
+- **Counts**: `actual_confirmed` (Call Log confirmed), `actual_awaiting_confirmation` (shown, never counted toward progress), `other_outbound` ("Other outbound", the row's `unattributed`, never added to the actual). `count_scope` `all_outbound` → "Outbound calls" (M1); `eligible_new_quoted` → "Outbound calls (New/Quoted leads)".
+- **Honesty**: coverage = the smaller of the Call Log watermark minus the 2-minute settlement allowance and S3's contact-event derivation watermark (`outreach_contact_calls.known_complete_through`), required through the end of a past day or `as_of` − 10 min today (S3 `repDayCoverage`); a day that starts before the derivation's `cursor.outreach_coverage_from` is `unknown`, and no derivation row at all is `unknown`. It is lowered by the row's own `coverage` if worse. A rep with no row is a recorded 0 (`no_activity_recorded`) only when coverage is `complete`; otherwise `actual_confirmed` is null (`pending`, `coverage_incomplete`). A row's 0 with incomplete coverage is also null; a positive count is shown as a lower bound with the partial coverage.
+- **Arithmetic**: `remaining = max(0, goal − actual)`, `progress = min(1, actual / goal)` (null without a positive goal), `goal_reached = actual ≥ goal` (false on a zero-goal day). 108/100 → progress 1, remaining 0.
+- **Team**: goal = sum of roster goals (never 100 × staff); actual = sum of roster actuals including zero-goal reps (not-on-roster Agents excluded); `reps_at_goal.of` counts only positive-goal reps. A pending rep makes the card `incomplete` and is listed in `pending_agent_ids`; a day whose rows mix count scopes reports `actual: null` (`mixed_count_scope`).
+
+### Desk subjects (SRV-3: `src/services/salesOutreach/subjects/`)
+
+One `sales_outreach_subjects` row per enrolled canonical Lead (IMPL-04). The Lead stays the system of record; the desk never writes it here.
+
+- **Facts** (`leadFacts.ts`): one projection of `form_leads`/`call_leads`: received `timestamp`, origin, accepted `granot_priority` + `last_accepted_granot_observation`, `booked`/`cancelled`/`duplicate`/`bad_lead`/`no_sync`/`created_on_unmatched`/`form_fill`, `receiver_agent`, Job Number, phone, name, Form Lead `move_date` (its UTC date) and `domain_revision`.
+- **Received time**: the restored `leadInstant` adapter (`subjects/leadInstant.ts`, from `6a374fab`, rule unchanged). `received_quality` is `wall_clock` or `instant`; `missing` without a timestamp; `unreliable` when the arrival is after the reference instant or before 2010. Missing/unreliable → review, never a guessed age.
+- **Eligibility (P05h, `eligibility.ts`)**: official Booking, official Cancellation and Bad Lead close; a Duplicate and an unmatched Booking-anchor Call Lead are excluded (no subject of their own); No-Sync and Form Fill are not read (a viable No-Sync Lead stays eligible); a legacy-closed record goes to review (none exist after the slimming purge); a number-only record is review with no cadence.
+- **Policy decision (P05d/P05e, `policyMapping.ts`)**: reads only `cadence.priority_map` and `cadence.intake_default_rule` from the persisted configuration (missing → fail closed). An accepted canonical code maps through the map (unmapped → `none`; 5/7/8 → `closed`, with no Booking, duplicate flag or reason inferred). With no accepted code, the source's intake default applies: `website_form` ← `wordpress_form`, `best_relocation` ← `best_relocation_sheet`, `ringcentral_call` ← `ringcentral`, `manual` ← `vantage_admin`, `granot_created` ← `granot_lead_created`. Legacy/unknown origins and a Granot-created Lead without a priority → review ("Priority needs review"). Granot Priority 0 is never written.
+- **Subject fields** (`subjectBuilder.ts`):
+  - `display`: Job Number, phone, name, canonical move date (the P05g labels come from the engine);
+  - `priority {raw, accepted_at, observation_id, basis, uncertain}`: `uncertain` = a newer blank/malformed Granot priority observation for the Job Number, or a non-canonical stored value;
+  - `assigned_agent_id` = `receiver_agent` only when that Agent has a reviewed `sales_rep` link now, else Unassigned (IMPL-01); `assignment_revision` bumps on change;
+  - `contact_number_ids` = the numbers the Lead is `attached` to (IMPL-07 input);
+  - `lead_revision_seen`, `status` (`active`/`review`/`closed`; closed is final) and recomputed `review_reasons`.
+- **Policy periods** (`periodPlanner.ts`, `sync.ts`):
+  - The first period opens at the enrollment boundary: `start_kind` `activation` for a cohort, `intake` for intake; `time_basis: activation_boundary`.
+  - A different workflow closes the active period and opens the new one (`transition`) in the same transaction, at the fact's effective time (accepted observation `captured_at`, else the Lead change time; never before the active period).
+  - Same workflow = no-op (a repeated accepted code, or 0 confirming an intake-default New). A recorded `transition_key` = replay no-op. Keys: `priority:observation:<id>:<workflow>:<code>`, `closure:<reason>:<ref>`, `intake_default:<source>`.
+  - An active `closed` period never reopens. No decidable policy retains the last verified period (P05e).
+  - Subject writes are CAS on `revision`; identical facts write nothing; every desk-relevant new revision nominates `outreach_evaluate` (`sod:evaluate:<subject>:r<revision>`).
+
+### Lead-change feed and intake (IMPL-05, `subjects/feed.ts`, `subjects/leadChangeJob.ts`)
+
+| Piece | Behaviour |
+| --- | --- |
+| `/api/cron/sales-outreach-lead-changes` (every minute) | One tail pass over `entity_changes` (Form/Call Leads) with a durable `(applied_at, _id)` cursor in `sales_intelligence_sync_state` scope `outreach_entity_changes`: the first pass starts at now − 2 min, each pass re-scans a 2-minute overlap for late commits, takes ≤ 100 new changes, and commits cursor and job nominations together. Then it drains ≤ 100 `outreach_lead_change` jobs (40 s). Nominates every change of a subject's Lead, and a Lead creation (`revision_before` 0) only while the intake gate is on. |
+| `/api/cron/sales-outreach-revision-reconcile` (every 5 minutes) | Open subjects (`active`/`review`) in pages of 100 by `_id` (cursor `outreach_subject_id` and a lease in scope `outreach_revision_reconcile`; ≤ 50 pages per run). Lead `domain_revision` ≠ `lead_revision_seen` → an `outreach_lead_change` job. |
+| Job stage `outreach_lead_change` | Identity `sod:lead-change:<model>:<id>:r<revision>`, so the tail, the reconcile and a future wake converge. The configuration pointer is read at admission (inactive → nothing claimed) and again inside the job transaction (moved → retry). Refreshes the subject from current facts, or runs the intake gate. Also dispatched from the `sales-intelligence-events` queue. |
+| Intake gate (`outreach_intake`, inside the job) | Only when `transition.intake_admission_enabled` and `intake_admission_at` are set, for a Lead **created and received** at/after `intake_admission_at`, from a non-legacy origin, eligible, not closed by priority, with an unambiguous Job Number. Enrolled once (`kind: intake`, cohort `intake:<gate>`, boundary = received time). A fresh Lead whose priority needs review is enrolled as a visible `review` subject with no period. |
+| Job stage `outreach_evaluate` | Nominated per subject revision (and by commands, the clock sweep and the policy reconcile). Consumer: "Evaluator wiring" below. |
+
+Both crons answer `{ ok: true, skipped: true, reason: "configuration_<state>" }` while the configuration is not active. There is no env flag.
+
+### Enrollment (P10a/P10b, FAST-01 backfill; `src/services/salesOutreach/enrollment/`)
+
+Owner-only (`migration` capability) under `/api/v1/admin/sales-outreach`; request schemas in `src/validation/v1/salesOutreachEnrollment.ts`.
+
+- **`POST /enrollment/report`**: body `{ selection: {mode: "backfill_scope"} | {mode: "selected", lead_refs: [{model, id}]}, kind?: "pilot" | "expansion", cohort_id? }`. **Zero writes.**
+  - Backfill scope = received on/after today − `transition.backfill_lookback_days` (New York dates), or, with `backfill_include_upcoming_moves`, a move date today or later. Both fields are required, else 503.
+  - Returns `counts` per partition (`in_scope`, `older`, `already_enrolled`, `closed`, `excluded`, `review`, `not_new_or_quoted`), `reasons`, the frozen `lead_refs`, `manifest_hash` (sha-256 of algorithm version, kind, cohort, configuration version and the canonical ids), a review sample and `writes: 0`.
+  - Review reasons: `received_time_missing`/`_unreliable`, `ambiguous_identity` (another non-duplicate Lead carries the Job Number), `priority_needs_review`, `unsupported_intake_source`, `malformed_priority`, `unmapped_priority`, `legacy_closed_reopening_required`, `lead_not_found`.
+- **`POST /enrollment/apply`**: header `Idempotency-Key` = the run key; body `{ kind, cohort_id, lead_refs, manifest_hash, deadline_seconds? }` exactly as reported.
+  - Refused while `migration.paused` (503, `migration_paused`) or when the manifest no longer matches (409 `REVISION_CONFLICT`).
+  - The start commits in one transaction: the run row (activation boundary = the moment of apply), ledger command `sales_outreach_enrollment_apply` and audit `sales_outreach_enrollment_started`.
+  - Batches of `migration.batch_size` (25, ≤ 100) run under a single-writer lease on the run. Each batch re-validates every Lead and writes its subjects, activation periods, evaluate nominations and the checkpoint in one transaction; `migration.interval_seconds` separates batches; the pause stops new batches.
+  - Returns `status` `running` (call again), `completed`, `paused` or `lease_held`. The same key resumes; a different manifest under it is 409 `IDEMPOTENCY_CONFLICT`; the boundary and the scope never change on retry.
+- **`POST /enrollment/verify`**: `{ run_key }` → counts (`enrolled_by_run`, `enrolled_elsewhere`, `not_enrolled`), mismatches (`boundary_mismatch`, `no_active_period`, `multiple_active_periods`, `first_period_not_at_boundary`, `received_missing`), `consistent` and `complete`. Writes only `verify:<run_key>`.
+- **`GET /enrollment/candidates?partition&cursor&limit`**: one page (≤ 100, default 25) of a partition, Form Leads then Call Leads, newest first. At most 1,000 Leads are examined per request; `next_cursor` is opaque (a bad cursor → 409 `CURSOR_EXPIRED`). `partition=older` is the Owner Settings "Not enrolled — older" list; one-click Enroll = report/apply with `selection: selected`.
+
+### Evaluator wiring (`outreach_evaluate`; `src/services/salesOutreach/evaluation/`)
+
+- **Transaction rules (replica-proven 2026-10-05).** Every `outreach_evaluate` job carries `input_revision` >= 1 (the revision of the change that caused it: Lead revision, plan revision, restriction revision; the sweeps use 1), because `sales_intelligence_jobs` rejects 0. Inside a desk transaction, reads on the session run one at a time: a MongoDB session never runs two operations concurrently, and parallel reads at the start of a transaction make the server refuse the second `startTransaction` (code 117). The unit suites use in-memory stores, so only the replica proofs (`pnpm test:outreach:replica`) exercise both rules.
+- **Policy adapter** (`policyAdapter.ts`): maps the persisted `cadence` namespace to S2's engine encoding and calls `resolveEnginePolicy`. It invents nothing; anything it cannot express fails closed with every reason:
+  - every `working_days` entry must share one opening/closing minute, and `quoted_open_minute` must equal that opening minute;
+  - `intake_default_rule` must be native intake = New and Granot-created-without-priority = review;
+  - the P05f reentry thresholds are the `late_arrival_rule` thresholds, and the P10a Quoted activation-date cutoff is `quoted_same_day_cutoff_minute`;
+  - the Day 1–5 band is split at Day 3 so that only Days 1–3 carry the optional third call.
+  The installed FINAL-01 value resolves to exactly S2's FINAL-01 engine policy (`ops/lib/sales-outreach-final01.test.ts`).
+- **Exposure**: `cadence_enforcement_enabled` → `enforcement`; else `cadence_shadow_enabled` → `shadow`; neither → nothing is evaluated (jobs stay pending, no attempt spent). A `shadow` row stores the full computation. Reads must present it through `presentProjectionExposure`, which shows no overdue state (`overdue` channel status reads `due`, `status_flags.overdue` false).
+- **Inputs** (`inputs.ts`, `store.ts`), loaded in the job transaction:
+  - the subject, its periods and every human plan (command-ended plans carry `replaced`/`cancelled`);
+  - `sales_intelligence_contact_restrictions` on the subject's Contact Numbers: `call` and `text`→`sms`, effective from creation until the lift / `until` / expiry. Active AI-origin rows block like Owner rows;
+  - P06d assignment history from `entity_changes` on `receiver_agent`, cut to the Agent's reviewed `sales_rep` link periods (otherwise Unassigned);
+  - `sales_outreach_contact_events` (`outcome` is read when S3 stores it, else derived from the event kind);
+  - coverage: Call Log `known_complete_through` minus the 2-minute settlement allowance; SMS = the worst rep mailbox while `rep_sms_capture_enabled`, else none.
+- **Projection** (`projection.ts`): queue fields, both channel blocks with coverage at `computed_as_of`, `status_flags` (adds `job_pending`), ≤ 30 days of `window_history` + summary, and a `detail` JSON (state, schedule day, initial response, callback, Quoted basis, cooldown, catch-up, every engine flag, blocked-until).
+  - `result_fingerprint` = engine result fingerprint + resolved-policy fingerprint + assignee/received/job facts. Equal ⇒ zero writes; capture coverage advancing alone never rewrites a row.
+  - A changed row is written with a CAS on `revision` (loser → retry) and `publication_revision + 1`. New fields: `detail`, `exposure`, `engine_version`, `result_fingerprint`, `policy_fingerprint`.
+- **Job** (`evaluateJob.ts`): the claim is stage-directed and admission re-reads the pointer inside the transaction; a moved pointer retries. Registered in `jobDispatch` (queue wake-ups) and drained by the cron.
+- **Cron `/api/cron/sales-outreach-evaluate`** (every minute, `vercel.json`):
+  1. clock repair: projections with `next_evaluation_at <= now`, oldest first, ≤ 5 pages of 100, one job per due instant (`sod:evaluate:<subject>:due:<ms>`);
+  2. policy reconcile: subjects by `_id`, ≤ 5 pages of 100, durable cursor in sync-state scope `outreach_evaluation_reconcile`; a missing projection or another `policy_fingerprint` is nominated (`…:policy:<fp16>`);
+  3. drain ≤ 100 jobs in 40 s.
+  Skipped (`{ ok, skipped, reason }`) while evaluation is not admitted.
+
+### Desk commands (SRV-7; `src/services/salesOutreach/commands/`, DTOs `src/validation/v1/salesOutreachCommands.ts`)
+
+Every command needs the `Idempotency-Key` header (400 `IDEMPOTENCY_KEY_REQUIRED`). It runs through `executeCsiCommand` with its own registered command kind (`SALES_OUTREACH_COMMAND_KINDS`), so its writes, the ledger row and the audit event commit together. A replay returns the committed result with `replayed: true`; the same key with another payload is 409 `IDEMPOTENCY_CONFLICT`; a stale `expected_revision` is 409 `REVISION_CONFLICT`. An absent, malformed or foreign subject is 404 `NOT_FOUND`: a Rep reaches only a subject whose Lead's `receiver_agent` — re-read at the command — is its own Agent. Created jobs are woken after commit. Examples: [`dto-examples/commands/`](../../sales-outreach-desk/workspace/evidence/dto-examples/commands/) (`node --import tsx ops/sales-outreach/write-command-dto-examples.ts`; a test fails on drift).
+
+| Route | Who | Body → behaviour |
+| --- | --- | --- |
+| `PATCH /outreach/:id/quoted-followup` | Owner, Manager, assigned Rep | `{expected_revision, period_id, selected_date, replace_active_plan?}`. `expected_revision` is the subject's **plan revision**, which Quoted dates and callbacks share (P06f). Allowed only in the active Quoted period (`not_quoted`; another `period_id` → 409 `period_changed`). The date must pass P04c (`past_date`, `closed_date`, `after_same_day_cutoff`). It replaces an active Quoted plan; replacing a callback needs `replace_active_plan` (`replacement_intent_required`). Audit `sales_outreach_quoted_followup_set` (kind `followup`) carries the prior and new date, period, effective time and actor. |
+| `PATCH /outreach/:id/callback` | Owner, Manager, assigned Rep | `{operation: "set", expected_revision, appointment_at, replace_active_plan?}` / `{operation: "reschedule", …, appointment_at}` / `{operation: "cancel", expected_revision}`. `appointment_at` is a UTC instant with an offset; the response adds the New York `appointment_local`. It is refused when in the past (`appointment_in_past`), more than a year out (`appointment_too_far`) or inside an active Call restriction (`restricted_at_appointment`). After-hours appointments are allowed. Window = `callback_window_minutes`. |
+| `PATCH /outreach/:id/assignment` | Owner, Manager | `{expected_revision (assignment_revision), agent_id \| null}`. Through `LeadChangeRecorder` it writes `receiver_agent` + name snapshot with source `manual`, its EntityChange and the `domain_revision` CAS. In the same transaction it updates the subject's assignment, appends audit `sales_outreach_assignment_changed` (kind `outreach`) and enqueues `outreach_lead_change` + `outreach_evaluate`. Refusals: a target without a reviewed `sales_rep` link is 400 `agent_not_reviewed_sales_rep`; a desk copy that no longer matches the Lead is 409 `assignment_changed`; the same Agent already manual is `changed: false`. Granot latest-wins never replaces a manual receiver. |
+| `PATCH /goals/:agent_id/day-override` | Owner; Manager for today or later | `{expected_revision (configuration revision), business_date, goal, reason: absence\|partial_day}` (absence ⇒ goal 0). It writes a new configuration version and moves the pointer (CAS) under its own command kind; audit `sales_outreach_goal_day_override_set` (kind `policy`). A Manager's past date is 403 `historical_edit_owner_only`; a rep not on the roster is 400 `agent_not_on_roster`; without installed goals it is 503 `goals_not_installed`. The roster, schedules and default goal are never touched. |
+| `GET /restrictions?state&cursor&limit` | Owner | Newest first; `needs_review` marks an active AI-origin row no Owner has confirmed. |
+| `POST /restrictions` | Owner | `{contact_number_id, channels: call\|sms, until?, reason}` adds an `owner` row (SMS is stored as `text`) and re-evaluates the number's subjects. |
+| `POST /restrictions/:id/confirm` | Owner | `{expected_revision}`: records `confirmed_at`/actor; the row stays active and blocking. |
+| `POST /restrictions/:id/lift` | Owner | `{expected_revision, reason}`: `state: resolved` with `resolved_at`, actor and reason; the interval stays in history; re-evaluates the number's subjects. A row that is not active is 400 `restriction_not_active`. |
+
+Desk commands (Quoted date, callback, assignment) need `controls.desk_enabled` (503 `desk_disabled`); planning commands also need a resolvable engine policy (503 `policy_unavailable`). The Owner and Manager settings commands (day override, restrictions) need only an active configuration. `GET /capabilities` `permitted_commands` now lists `quoted_followup`, `callback`, `assignment`, `day_override`, `restrictions` and `configuration_edit` as the role and state permit.
+
+Model additions: `sales_intelligence_contact_restrictions.reason`, `confirmed_at`, `confirmation_actor`; subject index `sod_subject_contact_numbers` (multikey `contact_number_ids`; build it with `pnpm outreach:indexes`). `appendCsiAudit` now also accepts the `outreach`, `followup` and `restriction` invalidation kinds, which the stored enum has always allowed.
+
+### Queue, outreach view, team cadence cards and the live stream (S1 phase 4b, SRV-8)
+
+Services in `src/services/salesOutreach/reads/` (`queue.ts`, `queueQuery.ts`, `queueCursor.ts`, `detail.ts`, `teamCadence.ts`, `present.ts`, `deskStore.ts`) and `src/services/salesOutreach/live/` (`publish.ts`, `stream.ts`); DTOs in `src/validation/v1/salesOutreachReads.ts`; examples `queue.*`, `outreach.*`, `team.owner.cadence-enforcement.json`, `live.*` and the new `error.*` files in `dto-examples/`.
+
+| Route | Who | Answers |
+| --- | --- | --- |
+| `GET /queue` | Owner, Manager, linked Rep | Filters `search` (trimmed, ≤ 100, literal: name substring case-insensitive, normalized Job Number prefix, phone digits ≥ 4), `priority` (`all` / `unknown` / a code), `workflow`, `move_date_from/to` + `move_date_unknown` (`exclude` by default with a range, counted in `counts.excluded_unknown_move_date`), `agent_id` / `unassigned=true` (Owner/Manager; a Rep's foreign `agent_id` or `unassigned` is 403, never broadened), `state` (`needs_contact` default / `all_active` / `blocked` / `pending`), `sort` (`urgency` fixed; `lead_received` desc default; `last_interaction` asc default) + `direction`, `cursor`, `limit` (≤ 100, default 25). Rows: display facts, `job_pending`, move-date review, priority/workflow, assignee, independent `call`/`sms` channels, flags, `publication_revision`. |
+| `GET /outreach/:id` | Owner, Manager, current assigned Rep | Subject + provenance (`priority.basis`, received quality, enrollment), `assignment` (`assignment_revision`, the Lead's authoritative `receiver_agent`, `in_sync`), `plan` (`plan_revision`, active plan, ended plans), `policy` (projection state, exposure, workflow, engine state, period, Quoted/callback/initial response, advisory cooldown, catch-up, blocked-until, deterministic `explanation` codes), `requirements`, `history` (window history, this subject's contact events as metadata, `receiver_agent` changes), blocking `restrictions` (no number ids). Absent, malformed or foreign id → the same 404. |
+| `GET /live` | Owner, Manager, linked Rep | SSE `event: invalidation` frames (`version: 1`; `?version=` other than 1 → 400 before streaming). `connect`/`reconnect`/`clock` (every 30 s) frames mean a full scoped refetch; `change` frames carry `changes[] {topic, subject_ids, agent_ids, business_day, revision}` for `outreach_desk`, `outreach_goal`, `outreach_configuration` (over 200 hints → full refetch). |
+
+- **Mongo-side order and filters.** The queue runs on `sales_outreach_projections`, which now copy the subject's `subject_status`, `display` (with `name_folded`) and never-null `queue_keys` (`urgency_due` = earliest unsatisfied actionable deadline of the unblocked channels, `urgency_next`, `call_due`, `received_asc`/`received_desc`, `last_interaction`; far-future/epoch sentinels). Every predicate, the sort and the keyset run in Mongo over the full set before paging (`queueQuery.ts` → `mongoQueueQuery`), on `sod_projection_q_urgency` / `sod_projection_q_team_urgency` / `sod_projection_q_received_asc|desc` / `sod_projection_q_interaction`. The in-memory test store applies the same plan (`memoryQueuePage`); the replica proof compares the two page by page.
+- **Time status at read time.** One reference instant per read (page one's `as_of`, carried by the cursor): a `due` channel whose deadline passed reads `overdue`; move-date review and `job_pending` are derived then. No row is rewritten for countdowns.
+- **Exposure.** Rows show enforcement labels only when the row and the current controls are both `enforcement`; in shadow, `overdue` reads `due` and `overdue` flags are false (deadlines stay). The outreach view gives the Owner `shadow_labels` and unmasked window-history misses for the MANUAL-START reconciliation; Manager/Rep get `missed: null`.
+- **Cursor.** `base64url(claims).base64url(HMAC-SHA256)`; the key is derived from `VANTAGE_ADMIN_PROXY_SIGNING_SECRET` with a desk label (no new env). Claims bind the filters/sort/direction hash, role + Agent, the assignment generation of the filtered scope (digest of `(subject, assignment_revision)`), the configuration version, the projection snapshot (resolved policy + exposure fingerprint), the reference instant and a 10-minute expiry. Tamper, mismatch, expiry, reassignment or a New York midnight between pages → 409 `CURSOR_EXPIRED` (issue `cursor_signature`, `filters_changed`, `scope_changed`, `assignment_changed`, `configuration_changed`, `projection_snapshot_changed`, `cursor_expired`, `business_day_changed`; message `resnapshot`).
+- **Rep scope.** A Rep's page and outreach view are re-checked against each Lead's authoritative `receiver_agent` before serializing, so a reassignment revokes the former Rep immediately even while the subject/projection lag.
+- **Fail closed.** Desk off/uninitialized → 503 `CONFIGURATION_UNAVAILABLE`; both cadence controls off → queue 503 `PROJECTION_PENDING` (`cadence_disabled`) and outreach view `projection_state: cadence_disabled`; unresolvable cadence → 503 `CONFIGURATION_UNAVAILABLE` (`policy_unavailable`). Subjects without a projection are counted in `counts.projection_pending` (first page) and read as `pending` in the outreach view, never as nothing to do.
+- **Team cadence cards** (`GET /team`): `distinct_overdue_leads`, `quoted_overdue_leads` (Quoted with an overdue Call requirement), `unassigned {count, overdue}`, per-rep `daily_call_goals[].overdue_leads`, `leads_needing_attention` (first 10 rows of the team queue) and `cadence_exposure`. Overdue = earliest unsatisfied actionable deadline ≤ `as_of` (current, whatever `business_day` is shown). In shadow the overdue values are null (`cadence_shadow`); with cadence off or unresolvable they are null (`cadence_disabled` / `policy_unavailable`). The Unassigned count is a subject count and is always served.
+- **Live publish.** `publishOutreachLive(publications)` inserts ids-and-revisions-only rows into `sales_outreach_live_events` (TTL one day) **after commit** and never throws (no DB connection → no-op). Callers: the `outreach_evaluate` consumer (written rows → `outreach_desk` for the subject, its assignee and previous assignee), the Quoted/callback commands (`outreach_desk`, assignee), the assignment command (previous + new Agent), the day override (`outreach_goal` for the Agent/day + `outreach_configuration`), the configuration PATCH (`outreach_configuration`), and S3's rep-day writer through `contacts/goalPublish.ts` (`outreach_goal`, scoped to the row's Agent). Restriction commands publish nothing themselves; the evaluations they nominate do.
+- **Live stream.** `GET /live` reuses the Sales Intelligence transport (`streamLiveInvalidations` in `salesIntelligence/live.ts`: 250 ms coalescing, ~240 s lifetime, slow-consumer close) over a change stream on `sales_outreach_live_events` inserts. A Rep's change-stream pipeline matches only rows naming its Agent (plus configuration); every hint is re-filtered in process and carries only the Rep's own Agent id. Each clock tick re-checks the desk configuration and the Rep's reviewed link; failure closes the stream.
+
+### Daily Operations repairs (SRV-9)
+
+Manager access to Daily Operations reads/stream was done in phase 1. The SPECIFICATION §14 repairs (Granot-created Lead fact after commit; one Lead-instant day rule for live and rebuild; sent-day rebuild of scheduled confirmations with an `unreconstructable_sent_day` label) are described in the [Daily Operations](daily-operations.md) Service doc.
+
+### Deterministic scope check (SRV-T)
+
+`src/services/salesOutreach/deterministicScope.test.ts` walks the import graph from every non-test module under `src/services/salesOutreach/`: no reachable module imports a model/AI/transcription SDK or lives on a retired AI/media/analysis path, and every job stage named under `salesOutreach/` is a retained stage (no retired stage is named at all).
+
+### Desk collections (SRV-3 models)
+
+Models in `src/models/salesOutreach/` use `defineCsiModel` (strict, `autoIndex`/`autoCreate` off, unique-fence check before writes) and are listed in `SALES_OUTREACH_MODEL_REGISTRY` (also spread into `CSI_MODEL_REGISTRY`):
+
+| Collection | Key fences / indexes |
+| --- | --- |
+| `sales_outreach_configuration` | unique `key` |
+| `sales_outreach_subjects` | unique `{lead_model, lead_id}`; `{status, assigned_agent_id, _id}`, `display.normalized_job_no`, `display.normalized_phone`, `lead_revision_seen` |
+| `sales_outreach_policy_periods` | unique active `{subject_id}` where `ended_at: null`; unique `{subject_id, transition_key}`; each period records `workflow`, `start_kind` (`intake`/`transition`/`activation`) and `time_basis` |
+| `sales_outreach_followup_schedules` | unique active `{subject_id}` where `status: "active"` |
+| `sales_outreach_contact_events` | unique `{source_kind, source_id, subject_id}`; `{subject_id, event_at}`, `{goal_agent_id, business_date}` |
+| `sales_outreach_projections` | unique `subject_id`; queue indexes `sod_projection_q_urgency`, `sod_projection_q_team_urgency`, `sod_projection_q_received_asc`, `sod_projection_q_received_desc`, `sod_projection_q_interaction` (over never-null `queue_keys`), `sod_projection_next_evaluation` |
+| `sales_outreach_live_events` | TTL `sod_live_event_ttl` on `createdAt` (one day); insert-only live hints for `GET /live` |
+| `sales_outreach_rep_day_projections` | unique `{agent_id, business_day}`; `{business_day, agent_id}`; `count_scope` records `all_outbound` (M1) vs `eligible_new_quoted` (M2) |
+| `sales_outreach_enrollment_runs` | unique `run_key`; `{manifest_hash, mode, partition}`, `{cohort_id, started_at}` |
+
+`ringcentral_rep_sms_evidence` is added to the registry by lane S3.
+
+### Operator scripts
+
+| Script | What it does |
+| --- | --- |
+| `pnpm outreach:indexes --target=<db> [--apply]` | Plans (default, read-only) or builds the desk indexes. Refuses a target that is not the resolved database, refuses same-name/same-key mismatches and probes unique indexes for duplicates before building; identical indexes are skipped. Production `--apply` passes the production-writer guard. |
+| `pnpm outreach:install-policy --target=<db> [--apply] [--enable=desk_enabled,goal_metrics_enabled]` | Dry run by default. Installs FINAL-01 cadence/evidence (`approval_ref owner-session-2026-10-03-FINAL-01`), the FAST-01 backfill scope (90 days + upcoming moves) and the M1 roster (every reviewed `sales_rep` link effective now, all seven days, default goal 100) through the PATCH service path; carries controls/migration/intake fields over; no-op when the same content is active; verifies after writing. |
+| `pnpm outreach:enrollment --target=<db> [report\|apply\|verify] [--leads=<file>] [--kind=pilot\|expansion] [--cohort=<id>] [--run-key=<key>] [--out=<file>]` | Enrollment (above). `report` is the default and read-only. `apply` re-runs the report, freezes its selection under `--run-key` and loops bounded apply calls until the run completes or pauses; re-running the same key resumes the stored run with its stored selection and manifest. `verify` reconciles a run. Apply and verify pass the production-writer guard. |
+| `pnpm outreach:seed-pilot --database=<testvantagemovers_suffix> [--as-of=<ISO>] [--reset]` | Seeds the synthetic pilot for the P2 integration walk on the local `csi01` loopback replica (SPRINT-RUNBOOK P2 step 2): 3 Agents with reviewed `sales_rep` identity links (`rc_account_id` `pilot`, extensions 101–103), 22 Form Leads in the live ingestion shape (wall-clock `timestamp`, accepted Granot observation, future move dates, `receiver_agent` set except the Unassigned cases) covering New Day 1/3/4/6, Quoted with and without a selected date, Unassigned, Priority 3, an unmapped priority, a restricted number, a shared phone, a missing Job Number and one Lead outside the 90-day backfill scope; one Contact Number per phone with attached `number_lead_attachments`; one active unconfirmed `intelligence` restriction. Ids are deterministic (sha256 of a stable key). Refuses a database not matching `^testvantagemovers_[a-z0-9]+$`, a non-loopback URI, a connection to a different database, and existing rows in any seeded collection unless `--reset` (drops only those collections in that test database). Scrubs env like the replica proofs and never reads `.env`. Does not install configuration, build indexes, enroll, or write admin users, jobs, subjects or projections; it prints the admin-repo `seed:admin` commands (Owner, Manager, one Rep per Agent id) and the next runbook commands. |
+| `pnpm test:outreach:replica` | Replica proofs on the local `csi01` loopback replica only: the configuration path (`configuration.replica.ts`) and the subject/enrollment paths (`subjects.replica.ts`), the commands/evaluator (`commands.replica.ts`), S3's capture/contact events, and the queue/team/live reads (`reads.replica.ts`). |
+| `node --import tsx ops/sales-outreach/write-dto-examples.ts` | Rewrites the M1 read example payloads in `docs/sales-outreach-desk/workspace/evidence/dto-examples/` from the real read services over a synthetic in-memory store (no database, no env). `write-command-dto-examples.ts` does the same for the SRV-7 command examples (`dto-examples/commands/`). |
+
+## S2 — Cadence engine (`src/services/salesOutreach/engine/`)
+
+`evaluateSubject(input, policy, as_of)` is pure: it never reads the clock, Mongo, env or a provider, and it calls no model. Callers load facts, call it and persist the result only when `fingerprint` changed. Import everything from `engine/index.ts`.
+
+**Inputs** (`engine/types.ts`, `EvaluateSubjectInput`): subject facts (`received_at` from the restored `leadInstant` adapter, move date, `activation_at` boundary, priority-uncertainty flag, originating answered-inbound event), every policy period (`workflow` new/quoted/discretion/none/closed, `start_kind` intake/transition/activation), every human plan with its command lifecycle (Quoted dates are period-scoped, timed callbacks are subject-scoped), restriction intervals, assignment history, normalized contact events (`sales_outreach_contact_events` shape) and per-channel coverage (`complete_through`, settlement allowance already applied).
+
+**Policy**: the `cadence` namespace of `sales_outreach_configuration`, encoded by `engine/policy.ts` (`cadenceConfigurationValueSchema`, strict, every field nullable for bootstrap). `resolveEnginePolicy` fails closed with `CONFIGURATION_UNAVAILABLE` and every reason; there is no default and no env fallback. `engine/approvedStartingValues.ts` holds the FINAL-01 install payload for the install script only.
+
+**What it computes** — the whole requirement history of the subject, recomputed each call:
+
+1. Obligations: New arrival date (initial response = first call deadline, 18:00/19:30 caps, SMS through 19:30), full New days by age band (12:00/20:00, then 20:00) and fixed SMS days 1/2/3/6/9…, partial start dates after a transition or activation (prior same-date calls subtracted, all due 20:00, no initial clock), Quoted days from the selected date or next-working-date default, callbacks (15-minute window), the 30-working-minute initial response (carries across closing/closed dates, pauses during call restrictions).
+2. Terminations in precedence order (P06f): period end/closure (superseded/cancelled) → restriction waiver/resume or blocked callback → callback suspension of routine calls → cutover guard (nothing due before activation; pre-activation past-due callbacks → `legacy_review`).
+3. A chronological walk over confirmed, unrestricted events with the P02e spacing anchor (moves only on a credited call). One event can satisfy a callback (spacing does not apply), the initial response, the period's channel catch-up and one ordinary requirement.
+4. Outcomes at `as_of`: `fulfilled`, `fulfilled_late` (miss kept), `open`, `overdue`, `missed`, `pending` (coverage does not reach the deadline or unconfirmed evidence exists — never a guessed miss), and the no-miss terminations.
+5. Summary: independent Call and SMS requirements (CONTRACTS channel block), bounded catch-up per channel (P06a), flags (`needs_contact`, `overdue`, `blocked`, `pending`, move-date review, advisory cooldown, inherited overdue…), responsibility at each deadline (P06d), `next_evaluation_at`, last 30 business dates of window history.
+
+**Shared with S3** (`engine/credit.ts`): `classifyCallEvidence` / `classifySmsEvidence` (P07a–P07e, IMPL-06/07), `isCadenceQualifying`, `goalCreditAgent` / `goalCreditsByAgent` (initiator-only, start-date, never spacing- or window-dependent), `selectSpacedStarts`, `repDayGoal` / `summarizeTeamGoals` (P08a arithmetic).
+
+**Shared with S1**: `validateQuotedSelection` (P04c command validation), `BusinessCalendar` (DST-safe New York dates via `Intl`; next day by calendar arithmetic, never +24 h), `resumeInstant` (P06c), `cadenceConfigurationValueSchema`.
+
+Tests: one suite per contract fixture (`engine/*.test.ts`), END-TO-END-RUN §3 rows as named tests (`endToEndScenarios.test.ts`), DST/midnight and determinism cases. Evidence: `docs/sales-outreach-desk/workspace/evidence/S2.md`.
+
+## S3 — capture and goals
+
+Phase A (SRV-5, RINGCENTRAL-CAPTURE §3–§7, §9) and phase B (SRV-6: `sales_outreach_contact_events` derivation and `sales_outreach_rep_day_projections`) are built. Evidence: `docs/sales-outreach-desk/workspace/evidence/S3.md`.
+
+### Calls: minute ISync confirmation (M1)
+
+- `numberActivity/callLogIsyncLane.ts` — cron `/api/cron/sales-intelligence-call-log-isync` (`* * * * *`). Runs only with `SALES_INTELLIGENCE_CAPTURE_CALL_LOG=true` and `SALES_INTELLIGENCE_CALL_LOG_SYNC=on`, while New York time is in [07:45, 20:30) (DST-safe through the engine calendar), and not on the 5-minute reconcile's own minutes (UTC minute ≡ 3 mod 5), where the reconcile's sync step carries ISync exactly as before. One Heavy ISync with the stored token (high lane, ≤ 10 s gate wait), more pages only while full (budget 3). It shares the reconcile's state row, token, quarantine and lease; it never bootstraps a token. Outcome on the row: `isync_lane.{last_run_at,last_success_at,last_error_code,last_records,last_applied}` — `last_success_at` is the "Calls updated" input together with the last webhook receipt.
+- `numberActivity/callLogApplier.ts` — the reconcile's per-record apply, extracted unchanged and shared by both lanes; it also returns the `call_interactions` rows each batch changed.
+- `call_log_refresh` with Call Log Sync `on`: due +5 min, retried after 5 and 15 min, `already_confirmed` without a provider read once the call is in the Call Log (any `call_log_state`). 45-min expiry kept. Off/shadow keep the old schedule.
+- Desk wake seam `salesOutreach/capture/contactChangeWake.ts`: after `capture_projection` (same completion transaction) and after each ISync / window batch (own transaction), one deduplicated `outreach_contact_change` job per `(source, revision)` (`sod:contact_change:<call|sms>:<id>:<r<revision>|m<winner>>`, subject `call:<id>` / `sms:<id>`, `input_refs: [id]`), consumed by `contacts/jobs.ts` (below). It enqueues only while the persisted configuration is active with `desk_enabled` or `goal_metrics_enabled` (no env flag, no code readiness switch). Never throws into capture.
+
+### Rate gate
+
+`ringcentral/rateLimitGate.ts` gained a budgeted Light lane (40/min high, 10/min low; message-store, message-sync, extension presence, subscription renew) that honours a provider `Retry-After` for `X-Rate-Limit-Group: light`. Active Calls and account presence joined the Heavy regex.
+
+### Subscriptions
+
+- 10-year `expiresIn` cap (315,360,000 s). Every create/`PUT` generates a `deliveryMode.verificationToken`, stored with `purpose` (`calls` | `rep_sms`) in `ringcentral_webhook_subscriptions`.
+- `POST /api/webhooks/ringcentral` refuses (403, nothing stored or fanned out) a delivery naming one of our token-bearing subscriptions whose `Verification-Token` header (any case) is missing or wrong. Handshakes, foreign subscriptions and our subscriptions without a stored token behave as before.
+- `rep_sms` = one `/restapi/v1.0/account/~/extension/{id}/message-store?type=SMS` filter per current reviewed `sales_rep` mailbox (`repSms/mailboxes.ts`). The daily subscription cron (`15 6 * * *`) renews it and `PUT`s it on filter drift or a missing token when `controls.rep_sms_capture_enabled`; it never creates or recreates it and never touches `calls` or foreign subscriptions. Channel health on sync-state `webhook_subscription_maintenance:rep_sms` (`last_run.error_code` null | `subscription_missing` | `expired` | `blacklisted` | `filter_drift` | `token_missing` | `no_mailboxes`).
+- Operator: `node --env-file=.env --import tsx ops/ringcentral/outreach-subscriptions.ts --target=<account id> --database=<db> [--purpose=calls|rep_sms|all] [--apply]` — dry run by default, idempotent, named target, production-writer guard on apply.
+- Health check (`ownerCoverage`, `src/services/ringcentral/subscriptionHealth.ts`): `/api/cron/sales-intelligence-subscription-health` (`*/5 * * * *`, `CAPTURE_WEBHOOK`) reads the provider's subscription list once per run (one `GET /subscription`, shared by both channels) and the ownership metadata, then runs the read-only lifecycle plans. It never creates, renews, `PUT`s or deletes a subscription and never touches a foreign one; only the daily cron and the operator script mutate. Per channel it upserts a sync-state row — `webhook_subscription_health:calls` and `webhook_subscription_health:rep_sms` — with `last_run.error_code` null when healthy, else `subscription_missing` | `expired` | `blacklisted` | `filter_drift` | `token_missing` (`rep_sms` also `no_mailboxes`, and `not_connected` while `controls.rep_sms_capture_enabled` is off), or the failure's error class name when the provider or store failed (the run itself never throws). The route returns the per-channel summary (health, owned subscription id, expiry, mailbox count, warning count); logs carry the same and never a foreign subscription's id or address.
+
+### Rep SMS capture (`src/services/ringcentral/repSms/`)
+
+All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_outreach_configuration` (`repSms/gate.ts`; uninitialized/broken/unreadable ⇒ off).
+
+- `ringcentral_rep_sms_evidence` (`models/salesOutreach/repSmsEvidence.ts`, in `SALES_OUTREACH_MODEL_REGISTRY`, indexes `sod_rsms_*` built by `ops/sales-outreach/build-indexes.ts`): unique (account, owning mailbox, message id); metadata only, never a body. `status` (queued/sent/delivered/send_failed/delivery_failed/received/unknown), `credit_effect` (Sent/Delivered `credit`, Queued/unknown `none`, SendingFailed/DeliveryFailed `revoke`, inbound `history`), bounded `status_history`, `send_at` = `creationTime` (outbound), `counterpart_numbers`, `is_group`, `reviewed_rep_ref {agent_id, link_id}` at send time, `identity_state` (`reviewed` | `pending_identity`, reason `owner_not_reviewed_sales_rep` or `shared_sender` when the link's recorded numbers do not include the sender), `association_quality: unresolved` (SRV-6 resolves IMPL-07), `source_revision`.
+- Mailbox sync (`mailboxSync.ts`): lease on sync-state `rep_sms:<extensionId>`; ISync with the stored token, else a 7-day SMS FSync (FAST-TRACK history); token, `known_complete_through` (= provider `syncTime`), `message_sync.last_success_at` and `coverage_from` advance only when every record was stored. Webhook-driven runs use the high Light lane (≤ 10 s wait), the poll the low lane (no wait).
+- Webhook: a stored message-store receipt becomes one `rep_sms_sync` job per mailbox per 10-s bucket, due 2 s after the bucket (`intent.ts`), handled through `jobDispatch` and drained by job recovery. Only reviewed `sales_rep` mailboxes are synced; a 403 completes `permission_denied` (E01 not proven).
+- Safety poll: `/api/cron/sales-intelligence-rep-sms-poll` (`* * * * *`), New York [07:45, 20:30), each mailbox once per five minutes in a stable slot, skipped when synced in the last 4 minutes, stops at a throttle.
+- Coverage (`coverage.ts`): per mailbox `current` / `delayed` (> 10 min since the last good sync) / `never_synced`, `known_complete_through`, `coverage_from`; `worstMailboxCoverage` drives "SMS delayed".
+- E01 proof (read-only): `node --env-file=.env --import tsx ops/ringcentral/prove-rep-sms-access.ts --target=<account id> --database=<db> [--sent-within-minutes=N]`. Exit 0 pass, 2 fail. Never creates a subscription, never prints a token, number or body.
+
+### Contact events and rep-days (SRV-6, `src/services/salesOutreach/contacts/`)
+
+- **Derivation** (`derive.ts`, pure): one `call_interactions` row or one `ringcentral_rep_sms_evidence` row gives exactly one `sales_outreach_contact_events` row. Its `_id` is the first 12 bytes of the sha-256 of `(source_kind, source_id)` (`contactEventId`), so concurrent derivations collide instead of duplicating. Rules:
+  - Excluded rows:
+    - merged-away (`merged_into_id`) and purged rows;
+    - `Internal` direction, or an own extension/DID endpoint (`internal_call`);
+    - withheld, malformed, service-code or numberless endpoints (`not_external`);
+    - `Unknown` direction.
+  - Outbound initiator (P07b): the extension of the earliest outbound Call Log leg. Monitoring, queue, IVR and voicemail legs and roles are ignored. Without legs it falls back to the single outbound user party. A tie between extensions is ambiguous identity.
+    - Identity is `resolveRepIdentityAt` at the call start; only a reviewed `sales_rep` link counts.
+    - Transfer, duplicate-leg and monitoring participants therefore earn nothing. The call keeps its one credit.
+  - Answered inbound: the first connected user extension is the handler. The handler's answer time (party answer, or connected leg start) is the event time (P07g). With no handler the row is `inbound_missed` (history only).
+  - Not actual attempts (P07a): the Call Log results `Internal Error`, `Restricted`, `Blocked`, `International Disabled`/`International Restriction`, `Suspended account`/`Account Suspended` and `Stopped`.
+  - IMPL-06: a call is confirmed only when `terminal` is true and `call_log_state` is non-null. Webhook-only is `awaiting_confirmation`: never credit, never a miss.
+  - IMPL-07 association, from the number's `attached` Leads with certainty ≠ `rejected`:
+    - `unique`: one Lead that is a desk subject with `activation_at ≤ event_at` and no `closed` period started by then. The row carries `subject_id` and the period's `subject_workflow`.
+    - `ambiguous`: several Leads (pending association).
+    - `none`: anything else.
+    - A subject-less row keeps `subject_id: null`, so M1 counting and "Other outbound" stay recountable. Subject reads never see it.
+  - Restricted contact: a `sales_intelligence_contact_restrictions` row on the number that covers the channel (`call`/`text`) with `createdAt ≤ event_at < min(until, resolved_at)`. It sets `restricted_at_contact`, earns zero goal and cadence credit, and stays in history.
+  - SMS:
+    - the event time is `send_at` (else `provider_created_at`);
+    - Sent/Delivered by a reviewed owner = `sms_sent`, confirmed;
+    - SendingFailed/DeliveryFailed = `sms_failed`, excluded (the re-derived row revokes the credit);
+    - Received = `sms_inbound`;
+    - `pending_identity` evidence stays pending, and group messages are ambiguous;
+    - only the lowest-`_id` mailbox copy of a `canonical_logical_id` credits; other copies are `duplicate_copy`;
+    - SMS never earns outbound-goal credit.
+  - Kind and verification come from S2's `classifyCallEvidence` / `classifySmsEvidence`. `toEngineContactEvent` converts a row into the engine input.
+  - Fields added to the model:
+    - `association`;
+    - `subject_workflow`;
+    - `outcome`: answered / unanswered / unknown (P06b);
+    - `goal_credit`: `confirmed` | `awaiting_confirmation` | `none`, the all-outbound credit of the reviewed initiator;
+    - `goal_scope_eligible`: a unique subject in a `new`/`quoted` period at contact time;
+    - `originating_inbound`: P07g — a confirmed reviewed-rep answered inbound whose uniquely associated subject is a Call Lead created by this call (`call_leads.ringcentral.telephony_session_id` = the call's `telephony_session_id`). The evaluator can use that event as `originating_contact_event_id`;
+    - `input_fingerprint`.
+- **Apply** (`apply.ts`, `mongoStore.ts`): bulk-loads a page of sources and their context, and writes only rows whose fingerprint changed (revision CAS).
+  - Every subject a source moved from or to gets one `outreach_evaluate` job: `subject_key outreach-subject:<id>`, `input_refs [id]`, `input_revision` = the subject revision, dedupe `sod:evaluate:<id>:r<rev>:contacts:<digest of event versions>`.
+  - Every `(goal_agent_id, business_date)` a source moved from or to is dirty.
+- **Jobs** (`jobs.ts`, dispatched by `numberActivity/jobDispatch.ts`):
+  - `outreach_contact_change` derives one source in the job transaction. It enqueues `outreach_rep_day` (`subject_key outreach-rep-day:<agent>:<YYYY-MM-DD>`, one dedupe per dirtying event version) and publishes the created wake-ups after commit.
+  - `outreach_rep_day` recounts one rep-day.
+  - After a rep-day write commits, `goalPublish.ts` `publishOutreachGoalChanges` receives `{agent_id, business_day, publication_revision}`. It is a no-op seam (TODO S1 phase 4b) until S1's `outreach_goal` live publish helper lands.
+  - Admission: the configuration must be active with `desk_enabled` or `goal_metrics_enabled`. It is rechecked inside the transaction; a moved pointer means retry.
+- **Sweep** (`sweep.ts`): walks `call_interactions` and the SMS evidence by an `(updatedAt, _id)` cursor on sync-state scopes `outreach_contact_calls` / `outreach_contact_sms` (lease in the row).
+  - Pages of 200, with a 2-minute commit-lag overlap re-scan. Derivation runs inline with the cursor write; dirty rep-days are recounted inline.
+  - The first pass starts at New York midnight of `today − transition.backfill_lookback_days` (0 when unset), stored as `cursor.outreach_coverage_from`.
+  - When a calls pass catches up, it stores the capture `known_complete_through` read at the pass start as the scope's `known_complete_through`. This is the **derivation watermark**.
+- **Rep-day** (`repDay.ts`, `repDayService.ts`): rows exist only for reps with activity, or where a row already exists.
+  - `count_scope` per business day: `eligible_new_quoted` from the New York date after the earliest **completed** enrollment `apply` run's `activation_at`; `all_outbound` before that. Stored state decides it, never env.
+  - Counts:
+    - `actual_confirmed`: `goal_credit: confirmed` events — all of them under `all_outbound`, only `goal_scope_eligible` ones under `eligible_new_quoted`;
+    - `actual_awaiting_confirmation`: the same rule for awaiting events;
+    - `unattributed`: confirmed events without an eligible subject, under both scopes.
+  - Goal: from `resolveConfiguredGoal` (S1) and `repDayGoal` (S2). Today's snapshot has `configuration_version: null`; the first recount after the day ends freezes it, once.
+  - Coverage: `callsCoverageForDay(min(capture known_complete_through − 2 min, derivation watermark), requiredCoverageThrough)`. A day before `coverage_from` is `unknown`.
+  - Writes: the fingerprint covers the scope, counts, goal snapshot and coverage state (not the moving instant). An unchanged fingerprint writes nothing; each write adds 1 to `publication_revision`.
+- **Cron** `/api/cron/sales-outreach-contact-events` (`* * * * *`, `routes/sales-outreach-contact-cron.routes.ts`). Each step is isolated, and no env flag gates them:
+  1. calls sweep (25 s);
+  2. SMS sweep (8 s);
+  3. drain `outreach_contact_change` (≤ 100, 10 s);
+  4. drain `outreach_rep_day` (≤ 100, 5 s);
+  5. refresh today's and yesterday's rows whose coverage is incomplete or whose past-day goal is not frozen.
+- Replica proof (written, not run): `ops/sales-outreach/contact-events.replica.ts`, part of `pnpm test:outreach:replica`.

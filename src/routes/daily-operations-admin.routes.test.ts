@@ -3,7 +3,8 @@ import type { AddressInfo } from "node:net";
 import { after, afterEach, before, test } from "node:test";
 import express from "express";
 import { requireApiSecret } from "../middleware/requireApiSecret";
-import { computeAdminActorSignature } from "../services/operationsRegistry/trustedActor";
+import { computeAdminActorSignature, signAdminActorPayload } from "../services/operationsRegistry/trustedActor";
+import { buildCanonicalRepActorPayload } from "../services/operationsRegistry/trustedActorCanonical";
 import { SOURCE_COMPANIES } from "../config/domain/sources";
 import { createDailyOperationsAdminRouter } from "./daily-operations-admin.routes";
 import { createDailyOperationsCronRouter } from "./daily-operations-cron.routes";
@@ -45,6 +46,7 @@ const SNAPSHOT_FIXTURE = {
       held_now: 3,
       skipped: 4,
       failed: 1,
+      unreconstructable_sent_day: 0,
     },
     webhooks: {
       lead_created: { today: 55, yesterday: 49, day_before: 49 },
@@ -227,7 +229,7 @@ function restoreEnv(key: string, value: string | undefined) {
 }
 
 function signedHeaders(
-  role: "owner" | "admin",
+  role: "owner" | "admin" | "manager",
   path: string,
   method: "GET" | "POST" = "GET",
 ): Record<string, string> {
@@ -418,4 +420,56 @@ test("close cron rejects missing secret header and missing CRON_SECRET", async (
   });
   assert.equal(headerOk.status, 200);
   assert.equal(closeCalls, 2);
+});
+
+function signedRepHeaders(path: string, method: "GET" | "POST" = "GET"): Record<string, string> {
+  const timestamp = `${Date.now()}`;
+  const requestId = `req-daily-rep-${timestamp}`;
+  const agentId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const signature = signAdminActorPayload(
+    buildCanonicalRepActorPayload({ adminId: "rep_1", email: "rep@example.invalid", role: "rep", timestamp, requestId, method, path, agentId }),
+    SIGNING_SECRET,
+  );
+  return {
+    "x-api-secret": API_SECRET,
+    "x-vantage-admin-user-id": "rep_1",
+    "x-vantage-admin-email": "rep@example.invalid",
+    "x-vantage-admin-role": "rep",
+    "x-vantage-admin-request-id": requestId,
+    "x-vantage-admin-timestamp": timestamp,
+    "x-vantage-admin-signature": signature,
+    "x-vantage-admin-agent-id": agentId,
+  };
+}
+
+test("SRV-1 (P09b): a signed Manager reads the snapshot, events and live stream; rebuild stays Owner-only", async () => {
+  const getPath = "/api/v1/admin/daily-operations";
+  const snapshot = await fetch(`${baseUrl}${getPath}`, { headers: signedHeaders("manager", getPath) });
+  assert.equal(snapshot.status, 200);
+  assert.equal(((await snapshot.json()) as typeof SNAPSHOT_FIXTURE).today, "2026-09-06");
+  const eventsPath = "/api/v1/admin/daily-operations/events";
+  assert.equal((await fetch(`${baseUrl}${eventsPath}`, { headers: signedHeaders("manager", eventsPath) })).status, 200);
+  const livePath = "/api/v1/admin/daily-operations/live";
+  const live = await fetch(`${baseUrl}${livePath}`, { headers: signedHeaders("manager", livePath) });
+  assert.equal(live.status, 200);
+  assert.match(live.headers.get("content-type") ?? "", /text\/event-stream/);
+  await live.text();
+  const rebuildPath = "/api/v1/admin/daily-operations/rebuild";
+  const rebuild = await fetch(`${baseUrl}${rebuildPath}`, { method: "POST", headers: signedHeaders("manager", rebuildPath, "POST") });
+  assert.equal(rebuild.status, 403);
+  assert.equal(rebuildCalls, 0);
+});
+
+test("SRV-1: Rep, forged Manager and unsigned callers stay denied on Daily Operations", async () => {
+  const getPath = "/api/v1/admin/daily-operations";
+  assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: signedRepHeaders(getPath) })).status, 403);
+  const forged = { ...signedHeaders("manager", getPath), "x-vantage-admin-signature": "0".repeat(64) };
+  assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: forged })).status, 403);
+  // A Manager signature replayed on another path is refused (the path is signed).
+  const replayed = signedHeaders("manager", "/api/v1/admin/daily-operations/events");
+  assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: replayed })).status, 403);
+  // An Owner signature relabelled as manager is refused (the role is signed).
+  const relabelled = { ...signedHeaders("owner", getPath), "x-vantage-admin-role": "manager" };
+  assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: relabelled })).status, 403);
+  assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: { "x-api-secret": API_SECRET } })).status, 403);
 });

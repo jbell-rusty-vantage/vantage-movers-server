@@ -16,6 +16,7 @@ import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } fr
 import { callLogReconcileConfig, runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import { settleProvisionalFromStore } from "../services/numberActivity/settleProvisional";
 import { runCallLogSweepOnce } from "../services/numberActivity/callLogSweep";
+import { runCallLogIsyncLaneOnce } from "../services/numberActivity/callLogIsyncLane";
 import { runRetentionOnce } from "../services/salesIntelligence/retention";
 import {
   runReceiptWatermarkRecovery,
@@ -25,6 +26,10 @@ import { refreshCaptureCoverage } from "../services/numberActivity/coverage";
 import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
+import { runRepSmsSubscriptionMaintenance } from "../services/ringcentral/repSms/subscriptionMaintenance";
+import { runSubscriptionHealthCheck } from "../services/ringcentral/subscriptionHealth";
+import { drainRepSmsSyncJobs } from "../services/ringcentral/repSms/intent";
+import { runRepSmsSafetyPoll } from "../services/ringcentral/repSms/poll";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
 
 /**
@@ -57,6 +62,8 @@ export type SalesIntelligenceCronRouteDeps = {
    * reconcile exists to settle them.
    */
   settleProvisional?: () => Promise<unknown>;
+  /** RINGCENTRAL-CAPTURE §4: staffed-hours minute Call Log ISync lane under `CAPTURE_CALL_LOG`. */
+  runCallLogIsyncLane?: typeof runCallLogIsyncLaneOnce;
   /** CC-06: nightly authoritative Call Log sweep under `CAPTURE_CALL_LOG`. */
   runCallLogSweep?: typeof runCallLogSweepOnce;
   runReceiptRecovery?: typeof runReceiptWatermarkRecovery;
@@ -87,6 +94,13 @@ export type SalesIntelligenceCronRouteDeps = {
   /** CC-08: `call_log_refresh` drain (job recovery, under `CAPTURE_WEBHOOK`) and the daily subscription maintenance. */
   drainCallLogRefresh?: () => Promise<unknown>;
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
+  /** RINGCENTRAL-CAPTURE §3: `rep_sms` renew + filter reconcile, after the `calls` step (desk control gated). */
+  runRepSmsSubscription?: typeof runRepSmsSubscriptionMaintenance;
+  /** RINGCENTRAL-CAPTURE §3 `ownerCoverage`: the read-only 5-minute subscription health check per channel. */
+  runSubscriptionHealth?: typeof runSubscriptionHealthCheck;
+  /** RINGCENTRAL-CAPTURE §5: due `rep_sms_sync` jobs (job recovery) and the staffed-hours safety poll. */
+  drainRepSmsSync?: () => Promise<unknown>;
+  runRepSmsPoll?: typeof runRepSmsSafetyPoll;
   /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
   recordDeployment?: () => Promise<unknown>;
 };
@@ -96,10 +110,13 @@ export const CSI_CRON_PATHS = {
   retention: "/api/cron/sales-intelligence-retention",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   callLogSweep: "/api/cron/sales-intelligence-call-log-sweep",
+  callLogIsync: "/api/cron/sales-intelligence-call-log-isync",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
   webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
+  subscriptionHealth: "/api/cron/sales-intelligence-subscription-health",
+  repSmsPoll: "/api/cron/sales-intelligence-rep-sms-poll",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -136,15 +153,53 @@ export function createSalesIntelligenceCronRouter(
       flag: "CAPTURE_WEBHOOK" as const,
       run: () => (deps.drainCallLogRefresh ?? (() => drainCallLogRefreshJobs()))(),
     });
+    // Rep SMS sync intents ride the same recovery; each job re-checks controls.rep_sms_capture_enabled.
+    extraRecovery.push({
+      name: "rep_sms_sync",
+      flag: "CAPTURE_WEBHOOK" as const,
+      run: () => (deps.drainRepSmsSync ?? (() => drainRepSmsSyncJobs()))(),
+    });
   }
+
+  // RINGCENTRAL-CAPTURE §5/§7: every minute, the staffed-hours safety poll syncs the mailboxes whose
+  // stagger slot is this minute. The service gates on the persisted desk control (fail closed).
+  router.all(CSI_CRON_PATHS.repSmsPoll, requireCronAuth, async (_req, res) => {
+    try {
+      await connect();
+      const summary = await (deps.runRepSmsPoll ?? runRepSmsSafetyPoll)();
+      if (summary.skipped) return res.json({ ok: true, skipped: true, reason: summary.skip_reason, summary });
+      return res.json({ ok: true, skipped: false, summary });
+    } catch (error) {
+      logger.error({ msg: "sales_outreach.cron.rep_sms_poll.failed", errorName: error instanceof Error ? error.name : "Error" });
+      return res.status(500).json({ ok: false, error: "Rep SMS poll failed" });
+    }
+  });
   router.all(CSI_CRON_PATHS.webhookSubscription, requireCronAuth, async (_req, res) => {
     if (!flag("CAPTURE_WEBHOOK")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try {
       await connect();
       const summary = await (deps.runWebhookSubscription ?? runWebhookSubscriptionMaintenance)();
-      return res.json({ ok: true, skipped: false, summary });
+      // The SMS channel never blocks the calls outcome; its failure is reported beside it.
+      const repSms = await (deps.runRepSmsSubscription ?? runRepSmsSubscriptionMaintenance)().catch((error: unknown) => ({
+        skipped: false as const,
+        error: error instanceof Error ? error.name : "Error",
+      }));
+      return res.json({ ok: true, skipped: false, summary, rep_sms: repSms });
     } catch {
       return res.status(500).json({ ok: false, error: "Webhook subscription maintenance failed" });
+    }
+  });
+  // RINGCENTRAL-CAPTURE §3 `ownerCoverage`: every 5 minutes, one read-only `GET /subscription` reports
+  // `calls` and `rep_sms` channel health on their sync-state rows. It never mutates a subscription.
+  router.all(CSI_CRON_PATHS.subscriptionHealth, requireCronAuth, async (_req, res) => {
+    if (!flag("CAPTURE_WEBHOOK")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await (deps.runSubscriptionHealth ?? runSubscriptionHealthCheck)();
+      return res.json({ ok: true, summary });
+    } catch (error) {
+      logger.error({ msg: "sales_outreach.cron.subscription_health.failed", errorName: error instanceof Error ? error.name : "Error" });
+      return res.status(500).json({ ok: false, error: "Subscription health check failed" });
     }
   });
 
@@ -166,6 +221,24 @@ export function createSalesIntelligenceCronRouter(
         errorName: error instanceof Error ? error.name : "Error",
       });
       return res.status(500).json({ ok: false, error: "Call Log reconcile failed" });
+    }
+  });
+
+  // RINGCENTRAL-CAPTURE §4: every minute in New York staffed hours [07:45, 20:30) one Call Log
+  // ISync confirms calls; the service yields outside those hours and on the reconcile's minutes.
+  router.all(CSI_CRON_PATHS.callLogIsync, requireCronAuth, async (_req, res) => {
+    if (!flag("CAPTURE_CALL_LOG")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await (deps.runCallLogIsyncLane ?? runCallLogIsyncLaneOnce)();
+      if (summary.skipped) return res.json({ ok: true, skipped: true, reason: summary.skip_reason ?? "disabled", summary });
+      return res.json({ ok: true, skipped: false, summary });
+    } catch (error) {
+      logger.error({
+        msg: "sales_intelligence.cron.call_log_isync.failed",
+        errorName: error instanceof Error ? error.name : "Error",
+      });
+      return res.status(500).json({ ok: false, error: "Call Log ISync failed" });
     }
   });
 

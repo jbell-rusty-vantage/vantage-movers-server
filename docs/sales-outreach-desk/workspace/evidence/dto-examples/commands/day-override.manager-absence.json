@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/admin/sales-outreach/goals/6650a1b2c3d4e5f60718293b/day-override",
+    "headers": {
+      "Idempotency-Key": "mgr-override-1"
+    },
+    "body": {
+      "expected_revision": 1,
+      "business_date": "2026-10-05",
+      "goal": 0,
+      "reason": "absence"
+    }
+  },
+  "response": {
+    "ok": true,
+    "data": {
+      "contract_version": "sod-v1",
+      "agent_id": "6650a1b2c3d4e5f60718293b",
+      "business_date": "2026-10-05",
+      "override": {
+        "goal": 0,
+        "reason": "absence"
+      },
+      "previous": null,
+      "revision": 2,
+      "version": "sod-config-9756a3dfe98dc9ed7947a553",
+      "changed": true,
+      "replayed": false
+    }
+  }
+}

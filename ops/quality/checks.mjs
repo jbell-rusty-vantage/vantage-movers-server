@@ -115,13 +115,17 @@ export async function runChecks({ workspace, edited, config, env, directory }) {
     const after = await runCheck(check, args, { workspace, env, directory, timeoutMs });
     if (after.code === 0 && !after.timedOut) { results.push({ ...after, passed: true }); continue; }
     if (after.timedOut) { results.push({ ...after, passed: false, note: 'timed out' }); continue; }
+    // `stash push` is a no-op on a clean workspace (the edit may be empty or already committed), and
+    // `stash pop` would then fail with "No stash entries found"; pop only what this run pushed.
+    const stashesBefore = git(workspace, ['stash', 'list']).trim();
     git(workspace, ['stash', 'push', '-u', '-q']);
+    const stashed = git(workspace, ['stash', 'list']).trim() !== stashesBefore;
     let before;
     try {
       // Re-run only on files that exist in the input; the edited list may include new files.
       const inputArgs = args.filter((argument, index) => index < args.length - files.length || fs.existsSync(path.join(workspace, argument)));
       before = await runCheck(check, inputArgs, { workspace, env, directory, timeoutMs, suffix: '.input' });
-    } finally { git(workspace, ['stash', 'pop', '-q']); }
+    } finally { if (stashed) git(workspace, ['stash', 'pop', '-q']); }
     const introduced = after.failures.filter(signature => !before.failures.includes(signature));
     const passed = before.code !== 0 && !introduced.length && (after.failures.length > 0 || before.failures.length === 0);
     results.push({ ...after, passed, inputCode: before.code, introduced, note: passed ? 'pre-existing failures only' : 'new failures' });

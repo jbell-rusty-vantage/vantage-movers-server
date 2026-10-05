@@ -35,7 +35,7 @@ import {
 export type WebhookSubscriptionMaintenanceSummary = {
   address: string;
   plan: SubscriptionPlan["action"];
-  action: "noop" | "created" | "renewed" | "repaired" | "missing";
+  action: "noop" | "created" | "renewed" | "updated" | "repaired" | "missing";
   subscription_id: string | null;
   removed_subscription_id: string | null;
   expiration_time: string | null;

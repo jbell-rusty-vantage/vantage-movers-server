@@ -1,0 +1,75 @@
+{
+  "ok": true,
+  "data": {
+    "contract_version": "sod-v1",
+    "as_of": "2026-10-05T15:00:00.000Z",
+    "timezone": "America/New_York",
+    "scope": {
+      "role": "owner",
+      "agent_id": null
+    },
+    "configuration_state": "active",
+    "configuration_version": "sod-cfg-8b21",
+    "configuration_revision": 5,
+    "controls": {
+      "desk_enabled": false,
+      "goal_metrics_enabled": true,
+      "rep_sms_capture_enabled": false,
+      "cadence_shadow_enabled": false,
+      "cadence_enforcement_enabled": false,
+      "intake_admission_enabled": false
+    },
+    "desk_available": false,
+    "unavailable_reason": "desk_disabled",
+    "permitted_views": [
+      "settings",
+      "numbers",
+      "accounts"
+    ],
+    "permitted_filters": {
+      "rep_days": [],
+      "team": [],
+      "queue": []
+    },
+    "live_topics": [
+      "outreach_configuration"
+    ],
+    "permitted_commands": [
+      "day_override",
+      "restrictions",
+      "configuration_edit"
+    ],
+    "role_capabilities": [
+      "activation",
+      "assign_reassign",
+      "base_goal_edits",
+      "cadence_policy_edits",
+      "configuration_edit",
+      "configuration_read",
+      "daily_operations_access",
+      "explicit_callback_commands",
+      "historical_responsibility_goal_setting_edits",
+      "individual_rep_filter",
+      "lift_contact_restriction",
+      "migration",
+      "override_authoritative_closure",
+      "own_assigned_reads",
+      "prospective_absence_override",
+      "prospective_partial_day_override",
+      "quoted_date_commands",
+      "rollback",
+      "roster_edits",
+      "team_reads",
+      "unassigned_reads",
+      "work_schedule_edits"
+    ],
+    "deployed_reads": [
+      "capabilities",
+      "rep_days",
+      "team",
+      "queue",
+      "outreach_detail",
+      "live"
+    ]
+  }
+}

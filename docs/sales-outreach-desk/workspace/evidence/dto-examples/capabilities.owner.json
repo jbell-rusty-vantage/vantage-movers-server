@@ -1,0 +1,101 @@
+{
+  "ok": true,
+  "data": {
+    "contract_version": "sod-v1",
+    "as_of": "2026-10-05T15:00:00.000Z",
+    "timezone": "America/New_York",
+    "scope": {
+      "role": "owner",
+      "agent_id": null
+    },
+    "configuration_state": "active",
+    "configuration_version": "sod-cfg-7f3a",
+    "configuration_revision": 4,
+    "controls": {
+      "desk_enabled": true,
+      "goal_metrics_enabled": true,
+      "rep_sms_capture_enabled": false,
+      "cadence_shadow_enabled": false,
+      "cadence_enforcement_enabled": false,
+      "intake_admission_enabled": false
+    },
+    "desk_available": true,
+    "unavailable_reason": null,
+    "permitted_views": [
+      "team",
+      "my",
+      "settings",
+      "numbers",
+      "accounts"
+    ],
+    "permitted_filters": {
+      "rep_days": [
+        "business_day",
+        "agent_id"
+      ],
+      "team": [
+        "business_day"
+      ],
+      "queue": [
+        "search",
+        "priority",
+        "workflow",
+        "move_date_from",
+        "move_date_to",
+        "move_date_unknown",
+        "agent_id",
+        "unassigned",
+        "state",
+        "sort",
+        "direction",
+        "cursor",
+        "limit"
+      ]
+    },
+    "live_topics": [
+      "outreach_desk",
+      "outreach_goal",
+      "outreach_configuration"
+    ],
+    "permitted_commands": [
+      "quoted_followup",
+      "callback",
+      "assignment",
+      "day_override",
+      "restrictions",
+      "configuration_edit"
+    ],
+    "role_capabilities": [
+      "activation",
+      "assign_reassign",
+      "base_goal_edits",
+      "cadence_policy_edits",
+      "configuration_edit",
+      "configuration_read",
+      "daily_operations_access",
+      "explicit_callback_commands",
+      "historical_responsibility_goal_setting_edits",
+      "individual_rep_filter",
+      "lift_contact_restriction",
+      "migration",
+      "override_authoritative_closure",
+      "own_assigned_reads",
+      "prospective_absence_override",
+      "prospective_partial_day_override",
+      "quoted_date_commands",
+      "rollback",
+      "roster_edits",
+      "team_reads",
+      "unassigned_reads",
+      "work_schedule_edits"
+    ],
+    "deployed_reads": [
+      "capabilities",
+      "rep_days",
+      "team",
+      "queue",
+      "outreach_detail",
+      "live"
+    ]
+  }
+}

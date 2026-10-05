@@ -21,7 +21,12 @@ import {
   sessionsNeedingRefresh,
   type DelayedPublishDeps,
 } from "./callLogRefresh";
-import { CAPTURE_PROJECTION_STAGE } from "./webhookFanout";
+import { CAPTURE_PROJECTION_STAGE, publishRunnableWakeups } from "./webhookFanout";
+import {
+  enqueueOutreachContactChangeJobs,
+  sourcesFromTouchedCalls,
+} from "../salesOutreach/capture/contactChangeWake";
+import type { TouchedInteraction } from "./callLogApplier";
 import { findWebhookReceiptById } from "./webhookReceipts";
 
 /**
@@ -45,6 +50,10 @@ import { findWebhookReceiptById } from "./webhookReceipts";
  * CC-08: when the delivery hangs a session up (terminal party status, every
  * account party terminal), the completion transaction also enqueues one
  * `call_log_refresh` for that session, due 90 s later (`callLogRefresh.ts`).
+ *
+ * RINGCENTRAL-CAPTURE §4.5: the same transaction enqueues the Sales Outreach Desk wake
+ * (`outreach_contact_change`) for every `call_interactions` row the delivery changed; the jobs are
+ * published after commit. The seam is a no-op until the desk consumer exists and is wanted.
  */
 export type SessionSummary =
   | {
@@ -103,6 +112,9 @@ export type CaptureProjectionWorkerDeps = {
   refreshCandidates?: typeof sessionsNeedingRefresh;
   enqueueRefresh?: typeof enqueueCallLogRefreshJob;
   refreshPublish?: DelayedPublishDeps;
+  /** Desk wake seams: the in-transaction enqueue and the post-commit publish. */
+  enqueueContactChange?: typeof enqueueOutreachContactChangeJobs;
+  publishContactChange?: (jobIds: readonly string[]) => Promise<unknown>;
 };
 
 const RETRYABLE_SESSION_CODES = new Set(["persist_failed", "retry_exhausted"]);
@@ -172,13 +184,17 @@ export async function runCaptureProjectionJob(
     result.call_log_refresh = refresh.map((c) => c.telephony_session_id);
     const at = now();
     const enqueued: Array<{ job_id: string; created: boolean; due_at: Date }> = [];
+    const contactSources = sourcesFromTouchedCalls(touchedInteractions(results));
+    const contactJobs: Array<{ job_id: string; created: boolean }> = [];
     await complete(
       lease,
       async (session) => {
         enqueued.length = 0;
+        contactJobs.length = 0;
         for (const candidate of refresh) {
           enqueued.push(await (deps.enqueueRefresh ?? enqueueCallLogRefreshJob)(candidate, session, at));
         }
+        contactJobs.push(...(await (deps.enqueueContactChange ?? enqueueOutreachContactChangeJobs)(contactSources, session, at)));
         await appendCsiAudit(
           { session, command_id: new mongoose.Types.ObjectId(), now: at, actor: csiWorkerActor(lease.job_id) },
           {
@@ -197,6 +213,8 @@ export async function runCaptureProjectionJob(
     for (const job of enqueued) {
       if (job.created) await publishDelayedWakeup(job.job_id, job.due_at, now(), deps.refreshPublish);
     }
+    const contactCreated = contactJobs.filter((j) => j.created).map((j) => j.job_id);
+    if (contactCreated.length) await (deps.publishContactChange ?? ((ids: readonly string[]) => publishRunnableWakeups(ids)))(contactCreated);
     if (result.failed > 0) {
       logger.warn({
         msg: "sales_intelligence.capture.projection.sessions_failed",
@@ -266,6 +284,19 @@ export async function drainCaptureProjectionJobs(
     else summary.lease_lost += 1;
   }
   return summary;
+}
+
+/** Rows this delivery changed (non-noop projections and the rows they merged away). */
+function touchedInteractions(results: readonly SessionObservationResult[]): TouchedInteraction[] {
+  const out: TouchedInteraction[] = [];
+  for (const r of results) {
+    if (!r.ok || r.result.noop) continue;
+    out.push({ interaction_id: r.result.interaction_id, projection_revision: r.result.projection_revision, merged_into: null });
+    for (const merged of r.result.merged_interaction_ids ?? []) {
+      out.push({ interaction_id: merged, projection_revision: null, merged_into: r.result.interaction_id });
+    }
+  }
+  return out;
 }
 
 function summarize(result: SessionObservationResult): SessionSummary {

@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "data": {
+    "contract_version": "sod-v1",
+    "as_of": "2026-10-05T15:00:00.000Z",
+    "timezone": "America/New_York",
+    "scope": {
+      "role": "manager",
+      "agent_id": null
+    },
+    "configuration_state": "active",
+    "configuration_version": "sod-cfg-7f3a",
+    "configuration_revision": 4,
+    "controls": {
+      "desk_enabled": true,
+      "goal_metrics_enabled": true,
+      "rep_sms_capture_enabled": false,
+      "cadence_shadow_enabled": false,
+      "cadence_enforcement_enabled": false,
+      "intake_admission_enabled": false
+    },
+    "desk_available": true,
+    "unavailable_reason": null,
+    "permitted_views": [
+      "team",
+      "my"
+    ],
+    "permitted_filters": {
+      "rep_days": [
+        "business_day",
+        "agent_id"
+      ],
+      "team": [
+        "business_day"
+      ],
+      "queue": [
+        "search",
+        "priority",
+        "workflow",
+        "move_date_from",
+        "move_date_to",
+        "move_date_unknown",
+        "agent_id",
+        "unassigned",
+        "state",
+        "sort",
+        "direction",
+        "cursor",
+        "limit"
+      ]
+    },
+    "live_topics": [
+      "outreach_desk",
+      "outreach_goal",
+      "outreach_configuration"
+    ],
+    "permitted_commands": [
+      "quoted_followup",
+      "callback",
+      "assignment",
+      "day_override"
+    ],
+    "role_capabilities": [
+      "assign_reassign",
+      "daily_operations_access",
+      "explicit_callback_commands",
+      "individual_rep_filter",
+      "own_assigned_reads",
+      "prospective_absence_override",
+      "prospective_partial_day_override",
+      "quoted_date_commands",
+      "team_reads",
+      "unassigned_reads"
+    ],
+    "deployed_reads": [
+      "capabilities",
+      "rep_days",
+      "team",
+      "queue",
+      "outreach_detail",
+      "live"
+    ]
+  }
+}

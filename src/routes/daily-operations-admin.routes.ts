@@ -3,8 +3,12 @@ import { connectMongo } from "../db";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import {
   isRegistryError,
+  RegistryError,
   requireRegistryOwnerActor,
 } from "../services/operationsRegistry";
+import { verifySignedDashboardActor } from "../services/operationsRegistry/trustedActor";
+import { ADMIN_PROXY_HEADER_NAMES } from "../services/operationsRegistry/trustedActorCanonical";
+import { REGISTRY_ERROR_CODES } from "../services/errors/registryErrorCodes";
 import {
   DailyOperationsEventsQueryError,
   listDailyOperationsEvents,
@@ -54,7 +58,7 @@ export function createDailyOperationsAdminRouter(
   router.get("/api/v1/admin/daily-operations", async (req, res) => {
     try {
       await connect();
-      requireRegistryOwnerActor(req, auth(req));
+      requireDailyOperationsReader(req);
       const snapshot = await getSnapshot();
       return res.status(200).json(snapshot);
     } catch (error) {
@@ -66,7 +70,7 @@ export function createDailyOperationsAdminRouter(
   router.get("/api/v1/admin/daily-operations/live", async (req, res) => {
     try {
       await connect();
-      requireRegistryOwnerActor(req, auth(req));
+      requireDailyOperationsReader(req);
     } catch (error) {
       return sendError(res, error, requestId(req));
     }
@@ -118,7 +122,7 @@ export function createDailyOperationsAdminRouter(
   router.get("/api/v1/admin/daily-operations/events", async (req, res) => {
     try {
       await connect();
-      requireRegistryOwnerActor(req, auth(req));
+      requireDailyOperationsReader(req);
       const page = await listEvents({
         cursor: asString(req.query.cursor),
         lane: asString(req.query.lane),
@@ -142,6 +146,24 @@ export function createDailyOperationsAdminRouter(
   });
 
   return router;
+}
+
+/**
+ * Daily Operations reads (snapshot, live stream, events) admit the Owner and, under P09b/IMPL-03, a
+ * signed Manager. The rebuild command stays Owner-only. Generic Admin and Rep stay denied.
+ */
+function requireDailyOperationsReader(req: Request): void {
+  const role = req.header(ADMIN_PROXY_HEADER_NAMES.role)?.trim().toLowerCase();
+  if (role !== "manager") {
+    requireRegistryOwnerActor(req, auth(req));
+    return;
+  }
+  const vantageAuth = auth(req);
+  if (!vantageAuth || vantageAuth.kind === "scoped_key" || !verifySignedDashboardActor(req, "manager")) {
+    throw new RegistryError("Daily Operations requires an Owner or Manager actor.", {
+      registryCode: REGISTRY_ERROR_CODES.FORBIDDEN,
+    });
+  }
 }
 
 function auth(req: Request): VantageAuthContext | undefined {

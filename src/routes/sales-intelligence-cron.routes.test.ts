@@ -139,9 +139,17 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       calls.push("call-log-refresh");
       return { claimed: 0 };
     },
+    drainRepSmsSync: async () => {
+      calls.push("rep-sms-sync");
+      return { claimed: 0 };
+    },
     runWebhookSubscription: async () => {
       calls.push("webhook-subscription");
       return { address: "https://example.test/api/webhooks/ringcentral", plan: "noop", action: "noop", subscription_id: "s", removed_subscription_id: null, expiration_time: null, warnings: [] };
+    },
+    runRepSmsSubscription: async () => {
+      calls.push("rep-sms-subscription");
+      return { skipped: true, reason: "capture_disabled" };
     },
   });
   let directoryResult: DirectorySyncSummary = {
@@ -189,7 +197,7 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(recoveryHeld.status, 200);
       assert.equal((recoveryHeld.body.receipt_recovery as RecoverySummary).skip_reason, "lease_held");
       assert.deepEqual(recoveryHeld.body.capture_projection, { claimed: 2, completed: 1, failed: 1, lease_lost: 0, deadline_reached: false });
-      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "recovery", "drain:7:1234", "call-log-refresh"], "retired stages are fenced first; the scan lease being held never blocks job draining; CC-08 refresh drains under CAPTURE_WEBHOOK");
+      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "recovery", "drain:7:1234", "call-log-refresh", "rep-sms-sync"], "retired stages are fenced first; the scan lease being held never blocks job draining; CC-08 refresh drains under CAPTURE_WEBHOOK");
       assert.deepEqual(recoveryHeld.body.retired_jobs, { retired: 2, stages: { analysis: 1, outreach_ensure: 1 } });
       assert.deepEqual(recoveryHeld.body.call_log_refresh, { claimed: 0 });
 
@@ -198,7 +206,8 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       const subscription = await call(CSI_CRON_PATHS.webhookSubscription, auth);
       assert.equal(subscription.body.skipped, false);
       assert.equal((subscription.body.summary as { action: string }).action, "noop");
-      assert.deepEqual(calls, ["connect", "webhook-subscription"]);
+      assert.deepEqual(subscription.body.rep_sms, { skipped: true, reason: "capture_disabled" });
+      assert.deepEqual(calls, ["connect", "webhook-subscription", "rep-sms-subscription"]);
       calls.length = 0;
       flags.CAPTURE_WEBHOOK = false;
       assert.deepEqual((await call(CSI_CRON_PATHS.webhookSubscription, auth)).body, { ok: true, skipped: true, reason: "disabled" });
@@ -424,4 +433,116 @@ test("job recovery fences retired stages first and keeps recovering when the swe
   } finally {
     process.env = saved;
   }
+});
+
+test("RINGCENTRAL-CAPTURE §4 minute ISync route: cron auth, CAPTURE_CALL_LOG gate, service skip reasons, bounded 500, every-minute registration", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  let enabled = false;
+  let outcome: "outside" | "ran" | "throw" = "outside";
+  const calls: string[] = [];
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {
+      calls.push("connect");
+    },
+    flag: ((name: string) => name === "CAPTURE_CALL_LOG" && enabled) as never,
+    runCallLogIsyncLane: async () => {
+      calls.push("isync");
+      if (outcome === "throw") throw new Error('{"errorCode":"CMN-301","message":"provider body must not leak"}');
+      return { skipped: outcome === "outside", skip_reason: outcome === "outside" ? "outside_staffed_hours" : null, records: 2 } as never;
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      assert.equal((await call(CSI_CRON_PATHS.callLogIsync)).status, 401);
+      assert.deepEqual((await call(CSI_CRON_PATHS.callLogIsync, auth)).body, { ok: true, skipped: true, reason: "disabled" });
+      assert.deepEqual(calls, [], "a disabled route never connects");
+      enabled = true;
+      const outside = await call(CSI_CRON_PATHS.callLogIsync, auth);
+      assert.equal(outside.body.reason, "outside_staffed_hours");
+      outcome = "ran";
+      const ran = await call(CSI_CRON_PATHS.callLogIsync, auth);
+      assert.equal(ran.body.skipped, false);
+      outcome = "throw";
+      const failed = await call(CSI_CRON_PATHS.callLogIsync, auth);
+      assert.equal(failed.status, 500);
+      assert.deepEqual(failed.body, { ok: false, error: "Call Log ISync failed" });
+    });
+  } finally {
+    process.env = saved;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+  assert.equal(manifest.crons.find((c) => c.path === CSI_CRON_PATHS.callLogIsync)?.schedule, "* * * * *");
+});
+
+test("RINGCENTRAL-CAPTURE §5 rep SMS safety poll route: cron auth, service skip reasons, bounded 500, every-minute registration", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  let outcome: "disabled" | "ran" | "throw" = "disabled";
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => undefined,
+    flag: (() => false) as never,
+    runRepSmsPoll: async () => {
+      if (outcome === "throw") throw new Error('{"errorCode":"CMN-301","message":"provider body must not leak"}');
+      return { skipped: outcome === "disabled", skip_reason: outcome === "disabled" ? "capture_disabled" : null, mailboxes: 3, polled: 1, results: [], deadline_reached: false };
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      assert.equal((await call(CSI_CRON_PATHS.repSmsPoll)).status, 401);
+      assert.equal((await call(CSI_CRON_PATHS.repSmsPoll, auth)).body.reason, "capture_disabled");
+      outcome = "ran";
+      assert.equal((await call(CSI_CRON_PATHS.repSmsPoll, auth)).body.skipped, false);
+      outcome = "throw";
+      assert.deepEqual((await call(CSI_CRON_PATHS.repSmsPoll, auth)).body, { ok: false, error: "Rep SMS poll failed" });
+    });
+  } finally {
+    process.env = saved;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+  assert.equal(manifest.crons.find((c) => c.path === CSI_CRON_PATHS.repSmsPoll)?.schedule, "* * * * *");
+});
+
+test("RINGCENTRAL-CAPTURE §3 subscription health route: cron auth, CAPTURE_WEBHOOK gate, summary, bounded 500, 5-minute registration", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  let captureOn = false;
+  let outcome: "ran" | "throw" = "ran";
+  let connects = 0;
+  const summary = {
+    started_at: "2026-10-05T12:00:00.000Z",
+    calls: { health: "ok" as const, error_name: null, subscription_id: "calls-1", expires_at: null, warnings: 0 },
+    rep_sms: { health: "filter_drift" as const, error_name: null, subscription_id: "sms-1", expires_at: null, mailboxes: 3, warnings: 0 },
+  };
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {
+      connects += 1;
+    },
+    flag: ((name: string) => name === "CAPTURE_WEBHOOK" && captureOn) as never,
+    runSubscriptionHealth: async () => {
+      if (outcome === "throw") throw new Error('{"errorCode":"CMN-301","message":"provider body must not leak"}');
+      return summary;
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      assert.equal((await call(CSI_CRON_PATHS.subscriptionHealth)).status, 401);
+      assert.deepEqual((await call(CSI_CRON_PATHS.subscriptionHealth, auth)).body, { ok: true, skipped: true, reason: "disabled" });
+      assert.equal(connects, 0, "a disabled route never connects");
+      captureOn = true;
+      assert.deepEqual((await call(CSI_CRON_PATHS.subscriptionHealth, { "x-cron-secret": "synthetic-cron" })).body, { ok: true, summary });
+      assert.equal(connects, 1);
+      outcome = "throw";
+      const failed = await call(CSI_CRON_PATHS.subscriptionHealth, auth);
+      assert.equal(failed.status, 500);
+      assert.deepEqual(failed.body, { ok: false, error: "Subscription health check failed" });
+    });
+  } finally {
+    process.env = saved;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+  assert.equal(manifest.crons.find((c) => c.path === CSI_CRON_PATHS.subscriptionHealth)?.schedule, "*/5 * * * *");
 });

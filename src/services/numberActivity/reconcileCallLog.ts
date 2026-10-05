@@ -27,7 +27,6 @@ import {
   failureLogFields,
   isTransientQuarantineCode,
   QuarantineBook,
-  quarantineErrorCode,
   type QuarantinedRecord,
   type QuarantineErrorCode,
   type RecordFailure,
@@ -45,15 +44,20 @@ import {
   defaultRouteResolver,
   InteractionPersistenceError,
 } from "./persistInteraction";
-import {
-  aliasesFor,
-  identityFromCallLogRecord,
-  type CallLogRecordInput,
-} from "./interactionProjection";
-import { getCallInteractionAliasModel } from "../../models/CallInteractionAlias";
+import type { CallLogRecordInput } from "./interactionProjection";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import type { RouteResolver } from "./types";
 import { RingCentralApiError } from "../ringcentral/client";
+import {
+  createCallLogApplier,
+  emptyBatchCounts,
+  startOf,
+  str,
+  type TouchedInteraction,
+} from "./callLogApplier";
+import { wakeOutreachForTouchedCalls } from "../salesOutreach/capture/contactChangeWake";
+
+export { unchangedRecords } from "./callLogApplier";
 
 function isProviderPermissionDenied(error: unknown): boolean {
   return error instanceof RingCentralApiError && (error.status === 401 || error.status === 403);
@@ -221,6 +225,14 @@ export type ReconcileDependencies = {
   owner: string;
   config: ReconcileConfig;
   requireFlag: boolean;
+  /**
+   * RINGCENTRAL-CAPTURE §4.5: wakes the Sales Outreach Desk for the `call_interactions` rows a
+   * batch changed, after that batch committed. Best effort; never throws.
+   */
+  wake: (touched: TouchedInteraction[]) => Promise<unknown>;
+  /** How long a run waits for a lease held by a short holder (the minute ISync lane) before skipping. */
+  leaseWaitMs: number;
+  sleep: (ms: number) => Promise<void>;
 };
 
 type StoredGap = { from: Date; to: Date; reason: string; opened_at: Date };
@@ -274,6 +286,9 @@ export async function runCallLogReconcileOnce(
     owner: `csi-call-log:${randomBytes(8).toString("hex")}`,
     config: callLogReconcileConfig(),
     requireFlag: true,
+    wake: wakeOutreachForTouchedCalls,
+    leaseWaitMs: RECONCILE_LEASE_WAIT_MS,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     ...overrides,
   };
   const startedAt = deps.now();
@@ -314,11 +329,13 @@ export async function runCallLogReconcileOnce(
   const Model = getSalesIntelligenceSyncStateModel();
   const leases = new MongoLeaseStore(syncStateLeaseModel());
   const ownerHash = maskOwner(deps.owner);
-  const token = await leases.acquire({
+  const token = await acquireWithWait(leases, {
     scope: CALL_LOG_ALL_DIRECTIONS_SCOPE,
     owner: deps.owner,
     ttl_ms: deps.config.leaseTtlMs,
-    now: startedAt,
+    now: deps.now,
+    waitMs: deps.leaseWaitMs,
+    sleep: deps.sleep,
   });
   if (!token) {
     summary.skipped = true;
@@ -349,10 +366,6 @@ export async function runCallLogReconcileOnce(
   };
 
   let pageBudget = deps.config.maxPages;
-  let accountId: string | null = null;
-  let directory: DirectoryLookup | null = null;
-  let resolveRoute = deps.resolveRoute;
-  let providerWatermark: Date | null = state.cursor?.provider_modified_watermark ?? null;
   // One request id per reconcile run so every audit row it writes ties back
   // to this run (surfaced in the summary for operators).
   const runRequestId = randomBytes(12).toString("hex");
@@ -367,13 +380,27 @@ export async function runCallLogReconcileOnce(
    * their provisional rows are settled from the store past the horizon.
    */
   const settleFromStore = new Set<string>();
-  /** Call Log ids this run already applied or attempted; by-id reads skip them. */
-  const attempted = new Set<string>();
-  /**
-   * Ids that failed in this run. A record in both the rolling window and a gap
-   * repair is attempted once: a failure counts once per run toward quarantine.
-   */
-  const failedThisRun = new Map<string, QuarantineErrorCode>();
+  const applier = createCallLogApplier({
+    now: deps.now,
+    apply: deps.apply,
+    directory: deps.directory,
+    resolveRoute: deps.resolveRoute,
+    configuredAccountId: deps.configuredAccountId,
+    settleHorizonMinutes: deps.config.settleHorizonMinutes,
+    book,
+    renew: () => renew(),
+    requestId: runRequestId,
+    ownerHash,
+    logPrefix: "sales_intelligence.call_log_reconcile",
+    onNewlyQuarantined: (code, errorName) =>
+      event("record_quarantined", "warn", summary.ran_at, {
+        leaseOwnerHash: ownerHash,
+        errorCode: code,
+        errorName,
+        quarantineAfter: deps.config.quarantineAfter,
+      }),
+  });
+  const { attempted, ensureContext, applyOne, applyBatch } = applier;
 
   const noteThrottle = (error: unknown) => {
     summary.throttled_count += 1;
@@ -381,109 +408,11 @@ export async function runCallLogReconcileOnce(
     summary.throttle_retry_after_observed = providerSuppliedRetryAfter(error);
   };
 
-  /** Resolves the provider account (never fabricated), the directory and the route resolver once per run. */
-  const ensureContext = async (records: CallLogRecordInput[]): Promise<ReconcileErrorCode | null> => {
-    try {
-      accountId ??= resolveProviderAccountId(
-        records.map((r) => accountIdFromProviderPath(str(r.uri))),
-        deps.configuredAccountId,
-      );
-    } catch (error) {
-      return error instanceof ProviderAccountError ? error.code : "unknown_error";
-    }
-    directory ??= await deps.directory(accountId);
-    resolveRoute ??= await defaultRouteResolver();
-    return null;
-  };
-
-  const applyOne = async (record: CallLogRecordInput): Promise<ApplyOutcome> => {
-    await renew();
-    const id = str(record.id);
-    const earlier = id ? failedThisRun.get(id) : undefined;
-    if (id && earlier) return { ok: false, quarantined: book.isQuarantined(id), code: earlier };
-    if (id) attempted.add(id);
-    try {
-      const applied = await deps.apply(
-        accountId!,
-        { kind: "call_log", record, proof_ref: `call_log:${id ?? "unknown"}`, source: "call_log_reconcile" },
-        { now: deps.now, directory: directory!, resolveRoute, request_id: runRequestId, settleHorizonMinutes: deps.config.settleHorizonMinutes },
-      );
-      if (id) book.recordSuccess(id);
-      const modified = dateOf(record.lastModifiedTime);
-      if (modified && (!providerWatermark || modified > providerWatermark)) providerWatermark = modified;
-      return { ok: true, noop: applied.noop };
-    } catch (error) {
-      const code = quarantineErrorCode(error);
-      logger.warn({
-        msg: "sales_intelligence.call_log_reconcile.record_failed",
-        leaseOwnerHash: ownerHash,
-        ...failureLogFields(error),
-        errorCode: error instanceof InteractionPersistenceError ? error.code : code,
-      });
-      if (!id) return { ok: false, quarantined: false, code };
-      failedThisRun.set(id, code);
-      const outcome = book.recordFailure(
-        {
-          call_log_id: id,
-          telephony_session_id: str(record.telephonySessionId),
-          start_time: startOf(record),
-          error_code: code,
-          error_name: failureLogFields(error).errorName,
-        },
-        deps.now(),
-      );
-      if (outcome === "newly_quarantined") {
-        event("record_quarantined", "warn", summary.ran_at, {
-          leaseOwnerHash: ownerHash,
-          errorCode: code,
-          errorName: failureLogFields(error).errorName,
-          quarantineAfter: deps.config.quarantineAfter,
-        });
-      }
-      return { ok: false, quarantined: outcome !== "counted", code };
-    }
-  };
-
-  type BatchCounts = Pick<WindowResult, "upserts" | "noops" | "failures" | "quarantined" | "error_code">;
-  /** Oldest-first projection of one fetched batch with the per-row skip and quarantine. */
-  const applyBatch = async (records: CallLogRecordInput[], counts: BatchCounts): Promise<void> => {
-    const contextError = await ensureContext(records);
-    if (contextError) {
-      counts.error_code ??= contextError;
-      return;
-    }
-    // Oldest-first so earlier evidence lands before later callbacks.
-    const ordered = [...records].sort(
-      (a, b) => (startOf(a)?.getTime() ?? Number.POSITIVE_INFINITY) - (startOf(b)?.getTime() ?? Number.POSITIVE_INFINITY),
-    );
-    const unchanged = await unchangedRecords(ordered, accountId!);
-    const at = deps.now();
-    for (const record of ordered) {
-      if (unchanged.has(record)) {
-        // Its own stored row already holds this provider version (or a newer
-        // one) and every provider identity it carries resolves to that row,
-        // so re-projecting it could only rediscover `noop: true` after
-        // opening a transaction (14 §4, CC-02).
-        counts.noops += 1;
-        continue;
-      }
-      const id = str(record.id);
-      if (id && book.isHeld(id, at)) {
-        // Quarantined and not yet due: its hourly retry handles it and it
-        // does not hold this window (CC-01).
-        counts.quarantined += 1;
-        continue;
-      }
-      const outcome = await applyOne(record);
-      if (outcome.ok) {
-        if (outcome.noop) counts.noops += 1;
-        else counts.upserts += 1;
-        continue;
-      }
-      counts.failures += 1;
-      if (outcome.quarantined) counts.quarantined += 1;
-      else counts.error_code ??= outcome.code === "account_mismatch" ? "account_mismatch" : "projection_failed";
-    }
+  /** Desk wake for the rows this run changed so far (after their own transactions committed). */
+  const wakeTouched = async () => {
+    const touched = applier.touched();
+    applier.clearTouched();
+    if (touched.length) await deps.wake(touched);
   };
 
   const runWindow = async (kind: WindowResult["kind"], from: Date, to: Date): Promise<WindowResult> => {
@@ -593,13 +522,12 @@ export async function runCallLogReconcileOnce(
         recordCount: deps.config.perPage,
         budget: pageBudget,
         fetchSync: deps.fetchSync,
-        countChanged: async (records) => {
-          if (await ensureContext(records)) return records.length;
-          return records.length - (await unchangedRecords(records, accountId!)).size;
-        },
+        countChanged: applier.countChanged,
         apply: async (records) => {
-          const counts: BatchCounts = { upserts: 0, noops: 0, failures: 0, quarantined: 0, error_code: null };
+          const counts = emptyBatchCounts();
           await applyBatch(records, counts);
+          // RINGCENTRAL-CAPTURE §4.5: wake the desk once this ISync batch has committed.
+          await wakeTouched();
           return {
             ...counts,
             changed: records.length - counts.noops,
@@ -736,9 +664,13 @@ export async function runCallLogReconcileOnce(
     // each record with its own row), but it must never advance past evidence
     // this run did not fully observe.
     const everyWindowComplete = summary.windows.every((w) => w.complete);
+    const priorWatermark = state.cursor?.provider_modified_watermark ?? null;
+    const observedWatermark = applier.providerWatermark();
     const nextWatermark = everyWindowComplete
-      ? providerWatermark
-      : state.cursor?.provider_modified_watermark ?? null;
+      ? observedWatermark && (!priorWatermark || observedWatermark > priorWatermark)
+        ? observedWatermark
+        : priorWatermark
+      : priorWatermark;
     const quarantine = book.snapshot();
     summary.quarantined = quarantine.quarantined_records.length;
     summary.cursor_advanced = next.cursor_advanced;
@@ -801,6 +733,8 @@ export async function runCallLogReconcileOnce(
       },
     );
     if (written.modifiedCount !== 1) throw new LeaseLostError();
+    // Window and repair applies wake the desk too (the ISync batches already woke theirs).
+    await wakeTouched();
 
     for (const opened of next.opened) {
       event("gap_opened", "warn", summary.ran_at, {
@@ -1074,104 +1008,6 @@ function isRecord(value: unknown): value is CallLogRecordInput {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-type InteractionSkipRow = {
-  _id: unknown;
-  provider_last_modified_at?: Date | null;
-  call_log_state?: string | null;
-  merged_into_id?: unknown;
-};
-
-/**
- * CC-02: records this run can prove cannot change their stored row, with two
- * queries for the whole batch instead of one transaction per record.
- *
- * A record is unchanged only when **every** alias it carries resolves to one
- * canonical row, its `lastModifiedTime` is at or before **that row's**
- * `provider_last_modified_at`, and the row is not provisional. The previous
- * skip compared against the run-wide maximum `lastModifiedTime` of *other*
- * records, so a final version that became visible after a later-modified
- * record was applied could be skipped forever (F6).
- *
- * `call_log_state` is read raw and may be absent; absent is not provisional.
- */
-export async function unchangedRecords(
-  records: readonly CallLogRecordInput[],
-  accountId: string,
-): Promise<Set<CallLogRecordInput>> {
-  const unchanged = new Set<CallLogRecordInput>();
-  type Alias = ReturnType<typeof aliasesFor>[number];
-  const keysByRecord = new Map<CallLogRecordInput, { keys: string[]; modified: Date }>();
-  const wanted = new Map<string, Alias>();
-  for (const record of records) {
-    const modified = dateOf(record.lastModifiedTime);
-    if (!modified) continue;
-    let aliases: Alias[];
-    try {
-      aliases = aliasesFor(identityFromCallLogRecord(record));
-    } catch {
-      continue;
-    }
-    if (!aliases.length) continue;
-    keysByRecord.set(record, { keys: aliases.map((a) => `${a.kind}:${a.value}`), modified });
-    for (const alias of aliases) wanted.set(`${alias.kind}:${alias.value}`, alias);
-  }
-  if (!wanted.size) return unchanged;
-  const aliasRows = await getCallInteractionAliasModel()
-    .find(
-      {
-        provider: "ringcentral",
-        provider_account_id: accountId,
-        $or: [...wanted.values()].map((a) => ({ kind: a.kind, value: a.value })),
-      },
-      { kind: 1, value: 1, interaction_id: 1 },
-    )
-    .lean();
-  const interactionByKey = new Map<string, unknown>();
-  for (const row of aliasRows) interactionByKey.set(`${row.kind}:${row.value}`, row.interaction_id);
-
-  // Canonical rows, following `merged_into_id` (rare) with at most a few extra reads.
-  const rows = new Map<string, InteractionSkipRow>();
-  let pending = [...new Map([...interactionByKey.values()].map((id) => [String(id), id])).values()];
-  const collection = getCallInteractionModel().collection;
-  for (let hop = 0; pending.length && hop < 4; hop += 1) {
-    const found = (await collection
-      .find(
-        { _id: { $in: pending as never[] } },
-        { projection: { provider_last_modified_at: 1, call_log_state: 1, merged_into_id: 1 } },
-      )
-      .toArray()) as unknown as InteractionSkipRow[];
-    pending = [];
-    for (const row of found) {
-      rows.set(String(row._id), row);
-      if (row.merged_into_id && !rows.has(String(row.merged_into_id))) pending.push(row.merged_into_id);
-    }
-  }
-  const canonicalOf = (id: unknown): InteractionSkipRow | null => {
-    let row = rows.get(String(id)) ?? null;
-    for (let hop = 0; row?.merged_into_id && hop < 8; hop += 1) row = rows.get(String(row.merged_into_id)) ?? null;
-    return row && !row.merged_into_id ? row : null;
-  };
-
-  for (const [record, { keys, modified }] of keysByRecord) {
-    let canonical: InteractionSkipRow | null = null;
-    let single = true;
-    for (const key of keys) {
-      const row = interactionByKey.has(key) ? canonicalOf(interactionByKey.get(key)) : null;
-      if (!row || (canonical && String(canonical._id) !== String(row._id))) {
-        single = false;
-        break;
-      }
-      canonical = row;
-    }
-    if (!single || !canonical) continue;
-    if (canonical.call_log_state === "provisional") continue;
-    const stored = canonical.provider_last_modified_at;
-    if (!(stored instanceof Date) || modified > stored) continue;
-    unchanged.add(record);
-  }
-  return unchanged;
-}
-
 /** Oldest canonical provisional row that started at or after `since` (bounds `known_complete_through`). */
 async function oldestProvisionalStart(since: Date): Promise<Date | null> {
   const row = (await getCallInteractionModel()
@@ -1215,21 +1051,6 @@ async function provisionalStragglers(
   return out;
 }
 
-function str(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-function dateOf(value: unknown): Date | null {
-  const s = str(value);
-  if (!s) return null;
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function startOf(record: CallLogRecordInput): Date | null {
-  return dateOf(record.startTime);
-}
-
 function earliestStart(records: CallLogRecordInput[]): Date | null {
   let out: Date | null = null;
   for (const record of records) {
@@ -1240,6 +1061,29 @@ function earliestStart(records: CallLogRecordInput[]): Date | null {
 }
 
 export const RETENTION_LEASE_SCOPE = "retention";
+
+/**
+ * The minute ISync lane holds the reconcile lease for a few seconds. A reconcile run that finds the
+ * lease held polls this long before reporting `lease_held`, so one overlapping minute-lane run never
+ * costs a whole 5-minute window.
+ */
+export const RECONCILE_LEASE_WAIT_MS = 20_000;
+const LEASE_POLL_MS = 2_000;
+
+/** Acquires the lease, polling up to `waitMs` while another holder has it. `null` when still held. */
+export async function acquireWithWait(
+  leases: Pick<MongoLeaseStore, "acquire">,
+  input: { scope: string; owner: string; ttl_ms: number; now: () => Date; waitMs: number; sleep: (ms: number) => Promise<void> },
+): Promise<LeaseToken | null> {
+  const started = input.now().getTime();
+  for (;;) {
+    const token = await leases.acquire({ scope: input.scope, owner: input.owner, ttl_ms: input.ttl_ms, now: input.now() });
+    if (token) return token;
+    const waited = input.now().getTime() - started;
+    if (waited + LEASE_POLL_MS > input.waitMs) return null;
+    await input.sleep(LEASE_POLL_MS);
+  }
+}
 
 export function syncStateLeaseModel(): MongoLeaseModel {
   const Model = getSalesIntelligenceSyncStateModel();

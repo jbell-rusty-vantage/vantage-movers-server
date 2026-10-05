@@ -67,8 +67,8 @@ function harness(records: SubscriptionRecord[], owned: string[], options: { auto
   return { deps, calls, outcomes };
 }
 
-test("expiry: the lifecycle requests the longest WebHook lifetime (20 years)", () => {
-  assert.equal(MAX_WEBHOOK_EXPIRES_IN_SECONDS, 630_720_000);
+test("expiry: the lifecycle requests the longest documented WebHook lifetime (10 years, RINGCENTRAL-CAPTURE §2)", () => {
+  assert.equal(MAX_WEBHOOK_EXPIRES_IN_SECONDS, 315_360_000);
   assert.equal(DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS, MAX_WEBHOOK_EXPIRES_IN_SECONDS);
 });
 

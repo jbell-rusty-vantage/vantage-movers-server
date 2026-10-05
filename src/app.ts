@@ -26,6 +26,9 @@ import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestio
 import reportingRoutes from "./routes/reporting.routes";
 import reportingCronRoutes from "./routes/reporting-cron.routes";
 import salesIntelligenceCronRoutes from "./routes/sales-intelligence-cron.routes";
+import salesOutreachRoutes from "./routes/sales-outreach.routes";
+import salesOutreachCronRoutes from "./routes/sales-outreach-cron.routes";
+import salesOutreachContactCronRoutes from "./routes/sales-outreach-contact-cron.routes";
 import { registerReportingStage4Foundation } from "./services/reporting/registerStage4Foundation";
 
 registerReportingStage4Foundation();
@@ -66,7 +69,11 @@ app.use(reportingCronRoutes);
 app.use(granotAutomationCronRoutes);
 app.use(granotLifecycleCronRoutes);
 app.use(salesIntelligenceCronRoutes);
+app.use(salesOutreachCronRoutes);
+app.use(salesOutreachContactCronRoutes);
 app.use(granotAutomationRoutes);
+// Sales Outreach Desk (sod-v1): applies requireApiSecret, scope and requireOutreachActor itself.
+app.use(salesOutreachRoutes);
 app.use(v1Routes);
 app.use(ingestionRoutes);
 app.use(reportingRoutes);
