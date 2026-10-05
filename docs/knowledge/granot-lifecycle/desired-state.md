@@ -44,7 +44,7 @@ generated:
 | --- | --- |
 | Job Number | fill missing when normalized values agree; letter prefixes on the same digit core agree; conflict never overwrites |
 | `granot_priority` | every temporally accepted valid Priority |
-| `receiver_agent` | empty receiver + one active Unit 14 Agent suggestion at any valid Priority. With `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS` (S6-AGENT, default off): also a **different** Agent over an automatic receiver (`receiverReplaceableByGranot`, below) |
+| `receiver_agent` | empty receiver, or a different Agent over a call-inferred `ringcentral_rep_call` receiver, + one active Unit 14 Agent suggestion at any valid Priority. With `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS` (S6-AGENT, default off): also a **different** Agent over an automatic receiver (`receiverReplaceableByGranot`, below) |
 | `quoted` | Priority `1`/`5` may set true; never false |
 | Granot/current contact | Priority `1`/`5`, subject to origin |
 | current location / move date / cubic feet / `local` | Priority `1`/`5`, subject to origin |
@@ -54,7 +54,7 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 
 ## Receiver latest wins (S6-AGENT, assignment addendum §3.1)
 
-`receiverReplaceableByGranot(lead, agentId, captured_at)` is the one rule, used by the planner (`canFillAgent`), by `synchronizeLeadFromGranot`'s in-transaction re-check and by the `backfill-receiver-agent` script. Flag off (`receiver_latest_wins` input, default the env flag): only an empty field is filled, exactly as before.
+`receiverFillableByGranot(lead, agentId, captured_at, latestWins)` is the one rule, used by the planner (`canFillAgent`) and by `synchronizeLeadFromGranot`'s in-transaction re-check. Flag on: `receiverReplaceableByGranot` (table below). Flag off (`receiver_latest_wins` input, default the env flag): an empty field is filled, and a different Agent replaces a `ringcentral_rep_call` receiver (the Sales Outreach Desk's call-inferred placeholder, so Granot's rep always takes over from it); nothing else is replaced.
 
 | Current `receiver_agent_source` | A different resolved Agent replaces it when |
 | --- | --- |
@@ -62,7 +62,7 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 | `manual`, or no recorded source | never (E6) |
 | `granot_username_match` | the observation is the temporal winner (older observations plan `stale` before this rule) |
 | `extension_*`, `best_relocation_sheet` | `captured_at` > `receiver_agent_set_at` (unknown set time: replaced) |
-| `ringcentral_answered` | always (E5: the weakest source) |
+| `ringcentral_answered`, `ringcentral_rep_call` | always (E5: the weakest sources) |
 
 The same Agent never re-stamps the source. The projection loaders (`processor.ts`, `synchronizeLeadFromGranot.ts`) add `receiver_agent_source` and `receiver_agent_set_at`; nothing else reads them. `identity.ts` exports `resolveAgentAssertion` (unchanged) for the backfill.
 

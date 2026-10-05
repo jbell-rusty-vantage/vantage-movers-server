@@ -114,7 +114,25 @@ export const receiverLatestWinsEnabled = () =>
 /** Sources a Granot rep never replaces (E6). A receiver with no recorded source is of unknown origin: protected too. */
 const PROTECTED_RECEIVER_SOURCES = new Set(["manual"]);
 /** Sources a Granot rep replaces whatever their time (E5: the weakest; not a rep assertion made in time). */
-const ALWAYS_REPLACEABLE_RECEIVER_SOURCES = new Set(["ringcentral_answered"]);
+const ALWAYS_REPLACEABLE_RECEIVER_SOURCES = new Set(["ringcentral_answered", "ringcentral_rep_call"]);
+/** Call-inferred receivers that a Granot rep replaces even with latest wins off (a placeholder until Granot names one). */
+const GRANOT_OVERRIDES_WHEN_OFF = new Set(["ringcentral_rep_call"]);
+
+/**
+ * May a Granot observation whose `user`/`rep` resolved to `agentId` set `receiver_agent`? Latest wins
+ * on: `receiverReplaceableByGranot`. Off: only an empty field, or a different Agent over a
+ * `ringcentral_rep_call` placeholder.
+ */
+export function receiverFillableByGranot(
+  lead: Pick<LeadDesiredStateProjection, "receiver_agent" | "receiver_agent_source" | "receiver_agent_set_at">,
+  agentId: string | undefined,
+  capturedAt: Date,
+  latestWins: boolean,
+): boolean {
+  if (latestWins) return receiverReplaceableByGranot(lead, agentId, capturedAt);
+  if (!lead.receiver_agent) return true;
+  return Boolean(agentId) && String(lead.receiver_agent) !== agentId && GRANOT_OVERRIDES_WHEN_OFF.has(lead.receiver_agent_source ?? "");
+}
 /**
  * S6-AGENT latest wins (flag on): may a Granot observation captured at `capturedAt` whose `user`/`rep`
  * resolved to `agentId` set `receiver_agent`? Yes when the field is empty; otherwise only when the
@@ -125,7 +143,7 @@ const ALWAYS_REPLACEABLE_RECEIVER_SOURCES = new Set(["ringcentral_answered"]);
  *   older observation delivered late already plans `stale`.
  * - extension and sheet sources: `captured_at` must be after `receiver_agent_set_at` (unknown set time:
  *   the observation wins).
- * - `ringcentral_answered`: always replaced (E5).
+ * - `ringcentral_answered` and `ringcentral_rep_call`: always replaced (E5).
  * The other guards (valid Priority, `user`/`rep` agreement, one active Agent) stay with the caller.
  */
 export function receiverReplaceableByGranot(
@@ -336,9 +354,7 @@ function planMatchedLead(input: LeadDesiredStateInput): LeadDesiredStatePlan {
   const latestWins = input.receiver_latest_wins ?? receiverLatestWinsEnabled();
   const canFillAgent =
     Boolean(input.identity.agent) &&
-    (latestWins
-      ? receiverReplaceableByGranot(lead, input.identity.agent?.target.id, input.observation.captured_at)
-      : !lead.receiver_agent) &&
+    receiverFillableByGranot(lead, input.identity.agent?.target.id, input.observation.captured_at, latestWins) &&
     input.observation.priority?.valid === true &&
     !skipPriority;
   if (canFillAgent && input.identity.agent) {

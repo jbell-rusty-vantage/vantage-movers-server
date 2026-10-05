@@ -94,7 +94,7 @@ One `sales_outreach_subjects` row per enrolled canonical Lead (IMPL-04). The Lea
 - **Subject fields** (`subjectBuilder.ts`):
   - `display`: Job Number, phone, name, canonical move date (the P05g labels come from the engine);
   - `priority {raw, accepted_at, observation_id, basis, uncertain}`: `uncertain` = a newer blank/malformed Granot priority observation for the Job Number, or a non-canonical stored value;
-  - `assigned_agent_id` = `receiver_agent` only when that Agent has a reviewed `sales_rep` link now, else Unassigned (IMPL-01); `assignment_revision` bumps on change;
+  - `assigned_agent_id` = `receiver_agent` only when that Agent has a reviewed `sales_rep` link now, else Unassigned (IMPL-01); `assignment_revision` bumps on change. An empty `receiver_agent` can be filled from calls (see "Call-inferred receiver" under Contact events);
   - `contact_number_ids` = the numbers the Lead is `attached` to (IMPL-07 input);
   - `lead_revision_seen`, `status` (`active`/`review`/`closed`; closed is final) and recomputed `review_reasons`.
 - **Policy periods** (`periodPlanner.ts`, `sync.ts`):
@@ -318,6 +318,11 @@ All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_ou
     - `pending_identity` evidence stays pending, and group messages are ambiguous;
     - only the lowest-`_id` mailbox copy of a `canonical_logical_id` credits; other copies are `duplicate_copy`;
     - SMS never earns outbound-goal credit.
+- **Call-inferred receiver** (`receiverFill.ts`, applied in `applyContactSources`): among the batch's derived call rows, those with `association: unique`, an `actor_agent_id` (a reviewed rep), kind `outbound_attempt` or `inbound_answered`, and verification `confirmed` or `awaiting_confirmation` name a candidate. The latest per subject (ties: larger source id) goes to `writeRepCallReceivers` (`mongoStore.ts`). It writes only when the subject is unassigned and the Lead's `receiver_agent` is empty, through `leads/receiverAgentWrite.ts` (compare-and-set on the empty field, EntityChange, `domain_revision` stamp, sheet outbox). The source is `ringcentral_rep_call`, and `receiver_agent_source_value` holds the `call_interactions` id. The subject feed then re-syncs the Lead and IMPL-01 assigns it. The receiver is a placeholder:
+  - a later call never moves it;
+  - a matching Granot rep replaces it whatever `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS` says ([desired state](../granot-lifecycle/desired-state.md));
+  - the desk assignment command (`manual`) replaces it.
+  `ApplyResult.receivers_filled` counts the writes. Calls before a subject's activation never associate, so they never fill; the one-off 2026-10-05 seeding re-ran the same derivation with the cutoff lifted.
   - Kind and verification come from S2's `classifyCallEvidence` / `classifySmsEvidence`. `toEngineContactEvent` converts a row into the engine input.
   - Fields added to the model:
     - `association`;

@@ -38,8 +38,8 @@ import {
 import { compareGranotTemporal, olderTemporalWinnerFilter } from "./granotTemporal";
 import {
   contactSemanticallyEqual,
+  receiverFillableByGranot,
   receiverLatestWinsEnabled,
-  receiverReplaceableByGranot,
   type LeadContactSnapshot,
   type LeadDesiredStateProjection,
 } from "./leadDesiredState";
@@ -331,11 +331,14 @@ function revalidateDesiredAgainstLead(
     throw new AuthorizedPathError("quoted:false is forbidden.");
   }
   if (input.desired_state.set.receiver_agent) {
-    // S6-AGENT (E3/E6): with latest wins on, the planner's rule is re-checked against the Lead read in
-    // this transaction (a manual edit or a newer rep that landed meanwhile). Off: only an empty field.
-    const replaceable = receiverLatestWinsEnabled()
-      ? receiverReplaceableByGranot(lead, String(input.desired_state.set.receiver_agent), input.execution.observation.captured_at)
-      : !lead.receiver_agent;
+    // S6-AGENT (E3/E6): the planner's rule is re-checked against the Lead read in this transaction (a
+    // manual edit or a newer rep that landed meanwhile). Off: an empty field or a call-inferred placeholder.
+    const replaceable = receiverFillableByGranot(
+      lead,
+      String(input.desired_state.set.receiver_agent),
+      input.execution.observation.captured_at,
+      receiverLatestWinsEnabled(),
+    );
     if (!replaceable) {
       throw new SynchronizeLeadRaceError("eligibility");
     }

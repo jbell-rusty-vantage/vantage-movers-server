@@ -10,6 +10,7 @@ import {
   type DerivationContext,
   type SmsSourceRow,
 } from "./derive";
+import { receiverFillCandidates, type ReceiverFillCandidate } from "./receiverFill";
 
 /**
  * Applies contact-event derivation for a set of sources inside one transaction (IMPLEMENTATION-PLAN
@@ -21,7 +22,8 @@ import {
  * 3. mark dirty — every subject the source moved from or to gets one `outreach_evaluate` nomination
  *    (S1's consumer evaluates it), and every `(goal_agent_id, business_date)` it moved from or to is
  *    returned for the rep-day recount (queued as `outreach_rep_day` by the consumer, recounted inline
- *    by the sweep).
+ *    by the sweep);
+ * 4. fill an empty Lead receiver from the most recent reviewed-rep call on its subject (`receiverFill.ts`).
  */
 
 export type ContactSource = Readonly<{ source_kind: "call" | "sms"; source_id: string }>;
@@ -50,6 +52,8 @@ export type ContactEventStore = {
   writeEvent(id: string, draft: ContactEventDraft, previous: StoredContactEvent | null, now: Date, session: ClientSession): Promise<number>;
   subjectRevisions(ids: readonly string[], session: ClientSession): Promise<Map<string, number>>;
   enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean }>;
+  /** Writes `ringcentral_rep_call` receivers on unassigned subjects whose Lead has none; returns how many. */
+  fillEmptyReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number>;
 };
 
 export type RepDayKey = Readonly<{ agent_id: string; business_day: string }>;
@@ -60,6 +64,8 @@ export type ApplyResult = {
   missing: number;
   evaluations: number;
   rep_days: RepDayKey[];
+  /** Lead receivers filled from a rep call (call-inferred assignment). */
+  receivers_filled: number;
   /** Jobs this call created (for the post-commit queue wake-up). */
   created_job_ids: string[];
 };
@@ -91,7 +97,7 @@ export function repDayJob(key: RepDayKey, marks: readonly string[]): JobInput {
 
 export const repDayKeyOf = (key: RepDayKey) => `${key.agent_id}|${key.business_day}`;
 
-function contextRequest(calls: readonly CallSourceRow[], sms: readonly SmsSourceRow[]): ContextRequest {
+export function contextRequest(calls: readonly CallSourceRow[], sms: readonly SmsSourceRow[]): ContextRequest {
   const extensions = new Map<string, { account: string; extension: string }>();
   for (const row of calls) {
     const ids = [...row.parties.map((p) => p.extension_id), ...row.legs.map((l) => l.extension_id)];
@@ -164,12 +170,15 @@ export async function applyContactSources(
       if (job.created) created.push(job.job_id);
     }
   }
+  const candidates = receiverFillCandidates(drafts);
+  const receiversFilled = candidates.length ? await store.fillEmptyReceivers(candidates, session, options.now) : 0;
   return {
     derived: drafts.length,
     changed,
     missing: callIds.length + smsIds.length - drafts.length,
     evaluations,
     rep_days: [...repDays.values()].map((entry) => entry.key),
+    receivers_filled: receiversFilled,
     created_job_ids: created,
   };
 }

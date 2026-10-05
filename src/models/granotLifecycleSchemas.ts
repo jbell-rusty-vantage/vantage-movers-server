@@ -353,6 +353,10 @@ export const RECEIVER_AGENT_SOURCES = [
   // S6-AGENT (assignment addendum E5): the one reviewed rep who answered a Call Lead's creating call.
   // The weakest source: written only into an empty field; never accepted from an API client.
   "ringcentral_answered",
+  // The reviewed rep who most recently called (or answered) a desk Lead whose receiver was empty
+  // (`salesOutreach/contacts/receiverFill.ts`). As weak as `ringcentral_answered`: written only into an
+  // empty field, never accepted from an API client, and replaced by any matching Granot rep.
+  "ringcentral_rep_call",
 ] as const;
 
 export const LEAD_PROVENANCE_FIELD_NAMES = [

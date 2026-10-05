@@ -3,7 +3,7 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import type { LeadIdentityResult } from "./identity";
-import { planLeadDesiredState, receiverReplaceableByGranot, type LeadDesiredStateProjection } from "./leadDesiredState";
+import { planLeadDesiredState, receiverFillableByGranot, receiverReplaceableByGranot, type LeadDesiredStateProjection } from "./leadDesiredState";
 import type { SourcePolicySnapshot } from "./sourcePolicy";
 
 /**
@@ -114,10 +114,38 @@ test("receiverReplaceableByGranot table", () => {
     ["no source", { receiver_agent: OLD }, NEW, false],
     ["granot", { receiver_agent: OLD, receiver_agent_source: "granot_username_match", receiver_agent_set_at: later }, NEW, true],
     ["ringcentral later", { receiver_agent: OLD, receiver_agent_source: "ringcentral_answered", receiver_agent_set_at: later }, NEW, true],
+    ["rep call later", { receiver_agent: OLD, receiver_agent_source: "ringcentral_rep_call", receiver_agent_set_at: later }, NEW, true],
     ["extension earlier", { receiver_agent: OLD, receiver_agent_source: "extension_selected", receiver_agent_set_at: earlier }, NEW, true],
     ["extension same instant", { receiver_agent: OLD, receiver_agent_source: "extension_selected", receiver_agent_set_at: at }, NEW, false],
     ["sheet later", { receiver_agent: OLD, receiver_agent_source: "best_relocation_sheet", receiver_agent_set_at: later }, NEW, false],
     ["extension, unknown set time", { receiver_agent: OLD, receiver_agent_source: "extension_match" }, NEW, true],
   ];
   for (const [name, row, agent, expected] of rows) assert.equal(receiverReplaceableByGranot(row, agent, at), expected, name);
+});
+
+test("ringcentral_rep_call: a different Granot rep replaces it with latest wins on or off; the same Agent plans nothing", () => {
+  const placeholder = (extra: Partial<LeadDesiredStateProjection> = {}) =>
+    lead({ receiver_agent_source: "ringcentral_rep_call", receiver_agent_set_at: new Date(+capturedAt + 60_000), ...extra });
+  for (const latestWins of [true, false]) {
+    const replaced = plan(placeholder(), { latestWins });
+    assert.equal(replaced.desired_values.receiver_agent, NEW, `latestWins=${latestWins}`);
+    assert.equal(replaced.desired_values.receiver_agent_source, "granot_username_match");
+    assert.deepEqual(replaced.agent_changed_paths, receiverPaths);
+    assert.deepEqual(plan(placeholder({ receiver_agent: NEW }), { latestWins }).agent_changed_paths, [], `same Agent, latestWins=${latestWins}`);
+    assert.equal(plan(placeholder(), { latestWins, observation: observation({ priority: { valid: false } } as Partial<GranotObservationDocument>) }).desired_values.receiver_agent, undefined);
+  }
+});
+
+test("receiverFillableByGranot: latest wins off fills empty or replaces only the call placeholder", () => {
+  const at = capturedAt;
+  const rows: Array<[string, Parameters<typeof receiverFillableByGranot>[0], string | undefined, boolean]> = [
+    ["empty", {}, NEW, true],
+    ["call placeholder", { receiver_agent: OLD, receiver_agent_source: "ringcentral_rep_call" }, NEW, true],
+    ["call placeholder, same agent", { receiver_agent: NEW, receiver_agent_source: "ringcentral_rep_call" }, NEW, false],
+    ["call placeholder, no resolved agent", { receiver_agent: OLD, receiver_agent_source: "ringcentral_rep_call" }, undefined, false],
+    ["ringcentral answered (unchanged rule)", { receiver_agent: OLD, receiver_agent_source: "ringcentral_answered" }, NEW, false],
+    ["manual", { receiver_agent: OLD, receiver_agent_source: "manual" }, NEW, false],
+  ];
+  for (const [name, row, agent, expected] of rows) assert.equal(receiverFillableByGranot(row, agent, at, false), expected, name);
+  assert.equal(receiverFillableByGranot({ receiver_agent: OLD, receiver_agent_source: "manual" }, NEW, at, true), false, "latest wins delegates");
 });

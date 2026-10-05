@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import type { TemporalRepLink } from "../../salesIntelligence/repIdentity/resolve";
 import type { JobInput } from "../../salesIntelligence/jobs";
 import type { ContactEventStore, ContextRequest, StoredContactEvent } from "./apply";
+import type { ReceiverFillCandidate } from "./receiverFill";
 import type { CallLegFacts, CallPartyFacts, CallSourceRow, ContactEventDraft, DeskLeadKey, DerivationContext, RestrictionInterval, SmsSourceRow, SubjectFacts } from "./derive";
 
 /** Unit-test stand-ins for the contact-event derivation (no Mongo). */
@@ -159,6 +160,19 @@ export class MemoryContactEventStore implements ContactEventStore {
       const subject = all.find((s) => s.id === id);
       return subject ? [[id, subject.revision] as [string, number]] : [];
     }));
+  }
+  /** Receivers the apply asked to fill (subject id → candidate); `receivers` holds the Leads' current receiver. */
+  receivers = new Map<string, string | null>();
+  fills: ReceiverFillCandidate[] = [];
+  async fillEmptyReceivers(candidates: readonly ReceiverFillCandidate[]) {
+    let filled = 0;
+    for (const candidate of candidates) {
+      this.fills.push(candidate);
+      if (this.receivers.get(candidate.subject_id)) continue;
+      this.receivers.set(candidate.subject_id, candidate.agent_id);
+      filled++;
+    }
+    return filled;
   }
   async enqueue(job: JobInput) {
     const existing = this.jobs.get(job.dedupe_key);
