@@ -86,6 +86,7 @@ export const SALES_OUTREACH_GOAL_STATES = ["goal", "no_goal_today", "not_on_rost
  * one scope is never presented as the other.
  */
 export const SALES_OUTREACH_GOAL_COUNT_SCOPES = ["all_outbound", "eligible_new_quoted"] as const;
+export type SalesOutreachGoalCountScope = (typeof SALES_OUTREACH_GOAL_COUNT_SCOPES)[number];
 
 export const SALES_OUTREACH_ENROLLMENT_MODES = ["report", "apply", "verify"] as const;
 export const SALES_OUTREACH_ENROLLMENT_RUN_STATUSES = ["running", "completed", "failed", "paused"] as const;

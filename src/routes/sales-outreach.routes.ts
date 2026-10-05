@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { SALES_OUTREACH_API_PREFIX } from "../config/domain/salesOutreach";
+import { SALES_OUTREACH_API_PREFIX, SALES_OUTREACH_ROLES } from "../config/domain/salesOutreach";
 import { connectMongo } from "../db";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import { assertCurrentScope } from "../services/salesIntelligence/auth";
@@ -14,16 +14,21 @@ import { salesOutreachConfigurationLoader, type ConfigurationLoader } from "../s
 import { readSalesOutreachConfiguration } from "../services/salesOutreach/config/reads";
 import { OutreachError, sendOutreachError } from "../services/salesOutreach/errors";
 import { rolesWithCapability, type OutreachCapability } from "../services/salesOutreach/permissions";
+import { readDeskCapabilities, readRepDays, readTeam } from "../services/salesOutreach/reads/service";
+import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
 import {
   salesOutreachConfigurationPatchSchema,
   salesOutreachScopeQuerySchema,
 } from "../validation/v1/salesOutreach";
+import { salesOutreachRepDaysQuerySchema, salesOutreachTeamQuerySchema } from "../validation/v1/salesOutreachReads";
 
 export type SalesOutreachRouteDeps = {
   connect?: typeof connectMongo;
   loader?: ConfigurationLoader;
   patchConfiguration?: typeof patchSalesOutreachConfiguration;
   auth?: OutreachAuthDeps;
+  /** Desk read store (tests inject an in-memory one). */
+  readStore?: SalesOutreachReadStore;
   now?: () => Date;
 };
 
@@ -57,6 +62,9 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       }),
   };
   const guard = (capability: OutreachCapability) => requireOutreachActor(rolesWithCapability(capability), fail, authDeps);
+  /** Owner, Manager and linked Rep; the read itself narrows a Rep to its own scope. */
+  const anyDeskRole = requireOutreachActor(SALES_OUTREACH_ROLES, fail, authDeps);
+  const readDeps = () => ({ loader, store: deps.readStore, now: now() });
 
   router.use(SALES_OUTREACH_API_PREFIX, requireApiSecret, (req, res, next) => {
     try {
@@ -64,6 +72,37 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       next();
     } catch (error) {
       fail(req, res, error);
+    }
+  });
+
+  // M1 reads (FAST-TRACK M1). Configuration and capabilities stay open while the desk is disabled.
+  router.get(`${SALES_OUTREACH_API_PREFIX}/capabilities`, anyDeskRole, async (req, res) => {
+    try {
+      salesOutreachScopeQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readDeskCapabilities(outreachActorOf(res), readDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.get(`${SALES_OUTREACH_API_PREFIX}/rep-days`, anyDeskRole, async (req, res) => {
+    try {
+      const query = salesOutreachRepDaysQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readRepDays(outreachActorOf(res), query, readDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.get(`${SALES_OUTREACH_API_PREFIX}/team`, guard("team_reads"), async (req, res) => {
+    try {
+      const query = salesOutreachTeamQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readTeam(outreachActorOf(res), query, readDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
     }
   });
 
