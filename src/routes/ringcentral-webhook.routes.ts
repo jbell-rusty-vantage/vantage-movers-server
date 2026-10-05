@@ -45,6 +45,7 @@ import {
   verifyRingCentralDelivery,
   type DeliveryVerification,
 } from "../services/ringcentral/webhook-verification";
+import { fanOutRepSmsReceipt, type RepSmsFanoutResult } from "../services/ringcentral/repSms/intent";
 
 const router = Router();
 
@@ -137,6 +138,11 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
       uuid: normalizedPreview.uuid,
       telephonySessionId: normalizedPreview.telephonySessionId,
     });
+    // RINGCENTRAL-CAPTURE §5: a stored message-store receipt becomes a coalesced mailbox sync intent
+    // (gated by controls.rep_sms_capture_enabled). Telephony receipts are untouched by this.
+    const repSmsSync: RepSmsFanoutResult | null = captureResult.receiptId
+      ? await fanOutRepSmsReceipt({ event: normalizedPreview.event, receivedAt })
+      : null;
 
     // `RINGCENTRAL_WEBHOOK_ENABLED=false` acknowledges + audits the raw event
     // but performs no candidate/session/lead processing (e.g. to run cron-only
@@ -157,6 +163,7 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
         candidateUpdates: [],
         sessionUpdates: [],
         captureProjection,
+        ...(repSmsSync ? { repSmsSync } : {}),
       });
     }
 
@@ -185,6 +192,7 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
       candidateUpdates,
       sessionUpdates,
       captureProjection,
+      ...(repSmsSync ? { repSmsSync } : {}),
     });
   } catch (error) {
     log.error({ err: error, msg: "ringcentral.webhook.processing.failed" });

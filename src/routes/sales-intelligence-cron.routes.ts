@@ -27,6 +27,8 @@ import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
 import { runRepSmsSubscriptionMaintenance } from "../services/ringcentral/repSms/subscriptionMaintenance";
+import { drainRepSmsSyncJobs } from "../services/ringcentral/repSms/intent";
+import { runRepSmsSafetyPoll } from "../services/ringcentral/repSms/poll";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
 
 /**
@@ -93,6 +95,9 @@ export type SalesIntelligenceCronRouteDeps = {
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
   /** RINGCENTRAL-CAPTURE §3: `rep_sms` renew + filter reconcile, after the `calls` step (desk control gated). */
   runRepSmsSubscription?: typeof runRepSmsSubscriptionMaintenance;
+  /** RINGCENTRAL-CAPTURE §5: due `rep_sms_sync` jobs (job recovery) and the staffed-hours safety poll. */
+  drainRepSmsSync?: () => Promise<unknown>;
+  runRepSmsPoll?: typeof runRepSmsSafetyPoll;
   /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
   recordDeployment?: () => Promise<unknown>;
 };
@@ -107,6 +112,7 @@ export const CSI_CRON_PATHS = {
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
   webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
+  repSmsPoll: "/api/cron/sales-intelligence-rep-sms-poll",
 } as const;
 
 export function createSalesIntelligenceCronRouter(
@@ -143,7 +149,27 @@ export function createSalesIntelligenceCronRouter(
       flag: "CAPTURE_WEBHOOK" as const,
       run: () => (deps.drainCallLogRefresh ?? (() => drainCallLogRefreshJobs()))(),
     });
+    // Rep SMS sync intents ride the same recovery; each job re-checks controls.rep_sms_capture_enabled.
+    extraRecovery.push({
+      name: "rep_sms_sync",
+      flag: "CAPTURE_WEBHOOK" as const,
+      run: () => (deps.drainRepSmsSync ?? (() => drainRepSmsSyncJobs()))(),
+    });
   }
+
+  // RINGCENTRAL-CAPTURE §5/§7: every minute, the staffed-hours safety poll syncs the mailboxes whose
+  // stagger slot is this minute. The service gates on the persisted desk control (fail closed).
+  router.all(CSI_CRON_PATHS.repSmsPoll, requireCronAuth, async (_req, res) => {
+    try {
+      await connect();
+      const summary = await (deps.runRepSmsPoll ?? runRepSmsSafetyPoll)();
+      if (summary.skipped) return res.json({ ok: true, skipped: true, reason: summary.skip_reason, summary });
+      return res.json({ ok: true, skipped: false, summary });
+    } catch (error) {
+      logger.error({ msg: "sales_outreach.cron.rep_sms_poll.failed", errorName: error instanceof Error ? error.name : "Error" });
+      return res.status(500).json({ ok: false, error: "Rep SMS poll failed" });
+    }
+  });
   router.all(CSI_CRON_PATHS.webhookSubscription, requireCronAuth, async (_req, res) => {
     if (!flag("CAPTURE_WEBHOOK")) return res.json({ ok: true, skipped: true, reason: "disabled" });
     try {

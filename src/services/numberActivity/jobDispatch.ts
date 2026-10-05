@@ -8,6 +8,7 @@ import { runRebuildJob, type RebuildWorkerDeps } from "./rebuild";
 import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh";
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
+import { runRepSmsSyncJob } from "../ringcentral/repSms/intent";
 import { retireLegacyCsiJobs } from "../salesIntelligence/jobs";
 
 /**
@@ -49,6 +50,8 @@ export function defaultStageHandlers(
     attachment_refresh: (jobId) => runAttachmentRefreshJob(jobId),
     nudge_repair: (jobId) => runNudgeRepairJob(jobId),
     call_log_refresh: (jobId) => runCallLogRefreshJob(jobId),
+    // RINGCENTRAL-CAPTURE §5: coalesced per-mailbox rep SMS sync (gated by the desk control).
+    rep_sms_sync: (jobId) => runRepSmsSyncJob(jobId),
   };
 }
 
