@@ -445,7 +445,7 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
     let completion: CompletionKind | null = null;
     if (restriction) status = "blocked";
     else if (overdueDues.length > 0) status = "overdue";
-    else if (pendingItems.some((ob) => ob.date === today || ob.kind !== "ordinary") || catchUpState === "pending") status = "pending";
+    else if (pendingItems.some((ob) => ob.date === today || !ROUTINE_KINDS.has(ob.kind)) || catchUpState === "pending") status = "pending";
     else if (openDues.length > 0 || actionable.length > 0) status = "due";
     else if (counted.length > 0 && done.length === counted.length) status = "completed";
     else if (futureScheduled) status = "scheduled";
