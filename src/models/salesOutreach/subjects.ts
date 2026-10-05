@@ -51,6 +51,8 @@ const prioritySchema = new Schema(
     accepted_at: date,
     observation_id: ref,
     basis: enumeration(SALES_OUTREACH_PRIORITY_BASES, "none"),
+    /** P05e: a newer blank/malformed/unverified priority update was seen; the verified policy is retained. */
+    uncertain: { type: Boolean, required: true, default: false },
   },
   { _id: false, strict: "throw" },
 );

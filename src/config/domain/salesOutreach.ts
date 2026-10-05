@@ -23,6 +23,13 @@ export const SALES_OUTREACH_PRIORITY_BASES = ["accepted_observation", "intake_de
 /** Policy-period workflow (IMPLEMENTATION-PLAN §4.2). */
 export const SALES_OUTREACH_WORKFLOWS = ["new", "quoted", "discretion", "none", "closed"] as const;
 export type SalesOutreachWorkflow = (typeof SALES_OUTREACH_WORKFLOWS)[number];
+/**
+ * How a policy period started (engine `PeriodStartKind`): `intake` = a fresh Lead arrival (P05e),
+ * `transition` = an accepted priority change or closure on an enrolled subject (P05d/P05f),
+ * `activation` = the fixed cohort activation boundary of an existing Lead (P10a).
+ */
+export const SALES_OUTREACH_PERIOD_START_KINDS = ["intake", "transition", "activation"] as const;
+export type SalesOutreachPeriodStartKind = (typeof SALES_OUTREACH_PERIOD_START_KINDS)[number];
 export const SALES_OUTREACH_TIME_BASES = [
   "accepted_observation_captured_at",
   "entity_change_applied_at",
