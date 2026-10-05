@@ -21,9 +21,23 @@ type RingCentralSubscriptionResponse = {
   expiresIn?: unknown;
 };
 
+/**
+ * What an app-owned subscription is for (RINGCENTRAL-CAPTURE §3): `calls` = the account telephony
+ * subscription, `rep_sms` = one message-store filter per reviewed sales rep mailbox. Rows written
+ * before this field existed carry none; the lifecycle treats them as `calls` only when their filters
+ * are the telephony filters.
+ */
+export type SubscriptionPurpose = "calls" | "rep_sms";
+
+/** Ownership metadata the lifecycle stores beside the provider response. */
+export type StoredSubscriptionMeta = { purpose: SubscriptionPurpose | null; verificationToken: string | null };
+
 export type RingCentralWebhookSubscriptionMetadata = {
   provider: "ringcentral";
   subscriptionId: string;
+  purpose?: SubscriptionPurpose | null;
+  /** The `deliveryMode.verificationToken` we generated; deliveries must carry it (`Verification-Token`). */
+  verificationToken?: string | null;
   eventFilters: string[];
   deliveryMode: unknown;
   status: string | null;
@@ -72,8 +86,13 @@ export async function buildRingCentralTelephonyEventFilters(
 
 export async function storeRingCentralWebhookSubscriptionMetadata(
   raw: unknown,
+  meta: Partial<StoredSubscriptionMeta> = {},
 ): Promise<RingCentralSubscriptionStoreResult> {
   const metadata = buildRingCentralWebhookSubscriptionMetadata(raw);
+  const extra = {
+    ...(meta.purpose !== undefined ? { purpose: meta.purpose } : {}),
+    ...(meta.verificationToken !== undefined ? { verificationToken: meta.verificationToken } : {}),
+  };
 
   if (process.env.MONGO_URI?.trim()) {
     try {
@@ -94,6 +113,7 @@ export async function storeRingCentralWebhookSubscriptionMetadata(
             expirationTime: metadata.expirationTime,
             updatedAt: metadata.updatedAt,
             raw: metadata.raw,
+            ...extra,
           },
         },
         { upsert: true },
@@ -157,6 +177,36 @@ export async function listStoredRingCentralWebhookSubscriptionIds(): Promise<str
     .find({ provider: "ringcentral" }, { projection: { subscriptionId: 1 } })
     .toArray();
   return rows.map((row) => row.subscriptionId).filter((id) => typeof id === "string" && id.trim());
+}
+
+/** Purpose and verification token of every owned subscription, keyed by id. */
+export async function listStoredRingCentralWebhookSubscriptionMeta(): Promise<Map<string, StoredSubscriptionMeta>> {
+  const out = new Map<string, StoredSubscriptionMeta>();
+  if (!process.env.MONGO_URI?.trim()) return out;
+  const collection = await getSubscriptionsCollection();
+  const rows = await collection
+    .find({ provider: "ringcentral" }, { projection: { subscriptionId: 1, purpose: 1, verificationToken: 1 } })
+    .toArray();
+  for (const row of rows) {
+    if (typeof row.subscriptionId !== "string" || !row.subscriptionId.trim()) continue;
+    out.set(row.subscriptionId, {
+      purpose: row.purpose === "calls" || row.purpose === "rep_sms" ? row.purpose : null,
+      verificationToken: typeof row.verificationToken === "string" && row.verificationToken ? row.verificationToken : null,
+    });
+  }
+  return out;
+}
+
+/** The stored verification token of one subscription; `undefined` when the subscription is not ours. */
+export async function findStoredSubscriptionVerificationToken(subscriptionId: string): Promise<string | null | undefined> {
+  if (!process.env.MONGO_URI?.trim()) return undefined;
+  const collection = await getSubscriptionsCollection();
+  const row = await collection.findOne(
+    { provider: "ringcentral", subscriptionId },
+    { projection: { verificationToken: 1 } },
+  );
+  if (!row) return undefined;
+  return typeof row.verificationToken === "string" && row.verificationToken ? row.verificationToken : null;
 }
 
 /** CSI-03 additive: records a lifecycle status (e.g. `Deleted`) on an owned subscription's metadata; never removes the row. */

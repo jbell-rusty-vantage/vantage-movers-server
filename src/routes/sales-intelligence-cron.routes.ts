@@ -26,6 +26,7 @@ import { refreshCaptureCoverage } from "../services/numberActivity/coverage";
 import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
+import { runRepSmsSubscriptionMaintenance } from "../services/ringcentral/repSms/subscriptionMaintenance";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
 
 /**
@@ -90,6 +91,8 @@ export type SalesIntelligenceCronRouteDeps = {
   /** CC-08: `call_log_refresh` drain (job recovery, under `CAPTURE_WEBHOOK`) and the daily subscription maintenance. */
   drainCallLogRefresh?: () => Promise<unknown>;
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
+  /** RINGCENTRAL-CAPTURE §3: `rep_sms` renew + filter reconcile, after the `calls` step (desk control gated). */
+  runRepSmsSubscription?: typeof runRepSmsSubscriptionMaintenance;
   /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
   recordDeployment?: () => Promise<unknown>;
 };
@@ -146,7 +149,12 @@ export function createSalesIntelligenceCronRouter(
     try {
       await connect();
       const summary = await (deps.runWebhookSubscription ?? runWebhookSubscriptionMaintenance)();
-      return res.json({ ok: true, skipped: false, summary });
+      // The SMS channel never blocks the calls outcome; its failure is reported beside it.
+      const repSms = await (deps.runRepSmsSubscription ?? runRepSmsSubscriptionMaintenance)().catch((error: unknown) => ({
+        skipped: false as const,
+        error: error instanceof Error ? error.name : "Error",
+      }));
+      return res.json({ ok: true, skipped: false, summary, rep_sms: repSms });
     } catch {
       return res.status(500).json({ ok: false, error: "Webhook subscription maintenance failed" });
     }

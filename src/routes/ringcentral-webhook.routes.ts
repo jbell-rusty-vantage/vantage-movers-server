@@ -41,6 +41,10 @@ import {
   fanOutCaptureProjection,
   type FanoutResult,
 } from "../services/numberActivity/webhookFanout";
+import {
+  verifyRingCentralDelivery,
+  type DeliveryVerification,
+} from "../services/ringcentral/webhook-verification";
 
 const router = Router();
 
@@ -90,6 +94,28 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
 
   if (validationToken) {
     res.setHeader("Validation-Token", validationToken);
+  }
+
+  // RINGCENTRAL-CAPTURE §3: a delivery for one of our token-bearing subscriptions must carry its
+  // `Verification-Token` (header names are case-insensitive). Refused deliveries are neither stored
+  // nor fanned out. A lookup failure keeps the previous behaviour (accept), like the receipt store.
+  let verification: DeliveryVerification;
+  try {
+    verification = await verifyRingCentralDelivery({
+      subscriptionId: normalizedPreview.subscriptionId,
+      providedToken: req.get("verification-token") ?? null,
+    });
+  } catch (error) {
+    log.warn({ msg: "ringcentral.webhook.verification_lookup_failed", errorName: error instanceof Error ? error.name : "Error" });
+    verification = { ok: true, reason: "no_token_on_record" };
+  }
+  if (!verification.ok) {
+    log.warn({
+      msg: "ringcentral.webhook.verification_failed",
+      reason: verification.reason,
+      subscriptionId: normalizedPreview.subscriptionId,
+    });
+    return res.status(403).json({ ok: false, provider: "ringcentral", error: "verification_failed" });
   }
 
   try {

@@ -143,6 +143,10 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       calls.push("webhook-subscription");
       return { address: "https://example.test/api/webhooks/ringcentral", plan: "noop", action: "noop", subscription_id: "s", removed_subscription_id: null, expiration_time: null, warnings: [] };
     },
+    runRepSmsSubscription: async () => {
+      calls.push("rep-sms-subscription");
+      return { skipped: true, reason: "capture_disabled" };
+    },
   });
   let directoryResult: DirectorySyncSummary = {
     ran_at: "2026-09-17T14:00:00.000Z",
@@ -198,7 +202,8 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       const subscription = await call(CSI_CRON_PATHS.webhookSubscription, auth);
       assert.equal(subscription.body.skipped, false);
       assert.equal((subscription.body.summary as { action: string }).action, "noop");
-      assert.deepEqual(calls, ["connect", "webhook-subscription"]);
+      assert.deepEqual(subscription.body.rep_sms, { skipped: true, reason: "capture_disabled" });
+      assert.deepEqual(calls, ["connect", "webhook-subscription", "rep-sms-subscription"]);
       calls.length = 0;
       flags.CAPTURE_WEBHOOK = false;
       assert.deepEqual((await call(CSI_CRON_PATHS.webhookSubscription, auth)).body, { ok: true, skipped: true, reason: "disabled" });
