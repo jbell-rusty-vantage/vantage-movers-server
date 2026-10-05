@@ -1,6 +1,6 @@
 # Ordered implementation and release plan
 
-Status: work packages ready for implementation planning. None has been implemented or certified. Follow [SPECIFICATION](SPECIFICATION.md), [CODE-MAP](CODE-MAP.md) and [DATA-AND-STORAGE](DATA-AND-STORAGE.md). Work packages below are vertical changes with concrete acceptance evidence; they are not GitHub issues created by this task.
+Status: SLIM-01 to SLIM-10 were implemented, deployed and purged on 2026-10-04; SLIM-11 capacity work, deferred until after the purge, is still owed. The [LEDGER](LEDGER.md) is authoritative for status. The text below is the original plan (when written, none had been implemented or certified). Follow [SPECIFICATION](SPECIFICATION.md), [CODE-MAP](CODE-MAP.md) and [DATA-AND-STORAGE](DATA-AND-STORAGE.md). Work packages below are vertical changes with concrete acceptance evidence; they are not GitHub issues created by this task.
 
 ## 1. Ordering
 

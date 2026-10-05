@@ -90,7 +90,7 @@ Every server path authenticates as one JWT user, and RingCentral limits each app
 
 `ringcentral/rateLimitGate.ts` keeps one document per group in `ringcentral_rate_limit_gates` (`ringcentral:heavy`, `ringcentral:other`), decided by one atomic pipeline `findOneAndUpdate`:
 
-- `open_until`: any provider 429 (from `ringCentralRequest`, `ringCentralReadResponse` or the scoped analysis read) sets it to `now + Retry-After` (else the window, 60 s) and never shortens it. While it is in the future nobody sends in that group.
+- `open_until`: any provider 429 (from `ringCentralRequest` or `ringCentralReadResponse`; the scoped analysis read left with the 2026-10 slimming) sets it to `now + Retry-After` (else the window, 60 s) and never shortens it. While it is in the future nobody sends in that group.
 - `grants`: Heavy send times inside a sliding 60 s window. High-priority callers (reconcile, sweep, Call Log Sync, qualified-call sync) may send while fewer than `RINGCENTRAL_HEAVY_REQUESTS_PER_MINUTE` (8) were sent and wait up to `RINGCENTRAL_RATE_GATE_MAX_WAIT_MS` (70 s) for a slot. Low-priority callers (`call_log_refresh`; the `media_fetch` and analysis readers were retired) may send only while fewer than `RINGCENTRAL_HEAVY_LOW_PRIORITY_PER_MINUTE` (4) were sent, and never wait.
 - A refused send is never sent. `ringCentralRequest` throws a `RingCentralApiError` 429 with `throttle.gated = true` and `retryAfterMs` = the gate's wait; `ringCentralReadResponse` answers a local 429 with `Retry-After`. Callers treat it exactly like a provider throttle: a deferral that spends no attempt and dead-letters nothing.
 - No Mongo connection (unit tests) or `RINGCENTRAL_RATE_GATE=off`: no-op. A gate read failure fails open.

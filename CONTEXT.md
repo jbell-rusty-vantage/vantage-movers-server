@@ -1,6 +1,6 @@
 # Vantage Main Server
 
-Express API and system of record for leads, bookings, cancellations, and server-side integrations (Granot CRM posting, Sheet Sync, Ring Central, Workflow Observational).
+Express API and system of record for leads, bookings, cancellations, and server-side integrations (Granot CRM posting, Sheet Sync, Ring Central).
 
 **Platform domain language:** [`../CONTEXT.md`](../CONTEXT.md)
 

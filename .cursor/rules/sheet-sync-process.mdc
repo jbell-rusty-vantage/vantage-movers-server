@@ -1,6 +1,6 @@
 ---
 description: Google Sheets sync architecture, outbox drain flow, targets, and operational safety
-globs: src/config/domain.ts,src/config/domain/**/*.ts,src/models/*Lead.ts,src/models/SheetSync*.ts,src/routes/sheet-sync-cron.routes.ts,api/queues/sheet-sync-consumer.ts,src/services/googleSheets/**/*.ts,src/services/sheetSync/**/*.ts,scripts/google_sheets/**/*.ts,scripts/historical/**/*.ts
+globs: src/config/domain.ts,src/config/domain/**/*.ts,src/models/*Lead.ts,src/models/SheetSync*.ts,src/routes/sheet-sync-cron.routes.ts,api/queues/sheet-sync-consumer.ts,src/services/googleSheets/**/*.ts,src/services/sheetSync/**/*.ts,scripts/google_sheets/**/*.ts
 alwaysApply: false
 ---
 

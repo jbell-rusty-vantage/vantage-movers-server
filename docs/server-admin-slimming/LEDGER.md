@@ -28,7 +28,7 @@ Each lane writes `evidence/<lane>.md`. Lane agents never commit. The coordinator
 | 2 | A-SI: interim two-view Sales Intelligence | SLIM-02/05 (admin) | done: Admin `cdc9510` |
 | 2 | MCP: retire analysis and conversation tools | SLIM-06 | done: MCP `97bd755` |
 | 3 | Integration, adversarial review, replica proofs, docs | SLIM-09 | done: server `709480d3`, Admin `474f662`, MCP `bd93b18`; see evidence REHEARSAL, WALK, COMPLETENESS |
-| 4 | Deploy, quiesce, purge | SLIM-10 | pending (needs the user's go) |
+| 4 | Deploy, quiesce, purge | SLIM-10 | done 2026-10-04: deploy (server `6123f85e`, Admin `058adbc`, MCP `bd93b18`) and purge run `slimming-purge-2026-10-04T22-36-23-489Z`, recorded in server `ecc76257`; see "Cutover" below. Recreation +0 clean; checks at +30 min, +2 h and +1 day owed |
 
 ## Wave 1 result (2026-10-04)
 

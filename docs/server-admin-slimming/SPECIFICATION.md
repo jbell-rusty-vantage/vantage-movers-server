@@ -2,6 +2,8 @@
 
 Date: October 3, 2026. Status: proposed engineering implementation contract derived from the Owner's explicit removal request. This document authorizes planning only in this session. Production deletion is a later execution task using the reviewed manifest in [the runbook](DATA-AND-STORAGE.md).
 
+Executed 2026-10-04: implemented, deployed and purged; the [LEDGER](LEDGER.md) records the result and what is still owed.
+
 ## 1. Outcome and boundaries
 
 Remove unused product surfaces, their exclusive server capabilities, their producers, and their stored data. Keep the official Lead → Booking → Cancellation workflows, integrations, Operations Registry, reporting, ingestion, and Daily Operations working. Retain canonical Contact Numbers, provider call metadata, Number↔Lead attachment evidence, RingCentral directory accounts and reviewed Rep Identity Links for future connections.

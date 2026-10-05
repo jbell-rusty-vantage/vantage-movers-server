@@ -41,8 +41,8 @@ Standard commands live in `package.json` `scripts` (e.g. `pnpm dev`, `pnpm typec
   `pnpm dev`: local replica-set `MONGO_URI`, `TEST_MODE=true` (`testvantagemovers` only),
   `SHEET_SYNC_MODE=disabled`, source-sheet writes off, and RingCentral write/sync flags off.
   Do not start `pnpm dev` from a raw shell in this environment — it would use Atlas and the
-  live `vantagemovers` database. Never point Cloud agents at `vantagemovers` or
-  `historicalvantagemovers`.
+  live `vantagemovers` database. Never point Cloud agents at `vantagemovers`. (The
+  historical database `vantagemovershistorical` was dropped by the 2026-10-04 slimming purge.)
 - `VANTAGE_API_SECRET` guards every `/api/v1/*` route; send it as the `x-api-secret` header.
   Requests without it return `401`; if it is unset the routes return `500`. The injected
   dashboard secret is reused when present; otherwise the start script uses `local-dev-secret`.

@@ -4,7 +4,7 @@
 
 **From:** the server/Admin slimming (`slim/server-admin`; server, Admin and MCP bases `6a374fab` / `adda9e1` / `fbf061f`), 2026-10-04.
 
-**Status:** effective when the slim deploy and the purge run (CUTOVER.md). This file does **not** edit the Admin packet: `vantage-admin/docs/sales-outreach-desk/**` and `vantage-admin/SALES-OUTREACH-DESK.md` are untouched, with their hashes intact. The coordinator folds this delta in under the packet's own process.
+**Status:** effective since 2026-10-04: the slim deploy and the purge ran (CUTOVER.md; LEDGER "Cutover"). This file does **not** edit the Admin packet: `vantage-admin/docs/sales-outreach-desk/**` and `vantage-admin/SALES-OUTREACH-DESK.md` are untouched, with their hashes intact. The coordinator folds this delta in under the packet's own process.
 
 This request supersedes the older packet's instruction to "preserve historical AI evidence". It preserves minimal human and provider facts and closure/restriction authority. It does not preserve an AI pipeline, transcripts or Attention.
 

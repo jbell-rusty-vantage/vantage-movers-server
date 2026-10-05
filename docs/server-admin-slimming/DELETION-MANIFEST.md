@@ -1,6 +1,6 @@
 # Deletion manifest (SLIM-10)
 
-Status: **prepared, not executed.** The Owner and the user authorized the physical deletion. It runs once, after the slim server and Admin are deployed and quiesced (LEDGER, IMPLEMENTATION-PLAN §3 steps 4–5). If it ran before the deploy, the old code would recreate the collections.
+Status: **executed 2026-10-04** (run `slimming-purge-2026-10-04T22-36-23-489Z`, after the slim deploy; see [LEDGER](LEDGER.md) "Cutover" and [`evidence/PURGE-APPLY.log`](evidence/PURGE-APPLY.log)). Recreation checks at +30 min, +2 h and +1 day are still owed. Original status: prepared, not executed. The Owner and the user authorized the physical deletion. It runs once, after the slim server and Admin are deployed and quiesced (LEDGER, IMPLEMENTATION-PLAN §3 steps 4–5). If it ran before the deploy, the old code would recreate the collections.
 
 The executable manifest is [`ops/slimming/deletion-manifest.json`](../../ops/slimming/deletion-manifest.json), with Blob keys in [`ops/slimming/conversation-blob-keys.json`](../../ops/slimming/conversation-blob-keys.json). `ops/slimming/inventory.ts --write-manifest` generates both from [`ops/slimming/policy.ts`](../../ops/slimming/policy.ts) plus a live read-only observation. [`ops/slimming/purge.ts`](../../ops/slimming/purge.ts) executes them. This document describes the manifest; when they differ, the JSON (and its hash) is what runs.
 
