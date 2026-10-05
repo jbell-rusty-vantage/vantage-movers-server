@@ -235,6 +235,24 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
       ),
       default: undefined,
     },
+    // RINGCENTRAL-CAPTURE §5: one rep mailbox's message-sync position and coverage
+    // (scope `rep_sms:<extensionId>`). The token is provider state and never logged.
+    message_sync: {
+      type: new Schema(
+        {
+          extension_id: text,
+          token: text,
+          sync_time: date,
+          last_full_sync_at: date,
+          last_success_at: date,
+          /** Oldest instant the stored history is complete from (FSync `dateFrom`, or the oldest record when older ones exist). */
+          coverage_from: date,
+          consecutive_expiries: { type: Number, min: 0, default: 0 },
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: undefined,
+    },
     // CC-06: consecutive sweeps that found drift (scope `call_log_sweep`).
     consecutive_drift_runs: { type: Number, min: 0, default: undefined },
     gaps: {

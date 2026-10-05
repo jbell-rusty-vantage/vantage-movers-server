@@ -23,6 +23,7 @@ const EXPECTED_COLLECTIONS = [
   "sales_outreach_projections",
   "sales_outreach_rep_day_projections",
   "sales_outreach_enrollment_runs",
+  "ringcentral_rep_sms_evidence",
 ];
 
 test("the desk registry holds exactly the IMPLEMENTATION-PLAN §4.1–§4.6/§4.8 collections, isolated and never auto-indexed", () => {

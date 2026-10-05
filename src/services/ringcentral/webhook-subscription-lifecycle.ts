@@ -1,10 +1,16 @@
+import { randomBytes } from "node:crypto";
 import { ringCentralRequest } from "./client";
 import {
   buildRingCentralTelephonyEventFilters,
   listStoredRingCentralWebhookSubscriptionIds,
+  listStoredRingCentralWebhookSubscriptionMeta,
   markStoredRingCentralWebhookSubscriptionStatus,
   storeRingCentralWebhookSubscriptionMetadata,
+  type StoredSubscriptionMeta,
+  type SubscriptionPurpose,
 } from "./webhook-subscriptions";
+
+export type { SubscriptionPurpose, StoredSubscriptionMeta } from "./webhook-subscriptions";
 
 /**
  * CSI-03 subscription lifecycle for the all-direction account telephony
@@ -25,11 +31,12 @@ import {
  */
 export const SUBSCRIPTION_PATH = "/restapi/v1.0/subscription";
 /**
- * WebHook transport accepts `expiresIn` up to 630,720,000 s (20 years); the
- * provider default is 604,800 s (7 days). The longest lifetime is requested so
- * a missed renewal never silently stops capture; the daily cron still renews.
+ * RINGCENTRAL-CAPTURE §2/§3: the documented WebHook maximum `expiresIn` is
+ * 315,360,000 s (10 years); the provider default is 604,800 s (7 days). The
+ * longest documented lifetime is requested so a missed renewal never silently
+ * stops capture; the daily cron still renews.
  */
-export const MAX_WEBHOOK_EXPIRES_IN_SECONDS = 630_720_000;
+export const MAX_WEBHOOK_EXPIRES_IN_SECONDS = 315_360_000;
 export const DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS = MAX_WEBHOOK_EXPIRES_IN_SECONDS;
 /** Renew when under 7 days remain (covers a subscription created with the provider's 7-day default). */
 export const DEFAULT_RENEW_WITHIN_MS = 7 * 24 * 60 * 60_000;
@@ -45,21 +52,39 @@ export type SubscriptionRecord = {
   raw: unknown;
 };
 
+export type SubscriptionWriteInput = {
+  eventFilters: string[];
+  address: string;
+  expiresIn: number;
+  /** `deliveryMode.verificationToken`; every delivery then carries it as `Verification-Token`. */
+  verificationToken?: string;
+};
+
 export type SubscriptionProvider = {
   list(): Promise<SubscriptionRecord[]>;
-  create(input: { eventFilters: string[]; address: string; expiresIn: number }): Promise<unknown>;
+  create(input: SubscriptionWriteInput): Promise<unknown>;
   renew(id: string): Promise<unknown>;
   remove(id: string): Promise<void>;
+  /** `PUT /subscription/{id}`: replaces filters and delivery mode (and renews). */
+  update?(id: string, input: SubscriptionWriteInput): Promise<unknown>;
 };
 
 export type OwnershipStore = {
   ownedIds(): Promise<Set<string>>;
-  record(raw: unknown): Promise<void>;
+  /** Records the provider response as ownership evidence, with our purpose and verification token when known. */
+  record(raw: unknown, meta?: Partial<StoredSubscriptionMeta>): Promise<void>;
   markStatus(id: string, status: string): Promise<void>;
+  /** Purpose + verification token per owned id. Stores without it cannot plan `rep_sms` or token updates. */
+  meta?(): Promise<Map<string, StoredSubscriptionMeta>>;
 };
 
+/** 32 hex characters from a CSPRNG (RingCentral accepts an opaque string). Never logged. */
+export function generateVerificationToken(): string {
+  return randomBytes(16).toString("hex");
+}
+
 export class SubscriptionOwnershipError extends Error {
-  constructor(readonly subscriptionId: string, readonly operation: "renew" | "delete" | "repair") {
+  constructor(readonly subscriptionId: string, readonly operation: "renew" | "delete" | "repair" | "update") {
     super(`Refusing to ${operation} subscription ${subscriptionId}: not created by this application`);
     this.name = "SubscriptionOwnershipError";
   }
@@ -101,11 +126,10 @@ export function ringCentralSubscriptionProvider(
       return records.map((r) => parseSubscriptionRecord(r, new Date())).filter((r): r is SubscriptionRecord => r !== null);
     },
     create(input) {
-      return request("POST", SUBSCRIPTION_PATH, {
-        eventFilters: input.eventFilters,
-        deliveryMode: { transportType: "WebHook", address: input.address },
-        expiresIn: input.expiresIn,
-      });
+      return request("POST", SUBSCRIPTION_PATH, subscriptionBody(input));
+    },
+    update(id, input) {
+      return request("PUT", `${SUBSCRIPTION_PATH}/${encodeURIComponent(id)}`, subscriptionBody(input));
     },
     renew(id) {
       return request("POST", `${SUBSCRIPTION_PATH}/${encodeURIComponent(id)}/renew`);
@@ -113,6 +137,18 @@ export function ringCentralSubscriptionProvider(
     async remove(id) {
       await request("DELETE", `${SUBSCRIPTION_PATH}/${encodeURIComponent(id)}`);
     },
+  };
+}
+
+function subscriptionBody(input: SubscriptionWriteInput) {
+  return {
+    eventFilters: input.eventFilters,
+    deliveryMode: {
+      transportType: "WebHook",
+      address: input.address,
+      ...(input.verificationToken ? { verificationToken: input.verificationToken } : {}),
+    },
+    expiresIn: input.expiresIn,
   };
 }
 
@@ -145,9 +181,9 @@ export function mongoOwnershipStore(): OwnershipStore {
       requireMongo();
       return new Set(await listStoredRingCentralWebhookSubscriptionIds());
     },
-    record: async (raw) => {
+    record: async (raw, meta) => {
       requireMongo();
-      const stored = await storeRingCentralWebhookSubscriptionMetadata(raw);
+      const stored = await storeRingCentralWebhookSubscriptionMetadata(raw, meta);
       // The file fallback is not ownership evidence `ownedIds()` can read.
       if (stored.target !== "mongo") {
         throw new Error(`subscription metadata landed in ${stored.target}, not Mongo`);
@@ -156,6 +192,10 @@ export function mongoOwnershipStore(): OwnershipStore {
     markStatus: async (id, status) => {
       requireMongo();
       await markStoredRingCentralWebhookSubscriptionStatus(id, status);
+    },
+    meta: async () => {
+      requireMongo();
+      return listStoredRingCentralWebhookSubscriptionMeta();
     },
   };
 }
@@ -258,10 +298,13 @@ export function classifySubscriptions(input: {
   return out;
 }
 
+export type SubscriptionUpdateReason = "verification_token_missing" | "filter_drift";
+
 export type SubscriptionPlan =
   | { action: "noop"; subscription_id: string; expiration_time: string | null; warnings: string[] }
   | { action: "renew"; subscription_id: string; expiration_time: string | null; warnings: string[] }
   | { action: "repair"; subscription_id: string; health: SubscriptionHealth; warnings: string[] }
+  | { action: "update"; subscription_id: string; reasons: SubscriptionUpdateReason[]; warnings: string[] }
   | { action: "create"; warnings: string[] };
 
 export type LifecycleDeps = {
@@ -272,6 +315,11 @@ export type LifecycleDeps = {
   renewWithinMs?: number;
   expiresInSeconds?: number;
   eventFilters?: () => Promise<string[]>;
+  /**
+   * Operator `ensure`: an owned healthy `calls` subscription with no stored verification token is
+   * updated (PUT) to carry one. The daily cron leaves it alone and only reports it.
+   */
+  requireVerificationToken?: boolean;
 };
 
 /** Read-only: lists provider subscriptions and owned ids, then decides. Never mutates. */
@@ -290,6 +338,15 @@ export async function planAllDirectionSubscription(deps: LifecycleDeps): Promise
   const best = [...classified.owned_matching].sort((a, b) => rank[a.health] - rank[b.health])[0];
   if (!best) return { action: "create", warnings };
   const expiration_time = best.record.expirationTime?.toISOString() ?? null;
+  if (best.health === "active" || best.health === "expiring") {
+    const meta = deps.store.meta ? (await deps.store.meta()).get(best.record.id) : undefined;
+    if (meta && !meta.verificationToken) {
+      if (deps.requireVerificationToken) {
+        return { action: "update", subscription_id: best.record.id, reasons: ["verification_token_missing"], warnings };
+      }
+      warnings.push(`owned subscription ${best.record.id} has no verification token; run the subscription command with --action ensure`);
+    }
+  }
   if (best.health === "active") return { action: "noop", subscription_id: best.record.id, expiration_time, warnings };
   if (best.health === "expiring") return { action: "renew", subscription_id: best.record.id, expiration_time, warnings };
   if (best.health === "blacklisted") return { action: "repair", subscription_id: best.record.id, health: best.health, warnings };
@@ -304,6 +361,7 @@ export type LifecycleResult =
   | { action: "noop"; subscription_id: string }
   | { action: "created"; subscription_id: string | null }
   | { action: "renewed"; subscription_id: string }
+  | { action: "updated"; subscription_id: string }
   | { action: "repaired"; removed_subscription_id: string; subscription_id: string | null };
 
 /** Applies a plan. Every mutation re-checks ownership against the store. */
@@ -320,6 +378,15 @@ export async function applyAllDirectionSubscriptionPlan(
       return renewOwnedSubscription(plan.subscription_id, deps);
     case "repair":
       return repairOwnedSubscription(plan.subscription_id, deps);
+    case "update":
+      return updateOwnedSubscription(plan.subscription_id, {
+        provider: deps.provider,
+        store: deps.store,
+        purpose: "calls",
+        eventFilters: await (deps.eventFilters ?? (() => buildRingCentralTelephonyEventFilters("all")))(),
+        address: deps.address,
+        expiresIn: deps.expiresInSeconds ?? DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS,
+      });
   }
 }
 
@@ -334,18 +401,67 @@ async function createAllDirectionSubscription(deps: LifecycleDeps): Promise<stri
   // subscription we cannot prove we own would be classified foreign next run.
   await deps.store.ownedIds();
   const eventFilters = await (deps.eventFilters ?? (() => buildRingCentralTelephonyEventFilters("all")))();
-  const raw = await deps.provider.create({
+  return createOwnedSubscription({
+    provider: deps.provider,
+    store: deps.store,
+    purpose: "calls",
     eventFilters,
     address: deps.address,
     expiresIn: deps.expiresInSeconds ?? DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS,
   });
+}
+
+type OwnedWriteDeps = {
+  provider: SubscriptionProvider;
+  store: OwnershipStore;
+  purpose: SubscriptionPurpose;
+  eventFilters: string[];
+  address: string;
+  expiresIn: number;
+};
+
+/** Creates an app-owned subscription with a fresh verification token and records it as ours. */
+async function createOwnedSubscription(deps: OwnedWriteDeps): Promise<string | null> {
+  const verificationToken = generateVerificationToken();
+  const raw = await deps.provider.create({
+    eventFilters: deps.eventFilters,
+    address: deps.address,
+    expiresIn: deps.expiresIn,
+    verificationToken,
+  });
   const id = str(asRecord(raw)?.id);
   try {
-    await deps.store.record(raw);
+    await deps.store.record(raw, { purpose: deps.purpose, verificationToken });
   } catch (error) {
     throw new SubscriptionOwnershipRecordError(id, error);
   }
   return id;
+}
+
+/**
+ * `PUT` an owned subscription with the wanted filters and delivery mode (which also renews it). It
+ * keeps a stored verification token, or generates one when none is stored; never touches a foreign id.
+ */
+export async function updateOwnedSubscription(
+  subscriptionId: string,
+  deps: OwnedWriteDeps,
+): Promise<Extract<LifecycleResult, { action: "updated" }>> {
+  await assertOwned(subscriptionId, deps.store, "update");
+  if (!deps.provider.update) throw new Error("subscription provider cannot update");
+  const stored = deps.store.meta ? (await deps.store.meta()).get(subscriptionId) : undefined;
+  const verificationToken = stored?.verificationToken ?? generateVerificationToken();
+  const raw = await deps.provider.update(subscriptionId, {
+    eventFilters: deps.eventFilters,
+    address: deps.address,
+    expiresIn: deps.expiresIn,
+    verificationToken,
+  });
+  try {
+    await deps.store.record(raw, { purpose: deps.purpose, verificationToken });
+  } catch (error) {
+    throw new SubscriptionOwnershipRecordError(subscriptionId, error);
+  }
+  return { action: "updated", subscription_id: subscriptionId };
 }
 
 export async function renewOwnedSubscription(
@@ -373,7 +489,7 @@ export async function repairOwnedSubscription(
   return { action: "repaired", removed_subscription_id: subscriptionId, subscription_id: created };
 }
 
-async function assertOwned(id: string, store: OwnershipStore, operation: "renew" | "delete" | "repair") {
+async function assertOwned(id: string, store: OwnershipStore, operation: "renew" | "delete" | "repair" | "update") {
   const owned = await store.ownedIds();
   if (!owned.has(id)) throw new SubscriptionOwnershipError(id, operation);
 }
@@ -403,4 +519,131 @@ function date(value: unknown): Date | null {
   if (!s) return null;
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ---------------------------------------------------------------------------
+// rep_sms subscription (RINGCENTRAL-CAPTURE §3, §5)
+// ---------------------------------------------------------------------------
+
+/** One message-store filter per reviewed rep mailbox; no `direction`, so inbound replies arrive too. */
+export function repSmsEventFilters(extensionIds: readonly string[]): string[] {
+  return [...new Set(extensionIds.map((id) => id.trim()).filter((id) => /^\d+$/.test(id)))]
+    .sort()
+    .map((id) => `/restapi/v1.0/account/~/extension/${id}/message-store?type=SMS`);
+}
+
+/** Per-channel health reported by the maintenance run (RINGCENTRAL-CAPTURE §3). */
+export type RepSmsChannelHealth =
+  | "ok"
+  | "subscription_missing"
+  | "expired"
+  | "blacklisted"
+  | "filter_drift"
+  | "token_missing"
+  | "no_mailboxes";
+
+export type RepSmsPlan = SubscriptionPlan & { health: RepSmsChannelHealth; event_filters: string[] };
+
+export type RepSmsLifecycleDeps = {
+  provider: SubscriptionProvider;
+  store: OwnershipStore;
+  address: string;
+  /** Extension ids of the current reviewed `sales_rep` mailboxes. */
+  mailboxes: () => Promise<string[]>;
+  now?: () => Date;
+  renewWithinMs?: number;
+  expiresInSeconds?: number;
+};
+
+/**
+ * Read-only plan for the app-owned `rep_sms` subscription. Only subscriptions this application
+ * recorded with purpose `rep_sms` are candidates; everything else (the `calls` subscription,
+ * foreign subscriptions) is never managed here.
+ */
+export async function planRepSmsSubscription(deps: RepSmsLifecycleDeps): Promise<RepSmsPlan> {
+  if (!deps.store.meta) throw new SubscriptionOwnershipUnavailableError();
+  const now = (deps.now ?? (() => new Date()))();
+  const eventFilters = repSmsEventFilters(await deps.mailboxes());
+  const [records, meta] = await Promise.all([deps.provider.list(), deps.store.meta()]);
+  const warnings: string[] = [];
+  const owned = records.filter((r) => meta.get(r.id)?.purpose === "rep_sms");
+  for (const r of records) {
+    if (!meta.has(r.id) && r.address === deps.address && r.eventFilters.some((f) => f.includes("/message-store"))) {
+      warnings.push(`foreign subscription ${r.id} delivers message-store events to this address and is not managed here`);
+    }
+  }
+  if (owned.length > 1) warnings.push(`${owned.length} owned rep_sms subscriptions exist; only the healthiest is managed`);
+  const renewWithinMs = deps.renewWithinMs ?? DEFAULT_RENEW_WITHIN_MS;
+  const rank: Record<SubscriptionHealth, number> = { active: 0, expiring: 1, unknown: 2, blacklisted: 3 };
+  const best = owned
+    .map((record) => ({ record, health: subscriptionHealth(record, now, renewWithinMs) }))
+    .sort((a, b) => rank[a.health] - rank[b.health])[0];
+  const base = { warnings, event_filters: eventFilters };
+  if (!eventFilters.length) {
+    warnings.push("no reviewed sales_rep mailbox; nothing to subscribe");
+    return best
+      ? { ...base, action: "noop", subscription_id: best.record.id, expiration_time: best.record.expirationTime?.toISOString() ?? null, health: "no_mailboxes" }
+      : { ...base, action: "create", health: "no_mailboxes" };
+  }
+  if (!best) return { ...base, action: "create", health: "subscription_missing" };
+  const id = best.record.id;
+  const expiration_time = best.record.expirationTime?.toISOString() ?? null;
+  if (best.health === "blacklisted") return { ...base, action: "repair", subscription_id: id, health: "blacklisted" };
+  if (best.health === "unknown") {
+    warnings.push(`owned rep_sms subscription ${id} reports status ${best.record.status ?? "(missing)"}; not repaired automatically`);
+    return { ...base, action: "noop", subscription_id: id, expiration_time, health: "expired" };
+  }
+  const reasons: SubscriptionUpdateReason[] = [];
+  if (!sameFilterSet(best.record.eventFilters, eventFilters) || best.record.address !== deps.address) reasons.push("filter_drift");
+  if (!meta.get(id)?.verificationToken) reasons.push("verification_token_missing");
+  if (reasons.length) {
+    return { ...base, action: "update", subscription_id: id, reasons, health: reasons.includes("filter_drift") ? "filter_drift" : "token_missing" };
+  }
+  if (best.health === "expiring") return { ...base, action: "renew", subscription_id: id, expiration_time, health: "ok" };
+  return { ...base, action: "noop", subscription_id: id, expiration_time, health: "ok" };
+}
+
+export type RepSmsLifecycleResult =
+  | LifecycleResult
+  | { action: "missing" }
+  | { action: "skipped"; reason: "no_mailboxes" | "create_not_allowed" };
+
+/**
+ * Applies a `rep_sms` plan. `create` (and a repair, which recreates) runs only with `allowCreate`
+ * (the operator command): creating the subscription is a user-authorized step (§6). An empty
+ * mailbox set never creates anything. Renew, filter reconcile and token update (`PUT`) are safe for
+ * the daily cron because they only ever touch an owned `rep_sms` subscription.
+ */
+export async function applyRepSmsSubscriptionPlan(
+  plan: RepSmsPlan,
+  deps: RepSmsLifecycleDeps,
+  options: { allowCreate: boolean },
+): Promise<RepSmsLifecycleResult> {
+  const write: OwnedWriteDeps = {
+    provider: deps.provider,
+    store: deps.store,
+    purpose: "rep_sms",
+    eventFilters: plan.event_filters,
+    address: deps.address,
+    expiresIn: deps.expiresInSeconds ?? DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS,
+  };
+  switch (plan.action) {
+    case "noop":
+      return { action: "noop", subscription_id: plan.subscription_id };
+    case "create":
+      if (!plan.event_filters.length) return { action: "skipped", reason: "no_mailboxes" };
+      if (!options.allowCreate) return { action: "missing" };
+      return { action: "created", subscription_id: await createOwnedSubscription(write) };
+    case "renew":
+      return renewOwnedSubscription(plan.subscription_id, { provider: deps.provider, store: deps.store, address: deps.address });
+    case "update":
+      return updateOwnedSubscription(plan.subscription_id, write);
+    case "repair": {
+      if (!options.allowCreate) return { action: "skipped", reason: "create_not_allowed" };
+      await assertOwned(plan.subscription_id, deps.store, "repair");
+      await deps.provider.remove(plan.subscription_id);
+      await deps.store.markStatus(plan.subscription_id, "Deleted");
+      return { action: "repaired", removed_subscription_id: plan.subscription_id, subscription_id: await createOwnedSubscription(write) };
+    }
+  }
 }

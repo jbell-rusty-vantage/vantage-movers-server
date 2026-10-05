@@ -8,6 +8,7 @@ import { runRebuildJob, type RebuildWorkerDeps } from "./rebuild";
 import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh";
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
+import { runRepSmsSyncJob } from "../ringcentral/repSms/intent";
 import { retireLegacyCsiJobs } from "../salesIntelligence/jobs";
 import { runOutreachLeadChangeJob } from "../salesOutreach/subjects/leadChangeJob";
 
@@ -53,6 +54,8 @@ export function defaultStageHandlers(
     // Sales Outreach Desk: a post-commit wake for a Lead change (the minute tail cron also drains these).
     // `outreach_evaluate` has no consumer yet: its rows wait for the evaluator wiring.
     outreach_lead_change: (jobId) => runOutreachLeadChangeJob(jobId),
+    // RINGCENTRAL-CAPTURE §5: coalesced per-mailbox rep SMS sync (gated by the desk control).
+    rep_sms_sync: (jobId) => runRepSmsSyncJob(jobId),
   };
 }
 
