@@ -126,11 +126,15 @@ test("P04b: current assigned Rep and Owner may set the Quoted date; former, unas
   }
 });
 
-test("P04b: the audit carries actor, prior and new selected date, period and effective time; reassignment keeps the schedule; no contact credit", async () => {
+test("P04a/P04b: the audit carries actor, prior and new selected date, period and effective time; reassignment keeps the schedule; no contact credit", async () => {
   const h = harness();
   await quoted(h, repA, { selected_date: "2026-10-06" });
   const result = await quoted(h, repA, { expected_revision: 1, selected_date: "2026-10-08" });
-  assert.deepEqual([result.plan_revision, result.ended_plan?.status, result.plan?.due_at], [2, "replaced", "2026-10-09T00:00:00.000Z"]);
+  assert.deepEqual([result.plan_revision, result.ended_plan?.status], [2, "replaced"]);
+  // P04a: the selected date 2026-10-08 is due at 20:00 New York.
+  const p04a = fixture("p04a-quoted-deferral.json");
+  assert.equal(p04a.selected_date, result.plan?.selected_date);
+  assert.equal(result.plan?.due_at, new Date(p04a.due_at as string).toISOString());
   const audit = h.ledger.audits.at(-1)!;
   assert.equal(audit.kind, "followup");
   const current = audit.current as Record<string, unknown>;
