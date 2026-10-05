@@ -218,6 +218,21 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
       ),
       default: undefined,
     },
+    // RINGCENTRAL-CAPTURE §4: the staffed-hours minute ISync lane's last outcome
+    // (scope `call_log_all_directions`). Freshness reads use `last_success_at`.
+    isync_lane: {
+      type: new Schema(
+        {
+          last_run_at: date,
+          last_success_at: date,
+          last_error_code: text,
+          last_records: { type: Number, min: 0, default: 0 },
+          last_applied: { type: Number, min: 0, default: 0 },
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: undefined,
+    },
     // CC-06: consecutive sweeps that found drift (scope `call_log_sweep`).
     consecutive_drift_runs: { type: Number, min: 0, default: undefined },
     gaps: {

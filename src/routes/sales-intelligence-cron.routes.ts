@@ -16,6 +16,7 @@ import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } fr
 import { callLogReconcileConfig, runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
 import { settleProvisionalFromStore } from "../services/numberActivity/settleProvisional";
 import { runCallLogSweepOnce } from "../services/numberActivity/callLogSweep";
+import { runCallLogIsyncLaneOnce } from "../services/numberActivity/callLogIsyncLane";
 import { runRetentionOnce } from "../services/salesIntelligence/retention";
 import {
   runReceiptWatermarkRecovery,
@@ -57,6 +58,8 @@ export type SalesIntelligenceCronRouteDeps = {
    * reconcile exists to settle them.
    */
   settleProvisional?: () => Promise<unknown>;
+  /** RINGCENTRAL-CAPTURE §4: staffed-hours minute Call Log ISync lane under `CAPTURE_CALL_LOG`. */
+  runCallLogIsyncLane?: typeof runCallLogIsyncLaneOnce;
   /** CC-06: nightly authoritative Call Log sweep under `CAPTURE_CALL_LOG`. */
   runCallLogSweep?: typeof runCallLogSweepOnce;
   runReceiptRecovery?: typeof runReceiptWatermarkRecovery;
@@ -96,6 +99,7 @@ export const CSI_CRON_PATHS = {
   retention: "/api/cron/sales-intelligence-retention",
   callLogReconcile: "/api/cron/sales-intelligence-call-log-reconcile",
   callLogSweep: "/api/cron/sales-intelligence-call-log-sweep",
+  callLogIsync: "/api/cron/sales-intelligence-call-log-isync",
   jobRecovery: "/api/cron/sales-intelligence-job-recovery",
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
@@ -166,6 +170,24 @@ export function createSalesIntelligenceCronRouter(
         errorName: error instanceof Error ? error.name : "Error",
       });
       return res.status(500).json({ ok: false, error: "Call Log reconcile failed" });
+    }
+  });
+
+  // RINGCENTRAL-CAPTURE §4: every minute in New York staffed hours [07:45, 20:30) one Call Log
+  // ISync confirms calls; the service yields outside those hours and on the reconcile's minutes.
+  router.all(CSI_CRON_PATHS.callLogIsync, requireCronAuth, async (_req, res) => {
+    if (!flag("CAPTURE_CALL_LOG")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await (deps.runCallLogIsyncLane ?? runCallLogIsyncLaneOnce)();
+      if (summary.skipped) return res.json({ ok: true, skipped: true, reason: summary.skip_reason ?? "disabled", summary });
+      return res.json({ ok: true, skipped: false, summary });
+    } catch (error) {
+      logger.error({
+        msg: "sales_intelligence.cron.call_log_isync.failed",
+        errorName: error instanceof Error ? error.name : "Error",
+      });
+      return res.status(500).json({ ok: false, error: "Call Log ISync failed" });
     }
   });
 

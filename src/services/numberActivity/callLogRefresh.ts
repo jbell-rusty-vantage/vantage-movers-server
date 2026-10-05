@@ -23,6 +23,7 @@ import {
 import { isProviderThrottle, throttleRetryAfterMs } from "./callLogClient";
 import { loadDirectoryLookup, type DirectoryLookup } from "./directory";
 import { callLogReconcileConfig } from "./reconcileCallLog";
+import type { CallLogSyncMode } from "./callLogSyncDriver";
 import { TERMINAL_PARTY_STATUSES, type CallLogRecordInput } from "./interactionProjection";
 import {
   applyInteractionObservation,
@@ -68,6 +69,30 @@ export const CALL_LOG_REFRESH_LOOKBACK_MS = 60 * 60_000;
  * backlog drains instead of re-hitting RingCentral every ten minutes.
  */
 export const CALL_LOG_REFRESH_MAX_AGE_MS = 45 * 60_000;
+/**
+ * RINGCENTRAL-CAPTURE §4.3: with Call Log Sync driving (`SALES_INTELLIGENCE_CALL_LOG_SYNC=on`) the
+ * minute ISync lane confirms a finished call within about two minutes, so a refresh is only for a
+ * session ISync has **not** confirmed five minutes after hang-up: due +5 min, retries after 5 and
+ * 15 minutes (≈25 min, inside the 45-min expiry), and any row already present in the Call Log
+ * (`call_log_state` provisional or settled) completes without a provider read. With the sync off
+ * or in shadow the original schedule stands (+90 s, then 2, 5, 15 minutes; only settled rows skip).
+ */
+export const CALL_LOG_REFRESH_ISYNC_DELAY_MS = 5 * 60_000;
+export const CALL_LOG_REFRESH_ISYNC_RETRY_DELAYS_MS = Object.freeze([5 * 60_000, 15 * 60_000]);
+
+export type CallLogRefreshSchedule = {
+  delayMs: number;
+  retryDelaysMs: readonly number[];
+  /** Skip a row the Call Log already confirmed (provisional or settled), not only a settled one. */
+  skipConfirmed: boolean;
+};
+
+export function callLogRefreshSchedule(syncMode: CallLogSyncMode): CallLogRefreshSchedule {
+  return syncMode === "on"
+    ? { delayMs: CALL_LOG_REFRESH_ISYNC_DELAY_MS, retryDelaysMs: CALL_LOG_REFRESH_ISYNC_RETRY_DELAYS_MS, skipConfirmed: true }
+    : { delayMs: CALL_LOG_REFRESH_DELAY_MS, retryDelaysMs: CALL_LOG_REFRESH_RETRY_DELAYS_MS, skipConfirmed: false };
+}
+
 /** Extra spread on a throttle deferral so deferred jobs do not come due together. */
 export const CALL_LOG_REFRESH_THROTTLE_JITTER_MS = 5 * 60_000;
 const TERMINAL = new Set<string>(TERMINAL_PARTY_STATUSES);
@@ -185,14 +210,18 @@ export async function sessionsNeedingRefresh(
   return out;
 }
 
-/** Enqueues the one refresh for a session inside the caller's transaction, due `now + 90 s`. */
+/**
+ * Enqueues the one refresh for a session inside the caller's transaction, due `now + 90 s`, or
+ * `now + 5 min` while Call Log Sync drives (`callLogRefreshSchedule`).
+ */
 export async function enqueueCallLogRefreshJob(
   candidate: RefreshCandidate,
   session: ClientSession,
   now: Date,
   enqueue: typeof enqueueCsiJob = enqueueCsiJob,
+  syncMode: CallLogSyncMode = callLogReconcileConfig().syncMode,
 ): Promise<{ job_id: string; created: boolean; due_at: Date }> {
-  const dueAt = new Date(now.getTime() + CALL_LOG_REFRESH_DELAY_MS);
+  const dueAt = new Date(now.getTime() + callLogRefreshSchedule(syncMode).delayMs);
   const dedupe_key = callLogRefreshDedupeKey(candidate.telephony_session_id);
   const prior = await getSalesIntelligenceJobModel()
     .findOne({ dedupe_key }, { _id: 1, next_attempt_at: 1 })
@@ -251,9 +280,10 @@ export type CallLogRefreshResult = {
   telephony_session_id: string | null;
   /**
    * `expired`: older than `CALL_LOG_REFRESH_MAX_AGE_MS`; `already_settled`: the
-   * reconcile settled the row first. Both complete without a provider read.
+   * reconcile settled the row first; `already_confirmed`: with Call Log Sync driving, ISync or the
+   * reconcile already put the call in the Call Log. All three complete without a provider read.
    */
-  state: "applied" | "not_published" | "failed" | "expired" | "already_settled";
+  state: "applied" | "not_published" | "failed" | "expired" | "already_settled" | "already_confirmed";
   attempt: number;
   records: number;
   applied: Array<{
@@ -287,6 +317,8 @@ export type CallLogRefreshDeps = {
   publish?: DelayedPublishDeps;
   /** Jitter source for throttle deferrals (tests pin it). */
   random?: () => number;
+  /** `SALES_INTELLIGENCE_CALL_LOG_SYNC` mode; picks the schedule (default: the reconcile config). */
+  syncMode?: CallLogSyncMode;
 };
 
 const DETERMINISTIC_APPLY_CODES = new Set(["identity_missing", "projection_failed", "account_mismatch"]);
@@ -300,6 +332,7 @@ export async function runCallLogRefreshJob(
   const claim = deps.claim ?? claimCsiJob;
   const complete = deps.complete ?? completeCsiJob;
   const fail = deps.fail ?? failCsiJob;
+  const schedule = callLogRefreshSchedule(deps.syncMode ?? callLogReconcileConfig().syncMode);
 
   if (jobId !== undefined && !mongoose.Types.ObjectId.isValid(jobId)) return { status: "not_claimable", job_id: jobId };
   const row = await claim(owner, jobId, deps.ttlMs ?? 120_000, CALL_LOG_REFRESH_STAGE);
@@ -371,6 +404,11 @@ export async function runCallLogRefreshJob(
       result.state = "already_settled";
       return await finish();
     }
+    if (schedule.skipConfirmed && state?.call_log_state === "provisional") {
+      // ISync (or the window) already confirmed the call; ISync keeps reporting its later versions.
+      result.state = "already_confirmed";
+      return await finish();
+    }
     const startedAt = state?.started_at ?? new Date(now().getTime() - 24 * 60 * 60_000);
     const dateFrom = new Date(startedAt.getTime() - CALL_LOG_REFRESH_LOOKBACK_MS);
 
@@ -392,7 +430,7 @@ export async function runCallLogRefreshJob(
     result.records = records.length;
 
     if (!records.length) {
-      const wait = CALL_LOG_REFRESH_RETRY_DELAYS_MS[attempt - 1];
+      const wait = schedule.retryDelaysMs[attempt - 1];
       if (wait === undefined) {
         // The reconcile window covers a record the provider publishes later.
         result.state = "not_published";

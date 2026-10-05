@@ -1,4 +1,4 @@
-import { ringCentralRequest, RingCentralApiError } from "../ringcentral/client";
+import { ringCentralRequest, RingCentralApiError, type RingCentralRequestOptions } from "../ringcentral/client";
 
 /**
  * All-direction Detailed Call Log page fetch. Deliberately separate from the
@@ -90,7 +90,8 @@ export type CallLogSyncPage = {
 
 export type CallLogSyncFetcher = (input: CallLogSyncInput) => Promise<CallLogSyncPage>;
 
-export async function fetchCallLogSync(input: CallLogSyncInput): Promise<CallLogSyncPage> {
+/** `options` picks the rate-gate lane; the minute ISync lane waits less for a Heavy slot than the reconcile. */
+export async function fetchCallLogSync(input: CallLogSyncInput, options: RingCentralRequestOptions = {}): Promise<CallLogSyncPage> {
   const query = new URLSearchParams(
     input.syncType === "FSync"
       ? {
@@ -104,6 +105,8 @@ export async function fetchCallLogSync(input: CallLogSyncInput): Promise<CallLog
   const payload = await ringCentralRequest(
     "GET",
     `/restapi/v1.0/account/~/call-log-sync?${query.toString()}`,
+    undefined,
+    options,
   );
   return parseCallLogSyncPayload(payload);
 }
