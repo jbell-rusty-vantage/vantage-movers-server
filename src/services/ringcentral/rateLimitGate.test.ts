@@ -8,6 +8,7 @@ import {
   createMongoRingCentralRateGate,
   decideGate,
   providerRetryAfterMs,
+  recordRingCentralThrottle,
   RingCentralGateDeniedError,
   ringCentralGateConfig,
   ringCentralGateGroup,
@@ -79,7 +80,6 @@ test("light lane budget: 40/min for high priority, 10/min for low (the SMS safet
 
 test("light lane honours Retry-After: a provider 429 naming the Light group closes it for every Light caller", async () => {
   const provider = fakeGate([]);
-  const { recordRingCentralThrottle } = await import("./rateLimitGate");
   await recordRingCentralThrottle("/restapi/v1.0/account/~/extension/101/message-sync?syncType=ISync", {
     retryAfterMs: 60_000,
     headerGroup: "Light",
