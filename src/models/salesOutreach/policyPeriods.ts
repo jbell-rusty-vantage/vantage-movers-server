@@ -1,5 +1,9 @@
 import { Schema } from "mongoose";
-import { SALES_OUTREACH_TIME_BASES, SALES_OUTREACH_WORKFLOWS } from "../../config/domain/salesOutreach";
+import {
+  SALES_OUTREACH_PERIOD_START_KINDS,
+  SALES_OUTREACH_TIME_BASES,
+  SALES_OUTREACH_WORKFLOWS,
+} from "../../config/domain/salesOutreach";
 import { at, date, defineCsiModel, enumeration, index, oid, revision, str, text, unique } from "../salesIntelligence/common";
 
 /**
@@ -22,6 +26,8 @@ export const SalesOutreachPolicyPeriodSchema = new Schema(
     policy_version: str,
     activation_boundary: at,
     workflow: enumeration(SALES_OUTREACH_WORKFLOWS),
+    /** Selects the engine's start-date rules (intake arrival, P05f transition, P10a activation). */
+    start_kind: enumeration(SALES_OUTREACH_PERIOD_START_KINDS),
     /** Accepted raw Granot priority, or null for an intake default / unknown (P05e). */
     priority: text,
     priority_source_ref: text,

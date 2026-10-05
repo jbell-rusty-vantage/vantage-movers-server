@@ -170,6 +170,14 @@
     {
       "path": "/api/cron/sales-intelligence-webhook-subscription",
       "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/sales-outreach-lead-changes",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sales-outreach-revision-reconcile",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
