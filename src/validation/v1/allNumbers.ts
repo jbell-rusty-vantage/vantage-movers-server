@@ -147,6 +147,11 @@ export const accountDtoSchema = z
     link_revision: z.number().int().min(1).nullable(),
     suggestion: z.object({ agent_id: csiIdSchema, agent_name: z.string() }).strict().nullable(),
     can_message: z.boolean(),
+    /**
+     * Additive to CONTRACT §4.5: the channels the Owner's Message can use for this User now (empty when
+     * `can_message` is false), in preference order. The client offers these instead of guessing.
+     */
+    message_channels: z.array(z.enum(["team_messaging", "pager"])),
   })
   .strict();
 export type AccountDto = z.infer<typeof accountDtoSchema>;

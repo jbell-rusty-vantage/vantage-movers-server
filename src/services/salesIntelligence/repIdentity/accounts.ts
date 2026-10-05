@@ -12,6 +12,8 @@ import { displayPhone } from "../../numberActivity/allNumbers";
 import { CsiError, type CsiActor } from "../auth";
 import { resolvePolicy } from "../policy";
 import { appendCsiAudit, duplicateKey, executeCsiCommand, payloadHash } from "../transactions";
+import { publishOutreachLive } from "../../salesOutreach/live/publish";
+import { enqueueDeskResyncForAgents } from "../../salesOutreach/subjects/agentWake";
 import { proposeRepLinks } from "./commands";
 import { assertNoRepOverlap, loadRepDirectory, lockRepExtension, proposeRepCandidates } from "./propose";
 import { loadDirectoryAccounts, toRepLinkDto, type DirectoryUserSource } from "./reads";
@@ -57,26 +59,34 @@ export function strongestCandidate(extension: { id: string; type: string; name?:
   return null;
 }
 
-/** Mirrors `nudges/eligibility.ts` without its per-send checks: could the Owner's Message reach this User now? */
-export function canMessage(input: {
+type MessageInput = {
   extension: { id: string; type: string; status?: string | null; extension_number?: string | null } | null;
   link: Pick<LinkRow, "status" | "role_kind" | "nudge_channels_allowed" | "rc_team_messaging_person_id"> | null;
   account: string;
   nudgesOn: boolean;
   config: ReturnType<typeof csiNudgeConfiguration> | null;
-}): boolean {
+};
+
+/**
+ * Mirrors `nudges/eligibility.ts` without its per-send checks: the channels the Owner's Message can
+ * use for this User now (Team Messaging first), empty when it cannot reach the User.
+ */
+export function messageChannels(input: MessageInput): Array<"team_messaging" | "pager"> {
   const { extension, link, config } = input;
-  if (!input.nudgesOn || !config || !extension || extension.type !== "User" || extension.status !== "Enabled") return false;
-  if (!config.account || config.account !== input.account || !config.senderExtension || !config.senderPerson || config.senderExtension === extension.id) return false;
+  if (!input.nudgesOn || !config || !extension || extension.type !== "User" || extension.status !== "Enabled") return [];
+  if (!config.account || config.account !== input.account || !config.senderExtension || !config.senderPerson || config.senderExtension === extension.id) return [];
   const reviewedSalesRep = link?.status === "reviewed" && link.role_kind === "sales_rep" ? link : null;
   const person = reviewedSalesRep?.rc_team_messaging_person_id ?? null;
   const pager = Boolean(extension.extension_number && /^\d{1,7}$/.test(extension.extension_number) && /^\d{1,7}$/.test(config.senderExtensionNumber));
-  let channels: string[] = [];
+  let channels: Array<"team_messaging" | "pager"> = [];
   if (person && config.channels.team_messaging) channels.push("team_messaging");
   if (pager && config.channels.pager) channels.push("pager");
   if (reviewedSalesRep) channels = channels.filter((channel) => (reviewedSalesRep.nudge_channels_allowed ?? []).includes(channel));
-  return channels.length > 0;
+  return channels;
 }
+
+/** Could the Owner's Message reach this User now? */
+export const canMessage = (input: MessageInput): boolean => messageChannels(input).length > 0;
 
 async function nudgeContext() {
   const nudgesOn = csiFlag("ENABLED") && csiFlag("NUDGE_ENABLED");
@@ -123,7 +133,10 @@ export async function readAccounts(): Promise<AccountsDto> {
         link_id: reviewed ? String(reviewed._id) : null,
         link_revision: reviewed?.revision ?? null,
         suggestion: reviewed ? null : proposed ? { agent_id: String(proposed.agent_id), agent_name: proposed.agent_name_snapshot } : strongestCandidate(extension, agents),
-        can_message: canMessage({ extension, link: reviewed, account: entry.rc_account_id, nudgesOn, config }),
+        ...(() => {
+          const channels = messageChannels({ extension, link: reviewed, account: entry.rc_account_id, nudgesOn, config });
+          return { can_message: channels.length > 0, message_channels: channels };
+        })(),
       });
     }
   }
@@ -144,6 +157,7 @@ export async function readAccounts(): Promise<AccountsDto> {
       link_revision: link.revision,
       suggestion: null,
       can_message: false,
+      message_channels: [],
     });
   }
   const takenAt = directory.map((entry) => entry.evidence.taken_at).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
@@ -166,6 +180,8 @@ async function accountOf(extensionId: string): Promise<string | null> {
 }
 
 export const ACCOUNT_AGENT_COMMAND = "account_agent";
+type DeskWake = { subject_ids: string[]; agent_ids: string[] };
+const NO_DESK_WAKE: DeskWake = { subject_ids: [], agent_ids: [] };
 const DEFAULT_NUDGE_CHANNELS = ["team_messaging", "pager"];
 
 /**
@@ -179,6 +195,9 @@ const DEFAULT_NUDGE_CHANNELS = ["team_messaging", "pager"];
  *   Message channels. The same Agent and role is a no-op.
  * - Disconnect (`agent_id: null`): the current link ends now.
  * `link_revision`, when given, must be the current reviewed link's revision.
+ * - Desk side effect (IMPL-01): in the same transaction, every open desk subject the old or the new
+ *   Agent receives or is assigned is re-synced (`salesOutreach/subjects/agentWake.ts`), so its desk
+ *   assignment follows the link at once; after commit the desk live stream is told.
  */
 export async function commandAccountAgent(input: { actor: CsiActor; extension_id: string; body: AccountAgentCommand; idempotency_key?: string }) {
   if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED");
@@ -191,8 +210,9 @@ export async function commandAccountAgent(input: { actor: CsiActor; extension_id
     .sort({ effective_from: -1, _id: -1 }).lean();
   const idempotency_key = input.idempotency_key
     ?? `accounts-agent:${account}:${extensionId}:${latest ? `${String(latest._id)}:${latest.revision}` : "none"}:${payloadHash(body).slice(0, 32)}`;
+  let desk: DeskWake = NO_DESK_WAKE;
   try {
-    await executeCsiCommand({
+    const { response } = await executeCsiCommand({
       actor: input.actor,
       command: ACCOUNT_AGENT_COMMAND,
       idempotency_key,
@@ -217,12 +237,17 @@ export async function commandAccountAgent(input: { actor: CsiActor; extension_id
           await current.save({ session });
           await audit(current, prior, "rep.account_ended");
         };
+        // The desk assigns a Lead only while its receiver has a reviewed sales_rep link: re-sync the Agents' subjects.
+        const resync = async (agentIds: Array<string | null>): Promise<DeskWake> => {
+          const ids = agentIds.filter((id): id is string => Boolean(id));
+          return { subject_ids: await enqueueDeskResyncForAgents(ids, `account:${String(context.command_id)}`, session, now), agent_ids: ids };
+        };
         if (body.agent_id === null) {
           await end("Disconnected by the Owner");
-          return { action: current ? "disconnected" : "unchanged", link_id: null };
+          return { action: current ? "disconnected" : "unchanged", link_id: null, desk: current ? await resync([String(current.agent_id)]) : NO_DESK_WAKE };
         }
         const role = body.role ?? reviewed?.role_kind ?? "sales_rep";
-        if (reviewed && String(reviewed.agent_id) === body.agent_id && reviewed.role_kind === role) return { action: "unchanged", link_id: String(reviewed._id) };
+        if (reviewed && String(reviewed.agent_id) === body.agent_id && reviewed.role_kind === role) return { action: "unchanged", link_id: String(reviewed._id), desk: NO_DESK_WAKE };
         const directory = await loadRepDirectory(account, session);
         const extension = directory.snapshot?.extensions.find((e) => e.id === extensionId);
         const agent = directory.agents.find((a) => String(a._id) === body.agent_id);
@@ -247,14 +272,17 @@ export async function commandAccountAgent(input: { actor: CsiActor; extension_id
         });
         await row.save({ session });
         await audit(row, null, "rep.account_connected");
-        // Call attribution reads the effective link at each call's time, so a connection needs no recomputation job.
-        return { action: reviewed ? "changed" : "connected", link_id: String(row._id) };
+        // Call attribution reads the effective link at each call's time; only the desk assignment needs a re-sync.
+        return { action: reviewed ? "changed" : "connected", link_id: String(row._id), desk: await resync([current ? String(current.agent_id) : null, String(agent._id)]) };
       },
     });
+    desk = (response as { desk?: DeskWake }).desk ?? NO_DESK_WAKE;
   } catch (error) {
     if (duplicateKey(error)) throw new CsiError("IDENTITY_BLOCKED");
     throw error;
   }
+  if (desk.subject_ids.length || desk.agent_ids.length)
+    await publishOutreachLive({ topic: "outreach_desk", subject_ids: desk.subject_ids, agent_ids: desk.agent_ids, cause: "command" });
   const accounts = await readAccounts();
   return accounts.accounts.find((entry) => entry.extension_id === extensionId) ?? null;
 }
