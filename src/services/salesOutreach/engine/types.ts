@@ -375,6 +375,9 @@ export interface EngineInitialResponseState {
 }
 
 export interface EngineQuotedState {
+  /** The governing selected/default date (preserved even when it is later closed, P04c). */
+  selected_date: BusinessDate | null;
+  /** First working date on or after `selected_date`. */
   first_required_date: BusinessDate | null;
   basis: "human_selected" | "next_working_date_default" | "activation_active_schedule";
   plan_id: string | null;
