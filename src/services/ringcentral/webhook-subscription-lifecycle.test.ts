@@ -7,6 +7,7 @@ import { buildRingCentralTelephonyEventFilters } from "./webhook-subscriptions";
 import {
   applyAllDirectionSubscriptionPlan,
   classifySubscriptions,
+  sameFilterSet,
   DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS,
   ensureAllDirectionSubscription,
   parseSubscriptionRecord,
@@ -103,6 +104,16 @@ test("classification: owned+matching managed by health; owned inbound-only and f
   assert.deepEqual(classified.owned_other.map((r) => r.id), ["owned-inbound"]);
   assert.deepEqual(classified.foreign_same_address.map((r) => r.id), ["foreign-same"]);
   assert.deepEqual(classified.foreign_other.map((r) => r.id), ["foreign-other"]);
+});
+
+test("classification: a filter echoed with the literal account id matches the ~ form the app builds", () => {
+  const echoed = ALL.map((f) => f.replace("/account/~/", "/account/62948571023/"));
+  assert.notDeepEqual(echoed, ALL, "the fixture must exercise the account-id spelling");
+  assert.equal(sameFilterSet(echoed, ALL), true);
+  assert.equal(sameFilterSet([...echoed, "/restapi/v1.0/account/~/extension/1/message-store?type=SMS"], ALL), false);
+  const classified = classifySubscriptions({ records: [record({ id: "owned-echoed", eventFilters: echoed })], ownedIds: new Set(["owned-echoed"]), address: ADDRESS, eventFilters: ALL, now: NOW });
+  assert.deepEqual(classified.owned_matching.map((m) => m.record.id), ["owned-echoed"]);
+  assert.deepEqual(classified.owned_other, []);
 });
 
 test("plan/apply: noop when healthy, create when none owned, foreign same-address subscription is reported and untouched", async () => {

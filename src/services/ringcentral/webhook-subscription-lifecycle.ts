@@ -261,10 +261,19 @@ export function subscriptionHealth(record: SubscriptionRecord, now: Date, renewW
   return "active";
 }
 
+/**
+ * RingCentral echoes a filter created as `/restapi/v1.0/account/~/…` back as `/restapi/v1.0/account/<account id>/…`,
+ * so the two spellings name the same subscription filter (the owned `calls` subscription created on
+ * 2026-09-24 reads back with the literal account id). Compare them on the `~` form.
+ */
+export function normalizeEventFilter(filter: string): string {
+  return filter.trim().replace(/^(\/restapi\/v1\.0\/account\/)\d+(\/)/, "$1~$2");
+}
+
 export function sameFilterSet(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
-  const sorted = [...a].sort();
-  return [...b].sort().every((v, i) => v === sorted[i]);
+  const sorted = a.map(normalizeEventFilter).sort();
+  return b.map(normalizeEventFilter).sort().every((v, i) => v === sorted[i]);
 }
 
 export type Classified = {
