@@ -1,4 +1,5 @@
 import type { ClientSession } from "mongoose";
+import type { SalesOutreachConfigurationInput } from "../../../validation/v1/salesOutreach";
 import type { JobInput } from "../../salesIntelligence/jobs";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import type { DeskPeriodRow, DeskSubjectRow } from "../subjects/store";
@@ -148,7 +149,7 @@ export function periodRow(subjectId: string, overrides: Partial<DeskPeriodRow> =
 }
 
 /** The FINAL-01 cadence in the persisted encoding (test copy; `ops/lib/sales-outreach-final01.test.ts` proves the installer's equals it). */
-export const TEST_FINAL01_CADENCE = {
+export const TEST_FINAL01_CADENCE: NonNullable<SalesOutreachConfigurationInput["cadence"]> = {
   policy_version: "final-policy-2026-10-03-v1",
   approval_ref: "owner-session-2026-10-03-FINAL-01",
   timezone: "America/New_York",
@@ -196,16 +197,18 @@ export const TEST_FINAL01_CADENCE = {
   move_date_rule: "review_label_only",
   lead_eligibility_rule: "no_sync_viable_duplicates_excluded",
   precedence_rule: "closure_restriction_schedule_priority",
-} as const;
+};
 
 export const TEST_AGENT_A = "a".repeat(24);
 export const TEST_AGENT_B = "b".repeat(24);
 
 /** A complete FINAL-01-like configuration value with the given controls on (roster: agents A and B). */
-export function completeConfigurationInput(controls: Partial<Record<"desk_enabled" | "cadence_shadow_enabled" | "cadence_enforcement_enabled" | "rep_sms_capture_enabled" | "goal_metrics_enabled", boolean>> = {}) {
+export function completeConfigurationInput(
+  controls: Partial<Record<"desk_enabled" | "cadence_shadow_enabled" | "cadence_enforcement_enabled" | "rep_sms_capture_enabled" | "goal_metrics_enabled", boolean>> = {},
+): SalesOutreachConfigurationInput & Required<Pick<SalesOutreachConfigurationInput, "controls" | "cadence" | "evidence" | "goals">> {
   return {
     controls: { desk_enabled: true, ...controls },
-    cadence: structuredClone(TEST_FINAL01_CADENCE) as unknown as Record<string, unknown>,
+    cadence: structuredClone(TEST_FINAL01_CADENCE),
     evidence: {
       qualifying_call_rule: "terminal_call_log_attempt",
       goal_rep_rule: "reviewed_initiator_only",

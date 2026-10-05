@@ -199,8 +199,15 @@ export async function appendCsiAudit(
     target_id: string;
     revision: number;
     happened_at?: Date;
-    /** Retained writers only; stored rows also carry the retired `outreach`, `followup`, `analysis` and `restriction` kinds. */
+    /**
+     * Retained writers only; stored rows also carry the retired `analysis` kind. The Sales Outreach
+     * Desk commands write `outreach` (assignment), `followup` (Quoted date / callback) and
+     * `restriction` (P06c add/confirm/lift) — kinds the stored enum has always accepted.
+     */
     kind:
+      | "outreach"
+      | "followup"
+      | "restriction"
       | "number"
       | "review"
       | "policy"
