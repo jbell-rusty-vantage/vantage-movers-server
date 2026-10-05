@@ -75,3 +75,57 @@ The apply (`pnpm outreach:enrollment apply --target=vantagemovers --run-key=back
 - Evaluate backlog at 18:14Z: 1,522 completed, 68 pending, 782 projections (one per subject), 0 dead letters; the earlier ~12/min estimate was the first minutes only. Exposure flips from `shadow` to `enforcement` as each projection is re-evaluated (policy-fingerprint sweep + due instants).
 - Today's rep-day rows still report `count_scope: all_outbound` (6 reps, 203 confirmed outbound calls); the scope narrows to `eligible_new_quoted` on the recount that follows the activation day.
 - Still off/open: nothing on the server. Admin `/outreach-desk` not built; the review-list policy decisions (legacy_unknown, granot_created without priority) are the user's/Owner's.
+
+## 12. S4 server reads + admin `/outreach-desk` deployed (18:40–19:10Z)
+
+**Server.**
+- Gates on `feat/outreach-desk@5049b662` (= `main@0984e759` + S4):
+  - `pnpm typecheck` and `pnpm lint` exit 0.
+  - Full suite (`--test-concurrency=2`): 3269 tests, 3130 pass, 1 fail, 138 skipped. The failure is the pre-existing `salesIntelligence/attachment/wiring.test.ts` Mongo buffering timeout.
+  - `pnpm test:outreach:replica`: all six proofs PASS (csi01).
+  - `validate.mjs`: passed (97 files, 302 links).
+- Merged `--no-ff` as **`main@03b4710c`**, pushed 18:42Z. Vercel Production run **37357915254** succeeded 18:53Z.
+- `GET /health` 200. The server stamped `03b4710c` at 18:55:00Z (`dpl_BhMXcG5UgznZ2cyufLMZ9276K5Sv`).
+- Read-only Mongo check (`vantagemovers`), 20 minutes after the deploy:
+  - jobs completed: `outreach_contact_change` 60, `outreach_evaluate` 34, `attachment_refresh` 30, `outreach_rep_day` 21, `rep_sms_sync` 14, `outreach_lead_change` 7;
+  - **0 dead letters** (total and since);
+  - 783 subjects and 783 projections (one Lead admitted by intake since 18:14Z).
+- S4 needs nothing re-run. Configuration revision 5 stays, and S4 adds no env name, cron, job stage, collection or index.
+
+**Admin.**
+- S4 consumers committed as `d70db30` on admin `feat/outreach-desk` (evidence: admin `docs/sales-outreach-desk/workspace/evidence/S4-ADMIN.md`):
+  - the DTO mirror of the new fields;
+  - fixtures re-copied from `dto-examples/`;
+  - My goal card counts;
+  - Lead age from `schedule_day`;
+  - sidebar and frames gated by `permitted_views`;
+  - the New lead schedule in the lead panel;
+  - history from/to names.
+- Gates:
+  - `pnpm typecheck` exit 0;
+  - `pnpm lint` 11 errors / 7 warnings, identical to the baseline in A1/A2 and none in desk files;
+  - `pnpm test` 756 tests, 741 pass, 0 fail, 15 skipped;
+  - `pnpm build` green (`/outreach-desk` built);
+  - the packet mirror validates and its manifest is byte-identical to the server copy.
+- No new production env name; `OUTREACH_DESK_MOCK` is dev-only and never set in Vercel.
+- Merged `--no-ff` as **admin `main@68ac287`**. Vercel Production run **37359428234** succeeded.
+
+**Production smoke** (19:00Z). Server reads signed as the Owner, exactly as the BFF signs, and parsed with the admin's Zod schemas:
+- `GET /capabilities` 200: configuration revision **5**; `desk_enabled`, `goal_metrics_enabled`, `rep_sms_capture_enabled`, `cadence_shadow_enabled`, `cadence_enforcement_enabled`, `intake_admission_enabled` all **true**; `permitted_views` = team, my, activity, settings, numbers, accounts; `cadence_summary.policy_version` `final-policy-2026-10-03-v1`.
+- `GET /team` 200: business day 2026-10-05, exposure `enforcement`, 12 reps, 10 attention rows; rows carry `overdue_leads` / `calls_due_today` / `sms_due_today`.
+- `GET /rep-days` 200 (12 rows). `GET /queue` 200 (25 rows, `has_more`; New rows carry `schedule_day`). `GET /outreach/:id` 200.
+- `GET /daily-operations` 200. `GET /sales-intelligence/numbers` 200.
+- Admin `/`, `/outreach-desk` and `/daily` redirect an anonymous visitor to `/login`, as designed.
+- **Not done:** a signed-in browser walk (the session has no Owner password). The Manager and Rep users were not seeded (no Owner request today).
+
+**Observations (not defects; fix-forward candidates).**
+- Six of the 12 reps read `actual_basis: pending` with `actual_confirmed: null` on 2026-10-05, and every row reports `coverage.state: partial` / `coverage_incomplete`.
+  - These six reps have no outbound calls credited today.
+  - `call_log_all_directions` `known_complete_through` is capped by the oldest provisional call, so the day is never "complete" while a call awaits confirmation.
+  - The desk shows "Pending" rather than 0 for them, which is the honesty rule. Showing "no activity" for a rep with no calls while coverage is partial would be a server rule change.
+- `distinct_overdue_leads` read 0 at 15:00 ET, before today's 20:00 ET New-call deadline. First real overdue labels are expected after 20:00 ET.
+
+**Open (unchanged, §9):**
+- 1,834 `legacy_unknown` Leads on the review list;
+- 226 `granot_lead_created` Leads without a priority;
+- priority codes "2" and "9" (369 Leads; left as is by the user's decision).
