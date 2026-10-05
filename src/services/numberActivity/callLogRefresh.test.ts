@@ -3,11 +3,13 @@ import { test } from "node:test";
 import mongoose from "mongoose";
 import { RingCentralApiError } from "../ringcentral/client";
 import {
+  CALL_LOG_REFRESH_ISYNC_RETRY_DELAYS_MS,
   CALL_LOG_REFRESH_MAX_AGE_MS,
   CALL_LOG_REFRESH_RETRY_DELAYS_MS,
   CALL_LOG_REFRESH_THROTTLE_JITTER_MS,
   drainCallLogRefreshJobs,
   callLogRefreshDedupeKey,
+  callLogRefreshSchedule,
   callLogRefreshSubjectKey,
   deliveryCarriesTerminalStatus,
   fetchCallLogRecordsBySession,
@@ -281,4 +283,62 @@ test("drain: stops at the first throttle instead of claiming every due job just 
   assert.equal(summary.retried, 1);
   assert.equal(summary.throttled, true);
   assert.equal(h.calls.fetch.length, 1);
+});
+
+test("RINGCENTRAL-CAPTURE §4.3 schedule: with Call Log Sync on, due +5 min and retried after 5 and 15 min (inside the 45-min expiry); otherwise unchanged", () => {
+  const on = callLogRefreshSchedule("on");
+  assert.equal(on.delayMs, 5 * 60_000);
+  assert.deepEqual([...on.retryDelaysMs], [5 * 60_000, 15 * 60_000]);
+  assert.equal(on.skipConfirmed, true);
+  assert.ok(on.delayMs + on.retryDelaysMs.reduce((a, b) => a + b, 0) < CALL_LOG_REFRESH_MAX_AGE_MS);
+  for (const mode of ["off", "shadow"] as const) {
+    const schedule = callLogRefreshSchedule(mode);
+    assert.equal(schedule.delayMs, 90_000);
+    assert.deepEqual([...schedule.retryDelaysMs], [...CALL_LOG_REFRESH_RETRY_DELAYS_MS]);
+    assert.equal(schedule.skipConfirmed, false);
+  }
+});
+
+test("narrowed refresh: with Call Log Sync on, a call ISync already confirmed (provisional) completes already_confirmed without a provider read", async () => {
+  const h = harness({ fetch: async () => assert.fail("no provider read for a confirmed row") });
+  h.deps.syncMode = "on";
+  h.deps.loadState = async () => ({
+    telephony_session_id: "s-r",
+    started_at: new Date("2026-09-23T14:30:00.000Z"),
+    provider_account_id: "800000000001",
+    account_parties_terminal: true,
+    call_log_state: "provisional",
+  });
+  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
+  assert.equal(outcome.status, "completed");
+  assert.equal(h.calls.complete[0]!.result.state, "already_confirmed");
+});
+
+test("narrowed refresh: with Call Log Sync off, a provisional row is still re-read (original behaviour)", async () => {
+  const h = harness({ fetch: async () => [inboundConnectedCallLog("s-r")] });
+  h.deps.syncMode = "off";
+  h.deps.loadState = async () => ({
+    telephony_session_id: "s-r",
+    started_at: new Date("2026-09-23T14:30:00.000Z"),
+    provider_account_id: "800000000001",
+    account_parties_terminal: true,
+    call_log_state: "provisional",
+  });
+  await runCallLogRefreshJob(h.jobId, h.deps);
+  assert.equal(h.calls.fetch.length, 1);
+  assert.equal(h.calls.complete[0]!.result.state, "applied");
+});
+
+test("narrowed refresh: an unconfirmed session with Call Log Sync on retries after 5, then 15 minutes, then completes not_published", async () => {
+  for (const [index, wait] of CALL_LOG_REFRESH_ISYNC_RETRY_DELAYS_MS.entries()) {
+    const h = harness({ attempts: index + 1, fetch: async () => [] });
+    h.deps.syncMode = "on";
+    const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
+    assert.equal(outcome.status, "retry");
+    assert.equal(h.calls.fail[0]!.resumeAt?.getTime(), NOW.getTime() + wait);
+  }
+  const last = harness({ attempts: CALL_LOG_REFRESH_ISYNC_RETRY_DELAYS_MS.length + 1, fetch: async () => [] });
+  last.deps.syncMode = "on";
+  await runCallLogRefreshJob(last.jobId, last.deps);
+  assert.equal(last.calls.complete[0]!.result.state, "not_published");
 });

@@ -425,3 +425,44 @@ test("job recovery fences retired stages first and keeps recovering when the swe
     process.env = saved;
   }
 });
+
+test("RINGCENTRAL-CAPTURE §4 minute ISync route: cron auth, CAPTURE_CALL_LOG gate, service skip reasons, bounded 500, every-minute registration", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  let enabled = false;
+  let outcome: "outside" | "ran" | "throw" = "outside";
+  const calls: string[] = [];
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {
+      calls.push("connect");
+    },
+    flag: ((name: string) => name === "CAPTURE_CALL_LOG" && enabled) as never,
+    runCallLogIsyncLane: async () => {
+      calls.push("isync");
+      if (outcome === "throw") throw new Error('{"errorCode":"CMN-301","message":"provider body must not leak"}');
+      return { skipped: outcome === "outside", skip_reason: outcome === "outside" ? "outside_staffed_hours" : null, records: 2 } as never;
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      assert.equal((await call(CSI_CRON_PATHS.callLogIsync)).status, 401);
+      assert.deepEqual((await call(CSI_CRON_PATHS.callLogIsync, auth)).body, { ok: true, skipped: true, reason: "disabled" });
+      assert.deepEqual(calls, [], "a disabled route never connects");
+      enabled = true;
+      const outside = await call(CSI_CRON_PATHS.callLogIsync, auth);
+      assert.equal(outside.body.reason, "outside_staffed_hours");
+      outcome = "ran";
+      const ran = await call(CSI_CRON_PATHS.callLogIsync, auth);
+      assert.equal(ran.body.skipped, false);
+      outcome = "throw";
+      const failed = await call(CSI_CRON_PATHS.callLogIsync, auth);
+      assert.equal(failed.status, 500);
+      assert.deepEqual(failed.body, { ok: false, error: "Call Log ISync failed" });
+    });
+  } finally {
+    process.env = saved;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+  assert.equal(manifest.crons.find((c) => c.path === CSI_CRON_PATHS.callLogIsync)?.schedule, "* * * * *");
+});
