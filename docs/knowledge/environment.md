@@ -117,8 +117,8 @@ Flags are read by `csiFlag` in `src/config/domain/salesIntelligence.ts`: `SALES_
 | Name | What it gates |
 | --- | --- |
 | `SALES_INTELLIGENCE_ENABLED` | Owner Numbers/Accounts routes, MCP history reads, rebuild drain, retention. |
-| `SALES_INTELLIGENCE_CAPTURE_WEBHOOK` | Webhook fan-out, receipt recovery, capture drain, `call_log_refresh` drain, subscription cron. |
-| `SALES_INTELLIGENCE_CAPTURE_CALL_LOG` | Call Log reconcile and nightly sweep. |
+| `SALES_INTELLIGENCE_CAPTURE_WEBHOOK` | Webhook fan-out, receipt recovery, capture drain, `call_log_refresh` and `rep_sms_sync` drains, subscription cron. Rep SMS capture (and the `rep_sms` subscription step) is additionally gated by the desk control `controls.rep_sms_capture_enabled`, never by an env flag. |
+| `SALES_INTELLIGENCE_CAPTURE_CALL_LOG` | Call Log reconcile, nightly sweep and the staffed-hours minute ISync lane. |
 | `SALES_INTELLIGENCE_DIRECTORY_SYNC` | Daily directory snapshot. |
 | `SALES_INTELLIGENCE_ATTACHMENT_REFRESH` | Number↔Lead attachment refresh, Lead attachment wake-ups, attachment commands. |
 | `SALES_INTELLIGENCE_AUTO_ATTACH` | Sole-match automatic attach. Off keeps Owner commands only. |
@@ -134,7 +134,7 @@ Other Sales Intelligence settings:
 | Name | Default | Secret | Owner and purpose |
 | --- | --- | --- | --- |
 | `SALES_INTELLIGENCE_DEPLOYMENT_ID` | none | no | `csiDataset()`: dataset stamp on jobs and state. Required wherever CSI writes. |
-| `SALES_INTELLIGENCE_CALL_LOG_SYNC` | `off` | no | `reconcileCallLog.ts`: `on`/`true` drives account Call Log Sync, `shadow` counts only. |
+| `SALES_INTELLIGENCE_CALL_LOG_SYNC` | `off` | no | `reconcileCallLog.ts`: `on`/`true` drives account Call Log Sync, `shadow` counts only. `on` also runs the staffed-hours minute ISync lane (`callLogIsyncLane.ts`) and narrows `call_log_refresh` to sessions ISync has not confirmed. |
 | `SALES_INTELLIGENCE_CALL_LOG_ROLLING_LOOKBACK_MINUTES` | `720` (floor 720) | no | Cold-start reach and outer bound on a repaired gap. |
 | `SALES_INTELLIGENCE_CALL_LOG_SAFETY_LOOKBACK_MINUTES` | `90` | no | How far the incremental start may reach back. |
 | `SALES_INTELLIGENCE_CALL_LOG_OVERLAP_MINUTES` | `15` | no | Cursor overlap. |

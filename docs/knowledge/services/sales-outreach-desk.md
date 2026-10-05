@@ -94,3 +94,36 @@ Models in `src/models/salesOutreach/` use `defineCsiModel` (strict, `autoIndex`/
 **Shared with S1**: `validateQuotedSelection` (P04c command validation), `BusinessCalendar` (DST-safe New York dates via `Intl`; next day by calendar arithmetic, never +24 h), `resumeInstant` (P06c), `cadenceConfigurationValueSchema`.
 
 Tests: one suite per contract fixture (`engine/*.test.ts`), END-TO-END-RUN §3 rows as named tests (`endToEndScenarios.test.ts`), DST/midnight and determinism cases. Evidence: `docs/sales-outreach-desk/workspace/evidence/S2.md`.
+
+## S3 — capture and goals
+
+Phase A (SRV-5, RINGCENTRAL-CAPTURE §3–§7, §9) is built; phase B (SRV-6: `sales_outreach_contact_events` derivation and `sales_outreach_rep_day_projections`) is not. Evidence: `docs/sales-outreach-desk/workspace/evidence/S3.md`.
+
+### Calls: minute ISync confirmation (M1)
+
+- `numberActivity/callLogIsyncLane.ts` — cron `/api/cron/sales-intelligence-call-log-isync` (`* * * * *`). Runs only with `SALES_INTELLIGENCE_CAPTURE_CALL_LOG=true` and `SALES_INTELLIGENCE_CALL_LOG_SYNC=on`, while New York time is in [07:45, 20:30) (DST-safe through the engine calendar), and not on the 5-minute reconcile's own minutes (UTC minute ≡ 3 mod 5), where the reconcile's sync step carries ISync exactly as before. One Heavy ISync with the stored token (high lane, ≤ 10 s gate wait), more pages only while full (budget 3). It shares the reconcile's state row, token, quarantine and lease; it never bootstraps a token. Outcome on the row: `isync_lane.{last_run_at,last_success_at,last_error_code,last_records,last_applied}` — `last_success_at` is the "Calls updated" input together with the last webhook receipt.
+- `numberActivity/callLogApplier.ts` — the reconcile's per-record apply, extracted unchanged and shared by both lanes; it also returns the `call_interactions` rows each batch changed.
+- `call_log_refresh` with Call Log Sync `on`: due +5 min, retried after 5 and 15 min, `already_confirmed` without a provider read once the call is in the Call Log (any `call_log_state`). 45-min expiry kept. Off/shadow keep the old schedule.
+- Desk wake seam `salesOutreach/capture/contactChangeWake.ts`: after `capture_projection` (same completion transaction) and after each ISync / window batch (own transaction), one deduplicated `outreach_contact_change` job per `(source, revision)` (`sod:contact_change:<call|sms>:<id>:<r<revision>|m<winner>>`, subject `call:<id>` / `sms:<id>`, `input_refs: [id]`). **Inert** until SRV-6 sets `OUTREACH_CONTACT_CHANGE_CONSUMER_READY = true` and registers the handler in `jobDispatch.ts`; even then it enqueues only while the persisted configuration is active with `desk_enabled` or `goal_metrics_enabled`. Never throws into capture.
+
+### Rate gate
+
+`ringcentral/rateLimitGate.ts` gained a budgeted Light lane (40/min high, 10/min low; message-store, message-sync, extension presence, subscription renew) that honours a provider `Retry-After` for `X-Rate-Limit-Group: light`. Active Calls and account presence joined the Heavy regex.
+
+### Subscriptions
+
+- 10-year `expiresIn` cap (315,360,000 s). Every create/`PUT` generates a `deliveryMode.verificationToken`, stored with `purpose` (`calls` | `rep_sms`) in `ringcentral_webhook_subscriptions`.
+- `POST /api/webhooks/ringcentral` refuses (403, nothing stored or fanned out) a delivery naming one of our token-bearing subscriptions whose `Verification-Token` header (any case) is missing or wrong. Handshakes, foreign subscriptions and our subscriptions without a stored token behave as before.
+- `rep_sms` = one `/restapi/v1.0/account/~/extension/{id}/message-store?type=SMS` filter per current reviewed `sales_rep` mailbox (`repSms/mailboxes.ts`). The daily subscription cron (`15 6 * * *`) renews it and `PUT`s it on filter drift or a missing token when `controls.rep_sms_capture_enabled`; it never creates or recreates it and never touches `calls` or foreign subscriptions. Channel health on sync-state `webhook_subscription_maintenance:rep_sms` (`last_run.error_code` null | `subscription_missing` | `expired` | `blacklisted` | `filter_drift` | `token_missing` | `no_mailboxes`).
+- Operator: `node --env-file=.env --import tsx ops/ringcentral/outreach-subscriptions.ts --target=<account id> --database=<db> [--purpose=calls|rep_sms|all] [--apply]` — dry run by default, idempotent, named target, production-writer guard on apply.
+
+### Rep SMS capture (`src/services/ringcentral/repSms/`)
+
+All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_outreach_configuration` (`repSms/gate.ts`; uninitialized/broken/unreadable ⇒ off).
+
+- `ringcentral_rep_sms_evidence` (`models/salesOutreach/repSmsEvidence.ts`, in `SALES_OUTREACH_MODEL_REGISTRY`, indexes `sod_rsms_*` built by `ops/sales-outreach/build-indexes.ts`): unique (account, owning mailbox, message id); metadata only, never a body. `status` (queued/sent/delivered/send_failed/delivery_failed/received/unknown), `credit_effect` (Sent/Delivered `credit`, Queued/unknown `none`, SendingFailed/DeliveryFailed `revoke`, inbound `history`), bounded `status_history`, `send_at` = `creationTime` (outbound), `counterpart_numbers`, `is_group`, `reviewed_rep_ref {agent_id, link_id}` at send time, `identity_state` (`reviewed` | `pending_identity`, reason `owner_not_reviewed_sales_rep` or `shared_sender` when the link's recorded numbers do not include the sender), `association_quality: unresolved` (SRV-6 resolves IMPL-07), `source_revision`.
+- Mailbox sync (`mailboxSync.ts`): lease on sync-state `rep_sms:<extensionId>`; ISync with the stored token, else a 7-day SMS FSync (FAST-TRACK history); token, `known_complete_through` (= provider `syncTime`), `message_sync.last_success_at` and `coverage_from` advance only when every record was stored. Webhook-driven runs use the high Light lane (≤ 10 s wait), the poll the low lane (no wait).
+- Webhook: a stored message-store receipt becomes one `rep_sms_sync` job per mailbox per 10-s bucket, due 2 s after the bucket (`intent.ts`), handled through `jobDispatch` and drained by job recovery. Only reviewed `sales_rep` mailboxes are synced; a 403 completes `permission_denied` (E01 not proven).
+- Safety poll: `/api/cron/sales-intelligence-rep-sms-poll` (`* * * * *`), New York [07:45, 20:30), each mailbox once per five minutes in a stable slot, skipped when synced in the last 4 minutes, stops at a throttle.
+- Coverage (`coverage.ts`): per mailbox `current` / `delayed` (> 10 min since the last good sync) / `never_synced`, `known_complete_through`, `coverage_from`; `worstMailboxCoverage` drives "SMS delayed".
+- E01 proof (read-only): `node --env-file=.env --import tsx ops/ringcentral/prove-rep-sms-access.ts --target=<account id> --database=<db> [--sent-within-minutes=N]`. Exit 0 pass, 2 fail. Never creates a subscription, never prints a token, number or body.
