@@ -368,3 +368,39 @@ test("SMS coverage (§8): never synced, current, delayed after 10 minutes; the w
   assert.equal(worstMailboxCoverage([current, delayed, never])?.extension_id, "101");
   assert.equal(worstMailboxCoverage([]), null);
 });
+
+test("END-TO-END-RUN §3: SMS sent/delivered then confirmed failure (capture)", async () => {
+  const mem = memoryEvidenceStore();
+  const map = (raw: ProviderMessage) => {
+    const m = mapProviderMessage(raw, mailboxContext());
+    assert.ok(m.ok);
+    return m.evidence;
+  };
+  const sent = await upsertRepSmsEvidence(map(message({ messageStatus: "Sent" })), { now: NOW, syncKind: "ISync" }, mem.store);
+  assert.equal(credit(classify(message({ messageStatus: "Sent" }))), 1, "one logical message, one credit");
+  await upsertRepSmsEvidence(map(message({ messageStatus: "Delivered", lastModifiedTime: "2026-10-05T14:11:00.000Z" })), { now: NOW, syncKind: "ISync" }, mem.store);
+  assert.equal(credit(classify(message({ messageStatus: "Delivered" }))), 1, "delivery does not add a second credit");
+  const failed = await upsertRepSmsEvidence(map(message({ messageStatus: "DeliveryFailed", lastModifiedTime: "2026-10-05T14:30:00.000Z" })), { now: NOW, syncKind: "ISync" }, mem.store);
+  const row = mem.rows.get(sent.id)!;
+  assert.equal(row.credit_effect, "revoke");
+  assert.equal(credit(classify(message({ messageStatus: "DeliveryFailed" }))), 0);
+  assert.equal(failed.source_revision, 3, "a new revision wakes the desk to recompute");
+  assert.deepEqual(row.status_history.map((h) => h.status), ["sent", "delivered", "delivery_failed"], "history preserved");
+  assert.equal(classify(message({ messageStatus: "DeliveryFailed" })).goal_agent_id, null, "no Call/goal change");
+});
+
+test("END-TO-END-RUN §3: unverified identity/origin or capture gap (capture)", async () => {
+  // Unverified origin: pending identity, never a guessed credit.
+  const shared = classify(message({ from: { phoneNumber: "+15550100100" } }));
+  assert.equal(shared.verification, "pending_identity");
+  assert.equal(credit(shared), 0);
+  // Capture gap: a failed sync keeps the old token and coverage, so deadlines past it read pending.
+  const prior = { message_sync: { token: "keep", sync_time: new Date("2026-10-05T14:40:00Z"), last_success_at: new Date("2026-10-05T14:40:01Z") }, known_complete_through: new Date("2026-10-05T14:40:00Z") };
+  const h = syncHarness({ state: prior, pages: [new RingCentralApiError("down", 503, "Unavailable", "/m", "GET", null)] });
+  const summary = await runRepSmsMailboxSync(MAILBOX, h.deps);
+  assert.equal(summary.error_code, "provider_request_failed");
+  assert.equal(h.writes[0]!.known_complete_through?.toISOString(), "2026-10-05T14:40:00.000Z", "coverage never advances over a gap");
+  const coverage = mailboxCoverage("101", { known_complete_through: h.writes[0]!.known_complete_through, message_sync: h.writes[0]!.message_sync }, NOW);
+  assert.equal(coverage.state, "delayed", "SMS delayed, not a false zero");
+  assert.equal(mailboxCoverage("102", null, NOW).known_complete_through, null, "never synced: no coverage at all");
+});
