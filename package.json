@@ -79,6 +79,7 @@
     "outreach:indexes": "node --env-file=.env --import tsx ops/sales-outreach/build-indexes.ts",
     "outreach:install-policy": "node --env-file=.env --import tsx ops/sales-outreach/install-approved-policy.ts",
     "outreach:enrollment": "node --env-file=.env --import tsx ops/sales-outreach/enrollment.ts",
+    "outreach:seed-pilot": "node --import tsx ops/sales-outreach/seed-synthetic-pilot.ts",
     "lint": "eslint src api ops/quality --max-warnings 0",
     "quality:install": "node ops/quality/cli.mjs install",
     "quality:uninstall": "node ops/quality/cli.mjs uninstall",

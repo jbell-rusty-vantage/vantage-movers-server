@@ -172,6 +172,10 @@
       "schedule": "15 6 * * *"
     },
     {
+      "path": "/api/cron/sales-intelligence-subscription-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/sales-outreach-lead-changes",
       "schedule": "* * * * *"
     },

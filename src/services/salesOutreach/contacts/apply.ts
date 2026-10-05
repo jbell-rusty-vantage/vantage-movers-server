@@ -112,10 +112,9 @@ export async function applyContactSources(
 ): Promise<ApplyResult> {
   const callIds = [...new Set(sources.filter((s) => s.source_kind === "call").map((s) => s.source_id))];
   const smsIds = [...new Set(sources.filter((s) => s.source_kind === "sms").map((s) => s.source_id))];
-  const [calls, sms] = await Promise.all([
-    callIds.length ? store.loadCalls(callIds, session) : Promise.resolve([]),
-    smsIds.length ? store.loadSms(smsIds, session) : Promise.resolve([]),
-  ]);
+  // Sequential on purpose: a session cannot run two operations at once inside a transaction.
+  const calls = callIds.length ? await store.loadCalls(callIds, session) : [];
+  const sms = smsIds.length ? await store.loadSms(smsIds, session) : [];
   const context = await store.loadContext(contextRequest(calls, sms), session);
   const drafts = [...calls.map((row) => deriveCallContactEvent(row, context)), ...sms.map((row) => deriveSmsContactEvent(row, context))];
   const ids = drafts.map((d) => contactEventId(d.source_kind, d.source_id));

@@ -146,10 +146,12 @@ async function main() {
   assert.ok(state?.cursor?.outreach_source_updated_at, "cursor stored");
   const { MongoLeaseStore } = await import("../../src/services/durableWork/leases.js");
   const leases = new MongoLeaseStore(getSalesIntelligenceSyncStateModel());
-  const held = await leases.acquire({ scope: "outreach_contact_calls", owner: "other", ttl_ms: 60_000, now: new Date() });
+  // Hold the lease on the sweep's clock (`now`): a lease taken on the wall clock would already look expired
+  // to a sweep running at the later synthetic instant, which would steal it.
+  const held = await leases.acquire({ scope: "outreach_contact_calls", owner: "other", ttl_ms: 60_000, now });
   assert.ok(held);
   assert.equal((await sweepContactSources("call", now, { loader })).reason, "lease_held");
-  await leases.release({ token: held, now: new Date() });
+  await leases.release({ token: held, now });
   console.log(JSON.stringify({ ok: true, database }));
 }
 

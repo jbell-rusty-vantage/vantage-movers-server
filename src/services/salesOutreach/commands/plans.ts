@@ -150,7 +150,9 @@ async function planContext(actor: OutreachActor, subjectId: string, expectedRevi
   const { policy, calendar } = requireCommandPolicy(configuration);
   const { subject } = await authorizedSubject(actor, subjectId, store, session);
   if (subject.status !== "active") throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "subject_not_open" }]);
-  const [periods, plans] = await Promise.all([store.loadPeriods(subject.id, session), store.loadPlans(subject.id, session)]);
+  // Sequential: a session runs one operation at a time inside a transaction.
+  const periods = await store.loadPeriods(subject.id, session);
+  const plans = await store.loadPlans(subject.id, session);
   const period = periods.find((p) => p.ended_at === null) ?? null;
   if (!period || period.workflow === "closed") throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "subject_not_open" }]);
   const revision = planRevisionOf(plans);

@@ -27,6 +27,7 @@ import { ensureLeadMessageToIndex } from "../models/LeadMessage";
 import { drainCallLogRefreshJobs } from "../services/numberActivity/callLogRefresh";
 import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/webhookSubscriptionCron";
 import { runRepSmsSubscriptionMaintenance } from "../services/ringcentral/repSms/subscriptionMaintenance";
+import { runSubscriptionHealthCheck } from "../services/ringcentral/subscriptionHealth";
 import { drainRepSmsSyncJobs } from "../services/ringcentral/repSms/intent";
 import { runRepSmsSafetyPoll } from "../services/ringcentral/repSms/poll";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
@@ -95,6 +96,8 @@ export type SalesIntelligenceCronRouteDeps = {
   runWebhookSubscription?: typeof runWebhookSubscriptionMaintenance;
   /** RINGCENTRAL-CAPTURE §3: `rep_sms` renew + filter reconcile, after the `calls` step (desk control gated). */
   runRepSmsSubscription?: typeof runRepSmsSubscriptionMaintenance;
+  /** RINGCENTRAL-CAPTURE §3 `ownerCoverage`: the read-only 5-minute subscription health check per channel. */
+  runSubscriptionHealth?: typeof runSubscriptionHealthCheck;
   /** RINGCENTRAL-CAPTURE §5: due `rep_sms_sync` jobs (job recovery) and the staffed-hours safety poll. */
   drainRepSmsSync?: () => Promise<unknown>;
   runRepSmsPoll?: typeof runRepSmsSafetyPoll;
@@ -112,6 +115,7 @@ export const CSI_CRON_PATHS = {
   directorySync: "/api/cron/sales-intelligence-directory-sync",
   attachmentRefresh: "/api/cron/sales-intelligence-attachment-refresh",
   webhookSubscription: "/api/cron/sales-intelligence-webhook-subscription",
+  subscriptionHealth: "/api/cron/sales-intelligence-subscription-health",
   repSmsPoll: "/api/cron/sales-intelligence-rep-sms-poll",
 } as const;
 
@@ -183,6 +187,19 @@ export function createSalesIntelligenceCronRouter(
       return res.json({ ok: true, skipped: false, summary, rep_sms: repSms });
     } catch {
       return res.status(500).json({ ok: false, error: "Webhook subscription maintenance failed" });
+    }
+  });
+  // RINGCENTRAL-CAPTURE §3 `ownerCoverage`: every 5 minutes, one read-only `GET /subscription` reports
+  // `calls` and `rep_sms` channel health on their sync-state rows. It never mutates a subscription.
+  router.all(CSI_CRON_PATHS.subscriptionHealth, requireCronAuth, async (_req, res) => {
+    if (!flag("CAPTURE_WEBHOOK")) return res.json({ ok: true, skipped: true, reason: "disabled" });
+    try {
+      await connect();
+      const summary = await (deps.runSubscriptionHealth ?? runSubscriptionHealthCheck)();
+      return res.json({ ok: true, summary });
+    } catch (error) {
+      logger.error({ msg: "sales_outreach.cron.subscription_health.failed", errorName: error instanceof Error ? error.name : "Error" });
+      return res.status(500).json({ ok: false, error: "Subscription health check failed" });
     }
   });
 

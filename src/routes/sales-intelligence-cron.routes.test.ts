@@ -504,3 +504,45 @@ test("RINGCENTRAL-CAPTURE §5 rep SMS safety poll route: cron auth, service skip
   const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
   assert.equal(manifest.crons.find((c) => c.path === CSI_CRON_PATHS.repSmsPoll)?.schedule, "* * * * *");
 });
+
+test("RINGCENTRAL-CAPTURE §3 subscription health route: cron auth, CAPTURE_WEBHOOK gate, summary, bounded 500, 5-minute registration", async () => {
+  const saved = { ...process.env };
+  process.env.CRON_SECRET = "synthetic-cron";
+  let captureOn = false;
+  let outcome: "ran" | "throw" = "ran";
+  let connects = 0;
+  const summary = {
+    started_at: "2026-10-05T12:00:00.000Z",
+    calls: { health: "ok" as const, error_name: null, subscription_id: "calls-1", expires_at: null, warnings: 0 },
+    rep_sms: { health: "filter_drift" as const, error_name: null, subscription_id: "sms-1", expires_at: null, mailboxes: 3, warnings: 0 },
+  };
+  const router = createSalesIntelligenceCronRouter({
+    connect: async () => {
+      connects += 1;
+    },
+    flag: ((name: string) => name === "CAPTURE_WEBHOOK" && captureOn) as never,
+    runSubscriptionHealth: async () => {
+      if (outcome === "throw") throw new Error('{"errorCode":"CMN-301","message":"provider body must not leak"}');
+      return summary;
+    },
+  });
+  try {
+    await withServer(router, async (call) => {
+      const auth = { authorization: "Bearer synthetic-cron" };
+      assert.equal((await call(CSI_CRON_PATHS.subscriptionHealth)).status, 401);
+      assert.deepEqual((await call(CSI_CRON_PATHS.subscriptionHealth, auth)).body, { ok: true, skipped: true, reason: "disabled" });
+      assert.equal(connects, 0, "a disabled route never connects");
+      captureOn = true;
+      assert.deepEqual((await call(CSI_CRON_PATHS.subscriptionHealth, { "x-cron-secret": "synthetic-cron" })).body, { ok: true, summary });
+      assert.equal(connects, 1);
+      outcome = "throw";
+      const failed = await call(CSI_CRON_PATHS.subscriptionHealth, auth);
+      assert.equal(failed.status, 500);
+      assert.deepEqual(failed.body, { ok: false, error: "Subscription health check failed" });
+    });
+  } finally {
+    process.env = saved;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
+  assert.equal(manifest.crons.find((c) => c.path === CSI_CRON_PATHS.subscriptionHealth)?.schedule, "*/5 * * * *");
+});

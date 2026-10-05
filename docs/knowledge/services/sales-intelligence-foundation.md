@@ -71,6 +71,7 @@ Retained stages (`CSI_JOB_STAGES`): `capture_projection`, `call_log_reconcile`, 
 | `/api/cron/sales-intelligence-call-log-sweep` | 07:40 UTC | nightly authoritative sweep (`CAPTURE_CALL_LOG`) |
 | `/api/cron/sales-intelligence-directory-sync` | 05:20 UTC | directory snapshot (`DIRECTORY_SYNC`) |
 | `/api/cron/sales-intelligence-webhook-subscription` | 06:15 UTC | renew/repair the owned all-direction subscription (`CAPTURE_WEBHOOK`; create only with `WEBHOOK_AUTO_CREATE`) |
+| `/api/cron/sales-intelligence-subscription-health` | every 5 minutes | read-only `calls` / `rep_sms` subscription health on sync-state `webhook_subscription_health:<channel>` (`CAPTURE_WEBHOOK`; never mutates; see the Sales Outreach Desk Service) |
 | `/api/cron/sales-intelligence-nudge-repair` | every 5 minutes | nudge receipt repair (`ENABLED` and `NUDGE_ENABLED`) |
 | `/api/cron/sales-intelligence-retention` | 04:30 UTC | Call activity retention (`ENABLED`) |
 

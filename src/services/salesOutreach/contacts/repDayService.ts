@@ -150,12 +150,12 @@ export async function recountRepDay(
   store: RepDayStore,
   session: ClientSession,
 ): Promise<RepDayRecount> {
-  const [events, previous, firstActivation, watermarks] = await Promise.all([
-    store.events(key, session),
-    store.readRow(key, session),
-    store.firstActivationAt(session),
-    store.watermarks(session),
-  ]);
+  // One session runs one operation at a time: parallel reads at the start of a transaction make the
+  // server refuse the second `startTransaction` (ConflictingOperationInProgress, code 117).
+  const events = await store.events(key, session);
+  const previous = await store.readRow(key, session);
+  const firstActivation = await store.firstActivationAt(session);
+  const watermarks = await store.watermarks(session);
   const fields = composeRepDayRow({
     agent_id: key.agent_id,
     business_day: key.business_day,

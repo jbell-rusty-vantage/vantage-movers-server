@@ -323,6 +323,24 @@ test('checks: pre-existing failures pass, introduced failures fail', async () =>
   assert.equal(fs.readFileSync(path.join(workspace, 'src', 'a.ts'), 'utf8'), 'BAD1\nBAD2\n', 'stash restored the edit');
 });
 
+test('checks: a failing check on a clean workspace re-runs without a stash and still reports', async () => {
+  const repo = fixture({ crlf: false });
+  const workspace = fs.mkdtempSync(path.join(sandbox, 'checks-clean-'));
+  git(workspace, ['init', '-q']);
+  git(workspace, ['config', 'core.autocrlf', 'input']);
+  fs.writeFileSync(path.join(workspace, 'check.mjs'), "console.log('src/a.ts(1,1): error TS1001: bad'); process.exit(2);\n");
+  fs.mkdirSync(path.join(workspace, 'src'));
+  fs.writeFileSync(path.join(workspace, 'src', 'a.ts'), 'BAD1\n');
+  commit(workspace, 'input');
+  const checkConfig = { ...loadRepoConfig(repo), checks: [{ name: 'typecheck', command: ['node', 'check.mjs'], files: 'none', parser: 'tsc' }] };
+  const directory = path.join(sandbox, 'check-clean-logs');
+  fs.mkdirSync(directory, { recursive: true });
+  // Nothing to stash (the edit is already committed): `stash push` is a no-op and `stash pop` must not run.
+  const results = await runChecks({ workspace, edited: ['src/a.ts'], config: checkConfig, env: process.env, directory });
+  assert.equal(results[0].passed, true, 'the failure already existed in the input');
+  assert.equal(git(workspace, ['stash', 'list']).trim(), '', 'no stash entry is left behind');
+});
+
 test('checks: related tests include siblings and importers', () => {
   const workspace = fs.mkdtempSync(path.join(sandbox, 'related-'));
   fs.mkdirSync(path.join(workspace, 'src', 'x'), { recursive: true });

@@ -71,14 +71,13 @@ export async function evaluateAndProject(
   const subject = await store.loadSubject(subjectId, session);
   if (!subject) return { outcome: "subject_missing", subject_id: subjectId, publication_revision: null, next_evaluation_at: null };
   const read: ReadSession = session;
-  const [periods, plans, restrictions, changes, events, coverage] = await Promise.all([
-    store.loadPeriods(subject.id, read),
-    store.loadPlans(subject.id, read),
-    store.loadRestrictions(subject.contact_number_ids, read),
-    store.loadAssignmentChanges(subject.lead, read),
-    store.loadContactEvents(subject.id, read),
-    store.loadCoverage(context.configuration.value.controls.rep_sms_capture_enabled, read),
-  ]);
+  // Sequential reads: the session is inside the job transaction and runs one operation at a time.
+  const periods = await store.loadPeriods(subject.id, read);
+  const plans = await store.loadPlans(subject.id, read);
+  const restrictions = await store.loadRestrictions(subject.contact_number_ids, read);
+  const changes = await store.loadAssignmentChanges(subject.lead, read);
+  const events = await store.loadContactEvents(subject.id, read);
+  const coverage = await store.loadCoverage(context.configuration.value.controls.rep_sms_capture_enabled, read);
   const agents = [...new Set([subject.assigned_agent_id, ...changes.flatMap((c) => [c.before, c.after])].filter((a): a is string => a !== null))];
   const links = await store.loadRepLinks(agents, read);
   const input = buildEngineInput({
@@ -118,7 +117,8 @@ export async function evaluateAndProject(
 }
 
 /** One evaluation job identity per subject and cause (the handler always evaluates current state). */
-export function evaluationJob(subjectId: string, cause: string, inputRevision = 0): JobInput {
+/** `inputRevision` is the revision of the change that caused the evaluation; the job schema requires >= 1. */
+export function evaluationJob(subjectId: string, cause: string, inputRevision = 1): JobInput {
   return {
     stage: "outreach_evaluate",
     subject_key: `outreach-subject:${subjectId}`,

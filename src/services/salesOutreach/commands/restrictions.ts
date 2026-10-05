@@ -54,9 +54,17 @@ const ownerOnly = (actor: OutreachActor) => {
 };
 
 /** Re-evaluates every subject attached to the number (bounded), in the command transaction. */
-async function nominateNumberSubjects(store: DeskCommandStore, contactNumberId: string, cause: string, context: CsiTransactionContext, wake: string[]) {
+async function nominateNumberSubjects(
+  store: DeskCommandStore,
+  contactNumberId: string,
+  cause: string,
+  restrictionRevision: number,
+  context: CsiTransactionContext,
+  wake: string[],
+) {
+  // The job's `input_revision` is the restriction revision that caused it (the schema requires >= 1).
   for (const subjectId of await store.subjectIdsForNumber(contactNumberId, context.session)) {
-    const job = await store.enqueue(evaluationJob(subjectId, cause), context.session, context.now);
+    const job = await store.enqueue(evaluationJob(subjectId, cause, restrictionRevision), context.session, context.now);
     if (job.created) wake.push(job.job_id);
   }
 }
@@ -121,7 +129,7 @@ export async function addRestriction(
         revision: 1,
         kind: "restriction",
       });
-      await nominateNumberSubjects(store, input.contact_number_id, `restriction:${id}:r1`, context, wake);
+      await nominateNumberSubjects(store, input.contact_number_id, `restriction:${id}:r1`, 1, context, wake);
       return { contract_version: SALES_OUTREACH_CONTRACT_VERSION, restriction: restrictionDto(row), changed: true };
     },
   );
@@ -185,7 +193,7 @@ export async function liftRestriction(
         revision: row.revision + 1,
         kind: "restriction",
       });
-      await nominateNumberSubjects(store, row.contact_number_id, `restriction:${row.id}:r${row.revision + 1}`, context, wake);
+      await nominateNumberSubjects(store, row.contact_number_id, `restriction:${row.id}:r${row.revision + 1}`, row.revision + 1, context, wake);
       const updated = (await store.getRestriction(row.id, context.session)) ?? row;
       return { contract_version: SALES_OUTREACH_CONTRACT_VERSION, restriction: restrictionDto(updated), changed: true };
     },

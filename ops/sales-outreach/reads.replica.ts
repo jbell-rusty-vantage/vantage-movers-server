@@ -137,9 +137,13 @@ async function main() {
   // 3. The Rep default query uses its index with no blocking sort.
   const repPlan = { match: { assignment: { kind: "agent" as const, agent_id: TEST_AGENT_A }, state: "needs_contact" as const, priority: { kind: "all" as const }, workflow: null, move_date: null, search: null }, sort: queueSortSpec("urgency", "asc"), after: null, limit: 26 };
   const { filter, sort } = mongoQueueQuery(repPlan);
-  const explained = JSON.stringify(await getSalesOutreachProjectionModel().find(filter).sort(sort).limit(26).explain("queryPlanner"));
-  assert.match(explained, /sod_projection_q_urgency/);
-  assert.doesNotMatch(explained, /"stage":"SORT"/);
+  // Judge the winning plan only: the planner's rejected candidates legitimately include blocking sorts.
+  const explain = (await getSalesOutreachProjectionModel().find(filter).sort(sort).limit(26).explain("queryPlanner")) as unknown as {
+    queryPlanner: { winningPlan: unknown };
+  };
+  const winning = JSON.stringify(explain.queryPlanner.winningPlan);
+  assert.match(winning, /sod_projection_q_urgency/);
+  assert.doesNotMatch(winning, /"stage":"SORT"/);
 
   // 4. Team overdue figures and the assignment generation.
   const asOf = at("2026-10-05T19:00:00.000Z");
@@ -154,7 +158,11 @@ async function main() {
   // 5. Live: scoped change streams over committed publish rows.
   const repStream = watchOutreachLiveEvents({ role: "rep", agent_id: TEST_AGENT_A });
   const ownerStream = watchOutreachLiveEvents({ role: "owner", agent_id: null });
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  // A change stream opens its cursor lazily: prime both (one empty await each) so the publishes below
+  // land after the watch point. The SSE route does the same before it reports `connect`.
+  const prime = (stream: unknown) => (stream as { tryNext(): Promise<unknown> }).tryNext();
+  await prime(repStream);
+  await prime(ownerStream);
   const subjectA = "5".repeat(24);
   await publishOutreachLive([
     { topic: "outreach_desk", subject_ids: [subjectA], agent_ids: [TEST_AGENT_B], revision: 1, cause: "evaluation" },

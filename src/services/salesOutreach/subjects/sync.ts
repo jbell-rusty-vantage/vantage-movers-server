@@ -31,12 +31,11 @@ export async function loadSubjectPageContext(
   session: ReadSession,
 ): Promise<DeskSubjectPageContext> {
   const refs = facts.map((f) => f.ref);
-  const [reviewed, numbers, uncertain, jobCounts] = await Promise.all([
-    store.reviewedRepIds(facts.flatMap((f) => (f.receiver_agent_id ? [f.receiver_agent_id] : [])), asOf, session),
-    store.attachedNumberIds(refs, session),
-    store.priorityUncertainLeads(facts, session),
-    store.jobNumberLeadCounts(facts.flatMap((f) => (f.normalized_job_no && !f.duplicate ? [f.normalized_job_no] : [])), session),
-  ]);
+  // Sequential: the session may be inside a transaction, and a session runs one operation at a time.
+  const reviewed = await store.reviewedRepIds(facts.flatMap((f) => (f.receiver_agent_id ? [f.receiver_agent_id] : [])), asOf, session);
+  const numbers = await store.attachedNumberIds(refs, session);
+  const uncertain = await store.priorityUncertainLeads(facts, session);
+  const jobCounts = await store.jobNumberLeadCounts(facts.flatMap((f) => (f.normalized_job_no && !f.duplicate ? [f.normalized_job_no] : [])), session);
   return { as_of: asOf, reviewed_rep_ids: reviewed, numbers_by_lead: numbers, uncertain_leads: uncertain, job_number_counts: jobCounts };
 }
 
