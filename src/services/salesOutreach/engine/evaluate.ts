@@ -417,8 +417,12 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
       return !NO_MISS_OUTCOMES.has(o) || (ob.fulfilledAt !== null && ob.fulfilledAt <= A);
     });
     const done = counted.filter((ob) => ["fulfilled", "fulfilled_late"].includes(outcomes.get(ob.id)!));
+    // P06e: a callback suspends routine Call prompts (catch-up and an overdue initial response) until
+    // its appointment; the misses stay in history.
+    const callSuspended = channel === "call" && suspensions.some(([s, e]) => A >= s && A < e);
     const actionable = mine.filter((ob) => {
       const o = outcomes.get(ob.id)!;
+      if (callSuspended && ob.kind === "initial_response") return false;
       if (o === "overdue") return true;
       return o === "open" && (ob.date === today || ob.kind === "initial_response" || ob.kind === "callback");
     });
@@ -428,7 +432,7 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
     let catchUpState: EngineChannelRequirement["catch_up"]["state"] = null;
     if (group) {
       if (restriction) catchUpState = "blocked";
-      else if (channel === "call" && suspensions.some(([s, e]) => A >= s && A < e)) catchUpState = "suspended";
+      else if (callSuspended) catchUpState = "suspended";
       else if (group.members.every((m) => outcomes.get(m.id) === "pending")) catchUpState = "pending";
       else catchUpState = "actionable";
     }
