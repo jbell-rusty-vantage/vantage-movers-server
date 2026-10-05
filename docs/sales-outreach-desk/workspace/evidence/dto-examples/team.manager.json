@@ -103,6 +103,14 @@
         "overdue_leads": {
           "value": null,
           "unknown_reason": "cadence_disabled"
+        },
+        "calls_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "sms_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
         }
       },
       {
@@ -149,6 +157,14 @@
         "overdue_leads": {
           "value": null,
           "unknown_reason": "cadence_disabled"
+        },
+        "calls_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "sms_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
         }
       },
       {
@@ -193,6 +209,14 @@
         "projection_revision": 39,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "calls_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "sms_due_today": {
           "value": null,
           "unknown_reason": "cadence_disabled"
         }
@@ -245,6 +269,14 @@
         "overdue_leads": {
           "value": null,
           "unknown_reason": "cadence_disabled"
+        },
+        "calls_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "sms_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
         }
       },
       {
@@ -295,6 +327,14 @@
         "overdue_leads": {
           "value": null,
           "unknown_reason": "cadence_disabled"
+        },
+        "calls_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "sms_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
         }
       },
       {
@@ -339,6 +379,14 @@
         "projection_revision": 12,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "calls_due_today": {
+          "value": null,
+          "unknown_reason": "cadence_disabled"
+        },
+        "sms_due_today": {
           "value": null,
           "unknown_reason": "cadence_disabled"
         }

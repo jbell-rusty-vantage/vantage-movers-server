@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { Agent } from "../../../models/Agent";
 import { getGranotObservationModel } from "../../../models/GranotObservation";
 import { OBSERVATION_KINDS } from "../../../models/granotLifecycleSchemas";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
@@ -18,7 +19,7 @@ const MAX_MAILBOXES = 500;
 /**
  * The reads behind the desk's M1 endpoints. Every query is bounded and indexed:
  * - rep-day rows: `sod_rep_day_day` `{business_day, agent_id}`;
- * - rep names: `ril_agent_current` `{agent_id, effective_to}`;
+ * - rep names: `ril_agent_current` `{agent_id, effective_to}`; Agent names by `_id`;
  * - capture: `sales_intelligence_sync_state_scope_unique` (exact scope, and an anchored prefix);
  * - Granot: `granot_observation_kind_captured` `{kind, captured_at}` (merge-sorted over the kinds).
  * Nothing here writes, initializes or calls a provider.
@@ -27,6 +28,8 @@ export type SalesOutreachReadStore = {
   findRepDayRows(businessDay: string, agentIds: readonly string[] | null): Promise<RepDayRow[]>;
   /** Agent id → name for Agents with a reviewed `sales_rep` link effective at `at`. */
   findReviewedRepNames(agentIds: readonly string[], at: Date): Promise<Map<string, string>>;
+  /** Agent id → the Agent record's name (no link requirement); absent Agents are missing from the map. */
+  findAgentNames(agentIds: readonly string[]): Promise<Map<string, string>>;
   readCallsCapture(): Promise<CaptureSyncRow | null>;
   readSmsMailboxes(): Promise<CaptureSyncRow[]>;
   readLatestGranotObservationAt(): Promise<Date | null>;
@@ -108,6 +111,13 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
       )
       .lean();
     return new Map(rows.map((row) => [String(row.agent_id), row.agent_name_snapshot]));
+  },
+
+  async findAgentNames(agentIds) {
+    const ids = agentIds.filter((id) => mongoose.isValidObjectId(id));
+    if (!ids.length) return new Map();
+    const rows = await Agent.find({ _id: { $in: oids(ids) } }, { name: 1 }).lean();
+    return new Map(rows.map((row) => [String(row._id), row.name]));
   },
 
   async readCallsCapture() {

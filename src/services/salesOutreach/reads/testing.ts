@@ -43,6 +43,8 @@ export function activeInspection(input: SalesOutreachConfigurationInput, version
 export class MemoryReadStore implements SalesOutreachReadStore {
   rows: RepDayRow[] = [];
   names = new Map<string, string>();
+  /** Agent record names (no reviewed link needed). */
+  agentNames = new Map<string, string>();
   calls: CaptureSyncRow | null = null;
   mailboxes: CaptureSyncRow[] = [];
   granot: Date | null = null;
@@ -56,6 +58,9 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   }
   async findReviewedRepNames(agentIds: readonly string[]) {
     return new Map([...this.names].filter(([id]) => agentIds.includes(id)));
+  }
+  async findAgentNames(agentIds: readonly string[]) {
+    return new Map([...this.agentNames].filter(([id]) => agentIds.includes(id)));
   }
   async readCallsCapture() {
     return this.calls;

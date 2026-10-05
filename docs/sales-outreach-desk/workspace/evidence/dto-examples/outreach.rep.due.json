@@ -233,7 +233,22 @@
         }
       ],
       "contact_events_truncated": false,
-      "assignment_changes": []
+      "assignment_changes": [
+        {
+          "applied_at": "2026-10-05T14:52:00.000Z",
+          "from_agent_id": "6650a1b2c3d4e5f60718293f",
+          "to_agent_id": "6650a1b2c3d4e5f60718293a",
+          "from_agent_name": "Xavier Agent",
+          "to_agent_name": "Alice Rep"
+        },
+        {
+          "applied_at": "2026-10-05T14:50:05.000Z",
+          "from_agent_id": null,
+          "to_agent_id": "6650a1b2c3d4e5f60718293f",
+          "from_agent_name": null,
+          "to_agent_name": "Xavier Agent"
+        }
+      ]
     },
     "restrictions": [],
     "computed_as_of": "2026-10-05T14:59:00.000Z",

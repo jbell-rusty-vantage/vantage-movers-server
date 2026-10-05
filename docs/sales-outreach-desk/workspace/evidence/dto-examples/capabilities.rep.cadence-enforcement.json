@@ -9,14 +9,14 @@
       "agent_id": "6650a1b2c3d4e5f60718293a"
     },
     "configuration_state": "active",
-    "configuration_version": "sod-cfg-7f3a",
-    "configuration_revision": 4,
+    "configuration_version": "sod-cfg-9d4e",
+    "configuration_revision": 6,
     "controls": {
       "desk_enabled": true,
       "goal_metrics_enabled": true,
       "rep_sms_capture_enabled": false,
       "cadence_shadow_enabled": false,
-      "cadence_enforcement_enabled": false,
+      "cadence_enforcement_enabled": true,
       "intake_admission_enabled": false
     },
     "desk_available": true,
@@ -67,11 +67,33 @@
       "live"
     ],
     "cadence_summary": {
-      "policy_version": null,
+      "policy_version": "final-policy-2026-10-03-v1",
       "new": {
-        "days_1_3_calls": null,
-        "call_slots": null,
-        "sms_sequence": null
+        "days_1_3_calls": {
+          "required": 2,
+          "optional": 1
+        },
+        "call_slots": [
+          {
+            "from_day": 1,
+            "to_day": 5,
+            "calls_per_day": 2
+          },
+          {
+            "from_day": 6,
+            "to_day": null,
+            "calls_per_day": 1
+          }
+        ],
+        "sms_sequence": {
+          "initial_days": [
+            1,
+            2,
+            3
+          ],
+          "repeat_from_day": 6,
+          "repeat_every_days": 3
+        }
       },
       "quoted": null
     }

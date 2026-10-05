@@ -1,6 +1,6 @@
 import { MemoryEvaluationStore } from "../evaluation/testing";
 import { deskLeadKey, type DeskLeadRef } from "../subjects/leadFacts";
-import { assignmentDigest, type DeskQueueStore, type TeamOverdueCounts } from "./deskStore";
+import { assignmentDigest, DUE_CHANNEL_STATUSES, NO_AGENT_CADENCE, type AgentCadenceCounts, type DeskQueueStore, type TeamOverdueCounts } from "./deskStore";
 import { toStoredProjection, type StoredProjectionDetail } from "./present";
 import { matchesQueue, memoryQueuePage, type QueueAssignment, type QueueMatch, type QueuePagePlan } from "./queueQuery";
 
@@ -87,15 +87,32 @@ export class MemoryDeskReadStore implements DeskQueueStore {
   async teamOverdue(asOf: Date): Promise<TeamOverdueCounts> {
     const rows = this.rows();
     const overdue = rows.filter((r) => r.subject_status === "active" && +r.queue_keys.urgency_due <= +asOf);
-    const perAgent = new Map<string, number>();
-    for (const r of overdue) if (r.assigned_agent_id) perAgent.set(r.assigned_agent_id, (perAgent.get(r.assigned_agent_id) ?? 0) + 1);
     return {
       distinct_overdue: overdue.length,
       quoted_call_overdue: rows.filter((r) => r.subject_status === "active" && r.workflow === "quoted" && +r.queue_keys.call_due <= +asOf).length,
       unassigned_total: rows.filter((r) => (r.subject_status === "active" || r.subject_status === "review") && r.assigned_agent_id === null).length,
       unassigned_overdue: overdue.filter((r) => r.assigned_agent_id === null).length,
-      per_agent: perAgent,
     };
+  }
+
+  async agentCadence(asOf: Date, agentIds: readonly string[]) {
+    const due = (status: string) => (DUE_CHANNEL_STATUSES as readonly string[]).includes(status);
+    const out = new Map<string, { -readonly [K in keyof AgentCadenceCounts]: number }>();
+    for (const r of this.rows()) {
+      if (r.subject_status !== "active" || !r.assigned_agent_id || !agentIds.includes(r.assigned_agent_id)) continue;
+      const c = out.get(r.assigned_agent_id) ?? { ...NO_AGENT_CADENCE };
+      if (+r.queue_keys.urgency_due <= +asOf) c.overdue_leads += 1;
+      if (due(r.call.status)) {
+        if (r.call.remaining === null) c.call_due_unknown += 1;
+        else c.call_due_remaining += r.call.remaining;
+      }
+      if (due(r.sms.status)) {
+        if (r.sms.remaining === null) c.sms_due_unknown += 1;
+        else c.sms_due_remaining += r.sms.remaining;
+      }
+      out.set(r.assigned_agent_id, c);
+    }
+    return out as ReadonlyMap<string, AgentCadenceCounts>;
   }
 
   async loadProjectionDetail(subjectId: string) {

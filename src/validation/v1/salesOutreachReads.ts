@@ -150,6 +150,15 @@ export const SALES_OUTREACH_CADENCE_UNKNOWN_REASONS = ["cadence_disabled", "cade
 const cadenceMetricSchema = z
   .object({ value: z.number().int().min(0).nullable(), unknown_reason: z.enum(SALES_OUTREACH_CADENCE_UNKNOWN_REASONS).nullable() })
   .strict();
+/**
+ * A due-count metric (rep-days `calls_due_today` / `sms_due_today`): the cadence reasons, plus
+ * `coverage_incomplete` when a due requirement's remaining count is unknown because its channel has no
+ * capture coverage yet (a partial sum would undercount).
+ */
+export const SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS = [...SALES_OUTREACH_CADENCE_UNKNOWN_REASONS, "coverage_incomplete"] as const;
+const dueTodayMetricSchema = z
+  .object({ value: z.number().int().min(0).nullable(), unknown_reason: z.enum(SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS).nullable() })
+  .strict();
 
 const subjectIdSchema = z.string().regex(/^[a-f\d]{24}$/);
 
@@ -221,6 +230,11 @@ export const salesOutreachQueueRowSchema = z
     exposure: z.enum(SALES_OUTREACH_CADENCE_EXPOSURES),
     computed_as_of: instant,
     publication_revision: z.number().int().min(0),
+    /**
+     * New schedule day (received date = Day 1) stored by the evaluator at `computed_as_of`; null for any
+     * workflow other than `new`, or when the received date is unknown. Never recomputed by the read.
+     */
+    schedule_day: z.number().int().nullable(),
   })
   .strict();
 export type SalesOutreachQueueRowDto = z.infer<typeof salesOutreachQueueRowSchema>;
@@ -235,6 +249,48 @@ export const SALES_OUTREACH_DESK_UNAVAILABLE_REASONS = [
   "configuration_unavailable",
   "desk_disabled",
 ] as const;
+
+/**
+ * The reference's "New lead schedule" box: configured cadence values copied 1:1 from the active
+ * configuration (`cadence.*`), so a Rep can see the schedule without reading the configuration. No
+ * minutes, rules, credentials or migration values; no text (the admin renders the words). A value that
+ * is not configured is null.
+ */
+export const salesOutreachCadenceSummarySchema = z
+  .object({
+    policy_version: z.string().nullable(),
+    new: z
+      .object({
+        /** `cadence.new_days_1_3_calls`. */
+        days_1_3_calls: z.object({ required: z.number().int().min(0), optional: z.number().int().min(0) }).strict().nullable(),
+        /** `cadence.new_call_slots`, one band per row; `calls_per_day` = the band's number of deadlines. */
+        call_slots: z
+          .array(
+            z
+              .object({
+                from_day: z.number().int().min(1),
+                to_day: z.number().int().min(1).nullable(),
+                calls_per_day: z.number().int().min(1),
+              })
+              .strict(),
+          )
+          .nullable(),
+        /** `cadence.sms_sequence`. */
+        sms_sequence: z
+          .object({
+            initial_days: z.array(z.number().int().min(1)),
+            repeat_from_day: z.number().int().min(1),
+            repeat_every_days: z.number().int().min(1),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
+    /** Null: the configuration holds no Quoted daily-call value (the due-date minutes are not exposed). */
+    quoted: z.object({ daily_calls_when_due: z.number().int().min(0).nullable() }).strict().nullable(),
+  })
+  .strict();
+export type SalesOutreachCadenceSummaryDto = z.infer<typeof salesOutreachCadenceSummarySchema>;
 
 export const salesOutreachCapabilitiesSchema = baseReadSchema
   .extend({
@@ -269,6 +325,8 @@ export const salesOutreachCapabilitiesSchema = baseReadSchema
     role_capabilities: z.array(z.string()),
     /** Desk reads served by this server build. */
     deployed_reads: z.array(z.enum(["capabilities", "rep_days", "team", "queue", "outreach_detail", "live"])),
+    /** Read-only copy of the configured cadence for every desk role; null unless the configuration is active. */
+    cadence_summary: salesOutreachCadenceSummarySchema.nullable(),
   })
   .strict();
 export type SalesOutreachCapabilitiesDto = z.infer<typeof salesOutreachCapabilitiesSchema>;
@@ -331,6 +389,18 @@ export const salesOutreachRepDaySchema = z
     unknown_reason: z.string().nullable(),
     projection_revision: z.number().int().min(0).nullable(),
     computed_as_of: nullableInstant,
+    /*
+     * Cadence counts for the rep's current assignment at `as_of` (SPECIFICATION §6.1), whatever
+     * `business_day` is shown — the same rule as GET /team's cards. Units differ: `overdue_leads` counts
+     * Leads; `calls_due_today` counts call attempts and `sms_due_today` SMS sends. Never compare a count
+     * of attempts or sends with a count of Leads.
+     */
+    /** Distinct active Leads assigned to this Agent with an overdue Call or SMS requirement (enforcement only). */
+    overdue_leads: cadenceMetricSchema,
+    /** Remaining required call attempts of Call requirements that are due or overdue, summed over the Agent's active Leads. */
+    calls_due_today: dueTodayMetricSchema,
+    /** Remaining required SMS sends of SMS requirements that are due or overdue, summed the same way. */
+    sms_due_today: dueTodayMetricSchema,
   })
   .strict();
 export type SalesOutreachRepDayDto = z.infer<typeof salesOutreachRepDaySchema>;
@@ -385,9 +455,7 @@ export const salesOutreachTeamSchema = commonReadSchema
     goals: salesOutreachTeamGoalsSchema.nullable(),
     goals_unknown_reason: z.enum(["goal_metrics_disabled"]).nullable(),
     /** Daily call goals table rows (roster reps first, then reps with activity who are not on the roster). */
-    daily_call_goals: z
-      .array(salesOutreachRepDaySchema.extend({ overdue_leads: cadenceMetricSchema }).strict())
-      .nullable(),
+    daily_call_goals: z.array(salesOutreachRepDaySchema).nullable(),
     /** Card 3: distinct active Leads with an overdue requirement at `as_of` (goals never hide them). */
     distinct_overdue_leads: cadenceMetricSchema,
     /** Card 4: Quoted Leads whose Call requirement is overdue at `as_of`. */
@@ -725,6 +793,9 @@ export const salesOutreachDetailSchema = commonReadSchema
                 applied_at: instant,
                 from_agent_id: salesOutreachAgentIdSchema.nullable(),
                 to_agent_id: salesOutreachAgentIdSchema.nullable(),
+                /** Reviewed `sales_rep` link name at `as_of`, else the Agent's name; null when unassigned or unknown. */
+                from_agent_name: z.string().nullable(),
+                to_agent_name: z.string().nullable(),
               })
               .strict(),
           )

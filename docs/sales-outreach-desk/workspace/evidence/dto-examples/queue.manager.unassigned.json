@@ -109,7 +109,8 @@
         },
         "exposure": "enforcement",
         "computed_as_of": "2026-10-05T14:59:00.000Z",
-        "publication_revision": 1
+        "publication_revision": 1,
+        "schedule_day": 1
       }
     ],
     "next_cursor": null,
