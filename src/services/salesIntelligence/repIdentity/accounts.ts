@@ -8,7 +8,7 @@ import {
   type AccountDto,
   type AccountsDto,
 } from "../../../validation/v1/allNumbers";
-import { displayPhone } from "../../numberActivity/allNumbers";
+import { displayPhone } from "../../numberActivity/phone";
 import { CsiError, type CsiActor } from "../auth";
 import { resolvePolicy } from "../policy";
 import { appendCsiAudit, duplicateKey, executeCsiCommand, payloadHash } from "../transactions";

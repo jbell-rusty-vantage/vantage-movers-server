@@ -36,6 +36,7 @@ import {
   type StoredLeadLink,
 } from "./leadLink";
 import { escapeRegex, parseSearchTerm } from "./numberSearch";
+import { displayPhone } from "./phone";
 
 /**
  * All Numbers reads and the Owner's link command (all-numbers CONTRACT §4.1–§4.4). Reads never
@@ -45,12 +46,7 @@ import { escapeRegex, parseSearchTerm } from "./numberSearch";
 const iso = (value: Date | string) => new Date(value).toISOString();
 const oid = (value: unknown) => new mongoose.Types.ObjectId(String(value));
 
-/** "(555) 123-4567" for a US number, else the E.164 itself. */
-export function displayPhone(e164: string | null | undefined): string | null {
-  if (!e164) return null;
-  const match = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
-  return match ? `(${match[1]}) ${match[2]}-${match[3]}` : e164;
-}
+export { displayPhone };
 
 export type StoredNumberV2 = {
   _id: mongoose.Types.ObjectId;
@@ -133,8 +129,10 @@ export async function loadDeskSubjectIds(leads: ReadonlyArray<{ model: string; i
 
 async function rowContext(rows: readonly StoredNumberV2[], extraLeads: ReadonlyArray<{ model: string; id: unknown }> = [], extraExtensions: readonly (string | null)[] = []): Promise<RowContext> {
   const leads = [...rows.flatMap((row) => (row.lead ? [row.lead] : [])), ...extraLeads];
-  const [subjects, links] = [await loadDeskSubjectIds(leads),
-    await loadRepLinksForExtensions([...rows.map((row) => row.last_call?.rc_extension_id ?? null), ...extraExtensions])];
+  const [subjects, links] = await Promise.all([
+    loadDeskSubjectIds(leads),
+    loadRepLinksForExtensions([...rows.map((row) => row.last_call?.rc_extension_id ?? null), ...extraExtensions]),
+  ]);
   return { subjects, links };
 }
 
@@ -188,11 +186,11 @@ export async function listAllNumbers(query: AllNumbersQuery, deps: { now?: () =>
   const ContactNumber = getContactNumberModel();
   const rows = (await ContactNumber.find(filter, ROW_PROJECTION).sort(sort).limit(query.limit + 1).lean()) as unknown as StoredNumberV2[];
   const page = rows.slice(0, query.limit);
-  const [all, waiting, context] = [
-    await ContactNumber.countDocuments({ purged_at: null }),
-    await ContactNumber.countDocuments({ purged_at: null, waiting_since: { $type: "date" } }),
-    await rowContext(page),
-  ];
+  const [all, waiting, context] = await Promise.all([
+    ContactNumber.countDocuments({ purged_at: null }),
+    ContactNumber.countDocuments({ purged_at: null, waiting_since: { $type: "date" } }),
+    rowContext(page),
+  ]);
   const last = page.at(-1);
   const next = rows.length > query.limit && last
     ? encodeAllNumbersCursor({ view: query.view, at: iso(query.view === "waiting" ? last.waiting_since! : last.last_activity_at), id: String(last._id) })

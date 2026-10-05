@@ -50,6 +50,13 @@ export function toNationalTenDigit(e164: string | null): string | null {
   return match ? match[1]! : null;
 }
 
+/** "(555) 123-4567" for a US number, else the E.164 itself. */
+export function displayPhone(e164: string | null | undefined): string | null {
+  if (!e164) return null;
+  const match = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return match ? `(${match[1]}) ${match[2]}-${match[3]}` : e164;
+}
+
 export function reverseDigits(e164: string): string {
   return e164.replace(/\D/g, "").split("").reverse().join("");
 }
