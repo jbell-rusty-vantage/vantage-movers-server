@@ -9,6 +9,23 @@ export const DEPLOYED_DESK_READS = ["capabilities", "rep_days", "team"] as const
 type View = SalesOutreachCapabilitiesDto["permitted_views"][number];
 
 /**
+ * Deployed commands this actor may send now (SRV-7). Desk commands (Quoted date, callback, assignment)
+ * need the desk available; the Owner/Manager settings commands (day override, restrictions) need only
+ * an active configuration, so a muted desk stays reversible; `configuration_edit` is always the Owner's.
+ */
+function permittedCommands(role: OutreachActor["role"], deskAvailable: boolean, configurationActive: boolean): string[] {
+  const commands: string[] = [];
+  if (deskAvailable) commands.push("quoted_followup", "callback");
+  if (deskAvailable && role !== "rep") commands.push("assignment");
+  if (configurationActive && role !== "rep") commands.push("day_override");
+  if (role === "owner") {
+    if (configurationActive) commands.push("restrictions");
+    commands.push("configuration_edit");
+  }
+  return commands;
+}
+
+/**
  * `GET /capabilities` body (CONTRACTS "HTTP interface"; IMPLEMENTATION-PLAN §5, IMPL-02).
  *
  * The Owner keeps Settings (configuration GET/PATCH) and the existing Numbers/Accounts views even
@@ -58,7 +75,7 @@ export function composeCapabilities(
       rep_days: available ? (coordinator ? ["business_day", "agent_id"] : ["business_day"]) : [],
       team: available && coordinator ? ["business_day"] : [],
     },
-    permitted_commands: actor.role === "owner" ? ["configuration_edit"] : [],
+    permitted_commands: permittedCommands(actor.role, available, inspected.state === "active"),
     role_capabilities: [...ROLE_CAPABILITIES[actor.role]].sort(),
     deployed_reads: [...DEPLOYED_DESK_READS],
   };

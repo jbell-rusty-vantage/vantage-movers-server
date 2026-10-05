@@ -38,6 +38,11 @@
       ]
     },
     "permitted_commands": [
+      "quoted_followup",
+      "callback",
+      "assignment",
+      "day_override",
+      "restrictions",
       "configuration_edit"
     ],
     "role_capabilities": [

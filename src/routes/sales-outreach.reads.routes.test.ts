@@ -150,7 +150,7 @@ test("route matrix: who may read capabilities, rep-days and team", async () => {
 test("capabilities: role-shaped views/filters/commands and safe controls only", async () => {
   const owner = salesOutreachReadEnvelope(salesOutreachCapabilitiesSchema).parse((await get("owner", "/capabilities")).body).data;
   assert.deepEqual(owner.permitted_views, ["team", "my", "settings", "numbers", "accounts"]);
-  assert.deepEqual(owner.permitted_commands, ["configuration_edit"]);
+  assert.deepEqual(owner.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override", "restrictions", "configuration_edit"]);
   assert.deepEqual(owner.permitted_filters, { rep_days: ["business_day", "agent_id"], team: ["business_day"] });
   assert.deepEqual([owner.configuration_state, owner.configuration_version, owner.configuration_revision, owner.desk_available], ["active", "v-test", 3, true]);
   assert.ok(owner.role_capabilities.includes("activation"));
@@ -158,12 +158,13 @@ test("capabilities: role-shaped views/filters/commands and safe controls only", 
 
   const manager = salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data);
   assert.deepEqual(manager.permitted_views, ["team", "my"]);
-  assert.deepEqual(manager.permitted_commands, []);
+  assert.deepEqual(manager.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override"]);
   assert.equal(manager.role_capabilities.includes("activation"), false);
   assert.ok(manager.role_capabilities.includes("prospective_absence_override"));
 
   const rep = salesOutreachCapabilitiesSchema.parse((await get("rep-a", "/capabilities")).body.data);
   assert.deepEqual(rep.permitted_views, ["my"]);
+  assert.deepEqual(rep.permitted_commands, ["quoted_followup", "callback"]);
   assert.deepEqual(rep.permitted_filters, { rep_days: ["business_day"], team: [] });
   assert.deepEqual(rep.scope, { role: "rep", agent_id: REP_A });
   assert.deepEqual(rep.controls, {
@@ -264,7 +265,7 @@ test("configuration gating: uninitialized/unavailable/desk off answer 503; goal 
   assert.deepEqual([ownerOff.unavailable_reason, ownerOff.permitted_views, ownerOff.permitted_commands], [
     "desk_disabled",
     ["settings", "numbers", "accounts"],
-    ["configuration_edit"],
+    ["day_override", "restrictions", "configuration_edit"],
   ]);
 
   inspection = activeInspection({ controls: { desk_enabled: true } });

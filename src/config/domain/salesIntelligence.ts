@@ -41,7 +41,7 @@ export const CSI_JOB_STAGES = [
   "rep_sms_sync",
   // Sales Outreach Desk (IMPLEMENTATION-PLAN §6.2). `outreach_lead_change` refreshes one Lead's desk
   // subject (P05d/P05e period transitions, intake admission); `outreach_evaluate` re-runs the cadence
-  // engine for one subject revision (its consumer lands with the evaluator wiring).
+  // engine for one subject and upserts its projection when the result changed.
   "outreach_lead_change",
   "outreach_evaluate",
   // Sales Outreach Desk (S3, SRV-6): recount one rep's outbound-goal day from its contact events.

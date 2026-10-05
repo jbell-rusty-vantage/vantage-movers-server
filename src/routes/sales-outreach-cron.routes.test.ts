@@ -11,6 +11,8 @@ const saved = process.env.CRON_SECRET;
 const calls: string[] = [];
 let tailSkipped = false;
 let tailThrows = false;
+let sweepSkipped = false;
+let sweepThrows = false;
 
 const app = express();
 app.use(
@@ -28,6 +30,20 @@ app.use(
     reconcile: async () => {
       calls.push("reconcile");
       return { skipped: false, reason: null, pages: 1, checked: 3, nominated: 1, wrapped: true };
+    },
+    evaluationSweep: async () => {
+      calls.push("sweep");
+      if (sweepThrows) throw new Error("boom");
+      return {
+        skipped: sweepSkipped,
+        reason: sweepSkipped ? "cadence_disabled" : null,
+        due: { pages: 1, nominated: 2 },
+        reconcile: { pages: 1, checked: 2, nominated: 0, wrapped: true },
+      };
+    },
+    evaluationDrain: async () => {
+      calls.push("evaluate");
+      return { outcomes: { completed: 2 } };
     },
   }),
 );
@@ -57,6 +73,7 @@ test("vercel.json registers the desk crons (lead-change tail every minute, revis
   const schedules = new Map(manifest.crons.map((c) => [c.path, c.schedule]));
   assert.equal(schedules.get(SALES_OUTREACH_CRON_PATHS.leadChanges), "* * * * *");
   assert.equal(schedules.get(SALES_OUTREACH_CRON_PATHS.revisionReconcile), "*/5 * * * *");
+  assert.equal(schedules.get(SALES_OUTREACH_CRON_PATHS.evaluate), "* * * * *");
   assert.ok(readFileSync(path.join(process.cwd(), "src/app.ts"), "utf8").includes("app.use(salesOutreachCronRoutes);"), "mounted before the /api/v1 guard");
 });
 
@@ -84,4 +101,17 @@ test("revision reconcile runs one bounded pass", async () => {
   const { body } = await hit(SALES_OUTREACH_CRON_PATHS.revisionReconcile);
   assert.equal(body.skipped, false);
   assert.deepEqual(calls, ["reconcile"]);
+});
+
+test("evaluate: sweep then drain; a failed sweep never blocks the drain; cadence off skips both", async () => {
+  calls.length = 0;
+  sweepSkipped = false;
+  sweepThrows = false;
+  assert.equal((await hit(SALES_OUTREACH_CRON_PATHS.evaluate)).body.skipped, false);
+  sweepThrows = true;
+  assert.equal((await hit(SALES_OUTREACH_CRON_PATHS.evaluate)).status, 200);
+  sweepThrows = false;
+  sweepSkipped = true;
+  assert.deepEqual((await hit(SALES_OUTREACH_CRON_PATHS.evaluate)).body, { ok: true, skipped: true, reason: "cadence_disabled" });
+  assert.deepEqual(calls, ["sweep", "evaluate", "sweep", "evaluate", "sweep"]);
 });

@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/admin/sales-outreach/outreach/6650a1b2c3d4e5f607182a01/quoted-followup",
+    "headers": {
+      "Idempotency-Key": "rep-a-quoted-3"
+    },
+    "body": {
+      "expected_revision": 1,
+      "period_id": "6650a1b2c3d4e5f607182b01",
+      "selected_date": "2026-10-09"
+    }
+  },
+  "response": {
+    "ok": false,
+    "code": "REVISION_CONFLICT",
+    "error": "Sales Outreach request rejected",
+    "request_id": "req-example"
+  }
+}

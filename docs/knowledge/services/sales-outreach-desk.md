@@ -2,7 +2,7 @@
 okf_version: "0.2"
 type: Service
 title: Sales Outreach Desk
-description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk subjects (eligibility, priority periods, Lead-change feed, intake) and enrollment, desk collections and their index build, the pure cadence engine, RingCentral capture for the desk, and contact events with rep-day goal projections. Built in lanes; this doc grows per lane.
+description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk subjects (eligibility, priority periods, Lead-change feed, intake) and enrollment, the evaluator wiring (outreach_evaluate, projections), the desk commands (Quoted date, callback, assignment, day override, restriction review), desk collections and their index build, the pure cadence engine, RingCentral capture for the desk, and contact events with rep-day goal projections. Built in lanes; this doc grows per lane.
 status: draft
 stale_after: 2026-11-04
 tags: [sales-outreach-desk, sales-intelligence]
@@ -17,6 +17,7 @@ applies_to:
   - src/validation/v1/salesOutreach.ts
   - src/validation/v1/salesOutreachReads.ts
   - src/validation/v1/salesOutreachEnrollment.ts
+  - src/validation/v1/salesOutreachCommands.ts
   - src/config/domain/salesOutreach.ts
   - ops/sales-outreach/**
 owners: [team:main-server]
@@ -26,7 +27,7 @@ owners: [team:main-server]
 
 The build contract is the packet in [`docs/sales-outreach-desk/`](../../sales-outreach-desk/README.md): start at [IMPLEMENTATION-PLAN.md](../../sales-outreach-desk/IMPLEMENTATION-PLAN.md). Business rules are SPECIFICATION §§2–14 and FINAL-POLICY-REVIEW; this doc describes only what is built. The desk is deterministic code: no LLM, transcription, summaries or AI suggestions (D01).
 
-## S1 — foundation and API (phase 1: roles, configuration, models; phase 2: M1 reads; phase 3: subjects and enrollment)
+## S1 — foundation and API (phase 1: roles, configuration, models; phase 2: M1 reads; phase 3: subjects and enrollment; phase 4a: evaluator wiring and commands)
 
 ### Roles and the guard (SRV-1)
 
@@ -108,7 +109,7 @@ One `sales_outreach_subjects` row per enrolled canonical Lead (IMPL-04). The Lea
 | `/api/cron/sales-outreach-revision-reconcile` (every 5 minutes) | Open subjects (`active`/`review`) in pages of 100 by `_id` (cursor `outreach_subject_id` and a lease in scope `outreach_revision_reconcile`; ≤ 50 pages per run). Lead `domain_revision` ≠ `lead_revision_seen` → an `outreach_lead_change` job. |
 | Job stage `outreach_lead_change` | Identity `sod:lead-change:<model>:<id>:r<revision>`, so the tail, the reconcile and a future wake converge. The configuration pointer is read at admission (inactive → nothing claimed) and again inside the job transaction (moved → retry). Refreshes the subject from current facts, or runs the intake gate. Also dispatched from the `sales-intelligence-events` queue. |
 | Intake gate (`outreach_intake`, inside the job) | Only when `transition.intake_admission_enabled` and `intake_admission_at` are set, for a Lead **created and received** at/after `intake_admission_at`, from a non-legacy origin, eligible, not closed by priority, with an unambiguous Job Number. Enrolled once (`kind: intake`, cohort `intake:<gate>`, boundary = received time). A fresh Lead whose priority needs review is enrolled as a visible `review` subject with no period. |
-| Job stage `outreach_evaluate` | Nominated per subject revision. **No consumer yet**: it arrives with the evaluator wiring. |
+| Job stage `outreach_evaluate` | Nominated per subject revision (and by commands, the clock sweep and the policy reconcile). Consumer: "Evaluator wiring" below. |
 
 Both crons answer `{ ok: true, skipped: true, reason: "configuration_<state>" }` while the configuration is not active. There is no env flag.
 
@@ -127,6 +128,50 @@ Owner-only (`migration` capability) under `/api/v1/admin/sales-outreach`; reques
   - Returns `status` `running` (call again), `completed`, `paused` or `lease_held`. The same key resumes; a different manifest under it is 409 `IDEMPOTENCY_CONFLICT`; the boundary and the scope never change on retry.
 - **`POST /enrollment/verify`**: `{ run_key }` → counts (`enrolled_by_run`, `enrolled_elsewhere`, `not_enrolled`), mismatches (`boundary_mismatch`, `no_active_period`, `multiple_active_periods`, `first_period_not_at_boundary`, `received_missing`), `consistent` and `complete`. Writes only `verify:<run_key>`.
 - **`GET /enrollment/candidates?partition&cursor&limit`**: one page (≤ 100, default 25) of a partition, Form Leads then Call Leads, newest first. At most 1,000 Leads are examined per request; `next_cursor` is opaque (a bad cursor → 409 `CURSOR_EXPIRED`). `partition=older` is the Owner Settings "Not enrolled — older" list; one-click Enroll = report/apply with `selection: selected`.
+
+### Evaluator wiring (`outreach_evaluate`; `src/services/salesOutreach/evaluation/`)
+
+- **Policy adapter** (`policyAdapter.ts`): maps the persisted `cadence` namespace to S2's engine encoding and calls `resolveEnginePolicy`. It invents nothing; anything it cannot express fails closed with every reason:
+  - every `working_days` entry must share one opening/closing minute, and `quoted_open_minute` must equal that opening minute;
+  - `intake_default_rule` must be native intake = New and Granot-created-without-priority = review;
+  - the P05f reentry thresholds are the `late_arrival_rule` thresholds, and the P10a Quoted activation-date cutoff is `quoted_same_day_cutoff_minute`;
+  - the Day 1–5 band is split at Day 3 so that only Days 1–3 carry the optional third call.
+  The installed FINAL-01 value resolves to exactly S2's FINAL-01 engine policy (`ops/lib/sales-outreach-final01.test.ts`).
+- **Exposure**: `cadence_enforcement_enabled` → `enforcement`; else `cadence_shadow_enabled` → `shadow`; neither → nothing is evaluated (jobs stay pending, no attempt spent). A `shadow` row stores the full computation. Reads must present it through `presentProjectionExposure`, which shows no overdue state (`overdue` channel status reads `due`, `status_flags.overdue` false).
+- **Inputs** (`inputs.ts`, `store.ts`), loaded in the job transaction:
+  - the subject, its periods and every human plan (command-ended plans carry `replaced`/`cancelled`);
+  - `sales_intelligence_contact_restrictions` on the subject's Contact Numbers: `call` and `text`→`sms`, effective from creation until the lift / `until` / expiry. Active AI-origin rows block like Owner rows;
+  - P06d assignment history from `entity_changes` on `receiver_agent`, cut to the Agent's reviewed `sales_rep` link periods (otherwise Unassigned);
+  - `sales_outreach_contact_events` (`outcome` is read when S3 stores it, else derived from the event kind);
+  - coverage: Call Log `known_complete_through` minus the 2-minute settlement allowance; SMS = the worst rep mailbox while `rep_sms_capture_enabled`, else none.
+- **Projection** (`projection.ts`): queue fields, both channel blocks with coverage at `computed_as_of`, `status_flags` (adds `job_pending`), ≤ 30 days of `window_history` + summary, and a `detail` JSON (state, schedule day, initial response, callback, Quoted basis, cooldown, catch-up, every engine flag, blocked-until).
+  - `result_fingerprint` = engine result fingerprint + resolved-policy fingerprint + assignee/received/job facts. Equal ⇒ zero writes; capture coverage advancing alone never rewrites a row.
+  - A changed row is written with a CAS on `revision` (loser → retry) and `publication_revision + 1`. New fields: `detail`, `exposure`, `engine_version`, `result_fingerprint`, `policy_fingerprint`.
+- **Job** (`evaluateJob.ts`): the claim is stage-directed and admission re-reads the pointer inside the transaction; a moved pointer retries. Registered in `jobDispatch` (queue wake-ups) and drained by the cron.
+- **Cron `/api/cron/sales-outreach-evaluate`** (every minute, `vercel.json`):
+  1. clock repair: projections with `next_evaluation_at <= now`, oldest first, ≤ 5 pages of 100, one job per due instant (`sod:evaluate:<subject>:due:<ms>`);
+  2. policy reconcile: subjects by `_id`, ≤ 5 pages of 100, durable cursor in sync-state scope `outreach_evaluation_reconcile`; a missing projection or another `policy_fingerprint` is nominated (`…:policy:<fp16>`);
+  3. drain ≤ 100 jobs in 40 s.
+  Skipped (`{ ok, skipped, reason }`) while evaluation is not admitted.
+
+### Desk commands (SRV-7; `src/services/salesOutreach/commands/`, DTOs `src/validation/v1/salesOutreachCommands.ts`)
+
+Every command needs the `Idempotency-Key` header (400 `IDEMPOTENCY_KEY_REQUIRED`). It runs through `executeCsiCommand` with its own registered command kind (`SALES_OUTREACH_COMMAND_KINDS`), so its writes, the ledger row and the audit event commit together. A replay returns the committed result with `replayed: true`; the same key with another payload is 409 `IDEMPOTENCY_CONFLICT`; a stale `expected_revision` is 409 `REVISION_CONFLICT`. An absent, malformed or foreign subject is 404 `NOT_FOUND`: a Rep reaches only a subject whose Lead's `receiver_agent` — re-read at the command — is its own Agent. Created jobs are woken after commit. Examples: [`dto-examples/commands/`](../../sales-outreach-desk/workspace/evidence/dto-examples/commands/) (`node --import tsx ops/sales-outreach/write-command-dto-examples.ts`; a test fails on drift).
+
+| Route | Who | Body → behaviour |
+| --- | --- | --- |
+| `PATCH /outreach/:id/quoted-followup` | Owner, Manager, assigned Rep | `{expected_revision, period_id, selected_date, replace_active_plan?}`. `expected_revision` is the subject's **plan revision**, which Quoted dates and callbacks share (P06f). Allowed only in the active Quoted period (`not_quoted`; another `period_id` → 409 `period_changed`). The date must pass P04c (`past_date`, `closed_date`, `after_same_day_cutoff`). It replaces an active Quoted plan; replacing a callback needs `replace_active_plan` (`replacement_intent_required`). Audit `sales_outreach_quoted_followup_set` (kind `followup`) carries the prior and new date, period, effective time and actor. |
+| `PATCH /outreach/:id/callback` | Owner, Manager, assigned Rep | `{operation: "set", expected_revision, appointment_at, replace_active_plan?}` / `{operation: "reschedule", …, appointment_at}` / `{operation: "cancel", expected_revision}`. `appointment_at` is a UTC instant with an offset; the response adds the New York `appointment_local`. It is refused when in the past (`appointment_in_past`), more than a year out (`appointment_too_far`) or inside an active Call restriction (`restricted_at_appointment`). After-hours appointments are allowed. Window = `callback_window_minutes`. |
+| `PATCH /outreach/:id/assignment` | Owner, Manager | `{expected_revision (assignment_revision), agent_id \| null}`. Through `LeadChangeRecorder` it writes `receiver_agent` + name snapshot with source `manual`, its EntityChange and the `domain_revision` CAS. In the same transaction it updates the subject's assignment, appends audit `sales_outreach_assignment_changed` (kind `outreach`) and enqueues `outreach_lead_change` + `outreach_evaluate`. Refusals: a target without a reviewed `sales_rep` link is 400 `agent_not_reviewed_sales_rep`; a desk copy that no longer matches the Lead is 409 `assignment_changed`; the same Agent already manual is `changed: false`. Granot latest-wins never replaces a manual receiver. |
+| `PATCH /goals/:agent_id/day-override` | Owner; Manager for today or later | `{expected_revision (configuration revision), business_date, goal, reason: absence\|partial_day}` (absence ⇒ goal 0). It writes a new configuration version and moves the pointer (CAS) under its own command kind; audit `sales_outreach_goal_day_override_set` (kind `policy`). A Manager's past date is 403 `historical_edit_owner_only`; a rep not on the roster is 400 `agent_not_on_roster`; without installed goals it is 503 `goals_not_installed`. The roster, schedules and default goal are never touched. |
+| `GET /restrictions?state&cursor&limit` | Owner | Newest first; `needs_review` marks an active AI-origin row no Owner has confirmed. |
+| `POST /restrictions` | Owner | `{contact_number_id, channels: call\|sms, until?, reason}` adds an `owner` row (SMS is stored as `text`) and re-evaluates the number's subjects. |
+| `POST /restrictions/:id/confirm` | Owner | `{expected_revision}`: records `confirmed_at`/actor; the row stays active and blocking. |
+| `POST /restrictions/:id/lift` | Owner | `{expected_revision, reason}`: `state: resolved` with `resolved_at`, actor and reason; the interval stays in history; re-evaluates the number's subjects. A row that is not active is 400 `restriction_not_active`. |
+
+Desk commands (Quoted date, callback, assignment) need `controls.desk_enabled` (503 `desk_disabled`); planning commands also need a resolvable engine policy (503 `policy_unavailable`). The Owner and Manager settings commands (day override, restrictions) need only an active configuration. `GET /capabilities` `permitted_commands` now lists `quoted_followup`, `callback`, `assignment`, `day_override`, `restrictions` and `configuration_edit` as the role and state permit.
+
+Model additions: `sales_intelligence_contact_restrictions.reason`, `confirmed_at`, `confirmation_actor`; subject index `sod_subject_contact_numbers` (multikey `contact_number_ids`; build it with `pnpm outreach:indexes`). `appendCsiAudit` now also accepts the `outreach`, `followup` and `restriction` invalidation kinds, which the stored enum has always allowed.
 
 ### Desk collections (SRV-3 models)
 
@@ -152,8 +197,8 @@ Models in `src/models/salesOutreach/` use `defineCsiModel` (strict, `autoIndex`/
 | `pnpm outreach:indexes --target=<db> [--apply]` | Plans (default, read-only) or builds the desk indexes. Refuses a target that is not the resolved database, refuses same-name/same-key mismatches and probes unique indexes for duplicates before building; identical indexes are skipped. Production `--apply` passes the production-writer guard. |
 | `pnpm outreach:install-policy --target=<db> [--apply] [--enable=desk_enabled,goal_metrics_enabled]` | Dry run by default. Installs FINAL-01 cadence/evidence (`approval_ref owner-session-2026-10-03-FINAL-01`), the FAST-01 backfill scope (90 days + upcoming moves) and the M1 roster (every reviewed `sales_rep` link effective now, all seven days, default goal 100) through the PATCH service path; carries controls/migration/intake fields over; no-op when the same content is active; verifies after writing. |
 | `pnpm outreach:enrollment --target=<db> [report\|apply\|verify] [--leads=<file>] [--kind=pilot\|expansion] [--cohort=<id>] [--run-key=<key>] [--out=<file>]` | Enrollment (above). `report` is the default and read-only. `apply` re-runs the report, freezes its selection under `--run-key` and loops bounded apply calls until the run completes or pauses; re-running the same key resumes the stored run with its stored selection and manifest. `verify` reconciles a run. Apply and verify pass the production-writer guard. |
-| `pnpm test:outreach:replica` | Replica proofs on the local `csi01` loopback replica only: the configuration path (`configuration.replica.ts`) and the subject/enrollment paths (`subjects.replica.ts`). |
-| `node --import tsx ops/sales-outreach/write-dto-examples.ts` | Rewrites the M1 read example payloads in `docs/sales-outreach-desk/workspace/evidence/dto-examples/` from the real read services over a synthetic in-memory store (no database, no env). |
+| `pnpm test:outreach:replica` | Replica proofs on the local `csi01` loopback replica only: the configuration path (`configuration.replica.ts`) and the subject/enrollment paths (`subjects.replica.ts`), and the commands/evaluator (`commands.replica.ts`). |
+| `node --import tsx ops/sales-outreach/write-dto-examples.ts` | Rewrites the M1 read example payloads in `docs/sales-outreach-desk/workspace/evidence/dto-examples/` from the real read services over a synthetic in-memory store (no database, no env). `write-command-dto-examples.ts` does the same for the SRV-7 command examples (`dto-examples/commands/`). |
 
 ## S2 — Cadence engine (`src/services/salesOutreach/engine/`)
 

@@ -119,3 +119,31 @@ export const SALES_OUTREACH_ERROR_CODES = [
 export type SalesOutreachErrorCode = (typeof SALES_OUTREACH_ERROR_CODES)[number];
 
 export const SALES_OUTREACH_API_PREFIX = "/api/v1/admin/sales-outreach" as const;
+
+/**
+ * Desk commands registered in the CSI command ledger (`sales_intelligence_command_executions.command`).
+ * Each is a distinct, explicit kind; no legacy CSI command name is reused (CONTRACTS "HTTP interface").
+ */
+export const SALES_OUTREACH_COMMAND_KINDS = {
+  configuration_update: "sales_outreach_configuration_update",
+  enrollment_apply: "sales_outreach_enrollment_apply",
+  quoted_followup: "sales_outreach_quoted_followup",
+  callback: "sales_outreach_callback",
+  assignment: "sales_outreach_assignment",
+  goal_day_override: "sales_outreach_goal_day_override",
+  restriction_add: "sales_outreach_restriction_add",
+  restriction_confirm: "sales_outreach_restriction_confirm",
+  restriction_lift: "sales_outreach_restriction_lift",
+} as const;
+export type SalesOutreachCommandKind = (typeof SALES_OUTREACH_COMMAND_KINDS)[keyof typeof SALES_OUTREACH_COMMAND_KINDS];
+
+/**
+ * How the cadence projection is exposed (IMPLEMENTATION-PLAN §6.2): `shadow` computes the full result but
+ * reads must not show enforcement labels (overdue/missed); `enforcement` exposes them. Both controls off =
+ * no evaluation at all.
+ */
+export const SALES_OUTREACH_CADENCE_EXPOSURES = ["shadow", "enforcement"] as const;
+export type SalesOutreachCadenceExposure = (typeof SALES_OUTREACH_CADENCE_EXPOSURES)[number];
+
+/** Desk restriction channels (the stored CSI restriction uses `text` for SMS). */
+export const SALES_OUTREACH_RESTRICTION_CHANNELS = ["call", "sms"] as const;
