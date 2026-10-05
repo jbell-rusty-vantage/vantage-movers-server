@@ -82,6 +82,7 @@
     "outreach:seed-pilot": "node --import tsx ops/sales-outreach/seed-synthetic-pilot.ts",
     "numbers:migrate": "node --env-file=.env --import tsx ops/numbers-v2/migrate.ts",
     "numbers:cleanup": "node --env-file=.env --import tsx ops/numbers-v2/cleanup.ts",
+    "numbers:desk-resync": "node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts",
     "lint": "eslint src api ops/quality --max-warnings 0",
     "quality:install": "node ops/quality/cli.mjs install",
     "quality:uninstall": "node ops/quality/cli.mjs uninstall",

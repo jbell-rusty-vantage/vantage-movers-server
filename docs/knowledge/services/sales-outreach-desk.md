@@ -94,8 +94,8 @@ One `sales_outreach_subjects` row per enrolled canonical Lead (IMPL-04). The Lea
 - **Subject fields** (`subjectBuilder.ts`):
   - `display`: Job Number, phone, name, canonical move date (the P05g labels come from the engine);
   - `priority {raw, accepted_at, observation_id, basis, uncertain}`: `uncertain` = a newer blank/malformed Granot priority observation for the Job Number, or a non-canonical stored value;
-  - `assigned_agent_id` = `receiver_agent` only when that Agent has a reviewed `sales_rep` link now, else Unassigned (IMPL-01); `assignment_revision` bumps on change. An empty `receiver_agent` can be filled from calls (see "Call-inferred receiver" under Contact events);
-  - `contact_number_ids` = the numbers whose All Numbers `lead` **or** `other_leads` hold the Lead (IMPL-07 input; indexes `contact_number_lead`, `contact_number_other_leads`), used for restrictions and SMS association;
+  - `assigned_agent_id` = `receiver_agent` only when that Agent has a reviewed `sales_rep` link now, else Unassigned (IMPL-01); `assignment_revision` bumps on change. An Accounts connect, change or disconnect re-syncs the affected subjects at once (`subjects/agentWake.ts`, see [number-activity-reads.md](number-activity-reads.md#accounts-repidentityaccountsts)). An empty `receiver_agent` can be filled from calls (see "Call-inferred receiver" under Contact events);
+  - `contact_number_ids` = the numbers whose All Numbers `lead` **or** `other_leads` hold the Lead (IMPL-07 input; indexes `contact_number_lead`, `contact_number_other_leads`), used for restrictions and SMS association. Subjects and contact events from before the phase B switch are brought in line once by `pnpm numbers:desk-resync` ([number-activity-reads.md](number-activity-reads.md#operator-scripts-opsnumbers-v2));
   - `lead_revision_seen`, `status` (`active`/`review`/`closed`; closed is final) and recomputed `review_reasons`.
 - **Policy periods** (`periodPlanner.ts`, `sync.ts`):
   - The first period opens at the enrollment boundary: `start_kind` `activation` for a cohort, `intake` for intake; `time_basis: activation_boundary`.
