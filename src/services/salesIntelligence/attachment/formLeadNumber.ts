@@ -1,6 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
-import { getContactNumberModel } from "../../../models/ContactNumber";
+import { CONTACT_NUMBER_SUMMARY_VERSION, getContactNumberModel } from "../../../models/ContactNumber";
 import { reverseDigits, toE164, toNationalTenDigit } from "../../numberActivity/phone";
 import { configuredRingCentralAccountId } from "../../numberActivity/accountIdentity";
 import { loadDirectoryLookup, type DirectoryLookup } from "../../numberActivity/directory";
@@ -55,6 +55,8 @@ export async function ensureFormLeadContactNumber(lead: LeadSource, session: Cli
     provider_names: [], search_terms: [], first_observed_at: observed, last_activity_at: observed,
     // G7: set on create only; a reused row above keeps whatever it has (absent = `call`).
     created_via: "form_lead",
+    // Born under All Numbers v2: its summary is the zero default and its lead link is computed by the Lead job.
+    summary_version: CONTACT_NUMBER_SUMMARY_VERSION,
   }], { session });
   const numberId = String(created!._id);
   await appendCsiAudit({ session, now, command_id: new mongoose.Types.ObjectId(), actor: csiWorkerActor(requestId) }, {

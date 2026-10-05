@@ -6,6 +6,7 @@ import { csiIdSchema } from "../../validation/v1/salesIntelligence";
 import { runCaptureProjectionJob, type CaptureProjectionWorkerDeps } from "./captureProjectionWorker";
 import { runRebuildJob, type RebuildWorkerDeps } from "./rebuild";
 import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh";
+import { runLeadLinkJob } from "./leadLinkJobs";
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
 import { runRepSmsSyncJob } from "../ringcentral/repSms/intent";
@@ -51,6 +52,8 @@ export function defaultStageHandlers(
     capture_projection: (jobId) => runCaptureProjectionJob(jobId, capture),
     rebuild: (jobId) => runRebuildJob(jobId, rebuild),
     attachment_refresh: (jobId) => runAttachmentRefreshJob(jobId),
+    // All Numbers lead link (job recovery also drains these, after its Lead-change scan).
+    lead_link: (jobId) => runLeadLinkJob(jobId),
     nudge_repair: (jobId) => runNudgeRepairJob(jobId),
     call_log_refresh: (jobId) => runCallLogRefreshJob(jobId),
     // Sales Outreach Desk: a post-commit wake for a Lead change (the minute tail cron also drains these).

@@ -2,7 +2,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getCallInteractionAliasModel } from "../../models/CallInteractionAlias";
-import { getContactNumberModel } from "../../models/ContactNumber";
+import { CONTACT_NUMBER_SUMMARY_VERSION, getContactNumberModel } from "../../models/ContactNumber";
 import { csiWorkerActor, CsiError } from "../salesIntelligence/auth";
 import { enqueueCsiJob } from "../salesIntelligence/jobs";
 import {
@@ -25,6 +25,9 @@ import {
   settleStoredProjection,
   type CallLogRecordInput,
 } from "./interactionProjection";
+import { csiFlag } from "../../config/domain/salesIntelligence";
+import { recomputeCallSummary } from "./callSummary";
+import { leadLinkNumberJobInput } from "./leadLinkJobs";
 import { reverseDigits, toNationalTenDigit } from "./phone";
 import { addObservedSearchTerm } from "./searchTerms";
 import type {
@@ -410,8 +413,24 @@ async function applyOnce(
     kind: "interaction",
   });
 
+  // All Numbers v2: every number this observation touched gets its call summary recomputed from its
+  // calls, in this transaction (the number it is on, the one it left, and the merged losers' numbers).
+  const touchedNumbers = new Set<string>();
+  if (number.id) touchedNumbers.add(String(number.id));
+  if (canonical?.contact_number_id) touchedNumbers.add(String(canonical.contact_number_id));
+  for (const other of others) if (other.contact_number_id) touchedNumbers.add(String(other.contact_number_id));
+  for (const id of [...touchedNumbers].sort()) await recomputeCallSummary(id, session);
+
   const captureSource = input.kind === "webhook" ? undefined : input.source;
   const jobs = await scheduleDownstream(outcome, String(interactionId), number, session, now, captureSource);
+  // A call that joined a number (a new number, a new call, a call re-pointed here) can bring the
+  // Call Lead it created into the number's link: recompute it in a `lead_link` job.
+  const joined = number.id && (!canonical?.contact_number_id || !canonical.contact_number_id.equals(number.id) || others.length > 0);
+  if (number.id && joined && outcome.next.call_log_state !== "provisional" && csiFlag("ENABLED")) {
+    const job = leadLinkNumberJobInput(String(number.id), `call:${String(interactionId)}`);
+    await enqueueCsiJob(job, session, now);
+    jobs.push(job.dedupe_key);
+  }
 
   return {
     interaction_id: String(interactionId),
@@ -502,6 +521,8 @@ async function upsertContactNumber(
           first_observed_at: next.started_at,
           last_activity_at: next.started_at,
           rollups: rollupsFor(next),
+          // Born under All Numbers v2: this transaction computes its call summary and lead link.
+          summary_version: CONTACT_NUMBER_SUMMARY_VERSION,
         },
       ],
       { session },

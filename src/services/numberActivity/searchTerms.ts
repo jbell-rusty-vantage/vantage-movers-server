@@ -49,3 +49,19 @@ export function addObservedSearchTerm(
   terms.push(term);
   return terms;
 }
+
+/** The All Numbers lead-link part of the set (CONTRACT §4.1 `q`): Lead name, Job Number and rep of `lead` and `other_leads`. */
+export function leadLinkSearchTerms(number: {
+  lead?: { name?: string | null; job_no?: string | null; receiver_agent_name?: string | null } | null;
+  other_leads?: ReadonlyArray<{ name?: string | null; job_no?: string | null; receiver_agent_name?: string | null }> | null;
+}): string[] {
+  const terms: string[] = [];
+  for (const lead of [number.lead, ...(number.other_leads ?? [])]) {
+    if (!lead) continue;
+    for (const value of [lead.name, lead.job_no, lead.receiver_agent_name]) {
+      const term = value?.trim().toLowerCase();
+      if (term) terms.push(term);
+    }
+  }
+  return terms;
+}

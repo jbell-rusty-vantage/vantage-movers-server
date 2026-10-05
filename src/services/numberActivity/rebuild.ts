@@ -11,7 +11,7 @@ import { CsiError, csiWorkerActor, type CsiActor } from "../salesIntelligence/au
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, renewCsiJob, type JobLease } from "../salesIntelligence/jobs";
 import { appendCsiAudit, executeCsiCommand } from "../salesIntelligence/transactions";
 import { toProjection } from "./persistInteraction";
-import { boundSearchTerms } from "./searchTerms";
+import { boundSearchTerms, leadLinkSearchTerms } from "./searchTerms";
 import type { InteractionProjection } from "./types";
 
 /**
@@ -77,6 +77,8 @@ export type RecountInput = {
   /** Canonical interactions only (`merged_into_id: null`), any order. */
   interactions: readonly InteractionProjection[];
   attachments: readonly AttachmentEvidence[];
+  /** All Numbers v2 lead-link terms (`leadLinkSearchTerms`), so the recount keeps them in the set. */
+  lead_terms?: readonly string[];
 };
 
 export function recountNumber(input: RecountInput): RebuiltFields {
@@ -101,6 +103,7 @@ export function recountNumber(input: RecountInput): RebuiltFields {
   while (providerNames.length > MAX_PROVIDER_NAMES) providerNames.shift();
   const terms = new Set<string>();
   for (const name of providerNames) terms.add(name.toLowerCase());
+  for (const term of input.lead_terms ?? []) terms.add(term);
   for (const attachment of input.attachments) {
     if (attachment.state === "rejected") continue;
     for (const value of [attachment.lead_snapshot?.name, attachment.lead_snapshot?.job_no, attachment.lead_snapshot?.receiver_agent_name]) {
@@ -336,6 +339,7 @@ export async function runRebuildJob(jobId: string | undefined, deps: RebuildWork
           number: evidence.number,
           interactions: evidence.interactions,
           attachments: evidence.attachments,
+          lead_terms: leadLinkSearchTerms(evidence.number as Parameters<typeof leadLinkSearchTerms>[0]),
         });
         const summary: RebuildJobResult = {
           kind: "number",

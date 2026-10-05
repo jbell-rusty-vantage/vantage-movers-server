@@ -9,7 +9,7 @@ import { CsiError } from "../salesIntelligence/auth";
 import type { ContactNumberLean } from "./contactNumbers";
 import { ownerRead } from "./coverage";
 import type { CoverageDto } from "../salesIntelligence/coverageDto";
-import { resolveRepIdentityAt, type TemporalRepLink } from "../salesIntelligence/repIdentity/resolve";
+import { callRepAttribution, callUserParty, type CallRepAttribution, type RepLinkLean } from "./callRep";
 import {
   numberTimelineEventDtoSchema,
   numberTimelinePageDtoSchema,
@@ -172,46 +172,13 @@ type InteractionLean = {
   queue_fanout: boolean;
 };
 
-/**
- * The Vantage user on a call, through the Rep Identity Link effective at the call time. Only a
- * reviewed sales-rep link names an Agent; anything else keeps the extension and says why.
- */
-export type CallRepAttribution = {
-  status: "reviewed" | "unreviewed" | "excluded_role" | "no_extension";
-  agent_id: string | null;
-  agent_name: string | null;
-  extension_id: string | null;
-  extension_number: string | null;
-};
-type RepLinkLean = TemporalRepLink & { agent_name_snapshot?: string | null };
-
-/** The user party that answered (connected, with an extension), else the first user party with an extension. */
-function userParty(row: Pick<InteractionLean, "parties">): InteractionParty | null {
-  const parties = row.parties ?? [];
-  return parties.find((p) => p.role === "user" && p.connected && p.extension_id) ?? parties.find((p) => p.role === "user" && p.extension_id) ?? null;
-}
-
-/** Pure: the rep of one call from the page's Rep Identity Links. */
-export function callRepAttribution(
-  row: Pick<InteractionLean, "parties" | "provider_account_id" | "started_at">,
-  links: readonly RepLinkLean[],
-): CallRepAttribution {
-  const party = userParty(row);
-  if (!party?.extension_id) return { status: "no_extension", agent_id: null, agent_name: null, extension_id: null, extension_number: null };
-  const extension = { extension_id: party.extension_id, extension_number: party.extension_number ?? null };
-  const resolution = resolveRepIdentityAt(links, row.provider_account_id, party.extension_id, new Date(row.started_at));
-  if (resolution.status === "reviewed") {
-    const link = links.find((l) => String(l._id) === resolution.link_id) ?? null;
-    return { status: "reviewed", agent_id: resolution.agent_id, agent_name: link?.agent_name_snapshot ?? null, ...extension };
-  }
-  return { status: resolution.status === "excluded_role" ? "excluded_role" : "unreviewed", agent_id: null, agent_name: null, ...extension };
-}
+export { callRepAttribution, type CallRepAttribution } from "./callRep";
 
 /** One bounded read of the Rep Identity Links a page of calls names (account + extension). */
 async function loadRepLinks(rows: readonly InteractionLean[]): Promise<RepLinkLean[]> {
   const accounts = [...new Set(rows.map((row) => row.provider_account_id))];
   const extensions = [...new Set(rows.flatMap((row) => {
-    const party = userParty(row);
+    const party = callUserParty(row);
     return party?.extension_id ? [party.extension_id] : [];
   }))];
   if (!accounts.length || !extensions.length) return [];

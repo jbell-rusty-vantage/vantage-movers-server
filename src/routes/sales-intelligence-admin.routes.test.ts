@@ -44,6 +44,10 @@ test("Numbers admin routes: Owner guard (a rep is refused), flag-off 404, scope,
         calls.push(`detail:${id}`);
         return id === numberId ? ({ as_of: asOf, coverage, data: { id } } as never) : null;
       },
+      numberDetailV2: async (id) => {
+        calls.push(`detail:v2:${id}`);
+        return id === numberId ? ({ as_of: asOf, data: { number: { id } } } as never) : null;
+      },
       timeline: async (id, opts) => {
         calls.push(`timeline:${id}:${JSON.stringify(opts)}`);
         return id === numberId ? ({ as_of: asOf, coverage, data: { number_id: id, items: [], cursor: null } } as never) : null;

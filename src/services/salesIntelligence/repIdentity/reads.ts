@@ -80,7 +80,7 @@ function directoryEvidenceStatus(snapshot: { extensions: DirectoryUserSource[]; 
     && (snapshot.counts.extensions !== snapshot.extensions.length || snapshot.counts.users !== users.length || new Set(snapshot.extensions.map(extension => extension.id)).size !== snapshot.extensions.length);
   return incomplete ? "incomplete" as const : "stored" as const;
 }
-async function loadDirectoryAccounts(accountId?: string) {
+export async function loadDirectoryAccounts(accountId?: string) {
   if (accountId) {
     const loaded = await loadRepDirectory(accountId, undefined, false);
     return [{ rc_account_id: accountId, snapshot: loaded.snapshot, evidence: loaded.evidence }];

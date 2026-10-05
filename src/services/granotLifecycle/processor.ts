@@ -29,6 +29,7 @@ import {
 } from "../domainCommands/types";
 import { createGranotWebhookInitiator } from "../durableWork/actors";
 import { wakeLeadAttachmentsAfterChange } from "../salesIntelligence/attachment/leadTrigger";
+import { wakeLeadLinksAfterChange } from "../numberActivity/leadLinkJobs";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
   createLeadFromGranot,
@@ -230,11 +231,17 @@ export function createGranotObservationProcessor(
       // After the lifecycle transaction(s) committed. Additive and best-effort: it never changes the
       // decision, never throws, and holds receipt finalization for at most `wakeLeadAttachmentsTimeoutMs`
       // (the durable Lead-change scan on the attachment-refresh cron stays the backstop).
-      await boundedLeadAttachmentWake(() => (deps.wakeLeadAttachments ?? wakeLeadAttachmentsAfterChange)(result), result.observation_id,
+      // The default wakes the attachment refresh and the All Numbers lead link for the same Lead changes.
+      await boundedLeadAttachmentWake(() => (deps.wakeLeadAttachments ?? wakeLeadChangeConsumers)(result), result.observation_id,
         deps.wakeLeadAttachmentsTimeoutMs ?? LEAD_ATTACHMENT_WAKE_TIMEOUT_MS);
       return result;
     },
   };
+}
+
+/** Default post-commit wake: the attachment refresh and the All Numbers lead link, side by side; neither throws. */
+function wakeLeadChangeConsumers(result: { observation_id: string; target?: EntityRef }) {
+  return Promise.all([wakeLeadAttachmentsAfterChange(result), wakeLeadLinksAfterChange(result)]);
 }
 
 /**

@@ -83,7 +83,74 @@ export const CONTACT_NUMBER_INDEXES = [
     name: "contact_number_eligibility",
     key: { "contact_eligibility.state": 1 },
   },
+  // All Numbers v2 (all-numbers CONTRACT §2, §4.1): "Waiting on us", longest wait first.
+  {
+    name: "contact_number_waiting",
+    key: { waiting_since: 1, _id: 1 },
+    partialFilterExpression: { waiting_since: { $type: "date" } },
+  },
+  // The numbers a Lead is linked to (lead-side recompute, desk subject `contact_number_ids`).
+  { name: "contact_number_lead", key: { "lead.id": 1 } },
+  { name: "contact_number_other_leads", key: { "other_leads.id": 1 } },
 ] as const;
+
+/** A Lead as a Number's link copies it (CONTRACT §2). The snapshot fields refresh on every recompute. */
+export const CONTACT_NUMBER_LEAD_STATES = ["open", "booked", "cancelled"] as const;
+export const numberLeadSchema = new Schema(
+  {
+    model: { type: String, required: true, enum: ["FormLead", "CallLead"] },
+    id: { type: Schema.Types.ObjectId, required: true },
+    name: { type: String, default: null },
+    job_no: { type: String, default: null },
+    receiver_agent_id: { type: Schema.Types.ObjectId, default: null },
+    receiver_agent_name: { type: String, default: null },
+    received_at: { type: Date, required: true },
+    state: { type: String, required: true, enum: CONTACT_NUMBER_LEAD_STATES },
+  },
+  { _id: false },
+);
+
+const leadLinkSchema = new Schema(
+  {
+    /** `owner`: the Owner picked `lead` by hand; it holds until a newer candidate is received. */
+    source: { type: String, required: true, enum: ["automatic", "owner"], default: "automatic" },
+    set_at: { type: Date, default: null },
+    set_by: { type: String, default: null, trim: true },
+    /** Leads the Owner said are not this number (Unlink). Never linked automatically again. */
+    excluded: {
+      type: [new Schema({ model: { type: String, required: true, enum: ["FormLead", "CallLead"] },
+        id: { type: Schema.Types.ObjectId, required: true } }, { _id: false })],
+      default: [],
+    },
+  },
+  { _id: false },
+);
+
+const lastCallSchema = new Schema(
+  {
+    interaction_id: { type: Schema.Types.ObjectId, required: true },
+    at: { type: Date, required: true },
+    direction: { type: String, required: true, enum: ["inbound", "outbound"] },
+    result: { type: String, required: true, enum: ["answered", "missed", "voicemail"] },
+    duration_seconds: { type: Number, default: null },
+    /** Our side of the call; the read resolves the Agent through the reviewed Rep Identity Link at `at`. */
+    rc_extension_id: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const callCountsSchema = new Schema(
+  {
+    inbound: { type: Number, required: true, default: 0 },
+    outbound: { type: Number, required: true, default: 0 },
+    /** Inbound calls nobody answered, voicemail included. */
+    missed: { type: Number, required: true, default: 0 },
+  },
+  { _id: false },
+);
+
+/** Stamped by v2 code when the summary and link fields were computed (the migration marker). */
+export const CONTACT_NUMBER_SUMMARY_VERSION = 1 as const;
 
 const contactEligibilitySchema = new Schema(
   {
@@ -154,6 +221,18 @@ export const ContactNumberSchema = new Schema(
     /** G7: optional, no default, so call-created and historical rows stay without it (= `call`). */
     created_via: { type: String, enum: CONTACT_NUMBER_CREATED_VIA, required: false },
     rollups: { type: rollupsSchema, required: true, default: () => ({}) },
+    // ── All Numbers v2 (CONTRACT §2). Written by `numberActivity/callSummary.ts` and `leadLink.ts`. ──
+    lead: { type: numberLeadSchema, default: null },
+    /** Other matching Leads, newest first, at most 10. */
+    other_leads: { type: [numberLeadSchema], default: [] },
+    lead_link: { type: leadLinkSchema, default: null },
+    last_call: { type: lastCallSchema, default: null },
+    calls: { type: callCountsSchema, default: () => ({}) },
+    last_inbound_at: { type: Date, default: null },
+    last_outbound_at: { type: Date, default: null },
+    /** Start of the earliest missed/voicemail inbound call after the latest handled call. */
+    waiting_since: { type: Date, default: null },
+    summary_version: { type: Number, default: null },
   },
   {
     collection: "contact_numbers",

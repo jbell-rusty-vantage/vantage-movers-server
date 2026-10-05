@@ -7,6 +7,7 @@ import { withTransaction } from "../../db";
 import { MongoLeaseStore, activeTokenFilter } from "../durableWork/leases";
 import { RETENTION_LEASE_SCOPE, syncStateLeaseModel } from "../numberActivity/reconcileCallLog";
 import { resolveActivityRetentionDays } from "./retentionPolicy";
+import { recomputeCallSummary } from "../numberActivity/callSummary";
 
 /**
  * Call activity retention over the retained provider metadata (`call_interactions`, `contact_numbers`
@@ -58,6 +59,8 @@ export async function runRetentionOnce(overrides: {
       // Keep provider identifiers and aliases to prevent replay from resurrecting the call.
       await db().collection("call_interactions").updateOne({ _id: row._id }, { $set: { purged_at: started, parties: [], legs: [], recordings: [], external_e164: null, provider_names: [] } }, { session });
       if (current) await releasePurgedRecordings(current, session);
+      // All Numbers: a purged call no longer counts, so its number's summary is recomputed now.
+      if (current?.contact_number_id && !current.merged_into_id) await recomputeCallSummary(String(current.contact_number_id), session);
     });
     summary.activity_purged = rows.length;
     const numbers = await db().collection("contact_numbers").find({ last_activity_at: { $lte: cutoff }, purged_at: null }).limit(limit).toArray();
@@ -84,11 +87,17 @@ const EMPTY_ROLLUPS = {
   attached_lead_count: 0, candidate_lead_count: 0, recordings_total: 0,
 };
 
+/** All Numbers v2 fields of a purged number: no Lead, no calls, nothing waiting. */
+const EMPTY_NUMBER_V2 = {
+  lead: null, other_leads: [], last_call: null, calls: { inbound: 0, outbound: 0, missed: 0 },
+  last_inbound_at: null, last_outbound_at: null, waiting_since: null,
+};
+
 async function purgeNumberActivity(id: ObjectId, at: Date, session: ClientSession) {
   const options = { session }, database = db();
   // A future genuine call may create a new Contact Number; retained call aliases still dedupe history.
   await database.collection("contact_numbers").updateOne({ _id: id }, { $set: { purged_at: at, e164: `purged:${id}`, national_ten: null, digits_reversed: "", provider_names: [], search_terms: [],
-    rollups: EMPTY_ROLLUPS, contact_eligibility: { state: "suppressed", reason: "retention" } } }, options);
+    rollups: EMPTY_ROLLUPS, contact_eligibility: { state: "suppressed", reason: "retention" }, ...EMPTY_NUMBER_V2 } }, options);
   await database.collection("number_lead_attachments").deleteMany({ contact_number_id: id }, options);
   await database.collection("owner_rep_nudges").updateMany({ contact_number_id: id }, { $set: { purged_at: at, body_as_sent: "", destination: "", authorized_command: null, sender_did: null, rc_extension_name_snapshot: null } }, options);
 }

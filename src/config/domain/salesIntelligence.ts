@@ -33,6 +33,8 @@ export const CSI_JOB_STAGES = [
   "call_log_refresh",
   "directory",
   "attachment_refresh",
+  // All Numbers (all-numbers CONTRACT §3): recompute the lead link of a Lead's numbers or of one number.
+  "lead_link",
   "rebuild",
   "nudge_repair",
   // Sales Outreach Desk (S3, SRV-6): derive `sales_outreach_contact_events` for one changed call/SMS.
@@ -91,6 +93,8 @@ export const CSI_ERROR_CODES = [
   "LEASE_LOST",
   "INDEX_REQUIRED",
   "FORBIDDEN",
+  // All Numbers (§4.1): a cursor that no longer fits the request; the client restarts from page one.
+  "CURSOR_EXPIRED",
 ] as const;
 export type CsiErrorCode = (typeof CSI_ERROR_CODES)[number];
 export const CSI_FLAGS = [

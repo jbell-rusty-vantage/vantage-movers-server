@@ -2,7 +2,7 @@ import mongoose, { type ClientSession, type InferSchemaType } from "mongoose";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getNumberLeadAttachmentModel, NumberLeadAttachmentSchema, NUMBER_LEAD_ATTACHMENT_INDEXES } from "../../../models/NumberLeadAttachment";
 import { csiFlag } from "../../../config/domain/salesIntelligence";
-import { boundSearchTerms } from "../../numberActivity/searchTerms";
+import { boundSearchTerms, leadLinkSearchTerms } from "../../numberActivity/searchTerms";
 import { CsiError, csiWorkerActor } from "../auth";
 import { appendCsiAudit, assertIndexes, payloadHash, type CsiTransactionContext } from "../transactions";
 import { ambiguityFanIn, exactSource, suggest, AUTO_ATTACH_REASON, isAutoAttachReason, type Attachment, type Evidence, type LeadRef } from "./suggest";
@@ -29,10 +29,18 @@ export async function lockNumber(numberId: string, session: ClientSession) {
 async function unchangedNumber(numberId: string, lock: Awaited<ReturnType<typeof lockNumber>>, session: ClientSession) {
   await getContactNumberModel().updateOne({ _id: numberId }, { $set: { revision: lock.prior_revision, updatedAt: lock.prior_updated_at } }, { session, timestamps: false });
 }
+/** The display terms of a number's non-rejected edges; the All Numbers lead-link recompute keeps them in the set too. */
+export async function attachmentSearchTerms(numberId: string, session: ClientSession | null): Promise<string[]> {
+  const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: numberId, state: { $ne: "rejected" } }, { lead_snapshot: 1 })
+    .session(session).lean();
+  return edges.flatMap(edge => [edge.lead_snapshot?.name, edge.lead_snapshot?.job_no, edge.lead_snapshot?.receiver_agent_name]
+    .flatMap(value => value?.trim() ? [value.trim().toLowerCase()] : []));
+}
 export async function rebuildAttachmentSearchTerms(numberId: string, session: ClientSession) {
   const number = await getContactNumberModel().findById(numberId).session(session).orFail();
   const edges = await getNumberLeadAttachmentModel().find({ contact_number_id: numberId }).session(session).lean();
-  const terms = new Set(number.provider_names.map(n => n.toLowerCase()));
+  // Same order as the All Numbers lead-link recompute (`numberActivity/leadLink.ts`): caller names, link terms, edge terms.
+  const terms = new Set([...number.provider_names.map(n => n.toLowerCase()), ...leadLinkSearchTerms(number)]);
   for (const edge of edges.filter(e => e.state !== "rejected")) {
     for (const value of [edge.lead_snapshot?.name, edge.lead_snapshot?.job_no, edge.lead_snapshot?.receiver_agent_name]) {
       if (value?.trim()) terms.add(value.trim().toLowerCase());

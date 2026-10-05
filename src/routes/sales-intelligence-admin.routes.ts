@@ -21,6 +21,17 @@ import { previewNudge, sendNudge } from "../services/salesIntelligence/nudges/co
 import { listNudges, nudgeHistoryQuerySchema } from "../services/salesIntelligence/nudges/reads";
 import { csiNudgeCommandSchema } from "../validation/v1/salesIntelligence";
 import { streamCsiInvalidations } from "../services/salesIntelligence/live";
+import { commandNumberLead, listAllNumbers, readNumberDetail, searchLeadsForLink } from "../services/numberActivity/allNumbers";
+import { commandAccountAgent, readAccounts, suggestAccountMatches } from "../services/salesIntelligence/repIdentity/accounts";
+import {
+  accountAgentCommandSchema,
+  accountsQuerySchema,
+  accountsSuggestSchema,
+  allNumbersQuerySchema,
+  leadSearchQuerySchema,
+  numberDetailQuerySchema,
+  numberLeadCommandSchema,
+} from "../validation/v1/allNumbers";
 
 /**
  * Owner routes of the interim Sales Intelligence: Numbers and RingCentral Accounts
@@ -61,7 +72,26 @@ export type SalesIntelligenceAdminRouteDeps = {
   nudgeSend?: typeof sendNudge;
   nudges?: typeof listNudges;
   live?: typeof streamCsiInvalidations;
+  // All Numbers + Accounts (all-numbers CONTRACT §4).
+  allNumbers?: typeof listAllNumbers;
+  numberDetailV2?: typeof readNumberDetail;
+  numberLead?: typeof commandNumberLead;
+  leadSearch?: typeof searchLeadsForLink;
+  accounts?: typeof readAccounts;
+  accountAgent?: typeof commandAccountAgent;
+  suggestAccounts?: typeof suggestAccountMatches;
 };
+
+/**
+ * Query keys only the interim Numbers list (`search.ts`) accepts. Until phase B removes it, a request
+ * carrying any of them (the current Admin always sends `sort` and `direction`) is served by that list;
+ * every other `GET /numbers` is the All Numbers list (§4.1), whose strict query refuses them.
+ */
+const INTERIM_NUMBERS_QUERY_KEYS = ["sort", "direction", "classification", "attachment", "hygiene", "has_recording", "has_calls",
+  "include_form_only", "active_from", "active_to"] as const;
+export function isInterimNumbersQuery(query: Record<string, unknown>): boolean {
+  return !("view" in query) && INTERIM_NUMBERS_QUERY_KEYS.some((key) => key in query);
+}
 
 const timelineQuerySchema = z
   .object({
@@ -87,6 +117,7 @@ const STATUS_BY_CODE: Partial<Record<CsiError["code"], number>> = {
   NUDGE_DESTINATION_IS_CUSTOMER: 422,
   NUDGE_BODY_INVALID: 422,
   FORBIDDEN: 403,
+  CURSOR_EXPIRED: 409,
 };
 
 export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminRouteDeps = {}): Router {
@@ -108,14 +139,17 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
   const fail = (req: Request, res: Response, error: unknown) => {
     const requestId = req.header("x-vantage-admin-request-id") ?? req.header("x-request-id") ?? "unavailable";
     if (error instanceof ZodError) {
-      return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "Invalid request", request_id: requestId });
+      return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "Invalid request", message: "Invalid request", request_id: requestId });
     }
     if (error instanceof CsiError) {
       const status = STATUS_BY_CODE[error.code] ?? 500;
+      const message = error.code === "FEATURE_DISABLED" ? "Sales Intelligence is disabled"
+        : error.code === "REVISION_CONFLICT" ? "This changed since it was loaded; reload and try again" : "Sales Intelligence request rejected";
       return res.status(status).json({
         ok: false,
         code: error.code,
-        error: error.code === "FEATURE_DISABLED" ? "Sales Intelligence is disabled" : "Sales Intelligence request rejected",
+        error: message,
+        message,
         request_id: requestId,
         // Additive (V-AC S5): which parts were refused, when the service said so.
         ...(error.issues?.length ? { issues: error.issues } : {}),
@@ -126,13 +160,14 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
       path: req.path,
       errorName: error instanceof Error ? error.name : "Error",
     });
-    return res.status(500).json({ ok: false, code: "INVALID_INPUT", error: "Sales Intelligence request failed", request_id: requestId });
+    return res.status(500).json({ ok: false, code: "INVALID_INPUT", error: "Sales Intelligence request failed", message: "Sales Intelligence request failed", request_id: requestId });
   };
   const notFound = (req: Request, res: Response, resource = "Number") =>
     res.status(404).json({
       ok: false,
       code: "INVALID_INPUT",
       error: `${resource} not found`,
+      message: `${resource} not found`,
       request_id: req.header("x-vantage-admin-request-id") ?? req.header("x-request-id") ?? "unavailable",
     });
 
@@ -175,9 +210,26 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
   router.get(`${CSI_ADMIN_PREFIX}/numbers`, async (req, res) => {
     try {
       guard(req);
-      const query = numberSearchQuerySchema.parse(req.query);
+      if (isInterimNumbersQuery(req.query)) {
+        const query = numberSearchQuerySchema.parse(req.query);
+        await connect();
+        return res.json({ ok: true, ...(await search(query)) });
+      }
+      const query = allNumbersQuerySchema.parse(req.query);
       await connect();
-      return res.json({ ok: true, ...(await search(query)) });
+      return res.json({ ok: true, ...(await (deps.allNumbers ?? listAllNumbers)(query)) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  // Registered before `/numbers/:id`, so the literal segment is never read as an id.
+  router.get(`${CSI_ADMIN_PREFIX}/numbers/lead-search`, async (req, res) => {
+    try {
+      guard(req);
+      const query = leadSearchQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, ...(await (deps.leadSearch ?? searchLeadsForLink)(query.q)) });
     } catch (error) {
       return fail(req, res, error);
     }
@@ -187,10 +239,71 @@ export function createSalesIntelligenceAdminRouter(deps: SalesIntelligenceAdminR
     try {
       guard(req);
       const id = csiIdSchema.parse(req.params.id);
+      numberDetailQuerySchema.parse(req.query);
       await connect();
+      // Phase A: the interim detail and the All Numbers detail (§4.2) side by side in one `data`, so the
+      // current Admin and the new one both read it. Their keys do not overlap.
       const row = await detail(id);
-      if (!row) return notFound(req, res);
-      return res.json({ ok: true, ...row });
+      const v2 = row ? await (deps.numberDetailV2 ?? readNumberDetail)(id) : null;
+      if (!row || !v2) return notFound(req, res);
+      return res.json({ ok: true, ...row, as_of: v2.as_of, data: { ...row.data, ...v2.data } });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(`${CSI_ADMIN_PREFIX}/numbers/:id/lead`, async (req, res) => {
+    try {
+      const actor = guard(req);
+      const id = csiIdSchema.parse(req.params.id);
+      const body = numberLeadCommandSchema.parse(req.body);
+      const idempotency_key = req.header("idempotency-key")?.trim() || undefined;
+      await connect();
+      const done = await (deps.numberLead ?? commandNumberLead)({ actor, number_id: id, body, idempotency_key });
+      if (!done) return notFound(req, res);
+      const result = await (deps.numberDetailV2 ?? readNumberDetail)(id);
+      if (!result) return notFound(req, res);
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.get(`${CSI_ADMIN_PREFIX}/accounts`, async (req, res) => {
+    try {
+      guard(req);
+      accountsQuerySchema.parse(req.query);
+      await connect();
+      const data = await (deps.accounts ?? readAccounts)();
+      return res.json({ ok: true, as_of: new Date().toISOString(), data });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(`${CSI_ADMIN_PREFIX}/accounts/suggest`, async (req, res) => {
+    try {
+      const actor = guard(req);
+      accountsSuggestSchema.parse(req.body ?? {});
+      const idempotency_key = req.header("idempotency-key")?.trim() || undefined;
+      await connect();
+      const data = await (deps.suggestAccounts ?? suggestAccountMatches)({ actor, idempotency_key });
+      return res.json({ ok: true, as_of: new Date().toISOString(), data });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(`${CSI_ADMIN_PREFIX}/accounts/:extension_id/agent`, async (req, res) => {
+    try {
+      const actor = guard(req);
+      const extensionId = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).parse(req.params.extension_id);
+      const body = accountAgentCommandSchema.parse(req.body);
+      const idempotency_key = req.header("idempotency-key")?.trim() || undefined;
+      await connect();
+      const account = await (deps.accountAgent ?? commandAccountAgent)({ actor, extension_id: extensionId, body, idempotency_key });
+      if (!account) return notFound(req, res, "Account");
+      return res.json({ ok: true, as_of: new Date().toISOString(), data: { account } });
     } catch (error) {
       return fail(req, res, error);
     }

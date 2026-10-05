@@ -11,6 +11,7 @@ import {
 import { runDirectorySyncOnce } from "../services/numberActivity/directorySync";
 import { runAttachmentRefreshOnce, drainAttachmentRefreshJobs } from "../services/salesIntelligence/attachment/refresh";
 import { drainNudgeRepairJobs } from "../services/salesIntelligence/nudges/repair";
+import { runLeadLinkRecovery } from "../services/numberActivity/leadLinkJobs";
 import { retireLegacyCsiJobs } from "../services/salesIntelligence/jobs";
 import { drainRebuildJobs, type RebuildDrainSummary, type RebuildWorkerDeps } from "../services/numberActivity/rebuild";
 import { callLogReconcileConfig, runCallLogReconcileOnce } from "../services/numberActivity/reconcileCallLog";
@@ -83,6 +84,8 @@ export type SalesIntelligenceCronRouteDeps = {
   runDirectorySync?: typeof runDirectorySyncOnce;
   runAttachmentRefresh?: typeof runAttachmentRefreshOnce;
   drainAttachmentRefresh?: typeof drainAttachmentRefreshJobs;
+  /** All Numbers: Lead-change scan + `lead_link` drain (job recovery, under `ENABLED`). */
+  runLeadLinkRecovery?: typeof runLeadLinkRecovery;
   runRetention?: typeof runRetentionOnce;
   drainNudgeRepair?: typeof drainNudgeRepairJobs;
   /** Terminalizes rows of retired stages; job recovery runs it first. */
@@ -142,6 +145,8 @@ export function createSalesIntelligenceCronRouter(
   const extraRecovery: NonNullable<SalesIntelligenceCronRouteDeps["extraRecovery"]> = deps.extraRecovery ?? [
     { name: "nudge_repair", flag: "NUDGE_ENABLED" as const, run: () => (deps.drainNudgeRepair ?? drainNudgeRepairJobs)() },
     { name: "attachment_refresh", flag: "ATTACHMENT_REFRESH" as const, run: () => (deps.drainAttachmentRefresh ?? drainAttachmentRefreshJobs)() },
+    // All Numbers: the Lead-change scan and the `lead_link` drain, under the Numbers switch.
+    { name: "lead_link", flag: "ENABLED" as const, run: () => (deps.runLeadLinkRecovery ?? runLeadLinkRecovery)() },
   ];
 
   // CC-08 webhook acceleration: the `call_log_refresh` drain rides job
