@@ -9,6 +9,10 @@ import {
   requireOutreachActor,
   type OutreachAuthDeps,
 } from "../services/salesOutreach/auth";
+import { assignSubject } from "../services/salesOutreach/commands/assignment";
+import { setGoalDayOverride, type DayOverrideDeps } from "../services/salesOutreach/commands/dayOverride";
+import { commandCallback, setQuotedFollowup } from "../services/salesOutreach/commands/plans";
+import { addRestriction, confirmRestriction, liftRestriction, listRestrictions } from "../services/salesOutreach/commands/restrictions";
 import { patchSalesOutreachConfiguration } from "../services/salesOutreach/config/commands";
 import { salesOutreachConfigurationLoader, type ConfigurationLoader } from "../services/salesOutreach/config/load";
 import { readSalesOutreachConfiguration } from "../services/salesOutreach/config/reads";
@@ -24,6 +28,7 @@ import {
 import { readDeskCapabilities, readRepDays, readTeam } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
 import {
+  salesOutreachAgentIdSchema,
   salesOutreachConfigurationPatchSchema,
   salesOutreachScopeQuerySchema,
 } from "../validation/v1/salesOutreach";
@@ -33,6 +38,16 @@ import {
   salesOutreachEnrollmentReportSchema,
   salesOutreachEnrollmentVerifySchema,
 } from "../validation/v1/salesOutreachEnrollment";
+import {
+  salesOutreachAssignmentRequestSchema,
+  salesOutreachCallbackRequestSchema,
+  salesOutreachDayOverrideRequestSchema,
+  salesOutreachQuotedFollowupRequestSchema,
+  salesOutreachRestrictionAddRequestSchema,
+  salesOutreachRestrictionConfirmRequestSchema,
+  salesOutreachRestrictionLiftRequestSchema,
+  salesOutreachRestrictionsQuerySchema,
+} from "../validation/v1/salesOutreachCommands";
 import { salesOutreachRepDaysQuerySchema, salesOutreachTeamQuerySchema } from "../validation/v1/salesOutreachReads";
 
 export type SalesOutreachRouteDeps = {
@@ -44,8 +59,17 @@ export type SalesOutreachRouteDeps = {
   readStore?: SalesOutreachReadStore;
   /** Enrollment stores/ledger (tests inject in-memory ones); loader and clock come from above. */
   enrollment?: Omit<EnrollmentDeps, "loader" | "now">;
+  /** SRV-7 command stores/ledger (tests inject in-memory ones); the loader comes from above. */
+  commands?: Omit<DayOverrideDeps, "loader">;
   now?: () => Date;
 };
+
+/** Every desk command needs an Idempotency-Key (at most 200 characters). */
+function idempotencyKeyOf(req: Request): string {
+  const key = req.header("idempotency-key")?.trim();
+  if (!key || key.length > 200) throw new OutreachError("IDEMPOTENCY_KEY_REQUIRED");
+  return key;
+}
 
 const requestIdOf = (req: Request) =>
   req.header("x-vantage-admin-request-id")?.trim() || req.header("x-request-id")?.trim() || "unavailable";
@@ -208,6 +232,135 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       return fail(req, res, error);
     }
   });
+
+  // SRV-7 commands. Each runs through the CSI command ledger (Idempotency-Key replay, CAS, audit) and
+  // authorizes the subject itself (a Rep only on its current assignment; absent/foreign = 404).
+  const commandDeps = () => ({ ...deps.commands, loader });
+  const command =
+    (handler: (req: Request, res: Response) => Promise<unknown>) =>
+    async (req: Request, res: Response) => {
+      try {
+        salesOutreachScopeQuerySchema.parse(req.query);
+        const data = await handler(req, res);
+        return res.json({ ok: true, data });
+      } catch (error) {
+        return fail(req, res, error);
+      }
+    };
+
+  router.patch(
+    `${SALES_OUTREACH_API_PREFIX}/outreach/:id/quoted-followup`,
+    guard("quoted_date_commands"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const { scope: _scope, ...body } = salesOutreachQuotedFollowupRequestSchema.parse(req.body);
+      void _scope;
+      await connect();
+      return setQuotedFollowup({ actor: outreachActorOf(res), subject_id: String(req.params.id), idempotency_key, ...body }, commandDeps());
+    }),
+  );
+
+  router.patch(
+    `${SALES_OUTREACH_API_PREFIX}/outreach/:id/callback`,
+    guard("explicit_callback_commands"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const { scope: _scope, ...body } = salesOutreachCallbackRequestSchema.parse(req.body);
+      void _scope;
+      await connect();
+      return commandCallback({ actor: outreachActorOf(res), subject_id: String(req.params.id), idempotency_key, ...body }, commandDeps());
+    }),
+  );
+
+  router.patch(
+    `${SALES_OUTREACH_API_PREFIX}/outreach/:id/assignment`,
+    guard("assign_reassign"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const body = salesOutreachAssignmentRequestSchema.parse(req.body);
+      await connect();
+      return assignSubject(
+        { actor: outreachActorOf(res), subject_id: String(req.params.id), idempotency_key, expected_revision: body.expected_revision, agent_id: body.agent_id },
+        commandDeps(),
+      );
+    }),
+  );
+
+  router.patch(
+    `${SALES_OUTREACH_API_PREFIX}/goals/:agent_id/day-override`,
+    guard("prospective_absence_override"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const agent_id = salesOutreachAgentIdSchema.parse(String(req.params.agent_id).toLowerCase());
+      const body = salesOutreachDayOverrideRequestSchema.parse(req.body);
+      await connect();
+      return setGoalDayOverride(
+        {
+          actor: outreachActorOf(res),
+          agent_id,
+          idempotency_key,
+          expected_revision: body.expected_revision,
+          business_date: body.business_date,
+          goal: body.goal,
+          reason: body.reason,
+        },
+        commandDeps(),
+      );
+    }),
+  );
+
+  // P06c restriction review: Owner-only (P09b "lift contact restriction").
+  router.get(`${SALES_OUTREACH_API_PREFIX}/restrictions`, guard("lift_contact_restriction"), async (req, res) => {
+    try {
+      const query = salesOutreachRestrictionsQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await listRestrictions(outreachActorOf(res), query, { ...commandDeps(), now: now() }) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.post(
+    `${SALES_OUTREACH_API_PREFIX}/restrictions`,
+    guard("lift_contact_restriction"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const body = salesOutreachRestrictionAddRequestSchema.parse(req.body);
+      await connect();
+      return addRestriction(
+        { actor: outreachActorOf(res), idempotency_key, contact_number_id: body.contact_number_id, channels: body.channels, until: body.until, reason: body.reason },
+        commandDeps(),
+      );
+    }),
+  );
+
+  router.post(
+    `${SALES_OUTREACH_API_PREFIX}/restrictions/:id/confirm`,
+    guard("lift_contact_restriction"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const body = salesOutreachRestrictionConfirmRequestSchema.parse(req.body);
+      await connect();
+      return confirmRestriction(
+        { actor: outreachActorOf(res), idempotency_key, restriction_id: String(req.params.id), expected_revision: body.expected_revision },
+        commandDeps(),
+      );
+    }),
+  );
+
+  router.post(
+    `${SALES_OUTREACH_API_PREFIX}/restrictions/:id/lift`,
+    guard("lift_contact_restriction"),
+    command(async (req, res) => {
+      const idempotency_key = idempotencyKeyOf(req);
+      const body = salesOutreachRestrictionLiftRequestSchema.parse(req.body);
+      await connect();
+      return liftRestriction(
+        { actor: outreachActorOf(res), idempotency_key, restriction_id: String(req.params.id), expected_revision: body.expected_revision, reason: body.reason },
+        commandDeps(),
+      );
+    }),
+  );
 
   return router;
 }

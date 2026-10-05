@@ -34,7 +34,12 @@
         "business_day"
       ]
     },
-    "permitted_commands": [],
+    "permitted_commands": [
+      "quoted_followup",
+      "callback",
+      "assignment",
+      "day_override"
+    ],
     "role_capabilities": [
       "assign_reassign",
       "daily_operations_access",
