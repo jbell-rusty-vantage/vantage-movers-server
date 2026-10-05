@@ -12,11 +12,16 @@ This file is intentionally thin. See the following for the real guidance:
 
 ## Quality checkpoints
 
-See `docs/quality-checkpoints.md`. At the end of a meaningful implementation task, run
-`pnpm finish-work --provider codex` in Codex or `pnpm finish-work --provider cursor` in Cursor.
-This performs model review, focused fixes/clean-code improvements, documentation maintenance,
-typecheck/lint/tests and final review. Do not invoke it after every conversational turn.
-If `VANTAGE_QUALITY_CHILD=1`, you are inside the checkpoint worker: follow your stage prompt
+See `docs/quality-checkpoints.md`. User-level hooks for Claude Code, Cursor and Codex start a
+background checkpoint after a turn ends:
+- a git-based gate skips insignificant changes;
+- a model triage (Sonnet 5.5, Grok 4.7 or Codex, matching the tool in use) chooses a clean-code
+  pass, a documentation pass, both or neither;
+- the result is checked and auto-applied to the working tree (never staged or committed).
+
+Nothing needs to be run per turn. If a prompt carries a "Quality worker … applied edits" notice,
+re-read those files before editing them. `pnpm finish-work` forces a checkpoint now.
+If `AGENT_QUALITY_CHILD=1`, you are inside the checkpoint worker: follow your stage prompt
 and never invoke finish-work or start another quality worker.
 
 ## Code Review Rules

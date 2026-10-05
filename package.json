@@ -76,13 +76,15 @@
     "granot:lifecycle:unit34:seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/seed-disposable-certification.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "lint": "eslint src api ops/quality --max-warnings 0",
-    "quality:install": "node ops/quality/install.mjs",
-    "quality:init": "node ops/quality/cli.mjs init",
+    "quality:install": "node ops/quality/cli.mjs install",
     "quality:status": "node ops/quality/cli.mjs status",
     "quality:pause": "node ops/quality/cli.mjs pause",
     "quality:resume": "node ops/quality/cli.mjs resume",
+    "quality:apply": "node ops/quality/cli.mjs apply",
+    "quality:prune": "node ops/quality/cli.mjs prune",
     "quality:test": "node --test ops/quality/quality.test.mjs",
-    "finish-work": "node ops/quality/cli.mjs run"
+    "finish-work": "node ops/quality/cli.mjs run",
+    "quality:smoke": "node ops/quality/smoke.mjs"
   },
   "keywords": [],
   "author": "",

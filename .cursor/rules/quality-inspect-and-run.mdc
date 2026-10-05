@@ -1,47 +1,51 @@
 ---
-description: Inspect and manually run the server quality checkpoint pipeline
-globs: ops/quality/**,.cursor/hooks.json,.quality.config.json,docs/quality-checkpoints.md
+description: Inspect and manually run the local quality checkpoint pipeline (Claude Code, Cursor, Codex)
+globs: ops/quality/**,.quality.config.json,docs/quality-checkpoints.md
 alwaysApply: false
 ---
 
 # Quality inspect and run
 
-Owner playbook: [`docs/quality-checkpoints.md`](../../docs/quality-checkpoints.md). This pipeline exists only in `vantage-main-server`.
+Owner playbook: [`docs/quality-checkpoints.md`](../../docs/quality-checkpoints.md). The tooling lives only in `vantage-main-server/ops/quality/`. Other repositories opt in with a `.quality.config.json`; no logic is copied there.
 
-`.cursor/hooks.json` records metadata (start / prompt / tool / stop / end). Hooks do **not** review code. After sessions go idle (20 min) or end (60s), a detached worker may start a checkpoint.
+Hooks only record session state (busy / idle / ended) and start the worker. They do **not** review code. After a turn ends, the worker waits for 120 s of quiet (20 s after a session end), then runs the gate, triage and actions.
 
 ## Inspect
-
-From `vantage-main-server`:
 
 ```bash
 pnpm quality:status
 ```
 
-Use `state` from that JSON (`git rev-parse --git-path vantage-quality`). Then read:
+Then read, under `git rev-parse --git-path agent-quality`:
 
-- `latest.json` — current or last run
-- `runs/<id>/report.json` — stage, changed paths, checks
-- `runs/<id>/{review,cleanup,docs,verify}.md` — model reports
-- `runs/<id>/{typecheck,lint,test,quality-tests}.log`
-- `runs/<id>/changes.patch` — proposed apply
-- `worker.log` — background worker
-- `events/` — metadata only; no prompt or tool payloads
+- `latest.md`: the last finished run in one screen
+- `triage.jsonl`: every gate and triage decision (`unchanged`, `noise`, `trivial`, `docs-only`, `skip`, `act`, `triage-failed`)
+- `runs/<id>/report.json`: status, stage, decision, touched files, checks
+- `runs/<id>/triage-brief.md`, `triage.out*`, `clean.md`, `docs.md`: model input and output
+- `runs/<id>/checks/*.log`: typecheck, lint and tests (`*.input.log` is the re-run on unedited input)
+- `runs/<id>/changes.patch`: what was or would be applied
 
-Statuses: `complete`, `unchanged`, `initialized`, `patch-ready`, `stale`, `failed`, `busy`.
+Machine-wide files are in `~/.agent-quality/`: `worker.log`, `hook-errors.log`, `sessions/` and `notices/`.
+
+Run statuses: `applied`, `skipped`, `dry-run`, `no-changes`, `stale-pending`, `stale`, `patch-ready`, `failed`.
 
 ```text
-❌ Re-run hook-entry.mjs expecting a review
-✅ pnpm quality:status, then open latest.json / runs/<id>/
+❌ Re-run the hook expecting a review
+✅ pnpm quality:status, then open latest.md / runs/<id>/
 ```
 
 ## Run
 
 ```bash
-pnpm finish-work --provider cursor
-pnpm finish-work --provider cursor --no-apply
-pnpm quality:pause
-pnpm quality:resume
+pnpm finish-work                          # provider detected; --provider claude|cursor|codex to choose
+pnpm finish-work --actions clean,docs     # skip triage
+pnpm finish-work --dry-run                # triage only
+pnpm quality:apply <run-id>               # apply a stale patch
+pnpm quality:pause / quality:resume
+pnpm quality:prune --dry-run
+pnpm quality:install                      # after moving the checkout or changing hook definitions
 ```
 
-Run `finish-work` at a finished-task boundary, not after every turn. Skip it when `VANTAGE_QUALITY_CHILD=1`. `pnpm quality:test` is offline. `node ops/quality/smoke.mjs cursor` is a paid real-model fixture — do not point it at application code.
+Skip all of this when `AGENT_QUALITY_CHILD=1`.
+
+`pnpm quality:test` runs offline. `pnpm quality:smoke <provider>` is a real-model run on a throwaway repository; never point it at application code.

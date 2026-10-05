@@ -1,11 +1,14 @@
 ---
-description: Meaningful-task review, clean code and documentation checkpoint
+description: Automatic review, clean-code and documentation checkpoints after coding turns
 alwaysApply: true
 ---
 
-Use the shared workflow in `docs/quality-checkpoints.md` at meaningful implementation boundaries.
-Run `pnpm finish-work --provider cursor` once the task is ready for a final quality pass.
-Do not run it after every conversational turn. Hooks also record activity for the delayed worker.
-To inspect status, runs, or patches, follow `.cursor/rules/quality-inspect-and-run.mdc`.
-The command uses model intelligence to review, fix/clean, update docs and verify the result.
-When `VANTAGE_QUALITY_CHILD=1`, follow the provided stage prompt; never run finish-work recursively.
+User-level hooks for Claude Code, Cursor and Codex start a background quality checkpoint after a turn ends. It is described in `docs/quality-checkpoints.md`.
+- A git-based gate skips insignificant changes.
+- A model triage then decides between a clean-code pass, a documentation pass, both or neither.
+- The result is auto-applied to the working tree. Nothing is staged or committed.
+
+Nothing needs to be run after each turn. If a prompt arrives with a "Quality worker … applied edits to …" notice, re-read those files before editing them.
+Run `pnpm finish-work` only to force a checkpoint now (for example before leaving); add `--actions clean,docs` to skip triage.
+To inspect status, runs or patches, follow `.cursor/rules/quality-inspect-and-run.mdc`.
+When `AGENT_QUALITY_CHILD=1`, you are inside a checkpoint: follow the stage prompt and never run finish-work or start another worker.

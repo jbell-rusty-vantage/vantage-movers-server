@@ -238,13 +238,20 @@ Granot CSV (`granotCsv.ts`): `GRANOT_CRM_CSV_BUCKET`, `GRANOT_CRM_CSV_PREFIX`, `
 Read under `ops/` or the gitignored `scripts/`, never by the API process. Do not add them to the server's Vercel environment.
 
 - `ops/slimming/**` (one-time purge): `MONGO_URI`, `MONGO_DNS_SERVERS` and `BLOB_READ_WRITE_TOKEN` from the server `.env`, `MONGODB_URI` and `ADMIN_AUTH_DB_NAME` from the Admin `.env`.
-- `ops/quality/**` (developer quality checkpoints): `VANTAGE_QUALITY_CHILD`, `VANTAGE_CODEX_BIN`, `VANTAGE_CURSOR_BIN`, `CURSOR_API_KEY`, `OPENAI_API_KEY` (developer tooling, not a server AI pipeline), plus OS variables such as `LOCALAPPDATA`.
+- `ops/quality/**` (developer quality checkpoints, local only):
+  - `AGENT_QUALITY_CHILD`: set in model children.
+  - `AGENT_QUALITY_HOME`, `AGENT_QUALITY_WORK`: state locations; tests override them.
+  - `AGENT_QUALITY_CLAUDE_BIN`, `AGENT_QUALITY_CURSOR_BIN`, `AGENT_QUALITY_CODEX_BIN`: executable overrides.
+  - `CURSOR_API_KEY`: read from `.env` when not exported, and passed to Cursor only.
+  - OS variables such as `LOCALAPPDATA`.
+
+  `ANTHROPIC_API_KEY` is deliberately never passed to children. This is developer tooling, not a server AI pipeline.
 - `ops/cloud/mongodb-backup/`: `CLOUD_RUN_EXECUTION` and its own job configuration ([mongodb-backup.md](services/mongodb-backup.md)).
 - `ops/dev-server.ts`: `PORT`.
 
 ## Retired by slimming
 
-The 2026-10 server/admin slimming removed every reader of the names below. After the slim server deployment is **Ready** and its observation window has passed, the operator deletes them from the `vantage-movers-main-server` Vercel project (Production, Preview and Development). Never print values while doing it. Do **not** delete `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` or `ALERT_EMAIL_REPLY_TO` (Admin invitations still use them) or `KV_REST_API_*` / `UPSTASH_*` (Daily Operations). Sources: [INTEGRATION-SERVER.md](../server-admin-slimming/evidence/INTEGRATION-SERVER.md), [S-AI.md](../server-admin-slimming/evidence/S-AI.md), [S-OUT.md](../server-admin-slimming/evidence/S-OUT.md), [S-OBS.md](../server-admin-slimming/evidence/S-OBS.md).
+The 2026-10 server/admin slimming removed every reader of the names below. Status 2026-10-04: the slim server is live (`6123f85e`) and the purge has run, but the [slimming ledger](../server-admin-slimming/LEDGER.md) does not yet record these deletions; [CUTOVER.md](../server-admin-slimming/CUTOVER.md) §10 deletes them after the +1 day recreation check (`BLOB_READ_WRITE_TOKEN` last). After the slim server deployment is **Ready** and its observation window has passed, the operator deletes them from the `vantage-movers-main-server` Vercel project (Production, Preview and Development). Never print values while doing it. Do **not** delete `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` or `ALERT_EMAIL_REPLY_TO` (Admin invitations still use them) or `KV_REST_API_*` / `UPSTASH_*` (Daily Operations). Sources: [INTEGRATION-SERVER.md](../server-admin-slimming/evidence/INTEGRATION-SERVER.md), [S-AI.md](../server-admin-slimming/evidence/S-AI.md), [S-OUT.md](../server-admin-slimming/evidence/S-OUT.md), [S-OBS.md](../server-admin-slimming/evidence/S-OBS.md).
 
 **OperationalEvents and alert email** (`config/domain/observability.ts`, deleted): `OBSERVABILITY_ENABLED`, `OBSERVABILITY_WRITE_MODE`, `OBSERVABILITY_COLLECTION_MODE`, `OBSERVABILITY_COLLECTION_PREFIX`, `OBSERVABILITY_EVENTS_COLLECTION`, `OBSERVABILITY_INCIDENTS_COLLECTION`, `OBSERVABILITY_NOTIFICATIONS_COLLECTION`, `OBSERVABILITY_REPORT_RUNS_COLLECTION`, `OBSERVABILITY_EVENT_MIN_LEVEL`, `OBSERVABILITY_CAPTURE_OWNER_EVENTS`, `OBSERVABILITY_CAPTURE_INFO_EVENTS`, `OBSERVABILITY_CAPTURE_HTTP_5XX`, `OBSERVABILITY_CAPTURE_AUTH_EVENTS`, `OBSERVABILITY_CAPTURE_ZIP_STATE_EVENTS`, `OBSERVABILITY_SLOW_REQUEST_MS`, `OBSERVABILITY_DETAILS_MAX_BYTES`, `OBSERVABILITY_BULK_BATCH_SIZE`, `EMAIL_PROVIDER`, `EMAIL_NOTIFICATIONS_ENABLED`, `EMAIL_NOTIFICATIONS_MODE`, `SENDGRID_TO_EMAIL`, `SENDGRID_DEVELOPER_TO_EMAIL`, `ALERT_EMAIL_MIN_LEVEL`, `ALERT_EMAIL_IMMEDIATE_LEVELS`, `ALERT_EMAIL_THROTTLE_MINUTES`, `ALERT_EMAIL_DAILY_DIGEST_ENABLED`, `ALERT_EMAIL_DAILY_DIGEST_CRON_TIME`, `ALERT_EMAIL_OWNER_EVENTS`, `ALERT_EMAIL_NEAR_WORTHY_DIGEST_EVENTS`. Test-only: `ALLOW_PRODUCTION_OBSERVABILITY_IN_TESTS`, `ALLOW_TEST_EMAIL_NOTIFICATIONS`, `ALLOW_TEST_OBSERVABILITY`.
 

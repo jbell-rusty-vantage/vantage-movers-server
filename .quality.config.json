@@ -1,9 +1,32 @@
 {
   "enabled": true,
-  "idleMinutes": 20,
-  "endGraceSeconds": 60,
+  "mode": "act",
   "autoApply": true,
   "models": {
-    "codex": "gpt-5.6-terra"
-  }
+    "claude": { "triage": "claude-sonnet-5-5", "edit": "claude-sonnet-5-5" },
+    "cursor": { "triage": "grok-4.7-medium", "edit": "grok-4.7-high" },
+    "codex": { "triage": "gpt-5.6-terra", "edit": "gpt-5.6-terra" }
+  },
+  "quietSeconds": { "idle": 120, "end": 20 },
+  "instructions": ["AGENTS.md", ".quality/docs-contract.md", ".cursor/rules/documentation-maintenance.mdc", "docs/index.md"],
+  "docsContract": ".cursor/agents/docs-keeper.md",
+  "glossary": "../CONTEXT.md",
+  "childEnv": { "TEST_MODE": "true", "SHEET_SYNC_MODE": "disabled" },
+  "secretsEnvFiles": [".env"],
+  "protectedGlobs": [
+    "docs/sales-outreach-desk/**",
+    "docs/server-admin-slimming/evidence/**",
+    "docs/server-admin-slimming/DELETION-MANIFEST.md",
+    "**/LEDGER.md",
+    "internal_hidden_docs/**",
+    "ops/slimming/**",
+    "scripts/prototypes/granot-lead-lifecycle/specs/**",
+    ".cursor/agents/lead-lifecycle-spec-extractor.md"
+  ],
+  "docsOwnership": ["docs/**", ".cursor/rules/**", ".cursor/agents/**", "CONTEXT.md", "AGENTS.md", "CLAUDE.md", "README.md", "CLOUD_AGENTS.md"],
+  "checks": [
+    { "name": "typecheck", "command": ["node", "node_modules/typescript/bin/tsc", "--noEmit"], "files": "none", "parser": "tsc" },
+    { "name": "lint", "command": ["node", "node_modules/eslint/bin/eslint.js", "--max-warnings", "0", "--no-warn-ignored"], "files": "edited", "extensions": [".ts", ".mjs"], "parser": "eslint" },
+    { "name": "tests", "command": ["node", "--import", "tsx", "--import", "./ops/test-setup.ts", "--test"], "files": "related-tests", "parser": "node-test" }
+  ]
 }
