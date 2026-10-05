@@ -58,6 +58,12 @@ export const SalesOutreachContactEventSchema = new Schema(
     goal_credit: enumeration(SALES_OUTREACH_GOAL_CREDITS, "none"),
     /** True when the subject was an eligible New/Quoted subject at contact time (the M2 goal scope, P07a). */
     goal_scope_eligible: { type: Boolean, required: true, default: false },
+    /**
+     * P07g originating answered inbound: a confirmed reviewed-rep answered inbound call that created
+     * the uniquely associated Call Lead (the Lead's RingCentral telephony session is this call's).
+     * The evaluator uses it as the subject's `originating_contact_event_id`.
+     */
+    originating_inbound: { type: Boolean, required: true, default: false },
     /** Hash of the derived fields; an identical re-derivation writes nothing. */
     input_fingerprint: str,
     source_revision: count,
