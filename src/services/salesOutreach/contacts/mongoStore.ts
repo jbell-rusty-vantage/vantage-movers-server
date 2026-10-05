@@ -1,5 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
+import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getNumberLeadAttachmentModel } from "../../../models/NumberLeadAttachment";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
@@ -35,6 +36,7 @@ type CallLean = {
   _id: unknown;
   provider_account_id: string;
   direction: CallSourceRow["direction"];
+  telephony_session_id?: string | null;
   contact_number_id?: unknown;
   external_endpoint_kind?: string | null;
   started_at: Date;
@@ -54,6 +56,7 @@ type CallLean = {
 export const CALL_SOURCE_PROJECTION = {
   provider_account_id: 1,
   direction: 1,
+  telephony_session_id: 1,
   contact_number_id: 1,
   external_endpoint_kind: 1,
   started_at: 1,
@@ -75,6 +78,7 @@ export function toCallSourceRow(row: CallLean): CallSourceRow {
     id: String(row._id),
     provider_account_id: row.provider_account_id,
     direction: row.direction,
+    telephony_session_id: row.telephony_session_id ?? null,
     contact_number_id: str(row.contact_number_id),
     external_endpoint_kind: row.external_endpoint_kind ?? null,
     started_at: row.started_at,
@@ -231,6 +235,15 @@ export const mongoContactEventStore: ContactEventStore = {
               .session(session)
               .lean()) as unknown as Array<{ subject_id: unknown; workflow: SalesOutreachWorkflow; started_at: Date; ended_at?: Date | null }>)
           : [];
+        const callLeadIds = subjectRows.filter((row) => row.lead_model === "CallLead").map((row) => oid(String(row.lead_id)));
+        const sessions = new Map<string, string>();
+        if (callLeadIds.length) {
+          const callLeads = (await getCallLeadModel()
+            .find({ _id: { $in: callLeadIds } }, { "ringcentral.telephony_session_id": 1 })
+            .session(session)
+            .lean()) as unknown as Array<{ _id: unknown; ringcentral?: { telephony_session_id?: string | null } | null }>;
+          for (const lead of callLeads) if (lead.ringcentral?.telephony_session_id) sessions.set(String(lead._id), lead.ringcentral.telephony_session_id);
+        }
         for (const row of subjectRows) {
           subjects.set(`${row.lead_model}:${String(row.lead_id)}` as DeskLeadKey, {
             id: String(row._id),
@@ -239,6 +252,7 @@ export const mongoContactEventStore: ContactEventStore = {
             periods: periods
               .filter((p) => String(p.subject_id) === String(row._id))
               .map((p) => ({ workflow: p.workflow, started_at: p.started_at, ended_at: p.ended_at ?? null })),
+            originating_session_id: row.lead_model === "CallLead" ? (sessions.get(String(row.lead_id)) ?? null) : null,
           });
         }
       }

@@ -42,6 +42,7 @@ export function outboundCall(extension: string, numberId: string | null, start: 
     id: newId(),
     provider_account_id: ACCOUNT,
     direction: "Outbound",
+    telephony_session_id: `s-${newId()}`,
     contact_number_id: numberId,
     external_endpoint_kind: "external",
     started_at: new Date(start),
@@ -80,6 +81,7 @@ export function subjectFacts(input: Partial<SubjectFacts> & { workflow?: Subject
     revision: input.revision ?? 4,
     activation_at: activation,
     periods: input.periods ?? [{ workflow: input.workflow ?? "new", started_at: activation, ended_at: null }],
+    originating_session_id: input.originating_session_id ?? null,
   };
 }
 

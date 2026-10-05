@@ -169,6 +169,25 @@ describe("p07c inbound handling", () => {
     assert.equal(draft.kind, "inbound_missed");
     assert.equal(draft.outcome, "unanswered");
   });
+  test("p07g originating_answered_inbound: the answered inbound that created the Call Lead is marked (zero goal credit)", () => {
+    const row = inboundCall("101", NUMBER, T0);
+    const own = new ContextBuilder().link(ALICE, "101");
+    own.lead(NUMBER, subjectFacts({ originating_session_id: row.telephony_session_id }));
+    const draft = deriveCallContactEvent(row, own.build());
+    assert.equal(draft.originating_inbound, true);
+    assert.equal(draft.goal_credit, "none");
+    assert.equal(deriveCallContactEvent(inboundCall("101", NUMBER, T0), own.build()).originating_inbound, false, "another session is not the originating call");
+    assert.equal(deriveCallContactEvent({ ...row, call_log_state: null }, own.build()).originating_inbound, false, "awaiting confirmation is not yet the originating inbound");
+    assert.equal(deriveCallContactEvent(inboundCall(null, NUMBER, T0, null, { telephony_session_id: row.telephony_session_id }), own.build()).originating_inbound, false, "a missed call is not");
+  });
+  test("P06b outcome on every call event: answered / unanswered / unknown", () => {
+    assert.equal(deriveCallContactEvent(outboundCall("101", NUMBER, T0), context).outcome, "answered");
+    assert.equal(deriveCallContactEvent(outboundCall("101", NUMBER, T0, { provider_connected: false, provider_result: "No Answer" }), context).outcome, "unanswered");
+    assert.equal(deriveCallContactEvent(outboundCall("101", NUMBER, T0, { provider_result: "Voicemail", contact_type: "voicemail" }), context).outcome, "unanswered");
+    assert.equal(deriveCallContactEvent(outboundCall("101", NUMBER, T0, { call_log_state: null, legs: [] }), context).outcome, "unknown");
+    assert.equal(deriveCallContactEvent(outboundCall("101", NUMBER, T0, { merged_into_id: newId() }), context).outcome, "unknown");
+    assert.equal(deriveCallContactEvent(inboundCall("101", NUMBER, T0), context).outcome, "answered");
+  });
   test("ambiguous_rep", () => check("ambiguous_rep", deriveCallContactEvent(inboundCall("199", NUMBER, T0), context)));
   test("ambiguous_lead", () => {
     const two = new ContextBuilder().link(ALICE, "101");

@@ -60,6 +60,7 @@ export type CallSourceRow = Readonly<{
   id: string;
   provider_account_id: string;
   direction: "Inbound" | "Outbound" | "Internal" | "Unknown";
+  telephony_session_id: string | null;
   contact_number_id: string | null;
   external_endpoint_kind: string | null;
   started_at: Date;
@@ -100,6 +101,8 @@ export type SubjectFacts = Readonly<{
   revision: number;
   activation_at: Date;
   periods: readonly SubjectPeriodFacts[];
+  /** Call Lead subjects: the RingCentral telephony session that created the Lead (P07g originating inbound). */
+  originating_session_id: string | null;
 }>;
 
 export type RestrictionInterval = Readonly<{ channels: readonly ("call" | "text")[]; from: Date; to: Date | null }>;
@@ -136,6 +139,8 @@ export type ContactEventDraft = {
   outcome: SalesOutreachContactOutcome;
   goal_credit: SalesOutreachGoalCredit;
   goal_scope_eligible: boolean;
+  /** P07g: the confirmed reviewed-rep answered inbound that created the uniquely associated Call Lead. */
+  originating_inbound: boolean;
   source_revision: number;
   input_fingerprint: string;
 };
@@ -290,6 +295,7 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
       outcome: "unknown",
       goal_credit: "none",
       goal_scope_eligible: false,
+      originating_inbound: false,
     });
   const fallbackDirection = row.direction === "Inbound" ? "inbound" : "outbound";
   if (row.merged_into_id) return excluded("merged_duplicate", fallbackDirection, row.started_at);
@@ -334,6 +340,7 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
       outcome: callOutcome(row, confirmed),
       goal_credit: goalCredit,
       goal_scope_eligible: association.state === "unique" && association.workflow !== null && GOAL_WORKFLOWS.has(association.workflow),
+      originating_inbound: false,
     });
   }
 
@@ -371,6 +378,12 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
     outcome: !confirmed ? "unknown" : answered ? "answered" : "unanswered",
     goal_credit: "none",
     goal_scope_eligible: false,
+    originating_inbound:
+      classified.kind === "inbound_answered" &&
+      classified.verification === "confirmed" &&
+      association.subject !== null &&
+      association.subject.originating_session_id !== null &&
+      row.telephony_session_id === association.subject.originating_session_id,
   });
 }
 
@@ -398,6 +411,7 @@ export function deriveSmsContactEvent(row: SmsSourceRow, context: DerivationCont
     outcome: "unknown" as const,
     goal_credit: "none" as const,
     goal_scope_eligible: false,
+    originating_inbound: false,
     source_revision: row.source_revision,
   };
   if (row.duplicate_copy) {
