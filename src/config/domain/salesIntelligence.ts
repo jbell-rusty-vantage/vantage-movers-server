@@ -35,6 +35,11 @@ export const CSI_JOB_STAGES = [
   "attachment_refresh",
   "rebuild",
   "nudge_repair",
+  // Sales Outreach Desk (IMPLEMENTATION-PLAN §6.2). `outreach_lead_change` refreshes one Lead's desk
+  // subject (P05d/P05e period transitions, intake admission); `outreach_evaluate` re-runs the cadence
+  // engine for one subject revision (its consumer lands with the evaluator wiring).
+  "outreach_lead_change",
+  "outreach_evaluate",
 ] as const;
 export type CsiJobStage = (typeof CSI_JOB_STAGES)[number];
 /**

@@ -9,6 +9,7 @@ import { runAttachmentRefreshJob } from "../salesIntelligence/attachment/refresh
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
 import { retireLegacyCsiJobs } from "../salesIntelligence/jobs";
+import { runOutreachLeadChangeJob } from "../salesOutreach/subjects/leadChangeJob";
 
 /**
  * Queue wake-up dispatch. The payload is exactly `{ job_id }`; stage and
@@ -49,6 +50,9 @@ export function defaultStageHandlers(
     attachment_refresh: (jobId) => runAttachmentRefreshJob(jobId),
     nudge_repair: (jobId) => runNudgeRepairJob(jobId),
     call_log_refresh: (jobId) => runCallLogRefreshJob(jobId),
+    // Sales Outreach Desk: a post-commit wake for a Lead change (the minute tail cron also drains these).
+    // `outreach_evaluate` has no consumer yet: its rows wait for the evaluator wiring.
+    outreach_lead_change: (jobId) => runOutreachLeadChangeJob(jobId),
   };
 }
 

@@ -128,6 +128,8 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           attachment_source_id: ref,
           entity_change_applied_at: date,
           entity_change_id: ref,
+          // Sales Outreach Desk revision reconcile: the last subject id of its bounded pass.
+          outreach_subject_id: ref,
         },
         { _id: false, strict: "throw" },
       ),
