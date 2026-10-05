@@ -348,7 +348,7 @@ test("live (SRV-8): a written projection publishes outreach_desk for its subject
   const first = jobHarness(store, subject.id);
   const result = await runOutreachEvaluateJob(undefined, { ...first.deps, publishLive: async (p) => void live.push(p) });
   assert.equal(result.status, "completed");
-  assert.deepEqual(live, [{ topic: "outreach_desk", subject_ids: [subject.id], agent_ids: [TEST_AGENT_A, null], revision: 1, cause: "evaluation" }]);
+  assert.deepEqual([...live], [{ topic: "outreach_desk", subject_ids: [subject.id], agent_ids: [TEST_AGENT_A, null], revision: 1, cause: "evaluation" }]);
   const again = jobHarness(store, subject.id);
   await runOutreachEvaluateJob(undefined, { ...again.deps, publishLive: async (p) => void live.push(p) });
   assert.equal(live.length, 1, "identical input writes nothing and publishes nothing");

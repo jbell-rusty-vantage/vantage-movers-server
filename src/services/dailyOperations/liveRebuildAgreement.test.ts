@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { dailyOperationsLeadOf } from "../granotLifecycle/createLeadFromGranot";
 import { buildDaySeed, easternDayKey, easternHour, seedHourlyBuckets } from "./dayDocument";
-import { recordCallLeadDailyOperationsFact, recordFormLeadDailyOperationsFact } from "./recordDomainFacts";
+import { recordCallLeadDailyOperationsFact, recordFormLeadDailyOperationsFact, type LeadDailyOperationsSnapshot } from "./recordDomainFacts";
 import { applyLeadRows, applyMessageRows, messageDayEvents, type RebuildLeadRow, type RebuildMessageRow } from "./rebuild";
 import { clearCapturedDailyOperationsFacts, getCapturedDailyOperationsFacts, installTestDailyOperationsSink } from "./testDailyOperationsSink";
 
@@ -34,7 +34,7 @@ async function liveFacts() {
   installTestDailyOperationsSink();
   clearCapturedDailyOperationsFacts();
   for (const lead of leads) {
-    const snapshot = { lead: { _id: { toString: () => lead.id }, ...lead.row } };
+    const snapshot = { lead: { _id: { toString: () => lead.id }, ...lead.row } as LeadDailyOperationsSnapshot["lead"] };
     if (lead.kind === "form") await recordFormLeadDailyOperationsFact(snapshot);
     else await recordCallLeadDailyOperationsFact(snapshot);
   }

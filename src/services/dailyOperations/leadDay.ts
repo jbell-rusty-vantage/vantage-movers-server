@@ -1,4 +1,4 @@
-import { leadInstant, type LeadTimeSource } from "../salesOutreach/subjects/leadInstant";
+import { leadInstant } from "../salesOutreach/subjects/leadInstant";
 import { easternDayKey, easternHour, type InstantBounds } from "./dayDocument";
 
 /**
@@ -9,7 +9,11 @@ import { easternDayKey, easternHour, type InstantBounds } from "./dayDocument";
  * a Granot-created Lead at 22:00 EDT is that evening's Lead in both, and a wall-clock Lead at 01:30 ET is
  * that night's Lead in both (live used to read the wall clock as UTC).
  */
-export type DailyOperationsLeadTime = LeadTimeSource & { timestamp?: Date | string | null };
+export type DailyOperationsLeadTime = Readonly<{
+  timestamp?: Date | string | null;
+  createdAt?: Date | null;
+  ingestion_origin?: string | null;
+}>;
 
 export function leadArrivalInstant(lead: DailyOperationsLeadTime): Date | undefined {
   const timestamp = lead.timestamp instanceof Date ? lead.timestamp : typeof lead.timestamp === "string" ? new Date(lead.timestamp) : null;

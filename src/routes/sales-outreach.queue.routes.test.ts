@@ -15,6 +15,7 @@ import {
   salesOutreachLiveFrameSchema,
   salesOutreachQueueSchema,
   salesOutreachReadEnvelope,
+  type SalesOutreachQueueDto,
 } from "../validation/v1/salesOutreachReads";
 import { createSalesOutreachRouter } from "./sales-outreach.routes";
 
@@ -181,7 +182,7 @@ test("queue over HTTP: filters validated, Rep forced to self, multi-page cursor 
   const seen: string[] = [];
   let cursor: string | null = null;
   do {
-    const page = salesOutreachReadEnvelope(salesOutreachQueueSchema).parse(
+    const page: SalesOutreachQueueDto = salesOutreachReadEnvelope(salesOutreachQueueSchema).parse(
       (await get("rep-a", `/queue?state=all_active&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`)).body,
     ).data;
     seen.push(...page.rows.map((r) => r.subject_id));
