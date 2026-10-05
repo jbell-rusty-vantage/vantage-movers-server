@@ -11,9 +11,11 @@ import { RegistryError } from "./errors";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
 import type { RegistryActorContext } from "./types";
 import {
+  ADMIN_PROXY_AGENT_HEADER,
   ADMIN_PROXY_HEADER_NAMES,
   APPROVED_REGISTRY_READ_ROLES,
   buildCanonicalAdminActorPayload,
+  buildCanonicalRepActorPayload,
   normalizeAdminEmail,
   normalizeAdminPath,
   normalizeAdminRole,
@@ -318,6 +320,50 @@ export function requireRegistryOwnerActor(
     auth,
     requireOwner: true,
   });
+}
+
+export type VerifiedDashboardActor = {
+  adminId: string;
+  email: string;
+  requestId: string;
+  role: "manager" | "rep";
+  /** The signed linked Agent (lowercase hex) for `rep`; null for `manager`. */
+  agentId: string | null;
+};
+
+/**
+ * Verifies a signed dashboard actor of a non-registry role (`manager` or `rep`). Returns null when
+ * the signing secret is unset, a header is missing, the signed role differs, the timestamp is
+ * stale or the signature does not match. A rep must carry a well-formed signed Agent id
+ * (eight-line payload); a manager uses the seven-line payload and must not carry one.
+ * Never consults extension Bearer sessions or the unsigned preview allowance.
+ */
+export function verifySignedDashboardActor(
+  req: Request,
+  role: "manager" | "rep",
+  now = Date.now(),
+): VerifiedDashboardActor | null {
+  const secret = getAdminProxySigningSecret();
+  if (!secret) return null;
+  const header = (name: string) => req.header(name)?.trim() || null;
+  const adminId = header(ADMIN_PROXY_HEADER_NAMES.userId);
+  const email = header(ADMIN_PROXY_HEADER_NAMES.email);
+  const signedRole = header(ADMIN_PROXY_HEADER_NAMES.role);
+  const requestId = header(ADMIN_PROXY_HEADER_NAMES.requestId);
+  const timestamp = header(ADMIN_PROXY_HEADER_NAMES.timestamp);
+  const signature = header(ADMIN_PROXY_HEADER_NAMES.signature);
+  const agentId = header(ADMIN_PROXY_AGENT_HEADER)?.toLowerCase() ?? null;
+  if (!adminId || !email || !requestId || !timestamp || !signature) return null;
+  if (!signedRole || normalizeAdminRole(signedRole) !== role) return null;
+  if (role === "rep" ? !agentId || !/^[a-f\d]{24}$/.test(agentId) : agentId !== null) return null;
+  const timestampMs = parseTimestampMs(timestamp);
+  if (timestampMs === null || Math.abs(now - timestampMs) > getAdminProxySignatureMaxAgeMs()) return null;
+  const fields = { adminId, email, role, timestamp, requestId, method: req.method, path: requestPath(req) };
+  const payload = role === "rep"
+    ? buildCanonicalRepActorPayload({ ...fields, agentId: agentId! })
+    : buildCanonicalAdminActorPayload(fields);
+  if (!verifyAdminActorSignature(signature, signAdminActorPayload(payload, secret))) return null;
+  return { adminId, email: normalizeAdminEmail(email), requestId, role, agentId: role === "rep" ? agentId : null };
 }
 
 function requestPath(req: Request): string {

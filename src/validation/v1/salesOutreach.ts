@@ -265,7 +265,7 @@ const goalsSchema = z
   })
   .strict();
 
-const CADENCE_REQUIRED_FOR_ACTIVATION = [
+export const CADENCE_REQUIRED_FOR_ACTIVATION = [
   "policy_version",
   "approval_ref",
   "calendar_mode",
@@ -299,7 +299,7 @@ const CADENCE_REQUIRED_FOR_ACTIVATION = [
   "lead_eligibility_rule",
   "precedence_rule",
 ] as const;
-const EVIDENCE_REQUIRED_FOR_ACTIVATION = [
+export const EVIDENCE_REQUIRED_FOR_ACTIVATION = [
   "qualifying_call_rule",
   "goal_rep_rule",
   "helping_rep_rule",
@@ -310,7 +310,7 @@ const EVIDENCE_REQUIRED_FOR_ACTIVATION = [
   "originating_inbound_rule",
   "restricted_contact_rule",
 ] as const;
-const GOALS_REQUIRED_FOR_ACTIVATION = [
+export const GOALS_REQUIRED_FOR_ACTIVATION = [
   "roster_version",
   "rep_work_schedules",
   "default_scheduled_goal",

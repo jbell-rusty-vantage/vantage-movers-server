@@ -7,8 +7,10 @@ import { actor, defineCsiModel, enumeration, text, unique } from "../salesIntell
  * configuration", IMPLEMENTATION-PLAN §4.8). Two document kinds share the collection:
  *
  * - `version` (`key: "version:<version>"`): immutable full value + content hash + actor.
- * - `pointer` (`key: "active"`): `{ version, revision, updated_by }` (+ `updatedAt`), moved only by a CAS on `revision` in the
- *   same transaction as the new version, the command ledger row and the audit event.
+ * - `pointer` (`key: "active"`): `{ version, content_hash, revision, updated_by }` (+ `updatedAt`),
+ *   moved only by a CAS on `revision` in the same transaction as the new version, the command
+ *   ledger row and the audit event. Carrying the version's hash lets every reader fetch only the
+ *   pointer and reuse an immutable cached version keyed by version + hash.
  *
  * Kind-aware guards: a version document can only be inserted. Updates, replaces and deletes must
  * target the pointer (`kind: "pointer"` in the filter); bulk writes are refused. The model is not
@@ -37,6 +39,7 @@ export const SalesOutreachConfigurationSchema = new Schema(
         message: "Invalid sales outreach configuration value",
       },
     },
+    // both kinds: the version's content hash
     content_hash: text,
     approval_ref: text,
     created_by: { type: actor, default: null },
@@ -63,7 +66,7 @@ SalesOutreachConfigurationSchema.pre("validate", function () {
     !Number.isSafeInteger(this.revision) ||
     (this.revision ?? 0) < 1 ||
     this.value !== null ||
-    this.content_hash !== null
+    !this.content_hash
   ) {
     throw new Error("Invalid sales outreach configuration pointer document");
   }

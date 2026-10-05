@@ -49,7 +49,7 @@ This file is a **Service pointer** only. It does not copy contract rules, hook t
 - [Pre-specification](../../daily-operations/daily-operations-pre-specification.md) — superseded one mixed feed. Do not implement from it.
 - [2026-08-19 tabbed layout](../../granot-lead-lifecycle/owner-daily-operations-view-specification.md) — not this board. Do not implement 24h/48h tabs, conversations, or deposit here.
 
-**Shipped:** Owner-only `/daily` after Overview. Category panels plus complementary Arrivals. Confirm stays on `/intakes`, not `/daily`. Admin is 403. Reads do not mutate. Mongo is the book; Redis is a doorbell only. Not Daily View. Not Live Events.
+**Shipped:** Owner-only `/daily` after Overview. **Sales Outreach Desk (SRV-1, P09b):** the server reads `GET /api/v1/admin/daily-operations`, `/live` and `/events` also admit a signed `manager`; `POST /rebuild` stays Owner-only (admin BFF/route gates for Manager are ADM-7). Category panels plus complementary Arrivals. Confirm stays on `/intakes`, not `/daily`. Admin is 403. Reads do not mutate. Mongo is the book; Redis is a doorbell only. Not Daily View. Not Live Events.
 
 **DOP-10 state (2026-09-08):**
 

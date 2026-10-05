@@ -18,6 +18,20 @@ export const ADMIN_PROXY_HEADER_NAMES = {
 
 export const APPROVED_REGISTRY_READ_ROLES = ["owner", "admin"] as const;
 
+/**
+ * Every role the admin proxy may sign (IMPL-03). `manager` (Sales Outreach Desk coordination and
+ * Daily Operations reads, P09b) uses the same seven-line payload as `owner`/`admin`; `rep` adds its
+ * Agent line (`buildCanonicalRepActorPayload`). Signing a role grants nothing by itself: the
+ * registry still admits only `APPROVED_REGISTRY_READ_ROLES`, and each surface checks its own roles.
+ */
+export const TRUSTED_ADMIN_ACTOR_ROLES = ["owner", "admin", "manager", "rep"] as const;
+
+export type TrustedAdminActorRole = (typeof TRUSTED_ADMIN_ACTOR_ROLES)[number];
+
+export function isTrustedAdminActorRole(role: string): role is TrustedAdminActorRole {
+  return (TRUSTED_ADMIN_ACTOR_ROLES as readonly string[]).includes(role);
+}
+
 export type ApprovedRegistryReadRole = (typeof APPROVED_REGISTRY_READ_ROLES)[number];
 
 export type CanonicalAdminActorFields = {
