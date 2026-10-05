@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "mode": "dry-run",
+  "autoApply": true,
+  "quietSeconds": { "idle": 120, "end": 20 },
+  "instructions": ["AGENTS.md", ".quality/docs-contract.md"],
+  "childEnv": { "PYTHONDONTWRITEBYTECODE": "1" },
+  "docsOwnership": ["docs/**", "README.md", "AGENTS.md", "CLAUDE.md"],
+  "protectedGlobs": ["migrations/**", "alembic/versions/**"],
+  "gate": {
+    "sourceGlobs": ["**/*.py"],
+    "testGlobs": ["tests/**", "**/test_*.py", "**/*_test.py"]
+  },
+  "checks": [
+    { "name": "lint", "command": ["ruff", "check"], "files": "edited", "extensions": [".py"], "parser": "lines" },
+    { "name": "types", "command": ["mypy"], "files": "edited", "extensions": [".py"], "parser": "lines" },
+    { "name": "tests", "command": ["python", "-m", "pytest", "-q"], "files": "related-tests", "parser": "lines" }
+  ],
+  "relatedTests": { "patterns": ["{dir}/test_{name}.py", "{dir}/{name}_test.py", "tests/test_{name}.py", "tests/{dir}/test_{name}.py"], "importSearch": false, "maxFiles": 40 }
+}

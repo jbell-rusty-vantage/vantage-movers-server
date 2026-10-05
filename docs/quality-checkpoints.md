@@ -119,11 +119,14 @@ The same tool is packaged as the **`quality-checkpoints` agent skill**:
 - Location: `~/.agents/skills/quality-checkpoints/`, linked into the Claude Code, Cursor and Codex skill folders.
 - Contents: `SKILL.md` covers setup and maintenance; `tool/` holds this code; `templates/` holds starter configurations for Node/TypeScript, Python and minimal setups; `references/` holds architecture and troubleshooting.
 
-After changing `ops/quality/`, keep the skill identical:
+The versioned copy of the skill is [`.agents/skills/quality-checkpoints/`](../.agents/skills/quality-checkpoints/SKILL.md). It holds `SKILL.md`, `references/`, `templates/` and `scripts/`, but not `tool/`, because `ops/quality/` is that code. To restore or refresh the installed skill from this checkout:
 
 ```bash
-node ~/.agents/skills/quality-checkpoints/scripts/sync-tool.mjs ops/quality ~/.agents/skills/quality-checkpoints/tool
+cp -r .agents/skills/quality-checkpoints/. ~/.agents/skills/quality-checkpoints/
+node .agents/skills/quality-checkpoints/scripts/sync-tool.mjs ops/quality ~/.agents/skills/quality-checkpoints/tool
 ```
+
+After changing `ops/quality/`, run the `sync-tool` line again so the skill's `tool/` stays identical. After editing the installed skill's `SKILL.md`, `references/` or `templates/`, copy them back here and commit.
 
 ## Configuration reference (`.quality.config.json`)
 

@@ -35,7 +35,7 @@
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md": "6f457d67c93e23e25bfe0b35c7031139f5d9ca4c8e49a0d840b1154c7eb6e14b",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md": "5e233c47ea3736990e11d850398e4c3974e56a63b0dbd726bfeeba3e72e277fc",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md": "9792a6920fea12947718d42d92897e2f88f6683a7d8b4996409dc7c4265150ea",
-    "SPECIFICATION.md": "b9bf185b92e9fe6310b999881accbb30c5ca2dd9c86c70ca37b795af77982c3f",
+    "SPECIFICATION.md": "e4e3c81bfc6c62664706d79a18abd9d995ec5455692d30b092de9eb38623a644",
     "SPRINT.md": "3389e0bd30c317da90b36088908eccad163dab34588bfc348c38ce770c31d657",
     "validate.mjs": "335d9686e7ee66702b950c777e55fca1c50043f8a862630df2f3e547be58a118",
     "VALIDATION.md": "960eced36b69351abf369c15440504530aa9dbceaa9b85714bc1fe4ff8b40937",
@@ -95,14 +95,14 @@
     "contracts/fixtures/p10b-manual-start.json": "58072b95bb37970ed71c276b161286023da15ba8f22d54228e39c3fbc4cc2c8d",
     "END-TO-END-RUN.md": "40603c6fb2a70fb3e630963e7c16769909776d71bac077bc1a6317a25a0ab8fe",
     "FINAL-HANDBACK.md": "d8654a9bc72c71487ac438fb80939cda86ebd518315005826b7384763184f78a",
-    "IMPLEMENTATION-PLAN.md": "8b561a249d3ad9b365df506547d819f83a987d31b16a738d5cd57a3e2fbfc855",
+    "IMPLEMENTATION-PLAN.md": "2cd2bf97c268b2b5a79a268fbb272200b47c35a378140d1d0cc37f066af02feb",
     "RINGCENTRAL-CAPTURE.md": "8693988ed3b7978bcf7cd5840c796ca28db16b240e6d093f09319fcb63fd97bf",
     "workspace/SERVER-TEAM.md": "5202bd9a31d065e1b63eb5ecad2cd1341667a1617e83a4d2f2b5a7672b047052",
-    "workspace/ADMIN-TEAM.md": "98fd6c5c265610399f198922619bbbb1cc221719a48e2799c03c8bdee37c474e",
+    "workspace/ADMIN-TEAM.md": "a811a91265e3690870bb5b24135819e35ed1835889b54d64fa3fdda5c1538ba7",
     "SPRINT-RUNBOOK.md": "25283365c2ef442fd096463640ae4b4682609830f811d97f5835b17d8677cae2",
     "FAST-TRACK.md": "cd12dcdfb5a01374981116a3f345003cc38b503f881773e1fd921138a166fc32"
   },
   "preparation_assessment_version": 1,
   "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1",
-  "release_note": "sod-v1.2 FAST-01 fast track: deploy with controls on, 90-day/upcoming backfill, M1 call progress first"
+  "release_note": "sod-v1.3 desk look: the bubbly reference look is required and deliberately differs from the existing Admin dashboard (route-scoped desk tokens); FAST-01 fast track unchanged"
 }

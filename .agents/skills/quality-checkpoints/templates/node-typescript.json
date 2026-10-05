@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "mode": "dry-run",
+  "autoApply": true,
+  "models": {
+    "claude": { "triage": "claude-sonnet-5-5", "edit": "claude-sonnet-5-5" },
+    "cursor": { "triage": "grok-4.7-medium", "edit": "grok-4.7-high" },
+    "codex": { "triage": "gpt-5.6-terra", "edit": "gpt-5.6-terra" }
+  },
+  "quietSeconds": { "idle": 120, "end": 20 },
+  "instructions": ["AGENTS.md", ".quality/docs-contract.md"],
+  "docsContract": null,
+  "glossary": "CONTEXT.md",
+  "childEnv": { "NODE_ENV": "test" },
+  "secretsEnvFiles": [".env"],
+  "docsOwnership": ["docs/**", "README.md", "AGENTS.md", "CLAUDE.md", ".cursor/rules/**", "CONTEXT.md"],
+  "protectedGlobs": ["migrations/**", "docs/adr/**"],
+  "checks": [
+    { "name": "typecheck", "command": ["node", "node_modules/typescript/bin/tsc", "--noEmit"], "files": "none", "parser": "tsc" },
+    { "name": "lint", "command": ["node", "node_modules/eslint/bin/eslint.js", "--max-warnings", "0", "--no-warn-ignored"], "files": "edited", "extensions": [".ts", ".tsx", ".js", ".mjs"], "parser": "eslint" },
+    { "name": "tests", "command": ["node", "--import", "tsx", "--test"], "files": "related-tests", "parser": "node-test" }
+  ]
+}

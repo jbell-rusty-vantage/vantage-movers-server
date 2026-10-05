@@ -7,7 +7,7 @@ Written October 4, 2026 against server `main@ecc76257` and admin `main@058adbc`,
 | Question | Authority |
 | --- | --- |
 | Business rules (cadence, calendar, quoted, callbacks, evidence, goals, roles, eligibility, cutover) | [SPECIFICATION.md](SPECIFICATION.md) §§2–14, 18 and [FINAL-POLICY-REVIEW.md](FINAL-POLICY-REVIEW.md). Unchanged. Fixtures in [contracts/fixtures](contracts/README.md) are the evaluator's test vectors. |
-| Visual target | [OWNER-REQUEST.md](OWNER-REQUEST.md) screenshots, SPECIFICATION §5 (V01/V02) |
+| Visual target | [OWNER-REQUEST.md](OWNER-REQUEST.md) screenshots, SPECIFICATION §5 (V01/V02). The bubbly look of [`references/manager-desk.webp`](references/manager-desk.webp) (and the Rep reference) is required and deliberately differs from the existing Admin dashboard; build it as a route-scoped desk token set, not the current dashboard styling |
 | Code paths, reuse, collections, routes, team file ownership, sprint shape | **This file** and [CODE-MAP.md](CODE-MAP.md) (rewritten for the slim code) |
 | RingCentral capture, subscriptions, crons, rate budget | [RINGCENTRAL-CAPTURE.md](RINGCENTRAL-CAPTURE.md) (supersedes SPECIFICATION §15 where they differ) |
 | Exact HTTP/DTO/config contracts | [CONTRACTS.md](CONTRACTS.md) **as amended by §4–§7 below**. Where this file and CONTRACTS disagree about a collection to reuse, a route, a role or the live transport, this file wins. |
@@ -31,7 +31,7 @@ Source: `vantage-main-server/docs/server-admin-slimming/NEW-DESK-DELTA.md` and `
 | Contact restrictions | `sales_intelligence_contact_restrictions` kept **inert**: 16 rows, 15 active, all AI-origin; no reader enforces them, no lift command exists. The desk owns their confirm/lift (§7, P06c). Never clear one silently. |
 | Review items (12,187 open), Owner instructions (4) | Kept inert. Out of scope for v1 except: the desk must not read them as cadence input. |
 | Server `docs/knowledge/environment.md` "missing" | **Exists now.** Read it for env names; do not grep `process.env`. |
-| Sales rep tracker (`feat/sales-rep-tracker`) | **Not merged, not deployed.** Nothing from it is on main. Do not build on it. |
+| Sales rep tracker (`feat/sales-rep-tracker`) | **Decommissioned 2026-10-04.** Never merged or deployed; the branch and its slice branches are deleted locally and on the remote. Nothing from it is on main. Do not build on it or recover it. |
 | Daily Operations | Unchanged; Owner-only (`requireRegistryOwnerActor`). Manager access is new work (§7, SRV-9). |
 | CSI policy (`sales_intelligence_policy_*`) | Retained only for staffed clock / capture / nudges / retention. The desk uses its **own** configuration (`sales_outreach_configuration`). |
 
@@ -184,13 +184,13 @@ Order for parallel cloud agents: **S1 (SRV-1→2→3→7→8), S2 (SRV-4) and S3
 | WP | Depends | Deliverable |
 | --- | --- | --- |
 | ADM-1 | — | `manager` role end-to-end (roles, Users tab create/edit, routeGuard, nav, proxy signing, layout); Rep home → `/outreach-desk`; delete `RepFrame`/`RepUnavailable` use for the desk |
-| ADM-2 | ADM-1 | `/outreach-desk` route + "Lead outreach" shell (sidebar per screenshot: Team overview, My work, Activity, Settings; Owner also Numbers, Accounts), header freshness, redirects from `/sales-intelligence*`, move Numbers/Accounts views unchanged |
+| ADM-2 | ADM-1 | `/outreach-desk` route + "Lead outreach" shell (sidebar per screenshot: Team overview, My work, Activity, Settings; Owner also Numbers, Accounts), header freshness, redirects from `/sales-intelligence*`, move Numbers/Accounts views unchanged. Ships the route-scoped **bubbly desk token set** from SPECIFICATION §5 (pale blue page, white rounded cards, circular icon badges, pill progress tracks, rounded blue controls, nav pill). This look differs from the existing Admin dashboard on purpose; do not inherit the dashboard's styling |
 | ADM-3 | — | `lib/api/salesOutreach.ts` Zod DTOs + local synthetic fixtures (from CONTRACTS + `contracts/fixtures`), `lib/query` keys, mock mode for building before the server lands |
 | ADM-4 | ADM-2/3 | My outreach (goal card, tabs New/Quoted, Needs contact/All active, search, sort, queue table, selected panel, Copy job #, quoted date + callback controls) |
 | ADM-5 | ADM-2/3 | Team outreach (four cards, Daily call goals table, Leads needing attention, rep filter/Unassigned drill, assign control, compact Operations today strip linking `/daily`) |
 | ADM-6 | ADM-3 | Activity view, Settings (Owner: policy/roster/schedules/closures/restrictions/enrollment & intake gate; Manager: attendance overrides) |
 | ADM-7 | ADM-1/3 | BFF: Rep/Manager exact proxy allowlist for `/api/v1/admin/sales-outreach/**` (restore the `rep-routes` pattern from `0993e31`), Manager on `/daily` + `/api/daily-operations-live`, new `app/api/outreach-desk-live/route.ts` |
-| ADM-8 | ADM-4/5 | Playwright (add as devDependency) visual + flow checks at 1186×742 against both references; keyboard/focus; 403/reassignment cache clearing |
+| ADM-8 | ADM-4/5 | Playwright (add as devDependency) visual + flow checks at 1186×742 against both references (`references/manager-desk.webp` for Team, `references/sales-rep-desk.webp` for My); a desk that reads as the existing flat Admin dashboard fails V01 even when functionally correct; keyboard/focus; 403/reassignment cache clearing |
 
 ### Verification (team VERIFY, can be the same cloud session at the end)
 
