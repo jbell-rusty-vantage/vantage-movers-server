@@ -11,7 +11,7 @@ import { configurationActivationBlockers } from "../config/reads";
 import { OutreachError } from "../errors";
 import { composeCapabilities } from "./capabilities";
 import { baseRead, commonRead, readFreshness, requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
-import { callsCoverageForDay, requiredCoverageThrough } from "./freshness";
+import { repDayCoverage } from "../contacts/repDay";
 import {
   composeRepDay,
   composeTeamGoals,
@@ -21,7 +21,7 @@ import {
   type RepDayRow,
 } from "./goals";
 import { mongoDeskQueueStore } from "./deskStore";
-import { mongoSalesOutreachReadStore, type SalesOutreachReadStore } from "./store";
+import { mongoSalesOutreachReadStore, type ContactDerivationMark, type SalesOutreachReadStore } from "./store";
 import { composeTeamCadence } from "./teamCadence";
 
 export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
@@ -43,6 +43,8 @@ async function composeRepDays(input: {
   now: Date;
   agent_id: string | null;
   calls_known_complete_through: Date | null;
+  /** The contact-event derivation watermark (`outreach_contact_calls`); null until S3's sweep has run. */
+  derivation: ContactDerivationMark | null;
 }) {
   const { store, configuration, business_day, today, now } = input;
   const roster = (configuration.value.goals.rep_work_schedules ?? []).map((row) => row.agent_id);
@@ -52,7 +54,13 @@ async function composeRepDays(input: {
     ? [input.agent_id]
     : [...roster, ...rows.map((row) => row.agent_id).filter((id) => !roster.includes(id)).sort()];
   const names = await store.findReviewedRepNames(agents, now);
-  const coverage = callsCoverageForDay(input.calls_known_complete_through, requiredCoverageThrough(business_day, today, now));
+  // A missing rep-day row is a confirmed 0 only when capture (minus the settlement allowance) AND the
+  // contact-event derivation cover the day, and the day starts on/after the derivation's coverage start.
+  const coverage = repDayCoverage(business_day, today, now, {
+    capture_known_complete_through: input.calls_known_complete_through,
+    derived_through: input.derivation?.known_complete_through ?? null,
+    coverage_from: input.derivation?.coverage_from ?? null,
+  });
   const fallback = fallbackCountScope(rows);
   const reps = agents.map((agent_id) => {
     const row = rowByAgent.get(agent_id) ?? null;
@@ -114,6 +122,7 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
     now: deps.now,
     agent_id,
     calls_known_complete_through: calls?.known_complete_through ?? null,
+    derivation: await store.readContactDerivation(),
   });
   return {
     ...commonRead(actor, deps.now, agent_id, configuration, days.projection_revision, freshness),
@@ -144,6 +153,7 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
         now: deps.now,
         agent_id: null,
         calls_known_complete_through: calls?.known_complete_through ?? null,
+        derivation: await store.readContactDerivation(),
       })
     : null;
   const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore: deps.queueStore ?? mongoDeskQueueStore, readStore: store });

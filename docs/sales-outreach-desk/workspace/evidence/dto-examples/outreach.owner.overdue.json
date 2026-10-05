@@ -1,0 +1,223 @@
+{
+  "ok": true,
+  "data": {
+    "contract_version": "sod-v1",
+    "as_of": "2026-10-05T15:00:00.000Z",
+    "timezone": "America/New_York",
+    "scope": {
+      "role": "owner",
+      "agent_id": null
+    },
+    "configuration_state": "active",
+    "configuration_version": "sod-cfg-9d4e",
+    "configuration_revision": 6,
+    "projection_revision": 1,
+    "freshness": {
+      "calls": {
+        "state": "fresh",
+        "last_updated_at": "2026-10-05T14:57:40.000Z",
+        "known_complete_through": "2026-10-05T14:57:00.000Z",
+        "age_seconds": 180,
+        "reason": null
+      },
+      "sms": {
+        "state": "not_connected",
+        "last_updated_at": null,
+        "known_complete_through": null,
+        "age_seconds": null,
+        "reason": "rep_sms_capture_disabled"
+      },
+      "granot": {
+        "state": "observed",
+        "last_observed_at": "2026-10-05T14:56:10.000Z",
+        "age_seconds": 230
+      }
+    },
+    "subject": {
+      "subject_id": "6650a1b2c3d4e5f607182a01",
+      "lead_model": "FormLead",
+      "status": "active",
+      "review_reasons": [],
+      "received_at": "2026-10-05T14:00:00.000Z",
+      "received_date": "2026-10-05",
+      "received_quality": "instant",
+      "enrollment": {
+        "cohort_id": "intake:2026-10-05T12:00:00.000Z",
+        "kind": "intake",
+        "enrolled_at": "2026-10-05T14:00:00.000Z",
+        "activation_at": "2026-10-05T14:00:00.000Z"
+      },
+      "job_no": "P5561201",
+      "job_pending": false,
+      "phone": "(305) 555-0101",
+      "name": "Jordan Example",
+      "move_date": "2026-10-18",
+      "move_date_review": null
+    },
+    "priority": {
+      "raw": null,
+      "basis": "intake_default",
+      "accepted_at": null,
+      "uncertain": false
+    },
+    "assignment": {
+      "assigned_agent_id": "6650a1b2c3d4e5f60718293a",
+      "assigned_agent_name": "Alice Rep",
+      "unassigned": false,
+      "assignment_revision": 1,
+      "lead_receiver_agent_id": "6650a1b2c3d4e5f60718293a",
+      "in_sync": true
+    },
+    "plan": {
+      "plan_revision": 0,
+      "active": null,
+      "history": []
+    },
+    "policy": {
+      "projection_state": "current",
+      "exposure": "enforcement",
+      "enforcement_labels": true,
+      "workflow": "new",
+      "engine_state": "active",
+      "policy_version": "final-policy-2026-10-03-v1",
+      "configuration_version": "sod-cfg-9d4e",
+      "schedule_day": 1,
+      "period": {
+        "period_id": "6650a1b2c3d4e5f607182c01",
+        "workflow": "new",
+        "start_kind": "intake",
+        "priority": null,
+        "started_at": "2026-10-05T14:00:00.000Z"
+      },
+      "quoted": null,
+      "callback": null,
+      "initial_response": {
+        "due_at": "2026-10-05T14:30:00.000Z",
+        "outcome": "overdue",
+        "fulfilled_at": null
+      },
+      "advisory_cooldown": {
+        "warning": false,
+        "unsuccessful_attempts": 0
+      },
+      "catch_up": {
+        "call": {
+          "outstanding": false,
+          "missed_count": 0,
+          "state": null
+        },
+        "sms": {
+          "outstanding": false,
+          "missed_count": 0,
+          "state": null
+        }
+      },
+      "blocked_until": {
+        "call": null,
+        "sms": null
+      },
+      "explanation": [
+        {
+          "code": "projection_state",
+          "value": "current"
+        },
+        {
+          "code": "workflow",
+          "value": "new"
+        },
+        {
+          "code": "schedule_day",
+          "value": 1
+        },
+        {
+          "code": "priority_basis",
+          "value": "intake_default"
+        }
+      ]
+    },
+    "requirements": {
+      "call": {
+        "required": 2,
+        "verified_completed": 0,
+        "remaining": 2,
+        "due_at": "2026-10-06T00:00:00.000Z",
+        "oldest_actionable_due_at": "2026-10-05T14:30:00.000Z",
+        "status": "overdue",
+        "completion_kind": null,
+        "coverage": {
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:57:00.000Z",
+          "gaps": []
+        },
+        "blocked_reason": null
+      },
+      "sms": {
+        "required": 1,
+        "verified_completed": null,
+        "remaining": null,
+        "due_at": "2026-10-06T00:00:00.000Z",
+        "oldest_actionable_due_at": null,
+        "status": "due",
+        "completion_kind": null,
+        "coverage": {
+          "state": "unknown",
+          "known_complete_through": null,
+          "gaps": []
+        },
+        "blocked_reason": null
+      }
+    },
+    "status_flags": {
+      "needs_contact": true,
+      "overdue": true,
+      "blocked": false,
+      "pending": false,
+      "move_date_passed": false,
+      "move_date_unknown": false,
+      "job_pending": false,
+      "advisory_cooldown": false
+    },
+    "oldest_actionable_due_at": "2026-10-05T14:30:00.000Z",
+    "next_action_due_at": "2026-10-06T00:00:00.000Z",
+    "last_interaction_at": null,
+    "shadow_labels": null,
+    "history": {
+      "window_history": [
+        {
+          "business_date": "2026-10-05",
+          "schedule_day": 1,
+          "workflow": "new",
+          "closed_date": false,
+          "call": {
+            "required": 2,
+            "completed": 0,
+            "missed": 1,
+            "waived": 0,
+            "superseded": 0,
+            "open": 2
+          },
+          "sms": {
+            "required": 1,
+            "completed": 0,
+            "missed": 0,
+            "waived": 0,
+            "superseded": 0,
+            "open": 1
+          }
+        }
+      ],
+      "window_summary": {
+        "dates": 0,
+        "call_missed": 0,
+        "sms_missed": 0
+      },
+      "missed_labels_hidden": false,
+      "contact_events": [],
+      "contact_events_truncated": false,
+      "assignment_changes": []
+    },
+    "restrictions": [],
+    "computed_as_of": "2026-10-05T14:59:00.000Z",
+    "publication_revision": 1
+  }
+}

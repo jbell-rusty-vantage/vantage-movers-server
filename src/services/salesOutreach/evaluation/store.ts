@@ -75,6 +75,8 @@ export type StoredContactEvent = Readonly<{
   goal_agent_id: string | null;
   restricted_at_contact: boolean;
   outcome?: string | null;
+  /** P07g: S3 marks the answered inbound call that created this subject's Call Lead. */
+  originating_inbound?: boolean;
 }>;
 
 /** Capture coverage the engine reads (RINGCENTRAL-CAPTURE §8). */
@@ -255,6 +257,7 @@ export const mongoEvaluationStore: EvaluationStore = {
       goal_agent_id: idOrNull(row.goal_agent_id),
       restricted_at_contact: row.restricted_at_contact === true,
       outcome: (row.outcome as string | null | undefined) ?? null,
+      originating_inbound: row.originating_inbound === true,
     }));
   },
 

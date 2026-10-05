@@ -4,6 +4,7 @@ import { OBSERVATION_KINDS } from "../../../models/granotLifecycleSchemas";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { getSalesOutreachRepDayProjectionModel } from "../../../models/salesOutreach";
+import { OUTREACH_CONTACT_CALLS_SCOPE } from "../../../config/domain/salesOutreachContacts";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
 import type { CaptureSyncRow } from "./freshness";
 import type { RepDayRow } from "./goals";
@@ -29,7 +30,11 @@ export type SalesOutreachReadStore = {
   readCallsCapture(): Promise<CaptureSyncRow | null>;
   readSmsMailboxes(): Promise<CaptureSyncRow[]>;
   readLatestGranotObservationAt(): Promise<Date | null>;
+  /** S3's contact-event derivation watermark (`outreach_contact_calls`); null before its first sweep. */
+  readContactDerivation(): Promise<ContactDerivationMark | null>;
 };
+
+export type ContactDerivationMark = Readonly<{ known_complete_through: Date | null; coverage_from: Date | null }>;
 
 type SyncStateLean = {
   scope: string;
@@ -116,6 +121,14 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
       .limit(MAX_MAILBOXES)
       .lean();
     return (rows as unknown as SyncStateLean[]).map(toCaptureRow);
+  },
+
+  async readContactDerivation() {
+    const row = (await getSalesIntelligenceSyncStateModel()
+      .findOne({ scope: OUTREACH_CONTACT_CALLS_SCOPE }, { known_complete_through: 1, "cursor.outreach_coverage_from": 1 })
+      .lean()) as { known_complete_through?: Date | null; cursor?: { outreach_coverage_from?: Date | null } } | null;
+    if (!row) return null;
+    return { known_complete_through: row.known_complete_through ?? null, coverage_from: row.cursor?.outreach_coverage_from ?? null };
   },
 
   async readLatestGranotObservationAt() {

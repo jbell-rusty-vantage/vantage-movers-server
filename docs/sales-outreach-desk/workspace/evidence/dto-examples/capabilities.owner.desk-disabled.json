@@ -28,8 +28,12 @@
     ],
     "permitted_filters": {
       "rep_days": [],
-      "team": []
+      "team": [],
+      "queue": []
     },
+    "live_topics": [
+      "outreach_configuration"
+    ],
     "permitted_commands": [
       "day_override",
       "restrictions",
@@ -62,7 +66,10 @@
     "deployed_reads": [
       "capabilities",
       "rep_days",
-      "team"
+      "team",
+      "queue",
+      "outreach_detail",
+      "live"
     ]
   }
 }

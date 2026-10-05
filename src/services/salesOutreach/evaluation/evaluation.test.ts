@@ -341,3 +341,28 @@ test("sweep: skipped while evaluation is not admitted (no reads, no nominations)
   assert.deepEqual([result.skipped, result.reason], [true, "cadence_disabled"]);
   assert.equal(store.jobs.size, 0);
 });
+
+test("live (SRV-8): a written projection publishes outreach_desk for its subject and Agents after commit; an unchanged run publishes nothing", async () => {
+  const { store, subject } = seeded({ assigned_agent_id: TEST_AGENT_A });
+  const live: unknown[] = [];
+  const first = jobHarness(store, subject.id);
+  const result = await runOutreachEvaluateJob(undefined, { ...first.deps, publishLive: async (p) => void live.push(p) });
+  assert.equal(result.status, "completed");
+  assert.deepEqual(live, [{ topic: "outreach_desk", subject_ids: [subject.id], agent_ids: [TEST_AGENT_A, null], revision: 1, cause: "evaluation" }]);
+  const again = jobHarness(store, subject.id);
+  await runOutreachEvaluateJob(undefined, { ...again.deps, publishLive: async (p) => void live.push(p) });
+  assert.equal(live.length, 1, "identical input writes nothing and publishes nothing");
+});
+
+test("P07g (SRV-8 follow-up): the subject's contact event marked originating_inbound becomes the engine's originating event", () => {
+  const { store, subject } = seeded();
+  const base = { source_kind: "call" as const, channel: "call" as const, direction: "inbound" as const, kind: "inbound_answered", verification: "confirmed", exclusion_reason: null, actor_agent_id: TEST_AGENT_A, goal_agent_id: null, restricted_at_contact: false };
+  const events = [
+    { ...base, id: "1".repeat(24), source_id: "2".repeat(24), event_at: at("2026-10-05T14:05:00.000Z"), originating_inbound: false },
+    { ...base, id: "3".repeat(24), source_id: "4".repeat(24), event_at: at("2026-10-05T14:00:00.000Z"), originating_inbound: true },
+  ];
+  const input = buildEngineInput({ subject, periods: store.periods, plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: events, coverage: store.coverage });
+  assert.equal(input.subject.originating_contact_event_id, `call:${"4".repeat(24)}`);
+  const none = buildEngineInput({ subject, periods: store.periods, plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: events.slice(0, 1), coverage: store.coverage });
+  assert.equal(none.subject.originating_contact_event_id, null);
+});

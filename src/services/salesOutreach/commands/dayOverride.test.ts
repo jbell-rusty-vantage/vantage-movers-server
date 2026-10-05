@@ -95,3 +95,24 @@ test("day override needs installed goals (503) and an active configuration", asy
   const empty = new MemoryConfigurationDb();
   await rejectsWith(override({ loader: createConfigurationLoader(empty.store), run: empty.run, audit: empty.audit, configStore: empty.store, writer: empty.writer }), "CONFIGURATION_UNAVAILABLE");
 });
+
+test("live (SRV-8): a committed day override publishes outreach_goal for the rep and day plus outreach_configuration; a no-op publishes nothing", async () => {
+  const { deps } = await installed();
+  const live: unknown[] = [];
+  const withLive: DayOverrideDeps = { ...deps, publishLive: async (p) => void live.push(p) };
+  await override(withLive, manager, { idempotency_key: "live-o" });
+  assert.deepEqual(live.pop(), [
+    { topic: "outreach_goal", agent_ids: [TEST_AGENT_B], business_day: "2026-10-05", revision: null, cause: "command" },
+    { topic: "outreach_configuration", revision: 2, cause: "configuration" },
+  ]);
+  await override(withLive, manager, { idempotency_key: "live-o2", expected_revision: 2 });
+  assert.equal(live.length, 0, "an identical override changes nothing and publishes nothing");
+  // The Owner configuration PATCH publishes the configuration invalidation after commit.
+  const { db } = await installed();
+  const published: unknown[] = [];
+  await patchSalesOutreachConfiguration(
+    { actor: csiOperatorActor("owner"), idempotency_key: "edit", expected_revision: 1, value: completeConfigurationInput({ goal_metrics_enabled: true }) },
+    { ...db.deps(), publishLive: async (p) => void published.push(p) },
+  );
+  assert.deepEqual(published, [{ topic: "outreach_configuration", revision: 2, cause: "configuration" }]);
+});

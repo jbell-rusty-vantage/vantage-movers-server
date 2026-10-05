@@ -32,8 +32,28 @@
       ],
       "team": [
         "business_day"
+      ],
+      "queue": [
+        "search",
+        "priority",
+        "workflow",
+        "move_date_from",
+        "move_date_to",
+        "move_date_unknown",
+        "agent_id",
+        "unassigned",
+        "state",
+        "sort",
+        "direction",
+        "cursor",
+        "limit"
       ]
     },
+    "live_topics": [
+      "outreach_desk",
+      "outreach_goal",
+      "outreach_configuration"
+    ],
     "permitted_commands": [
       "quoted_followup",
       "callback",
@@ -55,7 +75,10 @@
     "deployed_reads": [
       "capabilities",
       "rep_days",
-      "team"
+      "team",
+      "queue",
+      "outreach_detail",
+      "live"
     ]
   }
 }

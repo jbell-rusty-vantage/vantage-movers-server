@@ -31,6 +31,14 @@ export type EvaluationRows = Readonly<{
   coverage: CoverageFacts;
 }>;
 
+/** The engine event id of the subject's originating answered inbound (the earliest marked one), else null. */
+export function originatingEventId(events: readonly StoredContactEvent[]): string | null {
+  const origin = events
+    .filter((e) => e.originating_inbound === true)
+    .sort((a, b) => +a.event_at - +b.event_at)[0];
+  return origin ? `${origin.source_kind}:${origin.source_id}` : null;
+}
+
 export function buildEngineInput(rows: EvaluationRows): EvaluateSubjectInput {
   const { subject } = rows;
   const closedPeriod = rows.periods.find((p) => p.workflow === "closed");
@@ -43,8 +51,8 @@ export function buildEngineInput(rows: EvaluationRows): EvaluateSubjectInput {
       move_date: subject.display.move_date ?? null,
       priority_uncertain: subject.priority.uncertain,
       activation_at: iso(subject.enrollment.activation_at),
-      // P07g originating answered inbound: needs S3's contact-event origin marker (open question).
-      originating_contact_event_id: null,
+      // P07g originating answered inbound: S3 marks the call that created the Call Lead (`originating_inbound`).
+      originating_contact_event_id: originatingEventId(rows.contact_events),
     },
     periods: rows.periods.map((p) => ({
       period_id: p.id,

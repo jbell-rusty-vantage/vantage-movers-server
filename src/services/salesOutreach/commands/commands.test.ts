@@ -431,3 +431,23 @@ test("P06c: the Owner adds a restriction to a Contact Number (SMS stored as text
   await rejectsWith(addRestriction({ actor: owner, idempotency_key: "add-3", contact_number_id: NUMBER, channels: ["call"], until: "2026-10-01T00:00:00.000Z", reason: "x" }, h.deps), "INVALID_INPUT", "until_not_future");
   await rejectsWith(addRestriction({ actor: repA, idempotency_key: "add-4", contact_number_id: NUMBER, channels: ["call"], until: null, reason: "x" }, h.deps), "FORBIDDEN");
 });
+
+test("live (SRV-8): committed commands publish scoped outreach_desk hints after commit; replays and no-ops publish nothing", async () => {
+  const h = harness();
+  const live: unknown[] = [];
+  const deps: DeskCommandDeps = { ...h.deps, publishLive: async (p) => void live.push(p) };
+  const first = await setQuotedFollowup(
+    { actor: repA, subject_id: h.subject.id, idempotency_key: "live-q", expected_revision: 0, period_id: h.period.id, selected_date: "2026-10-07", replace_active_plan: false },
+    deps,
+  );
+  assert.deepEqual(live.pop(), [{ topic: "outreach_desk", subject_ids: [h.subject.id], agent_ids: [TEST_AGENT_A], revision: first.plan_revision, cause: "command" }]);
+  await setQuotedFollowup(
+    { actor: repA, subject_id: h.subject.id, idempotency_key: "live-q", expected_revision: 0, period_id: h.period.id, selected_date: "2026-10-07", replace_active_plan: false },
+    deps,
+  );
+  assert.equal(live.length, 0, "a replay publishes nothing");
+  const moved = await assignSubject({ actor: manager, subject_id: h.subject.id, idempotency_key: "live-a", expected_revision: 1, agent_id: TEST_AGENT_B }, deps);
+  assert.deepEqual(live.pop(), [
+    { topic: "outreach_desk", subject_ids: [h.subject.id], agent_ids: [TEST_AGENT_A, TEST_AGENT_B], revision: moved.assignment_revision, cause: "command" },
+  ]);
+});
