@@ -9,6 +9,9 @@
  * - the default Rep queue (`assigned_agent_id` + Needs contact + urgency) is served by the
  *   `sod_projection_q_urgency` index (IXSCAN, no blocking SORT);
  * - counts, team overdue figures and the assignment generation (changes on reassignment) match;
+ * - S4: per-Agent cadence counts (overdue Leads, due call attempts / SMS sends, unknown remaining) equal
+ *   the in-memory twin and reconcile with the team card; queue rows carry the stored `schedule_day`;
+ *   Agent names resolve in one batched read (history names' fallback).
  * - `publishOutreachLive` inserts land on a scoped change stream: a Rep stream sees only its own Agent's
  *   hints (plus configuration), an Owner stream sees all.
  */
@@ -40,6 +43,8 @@ async function main() {
   const { activeInspection } = await import("../../src/services/salesOutreach/reads/testing.js");
   const { MemoryDeskReadStore } = await import("../../src/services/salesOutreach/reads/deskTesting.js");
   const { mongoDeskQueueStore } = await import("../../src/services/salesOutreach/reads/deskStore.js");
+  const { mongoSalesOutreachReadStore } = await import("../../src/services/salesOutreach/reads/store.js");
+  const { Agent } = await import("../../src/models/Agent.js");
   const { mongoQueueQuery, queueSearchOf, queueSortSpec, keysetOf } = await import("../../src/services/salesOutreach/reads/queueQuery.js");
   const { publishOutreachLive } = await import("../../src/services/salesOutreach/live/publish.js");
   const { watchOutreachLiveEvents, outreachLiveHint } = await import("../../src/services/salesOutreach/live/stream.js");
@@ -149,7 +154,37 @@ async function main() {
   const asOf = at("2026-10-05T19:00:00.000Z");
   const mongoTeam = await mongoDeskQueueStore.teamOverdue(asOf);
   const memoryTeam = await memory.teamOverdue(asOf);
-  assert.deepEqual({ ...mongoTeam, per_agent: [...mongoTeam.per_agent].sort() }, { ...memoryTeam, per_agent: [...memoryTeam.per_agent].sort() });
+  assert.deepEqual(mongoTeam, memoryTeam);
+
+  // 4b (S4). Per-Agent cadence counts: Mongo equals the twin, and the per-rep overdue Leads plus the
+  // Unassigned overdue part add up to the team's distinct overdue card (one rule).
+  const unknownAgent = new mongoose.Types.ObjectId().toHexString();
+  const agents = [TEST_AGENT_A, TEST_AGENT_B, unknownAgent, "not-an-id"];
+  const sorted = (m: ReadonlyMap<string, unknown>) => [...m].sort(([a], [b]) => (a < b ? -1 : 1));
+  const mongoCadence = await mongoDeskQueueStore.agentCadence(asOf, agents);
+  assert.deepEqual(sorted(mongoCadence), sorted(await memory.agentCadence(asOf, agents)));
+  assert.ok(!mongoCadence.has(unknownAgent), "an Agent without active Leads is absent");
+  const perRepOverdue = [...mongoCadence.values()].reduce((sum, c) => sum + c.overdue_leads, 0);
+  assert.equal(perRepOverdue + mongoTeam.unassigned_overdue, mongoTeam.distinct_overdue);
+  assert.ok([...mongoCadence.values()].some((c) => c.call_due_remaining > 0 || c.overdue_leads > 0), "the fixture exercises the counts");
+  assert.ok([...mongoCadence.values()].some((c) => c.sms_due_unknown > 0), "SMS without coverage counts as unknown, never 0");
+
+  // 4c (S4). Queue rows carry the stored schedule day (projection reads only `detail.schedule_day`).
+  const allMatch = { assignment: { kind: "all" as const }, state: "all_active" as const, priority: { kind: "all" as const }, workflow: null, move_date: null, search: null };
+  const spec = queueSortSpec("urgency", "asc");
+  const mongoRows = await mongoDeskQueueStore.findQueuePage({ match: allMatch, sort: spec, after: null, limit: 1000 });
+  const memoryDays = new Map((await memory.findQueuePage({ match: allMatch, sort: spec, after: null, limit: 1000 })).map((r) => [r.subject_id, r.schedule_day]));
+  assert.ok(mongoRows.length > 0 && mongoRows.some((r) => r.schedule_day !== null));
+  for (const row of mongoRows) assert.equal(row.schedule_day, memoryDays.get(row.subject_id), row.subject_id);
+
+  // 4d (S4). Agent names for history rows: one batched read, unknown and malformed ids left out.
+  const formerRep = new mongoose.Types.ObjectId();
+  await Agent.collection.insertMany([
+    { _id: formerRep, name: "Former Rep", normalized_name: "former rep", name_aliases: [] },
+    { _id: new mongoose.Types.ObjectId(TEST_AGENT_A), name: "Agent A", normalized_name: "agent a", name_aliases: [] },
+  ]);
+  const agentNames = await mongoSalesOutreachReadStore.findAgentNames([formerRep.toHexString(), TEST_AGENT_A, unknownAgent, "bad"]);
+  assert.deepEqual(sorted(agentNames), sorted(new Map([[formerRep.toHexString(), "Former Rep"], [TEST_AGENT_A, "Agent A"]])));
   const before = await mongoDeskQueueStore.assignmentGeneration({ kind: "agent", agent_id: TEST_AGENT_A });
   const moved = await getSalesOutreachSubjectModel().collection.findOne({ assigned_agent_id: new mongoose.Types.ObjectId(TEST_AGENT_A) });
   await getSalesOutreachSubjectModel().collection.updateOne({ _id: moved!._id }, { $set: { assigned_agent_id: new mongoose.Types.ObjectId(TEST_AGENT_B), assignment_revision: 2 } });
@@ -175,7 +210,9 @@ async function main() {
   assert.deepEqual(ownerSeen, [1, 2, 3]);
   await repStream.close();
   await ownerStream.close();
-  console.log(`PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; scoped live streams`);
+  console.log(
+    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; S4 agent cadence, schedule_day, agent names; scoped live streams`,
+  );
 }
 
 main()

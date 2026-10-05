@@ -63,7 +63,9 @@ test("P08a fixture: team goal 350, actual 255, 4 goal-enabled reps, 2 at goal, a
   const reps = fixture.rows.map((row) =>
     compose(agentOf(row.rep), repDayRow({ agent_id: agentOf(row.rep), business_day: DAY, actual_confirmed: row.actual })),
   );
-  for (const rep of reps) salesOutreachRepDaySchema.parse(rep);
+  // composeRepDay serves the goal parts; the cadence counts are composed by the read (repCadence.test.ts).
+  const goalPart = salesOutreachRepDaySchema.omit({ overdue_leads: true, calls_due_today: true, sms_due_today: true });
+  for (const rep of reps) goalPart.parse(rep);
   const team = composeTeamGoals(reps, "all_outbound");
   assert.equal(team.outbound_calls.goal, fixture.expected_team_goal);
   assert.equal(team.outbound_calls.actual, fixture.expected_actual);

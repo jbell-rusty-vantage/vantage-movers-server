@@ -23,7 +23,9 @@
     "unavailable_reason": null,
     "permitted_views": [
       "team",
-      "my"
+      "my",
+      "activity",
+      "settings"
     ],
     "permitted_filters": {
       "rep_days": [
@@ -79,6 +81,15 @@
       "queue",
       "outreach_detail",
       "live"
-    ]
+    ],
+    "cadence_summary": {
+      "policy_version": null,
+      "new": {
+        "days_1_3_calls": null,
+        "call_slots": null,
+        "sms_sequence": null
+      },
+      "quoted": null
+    }
   }
 }

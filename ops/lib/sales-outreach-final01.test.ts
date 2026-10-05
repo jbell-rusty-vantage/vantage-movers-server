@@ -107,6 +107,40 @@ test("the installer refuses unnamed targets and unknown controls", () => {
   });
 });
 
+test("--migration=running|paused (S4) is an alias of --migration-paused; values and disagreement are refused", () => {
+  assert.deepEqual(parseInstallArgs(["--target=vantagemovers", "--migration=running"]), { target: "vantagemovers", apply: false, enableControls: [], migrationPaused: false });
+  assert.equal(parseInstallArgs(["--target=vantagemovers", "--apply", "--migration=paused"]).migrationPaused, true);
+  assert.equal(parseInstallArgs(["--target=vantagemovers", "--migration=running", "--migration-paused=false"]).migrationPaused, false);
+  assert.throws(() => parseInstallArgs(["--target=vantagemovers", "--migration=running", "--migration-paused=true"]), /disagree/);
+  for (const bad of ["--migration=", "--migration=resume", "--migration=false", "--migration=RUNNING"])
+    assert.throws(() => parseInstallArgs(["--target=vantagemovers", bad]), /--migration must be/, bad);
+  assert.throws(() => parseInstallArgs(["--target=vantagemovers", "--migration"]), /Unknown argument/);
+});
+
+test("unpausing through the PATCH path: one new revision from the installed one, only migration.paused changes, idempotent", async () => {
+  const db = new MemoryConfigurationDb();
+  const loader = createConfigurationLoader(db.store);
+  const install = async (argv: string[]) => {
+    const args = parseInstallArgs(["--target=testvantagemovers", "--apply", ...argv]);
+    const inspected = await loader.inspect();
+    const current = inspected.state === "active" ? inspected.value : bootstrap();
+    const expected_revision = inspected.state === "active" ? inspected.revision : 0;
+    const value = buildFinal01Configuration({ current, rosterAgentIds: [A], installedOn: "2026-10-05", migrationPaused: args.migrationPaused });
+    if (inspected.state === "active" && inspected.content_hash === configurationContentHash(value)) return null;
+    const key = installIdempotencyKey(configurationContentHash(value), expected_revision);
+    return patchSalesOutreachConfiguration({ actor: csiOperatorActor("install"), idempotency_key: key, expected_revision, value }, db.deps());
+  };
+  assert.equal((await install([]))?.response.revision, 1);
+  const installed = await loader.requireActive();
+  assert.equal(installed.value.migration.paused, true, "the bootstrap default stays paused");
+  assert.equal((await install(["--migration=running"]))?.response.revision, 2);
+  const running = await loader.requireActive();
+  assert.deepEqual(running.value.migration, { ...installed.value.migration, paused: false });
+  assert.equal(await install(["--migration-paused=false"]), null, "re-running writes nothing");
+  assert.equal(await install([]), null, "no flag keeps the installed state");
+  assert.equal((await install(["--migration=paused"]))?.response.revision, 3);
+});
+
 test("installing through the PATCH path is idempotent: same content writes nothing new, a lost response replays", async () => {
   const db = new MemoryConfigurationDb();
   const loader = createConfigurationLoader(db.store);

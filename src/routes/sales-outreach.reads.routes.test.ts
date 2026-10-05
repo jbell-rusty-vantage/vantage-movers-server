@@ -156,7 +156,7 @@ test("route matrix: who may read capabilities, rep-days and team", async () => {
 
 test("capabilities: role-shaped views/filters/commands and safe controls only", async () => {
   const owner = salesOutreachReadEnvelope(salesOutreachCapabilitiesSchema).parse((await get("owner", "/capabilities")).body).data;
-  assert.deepEqual(owner.permitted_views, ["team", "my", "settings", "numbers", "accounts"]);
+  assert.deepEqual(owner.permitted_views, ["team", "my", "activity", "settings", "numbers", "accounts"]);
   assert.deepEqual(owner.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override", "restrictions", "configuration_edit"]);
   assert.deepEqual(owner.permitted_filters.rep_days, ["business_day", "agent_id"]);
   assert.deepEqual(owner.permitted_filters.team, ["business_day"]);
@@ -168,13 +168,14 @@ test("capabilities: role-shaped views/filters/commands and safe controls only", 
   assert.equal(JSON.stringify(owner).includes("batch_size"), false, "no migration budgets");
 
   const manager = salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data);
-  assert.deepEqual(manager.permitted_views, ["team", "my"]);
+  assert.deepEqual(manager.permitted_views, ["team", "my", "activity", "settings"]);
   assert.deepEqual(manager.permitted_commands, ["quoted_followup", "callback", "assignment", "day_override"]);
   assert.equal(manager.role_capabilities.includes("activation"), false);
   assert.ok(manager.role_capabilities.includes("prospective_absence_override"));
 
   const rep = salesOutreachCapabilitiesSchema.parse((await get("rep-a", "/capabilities")).body.data);
-  assert.deepEqual(rep.permitted_views, ["my"]);
+  assert.deepEqual(rep.permitted_views, ["my", "activity"]);
+  assert.deepEqual([rep.cadence_summary, manager.cadence_summary], [owner.cadence_summary, owner.cadence_summary], "one cadence summary for every role");
   assert.deepEqual(rep.permitted_commands, ["quoted_followup", "callback"]);
   assert.deepEqual([rep.permitted_filters.rep_days, rep.permitted_filters.team], [["business_day"], []]);
   assert.equal(rep.permitted_filters.queue.includes("agent_id") || rep.permitted_filters.queue.includes("unassigned"), false, "no rep/Unassigned filter for a Rep");
@@ -215,6 +216,8 @@ test("rep-days: Owner/Manager see the roster; Rep sees itself; a foreign agent_i
   const self = salesOutreachRepDaysSchema.parse((await get("rep-a", "/rep-days")).body.data);
   assert.deepEqual(self.reps?.map((r) => r.agent_id), [REP_A]);
   assert.deepEqual(self.scope, { role: "rep", agent_id: REP_A });
+  const off = { value: null, unknown_reason: "cadence_disabled" };
+  assert.deepEqual([self.reps![0]!.overdue_leads, self.reps![0]!.calls_due_today, self.reps![0]!.sms_due_today], [off, off, off]);
   const selfExplicit = await get("rep-a", `/rep-days?agent_id=${REP_A}`);
   assert.equal(selfExplicit.status, 200);
 
@@ -243,6 +246,7 @@ test("team: goal cards, Daily call goals rows, cadence parts honest while cadenc
   assert.deepEqual(owner.goals?.reps_at_goal, { count: 1, of: 2, pending: 0 });
   assert.equal(owner.daily_call_goals?.length, 2);
   assert.deepEqual(owner.daily_call_goals?.[0]?.overdue_leads, { value: null, unknown_reason: "cadence_disabled" });
+  assert.deepEqual(owner.daily_call_goals?.[0]?.calls_due_today, { value: null, unknown_reason: "cadence_disabled" });
   assert.deepEqual(owner.unassigned, { count: 0, overdue: { value: null, unknown_reason: "cadence_disabled" } });
   assert.deepEqual(owner.leads_needing_attention, { rows: null, limit: 10, unknown_reason: "cadence_disabled" });
   assert.equal(owner.cadence_exposure, null);
@@ -266,11 +270,14 @@ test("configuration gating: uninitialized/unavailable/desk off answer 503; goal 
   ]);
   const repUninitialized = salesOutreachCapabilitiesSchema.parse((await get("rep-a", "/capabilities")).body.data);
   assert.deepEqual(repUninitialized.permitted_views, []);
+  assert.deepEqual([uninitialized.cadence_summary, repUninitialized.cadence_summary], [null, null]);
+  assert.deepEqual(salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data).permitted_views, []);
 
   inspection = { state: "unavailable", reason: "hash_mismatch", version: "v9", revision: 9, updated_at: null, updated_by: null };
   assert.deepEqual([(await get("manager", "/team")).status, (await get("rep-a", "/rep-days")).status], [503, 503]);
   const broken = salesOutreachCapabilitiesSchema.parse((await get("owner", "/capabilities")).body.data);
   assert.deepEqual([broken.configuration_state, broken.configuration_revision, broken.desk_available, broken.controls.desk_enabled], ["unavailable", 9, false, false]);
+  assert.equal(broken.cadence_summary, null);
 
   inspection = activeInspection({ ...desk, controls: { desk_enabled: false, goal_metrics_enabled: true } });
   const off = await get("owner", "/team");
@@ -281,6 +288,9 @@ test("configuration gating: uninitialized/unavailable/desk off answer 503; goal 
     ["settings", "numbers", "accounts"],
     ["day_override", "restrictions", "configuration_edit"],
   ]);
+  const managerOff = salesOutreachCapabilitiesSchema.parse((await get("manager", "/capabilities")).body.data);
+  assert.deepEqual([managerOff.permitted_views, managerOff.permitted_commands], [["settings"], ["day_override"]], "Manager Settings = attendance");
+  assert.notEqual(ownerOff.cadence_summary, null, "the summary follows the active configuration, not the desk");
 
   inspection = activeInspection({ controls: { desk_enabled: true } });
   store.queries = [];

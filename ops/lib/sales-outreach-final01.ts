@@ -156,7 +156,9 @@ export type InstallArgs = {
  * `--target=<database>` is required; dry run unless `--apply`. `--enable=desk_enabled,goal_metrics_enabled`
  * switches listed controls on in the same version; `--migration-paused=false` unpauses enrollment (the
  * FAST-TRACK step-6 gate `apply` checks); `--intake-admission-at=<ISO instant|now>` opens prospective intake
- * (sets `transition.intake_admission_enabled` and `intake_admission_at`). Unknown flags are refused.
+ * (sets `transition.intake_admission_enabled` and `intake_admission_at`). `--migration=running|paused` is an
+ * alias of `--migration-paused` (S4 lane brief); the two spellings must agree when both are given. Unknown
+ * flags and values are refused.
  */
 export function parseInstallArgs(argv: readonly string[]): InstallArgs {
   let target: string | null = null;
@@ -176,7 +178,11 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
     } else if (arg.startsWith("--migration-paused=")) {
       const raw = arg.slice("--migration-paused=".length).trim();
       if (raw !== "true" && raw !== "false") throw new Error(`--migration-paused must be true or false, got: ${raw}`);
-      migrationPaused = raw === "true";
+      migrationPaused = setMigrationPaused(migrationPaused, raw === "true");
+    } else if (arg.startsWith("--migration=")) {
+      const raw = arg.slice("--migration=".length).trim();
+      if (raw !== "running" && raw !== "paused") throw new Error(`--migration must be running or paused, got: ${raw}`);
+      migrationPaused = setMigrationPaused(migrationPaused, raw === "paused");
     } else if (arg.startsWith("--intake-admission-at=")) {
       const raw = arg.slice("--intake-admission-at=".length).trim();
       const at = raw === "now" ? new Date() : new Date(raw);
@@ -194,6 +200,11 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
     ...(migrationPaused === undefined ? {} : { migrationPaused }),
     ...(intakeAdmissionAt === undefined ? {} : { intakeAdmissionAt }),
   };
+}
+
+function setMigrationPaused(previous: boolean | undefined, next: boolean): boolean {
+  if (previous !== undefined && previous !== next) throw new Error("--migration-paused and --migration disagree");
+  return next;
 }
 
 /** Deterministic Idempotency-Key: a re-run after a lost response replays instead of writing twice. */

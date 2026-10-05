@@ -20,9 +20,9 @@ import {
   resolveRepDayGoal,
   type RepDayRow,
 } from "./goals";
-import { mongoDeskQueueStore } from "./deskStore";
+import { mongoDeskQueueStore, type DeskQueueStore } from "./deskStore";
 import { mongoSalesOutreachReadStore, type ContactDerivationMark, type SalesOutreachReadStore } from "./store";
-import { composeTeamCadence } from "./teamCadence";
+import { composeRepCadence, composeTeamCadence } from "./teamCadence";
 
 export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
 
@@ -33,10 +33,12 @@ export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from 
 
 /**
  * Per-rep goal rows for one day. `agentId` narrows to one rep; otherwise roster reps (in roster
- * order) come first, then Agents with a row that day who are not on the roster.
+ * order) come first, then Agents with a row that day who are not on the roster. Each row carries the
+ * rep's current cadence counts (same rule as the team cards, at `now`).
  */
 async function composeRepDays(input: {
   store: SalesOutreachReadStore;
+  queueStore: DeskQueueStore;
   configuration: ActiveConfiguration;
   business_day: string;
   today: string;
@@ -62,9 +64,10 @@ async function composeRepDays(input: {
     coverage_from: input.derivation?.coverage_from ?? null,
   });
   const fallback = fallbackCountScope(rows);
+  const cadence = await composeRepCadence({ configuration, now, queueStore: input.queueStore, agentIds: agents });
   const reps = agents.map((agent_id) => {
     const row = rowByAgent.get(agent_id) ?? null;
-    return composeRepDay({
+    const goals = composeRepDay({
       agent_id,
       agent_name: names.get(agent_id) ?? null,
       reviewed_link: names.has(agent_id),
@@ -80,6 +83,7 @@ async function composeRepDays(input: {
       fallback_scope: fallback,
       capture_coverage: coverage,
     });
+    return { ...goals, ...cadence(agent_id) };
   });
   const projection_revision = rows.reduce<number | null>((max, row) => Math.max(max ?? 0, row.publication_revision), null);
   return { reps, scope: dayCountScope(rows), projection_revision };
@@ -116,6 +120,7 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
   }
   const days = await composeRepDays({
     store,
+    queueStore: deps.queueStore ?? mongoDeskQueueStore,
     configuration,
     business_day,
     today,
@@ -144,9 +149,11 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
   const { business_day, today } = resolveBusinessDay(query.business_day, deps.now);
   const { calls, freshness } = await readFreshness(store, configuration, deps.now);
   const goalMetrics = configuration.value.controls.goal_metrics_enabled;
+  const queueStore = deps.queueStore ?? mongoDeskQueueStore;
   const days = goalMetrics
     ? await composeRepDays({
         store,
+        queueStore,
         configuration,
         business_day,
         today,
@@ -156,7 +163,7 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
         derivation: await store.readContactDerivation(),
       })
     : null;
-  const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore: deps.queueStore ?? mongoDeskQueueStore, readStore: store });
+  const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore, readStore: store });
   const attentionRevision = (cadence.leads_needing_attention.rows ?? []).reduce<number | null>((max, row) => Math.max(max ?? 0, row.publication_revision), null);
   const projection_revision =
     days?.projection_revision === null || days?.projection_revision === undefined ? attentionRevision : Math.max(days.projection_revision, attentionRevision ?? 0);
@@ -167,7 +174,7 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
     goal_metrics_enabled: goalMetrics,
     goals: days ? composeTeamGoals(days.reps, days.scope) : null,
     goals_unknown_reason: days ? null : "goal_metrics_disabled",
-    daily_call_goals: days ? days.reps.map((rep) => ({ ...rep, overdue_leads: cadence.overdueFor(rep.agent_id) })) : null,
+    daily_call_goals: days ? days.reps : null,
     distinct_overdue_leads: cadence.distinct_overdue_leads,
     quoted_overdue_leads: cadence.quoted_overdue_leads,
     unassigned: cadence.unassigned,

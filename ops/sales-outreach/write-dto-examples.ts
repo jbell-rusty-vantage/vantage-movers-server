@@ -63,6 +63,8 @@ function exampleStore(): MemoryReadStore {
     [D, "Dan Rep"],
     [E, "Eve Rep"],
   ]);
+  // A former rep without a reviewed link: history names fall back to the Agent record.
+  store.agentNames = new Map([[X, "Xavier Agent"]]);
   store.calls = {
     scope: "call_log_all_directions",
     known_complete_through: new Date("2026-10-05T14:57:00Z"),
@@ -124,6 +126,12 @@ async function exampleDeskStore(): Promise<MemoryDeskReadStore> {
     store.evaluation.subjects.set(s.id, subject);
     store.evaluation.periods.push(periodRow(s.id, { id: `6650a1b2c3d4e5f607182c0${i + 1}`, started_at: received }));
     store.setLead(subject.lead, s.agent);
+    // Riley's Lead arrived with a rep who has since left (X), then moved to Alice (P06d history).
+    if (s.id === SUBJECTS.due)
+      store.evaluation.changes.set(`${subject.lead.model}:${subject.lead.id}`, [
+        { applied_at: new Date("2026-10-05T14:50:05.000Z"), before: null, after: X },
+        { applied_at: new Date("2026-10-05T14:52:00.000Z"), before: X, after: A },
+      ]);
   }
   store.evaluation.events.push({
     subject_id: SUBJECTS.due,
@@ -178,11 +186,14 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     "capabilities.owner.json": ok(await readDeskCapabilities(owner, live)),
     "capabilities.manager.json": ok(await readDeskCapabilities(manager, live)),
     "capabilities.rep.json": ok(await readDeskCapabilities(rep, live)),
+    "capabilities.rep.cadence-enforcement.json": ok(await readDeskCapabilities(rep, cadence)),
     "capabilities.owner.desk-disabled.json": ok(
       await readDeskCapabilities(owner, deps({ ...desk, controls: { desk_enabled: false, goal_metrics_enabled: true } }, "sod-cfg-8b21", 5)),
     ),
     "rep-days.owner.json": ok(await readRepDays(owner, {}, live)),
     "rep-days.rep.json": ok(await readRepDays(rep, {}, live)),
+    "rep-days.rep.cadence-enforcement.json": ok(await readRepDays(rep, {}, cadence)),
+    "rep-days.owner.cadence-enforcement.json": ok(await readRepDays(owner, {}, cadence)),
     "rep-days.goal-metrics-disabled.json": ok(await readRepDays(rep, {}, deps({ controls: { desk_enabled: true } }, "sod-cfg-1c09", 2))),
     "team.owner.json": ok(await readTeam(owner, {}, live)),
     "team.manager.json": ok(await readTeam(manager, {}, live)),

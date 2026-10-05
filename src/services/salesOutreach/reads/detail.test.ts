@@ -146,6 +146,40 @@ test("outreach view: independent requirements, plan_revision, assignment_revisio
   assert.equal(JSON.stringify(body).includes("c".repeat(24)), false, "no contact number id is serialized");
 });
 
+test("history names (S4): assignment changes name both sides — reviewed link name, else the Agent's name, else null — in one batched lookup", async () => {
+  const { store, subject, deps } = await seeded();
+  const FORMER = "c".repeat(23) + "d";
+  const GONE = "e".repeat(23) + "f";
+  store.evaluation.changes.set(`${subject.lead.model}:${subject.lead.id}`, [
+    { applied_at: at("2026-10-05T13:00:00.000Z"), before: null, after: FORMER },
+    { applied_at: at("2026-10-05T13:30:00.000Z"), before: FORMER, after: GONE },
+    { applied_at: at("2026-10-05T14:00:00.000Z"), before: GONE, after: REP_A },
+  ]);
+  deps.store.agentNames = new Map([
+    [FORMER, "Former Rep (Agent record)"],
+    [REP_A, "Alice Agent record"],
+  ]);
+  const lookups: string[][] = [];
+  const findAgentNames = deps.store.findAgentNames.bind(deps.store);
+  deps.store.findAgentNames = async (ids) => {
+    lookups.push([...ids]);
+    return findAgentNames(ids);
+  };
+  for (const actor of [owner, rep(REP_A)]) {
+    const body = salesOutreachDetailSchema.parse(await readOutreachDetail(actor, subject.id, deps));
+    assert.deepEqual(
+      body.history.assignment_changes.map((c) => [c.from_agent_id, c.from_agent_name, c.to_agent_id, c.to_agent_name]),
+      [
+        [GONE, null, REP_A, "Alice Rep"],
+        [FORMER, "Former Rep (Agent record)", GONE, null],
+        [null, null, FORMER, "Former Rep (Agent record)"],
+      ],
+      "newest first; the reviewed link name wins over the Agent record",
+    );
+  }
+  assert.deepEqual(lookups.map((ids) => [...ids].sort()), [[FORMER, GONE].sort(), [FORMER, GONE].sort()], "one Agent lookup per read, linked reps excluded");
+});
+
 test("shadow: no overdue or missed label for Manager/Rep; the Owner keeps the reconciliation labels", async () => {
   const { subject, deps } = await seeded({ cadence_shadow_enabled: true });
   const late = { ...deps, now: at("2026-10-05T16:00:00.000Z") };

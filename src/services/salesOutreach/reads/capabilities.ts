@@ -1,5 +1,6 @@
 import { SALES_OUTREACH_LIVE_TOPICS, SALES_OUTREACH_QUEUE_FILTERS } from "../../../config/domain/salesOutreach";
-import type { SalesOutreachCapabilitiesDto } from "../../../validation/v1/salesOutreachReads";
+import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
+import type { SalesOutreachCadenceSummaryDto, SalesOutreachCapabilitiesDto } from "../../../validation/v1/salesOutreachReads";
 import type { OutreachActor } from "../auth";
 import type { ConfigurationInspection } from "../config/load";
 import { ROLE_CAPABILITIES } from "../permissions";
@@ -31,12 +32,42 @@ function permittedCommands(role: OutreachActor["role"], deskAvailable: boolean, 
 }
 
 /**
+ * The configured cadence any desk role may read (the reference's "New lead schedule" box), copied 1:1
+ * from `cadence.*`: no interpretation, no text, no minutes. The configuration holds no Quoted
+ * daily-call count, so `quoted` is null.
+ */
+export function cadenceSummaryOf(cadence: SalesOutreachConfigurationValue["cadence"]): SalesOutreachCadenceSummaryDto {
+  return {
+    policy_version: cadence.policy_version,
+    new: {
+      days_1_3_calls: cadence.new_days_1_3_calls ? { ...cadence.new_days_1_3_calls } : null,
+      call_slots:
+        cadence.new_call_slots?.map((band) => ({ from_day: band.from_day, to_day: band.to_day, calls_per_day: band.deadline_minutes.length })) ??
+        null,
+      sms_sequence: cadence.sms_sequence
+        ? {
+            initial_days: [...cadence.sms_sequence.initial_days],
+            repeat_from_day: cadence.sms_sequence.repeat_from_day,
+            repeat_every_days: cadence.sms_sequence.repeat_every_days,
+          }
+        : null,
+    },
+    quoted: null,
+  };
+}
+
+/**
  * `GET /capabilities` body (CONTRACTS "HTTP interface"; IMPLEMENTATION-PLAN §5, IMPL-02).
  *
  * The Owner keeps Settings (configuration GET/PATCH) and the existing Numbers/Accounts views even
  * while the desk is disabled or its configuration is broken, so a disable stays reversible. Every
  * other view and filter needs an active configuration with `controls.desk_enabled`. Controls are
  * the safe effective booleans only; a broken or missing configuration reports them all false.
+ *
+ * Activity (read-only history composed from the queue and outreach view) opens for every desk role
+ * with the desk. A Manager's Settings is attendance only (its `day_override` command), so it follows
+ * the active configuration like that command; a Rep has no Settings. `cadence_summary` is served to
+ * every role whenever the configuration is active, even with the desk off.
  */
 export function composeCapabilities(
   actor: OutreachActor,
@@ -64,8 +95,9 @@ export function composeCapabilities(
   const coordinator = actor.role === "owner" || actor.role === "manager";
 
   const views: View[] = [];
-  if (available) views.push(...(coordinator ? (["team", "my"] as const) : (["my"] as const)));
+  if (available) views.push(...(coordinator ? (["team", "my", "activity"] as const) : (["my", "activity"] as const)));
   if (actor.role === "owner") views.push("settings", "numbers", "accounts");
+  if (actor.role === "manager" && active) views.push("settings");
 
   return {
     ...base,
@@ -86,5 +118,6 @@ export function composeCapabilities(
     permitted_commands: permittedCommands(actor.role, available, inspected.state === "active"),
     role_capabilities: [...ROLE_CAPABILITIES[actor.role]].sort(),
     deployed_reads: [...DEPLOYED_DESK_READS],
+    cadence_summary: active ? cadenceSummaryOf(active.value.cadence) : null,
   };
 }
