@@ -2,7 +2,7 @@
 okf_version: "0.2"
 type: Service
 title: Sales Outreach Desk
-description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk subjects (eligibility, priority periods, Lead-change feed, intake) and enrollment, the evaluator wiring (outreach_evaluate, projections), the desk commands (Quoted date, callback, assignment, day override, restriction review), desk collections and their index build, and the pure cadence engine. Built in lanes; this doc grows per lane.
+description: Deterministic Lead outreach desk (sod-v1) — desk roles and guard, persisted versioned configuration, M1 call-progress reads (capabilities, rep-days, team), desk subjects (eligibility, priority periods, Lead-change feed, intake) and enrollment, the evaluator wiring (outreach_evaluate, projections), the desk commands (Quoted date, callback, assignment, day override, restriction review), desk collections and their index build, the pure cadence engine, RingCentral capture for the desk, and contact events with rep-day goal projections. Built in lanes; this doc grows per lane.
 status: draft
 stale_after: 2026-11-04
 tags: [sales-outreach-desk, sales-intelligence]
@@ -12,6 +12,8 @@ applies_to:
   - src/models/salesOutreach/**
   - src/routes/sales-outreach.routes.ts
   - src/routes/sales-outreach-cron.routes.ts
+  - src/routes/sales-outreach-contact-cron.routes.ts
+  - src/config/domain/salesOutreachContacts.ts
   - src/validation/v1/salesOutreach.ts
   - src/validation/v1/salesOutreachReads.ts
   - src/validation/v1/salesOutreachEnrollment.ts
@@ -222,14 +224,14 @@ Tests: one suite per contract fixture (`engine/*.test.ts`), END-TO-END-RUN §3 r
 
 ## S3 — capture and goals
 
-Phase A (SRV-5, RINGCENTRAL-CAPTURE §3–§7, §9) is built; phase B (SRV-6: `sales_outreach_contact_events` derivation and `sales_outreach_rep_day_projections`) is not. Evidence: `docs/sales-outreach-desk/workspace/evidence/S3.md`.
+Phase A (SRV-5, RINGCENTRAL-CAPTURE §3–§7, §9) and phase B (SRV-6: `sales_outreach_contact_events` derivation and `sales_outreach_rep_day_projections`) are built. Evidence: `docs/sales-outreach-desk/workspace/evidence/S3.md`.
 
 ### Calls: minute ISync confirmation (M1)
 
 - `numberActivity/callLogIsyncLane.ts` — cron `/api/cron/sales-intelligence-call-log-isync` (`* * * * *`). Runs only with `SALES_INTELLIGENCE_CAPTURE_CALL_LOG=true` and `SALES_INTELLIGENCE_CALL_LOG_SYNC=on`, while New York time is in [07:45, 20:30) (DST-safe through the engine calendar), and not on the 5-minute reconcile's own minutes (UTC minute ≡ 3 mod 5), where the reconcile's sync step carries ISync exactly as before. One Heavy ISync with the stored token (high lane, ≤ 10 s gate wait), more pages only while full (budget 3). It shares the reconcile's state row, token, quarantine and lease; it never bootstraps a token. Outcome on the row: `isync_lane.{last_run_at,last_success_at,last_error_code,last_records,last_applied}` — `last_success_at` is the "Calls updated" input together with the last webhook receipt.
 - `numberActivity/callLogApplier.ts` — the reconcile's per-record apply, extracted unchanged and shared by both lanes; it also returns the `call_interactions` rows each batch changed.
 - `call_log_refresh` with Call Log Sync `on`: due +5 min, retried after 5 and 15 min, `already_confirmed` without a provider read once the call is in the Call Log (any `call_log_state`). 45-min expiry kept. Off/shadow keep the old schedule.
-- Desk wake seam `salesOutreach/capture/contactChangeWake.ts`: after `capture_projection` (same completion transaction) and after each ISync / window batch (own transaction), one deduplicated `outreach_contact_change` job per `(source, revision)` (`sod:contact_change:<call|sms>:<id>:<r<revision>|m<winner>>`, subject `call:<id>` / `sms:<id>`, `input_refs: [id]`). **Inert** until SRV-6 sets `OUTREACH_CONTACT_CHANGE_CONSUMER_READY = true` and registers the handler in `jobDispatch.ts`; even then it enqueues only while the persisted configuration is active with `desk_enabled` or `goal_metrics_enabled`. Never throws into capture.
+- Desk wake seam `salesOutreach/capture/contactChangeWake.ts`: after `capture_projection` (same completion transaction) and after each ISync / window batch (own transaction), one deduplicated `outreach_contact_change` job per `(source, revision)` (`sod:contact_change:<call|sms>:<id>:<r<revision>|m<winner>>`, subject `call:<id>` / `sms:<id>`, `input_refs: [id]`), consumed by `contacts/jobs.ts` (below). It enqueues only while the persisted configuration is active with `desk_enabled` or `goal_metrics_enabled` (no env flag, no code readiness switch). Never throws into capture.
 
 ### Rate gate
 
@@ -252,3 +254,69 @@ All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_ou
 - Safety poll: `/api/cron/sales-intelligence-rep-sms-poll` (`* * * * *`), New York [07:45, 20:30), each mailbox once per five minutes in a stable slot, skipped when synced in the last 4 minutes, stops at a throttle.
 - Coverage (`coverage.ts`): per mailbox `current` / `delayed` (> 10 min since the last good sync) / `never_synced`, `known_complete_through`, `coverage_from`; `worstMailboxCoverage` drives "SMS delayed".
 - E01 proof (read-only): `node --env-file=.env --import tsx ops/ringcentral/prove-rep-sms-access.ts --target=<account id> --database=<db> [--sent-within-minutes=N]`. Exit 0 pass, 2 fail. Never creates a subscription, never prints a token, number or body.
+
+### Contact events and rep-days (SRV-6, `src/services/salesOutreach/contacts/`)
+
+- **Derivation** (`derive.ts`, pure): one `call_interactions` row or one `ringcentral_rep_sms_evidence` row gives exactly one `sales_outreach_contact_events` row. Its `_id` is the first 12 bytes of the sha-256 of `(source_kind, source_id)` (`contactEventId`), so concurrent derivations collide instead of duplicating. Rules:
+  - Excluded rows:
+    - merged-away (`merged_into_id`) and purged rows;
+    - `Internal` direction, or an own extension/DID endpoint (`internal_call`);
+    - withheld, malformed, service-code or numberless endpoints (`not_external`);
+    - `Unknown` direction.
+  - Outbound initiator (P07b): the extension of the earliest outbound Call Log leg. Monitoring, queue, IVR and voicemail legs and roles are ignored. Without legs it falls back to the single outbound user party. A tie between extensions is ambiguous identity.
+    - Identity is `resolveRepIdentityAt` at the call start; only a reviewed `sales_rep` link counts.
+    - Transfer, duplicate-leg and monitoring participants therefore earn nothing. The call keeps its one credit.
+  - Answered inbound: the first connected user extension is the handler. The handler's answer time (party answer, or connected leg start) is the event time (P07g). With no handler the row is `inbound_missed` (history only).
+  - Not actual attempts (P07a): the Call Log results `Internal Error`, `Restricted`, `Blocked`, `International Disabled`/`International Restriction`, `Suspended account`/`Account Suspended` and `Stopped`.
+  - IMPL-06: a call is confirmed only when `terminal` is true and `call_log_state` is non-null. Webhook-only is `awaiting_confirmation`: never credit, never a miss.
+  - IMPL-07 association, from the number's `attached` Leads with certainty ≠ `rejected`:
+    - `unique`: one Lead that is a desk subject with `activation_at ≤ event_at` and no `closed` period started by then. The row carries `subject_id` and the period's `subject_workflow`.
+    - `ambiguous`: several Leads (pending association).
+    - `none`: anything else.
+    - A subject-less row keeps `subject_id: null`, so M1 counting and "Other outbound" stay recountable. Subject reads never see it.
+  - Restricted contact: a `sales_intelligence_contact_restrictions` row on the number that covers the channel (`call`/`text`) with `createdAt ≤ event_at < min(until, resolved_at)`. It sets `restricted_at_contact`, earns zero goal and cadence credit, and stays in history.
+  - SMS:
+    - the event time is `send_at` (else `provider_created_at`);
+    - Sent/Delivered by a reviewed owner = `sms_sent`, confirmed;
+    - SendingFailed/DeliveryFailed = `sms_failed`, excluded (the re-derived row revokes the credit);
+    - Received = `sms_inbound`;
+    - `pending_identity` evidence stays pending, and group messages are ambiguous;
+    - only the lowest-`_id` mailbox copy of a `canonical_logical_id` credits; other copies are `duplicate_copy`;
+    - SMS never earns outbound-goal credit.
+  - Kind and verification come from S2's `classifyCallEvidence` / `classifySmsEvidence`. `toEngineContactEvent` converts a row into the engine input.
+  - Fields added to the model:
+    - `association`;
+    - `subject_workflow`;
+    - `outcome`: answered / unanswered / unknown (P06b);
+    - `goal_credit`: `confirmed` | `awaiting_confirmation` | `none`, the all-outbound credit of the reviewed initiator;
+    - `goal_scope_eligible`: a unique subject in a `new`/`quoted` period at contact time;
+    - `originating_inbound`: P07g — a confirmed reviewed-rep answered inbound whose uniquely associated subject is a Call Lead created by this call (`call_leads.ringcentral.telephony_session_id` = the call's `telephony_session_id`). The evaluator can use that event as `originating_contact_event_id`;
+    - `input_fingerprint`.
+- **Apply** (`apply.ts`, `mongoStore.ts`): bulk-loads a page of sources and their context, and writes only rows whose fingerprint changed (revision CAS).
+  - Every subject a source moved from or to gets one `outreach_evaluate` job: `subject_key outreach-subject:<id>`, `input_refs [id]`, `input_revision` = the subject revision, dedupe `sod:evaluate:<id>:r<rev>:contacts:<digest of event versions>`.
+  - Every `(goal_agent_id, business_date)` a source moved from or to is dirty.
+- **Jobs** (`jobs.ts`, dispatched by `numberActivity/jobDispatch.ts`):
+  - `outreach_contact_change` derives one source in the job transaction. It enqueues `outreach_rep_day` (`subject_key outreach-rep-day:<agent>:<YYYY-MM-DD>`, one dedupe per dirtying event version) and publishes the created wake-ups after commit.
+  - `outreach_rep_day` recounts one rep-day.
+  - After a rep-day write commits, `goalPublish.ts` `publishOutreachGoalChanges` receives `{agent_id, business_day, publication_revision}`. It is a no-op seam (TODO S1 phase 4b) until S1's `outreach_goal` live publish helper lands.
+  - Admission: the configuration must be active with `desk_enabled` or `goal_metrics_enabled`. It is rechecked inside the transaction; a moved pointer means retry.
+- **Sweep** (`sweep.ts`): walks `call_interactions` and the SMS evidence by an `(updatedAt, _id)` cursor on sync-state scopes `outreach_contact_calls` / `outreach_contact_sms` (lease in the row).
+  - Pages of 200, with a 2-minute commit-lag overlap re-scan. Derivation runs inline with the cursor write; dirty rep-days are recounted inline.
+  - The first pass starts at New York midnight of `today − transition.backfill_lookback_days` (0 when unset), stored as `cursor.outreach_coverage_from`.
+  - When a calls pass catches up, it stores the capture `known_complete_through` read at the pass start as the scope's `known_complete_through`. This is the **derivation watermark**.
+- **Rep-day** (`repDay.ts`, `repDayService.ts`): rows exist only for reps with activity, or where a row already exists.
+  - `count_scope` per business day: `eligible_new_quoted` from the New York date after the earliest **completed** enrollment `apply` run's `activation_at`; `all_outbound` before that. Stored state decides it, never env.
+  - Counts:
+    - `actual_confirmed`: `goal_credit: confirmed` events — all of them under `all_outbound`, only `goal_scope_eligible` ones under `eligible_new_quoted`;
+    - `actual_awaiting_confirmation`: the same rule for awaiting events;
+    - `unattributed`: confirmed events without an eligible subject, under both scopes.
+  - Goal: from `resolveConfiguredGoal` (S1) and `repDayGoal` (S2). Today's snapshot has `configuration_version: null`; the first recount after the day ends freezes it, once.
+  - Coverage: `callsCoverageForDay(min(capture known_complete_through − 2 min, derivation watermark), requiredCoverageThrough)`. A day before `coverage_from` is `unknown`.
+  - Writes: the fingerprint covers the scope, counts, goal snapshot and coverage state (not the moving instant). An unchanged fingerprint writes nothing; each write adds 1 to `publication_revision`.
+- **Cron** `/api/cron/sales-outreach-contact-events` (`* * * * *`, `routes/sales-outreach-contact-cron.routes.ts`). Each step is isolated, and no env flag gates them:
+  1. calls sweep (25 s);
+  2. SMS sweep (8 s);
+  3. drain `outreach_contact_change` (≤ 100, 10 s);
+  4. drain `outreach_rep_day` (≤ 100, 5 s);
+  5. refresh today's and yesterday's rows whose coverage is incomplete or whose past-day goal is not frozen.
+- Replica proof (written, not run): `ops/sales-outreach/contact-events.replica.ts`, part of `pnpm test:outreach:replica`.

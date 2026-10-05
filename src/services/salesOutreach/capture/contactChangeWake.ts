@@ -16,17 +16,15 @@ import { salesOutreachConfigurationLoader } from "../config/load";
  * upserts `sales_outreach_contact_events`; a minute sweep of `call_interactions` by revision is the
  * net for any wake lost here.
  *
- * Fail-safe by construction:
- * - while no consumer is registered (`OUTREACH_CONTACT_CHANGE_CONSUMER_READY` is false) nothing is
- *   read or written: rows without a consumer would only pile up;
+ * Fail-safe by construction (no env flag gates it, CONTRACTS "Persisted configuration and
+ * environment boundary"):
+ * - the stage has a registered consumer (`contacts/jobs.ts` via `numberActivity/jobDispatch.ts`, plus
+ *   the contact-events cron drain), so no row is written without something to run it;
  * - nothing is enqueued unless the persisted desk configuration is active and `desk_enabled` or
  *   `goal_metrics_enabled` is on (missing or broken configuration ⇒ no work, fail closed);
  * - the post-commit wake never throws into capture; a failure is logged and the sweep repairs it.
  */
 export const OUTREACH_CONTACT_CHANGE_STAGE = "outreach_contact_change" as const;
-
-/** SRV-6 (S3 phase B) sets this when it registers the stage handler in `jobDispatch.ts`. */
-export const OUTREACH_CONTACT_CHANGE_CONSUMER_READY = false;
 
 export type ContactChangeSource = {
   source_kind: "call" | "sms";
@@ -56,7 +54,6 @@ export function sourcesFromTouchedCalls(touched: readonly TouchedInteraction[]):
 }
 
 export type ContactChangeDeps = {
-  consumerReady?: boolean;
   /** True when the desk configuration is active and wants contact evidence. */
   wanted?: (session?: ClientSession) => Promise<boolean>;
   enqueue?: typeof enqueueCsiJob;
@@ -78,7 +75,7 @@ export async function deskWantsContactEvidence(session?: ClientSession): Promise
 
 /**
  * In-transaction enqueue (the capture-projection completion transaction). Returns the jobs it
- * created so the caller publishes their wake-ups after commit. Never enqueues without a consumer.
+ * created so the caller publishes their wake-ups after commit.
  */
 export async function enqueueOutreachContactChangeJobs(
   sources: readonly ContactChangeSource[],
@@ -86,7 +83,7 @@ export async function enqueueOutreachContactChangeJobs(
   now: Date,
   deps: ContactChangeDeps = {},
 ): Promise<Array<{ job_id: string; created: boolean }>> {
-  if (!sources.length || !(deps.consumerReady ?? OUTREACH_CONTACT_CHANGE_CONSUMER_READY)) return [];
+  if (!sources.length) return [];
   if (!(await (deps.wanted ?? deskWantsContactEvidence)(session))) return [];
   const enqueue = deps.enqueue ?? enqueueCsiJob;
   const out: Array<{ job_id: string; created: boolean }> = [];
@@ -112,7 +109,7 @@ export async function enqueueOutreachContactChangeJobs(
 }
 
 export type WakeOutcome =
-  | { status: "skipped"; reason: "nothing_touched" | "consumer_pending" | "not_wanted" }
+  | { status: "skipped"; reason: "nothing_touched" | "not_wanted" }
   | { status: "enqueued"; jobs: number; created: number; published: number }
   | { status: "failed"; error_name: string };
 
@@ -125,7 +122,6 @@ export async function wakeOutreachContactChange(
   deps: ContactChangeDeps = {},
 ): Promise<WakeOutcome> {
   if (!sources.length) return { status: "skipped", reason: "nothing_touched" };
-  if (!(deps.consumerReady ?? OUTREACH_CONTACT_CHANGE_CONSUMER_READY)) return { status: "skipped", reason: "consumer_pending" };
   try {
     if (!(await (deps.wanted ?? deskWantsContactEvidence)())) return { status: "skipped", reason: "not_wanted" };
     const now = (deps.now ?? (() => new Date()))();

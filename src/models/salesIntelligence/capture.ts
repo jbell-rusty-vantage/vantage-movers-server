@@ -130,6 +130,12 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
           entity_change_id: ref,
           // Sales Outreach Desk revision reconcile: the last subject id of its bounded pass.
           outreach_subject_id: ref,
+          // Sales Outreach Desk contact-event sweep (S3, SRV-6): `(updatedAt, _id)` of the last
+          // source row derived (scopes `outreach_contact_calls` / `outreach_contact_sms`) and the
+          // first instant the derived evidence covers (the bootstrap start).
+          outreach_source_updated_at: date,
+          outreach_source_id: ref,
+          outreach_coverage_from: date,
         },
         { _id: false, strict: "throw" },
       ),
