@@ -204,6 +204,32 @@ export async function install({ extraRepos = [], skipCodexTrust = false, cwd = p
   return { home, toolDir: TOOL_DIR, repos, changed, baselines, codexTrusted };
 }
 
+/**
+ * Removes our hook entries from all three tools and the Codex trust block, and deletes the
+ * machine state. Repositories keep .quality.config.json and their run history until pruned.
+ */
+export function uninstall() {
+  const home = homeDirectory();
+  const changed = {};
+  const userFiles = [path.join(os.homedir(), '.claude', 'settings.json'), path.join(os.homedir(), '.cursor', 'hooks.json'), path.join(os.homedir(), '.codex', 'hooks.json')];
+  for (const file of userFiles) {
+    if (!fs.existsSync(file)) continue;
+    const existing = readJson(file, {});
+    const stripped = stripHooks(existing) || (file.endsWith('settings.json') ? { ...existing, hooks: {} } : { hooks: {} });
+    changed[file] = backupAndWrite(file, stripped);
+  }
+  const codexConfig = path.join(os.homedir(), '.codex', 'config.toml');
+  if (fs.existsSync(codexConfig)) {
+    const text = fs.readFileSync(codexConfig, 'utf8');
+    const cleaned = withTrustBlock(text);
+    if (cleaned !== text) { fs.copyFileSync(codexConfig, `${codexConfig}.vantage-backup-${Date.now()}`); fs.writeFileSync(codexConfig, cleaned); changed[codexConfig] = true; }
+  }
+  const owner = readJson(path.join(home, 'worker.lock'))?.pid;
+  if (owner) { try { process.kill(owner); } catch { /* already gone */ } }
+  fs.rmSync(home, { recursive: true, force: true });
+  return { removedHome: home, changed };
+}
+
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   const extra = process.argv.flatMap((value, index, all) => all[index - 1] === '--repo' ? [value] : []);
   console.log(JSON.stringify(await install({ extraRepos: extra, skipCodexTrust: process.argv.includes('--skip-codex-trust') }), null, 2));

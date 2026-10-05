@@ -100,6 +100,7 @@ Run these from `vantage-main-server`. Commands that act on one repository take `
 
 ```text
 pnpm quality:install                 # (re)install user hooks for all three tools, trust Codex hooks, register opted-in repos
+pnpm quality:uninstall               # remove our hooks from all three tools and the Codex trust block; delete ~/.agent-quality
 pnpm quality:status                  # worker, sessions, last triage decisions, latest run, storage
 pnpm finish-work [--provider claude|cursor|codex] [--actions clean,docs] [--dry-run]
 pnpm quality:apply <run-id>          # apply a kept (stale) patch
@@ -111,6 +112,18 @@ pnpm quality:smoke claude|cursor|codex   # real-model end-to-end run on a throwa
 
 - **`finish-work`** runs immediately. It skips Gate 0, and with `--actions` it also skips triage. The provider is detected from the environment when `--provider` is omitted.
 - **`quality:install`** needs re-running after moving the checkout or changing hook definitions. It backs up each changed settings file as `*.vantage-backup-<ms>`, keeps unrelated hooks, and removes the retired project-level `.cursor/hooks.json` and `.codex/hooks.json`. It registers every opted-in repository it can find: previously configured ones, `--repo` arguments, the current one, and opted-in siblings. It also sets each repository's reviewed point to its current tree, and migrates the first installation's `~/.vantage-quality` and `refs/vantage-quality`.
+
+## Using it in other codebases
+
+The same tool is packaged as the **`quality-checkpoints` agent skill**:
+- Location: `~/.agents/skills/quality-checkpoints/`, linked into the Claude Code, Cursor and Codex skill folders.
+- Contents: `SKILL.md` covers setup and maintenance; `tool/` holds this code; `templates/` holds starter configurations for Node/TypeScript, Python and minimal setups; `references/` holds architecture and troubleshooting.
+
+After changing `ops/quality/`, keep the skill identical:
+
+```bash
+node ~/.agents/skills/quality-checkpoints/scripts/sync-tool.mjs ops/quality ~/.agents/skills/quality-checkpoints/tool
+```
 
 ## Configuration reference (`.quality.config.json`)
 

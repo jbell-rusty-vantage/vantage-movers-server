@@ -408,3 +408,9 @@ test('install: Codex trust blocks are replaced, never duplicated, under the old 
   assert.ok(!once.includes('VANTAGE') && once.startsWith('model = "x"\n'));
   assert.equal(withTrustBlock(once), 'model = "x"\n');
 });
+
+test('install: uninstall leaves unrelated hooks and nothing of ours', () => {
+  const merged = mergeHooks('codex', { hooks: { Stop: [{ hooks: [{ type: 'command', command: 'other' }] }] } }, 'node "C:/h/.agent-quality/hook.mjs"');
+  const stripped = stripHooks(merged);
+  assert.deepEqual(stripped.hooks, { Stop: [{ hooks: [{ type: 'command', command: 'other' }] }] });
+});

@@ -77,6 +77,7 @@
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "lint": "eslint src api ops/quality --max-warnings 0",
     "quality:install": "node ops/quality/cli.mjs install",
+    "quality:uninstall": "node ops/quality/cli.mjs uninstall",
     "quality:status": "node ops/quality/cli.mjs status",
     "quality:pause": "node ops/quality/cli.mjs pause",
     "quality:resume": "node ops/quality/cli.mjs resume",

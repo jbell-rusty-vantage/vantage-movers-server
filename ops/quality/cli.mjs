@@ -6,7 +6,7 @@ import { toplevel, branchName, readReviewed } from './git-snapshot.mjs';
 import { processRepo, recentTriage, tryApply, triageLog } from './pipeline.mjs';
 import { purgeHome, purgeRepo } from './retention.mjs';
 import { readSessions } from './worker.mjs';
-import { install } from './install.mjs';
+import { install, uninstall } from './install.mjs';
 import { PROVIDERS } from './providers.mjs';
 
 const args = process.argv.slice(2);
@@ -52,6 +52,7 @@ function repoStatus(repo, now) {
 async function main() {
   const home = homeDirectory();
   const now = Date.now();
+  if (command === 'uninstall') { console.log(JSON.stringify(uninstall(), null, 2)); return; }
   if (command === 'install') {
     const extra = args.flatMap((value, index) => args[index - 1] === '--repo' ? [path.resolve(value)] : []);
     console.log(JSON.stringify(await install({ extraRepos: extra, skipCodexTrust: flag('skip-codex-trust') }), null, 2));
@@ -104,7 +105,7 @@ async function main() {
     return;
   }
   if (command === 'worker') { const { runWorker } = await import('./worker.mjs'); await runWorker(); return; }
-  throw new Error(`Unknown command: ${command}. Use status | run | apply <id> | pause | resume | prune | install`);
+  throw new Error(`Unknown command: ${command}. Use status | run | apply <id> | pause | resume | prune | install | uninstall`);
 }
 
 main().catch(error => { console.error(error.message); process.exitCode = 1; });
