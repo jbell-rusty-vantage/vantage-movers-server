@@ -290,6 +290,7 @@ All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_ou
     - `outcome`: answered / unanswered / unknown (P06b);
     - `goal_credit`: `confirmed` | `awaiting_confirmation` | `none`, the all-outbound credit of the reviewed initiator;
     - `goal_scope_eligible`: a unique subject in a `new`/`quoted` period at contact time;
+    - `originating_inbound`: P07g — a confirmed reviewed-rep answered inbound whose uniquely associated subject is a Call Lead created by this call (`call_leads.ringcentral.telephony_session_id` = the call's `telephony_session_id`). The evaluator can use that event as `originating_contact_event_id`;
     - `input_fingerprint`.
 - **Apply** (`apply.ts`, `mongoStore.ts`): bulk-loads a page of sources and their context, and writes only rows whose fingerprint changed (revision CAS).
   - Every subject a source moved from or to gets one `outreach_evaluate` job: `subject_key outreach-subject:<id>`, `input_refs [id]`, `input_revision` = the subject revision, dedupe `sod:evaluate:<id>:r<rev>:contacts:<digest of event versions>`.
@@ -297,6 +298,7 @@ All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_ou
 - **Jobs** (`jobs.ts`, dispatched by `numberActivity/jobDispatch.ts`):
   - `outreach_contact_change` derives one source in the job transaction. It enqueues `outreach_rep_day` (`subject_key outreach-rep-day:<agent>:<YYYY-MM-DD>`, one dedupe per dirtying event version) and publishes the created wake-ups after commit.
   - `outreach_rep_day` recounts one rep-day.
+  - After a rep-day write commits, `goalPublish.ts` `publishOutreachGoalChanges` receives `{agent_id, business_day, publication_revision}`. It is a no-op seam (TODO S1 phase 4b) until S1's `outreach_goal` live publish helper lands.
   - Admission: the configuration must be active with `desk_enabled` or `goal_metrics_enabled`. It is rechecked inside the transaction; a moved pointer means retry.
 - **Sweep** (`sweep.ts`): walks `call_interactions` and the SMS evidence by an `(updatedAt, _id)` cursor on sync-state scopes `outreach_contact_calls` / `outreach_contact_sms` (lease in the row).
   - Pages of 200, with a 2-minute commit-lag overlap re-scan. Derivation runs inline with the cursor write; dirty rep-days are recounted inline.

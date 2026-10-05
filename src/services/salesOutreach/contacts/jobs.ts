@@ -5,6 +5,7 @@ import { publishRunnableWakeups } from "../../numberActivity/webhookFanout";
 import { salesOutreachConfigurationLoader, type ActiveConfiguration, type ConfigurationLoader } from "../config/load";
 import { OutreachError } from "../errors";
 import { applyContactSources, type ApplyResult, type ContactEventStore, type ContactSource } from "./apply";
+import { publishGoalChangesSafely, type OutreachGoalPublisher } from "./goalPublish";
 import { mongoContactEventStore } from "./mongoStore";
 import { mongoRepDayStore, recountRepDay, type RepDayRecount, type RepDayStore } from "./repDayService";
 
@@ -34,6 +35,8 @@ export type ContactJobDeps = {
   complete?: typeof completeCsiJob;
   fail?: typeof failCsiJob;
   publish?: (jobIds: readonly string[]) => Promise<unknown>;
+  /** `outreach_goal` live hint after a rep-day write commits (seam until S1 phase 4b). */
+  publishGoal?: OutreachGoalPublisher;
 };
 
 export type ContactJobStatus = "configuration_unavailable" | "not_wanted" | "not_claimable" | "completed" | "lease_lost" | "retry";
@@ -115,6 +118,8 @@ export async function runOutreachRepDayJob(jobId?: string, deps: ContactJobDeps 
       async (session) => recountRepDay(key, await recheck(loader, admitted, session), now, deps.repDayStore ?? mongoRepDayStore, session),
       { resultFrom: (value) => ({ outcome: value.outcome, publication_revision: value.publication_revision }) },
     );
+    if (result.outcome === "written" && result.publication_revision !== null)
+      await publishGoalChangesSafely([{ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision }], deps.publishGoal);
     return { status: "completed", result };
   } catch (error) {
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };

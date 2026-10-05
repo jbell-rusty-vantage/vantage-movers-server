@@ -397,9 +397,15 @@ describe("queued consumers", () => {
     const done = await runOutreachContactChangeJob(undefined, { ...deps, claim: (async () => leased(`call:${source.source_id}`)) as never });
     assert.equal(done.status, "completed");
     assert.deepEqual(calls, ["publish:2"]);
-    const repDay = await runOutreachRepDayJob(undefined, { ...deps, claim: (async () => leased(`outreach-rep-day:${ALICE}:${TODAY}`)) as never });
+    const goals: unknown[] = [];
+    const repDay = await runOutreachRepDayJob(undefined, {
+      ...deps,
+      claim: (async () => leased(`outreach-rep-day:${ALICE}:${TODAY}`)) as never,
+      publishGoal: async (changes) => void goals.push(...changes),
+    });
     assert.equal(repDay.status, "completed");
     assert.equal(w.repDays.row(ALICE, TODAY)!.actual_confirmed, 1);
+    assert.deepEqual(goals, [{ agent_id: ALICE, business_day: TODAY, publication_revision: 1 }], "outreach_goal hint after commit (S1 4b seam)");
   });
 
   test("a malformed subject key fails as schema_invalid; a moved configuration pointer retries", async () => {

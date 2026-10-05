@@ -13,6 +13,7 @@ import { addDays } from "../engine/calendar";
 import { OutreachError } from "../errors";
 import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
 import { applyContactSources, repDayKeyOf, type ContactEventStore, type RepDayKey } from "./apply";
+import { publishGoalChangesSafely, type OutreachGoalChange, type OutreachGoalPublisher } from "./goalPublish";
 import { wantsContactEvidence } from "./jobs";
 import { mongoContactEventStore } from "./mongoStore";
 import { mongoRepDayStore, recountRepDay, type RepDayStore } from "./repDayService";
@@ -129,6 +130,8 @@ export type SweepDeps = {
   repDays?: RepDayStore;
   lease?: SweepLease;
   transaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
+  /** `outreach_goal` live hint after rep-day writes commit (seam until S1 phase 4b). */
+  publishGoal?: OutreachGoalPublisher;
   /** Wall-clock budget of one pass (ms). */
   budgetMs?: number;
   clock?: () => number;
@@ -160,22 +163,27 @@ export async function recountRepDays(
   now: Date,
   store: RepDayStore,
   transaction: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>,
+  publishGoal?: OutreachGoalPublisher,
 ): Promise<{ recounted: number; failures: number }> {
   let recounted = 0;
   let failures = 0;
+  const published: OutreachGoalChange[] = [];
   for (const key of keys) {
     try {
-      await transaction(async (session) => {
+      const result = await transaction(async (session) => {
         const configuration = await loader.requireActive(session);
         if (!wantsContactEvidence(configuration)) throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "controls", code: "disabled" }]);
         return recountRepDay(key, configuration, now, store, session);
       });
+      if (result.outcome === "written" && result.publication_revision !== null)
+        published.push({ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision });
       recounted++;
     } catch (error) {
       failures++;
       logger.warn({ msg: "sales_outreach.rep_day.recount_failed", errorName: error instanceof Error ? error.name : "Error" });
     }
   }
+  await publishGoalChangesSafely(published, publishGoal);
   return { recounted, failures };
 }
 
@@ -237,7 +245,7 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
   } finally {
     await lease.release();
   }
-  const recount = await recountRepDays([...dirty.values()], loader, now, deps.repDays ?? mongoRepDayStore, transaction);
+  const recount = await recountRepDays([...dirty.values()], loader, now, deps.repDays ?? mongoRepDayStore, transaction, deps.publishGoal);
   return {
     skipped: false,
     reason: null,
@@ -268,6 +276,6 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
       if (row.coverage_state !== "complete" || (day < today && !row.frozen)) keys.push({ agent_id: row.agent_id, business_day: day });
     }
   }
-  const result = await recountRepDays(keys, loader, now, store, deps.transaction ?? withTransaction);
+  const result = await recountRepDays(keys, loader, now, store, deps.transaction ?? withTransaction, deps.publishGoal);
   return { skipped: false, reason: null, ...result };
 }
