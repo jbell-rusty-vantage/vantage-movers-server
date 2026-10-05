@@ -8,8 +8,8 @@ import { enqueueSheetSyncJob } from "../sheetSync";
 
 /**
  * S6-AGENT (assignment addendum §3.1/§3.3): one automatic `receiver_agent` write in the caller's
- * transaction, for writers outside the Granot lifecycle command (the `ringcentral_answered` fill on the
- * Outreach ensure path, and the `backfill-receiver-agent` script's Granot and RingCentral buckets).
+ * transaction, for writers outside the Granot lifecycle command: the desk's call-inferred fill
+ * (`ringcentral_rep_call`, `salesOutreach/contacts/receiverFill.ts`) and one-off operator backfills.
  *
  * It is the normal Lead write for non-canonical workflows (`leadChangeEmission`): a compare-and-set on
  * the receiver the caller decided against, one `EntityChange` with every receiver path before/after
@@ -19,7 +19,7 @@ import { enqueueSheetSyncJob } from "../sheetSync";
  * Returns null, writing nothing, when the Lead is gone, its receiver is no longer `expected_receiver`
  * (a manual edit or another writer won), or it already holds `agent_id`.
  */
-export type ReceiverAgentWriteSource = "granot_username_match" | "ringcentral_answered";
+export type ReceiverAgentWriteSource = "granot_username_match" | "ringcentral_answered" | "ringcentral_rep_call";
 export type ReceiverAgentWrite = {
   model: "FormLead" | "CallLead";
   id: string;
@@ -76,6 +76,21 @@ export function ringCentralAnsweredContext(input: { lead_id: string; telephony_s
     actor,
     initiator: actor,
     provenance: { origin: "ringcentral", run_id: null, source_receipt_id: identity, source_connection_key: `ringcentral:receiver-answered:${identity}`,
+      observation_id: null, decision_id: null, case_id: null, discrepancy_id: null, observation_channel: null },
+  };
+}
+
+/** The RingCentral-origin context of a `ringcentral_rep_call` fill: the call that named the rep. */
+export function ringCentralRepCallContext(input: { lead_id: string; interaction_id: string }): CanonicalCommandContext {
+  const identity = `call:${input.interaction_id}`;
+  const actor = createRingCentralCallIngestActor(identity);
+  return {
+    command_id: new mongoose.Types.ObjectId().toHexString(),
+    idempotency_key: `ringcentral:receiver-rep-call:${input.lead_id}:${input.interaction_id}`,
+    payload_checksum: "0".repeat(64),
+    actor,
+    initiator: actor,
+    provenance: { origin: "ringcentral", run_id: null, source_receipt_id: identity, source_connection_key: `ringcentral:receiver-rep-call:${identity}`,
       observation_id: null, decision_id: null, case_id: null, discrepancy_id: null, observation_channel: null },
   };
 }

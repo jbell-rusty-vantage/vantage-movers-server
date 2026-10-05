@@ -1,4 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
+import { Agent } from "../../../models/Agent";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
@@ -15,8 +16,10 @@ import type { SalesOutreachWorkflow } from "../../../config/domain/salesOutreach
 import type { RepSmsStatus } from "../../../config/domain/ringcentralRepSms";
 import type { TemporalRepLink } from "../../salesIntelligence/repIdentity/resolve";
 import { enqueueCsiJob } from "../../salesIntelligence/jobs";
+import { ringCentralRepCallContext, writeReceiverAgent } from "../../leads/receiverAgentWrite";
 import type { ContactEventStore, StoredContactEvent } from "./apply";
 import type { CallSourceRow, DeskLeadKey, RestrictionInterval, SmsSourceRow, SubjectFacts } from "./derive";
+import type { ReceiverFillCandidate } from "./receiverFill";
 
 /**
  * Mongo side of the contact-event derivation. Every read is bounded by the page of sources and uses an
@@ -136,6 +139,44 @@ const SMS_PROJECTION = {
 } as const;
 
 const LEAD_MODELS = ["FormLead", "CallLead"] as const;
+
+/**
+ * Writes a `ringcentral_rep_call` receiver for each candidate whose subject is unassigned and whose Lead
+ * has no receiver (the write's compare-and-set on an empty field). Shared by the live contact apply and
+ * `scripts/backfill-receiver-from-rep-calls.ts`. Returns how many Leads were written.
+ */
+export async function writeRepCallReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number> {
+  if (!candidates.length) return 0;
+  const subjects = (await getSalesOutreachSubjectModel()
+    .find({ _id: { $in: candidates.map((c) => oid(c.subject_id)) }, assigned_agent_id: null }, { lead_model: 1, lead_id: 1 })
+    .session(session)
+    .lean()) as unknown as Array<{ _id: unknown; lead_model: "FormLead" | "CallLead"; lead_id: unknown }>;
+  const leadOf = new Map(subjects.map((row) => [String(row._id), { model: row.lead_model, id: String(row.lead_id) }]));
+  const agents = (await Agent.find({ _id: { $in: [...new Set(candidates.map((c) => c.agent_id))].map(oid) } }, { name: 1 })
+    .session(session)
+    .lean()) as unknown as Array<{ _id: unknown; name?: string | null }>;
+  const nameOf = new Map(agents.map((row) => [String(row._id), row.name ?? ""]));
+  let filled = 0;
+  for (const candidate of candidates) {
+    const lead = leadOf.get(candidate.subject_id);
+    const name = nameOf.get(candidate.agent_id);
+    if (!lead || name === undefined) continue;
+    const stamp = await writeReceiverAgent({
+      model: lead.model,
+      id: lead.id,
+      agent: { id: candidate.agent_id, name },
+      source: "ringcentral_rep_call",
+      source_value: candidate.source_id,
+      expected_receiver: null,
+      context: ringCentralRepCallContext({ lead_id: lead.id, interaction_id: candidate.source_id }),
+      command_name: "fillReceiverFromRepCall",
+      session,
+      now,
+    });
+    if (stamp) filled++;
+  }
+  return filled;
+}
 
 export const mongoContactEventStore: ContactEventStore = {
   async loadCalls(ids, session) {
@@ -312,4 +353,6 @@ export const mongoContactEventStore: ContactEventStore = {
     const row = await enqueueCsiJob(job, session, now);
     return { job_id: String(row._id), created: (row as { createdAt?: Date }).createdAt?.getTime() === now.getTime() };
   },
+
+  fillEmptyReceivers: writeRepCallReceivers,
 };

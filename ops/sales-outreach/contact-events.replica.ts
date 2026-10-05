@@ -13,7 +13,10 @@
  *   identical recount is a no-op, a provisional → settled call moves awaiting → confirmed with a
  *   monotonic `publication_revision`;
  * - minute sweep: the `(updatedAt, _id)` cursor and the derivation watermark on the
- *   `outreach_contact_calls` sync-state row; a concurrent sweep is `lease_held`.
+ *   `outreach_contact_calls` sync-state row; a concurrent sweep is `lease_held`;
+ * - call-inferred receiver: a reviewed rep's call on an unassigned subject whose Lead has no receiver
+ *   writes `ringcentral_rep_call` with its EntityChange + `domain_revision` stamp in the same
+ *   transaction; a later call by another rep or a replay does not move it.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -146,12 +149,54 @@ async function main() {
   assert.ok(state?.cursor?.outreach_source_updated_at, "cursor stored");
   const { MongoLeaseStore } = await import("../../src/services/durableWork/leases.js");
   const leases = new MongoLeaseStore(getSalesIntelligenceSyncStateModel());
-  // Hold the lease on the sweep's clock (`now`): a lease taken on the wall clock would already look expired
-  // to a sweep running at the later synthetic instant, which would steal it.
-  const held = await leases.acquire({ scope: "outreach_contact_calls", owner: "other", ttl_ms: 60_000, now });
+  // Hold the lease on the sweep's clock: a lease taken on the wall clock would already look expired to a
+  // sweep running at the synthetic instant, which would steal it. Past the first sweep's 120 s lease,
+  // because that sweep releases on the wall clock, which no longer frees a synthetic-clock lease once the
+  // real time is past `now`.
+  const leaseAt = new Date(+now + 121_000);
+  const held = await leases.acquire({ scope: "outreach_contact_calls", owner: "other", ttl_ms: 60_000, now: leaseAt });
   assert.ok(held);
-  assert.equal((await sweepContactSources("call", now, { loader })).reason, "lease_held");
-  await leases.release({ token: held, now });
+  assert.equal((await sweepContactSources("call", leaseAt, { loader })).reason, "lease_held");
+  await leases.release({ token: held, now: leaseAt });
+
+  // --- call-inferred receiver fill ----------------------------------------------------------------
+  const { Agent } = await import("../../src/models/Agent.js");
+  const { getFormLeadModel } = await import("../../src/models/FormLead.js");
+  await getFormLeadModel().createCollection();
+  await Agent.createCollection();
+  await Agent.collection.insertOne({ _id: alice, name: "Alice", normalized_name: "alice", active: true });
+  const bob = new mongoose.Types.ObjectId();
+  await getRepIdentityLinkModel().create({
+    agent_id: bob, agent_name_snapshot: "Bob", rc_account_id: account, rc_extension_id: "102", role_kind: "sales_rep", status: "reviewed",
+    effective_from: new Date("2026-01-01T00:00:00Z"), reviewed_at: new Date("2026-01-01T00:00:00Z"), reviewed_by: "owner",
+  });
+  await Agent.collection.insertOne({ _id: bob, name: "Bob", normalized_name: "bob", active: true });
+  await getFormLeadModel().collection.insertOne({ _id: leadId, name: "Replica Lead", domain_revision: 1 });
+  const fillCall = async (extension: string, at: string, session: string) => {
+    const started = new Date(at);
+    const row = await getCallInteractionModel().create({
+      provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction: "Outbound",
+      contact_number_id: number, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
+      parties: [{ role: "user", direction: "Outbound", extension_id: extension }], legs: [{ extension_id: extension, direction: "Outbound", start_time: started, result: "Call connected" }],
+      call_log_state: "settled", terminal: true, first_observed_at: started, last_observed_at: started,
+    });
+    return { source_kind: "call" as const, source_id: String(row._id) };
+  };
+  const bobCall = await fillCall("102", "2026-10-05T15:00:00Z", "s-fill-1");
+  const filled = await withTransaction((session) => applyContactSources([bobCall], { now, queueRepDays: false }, mongoContactEventStore, session));
+  assert.equal(filled.receivers_filled, 1);
+  let lead = await getFormLeadModel().collection.findOne({ _id: leadId });
+  assert.equal(String(lead?.receiver_agent), String(bob));
+  assert.deepEqual([lead?.receiver_agent_source, lead?.receiver_agent_source_value, lead?.receiver_agent_name_snapshot], ["ringcentral_rep_call", bobCall.source_id, "Bob"]);
+  assert.ok((lead?.domain_revision ?? 0) > 1, "the write stamps a new Lead revision (the subject feed re-syncs it)");
+  const change = await mongoose.connection.db!.collection("entity_changes").findOne({ "entity.model": "FormLead", "entity.id": String(leadId) });
+  assert.ok(change, "one EntityChange row for the receiver write");
+  const aliceLater = await fillCall("101", "2026-10-05T16:00:00Z", "s-fill-2");
+  const kept = await withTransaction((session) => applyContactSources([aliceLater, bobCall], { now, queueRepDays: false }, mongoContactEventStore, session));
+  assert.equal(kept.receivers_filled, 0, "a filled receiver is never replaced by a later call");
+  lead = await getFormLeadModel().collection.findOne({ _id: leadId });
+  assert.equal(String(lead?.receiver_agent), String(bob));
+
   console.log(JSON.stringify({ ok: true, database }));
 }
 

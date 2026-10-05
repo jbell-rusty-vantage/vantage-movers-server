@@ -123,6 +123,42 @@ describe("apply: one event per source, idempotent, dirty marks", () => {
   });
 });
 
+describe("call-inferred receiver fill", () => {
+  test("the most recent reviewed-rep call on a subject names its receiver; a replay or a filled receiver writes nothing more", async () => {
+    const w = world();
+    const sources = [
+      call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")),
+      call(w.events, outboundCall("102", NUMBER, "2026-10-05T15:10:00Z")),
+    ];
+    const first = await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    assert.equal(first.receivers_filled, 1);
+    assert.equal(w.events.receivers.get(w.subject.id), BOB, "the later caller wins");
+    assert.deepEqual(w.events.fills.map((f) => f.source_id), [sources[1]!.source_id]);
+
+    const replay = await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    assert.equal(replay.receivers_filled, 0, "the receiver is no longer empty");
+    assert.equal(w.events.receivers.get(w.subject.id), BOB);
+  });
+
+  test("an answered inbound by a reviewed rep fills; a missed inbound, an unreviewed caller or no subject does not", async () => {
+    const answered = world();
+    const result = await applyContactSources([call(answered.events, inboundCall("101", NUMBER, "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, answered.events, SESSION);
+    assert.equal(result.receivers_filled, 1);
+    assert.equal(answered.events.receivers.get(answered.subject.id), ALICE);
+
+    for (const row of [
+      inboundCall(null, NUMBER, "2026-10-05T14:10:00Z"),
+      outboundCall("199", NUMBER, "2026-10-05T14:10:00Z"), // no reviewed link for this extension
+      outboundCall("101", newId(), "2026-10-05T14:10:00Z"), // a number with no Lead
+    ]) {
+      const w = world();
+      const none = await applyContactSources([call(w.events, row)], { now: NOW, queueRepDays: false }, w.events, SESSION);
+      assert.equal(none.receivers_filled, 0);
+      assert.equal(w.events.fills.length, 0);
+    }
+  });
+});
+
 describe("rep-day recount", () => {
   test("END-TO-END-RUN §3: New received 10:00, actual no-answer call 10:10 — initiating-rep goal credit", async () => {
     const w = world();
