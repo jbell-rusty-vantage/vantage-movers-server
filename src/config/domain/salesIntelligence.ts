@@ -35,6 +35,10 @@ export const CSI_JOB_STAGES = [
   "attachment_refresh",
   "rebuild",
   "nudge_repair",
+  // Sales Outreach Desk (S3): desk wake for changed call/SMS evidence (consumer lands with SRV-6).
+  "outreach_contact_change",
+  // Sales Outreach Desk (S3): coalesced per-mailbox rep SMS message sync (RINGCENTRAL-CAPTURE §5).
+  "rep_sms_sync",
 ] as const;
 export type CsiJobStage = (typeof CSI_JOB_STAGES)[number];
 /**
