@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
-import { toE164 } from "../../numberActivity/phone";
+import { leadPhoneE164 } from "../../numberActivity/leadContactNumber";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ActiveConfiguration } from "../config/load";
 import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
@@ -192,7 +192,8 @@ export async function syncSubject(
     current_status: subject?.status ?? null,
     contact: {
       number_ids: built.contact_number_ids,
-      phone_e164: toE164(facts.normalized_phone),
+      // The same phone the Lead's number is minted and linked from (olr C2c review fix): live, else a Call Lead's original caller.
+      phone_e164: leadPhoneE164(facts.ref.model, { normalized_phone_number: facts.normalized_phone, original_caller_phone: facts.original_caller_phone }),
       rule: configuration.value.cadence.no_contact_number_rule,
     },
   });

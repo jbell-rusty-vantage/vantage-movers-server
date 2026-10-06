@@ -277,16 +277,25 @@ function periodAt(subject: SubjectFacts, at: Date): SubjectPeriodFacts | null {
   return subject.periods.find((p) => p.started_at.getTime() <= ms && (p.ended_at === null || p.ended_at.getTime() > ms)) ?? null;
 }
 
-/** olr C2d: the number Lead's outcomes after which a single active `other_leads` subject is credited. */
-const SHADOWED_REASONS: ReadonlySet<SalesOutreachAssociationReason> = new Set(["lead_not_enrolled", "lead_closed"]);
+/**
+ * olr C2d (LANE-C §C2(d) "the number's lead is not an active subject at event_at"): the number Lead's
+ * outcomes after which a single active `other_leads` subject is credited. `before_activation` is one of
+ * them, so the credit depends only on facts at contact time, never on when derivation last ran: a call
+ * that credited the shadowed subject while the number Lead was not enrolled keeps that credit after the
+ * number Lead is enrolled later (its activation is after the call) and the call is re-derived. On the same
+ * New York date the credit also wins over the number Lead's P05f `same_date_prior` marker: the call reached
+ * the active subject's customer, and the later-activated subject's partial-start quota then does not
+ * subtract it (the conservative side: it may owe one more contact that day, it never loses a real one).
+ */
+const SHADOWED_REASONS: ReadonlySet<SalesOutreachAssociationReason> = new Set(["lead_not_enrolled", "lead_closed", "before_activation"]);
 
 /**
  * IMPL-07 over the source's contact numbers, with the olr C8 reason: no number Lead → `no_lead`; several
  * Leads → `ambiguous`; a Lead without a desk subject → `lead_not_enrolled`; before the subject's
  * activation boundary → `before_activation`; once its closed period started → `lead_closed`; otherwise
  * unique — `eligible` in a New/Quoted period, else `not_new_quoted`.
- * olr C2d, only with `association_rule: single_active_subject_on_link`: a `lead_not_enrolled` or
- * `lead_closed` outcome falls back to the numbers' `other_leads` (`singleActiveOnLink`).
+ * olr C2d, only with `association_rule: single_active_subject_on_link`: a `lead_not_enrolled`,
+ * `before_activation` or `lead_closed` outcome falls back to the numbers' `other_leads` (`singleActiveOnLink`).
  */
 export function associate(numberIds: readonly string[], at: Date, context: DerivationContext): Association {
   const leads = new Set<DeskLeadKey>();

@@ -4,7 +4,7 @@ import { toFloridaTimestamp } from "../../../utils/easternTime";
 import { fixture } from "../engine/testSupport";
 import type { ActiveConfiguration } from "../config/load";
 import { refreshLeadForOutreach } from "./leadChangeJob";
-import { toDeskLeadFacts } from "./leadFacts";
+import { DESK_LEAD_PROJECTION, toDeskLeadFacts } from "./leadFacts";
 import { deskDecisionFingerprint } from "./policyMapping";
 import { receivedFactsOf, subjectStatusOf } from "./subjectBuilder";
 import {
@@ -565,6 +565,26 @@ describe("olr C2c: cadence.no_contact_number_rule (D-C2c; off unless the Owner s
     const lead = store.addLead(leadFacts({ phone: "12", normalized_phone: "12" }));
     await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
     assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
+  });
+
+  test("review fix: a Call Lead with only its original caller's phone will get a number (C2b mint): stays active, no review flap", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const call = store.addLead(leadFacts({ model: "CallLead", ...noPhone, original_caller_phone: "5550100002" }));
+    await refreshLeadForOutreach(call.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons, store.subjects[0]!.contact_number_ids], ["active", [], []]);
+    // The mint uses the original caller only for Call Leads, so a Form Lead never borrows it.
+    const formStore = new MemoryDeskSubjectStore();
+    const form = formStore.addLead(leadFacts({ ...noPhone, original_caller_phone: "5550100002" }));
+    await refreshLeadForOutreach(form.ref, ruleOn(), at("2026-10-01T15:00:00Z"), formStore, fakeSession);
+    assert.deepEqual([formStore.subjects[0]!.status, formStore.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
+  });
+
+  test("review fix: toDeskLeadFacts reads a Call Lead's ringcentral.original_caller phone (projected), never a Form Lead's", () => {
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ringcentral.original_caller.normalized_phone_number"));
+    const raw = { _id: "f".repeat(24), ringcentral: { original_caller: { normalized_phone_number: "5550100003" } } };
+    assert.equal(toDeskLeadFacts("CallLead", raw).original_caller_phone, "5550100003");
+    assert.equal(toDeskLeadFacts("FormLead", raw).original_caller_phone, null);
+    assert.equal(toDeskLeadFacts("CallLead", { _id: "f".repeat(24) }).original_caller_phone, null);
   });
 
   test("a link arriving clears the reason: back to active, same period (age and deadlines unchanged)", async () => {

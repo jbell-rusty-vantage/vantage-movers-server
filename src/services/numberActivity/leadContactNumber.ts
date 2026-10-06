@@ -51,10 +51,19 @@ export function leadNumberE164(model: LeadModel, lead: Omit<LeadNumberSource, "_
   { e164: string } | { skip: Exclude<LeadNumberSkip, "disabled" | "company_number"> } {
   if (lead.duplicate === true) return { skip: "duplicate" };
   if (lead.bad_lead) return { skip: "bad_lead" };
+  const e164 = leadPhoneE164(model, lead);
+  return e164 ? { e164 } : { skip: "no_phone" };
+}
+
+/**
+ * The E.164 a Lead's phone forms for its Contact Number, or null: a Form Lead's live phone; a Call Lead's
+ * live phone, else the caller of its creating call. Pure; shared by the mint above and the desk's olr C2c
+ * `no_contact_number` rule, so a Lead that will get a number is never treated as having no phone.
+ */
+export function leadPhoneE164(model: LeadModel, lead: Pick<LeadNumberSource, "normalized_phone_number" | "original_caller_phone">): string | null {
   const live = lead.normalized_phone_number?.trim() || null;
   const phone = live ?? (model === "CallLead" ? lead.original_caller_phone?.trim() || null : null);
-  const e164 = toE164(phone ?? "");
-  return e164 ? { e164 } : { skip: "no_phone" };
+  return toE164(phone ?? "");
 }
 
 /** Minting is behind `FORM_LEAD_NUMBERS` for Form Leads only; Call Leads always mint (C2b: data completeness). */

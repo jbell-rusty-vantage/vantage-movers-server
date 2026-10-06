@@ -870,24 +870,25 @@ async function main() {
   // `other_leads`. Rule absent: the call credits nobody (`lead_not_enrolled`). Re-derived under
   // `single_active_subject_on_link`: the store loads `other_leads` and their subjects, the event credits
   // that subject (fingerprint moves, its evaluation is nominated). A second shadow subject makes it ambiguous.
-  const c2dSubjectFor = async (model: "FormLead" | "CallLead", leadId: mongoose.Types.ObjectId, workflow: "new" | "quoted") => {
+  const c2dSubjectFor = async (model: "FormLead" | "CallLead", leadId: mongoose.Types.ObjectId, workflow: "new" | "quoted", activatedAt = activation) => {
     const id = new mongoose.Types.ObjectId();
     await models.getSalesOutreachSubjectModel().create({
       _id: id, lead_model: model, lead_id: leadId,
-      enrollment: { cohort_id: "c2d", kind: "pilot", enrolled_at: activation, activation_at: activation, manifest_hash: null },
+      enrollment: { cohort_id: "c2d", kind: "pilot", enrolled_at: activatedAt, activation_at: activatedAt, manifest_hash: null },
       status: "active", received_quality: "instant", adapter_version: "v1",
     });
     await models.getSalesOutreachPolicyPeriodModel().create({
-      subject_id: id, transition_key: "activation", policy_version: "v-test", activation_boundary: activation, workflow,
-      start_kind: "activation", started_at: activation, time_basis: "activation_boundary",
+      subject_id: id, transition_key: "activation", policy_version: "v-test", activation_boundary: activatedAt, workflow,
+      start_kind: "activation", started_at: activatedAt, time_basis: "activation_boundary",
     });
     return id;
   };
   const c2dLead = new mongoose.Types.ObjectId();
   const c2dSubject = await c2dSubjectFor("FormLead", c2dLead, "new");
   const c2dNumber = new mongoose.Types.ObjectId();
+  const c2dNumberLead = new mongoose.Types.ObjectId();
   await getContactNumberModel().create({ _id: c2dNumber, e164: "+15550100066", digits_reversed: "66001005551", first_observed_at: activation, last_activity_at: activation,
-    lead: { model: "FormLead", id: new mongoose.Types.ObjectId(), received_at: activation, state: "open" },
+    lead: { model: "FormLead", id: c2dNumberLead, received_at: activation, state: "open" },
     other_leads: [{ model: "FormLead", id: c2dLead, received_at: activation, state: "open" }], lead_link: { source: "automatic", set_at: activation } });
   const c2dStart = new Date("2026-12-22T15:00:00Z");
   const c2dCall = await getCallInteractionModel().create({
@@ -911,6 +912,13 @@ async function main() {
     [1, "unique", String(c2dSubject), "eligible", true], "C2d rule on: the single active other_leads subject is credited");
   assert.equal(await c2dEvaluations(), 1, "the credited subject's evaluation is nominated in the same transaction");
   assert.equal((await c2dApply("single_active_subject_on_link")).changed, 0, "a replay writes nothing");
+  // Review fix: the number's Lead is enrolled after the call (a later New York date). It was not an
+  // active subject at event_at, so a re-derive keeps the shadow's credit instead of `before_activation`.
+  await c2dSubjectFor("FormLead", c2dNumberLead, "new", new Date("2026-12-24T15:00:00Z"));
+  const c2dReplayAfterEnroll = await c2dApply("single_active_subject_on_link");
+  const c2dKept = await c2dEvent();
+  assert.deepEqual([c2dReplayAfterEnroll.changed, c2dKept?.association, String(c2dKept?.subject_id), c2dKept?.association_reason, c2dKept?.goal_credit],
+    [0, "unique", String(c2dSubject), "eligible", c2dCredited?.goal_credit], "C2d: the number Lead enrolled later does not strip the shadow's credit");
   const c2dSecondLead = new mongoose.Types.ObjectId();
   await c2dSubjectFor("CallLead", c2dSecondLead, "quoted");
   await getContactNumberModel().updateOne({ _id: c2dNumber }, { $push: { other_leads: { model: "CallLead", id: c2dSecondLead, received_at: activation, state: "open" } } });

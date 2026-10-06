@@ -184,8 +184,9 @@ export function desiredPeriodOf(facts: DeskLeadFacts, eligibility: DeskEligibili
 export const ADMISSION_HOLD_REASONS: ReadonlySet<string> = new Set(["ambiguous_identity", "received_time_unreliable", "received_time_missing"]);
 
 /**
- * olr C2c inputs: the subject's linked Contact Numbers, the E.164 its Lead's live phone forms (null when
- * there is no phone or it never forms one) and the Owner's `cadence.no_contact_number_rule`.
+ * olr C2c inputs: the subject's linked Contact Numbers, the E.164 its Lead's number is minted from
+ * (`leadPhoneE164`: the live phone, else a Call Lead's original caller; null when there is none or it never
+ * forms one) and the Owner's `cadence.no_contact_number_rule`.
  */
 export type DeskSubjectContactFacts = Readonly<{
   number_ids: readonly string[];

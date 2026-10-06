@@ -511,14 +511,44 @@ describe("olr C2d evidence.call_association_rule: single_active_subject_on_link 
     assert.deepEqual([stays.association, stays.subject_id, stays.association_reason], ["none", null, "lead_not_enrolled"], "no active shadow: the number Lead's outcome stands");
   });
 
-  test("an active, or not yet activated, number Lead keeps the credit rule: other_leads are never consulted", () => {
+  test("an active number Lead keeps the credit rule: other_leads are never consulted", () => {
     const active = shadowed(subjectFacts({ workflow: "quoted" }), [subjectFacts()], RULE);
     const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), active.context);
     assert.deepEqual([draft.association, draft.subject_workflow], ["unique", "quoted"]);
     assert.notEqual(draft.subject_id, active.shadows[0]!.id);
-    const pending = shadowed(subjectFacts({ activation_at: new Date("2026-10-07T14:00:00Z") }), [subjectFacts()], RULE);
-    const before = deriveCallContactEvent(outboundCall("101", NUMBER, T0), pending.context);
+  });
+
+  test("review fix: a number Lead enrolled after the call is not active at event_at, so the shadow keeps its credit on re-derive", () => {
+    const shadow = subjectFacts({ workflow: "new" });
+    const row = outboundCall("101", NUMBER, T0);
+    // Oct 5: the call while the number Lead is not enrolled credits the shadow.
+    const atCall = shadowed(null, [shadow], RULE);
+    const first = deriveCallContactEvent(row, atCall.context);
+    // Oct 7: the number Lead is enrolled (activation after the call); the same call is re-derived.
+    const enrolledLater = shadowed(subjectFacts({ activation_at: new Date("2026-10-07T14:00:00Z") }), [shadow], RULE);
+    const again = deriveCallContactEvent(row, enrolledLater.context);
+    for (const draft of [first, again])
+      assert.deepEqual(
+        [draft.association, draft.subject_id, draft.association_reason, draft.goal_scope_eligible, draft.goal_credit],
+        ["unique", shadow.id, "eligible", true, "confirmed"],
+      );
+    // No active shadow: the number Lead's `before_activation` outcome stands.
+    const alone = shadowed(subjectFacts({ activation_at: new Date("2026-10-07T14:00:00Z") }), [], RULE);
+    const before = deriveCallContactEvent(row, alone.context);
     assert.deepEqual([before.association, before.association_reason, before.subject_id], ["none", "before_activation", null]);
+  });
+
+  test("review fix: same New York date, number Lead activated after the call: the active shadow is credited over the P05f same-date marker", () => {
+    const numberLead = subjectFacts({ activation_at: new Date("2026-10-05T18:00:00Z") });
+    const shadow = subjectFacts({ workflow: "quoted" });
+    const row = outboundCall("101", NUMBER, T0);
+    const credited = deriveCallContactEvent(row, shadowed(numberLead, [shadow], RULE).context);
+    assert.deepEqual([credited.association, credited.subject_id, credited.association_reason], ["unique", shadow.id, "eligible"]);
+    // Without an active shadow (or with the rule off) the P05f same-date prior marker is kept as before.
+    for (const context of [shadowed(numberLead, [], RULE).context, shadowed(numberLead, [shadow]).context]) {
+      const marker = deriveCallContactEvent(row, context);
+      assert.deepEqual([marker.association, marker.association_reason, marker.subject_id], ["none", "before_activation", numberLead.id]);
+    }
   });
 
   test("rule absent or number_lead: results are unchanged (All Numbers CONTRACT §3 as built)", () => {
