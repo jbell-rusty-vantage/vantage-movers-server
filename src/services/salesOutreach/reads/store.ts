@@ -42,7 +42,12 @@ export type SalesOutreachReadStore = {
   readContactDerivation(): Promise<ContactDerivationMark | null>;
 };
 
-export type ContactDerivationMark = Readonly<{ known_complete_through: Date | null; coverage_from: Date | null }>;
+export type ContactDerivationMark = Readonly<{
+  known_complete_through: Date | null;
+  coverage_from: Date | null;
+  /** `outreach_contact_calls.observed_complete_through` (A3-cap; absent until the first caught-up sweep writes it). */
+  observed_complete_through?: Date | null;
+}>;
 
 export type SyncStateLean = {
   scope: string;
@@ -188,10 +193,18 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
 
   async readContactDerivation() {
     const row = (await getSalesIntelligenceSyncStateModel()
-      .findOne({ scope: OUTREACH_CONTACT_CALLS_SCOPE }, { known_complete_through: 1, "cursor.outreach_coverage_from": 1 })
-      .lean()) as { known_complete_through?: Date | null; cursor?: { outreach_coverage_from?: Date | null } } | null;
+      .findOne({ scope: OUTREACH_CONTACT_CALLS_SCOPE }, { known_complete_through: 1, observed_complete_through: 1, "cursor.outreach_coverage_from": 1 })
+      .lean()) as {
+      known_complete_through?: Date | null;
+      observed_complete_through?: Date | null;
+      cursor?: { outreach_coverage_from?: Date | null };
+    } | null;
     if (!row) return null;
-    return { known_complete_through: row.known_complete_through ?? null, coverage_from: row.cursor?.outreach_coverage_from ?? null };
+    return {
+      known_complete_through: row.known_complete_through ?? null,
+      observed_complete_through: row.observed_complete_through ?? null,
+      coverage_from: row.cursor?.outreach_coverage_from ?? null,
+    };
   },
 
   async readLatestGranotObservationAt() {

@@ -93,11 +93,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -147,11 +147,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -201,11 +201,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -259,11 +259,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -317,11 +317,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -371,11 +371,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },

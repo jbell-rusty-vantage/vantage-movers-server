@@ -40,6 +40,10 @@
  * - zero-activity days (olr C5): the refresh after New York midnight writes one zero row with a frozen
  *   goal snapshot per roster rep without a row yesterday (strict model, `sod_rep_day_unique`), none
  *   today or off the roster; a second pass rewrites nothing and racing passes converge on one row per rep.
+ * - rep-day coverage (olr C0, D-A3): with the capped watermarks 50 min behind and the observed ones 17–18
+ *   min behind, the recount (watermarks read in its transaction) and GET /rep-days both read today complete
+ *   through as_of − 20 against as_of − 25, so a zero-call roster rep reads 0 / no_activity_recorded; with
+ *   the capped watermarks alone the same rep reads Pending.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -633,6 +637,56 @@ async function main() {
   assert.equal(c2After.without_numbers.by_reason.no_contact_number, 0, "plan §2 C2 acceptance: no subject's phone lacks a Contact Number");
   const mintAgain = await runMintLeadNumbers([`--target=${database}`, "--apply"], quiet) as { applied: { numbers_created: number; links_changed: number } };
   assert.deepEqual([mintAgain.applied.numbers_created, mintAgain.applied.links_changed], [0, 0], "a rerun writes nothing");
+
+  // --- olr C0: rep-day coverage from goal coverage (D-A3) -------------------------------------------
+  // A stuck provisional Call Log row holds both capped watermarks 50 min back; the observed ones are 17–18
+  // min behind. The recount reads both scopes inside its transaction (`loadCallWatermarks`) and the
+  // GET /rep-days read assembles the same marks from its own rows: today is complete through as_of − 20
+  // (required as_of − 25), so a zero-call roster rep reads 0 / `no_activity_recorded`, not Pending.
+  // Without the observed values (a pre-A3 row) the same day is partial and the rep reads Pending.
+  const { readRepDays } = await import("../../src/services/salesOutreach/reads/service.js");
+  const c0Now = new Date("2026-12-01T19:00:00Z"); // 14:00 New York (EST)
+  const c0Min = (m: number) => new Date(c0Now.getTime() + m * 60_000);
+  const c0Zero = new mongoose.Types.ObjectId();
+  const c0Config = activeInspection(
+    {
+      controls: { desk_enabled: true, goal_metrics_enabled: true },
+      goals: {
+        roster_version: "r-c0", default_scheduled_goal: 100, zero_goal_rule: "no_goal_today_excluded_from_denominator",
+        rep_work_schedules: [{ agent_id: String(c0Zero), working_days: [1, 2, 3, 4, 5, 6, 7] }], effective_day_overrides: [],
+      },
+    },
+    "v-c0",
+    10,
+  );
+  assert.equal(c0Config.state, "active");
+  if (c0Config.state !== "active") return;
+  const setMarks = async (known: Date, observed: { capture: Date; derived: Date } | null) => {
+    for (const [scope, value] of [[CALL_LOG_ALL_DIRECTIONS_SCOPE, observed?.capture], ["outreach_contact_calls", observed?.derived]] as const)
+      await SyncState.updateOne({ scope }, observed ? { $set: { known_complete_through: known, observed_complete_through: value } } : { $set: { known_complete_through: known }, $unset: { observed_complete_through: 1 } });
+  };
+  await setMarks(c0Min(-50), { capture: c0Min(-18), derived: c0Min(-17) });
+  const c0Key = { agent_id: String(c0Zero), business_day: "2026-12-01" };
+  const c0Recount = await withTransaction((session) => recountRepDay(c0Key, c0Config, c0Now, mongoRepDayStore, session));
+  assert.equal(c0Recount.outcome, "no_activity", "a zero-call rep still gets no row today");
+  assert.deepEqual(
+    [c0Recount.fields.coverage.state, c0Recount.fields.coverage.known_complete_through, c0Recount.fields.coverage.required_through],
+    ["complete", c0Min(-20).toISOString(), c0Min(-25).toISOString()],
+    "C0: goal coverage = min(observed capture − 2 min, observed derivation) against as_of − 25 min",
+  );
+  const c0Owner = { role: "owner" as const, actor: { kind: "owner" as const, id: "owner-c0", request_id: "r-c0", run_id: null }, agent_id: null };
+  const c0Read = async () => (await readRepDays(c0Owner, { business_day: "2026-12-01" }, { loader: fixedConfigurationLoader(c0Config), now: c0Now })).reps!.find((rep) => rep.agent_id === String(c0Zero))!;
+  const c0Served = await c0Read();
+  assert.deepEqual(
+    [c0Served.actual_confirmed, c0Served.actual_basis, c0Served.coverage.state, c0Served.coverage.required_through, c0Served.unknown_reason],
+    [0, "no_activity_recorded", "complete", c0Min(-25).toISOString(), null],
+    "C0 acceptance: a zero-call rep reads 0, not Pending",
+  );
+  await setMarks(c0Min(-50), null);
+  const c0Capped = await c0Read();
+  assert.deepEqual([c0Capped.actual_confirmed, c0Capped.actual_basis, c0Capped.coverage.state], [null, "pending", "partial"], "capped watermarks alone stay Pending");
+  const c0CappedRecount = await withTransaction((session) => recountRepDay(c0Key, c0Config, c0Now, mongoRepDayStore, session));
+  assert.equal(c0CappedRecount.fields.coverage.state, "partial");
 
   console.log(JSON.stringify({ ok: true, database }));
 }

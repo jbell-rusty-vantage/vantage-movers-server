@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import type { SalesOutreachGoalCountScope } from "../../../config/domain/salesOutreach";
 import type { SalesOutreachGoalCredit } from "../../../config/domain/salesOutreachContacts";
+import type { DeskTiming } from "../config/timing";
 import { repDayGoal } from "../engine/credit";
+import { goalCallCoverage, type CallWatermarks } from "../evidence/coverage";
 import { newYorkDayBounds } from "../reads/businessDay";
 import { callsCoverageForDay, requiredCoverageThrough, type SalesOutreachCoverage } from "../reads/freshness";
 import { resolveConfiguredGoal, type GoalsConfiguration } from "../reads/goals";
@@ -27,14 +29,13 @@ import { resolveConfiguredGoal, type GoalsConfiguration } from "../reads/goals";
  * ends freezes it (sets `configuration_version`), and a frozen snapshot is never re-frozen: changes are
  * prospective, historical corrections need an explicit audited edit.
  *
- * Coverage: the day is `complete` only when both the capture watermark (Call Log
- * `known_complete_through` minus the 2-minute settlement allowance, RINGCENTRAL-CAPTURE §8) and the
- * contact-event derivation watermark cover it; a day before the derivation's first covered instant is
- * `unknown`. Incomplete coverage never turns a missing count into a confirmed zero.
+ * Coverage (olr C0, decision D-A3): the day is `complete` once goal call coverage
+ * (`evidence/coverage.ts` `goalCallCoverage`: the observed Call Log watermark — finalization lag and
+ * ISync cap kept, no provisional-row cap — minus the settlement allowance, never past the contact-event
+ * derivation) reaches the end of a past day, or `now − today_coverage_tolerance` today (`deskTimingOf`);
+ * a day before the derivation's first covered instant is `unknown`. Incomplete coverage never turns a
+ * missing count into a confirmed zero.
  */
-
-/** RINGCENTRAL-CAPTURE §8: a Call Log record may still settle within 2 minutes of the watermark. */
-export const CALL_SETTLEMENT_ALLOWANCE_MS = 2 * 60_000;
 
 export type RepDayEventFacts = Readonly<{
   source_id: string;
@@ -71,23 +72,17 @@ export function countRepDay(events: readonly RepDayEventFacts[], scope: SalesOut
  */
 export { countScopeForDay } from "../reads/goals";
 
-export type CoverageWatermarks = Readonly<{
-  /** Call Log capture `known_complete_through` (`call_log_all_directions`). */
-  capture_known_complete_through: Date | null;
-  /** Contact-event derivation watermark (`outreach_contact_calls.known_complete_through`). */
-  derived_through: Date | null;
-  /** First instant the derived evidence covers (the sweep's bootstrap start). */
-  coverage_from: Date | null;
-}>;
-
-export function repDayCoverage(businessDay: string, today: string, now: Date, marks: CoverageWatermarks): SalesOutreachCoverage {
-  const required = requiredCoverageThrough(businessDay, today, now);
+/**
+ * A rep-day's calls coverage (olr C0): goal call coverage (`goalCallCoverage`, D-A3) against the day's
+ * requirement (`requiredCoverageThrough`, today tolerance from `timing`). A day that starts before the
+ * derivation's `coverage_from` is `unknown`; a missing capture or derivation watermark is `unknown`.
+ */
+export function repDayCoverage(businessDay: string, today: string, now: Date, marks: CallWatermarks, timing: DeskTiming): SalesOutreachCoverage {
+  const required = requiredCoverageThrough(businessDay, today, now, timing);
   if (marks.coverage_from && newYorkDayBounds(businessDay).start.getTime() < marks.coverage_from.getTime()) {
     return { state: "unknown", known_complete_through: null, required_through: required.toISOString(), gaps: [{ from: null, to: marks.coverage_from.toISOString() }] };
   }
-  const capture = marks.capture_known_complete_through ? new Date(marks.capture_known_complete_through.getTime() - CALL_SETTLEMENT_ALLOWANCE_MS) : null;
-  const effective = capture && marks.derived_through ? new Date(Math.min(capture.getTime(), marks.derived_through.getTime())) : null;
-  return callsCoverageForDay(effective, required);
+  return callsCoverageForDay(goalCallCoverage(marks, timing), required);
 }
 
 export type GoalSnapshot = {
@@ -153,7 +148,9 @@ export function composeRepDayRow(input: {
   goals: GoalsConfiguration | null;
   configuration_version: string;
   existing_snapshot: GoalSnapshot | null;
-  watermarks: CoverageWatermarks;
+  watermarks: CallWatermarks;
+  /** Effective desk timing of the configuration the recount runs under (`deskTimingOf`). */
+  timing: DeskTiming;
 }): RepDayRowFields {
   const counts = countRepDay(input.events, input.scope);
   const goal_snapshot = goalSnapshotFor({
@@ -164,7 +161,7 @@ export function composeRepDayRow(input: {
     configuration_version: input.configuration_version,
     existing: input.existing_snapshot,
   });
-  const coverage = repDayCoverage(input.business_day, input.today, input.now, input.watermarks);
+  const coverage = repDayCoverage(input.business_day, input.today, input.now, input.watermarks, input.timing);
   let remaining: number | null = null;
   let progress: number | null = null;
   let goal_state: RepDayRowFields["goal_state"] = "not_on_roster";

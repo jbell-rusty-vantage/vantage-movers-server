@@ -1,13 +1,27 @@
 import type { MemoryContactEventStore } from "./testing";
 import type { RepDayStore, StoredRepDay } from "./repDayService";
-import type { CoverageWatermarks, RepDayRowFields } from "./repDay";
+import { NO_CALL_WATERMARKS, type CallWatermarks } from "../evidence/coverage";
+import type { RepDayRowFields } from "./repDay";
 import type { SweepCursor, SweepKind, SweepState, SweepStore } from "./sweep";
 
 /** Unit-test stand-ins for the rep-day projection and the minute sweep (no Mongo). */
 
+/**
+ * Call watermarks for a test: capped capture `known` and derivation `known`, optional bootstrap start and
+ * optional observed (uncapped, A3) values; an absent observed value reads as its known twin.
+ */
+export function callMarks(
+  capture_known: Date | null,
+  derived_known: Date | null,
+  coverage_from: Date | null = null,
+  observed: { capture?: Date | null; derived?: Date | null } = {},
+): CallWatermarks {
+  return { capture_known, derived_known, coverage_from, capture_observed: observed.capture ?? null, derived_observed: observed.derived ?? null };
+}
+
 export class MemoryRepDayStore implements RepDayStore {
   rows = new Map<string, RepDayRowFields & { publication_revision: number; revision: number; computed_as_of: Date }>();
-  marks: CoverageWatermarks = { capture_known_complete_through: null, derived_through: null, coverage_from: null };
+  marks: CallWatermarks = NO_CALL_WATERMARKS;
   constructor(private readonly source: MemoryContactEventStore) {}
 
   async events(key: { agent_id: string; business_day: string }) {

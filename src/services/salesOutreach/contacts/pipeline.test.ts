@@ -7,6 +7,7 @@ import { summarizeTeamGoals } from "../engine/credit";
 import { resolveRepDayGoal } from "../reads/goals";
 import { activeInspection, fixedConfigurationLoader } from "../reads/testing";
 import type { ActiveConfiguration } from "../config/load";
+import { deskTimingOf } from "../config/timing";
 import { applyContactSources, contactEvaluationJob, repDayJob, repDayKeyOf } from "./apply";
 import { contactEventId } from "./derive";
 import { parseContactSubjectKey, parseRepDaySubjectKey, runOutreachContactChangeJob, runOutreachRepDayJob, type ContactJobDeps } from "./jobs";
@@ -24,7 +25,10 @@ import {
   outboundCall,
   subjectFacts,
 } from "./testing";
-import { MemoryRepDayStore, MemorySweepStore } from "./testingPipeline";
+import { MemoryRepDayStore, MemorySweepStore, callMarks } from "./testingPipeline";
+
+/** Code-default desk timing (settlement 2 min, today tolerance 25 min). */
+const TIMING = deskTimingOf(null);
 
 /**
  * SRV-6 pipeline: contact-event apply (idempotency, dirty marks, job identities), the rep-day recount
@@ -58,7 +62,7 @@ function world() {
   const { subject } = ctx.lead(NUMBER, subjectFacts({ workflow: "new" }));
   const events = new MemoryContactEventStore(ctx.build());
   const repDays = new MemoryRepDayStore(events);
-  repDays.marks = { capture_known_complete_through: new Date("2026-10-06T05:00:00Z"), derived_through: new Date("2026-10-06T05:00:00Z"), coverage_from: new Date("2026-10-01T04:00:00Z") };
+  repDays.marks = callMarks(new Date("2026-10-06T05:00:00Z"), new Date("2026-10-06T05:00:00Z"), new Date("2026-10-01T04:00:00Z"));
   return { ctx, subject: subject!, events, repDays };
 }
 
@@ -284,18 +288,18 @@ describe("rep-day recount", () => {
     await applyContactSources([call(w.events, outboundCall("199", NUMBER, "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
     assert.equal([...w.events.events.values()][0]!.goal_agent_id, null, "unreviewed initiator credits nobody");
     // A partial capture day: the row says partial, so the read keeps a zero pending.
-    w.repDays.marks = { capture_known_complete_through: new Date("2026-10-05T17:00:00Z"), derived_through: new Date("2026-10-05T18:59:00Z"), coverage_from: null };
+    w.repDays.marks = callMarks(new Date("2026-10-05T17:00:00Z"), new Date("2026-10-05T18:59:00Z"));
     await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
     await recount(w, ALICE);
     assert.equal(w.repDays.row(ALICE, TODAY)!.coverage.state, "partial");
     // Derivation lagging behind capture also keeps the day open.
-    const lag = repDayCoverage(TODAY, TODAY, NOW, { capture_known_complete_through: NOW, derived_through: new Date("2026-10-05T18:00:00Z"), coverage_from: null });
+    const lag = repDayCoverage(TODAY, TODAY, NOW, callMarks(NOW, new Date("2026-10-05T18:00:00Z")), TIMING);
     assert.equal(lag.state, "partial");
-    assert.equal(repDayCoverage(TODAY, TODAY, NOW, { capture_known_complete_through: NOW, derived_through: null, coverage_from: null }).state, "unknown");
-    // The settlement allowance: capture exactly at the requirement is not yet complete.
-    const required = new Date(NOW.getTime() - 10 * 60_000);
-    assert.equal(repDayCoverage(TODAY, TODAY, NOW, { capture_known_complete_through: required, derived_through: NOW, coverage_from: null }).state, "partial");
-    assert.equal(repDayCoverage(TODAY, TODAY, NOW, { capture_known_complete_through: new Date(required.getTime() + 2 * 60_000), derived_through: NOW, coverage_from: null }).state, "complete");
+    assert.equal(repDayCoverage(TODAY, TODAY, NOW, callMarks(NOW, null), TIMING).state, "unknown");
+    // The settlement allowance: capture exactly at the requirement (as_of − 25 min today) is not yet complete.
+    const required = new Date(NOW.getTime() - 25 * 60_000);
+    assert.equal(repDayCoverage(TODAY, TODAY, NOW, callMarks(required, NOW), TIMING).state, "partial");
+    assert.equal(repDayCoverage(TODAY, TODAY, NOW, callMarks(new Date(required.getTime() + 2 * 60_000), NOW), TIMING).state, "complete");
   });
 
   test("provisional → confirmed and revocation recount the same row (monotonic publication revision)", async () => {
@@ -383,7 +387,7 @@ describe("rep-day recount", () => {
     const row = composeRepDayRow({
       agent_id: ALICE, business_day: TODAY, today: TODAY, now: NOW, events, scope: "all_outbound",
       goals: active().value.goals, configuration_version: "v-test", existing_snapshot: null,
-      watermarks: { capture_known_complete_through: NOW, derived_through: NOW, coverage_from: null },
+      watermarks: callMarks(NOW, NOW), timing: TIMING,
     });
     assert.deepEqual([row.actual_confirmed, row.remaining, row.progress, row.goal_state], [108, 0, 1, "goal"]);
   });
@@ -413,7 +417,7 @@ describe("rep-day recount", () => {
         agent_id: agents.get(r.rep)!, business_day: TODAY, today: TODAY, now: NOW,
         events: Array.from({ length: r.actual }, (_, i) => ({ source_id: `${r.rep}${i}`, goal_credit: "confirmed" as const, goal_scope_eligible: true })),
         scope: "all_outbound", goals: configuration.value.goals, configuration_version: configuration.version, existing_snapshot: null,
-        watermarks: { capture_known_complete_through: NOW, derived_through: NOW, coverage_from: null },
+        watermarks: callMarks(NOW, NOW), timing: TIMING,
       }),
     );
     rows.forEach((row, i) => assert.equal(row.goal_snapshot.goal, fx.rows[i]!.goal, `goal of ${fx.rows[i]!.rep}`));
@@ -750,16 +754,47 @@ describe("minute sweep and refresh", () => {
     assert.deepEqual([live.goal_state, live.provenance.source], ["not_on_roster", "configuration"]);
   });
 
+  test("olr C0: a row written while only the capped watermark is known stays partial; the refresh completes it ≈ 25 min after the last call", async () => {
+    const w = world();
+    const coverageFrom = new Date("2026-10-01T04:00:00Z");
+    const lastCall = "2026-10-05T18:50:00Z";
+    const afterCall = new Date("2026-10-05T18:51:00Z");
+    await applyContactSources([call(w.events, outboundCall("101", NUMBER, lastCall))], { now: afterCall, queueRepDays: false }, w.events, SESSION);
+    // A stuck provisional Call Log row holds the capped watermarks at 18:10; no observed value yet.
+    w.repDays.marks = callMarks(new Date("2026-10-05T18:10:00Z"), new Date("2026-10-05T18:10:00Z"), coverageFrom);
+    await recount(w, ALICE, TODAY, active(), afterCall);
+    const partial = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([partial.coverage.state, partial.actual_confirmed], ["partial", 1]);
+    // 25 min after the last call: the observed capture is at 18:57 (15-min finalization lag + reconcile cadence) and
+    // the sweep has derived through 18:58; the capped watermarks are still stuck (D-A3: goals do not wait for them).
+    w.repDays.marks = callMarks(new Date("2026-10-05T18:10:00Z"), new Date("2026-10-05T18:10:00Z"), coverageFrom, {
+      capture: new Date("2026-10-05T18:57:00Z"),
+      derived: new Date("2026-10-05T18:58:00Z"),
+    });
+    const at = new Date("2026-10-05T19:15:00Z");
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
+    await refreshOpenRepDays(at, deps);
+    const complete = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual(
+      [complete.coverage.state, complete.coverage.required_through, complete.coverage.known_complete_through, complete.actual_confirmed, complete.publication_revision],
+      ["complete", "2026-10-05T18:50:00.000Z", "2026-10-05T18:55:00.000Z", 1, partial.publication_revision + 1],
+    );
+    assert.ok(Date.parse(complete.coverage.required_through!) >= Date.parse(lastCall), "the requirement now covers the last call");
+    // Complete rows of today leave the refresh: the next pass does not touch the row again.
+    await refreshOpenRepDays(new Date("2026-10-05T19:16:00Z"), deps);
+    assert.equal(w.repDays.row(ALICE, TODAY)!.publication_revision, complete.publication_revision);
+  });
+
   test("olr C5: the zero row of a day whose coverage is still partial at midnight is written, then recounted until complete", async () => {
     const w = world();
-    w.repDays.marks = { ...w.repDays.marks, capture_known_complete_through: new Date("2026-10-05T03:00:00Z"), derived_through: new Date("2026-10-05T03:00:00Z") };
+    w.repDays.marks = { ...w.repDays.marks, capture_known: new Date("2026-10-05T03:00:00Z"), derived_known: new Date("2026-10-05T03:00:00Z") };
     const afterMidnight = new Date("2026-10-05T04:30:00Z");
     const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
     assert.equal((await refreshOpenRepDays(afterMidnight, deps)).recounted, 3);
     const partial = w.repDays.row(BOB, "2026-10-04")!;
     assert.deepEqual([partial.coverage.state, partial.actual_confirmed, partial.goal_snapshot.configuration_version], ["partial", 0, "v-test"]);
     assert.equal((await refreshOpenRepDays(afterMidnight, deps)).recounted, 3, "incomplete rows stay in the refresh");
-    w.repDays.marks = { ...w.repDays.marks, capture_known_complete_through: new Date("2026-10-05T04:20:00Z"), derived_through: new Date("2026-10-05T04:20:00Z") };
+    w.repDays.marks = { ...w.repDays.marks, capture_known: new Date("2026-10-05T04:20:00Z"), derived_known: new Date("2026-10-05T04:20:00Z") };
     await refreshOpenRepDays(afterMidnight, deps);
     const complete = w.repDays.row(BOB, "2026-10-04")!;
     assert.deepEqual(

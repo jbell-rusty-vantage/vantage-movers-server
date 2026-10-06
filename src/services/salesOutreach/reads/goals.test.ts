@@ -4,7 +4,9 @@ import path from "node:path";
 import { test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import { salesOutreachRepDaySchema, salesOutreachRepDaysSchema } from "../../../validation/v1/salesOutreachReads";
+import { deskTimingOf } from "../config/timing";
 import { composeRepDayRow } from "../contacts/repDay";
+import { callMarks } from "../contacts/testingPipeline";
 import { callsCoverageForDay } from "./freshness";
 import {
   composeRepDay,
@@ -238,7 +240,7 @@ test("olr C5: a materialized zero row is pending while coverage is partial and a
     const fields = composeRepDayRow({
       agent_id: agentOf("b"), business_day: PAST, today: DAY, now: afterMidnight, events: [], scope: "all_outbound",
       goals, configuration_version: "v1", existing_snapshot: null,
-      watermarks: { capture_known_complete_through: through, derived_through: through, coverage_from: null },
+      watermarks: callMarks(through, through), timing: deskTimingOf(null),
     });
     return {
       row: repDayRow({
@@ -266,4 +268,42 @@ test("olr C5: a materialized zero row is pending while coverage is partial and a
   assert.equal(complete.coverage.state, "complete");
   assert.deepEqual([complete.actual_confirmed, complete.actual_basis, complete.remaining, complete.progress, complete.goal_reached], [0, "projection", 100, 0, false]);
   assert.deepEqual([complete.goal, complete.goal_provenance.source], [100, "projection_snapshot"]);
+});
+
+test("olr C0 GET /rep-days: a rep with no row reads 0 / no_activity_recorded when goal coverage is complete", async () => {
+  const NOW = new Date("2026-10-05T19:00:00.000Z"); // 15:00 New York on DAY
+  const min = (m: number) => new Date(NOW.getTime() + m * 60_000);
+  const store = new MemoryReadStore();
+  store.rows = [repDayRow({ agent_id: TEST_AGENT_A, business_day: DAY, actual_confirmed: 12, computed_as_of: min(-1) })];
+  // A stuck provisional Call Log row holds the capped watermarks 50 min back; the observed ones (A3-cap) are 17–18 min behind.
+  store.calls = { scope: "call_log_all_directions", known_complete_through: min(-50), observed_complete_through: min(-18), last_finished_at: min(-3), last_error_code: null };
+  store.derivation = { known_complete_through: min(-50), observed_complete_through: min(-17), coverage_from: new Date("2026-10-01T04:00:00Z") };
+  const owner: OutreachActor = { role: "owner", actor: { kind: "owner", id: "owner-1", request_id: "r1", run_id: null }, agent_id: null };
+  const read = (input: ReturnType<typeof completeConfigurationInput>) =>
+    readRepDays(owner, { business_day: DAY }, { loader: fixedConfigurationLoader(activeInspection(input)), store, queueStore: new MemoryDeskReadStore(), now: NOW });
+  const repOf = (body: Awaited<ReturnType<typeof read>>, agent: string) => body.reps!.find((rep) => rep.agent_id === agent)!;
+
+  const body = salesOutreachRepDaysSchema.parse(await read(completeConfigurationInput({ goal_metrics_enabled: true })));
+  const zero = repOf(body, TEST_AGENT_B);
+  assert.deepEqual(
+    [zero.actual_confirmed, zero.actual_awaiting_confirmation, zero.actual_basis, zero.other_outbound.count, zero.unknown_reason],
+    [0, 0, "no_activity_recorded", 0, null],
+    "the zero-call roster rep reads 0, not Pending",
+  );
+  assert.deepEqual(zero.coverage, { state: "complete", known_complete_through: min(-20).toISOString(), required_through: min(-25).toISOString(), gaps: [] });
+  assert.deepEqual([repOf(body, TEST_AGENT_A).actual_confirmed, repOf(body, TEST_AGENT_A).actual_basis], [12, "projection"]);
+
+  // Before the observed watermarks exist the capped ones decide: Pending, as before C0.
+  store.calls = { ...store.calls, observed_complete_through: null };
+  store.derivation = { ...store.derivation, observed_complete_through: null };
+  const capped = repOf(salesOutreachRepDaysSchema.parse(await read(completeConfigurationInput({ goal_metrics_enabled: true }))), TEST_AGENT_B);
+  assert.deepEqual([capped.actual_confirmed, capped.actual_basis, capped.coverage.state, capped.unknown_reason], [null, "pending", "partial", "coverage_incomplete"]);
+
+  // The today tolerance is configuration: 18 min (> settlement 2 + finalization 15) is not reached by as_of − 20.
+  store.calls = { ...store.calls, observed_complete_through: min(-18) };
+  store.derivation = { ...store.derivation, observed_complete_through: min(-17) };
+  const tight = completeConfigurationInput({ goal_metrics_enabled: true });
+  tight.evidence = { ...tight.evidence, today_coverage_tolerance_minutes: 18 };
+  const tightRep = repOf(salesOutreachRepDaysSchema.parse(await read(tight)), TEST_AGENT_B);
+  assert.deepEqual([tightRep.actual_basis, tightRep.coverage.required_through], ["pending", min(-18).toISOString()]);
 });

@@ -6,7 +6,7 @@ import type { ConfigurationInspection, ConfigurationLoader } from "../config/loa
 import { OutreachError } from "../errors";
 import type { CaptureSyncRow } from "./freshness";
 import type { RepDayRow } from "./goals";
-import type { SalesOutreachReadStore } from "./store";
+import type { ContactDerivationMark, SalesOutreachReadStore } from "./store";
 
 /**
  * Unit-test stand-ins for the desk reads (no Mongo): a fixed configuration loader and an in-memory
@@ -51,7 +51,7 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   mailboxes: CaptureSyncRow[] = [];
   granot: Date | null = null;
   /** Contact-event derivation watermark; null = S3's sweep has not run (every missing row is pending). */
-  derivation: { known_complete_through: Date | null; coverage_from: Date | null } | null = null;
+  derivation: ContactDerivationMark | null = null;
   queries: Array<{ business_day: string; agent_ids: readonly string[] | null }> = [];
 
   async findRepDayRows(businessDay: string, agentIds: readonly string[] | null) {

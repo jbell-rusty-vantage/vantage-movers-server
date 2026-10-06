@@ -335,7 +335,7 @@ test("served rep-days: actual_basis per rep as GET /rep-days composes it, roster
   assert.deepEqual([rows[0]!.agent_id, rows[0]!.publication_revision, rows[0]!.goal_snapshot?.goal, rows[1]!.goal_snapshot], [TEST_AGENT_A, 4, 100, null]);
 
   // Coverage complete (capture and derivation 1 min behind): the zero-call roster rep reads 0 / no_activity_recorded.
-  const covered = { capture_known_complete_through: min(-1), derived_through: min(-1), coverage_from: new Date("2026-09-20T00:00:00Z") };
+  const covered = { capture_known: min(-1), capture_observed: null, derived_known: min(-1), derived_observed: null, coverage_from: new Date("2026-09-20T00:00:00Z") };
   const complete = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: covered });
   assert.ok(complete.available);
   assert.equal(complete.capture_coverage.state, "complete");
@@ -350,11 +350,18 @@ test("served rep-days: actual_basis per rep as GET /rep-days composes it, roster
   assert.deepEqual([complete.actual_basis, complete.pending_without_row, complete.goal_metrics_enabled], [{ no_activity_recorded: 1, projection: 2 }, 0, true]);
 
   // Capture an hour behind: zero counts are not zeros yet; the roster rep without a row is Pending.
-  const behind = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: { ...covered, capture_known_complete_through: min(-60) } });
+  const behind = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: { ...covered, capture_known: min(-60) } });
   assert.ok(behind.available);
   assert.equal(behind.capture_coverage.state, "partial");
   assert.deepEqual(behind.reps.map((r) => [r.actual_basis, r.actual_confirmed]), [["projection", 12], ["pending", null], ["pending", null]]);
   assert.deepEqual([behind.actual_basis, behind.pending_without_row], [{ pending: 2, projection: 1 }, 1]);
+
+  // olr C0 (D-A3): a stuck provisional row holds the capped watermarks 50 min back while the observed ones are
+  // 17–18 min behind; goal coverage (observed − 2 min, today tolerance 25 min) is complete, so the zero reads 0.
+  const provisional = { ...covered, capture_known: min(-50), capture_observed: min(-18), derived_known: min(-50), derived_observed: min(-17) };
+  const observed = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: provisional });
+  assert.ok(observed.available);
+  assert.deepEqual([observed.capture_coverage.state, observed.capture_coverage.required_through, observed.pending_without_row], ["complete", min(-25).toISOString(), 0]);
 
   // Yesterday is read from yesterday's rows only (end of day required).
   const yesterday = composeServedRepDays({ business_day: "2026-10-05", today: "2026-10-06", now: NOW, configuration, rows, marks: covered });

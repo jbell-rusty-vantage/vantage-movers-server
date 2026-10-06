@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isoWeekdayOf, newYorkBusinessDay, newYorkDayBounds, nextBusinessDay } from "./businessDay";
-import { CAPTURE_CURRENT_TOLERANCE_MS, callsCoverageForDay, requiredCoverageThrough } from "./freshness";
+import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
+import { deskTimingOf } from "../config/timing";
+import { callsCoverageForDay, requiredCoverageThrough } from "./freshness";
 import { resolveBusinessDay } from "./service";
 
 test("NY midnight: the default business day flips at 00:00 New York, not UTC", () => {
@@ -52,12 +54,16 @@ test("future business days are refused; past and today are accepted", () => {
 
 test("coverage for a past fall-back day needs the Call Log through the 25-hour day's end", () => {
   const now = new Date("2026-11-03T15:00:00Z");
-  const required = requiredCoverageThrough("2026-11-01", "2026-11-03", now);
+  const required = requiredCoverageThrough("2026-11-01", "2026-11-03", now, deskTimingOf(null));
   assert.equal(required.toISOString(), "2026-11-02T05:00:00.000Z");
   // Known complete through 04:59Z (23:59 EST) is not enough; 05:00Z is.
   assert.equal(callsCoverageForDay(new Date("2026-11-02T04:59:00Z"), required).state, "partial");
   assert.equal(callsCoverageForDay(new Date("2026-11-02T05:00:00Z"), required).state, "complete");
-  // Today needs coverage through now minus the current tolerance.
-  const today = requiredCoverageThrough("2026-11-03", "2026-11-03", now);
-  assert.equal(today.getTime(), now.getTime() - CAPTURE_CURRENT_TOLERANCE_MS);
+  // Today needs coverage through now minus the today tolerance (olr C0: `deskTimingOf`, default 25 min, configurable).
+  const today = requiredCoverageThrough("2026-11-03", "2026-11-03", now, deskTimingOf(null));
+  assert.equal(today.getTime(), now.getTime() - 25 * 60_000);
+  const forty = deskTimingOf(salesOutreachConfigurationValueSchema.parse({ evidence: { today_coverage_tolerance_minutes: 40 } }));
+  assert.equal(requiredCoverageThrough("2026-11-03", "2026-11-03", now, forty).getTime(), now.getTime() - 40 * 60_000);
+  // The tolerance never moves a past day's requirement.
+  assert.equal(requiredCoverageThrough("2026-11-01", "2026-11-03", now, forty).toISOString(), required.toISOString());
 });
