@@ -8,8 +8,9 @@ import type { ConfigurationInspection, ConfigurationLoader } from "../config/loa
 import { evaluateSubject, localInstant } from "../engine";
 import { OutreachError } from "../errors";
 import { evaluationAdmissionOf } from "../evaluation/evaluateJob";
+import { deskTimingOf } from "../config/timing";
 import { buildEngineInput, toEngineRestriction } from "../evaluation/inputs";
-import { completeConfigurationInput, periodRow, subjectRow, TEST_AGENT_A, TEST_AGENT_B } from "../evaluation/testing";
+import { capturedCoverage, completeConfigurationInput, periodRow, subjectRow, TEST_AGENT_A, TEST_AGENT_B } from "../evaluation/testing";
 import { activeInspection, fixedConfigurationLoader } from "../reads/testing";
 import { refreshLeadForOutreach } from "../subjects/leadChangeJob";
 import { deskLeadKey, type DeskLeadRef } from "../subjects/leadFacts";
@@ -216,8 +217,8 @@ test("P04d: an explicit selected date governs the engine (the next-working-date 
     assignment_changes: [],
     rep_links: [{ agent_id: TEST_AGENT_A, effective_from: at("2026-01-01T00:00:00Z"), effective_to: null }],
     contact_events: [],
-    coverage: { calls_known_complete_through: h.ledger.now, sms_known_complete_through: null },
-  });
+    coverage: capturedCoverage(h.ledger.now),
+  }, deskTimingOf(null));
   const admission = evaluationAdmissionOf(activeInspection(completeConfigurationInput({ cadence_shadow_enabled: true })));
   assert.ok(admission.ok);
   const result = evaluateSubject(input, admission.context.policy, h.ledger.now.toISOString());
@@ -297,8 +298,8 @@ test("P06e: an after-hours appointment is a permitted explicit human appointment
     assignment_changes: [],
     rep_links: [{ agent_id: TEST_AGENT_A, effective_from: at("2026-01-01T00:00:00Z"), effective_to: null }],
     contact_events: [],
-    coverage: { calls_known_complete_through: h.ledger.now, sms_known_complete_through: null },
-  });
+    coverage: capturedCoverage(h.ledger.now),
+  }, deskTimingOf(null));
   const admission = evaluationAdmissionOf(activeInspection(completeConfigurationInput({ cadence_shadow_enabled: true })));
   assert.ok(admission.ok);
   const result = evaluateSubject(input, admission.context.policy, h.ledger.now.toISOString());

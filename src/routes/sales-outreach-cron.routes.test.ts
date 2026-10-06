@@ -50,6 +50,7 @@ app.use(
         skipped: sweepSkipped,
         reason: sweepSkipped ? "cadence_disabled" : null,
         due: { pages: 1, nominated: 2 },
+        coverage: { pages: 0, nominated: 0, call_through: null, sms_through: null },
         reconcile: { pages: 1, checked: 2, nominated: 0, wrapped: true },
       };
     },

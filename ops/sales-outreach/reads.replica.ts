@@ -40,7 +40,7 @@ async function main() {
   const { SALES_OUTREACH_MODEL_REGISTRY } = await import("../../src/models/salesOutreach/registry.js");
   const { getSalesOutreachProjectionModel, getSalesOutreachSubjectModel } = await import("../../src/models/salesOutreach/index.js");
   const { evaluateAndProject, evaluationAdmissionOf } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
-  const { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow, TEST_AGENT_A, TEST_AGENT_B } = await import(
+  const { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow, TEST_AGENT_A, TEST_AGENT_B } = await import(
     "../../src/services/salesOutreach/evaluation/testing.js"
   );
   const { activeInspection } = await import("../../src/services/salesOutreach/reads/testing.js");
@@ -86,7 +86,7 @@ async function main() {
     memory.evaluation.subjects.set(subject.id, subject);
     memory.evaluation.periods.push(periodRow(subject.id, { started_at: received, workflow: i % 6 === 5 ? "quoted" : "new" }));
   }
-  memory.evaluation.coverage = { calls_known_complete_through: at("2026-10-05T18:58:00.000Z"), sms_known_complete_through: null };
+  memory.evaluation.coverage = capturedCoverage(at("2026-10-05T18:58:00.000Z"));
   for (const id of memory.evaluation.subjects.keys())
     await runInFakeTransaction((session) => evaluateAndProject(id, admission.context, at("2026-10-05T18:59:00.000Z"), memory.evaluation, session));
   const oid = (v: unknown) => (typeof v === "string" && /^[a-f\d]{24}$/.test(v) ? new mongoose.Types.ObjectId(v) : v);

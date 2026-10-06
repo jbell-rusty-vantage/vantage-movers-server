@@ -8,14 +8,6 @@ import { newYorkDayBounds } from "./businessDay";
 export type SalesOutreachFreshness = z.infer<typeof salesOutreachFreshnessSchema>;
 export type SalesOutreachCoverage = z.infer<typeof salesOutreachCoverageSchema>;
 
-/**
- * The evaluation projection's channel coverage block counts as current while it trails `computed_as_of`
- * by at most this much. Header freshness (A3-fresh) and rep-day coverage (C0, `requiredCoverageThrough`)
- * no longer use it: they read `deskTimingOf`. The projection coverage (A1/A2) moves to
- * `today_coverage_tolerance_ms` in its own task.
- */
-export const CAPTURE_CURRENT_TOLERANCE_MS = 10 * 60_000;
-
 /** Why calls freshness is not `fresh`, after the reconcile's own `last_error_code`. A free string in the DTO. */
 export const CALLS_FRESHNESS_REASONS = ["confirmation_stale", "coverage_behind", "webhook_silent"] as const;
 export type CallsFreshnessReason = (typeof CALLS_FRESHNESS_REASONS)[number];

@@ -5,7 +5,7 @@ import type { OutreachActor } from "../auth";
 import { OutreachError } from "../errors";
 import { evaluateAndProject, evaluationAdmissionOf } from "../evaluation/evaluateJob";
 import { QUEUE_KEY_EPOCH, QUEUE_KEY_FAR_FUTURE } from "../evaluation/projection";
-import { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../evaluation/testing";
+import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../evaluation/testing";
 import { objectId } from "../subjects/testing";
 import { salesOutreachQueueQuerySchema, salesOutreachQueueSchema, type SalesOutreachQueueQuery } from "../../../validation/v1/salesOutreachReads";
 import { MemoryDeskReadStore } from "./deskTesting";
@@ -412,7 +412,7 @@ test("end to end through the evaluator: real projections order by urgency and ar
     store.evaluation.periods.push(periodRow(s.id, { started_at: s.received_at! }));
     store.setLead(s.lead, REP_A);
   }
-  store.evaluation.coverage = { calls_known_complete_through: at("2026-10-05T14:58:00.000Z"), sms_known_complete_through: null };
+  store.evaluation.coverage = capturedCoverage(at("2026-10-05T14:58:00.000Z"));
   for (const s of [late, early])
     await runInFakeTransaction((session) => evaluateAndProject(s.id, admission.context, at("2026-10-05T14:59:00.000Z"), store.evaluation, session));
   const writes = store.evaluation.writes.length;

@@ -14,6 +14,11 @@ import type { EngineContactEvent, EnginePolicy } from "./types";
 export interface PriorSameDateCredit {
   calls: number;
   sms_event: EngineContactEvent | null;
+  /**
+   * Start of the last counted prior call (null when none): it seeds the P02e spacing anchor at the period
+   * start, so a call within the spacing of a counted prior call is not credited again (olr A6, D-A6).
+   */
+  last_start: number | null;
 }
 
 /**
@@ -32,7 +37,8 @@ export function priorSameDateCredit(
   const sameDate = events.filter((e) => e.at < startMs && cal.dateOf(e.at) === date && !e.restricted && counts(e.event, e.at));
   const callStarts = sameDate.filter((e) => isCadenceQualifying(e.event, "call")).map((e) => e.at);
   const sms = sameDate.find((e) => isCadenceQualifying(e.event, "sms"))?.event ?? null;
-  return { calls: selectSpacedStarts(callStarts, policy.new_cadence.spacing_minutes).length, sms_event: sms };
+  const counted = selectSpacedStarts(callStarts, policy.new_cadence.spacing_minutes).map((index) => callStarts[index]!);
+  return { calls: counted.length, sms_event: sms, last_start: counted.length > 0 ? Math.max(...counted) : null };
 }
 
 export function partialStartNewObligations(ctx: NewDayContext, startMs: number, prior: PriorSameDateCredit): WorkingObligation[] {

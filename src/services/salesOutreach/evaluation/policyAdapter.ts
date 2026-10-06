@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import type { SalesOutreachCadenceExposure } from "../../../config/domain/salesOutreach";
 import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
+import { deskTimingOf } from "../config/timing";
 import {
+  OUTREACH_ENGINE_VERSION,
   resolveEnginePolicy,
   stableStringify,
   type CadenceConfigurationValue,
@@ -144,7 +146,22 @@ export function cadenceExposureOf(controls: SalesOutreachConfigurationValue["con
   return null;
 }
 
-/** Hash of the resolved policy and exposure: a change re-evaluates every projection (evaluation reconcile). */
-export function policyFingerprint(policy: EnginePolicy, exposure: SalesOutreachCadenceExposure): string {
-  return createHash("sha256").update(stableStringify({ policy, exposure })).digest("hex");
+/**
+ * What else decides a projection besides the resolved policy and exposure (olr A1.4): the engine version
+ * and the call settlement allowance (`deskTimingOf`). Deploying a new engine or changing the allowance
+ * therefore re-evaluates every projection once through the evaluation reconcile (no backfill script).
+ */
+export type PolicyFingerprintExtras = Readonly<{ engine_version: string; call_settlement_allowance_ms: number }>;
+
+/** Hash of the resolved policy, exposure and extras: a change re-evaluates every projection (evaluation reconcile). */
+export function policyFingerprint(policy: EnginePolicy, exposure: SalesOutreachCadenceExposure, extras: PolicyFingerprintExtras): string {
+  return createHash("sha256").update(stableStringify({ policy, exposure, ...extras })).digest("hex");
+}
+
+/** The fingerprint the evaluator stamps and the reads compare (one place, so the two never diverge). */
+export function deskPolicyFingerprint(value: SalesOutreachConfigurationValue, policy: EnginePolicy, exposure: SalesOutreachCadenceExposure): string {
+  return policyFingerprint(policy, exposure, {
+    engine_version: OUTREACH_ENGINE_VERSION,
+    call_settlement_allowance_ms: deskTimingOf(value).call_settlement_allowance_ms,
+  });
 }

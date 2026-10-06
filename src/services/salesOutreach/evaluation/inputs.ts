@@ -7,6 +7,8 @@ import type {
   EngineRestrictionInterval,
   EvaluateSubjectInput,
 } from "../engine";
+import type { DeskTiming } from "../config/timing";
+import { cadenceCallCoverage, type ChannelCoverage } from "../evidence/coverage";
 import type { DeskPeriodRow, DeskSubjectRow } from "../subjects/store";
 import type { AssignmentChangeRow, CoverageFacts, DeskPlanRow, DeskRestrictionRow, RepLinkPeriod, StoredContactEvent } from "./store";
 
@@ -15,8 +17,6 @@ import type { AssignmentChangeRow, CoverageFacts, DeskPlanRow, DeskRestrictionRo
  * the caller loads the rows (evaluation/store.ts) and passes `as_of`.
  */
 
-/** RINGCENTRAL-CAPTURE §8: a call deadline is provable only 2 minutes after the Call Log covers it. */
-export const CALL_SETTLEMENT_ALLOWANCE_MS = 2 * 60_000;
 const EPOCH = new Date(0);
 const iso = (d: Date) => d.toISOString();
 
@@ -39,8 +39,19 @@ export function originatingEventId(events: readonly StoredContactEvent[]): strin
   return origin ? `${origin.source_kind}:${origin.source_id}` : null;
 }
 
-export function buildEngineInput(rows: EvaluationRows): EvaluateSubjectInput {
+/**
+ * The coverage the cadence engine judges deadlines against (RINGCENTRAL-CAPTURE §8, olr A1.3): calls =
+ * `cadenceCallCoverage` (the provisional-capped Call Log watermark minus the configured settlement
+ * allowance, never past the contact-event derivation watermark; F2/F8); SMS = the worst reviewed mailbox
+ * watermark. The evaluate sweep nominates `coverage_wait` rows against the same values.
+ */
+export function engineCoverageOf(coverage: CoverageFacts, timing: DeskTiming): ChannelCoverage {
+  return { call: cadenceCallCoverage(coverage.calls, timing), sms: coverage.sms_known_complete_through };
+}
+
+export function buildEngineInput(rows: EvaluationRows, timing: DeskTiming): EvaluateSubjectInput {
   const { subject } = rows;
+  const coverage = engineCoverageOf(rows.coverage, timing);
   const closedPeriod = rows.periods.find((p) => p.workflow === "closed");
   return {
     subject: {
@@ -67,12 +78,8 @@ export function buildEngineInput(rows: EvaluationRows): EvaluateSubjectInput {
     assignments: assignmentIntervals(subject, rows.assignment_changes, rows.rep_links),
     contact_events: rows.contact_events.map(toEngineEvent),
     coverage: {
-      call: {
-        complete_through: rows.coverage.calls_known_complete_through
-          ? iso(new Date(+rows.coverage.calls_known_complete_through - CALL_SETTLEMENT_ALLOWANCE_MS))
-          : null,
-      },
-      sms: { complete_through: rows.coverage.sms_known_complete_through ? iso(rows.coverage.sms_known_complete_through) : null },
+      call: { complete_through: coverage.call ? iso(coverage.call) : null },
+      sms: { complete_through: coverage.sms ? iso(coverage.sms) : null },
     },
   };
 }

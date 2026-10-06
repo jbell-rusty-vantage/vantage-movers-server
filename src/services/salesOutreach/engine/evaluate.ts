@@ -9,7 +9,8 @@
  * 3. walk verified contact events chronologically with the P02e spacing anchor, crediting at most one
  *    callback, the initial response, the period's channel catch-up and one ordinary requirement per event;
  * 4. resolve each obligation's outcome at `as_of` with honest coverage (pending, never a guessed miss);
- * 5. summarize independent Call and SMS requirements, flags, history and the next evaluation instant.
+ * 5. summarize independent Call and SMS requirements (a deadline only coverage cannot prove yet reads
+ *    `due`, SPEC §10.3), flags, history, the next evaluation instant and `coverage_wait` (olr A1).
  *
  * No clock reads, no I/O. `node:crypto` is used only to hash the result for change detection.
  */
@@ -70,14 +71,29 @@ interface Context {
   events: TimedEvent[];
   callbacks: TimedCallback[];
   quotedSegmentsByPeriod: Map<string, QuotedSegment[]>;
+  /** A6: spacing-anchor seeds at New partial starts (the last counted prior same-date call). */
+  anchorSeeds: Array<{ at: number; anchor: number }>;
+}
+
+/** Why a passed deadline is `pending` (olr A1): coverage behind it, or unconfirmed evidence that may fulfil it. */
+interface PendingDetail {
+  reason: "coverage" | "evidence";
+  /** Coverage does not reach the deadline yet (also true for evidence-pending items while coverage lags). */
+  coverage_short: boolean;
 }
 
 export function evaluateSubject(input: EvaluateSubjectInput, policy: EnginePolicy, asOf: string): EvaluateSubjectResult {
   const ctx = buildContext(input, policy, asOf);
   const obligations = deriveObligations(ctx);
   const ledger = walkEvidence(ctx, obligations);
-  const outcomes = new Map(obligations.map((ob) => [ob.id, resolveOutcome(ctx, ob)]));
-  return summarize(ctx, obligations, outcomes, ledger);
+  const outcomes = new Map<string, ObligationOutcome>();
+  const pending = new Map<string, PendingDetail>();
+  for (const ob of obligations) {
+    const resolved = resolveOutcome(ctx, ob);
+    outcomes.set(ob.id, resolved.outcome);
+    if (resolved.pending) pending.set(ob.id, resolved.pending);
+  }
+  return summarize(ctx, obligations, outcomes, pending, ledger);
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -127,6 +143,7 @@ function buildContext(input: EvaluateSubjectInput, policy: EnginePolicy, asOfIso
     events,
     callbacks,
     quotedSegmentsByPeriod: new Map(),
+    anchorSeeds: [],
   };
 }
 
@@ -200,6 +217,9 @@ function newPeriodObligations(ctx: Context, period: TimedPeriod, endMs: number):
           const active = periodAt(ctx.periods, at);
           return active !== null && active.period_id !== period.period_id && (active.workflow === "new" || active.workflow === "quoted");
         });
+  // A6 (D-A6): a counted prior same-date call anchors P02e spacing from the start, so a call within
+  // `spacing_minutes` of it is not credited again by this period.
+  if (prior && prior.last_start !== null) ctx.anchorSeeds.push({ at: startMs, anchor: prior.last_start });
   // Generate past `as_of` until both channels show their next requirement (SMS dates are sparse).
   const future = () => out.some((ob) => ob.opens > ctx.asOf && ob.channel === "call") && out.some((ob) => ob.opens > ctx.asOf && ob.channel === "sms");
   for (const date of periodDates(ctx, startDate, endMs, future)) {
@@ -242,9 +262,11 @@ function quotedPeriodObligations(ctx: Context, period: TimedPeriod, endMs: numbe
 type TimelineItem =
   | { kind: "settle"; at: number; ob: WorkingObligation }
   | { kind: "period_end"; at: number; period: TimedPeriod }
+  | { kind: "anchor_seed"; at: number; anchor: number }
   | { kind: "event"; at: number; ev: TimedEvent };
 
-const ORDER = { settle: 0, period_end: 1, event: 2 } as const;
+/** Same-instant order: settle, then period end, then the A6 anchor seed of a starting period, then events. */
+const ORDER = { settle: 0, period_end: 1, anchor_seed: 1.5, event: 2 } as const;
 
 function walkEvidence(ctx: Context, obligations: WorkingObligation[]): CatchUpLedger {
   const ledger = new CatchUpLedger();
@@ -259,6 +281,7 @@ function walkEvidence(ctx: Context, obligations: WorkingObligation[]): CatchUpLe
     const end = Math.min(period.endMs, ctx.closureMs ?? Number.POSITIVE_INFINITY);
     if (end <= ctx.asOf) items.push({ kind: "period_end", at: end, period });
   }
+  for (const seed of ctx.anchorSeeds) if (seed.at <= ctx.asOf) items.push({ kind: "anchor_seed", at: seed.at, anchor: seed.anchor });
   for (const ev of ctx.events) items.push({ kind: "event", at: ev.at, ev });
   items.sort((a, b) => a.at - b.at || ORDER[a.kind] - ORDER[b.kind]);
 
@@ -271,6 +294,10 @@ function walkEvidence(ctx: Context, obligations: WorkingObligation[]): CatchUpLe
     }
     if (item.kind === "period_end") {
       ledger.endPeriod(item.period.period_id, item.at);
+      continue;
+    }
+    if (item.kind === "anchor_seed") {
+      anchor = anchor === null ? item.anchor : Math.max(anchor, item.anchor);
       continue;
     }
     const { event, at, restricted } = item.ev;
@@ -339,22 +366,29 @@ function hasUnconfirmedEvidence(ctx: Context, ob: WorkingObligation): boolean {
   );
 }
 
-function resolveOutcome(ctx: Context, ob: WorkingObligation): ObligationOutcome {
+type ResolvedOutcome = { outcome: ObligationOutcome; pending: PendingDetail | null };
+
+const settled = (outcome: ObligationOutcome): ResolvedOutcome => ({ outcome, pending: null });
+
+function resolveOutcome(ctx: Context, ob: WorkingObligation): ResolvedOutcome {
   const A = ctx.asOf;
   if (ob.fulfilledAt !== null && ob.fulfilledAt <= A) {
     const term = earliestTermination(ob);
     if (!(term && term.at < ob.fulfilledAt && term.at <= (ob.due ?? Infinity))) {
-      return ob.due !== null && ob.fulfilledAt > ob.due ? "fulfilled_late" : "fulfilled";
+      return settled(ob.due !== null && ob.fulfilledAt > ob.due ? "fulfilled_late" : "fulfilled");
     }
   }
   const stopped = terminatedBeforeDeadline(ob, A);
-  if (stopped) return stopped.outcome;
-  if (A < ob.opens) return "scheduled";
-  if (ob.due === null || A < ob.due) return "open";
-  if (!coverageComplete(ctx, ob.channel, ob.due) || hasUnconfirmedEvidence(ctx, ob)) return "pending";
+  if (stopped) return settled(stopped.outcome);
+  if (A < ob.opens) return settled("scheduled");
+  if (ob.due === null || A < ob.due) return settled("open");
+  // A passed deadline is a verdict only once coverage reaches it and no unconfirmed evidence could fulfil it.
+  const covered = coverageComplete(ctx, ob.channel, ob.due);
+  const unconfirmed = hasUnconfirmedEvidence(ctx, ob);
+  if (!covered || unconfirmed) return { outcome: "pending", pending: { reason: unconfirmed ? "evidence" : "coverage", coverage_short: !covered } };
   const term = earliestTermination(ob);
   const fulfillable = A < ob.closes && !(term && term.at <= A);
-  return fulfillable ? "overdue" : "missed";
+  return settled(fulfillable ? "overdue" : "missed");
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -375,7 +409,13 @@ function assignmentAt(ctx: Context, ms: number): string | null {
   return agent;
 }
 
-function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map<string, ObligationOutcome>, ledger: CatchUpLedger): EvaluateSubjectResult {
+function summarize(
+  ctx: Context,
+  obligations: WorkingObligation[],
+  outcomes: Map<string, ObligationOutcome>,
+  pending: Map<string, PendingDetail>,
+  ledger: CatchUpLedger,
+): EvaluateSubjectResult {
   const { cal, asOf: A, today } = ctx;
   const currentAssignee = assignmentAt(ctx, A);
   const current = periodAt(ctx.periods, A);
@@ -420,14 +460,27 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
     // P06e: a callback suspends routine Call prompts (catch-up and an overdue initial response) until
     // its appointment; the misses stay in history.
     const callSuspended = channel === "call" && suspensions.some(([s, e]) => A >= s && A < e);
+    // A1.2 (SPEC §10.3, D-A1b): a passed deadline that only coverage cannot prove yet — no unconfirmed
+    // evidence, and the channel has coverage (merely delayed) — stays an actionable `due` with its past
+    // `due_at` ("not yet verified" at read time), so the lead stays in Needs contact. Its obligation is
+    // still `pending` (never a guessed miss). Without any coverage (SMS not connected) it stays `pending`.
+    const hasCoverage = ctx.input.coverage[channel].complete_through !== null;
+    const coveragePending = (ob: WorkingObligation) => outcomes.get(ob.id) === "pending" && pending.get(ob.id)?.reason === "coverage" && hasCoverage;
+    const unverified = new Set(
+      mine
+        .filter((ob) => coveragePending(ob) && !(callSuspended && ob.kind === "initial_response"))
+        .filter((ob) => ob.date === today || ob.kind === "initial_response" || ob.kind === "callback")
+        .map((ob) => ob.id),
+    );
     const actionable = mine.filter((ob) => {
       const o = outcomes.get(ob.id)!;
       if (callSuspended && ob.kind === "initial_response") return false;
-      if (o === "overdue") return true;
+      if (o === "overdue" || unverified.has(ob.id)) return true;
       return o === "open" && (ob.date === today || ob.kind === "initial_response" || ob.kind === "callback");
     });
     const overdue = actionable.filter((ob) => outcomes.get(ob.id) === "overdue");
-    const pendingItems = mine.filter((ob) => outcomes.get(ob.id) === "pending");
+    // `pending` narrows to evidence uncertainty (and channels without coverage).
+    const evidencePending = mine.filter((ob) => outcomes.get(ob.id) === "pending" && !unverified.has(ob.id));
     const group = ledger.outstanding(channel);
     let catchUpState: EngineChannelRequirement["catch_up"]["state"] = null;
     if (group) {
@@ -436,16 +489,21 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
       else if (group.members.every((m) => outcomes.get(m.id) === "pending")) catchUpState = "pending";
       else catchUpState = "actionable";
     }
+    // A catch-up whose every member waits only on coverage reads due/unverified (its oldest deadline), not pending.
+    const catchUpUnverified = catchUpState === "pending" && group !== null && group.members.every((m) => coveragePending(m));
     const oldestMissed = group ? Math.min(...group.members.map((m) => m.due ?? Infinity)) : null;
     const overdueDues = overdue.map((ob) => ob.due!).concat(catchUpState === "actionable" && oldestMissed !== null ? [oldestMissed] : []);
-    const openDues = actionable.filter((ob) => outcomes.get(ob.id) === "open" && ob.due !== null).map((ob) => ob.due!);
+    const openDues = actionable
+      .filter((ob) => (outcomes.get(ob.id) === "open" || unverified.has(ob.id)) && ob.due !== null)
+      .map((ob) => ob.due!)
+      .concat(catchUpUnverified && oldestMissed !== null && Number.isFinite(oldestMissed) ? [oldestMissed] : []);
     const futureScheduled = mine.some((ob) => outcomes.get(ob.id) === "scheduled");
 
     let status: ChannelStatus;
     let completion: CompletionKind | null = null;
     if (restriction) status = "blocked";
     else if (overdueDues.length > 0) status = "overdue";
-    else if (pendingItems.some((ob) => ob.date === today || !ROUTINE_KINDS.has(ob.kind)) || catchUpState === "pending") status = "pending";
+    else if (evidencePending.some((ob) => ob.date === today || !ROUTINE_KINDS.has(ob.kind)) || (catchUpState === "pending" && !catchUpUnverified)) status = "pending";
     else if (openDues.length > 0 || actionable.length > 0) status = "due";
     else if (counted.length > 0 && done.length === counted.length) status = "completed";
     else if (futureScheduled) status = "scheduled";
@@ -529,6 +587,12 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
     .map((o) => o.due_at!)
     .sort();
   const nextEval = nextEvaluation(ctx, obligations, attempts.map((e) => e.at + windowMs));
+  // A1.1: the earliest deadline per channel whose verdict waits on coverage (evidence-pending items
+  // included: once coverage passes they may resolve); the evaluate sweep pulls on it.
+  const coverageWait = (channel: Channel): string | null => {
+    const dues = obligations.filter((ob) => ob.channel === channel && ob.due !== null && pending.get(ob.id)?.coverage_short === true).map((ob) => ob.due!);
+    return dues.length > 0 ? toIso(Math.min(...dues)) : null;
+  };
 
   const lastInteraction = ctx.events
     .filter((e) => e.event.verification === "confirmed" && ["outbound_attempt", "inbound_answered", "inbound_missed", "sms_sent", "sms_inbound"].includes(e.event.kind))
@@ -555,6 +619,7 @@ function summarize(ctx: Context, obligations: WorkingObligation[], outcomes: Map
     oldest_actionable_due_at: oldest,
     next_action_due_at: futureDues[0] ?? null,
     next_evaluation_at: nextEval === null ? null : toIso(nextEval),
+    coverage_wait: { call: coverageWait("call"), sms: coverageWait("sms") },
     last_interaction_at: lastInteraction === null ? null : toIso(lastInteraction),
     current_assignee_agent_id: currentAssignee,
     obligations: exported,

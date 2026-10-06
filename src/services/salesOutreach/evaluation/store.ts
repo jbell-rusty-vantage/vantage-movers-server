@@ -10,10 +10,9 @@ import {
   getSalesOutreachProjectionModel,
   getSalesOutreachSubjectModel,
 } from "../../../models/salesOutreach";
-import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
 import { CsiError } from "../../salesIntelligence/auth";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
-import { smsCoverage } from "../evidence/coverage";
+import { loadCallWatermarks, smsCoverage, type CallWatermarks } from "../evidence/coverage";
 import { REP_SMS_SYNC_SCOPE_PREFIX } from "../reads/store";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import { mongoDeskSubjectStore, toSubjectRow, type DeskPeriodRow, type DeskSubjectRow, type ReadSession, type SubjectLean } from "../subjects/store";
@@ -82,8 +81,11 @@ export type StoredContactEvent = Readonly<{
 
 /** Capture coverage the engine reads (RINGCENTRAL-CAPTURE §8). */
 export type CoverageFacts = Readonly<{
-  /** Call Log `known_complete_through` (before the settlement allowance). */
-  calls_known_complete_through: Date | null;
+  /**
+   * The Call Log capture and contact-event derivation watermarks (one read, `loadCallWatermarks`); the
+   * engine judges calls against `cadenceCallCoverage` of them (`inputs.ts` `engineCoverageOf`).
+   */
+  calls: CallWatermarks;
   /** Worst reviewed mailbox `known_complete_through`; null when SMS capture is off or any mailbox has none. */
   sms_known_complete_through: Date | null;
 }>;
@@ -110,7 +112,8 @@ export const EVALUATION_LIMITS = { periods: 1000, plans: 500, restrictions: 200,
  * - restrictions `csi_restriction_number` (`contact_number_id` prefix);
  * - assignment history `entity_change_entity_applied`; links `ril_agent_current` (agent prefix);
  * - contact events `sod_contact_subject_event`; capture rows `sales_intelligence_sync_state` scope;
- * - projections `sod_projection_subject_unique`, `sod_projection_next_evaluation`.
+ * - projections `sod_projection_subject_unique`, `sod_projection_next_evaluation`,
+ *   `sod_projection_coverage_wait_call` / `_sms` (the sweep's coverage repair).
  */
 export type EvaluationStore = {
   loadSubject(subjectId: string, session: ReadSession): Promise<DeskSubjectRow | null>;
@@ -127,6 +130,16 @@ export type EvaluationStore = {
   updateProjection(subjectId: string, expectedRevision: number, doc: ProjectionWrite, session: ClientSession): Promise<boolean>;
   /** Projections due at `now`, oldest first, strictly after `after` on `(next_evaluation_at, subject_id)`. */
   dueProjections(now: Date, after: { at: Date; subject_id: string } | null, limit: number): Promise<Array<{ subject_id: string; next_evaluation_at: Date }>>;
+  /**
+   * Projections whose `coverage_wait.<channel>` is set and <= `through` (the channel's current cadence
+   * coverage), oldest wait first, strictly after `after` on `(coverage_wait.<channel>, subject_id)`.
+   */
+  coverageWaiting(
+    channel: "call" | "sms",
+    through: Date,
+    after: { at: Date; subject_id: string } | null,
+    limit: number,
+  ): Promise<Array<{ subject_id: string; wait: Date }>>;
   readReconcileCursor(session: ClientSession): Promise<string | null>;
   writeReconcileCursor(subjectId: string | null, session: ClientSession): Promise<void>;
   /** Subject ids after `afterId` by `_id` (every status: a closed subject still has a projection). */
@@ -264,7 +277,8 @@ export const mongoEvaluationStore: EvaluationStore = {
 
   async loadCoverage(smsCaptureEnabled, session) {
     const SyncState = getSalesIntelligenceSyncStateModel();
-    const calls = await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { known_complete_through: 1 }).session(session).lean();
+    // Sequential reads (the job transaction runs one operation at a time): one find over both call scopes.
+    const calls = await loadCallWatermarks(session ?? undefined);
     let sms: Date | null = null;
     if (smsCaptureEnabled) {
       const mailboxes = await SyncState.find({ scope: { $regex: `^${REP_SMS_SYNC_SCOPE_PREFIX}` } }, { known_complete_through: 1 })
@@ -273,7 +287,7 @@ export const mongoEvaluationStore: EvaluationStore = {
         .lean();
       sms = smsCoverage(mailboxes as Array<{ known_complete_through?: Date | null }>);
     }
-    return { calls_known_complete_through: (calls?.known_complete_through as Date | null | undefined) ?? null, sms_known_complete_through: sms };
+    return { calls, sms_known_complete_through: sms };
   },
 
   async readProjection(subjectId, session) {
@@ -322,6 +336,22 @@ export const mongoEvaluationStore: EvaluationStore = {
       .limit(limit)
       .lean();
     return rows.map((row) => ({ subject_id: String(row.subject_id), next_evaluation_at: row.next_evaluation_at as Date }));
+  },
+
+  async coverageWaiting(channel, through, after, limit) {
+    const path = `coverage_wait.${channel}`;
+    const filter: Record<string, unknown> = { [path]: { $ne: null, $lte: through } };
+    if (after)
+      filter.$or = [
+        { [path]: { $gt: after.at, $lte: through } },
+        { [path]: after.at, subject_id: { $gt: oid(after.subject_id) } },
+      ];
+    const rows = await getSalesOutreachProjectionModel()
+      .find(filter, { subject_id: 1, coverage_wait: 1 })
+      .sort({ [path]: 1, subject_id: 1 })
+      .limit(limit)
+      .lean();
+    return rows.map((row) => ({ subject_id: String(row.subject_id), wait: (row as { coverage_wait: Record<string, Date> }).coverage_wait[channel]! }));
   },
 
   async readReconcileCursor(session) {

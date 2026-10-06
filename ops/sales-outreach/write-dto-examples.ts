@@ -15,7 +15,7 @@ import path from "node:path";
 import type { OutreachActor } from "../../src/services/salesOutreach/auth";
 import { OutreachError } from "../../src/services/salesOutreach/errors";
 import { evaluateAndProject, evaluationAdmissionOf } from "../../src/services/salesOutreach/evaluation/evaluateJob";
-import { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../../src/services/salesOutreach/evaluation/testing";
+import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../../src/services/salesOutreach/evaluation/testing";
 import { outreachLiveFrame } from "../../src/services/salesOutreach/live/stream";
 import { readOutreachDetail } from "../../src/services/salesOutreach/reads/detail";
 import { MemoryDeskReadStore } from "../../src/services/salesOutreach/reads/deskTesting";
@@ -153,7 +153,7 @@ async function exampleDeskStore(): Promise<MemoryDeskReadStore> {
     restricted_at_contact: false,
     outcome: "unanswered",
   });
-  store.evaluation.coverage = { calls_known_complete_through: new Date("2026-10-05T14:57:00.000Z"), sms_known_complete_through: null };
+  store.evaluation.coverage = capturedCoverage(new Date("2026-10-05T14:57:00.000Z"));
   for (const id of Object.values(SUBJECTS))
     await runInFakeTransaction((session) => evaluateAndProject(id, admission.context, new Date("2026-10-05T14:59:00.000Z"), store.evaluation, session));
   return store;

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { SalesOutreachCadenceExposure } from "../../../config/domain/salesOutreach";
 import { stableStringify, type EngineChannelRequirement, type EvaluateSubjectResult } from "../engine";
+import type { DeskTiming } from "../config/timing";
 import type { DeskSubjectRow } from "../subjects/store";
-import { CAPTURE_CURRENT_TOLERANCE_MS } from "../reads/freshness";
 import type { CoverageFacts, ProjectionWrite } from "./store";
 
 /**
@@ -15,12 +15,17 @@ export type ProjectionContext = Readonly<{
   configuration_version: string;
   policy_fingerprint: string;
   coverage: CoverageFacts;
+  /** `deskTimingOf` of the active configuration (today's coverage tolerance). */
+  timing: DeskTiming;
 }>;
 
-/** The coverage block stored with a channel at `computed_as_of` (reads decorate live freshness on top). */
-function coverageBlock(knownCompleteThrough: Date | null, asOf: Date) {
+/**
+ * The coverage block stored with a channel at `computed_as_of` (reads decorate live freshness on top):
+ * the raw capture watermark, `complete` while it trails `as_of` by at most the today tolerance.
+ */
+function coverageBlock(knownCompleteThrough: Date | null, asOf: Date, timing: DeskTiming) {
   if (!knownCompleteThrough) return { state: "unknown", known_complete_through: null, gaps: [] };
-  const state = +asOf - +knownCompleteThrough <= CAPTURE_CURRENT_TOLERANCE_MS ? "complete" : "partial";
+  const state = +asOf - +knownCompleteThrough <= timing.today_coverage_tolerance_ms ? "complete" : "partial";
   return { state, known_complete_through: knownCompleteThrough.toISOString(), gaps: [] };
 }
 
@@ -110,11 +115,13 @@ export function toProjectionWrite(subject: DeskSubjectRow, result: EvaluateSubje
   const asOf = new Date(result.computed_as_of);
   return {
     period_id: result.period_id,
-    call: channel(result.requirements.call, coverageBlock(context.coverage.calls_known_complete_through, asOf)),
-    sms: channel(result.requirements.sms, coverageBlock(context.coverage.sms_known_complete_through, asOf)),
+    call: channel(result.requirements.call, coverageBlock(context.coverage.calls.capture_known, asOf, context.timing)),
+    sms: channel(result.requirements.sms, coverageBlock(context.coverage.sms_known_complete_through, asOf, context.timing)),
     oldest_actionable_due_at: toDate(result.oldest_actionable_due_at),
     next_action_due_at: toDate(result.next_action_due_at),
     next_evaluation_at: toDate(result.next_evaluation_at),
+    // olr A1: the evaluate sweep re-nominates the row once channel coverage reaches these instants.
+    coverage_wait: { call: toDate(result.coverage_wait.call), sms: toDate(result.coverage_wait.sms) },
     last_interaction_at: toDate(result.last_interaction_at),
     received_at: subject.received_at,
     assigned_agent_id: subject.assigned_agent_id,
