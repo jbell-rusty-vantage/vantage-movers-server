@@ -10,7 +10,7 @@ import { configurationContentHash } from "../../src/services/salesOutreach/confi
 import { MemoryConfigurationDb } from "../../src/services/salesOutreach/config/testing";
 import { FINAL_01_CADENCE_VALUE } from "../../src/services/salesOutreach/engine/approvedStartingValues";
 import { resolveEnginePolicy } from "../../src/services/salesOutreach/engine";
-import { deskEnginePolicy, policyFingerprint } from "../../src/services/salesOutreach/evaluation/policyAdapter";
+import { deskEnginePolicy, deskPolicyFingerprint } from "../../src/services/salesOutreach/evaluation/policyAdapter";
 import { TEST_FINAL01_CADENCE } from "../../src/services/salesOutreach/evaluation/testing";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { salesOutreachConfigurationValueSchema, type SalesOutreachConfigurationValue } from "../../src/validation/v1/salesOutreach";
@@ -496,7 +496,7 @@ test("olr B3: the adapter resolves FINAL-01 with granot_created: new to the same
   assert.ok(before.ok && after.ok, "granot_created: new is resolvable (it stalled the evaluator before B3)");
   assert.deepEqual(after.policy, before.policy);
   for (const exposure of ["shadow", "enforcement"] as const)
-    assert.equal(policyFingerprint(after.policy, exposure), policyFingerprint(before.policy, exposure), "nothing is re-evaluated by the amendment itself");
+    assert.equal(deskPolicyFingerprint(amended, after.policy, exposure), deskPolicyFingerprint(installed, before.policy, exposure), "nothing is re-evaluated by the amendment itself");
   // P05e still approves only New for native intake.
   const nativeReview = structuredClone(amended);
   nativeReview.cadence.intake_default_rule!.manual = "review";
