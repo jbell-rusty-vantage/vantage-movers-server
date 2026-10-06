@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { SalesOutreachGoalCountScope } from "../../../config/domain/salesOutreach";
 import type { SalesOutreachGoalCredit } from "../../../config/domain/salesOutreachContacts";
 import { repDayGoal } from "../engine/credit";
-import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
+import { newYorkDayBounds } from "../reads/businessDay";
 import { callsCoverageForDay, requiredCoverageThrough, type SalesOutreachCoverage } from "../reads/freshness";
 import { resolveConfiguredGoal, type GoalsConfiguration } from "../reads/goals";
 
@@ -64,15 +64,12 @@ export function countRepDay(events: readonly RepDayEventFacts[], scope: SalesOut
 }
 
 /**
- * The count scope of a business day (decision, not env): `eligible_new_quoted` from the New York date
- * after the first completed enrollment apply's activation boundary (M2 has landed and every earlier
- * call of that date may predate its subjects); every earlier date — and every date while nothing has
- * been enrolled — stays `all_outbound` (M1), so one scope is never presented as the other.
+ * The count scope of a business day comes from the configuration (olr C1a): `goals.count_scope_schedule`,
+ * absent = `all_outbound` (Owner decision D1). It no longer follows the first enrollment apply. The
+ * pure resolver lives with the goal arithmetic (`reads/goals.ts`) so the read side and this projection
+ * share it without an import cycle.
  */
-export function countScopeFor(businessDay: string, firstActivationAt: Date | null): SalesOutreachGoalCountScope {
-  if (!firstActivationAt) return "all_outbound";
-  return newYorkBusinessDay(firstActivationAt) < businessDay ? "eligible_new_quoted" : "all_outbound";
-}
+export { countScopeForDay } from "../reads/goals";
 
 export type CoverageWatermarks = Readonly<{
   /** Call Log capture `known_complete_through` (`call_log_all_directions`). */

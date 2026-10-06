@@ -18,6 +18,8 @@ import {
  *   next read without a restart;
  * - only immutable versions are cached, keyed by version + content hash;
  * - no pointer ⇒ `uninitialized` (all desk features off), with no initialization side effect;
+ * - the content hash is verified against the stored value as written (or, legacy, as re-parsed),
+ *   so adding an optional key to the schema never invalidates a stored version (olr A0);
  * - a dangling pointer, a hash mismatch or a value the strict schema rejects ⇒ `unavailable`;
  *   desk reads/writes then fail closed with `CONFIGURATION_UNAVAILABLE`;
  * - a database failure propagates (no cached value is ever served as fresh).
@@ -56,6 +58,28 @@ export type ConfigurationLoader = {
 
 type CachedVersion = { value: SalesOutreachConfigurationValue; approval_ref: string | null };
 
+/**
+ * Integrity check of a stored version (olr A0). The hash is verified against the value **as
+ * written** (every version is stored as its parsed value, `config/commands.ts`), so a schema
+ * addition that changes the parsed form of an old version cannot turn it into `hash_mismatch`.
+ * The legacy check (hash of the value re-parsed by the current schema) stays accepted. A stored
+ * value edited out of band fails both, and the version row must agree with the pointer.
+ */
+function storedContentMatches(raw: unknown, parsed: SalesOutreachConfigurationValue, versionHash: string, pointerHash: string): boolean {
+  if (versionHash !== pointerHash) return false;
+  if (rawContentHash(raw) === versionHash) return true;
+  return configurationContentHash(parsed) === versionHash;
+}
+
+/** Content hash of the raw stored value; `null` when it holds something canonical JSON cannot encode. */
+function rawContentHash(raw: unknown): string | null {
+  try {
+    return configurationContentHash(raw as SalesOutreachConfigurationValue);
+  } catch {
+    return null;
+  }
+}
+
 export function createConfigurationLoader(store: ConfigurationStore = mongoConfigurationStore, maxCachedVersions = 16): ConfigurationLoader {
   const cache = new Map<string, CachedVersion>();
   const unavailable = (pointer: ConfigurationPointer, reason: "dangling_version" | "hash_mismatch" | "invalid_value") =>
@@ -78,8 +102,8 @@ export function createConfigurationLoader(store: ConfigurationStore = mongoConfi
       if (!row) return unavailable(pointer, "dangling_version");
       const parsed = salesOutreachConfigurationValueSchema.safeParse(row.value);
       if (!parsed.success) return unavailable(pointer, "invalid_value");
-      const hash = configurationContentHash(parsed.data);
-      if (hash !== row.content_hash || hash !== pointer.content_hash) return unavailable(pointer, "hash_mismatch");
+      if (!storedContentMatches(row.value, parsed.data, row.content_hash, pointer.content_hash))
+        return unavailable(pointer, "hash_mismatch");
       cached = { value: parsed.data, approval_ref: row.approval_ref };
       if (cache.size >= maxCachedVersions) cache.delete(cache.keys().next().value!);
       cache.set(cacheKey, cached);

@@ -9,7 +9,7 @@ import type { ActiveConfiguration } from "../config/load";
 import { applyContactSources, contactEvaluationJob } from "./apply";
 import { contactEventId } from "./derive";
 import { parseContactSubjectKey, parseRepDaySubjectKey, runOutreachContactChangeJob, runOutreachRepDayJob, type ContactJobDeps } from "./jobs";
-import { composeRepDayRow, countScopeFor, repDayCoverage } from "./repDay";
+import { composeRepDayRow, countScopeForDay, repDayCoverage } from "./repDay";
 import { recountRepDay } from "./repDayService";
 import { refreshOpenRepDays, sweepContactSources, type SweepLease } from "./sweep";
 import {
@@ -192,17 +192,66 @@ describe("rep-day recount", () => {
     assert.deepEqual([row.actual_confirmed, row.unattributed], [2, 1]);
   });
 
-  test("M2 eligible_new_quoted from the day after the first completed enrollment apply; earlier days stay all_outbound", async () => {
-    assert.equal(countScopeFor(TODAY, null), "all_outbound");
-    assert.equal(countScopeFor(TODAY, new Date("2026-10-05T13:00:00Z")), "all_outbound", "the activation date keeps the M1 scope");
-    assert.equal(countScopeFor(TODAY, new Date("2026-10-04T13:00:00Z")), "eligible_new_quoted");
+  test("olr C1a countScopeForDay: absent/empty schedule, before the first entry, on the boundary, after a flip back", () => {
+    assert.equal(countScopeForDay(TODAY, undefined), "all_outbound", "absent = all_outbound (D1 A)");
+    assert.equal(countScopeForDay(TODAY, null), "all_outbound");
+    assert.equal(countScopeForDay(TODAY, []), "all_outbound");
+    const schedule = [
+      { from_day: "2026-10-07", scope: "eligible_new_quoted" as const },
+      { from_day: "2026-10-20", scope: "all_outbound" as const },
+    ];
+    assert.equal(countScopeForDay("2026-10-06", schedule), "all_outbound", "before the first entry");
+    assert.equal(countScopeForDay("2026-10-07", schedule), "eligible_new_quoted", "on the boundary");
+    assert.equal(countScopeForDay("2026-10-19", schedule), "eligible_new_quoted");
+    assert.equal(countScopeForDay("2026-10-20", schedule), "all_outbound", "a flip back");
+    assert.equal(countScopeForDay("2026-11-01", schedule), "all_outbound");
+  });
+
+  test("olr C1a: the scope comes from the configuration, not the enrollment run — absent schedule counts all_outbound", async () => {
     const w = world();
-    w.repDays.firstActivation = new Date("2026-10-04T13:00:00Z");
+    // Days after an enrollment apply used to narrow to eligible-only; with no schedule they stay all_outbound.
     const sources = [call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")), call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z"))];
     await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
     await recount(w, ALICE);
     const row = w.repDays.row(ALICE, TODAY)!;
-    assert.deepEqual([row.count_scope, row.actual_confirmed, row.unattributed], ["eligible_new_quoted", 1, 1]);
+    assert.deepEqual([row.count_scope, row.actual_confirmed, row.unattributed], ["all_outbound", 2, 1]);
+  });
+
+  test("olr C1a: a configured flip on day D gives D−1 all_outbound and D eligible_new_quoted", async () => {
+    const w = world();
+    const flipped = active(desk({ goals: { ...desk().goals!, count_scope_schedule: [{ from_day: TODAY, scope: "eligible_new_quoted" }] } }));
+    w.repDays.marks = { ...w.repDays.marks, coverage_from: new Date("2026-09-01T04:00:00Z") };
+    const sources = [
+      call(w.events, outboundCall("101", NUMBER, "2026-10-04T14:10:00Z")),
+      call(w.events, outboundCall("101", newId(), "2026-10-04T14:30:00Z")),
+      call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")),
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z")),
+    ];
+    await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE, "2026-10-04", flipped);
+    await recount(w, ALICE, TODAY, flipped);
+    const before = w.repDays.row(ALICE, "2026-10-04")!;
+    const on = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([before.count_scope, before.actual_confirmed, before.unattributed], ["all_outbound", 2, 1]);
+    assert.deepEqual([on.count_scope, on.actual_confirmed, on.unattributed], ["eligible_new_quoted", 1, 1]);
+  });
+
+  test("olr C1a: a frozen row keeps its goal snapshot through a scope recount", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-04T14:10:00Z")), call(w.events, outboundCall("101", newId(), "2026-10-04T14:30:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    // Frozen after its day under the old scope (as the pre-C1a build wrote it), with goal 100.
+    const old = active(desk({ goals: { ...desk().goals!, count_scope_schedule: [{ from_day: "2026-10-01", scope: "eligible_new_quoted" }] } }), "v-old", 3);
+    await recount(w, ALICE, "2026-10-04", old);
+    const frozen = w.repDays.row(ALICE, "2026-10-04")!;
+    assert.deepEqual([frozen.count_scope, frozen.actual_confirmed, frozen.goal_snapshot.configuration_version, frozen.goal_snapshot.goal], ["eligible_new_quoted", 1, "v-old", 100]);
+    // The configuration now says all_outbound for that day (and a different goal): the scope moves, the snapshot does not.
+    const now = active(desk({ goals: { ...desk().goals!, default_scheduled_goal: 80 } }), "v-new", 4);
+    const result = await recount(w, ALICE, "2026-10-04", now);
+    assert.equal(result.outcome, "written");
+    const after = w.repDays.row(ALICE, "2026-10-04")!;
+    assert.deepEqual([after.count_scope, after.actual_confirmed, after.unattributed], ["all_outbound", 2, 1]);
+    assert.deepEqual(after.goal_snapshot, frozen.goal_snapshot, "frozen snapshot unchanged");
+    assert.equal(after.publication_revision, frozen.publication_revision + 1);
   });
 
   test("END-TO-END-RUN §3: Helpers/transfers/duplicate receipts — one canonical credit, initiator only", async () => {
@@ -556,5 +605,38 @@ describe("minute sweep and refresh", () => {
     assert.equal(w.repDays.row(ALICE, "2026-10-04")!.goal_snapshot.configuration_version, "v-test");
     const second = await refreshOpenRepDays(NOW, deps);
     assert.equal(second.recounted, 0, "frozen and complete: nothing to do");
+  });
+
+  test("olr C1a refresh: a complete row of today whose stored count_scope differs from the configured one is recounted", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")), call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    // An older build wrote today's row under eligible_new_quoted (the 2026-10-06 production case).
+    const narrowed = active(desk({ goals: { ...desk().goals!, count_scope_schedule: [{ from_day: "2026-10-01", scope: "eligible_new_quoted" }] } }));
+    await recount(w, ALICE, TODAY, narrowed);
+    const stale = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([stale.count_scope, stale.actual_confirmed, stale.coverage.state], ["eligible_new_quoted", 1, "complete"]);
+    // The active configuration has no schedule (all_outbound): the refresh self-corrects the complete row.
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
+    const first = await refreshOpenRepDays(NOW, deps);
+    assert.equal(first.recounted, 1);
+    const fixed = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([fixed.count_scope, fixed.actual_confirmed], ["all_outbound", 2]);
+    assert.equal(fixed.publication_revision, stale.publication_revision + 1);
+    const second = await refreshOpenRepDays(NOW, deps);
+    assert.equal(second.recounted, 0, "scope matches and coverage complete: nothing to do");
+  });
+
+  test("olr C1a refresh: a row whose count_scope field disagrees with its fingerprint is rewritten once, then left alone", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE);
+    const key = `${ALICE}|${TODAY}`;
+    const written = w.repDays.rows.get(key)!;
+    // Only the scope field differs (the fingerprint still matches all_outbound): no "unchanged" short-circuit.
+    w.repDays.rows.set(key, { ...written, count_scope: "eligible_new_quoted" });
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 1);
+    assert.deepEqual([w.repDays.row(ALICE, TODAY)!.count_scope, w.repDays.row(ALICE, TODAY)!.publication_revision], ["all_outbound", written.publication_revision + 1]);
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0);
   });
 });

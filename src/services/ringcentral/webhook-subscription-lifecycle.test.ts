@@ -21,8 +21,10 @@ import {
   validationEchoHeaders,
   type LifecycleDeps,
   type OwnershipStore,
+  type StoredSubscriptionMeta,
   type SubscriptionProvider,
   type SubscriptionRecord,
+  type SubscriptionWriteInput,
 } from "./webhook-subscription-lifecycle";
 
 const ADDRESS = "https://example.test/api/webhooks/ringcentral";
@@ -268,4 +270,116 @@ test("validation echo: the route echoes Validation-Token on a 200 and fans out o
     await new Promise<void>((resolve) => server.close(() => resolve()));
     process.env = saved;
   }
+});
+
+// ---------------------------------------------------------------------------
+// C6: an owned `calls` subscription that drifted is updated in place, never duplicated
+// ---------------------------------------------------------------------------
+
+const EXTENSION_SESSIONS = ["/restapi/v1.0/account/~/extension/101/telephony/sessions"];
+const SMS_FILTERS = ["/restapi/v1.0/account/~/extension/101/message-store?type=SMS"];
+
+/** `fakes` plus stored purposes and a provider `update`, as the Mongo store and the RingCentral adapter have. */
+function driftFakes(records: SubscriptionRecord[], meta: Record<string, StoredSubscriptionMeta>) {
+  const f = fakes(records, Object.keys(meta));
+  const updates: Array<{ id: string; input: SubscriptionWriteInput }> = [];
+  const recordedMeta: Array<Partial<StoredSubscriptionMeta> | undefined> = [];
+  f.deps.provider.update = async (id, input) => {
+    f.calls.push(`update:${id}`);
+    updates.push({ id, input });
+    return { id, eventFilters: input.eventFilters, deliveryMode: { transportType: "WebHook", address: input.address }, status: "Active" };
+  };
+  f.deps.store.meta = async () => new Map(Object.entries(meta));
+  const recordOwned = f.deps.store.record;
+  f.deps.store.record = async (raw, m) => {
+    recordedMeta.push(m);
+    await recordOwned(raw, m);
+  };
+  return { ...f, updates, recordedMeta };
+}
+
+test("C6 drift: an owned calls subscription with other filters plans update [filter_drift]; apply PUTs the owned id with the wanted filters and address, never creates", async () => {
+  const drift = driftFakes([record({ id: "owned-calls", eventFilters: EXTENSION_SESSIONS })], {
+    "owned-calls": { purpose: "calls", verificationToken: "stored-token" },
+  });
+  const plan = await planAllDirectionSubscription(drift.deps);
+  assert.deepEqual(plan, { action: "update", subscription_id: "owned-calls", reasons: ["filter_drift"], warnings: [] });
+  assert.deepEqual(await applyAllDirectionSubscriptionPlan(plan, drift.deps), { action: "updated", subscription_id: "owned-calls" });
+  assert.deepEqual(drift.calls, ["update:owned-calls"], "one PUT, no create, no delete");
+  assert.deepEqual(drift.updates, [
+    { id: "owned-calls", input: { eventFilters: ALL, address: ADDRESS, expiresIn: DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS, verificationToken: "stored-token" } },
+  ]);
+  assert.deepEqual(drift.recordedMeta, [{ purpose: "calls", verificationToken: "stored-token" }], "the PUT response is recorded as the owned calls subscription");
+});
+
+test("C6 drift: an owned calls subscription delivering to another address plans update, and the PUT carries the current address", async () => {
+  const drift = driftFakes([record({ id: "owned-calls", address: "https://old.example.test/api/webhooks/ringcentral" })], {
+    "owned-calls": { purpose: "calls", verificationToken: null },
+  });
+  const plan = await planAllDirectionSubscription(drift.deps);
+  assert.deepEqual(plan, { action: "update", subscription_id: "owned-calls", reasons: ["filter_drift"], warnings: [] });
+  await applyAllDirectionSubscriptionPlan(plan, drift.deps);
+  assert.deepEqual(drift.calls, ["update:owned-calls"]);
+  assert.equal(drift.updates[0]!.input.address, ADDRESS);
+  assert.match(drift.updates[0]!.input.verificationToken ?? "", /^[0-9a-f]{32}$/, "a missing token is generated on the same PUT");
+});
+
+test("C6 drift: an owned rep_sms subscription alone is not the calls channel; the plan is still create", async () => {
+  const sms = driftFakes([record({ id: "owned-sms", eventFilters: SMS_FILTERS })], { "owned-sms": { purpose: "rep_sms", verificationToken: "t" } });
+  assert.deepEqual(await planAllDirectionSubscription(sms.deps), { action: "create", warnings: [] });
+  // Purpose decides: even a rep_sms record carrying telephony filters is never taken over by the calls plan.
+  const odd = driftFakes([record({ id: "owned-sms", eventFilters: EXTENSION_SESSIONS })], { "owned-sms": { purpose: "rep_sms", verificationToken: "t" } });
+  assert.equal((await planAllDirectionSubscription(odd.deps)).action, "create");
+});
+
+test("C6 drift: a legacy owned row without a purpose is the calls channel only when it carries telephony-session filters", async () => {
+  const echoed = EXTENSION_SESSIONS.map((f) => f.replace("/account/~/", "/account/62948571023/"));
+  const legacy = driftFakes([record({ id: "owned-legacy", eventFilters: echoed })], { "owned-legacy": { purpose: null, verificationToken: null } });
+  assert.deepEqual(await planAllDirectionSubscription(legacy.deps), { action: "update", subscription_id: "owned-legacy", reasons: ["filter_drift"], warnings: [] });
+
+  // A store without meta (purpose unknown): the same filter rule decides.
+  const noMeta = fakes([record({ id: "owned-legacy", eventFilters: EXTENSION_SESSIONS })], ["owned-legacy"]);
+  assert.equal((await planAllDirectionSubscription(noMeta.deps)).action, "update");
+
+  // Legacy inbound-only (`?direction=Inbound`) and message-store rows are not taken over.
+  const inbound = driftFakes([record({ id: "owned-inbound", eventFilters: INBOUND })], { "owned-inbound": { purpose: null, verificationToken: null } });
+  assert.equal((await planAllDirectionSubscription(inbound.deps)).action, "create");
+  const sms = driftFakes([record({ id: "owned-legacy-sms", eventFilters: SMS_FILTERS })], { "owned-legacy-sms": { purpose: null, verificationToken: null } });
+  assert.equal((await planAllDirectionSubscription(sms.deps)).action, "create");
+});
+
+test("C6 drift: a drifted owned calls subscription the provider reports blacklisted plans repair", async () => {
+  const black = driftFakes([record({ id: "owned-calls", eventFilters: EXTENSION_SESSIONS, status: "Blacklisted" })], {
+    "owned-calls": { purpose: "calls", verificationToken: "t" },
+  });
+  assert.deepEqual(await planAllDirectionSubscription(black.deps), { action: "repair", subscription_id: "owned-calls", health: "blacklisted", warnings: [] });
+});
+
+test("C6 drift: two drifted owned calls subscriptions warn and the healthiest is managed; a foreign same-address one stays untouched", async () => {
+  const two = driftFakes(
+    [
+      record({ id: "owned-black", eventFilters: EXTENSION_SESSIONS, status: "Blacklisted" }),
+      record({ id: "owned-expiring", eventFilters: EXTENSION_SESSIONS, expirationTime: new Date(NOW.getTime() + 60 * 60_000) }),
+      record({ id: "foreign-same", eventFilters: EXTENSION_SESSIONS }),
+    ],
+    { "owned-black": { purpose: "calls", verificationToken: "t" }, "owned-expiring": { purpose: "calls", verificationToken: "t" } },
+  );
+  const plan = await planAllDirectionSubscription(two.deps);
+  assert.equal(plan.action, "update");
+  assert.equal(plan.action === "update" ? plan.subscription_id : null, "owned-expiring");
+  assert.deepEqual(plan.warnings, [
+    "foreign subscription foreign-same delivers to this address and is not managed here",
+    "2 owned calls subscriptions drifted; only the healthiest is managed",
+  ]);
+  await applyAllDirectionSubscriptionPlan(plan, two.deps);
+  assert.deepEqual(two.calls, ["update:owned-expiring"], "only the managed owned id is touched");
+});
+
+test("C6 drift: an owned matching subscription still wins over a drifted one", async () => {
+  const both = driftFakes([record({ id: "owned-all" }), record({ id: "owned-drifted", eventFilters: EXTENSION_SESSIONS })], {
+    "owned-all": { purpose: "calls", verificationToken: "t" },
+    "owned-drifted": { purpose: "calls", verificationToken: "t" },
+  });
+  assert.equal((await planAllDirectionSubscription(both.deps)).action, "noop");
+  assert.deepEqual(both.calls, []);
 });

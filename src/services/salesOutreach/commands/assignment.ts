@@ -1,14 +1,21 @@
 import { createHash } from "node:crypto";
+import type { ClientSession } from "mongoose";
 import { SALES_OUTREACH_COMMAND_KINDS, SALES_OUTREACH_CONTRACT_VERSION } from "../../../config/domain/salesOutreach";
+import { withTransaction } from "../../../db";
+import { logger } from "../../../logger";
 import type { SalesOutreachAssignmentResponse } from "../../../validation/v1/salesOutreachCommands";
 import type { DurableActor } from "../../durableWork/types";
 import type { CanonicalCommandContext } from "../../domainCommands/types";
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { appendCsiAudit, executeCsiCommand } from "../../salesIntelligence/transactions";
 import type { OutreachActor } from "../auth";
+import { salesOutreachConfigurationLoader, type ConfigurationLoader } from "../config/load";
 import { OutreachError } from "../errors";
 import { evaluationJob } from "../evaluation/evaluateJob";
 import { leadChangeJobInput } from "../subjects/feed";
+import { refreshLeadForOutreach } from "../subjects/leadChangeJob";
+import type { DeskLeadRef } from "../subjects/leadFacts";
+import { mongoDeskSubjectStore, type DeskSubjectStore } from "../subjects/store";
 import {
   authorizedSubject,
   commandLoader,
@@ -34,9 +41,55 @@ import {
  * Fences: `expected_revision` is the subject's `assignment_revision`; a desk copy that no longer
  * matches the Lead's current receiver is a 409 (re-read first). The target must be an Agent with a
  * reviewed `sales_rep` link now; `null` unassigns.
+ *
+ * Stale desk copy (olr B9, refresh-then-409): the `assignment_changed` refusal aborts the command's
+ * transaction, so on its own the subject would stay stale until the Lead-change job drains, and every
+ * retry would 409 again. The command therefore refreshes the subject from its Lead in a transaction of
+ * its own (`refreshStaleAssignment`), publishes the change live, and only then refuses with
+ * `{ path: "assignment", code: "assignment_changed", message: "refreshed" }`. It never overwrites the
+ * Lead's new receiver silently: the Owner re-reads (`assignment.in_sync: true`, a new
+ * `assignment_revision`) and confirms; the retry with that revision succeeds.
  */
 
 type AssignmentResult = Omit<SalesOutreachAssignmentResponse, "replayed">;
+
+/** What the stale-copy refresh did: rewrote the subject, found it current, lost a CAS race to a concurrent writer, or failed. */
+export type StaleRefreshOutcome = "refreshed" | "unchanged" | "conflict" | "failed";
+
+export type StaleRefreshDeps = {
+  loader?: ConfigurationLoader;
+  subjectStore?: DeskSubjectStore;
+  transaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
+  now?: () => Date;
+};
+
+export type AssignmentDeps = DeskCommandDeps &
+  Pick<StaleRefreshDeps, "subjectStore" | "transaction"> & {
+    /** The stale-copy refresh (default: `refreshStaleAssignment` with this command's loader, subject store and transaction). */
+    refreshStale?: (lead: DeskLeadRef) => Promise<StaleRefreshOutcome>;
+  };
+
+const isRevisionConflict = (error: unknown) => (error instanceof CsiError || error instanceof OutreachError) && error.code === "REVISION_CONFLICT";
+
+/**
+ * Refreshes one desk subject from its Lead's current facts in its own transaction (olr B9): the work
+ * of its `outreach_lead_change` job (`refreshLeadForOutreach`: assignment, display, periods, the
+ * evaluation nomination) under the configuration active now. A `REVISION_CONFLICT` means a concurrent
+ * writer (usually that job) moved the subject first, which leaves it current as well. Never throws.
+ */
+export async function refreshStaleAssignment(lead: DeskLeadRef, deps: StaleRefreshDeps = {}): Promise<StaleRefreshOutcome> {
+  try {
+    const result = await (deps.transaction ?? withTransaction)(async (session) => {
+      const configuration = await (deps.loader ?? salesOutreachConfigurationLoader).requireActive(session);
+      return refreshLeadForOutreach(lead, configuration, (deps.now ?? (() => new Date()))(), deps.subjectStore ?? mongoDeskSubjectStore, session);
+    });
+    return result.outcome === "updated" ? "refreshed" : "unchanged";
+  } catch (error) {
+    if (isRevisionConflict(error)) return "conflict";
+    logger.warn({ msg: "sales_outreach.assignment.stale_refresh_failed", errorName: error instanceof Error ? error.name : "Error" });
+    return "failed";
+  }
+}
 
 /** `EntityChange` provenance for a desk assignment (DurableActor has no Manager kind: a Manager is recorded as `admin`). */
 export function deskAssignmentContext(actor: CsiActor, role: OutreachActor["role"], idempotencyKey: string, payload: unknown): CanonicalCommandContext {
@@ -63,75 +116,90 @@ export type AssignmentInput = Readonly<{
   agent_id: string | null;
 }>;
 
-export async function assignSubject(input: AssignmentInput, deps: DeskCommandDeps = {}): Promise<SalesOutreachAssignmentResponse> {
+/** The stale desk copy behind an `assignment_changed` refusal: the subject, its Lead, its desk assignee and the Lead's effective receiver. */
+type StaleCopy = { subject_id: string; lead: DeskLeadRef; agent_ids: Array<string | null> };
+
+export async function assignSubject(input: AssignmentInput, deps: AssignmentDeps = {}): Promise<SalesOutreachAssignmentResponse> {
   if (input.actor.role === "rep") throw new OutreachError("FORBIDDEN");
   const wake: string[] = [];
+  const stale: { copy: StaleCopy | null } = { copy: null };
   const payload = { subject_id: input.subject_id, expected_revision: input.expected_revision, agent_id: input.agent_id };
-  const { response, replayed } = await (deps.run ?? executeCsiCommand)<AssignmentResult>({
-    actor: input.actor.actor,
-    command: SALES_OUTREACH_COMMAND_KINDS.assignment,
-    idempotency_key: input.idempotency_key,
-    payload,
-    operation: async (context) => {
-      wake.length = 0;
-      const { session, now } = context;
-      const store = commandStore(deps);
-      await requireCommandConfiguration(commandLoader(deps), session, { desk: true });
-      const { subject, lead } = await authorizedSubject(input.actor, input.subject_id, store, session);
-      if (!lead) throw new OutreachError("NOT_FOUND");
-      if (subject.status === "closed") throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "subject_not_open" }]);
-      if (subject.assignment_revision !== input.expected_revision) throw new CsiError("REVISION_CONFLICT");
-      const currentEffective = lead.receiver_agent_id && (await store.reviewedRepName(lead.receiver_agent_id, now, session)) !== null ? lead.receiver_agent_id : null;
-      if (currentEffective !== subject.assigned_agent_id)
-        throw new OutreachError("REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed" }]);
-      const name = input.agent_id ? await store.reviewedRepName(input.agent_id, now, session) : null;
-      if (input.agent_id && name === null) throw new OutreachError("INVALID_INPUT", [{ path: "agent_id", code: "agent_not_reviewed_sales_rep" }]);
-      const result = (changed: boolean, revision: number, leadRevision: number): AssignmentResult => ({
-        contract_version: SALES_OUTREACH_CONTRACT_VERSION,
-        subject_id: subject.id,
-        assigned_agent_id: input.agent_id,
-        previous_agent_id: subject.assigned_agent_id,
-        assignment_revision: revision,
-        lead_revision: leadRevision,
-        receiver_agent_source: "manual",
-        changed,
-      });
-      if (lead.receiver_agent_id === input.agent_id && lead.receiver_agent_source === "manual") return result(false, subject.assignment_revision, lead.domain_revision);
+  let committed: { response: AssignmentResult; replayed: boolean };
+  try {
+    committed = await (deps.run ?? executeCsiCommand)<AssignmentResult>({
+      actor: input.actor.actor,
+      command: SALES_OUTREACH_COMMAND_KINDS.assignment,
+      idempotency_key: input.idempotency_key,
+      payload,
+      operation: async (context) => {
+        wake.length = 0;
+        stale.copy = null;
+        const { session, now } = context;
+        const store = commandStore(deps);
+        await requireCommandConfiguration(commandLoader(deps), session, { desk: true });
+        const { subject, lead } = await authorizedSubject(input.actor, input.subject_id, store, session);
+        if (!lead) throw new OutreachError("NOT_FOUND");
+        if (subject.status === "closed") throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "subject_not_open" }]);
+        if (subject.assignment_revision !== input.expected_revision) throw new CsiError("REVISION_CONFLICT");
+        const currentEffective = lead.receiver_agent_id && (await store.reviewedRepName(lead.receiver_agent_id, now, session)) !== null ? lead.receiver_agent_id : null;
+        if (currentEffective !== subject.assigned_agent_id) {
+          stale.copy = { subject_id: subject.id, lead: subject.lead, agent_ids: [subject.assigned_agent_id, currentEffective] };
+          throw new OutreachError("REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed" }]);
+        }
+        const name = input.agent_id ? await store.reviewedRepName(input.agent_id, now, session) : null;
+        if (input.agent_id && name === null) throw new OutreachError("INVALID_INPUT", [{ path: "agent_id", code: "agent_not_reviewed_sales_rep" }]);
+        const result = (changed: boolean, revision: number, leadRevision: number): AssignmentResult => ({
+          contract_version: SALES_OUTREACH_CONTRACT_VERSION,
+          subject_id: subject.id,
+          assigned_agent_id: input.agent_id,
+          previous_agent_id: subject.assigned_agent_id,
+          assignment_revision: revision,
+          lead_revision: leadRevision,
+          receiver_agent_source: "manual",
+          changed,
+        });
+        if (lead.receiver_agent_id === input.agent_id && lead.receiver_agent_source === "manual") return result(false, subject.assignment_revision, lead.domain_revision);
 
-      const leadRevision = await store.writeLeadAssignment(
-        {
-          lead: subject.lead,
-          agent_id: input.agent_id,
-          agent_name: name,
-          source_value: `sales_outreach_desk:${input.actor.role}`,
-          at: now,
-          context: deskAssignmentContext(context.actor, input.actor.role, input.idempotency_key, payload),
-        },
-        session,
-      );
-      const assignmentChanged = subject.assigned_agent_id !== input.agent_id;
-      const assignmentRevision = subject.assignment_revision + (assignmentChanged ? 1 : 0);
-      // Mark the Lead revision seen only when the desk was current before this write; otherwise the
-      // Lead-change job still owes a full refresh of the other facts.
-      const seen = subject.lead_revision_seen === lead.domain_revision ? leadRevision : subject.lead_revision_seen;
-      if (!(await store.updateSubjectAssignment(subject.id, subject.revision, { assigned_agent_id: input.agent_id, assignment_revision: assignmentRevision, lead_revision_seen: seen }, session)))
-        throw new CsiError("REVISION_CONFLICT");
-      await (deps.audit ?? appendCsiAudit)(context, {
-        subject_key: subjectAuditKey(subject.id),
-        event_kind: "sales_outreach_assignment_changed",
-        prior: { agent_id: lead.receiver_agent_id, receiver_agent_source: lead.receiver_agent_source, assignment_revision: subject.assignment_revision },
-        current: { agent_id: input.agent_id, receiver_agent_source: "manual", assignment_revision: assignmentRevision, lead_revision: leadRevision, actor_role: input.actor.role },
-        target_id: subject.id,
-        revision: assignmentRevision,
-        kind: "outreach",
-      });
-      for (const job of [leadChangeJobInput(subject.lead, leadRevision), evaluationJob(subject.id, `assignment:l${leadRevision}`, leadRevision)]) {
-        const row = await store.enqueue(job, session, now);
-        if (row.created) wake.push(row.job_id);
-      }
-      return result(true, assignmentRevision, leadRevision);
-    },
-  });
+        const leadRevision = await store.writeLeadAssignment(
+          {
+            lead: subject.lead,
+            agent_id: input.agent_id,
+            agent_name: name,
+            source_value: `sales_outreach_desk:${input.actor.role}`,
+            at: now,
+            context: deskAssignmentContext(context.actor, input.actor.role, input.idempotency_key, payload),
+          },
+          session,
+        );
+        const assignmentChanged = subject.assigned_agent_id !== input.agent_id;
+        const assignmentRevision = subject.assignment_revision + (assignmentChanged ? 1 : 0);
+        // Mark the Lead revision seen only when the desk was current before this write; otherwise the
+        // Lead-change job still owes a full refresh of the other facts.
+        const seen = subject.lead_revision_seen === lead.domain_revision ? leadRevision : subject.lead_revision_seen;
+        if (!(await store.updateSubjectAssignment(subject.id, subject.revision, { assigned_agent_id: input.agent_id, assignment_revision: assignmentRevision, lead_revision_seen: seen }, session)))
+          throw new CsiError("REVISION_CONFLICT");
+        await (deps.audit ?? appendCsiAudit)(context, {
+          subject_key: subjectAuditKey(subject.id),
+          event_kind: "sales_outreach_assignment_changed",
+          prior: { agent_id: lead.receiver_agent_id, receiver_agent_source: lead.receiver_agent_source, assignment_revision: subject.assignment_revision },
+          current: { agent_id: input.agent_id, receiver_agent_source: "manual", assignment_revision: assignmentRevision, lead_revision: leadRevision, actor_role: input.actor.role },
+          target_id: subject.id,
+          revision: assignmentRevision,
+          kind: "outreach",
+        });
+        for (const job of [leadChangeJobInput(subject.lead, leadRevision), evaluationJob(subject.id, `assignment:l${leadRevision}`, leadRevision)]) {
+          const row = await store.enqueue(job, session, now);
+          if (row.created) wake.push(row.job_id);
+        }
+        return result(true, assignmentRevision, leadRevision);
+      },
+    });
+  } catch (error) {
+    const copy = stale.copy;
+    if (!copy || !(error instanceof OutreachError) || error.issues?.[0]?.code !== "assignment_changed") throw error;
+    throw await refreshedRefusal(copy, error, deps);
+  }
+  const { response, replayed } = committed;
   if (!replayed) await wakeCommandJobs(wake, deps.publish);
   // After commit: the previous assignee loses the row now, the new one gains it (IMPL-01, P06d).
   if (!replayed && response.changed)
@@ -148,4 +216,18 @@ export async function assignSubject(input: AssignmentInput, deps: DeskCommandDep
       deps,
     );
   return { ...response, replayed };
+}
+
+/**
+ * After the aborted command (olr B9): refresh the stale subject, tell the desk live stream (the stale
+ * assignee may lose the row, the Lead's receiver may gain it), and return the 409 to answer, with
+ * `message: "refreshed"`. A refresh that failed keeps the original refusal (the re-read still shows
+ * `in_sync: false`).
+ */
+async function refreshedRefusal(copy: StaleCopy, refusal: OutreachError, deps: AssignmentDeps): Promise<OutreachError> {
+  const refresh = deps.refreshStale ?? ((lead: DeskLeadRef) => refreshStaleAssignment(lead, { loader: deps.loader, subjectStore: deps.subjectStore, transaction: deps.transaction }));
+  const outcome = await refresh(copy.lead);
+  if (outcome === "failed") return refusal;
+  await publishCommandLive([{ topic: "outreach_desk", subject_ids: [copy.subject_id], agent_ids: copy.agent_ids, cause: "command" }], deps);
+  return new OutreachError("REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed", message: "refreshed" }]);
 }

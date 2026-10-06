@@ -21,8 +21,10 @@ import {
  *
  * Runs the lifecycle plan with its ownership guards: renew an owned matching
  * subscription with under 7 days left, repair (delete + recreate) an owned one
- * the provider reports Blacklisted/Suspended, leave healthy or unknown-status
- * ones alone, and never touch a subscription this application did not create.
+ * the provider reports Blacklisted/Suspended, `PUT` an owned `calls` one whose
+ * filters or delivery address drifted (`update` with `filter_drift`, never a
+ * duplicate create), leave healthy or unknown-status ones alone, and never
+ * touch a subscription this application did not create.
  * Creating one when none owned exists requires
  * `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE=true`; otherwise the run reports
  * `missing` and the operator creates it with the ops command.

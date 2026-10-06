@@ -11,7 +11,10 @@
  * - day override: two concurrent overrides at the same configuration revision — one moves the pointer;
  * - restrictions: lift releases with reason/actor and nominates the number's subjects;
  * - `outreach_evaluate`: the job writes the projection, an identical re-run writes nothing, and the
- *   minute sweep nominates a due projection once.
+ *   minute sweep nominates a due projection once;
+ * - olr B9: a stale desk copy answers 409 `assignment_changed` ("refreshed") only after the subject's
+ *   refresh committed in its own transaction — the detail re-read is `in_sync`, the retry succeeds, a
+ *   real change before the retry still answers 409, and the Lead's receiver is never overwritten.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -51,6 +54,8 @@ async function main() {
   const { evaluationJob, runOutreachEvaluateJob, sweepOutreachEvaluations } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
   const { receiverReplaceableByGranot } = await import("../../src/services/granotLifecycle/leadDesiredState.js");
   const { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } = await import("../../src/services/salesOutreach/evaluation/testing.js");
+  const { readOutreachDetail } = await import("../../src/services/salesOutreach/reads/detail.js");
+  const { OutreachError } = await import("../../src/services/salesOutreach/errors.js");
   await connectMongo();
   assert.equal(mongoose.connection.name, database);
 
@@ -226,7 +231,48 @@ async function main() {
   await Projections.updateOne({ subject_id: subjectId }, { $set: { next_evaluation_at: new Date(Date.now() - 1_000) } });
   const swept = await sweepOutreachEvaluations(new Date());
   assert.ok(swept.due.nominated >= 1, "the due projection is nominated");
-  console.log("PASS: assignment atomicity/replay/manual protection, plan race + replacement history, override pointer race, restriction lift, evaluate write/no-op/sweep");
+
+  // 6. olr B9 refresh-then-409: a Lead write the desk has not synced yet (the Lead-change job is not drained here)
+  //    makes the desk copy stale. The command answers 409 assignment_changed "refreshed" after refreshing the subject
+  //    in its own committed transaction; the detail re-read is in sync; the retry at the new revision succeeds; a real
+  //    change before the retry still answers 409; the Lead's receiver is never overwritten silently.
+  const readDetail = async () => (await readOutreachDetail(owner, String(subjectId), { loader: salesOutreachConfigurationLoader, now: new Date() })).assignment;
+  const granotMoves = (agent: string) =>
+    db.collection("form_leads").updateOne({ _id: leadId }, { $set: { receiver_agent: new mongoose.Types.ObjectId(agent), receiver_agent_source: "granot_username_match" }, $inc: { domain_revision: 1 } });
+  const deskAssignments = () => getEntityChangeModel().countDocuments({ command_name: "sales_outreach_assignment" });
+  const refusedRefreshed = (error: unknown) => {
+    assert.ok(error instanceof OutreachError, String(error));
+    assert.deepEqual([error.code, error.issues], ["REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed", message: "refreshed" }]]);
+    return true;
+  };
+  const live: unknown[] = [];
+  const b9Deps = { publish: async () => undefined, publishLive: async (p: unknown) => void live.push(...[p].flat()) };
+  await granotMoves(TEST_AGENT_A);
+  const staleCopy = await readDetail();
+  assert.deepEqual([staleCopy.in_sync, staleCopy.assigned_agent_id, staleCopy.lead_receiver_agent_id], [false, TEST_AGENT_B, TEST_AGENT_A]);
+  const desked = await deskAssignments();
+  await assert.rejects(
+    assignSubject({ actor: owner, subject_id: String(subjectId), idempotency_key: "replica-b9-1", expected_revision: staleCopy.assignment_revision, agent_id: TEST_AGENT_B }, b9Deps),
+    refusedRefreshed,
+  );
+  const reread = await readDetail();
+  assert.deepEqual([reread.in_sync, reread.assigned_agent_id, reread.assignment_revision], [true, TEST_AGENT_A, staleCopy.assignment_revision + 1], "the refresh committed");
+  const untouched = await db.collection("form_leads").findOne({ _id: leadId });
+  assert.deepEqual([String(untouched?.receiver_agent), untouched?.receiver_agent_source, await deskAssignments()], [TEST_AGENT_A, "granot_username_match", desked], "no silent overwrite");
+  assert.equal(await Ledger.countDocuments({ idempotency_key: "replica-b9-1" }), 0, "the refused command left no ledger row");
+  assert.deepEqual(live, [{ topic: "outreach_desk", subject_ids: [String(subjectId)], agent_ids: [TEST_AGENT_B, TEST_AGENT_A], cause: "command" }]);
+  const confirmed = await assignSubject({ actor: owner, subject_id: String(subjectId), idempotency_key: "replica-b9-2", expected_revision: reread.assignment_revision, agent_id: TEST_AGENT_B }, b9Deps);
+  assert.deepEqual([confirmed.changed, confirmed.previous_agent_id, confirmed.assigned_agent_id], [true, TEST_AGENT_A, TEST_AGENT_B], "the retry at the refreshed revision succeeds");
+  assert.equal((await readDetail()).in_sync, true);
+  await granotMoves(TEST_AGENT_A);
+  await assert.rejects(
+    assignSubject({ actor: owner, subject_id: String(subjectId), idempotency_key: "replica-b9-3", expected_revision: confirmed.assignment_revision, agent_id: TEST_AGENT_B }, b9Deps),
+    refusedRefreshed,
+  );
+  assert.deepEqual([String((await db.collection("form_leads").findOne({ _id: leadId }))?.receiver_agent), (await readDetail()).in_sync], [TEST_AGENT_A, true], "a real change still answers 409, then reads in sync");
+  console.log(
+    "PASS: assignment atomicity/replay/manual protection, plan race + replacement history, override pointer race, restriction lift, evaluate write/no-op/sweep, B9 stale-copy refresh-then-409",
+  );
 }
 
 main()

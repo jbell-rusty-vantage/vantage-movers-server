@@ -21,7 +21,19 @@ app.use(
     scan: async () => {
       calls.push("scan");
       if (tailThrows) throw new Error("boom");
-      return { skipped: tailSkipped, reason: tailSkipped ? "configuration_uninitialized" : null, scanned: 2, nominated: 1, conflicts: 0, cursor: null };
+      return {
+        skipped: tailSkipped,
+        reason: tailSkipped ? "configuration_uninitialized" : null,
+        passes: tailSkipped ? 0 : 3,
+        scanned: 250,
+        nominated: 250,
+        conflicts: 0,
+        cursor: null,
+        caught_up: !tailSkipped,
+        stopped_by: tailSkipped ? null : ("caught_up" as const),
+        max_passes: 10,
+        budget_seconds: 15,
+      };
     },
     drain: async () => {
       calls.push("drain");
@@ -94,6 +106,18 @@ test("lead changes: tail pass then drain; a failed tail never blocks the drain; 
   tailSkipped = true;
   assert.deepEqual((await hit(SALES_OUTREACH_CRON_PATHS.leadChanges)).body, { ok: true, skipped: true, reason: "configuration_uninitialized" });
   assert.deepEqual(calls, ["scan", "drain", "scan", "drain", "scan"]);
+});
+
+test("lead changes: the drain runs after the tail loop and the JSON reports the loop's passes (olr B10)", async () => {
+  calls.length = 0;
+  tailSkipped = false;
+  tailThrows = false;
+  const { status, body } = await hit(SALES_OUTREACH_CRON_PATHS.leadChanges);
+  assert.equal(status, 200);
+  assert.deepEqual(calls, ["scan", "drain"], "one tail loop, then the drain");
+  const tail = body.tail as { passes: number; caught_up: boolean; stopped_by: string };
+  assert.deepEqual([tail.passes, tail.caught_up, tail.stopped_by], [3, true, "caught_up"]);
+  assert.deepEqual(body.drain, { outcomes: { completed: 1 } });
 });
 
 test("revision reconcile runs one bounded pass", async () => {

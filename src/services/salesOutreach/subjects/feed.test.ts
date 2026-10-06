@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ClientSession } from "mongoose";
+import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import type { JobInput } from "../../salesIntelligence/jobs";
+import { configurationContentHash } from "../config/store";
+import { CONFIGURATION_REVISION_5_HASH, configurationRevision5Value } from "../config/testing";
 import { fixedConfigurationLoader } from "../reads/testing";
 import {
+  feedLoopOf,
   leadChangeJobInput,
   nominateLeadChanges,
+  OUTREACH_FEED_LOOP_DEFAULTS,
+  OUTREACH_FEED_PAGE,
   OUTREACH_LEAD_CHANGE_OVERLAP_MS,
   reconcileOutreachRevisions,
   scanOutreachLeadChanges,
+  scanOutreachLeadChangesUntilCaughtUp,
   type FeedCursor,
   type LeadChangeRow,
   type OutreachFeedStore,
@@ -171,5 +178,193 @@ describe("revision reconcile (outreach_revision_reconcile)", () => {
     assert.equal(result.checked, 250);
     assert.equal(store.jobs.size, 250);
     assert.deepEqual(await reconcileOutreachRevisions(at("2026-10-04T14:05:00Z"), deps(store, false)), { skipped: true, reason: "lease_held", pages: 0, checked: 0, nominated: 0, wrapped: false });
+  });
+});
+
+// ---- olr B10: the tail loops while the page is full ------------------------------------------
+
+/** A feed store that counts overlap re-scans, can advance a fake clock per page and can fail a pass. */
+class CountingFeedStore extends MemoryFeedStore {
+  overlapScans = 0;
+  pages = 0;
+  clockMs = 0;
+  msPerPage = 0;
+  failOnPage: number | null = null;
+  override async changesInOverlap(cursor: FeedCursor, overlapMs: number, limit: number) {
+    this.overlapScans++;
+    return super.changesInOverlap(cursor, overlapMs, limit);
+  }
+  override async changesAfter(cursor: FeedCursor, limit: number) {
+    this.pages++;
+    this.clockMs += this.msPerPage;
+    if (this.failOnPage === this.pages) throw new Error("transient");
+    return super.changesAfter(cursor, limit);
+  }
+}
+
+/** A subject Lead with `count` changes, one second apart from `startIso`; change ids sort in insertion order. */
+function backlog(store: MemoryFeedStore, count: number, startIso = "2026-10-04T14:00:00Z"): LeadChangeRow[] {
+  const ref = lead();
+  store.subjects.push({ id: objectId(), lead: ref, lead_revision_seen: 0 });
+  const rows: LeadChangeRow[] = [];
+  for (let i = 0; i < count; i++) rows.push(change(ref, i + 1, new Date(+at(startIso) + i * 1000).toISOString(), `c${String(i).padStart(23, "0")}`));
+  store.changes.push(...rows);
+  return rows;
+}
+
+/** Puts the stored tail cursor one second before the first change of `rows`. */
+const cursorBefore = (store: MemoryFeedStore, rows: readonly LeadChangeRow[]) => {
+  store.tail = { applied_at: new Date(+rows[0]!.applied_at - 1000), id: "0".repeat(24) };
+};
+
+const loopDeps = (store: CountingFeedStore, migration: Record<string, number> = {}) => ({
+  store,
+  transaction,
+  clock: () => store.clockMs,
+  loader: fixedConfigurationLoader(deskConfiguration({ migration } as never) as never),
+});
+
+describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_seconds)", () => {
+  test("a backlog of 250 changes is consumed in one run in 3 passes; the overlap is scanned once", async () => {
+    const store = new CountingFeedStore();
+    const rows = backlog(store, 250);
+    cursorBefore(store, rows);
+    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(store));
+    assert.equal(result.passes, 3);
+    assert.equal(store.overlapScans, 1, "only the first pass re-scans the overlap");
+    assert.equal(store.jobs.size, 250, "every change of the burst nominated in the same run");
+    assert.equal(result.nominated, 250);
+    assert.deepEqual([result.caught_up, result.stopped_by], [true, "caught_up"]);
+    assert.equal(store.tail?.id, rows.at(-1)!.id, "the cursor reaches the last change");
+    assert.equal(result.cursor?.id, rows.at(-1)!.id);
+    assert.deepEqual([result.max_passes, result.budget_seconds], [10, 15], "code defaults when the keys are absent");
+  });
+
+  test("the loop stops at the pass cap with the cursor at the last committed page; the next run carries on", async () => {
+    const store = new CountingFeedStore();
+    const rows = backlog(store, 500);
+    cursorBefore(store, rows);
+    const deps = loopDeps(store, { feed_max_passes_per_run: 2 });
+    const first = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), deps);
+    assert.deepEqual([first.passes, first.stopped_by, first.caught_up, first.max_passes], [2, "max_passes", false, 2]);
+    assert.equal(store.tail?.id, rows[2 * OUTREACH_FEED_PAGE - 1]!.id, "cursor at the 200th change");
+    assert.equal(store.jobs.size, 200);
+    const second = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:06:00Z"), deps);
+    assert.equal(second.passes, 2);
+    assert.equal(store.tail?.id, rows[399]!.id);
+    assert.equal(store.jobs.size, 400, "nothing nominated twice, nothing skipped");
+  });
+
+  test("the loop stops at the time budget with the cursor at the last committed page", async () => {
+    const store = new CountingFeedStore();
+    const rows = backlog(store, 1000);
+    cursorBefore(store, rows);
+    store.msPerPage = 8_000; // each pass "takes" 8 s: with the 15 s default budget the second pass is the last
+    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(store));
+    assert.deepEqual([result.passes, result.stopped_by, result.caught_up], [2, "budget", false]);
+    assert.equal(store.tail?.id, rows[199]!.id);
+    // A configured budget widens it: 40 s → 5 passes of 8 s.
+    const wide = new CountingFeedStore();
+    const wideRows = backlog(wide, 1000);
+    cursorBefore(wide, wideRows);
+    wide.msPerPage = 8_000;
+    const widened = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(wide, { feed_budget_seconds: 40 }));
+    assert.deepEqual([widened.passes, widened.stopped_by, widened.budget_seconds], [5, "budget", 40]);
+    assert.equal(wide.tail?.id, wideRows[499]!.id);
+  });
+
+  test("a 1,000-change burst is admitted in 2 cron runs with the defaults", async () => {
+    const store = new CountingFeedStore();
+    const rows = backlog(store, 1000);
+    cursorBefore(store, rows);
+    const deps = loopDeps(store);
+    const first = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), deps);
+    assert.deepEqual([first.passes, first.stopped_by], [10, "max_passes"]);
+    const second = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:06:00Z"), deps);
+    assert.deepEqual([second.passes, second.caught_up], [1, true]);
+    assert.equal(store.jobs.size, 1000);
+    assert.equal(store.tail?.id, rows.at(-1)!.id);
+  });
+
+  test("an empty or short page ends the loop", async () => {
+    const empty = new CountingFeedStore();
+    const none = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(empty));
+    assert.deepEqual([none.passes, none.caught_up, none.scanned], [1, true, 0]);
+    assert.ok(empty.tail, "a first run stores the starting cursor");
+
+    const short = new CountingFeedStore();
+    const shortRows = backlog(short, 40, "2026-10-04T14:04:00Z");
+    const shortRun = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(short));
+    assert.deepEqual([shortRun.passes, shortRun.caught_up, short.pages], [1, true, 1]);
+    assert.equal(short.tail?.id, shortRows.at(-1)!.id);
+
+    // Exactly one full page: the second pass finds an empty page and ends the loop.
+    const full = new CountingFeedStore();
+    const fullRows = backlog(full, OUTREACH_FEED_PAGE);
+    cursorBefore(full, fullRows);
+    const fullRun = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(full));
+    assert.deepEqual([fullRun.passes, fullRun.caught_up, full.overlapScans], [2, true, 1]);
+    assert.equal(full.tail?.id, fullRows.at(-1)!.id);
+  });
+
+  test("a later pass that fails ends the loop with what was committed; a failed first pass propagates", async () => {
+    const store = new CountingFeedStore();
+    const rows = backlog(store, 300);
+    cursorBefore(store, rows);
+    store.failOnPage = 2;
+    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(store));
+    assert.deepEqual([result.passes, result.stopped_by, result.caught_up], [1, "error", false]);
+    assert.equal(store.tail?.id, rows[99]!.id, "the first page stays committed");
+    const failing = new CountingFeedStore();
+    failing.failOnPage = 1;
+    await assert.rejects(scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), loopDeps(failing)), /transient/);
+  });
+
+  test("fails closed without an active configuration: no pass, cursor untouched", async () => {
+    const store = new CountingFeedStore();
+    backlog(store, 150);
+    const result = await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-04T14:05:00Z"), {
+      store,
+      transaction,
+      loader: fixedConfigurationLoader({ state: "uninitialized" }),
+    });
+    assert.deepEqual([result.skipped, result.reason, result.passes], [true, "configuration_uninitialized", 0]);
+    assert.deepEqual([store.tail, store.pages, store.jobs.size], [null, 0, 0]);
+  });
+
+  test("a single pass still re-scans the overlap by default and can skip it", async () => {
+    const store = new CountingFeedStore();
+    const rows = backlog(store, 5, "2026-10-04T14:04:00Z");
+    store.tail = { applied_at: rows.at(-1)!.applied_at, id: rows.at(-1)!.id };
+    const deps = loopDeps(store);
+    const pass = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), deps);
+    assert.deepEqual([pass.page_size, pass.scanned, store.overlapScans], [0, 4, 1]);
+    const noOverlap = await scanOutreachLeadChanges(at("2026-10-04T14:05:00Z"), deps, { overlap: false });
+    assert.deepEqual([noOverlap.scanned, store.overlapScans], [0, 1]);
+  });
+
+  test("configuration: the keys are optional without default (R0), bounded, and resolved by feedLoopOf", () => {
+    const stored = configurationRevision5Value();
+    const parsed = salesOutreachConfigurationValueSchema.parse(stored);
+    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH, "the revision-5 value re-parses to the same content hash");
+    assert.equal("feed_max_passes_per_run" in parsed.migration, false);
+    assert.equal("feed_budget_seconds" in parsed.migration, false);
+    assert.deepEqual(feedLoopOf(parsed), { max_passes: 10, budget_ms: 15_000 });
+    assert.deepEqual(feedLoopOf(null), {
+      max_passes: OUTREACH_FEED_LOOP_DEFAULTS.feed_max_passes_per_run,
+      budget_ms: OUTREACH_FEED_LOOP_DEFAULTS.feed_budget_seconds * 1000,
+    });
+
+    const withKeys = configurationRevision5Value();
+    withKeys.migration = { ...withKeys.migration, feed_max_passes_per_run: 1, feed_budget_seconds: 40 };
+    const set = salesOutreachConfigurationValueSchema.parse(withKeys);
+    assert.deepEqual(feedLoopOf(set), { max_passes: 1, budget_ms: 40_000 });
+    assert.notEqual(configurationContentHash(set), CONFIGURATION_REVISION_5_HASH, "a set key is hashed");
+
+    for (const bad of [{ feed_max_passes_per_run: 0 }, { feed_max_passes_per_run: 51 }, { feed_max_passes_per_run: 2.5 }, { feed_budget_seconds: 0 }, { feed_budget_seconds: 41 }]) {
+      const value = configurationRevision5Value();
+      value.migration = { ...value.migration, ...bad };
+      assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
+    }
   });
 });

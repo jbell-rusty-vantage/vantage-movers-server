@@ -141,12 +141,23 @@ test("calls blacklisted: blacklisted recorded; the health check never repairs", 
   assert.deepEqual(h.mutations, []);
 });
 
-test("calls filter drift: the owned subscription no longer matches the all-direction filter", async () => {
-  // An owned subscription carrying other filters is not a match for the `calls` plan, so the channel
-  // reports what the plan reports: no matching owned subscription (classified `owned_other`).
+test("calls filter drift: the owned calls subscription no longer matches the all-direction filter; filter_drift recorded, no PUT", async () => {
+  // C6: the plan settles on the owned drifted subscription (`update` with `filter_drift`) instead of
+  // `create`, so the channel reports filter_drift, never subscription_missing. The read-only provider
+  // refuses the PUT; the daily maintenance cron applies it.
   const h = harness([callsRecord({ eventFilters: ["/restapi/v1.0/account/~/extension/101/telephony/sessions"] }), repSmsRecord()]);
   const summary = await runSubscriptionHealthCheck(h.deps);
-  assert.equal(summary.calls.health, "subscription_missing");
+  assert.equal(summary.calls.health, "filter_drift");
+  assert.equal(summary.calls.subscription_id, "calls-1");
+  assert.equal(outcomeOf(h, SUBSCRIPTION_HEALTH_SCOPE_CALLS)?.error_code, "filter_drift");
+  assert.equal(summary.rep_sms.health, "ok", "the owned rep_sms subscription is not mistaken for the calls channel");
+  assert.deepEqual(h.mutations, []);
+});
+
+test("calls address drift: the owned calls subscription delivers to an old address; filter_drift recorded, no PUT", async () => {
+  const h = harness([callsRecord({ address: "https://old.example.test/api/webhooks/ringcentral" }), repSmsRecord()]);
+  const summary = await runSubscriptionHealthCheck(h.deps);
+  assert.equal(summary.calls.health, "filter_drift");
   assert.deepEqual(h.mutations, []);
 });
 

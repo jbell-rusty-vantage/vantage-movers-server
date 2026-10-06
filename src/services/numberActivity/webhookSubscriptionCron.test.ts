@@ -27,7 +27,7 @@ function record(partial: Partial<SubscriptionRecord> & { id: string }): Subscrip
   };
 }
 
-function harness(records: SubscriptionRecord[], owned: string[], options: { autoCreate?: boolean; failCreate?: boolean } = {}) {
+function harness(records: SubscriptionRecord[], owned: string[], options: { autoCreate?: boolean; failCreate?: boolean; purposes?: Record<string, "calls" | "rep_sms"> } = {}) {
   const calls: string[] = [];
   const outcomes: Array<string | null> = [];
   const ownedIds = new Set(owned);
@@ -45,6 +45,10 @@ function harness(records: SubscriptionRecord[], owned: string[], options: { auto
     remove: async (id) => {
       calls.push(`delete:${id}`);
     },
+    update: async (id, input) => {
+      calls.push(`update:${id}:${input.eventFilters.join("|")}:${input.address}`);
+      return { id, status: "Active" };
+    },
   };
   const store: OwnershipStore = {
     ownedIds: async () => ownedIds,
@@ -52,6 +56,7 @@ function harness(records: SubscriptionRecord[], owned: string[], options: { auto
       ownedIds.add((raw as { id: string }).id);
     },
     markStatus: async () => undefined,
+    meta: async () => new Map([...ownedIds].map((id) => [id, { purpose: options.purposes?.[id] ?? "calls", verificationToken: "t" }])),
   };
   const deps: WebhookSubscriptionMaintenanceDeps = {
     provider,
@@ -130,4 +135,28 @@ test("an unavailable outcome store never changes the provider outcome", async ()
   const summary = await runWebhookSubscriptionMaintenance({ ...h.deps, recordOutcome: async () => { throw new Error("mongo down"); } });
   assert.equal(summary.action, "renewed");
   assert.deepEqual(h.calls, ["renew:owned"]);
+});
+
+test("C6 drift: an owned calls subscription with drifted filters or address is PUT in place once, never created, even with auto-create on", async () => {
+  const filters = harness([record({ id: "owned", eventFilters: ["/restapi/v1.0/account/~/extension/101/telephony/sessions"] })], ["owned"], { autoCreate: true });
+  const summary = await runWebhookSubscriptionMaintenance(filters.deps);
+  assert.equal(summary.plan, "update");
+  assert.equal(summary.action, "updated");
+  assert.equal(summary.subscription_id, "owned");
+  assert.deepEqual(filters.calls, [`update:owned:${ALL[0]}:${ADDRESS}`], "one PUT with the wanted filters and address; no create");
+  assert.deepEqual(filters.outcomes, [null], "the outcome row error_code is null");
+
+  const address = harness([record({ id: "owned", address: "https://old.example.test/api/webhooks/ringcentral" })], ["owned"]);
+  const moved = await runWebhookSubscriptionMaintenance(address.deps);
+  assert.equal(moved.action, "updated");
+  assert.deepEqual(address.calls, [`update:owned:${ALL[0]}:${ADDRESS}`]);
+  assert.deepEqual(address.outcomes, [null]);
+});
+
+test("C6 drift: an owned rep_sms subscription is never PUT by the calls maintenance; the calls channel is still missing", async () => {
+  const h = harness([record({ id: "sms", eventFilters: ["/restapi/v1.0/account/~/extension/101/message-store?type=SMS"] })], ["sms"], { purposes: { sms: "rep_sms" } });
+  const summary = await runWebhookSubscriptionMaintenance(h.deps);
+  assert.equal(summary.action, "missing");
+  assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.outcomes, ["subscription_missing"]);
 });

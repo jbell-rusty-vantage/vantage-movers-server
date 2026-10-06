@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ClientSession } from "mongoose";
 import mongoose from "mongoose";
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
@@ -17,6 +19,8 @@ export class MemoryConfigurationDb {
   ledger = new Map<string, { hash: string; response: unknown }>();
   reads = { pointer: 0, version: 0 };
   failReads = false;
+  /** The command clock (`context.now`); null = the wall clock (olr C1a guard tests pin it). */
+  now: Date | null = null;
 
   readonly store: ConfigurationStore = {
     readPointer: async () => {
@@ -73,7 +77,7 @@ export class MemoryConfigurationDb {
       const response = await input.operation({
         session: { inTransaction: () => true } as unknown as ClientSession,
         command_id: new mongoose.Types.ObjectId(),
-        now: new Date(),
+        now: this.now ?? new Date(),
         actor: input.actor as CsiActor,
       });
       this.ledger.set(key, { hash, response });
@@ -89,4 +93,15 @@ export class MemoryConfigurationDb {
   deps() {
     return { run: this.run, store: this.store, writer: this.writer, audit: this.audit };
   }
+}
+
+/**
+ * The production revision-5 value shape (FINAL-01 policy, all five controls on, intake open,
+ * migration running, 12-agent roster), frozen as JSON from the schema as it was before the
+ * Outreach lifecycle repair added any key (olr A0). Its hash was computed then and must never
+ * change: every later schema addition must leave this value re-parsing to the same hash.
+ */
+export const CONFIGURATION_REVISION_5_HASH = "4a3f18969e5b6dc68bfba80c190ddb44fa8f1e47172f970ce2f8e094cd239aee";
+export function configurationRevision5Value(): Record<string, Record<string, unknown>> {
+  return JSON.parse(readFileSync(resolve(__dirname, "fixtures/configuration-revision-5.json"), "utf8")) as Record<string, Record<string, unknown>>;
 }
