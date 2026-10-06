@@ -11,6 +11,8 @@ import type { EnrollmentLease, EnrollmentRunRow, EnrollmentSkip, EnrollmentStore
 export class MemoryEnrollmentStore implements EnrollmentStore {
   runs: Array<EnrollmentRunRow & { actor: CsiActor }> = [];
   writes: string[] = [];
+  /** Every `scanLeads` call (model, prefilter, rows returned), so tests can assert what a listing examined. */
+  scans: Array<{ model: SalesOutreachLeadModel; filter: LeadScanFilter | null; returned: number }> = [];
   constructor(private readonly subjects: MemoryDeskSubjectStore) {}
 
   snapshot() {
@@ -23,6 +25,8 @@ export class MemoryEnrollmentStore implements EnrollmentStore {
       .filter((lead) => lead.ref.model === model)
       .filter((lead) => !page.after_id || (page.direction === 1 ? lead.ref.id > page.after_id : lead.ref.id < page.after_id))
       .filter((lead) => !f?.timestamp_before || (lead.timestamp !== null && +lead.timestamp < +f.timestamp_before))
+      .filter((lead) => !f?.id_from || lead.ref.id.toLowerCase() >= f.id_from.toLowerCase())
+      .filter((lead) => !f?.id_before || lead.ref.id.toLowerCase() < f.id_before.toLowerCase())
       .filter((lead) => {
         if (!f?.timestamp_from && !f?.move_date_from) return true;
         const byTime = f.timestamp_from && lead.timestamp !== null && +lead.timestamp >= +f.timestamp_from;
@@ -30,6 +34,7 @@ export class MemoryEnrollmentStore implements EnrollmentStore {
         return Boolean(byTime || byMove);
       })
       .sort((a, b) => (page.direction === 1 ? a.ref.id.localeCompare(b.ref.id) : b.ref.id.localeCompare(a.ref.id)));
+    this.scans.push({ model, filter: f ? { ...f } : null, returned: Math.min(rows.length, page.limit) });
     return rows.slice(0, page.limit) as DeskLeadFacts[];
   }
   async findRun(runKey: string) {

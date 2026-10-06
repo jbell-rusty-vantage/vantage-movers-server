@@ -14,10 +14,14 @@
  *   jobs nominated once per Lead revision; the revision reconcile nominates a drifted Lead;
  * - olr B1: a review subject whose priority is accepted a day later opens one late first period
  *   (`activation`, at the observation time), and the repair script moves a pre-B1 row (intake start
- *   at the boundary) to that start in one audited transaction with its evaluate nomination, once.
+ *   at the boundary) to that start in one audited transaction with its evaluate nomination, once;
+ * - olr B7: `GET /enrollment/candidates` lists only the report's backfill scope (review count = the
+ *   report's, in_scope = its selection, older unchanged), and the explained plans stay bounded: the
+ *   upcoming-move branch reads `sod_form_lead_move_date`, the window branch examines only Leads created
+ *   since its `_id` bound.
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { csiEnqueueReplicaTarget } from "../lib/csi-enqueue-replica-target";
 
@@ -55,8 +59,9 @@ async function main() {
   const { mongoDeskSubjectStore } = await import("../../src/services/salesOutreach/subjects/store.js");
   const { refreshLeadForOutreach, runOutreachLeadChangeJob } = await import("../../src/services/salesOutreach/subjects/leadChangeJob.js");
   const { scanOutreachLeadChanges, reconcileOutreachRevisions, OUTREACH_LEAD_CHANGE_SCOPE } = await import("../../src/services/salesOutreach/subjects/feed.js");
-  const { reportEnrollment, applyEnrollment, verifyEnrollment } = await import("../../src/services/salesOutreach/enrollment/service.js");
-  const { mongoEnrollmentStore } = await import("../../src/services/salesOutreach/enrollment/store.js");
+  const { reportEnrollment, applyEnrollment, verifyEnrollment, listEnrollmentCandidates, candidateLegs } = await import("../../src/services/salesOutreach/enrollment/service.js");
+  const { mongoEnrollmentStore, leadScanQuery } = await import("../../src/services/salesOutreach/enrollment/store.js");
+  const { SALES_OUTREACH_READ_INDEXES, createIndexOptions } = await import("../lib/sales-outreach-indexes.js");
   const { getSalesOutreachEnrollmentRunModel } = await import("../../src/models/salesOutreach/enrollmentRuns.js");
   const { FINAL01_CADENCE } = await import("../lib/sales-outreach-final01.js");
   const { applyRepair, reportRepair, REPAIR_EVENT_KIND } = await import("../lib/sales-outreach-repair-late-first-periods.js");
@@ -100,7 +105,7 @@ async function main() {
 
   const forms = db.collection("form_leads");
   const insertLead = async (overrides: Record<string, unknown> = {}) => {
-    const _id = oid();
+    const _id = (overrides._id as mongoose.Types.ObjectId | undefined) ?? oid();
     await forms.insertOne({
       _id,
       ingestion_origin: "wordpress_form",
@@ -270,7 +275,60 @@ async function main() {
   assert.equal((await reportRepair()).summary.repairable, 0, "dry run reports 0 after the apply");
   assert.deepEqual((await applyRepair({ actor: owner, run_id: "replica-repair-2" })).repaired, [], "a re-run writes nothing");
 
-  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair");
+  // 6. olr B7: GET /enrollment/candidates is scoped like the report, and its Mongo plans are bounded.
+  for (const { collection, indexes } of SALES_OUTREACH_READ_INDEXES)
+    for (const spec of indexes) await db.collection(collection).createIndex(spec.key as Record<string, 1 | -1>, createIndexOptions(spec));
+  const nowMs = Date.now();
+  const daysAgo = (days: number) => new Date(nowMs - days * 86_400_000);
+  const upcomingMove = new Date(Date.UTC(daysAgo(-30).getUTCFullYear(), daysAgo(-30).getUTCMonth(), daysAgo(-30).getUTCDate()));
+  const unmapped = (capturedAt: Date) => ({ granot_priority: "42", last_accepted_granot_observation: { observation_id: oid(), captured_at: capturedAt } });
+  /** An older Lead: inserted (its `_id` time) and received 300 days ago. */
+  const olderLead = (overrides: Record<string, unknown>) =>
+    insertLead({ _id: new mongoose.Types.ObjectId(Math.floor(+daysAgo(300) / 1000).toString(16).padStart(8, "0") + randomBytes(8).toString("hex")), timestamp: wallClock(daysAgo(300).toISOString()), createdAt: daysAgo(300), last_changed_at: daysAgo(300), ...overrides });
+  const recentReviewLead = await insertLead({ timestamp: wallClock(daysAgo(2).toISOString()), createdAt: daysAgo(2), ...unmapped(daysAgo(2)) });
+  const olderUpcomingReview = await olderLead({ move_date: upcomingMove, ...unmapped(daysAgo(300)) });
+  const olderUpcomingReady = await olderLead({ move_date: upcomingMove });
+  const olderOutOfScope: string[] = [];
+  for (let i = 0; i < 30; i++) olderOutOfScope.push((await olderLead(i % 2 ? unmapped(daysAgo(300)) : {})).id);
+  const scopeReport = await reportEnrollment({ selection: { mode: "backfill_scope" } });
+  const pages = async (partition: "review" | "in_scope" | "older") => {
+    const keys: string[] = [];
+    let cursor: string | undefined;
+    for (let n = 0; n < 50; n++) {
+      const page = await listEnrollmentCandidates({ partition, cursor, limit: 7 });
+      keys.push(...page.items.map((item) => item.lead.id));
+      if (!page.next_cursor) return keys;
+      cursor = page.next_cursor;
+    }
+    throw new Error("candidate paging did not finish");
+  };
+  const reviewIds = await pages("review");
+  assert.equal(reviewIds.length, scopeReport.counts.review, "the review list holds exactly the report's review partition");
+  assert.ok(reviewIds.includes(recentReviewLead.id) && reviewIds.includes(olderUpcomingReview.id), "window and upcoming-move review Leads are listed");
+  assert.ok(!reviewIds.some((leadId) => olderOutOfScope.includes(leadId)), "older review Leads outside the scope are not");
+  assert.deepEqual((await pages("in_scope")).sort(), scopeReport.lead_refs.map((ref) => ref.id).sort(), "in_scope = the report's selection (Ready to enroll)");
+  assert.ok(scopeReport.lead_refs.some((ref) => ref.id === olderUpcomingReady.id));
+  assert.equal((await pages("older")).filter((leadId) => olderOutOfScope.includes(leadId)).length, 15, "the 15 older New Leads stay on the older list");
+
+  const backfillScope = scopeReport.scope as Parameters<typeof candidateLegs>[1];
+  const [windowLeg, upcomingLeg] = candidateLegs("review", backfillScope);
+  assert.equal(upcomingLeg?.b, "u");
+  const explain = async (filter: Parameters<typeof leadScanQuery>[1]["filter"]) => {
+    const q = leadScanQuery("FormLead", { after_id: null, limit: 200, direction: -1, filter });
+    return (await forms.find(q.filter).sort(q.sort).limit(q.limit).explain("executionStats")) as unknown as { queryPlanner: unknown; executionStats: { totalDocsExamined: number; nReturned: number } };
+  };
+  const indexNames = (node: unknown): string[] =>
+    !node || typeof node !== "object" ? [] : Object.entries(node).flatMap(([key, value]) => (key === "indexName" && typeof value === "string" ? [value] : indexNames(value)));
+  const upcomingPlan = await explain(upcomingLeg!.filter);
+  assert.ok(indexNames(upcomingPlan.queryPlanner).includes("sod_form_lead_move_date"), `upcoming-move branch reads its index: ${indexNames(upcomingPlan.queryPlanner).join(",")}`);
+  assert.equal(upcomingPlan.executionStats.nReturned, 2);
+  assert.ok(upcomingPlan.executionStats.totalDocsExamined <= 2, `upcoming-move branch examines only its matches (${upcomingPlan.executionStats.totalDocsExamined})`);
+  const windowPlan = await explain(windowLeg!.filter);
+  const sinceBound = await forms.countDocuments({ _id: { $gte: new mongoose.Types.ObjectId(windowLeg!.filter.id_from!) } });
+  assert.ok(windowPlan.executionStats.totalDocsExamined <= sinceBound, `window branch examines only Leads created since the bound (${windowPlan.executionStats.totalDocsExamined} ≤ ${sinceBound})`);
+  assert.ok(sinceBound <= (await forms.countDocuments({})) - 32, "the 32 older Leads lie below the bound");
+
+  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair, B7 scoped candidates + bounded plans");
 }
 
 main()

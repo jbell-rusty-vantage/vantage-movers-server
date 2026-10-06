@@ -27,8 +27,10 @@ const store = new MemoryEnrollmentStore(subjects);
 const configuration = deskConfiguration({ transition: { backfill_lookback_days: 90, backfill_include_upcoming_moves: true }, migration: { paused: false } });
 const harness = memoryEnrollmentDeps(subjects, store);
 harness.setClock(NOW.toISOString());
+// Ids carry the insert time (olr B7: candidates bound the `_id` walk by the received window).
+const createdSeconds = Math.floor(Date.parse("2026-10-01T14:00:02Z") / 1000).toString(16);
 for (let i = 1; i <= 3; i++)
-  subjects.addLead(leadFacts({ id: String(i).padStart(24, "0"), timestamp: toFloridaTimestamp(new Date("2026-10-01T14:00:00Z")), created_at: new Date("2026-10-01T14:00:02Z"), ...accepted("0", "2026-10-01T14:05:00Z") }));
+  subjects.addLead(leadFacts({ id: createdSeconds + String(i).padStart(16, "0"), timestamp: toFloridaTimestamp(new Date("2026-10-01T14:00:00Z")), created_at: new Date("2026-10-01T14:00:02Z"), ...accepted("0", "2026-10-01T14:05:00Z") }));
 
 const app = express();
 app.use(express.json());

@@ -24,7 +24,7 @@ import {
   type EnrollmentPartition,
   type EnrollmentScope,
 } from "./classify";
-import { mongoEnrollmentStore, type EnrollmentLease, type EnrollmentRunRow, type EnrollmentSkip, type EnrollmentStore } from "./store";
+import { mongoEnrollmentStore, type EnrollmentLease, type EnrollmentRunRow, type EnrollmentSkip, type EnrollmentStore, type LeadScanFilter } from "./store";
 
 /** Registered command kind of the enrollment apply start (CSI command ledger; never a legacy name). */
 export const SALES_OUTREACH_ENROLLMENT_APPLY_COMMAND = SALES_OUTREACH_COMMAND_KINDS.enrollment_apply;
@@ -90,7 +90,7 @@ async function classifyPage(
 }
 
 /** Stored-`timestamp` prefilter that is a superset of the backfill received window (wall clock ≤ instant). */
-function backfillPrefilter(scope: BackfillScope) {
+function backfillPrefilter(scope: BackfillScope): { timestamp_from: Date; move_date_from?: Date } {
   return {
     timestamp_from: newYorkDayBounds(addDays(scope.cutoff_date, -1)).start,
     ...(scope.include_upcoming_moves ? { move_date_from: new Date(`${scope.today}T00:00:00.000Z`) } : {}),
@@ -205,24 +205,77 @@ export type CandidatesPage = Readonly<{
   scanned: number;
 }>;
 
-type CandidateCursor = { m: 0 | 1; a: string | null };
+/**
+ * Opaque candidates cursor (olr B7): model (`m`: 0 Form, 1 Call), branch (`b`) and the last `_id` seen
+ * (`a`). Branch `w` is the received window (and, for `older`, the whole out-of-scope walk); branch `u`
+ * is older Form Leads with an upcoming move. A pre-B7 cursor `{m, a}` decodes as branch `w`.
+ */
+type CandidateBranch = "w" | "u";
+type CandidateCursor = { m: 0 | 1; b: CandidateBranch; a: string | null };
+type CandidateLeg = Readonly<{ m: 0 | 1; b: CandidateBranch; filter: LeadScanFilter }>;
 const MODELS = ["FormLead", "CallLead"] as const;
+const BRANCH_ORDER: Record<CandidateBranch, number> = { w: 0, u: 1 };
+/** Margin under the received-window bound for the `_id` walk: covers ingestion clock skew (a Lead is created at or after it is received). */
+const WINDOW_ID_MARGIN_DAYS = 1;
 const encodeCursor = (cursor: CandidateCursor) => Buffer.from(JSON.stringify(cursor)).toString("base64url");
 function decodeCursor(raw: string | undefined): CandidateCursor {
-  if (!raw) return { m: 0, a: null };
+  if (!raw) return { m: 0, b: "w", a: null };
   try {
-    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as CandidateCursor;
-    if ((parsed.m === 0 || parsed.m === 1) && (parsed.a === null || /^[a-f\d]{24}$/.test(parsed.a))) return parsed;
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Partial<CandidateCursor>;
+    const branch = parsed.b ?? "w";
+    if ((parsed.m === 0 || parsed.m === 1) && (branch === "w" || branch === "u") && (parsed.a === null || (typeof parsed.a === "string" && /^[a-f\d]{24}$/.test(parsed.a))))
+      return { m: parsed.m, b: branch, a: parsed.a };
   } catch {
     /* falls through */
   }
   throw new OutreachError("CURSOR_EXPIRED", [{ path: "cursor", code: "invalid_cursor" }]);
 }
 
+/** The smallest ObjectId (24 hex) whose embedded creation time is `at` (whole seconds), like `ObjectId.createFromTime`. */
+export const objectIdFloorAt = (at: Date) => Math.max(0, Math.floor(+at / 1000)).toString(16).padStart(8, "0") + "0".repeat(16);
+
 /**
- * `GET /enrollment/candidates`: one page of Leads in a partition, newest first — the Owner Settings
- * "Not enrolled — older" list (one-click Enroll goes through report/apply with `selected`) and the
- * review list. Bounded: at most 1,000 Leads are examined per request; `next_cursor` continues.
+ * The scan legs of a partition, in page order (olr B7). `older` walks both models under the
+ * out-of-scope prefilter (unchanged). Every other partition is limited to the backfill scope, with the
+ * report's superset prefilter (`backfillPrefilter`) split by `_id` so the documents examined stay
+ * bounded: `w` = Leads created since the received-window start (minus a day) that are in the window
+ * or have an upcoming Form move; `u` (Form Leads, `include_upcoming_moves` only) = older Form Leads with
+ * a move date today or later, read through `sod_form_lead_move_date`. `w` ∪ `u` is exactly the report's
+ * prefilter for Leads created at or after they were received.
+ */
+export function candidateLegs(partition: EnrollmentPartition, scope: BackfillScope): CandidateLeg[] {
+  if (partition === "older") {
+    const filter = { timestamp_before: newYorkDayBounds(scope.cutoff_date).end };
+    return [
+      { m: 0, b: "w", filter },
+      { m: 1, b: "w", filter },
+    ];
+  }
+  const prefilter = backfillPrefilter(scope);
+  const bound = objectIdFloorAt(new Date(+prefilter.timestamp_from - WINDOW_ID_MARGIN_DAYS * 86_400_000));
+  const window = { ...prefilter, id_from: bound };
+  return [
+    { m: 0, b: "w", filter: window },
+    ...(prefilter.move_date_from ? [{ m: 0 as const, b: "u" as const, filter: { move_date_from: prefilter.move_date_from, id_before: bound } }] : []),
+    { m: 1, b: "w", filter: window },
+  ];
+}
+
+/** Where a cursor resumes: its own leg (keeping `a`), else the next leg in page order (a leg the scope no longer has is skipped). */
+function resumeLeg(legs: readonly CandidateLeg[], cursor: CandidateCursor): { index: number; after: string | null } | null {
+  const order = (leg: { m: number; b: CandidateBranch }) => leg.m * 2 + BRANCH_ORDER[leg.b];
+  const index = legs.findIndex((leg) => order(leg) >= order(cursor));
+  if (index < 0) return null;
+  return { index, after: legs[index]!.m === cursor.m && legs[index]!.b === cursor.b ? cursor.a : null };
+}
+
+/**
+ * `GET /enrollment/candidates`: one page of Leads in a partition, newest first (Form Leads, then Call
+ * Leads). `in_scope` is the Owner Settings "Ready to enroll" list and `older` the "Not enrolled —
+ * older" list (one-click Enroll goes through report/apply with `selected`); `review` and the others
+ * list the same backfill scope the report classifies (olr B7: before it, every partition but `older`
+ * walked every Lead). Bounded: at most 1,000 Leads are examined per request; `next_cursor` (opaque)
+ * continues across branches and models.
  */
 export async function listEnrollmentCandidates(
   input: Readonly<{ partition: EnrollmentPartition; cursor?: string; limit?: number }>,
@@ -233,14 +286,14 @@ export async function listEnrollmentCandidates(
   const configuration = await loader.requireActive();
   const scope = backfillScopeOf(configuration.value.transition, asOf);
   const limit = Math.max(1, Math.min(100, input.limit ?? 25));
-  const cursor = decodeCursor(input.cursor);
-  const filter = input.partition === "older" ? { timestamp_before: newYorkDayBounds(scope.cutoff_date).end } : null;
+  const legs = candidateLegs(input.partition, scope);
   const items: CandidateClassification[] = [];
   let scanned = 0;
-  let position: CandidateCursor | null = cursor;
+  let position = resumeLeg(legs, decodeCursor(input.cursor));
   while (position && items.length < limit && scanned < CANDIDATE_SCAN_BUDGET) {
+    const leg = legs[position.index]!;
     const pageLimit = Math.min(CANDIDATE_PAGE, CANDIDATE_SCAN_BUDGET - scanned);
-    const facts = await store.scanLeads(MODELS[position.m], { after_id: position.a, limit: pageLimit, direction: -1, filter });
+    const facts = await store.scanLeads(MODELS[leg.m], { after_id: position.after, limit: pageLimit, direction: -1, filter: leg.filter });
     const rows = await classifyPage(facts, { as_of: asOf, scope, configuration }, subjects);
     let consumed = 0;
     for (const row of rows) {
@@ -249,9 +302,9 @@ export async function listEnrollmentCandidates(
       if (items.length >= limit) break;
     }
     scanned += consumed;
-    const modelExhausted = facts.length < pageLimit && consumed === facts.length;
-    if (modelExhausted) position = position.m === 0 ? { m: 1, a: null } : null;
-    else position = { m: position.m, a: facts[consumed - 1]!.ref.id };
+    const legExhausted = facts.length < pageLimit && consumed === facts.length;
+    if (legExhausted) position = position.index + 1 < legs.length ? { index: position.index + 1, after: null } : null;
+    else position = { index: position.index, after: facts[consumed - 1]!.ref.id };
   }
   return {
     contract_version: "sod-v1",
@@ -259,7 +312,7 @@ export async function listEnrollmentCandidates(
     partition: input.partition,
     scope,
     items,
-    next_cursor: position ? encodeCursor(position) : null,
+    next_cursor: position ? encodeCursor({ m: legs[position.index]!.m, b: legs[position.index]!.b, a: position.after }) : null,
     scanned,
   };
 }
