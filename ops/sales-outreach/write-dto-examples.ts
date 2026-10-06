@@ -70,7 +70,11 @@ function exampleStore(): MemoryReadStore {
     known_complete_through: new Date("2026-10-05T14:57:00Z"),
     last_finished_at: new Date("2026-10-05T14:57:40Z"),
     last_error_code: null,
+    // olr A3-fresh: last Call Log confirmation (max of the ISync lane and the reconcile's sync success).
+    confirmation_success_at: new Date("2026-10-05T14:59:20Z"),
   };
+  // Newest call webhook receipt; 11:00 New York is in the staffed window, so "Calls updated" = min(confirmation, webhook).
+  store.callWebhookAt = new Date("2026-10-05T14:58:30Z");
   store.granot = new Date("2026-10-05T14:56:10Z");
   return store;
 }

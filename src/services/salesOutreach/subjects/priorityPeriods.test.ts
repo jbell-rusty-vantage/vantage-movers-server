@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { evaluateSubject } from "../engine";
-import { fixture, policyWith } from "../engine/testSupport";
+import { evaluate, fixture, ny, obligationsOn, outbound, period, policyWith, quotedPlan, scenario } from "../engine/testSupport";
 import { refreshLeadForOutreach } from "./leadChangeJob";
-import { planPeriodTransition } from "./periodPlanner";
+import { planPeriodTransition, type FirstPeriodStart } from "./periodPlanner";
 import { intakeSourceOf, resolveDeskPolicy } from "./policyMapping";
 import { desiredPeriodOf } from "./subjectBuilder";
 import { evaluateDeskEligibility } from "./eligibility";
@@ -232,6 +232,54 @@ describe("P05e intake defaults and uncertain priority (fixture p05e-intake-prior
     assert.equal(desiredPeriodOf(facts, evaluateDeskEligibility({ kind: "lead", facts }), resolveDeskPolicy(facts, reviewed), at("2026-10-01T15:00:00Z")), null);
   });
 
+  test("granot_missing then Priority 0 two days later: one New period started at acceptance; no period at received (olr B1)", async () => {
+    const received = "2026-10-01T14:00:00Z";
+    const { store, results } = await lifecycle(
+      [{}, { ...accepted("0", "2026-10-03T14:00:00Z") }],
+      leadFacts({ ingestion_origin: "granot_lead_created", timestamp: at(received) }),
+    );
+    assert.deepEqual(results.map((r) => [r.outcome, r.reason]), [["created", null], ["updated", "no_policy"], ["updated", null]], "no period until the decision");
+    assert.equal(store.periods.length, 1);
+    const first = store.periods[0]!;
+    assert.equal(first.workflow, "new");
+    assert.equal(first.start_kind, "activation", "a late first period is a partial start, never an intake arrival");
+    assert.equal(+first.started_at, +at("2026-10-03T14:00:00Z"), "starts at the accepted observation, not at received");
+    assert.equal(first.time_basis, "accepted_observation_captured_at");
+    assert.equal(+store.subjects[0]!.enrollment.activation_at, +at(received), "the boundary itself is unchanged");
+    assert.equal(store.subjects[0]!.status, "active");
+  });
+
+  test("after an admission hold clears, the late first period starts at the sync instant (desk_decision_at)", async () => {
+    const received = "2026-10-01T14:00:00Z";
+    const { store, results } = await lifecycle(
+      [
+        { timestamp: at("2026-12-01T14:00:00Z") }, // received time no longer credible: held for review
+        { timestamp: at(received), ...accepted("1", "2026-10-02T10:00:00Z") }, // fixed and decided
+      ],
+      leadFacts({ ingestion_origin: "granot_lead_created", timestamp: at(received) }),
+    );
+    assert.deepEqual(results.map((r) => [r.outcome, r.reason]), [["created", null], ["updated", "no_policy"], ["updated", null]], "no period until the decision");
+    assert.ok(store.subjects[0]!.review_reasons.length === 0);
+    const first = store.periods[0]!;
+    assert.equal(first.workflow, "quoted");
+    assert.equal(first.start_kind, "activation");
+    assert.equal(+first.started_at, +at("2026-10-03T16:00:00Z"), "the decision instant, not the earlier observation");
+    assert.equal(first.time_basis, "desk_decision_at");
+  });
+
+  test("intake first period at admission still opens at received with the initial-response clock", async () => {
+    const { store } = await lifecycle([], leadFacts({ ...accepted("0", "2026-10-01T14:01:00Z") }));
+    const first = store.periods[0]!;
+    assert.deepEqual([first.start_kind, first.time_basis], ["intake", "activation_boundary"]);
+    assert.equal(+first.started_at, +store.subjects[0]!.enrollment.activation_at);
+    assert.equal(+first.started_at, +at("2026-10-01T14:00:00Z"), "received instant");
+    const r = evaluate(
+      scenario({ received_at: first.started_at.toISOString(), periods: [period("p", "new", first.started_at.toISOString(), first.start_kind)] }),
+      "2026-10-01T14:10:00.000Z",
+    );
+    assert.equal(r.initial_response?.outcome, "open", "the 30-working-minute clock runs from received");
+  });
+
   test("an accepted priority after an intake default New with the same workflow restarts nothing", async () => {
     const { store, results } = await lifecycle([{ ...accepted("0", "2026-10-01T14:05:00Z") }]);
     assert.equal(store.periods.length, 1);
@@ -252,7 +300,10 @@ describe("period planner rules", () => {
     time_basis: "entity_change_applied_at" as const,
     end_reason_for_previous: workflow === "closed" ? ("closure" as const) : ("priority_change" as const),
   });
-  const first = { kind: "activation" as const, boundary: at("2026-10-05T12:00:00Z"), has_prior_periods: false };
+  const first: FirstPeriodStart = { kind: "activation", boundary: at("2026-10-05T12:00:00Z"), at_enrollment: true, as_of: at("2026-10-05T12:00:00Z"), held_before: false };
+  /** A later sync of a subject that has no period yet (review at enrollment). */
+  const late = (overrides: Partial<FirstPeriodStart> = {}): FirstPeriodStart => ({ ...first, at_enrollment: false, as_of: at("2026-10-08T16:00:00Z"), ...overrides });
+  const observed = (effective: string) => ({ ...desired("new", "k:obs", effective), time_basis: "accepted_observation_captured_at" as const });
 
   test("first period opens at the enrollment boundary with the boundary as time basis", () => {
     const plan = planPeriodTransition({ active: null, desired: desired("new"), recorded_keys: new Set(), first_start: first });
@@ -261,6 +312,37 @@ describe("period planner rules", () => {
     assert.equal(+plan.period.started_at, +first.boundary);
     assert.equal(plan.period.start_kind, "activation");
     assert.equal(plan.period.time_basis, "activation_boundary");
+    const intake = planPeriodTransition({ active: null, desired: desired("new"), recorded_keys: new Set(), first_start: { ...first, kind: "intake" } });
+    assert.ok(intake.action === "open" && intake.period.start_kind === "intake" && +intake.period.started_at === +first.boundary);
+  });
+
+  test("review → accepted later: the first period starts at the accepted observation time, as an activation, observation time basis", () => {
+    // Boundary Mon 10:00 New York, priority accepted Wed 14:00.
+    const boundary = at(ny("2026-10-05", "10:00"));
+    const plan = planPeriodTransition({ active: null, desired: observed(ny("2026-10-07", "14:00")), recorded_keys: new Set(), first_start: late({ kind: "intake", boundary }) });
+    assert.equal(plan.action, "open");
+    if (plan.action !== "open") return;
+    assert.equal(plan.period.started_at.toISOString(), ny("2026-10-07", "14:00"));
+    assert.equal(plan.period.start_kind, "activation", "never intake: no arrival clock, no retroactive days");
+    assert.equal(plan.period.time_basis, "accepted_observation_captured_at");
+  });
+
+  test("a late first period never starts before the boundary", () => {
+    const plan = planPeriodTransition({ active: null, desired: observed("2026-10-01T09:00:00Z"), recorded_keys: new Set(), first_start: late() });
+    assert.ok(plan.action === "open");
+    if (plan.action !== "open") return;
+    assert.equal(+plan.period.started_at, +first.boundary);
+    assert.equal(plan.period.start_kind, "activation");
+    assert.equal(plan.period.time_basis, "activation_boundary", "the boundary is the recorded basis when it wins");
+  });
+
+  test("after an admission hold the late first period starts at the sync instant (desk_decision_at)", () => {
+    const plan = planPeriodTransition({ active: null, desired: observed("2026-10-06T09:00:00Z"), recorded_keys: new Set(), first_start: late({ held_before: true }) });
+    assert.ok(plan.action === "open");
+    if (plan.action !== "open") return;
+    assert.equal(+plan.period.started_at, +at("2026-10-08T16:00:00Z"));
+    assert.equal(plan.period.start_kind, "activation");
+    assert.equal(plan.period.time_basis, "desk_decision_at");
   });
 
   test("a transition never starts before the active period", () => {
@@ -283,5 +365,62 @@ describe("period planner rules", () => {
       action: "none",
       reason: "transition_already_recorded",
     });
+  });
+});
+
+describe("olr B1 late first period — engine view (start_kind activation, no engine change)", () => {
+  // Received Mon 10:00 New York (Day 1); the subject was enrolled at received (intake boundary) but its
+  // priority was accepted only on Wed 14:00, so its first period is a late `activation` start.
+  const MON = "2026-10-05";
+  const TUE = "2026-10-06";
+  const WED = "2026-10-07";
+  const THU = "2026-10-08";
+  const late = (workflow: "new" | "quoted", events: ReturnType<typeof outbound>[] = []) =>
+    scenario({
+      received_at: ny(MON, "10:00"),
+      activation_at: ny(MON, "10:00"),
+      periods: [period("p1", workflow, ny(WED, "14:00"), "activation")],
+      events,
+    });
+
+  test("late first period, Day N partial start: nothing owed before the start, P05f partial day, then the full schedule", () => {
+    const r = evaluate(late("new", [outbound(ny(WED, "11:00"))]), ny(THU, "21:00"));
+    assert.equal(r.obligations.filter((o) => o.business_date === MON || o.business_date === TUE).length, 0, "no Mon/Tue obligations");
+    assert.equal(r.obligations.filter((o) => Date.parse(o.due_at ?? o.opens_at) < Date.parse(ny(WED, "14:00"))).length, 0, "no miss dated before the start");
+    assert.equal(r.obligations.filter((o) => o.kind === "initial_response").length, 0);
+    assert.equal(r.initial_response, null, "no initial-response clock");
+    // Wed = Day 3: band of 2 minus the 11:00 call before the start = 1 call (cap 2 before 18:00), due 20:00.
+    const wedCalls = obligationsOn(r, WED, "call");
+    assert.equal(wedCalls.length, 1);
+    assert.equal(wedCalls[0]!.opens_at, ny(WED, "14:00"));
+    assert.equal(wedCalls[0]!.due_at, ny(WED, "20:00"));
+    // Day 3 is a fixed SMS day and the start is before 19:30: one SMS due 20:00.
+    const wedSms = obligationsOn(r, WED, "sms");
+    assert.equal(wedSms.length, 1);
+    assert.equal(wedSms[0]!.due_at, ny(WED, "20:00"));
+    // Thu = Day 4: the full schedule, two calls by 12:00 / 20:00, no SMS.
+    assert.deepEqual(obligationsOn(r, THU, "call").map((o) => o.due_at), [ny(THU, "12:00"), ny(THU, "20:00")]);
+    assert.equal(obligationsOn(r, THU, "sms").length, 0);
+    assert.equal(r.schedule_day, 4, "original received-date age");
+  });
+
+  test("the same period as an intake start (the old behaviour) would owe Mon–Wed retroactively", () => {
+    // Guards the reason for B1: an intake start reaches back to received with an initial response.
+    const wrong = scenario({ received_at: ny(MON, "10:00"), activation_at: ny(MON, "10:00"), periods: [period("p1", "new", ny(MON, "10:00"), "intake")] });
+    const r = evaluate(wrong, ny(WED, "15:00"));
+    assert.ok(obligationsOn(r, MON, "call").length > 0);
+    assert.ok(r.initial_response !== null);
+  });
+
+  test("late first Quoted period: first required date is the next working date after acceptance, no miss before it", () => {
+    const r = evaluate(late("quoted"), ny(THU, "21:00"));
+    const calls = r.obligations.filter((o) => o.channel === "call");
+    assert.ok(calls.length > 0);
+    assert.equal(calls.filter((o) => o.business_date <= WED).length, 0, "nothing on or before the acceptance date");
+    assert.equal(obligationsOn(r, THU, "call").length, 1, "Thu (next working date) carries the Quoted call");
+    assert.equal(r.initial_response, null);
+    // A plan selected before acceptance does not reach back either.
+    const withPlan = evaluate({ ...late("quoted"), human_plans: [quotedPlan("plan", "p1", THU, ny(WED, "15:00"))] }, ny(THU, "21:00"));
+    assert.equal(withPlan.obligations.filter((o) => o.channel === "call" && o.business_date <= WED).length, 0);
   });
 });

@@ -20,6 +20,7 @@ import {
   duplicateProbePipeline,
   parseIndexBuildArgs,
   planIndexBuild,
+  SALES_OUTREACH_READ_INDEXES,
   type ObservedIndex,
 } from "../lib/sales-outreach-indexes";
 
@@ -31,10 +32,14 @@ async function main() {
   if (!db) throw new Error("database handle unavailable");
   if (mode === "apply") await assertProductionWriterMatchesDeployment();
 
-  const declared = SALES_OUTREACH_MODEL_REGISTRY.map((entry) => ({
-    collection: String(entry.model().collection.collectionName),
-    indexes: entry.indexes,
-  }));
+  const declared = [
+    ...SALES_OUTREACH_MODEL_REGISTRY.map((entry) => ({
+      collection: String(entry.model().collection.collectionName),
+      indexes: entry.indexes,
+    })),
+    // Read indexes on collections the desk does not own (olr B7: form_leads move date).
+    ...SALES_OUTREACH_READ_INDEXES,
+  ];
   const existingCollections = new Set((await db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name));
   const observed = new Map<string, ObservedIndex[]>();
   for (const { collection } of declared)

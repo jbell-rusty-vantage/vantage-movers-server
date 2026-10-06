@@ -6,8 +6,8 @@ import { logger } from "../../logger";
 import { getEntityChangeModel } from "../../models/EntityChange";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { CsiError } from "../salesIntelligence/auth";
-import { ensureFormLeadContactNumber } from "./formLeadNumber";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput } from "../salesIntelligence/jobs";
+import { ensureLeadContactNumber } from "./leadContactNumber";
 import { payloadHash } from "../salesIntelligence/transactions";
 import { loadLeadRow, numbersForLead, recomputeLeadLink, type LeadLinkChange, type LeadModel, type LeadRow } from "./leadLink";
 import { publishRunnableWakeups } from "./webhookFanout";
@@ -17,8 +17,9 @@ import { publishRunnableWakeups } from "./webhookFanout";
  *
  * A committed Lead EntityChange (create; a phone, contact snapshot, RingCentral identity, Duplicate,
  * Bad Lead, booking or cancellation stamp, name, Job Number or rep change) nominates the Lead's
- * `lead_link` job. The job mints a Form Lead's Contact Number (`FORM_LEAD_NUMBERS`) and recomputes the
- * link of every number the Lead can enter or leave (`numbersForLead`). Three paths raise the same job
+ * `lead_link` job. The job mints the Lead's Contact Number (`leadContactNumber.ts`: a Form Lead behind
+ * `FORM_LEAD_NUMBERS`, a Call Lead always) and recomputes the link of every number the Lead can enter or
+ * leave (`numbersForLead`). Three paths raise the same job
  * identity (stage `lead_link`, key = Lead fingerprint), so a replayed observation, a duplicate event or
  * a change that moves nothing creates no redundant work:
  *
@@ -236,31 +237,43 @@ export async function wakeLeadLinksAfterLeadCommand(
 
 export type LeadLinkJobOutcome = { status: "disabled" | "not_claimable" | "lease_lost" | "retry" } | { status: "completed"; changes: LeadLinkChange[] };
 
+/** The reads and writes one `lead_link` job runs; tests replace them (default: Mongo in the job's session). */
+export type LeadLinkJobDependencies = {
+  loadLeadRow: typeof loadLeadRow;
+  ensureLeadContactNumber: typeof ensureLeadContactNumber;
+  numbersForLead: typeof numbersForLead;
+  recomputeLeadLink: typeof recomputeLeadLink;
+};
+const LEAD_LINK_JOB_DEPENDENCIES: LeadLinkJobDependencies = { loadLeadRow, ensureLeadContactNumber, numbersForLead, recomputeLeadLink };
+
 /**
- * One `lead_link` job, in one transaction: a Lead job mints the Form Lead's number and recomputes
- * every number the Lead touches; a number job recomputes that number.
+ * One `lead_link` job, in one transaction: a Lead job mints the Lead's number (olr C2b: Form and Call
+ * Leads) and then recomputes every number the Lead touches, the minted one included, so its link (and
+ * the desk wake of `recomputeLeadLink`) commits with it; a number job recomputes that number.
  */
-export async function leadLinkJobWork(subjectKey: string, ref: string, session: ClientSession, jobId: string, now = new Date()): Promise<LeadLinkChange[]> {
+export async function leadLinkJobWork(subjectKey: string, ref: string, session: ClientSession, jobId: string, now = new Date(),
+  deps: LeadLinkJobDependencies = LEAD_LINK_JOB_DEPENDENCIES): Promise<LeadLinkChange[]> {
   const parts = subjectKey.split(":");
   const out: LeadLinkChange[] = [];
   if (parts[1] === "lead") {
     const model = parts[2];
     if (model !== "FormLead" && model !== "CallLead") throw new CsiError("INVALID_INPUT");
-    const row = await loadLeadRow({ model, id: ref }, session);
-    if (row && model === "FormLead") {
-      // The quote form never waits on this: the Lead's own job turns its phone into a Contact Number.
-      await ensureFormLeadContactNumber({ _id: String(row._id), timestamp: row.timestamp ?? now, duplicate: row.duplicate === true,
-        bad_lead: row.bad_lead ? String(row.bad_lead) : null, normalized_phone_number: row.normalized_phone_number ?? null }, session, jobId, now);
+    const row = await deps.loadLeadRow({ model, id: ref }, session);
+    if (row) {
+      // Neither the quote form nor call capture waits on this: the Lead's own job turns its phone into a Contact Number.
+      await deps.ensureLeadContactNumber(model, { _id: String(row._id), timestamp: row.timestamp ?? now, duplicate: row.duplicate === true,
+        bad_lead: row.bad_lead ? String(row.bad_lead) : null, normalized_phone_number: row.normalized_phone_number ?? null,
+        original_caller_phone: row.ringcentral?.original_caller?.normalized_phone_number ?? null }, session, jobId, now);
     }
-    for (const numberId of await numbersForLead({ model, id: ref }, row, session)) {
-      const change = await recomputeLeadLink(numberId, session, { now });
+    for (const numberId of await deps.numbersForLead({ model, id: ref }, row, session)) {
+      const change = await deps.recomputeLeadLink(numberId, session, { now });
       if (change) out.push(change);
     }
     return out;
   }
   if (parts[1] === "number") {
     if (!mongoose.isValidObjectId(ref)) throw new CsiError("INVALID_INPUT");
-    const change = await recomputeLeadLink(ref, session, { now });
+    const change = await deps.recomputeLeadLink(ref, session, { now });
     return change ? [change] : [];
   }
   throw new CsiError("INVALID_INPUT");

@@ -35,7 +35,9 @@ export type OutreachWorkflow = "new" | "quoted" | "discretion" | "none" | "close
  * How the period started, which selects the start-date rules:
  * - `intake`: a fresh Lead arrival (P02d initial response + P02g/P02h arrival allowances from `received_at`);
  * - `transition`: an accepted priority change on an enrolled subject (P05f reentry, P04d Quoted default);
- * - `activation`: the fixed cohort activation boundary of an existing Lead (P10a prospective cutover).
+ * - `activation`: the fixed cohort activation boundary of an existing Lead (P10a prospective cutover),
+ *   or the late first period of an enrolled subject whose policy became decidable after enrollment
+ *   (olr B1: a review subject whose priority was accepted later; a P05f-style partial start).
  */
 export type PeriodStartKind = "intake" | "transition" | "activation";
 

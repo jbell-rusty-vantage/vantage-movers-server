@@ -6,7 +6,7 @@ import type { ConfigurationInspection, ConfigurationLoader } from "../config/loa
 import { OutreachError } from "../errors";
 import type { CaptureSyncRow } from "./freshness";
 import type { RepDayRow } from "./goals";
-import type { SalesOutreachReadStore } from "./store";
+import type { ContactDerivationMark, SalesOutreachReadStore } from "./store";
 
 /**
  * Unit-test stand-ins for the desk reads (no Mongo): a fixed configuration loader and an in-memory
@@ -46,10 +46,12 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   /** Agent record names (no reviewed link needed). */
   agentNames = new Map<string, string>();
   calls: CaptureSyncRow | null = null;
+  /** Newest call webhook receipt (`readLastCallWebhookAt`). */
+  callWebhookAt: Date | null = null;
   mailboxes: CaptureSyncRow[] = [];
   granot: Date | null = null;
   /** Contact-event derivation watermark; null = S3's sweep has not run (every missing row is pending). */
-  derivation: { known_complete_through: Date | null; coverage_from: Date | null } | null = null;
+  derivation: ContactDerivationMark | null = null;
   queries: Array<{ business_day: string; agent_ids: readonly string[] | null }> = [];
 
   async findRepDayRows(businessDay: string, agentIds: readonly string[] | null) {
@@ -64,6 +66,9 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   }
   async readCallsCapture() {
     return this.calls;
+  }
+  async readLastCallWebhookAt() {
+    return this.callWebhookAt;
   }
   async readSmsMailboxes() {
     return this.mailboxes;

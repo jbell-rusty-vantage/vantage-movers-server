@@ -6,26 +6,37 @@ import { OUTREACH_CONTACT_CALLS_SCOPE, OUTREACH_CONTACT_SMS_SCOPE } from "../../
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../src/services/numberActivity/reconcileCallLog";
 import { WEBHOOK_SUBSCRIPTION_SCOPE } from "../../src/services/numberActivity/webhookSubscriptionCron";
 import { SUBSCRIPTION_HEALTH_SCOPE_CALLS, SUBSCRIPTION_HEALTH_SCOPE_REP_SMS } from "../../src/services/ringcentral/subscriptionHealth";
+import { CallLead } from "../../src/models/CallLead";
+import { FormLead } from "../../src/models/FormLead";
+import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config";
 import { configurationContentHash } from "../../src/services/salesOutreach/config/store";
-import { completeConfigurationInput, TEST_AGENT_A } from "../../src/services/salesOutreach/evaluation/testing";
+import { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } from "../../src/services/salesOutreach/evaluation/testing";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
 import {
   agentTail,
   collectDeskState,
+  composeServedRepDays,
   countsOf,
+  DESK_STATE_CC04_INSTANT,
   DESK_STATE_SCOPES,
+  EXTERNAL_CALL_DIRECTIONS,
   installReadOnlyCommandGuard,
   lagMinutes,
+  LEAD_COLLECTIONS,
   nestedCountsOf,
   parseDeskStateArgs,
   READ_GUARD_EXIT_CODE,
   readOnlyDeskStateReader,
+  repDayRowOf,
+  summarizeCallsFreshnessInputs,
   summarizeConfiguration,
   summarizeRepDays,
   summarizeRepSmsMailboxes,
+  summarizeSubjectsWithoutNumbers,
   summarizeWatermark,
   type DeskStateReader,
 } from "./sales-outreach-desk-state";
+import { CC04_INSTANT, SETTLE_DIRECTIONS } from "./sales-outreach-settle-pre-cc04";
 
 const NOW = new Date("2026-10-06T15:00:00.000Z");
 
@@ -48,6 +59,12 @@ test("the sync-state scopes the snapshot reads are the ones the services write",
     subscription_health_calls: SUBSCRIPTION_HEALTH_SCOPE_CALLS,
     subscription_health_rep_sms: SUBSCRIPTION_HEALTH_SCOPE_REP_SMS,
   });
+});
+
+test("the OPS-1 split uses the settle script's CC-04 instant and directions; Lead collections are the models'", () => {
+  assert.equal(DESK_STATE_CC04_INSTANT.toISOString(), CC04_INSTANT.toISOString());
+  assert.deepEqual([...EXTERNAL_CALL_DIRECTIONS], [...SETTLE_DIRECTIONS]);
+  assert.deepEqual(LEAD_COLLECTIONS, { FormLead: FormLead.collection.collectionName, CallLead: CallLead.collection.collectionName });
 });
 
 test("the reader exposes reads only, refuses write stages before touching the database and caps finds", async () => {
@@ -255,11 +272,33 @@ test("the collector runs every query through the reader: read-only pipelines, bo
   assert.deepEqual(Object.keys(state.watermarks), Object.keys(DESK_STATE_SCOPES));
   assert.equal(state.rep_days.today.rows, 0);
   assert.equal(state.jobs.dead_letters_total, 0);
+  assert.equal(state.summary_version, 2);
+  assert.deepEqual(state.rep_days.today_served, { business_day: "2026-10-06", available: false, reason: "configuration_not_active" });
+  assert.deepEqual(
+    [state.call_interactions.unconfirmed_by_direction, state.call_interactions.unconfirmed_inbound_outbound_total, state.call_interactions.unconfirmed_internal_total, state.call_interactions.before_cc04],
+    [{}, 0, 0, { instant: "2026-09-24T01:28:03.000Z", inbound_outbound: 0, internal: 0 }],
+  );
+  assert.deepEqual(state.subjects_without_numbers, { checked: 0, truncated: false, by_status_model_phone: {}, active_lead_has_phone: 0 });
+  assert.equal(state.freshness_inputs.webhook_collection, getRingCentralCollectionName("webhookEvents"));
+  assert.equal(state.freshness_inputs.calls.last_webhook_at, null);
+  // The OPS-1 acceptance counts: unconfirmed AND started before CC-04 AND the direction class.
+  const cc04Counts = calls.filter((c) => c.op === "count" && c.collection === "call_interactions" && JSON.stringify(c.arg ?? {}).includes("started_at"));
+  assert.deepEqual(
+    cc04Counts.map((c) => c.arg),
+    [
+      { $or: [{ terminal: { $ne: true } }, { call_log_state: null }], started_at: { $lt: DESK_STATE_CC04_INSTANT }, direction: { $in: ["Inbound", "Outbound"] } },
+      { $or: [{ terminal: { $ne: true } }, { call_log_state: null }], started_at: { $lt: DESK_STATE_CC04_INSTANT }, direction: "Internal" },
+    ],
+  );
+  // The newest call webhook is one row, newest first, `receivedAt` only.
+  const webhookFind = calls.find((c) => c.op === "find" && c.collection === getRingCentralCollectionName("webhookEvents"));
+  assert.deepEqual(webhookFind?.arg, { projection: { _id: 0, receivedAt: 1 }, sort: { receivedAt: -1 }, limit: 1 });
   assert.deepEqual(
     [...new Set(calls.map((c) => c.collection))].sort(),
     [
       "call_interactions",
       "ringcentral_rep_sms_evidence",
+      getRingCentralCollectionName("webhookEvents"),
       "ringcentral_webhook_subscriptions",
       "sales_intelligence_jobs",
       "sales_intelligence_sync_state",
@@ -275,5 +314,128 @@ test("the collector runs every query through the reader: read-only pipelines, bo
   // The watermark find never projects a token field.
   const syncFinds = calls.filter((c) => c.op === "find" && c.collection === "sales_intelligence_sync_state");
   assert.equal(syncFinds.length, 2);
-  for (const f of syncFinds) assert.doesNotMatch(JSON.stringify(f.arg), /token/);
+  for (const f of syncFinds) {
+    const keys = Object.keys((f.arg as { projection: Document }).projection);
+    assert.ok(keys.every((k) => !/(^|\.)token$/.test(k)), `token field projected: ${keys.join(",")}`);
+  }
+});
+
+test("served rep-days: actual_basis per rep as GET /rep-days composes it, roster reps without a row included", () => {
+  const value = salesOutreachConfigurationValueSchema.parse(completeConfigurationInput({ goal_metrics_enabled: true }));
+  const configuration = { state: "active" as const, version: "v5", revision: 5, content_hash: "h", approval_ref: null, value, updated_at: null, updated_by: null };
+  const outsider = new ObjectId("65a0000000000000004494ff");
+  const min = (m: number) => new Date(NOW.getTime() + m * 60_000);
+  const rows = [
+    // Rep A called today: a positive count is served from the projection whatever the coverage.
+    { agent_id: new ObjectId(TEST_AGENT_A), business_day: "2026-10-06", count_scope: "all_outbound", actual_confirmed: 12, actual_awaiting_confirmation: 1, unattributed: 3, coverage: null, publication_revision: 4, goal_snapshot: { goal: 100 } },
+    // An Agent off the roster with a zero row.
+    { agent_id: outsider, business_day: "2026-10-06", count_scope: "all_outbound", actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 0, coverage: null },
+    { agent_id: new ObjectId(TEST_AGENT_B), business_day: "2026-10-05", count_scope: "all_outbound", actual_confirmed: 7 },
+  ].map(repDayRowOf);
+  assert.deepEqual([rows[0]!.agent_id, rows[0]!.publication_revision, rows[0]!.goal_snapshot?.goal, rows[1]!.goal_snapshot], [TEST_AGENT_A, 4, 100, null]);
+
+  // Coverage complete (capture and derivation 1 min behind): the zero-call roster rep reads 0 / no_activity_recorded.
+  const covered = { capture_known: min(-1), capture_observed: null, derived_known: min(-1), derived_observed: null, coverage_from: new Date("2026-09-20T00:00:00Z") };
+  const complete = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: covered });
+  assert.ok(complete.available);
+  assert.equal(complete.capture_coverage.state, "complete");
+  assert.deepEqual(
+    complete.reps.map((r) => [r.agent, r.on_roster, r.has_row, r.actual_basis, r.actual_confirmed]),
+    [
+      [agentTail(TEST_AGENT_A), true, true, "projection", 12],
+      [agentTail(TEST_AGENT_B), true, false, "no_activity_recorded", 0],
+      ["4494ff", false, true, "projection", 0],
+    ],
+  );
+  assert.deepEqual([complete.actual_basis, complete.pending_without_row, complete.goal_metrics_enabled], [{ no_activity_recorded: 1, projection: 2 }, 0, true]);
+
+  // Capture an hour behind: zero counts are not zeros yet; the roster rep without a row is Pending.
+  const behind = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: { ...covered, capture_known: min(-60) } });
+  assert.ok(behind.available);
+  assert.equal(behind.capture_coverage.state, "partial");
+  assert.deepEqual(behind.reps.map((r) => [r.actual_basis, r.actual_confirmed]), [["projection", 12], ["pending", null], ["pending", null]]);
+  assert.deepEqual([behind.actual_basis, behind.pending_without_row], [{ pending: 2, projection: 1 }, 1]);
+
+  // olr C0 (D-A3): a stuck provisional row holds the capped watermarks 50 min back while the observed ones are
+  // 17–18 min behind; goal coverage (observed − 2 min, today tolerance 25 min) is complete, so the zero reads 0.
+  const provisional = { ...covered, capture_known: min(-50), capture_observed: min(-18), derived_known: min(-50), derived_observed: min(-17) };
+  const observed = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: provisional });
+  assert.ok(observed.available);
+  assert.deepEqual([observed.capture_coverage.state, observed.capture_coverage.required_through, observed.pending_without_row], ["complete", min(-25).toISOString(), 0]);
+
+  // Yesterday is read from yesterday's rows only (end of day required).
+  const yesterday = composeServedRepDays({ business_day: "2026-10-05", today: "2026-10-06", now: NOW, configuration, rows, marks: covered });
+  assert.ok(yesterday.available);
+  assert.deepEqual(yesterday.reps.map((r) => [r.agent, r.has_row, r.actual_basis]), [[agentTail(TEST_AGENT_A), false, "no_activity_recorded"], [agentTail(TEST_AGENT_B), true, "projection"]]);
+
+  assert.deepEqual(
+    composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration: { state: "uninitialized" }, rows, marks: covered }),
+    { business_day: "2026-10-06", available: false, reason: "configuration_not_active" },
+  );
+  assert.doesNotMatch(JSON.stringify(complete), new RegExp(TEST_AGENT_A));
+});
+
+test("calls freshness inputs: confirmation = max(lane success, reconcile sync success); webhook and staffed window reported", () => {
+  const min = (m: number) => new Date(NOW.getTime() + m * 60_000); // NOW = 11:00 ET, inside [07:45, 20:30)
+  const row = {
+    known_complete_through: min(-18),
+    observed_complete_through: min(-16),
+    last_run: { finished_at: min(-3), sync_token_stored: true, sync_error_code: null, error_code: null },
+    isync_lane: { last_success_at: min(-12) },
+  };
+  const fresh = summarizeCallsFreshnessInputs(row, min(-2), NOW);
+  assert.deepEqual(fresh, {
+    in_staffed_window: true,
+    lane_success_at: min(-12).toISOString(),
+    lane_success_lag_min: 12,
+    reconcile: { finished_at: min(-3).toISOString(), sync_token_stored: true, sync_error_code: null, success_at: min(-3).toISOString(), success_lag_min: 3 },
+    confirmation_at: min(-3).toISOString(),
+    confirmation_lag_min: 3,
+    last_webhook_at: min(-2).toISOString(),
+    webhook_lag_min: 2,
+    known_complete_through_lag_min: 18,
+    observed_complete_through_lag_min: 16,
+    last_error_code: null,
+  });
+
+  // A reconcile that stored no token (or hit a sync error) is not a confirmation: the lane instant stands.
+  const noToken = summarizeCallsFreshnessInputs({ ...row, last_run: { ...row.last_run, sync_token_stored: false } }, null, NOW);
+  assert.deepEqual([noToken.reconcile.success_at, noToken.confirmation_at, noToken.last_webhook_at], [null, min(-12).toISOString(), null]);
+  const syncError = summarizeCallsFreshnessInputs({ ...row, last_run: { ...row.last_run, sync_error_code: "token_expired", error_code: "rc_429" } }, null, NOW);
+  assert.deepEqual([syncError.reconcile.sync_error_code, syncError.confirmation_at, syncError.last_error_code], ["token_expired", min(-12).toISOString(), "rc_429"]);
+  // Night (01:00 ET): outside the staffed window; with no lane success the reconcile alone confirms.
+  const night = summarizeCallsFreshnessInputs({ ...row, isync_lane: { last_success_at: null } }, null, new Date("2026-10-06T05:00:00Z"));
+  assert.equal(night.in_staffed_window, false);
+  assert.equal(night.confirmation_at, min(-3).toISOString());
+  assert.deepEqual(summarizeCallsFreshnessInputs(null, null, NOW).confirmation_at, null);
+});
+
+test("subjects without numbers: counted by status, Lead model and whether the Lead has a phone; no phone or id leaves", () => {
+  const ids = Array.from({ length: 5 }, (_, i) => new ObjectId(`65a00000000000000000000${i}`));
+  const subjects = [
+    { status: "active", lead_model: "CallLead", lead_id: ids[0] },
+    { status: "active", lead_model: "CallLead", lead_id: ids[1] },
+    { status: "active", lead_model: "FormLead", lead_id: ids[2] },
+    { status: "review", lead_model: "FormLead", lead_id: ids[3] },
+    { status: "active", lead_model: "CallLead", lead_id: ids[4] },
+  ];
+  const leads = {
+    CallLead: [
+      { _id: ids[0], normalized_phone_number: "3055550199" },
+      // Only the RingCentral original caller path carries the phone: still a phone.
+      { _id: ids[1], normalized_phone_number: "", ringcentral: { original_caller: { normalized_phone_number: "+13055550123" } } },
+    ],
+    FormLead: [
+      { _id: ids[2], normalized_phone_number: "12" },
+      { _id: ids[3], granot_contact_snapshot: { normalized_phone_number: "7865550100" } },
+    ],
+  };
+  const summary = summarizeSubjectsWithoutNumbers(subjects, leads, false);
+  assert.deepEqual(summary, {
+    checked: 5,
+    truncated: false,
+    by_status_model_phone: { "active/CallLead/has_phone": 2, "active/CallLead/lead_missing": 1, "active/FormLead/no_phone": 1, "review/FormLead/has_phone": 1 },
+    active_lead_has_phone: 2,
+  });
+  assert.doesNotMatch(JSON.stringify(summary), /555|65a0/);
 });

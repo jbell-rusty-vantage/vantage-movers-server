@@ -6,7 +6,9 @@ import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { getSalesOutreachRepDayProjectionModel } from "../../../models/salesOutreach";
 import { OUTREACH_CONTACT_CALLS_SCOPE } from "../../../config/domain/salesOutreachContacts";
+import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
+import { getRingCentralCollectionName } from "../../ringcentral/ringcentral-config";
 import type { CaptureSyncRow } from "./freshness";
 import type { RepDayRow } from "./goals";
 
@@ -21,6 +23,7 @@ const MAX_MAILBOXES = 500;
  * - rep-day rows: `sod_rep_day_day` `{business_day, agent_id}`;
  * - rep names: `ril_agent_current` `{agent_id, effective_to}`; Agent names by `_id`;
  * - capture: `sales_intelligence_sync_state_scope_unique` (exact scope, and an anchored prefix);
+ * - the newest call webhook receipt: `ringcentral_webhook_events` `{provider, receivedAt}` newest first, limit 1;
  * - Granot: `granot_observation_kind_captured` `{kind, captured_at}` (merge-sorted over the kinds).
  * Nothing here writes, initializes or calls a provider.
  */
@@ -31,18 +34,33 @@ export type SalesOutreachReadStore = {
   /** Agent id → the Agent record's name (no link requirement); absent Agents are missing from the map. */
   findAgentNames(agentIds: readonly string[]): Promise<Map<string, string>>;
   readCallsCapture(): Promise<CaptureSyncRow | null>;
+  /** Newest call webhook receipt instant (telephony session present); null when none was ever received. */
+  readLastCallWebhookAt(): Promise<Date | null>;
   readSmsMailboxes(): Promise<CaptureSyncRow[]>;
   readLatestGranotObservationAt(): Promise<Date | null>;
   /** S3's contact-event derivation watermark (`outreach_contact_calls`); null before its first sweep. */
   readContactDerivation(): Promise<ContactDerivationMark | null>;
 };
 
-export type ContactDerivationMark = Readonly<{ known_complete_through: Date | null; coverage_from: Date | null }>;
+export type ContactDerivationMark = Readonly<{
+  known_complete_through: Date | null;
+  coverage_from: Date | null;
+  /** `outreach_contact_calls.observed_complete_through` (A3-cap; absent until the first caught-up sweep writes it). */
+  observed_complete_through?: Date | null;
+}>;
 
-type SyncStateLean = {
+export type SyncStateLean = {
   scope: string;
   known_complete_through?: Date | null;
-  last_run?: { finished_at?: Date | null; error_code?: string | null } | null;
+  observed_complete_through?: Date | null;
+  reconcile_sync_success_at?: Date | null;
+  isync_lane?: { last_success_at?: Date | null } | null;
+  last_run?: {
+    finished_at?: Date | null;
+    error_code?: string | null;
+    sync_token_stored?: boolean | null;
+    sync_error_code?: string | null;
+  } | null;
 };
 
 const toCaptureRow = (row: SyncStateLean): CaptureSyncRow => ({
@@ -52,7 +70,33 @@ const toCaptureRow = (row: SyncStateLean): CaptureSyncRow => ({
   last_error_code: row.last_run?.error_code ?? null,
 });
 
+const latest = (...instants: ReadonlyArray<Date | null | undefined>): Date | null =>
+  instants.reduce<Date | null>((max, at) => (at && (!max || at.getTime() > max.getTime()) ? at : max), null);
+
+/**
+ * The Call Log row with its confirmation instant (lane A F5, RINGCENTRAL-CAPTURE §8): the later of the ISync
+ * lane's sticky success, the reconcile's sticky sync success (A3-cap) and, for a row whose last reconcile ran
+ * before that field existed, the last run's finish when it stored a sync token without a sync error.
+ */
+export function toCallsCaptureRow(row: SyncStateLean): CaptureSyncRow {
+  const run = row.last_run ?? null;
+  const lastRunSyncSuccess = run?.sync_token_stored === true && !run.sync_error_code ? (run.finished_at ?? null) : null;
+  return {
+    ...toCaptureRow(row),
+    observed_complete_through: row.observed_complete_through ?? null,
+    confirmation_success_at: latest(row.isync_lane?.last_success_at, row.reconcile_sync_success_at, lastRunSyncSuccess),
+  };
+}
+
 const SYNC_PROJECTION = { scope: 1, known_complete_through: 1, "last_run.finished_at": 1, "last_run.error_code": 1 } as const;
+const CALLS_SYNC_PROJECTION = {
+  ...SYNC_PROJECTION,
+  observed_complete_through: 1,
+  reconcile_sync_success_at: 1,
+  "isync_lane.last_success_at": 1,
+  "last_run.sync_token_stored": 1,
+  "last_run.sync_error_code": 1,
+} as const;
 const oids = (ids: readonly string[]) => ids.map((id) => new mongoose.Types.ObjectId(id));
 
 export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
@@ -121,8 +165,22 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
   },
 
   async readCallsCapture() {
-    const row = await getSalesIntelligenceSyncStateModel().findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, SYNC_PROJECTION).lean();
-    return row ? toCaptureRow(row as unknown as SyncStateLean) : null;
+    const row = await getSalesIntelligenceSyncStateModel().findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, CALLS_SYNC_PROJECTION).lean();
+    return row ? toCallsCaptureRow(row as unknown as SyncStateLean) : null;
+  },
+
+  async readLastCallWebhookAt() {
+    // Raw collection read (no model, no index creation): the partial `{provider, receivedAt, _id}` scan index
+    // (telephony receipts only) or `{provider, receivedAt: -1}` serve it newest-first with a limit of 1.
+    const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).db;
+    if (!db) throw new Error("MongoDB connection is not ready");
+    const row = await db
+      .collection<{ receivedAt?: Date }>(getRingCentralCollectionName("webhookEvents"))
+      .findOne(
+        { provider: "ringcentral", telephonySessionId: { $type: "string" } },
+        { sort: { receivedAt: -1 }, projection: { _id: 0, receivedAt: 1 } },
+      );
+    return row?.receivedAt instanceof Date ? row.receivedAt : null;
   },
 
   async readSmsMailboxes() {
@@ -135,10 +193,18 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
 
   async readContactDerivation() {
     const row = (await getSalesIntelligenceSyncStateModel()
-      .findOne({ scope: OUTREACH_CONTACT_CALLS_SCOPE }, { known_complete_through: 1, "cursor.outreach_coverage_from": 1 })
-      .lean()) as { known_complete_through?: Date | null; cursor?: { outreach_coverage_from?: Date | null } } | null;
+      .findOne({ scope: OUTREACH_CONTACT_CALLS_SCOPE }, { known_complete_through: 1, observed_complete_through: 1, "cursor.outreach_coverage_from": 1 })
+      .lean()) as {
+      known_complete_through?: Date | null;
+      observed_complete_through?: Date | null;
+      cursor?: { outreach_coverage_from?: Date | null };
+    } | null;
     if (!row) return null;
-    return { known_complete_through: row.known_complete_through ?? null, coverage_from: row.cursor?.outreach_coverage_from ?? null };
+    return {
+      known_complete_through: row.known_complete_through ?? null,
+      observed_complete_through: row.observed_complete_through ?? null,
+      coverage_from: row.cursor?.outreach_coverage_from ?? null,
+    };
   },
 
   async readLatestGranotObservationAt() {

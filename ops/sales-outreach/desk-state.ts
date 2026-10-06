@@ -13,8 +13,11 @@
  *   hash integrity, subjects, periods, projections by status, the `next_evaluation_at` histogram,
  *   jobs (open, dead letters, recent completions), watermarks (Call Log, contact calls/SMS, ISync
  *   lane, subscriptions), rep SMS mailbox lag, rep-day rows for NY today/yesterday with count scope
- *   and coverage, contact events by association, unconfirmed `call_interactions` by day, enrollment
- *   runs. Counts, instants, run keys and Agent id tails only: no customer content or tokens.
+ *   and coverage plus the served `actual_basis` per rep (roster reps without a row included), calls
+ *   freshness inputs (ISync lane success, reconcile sync success, newest call webhook), contact events
+ *   by association, unconfirmed `call_interactions` by day and direction (Internal apart; the OPS-1
+ *   acceptance split before CC-04), open subjects without a number by whether their Lead has a phone,
+ *   enrollment runs. Counts, instants, run keys and Agent id tails only: no customer content or tokens.
  */
 import dns from "node:dns";
 import { MongoClient } from "mongodb";

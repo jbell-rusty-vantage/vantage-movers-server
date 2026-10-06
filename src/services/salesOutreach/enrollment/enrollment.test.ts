@@ -7,9 +7,10 @@ import { evaluateSubject } from "../engine";
 import { fixture, policyWith } from "../engine/testSupport";
 import { fixedConfigurationLoader } from "../reads/testing";
 import { deskLeadKey, type DeskLeadFacts } from "../subjects/leadFacts";
-import { accepted, deskConfiguration, leadFacts, MemoryDeskSubjectStore, objectId } from "../subjects/testing";
+import { refreshLeadForOutreach } from "../subjects/leadChangeJob";
+import { accepted, deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore, objectId } from "../subjects/testing";
 import { enrollmentManifestHash } from "./classify";
-import { applyEnrollment, listEnrollmentCandidates, reportEnrollment, verifyEnrollment } from "./service";
+import { applyEnrollment, candidateLegs, listEnrollmentCandidates, objectIdFloorAt, reportEnrollment, verifyEnrollment } from "./service";
 import { memoryEnrollmentDeps, MemoryEnrollmentStore } from "./testing";
 
 const AS_OF = "2026-10-05T12:00:00.000Z"; // 08:00 New York, the preferred P10b activation minute
@@ -17,6 +18,8 @@ const owner = () => csiOperatorActor("sod-enrollment-test");
 /** A Lead received at a real instant (stored as the live ET wall clock). */
 const receivedAt = (iso: string) => ({ timestamp: toFloridaTimestamp(new Date(iso)), created_at: new Date(Date.parse(iso) + 2_000) });
 const id = (n: number) => n.toString(16).padStart(24, "0");
+/** An ObjectId created at `iso` (the Lead's insert time), counter `n`: the candidates' `_id` bounds read this time. */
+const idAt = (iso: string, n: number) => objectIdFloorAt(new Date(iso)).slice(0, 8) + n.toString(16).padStart(16, "0");
 
 function configured(overrides: { paused?: boolean; lookback?: number | null; include?: boolean | null; batch?: number } = {}) {
   return deskConfiguration({
@@ -290,11 +293,29 @@ describe("enrollment verify and candidates", () => {
     await assert.rejects(verifyEnrollment({ actor: owner(), run_key: "nope" }, w.deps), (e: unknown) => (e as { code?: string }).code === "NOT_FOUND");
   });
 
+  test("olr B1: run-enrolled first periods stay at the boundary; later syncs keep verify's first_period_not_at_boundary clean", async () => {
+    const w = world();
+    const leads = seedNew(w.subjects, 6);
+    const { result } = await reportAndApply(w, "run-b1");
+    assert.equal(result.counts.enrolled, 6);
+    // A later Lead change on an enrolled subject (a transition) and a no-op refresh: the first period is untouched.
+    w.subjects.addLead({ ...leads[0]!, ...accepted("1", "2026-10-05T13:00:00Z"), domain_revision: 2 });
+    w.subjects.addLead({ ...leads[1]!, domain_revision: 2 });
+    for (const lead of leads.slice(0, 2)) await refreshLeadForOutreach(lead.ref, configured(), new Date("2026-10-05T14:00:00Z"), w.subjects, fakeSession);
+    for (const subject of w.subjects.subjects) {
+      const [first] = await w.subjects.findPeriods(subject.id);
+      assert.deepEqual([first!.start_kind, first!.started_at.toISOString(), first!.time_basis], ["activation", AS_OF, "activation_boundary"]);
+    }
+    assert.ok(w.subjects.periods.some((p) => p.start_kind === "transition"), "the transition happened");
+    const verified = await verifyEnrollment({ actor: owner(), run_key: "run-b1" }, w.deps);
+    assert.deepEqual([verified.consistent, verified.counts.enrolled_by_run, verified.mismatches.map((m) => m.problem)], [true, 6, []]);
+  });
+
   test("candidates: 'Not enrolled — older' and the review list page newest first across both models", async () => {
     const w = world();
     for (let i = 1; i <= 30; i++) w.subjects.addLead(leadFacts({ id: id(i), model: i % 2 ? "FormLead" : "CallLead", ...receivedAt("2026-03-01T14:00:00Z") }));
-    w.subjects.addLead(leadFacts({ id: id(99), ...receivedAt("2026-10-01T14:00:00Z") })); // in scope, not older
-    w.subjects.addLead(leadFacts({ id: id(98), ...accepted("42", "2026-10-01T14:05:00Z") })); // review
+    w.subjects.addLead(leadFacts({ id: idAt("2026-10-01T14:00:02Z", 99), ...receivedAt("2026-10-01T14:00:00Z") })); // in scope, not older
+    w.subjects.addLead(leadFacts({ id: idAt("2026-10-01T14:00:05Z", 98), ...accepted("42", "2026-10-01T14:05:00Z") })); // review
     const seen: string[] = [];
     let cursor: string | undefined;
     for (let pages = 0; pages < 10; pages++) {
@@ -310,5 +331,120 @@ describe("enrollment verify and candidates", () => {
     const review = await listEnrollmentCandidates({ partition: "review" }, w.deps);
     assert.deepEqual(review.items.map((item) => item.reason), ["unmapped_priority"]);
     await assert.rejects(listEnrollmentCandidates({ partition: "older", cursor: "garbage" }, w.deps), (e: unknown) => (e as { code?: string }).code === "CURSOR_EXPIRED");
+  });
+});
+
+/* ------------------------------------------------------------------ olr B7: scoped candidates, branch cursor */
+
+const cursorOf = (raw: string | null) => (raw ? (JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as { m: number; b?: string; a: string | null }) : null);
+const rawCursor = (cursor: Record<string, unknown>) => Buffer.from(JSON.stringify(cursor)).toString("base64url");
+
+async function allPages(w: ReturnType<typeof world>, partition: Parameters<typeof listEnrollmentCandidates>[0]["partition"], limit = 100, cursor?: string) {
+  const keys: string[] = [];
+  const pages: Array<Awaited<ReturnType<typeof listEnrollmentCandidates>>> = [];
+  for (let n = 0; n < 50; n++) {
+    const page = await listEnrollmentCandidates({ partition, cursor, limit }, w.deps);
+    pages.push(page);
+    keys.push(...page.items.map((item) => deskLeadKey(item.lead)));
+    if (!page.next_cursor) return { keys, pages };
+    cursor = page.next_cursor;
+  }
+  throw new Error("candidate paging did not finish");
+}
+
+/** The B7 fixture: in-window Leads (created when received), older Leads (created months ago), some with upcoming moves. */
+function seedScope(subjects: MemoryDeskSubjectStore) {
+  const add = (iso: string, n: number, overrides: Parameters<typeof leadFacts>[0]) =>
+    subjects.addLead(leadFacts({ id: idAt(new Date(Date.parse(iso) + 2_000).toISOString(), n), ...receivedAt(iso), ...overrides }));
+  const old = "2026-03-01T14:00:00Z";
+  const leads = {
+    recentReview: add("2026-10-01T14:00:00Z", 1, accepted("42", "2026-10-01T14:05:00Z")),
+    recentCallReview: add("2026-10-02T14:00:00Z", 2, { model: "CallLead", ...accepted("42", "2026-10-02T14:05:00Z") }),
+    inScopeNew: add("2026-10-03T14:00:00Z", 3, {}),
+    oldUpcomingReview: add(old, 4, { ...accepted("42", "2026-03-01T14:05:00Z"), move_date: "2026-11-01" }),
+    oldUpcomingQuoted: add(old, 5, { ...accepted("1", "2026-03-01T14:05:00Z"), move_date: "2026-11-02" }),
+    oldReviewNoMove: add(old, 6, accepted("42", "2026-03-01T14:05:00Z")),
+    oldCallUpcoming: add(old, 7, { model: "CallLead", ...accepted("42", "2026-03-01T14:05:00Z"), move_date: "2026-11-01" }),
+  };
+  const older: DeskLeadFacts[] = [];
+  for (let i = 0; i < 40; i++) older.push(add("2026-02-01T14:00:00Z", 100 + i, i % 2 ? { model: "CallLead" } : {}));
+  return { ...leads, older };
+}
+
+describe("enrollment candidates are scoped like the report (olr B7)", () => {
+  test("candidates: every partition except older is limited to the backfill scope (received window or upcoming move)", async () => {
+    const w = world();
+    const s = seedScope(w.subjects);
+    const review = await allPages(w, "review");
+    assert.deepEqual(
+      review.keys.sort(),
+      [s.recentReview, s.recentCallReview, s.oldUpcomingReview].map((l) => deskLeadKey(l.ref)).sort(),
+      "years-old review Leads outside the scope (no upcoming Form move) are not listed",
+    );
+    const scope = review.pages[0]!.scope as { cutoff_date: string; today: string };
+    for (const item of review.pages.flatMap((p) => p.items))
+      assert.ok((item.received_date !== null && item.received_date >= scope.cutoff_date) || (item.move_date !== null && item.move_date >= scope.today), deskLeadKey(item.lead));
+
+    // The review list matches the report's review count, and in_scope is the report's frozen selection ("Ready to enroll").
+    const report = await reportEnrollment({ selection: { mode: "backfill_scope" } }, w.deps);
+    assert.equal(review.keys.length, report.counts.review);
+    const ready = await allPages(w, "in_scope");
+    assert.deepEqual(ready.keys.sort(), report.lead_refs.map(deskLeadKey).sort());
+    assert.deepEqual(ready.keys.sort(), [s.inScopeNew, s.oldUpcomingQuoted].map((l) => deskLeadKey(l.ref)).sort());
+
+    // Cost: only the window (created since the window start) and the older Form Leads with upcoming moves are examined.
+    w.store.scans.length = 0;
+    const page = await listEnrollmentCandidates({ partition: "review", limit: 100 }, w.deps);
+    assert.equal(page.scanned, 5, "3 in-window Leads + 2 older Form Leads with an upcoming move, never the 40 older Leads");
+    assert.equal(page.next_cursor, null);
+    assert.deepEqual(
+      w.store.scans.map((scan) => [scan.model, Boolean(scan.filter?.id_from), Boolean(scan.filter?.id_before), scan.returned]),
+      [["FormLead", true, false, 2], ["FormLead", false, true, 2], ["CallLead", true, false, 1]],
+    );
+    for (const partition of ["already_enrolled", "closed", "excluded", "not_new_or_quoted", "in_scope"] as const)
+      assert.ok(candidateLegs(partition, report.scope as Parameters<typeof candidateLegs>[1]).every((leg) => leg.filter.id_from || leg.filter.id_before), partition);
+    assert.equal(candidateLegs("review", report.scope as Parameters<typeof candidateLegs>[1])[0]!.filter.id_from, objectIdFloorAt(new Date("2026-07-05T04:00:00.000Z")), "window start (NY 2026-07-06 00:00) minus one day");
+  });
+
+  test("older stays the out-of-scope list", async () => {
+    const w = world();
+    const s = seedScope(w.subjects);
+    const older = await allPages(w, "older", 15);
+    assert.deepEqual(older.keys.sort(), s.older.map((l) => deskLeadKey(l.ref)).sort());
+    assert.ok(older.pages.flatMap((p) => p.items).every((item) => item.partition === "older" && item.reason === "outside_backfill_scope"));
+    assert.ok(w.store.scans.every((scan) => scan.filter?.timestamp_before && !scan.filter.id_from && !scan.filter.id_before), "older keeps its prefilter and no _id bounds");
+    // A Lead in the window is never "older"; an in-scope list never shows an older Lead.
+    const ready = await allPages(w, "in_scope");
+    assert.ok(!ready.keys.some((key) => older.keys.includes(key)));
+  });
+
+  test("a cursor continues across branches and models", async () => {
+    const w = world();
+    const formRecent = [1, 2, 3].map((n) => w.subjects.addLead(leadFacts({ id: idAt(`2026-10-0${n}T14:00:02Z`, n), ...receivedAt(`2026-10-0${n}T14:00:00Z`) })));
+    const formUpcoming = [4, 5, 6].map((n) => w.subjects.addLead(leadFacts({ id: idAt(`2026-03-0${n}T14:00:02Z`, n), ...receivedAt(`2026-03-0${n}T14:00:00Z`), move_date: "2026-11-01" })));
+    const callRecent = [7, 8, 9].map((n) => w.subjects.addLead(leadFacts({ model: "CallLead", id: idAt(`2026-09-2${n - 6}T14:00:02Z`, n), ...receivedAt(`2026-09-2${n - 6}T14:00:00Z`) })));
+    const desc = (leads: readonly DeskLeadFacts[]) => [...leads].reverse();
+    const expected = [...desc(formRecent), ...desc(formUpcoming), ...desc(callRecent)].map((l) => deskLeadKey(l.ref));
+    const { keys, pages } = await allPages(w, "in_scope", 2);
+    assert.deepEqual(keys, expected, "Form window newest first, then older Form Leads with upcoming moves, then Call Leads; no repeats, none skipped");
+    const cursors = pages.map((p) => cursorOf(p.next_cursor)).filter((c) => c !== null);
+    assert.deepEqual([...new Set(cursors.map((c) => `${c!.m}${c!.b}`))], ["0w", "0u", "1w"], "the cursor carries the branch");
+
+    // A pre-B7 cursor `{m, a}` still decodes, as the window branch.
+    const legacy = await listEnrollmentCandidates({ partition: "in_scope", limit: 2, cursor: rawCursor({ m: 0, a: formRecent[1]!.ref.id }) }, w.deps);
+    assert.deepEqual(legacy.items.map((item) => deskLeadKey(item.lead)), [deskLeadKey(formRecent[0]!.ref), deskLeadKey(formUpcoming[2]!.ref)]);
+    // Malformed cursors are CURSOR_EXPIRED; a cursor past the last leg is an empty last page.
+    for (const bad of [rawCursor({ m: 0, b: "x", a: null }), rawCursor({ m: 2, b: "w", a: null }), rawCursor({ m: 0, b: "w", a: "not-an-id" })])
+      await assert.rejects(listEnrollmentCandidates({ partition: "in_scope", cursor: bad }, w.deps), (e: unknown) => (e as { code?: string }).code === "CURSOR_EXPIRED");
+    const past = await listEnrollmentCandidates({ partition: "in_scope", cursor: rawCursor({ m: 1, b: "u", a: null }) }, w.deps);
+    assert.deepEqual([past.items.length, past.next_cursor, past.scanned], [0, null, 0]);
+
+    // The upcoming-move branch follows the configuration: without it, a `u` cursor resumes at the Call Leads.
+    const noMoves = world(fixedConfigurationLoader(configured({ include: false })));
+    for (const lead of [...formRecent, ...formUpcoming, ...callRecent]) noMoves.subjects.addLead(lead);
+    const resumed = await listEnrollmentCandidates({ partition: "in_scope", limit: 100, cursor: rawCursor({ m: 0, b: "u", a: formUpcoming[2]!.ref.id }) }, noMoves.deps);
+    assert.deepEqual(resumed.items.map((item) => deskLeadKey(item.lead)), desc(callRecent).map((l) => deskLeadKey(l.ref)));
+    const all = await allPages(noMoves, "in_scope", 100);
+    assert.deepEqual(all.keys, [...desc(formRecent), ...desc(callRecent)].map((l) => deskLeadKey(l.ref)), "older Leads with upcoming moves are out of scope without the switch");
   });
 });

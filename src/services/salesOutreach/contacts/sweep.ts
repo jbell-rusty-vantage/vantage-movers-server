@@ -34,7 +34,9 @@ import { mongoRepDayStore, recountRepDay, type RepDayStore } from "./repDayServi
  * - Derivation watermark (calls): when a pass catches up (a short page), the Call Log capture
  *   `known_complete_through` read at the start of that pass is stored as this scope's
  *   `known_complete_through`: every call capture knew of then has its contact event. Rep-day coverage
- *   is the minimum of the two watermarks (S1's open question on a projection watermark).
+ *   is the minimum of the two watermarks (S1's open question on a projection watermark). The capture
+ *   `observed_complete_through` (no provisional cap, olr A3) read at the same instant is stored as this
+ *   scope's `observed_complete_through` the same way (only when capture has one).
  * - Single runner per scope (lease in the scope row); fails closed without an active configuration
  *   that wants contact evidence (cursor unmoved, nothing lost).
  */
@@ -50,13 +52,20 @@ export type SweepState = Readonly<{ cursor: SweepCursor | null; coverage_from: D
 
 export type SweepStore = {
   readState(kind: SweepKind, session: ClientSession): Promise<SweepState>;
-  writeState(kind: SweepKind, update: { cursor: SweepCursor; coverage_from?: Date; known_complete_through?: Date | null }, session: ClientSession): Promise<void>;
+  writeState(
+    kind: SweepKind,
+    update: { cursor: SweepCursor; coverage_from?: Date; known_complete_through?: Date | null; observed_complete_through?: Date | null },
+    session: ClientSession,
+  ): Promise<void>;
   /** Source ids strictly after the cursor, oldest first. */
   sourcesAfter(kind: SweepKind, cursor: SweepCursor, limit: number, session: ClientSession): Promise<Array<{ id: string; updated_at: Date }>>;
   /** Source ids in `(cursor − overlap, cursor]`. */
   sourcesInOverlap(kind: SweepKind, cursor: SweepCursor, overlapMs: number, limit: number, session: ClientSession): Promise<string[]>;
-  captureKnownCompleteThrough(): Promise<Date | null>;
+  /** Call Log capture watermarks (`call_log_all_directions`): capped `known` and uncapped `observed` (olr A3). */
+  captureWatermarks(): Promise<CaptureWatermarks>;
 };
+
+export type CaptureWatermarks = Readonly<{ known: Date | null; observed: Date | null }>;
 
 const scopeOf = (kind: SweepKind) => (kind === "call" ? OUTREACH_CONTACT_CALLS_SCOPE : OUTREACH_CONTACT_SMS_SCOPE);
 const modelOf = (kind: SweepKind) => (kind === "call" ? getCallInteractionModel() : getRingCentralRepSmsEvidenceModel());
@@ -80,6 +89,7 @@ export const mongoSweepStore: SweepStore = {
     };
     if (update.coverage_from) set["cursor.outreach_coverage_from"] = update.coverage_from;
     if (update.known_complete_through) set.known_complete_through = update.known_complete_through;
+    if (update.observed_complete_through) set.observed_complete_through = update.observed_complete_through;
     await getSalesIntelligenceSyncStateModel().updateOne({ scope: scopeOf(kind) }, { $set: set }, { session, upsert: true });
   },
   async sourcesAfter(kind, cursor, limit, session) {
@@ -100,11 +110,11 @@ export const mongoSweepStore: SweepStore = {
       .lean()) as unknown as Array<{ _id: unknown }>;
     return rows.map((row) => String(row._id));
   },
-  async captureKnownCompleteThrough() {
-    const row = (await getSalesIntelligenceSyncStateModel().findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { known_complete_through: 1 }).lean()) as {
-      known_complete_through?: Date | null;
-    } | null;
-    return row?.known_complete_through ?? null;
+  async captureWatermarks() {
+    const row = (await getSalesIntelligenceSyncStateModel()
+      .findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { known_complete_through: 1, observed_complete_through: 1 })
+      .lean()) as { known_complete_through?: Date | null; observed_complete_through?: Date | null } | null;
+    return { known: row?.known_complete_through ?? null, observed: row?.observed_complete_through ?? null };
   },
 };
 
@@ -174,7 +184,7 @@ export async function recountRepDays(
       const result = await transaction(async (session) => {
         const configuration = await loader.requireActive(session);
         if (!wantsContactEvidence(configuration)) throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "controls", code: "disabled" }]);
-        return recountRepDay(key, configuration, now, store, session);
+        return recountRepDay(key, configuration, now, store, session, { materialize: key.materialize === true });
       });
       if (result.outcome === "written" && result.publication_revision !== null)
         published.push({ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision });
@@ -205,7 +215,7 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
   let changed = 0;
   let caughtUp = false;
   try {
-    const captureThrough = kind === "call" ? await store.captureKnownCompleteThrough() : null;
+    const capture: CaptureWatermarks = kind === "call" ? await store.captureWatermarks() : { known: null, observed: null };
     while (!caughtUp && clock() < deadline) {
       const firstPage = pages === 0;
       const page = await transaction(async (session) => {
@@ -231,7 +241,7 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
           {
             cursor: last ? { updated_at: last.updated_at, id: last.id } : cursor,
             ...(bootstrap ? { coverage_from: bootstrap } : {}),
-            ...(short && kind === "call" ? { known_complete_through: captureThrough } : {}),
+            ...(short && kind === "call" ? { known_complete_through: capture.known, observed_complete_through: capture.observed } : {}),
           },
           session,
         );
@@ -265,6 +275,13 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
  * the configured scope of the day (olr C1a: rows an older build wrote under another scope self-correct
  * within a minute of the deploy) — so coverage catches up and each day freezes its goal after
  * midnight even without new calls. Bounded by the roster.
+ *
+ * Zero-activity days (olr C5): after New York midnight, every roster rep without a row yesterday gets a
+ * `materialize` key, so the recount writes a zero row with yesterday's goal snapshot frozen (P08a: a
+ * later roster or schedule edit no longer rewrites that day's goal). Idempotent: once the row exists it
+ * is an ordinary row (recounted only while incomplete); a racing writer of the same rep-day loses on
+ * `sod_rep_day_unique`, which fails that key's transaction and the next minute recounts the existing
+ * row. Never today, never an Agent off the roster.
  */
 export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {}): Promise<{ skipped: boolean; reason: string | null; recounted: number; failures: number }> {
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
@@ -275,12 +292,18 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
   const today = newYorkBusinessDay(now);
   const keys: RepDayKey[] = [];
   const schedule = inspected.value.goals?.count_scope_schedule;
-  for (const day of [addDays(today, -1), today]) {
+  const yesterday = addDays(today, -1);
+  const roster = (inspected.value.goals?.rep_work_schedules ?? []).map((row) => row.agent_id);
+  for (const day of [yesterday, today]) {
     const scope = countScopeForDay(day, schedule);
-    for (const row of await store.rowsOfDay(day)) {
+    const rows = await store.rowsOfDay(day);
+    for (const row of rows) {
       if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope)
         keys.push({ agent_id: row.agent_id, business_day: day });
     }
+    if (day !== yesterday) continue;
+    const have = new Set(rows.map((row) => row.agent_id));
+    for (const agent of roster) if (!have.has(agent)) keys.push({ agent_id: agent, business_day: day, materialize: true });
   }
   const result = await recountRepDays(keys, loader, now, store, deps.transaction ?? withTransaction, deps.publishGoal);
   return { skipped: false, reason: null, ...result };

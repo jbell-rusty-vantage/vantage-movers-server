@@ -7,24 +7,54 @@
  * aggregations whose pipelines are refused when they contain `$out`/`$merge`), and the CLI also
  * installs the driver-level read guard (`installReadOnlyCommandGuard`) that exits before any
  * non-read command is sent. The summary carries counts, instants, run keys, configuration values and
- * Agent id tails only: no Lead, customer, phone, message or token field is ever projected.
+ * Agent id tails only: no customer, message or token field is projected. The one exception is read
+ * in memory and never printed: the Lead phone paths of open subjects without a number, reduced to
+ * a has-phone boolean (OPS-0b).
  */
 import { createHash } from "node:crypto";
 import type { Db, Document, Filter, MongoClient } from "mongodb";
+import { SALES_OUTREACH_LEAD_MODELS, type SalesOutreachLeadModel } from "../../src/config/domain/salesOutreach";
 import { OUTREACH_CONTACT_CALLS_SCOPE, OUTREACH_CONTACT_SMS_SCOPE } from "../../src/config/domain/salesOutreachContacts";
 import {
   SALES_OUTREACH_CONFIGURATION_POINTER_KEY,
   salesOutreachConfigurationVersionKey,
 } from "../../src/models/salesOutreach/configuration";
+import { isyncLaneMinute } from "../../src/services/numberActivity/callLogIsyncLane";
+import { leadPhoneE164s, type LeadRow } from "../../src/services/numberActivity/leadLink";
+import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { addDays } from "../../src/services/salesOutreach/engine/calendar";
 import { createConfigurationLoader, type ConfigurationInspection } from "../../src/services/salesOutreach/config/load";
 import { configurationContentHash, type ConfigurationStore } from "../../src/services/salesOutreach/config/store";
+import { repDayCoverage } from "../../src/services/salesOutreach/contacts/repDay";
+import { deskTimingOf } from "../../src/services/salesOutreach/config/timing";
+import type { CallWatermarks } from "../../src/services/salesOutreach/evidence/coverage";
 import { newYorkBusinessDay } from "../../src/services/salesOutreach/reads/businessDay";
+import { composeRepDay, fallbackCountScope, resolveRepDayGoal, type RepDayRow } from "../../src/services/salesOutreach/reads/goals";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
 import { assertReadOnlyPipeline, isCommandAllowed } from "../slimming/lib/guarded-mongo";
 
-export const DESK_STATE_SUMMARY_VERSION = 1;
+/** 2 (OPS-0b): unconfirmed calls by direction + the OPS-1 acceptance split, served rep-day `actual_basis`, calls freshness inputs, subjects without numbers by Lead phone. */
+export const DESK_STATE_SUMMARY_VERSION = 2;
+
+/**
+ * CC-04 commit instant: `call_interactions` rows started before it predate the `call_log_state`
+ * stamp (OPS-1 settles the Inbound/Outbound ones; `Internal` rows stay null on purpose). Same
+ * instant as `CC04_INSTANT` in `sales-outreach-settle-pre-cc04.ts` (a unit test pins it).
+ */
+export const DESK_STATE_CC04_INSTANT = new Date("2026-09-24T01:28:03Z");
+/** Directions OPS-1 settles; every other direction (`Internal`, null) is reported apart. */
+export const EXTERNAL_CALL_DIRECTIONS = ["Inbound", "Outbound"] as const;
+/** Lead collection per subject `lead_model` (a unit test pins them to the models). */
+export const LEAD_COLLECTIONS: Readonly<Record<SalesOutreachLeadModel, string>> = { FormLead: "form_leads", CallLead: "call_leads" };
+/** The phone paths `leadPhoneE164s` reads; only these are fetched, and they never leave the process. */
+export const LEAD_PHONE_PROJECTION = {
+  _id: 1,
+  normalized_phone_number: 1,
+  "ingested_contact_snapshot.normalized_phone_number": 1,
+  "granot_contact_snapshot.normalized_phone_number": 1,
+  "ringcentral.original_caller.normalized_phone_number": 1,
+} as const;
 
 /** Sync-state scopes the snapshot reads (the owning services export the same literals; a unit test pins them). */
 export const DESK_STATE_SCOPES = {
@@ -43,6 +73,8 @@ export const NEXT_EVALUATION_HISTOGRAM_BUCKETS = 48;
 export const RECENT_REP_DAYS = 10;
 export const LISTED_DAYS = 15;
 export const LISTED_ENROLLMENT_RUNS = 30;
+/** Open subjects without a number read per snapshot (production: 71); `truncated` says when the cap was hit. */
+export const SUBJECTS_WITHOUT_NUMBERS_CAP = 1_000;
 
 // ---------------------------------------------------------------------------------------------
 // Arguments
@@ -299,6 +331,200 @@ export function summarizeRepDays(businessDay: string, rows: readonly Document[])
   };
 }
 
+/** A raw rep-day document as the desk read store maps it (`reads/store.ts` `findRepDayRows`). */
+export function repDayRowOf(doc: Document): RepDayRow {
+  const snapshot = doc.goal_snapshot;
+  return {
+    agent_id: String(doc.agent_id),
+    business_day: String(doc.business_day),
+    count_scope: doc.count_scope,
+    goal_snapshot: snapshot
+      ? {
+          roster_version: snapshot.roster_version ?? null,
+          configuration_version: snapshot.configuration_version ?? null,
+          goal: snapshot.goal ?? null,
+          scheduled: snapshot.scheduled ?? false,
+          override: snapshot.override ?? null,
+        }
+      : null,
+    actual_confirmed: num(doc.actual_confirmed),
+    actual_awaiting_confirmation: num(doc.actual_awaiting_confirmation),
+    unattributed: num(doc.unattributed),
+    coverage: doc.coverage ?? null,
+    computed_as_of: asDate(doc.computed_as_of),
+    publication_revision: num(doc.publication_revision),
+  };
+}
+
+export type ServedRepDays =
+  | { business_day: string; available: false; reason: "configuration_not_active" }
+  | {
+      business_day: string;
+      available: true;
+      goal_metrics_enabled: boolean;
+      /** The day's capture coverage before any row's own coverage is merged in (`repDayCoverage`). */
+      capture_coverage: { state: string; known_complete_through: string | null; required_through: string | null };
+      actual_basis: Counts;
+      /** Roster reps with no rep-day row whose count still reads Pending (wave 1 expects 0 once coverage is complete). */
+      pending_without_row: number;
+      reps: Array<{
+        agent: string;
+        on_roster: boolean;
+        has_row: boolean;
+        goal_state: string;
+        actual_basis: string;
+        actual_confirmed: number | null;
+        coverage_state: string;
+      }>;
+    };
+
+/**
+ * What `GET /rep-days` would serve for one day under this build, per rep: roster reps (roster order)
+ * then Agents with a row that are not on the roster, the same composition as
+ * `reads/service.ts` `composeRepDays` (`repDayCoverage` → `resolveRepDayGoal` → `composeRepDay`), so
+ * `actual_basis` reads `projection`, `no_activity_recorded` or `pending` exactly as served. Names are
+ * not read; agents are id tails. Served regardless of `controls.goal_metrics_enabled` (reported).
+ */
+export function composeServedRepDays(input: {
+  business_day: string;
+  today: string;
+  now: Date;
+  configuration: ConfigurationInspection;
+  rows: readonly RepDayRow[];
+  /** Capture + derivation call watermarks, as the read assembles them (`reads/service.ts` `repDayCallWatermarks`). */
+  marks: CallWatermarks;
+}): ServedRepDays {
+  const { business_day, today, now, configuration } = input;
+  if (configuration.state !== "active") return { business_day, available: false, reason: "configuration_not_active" };
+  const goals = configuration.value.goals;
+  const roster = (goals.rep_work_schedules ?? []).map((entry) => entry.agent_id);
+  const rows = input.rows.filter((row) => row.business_day === business_day);
+  const rowByAgent = new Map(rows.map((row) => [row.agent_id, row]));
+  const agents = [...roster, ...rows.map((row) => row.agent_id).filter((id) => !roster.includes(id)).sort()];
+  const capture = repDayCoverage(business_day, today, now, input.marks, deskTimingOf(configuration.value));
+  const fallback = fallbackCountScope(goals, business_day);
+  const reps = agents.map((agent_id) => {
+    const row = rowByAgent.get(agent_id) ?? null;
+    const served = composeRepDay({
+      agent_id,
+      agent_name: null,
+      reviewed_link: false,
+      goal: resolveRepDayGoal({ goals, configuration_version: configuration.version, agent_id, business_day, today, row }),
+      row,
+      fallback_scope: fallback,
+      capture_coverage: capture,
+    });
+    return {
+      agent: agentTail(agent_id),
+      on_roster: roster.includes(agent_id),
+      has_row: row !== null,
+      goal_state: served.goal_state,
+      actual_basis: served.actual_basis,
+      actual_confirmed: served.actual_confirmed,
+      coverage_state: served.coverage.state,
+    };
+  });
+  return {
+    business_day,
+    available: true,
+    goal_metrics_enabled: configuration.value.controls.goal_metrics_enabled,
+    capture_coverage: { state: capture.state, known_complete_through: capture.known_complete_through ?? null, required_through: capture.required_through ?? null },
+    actual_basis: tally(reps.map((rep) => rep.actual_basis)),
+    pending_without_row: reps.filter((rep) => rep.on_roster && !rep.has_row && rep.actual_basis === "pending").length,
+    reps,
+  };
+}
+
+export type CallsFreshnessInputs = {
+  /** New York minute in the ISync lane window [07:45, 20:30), where the webhook counts (RINGCENTRAL-CAPTURE §8). */
+  in_staffed_window: boolean;
+  lane_success_at: string | null;
+  lane_success_lag_min: number | null;
+  /** The last reconcile run counts as a confirmation only when it stored a sync token without a sync error (lane A F5). */
+  reconcile: { finished_at: string | null; sync_token_stored: boolean | null; sync_error_code: string | null; success_at: string | null; success_lag_min: number | null };
+  /** max(lane success, reconcile success): the calls confirmation instant. */
+  confirmation_at: string | null;
+  confirmation_lag_min: number | null;
+  /** Newest call webhook receipt (`ringcentral_webhook_events`, telephony session present). */
+  last_webhook_at: string | null;
+  webhook_lag_min: number | null;
+  known_complete_through_lag_min: number | null;
+  observed_complete_through_lag_min: number | null;
+  last_error_code: string | null;
+};
+
+/**
+ * The inputs of `freshness.calls.state`/`reason` (lane A A3-fresh): the ISync lane success, the
+ * reconcile's sync success, their max, the newest call webhook receipt and the coverage lags, at
+ * `now`. Inputs only: the served state comes from `GET /team`; these explain it.
+ */
+export function summarizeCallsFreshnessInputs(row: Document | null, lastWebhookAt: unknown, now: Date): CallsFreshnessInputs {
+  const lane = asDate(row?.isync_lane?.last_success_at);
+  const run = row?.last_run ?? null;
+  const tokenStored = typeof run?.sync_token_stored === "boolean" ? run.sync_token_stored : null;
+  const syncError = typeof run?.sync_error_code === "string" && run.sync_error_code ? run.sync_error_code : null;
+  const reconcile = tokenStored === true && !syncError ? asDate(run?.finished_at) : null;
+  const confirmation = lane && reconcile ? (lane.getTime() >= reconcile.getTime() ? lane : reconcile) : (lane ?? reconcile);
+  const webhook = asDate(lastWebhookAt);
+  return {
+    in_staffed_window: (() => {
+      const minute = isyncLaneMinute(now);
+      return minute.run || minute.reason !== "outside_staffed_hours";
+    })(),
+    lane_success_at: isoOrNull(lane),
+    lane_success_lag_min: lagMinutes(lane, now),
+    reconcile: {
+      finished_at: isoOrNull(run?.finished_at),
+      sync_token_stored: tokenStored,
+      sync_error_code: syncError,
+      success_at: isoOrNull(reconcile),
+      success_lag_min: lagMinutes(reconcile, now),
+    },
+    confirmation_at: isoOrNull(confirmation),
+    confirmation_lag_min: lagMinutes(confirmation, now),
+    last_webhook_at: isoOrNull(webhook),
+    webhook_lag_min: lagMinutes(webhook, now),
+    known_complete_through_lag_min: lagMinutes(row?.known_complete_through, now),
+    observed_complete_through_lag_min: lagMinutes(row?.observed_complete_through, now),
+    last_error_code: typeof run?.error_code === "string" && run.error_code ? run.error_code : null,
+  };
+}
+
+export type SubjectsWithoutNumbersSummary = {
+  /** Open (not closed) subjects with `contact_number_ids` empty or null that were checked. */
+  checked: number;
+  truncated: boolean;
+  /** Keys `status/lead_model/lead_phone` with lead_phone `has_phone` (a phone path forms an E.164), `no_phone` or `lead_missing`. */
+  by_status_model_phone: Counts;
+  /** The wave-1 acceptance number (plan §6): active subjects without a number whose Lead has a phone; 0 after the C2b mint. */
+  active_lead_has_phone: number;
+};
+
+/**
+ * Subjects without a callable number, split by whether their Lead has a phone (`leadPhoneE164s`,
+ * the rule the number link uses). Only counts leave this function: no phone, Lead or subject id.
+ */
+export function summarizeSubjectsWithoutNumbers(
+  subjects: readonly Document[],
+  leads: Readonly<Partial<Record<SalesOutreachLeadModel, readonly Document[]>>>,
+  truncated: boolean,
+): SubjectsWithoutNumbersSummary {
+  const phoneByLead = new Map<string, boolean>();
+  for (const model of SALES_OUTREACH_LEAD_MODELS)
+    for (const lead of leads[model] ?? []) phoneByLead.set(`${model}:${String(lead._id)}`, leadPhoneE164s(lead as LeadRow).length > 0);
+  const keys = subjects.map((subject) => {
+    const model = keyOf(subject.lead_model);
+    const phone = phoneByLead.get(`${model}:${String(subject.lead_id)}`);
+    return { status: keyOf(subject.status), key: `${keyOf(subject.status)}/${model}/${phone === undefined ? "lead_missing" : phone ? "has_phone" : "no_phone"}` };
+  });
+  return {
+    checked: subjects.length,
+    truncated,
+    by_status_model_phone: tally(keys.map((k) => k.key)),
+    active_lead_has_phone: keys.filter((k) => k.status === "active" && k.key.endsWith("/has_phone")).length,
+  };
+}
+
 export type ConfigurationSummary = {
   state: ConfigurationInspection["state"];
   reason: string | null;
@@ -428,8 +654,9 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     pointer && typeof pointer.version === "string"
       ? await reader.findOne("sales_outreach_configuration", { kind: "version", key: salesOutreachConfigurationVersionKey(pointer.version) })
       : null;
+  const inspection = await createConfigurationLoader(readerConfigurationStore(reader)).inspect();
   const configuration = summarizeConfiguration({
-    inspection: await createConfigurationLoader(readerConfigurationStore(reader)).inspect(),
+    inspection,
     pointer,
     version: versionRow,
     versions_stored: await reader.count("sales_outreach_configuration", { kind: "version" }),
@@ -522,6 +749,8 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     "last_run.started_at": 1,
     "last_run.finished_at": 1,
     "last_run.error_code": 1,
+    "last_run.sync_token_stored": 1,
+    "last_run.sync_error_code": 1,
     "cursor.outreach_coverage_from": 1,
     "isync_lane.last_run_at": 1,
     "isync_lane.last_success_at": 1,
@@ -538,6 +767,17 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
   const subscriptions = countsOf(
     await reader.aggregate("ringcentral_webhook_subscriptions", [{ $group: { _id: { purpose: "$purpose", status: "$status" }, n: { $sum: 1 } } }]),
   );
+  // Newest call webhook receipt (`{provider, receivedAt}` index); only `receivedAt` is projected.
+  const webhookCollection = getRingCentralCollectionName("webhookEvents");
+  const [lastCallWebhook] = await reader.find(
+    webhookCollection,
+    { provider: "ringcentral", telephonySessionId: { $type: "string" } },
+    { projection: { _id: 0, receivedAt: 1 }, sort: { receivedAt: -1 }, limit: 1 },
+  );
+  const freshness_inputs = {
+    webhook_collection: webhookCollection,
+    calls: summarizeCallsFreshnessInputs(rowOf(DESK_STATE_SCOPES.call_log), lastCallWebhook?.receivedAt ?? null, now),
+  };
 
   // Rep-days
   const R = "sales_outreach_rep_day_projections";
@@ -553,11 +793,11 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
         actual_confirmed: 1,
         actual_awaiting_confirmation: 1,
         unattributed: 1,
-        "goal_snapshot.goal": 1,
+        goal_snapshot: 1,
         goal_state: 1,
-        "coverage.state": 1,
-        "coverage.reason": 1,
+        coverage: 1,
         computed_as_of: 1,
+        publication_revision: 1,
       },
       limit: 500,
     },
@@ -575,9 +815,23 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     },
     { $sort: { "_id.day": -1, "_id.scope": 1 } },
   ]);
+  const contactCallsRow = rowOf(DESK_STATE_SCOPES.contact_calls);
+  const callLogRow = rowOf(DESK_STATE_SCOPES.call_log);
+  const marks: CallWatermarks = {
+    capture_known: asDate(callLogRow?.known_complete_through),
+    capture_observed: asDate(callLogRow?.observed_complete_through),
+    derived_known: asDate(contactCallsRow?.known_complete_through),
+    derived_observed: asDate(contactCallsRow?.observed_complete_through),
+    coverage_from: asDate(contactCallsRow?.cursor?.outreach_coverage_from),
+  };
+  const servedRows = repDayRows.map(repDayRowOf);
+  const served = (business_day: string) => composeServedRepDays({ business_day, today, now, configuration: inspection, rows: servedRows, marks });
   const rep_days = {
     today: summarizeRepDays(today, repDayRows),
     yesterday: summarizeRepDays(yesterday, repDayRows),
+    /** What `GET /rep-days` serves under this build: `actual_basis` per rep, roster reps without a row included. */
+    today_served: served(today),
+    yesterday_served: served(yesterday),
     recent_by_day_scope: recent.map((r) => ({
       business_day: keyOf(r._id?.day),
       count_scope: keyOf(r._id?.scope),
@@ -618,6 +872,8 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
   // Calls not yet confirmed by the Call Log (`terminal` false or never seen in the Call Log)
   const C = "call_interactions";
   const unconfirmed = { $or: [{ terminal: { $ne: true } }, { call_log_state: null }] };
+  const beforeCc04 = { started_at: { $lt: DESK_STATE_CC04_INSTANT } };
+  const unconfirmedByDirection = countsOf(await reader.aggregate(C, [{ $match: unconfirmed }, ...groupCount("direction")]));
   const call_interactions = {
     total: await reader.count(C),
     unconfirmed_total: await reader.count(C, unconfirmed),
@@ -629,7 +885,40 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
         { $limit: LISTED_DAYS },
       ]),
     ),
+    /** `Internal` rows (left null by OPS-1 on purpose) apart from `Inbound`/`Outbound`; a null direction reads `null`. */
+    unconfirmed_by_direction: unconfirmedByDirection,
+    unconfirmed_inbound_outbound_total: EXTERNAL_CALL_DIRECTIONS.reduce((sum, d) => sum + (unconfirmedByDirection[d] ?? 0), 0),
+    unconfirmed_internal_total: unconfirmedByDirection.Internal ?? 0,
+    unconfirmed_by_utc_day_direction: nestedCountsOf(
+      await reader.aggregate(C, [
+        { $match: unconfirmed },
+        { $group: { _id: { day: { $dateToString: { format: "%Y-%m-%d", date: "$started_at" } }, direction: "$direction" }, n: { $sum: 1 } } },
+        { $sort: { "_id.day": -1, "_id.direction": 1 } },
+        { $limit: LISTED_DAYS * 4 },
+      ]),
+      "day",
+      "direction",
+    ),
+    /** Plan §6 wave 0 after OPS-1: `inbound_outbound` reads 0; `internal` keeps the Internal rows OPS-1 leaves alone. */
+    before_cc04: {
+      instant: DESK_STATE_CC04_INSTANT.toISOString(),
+      inbound_outbound: await reader.count(C, { ...unconfirmed, ...beforeCc04, direction: { $in: [...EXTERNAL_CALL_DIRECTIONS] } }),
+      internal: await reader.count(C, { ...unconfirmed, ...beforeCc04, direction: "Internal" }),
+    },
   };
+
+  // Open subjects without a Contact Number, by whether their Lead has a phone (C2 acceptance).
+  const withoutNumbers = await reader.find(
+    S,
+    { status: { $ne: "closed" }, $or: [{ contact_number_ids: { $size: 0 } }, { contact_number_ids: null }] },
+    { projection: { _id: 0, status: 1, lead_model: 1, lead_id: 1 }, limit: SUBJECTS_WITHOUT_NUMBERS_CAP },
+  );
+  const leadsByModel: Partial<Record<SalesOutreachLeadModel, Document[]>> = {};
+  for (const model of SALES_OUTREACH_LEAD_MODELS) {
+    const ids = withoutNumbers.filter((s) => s.lead_model === model).map((s) => s.lead_id);
+    if (ids.length) leadsByModel[model] = await reader.find(LEAD_COLLECTIONS[model], { _id: { $in: ids } }, { projection: LEAD_PHONE_PROJECTION, limit: ids.length });
+  }
+  const subjects_without_numbers = summarizeSubjectsWithoutNumbers(withoutNumbers, leadsByModel, withoutNumbers.length >= SUBJECTS_WITHOUT_NUMBERS_CAP);
 
   const rep_sms_evidence = {
     total: await reader.count("ringcentral_rep_sms_evidence"),
@@ -670,10 +959,12 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     watermarks,
     rep_sms_mailboxes: summarizeRepSmsMailboxes(mailboxes, now),
     subscriptions,
+    freshness_inputs,
     rep_days,
     contact_events,
     call_interactions,
     rep_sms_evidence,
+    subjects_without_numbers,
     enrollment_runs,
   };
 }

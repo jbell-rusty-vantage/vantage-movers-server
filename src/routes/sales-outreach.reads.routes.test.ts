@@ -98,7 +98,15 @@ beforeEach(() => {
     [REP_A, "Alice Rep"],
     [REP_B, "Bob Rep"],
   ]);
-  store.calls = { scope: "call_log_all_directions", known_complete_through: new Date("2026-10-05T14:57:00Z"), last_finished_at: new Date("2026-10-05T14:58:00Z"), last_error_code: null };
+  store.calls = {
+    scope: "call_log_all_directions",
+    known_complete_through: new Date("2026-10-05T14:57:00Z"),
+    last_finished_at: new Date("2026-10-05T14:58:00Z"),
+    last_error_code: null,
+    confirmation_success_at: new Date("2026-10-05T14:59:20Z"),
+  };
+  // 11:00 New York is in the staffed window: a recent call webhook keeps calls freshness green.
+  store.callWebhookAt = new Date("2026-10-05T14:58:30Z");
   store.mailboxes = [];
   store.granot = new Date("2026-10-05T14:56:00Z");
   // S3's contact-event sweep has covered capture since the 1st (a missing row may then read as 0).
@@ -206,6 +214,11 @@ test("rep-days: Owner/Manager see the roster; Rep sees itself; a foreign agent_i
   assert.equal(owner.timezone, "America/New_York");
   assert.equal(owner.as_of, NOW.toISOString());
   assert.equal(owner.freshness.calls.state, "fresh");
+  // olr A3-fresh: "Calls updated" = min(confirmation, webhook) in the staffed window; diagnostics served.
+  assert.deepEqual(
+    [owner.freshness.calls.last_updated_at, owner.freshness.calls.age_seconds, owner.freshness.calls.last_confirmation_at, owner.freshness.calls.last_webhook_at],
+    ["2026-10-05T14:58:30.000Z", 90, "2026-10-05T14:59:20.000Z", "2026-10-05T14:58:30.000Z"],
+  );
   assert.equal(owner.freshness.sms.state, "not_connected");
   assert.equal(owner.freshness.granot.state, "observed");
 

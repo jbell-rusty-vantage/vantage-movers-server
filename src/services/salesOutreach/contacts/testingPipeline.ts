@@ -1,13 +1,27 @@
 import type { MemoryContactEventStore } from "./testing";
 import type { RepDayStore, StoredRepDay } from "./repDayService";
-import type { CoverageWatermarks, RepDayRowFields } from "./repDay";
+import { NO_CALL_WATERMARKS, type CallWatermarks } from "../evidence/coverage";
+import type { RepDayRowFields } from "./repDay";
 import type { SweepCursor, SweepKind, SweepState, SweepStore } from "./sweep";
 
 /** Unit-test stand-ins for the rep-day projection and the minute sweep (no Mongo). */
 
+/**
+ * Call watermarks for a test: capped capture `known` and derivation `known`, optional bootstrap start and
+ * optional observed (uncapped, A3) values; an absent observed value reads as its known twin.
+ */
+export function callMarks(
+  capture_known: Date | null,
+  derived_known: Date | null,
+  coverage_from: Date | null = null,
+  observed: { capture?: Date | null; derived?: Date | null } = {},
+): CallWatermarks {
+  return { capture_known, derived_known, coverage_from, capture_observed: observed.capture ?? null, derived_observed: observed.derived ?? null };
+}
+
 export class MemoryRepDayStore implements RepDayStore {
   rows = new Map<string, RepDayRowFields & { publication_revision: number; revision: number; computed_as_of: Date }>();
-  marks: CoverageWatermarks = { capture_known_complete_through: null, derived_through: null, coverage_from: null };
+  marks: CallWatermarks = NO_CALL_WATERMARKS;
   constructor(private readonly source: MemoryContactEventStore) {}
 
   async events(key: { agent_id: string; business_day: string }) {
@@ -52,20 +66,24 @@ export class MemoryRepDayStore implements RepDayStore {
 }
 
 export class MemorySweepStore implements SweepStore {
-  state = new Map<SweepKind, { cursor: SweepCursor | null; coverage_from: Date | null; known_complete_through: Date | null }>();
+  state = new Map<SweepKind, { cursor: SweepCursor | null; coverage_from: Date | null; known_complete_through: Date | null; observed_complete_through: Date | null }>();
   sources = new Map<SweepKind, Array<{ id: string; updated_at: Date }>>();
+  /** Capture `known_complete_through` (capped). */
   capture: Date | null = null;
+  /** Capture `observed_complete_through` (uncapped, olr A3). */
+  captureObserved: Date | null = null;
 
   async readState(kind: SweepKind): Promise<SweepState> {
     const row = this.state.get(kind);
     return { cursor: row?.cursor ?? null, coverage_from: row?.coverage_from ?? null };
   }
-  async writeState(kind: SweepKind, update: { cursor: SweepCursor; coverage_from?: Date; known_complete_through?: Date | null }) {
-    const row = this.state.get(kind) ?? { cursor: null, coverage_from: null, known_complete_through: null };
+  async writeState(kind: SweepKind, update: { cursor: SweepCursor; coverage_from?: Date; known_complete_through?: Date | null; observed_complete_through?: Date | null }) {
+    const row = this.state.get(kind) ?? { cursor: null, coverage_from: null, known_complete_through: null, observed_complete_through: null };
     this.state.set(kind, {
       cursor: update.cursor,
       coverage_from: update.coverage_from ?? row.coverage_from,
       known_complete_through: update.known_complete_through ?? row.known_complete_through,
+      observed_complete_through: update.observed_complete_through ?? row.observed_complete_through,
     });
   }
   private ordered(kind: SweepKind) {
@@ -82,8 +100,8 @@ export class MemorySweepStore implements SweepStore {
       .slice(0, limit)
       .map((row) => row.id);
   }
-  async captureKnownCompleteThrough() {
-    return this.capture;
+  async captureWatermarks() {
+    return { known: this.capture, observed: this.captureObserved };
   }
 }
 

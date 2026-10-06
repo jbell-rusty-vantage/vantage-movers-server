@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { isCadenceQualifying } from "../engine/credit";
 import { deriveSmsContactEvent, toEngineContactEvent, type ContactEventDraft, type SmsSourceRow } from "./derive";
-import { ContextBuilder, newId } from "./testing";
+import { ContextBuilder, newId, subjectFacts } from "./testing";
 
 /** SRV-6 SMS contact events from `ringcentral_rep_sms_evidence` (P07d/P07e/P07g). */
 
@@ -81,5 +81,15 @@ describe("SMS contact events (P07d/P07e)", () => {
     const draft = deriveSmsContactEvent(smsRow(), ctx.build());
     assert.equal(draft.restricted_at_contact, true);
     assert.equal(isCadenceQualifying(engine(draft), "sms"), false);
+  });
+
+  test("P05f/P10a (olr C4): an SMS sent earlier on the activation date carries the subject for the same-date SMS reuse, never credit", () => {
+    const ctx = new ContextBuilder().number("+15550100200", SMS_NUMBER);
+    const lead = ctx.lead(SMS_NUMBER, subjectFacts({ activation_at: new Date("2026-10-05T19:00:00Z") }));
+    const draft = deriveSmsContactEvent(smsRow(), ctx.build());
+    assert.deepEqual([draft.association, draft.subject_id, draft.subject_workflow, draft.kind, draft.verification], ["none", lead.subject!.id, null, "sms_sent", "confirmed"]);
+    assert.equal(isCadenceQualifying(engine(draft), "sms"), true);
+    const dayBefore = deriveSmsContactEvent(smsRow({ send_at: new Date("2026-10-04T20:00:00Z"), provider_created_at: new Date("2026-10-04T20:00:00Z") }), ctx.build());
+    assert.deepEqual([dayBefore.subject_id, dayBefore.verification], [null, "excluded"]);
   });
 });

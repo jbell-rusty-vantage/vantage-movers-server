@@ -15,17 +15,21 @@
     "freshness": {
       "calls": {
         "state": "fresh",
-        "last_updated_at": "2026-10-05T14:57:40.000Z",
+        "last_updated_at": "2026-10-05T14:58:30.000Z",
         "known_complete_through": "2026-10-05T14:57:00.000Z",
-        "age_seconds": 180,
-        "reason": null
+        "age_seconds": 90,
+        "reason": null,
+        "last_confirmation_at": "2026-10-05T14:59:20.000Z",
+        "last_webhook_at": "2026-10-05T14:58:30.000Z"
       },
       "sms": {
         "state": "not_connected",
         "last_updated_at": null,
         "known_complete_through": null,
         "age_seconds": null,
-        "reason": "rep_sms_capture_disabled"
+        "reason": "rep_sms_capture_disabled",
+        "last_confirmation_at": null,
+        "last_webhook_at": null
       },
       "granot": {
         "state": "observed",
@@ -68,11 +72,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -122,11 +126,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -176,11 +180,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -234,11 +238,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -292,11 +296,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },
@@ -346,11 +350,11 @@
         "coverage": {
           "state": "unknown",
           "known_complete_through": null,
-          "required_through": "2026-10-05T14:50:00.000Z",
+          "required_through": "2026-10-05T14:35:00.000Z",
           "gaps": [
             {
               "from": null,
-              "to": "2026-10-05T14:50:00.000Z"
+              "to": "2026-10-05T14:35:00.000Z"
             }
           ]
         },

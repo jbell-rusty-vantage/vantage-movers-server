@@ -13,6 +13,7 @@ import {
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
 import { CsiError } from "../../salesIntelligence/auth";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { smsCoverage } from "../evidence/coverage";
 import { REP_SMS_SYNC_SCOPE_PREFIX } from "../reads/store";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import { mongoDeskSubjectStore, toSubjectRow, type DeskPeriodRow, type DeskSubjectRow, type ReadSession, type SubjectLean } from "../subjects/store";
@@ -270,8 +271,7 @@ export const mongoEvaluationStore: EvaluationStore = {
         .limit(500)
         .session(session)
         .lean();
-      const points = mailboxes.map((row) => (row.known_complete_through as Date | null | undefined) ?? null);
-      sms = points.length && points.every((p) => p !== null) ? new Date(Math.min(...points.map((p) => +p!))) : null;
+      sms = smsCoverage(mailboxes as Array<{ known_complete_through?: Date | null }>);
     }
     return { calls_known_complete_through: (calls?.known_complete_through as Date | null | undefined) ?? null, sms_known_complete_through: sms };
   },

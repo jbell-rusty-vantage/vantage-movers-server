@@ -3,14 +3,21 @@ import { defineCsiModel } from "./salesIntelligence/common";
 // src/models/ContactNumber.ts
 
 /**
- * G7 (reconciliation addendum §3.5): how the Number came to exist. `form_lead` is written only
- * when a Form Lead's submitted phone creates the row (`ensureFormLeadContactNumber`, its
- * backfill, and the S10 step-1 stamp). Capture never writes it: absent or null means `call`.
+ * G7 (reconciliation addendum §3.5): how the Number came to exist. `form_lead` / `call_lead` are
+ * written only when a Lead's phone creates the row (`ensureLeadContactNumber` in the Lead's
+ * `lead_link` job, `ops/numbers-v2/mint-lead-numbers.ts`, and for Form Leads the S10 step-1 stamp;
+ * `call_lead` since outreach lifecycle repair C2b). Capture never writes it: absent or null means `call`.
  */
-export const CONTACT_NUMBER_CREATED_VIA = ["call", "form_lead"] as const;
+export const CONTACT_NUMBER_CREATED_VIA = ["call", "form_lead", "call_lead"] as const;
 export type ContactNumberCreatedVia = (typeof CONTACT_NUMBER_CREATED_VIA)[number];
-/** Null path: a row without the field (every historical and every call-created row) is `call`. */
-export function resolveCreatedVia(value: unknown): ContactNumberCreatedVia {
+/** The served source (All Numbers CONTRACT §4 `source: "call" | "form_lead"`); the stored value can be wider. */
+export type ContactNumberSource = "call" | "form_lead";
+/**
+ * Null path: a row without the field (every historical and every call-created row) is `call`. A Call
+ * Lead's minted number is also served as `call`: a Call Lead is a phone call by origin, and the admin's
+ * `source` enum must not see a new value.
+ */
+export function resolveCreatedVia(value: unknown): ContactNumberSource {
   return value === "form_lead" ? "form_lead" : "call";
 }
 
