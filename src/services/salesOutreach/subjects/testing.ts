@@ -5,7 +5,17 @@ import type { ActiveConfiguration } from "../config/load";
 import { activeInspection } from "../reads/testing";
 import { deskLeadKey, type DeskLeadFacts, type DeskLeadRef } from "./leadFacts";
 import type { NewPeriod } from "./periodPlanner";
-import type { DeskPeriodRow, DeskSubjectRow, DeskSubjectStore, NewSubject, PeriodProvenance, SubjectUpdate } from "./store";
+import { contactChangeDedupeKey, type ContactChangeSource } from "../capture/contactChangeWake";
+import {
+  CONTACT_WAKE_MAX_NUMBERS,
+  type ContactWakeRequest,
+  type DeskPeriodRow,
+  type DeskSubjectRow,
+  type DeskSubjectStore,
+  type NewSubject,
+  type PeriodProvenance,
+  type SubjectUpdate,
+} from "./store";
 
 /** Unit-test stand-ins for the subject services (no Mongo): an in-memory store that records writes. */
 export const fakeSession = { inTransaction: () => true } as unknown as ClientSession;
@@ -22,10 +32,24 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
   uncertain = new Set<string>();
   evaluations: Array<{ subject_id: string; revision: number }> = [];
   writes: string[] = [];
+  /** olr C4 capture stand-ins: Lead key → numbers whose `lead` is that Lead (they credit it). */
+  creditedNumbers = new Map<string, Array<{ id: string; e164: string | null }>>();
+  calls: Array<{ id: string; contact_number_id: string; started_at: Date; merged_into_id?: string | null }> = [];
+  sms: Array<{ id: string; counterpart_numbers: string[]; provider_created_at: Date }> = [];
+  /** `outreach_contact_change` jobs by dedupe key (insert-only, like `enqueueCsiJob`). */
+  contactJobs = new Map<string, ContactChangeSource>();
+  contactWakes: ContactWakeRequest[] = [];
 
   /** Transaction stand-in: the writes of a failed callback are rolled back. */
   snapshot() {
-    const saved = structuredClone({ subjects: this.subjects, periods: this.periods, evaluations: this.evaluations, writes: this.writes });
+    const saved = structuredClone({
+      subjects: this.subjects,
+      periods: this.periods,
+      evaluations: this.evaluations,
+      writes: this.writes,
+      contactJobs: this.contactJobs,
+      contactWakes: this.contactWakes,
+    });
     return () => Object.assign(this, saved);
   }
   addLead(facts: DeskLeadFacts) {
@@ -90,6 +114,24 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
   async requestEvaluation(subjectId: string, revision: number) {
     this.evaluations.push({ subject_id: subjectId, revision });
     this.writes.push(`requestEvaluation:${subjectId}`);
+  }
+  /** Same selection as the Mongo store: credited numbers only, at or after `since`, newest first per kind. */
+  async nominateContactSources(request: ContactWakeRequest) {
+    this.contactWakes.push(structuredClone(request));
+    const numbers = (this.creditedNumbers.get(deskLeadKey(request.lead)) ?? []).slice(0, CONTACT_WAKE_MAX_NUMBERS);
+    if (!numbers.length) return 0;
+    const ids = new Set(numbers.map((n) => n.id));
+    const e164s = new Set(numbers.flatMap((n) => (n.e164 ? [n.e164] : [])));
+    const newest = <T extends { id: string }>(rows: T[], at: (row: T) => Date) =>
+      rows.filter((row) => +at(row) >= +request.since).sort((a, b) => +at(b) - +at(a) || (a.id < b.id ? 1 : -1)).slice(0, request.limit_per_kind);
+    const sources: ContactChangeSource[] = [
+      ...newest(this.calls.filter((c) => ids.has(c.contact_number_id) && !c.merged_into_id), (c) => c.started_at)
+        .map((c) => ({ source_kind: "call" as const, source_id: c.id, source_revision: request.source_revision })),
+      ...newest(this.sms.filter((m) => m.counterpart_numbers.some((e) => e164s.has(e))), (m) => m.provider_created_at)
+        .map((m) => ({ source_kind: "sms" as const, source_id: m.id, source_revision: request.source_revision })),
+    ];
+    for (const source of sources) if (!this.contactJobs.has(contactChangeDedupeKey(source))) this.contactJobs.set(contactChangeDedupeKey(source), source);
+    return sources.length;
   }
 }
 

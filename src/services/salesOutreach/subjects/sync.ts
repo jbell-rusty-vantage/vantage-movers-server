@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ActiveConfiguration } from "../config/load";
@@ -5,7 +6,7 @@ import { evaluateDeskEligibility, type DeskEligibility } from "./eligibility";
 import { deskLeadKey, type DeskLeadFacts } from "./leadFacts";
 import { planPeriodTransition, type PeriodPlan } from "./periodPlanner";
 import { resolveDeskPolicy, type DeskPolicyDecision } from "./policyMapping";
-import type { DeskEnrollment, DeskSubjectRow, DeskSubjectStore, ReadSession, SubjectUpdate } from "./store";
+import type { ContactWakeRequest, DeskEnrollment, DeskSubjectRow, DeskSubjectStore, ReadSession, SubjectUpdate } from "./store";
 import {
   ADMISSION_HOLD_REASONS,
   buildSubjectFacts,
@@ -51,7 +52,68 @@ export type SubjectSyncOutcome = Readonly<{
   status: DeskSubjectRow["status"];
   period: PeriodPlan["action"];
   period_reason: string | null;
+  /** `outreach_contact_change` jobs this sync nominated (olr C4 re-derive wake; 0 when none). */
+  contact_wakes: number;
 }>;
+
+/** olr C4 engineering bounds: how far back one subject change re-derives. */
+export const SUBJECT_WAKE_LOOKBACK_MS = 14 * 24 * 60 * 60_000;
+/** Newest calls, and separately newest SMS, one subject change nominates (intake, period change). */
+export const SUBJECT_WAKE_SOURCES_PER_KIND = 50;
+/** A cohort enrollment's window is the batch duration, so it nominates fewer (LANE-C §C4 risks). */
+export const ENROLLMENT_WAKE_SOURCES_PER_KIND = 10;
+
+export type ContactWake = Omit<ContactWakeRequest, "lead" | "now">;
+
+/**
+ * olr C4: the re-derive wake a subject change needs (LANE-C §C4). Derivation reads the subject, its
+ * activation boundary and its periods when a source is derived, so a call derived before the change
+ * keeps the old context until something re-derives it:
+ * - (i) a subject created after its first calls (intake admits about a minute after the Lead arrives;
+ *   an enrollment activates at the apply moment): its numbers' calls and SMS since the Lead was received
+ *   (never later than the activation boundary). Those at or after the boundary now associate and credit;
+ *   the earlier ones re-derive as the Lead's pre-activation contact.
+ * - (iv) a period opened, or a transition/closure, whose effective instant is in the past: the calls and
+ *   SMS since that instant take the new workflow (`subject_workflow`, `goal_scope_eligible`, closure).
+ * Never earlier than `SUBJECT_WAKE_LOOKBACK_MS` before now. Identity-link and restriction changes take
+ * effect at `now` (prospective), so they need no wake. Pure; null = nothing to re-derive.
+ */
+export function contactWakeOf(
+  input: Readonly<{
+    outcome: SubjectSyncOutcome["outcome"];
+    subject_id: string;
+    enrollment: DeskEnrollment;
+    received_at: Date | null;
+    plan: PeriodPlan;
+    as_of: Date;
+  }>,
+): ContactWake | null {
+  const floor = +input.as_of - SUBJECT_WAKE_LOOKBACK_MS;
+  let wake: ContactWake | null = null;
+  if (input.outcome === "created") {
+    const activation = +input.enrollment.activation_at;
+    const from = input.received_at ? Math.min(+input.received_at, activation) : activation;
+    wake = {
+      since: new Date(Math.max(from, floor)),
+      source_revision: `admit:${input.subject_id}`,
+      limit_per_kind: input.enrollment.kind === "intake" ? SUBJECT_WAKE_SOURCES_PER_KIND : ENROLLMENT_WAKE_SOURCES_PER_KIND,
+    };
+  } else if (input.plan.action !== "none") {
+    // Transition keys repeat across subjects (`intake_default:website_form`): the subject scopes them.
+    const key = createHash("sha256").update(input.plan.period.transition_key).digest("hex").slice(0, 16);
+    wake = {
+      since: new Date(Math.max(+input.plan.period.started_at, floor)),
+      source_revision: `period:${input.subject_id}:${key}`,
+      limit_per_kind: SUBJECT_WAKE_SOURCES_PER_KIND,
+    };
+  }
+  // A boundary at or after now has no derived source behind it.
+  return wake && +wake.since < +input.as_of ? wake : null;
+}
+
+/** The desk wants contact evidence (the capture wake's and the S3 job admission's rule). */
+const wantsContactEvidence = (configuration: ActiveConfiguration) =>
+  configuration.value.controls.desk_enabled || configuration.value.controls.goal_metrics_enabled;
 
 /**
  * Brings one desk subject in line with its Lead's current facts, in the caller's transaction
@@ -62,7 +124,9 @@ export type SubjectSyncOutcome = Readonly<{
  * - the policy-period plan: close + open in this same session (one transaction), a repeated accepted
  *   priority or a replayed transition is a no-op, a closure is final; a first period opened on a later
  *   sync (a review subject decided afterwards) is a late `activation` start (olr B1);
- * - CAS on the subject revision, and an `outreach_evaluate` nomination for every new revision.
+ * - CAS on the subject revision, and an `outreach_evaluate` nomination for every new revision;
+ * - olr C4: a created subject, or a past-effective period change, nominates `outreach_contact_change`
+ *   for the calls and SMS it re-contextualizes (`contactWakeOf`), in this same transaction.
  * Identical inputs write nothing (no revision bump solely to touch the row).
  */
 export async function syncSubject(
@@ -126,7 +190,7 @@ export async function syncSubject(
   } else {
     const update = changedFields(subject, built, status, review_reasons);
     if (!Object.keys(update).length && plan.action === "none")
-      return { outcome: "unchanged", subject_id: subject.id, subject_revision: subject.revision, status, period: "none", period_reason: plan.reason };
+      return { outcome: "unchanged", subject_id: subject.id, subject_revision: subject.revision, status, period: "none", period_reason: plan.reason, contact_wakes: 0 };
     if (!(await store.updateSubject(subject.id, subject.revision, update, session))) throw new CsiError("REVISION_CONFLICT");
     subjectId = subject.id;
     revision = subject.revision + 1;
@@ -143,7 +207,21 @@ export async function syncSubject(
       session,
     );
   if (!bookkeepingOnly) await store.requestEvaluation(subjectId, revision, session);
-  return { outcome, subject_id: subjectId, subject_revision: revision, status, period: plan.action, period_reason: plan.action === "none" ? plan.reason : null };
+  // `insertPeriod` already ran in this session, so the re-derive reads the new period.
+  const received_at = isReliableReceived(built) ? built.received_at : null;
+  const wake = contactWakeOf({ outcome, subject_id: subjectId, enrollment, received_at, plan, as_of: context.as_of });
+  const contactWakes = wake && wantsContactEvidence(configuration)
+    ? await store.nominateContactSources({ ...wake, lead: facts.ref, now: context.as_of }, session)
+    : 0;
+  return {
+    outcome,
+    subject_id: subjectId,
+    subject_revision: revision,
+    status,
+    period: plan.action,
+    period_reason: plan.action === "none" ? plan.reason : null,
+    contact_wakes: contactWakes,
+  };
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

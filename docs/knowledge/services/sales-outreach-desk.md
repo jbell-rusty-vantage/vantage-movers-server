@@ -114,6 +114,7 @@ One `sales_outreach_subjects` row per enrolled canonical Lead (IMPL-04). The Lea
   - Same workflow = no-op (a repeated accepted code, or 0 confirming an intake-default New). A recorded `transition_key` = replay no-op. Keys: `priority:observation:<id>:<workflow>:<code>`, `closure:<reason>:<ref>`, `intake_default:<source>`.
   - An active `closed` period never reopens. No decidable policy retains the last verified period (P05e).
   - Subject writes are CAS on `revision`; identical facts write nothing; every desk-relevant new revision nominates `outreach_evaluate` (`sod:evaluate:<subject>:r<revision>`).
+  - A created subject and a past-effective period change also re-derive the Lead's calls and SMS since then (olr C4, see "Contact events and rep-days").
 
 ### Lead-change feed and intake (IMPL-05, `subjects/feed.ts`, `subjects/leadChangeJob.ts`)
 
@@ -341,6 +342,12 @@ All of it runs only when `controls.rep_sms_capture_enabled` is true in `sales_ou
     - `none`: anything else (no Lead, or a Lead that is not an active subject).
   - A lead-link change re-derives in the same transaction (`capture/leadLinkWake.ts`): `outreach_contact_change` for the number's newest 200 calls and SMS when its `lead` changed (dedupe `…:link<revision>`), and `outreach_lead_change` for each subject whose Lead entered or left the number's link (dedupe `sod:lead-change:<model>:<id>:link:<number>:r<revision>`), so credit and `contact_number_ids` follow the link.
     - A subject-less row keeps `subject_id: null`, so M1 counting and "Other outbound" stay recountable. Subject reads never see it.
+  - A subject change re-derives in the same transaction (olr C4, `subjects/sync.ts` `contactWakeOf` + `store.nominateContactSources`). Derivation reads the subject, its boundary and its periods at derive time, so `syncSubject` nominates `outreach_contact_change` for the calls (`merged_into_id: null`) and SMS of the numbers whose `lead` is the Lead (only those credit it; `other_leads` numbers do not), newest first, when:
+    - the subject is **created** (intake admits about a minute after arrival; an enrollment activates at the apply moment): sources since `min(received_at, activation_at)`. Dedupe `…:admit:<subject>`. At most 50 calls + 50 SMS for intake, 10 + 10 for a cohort enrollment (its window is the batch duration);
+    - a **period opens or a transition/closure** takes effect in the past (accepted observation `captured_at`, Lead change time): sources since the new period's `started_at`, at most 50 + 50. Dedupe `…:period:<subject>:<sha-256(transition_key)[0..16]>` (transition keys repeat across subjects).
+    - Never earlier than 14 days before now, and only while the desk wants contact evidence (`desk_enabled` or `goal_metrics_enabled`). A replayed sync is `unchanged` and asks for nothing; a repeated nomination dedupes on the job identity. Indexes `contact_number_lead`, `call_interaction_number_started_id`, `sod_rsms_counterpart_created`.
+    - No wake (prospective, justified in LANE-C §C4): a rep identity link (connect/change/disconnect) takes effect at `now` and derivation resolves identity at the call start; a restriction is added with `createdAt = now` and lifted with `resolved_at = now`; an assignment change does not enter derivation.
+    - Calls before the activation boundary still derive `none` (no `subject_id`); the wake re-derives them so a later per-reason breakdown stays current, but it does not make them visible to the evaluator.
   - Restricted contact: a `sales_intelligence_contact_restrictions` row on the number that covers the channel (`call`/`text`) with `createdAt ≤ event_at < min(until, resolved_at)`. It sets `restricted_at_contact`, earns zero goal and cadence credit, and stays in history.
   - SMS:
     - the event time is `send_at` (else `provider_created_at`);

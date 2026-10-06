@@ -4,13 +4,16 @@ import type {
   SalesOutreachPeriodStartKind,
   SalesOutreachWorkflow,
 } from "../../../config/domain/salesOutreach";
+import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getGranotObservationModel } from "../../../models/GranotObservation";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
+import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach/repSmsEvidence";
 import { enqueueCsiJob } from "../../salesIntelligence/jobs";
+import { enqueueOutreachContactChangeJobs, type ContactChangeSource } from "../capture/contactChangeWake";
 import { DESK_LEAD_PROJECTION, deskLeadKey, toDeskLeadFacts, type DeskLeadFacts, type DeskLeadRef } from "./leadFacts";
 import type { NewPeriod } from "./periodPlanner";
 import type { DeskReceivedFacts, DeskSubjectFacts } from "./subjectBuilder";
@@ -63,6 +66,23 @@ export type PeriodProvenance = Readonly<{
 }>;
 
 /**
+ * olr C4 re-derive wake: `outreach_contact_change` for the newest calls and SMS (each up to
+ * `limit_per_kind`) of the Contact Numbers whose `lead` is this Lead (only those credit it), at or
+ * after `since`. `source_revision` makes the dedupe key (`sod:contact_change:<kind>:<id>:<revision>`),
+ * so a replayed change enqueues nothing new.
+ */
+export type ContactWakeRequest = Readonly<{
+  lead: DeskLeadRef;
+  since: Date;
+  source_revision: string;
+  limit_per_kind: number;
+  now: Date;
+}>;
+
+/** Bound on the numbers one Lead's wake reads (a Lead has a handful). */
+export const CONTACT_WAKE_MAX_NUMBERS = 50;
+
+/**
  * Every read and write the subject services need. All methods run inside the caller's transaction
  * session; reads are bounded by the caller's page (≤ 100 Leads) and use declared indexes.
  * The Mongo implementation is proven on the replica (`ops/sales-outreach/subjects.replica.ts`); unit
@@ -88,6 +108,8 @@ export type DeskSubjectStore = {
   insertPeriod(subjectId: string, period: NewPeriod, provenance: PeriodProvenance, session: ClientSession): Promise<string>;
   /** Nominates the subject's `outreach_evaluate` job for this subject revision (consumer: evaluator wiring). */
   requestEvaluation(subjectId: string, subjectRevision: number, session: ClientSession): Promise<void>;
+  /** olr C4: nominates the re-derive of the Lead's credited calls and SMS; returns the jobs enqueued (new or deduplicated). */
+  nominateContactSources(request: ContactWakeRequest, session: ClientSession): Promise<number>;
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -321,6 +343,40 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
 
   async requestEvaluation(subjectId, subjectRevision, session) {
     await enqueueCsiJob(evaluationJobInput(subjectId, subjectRevision), session);
+  },
+
+  async nominateContactSources(request, session) {
+    // Index `contact_number_lead`: the numbers that credit this Lead (`contacts/mongoStore.ts` loadContext).
+    const numbers = (await getContactNumberModel()
+      .find({ "lead.id": oid(request.lead.id), "lead.model": request.lead.model }, { e164: 1 })
+      .limit(CONTACT_WAKE_MAX_NUMBERS)
+      .session(session)
+      .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId; e164?: string | null }>;
+    if (!numbers.length) return 0;
+    // Index `call_interaction_number_started_id` (contact_number_id, started_at desc, _id desc).
+    const calls = await getCallInteractionModel()
+      .find({ contact_number_id: { $in: numbers.map((row) => row._id) }, merged_into_id: null, started_at: { $gte: request.since } }, { _id: 1 })
+      .sort({ started_at: -1, _id: -1 })
+      .limit(request.limit_per_kind)
+      .session(session)
+      .lean();
+    const e164s = numbers.flatMap((row) => (row.e164 ? [row.e164] : []));
+    // Index `sod_rsms_counterpart_created`.
+    const sms = e164s.length
+      ? await getRingCentralRepSmsEvidenceModel()
+        .find({ counterpart_numbers: { $in: e164s }, provider_created_at: { $gte: request.since } }, { _id: 1 })
+        .sort({ provider_created_at: -1, _id: -1 })
+        .limit(request.limit_per_kind)
+        .session(session)
+        .lean()
+      : [];
+    const sources: ContactChangeSource[] = [
+      ...calls.map((row) => ({ source_kind: "call" as const, source_id: String(row._id), source_revision: request.source_revision })),
+      ...sms.map((row) => ({ source_kind: "sms" as const, source_id: String(row._id), source_revision: request.source_revision })),
+    ];
+    // The caller already checked the desk wants contact evidence (persisted controls, same transaction).
+    const jobs = await enqueueOutreachContactChangeJobs(sources, session, request.now, { wanted: async () => true });
+    return jobs.length;
   },
 };
 
