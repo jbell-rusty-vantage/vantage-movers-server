@@ -11,6 +11,8 @@
  * 4. resolve each obligation's outcome at `as_of` with honest coverage (pending, never a guessed miss);
  * 5. summarize independent Call and SMS requirements (a deadline only coverage cannot prove yet reads
  *    `due`, SPEC §10.3), flags, history, the next evaluation instant and `coverage_wait` (olr A1).
+ *    Closed and dateless review subjects are quiet (olr A4): no next evaluation at the NY midnight, a
+ *    closed subject's requirements count nothing "today" and its window history ends at the closure date.
  *
  * No clock reads, no I/O. `node:crypto` is used only to hash the result for change detection.
  */
@@ -421,6 +423,21 @@ function summarize(
   const current = periodAt(ctx.periods, A);
   const closed = ctx.closureMs !== null && ctx.closureMs <= A;
   const state = subjectState(ctx.input.subject, current, closed, ctx.receivedMs !== null);
+  // olr A4: a closed subject (final) and a review subject with nothing dated — no received time, no
+  // periods, plans, restrictions or obligations — produce no date-dependent output, so they are quiet:
+  // no midnight re-evaluation, and a closed subject's result no longer moves with the calendar date.
+  const isClosed = state === "closed";
+  const dateless =
+    !isClosed &&
+    state === "review" &&
+    ctx.receivedMs === null &&
+    ctx.input.periods.length === 0 &&
+    ctx.input.human_plans.length === 0 &&
+    ctx.windows.length === 0 &&
+    obligations.length === 0;
+  const quiet = isClosed || dateless;
+  // A closed subject owes nothing today: its requirements summarize no dated obligation.
+  const isToday = (ob: WorkingObligation) => !isClosed && ob.date === today;
 
   const exported: EngineObligation[] = obligations.map((ob) => {
     const outcome = outcomes.get(ob.id)!;
@@ -451,7 +468,7 @@ function summarize(
   const channelRequirement = (channel: Channel): EngineChannelRequirement => {
     const restriction = activeRestrictionAt(ctx.windows, channel, A);
     const mine = obligations.filter((ob) => ob.channel === channel);
-    const todays = mine.filter((ob) => ob.date === today && ob.kind !== "initial_response");
+    const todays = mine.filter((ob) => isToday(ob) && ob.kind !== "initial_response");
     const counted = todays.filter((ob) => {
       const o = outcomes.get(ob.id)!;
       return !NO_MISS_OUTCOMES.has(o) || (ob.fulfilledAt !== null && ob.fulfilledAt <= A);
@@ -469,14 +486,14 @@ function summarize(
     const unverified = new Set(
       mine
         .filter((ob) => coveragePending(ob) && !(callSuspended && ob.kind === "initial_response"))
-        .filter((ob) => ob.date === today || ob.kind === "initial_response" || ob.kind === "callback")
+        .filter((ob) => isToday(ob) || ob.kind === "initial_response" || ob.kind === "callback")
         .map((ob) => ob.id),
     );
     const actionable = mine.filter((ob) => {
       const o = outcomes.get(ob.id)!;
       if (callSuspended && ob.kind === "initial_response") return false;
       if (o === "overdue" || unverified.has(ob.id)) return true;
-      return o === "open" && (ob.date === today || ob.kind === "initial_response" || ob.kind === "callback");
+      return o === "open" && (isToday(ob) || ob.kind === "initial_response" || ob.kind === "callback");
     });
     const overdue = actionable.filter((ob) => outcomes.get(ob.id) === "overdue");
     // `pending` narrows to evidence uncertainty (and channels without coverage).
@@ -503,7 +520,7 @@ function summarize(
     let completion: CompletionKind | null = null;
     if (restriction) status = "blocked";
     else if (overdueDues.length > 0) status = "overdue";
-    else if (evidencePending.some((ob) => ob.date === today || !ROUTINE_KINDS.has(ob.kind)) || (catchUpState === "pending" && !catchUpUnverified)) status = "pending";
+    else if (evidencePending.some((ob) => isToday(ob) || !ROUTINE_KINDS.has(ob.kind)) || (catchUpState === "pending" && !catchUpUnverified)) status = "pending";
     else if (openDues.length > 0 || actionable.length > 0) status = "due";
     else if (counted.length > 0 && done.length === counted.length) status = "completed";
     else if (futureScheduled) status = "scheduled";
@@ -586,7 +603,9 @@ function summarize(
     .filter((o) => (o.outcome === "open" || o.outcome === "scheduled") && o.due_at !== null && parseInstant(o.due_at) > A)
     .map((o) => o.due_at!)
     .sort();
-  const nextEval = nextEvaluation(ctx, obligations, attempts.map((e) => e.at + windowMs));
+  const cooldownExpiries = attempts.map((e) => e.at + windowMs);
+  // A4: a quiet row wakes only when its advisory cooldown warning expires (bounded by the cooldown window).
+  const nextEval = quiet ? (cooldownExpiries.length > 0 ? Math.min(...cooldownExpiries) : null) : nextEvaluation(ctx, obligations, cooldownExpiries);
   // A1.1: the earliest deadline per channel whose verdict waits on coverage (evidence-pending items
   // included: once coverage passes they may resolve); the evaluate sweep pulls on it.
   const coverageWait = (channel: Channel): string | null => {
@@ -598,7 +617,9 @@ function summarize(
     .filter((e) => e.event.verification === "confirmed" && ["outbound_attempt", "inbound_answered", "inbound_missed", "sms_sent", "sms_inbound"].includes(e.event.kind))
     .reduce<number | null>((max, e) => (max === null || e.at > max ? e.at : max), null);
 
-  const { history, summary } = windowHistory(ctx, exported);
+  // A4: a closed subject's window history ends at its closure date (never grows after closure).
+  const historyEnd = isClosed && ctx.closureMs !== null ? minDate(today, cal.dateOf(ctx.closureMs)) : today;
+  const { history, summary } = windowHistory(ctx, exported, historyEnd);
   const result: Omit<EvaluateSubjectResult, "fingerprint" | "input_fingerprint"> = {
     engine_version: OUTREACH_ENGINE_VERSION,
     policy_version: ctx.policy.policy_version,
@@ -609,7 +630,7 @@ function summarize(
     workflow: current?.workflow ?? null,
     period_id: current?.period_id ?? null,
     priority_raw: current?.priority_raw ?? null,
-    schedule_day: ctx.receivedMs === null ? null : calendarScheduleDay(cal.dateOf(ctx.receivedMs), today),
+    schedule_day: isClosed || ctx.receivedMs === null ? null : calendarScheduleDay(cal.dateOf(ctx.receivedMs), today),
     requirements: { call, sms },
     initial_response: ir ? { due_at: ir.due_at, outcome: ir.outcome, fulfilled_at: ir.fulfilled_at } : null,
     callback,
@@ -626,8 +647,11 @@ function summarize(
     window_history: history,
     history_summary: summary,
   };
-  const { computed_as_of: _ignored, ...stable } = result;
+  // A4: `business_date` alone never changes the fingerprint; date-dependent outputs (obligations,
+  // `schedule_day`, history, `next_evaluation_at`) still do for active rows.
+  const { computed_as_of: _ignored, business_date: _date, ...stable } = result;
   void _ignored;
+  void _date;
   return {
     ...result,
     input_fingerprint: sha256(stableStringify({ input: ctx.input, policy: ctx.policy })),
@@ -653,8 +677,16 @@ function emptySummary(): EngineWindowChannelSummary {
   return { required: 0, completed: 0, missed: 0, waived: 0, superseded: 0, open: 0 };
 }
 
-function windowHistory(ctx: Context, exported: EngineObligation[]): { history: EngineWindowHistoryEntry[]; summary: EvaluateSubjectResult["history_summary"] } {
-  const { cal, today } = ctx;
+function minDate(a: BusinessDate, b: BusinessDate): BusinessDate {
+  return a <= b ? a : b;
+}
+
+function windowHistory(
+  ctx: Context,
+  exported: EngineObligation[],
+  lastDate: BusinessDate,
+): { history: EngineWindowHistoryEntry[]; summary: EvaluateSubjectResult["history_summary"] } {
+  const { cal } = ctx;
   const starts = [...ctx.periods.map((p) => cal.dateOf(p.startMs))];
   if (ctx.receivedMs !== null) starts.push(cal.dateOf(ctx.receivedMs));
   if (starts.length === 0) return { history: [], summary: { dates: 0, call_missed: 0, sms_missed: 0 } };
@@ -667,7 +699,7 @@ function windowHistory(ctx: Context, exported: EngineObligation[]): { history: E
     list.push(o);
     byDate.set(o.business_date, list);
   }
-  for (let d = first; d <= today; d = addDays(d, 1)) {
+  for (let d = first; d <= lastDate; d = addDays(d, 1)) {
     const entry: EngineWindowHistoryEntry = {
       business_date: d,
       schedule_day: ctx.receivedMs === null ? null : calendarScheduleDay(cal.dateOf(ctx.receivedMs), d),

@@ -469,3 +469,38 @@ test("A1.6: coverage repair ignores rows whose wait is beyond coverage and does 
   assert.deepEqual(noDerivation.coverage, { pages: 0, nominated: 0, call_through: null, sms_through: null });
   assert.equal([...store.jobs.keys()].filter((k) => k.includes(":coverage:")).length, 0);
 });
+
+/* ---------------------------------------------------------------- olr A4 */
+
+test("A4: clock sweep never nominates a closed projection; the closed row is not rewritten at midnight", async () => {
+  // Closed by an accepted Priority 8 at 14:00 ET (18:00Z) on its received date; an active subject beside it.
+  const { store, subject } = seeded({ status: "closed" });
+  store.periods[0] = { ...store.periods[0]!, ended_at: at("2026-10-05T18:00:00.000Z"), end_reason: "transition" } as (typeof store.periods)[number];
+  store.periods.push(periodRow(subject.id, { workflow: "closed", priority: "8", start_kind: "transition", transition_key: "granot:8", started_at: at("2026-10-05T18:00:00.000Z") }));
+  const active = subjectRow();
+  store.subjects.set(active.id, active);
+  store.periods.push(periodRow(active.id, { started_at: at(RECEIVED) }));
+  const context = admitted();
+  await evaluateAndProject(subject.id, context, at("2026-10-05T18:05:00.000Z"), store, fakeSession);
+  await evaluateAndProject(active.id, context, at("2026-10-05T18:05:00.000Z"), store, fakeSession);
+  const closed = store.projections.get(subject.id)!;
+  assert.equal(closed.doc.next_evaluation_at, null);
+  assert.equal((closed.doc.detail as { state: string }).state, "closed");
+  assert.equal((closed.doc.window_history as Array<{ business_date: string }>).at(-1)!.business_date, "2026-10-05");
+
+  const deps = { loader: fixedConfigurationLoader(configuration()), store, transaction: runInFakeTransaction };
+  const dueJobs = (id: string) => [...store.jobs.keys()].filter((k) => k.startsWith(`sod:evaluate:${id}:due:`));
+  for (const now of ["2026-10-06T04:00:30.000Z", "2026-10-07T04:00:30.000Z", "2026-11-05T05:00:30.000Z"]) {
+    await sweepOutreachEvaluations(at(now), deps);
+  }
+  assert.equal(dueJobs(subject.id).length, 0, "the clock sweep never nominates the closed row");
+  assert.ok(dueJobs(active.id).length > 0, "the active row still wakes at midnight");
+  assert.equal([...store.jobs.keys()].filter((k) => k.includes(subject.id)).length, 0, "no reconcile nomination either: its policy fingerprint is current");
+
+  // Any later evaluation (a subject revision, a policy change) finds nothing new to write.
+  const writes = store.writes.length;
+  const later = await evaluateAndProject(subject.id, context, at("2026-11-05T05:01:00.000Z"), store, fakeSession);
+  assert.equal(later.outcome, "unchanged");
+  assert.equal(later.publication_revision, closed.doc.publication_revision);
+  assert.equal(store.writes.length, writes);
+});

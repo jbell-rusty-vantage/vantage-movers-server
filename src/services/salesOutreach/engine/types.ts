@@ -14,7 +14,7 @@
 /**
  * Engine version. The evaluation policy fingerprint carries it, so a bump re-evaluates every projection
  * once through the minute policy reconcile. v2 (olr A1): `coverage_wait`, the coverage-unverified `due`
- * ladder (SPEC §10.3) and the seeded spacing anchor (A6).
+ * ladder (SPEC §10.3) and the seeded spacing anchor (A6); quiet closed/dateless review rows (A4).
  */
 export const OUTREACH_ENGINE_VERSION = "sod-engine-v2" as const;
 
@@ -424,7 +424,7 @@ export interface EvaluateSubjectResult {
   workflow: OutreachWorkflow | null;
   period_id: string | null;
   priority_raw: string | null;
-  /** New schedule day (received date = Day 1), any workflow; null when age is unknown. */
+  /** New schedule day (received date = Day 1), any workflow; null when age is unknown or the subject is closed (A4). */
   schedule_day: number | null;
   requirements: { call: EngineChannelRequirement; sms: EngineChannelRequirement };
   initial_response: EngineInitialResponseState | null;
@@ -434,7 +434,10 @@ export interface EvaluateSubjectResult {
   flags: EngineStatusFlags;
   oldest_actionable_due_at: IsoInstant | null;
   next_action_due_at: IsoInstant | null;
-  /** Earliest future instant at which the result changes without new input. */
+  /**
+   * Earliest future instant at which the result changes without new input. Null for a quiet subject
+   * (olr A4: closed, or review with nothing dated) unless its advisory cooldown warning still has to expire.
+   */
   next_evaluation_at: IsoInstant | null;
   /**
    * Per channel, the earliest deadline of a `pending` obligation that coverage does not reach yet (null
@@ -446,11 +449,11 @@ export interface EvaluateSubjectResult {
   current_assignee_agent_id: string | null;
   /** Every obligation of the evaluated horizon (history + today + the next scheduled ones). */
   obligations: EngineObligation[];
-  /** Last 30 business dates; older dates are summarized in `history_summary`. */
+  /** Last 30 business dates up to today (a closed subject: up to its closure date, A4); older dates are summarized in `history_summary`. */
   window_history: EngineWindowHistoryEntry[];
   history_summary: { dates: number; call_missed: number; sms_missed: number };
   /** sha256 of the canonical inputs + policy version (excludes `as_of`). */
   input_fingerprint: string;
-  /** sha256 of the result minus `computed_as_of`; persist only when it changed. */
+  /** sha256 of the result minus `computed_as_of` and `business_date` (olr A4); persist only when it changed. */
   fingerprint: string;
 }
