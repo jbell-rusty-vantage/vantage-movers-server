@@ -9,6 +9,25 @@
 export const SALES_OUTREACH_CONTRACT_VERSION = "sod-v1" as const;
 export const SALES_OUTREACH_TIMEZONE = "America/New_York" as const;
 
+/**
+ * Code defaults for the optional capture/drain tunables in `sales_outreach_configuration`
+ * (`evidence.*_minutes`, `operations.evaluate_drain_*`), in the configured units. They equal the
+ * values the code used before the keys existed, so an absent key changes nothing. Read them only
+ * through `deskTimingOf` (`services/salesOutreach/config/timing.ts`).
+ */
+export const DESK_TIMING_DEFAULTS = {
+  call_settlement_allowance_minutes: 2,
+  today_coverage_tolerance_minutes: 25,
+  capture_freshness_tolerance_minutes: 10,
+  webhook_silence_minutes: 30,
+  evaluate_drain_max_jobs: 100,
+  evaluate_drain_budget_seconds: 40,
+  evaluate_drain_concurrency: 1,
+} as const;
+
+/** The Call Log reconcile's finalization lag (`numberActivity/reconcileCallLog.ts` `finalizationLagMinutes`). */
+export const CALL_CAPTURE_FINALIZATION_LAG_MINUTES = 15;
+
 /** Canonical Lead models a desk subject can point at (IMPL-04). */
 export const SALES_OUTREACH_LEAD_MODELS = ["FormLead", "CallLead"] as const;
 export type SalesOutreachLeadModel = (typeof SALES_OUTREACH_LEAD_MODELS)[number];

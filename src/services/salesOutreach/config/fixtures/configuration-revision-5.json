@@ -1,0 +1,351 @@
+{
+  "controls": {
+    "desk_enabled": true,
+    "cadence_shadow_enabled": true,
+    "cadence_enforcement_enabled": true,
+    "rep_sms_capture_enabled": true,
+    "goal_metrics_enabled": true
+  },
+  "transition": {
+    "legacy_planning_paused": false,
+    "migrated_cohort_id": "backfill-2026-10-05",
+    "activation_at": "2026-10-05T17:51:32.940Z",
+    "intake_admission_enabled": true,
+    "intake_admission_at": "2026-10-05T18:14:15.820Z",
+    "intake_admission_watermark": null,
+    "backfill_lookback_days": 90,
+    "backfill_include_upcoming_moves": true
+  },
+  "cadence": {
+    "policy_version": "final-policy-2026-10-03-v1",
+    "approval_ref": "owner-session-2026-10-03-FINAL-01",
+    "timezone": "America/New_York",
+    "calendar_mode": "new_york_calendar_date",
+    "working_days": [
+      {
+        "iso_weekday": 1,
+        "open_minute": 480,
+        "close_minute": 1200
+      },
+      {
+        "iso_weekday": 2,
+        "open_minute": 480,
+        "close_minute": 1200
+      },
+      {
+        "iso_weekday": 3,
+        "open_minute": 480,
+        "close_minute": 1200
+      },
+      {
+        "iso_weekday": 4,
+        "open_minute": 480,
+        "close_minute": 1200
+      },
+      {
+        "iso_weekday": 5,
+        "open_minute": 480,
+        "close_minute": 1200
+      },
+      {
+        "iso_weekday": 6,
+        "open_minute": 480,
+        "close_minute": 1200
+      },
+      {
+        "iso_weekday": 7,
+        "open_minute": 480,
+        "close_minute": 1200
+      }
+    ],
+    "holidays": [],
+    "initial_response_working_minutes": 30,
+    "new_days_1_3_calls": {
+      "required": 2,
+      "optional": 1
+    },
+    "new_call_slots": [
+      {
+        "from_day": 1,
+        "to_day": 5,
+        "deadline_minutes": [
+          720,
+          1200
+        ]
+      },
+      {
+        "from_day": 6,
+        "to_day": null,
+        "deadline_minutes": [
+          1200
+        ]
+      }
+    ],
+    "new_call_min_spacing_minutes": 60,
+    "sms_cutoff_minute": 1200,
+    "sms_mode": "fixed_sequence",
+    "sms_sequence": {
+      "initial_days": [
+        1,
+        2,
+        3
+      ],
+      "repeat_from_day": 6,
+      "repeat_every_days": 3
+    },
+    "quoted_open_minute": 480,
+    "quoted_due_minute": 1200,
+    "quoted_same_day_cutoff_minute": 1170,
+    "return_to_new_mode": "original_age_partial_day",
+    "late_arrival_rule": {
+      "two_calls_before_minute": 1080,
+      "one_call_through_minute": 1170,
+      "sms_through_minute": 1170
+    },
+    "catchup_mode": "one_per_channel",
+    "restriction_clock_rule": "waive_pause_resume_next_working_date",
+    "callback_window_minutes": 15,
+    "callback_mode": "explicit_human_appointment",
+    "cooldown_warning_threshold": 3,
+    "cooldown_warning_hours": 24,
+    "cooldown_mode": "advisory_warning",
+    "assignment_timeline_rule": "continuous_timeline",
+    "intake_default_rule": {
+      "website_form": "new",
+      "best_relocation": "new",
+      "ringcentral_call": "new",
+      "manual": "new",
+      "granot_created": "review"
+    },
+    "uncertain_priority_rule": "retain_last_verified",
+    "priority_map": {
+      "codes": [
+        {
+          "code": "0",
+          "workflow": "new",
+          "closure_reason": null
+        },
+        {
+          "code": "1",
+          "workflow": "quoted",
+          "closure_reason": null
+        },
+        {
+          "code": "3",
+          "workflow": "discretion",
+          "closure_reason": null
+        },
+        {
+          "code": "5",
+          "workflow": "closed",
+          "closure_reason": "granot_booked"
+        },
+        {
+          "code": "7",
+          "workflow": "closed",
+          "closure_reason": "crm_bad_disposition"
+        },
+        {
+          "code": "8",
+          "workflow": "closed",
+          "closure_reason": "crm_dead_disposition"
+        }
+      ],
+      "unmapped_workflow": "none",
+      "official_booking_workflow": "closed"
+    },
+    "transition_day_rule": "partial_day_allowance",
+    "move_date_rule": "review_label_only",
+    "lead_eligibility_rule": "no_sync_viable_duplicates_excluded",
+    "precedence_rule": "closure_restriction_schedule_priority"
+  },
+  "evidence": {
+    "qualifying_call_rule": "terminal_call_log_attempt",
+    "goal_rep_rule": "reviewed_initiator_only",
+    "helping_rep_rule": "reviewed_helper_cadence_only",
+    "sms_success_rule": "sent_or_delivered",
+    "sms_failure_correction_rule": "revoke_on_confirmed_failure",
+    "roster_version": "roster-2026-10-05-4a704a68de",
+    "event_time_rule": "outbound_start_inbound_handled_sms_sent",
+    "operating_window_rule": "goal_full_date_cadence_open_hours",
+    "originating_inbound_rule": "unique_association_initial_response",
+    "restricted_contact_rule": "history_only_zero_credit"
+  },
+  "migration": {
+    "paused": false,
+    "batch_size": 25,
+    "batch_ceiling": 100,
+    "interval_seconds": 10,
+    "max_batch_bytes": null,
+    "max_batch_ms": null,
+    "min_oplog_window_seconds": null,
+    "warning_oplog_window_seconds": null,
+    "max_replication_lag_seconds": null,
+    "max_consumer_lag_seconds": null,
+    "max_incremental_write_bytes_per_second": null
+  },
+  "goals": {
+    "roster_version": "roster-2026-10-05-4a704a68de",
+    "rep_work_schedules": [
+      {
+        "agent_id": "a1a1a1a1a1a1a1a1a1a1a1a1",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a2a2a2a2a2a2a2a2a2a2a2a2",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a3a3a3a3a3a3a3a3a3a3a3a3",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a4a4a4a4a4a4a4a4a4a4a4a4",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a5a5a5a5a5a5a5a5a5a5a5a5",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a6a6a6a6a6a6a6a6a6a6a6a6",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a7a7a7a7a7a7a7a7a7a7a7a7",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a8a8a8a8a8a8a8a8a8a8a8a8",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "a9a9a9a9a9a9a9a9a9a9a9a9",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "abababababababababababab",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      },
+      {
+        "agent_id": "acacacacacacacacacacacac",
+        "working_days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "scheduled_goal": null
+      }
+    ],
+    "default_scheduled_goal": 100,
+    "effective_day_overrides": [],
+    "zero_goal_rule": "no_goal_today_excluded_from_denominator"
+  }
+}
