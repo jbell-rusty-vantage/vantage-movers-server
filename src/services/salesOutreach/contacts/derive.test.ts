@@ -5,7 +5,10 @@ import { describe, test } from "node:test";
 import { goalCreditAgent, isCadenceQualifying, selectSpacedStarts } from "../engine/credit";
 import { contactEventId, deriveCallContactEvent, outboundInitiator, toEngineContactEvent, type ContactEventDraft } from "./derive";
 import { evaluate, obligationsOn, period, scenario } from "../engine/testSupport";
-import { countRepDay } from "./repDay";
+import { countRepDay, type RepDayCounts } from "./repDay";
+
+/** The headline counts of the row's scope (olr C1b adds both scopes' counts; repDay.test.ts covers them). */
+const headline = ({ actual_confirmed, actual_awaiting_confirmation, unattributed }: RepDayCounts) => ({ actual_confirmed, actual_awaiting_confirmation, unattributed });
 import { ContextBuilder, inboundCall, leg, newId, outboundCall, party, subjectFacts } from "./testing";
 
 /**
@@ -130,8 +133,10 @@ describe("p07b outbound attribution (initiator rule)", () => {
     assert.equal(draft.subject_id, null);
     assert.equal(cadenceCredit(draft), byId.get("ambiguous_lead")!.eligible_cadence_credit);
     assert.deepEqual(credits(draft), byId.get("ambiguous_lead")!.goal_credits, "P07b: no eligible-scope goal credit");
-    assert.deepEqual(countRepDay([draft], "eligible_new_quoted"), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 });
+    assert.deepEqual(headline(countRepDay([draft], "eligible_new_quoted")), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 });
     assert.equal(countRepDay([draft], "all_outbound").actual_confirmed, 1, "FAST-TRACK M1 counts every verified outbound attempt");
+    const both = countRepDay([draft], "eligible_new_quoted");
+    assert.deepEqual([both.actual_confirmed_all, both.actual_confirmed_eligible], [1, 0], "olr C1b: the all-outbound count is kept on an eligible-scope row");
   });
 });
 
@@ -267,11 +272,11 @@ describe("lane cases: exclusions and verification", () => {
     assert.equal(awaiting.verification, "awaiting_confirmation");
     assert.equal(awaiting.goal_credit, "awaiting_confirmation");
     assert.equal(awaiting.goal_agent_id, ALICE, "the webhook party still names the rep for the awaiting count");
-    assert.deepEqual(countRepDay([awaiting], "all_outbound"), { actual_confirmed: 0, actual_awaiting_confirmation: 1, unattributed: 0 });
+    assert.deepEqual(headline(countRepDay([awaiting], "all_outbound")), { actual_confirmed: 0, actual_awaiting_confirmation: 1, unattributed: 0 });
     const confirmed = deriveCallContactEvent({ ...webhookOnly, call_log_state: "settled", legs: [leg("101", T0)], projection_revision: 5 }, context);
     assert.equal(confirmed.verification, "confirmed");
     assert.notEqual(confirmed.input_fingerprint, awaiting.input_fingerprint);
-    assert.deepEqual(countRepDay([confirmed], "all_outbound"), { actual_confirmed: 1, actual_awaiting_confirmation: 0, unattributed: 0 });
+    assert.deepEqual(headline(countRepDay([confirmed], "all_outbound")), { actual_confirmed: 1, actual_awaiting_confirmation: 0, unattributed: 0 });
   });
   test("number_only (P05h): a number with no Lead is Other outbound, never eligible-scope credit", () => {
     const draft = deriveCallContactEvent(outboundCall("101", newId(), T0), context);
@@ -279,7 +284,7 @@ describe("lane cases: exclusions and verification", () => {
     assert.equal(draft.subject_id, null);
     assert.equal(draft.goal_credit, "confirmed");
     assert.equal(draft.goal_scope_eligible, false);
-    assert.deepEqual(countRepDay([draft], "eligible_new_quoted"), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 });
+    assert.deepEqual(headline(countRepDay([draft], "eligible_new_quoted")), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 });
   });
   test("IMPL-07: a subject not yet activated, or closed, at contact time is not associated; discretion is not goal scope", () => {
     const early = new ContextBuilder().link(ALICE, "101");
@@ -328,8 +333,8 @@ describe("P05f/P10a same-date prior contact (olr C4): carried for the activation
       [draft.association, draft.subject_id, draft.subject_workflow, draft.goal_scope_eligible, draft.goal_credit, draft.kind, draft.verification, draft.exclusion_reason],
       ["none", subject.id, null, false, "confirmed", "outbound_attempt", "confirmed", null],
     );
-    assert.deepEqual(countRepDay([draft], "eligible_new_quoted"), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 }, "still Other outbound");
-    assert.deepEqual(countRepDay([draft], "all_outbound"), { actual_confirmed: 1, actual_awaiting_confirmation: 0, unattributed: 1 }, "M1 unchanged");
+    assert.deepEqual(headline(countRepDay([draft], "eligible_new_quoted")), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 }, "still Other outbound");
+    assert.deepEqual(headline(countRepDay([draft], "all_outbound")), { actual_confirmed: 1, actual_awaiting_confirmation: 0, unattributed: 1 }, "M1 unchanged");
   });
 
   test("an earlier New York date is not carried (00:30 ET the day after is not the same date either way)", () => {

@@ -823,3 +823,55 @@ describe("minute sweep and refresh", () => {
     assert.deepEqual(repDayJob({ ...key, materialize: true }, ["m"]), repDayJob(key, ["m"]));
   });
 });
+
+describe("olr C1b: both scopes stored on the rep-day row", () => {
+  const eligibleFrom = (day: string) => active(desk({ goals: { ...desk().goals!, count_scope_schedule: [{ from_day: day, scope: "eligible_new_quoted" }] } }));
+
+  test("the recount stores both scopes' counts; the headline is the row's scope", async () => {
+    const w = world();
+    const sources = [
+      call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")), // eligible, confirmed
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z")), // no subject, confirmed
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:40:00Z", { call_log_state: null, legs: [] })), // no subject, awaiting
+    ];
+    await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE, TODAY, eligibleFrom(TODAY));
+    const row = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual(
+      [row.count_scope, row.actual_confirmed, row.actual_awaiting_confirmation, row.unattributed],
+      ["eligible_new_quoted", 1, 0, 1],
+    );
+    assert.deepEqual([row.actual_confirmed_all, row.actual_confirmed_eligible, row.actual_awaiting_all, row.actual_awaiting_eligible], [2, 1, 1, 0]);
+  });
+
+  test("no-row rule on the all-scope counts: an eligible-scope day with only an awaiting call to a non-eligible number gets a row", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", newId(), "2026-10-05T14:40:00Z", { call_log_state: null, legs: [] }))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    const result = await recount(w, ALICE, TODAY, eligibleFrom(TODAY));
+    assert.equal(result.outcome, "written");
+    const row = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([row.actual_confirmed, row.actual_awaiting_confirmation, row.unattributed, row.actual_awaiting_all], [0, 0, 0, 1]);
+    // No call at all: still no row.
+    assert.equal((await recount(w, BOB, TODAY, eligibleFrom(TODAY))).outcome, "no_activity");
+  });
+
+  test("a row without both counts is rewritten once even when its fingerprint matches; the frozen snapshot stays", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-04T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE, "2026-10-04", active(desk(), "v-frozen", 3));
+    const key = `${ALICE}|2026-10-04`;
+    const written = w.repDays.rows.get(key)!;
+    assert.equal(written.goal_snapshot.configuration_version, "v-frozen");
+    // As a pre-C1b build stored it: no two-scope counts.
+    const older: Record<string, unknown> = { ...written };
+    for (const field of ["actual_confirmed_all", "actual_confirmed_eligible", "actual_awaiting_all", "actual_awaiting_eligible"]) delete older[field];
+    w.repDays.rows.set(key, older as typeof written);
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk({ goals: { ...desk().goals!, default_scheduled_goal: 80 } }), "v-later", 4)), repDays: w.repDays, transaction: memoryTransaction };
+    const first = await refreshOpenRepDays(NOW, deps);
+    assert.equal(first.recounted, 3, "Alice's row without both counts + the C5 zero rows of Bob and Carol");
+    const rewritten = w.repDays.row(ALICE, "2026-10-04")!;
+    assert.deepEqual([rewritten.actual_confirmed_all, rewritten.actual_confirmed_eligible, rewritten.publication_revision], [1, 1, written.publication_revision + 1]);
+    assert.deepEqual(rewritten.goal_snapshot, written.goal_snapshot, "frozen snapshot unchanged (goal 100, v-frozen)");
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0, "then left alone");
+  });
+});

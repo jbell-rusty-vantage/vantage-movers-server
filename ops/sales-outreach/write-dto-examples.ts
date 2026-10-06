@@ -50,12 +50,22 @@ const desk: SalesOutreachConfigurationInput = {
 function exampleStore(captureKnown = new Date("2026-10-05T14:57:00Z")): MemoryReadStore {
   const store = new MemoryReadStore();
   const computed = new Date("2026-10-05T14:58:30Z");
+  // olr C1b: rows store both scopes' counts; the headline is all_outbound, the alternate eligible_new_quoted.
+  const both = (all: number, eligible: number, awaitingAll = 0, awaitingEligible = 0) => ({
+    actual_confirmed: all,
+    actual_awaiting_confirmation: awaitingAll,
+    unattributed: all - eligible,
+    actual_confirmed_all: all,
+    actual_confirmed_eligible: eligible,
+    actual_awaiting_all: awaitingAll,
+    actual_awaiting_eligible: awaitingEligible,
+  });
   store.rows = [
-    repDayRow({ agent_id: A, business_day: DAY, actual_confirmed: 108, actual_awaiting_confirmation: 2, computed_as_of: computed, publication_revision: 41 }),
-    repDayRow({ agent_id: C, business_day: DAY, actual_confirmed: 37, computed_as_of: computed, publication_revision: 39 }),
-    repDayRow({ agent_id: D, business_day: DAY, actual_confirmed: 25, computed_as_of: computed, publication_revision: 40 }),
-    repDayRow({ agent_id: E, business_day: DAY, actual_confirmed: 10, computed_as_of: computed, publication_revision: 33 }),
-    repDayRow({ agent_id: X, business_day: DAY, actual_confirmed: 4, computed_as_of: computed, publication_revision: 12 }),
+    repDayRow({ agent_id: A, business_day: DAY, ...both(108, 14, 2, 1), computed_as_of: computed, publication_revision: 41 }),
+    repDayRow({ agent_id: C, business_day: DAY, ...both(37, 18), computed_as_of: computed, publication_revision: 39 }),
+    repDayRow({ agent_id: D, business_day: DAY, ...both(25, 25), computed_as_of: computed, publication_revision: 40 }),
+    repDayRow({ agent_id: E, business_day: DAY, ...both(10, 3), computed_as_of: computed, publication_revision: 33 }),
+    repDayRow({ agent_id: X, business_day: DAY, ...both(4, 0), computed_as_of: computed, publication_revision: 12 }),
   ];
   store.names = new Map([
     [A, "Alice Rep"],

@@ -226,6 +226,14 @@ export const SalesOutreachRepDayProjectionSchema = new Schema(
     actual_confirmed: count,
     actual_awaiting_confirmation: count,
     unattributed: count,
+    /**
+     * olr C1b: the day counted under each scope (`actual_confirmed` / `actual_awaiting_confirmation` stay
+     * the headline under `count_scope`). Absent on a row written before C1b; the read serves them as null.
+     */
+    actual_confirmed_all: count,
+    actual_confirmed_eligible: count,
+    actual_awaiting_all: count,
+    actual_awaiting_eligible: count,
     remaining: nullableCount,
     /** Goal progress in [0, 1] (capped); null without a positive goal. */
     progress: { type: Number, default: null, min: 0, max: 1 },

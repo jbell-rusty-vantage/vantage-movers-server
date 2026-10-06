@@ -39,6 +39,7 @@ export class MemoryRepDayStore implements RepDayStore {
           revision: row.revision,
           coverage_state: row.coverage.state,
           count_scope: row.count_scope,
+          both_counts: typeof (row as Partial<RepDayRowFields>).actual_confirmed_all === "number",
         }
       : null;
   }
@@ -58,6 +59,7 @@ export class MemoryRepDayStore implements RepDayStore {
         coverage_state: row.coverage.state,
         frozen: Boolean(row.goal_snapshot.configuration_version),
         count_scope: row.count_scope,
+        both_counts: typeof (row as Partial<RepDayRowFields>).actual_confirmed_all === "number",
       }));
   }
   row(agent: string, day: string) {

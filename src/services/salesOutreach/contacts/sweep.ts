@@ -17,7 +17,7 @@ import { publishGoalChangesSafely, type OutreachGoalChange, type OutreachGoalPub
 import { wantsContactEvidence } from "./jobs";
 import { mongoContactEventStore } from "./mongoStore";
 import { countScopeForDay } from "./repDay";
-import { mongoRepDayStore, recountRepDay, type RepDayStore } from "./repDayService";
+import { mongoRepDayStore, recountRepDay, type RepDayRecount, type RepDayStore } from "./repDayService";
 
 /**
  * The minute sweep — the net under the queued `outreach_contact_change` wake (IMPLEMENTATION-PLAN §6.2):
@@ -167,7 +167,11 @@ export function sweepBootstrapStart(configuration: ActiveConfiguration, now: Dat
   return newYorkDayBounds(addDays(newYorkBusinessDay(now), -lookback)).start;
 }
 
-/** Recounts each dirty rep-day in its own transaction (a failure is logged; the refresh pass retries). */
+/**
+ * Recounts each dirty rep-day in its own transaction (a failure is logged; the refresh pass retries).
+ * `observe` sees each key's outcome (null on failure) — `ops/sales-outreach/recount-rep-days.ts` (olr C1b)
+ * tallies its report through it.
+ */
 export async function recountRepDays(
   keys: readonly RepDayKey[],
   loader: ConfigurationLoader,
@@ -175,6 +179,7 @@ export async function recountRepDays(
   store: RepDayStore,
   transaction: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>,
   publishGoal?: OutreachGoalPublisher,
+  observe?: (key: RepDayKey, result: RepDayRecount | null) => void,
 ): Promise<{ recounted: number; failures: number }> {
   let recounted = 0;
   let failures = 0;
@@ -189,8 +194,10 @@ export async function recountRepDays(
       if (result.outcome === "written" && result.publication_revision !== null)
         published.push({ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision });
       recounted++;
+      observe?.(key, result);
     } catch (error) {
       failures++;
+      observe?.(key, null);
       logger.warn({ msg: "sales_outreach.rep_day.recount_failed", errorName: error instanceof Error ? error.name : "Error" });
     }
   }
@@ -273,8 +280,10 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
  * Refresh pass (every minute): recounts today's and yesterday's existing rep-day rows whose coverage
  * is not complete yet, whose past-day goal is not frozen yet, or whose stored count scope differs from
  * the configured scope of the day (olr C1a: rows an older build wrote under another scope self-correct
- * within a minute of the deploy) — so coverage catches up and each day freezes its goal after
- * midnight even without new calls. Bounded by the roster.
+ * within a minute of the deploy), or that does not store both scopes' counts yet (olr C1b: today's and
+ * yesterday's rows gain `actual_*_all` / `actual_*_eligible` within a minute of the deploy; older days
+ * wait for `ops/sales-outreach/recount-rep-days.ts`) — so coverage catches up and each day freezes its
+ * goal after midnight even without new calls. Bounded by the roster.
  *
  * Zero-activity days (olr C5): after New York midnight, every roster rep without a row yesterday gets a
  * `materialize` key, so the recount writes a zero row with yesterday's goal snapshot frozen (P08a: a
@@ -298,7 +307,7 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
     const scope = countScopeForDay(day, schedule);
     const rows = await store.rowsOfDay(day);
     for (const row of rows) {
-      if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope)
+      if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope || !row.both_counts)
         keys.push({ agent_id: row.agent_id, business_day: day });
     }
     if (day !== yesterday) continue;

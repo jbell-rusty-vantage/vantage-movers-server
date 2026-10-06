@@ -417,6 +417,20 @@ export const salesOutreachRepDaySchema = z
     goal_reached: z.boolean().nullable(),
     /** Calls kept out of the count (no eligible Lead), labelled "Other outbound". */
     other_outbound: z.object({ count: z.number().int().min(0).nullable(), label: z.literal(SALES_OUTREACH_OTHER_OUTBOUND_LABEL) }).strict(),
+    /**
+     * olr C1b: the same day counted under the other scope (a secondary figure, never the goal). Same
+     * honesty rule as the headline: a positive count is a lower bound, a 0 only once coverage is complete.
+     * Null for a row written before both counts were stored.
+     */
+    alternate_scope: z
+      .object({
+        count_scope: z.enum(SALES_OUTREACH_GOAL_COUNT_SCOPES),
+        count_scope_label: z.string(),
+        actual_confirmed: z.number().int().min(0).nullable(),
+        actual_awaiting_confirmation: z.number().int().min(0).nullable(),
+      })
+      .strict()
+      .nullable(),
     coverage: salesOutreachCoverageSchema,
     unknown_reason: z.string().nullable(),
     projection_revision: z.number().int().min(0).nullable(),
@@ -468,6 +482,15 @@ export const salesOutreachTeamGoalsSchema = z
         incomplete: z.boolean(),
         pending_agent_ids: z.array(salesOutreachAgentIdSchema),
         unknown_reason: z.string().nullable(),
+        /**
+         * olr C1b: roster reps' confirmed calls under the other scope (secondary figure). Null when the day
+         * mixes scopes or has none; `actual` is null when any roster rep's alternate count is unknown
+         * (pending, or a row written before both counts were stored).
+         */
+        alternate: z
+          .object({ count_scope: z.enum(SALES_OUTREACH_GOAL_COUNT_SCOPES), actual: z.number().int().min(0).nullable() })
+          .strict()
+          .nullable(),
       })
       .strict(),
     /** Card 2: reps at goal / reps with a positive goal (zero-goal reps excluded from the denominator). */

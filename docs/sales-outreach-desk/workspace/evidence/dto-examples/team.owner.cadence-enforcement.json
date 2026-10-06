@@ -49,14 +49,18 @@
         "progress": 0.5143,
         "incomplete": false,
         "pending_agent_ids": [],
-        "unknown_reason": null
+        "unknown_reason": null,
+        "alternate": {
+          "count_scope": "eligible_new_quoted",
+          "actual": 60
+        }
       },
       "reps_at_goal": {
         "count": 1,
         "of": 4,
         "pending": 0
       },
-      "other_outbound_total": 0,
+      "other_outbound_total": 120,
       "roster_size": 5
     },
     "goals_unknown_reason": null,
@@ -85,8 +89,14 @@
         "progress": 1,
         "goal_reached": true,
         "other_outbound": {
-          "count": 0,
+          "count": 94,
           "label": "Other outbound"
+        },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 14,
+          "actual_awaiting_confirmation": 1
         },
         "coverage": {
           "state": "complete",
@@ -137,6 +147,12 @@
           "count": 0,
           "label": "Other outbound"
         },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 0,
+          "actual_awaiting_confirmation": 0
+        },
         "coverage": {
           "state": "complete",
           "known_complete_through": "2026-10-05T14:55:00.000Z",
@@ -183,8 +199,14 @@
         "progress": 0.37,
         "goal_reached": false,
         "other_outbound": {
-          "count": 0,
+          "count": 19,
           "label": "Other outbound"
+        },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 18,
+          "actual_awaiting_confirmation": 0
         },
         "coverage": {
           "state": "complete",
@@ -239,6 +261,12 @@
           "count": 0,
           "label": "Other outbound"
         },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 25,
+          "actual_awaiting_confirmation": 0
+        },
         "coverage": {
           "state": "complete",
           "known_complete_through": "2026-10-05T14:55:00.000Z",
@@ -289,8 +317,14 @@
         "progress": null,
         "goal_reached": false,
         "other_outbound": {
-          "count": 0,
+          "count": 7,
           "label": "Other outbound"
+        },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 3,
+          "actual_awaiting_confirmation": 0
         },
         "coverage": {
           "state": "complete",
@@ -338,8 +372,14 @@
         "progress": null,
         "goal_reached": null,
         "other_outbound": {
-          "count": 0,
+          "count": 4,
           "label": "Other outbound"
+        },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 0,
+          "actual_awaiting_confirmation": 0
         },
         "coverage": {
           "state": "complete",

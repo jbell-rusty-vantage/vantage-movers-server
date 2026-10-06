@@ -21,7 +21,9 @@ import { resolveConfiguredGoal, type GoalsConfiguration } from "../reads/goals";
  *   time (`goal_scope_eligible`, P07a);
  * - `actual_awaiting_confirmation`: the same scope's webhook-only attempts (never credit, never a miss);
  * - `unattributed` ("Other outbound"): confirmed attempts without an eligible subject, in both scopes
- *   (in M2 they are excluded from the goal until associated).
+ *   (in M2 they are excluded from the goal until associated);
+ * - olr C1b: the confirmed and awaiting counts of both scopes are stored too (`actual_*_all`,
+ *   `actual_*_eligible`) and are part of the fingerprint.
  *
  * Goal snapshot (SPECIFICATION §13.4, P08a): from the configured roster/schedule/override via S1's
  * `resolveConfiguredGoal`. Today's row carries no `configuration_version` (the read resolves today from
@@ -43,25 +45,50 @@ export type RepDayEventFacts = Readonly<{
   goal_scope_eligible: boolean;
 }>;
 
-export type RepDayCounts = Readonly<{ actual_confirmed: number; actual_awaiting_confirmation: number; unattributed: number }>;
+/**
+ * A rep-day's counts (olr C1b): both scopes are counted in one pass. `actual_confirmed` and
+ * `actual_awaiting_confirmation` stay the headline under the row's `count_scope` (what the reads, the
+ * team sums and the admin use); `actual_{confirmed,awaiting}_{all,eligible}` keep the day under each
+ * scope, so the read serves the other scope as a secondary figure (`alternate_scope`).
+ */
+export type RepDayCounts = Readonly<{
+  actual_confirmed: number;
+  actual_awaiting_confirmation: number;
+  unattributed: number;
+  actual_confirmed_all: number;
+  actual_confirmed_eligible: number;
+  actual_awaiting_all: number;
+  actual_awaiting_eligible: number;
+}>;
 
 export function countRepDay(events: readonly RepDayEventFacts[], scope: SalesOutreachGoalCountScope): RepDayCounts {
   const seen = new Set<string>();
-  let confirmed = 0;
-  let awaiting = 0;
-  let unattributed = 0;
+  let confirmedAll = 0;
+  let confirmedEligible = 0;
+  let awaitingAll = 0;
+  let awaitingEligible = 0;
   for (const event of events) {
     if (seen.has(event.source_id)) continue;
     seen.add(event.source_id);
-    const inScope = scope === "all_outbound" || event.goal_scope_eligible;
     if (event.goal_credit === "confirmed") {
-      if (inScope) confirmed++;
-      if (!event.goal_scope_eligible) unattributed++;
-    } else if (event.goal_credit === "awaiting_confirmation" && inScope) {
-      awaiting++;
+      confirmedAll++;
+      if (event.goal_scope_eligible) confirmedEligible++;
+    } else if (event.goal_credit === "awaiting_confirmation") {
+      awaitingAll++;
+      if (event.goal_scope_eligible) awaitingEligible++;
     }
   }
-  return { actual_confirmed: confirmed, actual_awaiting_confirmation: awaiting, unattributed };
+  const all = scope === "all_outbound";
+  return {
+    actual_confirmed: all ? confirmedAll : confirmedEligible,
+    actual_awaiting_confirmation: all ? awaitingAll : awaitingEligible,
+    // "Other outbound": confirmed attempts without an eligible subject, whatever the scope.
+    unattributed: confirmedAll - confirmedEligible,
+    actual_confirmed_all: confirmedAll,
+    actual_confirmed_eligible: confirmedEligible,
+    actual_awaiting_all: awaitingAll,
+    actual_awaiting_eligible: awaitingEligible,
+  };
 }
 
 /**
@@ -131,6 +158,11 @@ export type RepDayRowFields = {
   actual_confirmed: number;
   actual_awaiting_confirmation: number;
   unattributed: number;
+  /** olr C1b: the day under each scope; the headline above is the one of `count_scope`. */
+  actual_confirmed_all: number;
+  actual_confirmed_eligible: number;
+  actual_awaiting_all: number;
+  actual_awaiting_eligible: number;
   remaining: number | null;
   progress: number | null;
   goal_state: "goal" | "no_goal_today" | "not_on_roster";
