@@ -4,6 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import { salesOutreachRepDaySchema, salesOutreachRepDaysSchema } from "../../../validation/v1/salesOutreachReads";
+import { composeRepDayRow } from "../contacts/repDay";
 import { callsCoverageForDay } from "./freshness";
 import {
   composeRepDay,
@@ -227,4 +228,42 @@ test("olr C1a GET /rep-days: a rep without a row reads the configured scope even
   const configured = completeConfigurationInput({ goal_metrics_enabled: true });
   configured.goals = { ...configured.goals, count_scope_schedule: [{ from_day: DAY, scope: "eligible_new_quoted" }] };
   assert.equal(scopeOf(salesOutreachRepDaysSchema.parse(await read(configured)), TEST_AGENT_B), "eligible_new_quoted");
+});
+
+test("olr C5: a materialized zero row is pending while coverage is partial and a projected 0 once complete; its frozen goal wins", () => {
+  // The refresh after New York midnight writes the zero row of 2026-10-04 (composeRepDayRow, no events).
+  const PAST = "2026-10-04";
+  const afterMidnight = new Date("2026-10-05T04:30:00Z"); // 00:30 New York on DAY
+  const materialized = (through: Date) => {
+    const fields = composeRepDayRow({
+      agent_id: agentOf("b"), business_day: PAST, today: DAY, now: afterMidnight, events: [], scope: "all_outbound",
+      goals, configuration_version: "v1", existing_snapshot: null,
+      watermarks: { capture_known_complete_through: through, derived_through: through, coverage_from: null },
+    });
+    return {
+      row: repDayRow({
+        agent_id: fields.agent_id, business_day: PAST, goal_snapshot: fields.goal_snapshot, coverage: fields.coverage,
+        actual_confirmed: fields.actual_confirmed, actual_awaiting_confirmation: fields.actual_awaiting_confirmation, unattributed: fields.unattributed,
+      }),
+      coverage: fields.coverage,
+    };
+  };
+  // A later edit (default goal 70, version v2) must not move the frozen day.
+  const edited = { ...goals, default_scheduled_goal: 70 };
+  const serve = ({ row, coverage }: ReturnType<typeof materialized>) =>
+    composeRepDay({
+      agent_id: agentOf("b"), agent_name: null, reviewed_link: true,
+      goal: resolveRepDayGoal({ goals: edited, configuration_version: "v2", agent_id: agentOf("b"), business_day: PAST, today: DAY, row }),
+      row, fallback_scope: "all_outbound", capture_coverage: coverage,
+    });
+
+  const partial = serve(materialized(new Date("2026-10-05T03:00:00Z")));
+  assert.equal(partial.coverage.state, "partial");
+  assert.deepEqual([partial.actual_confirmed, partial.actual_basis, partial.unknown_reason, partial.remaining, partial.goal_reached], [null, "pending", "coverage_incomplete", null, null]);
+  assert.deepEqual([partial.goal, partial.goal_provenance.source, partial.goal_provenance.configuration_version], [100, "projection_snapshot", "v1"]);
+
+  const complete = serve(materialized(new Date("2026-10-05T04:20:00Z")));
+  assert.equal(complete.coverage.state, "complete");
+  assert.deepEqual([complete.actual_confirmed, complete.actual_basis, complete.remaining, complete.progress, complete.goal_reached], [0, "projection", 100, 0, false]);
+  assert.deepEqual([complete.goal, complete.goal_provenance.source], [100, "projection_snapshot"]);
 });

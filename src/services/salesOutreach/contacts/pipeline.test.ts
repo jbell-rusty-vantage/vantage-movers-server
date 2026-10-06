@@ -4,9 +4,10 @@ import path from "node:path";
 import { describe, test } from "node:test";
 import type { SalesOutreachConfigurationInput } from "../../../validation/v1/salesOutreach";
 import { summarizeTeamGoals } from "../engine/credit";
+import { resolveRepDayGoal } from "../reads/goals";
 import { activeInspection, fixedConfigurationLoader } from "../reads/testing";
 import type { ActiveConfiguration } from "../config/load";
-import { applyContactSources, contactEvaluationJob } from "./apply";
+import { applyContactSources, contactEvaluationJob, repDayJob, repDayKeyOf } from "./apply";
 import { contactEventId } from "./derive";
 import { parseContactSubjectKey, parseRepDaySubjectKey, runOutreachContactChangeJob, runOutreachRepDayJob, type ContactJobDeps } from "./jobs";
 import { composeRepDayRow, countScopeForDay, repDayCoverage } from "./repDay";
@@ -638,7 +639,7 @@ describe("minute sweep and refresh", () => {
     assert.equal(w.repDays.row(ALICE, "2026-10-04")!.goal_snapshot.configuration_version, null);
     const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
     const first = await refreshOpenRepDays(NOW, deps);
-    assert.equal(first.recounted, 1);
+    assert.equal(first.recounted, 3, "Alice's open row + the C5 zero rows of Bob and Carol");
     assert.equal(w.repDays.row(ALICE, "2026-10-04")!.goal_snapshot.configuration_version, "v-test");
     const second = await refreshOpenRepDays(NOW, deps);
     assert.equal(second.recounted, 0, "frozen and complete: nothing to do");
@@ -655,7 +656,7 @@ describe("minute sweep and refresh", () => {
     // The active configuration has no schedule (all_outbound): the refresh self-corrects the complete row.
     const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
     const first = await refreshOpenRepDays(NOW, deps);
-    assert.equal(first.recounted, 1);
+    assert.equal(first.recounted, 4, "today's stale row + the C5 zero rows of yesterday's three roster reps");
     const fixed = w.repDays.row(ALICE, TODAY)!;
     assert.deepEqual([fixed.count_scope, fixed.actual_confirmed], ["all_outbound", 2]);
     assert.equal(fixed.publication_revision, stale.publication_revision + 1);
@@ -672,8 +673,118 @@ describe("minute sweep and refresh", () => {
     // Only the scope field differs (the fingerprint still matches all_outbound): no "unchanged" short-circuit.
     w.repDays.rows.set(key, { ...written, count_scope: "eligible_new_quoted" });
     const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
-    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 1);
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 4, "the stale row + the C5 zero rows of yesterday's three roster reps");
     assert.deepEqual([w.repDays.row(ALICE, TODAY)!.count_scope, w.repDays.row(ALICE, TODAY)!.publication_revision], ["all_outbound", written.publication_revision + 1]);
     assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0);
+  });
+
+  test("olr C5 refresh: after midnight one frozen zero row per roster rep without a row yesterday — none today, none off the roster", async () => {
+    const w = world();
+    const outsider = newId();
+    const idle = newId(); // an Agent off the roster with no activity: never materialized
+    w.ctx.link(outsider, "105");
+    w.events.context = w.ctx.build();
+    // Alice and an off-roster Agent called on 2026-10-04; Bob and Carol (roster) did not.
+    await applyContactSources(
+      [call(w.events, outboundCall("101", NUMBER, "2026-10-04T14:10:00Z")), call(w.events, outboundCall("105", newId(), "2026-10-04T14:20:00Z"))],
+      { now: NOW, queueRepDays: false },
+      w.events,
+      SESSION,
+    );
+    await recount(w, ALICE, "2026-10-04", active(), new Date("2026-10-04T20:00:00Z"));
+    await recount(w, outsider, "2026-10-04", active(), new Date("2026-10-04T20:00:00Z"));
+    const afterMidnight = new Date("2026-10-05T04:30:00Z"); // 00:30 New York on 2026-10-05
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
+    const first = await refreshOpenRepDays(afterMidnight, deps);
+    assert.deepEqual([first.skipped, first.failures], [false, 0]);
+    for (const agent of [BOB, CAROL]) {
+      const row = w.repDays.row(agent, "2026-10-04")!;
+      assert.ok(row, "a roster rep without a row yesterday gets one");
+      assert.deepEqual(
+        [row.actual_confirmed, row.actual_awaiting_confirmation, row.unattributed, row.count_scope, row.goal_state, row.publication_revision],
+        [0, 0, 0, "all_outbound", "goal", 1],
+      );
+      assert.deepEqual(
+        [row.goal_snapshot.configuration_version, row.goal_snapshot.goal, row.goal_snapshot.roster_version],
+        ["v-test", 100, "roster-1"],
+        "the goal snapshot is frozen",
+      );
+      assert.equal(row.coverage.state, "complete");
+      assert.equal(w.repDays.row(agent, "2026-10-05"), null, "never today");
+    }
+    assert.equal(w.repDays.row(ALICE, "2026-10-04")!.actual_confirmed, 1, "a rep with activity keeps its row (no second row)");
+    assert.equal(w.repDays.row(idle, "2026-10-04"), null, "off the roster: nothing");
+    assert.equal([...w.repDays.rows.values()].filter((row) => row.business_day === "2026-10-04").length, 4);
+    assert.equal([...w.repDays.rows.values()].filter((row) => row.business_day === "2026-10-05").length, 0);
+    // Idempotent: a second refresh writes nothing.
+    const before = JSON.stringify([...w.repDays.rows.entries()]);
+    const second = await refreshOpenRepDays(afterMidnight, deps);
+    assert.deepEqual([second.recounted, second.failures], [0, 0]);
+    assert.equal(JSON.stringify([...w.repDays.rows.entries()]), before, "no row rewritten");
+  });
+
+  test("olr C5: a later goal edit does not change yesterday's resolved goal (projection_snapshot)", async () => {
+    const w = world();
+    const afterMidnight = new Date("2026-10-05T04:30:00Z");
+    await refreshOpenRepDays(afterMidnight, { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction });
+    const frozen = w.repDays.row(BOB, "2026-10-04")!;
+    // The Owner lowers the default goal and drops Bob from the roster the next morning.
+    const edited = desk({
+      goals: {
+        ...desk().goals!,
+        roster_version: "roster-2",
+        default_scheduled_goal: 80,
+        rep_work_schedules: [ALICE, CAROL].map((agent_id) => ({ agent_id, working_days: [1, 2, 3, 4, 5, 6, 7] })),
+      },
+    });
+    const later = active(edited, "v-next", 4);
+    await refreshOpenRepDays(NOW, { loader: fixedConfigurationLoader(later), repDays: w.repDays, transaction: memoryTransaction });
+    assert.equal(w.repDays.row(BOB, "2026-10-04")!.publication_revision, frozen.publication_revision, "the frozen row is not rewritten");
+    const resolved = resolveRepDayGoal({ goals: later.value.goals, configuration_version: "v-next", agent_id: BOB, business_day: "2026-10-04", today: TODAY, row: w.repDays.row(BOB, "2026-10-04") });
+    assert.deepEqual(
+      [resolved.goal, resolved.goal_state, resolved.provenance.source, resolved.provenance.configuration_version],
+      [100, "goal", "projection_snapshot", "v-test"],
+    );
+    // Without the materialized row the same day would have resolved from the edited configuration.
+    const live = resolveRepDayGoal({ goals: later.value.goals, configuration_version: "v-next", agent_id: BOB, business_day: "2026-10-04", today: TODAY, row: null });
+    assert.deepEqual([live.goal_state, live.provenance.source], ["not_on_roster", "configuration"]);
+  });
+
+  test("olr C5: the zero row of a day whose coverage is still partial at midnight is written, then recounted until complete", async () => {
+    const w = world();
+    w.repDays.marks = { ...w.repDays.marks, capture_known_complete_through: new Date("2026-10-05T03:00:00Z"), derived_through: new Date("2026-10-05T03:00:00Z") };
+    const afterMidnight = new Date("2026-10-05T04:30:00Z");
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk())), repDays: w.repDays, transaction: memoryTransaction };
+    assert.equal((await refreshOpenRepDays(afterMidnight, deps)).recounted, 3);
+    const partial = w.repDays.row(BOB, "2026-10-04")!;
+    assert.deepEqual([partial.coverage.state, partial.actual_confirmed, partial.goal_snapshot.configuration_version], ["partial", 0, "v-test"]);
+    assert.equal((await refreshOpenRepDays(afterMidnight, deps)).recounted, 3, "incomplete rows stay in the refresh");
+    w.repDays.marks = { ...w.repDays.marks, capture_known_complete_through: new Date("2026-10-05T04:20:00Z"), derived_through: new Date("2026-10-05T04:20:00Z") };
+    await refreshOpenRepDays(afterMidnight, deps);
+    const complete = w.repDays.row(BOB, "2026-10-04")!;
+    assert.deepEqual(
+      [complete.coverage.state, complete.publication_revision, complete.goal_snapshot.configuration_version],
+      ["complete", partial.publication_revision + 1, "v-test"],
+    );
+    assert.equal((await refreshOpenRepDays(afterMidnight, deps)).recounted, 0);
+  });
+
+  test("olr C5 recountRepDay materialize: only a past day of a roster rep; the identity ignores the flag", async () => {
+    const w = world();
+    const outsider = newId();
+    const past = await recountRepDay({ agent_id: BOB, business_day: "2026-10-04" }, active(), NOW, w.repDays, SESSION);
+    assert.equal(past.outcome, "no_activity", "without materialize the no-row rule stands (queued rep-day jobs, sweep)");
+    const today = await recountRepDay({ agent_id: BOB, business_day: TODAY }, active(), NOW, w.repDays, SESSION, { materialize: true });
+    assert.equal(today.outcome, "no_activity", "never today");
+    const offRoster = await recountRepDay({ agent_id: outsider, business_day: "2026-10-04" }, active(), NOW, w.repDays, SESSION, { materialize: true });
+    assert.equal(offRoster.outcome, "no_activity", "never an Agent off the roster");
+    assert.equal(w.repDays.rows.size, 0);
+    const written = await recountRepDay({ agent_id: BOB, business_day: "2026-10-04" }, active(), NOW, w.repDays, SESSION, { materialize: true });
+    assert.deepEqual([written.outcome, written.publication_revision], ["written", 1]);
+    const again = await recountRepDay({ agent_id: BOB, business_day: "2026-10-04" }, active(), NOW, w.repDays, SESSION, { materialize: true });
+    assert.equal(again.outcome, "unchanged");
+    const key = { agent_id: BOB, business_day: "2026-10-04" };
+    assert.equal(repDayKeyOf({ ...key, materialize: true }), repDayKeyOf(key));
+    assert.deepEqual(repDayJob({ ...key, materialize: true }, ["m"]), repDayJob(key, ["m"]));
   });
 });

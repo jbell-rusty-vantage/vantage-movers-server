@@ -31,7 +31,10 @@
  *   credits the call and nominates the subject's evaluation; an earlier same-date call stays `none` but
  *   carries the subject;
  * - P05f/P10a subtraction (olr C4): two Leads enrolled in one cohort at 15:00 ET; the one called twice
- *   earlier that day owes 0 calls on the activation date after the wake drains, the other owes 2.
+ *   earlier that day owes 0 calls on the activation date after the wake drains, the other owes 2;
+ * - zero-activity days (olr C5): the refresh after New York midnight writes one zero row with a frozen
+ *   goal snapshot per roster rep without a row yesterday (strict model, `sod_rep_day_unique`), none
+ *   today or off the roster; a second pass rewrites nothing and racing passes converge on one row per rep.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -523,6 +526,50 @@ async function main() {
   const required = async (subjectId: string) =>
     ((await models.getSalesOutreachProjectionModel().findOne({ subject_id: new mongoose.Types.ObjectId(subjectId) }).lean()) as { call?: { required?: number } } | null)?.call?.required;
   assert.deepEqual([await required(enrolled[0]!.subject_id), await required(enrolled[1]!.subject_id)], [0, 2], "two earlier same-date calls lower the activation date's quota by two");
+
+  // --- olr C5: zero-activity days freeze their goal snapshot -----------------------------------------
+  // After New York midnight the refresh writes a zero row (frozen snapshot) for each roster rep without a
+  // row yesterday, through the strict model and `sod_rep_day_unique`; never today, never off the roster.
+  // Two refreshes racing on the same day converge on one row per rep (the loser's insert fails on the
+  // unique index and the next pass sees the row); a later pass writes nothing.
+  const c5Bob = new mongoose.Types.ObjectId();
+  const stranger = new mongoose.Types.ObjectId();
+  const c5Config = activeInspection(
+    {
+      controls: { desk_enabled: true, goal_metrics_enabled: true },
+      goals: {
+        roster_version: "r-c5", default_scheduled_goal: 100, zero_goal_rule: "no_goal_today_excluded_from_denominator",
+        rep_work_schedules: [String(alice), String(c5Bob)].map((agent_id) => ({ agent_id, working_days: [1, 2, 3, 4, 5, 6, 7] })), effective_day_overrides: [],
+      },
+    },
+    "v-c5",
+    9,
+  );
+  const c5Rows = (day: string) => Rows.find({ business_day: day }).lean();
+  // 2026-11-02 00:30 New York (EST after the DST change): yesterday = 2026-11-01, nobody has a row.
+  const c5Midnight = new Date("2026-11-02T05:30:00Z");
+  assert.equal((await c5Rows("2026-11-01")).length, 0);
+  const c5First = await refreshOpenRepDays(c5Midnight, { loader: fixedConfigurationLoader(c5Config) });
+  assert.deepEqual([c5First.skipped, c5First.recounted, c5First.failures], [false, 2, 0]);
+  const zeroRows = await c5Rows("2026-11-01");
+  assert.deepEqual(zeroRows.map((r) => String(r.agent_id)).sort(), [String(alice), String(c5Bob)].sort(), "one zero row per roster rep");
+  for (const zero of zeroRows) {
+    assert.deepEqual([zero.actual_confirmed, zero.actual_awaiting_confirmation, zero.unattributed, zero.count_scope, zero.publication_revision], [0, 0, 0, "all_outbound", 1]);
+    assert.deepEqual([zero.goal_snapshot?.configuration_version, zero.goal_snapshot?.goal], ["v-c5", 100], "the goal snapshot is frozen");
+  }
+  assert.equal(await Rows.countDocuments({ agent_id: stranger }), 0, "off the roster: nothing");
+  assert.equal((await c5Rows("2026-11-02")).length, 0, "never today");
+  await refreshOpenRepDays(c5Midnight, { loader: fixedConfigurationLoader(c5Config) });
+  assert.deepEqual((await c5Rows("2026-11-01")).map((r) => r.publication_revision), [1, 1], "a second refresh rewrites nothing");
+  // Racing refreshes on the next day: one row per rep.
+  const c5Next = new Date("2026-11-03T05:30:00Z");
+  const raced = await Promise.all([1, 2].map(() => refreshOpenRepDays(c5Next, { loader: fixedConfigurationLoader(c5Config) })));
+  const racedRows = await c5Rows("2026-11-02");
+  assert.equal(racedRows.length, 2, "sod_rep_day_unique: one row per rep under racing refreshes");
+  assert.ok(raced.reduce((sum, r) => sum + r.failures, 0) <= 2, "a racing loser fails only its own key");
+  await refreshOpenRepDays(c5Next, { loader: fixedConfigurationLoader(c5Config) });
+  assert.equal(await Rows.countDocuments({ business_day: "2026-11-02" }), 2);
+  assert.ok((await c5Rows("2026-11-02")).every((r) => r.goal_snapshot?.configuration_version === "v-c5"));
 
   console.log(JSON.stringify({ ok: true, database }));
 }

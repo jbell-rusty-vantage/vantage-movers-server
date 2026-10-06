@@ -147,10 +147,27 @@ export type RepDayRecount = Readonly<{
   fields: RepDayRowFields;
 }>;
 
+export type RepDayRecountOptions = Readonly<{
+  /**
+   * olr C5: write the row even with zero activity, so a past day's goal snapshot freezes for a roster
+   * rep who made no call. Honoured only for a day before today (New York) and a rep on the roster of
+   * the configuration the recount runs under; otherwise the no-row rule applies.
+   */
+  materialize?: boolean;
+}>;
+
+/** Whether the zero-activity row of `key` may be materialized under `configuration` at `today` (olr C5). */
+export function materializesZeroRow(key: RepDayKey, configuration: ActiveConfiguration, today: string): boolean {
+  if (key.business_day >= today) return false;
+  return (configuration.value.goals?.rep_work_schedules ?? []).some((row) => row.agent_id === key.agent_id);
+}
+
 /**
  * Recounts one rep-day inside the caller's transaction and writes the row only when its fingerprint
  * changed (publication revision + 1). A rep with no credited, awaiting or other outbound activity and
- * no row gets no row: the read shows zero-call reps from the roster.
+ * no row gets no row: the read shows zero-call reps from the roster. With `materialize` (olr C5, the
+ * refresh pass after New York midnight) a roster rep's past day is written anyway: counts 0, the goal
+ * snapshot frozen, coverage computed — the read still shows the 0 as pending until coverage is complete.
  */
 export async function recountRepDay(
   key: RepDayKey,
@@ -158,16 +175,18 @@ export async function recountRepDay(
   now: Date,
   store: RepDayStore,
   session: ClientSession,
+  options: RepDayRecountOptions = {},
 ): Promise<RepDayRecount> {
   // One session runs one operation at a time: parallel reads at the start of a transaction make the
   // server refuse the second `startTransaction` (ConflictingOperationInProgress, code 117).
+  const today = newYorkBusinessDay(now);
   const events = await store.events(key, session);
   const previous = await store.readRow(key, session);
   const watermarks = await store.watermarks(session);
   const fields = composeRepDayRow({
     agent_id: key.agent_id,
     business_day: key.business_day,
-    today: newYorkBusinessDay(now),
+    today,
     now,
     events,
     // olr C1a: the day's scope is configuration (`goals.count_scope_schedule`, absent = all_outbound).
@@ -181,7 +200,11 @@ export async function recountRepDay(
   // disagrees with its fingerprint, so the refresh pass never re-selects it forever.
   if (previous?.input_fingerprint === fields.input_fingerprint && previous.count_scope === fields.count_scope)
     return { outcome: "unchanged", publication_revision: previous.publication_revision, fields };
-  if (!previous && fields.actual_confirmed + fields.actual_awaiting_confirmation + fields.unattributed === 0)
+  if (
+    !previous &&
+    fields.actual_confirmed + fields.actual_awaiting_confirmation + fields.unattributed === 0 &&
+    !(options.materialize && materializesZeroRow(key, configuration, today))
+  )
     return { outcome: "no_activity", publication_revision: null, fields };
   const publication = await store.writeRow(fields, previous, now, session);
   return { outcome: "written", publication_revision: publication, fields };
