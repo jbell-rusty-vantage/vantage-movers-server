@@ -11,10 +11,13 @@ import {
   COVERAGE_REPAIR_BUCKET_MS,
   coverageRepairCause,
   drainOutreachEvaluateJobs,
+  EVALUATE_DRAIN_BOUNDS,
   evaluateAndProject,
+  evaluateDrainOptionsOf,
   evaluationAdmissionOf,
   runOutreachEvaluateJob,
   sweepOutreachEvaluations,
+  type EvaluateDrainDeps,
   type EvaluateJobDeps,
   type EvaluationPolicyContext,
 } from "./evaluateJob";
@@ -277,7 +280,7 @@ function jobHarness(store: MemoryEvaluationStore, subjectId: string, loader: Con
 test("outreach_evaluate job: claims its own stage, evaluates in the job transaction; drain stops when nothing is claimable", async () => {
   const { store, subject } = seeded();
   const { calls, deps } = jobHarness(store, subject.id);
-  const { outcomes } = await drainOutreachEvaluateJobs(500, 10_000, deps);
+  const { outcomes } = await drainOutreachEvaluateJobs({ max: 500, deadlineMs: 10_000 }, deps);
   assert.deepEqual(outcomes, { completed: 1, not_claimable: 1 });
   assert.deepEqual(calls.slice(0, 2), ["claim:outreach_evaluate", "complete"]);
   assert.ok(store.projections.has(subject.id));
@@ -503,4 +506,169 @@ test("A4: clock sweep never nominates a closed projection; the closed row is not
   assert.equal(later.outcome, "unchanged");
   assert.equal(later.publication_revision, closed.doc.publication_revision);
   assert.equal(store.writes.length, writes);
+});
+
+/* ---------------------------------------------------------------- olr A5: drain budget */
+
+/** A fake claim queue of `outreach_evaluate` jobs (one per subject id) with a controllable clock. */
+function drainHarness(store: MemoryEvaluationStore, subjectIds: string[], options: { tickMs?: number; now?: string } = {}) {
+  const queue = subjectIds.map((subject, i) => ({ id: String(i + 1).padStart(24, "0"), subject }));
+  let clockMs = 0;
+  let inflight = 0;
+  const stats = { claims: 0, peak: 0, starts: [] as number[], fails: [] as string[] };
+  const deps: EvaluateDrainDeps = {
+    loader: fixedConfigurationLoader(configuration()),
+    store,
+    now: () => at(options.now ?? "2026-10-05T14:10:00.000Z"),
+    clock: () => clockMs,
+    claim: (async () => {
+      const job = queue.shift();
+      if (!job) return null;
+      stats.claims++;
+      stats.starts.push(clockMs);
+      return { _id: job.id, lease_owner: "w", lease_epoch: 1, subject_key: `outreach-subject:${job.subject}`, input_refs: [job.subject] };
+    }) as never,
+    complete: (async (_lease: unknown, mutation: (s: typeof fakeSession) => Promise<unknown>) => {
+      stats.peak = Math.max(stats.peak, ++inflight);
+      try {
+        await new Promise((resolve) => setImmediate(resolve));
+        return await mutation(fakeSession);
+      } finally {
+        inflight--;
+        clockMs += options.tickMs ?? 0;
+      }
+    }) as never,
+    fail: (async (_lease: unknown, reason: string) => {
+      stats.fails.push(reason);
+      return { status: "retry", next_attempt_at: new Date() };
+    }) as never,
+    publishLive: async () => undefined,
+  };
+  return { deps, stats, queue };
+}
+
+function seededMany(count: number) {
+  const store = new MemoryEvaluationStore();
+  store.coverage = capturedCoverage(at("2026-10-05T15:30:00.000Z"));
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const subject = subjectRow();
+    store.subjects.set(subject.id, subject);
+    store.periods.push(periodRow(subject.id, { started_at: at(RECEIVED) }));
+    ids.push(subject.id);
+  }
+  return { store, ids };
+}
+
+test("A5: drain with concurrency 2 completes N jobs, never exceeds max, respects the deadline", async () => {
+  // N jobs, two claim loops: all complete, two run at once, every subject is projected.
+  const all = seededMany(5);
+  const run = drainHarness(all.store, all.ids);
+  const drained = await drainOutreachEvaluateJobs({ max: 100, deadlineMs: 40_000, concurrency: 2 }, run.deps);
+  assert.equal(drained.outcomes.completed, 5);
+  assert.ok((drained.outcomes.not_claimable ?? 0) >= 1, "stops once nothing is claimable");
+  assert.deepEqual([drained.jobs, run.stats.claims, run.stats.peak], [5, 5, 2]);
+  assert.ok(all.ids.every((id) => all.store.projections.has(id)));
+  assert.deepEqual(drained.options, { max: 100, deadlineMs: 40_000, concurrency: 2 });
+  assert.equal(typeof drained.ms_p95, "number");
+
+  // max: never more attempts than the budget, whatever the concurrency.
+  const capped = seededMany(10);
+  const capRun = drainHarness(capped.store, capped.ids);
+  const cap = await drainOutreachEvaluateJobs({ max: 3, deadlineMs: 40_000, concurrency: 2 }, capRun.deps);
+  assert.deepEqual(cap.outcomes, { completed: 3 });
+  assert.deepEqual([capRun.stats.claims, capRun.queue.length, capped.store.projections.size], [3, 7, 3]);
+
+  // deadline: each job advances the clock 10 ms; no job starts at or after the 25 ms budget.
+  const timed = seededMany(10);
+  const timedRun = drainHarness(timed.store, timed.ids, { tickMs: 10 });
+  const late = await drainOutreachEvaluateJobs({ max: 100, deadlineMs: 25, concurrency: 2 }, timedRun.deps);
+  assert.ok(timedRun.stats.starts.length > 0 && timedRun.stats.starts.every((t) => t < 25), `starts ${timedRun.stats.starts.join(",")}`);
+  assert.ok(timedRun.queue.length > 0, "the budget left jobs for the next minute");
+  assert.equal(late.jobs, timedRun.stats.claims);
+  assert.ok(late.ms_total >= 25);
+});
+
+test("A5: drain defaults are the serial 100 jobs / 40 s / 1 loop; options are clamped to the engineering bounds", async () => {
+  const { store, ids } = seededMany(3);
+  const run = drainHarness(store, ids);
+  const serial = await drainOutreachEvaluateJobs(undefined, run.deps);
+  assert.deepEqual(serial.options, { max: 100, deadlineMs: 40_000, concurrency: 1 });
+  assert.deepEqual(serial.options, evaluateDrainOptionsOf(deskTimingOf(null)));
+  assert.equal(run.stats.peak, 1, "one loop: one job at a time");
+  assert.deepEqual(serial.outcomes, { completed: 3, not_claimable: 1 });
+  const empty = drainHarness(new MemoryEvaluationStore(), []);
+  const clamped = await drainOutreachEvaluateJobs({ max: 5000, deadlineMs: 120_000, concurrency: 9 }, empty.deps);
+  assert.deepEqual(clamped.options, { ...EVALUATE_DRAIN_BOUNDS });
+});
+
+test("A5: same-subject concurrent jobs: one writes, the other retries", async () => {
+  class BarrierStore extends MemoryEvaluationStore {
+    armed = false;
+    private waiting: Array<() => void> = [];
+    override async readProjection(subjectId: string) {
+      if (this.armed)
+        await new Promise<void>((resolve) => {
+          this.waiting.push(resolve);
+          if (this.waiting.length === 2) {
+            this.armed = false;
+            for (const release of this.waiting.splice(0)) release();
+          }
+        });
+      return super.readProjection(subjectId);
+    }
+  }
+  const store = new BarrierStore();
+  const subject = subjectRow();
+  store.subjects.set(subject.id, subject);
+  store.periods.push(periodRow(subject.id, { started_at: at(RECEIVED) }));
+  store.coverage = capturedCoverage(at("2026-10-05T15:30:00.000Z"));
+  await evaluateAndProject(subject.id, admitted(), at("2026-10-05T14:10:00.000Z"), store, fakeSession);
+  const before = store.projections.get(subject.id)!;
+  store.writes.length = 0;
+  store.armed = true; // both jobs read the same head before either writes
+  // 15:00: the initial response (due 14:30) is now overdue, so the result changed and both try to write.
+  const run = drainHarness(store, [subject.id, subject.id], { now: "2026-10-05T15:00:00.000Z" });
+  const drained = await drainOutreachEvaluateJobs({ concurrency: 2 }, run.deps);
+  assert.equal(drained.outcomes.completed, 1);
+  assert.equal(drained.outcomes.retry, 1);
+  assert.deepEqual(run.stats.fails, ["transient"], "the CAS loser retries (REVISION_CONFLICT)");
+  assert.deepEqual(store.writes, [`updateProjection:${subject.id}`], "exactly one write");
+  assert.equal(store.projections.get(subject.id)!.revision, before.revision + 1);
+});
+
+test("A5: sweep does not re-enqueue a pending nomination (clock, coverage and policy reconcile)", async () => {
+  const { store, subject } = await waitingOnCoverage();
+  const other = subjectRow();
+  store.subjects.set(other.id, other); // no projection: the policy reconcile nominates it
+  const nextEval = store.projections.get(subject.id)!.doc.next_evaluation_at as Date;
+  store.coverage = capturedCoverage(at("2026-10-05T14:35:00.000Z")); // cadence coverage 14:33 >= the 14:30 wait
+  const deps = { loader: fixedConfigurationLoader(configuration()), store, transaction: runInFakeTransaction };
+  const now = new Date(Math.max(+nextEval, +at("2026-10-05T14:41:00.000Z")) + 1000);
+  const first = await sweepOutreachEvaluations(now, deps);
+  assert.deepEqual([first.due.nominated, first.coverage.nominated, first.reconcile.nominated], [1, 1, 1]);
+  const calls = [...store.enqueueCalls];
+  assert.equal(calls.length, 3);
+
+  // The next minute: the same due instant, coverage bucket and fingerprint; the jobs are still pending.
+  const second = await sweepOutreachEvaluations(new Date(+now + 60_000), deps);
+  assert.deepEqual([second.due.nominated, second.coverage.nominated, second.reconcile.nominated], [0, 0, 0]);
+  assert.deepEqual(store.enqueueCalls, calls, "no enqueue call at all for an existing nomination");
+  assert.equal(second.due.pages, 1, "the due row is still read");
+});
+
+test("A5: the sweep returns the configured drain budget (operations.evaluate_drain_*); absent keys are today's values", async () => {
+  const deps = (inspection: ConfigurationInspection) => ({ loader: fixedConfigurationLoader(inspection), store: new MemoryEvaluationStore(), transaction: runInFakeTransaction });
+  const plain = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps(configuration()));
+  assert.deepEqual(plain.drain_options, { max: 100, deadlineMs: 40_000, concurrency: 1 });
+  const input = completeConfigurationInput({ cadence_shadow_enabled: true });
+  const tuned = activeInspection(
+    { ...input, operations: { evaluate_drain_max_jobs: 300, evaluate_drain_budget_seconds: 50, evaluate_drain_concurrency: 2 } },
+    "v-ops",
+    9,
+  );
+  const configured = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps(tuned));
+  assert.deepEqual(configured.drain_options, { max: 300, deadlineMs: 50_000, concurrency: 2 });
+  const skipped = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps(activeInspection({ controls: { desk_enabled: true } })));
+  assert.equal(skipped.drain_options, null);
 });
