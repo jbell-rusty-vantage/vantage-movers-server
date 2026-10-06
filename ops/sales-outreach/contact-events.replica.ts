@@ -16,7 +16,11 @@
  *   `outreach_contact_calls` sync-state row; a concurrent sweep is `lease_held`;
  * - call-inferred receiver: a reviewed rep's call on an unassigned subject whose Lead has no receiver
  *   writes `ringcentral_rep_call` with its EntityChange + `domain_revision` stamp in the same
- *   transaction; a later call by another rep or a replay does not move it.
+ *   transaction; a later call by another rep or a replay does not move it;
+ * - pre-CC-04 settle (olr C3): the dry run reports only the null Inbound/Outbound row before CC-04
+ *   (the Internal row is left, the post-CC-04 row is an anomaly); apply settles it with a revision bump
+ *   and one audit row, the sweep re-derives it awaiting → confirmed and the rep-day follows with one
+ *   publication; a second apply matches 0.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -198,6 +202,77 @@ async function main() {
   assert.equal(kept.receivers_filled, 0, "a filled receiver is never replaced by a later call");
   lead = await getFormLeadModel().collection.findOne({ _id: leadId });
   assert.equal(String(lead?.receiver_agent), String(bob));
+
+  // --- olr C3: settle the pre-CC-04 Call Log rows (`ops/lib/sales-outreach-settle-pre-cc04.ts`) -----
+  // A call the Call Log read before CC-04 stamped `call_log_state` stays awaiting forever; the settle
+  // stamps it `settled` + revision, and the minute sweep's cursor re-derives it to confirmed.
+  const { applySettle, reportSettle } = await import("../lib/sales-outreach-settle-pre-cc04.js");
+  const { csiOperatorActor } = await import("../../src/services/salesIntelligence/auth.js");
+  const { getSalesIntelligenceAuditEventModel } = await import("../../src/models/SalesIntelligenceAuditEvent.js");
+  await getSalesIntelligenceAuditEventModel().createCollection();
+  await getSalesIntelligenceAuditEventModel().createIndexes();
+  const preCc04Call = async (direction: "Outbound" | "Internal", at: string, session: string) => {
+    const started = new Date(at);
+    return getCallInteractionModel().create({
+      provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction,
+      contact_number_id: number, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
+      parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: started, result: "Call connected" }],
+      call_log_ids: [`log-${session}`], call_log_state: null, terminal: true, first_observed_at: started, last_observed_at: started,
+    });
+  };
+  const pre = await preCc04Call("Outbound", "2026-09-23T14:00:00Z", "s-pre-cc04");
+  const preInternal = await preCc04Call("Internal", "2026-09-23T14:05:00Z", "s-pre-cc04-internal");
+  const late = await preCc04Call("Outbound", "2026-09-25T14:00:00Z", "s-post-cc04"); // anomaly: reported, never written
+  // Sweeps run on clocks past the lease step above: a sweep releases its lease on the wall clock, which
+  // no longer frees a synthetic-clock lease, so each later sweep is ≥ 121 s after the previous one (a
+  // step added after this one must sweep at `settleSweepAt + 121 s` or later).
+  const preSweepAt = new Date(+leaseAt + 1_000);
+  const settleSweepAt = new Date(+preSweepAt + 121_000);
+  // The sweep derives the rows (awaiting), recounts the 2026-09-23 rep-day and moves its cursor past
+  // them; the settle's `updatedAt` bump is what brings the row back after the 2-minute overlap.
+  const firstSweep = await sweepContactSources("call", preSweepAt, { loader });
+  assert.deepEqual([firstSweep.skipped, firstSweep.caught_up], [false, true]);
+  const preEventId = contactEventId("call", String(pre._id));
+  assert.equal((await Events.findById(preEventId).lean())?.goal_credit, "awaiting_confirmation", "pre-CC-04 row derives awaiting");
+  const preRow = await Rows.findOne({ agent_id: alice, business_day: "2026-09-23" }).lean();
+  assert.deepEqual([preRow?.actual_confirmed, preRow?.actual_awaiting_confirmation], [0, 1]);
+
+  const dry = await reportSettle();
+  assert.deepEqual(dry.ids, [String(pre._id)], "only the Inbound/Outbound pre-CC-04 row is a candidate");
+  assert.deepEqual(dry.summary.by_day, { "2026-09-23": { Inbound: 0, Outbound: 1, total: 1 } });
+  assert.deepEqual(dry.summary.contact_events.by_goal_credit, { awaiting_confirmation: 1 });
+  assert.deepEqual(dry.summary.anomalies, { count: 1, sample_ids: [String(late._id)] });
+  assert.equal(dry.summary.internal_left, 1);
+  assert.equal((await getCallInteractionModel().findById(pre._id).lean())?.call_log_state, null, "the dry run writes nothing");
+
+  const preUpdatedAt = (await getCallInteractionModel().findById(pre._id).lean())!.updatedAt as Date;
+  const settled = await applySettle({ actor: csiOperatorActor("settle-pre-cc04-replica"), run_id: "settle-pre-cc04-replica" }, { batch: 1 });
+  assert.deepEqual([settled.settled, settled.batches, settled.ids], [1, 1, [String(pre._id)]]);
+  const settledRow = await getCallInteractionModel().findById(pre._id).lean();
+  assert.deepEqual([settledRow?.call_log_state, settledRow?.projection_revision], ["settled", 2]);
+  assert.ok((settledRow?.updatedAt as Date).getTime() > preUpdatedAt.getTime(), "updatedAt moves so the sweep cursor sees the row");
+  for (const untouched of [preInternal, late]) {
+    const row = await getCallInteractionModel().findById(untouched._id).lean();
+    assert.deepEqual([row?.call_log_state, row?.projection_revision], [null, 1], "Internal and post-CC-04 rows are untouched");
+  }
+  const audits = await getSalesIntelligenceAuditEventModel().find({ event_kind: "call_interactions_settled_pre_cc04" }).lean();
+  assert.equal(audits.length, 1, "one audit row per batch");
+  assert.deepEqual((audits[0]?.current as { ids?: string[] } | undefined)?.ids, [String(pre._id)], "the audit row holds the rollback id set");
+
+  // The minute sweep re-derives the settled row from its cursor (no wake, no job).
+  const resweep = await sweepContactSources("call", settleSweepAt, { loader });
+  assert.equal(resweep.skipped, false);
+  assert.equal(resweep.caught_up, true);
+  assert.equal((await Events.findById(preEventId).lean())?.goal_credit, "confirmed", "the settled row's event is confirmed");
+  const settledDay = await Rows.findOne({ agent_id: alice, business_day: "2026-09-23" }).lean();
+  assert.deepEqual(
+    [settledDay?.actual_confirmed, settledDay?.actual_awaiting_confirmation, settledDay?.publication_revision],
+    [1, 0, (preRow?.publication_revision ?? 0) + 1],
+    "the rep-day moves awaiting → confirmed with one publication",
+  );
+  const again = await applySettle({ actor: csiOperatorActor("settle-pre-cc04-replica-2"), run_id: "settle-pre-cc04-replica-2" });
+  assert.deepEqual([again.settled, again.batches], [0, 0], "a second apply matches 0");
+  assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ event_kind: "call_interactions_settled_pre_cc04" }), 1, "and audits nothing");
 
   console.log(JSON.stringify({ ok: true, database }));
 }
