@@ -199,7 +199,8 @@ test("configuration: loader verdict plus both hash paths (R0); the roster is cou
   assert.doesNotMatch(JSON.stringify(active), new RegExp(TEST_AGENT_A));
 
   // A value stored with a key this build does not know: the raw hash still matches, the parse fails.
-  const future = { ...value, evidence: { ...value.evidence, capture_freshness_tolerance_minutes: 10 } };
+  // (A0 made evidence.*_minutes known keys, so use a key no schema defines.)
+  const future = { ...value, evidence: { ...value.evidence, unknown_future_key_minutes: 10 } };
   const futureHash = configurationContentHash(future as never);
   const drift = summarizeConfiguration({
     inspection: { state: "unavailable", reason: "invalid_value", version: "v6", revision: 6, updated_at: null, updated_by: null },
@@ -209,7 +210,7 @@ test("configuration: loader verdict plus both hash paths (R0); the roster is cou
   });
   assert.deepEqual([drift.state, drift.reason], ["unavailable", "invalid_value"]);
   assert.deepEqual(drift.integrity, { stored_hash_present: true, pointer_matches_version: true, raw_hash_matches: true, parsed_hash_matches: null, parse_ok: false });
-  assert.equal((drift.evidence as Record<string, unknown>).capture_freshness_tolerance_minutes, 10);
+  assert.equal((drift.evidence as Record<string, unknown>).unknown_future_key_minutes, 10);
 
   // A tampered stored value matches neither path.
   const tampered = summarizeConfiguration({
