@@ -76,6 +76,11 @@ export const SalesOutreachSubjectSchema = new Schema(
     assigned_agent_id: ref,
     assignment_revision: count,
     lead_revision_seen: count,
+    /**
+     * olr B2: fingerprint (sha256 hex) of the priority map + intake defaults this subject was last
+     * decided under (`deskDecisionFingerprint`); null before B2's first sync of the subject.
+     */
+    decision_fingerprint: text,
     contact_number_ids: refs,
     revision,
   },

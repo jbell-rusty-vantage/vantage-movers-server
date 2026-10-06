@@ -149,6 +149,7 @@ export function toSubjectRow(row: SubjectLean): DeskSubjectRow {
     assigned_agent_id: row.assigned_agent_id ? String(row.assigned_agent_id) : null,
     assignment_revision: Number(row.assignment_revision ?? 0),
     lead_revision_seen: Number(row.lead_revision_seen ?? 0),
+    decision_fingerprint: typeof row.decision_fingerprint === "string" ? row.decision_fingerprint : null,
     contact_number_ids: ((row.contact_number_ids as unknown[]) ?? []).map(String),
     revision: Number(row.revision ?? 1),
   };

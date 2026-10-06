@@ -7,6 +7,9 @@ import { configurationContentHash } from "../config/store";
 import { CONFIGURATION_REVISION_5_HASH, configurationRevision5Value } from "../config/testing";
 import { fixedConfigurationLoader } from "../reads/testing";
 import {
+  DECISION_RECONCILE_DEFAULT_PER_RUN,
+  decisionJobInput,
+  decisionReconcilePerRunOf,
   feedLoopOf,
   leadChangeJobInput,
   nominateLeadChanges,
@@ -21,14 +24,17 @@ import {
   type OutreachFeedStore,
 } from "./feed";
 import { deskLeadKey, type DeskLeadRef } from "./leadFacts";
-import { deskConfiguration, fakeSession, objectId } from "./testing";
+import { deskDecisionFingerprint } from "./policyMapping";
+import { APPROVED_MAPPING, deskConfiguration, fakeSession, objectId } from "./testing";
 
 const at = (iso: string) => new Date(iso);
 const transaction = <T>(fn: (session: ClientSession) => Promise<T>) => fn(fakeSession);
 
 class MemoryFeedStore implements OutreachFeedStore {
   changes: LeadChangeRow[] = [];
-  subjects: Array<{ id: string; lead: DeskLeadRef; lead_revision_seen: number; closed?: boolean }> = [];
+  subjects: Array<{ id: string; lead: DeskLeadRef; lead_revision_seen: number; closed?: boolean; decision_fingerprint?: string | null }> = [];
+  /** Fingerprint of subjects that set none: the default test configuration's (already decided under it). */
+  defaultFingerprint = deskDecisionFingerprint(deskConfiguration().value.cadence);
   revisions = new Map<string, number>();
   tail: FeedCursor | null = null;
   reconcileCursor: string | null = null;
@@ -49,7 +55,11 @@ class MemoryFeedStore implements OutreachFeedStore {
   async readReconcileCursor() { return this.reconcileCursor; }
   async writeReconcileCursor(id: string | null) { this.reconcileCursor = id; }
   async subjectsAfter(afterId: string | null, limit: number) {
-    return this.subjects.filter((s) => !s.closed && (!afterId || s.id > afterId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, limit);
+    return this.subjects
+      .filter((s) => !s.closed && (!afterId || s.id > afterId))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .slice(0, limit)
+      .map((s) => ({ id: s.id, lead: s.lead, lead_revision_seen: s.lead_revision_seen, decision_fingerprint: s.decision_fingerprint === undefined ? this.defaultFingerprint : s.decision_fingerprint }));
   }
   async leadRevisions(leads: readonly DeskLeadRef[]) {
     return new Map(leads.flatMap((l) => (this.revisions.has(deskLeadKey(l)) ? [[deskLeadKey(l), this.revisions.get(deskLeadKey(l))!] as const] : [])));
@@ -177,7 +187,17 @@ describe("revision reconcile (outreach_revision_reconcile)", () => {
     assert.equal(result.pages, 3);
     assert.equal(result.checked, 250);
     assert.equal(store.jobs.size, 250);
-    assert.deepEqual(await reconcileOutreachRevisions(at("2026-10-04T14:05:00Z"), deps(store, false)), { skipped: true, reason: "lease_held", pages: 0, checked: 0, nominated: 0, wrapped: false });
+    assert.deepEqual(await reconcileOutreachRevisions(at("2026-10-04T14:05:00Z"), deps(store, false)), {
+      skipped: true,
+      reason: "lease_held",
+      pages: 0,
+      checked: 0,
+      nominated: 0,
+      wrapped: false,
+      decision_nominated: 0,
+      decision_deferred: 0,
+      decision_cap: DECISION_RECONCILE_DEFAULT_PER_RUN,
+    });
   });
 });
 
@@ -364,6 +384,132 @@ describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_se
     for (const bad of [{ feed_max_passes_per_run: 0 }, { feed_max_passes_per_run: 51 }, { feed_max_passes_per_run: 2.5 }, { feed_budget_seconds: 0 }, { feed_budget_seconds: 41 }]) {
       const value = configurationRevision5Value();
       value.migration = { ...value.migration, ...bad };
+      assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
+    }
+  });
+});
+
+// ---- olr B2: the reconcile re-decides subjects decided under another configuration -----------
+
+describe("decision reconcile (olr B2, migration.decision_reconcile_per_run)", () => {
+  const MAP = APPROVED_MAPPING!.priority_map!;
+  /** Configuration A (FINAL-01 map) or B (code 9 mapped → quoted) at a revision. */
+  const configOf = (kind: "A" | "B", revision: number, migration: Record<string, unknown> = {}) =>
+    deskConfiguration(
+      { migration, cadence: kind === "A" ? {} : { priority_map: { ...MAP, codes: [...MAP.codes, { code: "9", workflow: "quoted" as const, closure_reason: null }] } } },
+      `v${revision}`,
+      revision,
+    );
+  const fpOf = (kind: "A" | "B") => deskDecisionFingerprint(configOf(kind, 1).value.cadence);
+  const run = (store: MemoryFeedStore, configuration: ReturnType<typeof configOf>) =>
+    reconcileOutreachRevisions(at("2026-10-06T14:05:00Z"), {
+      store,
+      transaction,
+      loader: fixedConfigurationLoader(configuration as never),
+      lease: { acquire: async () => true, release: async () => undefined },
+    });
+  const decisionKey = (ref: DeskLeadRef, kind: "A" | "B", revision: number) => `sod:lead-change:${ref.model}:${ref.id}:decision:${fpOf(kind).slice(0, 16)}:c${revision}`;
+
+  test("the decision job identity: one per subject per decision fingerprint and configuration revision", () => {
+    const ref = { model: "FormLead" as const, id: "a".repeat(24) };
+    const fp = "0123456789abcdef".repeat(4);
+    assert.deepEqual(decisionJobInput(ref, fp, 6), {
+      stage: "outreach_lead_change",
+      subject_key: `outreach-lead:FormLead:${"a".repeat(24)}`,
+      dedupe_key: `sod:lead-change:FormLead:${"a".repeat(24)}:decision:0123456789abcdef:c6`,
+      input_revision: 6,
+      input_refs: ["a".repeat(24)],
+    });
+  });
+
+  test("a subject decided under another decision fingerprint is nominated once per configuration revision; replays dedupe; an A→B→A flip re-nominates", async () => {
+    const store = new MemoryFeedStore();
+    const decided = lead();
+    const unstamped = lead();
+    const current = lead();
+    store.subjects.push(
+      { id: "1".padStart(24, "0"), lead: decided, lead_revision_seen: 3, decision_fingerprint: fpOf("A") },
+      { id: "2".padStart(24, "0"), lead: unstamped, lead_revision_seen: 3, decision_fingerprint: null },
+      { id: "3".padStart(24, "0"), lead: current, lead_revision_seen: 3, decision_fingerprint: fpOf("B") },
+    );
+    for (const ref of [decided, unstamped, current]) store.revisions.set(deskLeadKey(ref), 3);
+    // Active B at revision 6: A-decided and unstamped (null) subjects are nominated; the B-decided one is not.
+    const first = await run(store, configOf("B", 6));
+    assert.deepEqual([...store.jobs.keys()], [decisionKey(decided, "B", 6), decisionKey(unstamped, "B", 6)]);
+    assert.deepEqual([first.nominated, first.decision_nominated, first.decision_deferred, first.decision_cap], [0, 2, 0, 300]);
+    assert.equal(store.jobs.get(decisionKey(decided, "B", 6))!.input_revision, 6, "input_revision = configuration revision");
+    // The jobs have not run yet: the next run proposes the same identities (insert-only enqueue dedupes them).
+    await run(store, configOf("B", 6));
+    assert.equal(store.jobs.size, 2);
+    // The jobs ran (stamped B); the Owner flips back to A (revision 7), then to B again (revision 8).
+    for (const subject of store.subjects) subject.decision_fingerprint = fpOf("B");
+    assert.equal((await run(store, configOf("B", 6))).decision_nominated, 0, "settled: nothing to re-decide");
+    await run(store, configOf("A", 7));
+    for (const subject of store.subjects) subject.decision_fingerprint = fpOf("A");
+    await run(store, configOf("B", 8));
+    assert.deepEqual(
+      [...store.jobs.keys()].filter((key) => key.includes(decided.id)),
+      [decisionKey(decided, "B", 6), decisionKey(decided, "A", 7), decisionKey(decided, "B", 8)],
+      "each flip is a new identity",
+    );
+  });
+
+  test("a subject whose Lead revision moved gets only the r<rev> job (it stamps the fingerprint too)", async () => {
+    const store = new MemoryFeedStore();
+    const moved = lead();
+    store.subjects.push({ id: "1".padStart(24, "0"), lead: moved, lead_revision_seen: 3, decision_fingerprint: fpOf("A") });
+    store.revisions.set(deskLeadKey(moved), 4);
+    const result = await run(store, configOf("B", 6));
+    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${moved.id}:r4`]);
+    assert.deepEqual([result.nominated, result.decision_nominated], [1, 0]);
+  });
+
+  test("decision nominations are capped per run; revision nominations are not", async () => {
+    const store = new MemoryFeedStore();
+    for (let i = 0; i < 500; i++) {
+      const ref = lead();
+      // Even ids: Lead revision moved (revision job); odd ids: current revision, decided under A (decision job).
+      store.subjects.push({ id: String(i).padStart(24, "0"), lead: ref, lead_revision_seen: 1, decision_fingerprint: fpOf("A") });
+      store.revisions.set(deskLeadKey(ref), i % 2 === 0 ? 2 : 1);
+    }
+    const capped = await run(store, configOf("B", 6, { decision_reconcile_per_run: 100 }));
+    assert.deepEqual([capped.pages, capped.checked, capped.wrapped], [6, 500, true], "the cursor still moves and wraps");
+    assert.deepEqual([capped.nominated, capped.decision_nominated, capped.decision_deferred, capped.decision_cap], [250, 100, 150, 100]);
+    assert.equal([...store.jobs.keys()].filter((key) => key.includes(":decision:")).length, 100);
+    assert.equal([...store.jobs.keys()].filter((key) => /:r2$/.test(key)).length, 250);
+    // The next run takes the next 100 (the first 100 still queued count against the cap: the wave follows the drain).
+    for (const subject of store.subjects.filter((s) => store.jobs.has(decisionKey(s.lead, "B", 6)))) subject.decision_fingerprint = fpOf("B");
+    for (const subject of store.subjects) subject.lead_revision_seen = store.revisions.get(deskLeadKey(subject.lead))!;
+    const next = await run(store, configOf("B", 6, { decision_reconcile_per_run: 100 }));
+    assert.deepEqual([next.nominated, next.decision_nominated, next.decision_deferred], [0, 100, 300]);
+    assert.equal([...store.jobs.keys()].filter((key) => key.includes(":decision:")).length, 200);
+    // Absent key → the code default.
+    assert.equal(decisionReconcilePerRunOf(configOf("B", 6).value), DECISION_RECONCILE_DEFAULT_PER_RUN);
+    assert.equal(decisionReconcilePerRunOf(null), 300);
+  });
+
+  test("closed subjects are never re-decided", async () => {
+    const store = new MemoryFeedStore();
+    const closed = lead();
+    store.subjects.push({ id: "1".padStart(24, "0"), lead: closed, lead_revision_seen: 3, decision_fingerprint: fpOf("A"), closed: true });
+    store.revisions.set(deskLeadKey(closed), 3);
+    const result = await run(store, configOf("B", 6));
+    assert.equal(store.jobs.size, 0);
+    assert.deepEqual([result.checked, result.decision_nominated], [0, 0]);
+  });
+
+  test("migration.decision_reconcile_per_run is optional with no schema default (R0) and bounded 1–5,000", () => {
+    const parsed = salesOutreachConfigurationValueSchema.parse(configurationRevision5Value());
+    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH);
+    assert.equal("decision_reconcile_per_run" in parsed.migration, false, "no default leaks into old versions");
+    for (const ok of [1, 300, 5000]) {
+      const value = configurationRevision5Value();
+      value.migration = { ...value.migration, decision_reconcile_per_run: ok };
+      assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, true, String(ok));
+    }
+    for (const bad of [0, 5001, 2.5, "300"]) {
+      const value = configurationRevision5Value();
+      value.migration = { ...value.migration, decision_reconcile_per_run: bad };
       assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
     }
   });

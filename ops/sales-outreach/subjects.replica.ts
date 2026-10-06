@@ -18,7 +18,10 @@
  * - olr B7: `GET /enrollment/candidates` lists only the report's backfill scope (review count = the
  *   report's, in_scope = its selection, older unchanged), and the explained plans stay bounded: the
  *   upcoming-move branch reads `sod_form_lead_move_date`, the window branch examines only Leads created
- *   since its `_id` bound.
+ *   since its `_id` bound;
+ * - olr B2: a priority-map PATCH (code 9 → quoted, `migration.decision_reconcile_per_run: 5`) is applied
+ *   to every open subject by the capped reconcile + drain, each stamped with the new decision fingerprint;
+ *   the unmapped-9 subject's quoted period starts at the PATCH (`configuration_activated_at`).
  */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -57,6 +60,7 @@ async function main() {
   const { patchSalesOutreachConfiguration } = await import("../../src/services/salesOutreach/config/commands.js");
   const { createConfigurationLoader } = await import("../../src/services/salesOutreach/config/load.js");
   const { mongoDeskSubjectStore } = await import("../../src/services/salesOutreach/subjects/store.js");
+  const { deskDecisionFingerprint } = await import("../../src/services/salesOutreach/subjects/policyMapping.js");
   const { refreshLeadForOutreach, runOutreachLeadChangeJob } = await import("../../src/services/salesOutreach/subjects/leadChangeJob.js");
   const { scanOutreachLeadChanges, reconcileOutreachRevisions, OUTREACH_LEAD_CHANGE_SCOPE } = await import("../../src/services/salesOutreach/subjects/feed.js");
   const { reportEnrollment, applyEnrollment, verifyEnrollment, listEnrollmentCandidates, candidateLegs } = await import("../../src/services/salesOutreach/enrollment/service.js");
@@ -328,7 +332,55 @@ async function main() {
   assert.ok(windowPlan.executionStats.totalDocsExamined <= sinceBound, `window branch examines only Leads created since the bound (${windowPlan.executionStats.totalDocsExamined} ≤ ${sinceBound})`);
   assert.ok(sinceBound <= (await forms.countDocuments({})) - 32, "the 32 older Leads lie below the bound");
 
-  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair, B7 scoped candidates + bounded plans");
+  // 7. olr B2: a priority-map PATCH re-decides every open subject through the capped reconcile, prospectively.
+  const unmappedNine = await insertLead({ granot_priority: "9", last_accepted_granot_observation: { observation_id: oid(), captured_at: at("2026-10-02T14:01:00Z") } });
+  await refreshLead(unmappedNine, "2026-10-02T15:00:00Z");
+  const nineSubject = (await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(unmappedNine.id) }).lean())!;
+  const before9 = await loader.requireActive();
+  assert.equal(nineSubject.decision_fingerprint, deskDecisionFingerprint(before9.value.cadence), "stamped at creation");
+  assert.deepEqual((await Periods.find({ subject_id: nineSubject._id }).lean()).map((p) => p.workflow), ["none"], "9 is unmapped under FINAL-01");
+  const mapped = structuredClone(before9.value);
+  mapped.cadence.priority_map = { ...mapped.cadence.priority_map!, codes: [...mapped.cadence.priority_map!.codes, { code: "9", workflow: "quoted", closure_reason: null }] };
+  mapped.migration = { ...mapped.migration, decision_reconcile_per_run: 5 };
+  const patched = await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "sod-subjects-b2-map-9", expected_revision: before9.revision, value: mapped });
+  assert.equal(patched.response.changed, true);
+  const after9 = await loader.requireActive();
+  const activeFingerprint = deskDecisionFingerprint(after9.value.cadence);
+  assert.notEqual(activeFingerprint, nineSubject.decision_fingerprint);
+  const openSubjects = { status: { $in: ["active", "review"] as const } };
+  const stale = () => Subjects.countDocuments({ ...openSubjects, decision_fingerprint: { $ne: activeFingerprint } });
+  const staleAtPatch = await stale();
+  assert.ok(staleAtPatch > 10, `every open subject was decided under the old map (${staleAtPatch})`);
+  const drain = async () => {
+    for (let n = 0; n < 500; n++) if ((await runOutreachLeadChangeJob()).status === "not_claimable") return;
+    throw new Error("lead-change drain did not finish");
+  };
+  await drain(); // earlier steps' pending revision jobs, so the lead revisions are settled
+  const firstWave = await reconcileOutreachRevisions(new Date());
+  assert.deepEqual([firstWave.decision_cap, firstWave.decision_nominated], [5, 5], "the Owner cap bounds the wave on real Mongo");
+  assert.ok(firstWave.decision_deferred > 0, "the rest wait for later runs");
+  const decisionJobs = await Jobs.find({ stage: "outreach_lead_change", dedupe_key: { $regex: `:decision:${activeFingerprint.slice(0, 16)}:c${after9.revision}$` } }).lean();
+  assert.equal(decisionJobs.length, 5);
+  assert.ok(decisionJobs.every((job) => job.input_revision === after9.revision), "input_revision = configuration revision");
+  for (let run = 0; run < 40 && (await stale()) > 0; run++) {
+    await drain();
+    await reconcileOutreachRevisions(new Date());
+  }
+  await drain();
+  assert.equal(await stale(), 0, "acceptance: every open subject carries the active decision fingerprint");
+  assert.ok(await Jobs.exists({ dedupe_key: `sod:lead-change:FormLead:${unmappedNine.id}:decision:${activeFingerprint.slice(0, 16)}:c${after9.revision}`, status: "completed" }));
+  const ninePeriods = await Periods.find({ subject_id: nineSubject._id }).sort({ started_at: 1 }).lean();
+  assert.deepEqual(
+    ninePeriods.map((p) => [p.workflow, p.start_kind, p.time_basis, p.ended_at === null]),
+    [["none", "intake", "activation_boundary", false], ["quoted", "transition", "configuration_activated_at", true]],
+  );
+  assert.equal(+ninePeriods[1]!.started_at, +after9.updated_at!, "the re-decision starts at the PATCH, not at the 2026-10-02 observation");
+  assert.equal(+ninePeriods[0]!.ended_at!, +after9.updated_at!);
+  assert.ok(ninePeriods[1]!.transition_key.endsWith(`:quoted:9:c${after9.revision}`));
+  const settled = await reconcileOutreachRevisions(new Date());
+  assert.deepEqual([settled.decision_nominated, settled.decision_deferred], [0, 0], "settled: nothing left to re-decide");
+
+  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair, B7 scoped candidates + bounded plans, B2 decision reconcile");
 }
 
 main()

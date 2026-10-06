@@ -68,10 +68,17 @@ export type DeskSubjectFacts = DeskReceivedFacts &
     /** IMPL-07 inputs: Contact Numbers whose `lead` or `other_leads` hold this Lead (All Numbers). */
     contact_number_ids: string[];
     lead_revision_seen: number;
+    /**
+     * olr B2: `deskDecisionFingerprint` of the configuration this subject was last decided under (priority
+     * map + intake defaults). Null on subjects written before B2 (treated as "same", never as a change).
+     */
+    decision_fingerprint: string | null;
   }>;
 
 export type DeskSubjectContext = Readonly<{
   as_of: Date;
+  /** olr B2: the active configuration's decision fingerprint, stamped on the subject. */
+  decision_fingerprint: string;
   /** Agents with a reviewed `sales_rep` identity link effective at `as_of`. */
   reviewed_rep_ids: ReadonlySet<string>;
   contact_number_ids: readonly string[];
@@ -101,6 +108,7 @@ export function buildSubjectFacts(facts: DeskLeadFacts, decision: DeskPolicyDeci
     assigned_agent_id: facts.receiver_agent_id && context.reviewed_rep_ids.has(facts.receiver_agent_id) ? facts.receiver_agent_id : null,
     contact_number_ids: [...new Set(context.contact_number_ids)].sort(),
     lead_revision_seen: facts.domain_revision,
+    decision_fingerprint: context.decision_fingerprint,
   };
 }
 
@@ -115,9 +123,12 @@ export type DesiredPeriod = Readonly<{
   transition_key: string;
   priority_source_ref: string | null;
   priority_source_revision: number | null;
-  /** When the fact took effect (accepted observation `captured_at`, or the Lead change time). */
+  /**
+   * When the fact took effect (accepted observation `captured_at`, or the Lead change time), or — for a
+   * re-decision caused by a configuration change — when that configuration became active (olr B2).
+   */
   effective_at: Date;
-  time_basis: "accepted_observation_captured_at" | "entity_change_applied_at";
+  time_basis: "accepted_observation_captured_at" | "entity_change_applied_at" | "configuration_activated_at";
   end_reason_for_previous: "priority_change" | "closure";
 }>;
 
