@@ -8,32 +8,45 @@ import { WEBHOOK_SUBSCRIPTION_SCOPE } from "../../src/services/numberActivity/we
 import { SUBSCRIPTION_HEALTH_SCOPE_CALLS, SUBSCRIPTION_HEALTH_SCOPE_REP_SMS } from "../../src/services/ringcentral/subscriptionHealth";
 import { CallLead } from "../../src/models/CallLead";
 import { FormLead } from "../../src/models/FormLead";
+import { leadNumberE164s, leadPhonesOf } from "../../src/services/numberActivity/leadContactNumber";
 import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config";
 import { configurationContentHash } from "../../src/services/salesOutreach/config/store";
+import { deskTimingOf } from "../../src/services/salesOutreach/config/timing";
 import { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } from "../../src/services/salesOutreach/evaluation/testing";
+import { mongoOverdueFilter } from "../../src/services/salesOutreach/reads/deskStore";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
 import {
   agentTail,
   collectDeskState,
+  collectDeskStateWithSnapshot,
+  compareClosedPublication,
   composeServedRepDays,
   countsOf,
   DESK_STATE_CC04_INSTANT,
   DESK_STATE_SCOPES,
+  designOverdueFilter,
   EXTERNAL_CALL_DIRECTIONS,
+  findBySubjectPages,
   installReadOnlyCommandGuard,
   lagMinutes,
   LEAD_COLLECTIONS,
+  leadPhoneStateOf,
   nestedCountsOf,
+  otherOutboundByDayOf,
+  parseClosedPublicationSnapshot,
   parseDeskStateArgs,
   READ_GUARD_EXIT_CODE,
   readOnlyDeskStateReader,
+  repDayOtherOutboundOf,
   repDayRowOf,
+  rowsReadingOverdue,
   summarizeCallsFreshnessInputs,
   summarizeConfiguration,
   summarizeRepDays,
   summarizeRepSmsMailboxes,
   summarizeSubjectsWithoutNumbers,
   summarizeWatermark,
+  tallyChannelVerification,
   type DeskStateReader,
 } from "./sales-outreach-desk-state";
 import { CC04_INSTANT, SETTLE_DIRECTIONS } from "./sales-outreach-settle-pre-cc04";
@@ -41,8 +54,17 @@ import { CC04_INSTANT, SETTLE_DIRECTIONS } from "./sales-outreach-settle-pre-cc0
 const NOW = new Date("2026-10-06T15:00:00.000Z");
 
 test("desk-state CLI: a named target is required; --pretty indents; there is no write mode", () => {
-  assert.deepEqual(parseDeskStateArgs(["--target=vantagemovers"]), { target: "vantagemovers", pretty: false });
-  assert.deepEqual(parseDeskStateArgs(["--pretty", "--target=testvantagemovers_x1"]), { target: "testvantagemovers_x1", pretty: true });
+  assert.deepEqual(parseDeskStateArgs(["--target=vantagemovers"]), { target: "vantagemovers", pretty: false, out: null, compare: null });
+  assert.deepEqual(parseDeskStateArgs(["--pretty", "--target=testvantagemovers_x1"]), { target: "testvantagemovers_x1", pretty: true, out: null, compare: null });
+  // OPS-0c: the closed-row snapshot goes to / is compared with local files only.
+  assert.deepEqual(parseDeskStateArgs(["--target=vantagemovers", "--out=closed-2355.json", "--compare=closed-2350.json"]), {
+    target: "vantagemovers",
+    pretty: false,
+    out: "closed-2355.json",
+    compare: "closed-2350.json",
+  });
+  assert.throws(() => parseDeskStateArgs(["--target=vantagemovers", "--out="]), /--out/);
+  assert.throws(() => parseDeskStateArgs(["--target=vantagemovers", "--compare="]), /--compare/);
   assert.throws(() => parseDeskStateArgs([]), /--target/);
   assert.throws(() => parseDeskStateArgs(["--target="]), /--target/);
   assert.throws(() => parseDeskStateArgs(["--target=prod db"]), /plain database name/);
@@ -272,7 +294,15 @@ test("the collector runs every query through the reader: read-only pipelines, bo
   assert.deepEqual(Object.keys(state.watermarks), Object.keys(DESK_STATE_SCOPES));
   assert.equal(state.rep_days.today.rows, 0);
   assert.equal(state.jobs.dead_letters_total, 0);
-  assert.equal(state.summary_version, 2);
+  assert.equal(state.summary_version, 3);
+  // OPS-0c on an empty database without a configuration: no coverage, so no served overdue count and no proven waits.
+  assert.deepEqual(state.wave2_acceptance.cadence_coverage, { available: false, call_through: null, sms_through: null, sms_capture_enabled: false });
+  assert.deepEqual(state.wave2_acceptance.distinct_overdue_leads, { available: false, unknown_reason: "coverage_incomplete" });
+  assert.deepEqual(state.wave2_acceptance.coverage_wait.call, { through: null, waiting: 0, proven: null, proven_and_pending: null, oldest_proven_wait: null, closed_waiting: 0 });
+  assert.deepEqual(state.wave2_acceptance.closed_publication, { rows: 0, truncated: false, revision_sum: 0, rewritten_since_ny_midnight: 0, comparison: null });
+  assert.equal(state.freshness_inputs.calls.served, null);
+  assert.deepEqual([state.projections.next_evaluation.closed_scheduled, state.projections.next_evaluation.by_utc_hour_closed], [0, {}]);
+  assert.deepEqual([state.contact_events.other_outbound_by_day, state.rep_days.other_outbound_by_day], [{}, {}]);
   assert.deepEqual(state.rep_days.today_served, { business_day: "2026-10-06", available: false, reason: "configuration_not_active" });
   assert.deepEqual(
     [state.call_interactions.unconfirmed_by_direction, state.call_interactions.unconfirmed_inbound_outbound_total, state.call_interactions.unconfirmed_internal_total, state.call_interactions.before_cc04],
@@ -311,13 +341,84 @@ test("the collector runs every query through the reader: read-only pipelines, bo
       "sales_outreach_subjects",
     ],
   );
-  // The watermark find never projects a token field.
+  // The watermark find never projects a token field; it projects the sticky reconcile success and the sync mode.
   const syncFinds = calls.filter((c) => c.op === "find" && c.collection === "sales_intelligence_sync_state");
   assert.equal(syncFinds.length, 2);
   for (const f of syncFinds) {
     const keys = Object.keys((f.arg as { projection: Document }).projection);
     assert.ok(keys.every((k) => !/(^|\.)token$/.test(k)), `token field projected: ${keys.join(",")}`);
   }
+  assert.ok(["reconcile_sync_success_at", "last_run.sync_mode"].every((k) => k in (syncFinds[0]!.arg as { projection: Document }).projection));
+  // Projection finds read channel fields and revisions only: no display (customer) field.
+  for (const f of calls.filter((c) => c.op === "find" && c.collection === "sales_outreach_projections"))
+    assert.doesNotMatch(JSON.stringify((f.arg as { projection: Document }).projection), /display|window_history|detail/);
+});
+
+test("wave 2 acceptance through the collector: served overdue rule, design count, sweep-predicate waits, closed snapshot and its comparison", async () => {
+  const min = (m: number) => new Date(NOW.getTime() + m * 60_000);
+  const value = salesOutreachConfigurationValueSchema.parse(completeConfigurationInput({ cadence_enforcement_enabled: true, goal_metrics_enabled: true }));
+  const hash = configurationContentHash(value);
+  const closedIds = [new ObjectId("65a0000000000000000000c1"), new ObjectId("65a0000000000000000000c2")];
+  const counts: Array<{ filter: Document; n: number }> = [];
+  const reader: DeskStateReader = {
+    async count(collection, filter = {}) {
+      const n = collection === "sales_outreach_projections" ? 7 : 0;
+      if (collection === "sales_outreach_projections") counts.push({ filter, n });
+      return n;
+    },
+    async aggregate() {
+      return [];
+    },
+    async findOne(collection, filter) {
+      if (collection !== "sales_outreach_configuration") return null;
+      if (filter.kind === "pointer") return { kind: "pointer", key: "active", version: "v5", revision: 5, content_hash: hash };
+      return { kind: "version", key: "version:v5", version: "v5", value, content_hash: hash };
+    },
+    async find(collection, filter, options) {
+      if (collection === "sales_intelligence_sync_state" && options.limit === 20)
+        return [
+          { scope: DESK_STATE_SCOPES.call_log, known_complete_through: min(-20), observed_complete_through: min(-18) },
+          { scope: DESK_STATE_SCOPES.contact_calls, known_complete_through: min(-21), cursor: { outreach_coverage_from: min(-10_000) } },
+        ];
+      if (collection === "sales_outreach_projections" && JSON.stringify(filter).includes('"closed"') && "publication_revision" in options.projection)
+        return filter.$and ? [] : closedIds.map((id, i) => ({ subject_id: id, publication_revision: 4 + i }));
+      if (collection === "sales_outreach_projections" && "call.status" in options.projection)
+        return [{ subject_id: new ObjectId(), exposure: "enforcement", call: { status: "due", due_at: min(-15) }, sms: { status: "not_required" } }];
+      return [];
+    },
+  };
+  const previous = parseClosedPublicationSnapshot({
+    tool: "sales-outreach-desk-state/closed-publication",
+    version: 1,
+    database: "testvantagemovers_unit",
+    as_of: min(-30).toISOString(),
+    truncated: false,
+    rows: { [closedIds[0]!.toHexString()]: 4, [closedIds[1]!.toHexString()]: 4 },
+  });
+  const { state, closed_snapshot } = await collectDeskStateWithSnapshot(reader, { database: "testvantagemovers_unit", now: NOW, previous_closed_snapshot: previous });
+  const w = state.wave2_acceptance;
+  // Cadence call coverage = min(capped capture − 2 min allowance, derivation) = min(−22, −21) = −22.
+  const through = min(-22);
+  assert.deepEqual(w.cadence_coverage, { available: true, call_through: through.toISOString(), sms_through: null, sms_capture_enabled: false });
+  // The 15-min-old deadline is past coverage (−22): due — not yet verified.
+  assert.deepEqual([w.call.due_passed, w.call.read_overdue, w.call.read_due_unverified], [1, 0, 1]);
+  const served = mongoOverdueFilter({ call: through, sms: null });
+  const design = designOverdueFilter({ call: through, sms: null });
+  assert.ok(counts.some((c) => JSON.stringify(c.filter) === JSON.stringify(served)), "the served team overdue rule is counted");
+  assert.ok(counts.some((c) => JSON.stringify(c.filter) === JSON.stringify(design)), "the design count is counted");
+  assert.deepEqual(w.distinct_overdue_leads, { available: true, cutoffs: { call: through.toISOString(), sms: null }, served_rule: 7, design_count: 7, active_without_sms_due: 7 });
+  // The proven waits use the sweep's own predicate (≤ current coverage); SMS has no coverage, so nothing is proven there.
+  assert.ok(counts.some((c) => JSON.stringify(c.filter) === JSON.stringify({ "coverage_wait.call": { $ne: null, $lte: through } })));
+  assert.deepEqual([w.coverage_wait.call.through, w.coverage_wait.call.proven, w.coverage_wait.sms.proven], [through.toISOString(), 7, null]);
+  // Closed rows: the snapshot carries every id with its revision; the comparison reads one row increased.
+  assert.deepEqual(closed_snapshot.rows, { [closedIds[0]!.toHexString()]: 4, [closedIds[1]!.toHexString()]: 5 });
+  assert.deepEqual([closed_snapshot.database, closed_snapshot.as_of, closed_snapshot.tool], ["testvantagemovers_unit", NOW.toISOString(), "sales-outreach-desk-state/closed-publication"]);
+  assert.deepEqual([w.closed_publication.rows, w.closed_publication.revision_sum, w.closed_publication.comparison?.increased, w.closed_publication.comparison?.increased_subjects], [2, 9, 1, ["0000c2"]]);
+  assert.doesNotMatch(JSON.stringify(state), /65a0000000000000000000c/);
+  // The served freshness is composed under the active configuration.
+  assert.notEqual(state.freshness_inputs.calls.served, null);
+  // A snapshot of another database is refused.
+  await assert.rejects(collectDeskState(reader, { database: "vantagemovers", now: NOW, previous_closed_snapshot: previous }), /testvantagemovers_unit/);
 });
 
 test("served rep-days: actual_basis per rep as GET /rep-days composes it, roster reps without a row included", () => {
@@ -376,20 +477,31 @@ test("served rep-days: actual_basis per rep as GET /rep-days composes it, roster
   assert.doesNotMatch(JSON.stringify(complete), new RegExp(TEST_AGENT_A));
 });
 
-test("calls freshness inputs: confirmation = max(lane success, reconcile sync success); webhook and staffed window reported", () => {
+test("calls freshness inputs: the read's confirmation rule (sticky reconcile success, last-run fallback in mode on) and the served state", () => {
   const min = (m: number) => new Date(NOW.getTime() + m * 60_000); // NOW = 11:00 ET, inside [07:45, 20:30)
+  const timing = deskTimingOf(null); // code defaults: freshness 10, coverage 25 + 2, webhook silence 30 min
+  // A3-cap row: the sticky reconcile success (3 min ago) stands although the last run was a shadow run.
   const row = {
     known_complete_through: min(-18),
     observed_complete_through: min(-16),
-    last_run: { finished_at: min(-3), sync_token_stored: true, sync_error_code: null, error_code: null },
-    isync_lane: { last_success_at: min(-12) },
+    reconcile_sync_success_at: min(-3),
+    last_run: { finished_at: min(-1), sync_mode: "shadow", sync_token_stored: true, sync_error_code: null as string | null, error_code: null as string | null },
+    isync_lane: { last_success_at: min(-12) as Date | null },
   };
-  const fresh = summarizeCallsFreshnessInputs(row, min(-2), NOW);
+  const fresh = summarizeCallsFreshnessInputs(row, min(-2), NOW, timing);
   assert.deepEqual(fresh, {
     in_staffed_window: true,
     lane_success_at: min(-12).toISOString(),
     lane_success_lag_min: 12,
-    reconcile: { finished_at: min(-3).toISOString(), sync_token_stored: true, sync_error_code: null, success_at: min(-3).toISOString(), success_lag_min: 3 },
+    reconcile: {
+      finished_at: min(-1).toISOString(),
+      sync_mode: "shadow",
+      sync_token_stored: true,
+      sync_error_code: null,
+      sticky_success_at: min(-3).toISOString(),
+      success_at: min(-3).toISOString(),
+      success_lag_min: 3,
+    },
     confirmation_at: min(-3).toISOString(),
     confirmation_lag_min: 3,
     last_webhook_at: min(-2).toISOString(),
@@ -397,46 +509,210 @@ test("calls freshness inputs: confirmation = max(lane success, reconcile sync su
     known_complete_through_lag_min: 18,
     observed_complete_through_lag_min: 16,
     last_error_code: null,
+    served: { state: "fresh", reason: null, last_updated_at: min(-3).toISOString(), age_seconds: 180 },
   });
 
-  // A reconcile that stored no token (or hit a sync error) is not a confirmation: the lane instant stands.
-  const noToken = summarizeCallsFreshnessInputs({ ...row, last_run: { ...row.last_run, sync_token_stored: false } }, null, NOW);
-  assert.deepEqual([noToken.reconcile.success_at, noToken.confirmation_at, noToken.last_webhook_at], [null, min(-12).toISOString(), null]);
-  const syncError = summarizeCallsFreshnessInputs({ ...row, last_run: { ...row.last_run, sync_error_code: "token_expired", error_code: "rc_429" } }, null, NOW);
-  assert.deepEqual([syncError.reconcile.sync_error_code, syncError.confirmation_at, syncError.last_error_code], ["token_expired", min(-12).toISOString(), "rc_429"]);
+  // A row reconciled before the sticky field existed: the last run counts only in sync mode `on` with a stored token.
+  const legacy = { ...row, reconcile_sync_success_at: undefined, last_run: { ...row.last_run, finished_at: min(-3), sync_mode: "on" } };
+  const fallback = summarizeCallsFreshnessInputs(legacy, null, NOW);
+  assert.deepEqual([fallback.reconcile.success_at, fallback.confirmation_at], [min(-3).toISOString(), min(-3).toISOString()]);
+  // Shadow, no token or a sync error: not a confirmation; the lane's 12 min stands and the served state is delayed.
+  const failing: Array<Record<string, unknown>> = [
+    { sync_mode: "shadow" },
+    { sync_mode: "on", sync_token_stored: false },
+    { sync_mode: "on", sync_error_code: "token_expired", error_code: "rc_429" },
+  ];
+  for (const run of failing) {
+    const out = summarizeCallsFreshnessInputs({ ...legacy, last_run: { ...legacy.last_run, ...run } }, min(-2), NOW, timing);
+    assert.deepEqual([out.reconcile.success_at, out.confirmation_at, out.served?.state], [null, min(-12).toISOString(), "delayed"]);
+    assert.equal(out.served?.reason, run.error_code ?? "confirmation_stale");
+  }
+  // The sticky success survives a later failing run (it is the read's own rule, so the served state agrees).
+  const sticky = summarizeCallsFreshnessInputs(
+    { ...row, reconcile_sync_success_at: min(-4), last_run: { ...row.last_run, sync_mode: "on", sync_error_code: "token_expired" } },
+    min(-2),
+    NOW,
+    timing,
+  );
+  assert.deepEqual([sticky.reconcile.success_at, sticky.confirmation_at, sticky.served?.state], [min(-4).toISOString(), min(-4).toISOString(), "fresh"]);
+  // Coverage behind (both watermarks 40 min back) reads delayed coverage_behind even with a fresh confirmation.
+  const behind = summarizeCallsFreshnessInputs({ ...row, known_complete_through: min(-40), observed_complete_through: min(-40) }, min(-2), NOW, timing);
+  assert.deepEqual([behind.served?.state, behind.served?.reason], ["delayed", "coverage_behind"]);
   // Night (01:00 ET): outside the staffed window; with no lane success the reconcile alone confirms.
   const night = summarizeCallsFreshnessInputs({ ...row, isync_lane: { last_success_at: null } }, null, new Date("2026-10-06T05:00:00Z"));
-  assert.equal(night.in_staffed_window, false);
-  assert.equal(night.confirmation_at, min(-3).toISOString());
-  assert.deepEqual(summarizeCallsFreshnessInputs(null, null, NOW).confirmation_at, null);
+  assert.deepEqual([night.in_staffed_window, night.confirmation_at, night.served], [false, min(-3).toISOString(), null]);
+  const none = summarizeCallsFreshnessInputs(null, null, NOW, timing);
+  assert.deepEqual([none.confirmation_at, none.served?.state], [null, "unknown"]);
 });
 
-test("subjects without numbers: counted by status, Lead model and whether the Lead has a phone; no phone or id leaves", () => {
-  const ids = Array.from({ length: 5 }, (_, i) => new ObjectId(`65a00000000000000000000${i}`));
+test("subjects without numbers: counted by status, Lead model and the mint's phone rule (CW1); no phone or id leaves", () => {
+  const ids = Array.from({ length: 7 }, (_, i) => new ObjectId(`65a00000000000000000000${i}`));
   const subjects = [
     { status: "active", lead_model: "CallLead", lead_id: ids[0] },
     { status: "active", lead_model: "CallLead", lead_id: ids[1] },
     { status: "active", lead_model: "FormLead", lead_id: ids[2] },
     { status: "review", lead_model: "FormLead", lead_id: ids[3] },
     { status: "active", lead_model: "CallLead", lead_id: ids[4] },
+    { status: "active", lead_model: "FormLead", lead_id: ids[5] },
+    { status: "active", lead_model: "FormLead", lead_id: ids[6] },
   ];
-  const leads = {
-    CallLead: [
-      { _id: ids[0], normalized_phone_number: "3055550199" },
-      // Only the RingCentral original caller path carries the phone: still a phone.
-      { _id: ids[1], normalized_phone_number: "", ringcentral: { original_caller: { normalized_phone_number: "+13055550123" } } },
-    ],
-    FormLead: [
-      { _id: ids[2], normalized_phone_number: "12" },
-      { _id: ids[3], granot_contact_snapshot: { normalized_phone_number: "7865550100" } },
-    ],
-  };
-  const summary = summarizeSubjectsWithoutNumbers(subjects, leads, false);
+  const callLeads: Document[] = [
+    { _id: ids[0], normalized_phone_number: "3055550199" },
+    // Only the RingCentral original caller path carries the phone: still a phone.
+    { _id: ids[1], normalized_phone_number: "", ringcentral: { original_caller: { normalized_phone_number: "+13055550123" } } },
+  ];
+  const formLeads: Document[] = [
+    { _id: ids[2], normalized_phone_number: "12" },
+    // Only the Granot snapshot carries the phone: the mint numbers it (CW1), so it counts.
+    { _id: ids[3], granot_contact_snapshot: { normalized_phone_number: "7865550100" } },
+    // A Duplicate and a Bad Lead with a phone: the mint skips them, so they are not the wave-1 number.
+    { _id: ids[5], normalized_phone_number: "3055550111", duplicate: true },
+    { _id: ids[6], ingested_contact_snapshot: { normalized_phone_number: "3055550112" }, bad_lead: "spam" },
+  ];
+  const summary = summarizeSubjectsWithoutNumbers(subjects, { CallLead: callLeads, FormLead: formLeads }, false);
   assert.deepEqual(summary, {
-    checked: 5,
+    checked: 7,
     truncated: false,
-    by_status_model_phone: { "active/CallLead/has_phone": 2, "active/CallLead/lead_missing": 1, "active/FormLead/no_phone": 1, "review/FormLead/has_phone": 1 },
+    by_status_model_phone: {
+      "active/CallLead/has_phone": 2,
+      "active/CallLead/lead_missing": 1,
+      "active/FormLead/no_phone": 1,
+      "active/FormLead/not_candidate": 2,
+      "review/FormLead/has_phone": 1,
+    },
     active_lead_has_phone: 2,
   });
   assert.doesNotMatch(JSON.stringify(summary), /555|65a0/);
+  // The state is exactly the mint's decision (`leadNumberE164s` over `leadPhonesOf`).
+  const all: Array<readonly ["CallLead" | "FormLead", Document]> = [...callLeads.map((l) => ["CallLead", l] as const), ...formLeads.map((l) => ["FormLead", l] as const)];
+  for (const [model, lead] of all) {
+    const decision = leadNumberE164s(model, { ...leadPhonesOf(lead as never), duplicate: lead.duplicate ?? null, bad_lead: lead.bad_lead ?? null });
+    assert.equal(leadPhoneStateOf(model, lead) === "has_phone", "e164s" in decision);
+  }
+});
+
+test("wave 2 verification: each channel read with the read's own rule at as_of and the channel's cadence coverage", () => {
+  const min = (m: number) => new Date(NOW.getTime() + m * 60_000);
+  const rows: Document[] = [
+    // Stored overdue (the engine proved it): read overdue, verified.
+    { subject_id: new ObjectId(), exposure: "enforcement", call: { status: "overdue", due_at: min(-60) }, sms: { status: "not_required" } },
+    // Due 20 min ago, coverage 25 min back: due — not yet verified since the deadline.
+    { subject_id: new ObjectId(), exposure: "enforcement", call: { status: "due", due_at: min(-20) }, sms: { status: "due", due_at: min(-30) } },
+    // Due 40 min ago, coverage past it: read overdue although stored due.
+    { subject_id: new ObjectId(), exposure: "enforcement", call: { status: "due", due_at: min(-40), oldest_actionable_due_at: min(-50) }, sms: { status: "scheduled", due_at: min(60) } },
+    // Due later today: unchanged, no verification.
+    { subject_id: new ObjectId(), exposure: "shadow", call: { status: "due", due_at: min(30) }, sms: { status: "pending" } },
+  ];
+  const coverage = { call: min(-25), sms: null };
+  assert.deepEqual(tallyChannelVerification(rows, "call", NOW, coverage.call), {
+    coverage_through: min(-25).toISOString(),
+    stored_status: { due: 3, overdue: 1 },
+    stored_overdue: 1,
+    due_passed: 2,
+    read_overdue: 2,
+    read_due_unverified: 1,
+    oldest_unverified_since: min(-20).toISOString(),
+  });
+  // SMS without capture coverage: every passed deadline stays unverified, none reads overdue.
+  const sms = tallyChannelVerification(rows, "sms", NOW, coverage.sms);
+  assert.deepEqual(
+    [sms.coverage_through, sms.stored_overdue, sms.due_passed, sms.read_overdue, sms.read_due_unverified, sms.oldest_unverified_since],
+    [null, 0, 1, 0, 1, min(-30).toISOString()],
+  );
+  assert.equal(rowsReadingOverdue(rows, NOW, coverage), 2);
+  // Coverage catches up to as_of: the unverified call deadline is proven and reads overdue.
+  const caughtUp = tallyChannelVerification(rows, "call", NOW, NOW);
+  assert.deepEqual([caughtUp.read_overdue, caughtUp.read_due_unverified, caughtUp.oldest_unverified_since], [3, 0, null]);
+});
+
+test("wave 2 overdue: the design count compares each channel's due key with min(as_of, coverage) and has no pre-A2 fallback", () => {
+  const call = new Date("2026-10-06T14:35:00Z");
+  const sms = new Date("2026-10-06T14:40:00Z");
+  assert.deepEqual(designOverdueFilter({ call, sms }), {
+    subject_status: "active",
+    $or: [{ "queue_keys.call_due": { $lte: call } }, { "queue_keys.sms_due": { $lte: sms } }],
+  });
+  assert.deepEqual(designOverdueFilter({ call, sms: null }), { subject_status: "active", $or: [{ "queue_keys.call_due": { $lte: call } }] });
+});
+
+test("closed publication snapshot: validated on read, compared row by row, ids listed as tails only", () => {
+  const [a, b, c, d] = ["65a0000000000000000000a1", "65a0000000000000000000a2", "65a0000000000000000000a3", "65a0000000000000000000a4"] as const;
+  const tool = "sales-outreach-desk-state/closed-publication";
+  const previous = parseClosedPublicationSnapshot({ tool, version: 1, database: "vantagemovers", as_of: "2026-10-07T03:55:00.000Z", truncated: false, rows: { [a]: 3, [b]: 5, [c]: 2 } });
+  assert.deepEqual(compareClosedPublication(previous, { [a]: 3, [b]: 7, [d]: 1 }), {
+    previous_as_of: "2026-10-07T03:55:00.000Z",
+    compared: 2,
+    unchanged: 1,
+    increased: 1,
+    decreased: 0,
+    newly_closed: 1,
+    missing: 1,
+    max_increase: 2,
+    increased_subjects: ["0000a2"],
+  });
+  // A quiet midnight: the same map compares unchanged.
+  const quiet = compareClosedPublication(previous, previous.rows);
+  assert.deepEqual([quiet.compared, quiet.unchanged, quiet.increased, quiet.missing, quiet.newly_closed], [3, 3, 0, 0, 0]);
+  const at = "2026-10-07T03:55:00Z";
+  const invalid: unknown[] = [
+    null,
+    { tool: "other", version: 1 },
+    { tool, version: 2, database: "vantagemovers", as_of: at, rows: {} },
+    { tool, version: 1, database: "prod db", as_of: at, rows: {} },
+    { tool, version: 1, database: "vantagemovers", as_of: "never", rows: {} },
+    { tool, version: 1, database: "vantagemovers", as_of: at, rows: { "not-an-id": 1 } },
+    { tool, version: 1, database: "vantagemovers", as_of: at, rows: { [a]: "3" } },
+  ];
+  for (const bad of invalid) assert.throws(() => parseClosedPublicationSnapshot(bad), /--compare/);
+});
+
+test("C8 per day: other outbound buckets from grouped events and stored rep-day breakdowns against unattributed", () => {
+  const events = otherOutboundByDayOf([
+    { _id: { day: "2026-10-05", reason: "lead_not_enrolled" }, n: 137 },
+    { _id: { day: "2026-10-05", reason: "before_activation" }, n: 80 },
+    { _id: { day: "2026-10-05", reason: "no_lead" }, n: 28 },
+    { _id: { day: "2026-10-05", reason: "lead_closed" }, n: 2 },
+    { _id: { day: "2026-10-05", reason: "not_new_quoted" }, n: 1 },
+    // Derived before C8 (no reason) and a stray `eligible` both read `unknown`, as the rep-day counts them.
+    { _id: { day: "2026-10-06", reason: null }, n: 4 },
+    { _id: { day: "2026-10-06", reason: "eligible" }, n: 1 },
+  ]);
+  assert.deepEqual(Object.keys(events), ["2026-10-06", "2026-10-05"]);
+  assert.deepEqual(events["2026-10-05"], { no_lead: 28, lead_not_enrolled: 137, lead_closed: 2, before_activation: 80, ambiguous: 0, not_new_quoted: 1, unknown: 0, total: 248 });
+  assert.deepEqual([events["2026-10-06"]!.unknown, events["2026-10-06"]!.total], [5, 5]);
+
+  const stored = repDayOtherOutboundOf([
+    { _id: "2026-10-05", rows: 3, rows_with_breakdown: 3, unattributed: 248, no_lead: 28, lead_not_enrolled: 137, lead_closed: 2, before_activation: 80, ambiguous: 0, not_new_quoted: 1, unknown: 0 },
+    { _id: "2026-10-06", rows: 3, rows_with_breakdown: 1, unattributed: 20, unknown: 5 },
+  ]);
+  assert.deepEqual(Object.keys(stored), ["2026-10-06", "2026-10-05"]);
+  assert.deepEqual(stored["2026-10-05"], {
+    rows: 3,
+    rows_with_breakdown: 3,
+    unattributed: 248,
+    breakdown: { no_lead: 28, lead_not_enrolled: 137, lead_closed: 2, before_activation: 80, ambiguous: 0, not_new_quoted: 1, unknown: 0 },
+    breakdown_total: 248,
+  });
+  // Rows written before C8 carry no breakdown: the day's breakdown total trails its unattributed until the recount.
+  assert.deepEqual([stored["2026-10-06"]!.rows_with_breakdown, stored["2026-10-06"]!.breakdown_total, stored["2026-10-06"]!.unattributed], [1, 5, 20]);
+});
+
+test("paged projection reads walk subject_id keysets up to the cap", async () => {
+  const all = Array.from({ length: 2_350 }, (_, i) => ({ subject_id: new ObjectId(i.toString(16).padStart(24, "0")) }));
+  const seen: Array<{ filter: Document; limit: number; sort: unknown }> = [];
+  const reader = {
+    async find(_collection: string, filter: Document, options: { limit: number; sort?: Document }) {
+      seen.push({ filter, limit: options.limit, sort: options.sort });
+      const after = (filter.$and?.[1]?.subject_id?.$gt ?? null) as ObjectId | null;
+      return all.filter((r) => !after || r.subject_id.toHexString() > after.toHexString()).slice(0, options.limit);
+    },
+  } as unknown as DeskStateReader;
+  const full = await findBySubjectPages(reader, "sales_outreach_projections", { subject_status: "closed" }, { _id: 0 });
+  assert.deepEqual([full.rows.length, full.truncated, seen.map((s) => s.limit)], [2_350, false, [1_000, 1_000, 1_000]]);
+  assert.deepEqual([seen[0]!.filter, seen[0]!.sort], [{ subject_status: "closed" }, { subject_id: 1 }]);
+  assert.deepEqual(seen[1]!.filter, { $and: [{ subject_status: "closed" }, { subject_id: { $gt: all[999]!.subject_id } }] });
+  assert.equal(new Set(full.rows.map((r) => r.subject_id.toHexString())).size, 2_350);
+  seen.length = 0;
+  const capped = await findBySubjectPages(reader, "sales_outreach_projections", {}, { _id: 0 }, 1_500);
+  assert.deepEqual([capped.rows.length, capped.truncated, seen.map((s) => s.limit)], [1_500, true, [1_000, 500]]);
 });
