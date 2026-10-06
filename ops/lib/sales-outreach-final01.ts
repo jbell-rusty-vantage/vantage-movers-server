@@ -107,11 +107,28 @@ export function rosterVersionFor(agentIds: readonly string[], installedOn: strin
   return `roster-${installedOn}-${digest}`;
 }
 
+/** The root namespaces a policy install rebuilds; every other root namespace is carried over verbatim. */
+export const POLICY_INSTALL_NAMESPACES = ["controls", "transition", "cadence", "evidence", "migration", "goals"] as const;
+
+/**
+ * Root namespaces outside `POLICY_INSTALL_NAMESPACES` (for example lane A's optional `operations`
+ * tunables) whose value differs between `current` and `built`, by key union and canonical JSON.
+ */
+export function foreignNamespaceChanges(current: SalesOutreachConfigurationValue, built: SalesOutreachConfigurationValue): string[] {
+  const owned = new Set<string>(POLICY_INSTALL_NAMESPACES);
+  const before = current as Record<string, unknown>;
+  const after = built as Record<string, unknown>;
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((key) => !owned.has(key) && canonicalOf(before[key]) !== canonicalOf(after[key]))
+    .sort();
+}
+
 /**
  * The full value to install: FINAL-01 cadence/evidence, the M1 roster (every reviewed `sales_rep`
  * link, scheduled all seven days at the default goal 100, P08a/FAST-01), the FAST-01 backfill
  * scope (90 days + upcoming moves). Controls, migration pacing, intake gate fields and existing
  * day overrides are carried over from the current value; only `enableControls` are switched on.
+ * Root namespaces the installer does not own are carried over verbatim (re-verified on the result).
  */
 export function buildFinal01Configuration(input: {
   current: SalesOutreachConfigurationValue;
@@ -128,8 +145,10 @@ export function buildFinal01Configuration(input: {
   const controls = { ...input.current.controls };
   for (const control of input.enableControls ?? []) controls[control] = true;
   const keptOverrides = (input.current.goals.effective_day_overrides ?? []).filter((o) => agents.includes(o.agent_id));
-  // Keys FINAL-01 does not name (optional keys added after FINAL-01) are carried over, never dropped.
-  return salesOutreachConfigurationValueSchema.parse({
+  // Keys FINAL-01 does not name (optional keys added after FINAL-01, at the root or inside a
+  // namespace) are carried over, never dropped.
+  const value = salesOutreachConfigurationValueSchema.parse({
+    ...input.current,
     controls,
     transition: {
       ...input.current.transition,
@@ -149,6 +168,9 @@ export function buildFinal01Configuration(input: {
       zero_goal_rule: "no_goal_today_excluded_from_denominator",
     },
   });
+  const changed = foreignNamespaceChanges(input.current, value);
+  if (changed.length) throw new Error(`A policy install would change namespaces it does not own: ${changed.join(", ")}`);
+  return value;
 }
 
 export type InstallArgs = {
@@ -169,6 +191,8 @@ export type InstallArgs = {
   migrationPaused?: boolean;
   /** Present only when `--intake-admission-at=<ISO instant|now>` was given. */
   intakeAdmissionAt?: Date;
+  /** The `--intake-admission-at` value as typed (`now` stays `now`), echoed in refusal hints. */
+  intakeAdmissionArg?: string;
 };
 
 /**
@@ -195,6 +219,7 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
   let dropUnreviewed = false;
   let migrationPaused: boolean | undefined;
   let intakeAdmissionAt: Date | undefined;
+  let intakeAdmissionArg: string | undefined;
   for (const arg of argv) {
     if (arg.startsWith("--target=")) target = arg.slice("--target=".length).trim();
     else if (arg === "--apply") apply = true;
@@ -218,6 +243,7 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
       const at = raw === "now" ? new Date() : new Date(raw);
       if (!raw || Number.isNaN(at.getTime())) throw new Error(`--intake-admission-at must be an ISO instant or "now", got: ${raw}`);
       intakeAdmissionAt = at;
+      intakeAdmissionArg = raw;
     } else if (arg === "--allow-schema-drift") continue;
     else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -239,7 +265,7 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
     refreshRoster,
     dropUnreviewed,
     ...(migrationPaused === undefined ? {} : { migrationPaused }),
-    ...(intakeAdmissionAt === undefined ? {} : { intakeAdmissionAt }),
+    ...(intakeAdmissionAt === undefined ? {} : { intakeAdmissionAt, intakeAdmissionArg }),
   };
 }
 
@@ -337,7 +363,10 @@ function outsideControls(value: SalesOutreachConfigurationValue): string {
   const transition: Record<string, unknown> = { ...value.transition };
   delete transition.intake_admission_enabled;
   delete transition.intake_admission_at;
-  return canonicalOf({ transition, cadence: value.cadence, evidence: value.evidence, migration, goals: value.goals });
+  // Every root namespace except controls, so namespaces the installer does not own are covered too.
+  const rest: Record<string, unknown> = { ...value, transition, migration };
+  delete rest.controls;
+  return canonicalOf(rest);
 }
 
 /**
@@ -424,7 +453,8 @@ export function assertInstallMode(args: InstallArgs, current: SalesOutreachConfi
   const switches = [
     args.enableControls.length ? `--enable=${args.enableControls.join(",")}` : null,
     args.migrationPaused === undefined ? null : `--migration-paused=${args.migrationPaused}`,
-    args.intakeAdmissionAt === undefined ? null : `--intake-admission-at=${args.intakeAdmissionAt.toISOString()}`,
+    // Echo the value as typed: a resolved `now` would pin the suggested command to this run's instant.
+    args.intakeAdmissionAt === undefined ? null : `--intake-admission-at=${args.intakeAdmissionArg ?? args.intakeAdmissionAt.toISOString()}`,
   ].filter((flag): flag is string => flag !== null);
   if (switches.length)
     throw new Error(

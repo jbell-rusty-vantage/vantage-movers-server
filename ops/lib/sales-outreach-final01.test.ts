@@ -20,6 +20,7 @@ import {
   buildFinal01Configuration,
   FINAL01_APPROVAL_REF,
   FINAL01_POLICY_VERSION,
+  foreignNamespaceChanges,
   installIdempotencyKey,
   parseInstallArgs,
   planInstall,
@@ -334,6 +335,64 @@ test("B5: --enable without --set-controls on an installed policy is refused; mod
   const fresh = installerOver(new MemoryConfigurationDb());
   await assert.rejects(fresh.run(["--apply", "--set-controls", "--enable=desk_enabled"]), /needs an installed policy/);
 });
+
+test("B5 review: the refusal hint echoes --intake-admission-at as typed, so `now` is not pinned to the refused run", async () => {
+  const db = new MemoryConfigurationDb();
+  const installer = installerOver(db);
+  await installer.run(["--apply"]);
+  await assert.rejects(installer.run(["--intake-admission-at=now"]), (error: Error) => {
+    assert.match(error.message, /Run: pnpm outreach:install-policy --target=testvantagemovers --set-controls --intake-admission-at=now$/);
+    assert.doesNotMatch(error.message, /--intake-admission-at=\d/);
+    return true;
+  });
+  await assert.rejects(installer.run(["--intake-admission-at=2026-10-09T12:00:00Z"]), /--set-controls --intake-admission-at=2026-10-09T12:00:00Z$/);
+  assert.deepEqual(
+    [parseInstallArgs(["--target=vantagemovers", "--intake-admission-at=now"]).intakeAdmissionArg, parseInstallArgs(["--target=vantagemovers"]).intakeAdmissionArg],
+    ["now", undefined],
+  );
+});
+
+/** Lane A (A0) adds the optional root `operations` namespace; on a branch without it the strict root schema refuses the key. */
+const SCHEMA_HAS_OPERATIONS = "operations" in (salesOutreachConfigurationValueSchema.shape as Record<string, unknown>);
+const withOperations = (value: SalesOutreachConfigurationValue) =>
+  ({ ...value, operations: { evaluate_drain_concurrency: 2 } }) as unknown as SalesOutreachConfigurationValue;
+
+test("B5 review: a policy install never silently drops a root namespace it does not own", () => {
+  const installed = buildFinal01Configuration({ current: bootstrap(), rosterAgentIds: [A], installedOn: "2026-10-05" });
+  const stored = withOperations(installed);
+  assert.deepEqual(foreignNamespaceChanges(stored, installed), ["operations"], "dropping operations is a change");
+  assert.deepEqual(foreignNamespaceChanges(stored, stored), []);
+  assert.deepEqual(foreignNamespaceChanges(installed, { ...installed, cadence: { ...installed.cadence, policy_version: null } }), [], "owned namespaces are not foreign");
+  const rebuild = () => buildFinal01Configuration({ current: stored, rosterAgentIds: [A, B], installedOn: "2026-10-09" });
+  if (SCHEMA_HAS_OPERATIONS) assert.deepEqual((rebuild() as unknown as Record<string, unknown>).operations, { evaluate_drain_concurrency: 2 });
+  // Without A0 the root key reaches the strict schema (it is carried, not dropped) and is refused loudly.
+  else assert.throws(rebuild, /operations/);
+});
+
+test(
+  "B5 review: an Owner-PATCHed operations namespace survives a plain and a forced policy install",
+  { skip: SCHEMA_HAS_OPERATIONS ? false : "needs lane A's optional root `operations` namespace (A0)" },
+  async () => {
+    const db = new MemoryConfigurationDb();
+    const installer = installerOver(db);
+    await installer.run(["--apply", "--enable=desk_enabled"]);
+    await installer.ownerPatch((value) => withOperations(value), "owner-ops4");
+    // A plain install after a roster change (not drift) writes and keeps operations.
+    const plain = await installer.run(["--apply"], { reviewed: [A, B], installedOn: "2026-10-09" });
+    assert.equal(plain.write?.response.revision, 3);
+    assert.deepEqual(((await installer.loader.requireActive()).value as unknown as Record<string, unknown>).operations, { evaluate_drain_concurrency: 2 });
+    // A forced install over an Owner cadence edit keeps operations too.
+    await installer.ownerPatch((value) => {
+      value.cadence.intake_default_rule!.granot_created = "new";
+      return value;
+    }, "owner-d3");
+    const forced = await installer.run(["--apply", "--force-policy"], { reviewed: [A, B], installedOn: "2026-10-09" });
+    assert.equal(forced.write?.response.revision, 5);
+    const after = (await installer.loader.requireActive()).value;
+    assert.equal(after.cadence.intake_default_rule?.granot_created, "review");
+    assert.deepEqual((after as unknown as Record<string, unknown>).operations, { evaluate_drain_concurrency: 2 });
+  },
+);
 
 test("B5: --refresh-roster adds new reviewed agents and keeps existing goals", async () => {
   const C = "cccccccccccccccccccccccc";
