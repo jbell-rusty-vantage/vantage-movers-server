@@ -11,7 +11,12 @@
  *   association; unconfirmed `call_interactions` by day and direction with the OPS-1 split before
  *   CC-04; enrollment runs) and the OPS-0b reads (served `actual_basis` per rep with roster reps
  *   without a row; calls freshness inputs with the newest call webhook; open subjects without a
- *   number by whether their Lead has a phone);
+ *   number by whether their Lead has a phone) and the OPS-0c wave-2 reads (sticky reconcile success
+ *   and the served calls freshness; read-time verification per channel; the served team overdue
+ *   rule against the design count; `coverage_wait` against the cadence coverage; `next_evaluation_at`
+ *   split open/closed; C8 other outbound per day from events (one per source per rep-day) and from
+ *   stored rep-days; the closed-row `publication_revision` snapshot written by `--out` and diffed by
+ *   `--compare`, a snapshot of another database refused);
  * - stdout is exactly one JSON document and carries no token, display name, phone or Lead selection;
  * - a `--target` that is not the resolved database is refused before connecting;
  * - the database is byte-identical afterwards (every document, every index, the collection list);
@@ -19,6 +24,8 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { type Db, MongoClient, ObjectId } from "mongodb";
@@ -96,6 +103,7 @@ async function seed(db: Db, now: Date) {
     { subject_id: subjects[1], workflow: "new", start_kind: "activation", ended_at: null },
     { subject_id: subjects[3], workflow: "closed", start_kind: "transition", ended_at: min(-500) },
   ]);
+  const closedExtra = new ObjectId();
   const projection = (i: number, extra: Record<string, unknown>) => ({
     subject_id: subjects[i],
     exposure: "enforcement",
@@ -109,10 +117,16 @@ async function seed(db: Db, now: Date) {
   });
   const flags = (on: string[]) => Object.fromEntries(["needs_contact", "overdue", "pending", "blocked", "job_pending", "move_date_passed", "move_date_unknown", "advisory_cooldown"].map((f) => [f, on.includes(f)]));
   await db.collection("sales_outreach_projections").insertMany([
-    projection(0, { subject_status: "active", workflow: "quoted", assigned_agent_id: agentA, call: { status: "due" }, sms: { status: "not_required" }, status_flags: flags(["needs_contact", "overdue"]), queue_keys: { urgency_due: min(-30) }, next_evaluation_at: min(-5) }),
-    projection(1, { subject_status: "active", workflow: "new", assigned_agent_id: null, call: { status: "due" }, sms: { status: "due" }, status_flags: flags(["needs_contact"]), next_evaluation_at: min(120) }),
-    projection(2, { subject_status: "active", workflow: "new", assigned_agent_id: agentB, call: { status: "pending" }, sms: { status: "scheduled" }, status_flags: flags(["pending"]), next_evaluation_at: min(121) }),
-    projection(3, { subject_status: "closed", workflow: "closed", assigned_agent_id: agentB, call: { status: "not_required" }, sms: { status: "not_required" }, next_evaluation_at: null }),
+    // Cadence call coverage = min(Call Log −15 − 2 min allowance, derivation −20) = −20; SMS capture is off (no SMS coverage).
+    // Row 0: call due 30 min ago, proven by coverage (reads overdue, counted by the team rule).
+    projection(0, { subject_status: "active", workflow: "quoted", assigned_agent_id: agentA, call: { status: "due", due_at: min(-30) }, sms: { status: "not_required" }, status_flags: flags(["needs_contact", "overdue"]), queue_keys: { urgency_due: min(-30), call_due: min(-30), sms_due: min(24 * 60) }, next_evaluation_at: min(-5), coverage_wait: { call: null, sms: null } }),
+    // Row 1 (written before A2: no sms_due): call due 10 min ago, past coverage (not yet verified), waits on coverage; SMS due 5 min ago.
+    projection(1, { subject_status: "active", workflow: "new", assigned_agent_id: null, call: { status: "due", due_at: min(-10) }, sms: { status: "due", due_at: min(-5) }, status_flags: flags(["needs_contact"]), queue_keys: { urgency_due: min(24 * 60), call_due: min(-10) }, next_evaluation_at: min(120), coverage_wait: { call: min(-10), sms: null } }),
+    // Row 2: pending on a 25-min-old wait that coverage already proves (the sweep's repair set).
+    projection(2, { subject_status: "active", workflow: "new", assigned_agent_id: agentB, call: { status: "pending" }, sms: { status: "scheduled" }, status_flags: flags(["pending"]), queue_keys: { urgency_due: min(24 * 60), call_due: min(24 * 60), sms_due: min(24 * 60) }, next_evaluation_at: min(121), coverage_wait: { call: min(-25), sms: null } }),
+    // Closed rows: one quiet (engine v2), one still scheduled (a v1 row the reconcile has not rewritten yet).
+    projection(3, { subject_status: "closed", workflow: "closed", assigned_agent_id: agentB, call: { status: "not_required" }, sms: { status: "not_required" }, next_evaluation_at: null, publication_revision: 6, computed_as_of: min(-3 * 24 * 60) }),
+    projection(4, { subject_id: closedExtra, subject_status: "closed", workflow: "closed", assigned_agent_id: agentB, call: { status: "not_required" }, sms: { status: "not_required" }, next_evaluation_at: min(60), publication_revision: 2, computed_as_of: min(-3 * 24 * 60) }),
   ]);
 
   await db.collection("sales_intelligence_jobs").insertMany([
@@ -130,7 +144,8 @@ async function seed(db: Db, now: Date) {
     {
       scope: "call_log_all_directions",
       known_complete_through: min(-15),
-      last_run: { started_at: min(-1), finished_at: min(-1), error_code: null, sync_token_stored: true, sync_error_code: null },
+      reconcile_sync_success_at: min(-1),
+      last_run: { started_at: min(-1), finished_at: min(-1), error_code: null, sync_mode: "on", sync_token_stored: true, sync_error_code: null },
       isync_lane: { last_run_at: min(-1), last_success_at: min(-4), last_error_code: null, last_records: 1 },
       call_log_sync: { token: "SYNTHETIC-PROVIDER-TOKEN", sync_time: min(-2), consecutive_expiries: 0 },
     },
@@ -154,15 +169,17 @@ async function seed(db: Db, now: Date) {
   ]);
 
   await db.collection("sales_outreach_rep_day_projections").insertMany([
-    { agent_id: agentA, business_day: today, count_scope: "all_outbound", actual_confirmed: 12, actual_awaiting_confirmation: 1, unattributed: 9, goal_snapshot: { goal: 100 }, goal_state: "behind", coverage: { state: "partial", reason: "capture_behind" }, computed_as_of: min(-3) },
+    { agent_id: agentA, business_day: today, count_scope: "all_outbound", actual_confirmed: 12, actual_awaiting_confirmation: 1, unattributed: 9, other_outbound: { no_lead: 0, lead_not_enrolled: 1, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 8 }, goal_snapshot: { goal: 100 }, goal_state: "behind", coverage: { state: "partial", reason: "capture_behind" }, computed_as_of: min(-3) },
     { agent_id: agentB, business_day: today, count_scope: "all_outbound", actual_confirmed: 30, actual_awaiting_confirmation: 0, unattributed: 28, goal_snapshot: { goal: 100 }, goal_state: "behind", coverage: { state: "partial" }, computed_as_of: min(-3) },
     { agent_id: agentA, business_day: yesterday, count_scope: "all_outbound", actual_confirmed: 86, actual_awaiting_confirmation: 0, unattributed: 74, goal_snapshot: { goal: 100 }, goal_state: "behind", coverage: { state: "complete" }, computed_as_of: min(-600) },
     { agent_id: agentA, business_day: addDays(today, -12), count_scope: "all_outbound", actual_confirmed: 5, actual_awaiting_confirmation: 0, unattributed: 0, goal_snapshot: { goal: 100 }, goal_state: "behind", coverage: { state: "complete" } },
   ]);
 
-  const event = (business_date: string, association: string, goal_credit: string, eligible: boolean, kind = "outbound_attempt") => ({
+  const event = (business_date: string, association: string, goal_credit: string, eligible: boolean, kind = "outbound_attempt", reason: string | null = null, source_id = new ObjectId()) => ({
     source_kind: "call",
-    source_id: new ObjectId(),
+    source_id,
+    goal_agent_id: agentA,
+    association_reason: reason,
     subject_id: association === "unique" ? subjects[0] : null,
     direction: "outbound",
     kind,
@@ -171,11 +188,15 @@ async function seed(db: Db, now: Date) {
     goal_credit,
     goal_scope_eligible: eligible,
   });
+  const repeated = new ObjectId();
   await db.collection("sales_outreach_contact_events").insertMany([
-    event(today, "unique", "confirmed", true),
+    event(today, "unique", "confirmed", true, "outbound_attempt", "eligible"),
+    event(today, "none", "confirmed", false, "other", "lead_not_enrolled", repeated),
+    // A second event of the same source for the same rep-day: the rep-day counts the source once.
+    event(today, "none", "confirmed", false, "other", "lead_not_enrolled", repeated),
+    // Derived before C8: no reason (reads `unknown`).
     event(today, "none", "confirmed", false, "other"),
-    event(today, "none", "confirmed", false, "other"),
-    event(yesterday, "ambiguous", "confirmed", false),
+    event(yesterday, "ambiguous", "confirmed", false, "outbound_attempt", "ambiguous"),
     event("2026-09-22", "none", "awaiting_confirmation", false, "other"),
   ]);
 
@@ -202,7 +223,7 @@ async function seed(db: Db, now: Date) {
     selected_leads: [{ model: "FormLead", id: "lead-ref-should-not-print" }],
     results: { first: "lead-ref-should-not-print" },
   });
-  return { today, yesterday };
+  return { today, yesterday, closedIds: [subjects[3]!, closedExtra] };
 }
 
 /** Child mode: a guarded client attempts one insert; the guard must exit 97 before it is sent. */
@@ -225,7 +246,9 @@ async function main() {
   await client.connect();
   const db = client.db(database);
   try {
-    const { today, yesterday } = await seed(db, new Date());
+    const { today, yesterday, closedIds } = await seed(db, new Date());
+    const snapshotFile = path.join(os.tmpdir(), `${database}-closed.json`);
+    const foreignFile = path.join(os.tmpdir(), `${database}-foreign.json`);
     await db.collection("sales_outreach_projections").createIndex({ next_evaluation_at: 1 }, { name: "sod_projection_next_evaluation" });
     const before = await fingerprint(db);
 
@@ -266,7 +289,7 @@ async function main() {
     assert.deepEqual(s.periods, { total: 3, ended: 1, active_by_workflow_start: { "new/activation": 1, "quoted/activation": 1 } });
 
     const p = s.projections;
-    assert.deepEqual([p.total, p.by_subject_status, p.by_exposure], [4, { active: 3, closed: 1 }, { enforcement: 4 }]);
+    assert.deepEqual([p.total, p.by_subject_status, p.by_exposure], [5, { active: 3, closed: 2 }, { enforcement: 5 }]);
     assert.deepEqual(p.active_call_status, { due: 2, pending: 1 });
     assert.deepEqual(p.active_sms_status, { due: 1, not_required: 1, scheduled: 1 });
     assert.deepEqual(
@@ -277,7 +300,13 @@ async function main() {
     assert.equal(p.unassigned_due_calls, 1);
     assert.equal(p.next_evaluation.past_due, 1);
     assert.equal(p.next_evaluation.none, 1);
-    assert.equal(Object.values(p.next_evaluation.by_utc_hour as Record<string, number>).reduce((a, b) => a + b, 0), 3);
+    const sum = (counts: Record<string, number>) => Object.values(counts).reduce((a, b) => a + b, 0);
+    assert.equal(sum(p.next_evaluation.by_utc_hour), 4);
+    // OPS-0c (A4): the histogram split open/closed; the still-scheduled closed row is visible.
+    assert.deepEqual(
+      [sum(p.next_evaluation.by_utc_hour_open), sum(p.next_evaluation.by_utc_hour_closed), p.next_evaluation.closed_scheduled, p.next_evaluation.open_none],
+      [3, 1, 1, 0],
+    );
     assert.ok(Object.keys(p.next_evaluation.by_utc_hour).every((k) => /^\d{4}-\d{2}-\d{2}T\d{2}Z$/.test(k)));
 
     const j = s.jobs;
@@ -305,28 +334,39 @@ async function main() {
     ]);
     assert.deepEqual(rd.today.reps.map((r: { agent: string }) => r.agent), ["32227e", "3221ab"]);
     assert.deepEqual([rd.yesterday.rows, rd.yesterday.totals.confirmed, rd.yesterday.coverage_state], [1, 86, { complete: 1 }]);
-    // Served view: roster reps (the configuration's two synthetic Agents) have no row and capture is
-    // 20 min behind (partial), so they read Pending; the two row Agents are served from the projection.
+    // Served view: roster reps (the configuration's two synthetic Agents) have no row; goal coverage is
+    // 20 min behind, inside C0's 25-min today tolerance (complete), so they read a recorded 0
+    // (`no_activity_recorded`, the wave-1 check); the two row Agents are served from the projection.
     assert.equal(rd.today_served.available, true);
-    assert.equal(rd.today_served.capture_coverage.state, "partial");
-    assert.deepEqual(rd.today_served.actual_basis, { pending: 2, projection: 2 });
-    assert.equal(rd.today_served.pending_without_row, 2);
+    assert.equal(rd.today_served.capture_coverage.state, "complete");
+    assert.deepEqual(rd.today_served.actual_basis, { no_activity_recorded: 2, projection: 2 });
+    assert.equal(rd.today_served.pending_without_row, 0);
     assert.deepEqual(
       rd.today_served.reps.map((r: { agent: string; on_roster: boolean; has_row: boolean; actual_basis: string }) => [r.agent, r.on_roster, r.has_row, r.actual_basis]),
-      [["aaaaaa", true, false, "pending"], ["bbbbbb", true, false, "pending"], ["3221ab", false, true, "projection"], ["32227e", false, true, "projection"]],
+      [["aaaaaa", true, false, "no_activity_recorded"], ["bbbbbb", true, false, "no_activity_recorded"], ["3221ab", false, true, "projection"], ["32227e", false, true, "projection"]],
     );
     assert.equal(rd.yesterday_served.reps.find((r: { agent: string }) => r.agent === "3221ab").actual_confirmed, 86);
     assert.deepEqual(rd.recent_by_day_scope.map((r: { business_day: string; confirmed: number }) => [r.business_day, r.confirmed]), [[today, 42], [yesterday, 86]]);
 
     const e = s.contact_events;
-    assert.equal(e.total, 5);
-    assert.deepEqual(e.by_association, { ambiguous: 1, none: 3, unique: 1 });
+    assert.equal(e.total, 6);
+    assert.deepEqual(e.by_association, { ambiguous: 1, none: 4, unique: 1 });
     assert.deepEqual(e.awaiting_by_business_date, { "2026-09-22": 1 });
     assert.deepEqual(e.today_by_source_direction_credit_association_eligible, {
-      "call/outbound/confirmed/none/false": 2,
+      "call/outbound/confirmed/none/false": 3,
       "call/outbound/confirmed/unique/true": 1,
     });
     assert.deepEqual(e.yesterday_by_source_direction_credit_association_eligible, { "call/outbound/confirmed/ambiguous/false": 1 });
+    // OPS-0c (C8): every event by stored reason; other outbound one per source per rep-day, by bucket.
+    assert.deepEqual(e.association_reason_by_day, { [today]: { eligible: 1, lead_not_enrolled: 2, null: 1 }, [yesterday]: { ambiguous: 1 } });
+    const bucketsOf = (counts: Record<string, number>) => ({ no_lead: 0, lead_not_enrolled: 0, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0, ...counts });
+    assert.deepEqual(e.other_outbound_by_day, {
+      [today]: { ...bucketsOf({ lead_not_enrolled: 1, unknown: 1 }), total: 2 },
+      [yesterday]: { ...bucketsOf({ ambiguous: 1 }), total: 1 },
+    });
+    assert.deepEqual(rd.other_outbound_by_day[today], { rows: 2, rows_with_breakdown: 1, unattributed: 37, breakdown: bucketsOf({ lead_not_enrolled: 1, unknown: 8 }), breakdown_total: 9 });
+    assert.deepEqual(rd.other_outbound_by_day[yesterday], { rows: 1, rows_with_breakdown: 0, unattributed: 74, breakdown: bucketsOf({}), breakdown_total: 0 });
+    assert.deepEqual(Object.keys(rd.other_outbound_by_day), [today, yesterday]);
 
     assert.deepEqual(s.call_interactions, {
       total: 4,
@@ -345,6 +385,34 @@ async function main() {
       [f.calls.lane_success_lag_min, f.calls.reconcile.success_lag_min, f.calls.confirmation_lag_min, f.calls.webhook_lag_min, f.calls.known_complete_through_lag_min],
       [4, 1, 1, 2, 15],
     );
+    // OPS-0c: the sticky reconcile success is read, and the served state is composed (fresh: confirmed 1 min ago, coverage 15 min back).
+    assert.equal(f.calls.reconcile.sticky_success_at, f.calls.reconcile.success_at);
+    assert.deepEqual([f.calls.reconcile.sync_mode, f.calls.served.state, f.calls.served.reason], ["on", "fresh", null]);
+
+    // OPS-0c wave-2 acceptance reads.
+    const w2 = s.wave2_acceptance;
+    // Cadence call coverage = min(Call Log - 2 min allowance, derivation) = the derivation watermark (-20 min).
+    assert.deepEqual(w2.cadence_coverage, { available: true, call_through: w.contact_calls.known_complete_through, sms_through: null, sms_capture_enabled: false });
+    assert.deepEqual([w2.active_rows, w2.active_rows_truncated, w2.shadow_rows], [3, false, 0]);
+    assert.deepEqual(
+      [w2.call.stored_status, w2.call.stored_overdue, w2.call.due_passed, w2.call.read_overdue, w2.call.read_due_unverified],
+      [{ due: 2, pending: 1 }, 0, 2, 1, 1],
+    );
+    assert.deepEqual([w2.sms.due_passed, w2.sms.read_overdue, w2.sms.read_due_unverified, w2.rows_reading_overdue], [1, 0, 1, 1]);
+    assert.deepEqual(w2.distinct_overdue_leads, {
+      available: true,
+      cutoffs: { call: w.contact_calls.known_complete_through, sms: null },
+      served_rule: 1,
+      design_count: 1,
+      active_without_sms_due: 1,
+    });
+    assert.deepEqual(
+      [w2.coverage_wait.call.waiting, w2.coverage_wait.call.proven, w2.coverage_wait.call.proven_and_pending, w2.coverage_wait.call.closed_waiting],
+      [2, 1, 1, 0],
+    );
+    assert.ok(Date.parse(w2.coverage_wait.call.oldest_proven_wait) < Date.parse(w2.coverage_wait.call.through));
+    assert.deepEqual([w2.coverage_wait.sms.through, w2.coverage_wait.sms.proven, w2.coverage_wait.sms.waiting], [null, null, 0]);
+    assert.deepEqual(w2.closed_publication, { rows: 2, truncated: false, revision_sum: 8, rewritten_since_ny_midnight: 0, comparison: null });
     assert.deepEqual(s.rep_sms_evidence, { total: 2, by_identity_status: { "reviewed/delivered": 1, "reviewed/received": 1 } });
     assert.equal(s.enrollment_runs.length, 1);
     assert.deepEqual([s.enrollment_runs[0].run_key, s.enrollment_runs[0].counts], ["backfill-synthetic", { enrolled: 3, skipped: 1 }]);
@@ -354,6 +422,27 @@ async function main() {
     assert.equal(pretty.status, 0, pretty.stderr);
     assert.ok(pretty.stdout.split("\n").length > 50);
     assert.deepEqual(Object.keys(JSON.parse(pretty.stdout)), Object.keys(s));
+
+    // 3b. --out writes the closed-row snapshot to a local file; --compare diffs a later run against it.
+    const withOut = runCli(database, [`--target=${database}`, `--out=${snapshotFile}`]);
+    assert.equal(withOut.status, 0, withOut.stderr);
+    const snapshot = JSON.parse(readFileSync(snapshotFile, "utf8"));
+    assert.deepEqual([snapshot.tool, snapshot.version, snapshot.database, snapshot.truncated], ["sales-outreach-desk-state/closed-publication", 1, database, false]);
+    assert.deepEqual(snapshot.rows, { [closedIds[0]!.toHexString()]: 6, [closedIds[1]!.toHexString()]: 2 });
+    for (const id of closedIds) assert.ok(!withOut.stdout.includes(id.toHexString()), "the summary lists no full subject id");
+    const quiet = runCli(database, [`--target=${database}`, `--compare=${snapshotFile}`]);
+    assert.equal(quiet.status, 0, quiet.stderr);
+    const quietComparison = JSON.parse(quiet.stdout).wave2_acceptance.closed_publication.comparison;
+    assert.deepEqual(
+      [quietComparison.compared, quietComparison.unchanged, quietComparison.increased, quietComparison.decreased, quietComparison.newly_closed, quietComparison.missing],
+      [2, 2, 0, 0, 0, 0],
+    );
+    // A snapshot of another database is refused (exit 1) before any summary is printed.
+    writeFileSync(foreignFile, JSON.stringify({ ...snapshot, database: "vantagemovers" }));
+    const foreign = runCli(database, [`--target=${database}`, `--compare=${foreignFile}`]);
+    assert.equal(foreign.status, 1);
+    assert.match(foreign.stderr, /--compare snapshot is of database 'vantagemovers'/);
+    assert.equal(foreign.stdout, "");
 
     // 4. Nothing was written: every document, index and collection is unchanged.
     assert.equal(await fingerprint(db), before, "the database changed during the snapshot");
@@ -371,8 +460,21 @@ async function main() {
     assert.equal(await db.collection("desk_state_guard_probe").countDocuments({}), 0);
     assert.equal(await fingerprint(db), before);
 
-    console.log("PASS: desk-state CLI on seeded rows: every section's numbers, one JSON line, no secrets, target refusal, database unchanged, guard exits 97 before an insert");
+    // 6. A closed row rewritten after the snapshot (the midnight regression the plan watches for) reads as increased.
+    await db.collection("sales_outreach_projections").updateOne({ subject_id: closedIds[1] }, { $inc: { publication_revision: 1 } });
+    const after = runCli(database, [`--target=${database}`, `--compare=${snapshotFile}`]);
+    assert.equal(after.status, 0, after.stderr);
+    const comparison = JSON.parse(after.stdout).wave2_acceptance.closed_publication.comparison;
+    assert.deepEqual(
+      [comparison.increased, comparison.unchanged, comparison.max_increase, comparison.increased_subjects],
+      [1, 1, 1, [closedIds[1]!.toHexString().slice(-6)]],
+    );
+
+    console.log(
+      "PASS: desk-state CLI on seeded rows: every section's numbers (wave-2 reads included), one JSON line, no secrets, target refusal, closed snapshot --out/--compare, database unchanged, guard exits 97 before an insert",
+    );
   } finally {
+    for (const file of [path.join(os.tmpdir(), `${database}-closed.json`), path.join(os.tmpdir(), `${database}-foreign.json`)]) if (existsSync(file)) rmSync(file);
     if (db.databaseName.startsWith("testvantagemovers_sodstate")) await db.dropDatabase();
     await client.close();
   }
