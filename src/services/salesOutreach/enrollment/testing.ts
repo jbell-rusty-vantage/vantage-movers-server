@@ -79,6 +79,15 @@ export class MemoryEnrollmentStore implements EnrollmentStore {
     this.runs.push({ ...structuredClone(apply), run_key: key, mode: "verify", selected_leads: [], counts: results.counts, results: { skipped: [], pause_reason: null, verify: results.verify }, finished_at: now, status: "completed", actor });
     this.writes.push(`verify:${apply.run_key}`);
   }
+  async cohortSubjects(cohortId: string, afterId: string | null, limit: number) {
+    const rows = this.subjects.subjects
+      .filter((s) => s.enrollment.cohort_id === cohortId && (!afterId || s.id > afterId))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .slice(0, limit);
+    const out = [];
+    for (const subject of rows) out.push({ subject: structuredClone(subject), periods: await this.subjects.findPeriods(subject.id) });
+    return out;
+  }
 }
 
 /** Deps wiring memory stores, a rolling-back transaction, a recording ledger/audit and a controllable clock. */

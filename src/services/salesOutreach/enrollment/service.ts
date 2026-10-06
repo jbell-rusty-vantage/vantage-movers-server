@@ -606,3 +606,80 @@ export async function verifyEnrollment(input: Readonly<{ actor: CsiActor; run_ke
   await d.store.saveVerifyRun(run, { counts, verify: { complete, consistent, mismatches } }, input.actor, d.now());
   return result;
 }
+
+/** olr B6: cohorts verified by id: an automatic admission day (`admission:<date>`) or the intake gate (`intake:<instant>`). */
+export const COHORT_ID_PATTERN = /^(admission|intake):[0-9TZ:.\-]{10,40}$/;
+/** Subjects one cohort verify reads at most (pages of 100); a larger cohort answers `complete: false`. */
+export const COHORT_VERIFY_MAX_SUBJECTS = 5_000;
+
+export type CohortVerifyResult = Readonly<{
+  contract_version: "sod-v1";
+  mode: "verify";
+  cohort_id: string;
+  /** Always null: a cohort has no apply run (the `{ run_key }` variant answers `EnrollmentVerifyResult`). */
+  run_key: null;
+  run_status: null;
+  /** Every subject of the cohort was checked (false only past `COHORT_VERIFY_MAX_SUBJECTS`). */
+  complete: boolean;
+  consistent: boolean;
+  counts: Record<string, number>;
+  mismatches: Array<{ lead: DeskLeadRef; problem: string }>;
+}>;
+
+/**
+ * `POST /enrollment/verify { cohort_id }` (olr B6): reconciles a cohort that no apply run created —
+ * the automatic expansion admission's `admission:<New York date>` or the intake gate's `intake:<gate>` —
+ * against the desk. Read-only (no `verify:` document, no `run_status`). Per subject:
+ * - `boundary_mismatch`: an `admission:` subject whose `activation_at` differs from its `enrolled_at`
+ *   (the admission instant is the boundary);
+ * - `received_missing`;
+ * - `no_active_period` (an `active` subject only: a closed subject's period ended, and a `review`
+ *   subject — an admission hold, Priority needs review — owes nothing yet) / `multiple_active_periods`;
+ * - `first_period_not_at_boundary`: an `admission:` subject's first period is not an `activation` at
+ *   `activation_at`; an `intake:` subject's first period is neither an `intake` start at `activation_at`
+ *   nor a later late-first-period `activation` (olr B1/B8).
+ * `counts`: subjects, by status, mismatches by problem.
+ */
+export async function verifyCohort(input: Readonly<{ cohort_id: string }>, deps: EnrollmentDeps = {}): Promise<CohortVerifyResult> {
+  const d = resolved(deps);
+  if (!COHORT_ID_PATTERN.test(input.cohort_id)) throw new OutreachError("INVALID_INPUT", [{ path: "cohort_id", code: "invalid" }]);
+  const admission = input.cohort_id.startsWith("admission:");
+  const counts: Record<string, number> = { subjects: 0 };
+  const mismatches: Array<{ lead: DeskLeadRef; problem: string }> = [];
+  const mismatch = (lead: DeskLeadRef, problem: string) => {
+    counts[`mismatch_${problem}`] = (counts[`mismatch_${problem}`] ?? 0) + 1;
+    if (mismatches.length < MAX_MISMATCHES) mismatches.push({ lead, problem });
+  };
+  let after: string | null = null;
+  let complete = true;
+  for (;;) {
+    if (counts.subjects >= COHORT_VERIFY_MAX_SUBJECTS) {
+      complete = (await d.store.cohortSubjects(input.cohort_id, after, 1)).length === 0;
+      break;
+    }
+    // The cap is a multiple of the page, so a page never overshoots it.
+    const page = await d.store.cohortSubjects(input.cohort_id, after, VERIFY_PAGE);
+    for (const { subject, periods } of page) {
+      counts.subjects++;
+      counts[`status_${subject.status}`] = (counts[`status_${subject.status}`] ?? 0) + 1;
+      const boundary = +subject.enrollment.activation_at;
+      if (admission && boundary !== +subject.enrollment.enrolled_at) mismatch(subject.lead, "boundary_mismatch");
+      if (!subject.received_at) mismatch(subject.lead, "received_missing");
+      const active = periods.filter((p) => p.ended_at === null);
+      if (active.length > 1) mismatch(subject.lead, "multiple_active_periods");
+      else if (!active.length && subject.status === "active") mismatch(subject.lead, "no_active_period");
+      const first = periods[0];
+      if (first) {
+        const atBoundary = +first.started_at === boundary;
+        const ok = admission
+          ? first.start_kind === "activation" && atBoundary
+          : (first.start_kind === "intake" && atBoundary) || (first.start_kind === "activation" && +first.started_at >= boundary);
+        if (!ok) mismatch(subject.lead, "first_period_not_at_boundary");
+      }
+    }
+    if (page.length < VERIFY_PAGE) break;
+    after = page.at(-1)!.subject.id;
+  }
+  const consistent = !Object.keys(counts).some((k) => k.startsWith("mismatch_"));
+  return { contract_version: "sod-v1", mode: "verify", cohort_id: input.cohort_id, run_key: null, run_status: null, complete, consistent, counts, mismatches };
+}

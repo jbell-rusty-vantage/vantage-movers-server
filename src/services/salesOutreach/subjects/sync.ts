@@ -3,6 +3,8 @@ import type { ClientSession } from "mongoose";
 import { leadPhoneE164 } from "../../numberActivity/leadContactNumber";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ActiveConfiguration } from "../config/load";
+import { backfillScopeOf, classifyEnrollmentCandidate, type CandidateClassification } from "../enrollment/classify";
+import { OutreachError } from "../errors";
 import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
 import { evaluateDeskEligibility, type DeskEligibility } from "./eligibility";
 import { deskLeadKey, type DeskLeadFacts } from "./leadFacts";
@@ -388,5 +390,77 @@ export function intakeAdmissionOf(
       activation_at: reliable ? received.received_at! : new Date(Math.max(+gate, +facts.created_at)),
       manifest_hash: null,
     },
+  };
+}
+
+/** Cohort prefix of subjects admitted by the olr B6 expansion admission (`admission:<New York date>`). */
+export const ADMISSION_COHORT_PREFIX = "admission:";
+
+/** Reason prefix of an expansion admission refusal, so it never mixes with intake refusal reasons in the admissions read. */
+export const EXPANSION_REASON_PREFIX = "expansion:";
+
+/**
+ * olr B6 expansion admission result. `deferred` = not decided here: the Lead's creation job has not
+ * settled, so intake decides it (no write).
+ */
+export type ExpansionAdmission =
+  | Readonly<{ admit: true; enrollment: DeskEnrollment }>
+  | Readonly<{ admit: false; deferred: boolean; reason: string }>;
+
+/**
+ * The fresh-Lead guard of the expansion admission applies (LANE-B §B6 3b): the intake gate is on and the
+ * Lead was created after it, so its creation job (`r1`, intake) decides it first. Pure.
+ */
+export function expansionNeedsCreationSettled(facts: DeskLeadFacts, configuration: ActiveConfiguration): boolean {
+  const { transition } = configuration.value;
+  return Boolean(
+    transition.intake_admission_enabled && transition.intake_admission_at && facts.created_at && +facts.created_at > +new Date(transition.intake_admission_at),
+  );
+}
+
+/**
+ * olr B6 event-driven expansion admission (D7, P10b-1; `outreach_lead_change` jobs nominated as
+ * `…:admission:r<rev>`). A Lead that is not a desk subject and whose decision facts changed is enrolled
+ * once, as `kind: expansion`, cohort `admission:<New York date>`, with its boundary at the admission
+ * instant (`activation_at = enrolled_at = asOf`: a P10a partial-day start, no pre-activation debt),
+ * only when:
+ * - a. `transition.expansion_admission_enabled` is on and the migration is not paused (re-checked here,
+ *   in the job transaction; the tail checked them at nomination);
+ * - b. the fresh-Lead guard passes: a Lead created after the intake gate belongs to intake until its
+ *   creation job has settled (`creation_settled`; false → `deferred_to_intake`, nothing written);
+ * - c. the enrollment classification under the FAST-01 backfill scope (`backfillScopeOf`) is `in_scope`:
+ *   eligible decidable New/Quoted with a reliable received time and no ambiguous identity, received in
+ *   the lookback window or with an upcoming move. Otherwise it is not admitted with
+ *   `expansion:<partition>:<reason>`, the enrollment report's vocabulary.
+ * Never intake, never at the received time. Pure.
+ */
+export function expansionAdmissionOf(
+  facts: DeskLeadFacts,
+  configuration: ActiveConfiguration,
+  asOf: Date,
+  input: Readonly<{ ambiguous_identity: boolean; creation_settled: boolean }>,
+): ExpansionAdmission {
+  const refuse = (reason: string): ExpansionAdmission => ({ admit: false, deferred: false, reason: `${EXPANSION_REASON_PREFIX}${reason}` });
+  const { transition, migration } = configuration.value;
+  if (transition.expansion_admission_enabled !== true) return refuse("admission_disabled");
+  if (migration.paused) return refuse("migration_paused");
+  if (expansionNeedsCreationSettled(facts, configuration) && !input.creation_settled) return { admit: false, deferred: true, reason: "deferred_to_intake" };
+  let classified: CandidateClassification;
+  try {
+    classified = classifyEnrollmentCandidate(facts, {
+      as_of: asOf,
+      cadence: configuration.value.cadence,
+      scope: backfillScopeOf(transition, asOf),
+      enrolled: false,
+      ambiguous_identity: input.ambiguous_identity,
+    });
+  } catch (error) {
+    if (error instanceof OutreachError && error.code === "CONFIGURATION_UNAVAILABLE") return refuse("policy_unavailable");
+    throw error;
+  }
+  if (classified.partition !== "in_scope") return refuse(`${classified.partition}:${classified.reason}`);
+  return {
+    admit: true,
+    enrollment: { cohort_id: `${ADMISSION_COHORT_PREFIX}${newYorkBusinessDay(asOf)}`, kind: "expansion", enrolled_at: asOf, activation_at: asOf, manifest_hash: null },
   };
 }

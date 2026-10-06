@@ -10,7 +10,7 @@ import { deskLeadKey, type DeskLeadFacts } from "../subjects/leadFacts";
 import { refreshLeadForOutreach } from "../subjects/leadChangeJob";
 import { accepted, deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore, objectId } from "../subjects/testing";
 import { enrollmentManifestHash } from "./classify";
-import { applyEnrollment, candidateLegs, listEnrollmentCandidates, objectIdFloorAt, reportEnrollment, verifyEnrollment } from "./service";
+import { applyEnrollment, candidateLegs, listEnrollmentCandidates, objectIdFloorAt, reportEnrollment, verifyCohort, verifyEnrollment } from "./service";
 import { memoryEnrollmentDeps, MemoryEnrollmentStore } from "./testing";
 
 const AS_OF = "2026-10-05T12:00:00.000Z"; // 08:00 New York, the preferred P10b activation minute
@@ -446,5 +446,72 @@ describe("enrollment candidates are scoped like the report (olr B7)", () => {
     assert.deepEqual(resumed.items.map((item) => deskLeadKey(item.lead)), desc(callRecent).map((l) => deskLeadKey(l.ref)));
     const all = await allPages(noMoves, "in_scope", 100);
     assert.deepEqual(all.keys, [...desc(formRecent), ...desc(callRecent)].map((l) => deskLeadKey(l.ref)), "older Leads with upcoming moves are out of scope without the switch");
+  });
+});
+
+describe("verify by cohort (olr B6: admission:<date> / intake:<gate>, read-only)", () => {
+  const admissionOn = () =>
+    deskConfiguration({
+      transition: { backfill_lookback_days: 90, backfill_include_upcoming_moves: true, expansion_admission_enabled: true },
+      migration: { paused: false },
+    });
+
+  test("verify by cohort reports mismatches without writing", async () => {
+    const w = world();
+    const at = new Date("2026-10-05T15:00:00.000Z");
+    const leads = Array.from({ length: 105 }, (_, n) =>
+      w.subjects.addLead(leadFacts({ id: id(n + 1), ...receivedAt("2026-09-25T14:00:00Z"), ...accepted(n % 2 ? "1" : "0", "2026-10-05T14:55:00Z") })),
+    );
+    for (const lead of leads) {
+      const result = await refreshLeadForOutreach(lead.ref, admissionOn(), at, w.subjects, fakeSession, "admission");
+      assert.equal(result.admission, "expansion");
+    }
+    const subjectWrites = [...w.subjects.writes];
+    const runs = structuredClone(w.store.runs);
+    const ok = await verifyCohort({ cohort_id: "admission:2026-10-05" }, w.deps);
+    assert.deepEqual(
+      [ok.mode, ok.cohort_id, ok.run_key, ok.run_status, ok.complete, ok.consistent, ok.counts.subjects, ok.counts.status_active, ok.mismatches],
+      ["verify", "admission:2026-10-05", null, null, true, true, 105, 105, []],
+      "two pages of the cohort, every first period an activation at the admission instant",
+    );
+
+    // Break three subjects: an ended period, a boundary moved off the admission instant, a late first period.
+    const [a, b, c] = w.subjects.subjects;
+    Object.assign(w.subjects.periods.find((p) => p.subject_id === a!.id)!, { ended_at: at });
+    Object.assign(b!, { enrollment: { ...b!.enrollment, activation_at: new Date("2026-10-05T14:00:00.000Z") } });
+    Object.assign(w.subjects.periods.find((p) => p.subject_id === c!.id)!, { started_at: new Date("2026-10-05T16:00:00.000Z") });
+    const broken = await verifyCohort({ cohort_id: "admission:2026-10-05" }, w.deps);
+    assert.equal(broken.consistent, false);
+    assert.deepEqual(broken.mismatches.map((m) => [deskLeadKey(m.lead), m.problem]).sort(), [
+      [deskLeadKey(a!.lead), "no_active_period"],
+      [deskLeadKey(b!.lead), "boundary_mismatch"],
+      [deskLeadKey(b!.lead), "first_period_not_at_boundary"],
+      [deskLeadKey(c!.lead), "first_period_not_at_boundary"],
+    ].sort());
+    assert.deepEqual(w.subjects.writes, subjectWrites, "no subject write");
+    assert.deepEqual(w.store.runs, runs, "no verify document, no run_status");
+
+    // Closed and review subjects owe no active period.
+    Object.assign(a!, { status: "closed" });
+    assert.equal((await verifyCohort({ cohort_id: "admission:2026-10-05" }, w.deps)).counts.mismatch_no_active_period, undefined);
+    // An unknown cohort is empty and consistent; a malformed id is refused.
+    assert.deepEqual([(await verifyCohort({ cohort_id: "admission:2026-10-04" }, w.deps)).counts.subjects], [0]);
+    await assert.rejects(verifyCohort({ cohort_id: "pilot:2026-10-05" }, w.deps), (e: unknown) => (e as { code?: string }).code === "INVALID_INPUT");
+  });
+
+  test("an intake cohort accepts an intake start at its boundary or a later late first period (olr B1/B8)", async () => {
+    const w = world();
+    const intake = deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: "2026-10-01T00:00:00.000Z" } });
+    const fresh = w.subjects.addLead(leadFacts({ ...receivedAt("2026-10-05T14:00:00Z") }));
+    const review = w.subjects.addLead(leadFacts({ ...receivedAt("2026-10-05T14:10:00Z"), ingestion_origin: "granot_lead_created", timestamp: new Date("2026-10-05T14:10:00Z") }));
+    for (const lead of [fresh, review]) await refreshLeadForOutreach(lead.ref, intake, new Date("2026-10-05T14:30:00Z"), w.subjects, fakeSession);
+    const cohort = "intake:2026-10-01T00:00:00.000Z";
+    const first = await verifyCohort({ cohort_id: cohort }, w.deps);
+    assert.deepEqual([first.consistent, first.counts.subjects, first.counts.status_active, first.counts.status_review], [true, 2, 1, 1], "a review subject with no period is not a mismatch");
+    // The review subject is later decided New: a late `activation` first period after its boundary.
+    w.subjects.addLead({ ...review, ...accepted("0", "2026-10-05T15:00:00Z"), domain_revision: 2 });
+    await refreshLeadForOutreach(review.ref, intake, new Date("2026-10-05T15:01:00Z"), w.subjects, fakeSession);
+    const later = await verifyCohort({ cohort_id: cohort }, w.deps);
+    assert.deepEqual([later.consistent, later.counts.status_active], [true, 2]);
   });
 });

@@ -38,9 +38,14 @@ export const salesOutreachEnrollmentApplySchema = z
   })
   .strict();
 
-export const salesOutreachEnrollmentVerifySchema = z
-  .object({ scope, run_key: z.string().trim().regex(/^[A-Za-z0-9:._-]{1,120}$/) })
-  .strict();
+/**
+ * `POST /enrollment/verify`: an apply run (`{ run_key }`, writes its `verify:` document) or, olr B6, a
+ * cohort no run created (`{ cohort_id }`: `admission:<date>` / `intake:<gate>`, read-only).
+ */
+export const salesOutreachEnrollmentVerifySchema = z.union([
+  z.object({ scope, run_key: z.string().trim().regex(/^[A-Za-z0-9:._-]{1,120}$/) }).strict(),
+  z.object({ scope, cohort_id: z.string().trim().regex(/^(admission|intake):[0-9TZ:.\-]{10,40}$/) }).strict(),
+]);
 
 export const salesOutreachEnrollmentCandidatesQuerySchema = z
   .object({

@@ -74,6 +74,8 @@ export type LeadChangeRow = Readonly<{
   revision_before: number;
   revision_after: number;
   applied_at: Date;
+  /** The Lead paths the change wrote (`entity_changes.changed_paths`), read by the olr B6 admission nomination. */
+  changed_paths: readonly string[];
 }>;
 
 export type FeedCursor = Readonly<{ applied_at: Date; id: string }>;
@@ -105,6 +107,52 @@ export function decisionJobInput(lead: DeskLeadRef, fingerprint: string, configu
   };
 }
 
+/**
+ * The `outreach_lead_change` job that runs only the expansion admission path for a Lead that is not a
+ * desk subject (olr B6; LANE-B §0.2): one identity per Lead revision, distinct from the `r<rev>` intake
+ * identity, so the job knows its trigger from its own `dedupe_key` (`leadChangeJob.ts` `triggerOfJob`).
+ */
+export function admissionJobInput(lead: DeskLeadRef, revision: number): JobInput {
+  return {
+    stage: "outreach_lead_change",
+    subject_key: `outreach-lead:${lead.model}:${lead.id}`,
+    dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:admission:r${revision}`,
+    input_revision: revision,
+    input_refs: [lead.id],
+  };
+}
+
+/**
+ * Lead paths whose change can move a non-subject Lead into the expansion scope (olr B6): accepted
+ * priority, the P05h exclusions and closures, the received time, identity (Job Number), the upcoming
+ * move date and the intake source (the P05e default). A changed path matches exactly or as a parent
+ * (`booked` matches `booked.id`). A code constant: a path found later is added here.
+ */
+export const ADMISSION_DECISION_PATHS = [
+  "granot_priority",
+  "last_accepted_granot_observation",
+  "duplicate",
+  "booked",
+  "cancelled",
+  "bad_lead",
+  "created_on_unmatched",
+  "timestamp",
+  "normalized_job_no",
+  "move_date",
+  "ingestion_origin",
+] as const;
+
+/** The change wrote at least one `ADMISSION_DECISION_PATHS` path (exact, or a sub-path of one). */
+export const touchesAdmissionDecision = (paths: readonly string[]) =>
+  paths.some((path) => ADMISSION_DECISION_PATHS.some((decision) => path === decision || path.startsWith(`${decision}.`)));
+
+/**
+ * olr B6: the tail nominates expansion admission jobs only while the Owner switch
+ * `transition.expansion_admission_enabled` is on (absent = off) and the migration is not paused.
+ */
+export const expansionAdmissionOpenOf = (value: Pick<SalesOutreachConfigurationValue, "transition" | "migration">) =>
+  value.transition.expansion_admission_enabled === true && !value.migration.paused;
+
 /** olr B8: the hold re-check bucket length (a held subject is re-checked at most once per bucket). */
 export const HOLD_RECHECK_BUCKET_MS = 15 * 60_000;
 
@@ -134,25 +182,38 @@ export function holdJobInput(lead: DeskLeadRef, now: Date): JobInput {
 export const isHeldForIdentity = (subject: Pick<ReconcileSubject, "status" | "review_reasons">) =>
   subject.status === "review" && subject.review_reasons.includes("ambiguous_identity");
 
+export type LeadChangeNomination = Readonly<{ lead: DeskLeadRef; revision: number; kind: "change" | "admission" }>;
+
 /**
- * Which changes of a page nominate a job: every change of a Lead that is a desk subject, and — only
- * while the persisted intake gate is on — a Lead's creation (`revision_before` 0), which the job then
- * runs through the intake admission. Other Leads are not the desk's concern (expansion is explicit).
+ * Which changes of a page nominate a job:
+ * - every change of a Lead that is a desk subject (`change`, the `r<rev>` job);
+ * - only while the persisted intake gate is on, a Lead's creation (`revision_before` 0; `change`), which
+ *   the job runs through the intake admission;
+ * - olr B6, only while expansion admission is open (`expansionAdmissionOpenOf`), a later change of a
+ *   non-subject Lead that wrote a decision path (`admission`, the `admission:r<rev>` job), which the job
+ *   runs through the expansion admission only.
+ * Other changes of other Leads are not the desk's concern.
  */
 export function nominateLeadChanges(
   changes: readonly LeadChangeRow[],
   subjectLeadKeys: ReadonlySet<string>,
   intakeOpen: boolean,
-): Array<{ lead: DeskLeadRef; revision: number }> {
+  admissionOpen = false,
+): LeadChangeNomination[] {
   const seen = new Set<string>();
-  const nominations: Array<{ lead: DeskLeadRef; revision: number }> = [];
+  const nominations: LeadChangeNomination[] = [];
   for (const change of changes) {
     const key = deskLeadKey(change.lead);
-    if (!subjectLeadKeys.has(key) && !(intakeOpen && change.revision_before === 0)) continue;
-    const identity = `${key}:${change.revision_after}`;
+    const kind = subjectLeadKeys.has(key) || (intakeOpen && change.revision_before === 0)
+      ? "change"
+      : admissionOpen && change.revision_before > 0 && touchesAdmissionDecision(change.changed_paths)
+        ? "admission"
+        : null;
+    if (!kind) continue;
+    const identity = `${key}:${kind}:${change.revision_after}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
-    nominations.push({ lead: change.lead, revision: change.revision_after });
+    nominations.push({ lead: change.lead, revision: change.revision_after, kind });
   }
   return nominations;
 }
@@ -187,15 +248,23 @@ const ZERO_ID = "000000000000000000000000";
 const LEAD_MODELS: SalesOutreachLeadModel[] = ["FormLead", "CallLead"];
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 
-type ChangeLean = { _id: unknown; entity: { model: string; id: string }; revision_before: number; revision_after: number; applied_at: Date };
+type ChangeLean = {
+  _id: unknown;
+  entity: { model: string; id: string };
+  revision_before: number;
+  revision_after: number;
+  applied_at: Date;
+  changed_paths?: string[] | null;
+};
 const toChange = (row: ChangeLean): LeadChangeRow => ({
   id: String(row._id),
   lead: { model: row.entity.model as SalesOutreachLeadModel, id: row.entity.id },
   revision_before: row.revision_before,
   revision_after: row.revision_after,
   applied_at: row.applied_at,
+  changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
 });
-const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1 } as const;
+const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1, changed_paths: 1 } as const;
 
 export const mongoOutreachFeedStore: OutreachFeedStore = {
   async readTailCursor(session) {
@@ -338,10 +407,17 @@ export async function scanOutreachLeadChanges(now = new Date(), deps: OutreachFe
   const inspection = await loader.inspect();
   if (inspection.state !== "active")
     return { skipped: true, reason: `configuration_${inspection.state}`, scanned: 0, page_size: 0, nominated: 0, conflicts: 0, cursor: null };
-  return runTailPass(now, deps, inspection.value.transition.intake_admission_enabled, options.overlap ?? true);
+  return runTailPass(now, deps, tailGatesOf(inspection.value), options.overlap ?? true);
 }
 
-async function runTailPass(now: Date, deps: OutreachFeedDeps, intakeOpen: boolean, scanOverlap: boolean): Promise<TailPassResult> {
+/** Which creation/admission nominations the tail makes this run (from the configuration it inspected). */
+type TailGates = Readonly<{ intake: boolean; admission: boolean }>;
+const tailGatesOf = (value: SalesOutreachConfigurationValue): TailGates => ({
+  intake: value.transition.intake_admission_enabled,
+  admission: expansionAdmissionOpenOf(value),
+});
+
+async function runTailPass(now: Date, deps: OutreachFeedDeps, gates: TailGates, scanOverlap: boolean): Promise<TailPassResult> {
   const store = deps.store ?? mongoOutreachFeedStore;
   return (deps.transaction ?? withTransaction)(async (session) => {
     const stored = await store.readTailCursor(session);
@@ -352,8 +428,9 @@ async function runTailPass(now: Date, deps: OutreachFeedDeps, intakeOpen: boolea
     const subjects = await store.subjectLeadKeys(uniqueLeads(changes.map((c) => c.lead)), session);
     let nominated = 0;
     let conflicts = 0;
-    for (const nomination of nominateLeadChanges(changes, subjects, intakeOpen)) {
-      if ((await store.enqueue(leadChangeJobInput(nomination.lead, nomination.revision), session)) === "conflict") conflicts++;
+    for (const nomination of nominateLeadChanges(changes, subjects, gates.intake, gates.admission)) {
+      const job = nomination.kind === "admission" ? admissionJobInput(nomination.lead, nomination.revision) : leadChangeJobInput(nomination.lead, nomination.revision);
+      if ((await store.enqueue(job, session)) === "conflict") conflicts++;
       else nominated++;
     }
     const last = page.at(-1);
@@ -420,7 +497,7 @@ export async function scanOutreachLeadChangesUntilCaughtUp(now = new Date(), dep
       stopped_by: null,
       ...effective,
     };
-  const intakeOpen = inspection.value.transition.intake_admission_enabled;
+  const gates = tailGatesOf(inspection.value);
   let passes = 0;
   let scanned = 0;
   let nominated = 0;
@@ -430,7 +507,7 @@ export async function scanOutreachLeadChangesUntilCaughtUp(now = new Date(), dep
   for (;;) {
     let pass: TailPassResult;
     try {
-      pass = await runTailPass(now, deps, intakeOpen, passes === 0);
+      pass = await runTailPass(now, deps, gates, passes === 0);
     } catch (error) {
       if (passes === 0) throw error;
       logger.warn({ msg: "sales_outreach.lead_change.tail_loop_pass_failed", passes, errorName: error instanceof Error ? error.name : "Error" });
