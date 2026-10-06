@@ -13,6 +13,9 @@
  *   `rep_sms:<ext>` sync-state row only when complete; a concurrent run is `lease_held`;
  * - minute ISync lane: shares the reconcile's state row and lease; a held lease is skipped by the
  *   lane and waited for by `acquireWithWait`; the lane's fenced write releases the lease.
+ * - olr CW2: the webhook route's refusal counter on `ringcentral_webhook_subscriptions` (`$inc` /
+ *   `$max` / `$set`, never an insert) and the accepted-since receipt lookup the subscription health
+ *   check reads (an index scan on `{ provider, receivedAt }`).
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -122,6 +125,45 @@ async function main() {
   const waited = await acquireWithWait(leases, { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE, owner: "reconcile-2", ttl_ms: 300_000, now: () => new Date(), waitMs: 10_000, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
   assert.ok(waited, "the reconcile waits for a briefly held lease");
   await leases.release({ token: waited, now: new Date() });
+
+  // --- olr CW2: route refusal counter + accepted-since lookup ----------------------------------------
+  const { storeRingCentralWebhookSubscriptionMetadata, recordStoredSubscriptionDeliveryRefusal, findStoredSubscriptionDeliveryRefusals } =
+    await import("../../src/services/ringcentral/webhook-subscriptions.js");
+  const { captureRingCentralWebhookEvent, WEBHOOK_EVENTS_TEST_COLLECTION } = await import("../../src/services/ringcentral/webhook-capture.js");
+  const { mongoOwnershipStore, deliveriesRefusedNow } = await import("../../src/services/ringcentral/webhook-subscription-lifecycle.js");
+  const subId = "replica-calls-sub";
+  await storeRingCentralWebhookSubscriptionMetadata(
+    { id: subId, eventFilters: ["/restapi/v1.0/account/~/telephony/sessions"], deliveryMode: { transportType: "WebHook" }, status: "Active", expiresIn: 315_360_000 },
+    { purpose: "calls", verificationToken: "replica-token" },
+  );
+  const refusedAt = new Date("2026-10-06T14:00:00Z");
+  assert.equal(await recordStoredSubscriptionDeliveryRefusal(subId, "token_missing", new Date(refusedAt.getTime() - 60_000)), true);
+  assert.equal(await recordStoredSubscriptionDeliveryRefusal(subId, "token_mismatch", refusedAt), true);
+  // An out-of-order (older) refusal still counts but never moves `last_at` back.
+  assert.equal(await recordStoredSubscriptionDeliveryRefusal(subId, "token_missing", new Date(refusedAt.getTime() - 120_000)), true);
+  assert.equal(await recordStoredSubscriptionDeliveryRefusal("not-ours", "token_missing", refusedAt), false, "never inserts a row");
+  assert.equal(await mongoose.connection.db!.collection("ringcentral_webhook_subscriptions").countDocuments({ subscriptionId: "not-ours" }), 0);
+  const counter = await findStoredSubscriptionDeliveryRefusals(subId);
+  assert.equal(counter?.count, 3);
+  assert.equal(counter?.last_at.toISOString(), refusedAt.toISOString());
+  const ownership = mongoOwnershipStore();
+  const refusedFacts = await ownership.deliveryRefusals!(subId);
+  assert.equal(refusedFacts?.accepted_since, false);
+  assert.equal(deliveriesRefusedNow(refusedFacts, new Date(refusedAt.getTime() + 5 * 60_000)), true);
+  assert.equal((await ownership.meta!()).get(subId)?.verificationToken, "replica-token", "the counter leaves the token alone");
+  // A receipt of the same subscription before the refusal does not clear it; one after it does.
+  const capture = (at: Date, uuid: string) =>
+    captureRingCentralWebhookEvent({ receivedAt: at, validationTokenPresent: false, headers: {}, payload: { uuid, subscriptionId: subId, event: "/restapi/v1.0/account/~/telephony/sessions", body: {} } });
+  assert.ok((await capture(new Date(refusedAt.getTime() - 30_000), "replica-before")).storedRawEvent);
+  assert.equal((await ownership.deliveryRefusals!(subId))?.accepted_since, false);
+  assert.ok((await capture(new Date(refusedAt.getTime() + 30_000), "replica-after")).storedRawEvent);
+  assert.equal((await ownership.deliveryRefusals!(subId))?.accepted_since, true);
+  const explained = await mongoose.connection.db!
+    .collection(WEBHOOK_EVENTS_TEST_COLLECTION)
+    .find({ provider: "ringcentral", receivedAt: { $gt: refusedAt }, subscriptionId: subId })
+    .limit(1)
+    .explain("queryPlanner");
+  assert.match(JSON.stringify(explained.queryPlanner.winningPlan), /"IXSCAN"/, "the accepted-since lookup walks the { provider, receivedAt } index");
   console.log(JSON.stringify({ ok: true, database }));
 }
 

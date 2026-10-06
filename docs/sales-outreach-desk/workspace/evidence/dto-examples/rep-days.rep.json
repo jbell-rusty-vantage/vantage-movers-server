@@ -29,7 +29,8 @@
         "age_seconds": null,
         "reason": "rep_sms_capture_disabled",
         "last_confirmation_at": null,
-        "last_webhook_at": null
+        "last_webhook_at": null,
+        "pending": null
       },
       "granot": {
         "state": "observed",

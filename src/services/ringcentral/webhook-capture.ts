@@ -246,6 +246,21 @@ export async function listRingCentralWebhookEvents(limit: number) {
     .toArray();
 }
 
+/**
+ * olr CW2: whether a delivery from this subscription was accepted (stored) after `since`. The
+ * subscription health check asks it only for a refusal of the last 30 minutes, so the
+ * `{ provider, receivedAt }` index bounds the scan to that window.
+ */
+export async function hasWebhookReceiptForSubscriptionSince(subscriptionId: string, since: Date): Promise<boolean> {
+  if (!process.env.MONGO_URI?.trim()) return false;
+  const collection = await getWebhookEventsCollection();
+  const row = await collection.findOne(
+    { provider: "ringcentral", receivedAt: { $gt: since }, subscriptionId },
+    { projection: { _id: 1 } },
+  );
+  return row !== null;
+}
+
 /** CSI-03 additive export: the recovery scan runs in a cron function that may never have captured a webhook, so it ensures the same index set. */
 export function ensureRingCentralWebhookEventIndexes(): Promise<void> {
   return ensureWebhookEventIndexes();

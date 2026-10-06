@@ -48,7 +48,7 @@ Mongo is authoritative. `executeCsiCommand` (`transactions.ts`) combines revisio
 
 ## Durable jobs (`jobs.ts`)
 
-Retained stages (`CSI_JOB_STAGES`): `capture_projection`, `call_log_reconcile`, `call_log_refresh`, `directory`, `lead_link` (All Numbers), `nudge_repair`, and the Sales Outreach Desk stages (`outreach_contact_change`, `rep_sms_sync`, `outreach_lead_change`, `outreach_evaluate`, `outreach_rep_day`).
+Retained stages (`CSI_JOB_STAGES`): `capture_projection`, `call_log_reconcile`, `call_log_refresh`, `directory`, `lead_link` (All Numbers), `nudge_repair`, and the Sales Outreach Desk stages (`outreach_contact_change`, `rep_sms_sync`, `rep_sms_remap` (olr C7, Accounts re-map), `outreach_lead_change`, `outreach_evaluate`, `outreach_rep_day`).
 
 - `enqueueCsiJob` dedupes on the unique key inside the caller's transaction and initializes `createdAt`/`updatedAt` from its `now` only on insertion, so a matching duplicate changes no stored bytes. Payload hash and dataset conflicts still apply.
 - Claims fence lease owner, epoch and expiry; renew/continue/complete/fail all require `status: "leased"` with the claimed epoch. `continueCsiJob` commits a bounded batch and returns the job to pending without charging an attempt. `failCsiJob` reasons are `transient`, `schema_invalid` (back off, dead-letter when exhausted) and `throttled` (defers without spending an attempt; optional provider `resumeAt`).
@@ -65,7 +65,7 @@ Retained stages (`CSI_JOB_STAGES`): `capture_projection`, `call_log_reconcile`, 
 
 | Path | Schedule | Work |
 | --- | --- | --- |
-| `/api/cron/sales-intelligence-job-recovery` | every minute | retire legacy jobs, deployment stamp, coverage refresh, `lead_messages.to` index ensure; then receipt recovery + capture drain (`CAPTURE_WEBHOOK`, plus provisional settle when `CAPTURE_CALL_LOG` is off), the All Numbers lead-link step (`ENABLED`: the `lead_link_entity_changes` Lead-change scan, then the `lead_link` drain), and the `nudge_repair` (`NUDGE_ENABLED`), `call_log_refresh` and `rep_sms_sync` (`CAPTURE_WEBHOOK`) drains |
+| `/api/cron/sales-intelligence-job-recovery` | every minute | retire legacy jobs, deployment stamp, coverage refresh, `lead_messages.to` index ensure; then receipt recovery + capture drain (`CAPTURE_WEBHOOK`, plus provisional settle when `CAPTURE_CALL_LOG` is off), the All Numbers lead-link step (`ENABLED`: the `lead_link_entity_changes` Lead-change scan, then the `lead_link` drain), and the `nudge_repair` (`NUDGE_ENABLED`), `call_log_refresh` and `rep_sms_sync` (`CAPTURE_WEBHOOK`) and `rep_sms_remap` (`ENABLED`, olr C7) drains |
 | `/api/cron/sales-intelligence-call-log-reconcile` | `3-59/5` | Call Log reconcile (`CAPTURE_CALL_LOG`) |
 | `/api/cron/sales-intelligence-call-log-sweep` | 07:40 UTC | nightly authoritative sweep (`CAPTURE_CALL_LOG`) |
 | `/api/cron/sales-intelligence-directory-sync` | 05:20 UTC | directory snapshot (`DIRECTORY_SYNC`) |

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { ringCentralRequest } from "./client";
+import { hasWebhookReceiptForSubscriptionSince } from "./webhook-capture";
 import {
   buildRingCentralTelephonyEventFilters,
+  findStoredSubscriptionDeliveryRefusals,
   listStoredRingCentralWebhookSubscriptionIds,
   listStoredRingCentralWebhookSubscriptionMeta,
   markStoredRingCentralWebhookSubscriptionStatus,
@@ -21,6 +23,13 @@ export type { SubscriptionPurpose, StoredSubscriptionMeta } from "./webhook-subs
  * that point at our webhook address — are reported, never touched. An owned
  * `calls` subscription whose filters or address drifted is updated in place
  * (`PUT`, `filter_drift`), never duplicated by a create.
+ *
+ * Verification tokens (olr CW2, incident 2026-10-06): RingCentral takes
+ * `deliveryMode.verificationToken` only when a subscription is created and
+ * ignores it on `PUT`. A token is therefore minted and stored only on a create;
+ * a `PUT` never mints or stores one. An owned subscription with no stored token,
+ * or one whose deliveries the webhook route has been refusing, is replaced
+ * (`replace`: create a new one with a token, then delete the old one).
  *
  * Two callers apply plans: the ops command
  * `ops/ringcentral/sales-intelligence-subscription.ts` (read-only by
@@ -76,9 +85,36 @@ export type OwnershipStore = {
   /** Records the provider response as ownership evidence, with our purpose and verification token when known. */
   record(raw: unknown, meta?: Partial<StoredSubscriptionMeta>): Promise<void>;
   markStatus(id: string, status: string): Promise<void>;
-  /** Purpose + verification token per owned id. Stores without it cannot plan `rep_sms` or token updates. */
+  /** Purpose + verification token per owned id. Stores without it cannot plan `rep_sms` or token replacements. */
   meta?(): Promise<Map<string, StoredSubscriptionMeta>>;
+  /**
+   * olr CW2: the webhook route's refusal counter for one owned subscription and whether a delivery
+   * from it was accepted after the newest refusal; null when none was ever refused. Stores without
+   * it never report `deliveries_refused`.
+   */
+  deliveryRefusals?(subscriptionId: string): Promise<DeliveryRefusalFacts | null>;
 };
+
+export type DeliveryRefusalFacts = {
+  count: number;
+  last_refused_at: Date;
+  last_reason: string;
+  /** A delivery from this subscription was accepted (stored) after `last_refused_at`. */
+  accepted_since: boolean;
+};
+
+/**
+ * olr CW2: a refusal counts as "the subscription's deliveries are being refused" while it is at most
+ * this old and no delivery from the same subscription was accepted after it. Engineering bound: the
+ * health check runs every 5 minutes and a staffed hour carries many telephony events.
+ */
+export const DELIVERY_REFUSAL_RECENT_MS = 30 * 60_000;
+
+/** Pure: the newest delivery of the subscription was refused within `DELIVERY_REFUSAL_RECENT_MS`. */
+export function deliveriesRefusedNow(facts: DeliveryRefusalFacts | null | undefined, now: Date): boolean {
+  if (!facts || facts.accepted_since) return false;
+  return now.getTime() - facts.last_refused_at.getTime() <= DELIVERY_REFUSAL_RECENT_MS;
+}
 
 /** 32 hex characters from a CSPRNG (RingCentral accepts an opaque string). Never logged. */
 export function generateVerificationToken(): string {
@@ -86,7 +122,7 @@ export function generateVerificationToken(): string {
 }
 
 export class SubscriptionOwnershipError extends Error {
-  constructor(readonly subscriptionId: string, readonly operation: "renew" | "delete" | "repair" | "update") {
+  constructor(readonly subscriptionId: string, readonly operation: "renew" | "delete" | "repair" | "update" | "replace") {
     super(`Refusing to ${operation} subscription ${subscriptionId}: not created by this application`);
     this.name = "SubscriptionOwnershipError";
   }
@@ -198,6 +234,17 @@ export function mongoOwnershipStore(): OwnershipStore {
     meta: async () => {
       requireMongo();
       return listStoredRingCentralWebhookSubscriptionMeta();
+    },
+    deliveryRefusals: async (subscriptionId) => {
+      requireMongo();
+      const stored = await findStoredSubscriptionDeliveryRefusals(subscriptionId);
+      if (!stored) return null;
+      return {
+        count: stored.count,
+        last_refused_at: stored.last_at,
+        last_reason: stored.last_reason,
+        accepted_since: await hasWebhookReceiptForSubscriptionSince(subscriptionId, stored.last_at),
+      };
     },
   };
 }
@@ -312,14 +359,45 @@ export function classifySubscriptions(input: {
   return out;
 }
 
-export type SubscriptionUpdateReason = "verification_token_missing" | "filter_drift";
+/** Why an owned subscription is `PUT` in place: only drift (a `PUT` cannot add a verification token). */
+export type SubscriptionUpdateReason = "filter_drift";
+/**
+ * Why an owned subscription is replaced (create with a token, then delete the old one): no stored
+ * verification token, or the route has been refusing its deliveries; `filter_drift` rides along when
+ * the replaced one had also drifted.
+ */
+export type SubscriptionReplaceReason = "verification_token_missing" | "deliveries_refused" | "filter_drift";
 
 export type SubscriptionPlan =
   | { action: "noop"; subscription_id: string; expiration_time: string | null; warnings: string[] }
   | { action: "renew"; subscription_id: string; expiration_time: string | null; warnings: string[] }
   | { action: "repair"; subscription_id: string; health: SubscriptionHealth; warnings: string[] }
   | { action: "update"; subscription_id: string; reasons: SubscriptionUpdateReason[]; warnings: string[] }
+  | { action: "replace"; subscription_id: string; reasons: SubscriptionReplaceReason[]; warnings: string[] }
   | { action: "create"; warnings: string[] };
+
+/**
+ * olr CW2: the token facts of one owned subscription. `tokenMissing` is false when the token state is
+ * unknown (`meta` null: the store keeps no metadata); `refused` reads the route's refusal counter.
+ */
+async function tokenFacts(
+  store: OwnershipStore,
+  id: string,
+  meta: ReadonlyMap<string, StoredSubscriptionMeta> | null,
+  now: Date,
+  warnings: string[],
+): Promise<{ tokenMissing: boolean; refused: boolean }> {
+  const stored = meta?.get(id);
+  const tokenMissing = meta !== null && stored !== undefined && !stored.verificationToken;
+  const facts = store.deliveryRefusals ? await store.deliveryRefusals(id) : null;
+  const refused = deliveriesRefusedNow(facts, now);
+  if (refused && facts) {
+    warnings.push(
+      `owned subscription ${id}: the webhook route refused its deliveries (${facts.count} counted, newest ${facts.last_refused_at.toISOString()} ${facts.last_reason}); replace it`,
+    );
+  }
+  return { tokenMissing, refused };
+}
 
 export type LifecycleDeps = {
   provider: SubscriptionProvider;
@@ -331,7 +409,8 @@ export type LifecycleDeps = {
   eventFilters?: () => Promise<string[]>;
   /**
    * Operator `ensure`: an owned healthy `calls` subscription with no stored verification token is
-   * updated (PUT) to carry one. The daily cron leaves it alone and only reports it.
+   * replaced by one created with a token (olr CW2: a `PUT` cannot add one). The daily cron and the
+   * health check leave it alone and only report it.
    */
   requireVerificationToken?: boolean;
 };
@@ -353,12 +432,16 @@ export async function planAllDirectionSubscription(deps: LifecycleDeps): Promise
   if (!best) return planDriftedCallsSubscription(classified.owned_other, deps, now, renewWithinMs, warnings);
   const expiration_time = best.record.expirationTime?.toISOString() ?? null;
   if (best.health === "active" || best.health === "expiring") {
-    const meta = deps.store.meta ? (await deps.store.meta()).get(best.record.id) : undefined;
-    if (meta && !meta.verificationToken) {
+    const meta = deps.store.meta ? await deps.store.meta() : null;
+    const { tokenMissing, refused } = await tokenFacts(deps.store, best.record.id, meta, now, warnings);
+    // Active at the provider while the route refuses every delivery (incident 2026-10-06): only a
+    // subscription created with the stored token delivers it, so the repair is a replacement.
+    if (refused) return { action: "replace", subscription_id: best.record.id, reasons: ["deliveries_refused"], warnings };
+    if (tokenMissing) {
       if (deps.requireVerificationToken) {
-        return { action: "update", subscription_id: best.record.id, reasons: ["verification_token_missing"], warnings };
+        return { action: "replace", subscription_id: best.record.id, reasons: ["verification_token_missing"], warnings };
       }
-      warnings.push(`owned subscription ${best.record.id} has no verification token; run the subscription command with --action ensure`);
+      warnings.push(`owned subscription ${best.record.id} has no verification token; replace it with outreach-subscriptions.ts --apply`);
     }
   }
   if (best.health === "active") return { action: "noop", subscription_id: best.record.id, expiration_time, warnings };
@@ -389,7 +472,9 @@ function servesCallsChannel(record: SubscriptionRecord, meta: ReadonlyMap<string
  * C6 (outreach lifecycle repair): no owned subscription matches the wanted filters and address. An
  * owned `calls` subscription whose filters or delivery address drifted is repaired in place
  * (`update`, a `PUT` on the owned id with `filter_drift`; blacklisted → `repair`), so the daily cron
- * never creates a duplicate next to it. Only when none exists is the plan `create`.
+ * never creates a duplicate next to it. Only when none exists is the plan `create`. olr CW2: when the
+ * drifted one has no stored token, or its deliveries are being refused, a `PUT` would not fix delivery
+ * verification, so the plan is `replace` (create with a token, then delete it).
  */
 async function planDriftedCallsSubscription(
   ownedOther: readonly SubscriptionRecord[],
@@ -399,7 +484,8 @@ async function planDriftedCallsSubscription(
   warnings: string[],
 ): Promise<SubscriptionPlan> {
   if (!ownedOther.length) return { action: "create", warnings };
-  const meta = deps.store.meta ? await deps.store.meta() : new Map<string, StoredSubscriptionMeta>();
+  const storedMeta = deps.store.meta ? await deps.store.meta() : null;
+  const meta = storedMeta ?? new Map<string, StoredSubscriptionMeta>();
   const drifted = ownedOther
     .filter((record) => servesCallsChannel(record, meta))
     .map((record) => ({ record, health: subscriptionHealth(record, now, renewWithinMs) }))
@@ -410,6 +496,11 @@ async function planDriftedCallsSubscription(
   if (managed.health === "blacklisted") {
     return { action: "repair", subscription_id: managed.record.id, health: managed.health, warnings };
   }
+  const { tokenMissing, refused } = await tokenFacts(deps.store, managed.record.id, storedMeta, now, warnings);
+  const reasons: SubscriptionReplaceReason[] = ["filter_drift"];
+  if (tokenMissing) reasons.push("verification_token_missing");
+  if (refused) reasons.push("deliveries_refused");
+  if (reasons.length > 1) return { action: "replace", subscription_id: managed.record.id, reasons, warnings };
   return { action: "update", subscription_id: managed.record.id, reasons: ["filter_drift"], warnings };
 }
 
@@ -418,7 +509,8 @@ export type LifecycleResult =
   | { action: "created"; subscription_id: string | null }
   | { action: "renewed"; subscription_id: string }
   | { action: "updated"; subscription_id: string }
-  | { action: "repaired"; removed_subscription_id: string; subscription_id: string | null };
+  | { action: "repaired"; removed_subscription_id: string; subscription_id: string | null }
+  | { action: "replaced"; removed_subscription_id: string; subscription_id: string | null };
 
 /** Applies a plan. Every mutation re-checks ownership against the store. */
 export async function applyAllDirectionSubscriptionPlan(
@@ -435,14 +527,19 @@ export async function applyAllDirectionSubscriptionPlan(
     case "repair":
       return repairOwnedSubscription(plan.subscription_id, deps);
     case "update":
-      return updateOwnedSubscription(plan.subscription_id, {
+    case "replace": {
+      const write: OwnedWriteDeps = {
         provider: deps.provider,
         store: deps.store,
         purpose: "calls",
         eventFilters: await (deps.eventFilters ?? (() => buildRingCentralTelephonyEventFilters("all")))(),
         address: deps.address,
         expiresIn: deps.expiresInSeconds ?? DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS,
-      });
+      };
+      return plan.action === "update"
+        ? updateOwnedSubscription(plan.subscription_id, write)
+        : replaceOwnedSubscription(plan.subscription_id, write);
+    }
   }
 }
 
@@ -495,8 +592,11 @@ async function createOwnedSubscription(deps: OwnedWriteDeps): Promise<string | n
 }
 
 /**
- * `PUT` an owned subscription with the wanted filters and delivery mode (which also renews it). It
- * keeps a stored verification token, or generates one when none is stored; never touches a foreign id.
+ * `PUT` an owned subscription with the wanted filters and delivery mode (which also renews it); never
+ * touches a foreign id. olr CW2: RingCentral ignores `deliveryMode.verificationToken` on a `PUT` and
+ * keeps delivering with the token it was created with (or none), so a `PUT` never mints a token and
+ * never records one: the stored token, when there is one, is sent unchanged; without one the `PUT`
+ * carries none. Adding a token takes a replacement (`replaceOwnedSubscription`).
  */
 export async function updateOwnedSubscription(
   subscriptionId: string,
@@ -505,19 +605,35 @@ export async function updateOwnedSubscription(
   await assertOwned(subscriptionId, deps.store, "update");
   if (!deps.provider.update) throw new Error("subscription provider cannot update");
   const stored = deps.store.meta ? (await deps.store.meta()).get(subscriptionId) : undefined;
-  const verificationToken = stored?.verificationToken ?? generateVerificationToken();
+  const verificationToken = stored?.verificationToken ?? null;
   const raw = await deps.provider.update(subscriptionId, {
     eventFilters: deps.eventFilters,
     address: deps.address,
     expiresIn: deps.expiresIn,
-    verificationToken,
+    ...(verificationToken ? { verificationToken } : {}),
   });
   try {
-    await deps.store.record(raw, { purpose: deps.purpose, verificationToken });
+    await deps.store.record(raw, { purpose: deps.purpose });
   } catch (error) {
     throw new SubscriptionOwnershipRecordError(subscriptionId, error);
   }
   return { action: "updated", subscription_id: subscriptionId };
+}
+
+/**
+ * olr CW2: replaces an owned subscription by one created with a fresh verification token, then
+ * deletes the old one (create first, so capture has no gap; a receipt both deliver is stored once by
+ * its uuid). The old id must be ours; nothing is deleted when the create fails.
+ */
+export async function replaceOwnedSubscription(
+  subscriptionId: string,
+  deps: OwnedWriteDeps,
+): Promise<Extract<LifecycleResult, { action: "replaced" }>> {
+  await assertOwned(subscriptionId, deps.store, "replace");
+  const created = await createOwnedSubscription(deps);
+  await deps.provider.remove(subscriptionId);
+  await deps.store.markStatus(subscriptionId, "Deleted");
+  return { action: "replaced", removed_subscription_id: subscriptionId, subscription_id: created };
 }
 
 export async function renewOwnedSubscription(
@@ -545,7 +661,7 @@ export async function repairOwnedSubscription(
   return { action: "repaired", removed_subscription_id: subscriptionId, subscription_id: created };
 }
 
-async function assertOwned(id: string, store: OwnershipStore, operation: "renew" | "delete" | "repair" | "update") {
+async function assertOwned(id: string, store: OwnershipStore, operation: SubscriptionOwnershipError["operation"]) {
   const owned = await store.ownedIds();
   if (!owned.has(id)) throw new SubscriptionOwnershipError(id, operation);
 }
@@ -596,6 +712,8 @@ export type RepSmsChannelHealth =
   | "blacklisted"
   | "filter_drift"
   | "token_missing"
+  /** olr CW2: Active at the provider, but the webhook route has been refusing its deliveries. */
+  | "deliveries_refused"
   | "no_mailboxes";
 
 export type RepSmsPlan = SubscriptionPlan & { health: RepSmsChannelHealth; event_filters: string[] };
@@ -648,12 +766,19 @@ export async function planRepSmsSubscription(deps: RepSmsLifecycleDeps): Promise
     warnings.push(`owned rep_sms subscription ${id} reports status ${best.record.status ?? "(missing)"}; not repaired automatically`);
     return { ...base, action: "noop", subscription_id: id, expiration_time, health: "expired" };
   }
-  const reasons: SubscriptionUpdateReason[] = [];
-  if (!sameFilterSet(best.record.eventFilters, eventFilters) || best.record.address !== deps.address) reasons.push("filter_drift");
-  if (!meta.get(id)?.verificationToken) reasons.push("verification_token_missing");
-  if (reasons.length) {
-    return { ...base, action: "update", subscription_id: id, reasons, health: reasons.includes("filter_drift") ? "filter_drift" : "token_missing" };
+  const drifted = !sameFilterSet(best.record.eventFilters, eventFilters) || best.record.address !== deps.address;
+  const { tokenMissing, refused } = await tokenFacts(deps.store, id, meta, now, warnings);
+  if (tokenMissing || refused) {
+    // olr CW2: a `PUT` cannot add a token, so a token-less or refused subscription is replaced (create
+    // with a token and the current filters, then delete it): an operator step (`allowCreate`).
+    const reasons: SubscriptionReplaceReason[] = [];
+    if (drifted) reasons.push("filter_drift");
+    if (tokenMissing) reasons.push("verification_token_missing");
+    if (refused) reasons.push("deliveries_refused");
+    const health: RepSmsChannelHealth = refused ? "deliveries_refused" : drifted ? "filter_drift" : "token_missing";
+    return { ...base, action: "replace", subscription_id: id, reasons, health };
   }
+  if (drifted) return { ...base, action: "update", subscription_id: id, reasons: ["filter_drift"], health: "filter_drift" };
   if (best.health === "expiring") return { ...base, action: "renew", subscription_id: id, expiration_time, health: "ok" };
   return { ...base, action: "noop", subscription_id: id, expiration_time, health: "ok" };
 }
@@ -664,10 +789,10 @@ export type RepSmsLifecycleResult =
   | { action: "skipped"; reason: "no_mailboxes" | "create_not_allowed" };
 
 /**
- * Applies a `rep_sms` plan. `create` (and a repair, which recreates) runs only with `allowCreate`
- * (the operator command): creating the subscription is a user-authorized step (§6). An empty
- * mailbox set never creates anything. Renew, filter reconcile and token update (`PUT`) are safe for
- * the daily cron because they only ever touch an owned `rep_sms` subscription.
+ * Applies a `rep_sms` plan. `create` (and a repair or replacement, which create) runs only with
+ * `allowCreate` (the operator command): creating the subscription is a user-authorized step (§6). An
+ * empty mailbox set never creates anything. Renew and filter reconcile (`PUT`) are safe for the daily
+ * cron because they only ever touch an owned `rep_sms` subscription.
  */
 export async function applyRepSmsSubscriptionPlan(
   plan: RepSmsPlan,
@@ -693,6 +818,9 @@ export async function applyRepSmsSubscriptionPlan(
       return renewOwnedSubscription(plan.subscription_id, { provider: deps.provider, store: deps.store, address: deps.address });
     case "update":
       return updateOwnedSubscription(plan.subscription_id, write);
+    case "replace":
+      if (!options.allowCreate) return { action: "skipped", reason: "create_not_allowed" };
+      return replaceOwnedSubscription(plan.subscription_id, write);
     case "repair": {
       if (!options.allowCreate) return { action: "skipped", reason: "create_not_allowed" };
       await assertOwned(plan.subscription_id, deps.store, "repair");

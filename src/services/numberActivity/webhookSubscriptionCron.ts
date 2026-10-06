@@ -23,8 +23,11 @@ import {
  * subscription with under 7 days left, repair (delete + recreate) an owned one
  * the provider reports Blacklisted/Suspended, `PUT` an owned `calls` one whose
  * filters or delivery address drifted (`update` with `filter_drift`, never a
- * duplicate create), leave healthy or unknown-status ones alone, and never
- * touch a subscription this application did not create.
+ * duplicate create), replace (create with a verification token, then delete
+ * the old one; olr CW2) an owned one whose deliveries the webhook route has
+ * been refusing or a drifted one with no stored token — like a repair, this is
+ * not gated by auto-create —, leave healthy or unknown-status ones alone, and
+ * never touch a subscription this application did not create.
  * Creating one when none owned exists requires
  * `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE=true`; otherwise the run reports
  * `missing` and the operator creates it with the ops command.
@@ -37,7 +40,7 @@ import {
 export type WebhookSubscriptionMaintenanceSummary = {
   address: string;
   plan: SubscriptionPlan["action"];
-  action: "noop" | "created" | "renewed" | "updated" | "repaired" | "missing";
+  action: "noop" | "created" | "renewed" | "updated" | "repaired" | "replaced" | "missing";
   subscription_id: string | null;
   removed_subscription_id: string | null;
   expiration_time: string | null;
@@ -116,7 +119,7 @@ export async function runWebhookSubscriptionMaintenance(
       ...base,
       action: result.action,
       subscription_id: result.subscription_id,
-      removed_subscription_id: result.action === "repaired" ? result.removed_subscription_id : null,
+      removed_subscription_id: result.action === "repaired" || result.action === "replaced" ? result.removed_subscription_id : null,
     };
     if (result.action !== "noop") {
       const entry = {
@@ -126,7 +129,7 @@ export async function runWebhookSubscriptionMaintenance(
         removedSubscriptionId: summary.removed_subscription_id,
         priorExpiration: summary.expiration_time,
       };
-      if (result.action === "repaired") logger.warn(entry);
+      if (result.action === "repaired" || result.action === "replaced") logger.warn(entry);
       else logger.info(entry);
     }
     await record(null);

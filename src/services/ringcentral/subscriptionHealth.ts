@@ -28,6 +28,10 @@ import {
  * maintenance cron owns every mutation. Logs carry channel health, the owned subscription id and
  * the number of plan warnings only — never a foreign subscription's id or address.
  *
+ * olr CW2: the plans also read the webhook route's refusal counter (`OwnershipStore.deliveryRefusals`),
+ * so an owned subscription the provider reports Active while the route refuses its deliveries reads
+ * `deliveries_refused` (incident 2026-10-06: ~22 h of refused deliveries before RingCentral blacklisted it).
+ *
  * Each run upserts one sync-state row per channel (`webhook_subscription_health:calls`,
  * `webhook_subscription_health:rep_sms`) with `last_run.error_code` null when healthy, the health
  * string otherwise, or the failure's error class name — the convention of the maintenance rows.
@@ -40,7 +44,15 @@ export const SUBSCRIPTION_HEALTH_CHECK_FAILED = "check_failed";
 /** `rep_sms` while `controls.rep_sms_capture_enabled` is off: skipped, still recorded. */
 export const REP_SMS_NOT_CONNECTED = "not_connected";
 
-export type CallsChannelHealth = "ok" | "subscription_missing" | "expired" | "blacklisted" | "filter_drift" | "token_missing";
+export type CallsChannelHealth =
+  | "ok"
+  | "subscription_missing"
+  | "expired"
+  | "blacklisted"
+  | "filter_drift"
+  | "token_missing"
+  /** olr CW2: Active at the provider while the webhook route refuses its deliveries (newest refusal ≤ 30 min, none accepted since). */
+  | "deliveries_refused";
 export type RepSmsHealthReport = RepSmsChannelHealth | typeof REP_SMS_NOT_CONNECTED;
 
 type ChannelReport<Health extends string> = {
@@ -132,6 +144,9 @@ export function callsHealthFromPlan(plan: SubscriptionPlan): CallsChannelHealth 
     case "repair":
       return plan.health === "blacklisted" ? "blacklisted" : "expired";
     case "update":
+      return "filter_drift";
+    case "replace":
+      if (plan.reasons.includes("deliveries_refused")) return "deliveries_refused";
       return plan.reasons.includes("filter_drift") ? "filter_drift" : "token_missing";
   }
 }
