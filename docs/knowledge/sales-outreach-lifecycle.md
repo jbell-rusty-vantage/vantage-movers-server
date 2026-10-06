@@ -85,7 +85,7 @@ Only `priority_map` and `intake_default_rule` decide the workflow. Each subject 
 | Review subject, no callable number (D-C2c, on since revision 6) | `status: review`, periods kept | `no_contact_number`: no linked Contact Number and no phone that forms an E.164 number | a number's link gains the Lead, or the Lead gets a phone; the subject returns to `active` with its original age and deadlines |
 | "No policy configured" | `status: active`, `none` period, engine flag `no_policy_configured` | an accepted unmapped code (2/9) on an enrolled subject | a priority change, or the D4 PATCH |
 
-`priority_needs_review` (a Granot-created Lead without a priority) is no longer produced while `granot_created` is `new`: the 210 such Leads in scope were enrolled by `expansion-granot-new-2026-10-06`. A review subject owes nothing. The queue's `state=pending` filter lists review subjects together with rows whose `flags.pending` is true.
+`priority_needs_review` (a Granot-created Lead without a priority) is no longer produced while `granot_created` is `new`: the Granot-created Leads without a priority that were in scope were enrolled by `expansion-granot-new-2026-10-06` (210 in that run, including 6 already in scope; verify consistent). A review subject owes nothing. The queue's `state=pending` filter lists review subjects together with rows whose `flags.pending` is true.
 
 ### 1.5 The ways in
 
@@ -169,7 +169,7 @@ All tolerances are runtime configuration read through `deskTimingOf` (`config/ti
 | Webhook silence | `evidence.webhook_silence_minutes` (30) | newest call webhook age once today's stream has started |
 
 - **Cadence coverage (calls)** = min(capped `known_complete_through` − allowance, the contact-event derivation watermark). It is used for every verdict that can establish a miss.
-- **Goal coverage (calls, D-A3)** = min(max(observed, known) − allowance, the derivation watermark). It ignores the provisional-row cap, so a stuck provisional Call Log row no longer holds a rep-day `partial`. Rep-day coverage `complete` / `partial` / `unknown`: a zero is shown only when complete; otherwise the count is null (Pending) and a positive count is a lower bound.
+- **Goal coverage (calls, D-A3)** = min(max(observed, known) − allowance, max(observed, known) of the derivation watermark). It ignores the provisional-row cap, so a stuck provisional Call Log row no longer holds a rep-day `partial`. Rep-day coverage `complete` / `partial` / `unknown`: a zero is shown only when complete; otherwise the count is null (Pending) and a positive count is a lower bound.
 - **SMS coverage** = the worst `known_complete_through` over the **current** reviewed `sales_rep` mailboxes only (hotfix `521d0fff`): a retired or re-roled mailbox keeps its sync row but no longer holds coverage back. Null while SMS capture is off or a current mailbox has no watermark yet.
 - **Calls freshness ("Calls updated")** (A3-fresh, RINGCENTRAL-CAPTURE §8):
   - `last_confirmation_at` = max(ISync lane success, the reconcile's own sync success); outside staffed hours only the reconcile confirms. Both stamps are sticky.
@@ -220,7 +220,7 @@ All tolerances are runtime configuration read through `deskTimingOf` (`config/ti
 | `/api/cron/sales-intelligence-subscription-health` | `*/5 * * * *` | read-only health rows (§3.5) |
 | `/api/cron/sales-intelligence-job-recovery` | `* * * * *` | drains queued `sales_intelligence_jobs` stages incl. `capture_projection`, `lead_link`, `rep_sms_sync`, `rep_sms_remap` |
 
-The lead-change, reconcile and evaluate crons answer `{ ok, skipped: true }` while the configuration is not active; the contact-events cron's steps skip (cursor unmoved) unless it is active with `desk_enabled` or `goal_metrics_enabled`. No env flag gates desk behaviour; switches live in `sales_outreach_configuration`. (The capture crons above the desk keep their own `SALES_INTELLIGENCE_*` gates; see [environment.md](environment.md).)
+The lead-change, reconcile and evaluate crons answer `{ ok, skipped: true }` while the configuration is not active (evaluate additionally requires `controls.cadence_shadow_enabled` or `cadence_enforcement_enabled` on); the contact-events cron's steps skip (cursor unmoved) unless it is active with `desk_enabled` or `goal_metrics_enabled`. No env flag gates desk behaviour; switches live in `sales_outreach_configuration`. (The capture crons above the desk keep their own `SALES_INTELLIGENCE_*` gates; see [environment.md](environment.md).)
 
 ### 5.2 Job stages and dedupe keys
 
@@ -317,7 +317,7 @@ All production writes pass the production-writer guard (local HEAD must equal th
 | D-A6 | spacing anchor seeded from prior same-date calls | engine v2 |
 | D-C2c | no usable phone → review, no cadence | revision 6 + desk re-sync |
 | D-C2d | `single_active_subject_on_link` built, **left off** | none |
-| D-C3 | historic rep-day rows freeze with the day-of roster | none |
+| D-C3 | rep-day rows before 2026-10-05 freeze with the roster of the day they were frozen | none |
 | A5 / OPS-6 | evaluate drain 300 jobs / 50 s / concurrency 2 | revision 10 |
 
 The packet record with approval references is [DECISIONS.md](../sales-outreach-desk/DECISIONS.md) ("Outreach lifecycle repair" entries).
