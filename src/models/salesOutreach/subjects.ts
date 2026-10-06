@@ -21,6 +21,8 @@ export const SALES_OUTREACH_SUBJECT_INDEXES = [
   index("sod_subject_lead_revision", { lead_revision_seen: 1 }),
   // Restriction commands wake every subject attached to the restricted number (multikey).
   index("sod_subject_contact_numbers", { contact_number_ids: 1 }),
+  // olr B6: `POST /enrollment/verify {cohort_id}` pages a cohort's subjects (`admission:<date>`, `intake:<gate>`) by `_id`.
+  index("sod_subject_cohort", { "enrollment.cohort_id": 1, _id: 1 }),
 ];
 
 const enrollmentSchema = new Schema(

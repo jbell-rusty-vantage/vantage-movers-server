@@ -2,9 +2,13 @@ import mongoose, { type ClientSession } from "mongoose";
 import type { SalesOutreachLeadModel } from "../../../config/domain/salesOutreach";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getFormLeadModel } from "../../../models/FormLead";
-import { getSalesOutreachEnrollmentRunModel } from "../../../models/salesOutreach";
+import { getSalesOutreachEnrollmentRunModel, getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import type { CsiActor } from "../../salesIntelligence/auth";
 import { DESK_LEAD_PROJECTION, toDeskLeadFacts, type DeskLeadFacts, type DeskLeadRef } from "../subjects/leadFacts";
+import { toPeriodRow, toSubjectRow, type DeskPeriodRow, type DeskSubjectRow, type PeriodLean, type SubjectLean } from "../subjects/store";
+
+/** One subject of a cohort with its periods (oldest first), as `verifyCohort` reads it (olr B6). */
+export type CohortSubject = Readonly<{ subject: DeskSubjectRow; periods: DeskPeriodRow[] }>;
 
 export type EnrollmentRunStatus = "running" | "completed" | "failed" | "paused";
 
@@ -109,6 +113,11 @@ export type EnrollmentStore = {
   releaseRun(lease: EnrollmentLease, status: EnrollmentRunStatus, now: Date, pauseReason?: string | null): Promise<void>;
   /** Upserts the verify document of an apply run (re-runnable; writes nothing else). */
   saveVerifyRun(apply: EnrollmentRunRow, results: Readonly<{ counts: Record<string, number>; verify: unknown }>, actor: CsiActor, now: Date): Promise<void>;
+  /**
+   * olr B6: one page of a cohort's subjects (`enrollment.cohort_id`) after `afterId` by `_id`, each with
+   * its periods. Two reads: subjects through `sod_subject_cohort`, periods through `sod_period_subject_started`.
+   */
+  cohortSubjects(cohortId: string, afterId: string | null, limit: number): Promise<CohortSubject[]>;
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -251,5 +260,21 @@ export const mongoEnrollmentStore: EnrollmentStore = {
       },
       { upsert: true, runValidators: true },
     );
+  },
+
+  async cohortSubjects(cohortId, afterId, limit) {
+    const subjects = (await getSalesOutreachSubjectModel()
+      .find({ "enrollment.cohort_id": cohortId, ...(afterId ? { _id: { $gt: oid(afterId) } } : {}) })
+      .sort({ _id: 1 })
+      .limit(limit)
+      .lean()) as unknown as SubjectLean[];
+    if (!subjects.length) return [];
+    const periods = (await getSalesOutreachPolicyPeriodModel()
+      .find({ subject_id: { $in: subjects.map((row) => oid(String(row._id))) } })
+      .sort({ subject_id: 1, started_at: 1, _id: 1 })
+      .lean()) as unknown as PeriodLean[];
+    const bySubject = new Map<string, DeskPeriodRow[]>();
+    for (const period of periods.map(toPeriodRow)) bySubject.set(period.subject_id, [...(bySubject.get(period.subject_id) ?? []), period]);
+    return subjects.map(toSubjectRow).map((subject) => ({ subject, periods: bySubject.get(subject.id) ?? [] }));
   },
 };

@@ -12,6 +12,7 @@ import {
   configurationDrivenDesired,
   contactWakeOf,
   ENROLLMENT_WAKE_SOURCES_PER_KIND,
+  expansionAdmissionOf,
   intakeAdmissionOf,
   loadSubjectPageContext,
   SUBJECT_WAKE_LOOKBACK_MS,
@@ -218,13 +219,123 @@ describe("intake admission gate (outreach_intake; P05e, P10b automatic intake sc
     });
   });
 
-  test("an existing Lead that is not a subject is never auto-enrolled by a later change", async () => {
+  test("an existing Lead that is not a subject is never auto-enrolled by a later change with expansion admission off", async () => {
+    // P10b fixture (switch-off case; the switch-on case is DECISIONS.md D7 / P10b-1, olr B6 below).
     assert.equal(fx.unselected_existing_auto_enrolled, false);
     const store = new MemoryDeskSubjectStore();
     const lead = store.addLead(leadFacts({ created_at: at("2026-09-01T14:00:00Z"), timestamp: toFloridaTimestamp(at("2026-09-01T14:00:00Z")) }));
     const result = await refreshLeadForOutreach(lead.ref, config, asOf, store, fakeSession);
     assert.equal(result.outcome, "not_admitted");
+    // Even an admission job (switched off after its nomination) admits nothing.
+    const admission = await refreshLeadForOutreach(lead.ref, config, asOf, store, fakeSession, "admission");
+    assert.deepEqual(admission, { outcome: "not_admitted", subject_id: null, reason: "expansion:admission_disabled", status: null, admission: null });
     assert.equal(store.subjects.length, 0);
+  });
+});
+
+describe("olr B6: event-driven expansion admission (transition.expansion_admission_enabled)", () => {
+  const asOf = at("2026-10-06T15:00:00Z");
+  const scope = { backfill_lookback_days: 90, backfill_include_upcoming_moves: true };
+  const admissionOn = (extra: Record<string, unknown> = {}) =>
+    deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: GATE, ...scope, expansion_admission_enabled: true, ...extra }, migration: { paused: false } });
+  /** A pre-gate Lead received 2026-09-01 (inside the 90-day window), its accepted priority now New. */
+  const preGate = (overrides: Parameters<typeof leadFacts>[0] = {}) =>
+    leadFacts({ created_at: at("2026-09-01T14:00:05Z"), timestamp: toFloridaTimestamp(at("2026-09-01T14:00:00Z")), ...accepted("0", "2026-10-06T14:58:00Z"), ...overrides });
+
+  test("a pre-gate in-scope Lead that becomes New is admitted as expansion at now (activation, partial day, cohort admission:<date>)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(preGate());
+    const result = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
+    assert.deepEqual(result, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "active", admission: "expansion" });
+    const subject = store.subjects[0]!;
+    assert.deepEqual(subject.enrollment, { cohort_id: "admission:2026-10-06", kind: "expansion", enrolled_at: asOf, activation_at: asOf, manifest_hash: null });
+    assert.equal(store.periods.length, 1);
+    const period = store.periods[0]!;
+    assert.deepEqual([period.start_kind, +period.started_at, period.time_basis, period.workflow], ["activation", +asOf, "activation_boundary", "new"], "starts now, never at the received time");
+    assert.notEqual(+period.started_at, +subject.received_at!);
+    // A replay (same Lead, now a subject) refreshes it and creates nothing.
+    const again = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
+    assert.equal(again.outcome, "unchanged");
+    assert.equal(store.subjects.length, 1);
+  });
+
+  test("outside scope / review / closed / ambiguous / not New-Quoted → not admitted with the report's partition:reason", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const twin = preGate({ normalized_job_no: "J-7" });
+    store.addLead(leadFacts({ model: "CallLead", normalized_job_no: "J-7", created_at: at("2026-09-02T14:00:00Z") }));
+    const cases: Array<[ReturnType<typeof leadFacts>, string]> = [
+      [preGate({ timestamp: toFloridaTimestamp(at("2026-05-01T14:00:00Z")), created_at: at("2026-05-01T14:00:05Z") }), "expansion:older:outside_backfill_scope"],
+      [preGate({ ...accepted("5", "2026-10-06T14:58:00Z") }), "expansion:closed:granot_booked"],
+      [preGate({ duplicate: true }), "expansion:excluded:duplicate"],
+      [preGate({ ...accepted("3", "2026-10-06T14:58:00Z") }), "expansion:not_new_or_quoted:priority_discretion"],
+      [preGate({ granot_priority: null, accepted_observation: null, ingestion_origin: "granot_lead_created" }), "expansion:review:priority_needs_review"],
+      [preGate({ timestamp: null, created_at: null }), "expansion:review:received_time_missing"],
+      [twin, "expansion:review:ambiguous_identity"],
+    ];
+    for (const [facts, reason] of cases) {
+      store.addLead(facts);
+      const result = await refreshLeadForOutreach(facts.ref, admissionOn(), asOf, store, fakeSession, "admission");
+      assert.deepEqual([result.outcome, result.reason, result.admission], ["not_admitted", reason, null], reason);
+    }
+    assert.equal(store.subjects.length, 0);
+    assert.deepEqual(store.writes, [], "a refusal writes nothing");
+  });
+
+  test("a paused migration refuses (re-checked in the job transaction)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(preGate());
+    const paused = deskConfiguration({
+      transition: { intake_admission_enabled: true, intake_admission_at: GATE, ...scope, expansion_admission_enabled: true },
+      migration: { paused: true },
+    });
+    const result = await refreshLeadForOutreach(lead.ref, paused, asOf, store, fakeSession, "admission");
+    assert.equal(result.reason, "expansion:migration_paused");
+    assert.equal(store.subjects.length, 0);
+  });
+
+  test("a post-gate Lead whose creation job is not settled defers to intake; once settled, a later eligible change admits as expansion (never intake at received)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    // Created after the gate, refused at creation (closed priority 7), later accepted New.
+    const lead = store.addLead(leadFacts({ created_at: at("2026-10-05T14:00:05Z"), timestamp: toFloridaTimestamp(at("2026-10-05T14:00:00Z")), ...accepted("0", "2026-10-06T14:58:00Z") }));
+    store.creationJobs.set(`${lead.ref.model}:${lead.ref.id}`, "pending");
+    const deferred = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
+    assert.deepEqual(deferred, { outcome: "deferred", subject_id: null, reason: "deferred_to_intake", status: null, admission: null });
+    assert.deepEqual(store.writes, []);
+    store.creationJobs.set(`${lead.ref.model}:${lead.ref.id}`, "completed");
+    const admitted = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
+    assert.equal(admitted.admission, "expansion");
+    const subject = store.subjects[0]!;
+    assert.equal(subject.enrollment.kind, "expansion");
+    assert.equal(+subject.enrollment.activation_at, +asOf, "the boundary is the admission instant, not the received time");
+    assert.equal(store.periods[0]!.start_kind, "activation");
+  });
+
+  test("the fresh-Lead guard reads the creation job only for a post-gate Lead; no job row or a dead-lettered one counts as settled", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const fresh = store.addLead(leadFacts({ created_at: at("2026-10-05T14:00:05Z"), timestamp: toFloridaTimestamp(at("2026-10-05T14:00:00Z")), ...accepted("1", "2026-10-06T14:58:00Z") }));
+    store.creationJobs.set(`${fresh.ref.model}:${fresh.ref.id}`, "dead_letter");
+    assert.equal((await refreshLeadForOutreach(fresh.ref, admissionOn(), asOf, store, fakeSession, "admission")).outcome, "created");
+    const noRow = store.addLead(leadFacts({ created_at: at("2026-10-05T15:00:05Z"), timestamp: toFloridaTimestamp(at("2026-10-05T15:00:00Z")), ...accepted("1", "2026-10-06T14:58:00Z") }));
+    assert.equal((await refreshLeadForOutreach(noRow.ref, admissionOn(), asOf, store, fakeSession, "admission")).outcome, "created");
+    // Intake off: no guard at all (the creation job never admits it).
+    const pre = preGate();
+    const guarded = { ...pre, created_at: at("2026-10-05T16:00:05Z") };
+    store.addLead(guarded);
+    store.creationJobs.set(`${guarded.ref.model}:${guarded.ref.id}`, "pending");
+    const off = deskConfiguration({ transition: { ...scope, expansion_admission_enabled: true }, migration: { paused: false } });
+    assert.equal((await refreshLeadForOutreach(guarded.ref, off, asOf, store, fakeSession, "admission")).outcome, "created");
+  });
+
+  test("the default trigger never runs expansion: a non-creation job for a pre-gate Lead stays not admitted (intake gate)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(preGate());
+    const result = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession);
+    assert.deepEqual([result.outcome, result.reason], ["not_admitted", "created_before_intake"]);
+  });
+
+  test("expansionAdmissionOf is pure: switch absent = admission_disabled", () => {
+    const decided = expansionAdmissionOf(preGate(), intakeOn(), asOf, { ambiguous_identity: false, creation_settled: true });
+    assert.deepEqual(decided, { admit: false, deferred: false, reason: "expansion:admission_disabled" });
   });
 });
 

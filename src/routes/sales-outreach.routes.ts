@@ -23,6 +23,7 @@ import {
   applyEnrollment,
   listEnrollmentCandidates,
   reportEnrollment,
+  verifyCohort,
   verifyEnrollment,
   type EnrollmentDeps,
 } from "../services/salesOutreach/enrollment/service";
@@ -299,6 +300,8 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       salesOutreachScopeQuerySchema.parse(req.query);
       const body = salesOutreachEnrollmentVerifySchema.parse(req.body);
       await connect();
+      // olr B6: a cohort with no apply run (`admission:<date>`, `intake:<gate>`) is verified read-only.
+      if ("cohort_id" in body) return res.json({ ok: true, data: await verifyCohort({ cohort_id: body.cohort_id }, enrollmentDeps()) });
       return res.json({ ok: true, data: await verifyEnrollment({ actor: outreachActorOf(res).actor, run_key: body.run_key }, enrollmentDeps()) });
     } catch (error) {
       return fail(req, res, error);

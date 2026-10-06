@@ -7,6 +7,10 @@ import { configurationContentHash } from "../config/store";
 import { CONFIGURATION_REVISION_5_HASH, configurationRevision5Value } from "../config/testing";
 import { fixedConfigurationLoader } from "../reads/testing";
 import {
+  ADMISSION_DECISION_PATHS,
+  admissionJobInput,
+  expansionAdmissionOpenOf,
+  touchesAdmissionDecision,
   DECISION_RECONCILE_DEFAULT_PER_RUN,
   decisionJobInput,
   decisionReconcilePerRunOf,
@@ -89,12 +93,13 @@ class MemoryFeedStore implements OutreachFeedStore {
 }
 
 const lead = (model: DeskLeadRef["model"] = "FormLead"): DeskLeadRef => ({ model, id: objectId() });
-const change = (ref: DeskLeadRef, revisionBefore: number, appliedAt: string, id = objectId()): LeadChangeRow => ({
+const change = (ref: DeskLeadRef, revisionBefore: number, appliedAt: string, id = objectId(), changedPaths: string[] = ["notes"]): LeadChangeRow => ({
   id,
   lead: ref,
   revision_before: revisionBefore,
   revision_after: revisionBefore + 1,
   applied_at: at(appliedAt),
+  changed_paths: changedPaths,
 });
 
 describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
@@ -104,8 +109,11 @@ describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
     const other = lead();
     const changes = [change(subject, 3, "2026-10-04T14:00:00Z"), change(subject, 3, "2026-10-04T14:00:00Z"), change(fresh, 0, "2026-10-04T14:00:01Z"), change(other, 5, "2026-10-04T14:00:02Z")];
     const keys = new Set([deskLeadKey(subject)]);
-    assert.deepEqual(nominateLeadChanges(changes, keys, false), [{ lead: subject, revision: 4 }]);
-    assert.deepEqual(nominateLeadChanges(changes, keys, true), [{ lead: subject, revision: 4 }, { lead: fresh, revision: 1 }]);
+    assert.deepEqual(nominateLeadChanges(changes, keys, false), [{ lead: subject, revision: 4, kind: "change" }]);
+    assert.deepEqual(nominateLeadChanges(changes, keys, true), [
+      { lead: subject, revision: 4, kind: "change" },
+      { lead: fresh, revision: 1, kind: "change" },
+    ]);
   });
 
   test("the job identity is per Lead revision (tail, reconcile and wake converge)", () => {
@@ -481,6 +489,95 @@ describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_se
       value.migration = { ...value.migration, ...bad };
       assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
     }
+  });
+});
+
+// ---- olr B6: event-driven expansion admission (transition.expansion_admission_enabled) ----------
+
+describe("expansion admission nomination (olr B6)", () => {
+  const admissionOn = (paused = false) =>
+    deskConfiguration({ transition: { backfill_lookback_days: 90, backfill_include_upcoming_moves: true, expansion_admission_enabled: true }, migration: { paused } });
+
+  test("the admission job identity: …:admission:r<rev>, input_revision = the Lead revision, distinct from the r<rev> identity", () => {
+    const ref = { model: "FormLead" as const, id: "b".repeat(24) };
+    assert.deepEqual(admissionJobInput(ref, 7), {
+      stage: "outreach_lead_change",
+      subject_key: `outreach-lead:FormLead:${"b".repeat(24)}`,
+      dedupe_key: `sod:lead-change:FormLead:${"b".repeat(24)}:admission:r7`,
+      input_revision: 7,
+      input_refs: ["b".repeat(24)],
+    });
+    assert.notEqual(admissionJobInput(ref, 7).dedupe_key, leadChangeJobInput(ref, 7).dedupe_key);
+  });
+
+  test("decision paths match exactly or as a parent; unrelated paths do not", () => {
+    assert.ok(touchesAdmissionDecision(["granot_priority"]));
+    assert.ok(touchesAdmissionDecision(["notes", "booked.id"]));
+    assert.ok(touchesAdmissionDecision(["last_accepted_granot_observation"]));
+    assert.ok(!touchesAdmissionDecision(["notes", "receiver_agent", "bookedx"]));
+    assert.ok(!touchesAdmissionDecision([]));
+    for (const path of ["granot_priority", "last_accepted_granot_observation", "duplicate", "booked", "cancelled", "bad_lead", "created_on_unmatched", "timestamp", "normalized_job_no", "move_date"])
+      assert.ok((ADMISSION_DECISION_PATHS as readonly string[]).includes(path), path);
+  });
+
+  test("non-subject changes with decision paths nominate an admission job only while expansion admission is on and migration is not paused", async () => {
+    const pre = lead();
+    const changes = [change(pre, 6, "2026-10-06T14:04:30Z", objectId(), ["granot_priority", "last_accepted_granot_observation"])];
+    assert.deepEqual(nominateLeadChanges(changes, new Set(), true, false), [], "switch off: nothing");
+    assert.deepEqual(nominateLeadChanges(changes, new Set(), false, true), [{ lead: pre, revision: 7, kind: "admission" }]);
+    assert.equal(expansionAdmissionOpenOf(deskConfiguration().value), false, "absent key = off");
+    assert.equal(expansionAdmissionOpenOf(admissionOn().value), true);
+    assert.equal(expansionAdmissionOpenOf(admissionOn(true).value), false, "a paused migration closes admission");
+
+    for (const [configuration, expected] of [[deskConfiguration(), 0], [admissionOn(true), 0], [admissionOn(), 1]] as const) {
+      const store = new MemoryFeedStore();
+      store.tail = { applied_at: at("2026-10-06T14:04:00Z"), id: "0".repeat(24) };
+      store.changes.push(...changes);
+      const result = await scanOutreachLeadChanges(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(configuration as never) });
+      assert.equal(result.nominated, expected);
+      assert.equal(store.jobs.has(`sod:lead-change:FormLead:${pre.id}:admission:r7`), expected === 1);
+      assert.equal(store.jobs.has(`sod:lead-change:FormLead:${pre.id}:r7`), false, "never the intake/refresh identity");
+    }
+  });
+
+  test("unrelated paths (e.g. notes) nominate nothing; a subject's change stays the r<rev> job", async () => {
+    const pre = lead();
+    const subject = lead();
+    const store = new MemoryFeedStore();
+    store.subjects.push({ id: objectId(), lead: subject, lead_revision_seen: 2 });
+    store.tail = { applied_at: at("2026-10-06T14:04:00Z"), id: "0".repeat(24) };
+    store.changes.push(change(pre, 3, "2026-10-06T14:04:10Z", objectId(), ["notes", "receiver_agent"]));
+    store.changes.push(change(subject, 2, "2026-10-06T14:04:20Z", objectId(), ["granot_priority"]));
+    await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(admissionOn() as never) });
+    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${subject.id}:r3`]);
+  });
+
+  test("creation still nominates the r<rev> intake identity (never admission), even with a decision path", () => {
+    const fresh = lead("CallLead");
+    const created = change(fresh, 0, "2026-10-06T14:04:10Z", objectId(), ["granot_priority", "timestamp"]);
+    assert.deepEqual(nominateLeadChanges([created], new Set(), true, true), [{ lead: fresh, revision: 1, kind: "change" }]);
+    assert.deepEqual(nominateLeadChanges([created], new Set(), false, true), [], "intake closed: a creation is not an admission");
+  });
+
+  test("configuration: expansion_admission_enabled is optional without default (R0) and requires both backfill scope keys", () => {
+    const parsed = salesOutreachConfigurationValueSchema.parse(configurationRevision5Value());
+    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH, "the revision-5 value re-parses to the same content hash");
+    assert.equal("expansion_admission_enabled" in parsed.transition, false, "no default leaks into old versions");
+    const on = configurationRevision5Value();
+    on.transition = { ...on.transition, expansion_admission_enabled: true };
+    const set = salesOutreachConfigurationValueSchema.parse(on);
+    assert.equal(set.transition.expansion_admission_enabled, true);
+    assert.notEqual(configurationContentHash(set), CONFIGURATION_REVISION_5_HASH, "a set key is hashed");
+    for (const key of ["backfill_lookback_days", "backfill_include_upcoming_moves"] as const) {
+      const missing = configurationRevision5Value();
+      missing.transition = { ...missing.transition, expansion_admission_enabled: true, [key]: null };
+      const result = salesOutreachConfigurationValueSchema.safeParse(missing);
+      assert.equal(result.success, false, key);
+      assert.ok(result.error!.issues.some((i) => i.path.join(".") === `transition.${key}` && i.message === "required by expansion_admission_enabled"));
+    }
+    const off = configurationRevision5Value();
+    off.transition = { ...off.transition, expansion_admission_enabled: false, backfill_lookback_days: null };
+    assert.equal(salesOutreachConfigurationValueSchema.safeParse(off).success, true, "off needs no scope");
   });
 });
 

@@ -29,7 +29,13 @@
  *   `review` subjects with no period (job results stored on real job rows); marking the twin Lead a
  *   Duplicate lets the reconcile's `hold:<15-min bucket>` job (once per bucket) open the late first
  *   period at the clearing sync (`activation`, `desk_decision_at`); `GET /enrollment/admissions`'s
- *   aggregation counts the day's admissions and refusals from the job ledger through an index.
+ *   aggregation counts the day's admissions and refusals from the job ledger through an index;
+ * - olr B6: with `transition.expansion_admission_enabled` PATCHed on, an EntityChange on a pre-gate
+ *   non-subject Lead (priority 7 → 0) is nominated by the tail as `…:admission:r<rev>` (an unrelated
+ *   path nominates nothing), and its job enrolls it as `kind: expansion`, cohort `admission:<date>`, with
+ *   one `activation` period at the admission instant; a post-gate Lead whose creation job is still
+ *   pending is deferred to intake; `verify {cohort_id}` is consistent, writes nothing and reads
+ *   `sod_subject_cohort`.
  */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -71,7 +77,8 @@ async function main() {
   const { deskDecisionFingerprint } = await import("../../src/services/salesOutreach/subjects/policyMapping.js");
   const { refreshLeadForOutreach, runOutreachLeadChangeJob } = await import("../../src/services/salesOutreach/subjects/leadChangeJob.js");
   const { scanOutreachLeadChanges, reconcileOutreachRevisions, OUTREACH_LEAD_CHANGE_SCOPE, leadChangeJobInput, holdRecheckBucketOf } = await import("../../src/services/salesOutreach/subjects/feed.js");
-  const { reportEnrollment, applyEnrollment, verifyEnrollment, listEnrollmentCandidates, candidateLegs } = await import("../../src/services/salesOutreach/enrollment/service.js");
+  const { newYorkBusinessDay } = await import("../../src/services/salesOutreach/reads/businessDay.js");
+  const { reportEnrollment, applyEnrollment, verifyEnrollment, verifyCohort, listEnrollmentCandidates, candidateLegs } = await import("../../src/services/salesOutreach/enrollment/service.js");
   const { readEnrollmentAdmissions, ADMISSION_OUTCOMES } = await import("../../src/services/salesOutreach/enrollment/admissions.js");
   const { enqueueCsiJob } = await import("../../src/services/salesIntelligence/jobs.js");
   const { csiDataset } = await import("../../src/config/domain/salesIntelligence.js");
@@ -509,7 +516,68 @@ async function main() {
   const admissionIndexes = indexNames(admissionsPlan.queryPlanner.winningPlan);
   assert.ok(admissionIndexes.some((name) => name === "csi_job_claim" || name === "csi_job_completed_ttl"), `the admissions match reads an index: ${admissionIndexes.join(",")}`);
 
-  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair (+ BW1 contact re-derive), B7 scoped candidates + bounded plans, B2 decision reconcile, B8 admission hold + hold re-check + admissions read");
+  // 9. olr B6: event-driven expansion admission (switch PATCHed on), on real Mongo.
+  await drain();
+  const beforeB6 = await loader.requireActive();
+  assert.equal(beforeB6.value.transition.expansion_admission_enabled, undefined, "absent until the Owner sets it");
+  const switched = structuredClone(beforeB6.value);
+  switched.transition = { ...switched.transition, expansion_admission_enabled: true };
+  assert.equal((await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "sod-subjects-b6-switch", expected_revision: beforeB6.revision, value: switched })).response.changed, true);
+  const leadChange = (ref: { id: string }, revisionBefore: number, paths: string[], appliedAt: Date) => ({
+    ...change(revisionBefore, appliedAt),
+    entity: { model: "FormLead", id: ref.id },
+    changed_paths: paths,
+    fields: paths.map((path) => ({ path, value_mode: "stored", before: null, after: null })),
+  });
+  // A pre-gate Lead (created and received 2026-09-30, inside the 90-day window) refused as Priority 7, now accepted New.
+  const preGate = await insertLead({
+    createdAt: at("2026-09-30T14:00:03Z"),
+    timestamp: wallClock("2026-09-30T14:00:00Z"),
+    granot_priority: "0",
+    last_accepted_granot_observation: { observation_id: oid(), captured_at: new Date(Date.now() - 20_000) },
+    domain_revision: 4,
+  });
+  const untouched = await insertLead({ createdAt: at("2026-09-30T15:00:03Z"), timestamp: wallClock("2026-09-30T15:00:00Z"), granot_priority: "0", domain_revision: 2 });
+  await changes.insertOne(leadChange(preGate, 3, ["granot_priority", "last_accepted_granot_observation"], new Date(Date.now() - 10_000)));
+  await changes.insertOne(leadChange(untouched, 1, ["notes"], new Date(Date.now() - 9_000)));
+  await scanOutreachLeadChanges(new Date());
+  const admissionJob = await Jobs.findOne({ dedupe_key: `sod:lead-change:FormLead:${preGate.id}:admission:r4` }).lean();
+  assert.ok(admissionJob, "the tail nominates the admission identity");
+  assert.equal(admissionJob!.input_revision, 4);
+  assert.equal(await Jobs.exists({ dedupe_key: `sod:lead-change:FormLead:${preGate.id}:r4` }), null, "never the intake/refresh identity");
+  assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:lead-change:FormLead:${untouched.id}:` } }), 0, "an unrelated path nominates nothing");
+  const admitted = await runOutreachLeadChangeJob(String(admissionJob!._id));
+  assert.deepEqual([admitted.status, admitted.result?.outcome, admitted.result?.admission, admitted.result?.status], ["completed", "created", "expansion", "active"]);
+  const admittedSubject = (await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(preGate.id) }).lean())!;
+  const cohortId = `admission:${newYorkBusinessDay(admittedSubject.enrollment.enrolled_at)}`;
+  assert.deepEqual([admittedSubject.enrollment.kind, admittedSubject.enrollment.cohort_id, admittedSubject.enrollment.manifest_hash], ["expansion", cohortId, null]);
+  assert.equal(+admittedSubject.enrollment.activation_at, +admittedSubject.enrollment.enrolled_at, "the boundary is the admission instant");
+  const admittedPeriods = await Periods.find({ subject_id: admittedSubject._id }).lean();
+  assert.deepEqual(
+    admittedPeriods.map((p) => [p.workflow, p.start_kind, +p.started_at, p.time_basis]),
+    [["new", "activation", +admittedSubject.enrollment.activation_at, "activation_boundary"]],
+    "one activation period at the admission instant (partial day), never at received",
+  );
+  // A post-gate Lead whose creation (intake) job is still pending: the admission job defers, writing nothing.
+  const fresh = await insertLead({ createdAt: new Date(Date.now() - 60_000), timestamp: wallClock(new Date(Date.now() - 61_000).toISOString()), domain_revision: 2 });
+  const creationJob = await withTransaction((session) => enqueueCsiJob(leadChangeJobInput(fresh, 1), session));
+  await changes.insertOne(leadChange(fresh, 1, ["granot_priority"], new Date(Date.now() - 5_000)));
+  await scanOutreachLeadChanges(new Date());
+  const freshAdmission = await Jobs.findOne({ dedupe_key: `sod:lead-change:FormLead:${fresh.id}:admission:r2` }).lean();
+  assert.ok(freshAdmission);
+  const deferred = await runOutreachLeadChangeJob(String(freshAdmission!._id));
+  assert.deepEqual([deferred.result?.outcome, deferred.result?.reason], ["deferred", "deferred_to_intake"]);
+  assert.equal(await Subjects.countDocuments({ lead_id: new mongoose.Types.ObjectId(fresh.id) }), 0, "intake decides it");
+  assert.deepEqual([(await runOutreachLeadChangeJob(String(creationJob._id))).result?.admission], ["intake"]);
+  // POST /enrollment/verify { cohort_id }: consistent, read-only, through the cohort index.
+  const beforeVerify = await counts();
+  const cohortVerify = await verifyCohort({ cohort_id: cohortId });
+  assert.deepEqual([cohortVerify.consistent, cohortVerify.complete, cohortVerify.counts.subjects, cohortVerify.mismatches], [true, true, 1, []]);
+  assert.deepEqual(await counts(), beforeVerify, "verify by cohort writes nothing");
+  const cohortPlan = (await Subjects.collection.find({ "enrollment.cohort_id": cohortId }).sort({ _id: 1 }).limit(100).explain("queryPlanner")) as unknown as { queryPlanner: { winningPlan: unknown } };
+  assert.ok(indexNames(cohortPlan.queryPlanner.winningPlan).includes("sod_subject_cohort"), `the cohort page reads its index: ${indexNames(cohortPlan.queryPlanner.winningPlan).join(",")}`);
+
+  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair (+ BW1 contact re-derive), B7 scoped candidates + bounded plans, B2 decision reconcile, B8 admission hold + hold re-check + admissions read, B6 expansion admission + fresh-Lead guard + verify by cohort");
 }
 
 main()

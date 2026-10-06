@@ -133,6 +133,20 @@ test("report → apply (Idempotency-Key = run key) → verify, through the API",
   assert.deepEqual([missing.status, missing.body.code], [404, "NOT_FOUND"]);
 });
 
+test("olr B6: verify takes { cohort_id } (admission:<date> / intake:<gate>), read-only; a mixed or malformed body is 400", async () => {
+  const runs = structuredClone(store.runs);
+  const cohort = await call("owner", "POST", "/enrollment/verify", { cohort_id: "admission:2026-10-05" });
+  assert.equal(cohort.status, 200);
+  assert.deepEqual(
+    [cohort.body.data!.mode, cohort.body.data!.cohort_id, cohort.body.data!.run_key, cohort.body.data!.run_status, cohort.body.data!.consistent, cohort.body.data!.complete],
+    ["verify", "admission:2026-10-05", null, null, true, true],
+  );
+  assert.deepEqual(store.runs, runs, "no verify document");
+  for (const bad of [{ cohort_id: "pilot:2026-10-05" }, { cohort_id: "admission:x" }, { cohort_id: "admission:2026-10-05", run_key: "r" }, {}])
+    assert.deepEqual([(await call("owner", "POST", "/enrollment/verify", bad)).status], [400], JSON.stringify(bad));
+  assert.equal((await call("manager", "POST", "/enrollment/verify", { cohort_id: "admission:2026-10-05" })).status, 403);
+});
+
 test("strict inputs: unknown keys, bad partitions and bad hashes are 400", async () => {
   assert.equal((await call("owner", "GET", "/enrollment/candidates?partition=everything")).status, 400);
   assert.equal((await call("owner", "GET", "/enrollment/candidates?partition=older&extra=1")).status, 400);
