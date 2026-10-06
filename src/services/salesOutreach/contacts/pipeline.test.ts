@@ -875,3 +875,48 @@ describe("olr C1b: both scopes stored on the rep-day row", () => {
     assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0, "then left alone");
   });
 });
+
+describe("olr C8: the rep-day row stores the Other outbound breakdown", () => {
+  test("apply + recount: each confirmed call without an eligible subject lands in its reason's bucket; the sum is unattributed", async () => {
+    const w = world();
+    const notEnrolled = newId();
+    w.ctx.lead(notEnrolled, null);
+    const sources = [
+      call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")), // eligible: counted
+      call(w.events, outboundCall("101", notEnrolled, "2026-10-05T14:20:00Z")), // lead_not_enrolled
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z")), // no_lead
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:40:00Z", { call_log_state: null, legs: [] })), // awaiting: not Other outbound
+    ];
+    await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE);
+    const row = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([row.actual_confirmed, row.unattributed], [3, 2]);
+    assert.deepEqual(row.other_outbound, { no_lead: 1, lead_not_enrolled: 1, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 });
+    // The Lead is enrolled later and its call re-derived: the bucket moves, the row is rewritten once.
+    w.ctx.subjects.set([...w.ctx.attached.get(notEnrolled)!][0]!, subjectFacts({ workflow: "discretion" }));
+    await applyContactSources([sources[1]!], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    const moved = await recount(w, ALICE);
+    assert.equal(moved.outcome, "written");
+    assert.deepEqual([moved.fields.other_outbound.lead_not_enrolled, moved.fields.other_outbound.not_new_quoted], [0, 1]);
+    assert.equal((await recount(w, ALICE)).outcome, "unchanged", "a replay writes nothing");
+  });
+
+  test("the refresh pass rewrites today's/yesterday's rows that lack the breakdown once, then leaves them alone", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", newId(), "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE);
+    const key = `${ALICE}|${TODAY}`;
+    const written = w.repDays.rows.get(key)!;
+    // As a pre-C8 build stored it: same fingerprint field, no breakdown.
+    const older: Record<string, unknown> = { ...written };
+    delete older.other_outbound;
+    w.repDays.rows.set(key, older as typeof written);
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk(), "v-test", 3)), repDays: w.repDays, transaction: memoryTransaction };
+    const first = await refreshOpenRepDays(NOW, deps);
+    assert.equal(first.recounted, 4, "Alice's row without the breakdown + the C5 zero rows of yesterday (Alice, Bob, Carol)");
+    const rewritten = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([rewritten.other_outbound.no_lead, rewritten.publication_revision], [1, written.publication_revision + 1]);
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0, "then left alone");
+    assert.equal(w.repDays.row(ALICE, TODAY)!.publication_revision, rewritten.publication_revision);
+  });
+});

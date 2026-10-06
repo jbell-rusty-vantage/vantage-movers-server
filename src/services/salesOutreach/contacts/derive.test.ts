@@ -368,3 +368,98 @@ describe("P05f/P10a same-date prior contact (olr C4): carried for the activation
     assert.equal(obligationsOn(evaluate(input(prior.slice(0, 1)), asOf), "2026-10-05", "call").length, 1, "one earlier call lowers it by one");
   });
 });
+
+describe("olr C8 association_reason: why a contact is or is not associated with an eligible subject", () => {
+  const reasonOf = (context: ReturnType<ContextBuilder["build"]>, row = outboundCall("101", NUMBER, T0)) => deriveCallContactEvent(row, context).association_reason;
+  const withLead = (subject: Parameters<ContextBuilder["lead"]>[1]) => {
+    const ctx = new ContextBuilder().link(ALICE, "101");
+    ctx.lead(NUMBER, subject);
+    return ctx.build();
+  };
+
+  test("eligible: unique subject in a New or Quoted period (goal scope)", () => {
+    for (const workflow of ["new", "quoted"] as const) {
+      const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), withLead(subjectFacts({ workflow })));
+      assert.deepEqual([draft.association, draft.association_reason, draft.goal_scope_eligible], ["unique", "eligible", true]);
+    }
+  });
+
+  test("not_new_quoted: unique subject in another workflow, or with no period at contact time", () => {
+    assert.equal(reasonOf(withLead(subjectFacts({ workflow: "discretion" }))), "not_new_quoted");
+    const gap = subjectFacts({
+      activation_at: new Date("2026-09-01T12:00:00Z"),
+      periods: [{ workflow: "new", started_at: new Date("2026-10-06T04:00:00Z"), ended_at: null }],
+    });
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), withLead(gap));
+    assert.deepEqual([draft.association, draft.subject_workflow, draft.association_reason], ["unique", null, "not_new_quoted"]);
+  });
+
+  test("ambiguous: the number leads to two Leads", () => {
+    const two = new ContextBuilder().link(ALICE, "101");
+    two.lead(NUMBER);
+    two.lead(NUMBER);
+    assert.equal(reasonOf(two.build()), "ambiguous");
+  });
+
+  test("no_lead: a number without a Lead", () => {
+    const draft = deriveCallContactEvent(outboundCall("101", newId(), T0), withLead(subjectFacts()));
+    assert.deepEqual([draft.association, draft.association_reason, draft.goal_credit], ["none", "no_lead", "confirmed"]);
+  });
+
+  test("lead_not_enrolled: the number's Lead has no desk subject", () => {
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), withLead(null));
+    assert.deepEqual([draft.association, draft.subject_id, draft.association_reason], ["none", null, "lead_not_enrolled"]);
+  });
+
+  test("before_activation: before the activation boundary, on the same New York date (carried subject) or an earlier one", () => {
+    const sameDate = deriveCallContactEvent(outboundCall("101", NUMBER, T0), withLead(subjectFacts({ activation_at: new Date("2026-10-05T19:00:00Z") })));
+    assert.equal(sameDate.association_reason, "before_activation");
+    assert.notEqual(sameDate.subject_id, null, "olr C4: the same-date prior subject is still carried");
+    const earlierDate = deriveCallContactEvent(outboundCall("101", NUMBER, T0), withLead(subjectFacts({ activation_at: new Date("2026-10-07T14:00:00Z") })));
+    assert.deepEqual([earlierDate.subject_id, earlierDate.association_reason], [null, "before_activation"]);
+  });
+
+  test("lead_closed: the subject's closed period had started", () => {
+    const closed = subjectFacts({
+      periods: [
+        { workflow: "new", started_at: new Date("2026-09-01T12:00:00Z"), ended_at: new Date("2026-10-01T00:00:00Z") },
+        { workflow: "closed", started_at: new Date("2026-10-01T00:00:00Z"), ended_at: null },
+      ],
+    });
+    assert.equal(reasonOf(withLead(closed)), "lead_closed");
+  });
+
+  test("inbound calls carry the reason of their association too (cadence history, never goal credit)", () => {
+    const draft = deriveCallContactEvent(inboundCall("101", NUMBER, T0), withLead(null));
+    assert.deepEqual([draft.direction, draft.association_reason, draft.goal_credit], ["inbound", "lead_not_enrolled", "none"]);
+  });
+
+  test("null for rows excluded before association: merged, purged, internal, unknown direction, not external", () => {
+    const context = withLead(subjectFacts());
+    const rows = [
+      outboundCall("101", NUMBER, T0, { merged_into_id: newId() }),
+      outboundCall("101", NUMBER, T0, { purged_at: new Date(T0) }),
+      outboundCall("101", null, T0, { direction: "Internal", external_endpoint_kind: "extension" }),
+      outboundCall("101", NUMBER, T0, { direction: "Unknown" }),
+      outboundCall("101", NUMBER, T0, { external_endpoint_kind: "withheld" }),
+      outboundCall("101", null, T0),
+    ];
+    for (const row of rows) {
+      const draft = deriveCallContactEvent(row, context);
+      assert.equal(draft.verification, "excluded");
+      assert.equal(draft.association_reason, null, draft.exclusion_reason ?? "excluded");
+    }
+  });
+
+  test("the reason is part of the fingerprint: no Lead and a non-enrolled Lead were indistinguishable before C8", () => {
+    const row = outboundCall("101", NUMBER, T0);
+    const noLead = new ContextBuilder().link(ALICE, "101").build();
+    const notEnrolled = deriveCallContactEvent(row, withLead(null));
+    const none = deriveCallContactEvent(row, noLead);
+    const { association_reason: a, input_fingerprint: fa, ...restA } = notEnrolled;
+    const { association_reason: b, input_fingerprint: fb, ...restB } = none;
+    assert.deepEqual(restA, restB, "every other derived field is identical");
+    assert.deepEqual([a, b], ["lead_not_enrolled", "no_lead"]);
+    assert.notEqual(fa, fb);
+  });
+});

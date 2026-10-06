@@ -18,6 +18,7 @@ const draft = (overrides: Partial<ContactEventDraft> = {}): ContactEventDraft =>
   exclusion_reason: null,
   restricted_at_contact: false,
   association: "unique",
+  association_reason: "eligible",
   subject_workflow: "new",
   outcome: "answered",
   goal_credit: "confirmed",

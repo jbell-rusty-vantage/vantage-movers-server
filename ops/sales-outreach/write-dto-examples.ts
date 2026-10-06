@@ -59,13 +59,24 @@ function exampleStore(captureKnown = new Date("2026-10-05T14:57:00Z")): MemoryRe
     actual_confirmed_eligible: eligible,
     actual_awaiting_all: awaitingAll,
     actual_awaiting_eligible: awaitingEligible,
+    other_outbound: otherOutbound(all - eligible),
   });
+  // olr C8: "Other outbound" by reason, in roughly the production proportions of 2026-10-05.
+  function otherOutbound(other: number) {
+    const lead_not_enrolled = Math.floor(other * 0.55);
+    const before_activation = Math.floor(other * 0.32);
+    const lead_closed = other >= 20 ? 1 : 0;
+    const not_new_quoted = other >= 50 ? 1 : 0;
+    const no_lead = other - lead_not_enrolled - before_activation - lead_closed - not_new_quoted;
+    return { no_lead, lead_not_enrolled, lead_closed, before_activation, ambiguous: 0, not_new_quoted, unknown: 0 };
+  }
   store.rows = [
     repDayRow({ agent_id: A, business_day: DAY, ...both(108, 14, 2, 1), computed_as_of: computed, publication_revision: 41 }),
     repDayRow({ agent_id: C, business_day: DAY, ...both(37, 18), computed_as_of: computed, publication_revision: 39 }),
     repDayRow({ agent_id: D, business_day: DAY, ...both(25, 25), computed_as_of: computed, publication_revision: 40 }),
     repDayRow({ agent_id: E, business_day: DAY, ...both(10, 3), computed_as_of: computed, publication_revision: 33 }),
-    repDayRow({ agent_id: X, business_day: DAY, ...both(4, 0), computed_as_of: computed, publication_revision: 12 }),
+    // A row written before olr C8 (no breakdown stored): served `other_outbound.breakdown: null`.
+    repDayRow({ agent_id: X, business_day: DAY, ...both(4, 0), other_outbound: null, computed_as_of: computed, publication_revision: 12 }),
   ];
   store.names = new Map([
     [A, "Alice Rep"],

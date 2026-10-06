@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { SalesOutreachGoalCountScope } from "../../../config/domain/salesOutreach";
+import {
+  SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS,
+  type SalesOutreachOtherOutboundBreakdown,
+} from "../../../config/domain/salesOutreachContacts";
 import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
 import {
   SALES_OUTREACH_COUNT_SCOPE_LABELS,
@@ -61,6 +65,8 @@ export type RepDayRow = Readonly<{
   actual_confirmed_eligible?: number | null;
   actual_awaiting_all?: number | null;
   actual_awaiting_eligible?: number | null;
+  /** olr C8: `unattributed` by association reason. Absent or null on a row written before the breakdown was stored. */
+  other_outbound?: SalesOutreachOtherOutboundBreakdown | null;
   coverage: unknown;
   computed_as_of: Date | null;
   publication_revision: number;
@@ -236,6 +242,33 @@ function alternateScopeOf(row: RepDayRow | null, scope: SalesOutreachGoalCountSc
   };
 }
 
+const zeroBreakdown = (): SalesOutreachOtherOutboundBreakdown =>
+  Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, 0])) as SalesOutreachOtherOutboundBreakdown;
+
+/**
+ * The rep-day's "Other outbound" breakdown (olr C8), served with its count: null while the count is
+ * null (same honesty rule), null for a row written before the breakdown was stored, all zeros for a rep
+ * without a row once coverage is complete.
+ */
+function otherOutboundBreakdownOf(row: RepDayRow | null, count: number | null): SalesOutreachOtherOutboundBreakdown | null {
+  if (count === null) return null;
+  if (!row) return zeroBreakdown();
+  const stored = row.other_outbound;
+  if (!stored) return null;
+  return Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, stored[bucket] ?? 0])) as SalesOutreachOtherOutboundBreakdown;
+}
+
+/** The team sum of roster reps' breakdowns (olr C8); null when any is null, never a partial sum. */
+function teamOtherOutboundBreakdown(roster: readonly RepDayGoalDto[]): SalesOutreachOtherOutboundBreakdown | null {
+  const sum = zeroBreakdown();
+  for (const rep of roster) {
+    const breakdown = rep.other_outbound.breakdown;
+    if (!breakdown) return null;
+    for (const bucket of SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS) sum[bucket] += breakdown[bucket];
+  }
+  return sum;
+}
+
 /** A rep-day row's goal parts; the cadence counts are composed separately (`teamCadence.ts` `composeRepCadence`). */
 export type RepDayGoalDto = Omit<SalesOutreachRepDayDto, "overdue_leads" | "calls_due_today" | "sms_due_today">;
 
@@ -290,7 +323,7 @@ export function composeRepDay(input: {
     remaining,
     progress: cappedProgress(actual, goal.goal),
     goal_reached: reached,
-    other_outbound: { count: other, label: SALES_OUTREACH_OTHER_OUTBOUND_LABEL },
+    other_outbound: { count: other, label: SALES_OUTREACH_OTHER_OUTBOUND_LABEL, breakdown: otherOutboundBreakdownOf(row, other) },
     alternate_scope: alternateScopeOf(row, scope, complete),
     coverage,
     unknown_reason: complete ? null : "coverage_incomplete",
@@ -351,6 +384,7 @@ export function composeTeamGoals(
     other_outbound_total: roster.some((rep) => rep.other_outbound.count === null)
       ? null
       : roster.reduce((sum, rep) => sum + (rep.other_outbound.count ?? 0), 0),
+    other_outbound_breakdown: teamOtherOutboundBreakdown(roster),
     roster_size: roster.length,
   };
 }

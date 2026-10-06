@@ -282,7 +282,8 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
  * the configured scope of the day (olr C1a: rows an older build wrote under another scope self-correct
  * within a minute of the deploy), or that does not store both scopes' counts yet (olr C1b: today's and
  * yesterday's rows gain `actual_*_all` / `actual_*_eligible` within a minute of the deploy; older days
- * wait for `ops/sales-outreach/recount-rep-days.ts`) — so coverage catches up and each day freezes its
+ * wait for `ops/sales-outreach/recount-rep-days.ts`), or that does not store the "Other outbound"
+ * breakdown yet (olr C8, the same way) — so coverage catches up and each day freezes its
  * goal after midnight even without new calls. Bounded by the roster.
  *
  * Zero-activity days (olr C5): after New York midnight, every roster rep without a row yesterday gets a
@@ -307,7 +308,7 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
     const scope = countScopeForDay(day, schedule);
     const rows = await store.rowsOfDay(day);
     for (const row of rows) {
-      if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope || !row.both_counts)
+      if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope || !row.both_counts || !row.breakdown)
         keys.push({ agent_id: row.agent_id, business_day: day });
     }
     if (day !== yesterday) continue;

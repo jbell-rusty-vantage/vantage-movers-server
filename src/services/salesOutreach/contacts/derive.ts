@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SalesOutreachWorkflow } from "../../../config/domain/salesOutreach";
 import type {
+  SalesOutreachAssociationReason,
   SalesOutreachContactAssociation,
   SalesOutreachContactOutcome,
   SalesOutreachGoalCredit,
@@ -37,7 +38,10 @@ import { newYorkBusinessDay } from "../reads/businessDay";
  * - P07g: outbound at the verified start (a call crossing midnight belongs to its start date),
  *   answered inbound at the reviewed handler's answer, SMS at the confirmed sent time;
  * - restricted contact (an active restriction on the number covering the channel at contact time)
- *   stays in history with zero goal and cadence credit.
+ *   stays in history with zero goal and cadence credit;
+ * - olr C8: every row that reaches association stores `association_reason` (`associate`), so the
+ *   rep-day "Other outbound" count is broken down by why a call did not count; rows excluded before
+ *   association store null.
  */
 
 export type DeskLeadKey = `${"FormLead" | "CallLead"}:${string}`;
@@ -138,6 +142,12 @@ export type ContactEventDraft = {
   exclusion_reason: string | null;
   restricted_at_contact: boolean;
   association: SalesOutreachContactAssociation;
+  /**
+   * olr C8: why the source is or is not associated with an eligible New/Quoted subject at contact time;
+   * null for rows excluded before association (merged, purged, internal, unknown direction, not
+   * external, duplicate SMS copy).
+   */
+  association_reason: SalesOutreachAssociationReason | null;
   subject_workflow: SalesOutreachWorkflow | null;
   outcome: SalesOutreachContactOutcome;
   goal_credit: SalesOutreachGoalCredit;
@@ -236,6 +246,8 @@ type Association = {
   state: SalesOutreachContactAssociation;
   subject: SubjectFacts | null;
   workflow: SalesOutreachWorkflow | null;
+  /** olr C8: the stored `association_reason` (never null once association ran). */
+  reason: SalesOutreachAssociationReason;
   /**
    * P05f/P10a (olr C4): the Lead's subject when the contact precedes its activation boundary on the same
    * New York business date. The row stays `none` (no workflow, no goal scope: nothing is owed or credited
@@ -245,30 +257,39 @@ type Association = {
   same_date_prior: SubjectFacts | null;
 };
 
-const NO_ASSOCIATION: Association = { state: "none", subject: null, workflow: null, same_date_prior: null };
-const AMBIGUOUS: Association = { state: "ambiguous", subject: null, workflow: null, same_date_prior: null };
+const notAssociated = (reason: SalesOutreachAssociationReason): Association => ({ state: "none", subject: null, workflow: null, reason, same_date_prior: null });
+const NO_LEAD = notAssociated("no_lead");
+const AMBIGUOUS: Association = { state: "ambiguous", subject: null, workflow: null, reason: "ambiguous", same_date_prior: null };
 
 function periodAt(subject: SubjectFacts, at: Date): SubjectPeriodFacts | null {
   const ms = at.getTime();
   return subject.periods.find((p) => p.started_at.getTime() <= ms && (p.ended_at === null || p.ended_at.getTime() > ms)) ?? null;
 }
 
-/** IMPL-07 over the source's contact numbers. */
+/**
+ * IMPL-07 over the source's contact numbers, with the olr C8 reason: no number Lead → `no_lead`; several
+ * Leads → `ambiguous`; a Lead without a desk subject → `lead_not_enrolled`; before the subject's
+ * activation boundary → `before_activation`; once its closed period started → `lead_closed`; otherwise
+ * unique — `eligible` in a New/Quoted period, else `not_new_quoted`.
+ */
 export function associate(numberIds: readonly string[], at: Date, context: DerivationContext): Association {
   const leads = new Set<DeskLeadKey>();
   for (const id of numberIds) for (const lead of context.linked_leads.get(id) ?? []) leads.add(lead);
-  if (leads.size === 0) return NO_ASSOCIATION;
+  if (leads.size === 0) return NO_LEAD;
   if (leads.size > 1) return AMBIGUOUS;
   const subject = context.subjects.get([...leads][0]!) ?? null;
-  if (!subject) return NO_ASSOCIATION;
+  if (!subject) return notAssociated("lead_not_enrolled");
   if (subject.activation_at.getTime() > at.getTime()) {
     const sameDate = newYorkBusinessDay(subject.activation_at) === newYorkBusinessDay(at);
-    return sameDate ? { ...NO_ASSOCIATION, same_date_prior: subject } : NO_ASSOCIATION;
+    const before = notAssociated("before_activation");
+    return sameDate ? { ...before, same_date_prior: subject } : before;
   }
   const period = periodAt(subject, at);
   // A subject whose closed period had started is no longer an active desk subject at contact time.
-  if (period?.workflow === "closed") return NO_ASSOCIATION;
-  return { state: "unique", subject, workflow: period?.workflow ?? null, same_date_prior: null };
+  if (period?.workflow === "closed") return notAssociated("lead_closed");
+  const workflow = period?.workflow ?? null;
+  const reason = workflow !== null && GOAL_WORKFLOWS.has(workflow) ? "eligible" : "not_new_quoted";
+  return { state: "unique", subject, workflow, reason, same_date_prior: null };
 }
 
 /** The association the evidence classifier sees: a same-date prior contact keeps its real kind and verification. */
@@ -322,6 +343,7 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
       exclusion_reason: reason,
       restricted_at_contact: false,
       association: "none",
+      association_reason: null,
       subject_workflow: null,
       outcome: "unknown",
       goal_credit: "none",
@@ -367,6 +389,7 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
       exclusion_reason: classified.exclusion_reason,
       restricted_at_contact: restricted,
       association: association.state,
+      association_reason: association.reason,
       subject_workflow: association.workflow,
       outcome: callOutcome(row, confirmed),
       goal_credit: goalCredit,
@@ -405,6 +428,7 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
     exclusion_reason: classified.exclusion_reason,
     restricted_at_contact: restrictedAt(numbers, "call", eventAt, context),
     association: association.state,
+    association_reason: association.reason,
     subject_workflow: association.workflow,
     outcome: !confirmed ? "unknown" : answered ? "answered" : "unanswered",
     goal_credit: "none",
@@ -425,7 +449,7 @@ export function deriveSmsContactEvent(row: SmsSourceRow, context: DerivationCont
   const association: Association = row.is_group
     ? AMBIGUOUS
     : numbers.length === 0
-      ? NO_ASSOCIATION
+      ? NO_LEAD
       : associate(numbers, eventAt, context);
   const restricted = restrictedAt(numbers, "text", eventAt, context);
   const base = {
@@ -438,6 +462,7 @@ export function deriveSmsContactEvent(row: SmsSourceRow, context: DerivationCont
     goal_agent_id: null,
     restricted_at_contact: restricted,
     association: association.state,
+    association_reason: association.reason as SalesOutreachAssociationReason | null,
     subject_workflow: association.workflow,
     outcome: "unknown" as const,
     goal_credit: "none" as const,
@@ -446,7 +471,8 @@ export function deriveSmsContactEvent(row: SmsSourceRow, context: DerivationCont
     source_revision: row.source_revision,
   };
   if (row.duplicate_copy) {
-    return finish({ ...base, subject_id: null, actor_agent_id: null, kind: "other", verification: "excluded", exclusion_reason: "duplicate_copy" });
+    // olr C8: the canonical copy carries the association reason; this copy is excluded before association.
+    return finish({ ...base, association_reason: null, subject_id: null, actor_agent_id: null, kind: "other", verification: "excluded", exclusion_reason: "duplicate_copy" });
   }
   const status = engineSmsStatus(row.status);
   const reviewed = row.identity_state === "reviewed" && row.reviewed_agent_id !== null;

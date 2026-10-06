@@ -24,6 +24,9 @@ import { receiverFillCandidates, type ReceiverFillCandidate } from "./receiverFi
  *    returned for the rep-day recount (queued as `outreach_rep_day` by the consumer, recounted inline
  *    by the sweep);
  * 4. fill an empty Lead receiver from the most recent reviewed-rep call on its subject (`receiverFill.ts`).
+ *
+ * `observe` (olr C8, `ops/sales-outreach/rederive-contact-events.ts`) sees every derived row and whether
+ * it differs from the stored one, so the operator re-derive can report by `association_reason`.
  */
 
 export type ContactSource = Readonly<{ source_kind: "call" | "sms"; source_id: string }>;
@@ -119,9 +122,16 @@ export function contextRequest(calls: readonly CallSourceRow[], sms: readonly Sm
   };
 }
 
+export type ApplyOptions = Readonly<{
+  now: Date;
+  queueRepDays: boolean;
+  /** Sees each derived row and whether its fingerprint differs from the stored row (olr C8 re-derive report). */
+  observe?: (draft: ContactEventDraft, changed: boolean) => void;
+}>;
+
 export async function applyContactSources(
   sources: readonly ContactSource[],
-  options: { now: Date; queueRepDays: boolean },
+  options: ApplyOptions,
   store: ContactEventStore,
   session: ClientSession,
 ): Promise<ApplyResult> {
@@ -153,7 +163,9 @@ export async function applyContactSources(
     const draft = drafts[i]!;
     const id = ids[i]!;
     const previous = existing.get(id) ?? null;
-    if (previous?.input_fingerprint === draft.input_fingerprint) continue;
+    const differs = previous?.input_fingerprint !== draft.input_fingerprint;
+    options.observe?.(draft, differs);
+    if (!differs) continue;
     const revision = await store.writeEvent(id, draft, previous, options.now, session);
     changed++;
     const mark = `${draft.source_kind}:${draft.source_id}:v${revision}`;

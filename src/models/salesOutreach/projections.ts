@@ -8,6 +8,7 @@ import {
   SALES_OUTREACH_SUBJECT_STATUSES,
   SALES_OUTREACH_WORKFLOWS,
 } from "../../config/domain/salesOutreach";
+import { SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS } from "../../config/domain/salesOutreachContacts";
 import { at, count, date, defineCsiModel, enumeration, index, oid, ref, revision, str, text, unique, validatedJson } from "../salesIntelligence/common";
 
 const nullableCount = { type: Number, default: null, min: 0, validate: (v: unknown) => v === null || Number.isSafeInteger(v) } as const;
@@ -207,6 +208,12 @@ const goalSnapshotSchema = new Schema(
   { _id: false, strict: "throw" },
 );
 
+/** olr C8: one count per "Other outbound" bucket (`SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS`). */
+const otherOutboundBreakdownSchema = new Schema(
+  Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, count])),
+  { _id: false, strict: "throw" },
+);
+
 /**
  * `sales_outreach_rep_day_projections` — one rep's outbound-goal day (IMPLEMENTATION-PLAN §4.6,
  * P08a). Recomputed from evidence when dirty, including older days. Calls to numbers with no
@@ -234,6 +241,11 @@ export const SalesOutreachRepDayProjectionSchema = new Schema(
     actual_confirmed_eligible: count,
     actual_awaiting_all: count,
     actual_awaiting_eligible: count,
+    /**
+     * olr C8: `unattributed` ("Other outbound") broken down by the events' association reason; sums to
+     * `unattributed`. Null/absent on a row written before C8; the read serves the breakdown as null.
+     */
+    other_outbound: { type: otherOutboundBreakdownSchema, default: null },
     remaining: nullableCount,
     /** Goal progress in [0, 1] (capped); null without a positive goal. */
     progress: { type: Number, default: null, min: 0, max: 1 },

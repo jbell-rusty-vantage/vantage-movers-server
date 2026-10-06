@@ -195,7 +195,7 @@ test("count scopes: Other outbound stays separate and mixed scopes never sum", (
     "eligible_new_quoted",
     "Outbound calls (New/Quoted leads)",
     30,
-    { count: 9, label: "Other outbound" },
+    { count: 9, label: "Other outbound", breakdown: null },
   ]);
   const m1 = repDayRow({ agent_id: agentOf("b"), business_day: DAY, actual_confirmed: 20 });
   assert.equal(dayCountScope([m2, m1]), "mixed");
@@ -366,4 +366,51 @@ test("olr C1b team alternate: the roster's sum; actual null when a rep is pendin
   // A rep without a row presented under the configured scope while the rows count another: unknown, never a mixed sum.
   const mismatched = [...eligibleRows.slice(0, -1), compose(agentOf(roster.at(-1)!), null)];
   assert.equal(composeTeamGoals(mismatched, "eligible_new_quoted").outbound_calls.alternate?.actual, null);
+});
+
+test("olr C8 other_outbound.breakdown: served with the count, null while the count is null and for a pre-C8 row", () => {
+  const goalPart = salesOutreachRepDaySchema.omit({ overdue_leads: true, calls_due_today: true, sms_due_today: true });
+  const breakdown = { no_lead: 3, lead_not_enrolled: 12, lead_closed: 1, before_activation: 4, ambiguous: 0, not_new_quoted: 1, unknown: 0 };
+  const row = repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, unattributed: 21, other_outbound: breakdown });
+  const served = compose(agentOf("a"), row);
+  goalPart.parse(served);
+  assert.deepEqual(served.other_outbound, { count: 21, label: "Other outbound", breakdown });
+  // Partial coverage: a positive count is a lower bound and keeps its breakdown; a 0 is pending and so is its breakdown.
+  assert.deepEqual(compose(agentOf("a"), row, PARTIAL).other_outbound.breakdown, breakdown);
+  const zero = repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 9, unattributed: 0, other_outbound: { ...breakdown, no_lead: 0, lead_not_enrolled: 0, lead_closed: 0, before_activation: 0, not_new_quoted: 0 } });
+  assert.deepEqual(compose(agentOf("a"), zero, PARTIAL).other_outbound, { count: null, label: "Other outbound", breakdown: null });
+  // A row written before the breakdown was stored: the count stays, the breakdown is null (never guessed).
+  const older = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, unattributed: 21 }));
+  assert.deepEqual(older.other_outbound, { count: 21, label: "Other outbound", breakdown: null });
+  goalPart.parse(older);
+  // No row: all zeros once coverage is complete, null while pending.
+  assert.deepEqual(compose(agentOf("c"), null).other_outbound.breakdown, { no_lead: 0, lead_not_enrolled: 0, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 });
+  assert.equal(compose(agentOf("c"), null, PARTIAL).other_outbound.breakdown, null);
+});
+
+test("olr C8 team other_outbound_breakdown: the roster's sum (equal to other_outbound_total); null when any roster rep's is null", () => {
+  const roster = fixture.rows.map((row) => row.rep);
+  const rowOf = (agent: string, i: number) =>
+    repDayRow({
+      agent_id: agentOf(agent), business_day: DAY, actual_confirmed: 40, unattributed: 10 + i,
+      other_outbound: { no_lead: 1, lead_not_enrolled: 5 + i, lead_closed: 0, before_activation: 3, ambiguous: 1, not_new_quoted: 0, unknown: 0 },
+    });
+  // Every roster rep but the last has a row; the last has none with complete coverage (all zeros).
+  const reps = roster.map((rep, i) => compose(agentOf(rep), i === roster.length - 1 ? null : rowOf(rep, i)));
+  const team = composeTeamGoals(reps, "all_outbound");
+  const n = roster.length - 1;
+  assert.deepEqual(team.other_outbound_breakdown, {
+    no_lead: n, lead_not_enrolled: reps.slice(0, -1).reduce((sum, _rep, i) => sum + 5 + i, 0), lead_closed: 0, before_activation: 3 * n, ambiguous: n, not_new_quoted: 0, unknown: 0,
+  });
+  const total = Object.values(team.other_outbound_breakdown!).reduce((a, b) => a + b, 0);
+  assert.equal(total, team.other_outbound_total, "the team breakdown sums to the team Other outbound total");
+  // A pending rep (no row, partial coverage) or a pre-C8 row makes the team breakdown unknown.
+  const pending = [...reps.slice(0, -1), compose(agentOf(roster.at(-1)!), null, PARTIAL)];
+  assert.equal(composeTeamGoals(pending, "all_outbound").other_outbound_breakdown, null);
+  const older = [compose(agentOf(roster[0]!), repDayRow({ agent_id: agentOf(roster[0]!), business_day: DAY, actual_confirmed: 12, unattributed: 2 })), ...reps.slice(1)];
+  assert.equal(composeTeamGoals(older, "all_outbound").other_outbound_breakdown, null);
+  // A rep off the roster does not enter the sum.
+  const offRoster = compose(agentOf("z"), rowOf("z", 50));
+  assert.equal(offRoster.goal_state, "not_on_roster");
+  assert.deepEqual(composeTeamGoals([...reps, offRoster], "all_outbound").other_outbound_breakdown, team.other_outbound_breakdown);
 });

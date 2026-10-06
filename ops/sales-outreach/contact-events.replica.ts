@@ -44,6 +44,11 @@
  *   min behind, the recount (watermarks read in its transaction) and GET /rep-days both read today complete
  *   through as_of − 20 against as_of − 25, so a zero-call roster rep reads 0 / no_activity_recorded; with
  *   the capped watermarks alone the same rep reads Pending.
+ * - other-outbound breakdown (olr C8): events store `association_reason` through the strict model; events
+ *   made pre-C8 give an all-`unknown` breakdown; `rederive-contact-events` dry run writes and enqueues
+ *   nothing, apply rewrites each event once, nominates the subject's evaluation and recounts the rep-day
+ *   to the real breakdown (strict `other_outbound` subdocument), served by GET /rep-days and GET /team; a
+ *   second run changes nothing.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -758,6 +763,70 @@ async function main() {
   assert.deepEqual([c0Capped.actual_confirmed, c0Capped.actual_basis, c0Capped.coverage.state], [null, "pending", "partial"], "capped watermarks alone stay Pending");
   const c0CappedRecount = await withTransaction((session) => recountRepDay(c0Key, c0Config, c0Now, mongoRepDayStore, session));
   assert.equal(c0CappedRecount.fields.coverage.state, "partial");
+
+  // --- olr C8: association_reason on every event, the Other outbound breakdown, rederive-contact-events ---
+  // Alice calls her eligible Lead, a Lead that is not enrolled and a number with no Lead. The events store
+  // their reasons through the strict model; made to look pre-C8 (reason absent, another fingerprint) the
+  // rep-day breakdown reads all `unknown`. The re-derive dry run writes nothing and predicts the change;
+  // apply rewrites each event once (fingerprint moves), nominates the eligible subject's evaluation,
+  // recounts the dirty rep-day to the real breakdown; GET /rep-days and GET /team serve it; a second run
+  // changes nothing.
+  const { dryRunContactEventStore, mongoRederiveSourcePager, recountDirtyRepDays, rederivePages, resolveRederiveRange } = await import("../lib/sales-outreach-rederive-contact-events.js");
+  const c8Day = "2026-12-15";
+  const c8Now = new Date("2026-12-16T16:00:00Z");
+  const c8NotEnrolled = new mongoose.Types.ObjectId();
+  await getContactNumberModel().create({ _id: c8NotEnrolled, e164: "+15550100081", digits_reversed: "18001005551", first_observed_at: activation, last_activity_at: activation,
+    lead: { model: "FormLead", id: new mongoose.Types.ObjectId(), received_at: activation, state: "open" }, lead_link: { source: "automatic", set_at: activation } });
+  const c8Call = async (contact: mongoose.Types.ObjectId, minute: number) => {
+    const started = new Date(`${c8Day}T15:${String(minute).padStart(2, "0")}:00Z`);
+    const row = await getCallInteractionModel().create({
+      provider_account_id: account, telephony_session_id: `s-c8-${minute}`, identity_basis: "telephony_session_id", direction: "Outbound",
+      contact_number_id: contact, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
+      parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: started, result: "Call connected" }],
+      call_log_state: "settled", terminal: true, first_observed_at: started, last_observed_at: started,
+    });
+    return { source_kind: "call" as const, source_id: String(row._id) };
+  };
+  const c8Sources = [await c8Call(number, 0), await c8Call(c8NotEnrolled, 10), await c8Call(new mongoose.Types.ObjectId(), 20)];
+  const c8Ids = c8Sources.map((s) => new mongoose.Types.ObjectId(contactEventId("call", s.source_id)));
+  await withTransaction((session) => applyContactSources(c8Sources, { now: c8Now, queueRepDays: false }, mongoContactEventStore, session));
+  const c8Reasons = async () => (await Events.find({ _id: { $in: c8Ids } }, { association_reason: 1 }).sort({ event_at: 1 }).lean()).map((e) => (e as { association_reason?: string | null }).association_reason);
+  assert.deepEqual(await c8Reasons(), ["eligible", "lead_not_enrolled", "no_lead"], "C8: the reason is stored through the strict model");
+  // As a pre-C8 build wrote them.
+  await Events.collection.updateMany({ _id: { $in: c8Ids } }, { $unset: { association_reason: 1 }, $set: { input_fingerprint: "pre-c8" } });
+  const c8Key = { agent_id: String(alice), business_day: c8Day };
+  await withTransaction((session) => recountRepDay(c8Key, configuration, c8Now, mongoRepDayStore, session));
+  const c8Before = await Rows.findOne({ agent_id: alice, business_day: c8Day }).lean();
+  assert.deepEqual(c8Before?.other_outbound, { no_lead: 0, lead_not_enrolled: 0, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 2 }, "pre-C8 events read unknown");
+  const c8From = resolveRederiveRange({ from: c8Day, today: "2026-12-16" }).from_instant;
+  const c8Pass = (apply: boolean) =>
+    rederivePages({ kinds: ["call", "sms"], from: c8From, now: c8Now, pager: mongoRederiveSourcePager, store: apply ? mongoContactEventStore : dryRunContactEventStore(mongoContactEventStore), transaction: withTransaction });
+  const c8Evaluations = () => getSalesIntelligenceJobModel().countDocuments({ stage: "outreach_evaluate" });
+  const evaluationsBefore = await c8Evaluations();
+  const c8Dry = await c8Pass(false);
+  assert.deepEqual([c8Dry.sources, c8Dry.changed, c8Dry.pages_failed], [{ call: 3, sms: 0 }, 3, 0], JSON.stringify(c8Dry));
+  assert.deepEqual([c8Dry.changed_by_reason.eligible, c8Dry.changed_by_reason.lead_not_enrolled, c8Dry.changed_by_reason.no_lead], [1, 1, 1]);
+  assert.deepEqual(c8Dry.other_outbound_by_day[c8Day], { no_lead: 1, lead_not_enrolled: 1, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 });
+  assert.deepEqual(await c8Reasons(), [undefined, undefined, undefined], "the dry run writes nothing");
+  assert.equal(await c8Evaluations(), evaluationsBefore, "and enqueues nothing");
+  const c8Applied = await c8Pass(true);
+  assert.deepEqual([c8Applied.changed, c8Applied.evaluations, c8Applied.dirty_rep_days], [3, 1, [c8Key]]);
+  assert.deepEqual(await c8Reasons(), ["eligible", "lead_not_enrolled", "no_lead"]);
+  assert.equal(await c8Evaluations(), evaluationsBefore + 1, "the eligible subject's evaluation is nominated in the page's transaction");
+  const c8Recount = await recountDirtyRepDays({ keys: c8Applied.dirty_rep_days, loader: fixedConfigurationLoader(configuration), now: c8Now, store: mongoRepDayStore, transaction: withTransaction, publishGoal: async () => undefined });
+  assert.deepEqual(c8Recount.outcomes, { written: 1, unchanged: 0, no_activity: 0, failed: 0 });
+  const c8After = await Rows.findOne({ agent_id: alice, business_day: c8Day }).lean();
+  assert.deepEqual(c8After?.other_outbound, { no_lead: 1, lead_not_enrolled: 1, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 });
+  assert.deepEqual([c8After?.unattributed, c8After?.publication_revision], [2, (c8Before?.publication_revision ?? 0) + 1]);
+  const c8Again = await c8Pass(true);
+  assert.deepEqual([c8Again.derived, c8Again.changed, c8Again.evaluations], [3, 0, 0], "a second run changes nothing (the fingerprint moved once)");
+  const { readTeam: c8ReadTeam } = await import("../../src/services/salesOutreach/reads/service.js");
+  const c8Owner = { role: "owner" as const, actor: { kind: "owner" as const, id: "owner-c8", request_id: "r-c8", run_id: null }, agent_id: null };
+  const c8Deps = { loader: fixedConfigurationLoader(configuration), now: c8Now };
+  const c8Rep = (await readRepDays(c8Owner, { business_day: c8Day }, c8Deps)).reps!.find((rep) => rep.agent_id === String(alice))!;
+  assert.deepEqual(c8Rep.other_outbound, { count: 2, label: "Other outbound", breakdown: { no_lead: 1, lead_not_enrolled: 1, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 } });
+  const c8Team = await c8ReadTeam(c8Owner, { business_day: c8Day }, c8Deps);
+  assert.deepEqual([c8Team.goals?.other_outbound_total, c8Team.goals?.other_outbound_breakdown], [2, c8Rep.other_outbound.breakdown], "C8: /team serves the roster sum");
 
   console.log(JSON.stringify({ ok: true, database }));
 }

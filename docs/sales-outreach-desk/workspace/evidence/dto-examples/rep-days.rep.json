@@ -67,7 +67,16 @@
         "goal_reached": true,
         "other_outbound": {
           "count": 94,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 11,
+            "lead_not_enrolled": 51,
+            "lead_closed": 1,
+            "before_activation": 30,
+            "ambiguous": 0,
+            "not_new_quoted": 1,
+            "unknown": 0
+          }
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",
