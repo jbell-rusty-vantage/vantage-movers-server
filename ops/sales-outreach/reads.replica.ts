@@ -12,6 +12,9 @@
  * - S4: per-Agent cadence counts (overdue Leads, due call attempts / SMS sends, unknown remaining) equal
  *   the in-memory twin and reconcile with the team card; queue rows carry the stored `schedule_day`;
  *   Agent names resolve in one batched read (history names' fallback).
+ * - olr A3-fresh: the Call Log row's projection carries the confirmation instants and the observed
+ *   watermark; the newest call webhook receipt is one index walk (no blocking sort) that skips receipts
+ *   without a telephony session.
  * - `publishOutreachLive` inserts land on a scoped change stream: a Rep stream sees only its own Agent's
  *   hints (plus configuration), an Owner stream sees all.
  */
@@ -190,6 +193,42 @@ async function main() {
   await getSalesOutreachSubjectModel().collection.updateOne({ _id: moved!._id }, { $set: { assigned_agent_id: new mongoose.Types.ObjectId(TEST_AGENT_B), assignment_revision: 2 } });
   assert.notEqual(await mongoDeskQueueStore.assignmentGeneration({ kind: "agent", agent_id: TEST_AGENT_A }), before, "reassignment changes the generation");
 
+  // 4e (olr A3-fresh). Calls freshness inputs on real Mongo: the dotted sync-state projection carries the
+  // confirmation instants, and the newest call webhook is one covered index read that skips non-telephony receipts.
+  const { getSalesIntelligenceSyncStateModel } = await import("../../src/models/SalesIntelligenceSyncState.js");
+  const { getRingCentralCollectionName } = await import("../../src/services/ringcentral/ringcentral-config.js");
+  const { ensureRingCentralWebhookEventIndexes } = await import("../../src/services/ringcentral/webhook-capture.js");
+  assert.equal(await mongoSalesOutreachReadStore.readLastCallWebhookAt(), null, "no receipt yet");
+  await getSalesIntelligenceSyncStateModel().collection.insertOne({
+    scope: "call_log_all_directions",
+    known_complete_through: at("2026-10-05T14:10:00.000Z"),
+    observed_complete_through: at("2026-10-05T14:44:00.000Z"),
+    reconcile_sync_success_at: at("2026-10-05T14:58:00.000Z"),
+    isync_lane: { last_success_at: at("2026-10-05T14:59:20.000Z"), last_error_code: null },
+    last_run: { finished_at: at("2026-10-05T14:58:00.000Z"), error_code: null, sync_token_stored: true, sync_error_code: null },
+  });
+  const callsRow = await mongoSalesOutreachReadStore.readCallsCapture();
+  assert.deepEqual(
+    [callsRow?.confirmation_success_at?.toISOString(), callsRow?.observed_complete_through?.toISOString(), callsRow?.known_complete_through?.toISOString()],
+    ["2026-10-05T14:59:20.000Z", "2026-10-05T14:44:00.000Z", "2026-10-05T14:10:00.000Z"],
+  );
+  await ensureRingCentralWebhookEventIndexes();
+  const receipts = mongoose.connection.db!.collection(getRingCentralCollectionName("webhookEvents"));
+  await receipts.insertMany([
+    { provider: "ringcentral", receivedAt: at("2026-10-05T14:57:00.000Z"), uuid: "a3f-1", telephonySessionId: "s-1" },
+    { provider: "ringcentral", receivedAt: at("2026-10-05T14:58:30.000Z"), uuid: "a3f-2", telephonySessionId: "s-2" },
+    { provider: "ringcentral", receivedAt: at("2026-10-05T14:59:50.000Z"), uuid: "a3f-3", telephonySessionId: null },
+  ]);
+  assert.equal((await mongoSalesOutreachReadStore.readLastCallWebhookAt())?.toISOString(), "2026-10-05T14:58:30.000Z", "the newer non-telephony receipt is skipped");
+  const webhookPlan = (await receipts
+    .find({ provider: "ringcentral", telephonySessionId: { $type: "string" } }, { projection: { _id: 0, receivedAt: 1 } })
+    .sort({ receivedAt: -1 })
+    .limit(1)
+    .explain("executionStats")) as { queryPlanner: { winningPlan: unknown }; executionStats: { totalKeysExamined: number } };
+  const planText = JSON.stringify(webhookPlan.queryPlanner.winningPlan);
+  assert.ok(planText.includes("IXSCAN") && !planText.includes('"SORT"'), `index walk without a blocking sort: ${planText}`);
+  assert.ok(webhookPlan.executionStats.totalKeysExamined <= 2, "newest-first walk stops at the first telephony receipt");
+
   // 5. Live: scoped change streams over committed publish rows.
   const repStream = watchOutreachLiveEvents({ role: "rep", agent_id: TEST_AGENT_A });
   const ownerStream = watchOutreachLiveEvents({ role: "owner", agent_id: null });
@@ -211,7 +250,7 @@ async function main() {
   await repStream.close();
   await ownerStream.close();
   console.log(
-    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; S4 agent cadence, schedule_day, agent names; scoped live streams`,
+    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; scoped live streams`,
   );
 }
 
