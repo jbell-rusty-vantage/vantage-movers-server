@@ -142,6 +142,15 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
       default: () => ({}),
     },
     known_complete_through: date,
+    // Outreach lifecycle repair A3 (D-A3): the same watermark without the provisional-row cap (it keeps
+    // the finalization lag and the ISync-time cap); never below `known_complete_through`. Written by the
+    // Call Log reconcile (`call_log_all_directions`) and by the contact-event calls sweep when it catches
+    // up (`outreach_contact_calls`). Goal counting reads it; cadence verdicts keep the capped value.
+    observed_complete_through: date,
+    // Outreach lifecycle repair A3 (F5): last instant the 5-minute reconcile's own Call Log Sync step
+    // (mode `on`) stored a token, i.e. confirmed calls outside the minute lane (`call_log_all_directions`).
+    // Sticky: a run without a sync success leaves it unchanged.
+    reconcile_sync_success_at: date,
     last_run: {
       type: new Schema(
         {

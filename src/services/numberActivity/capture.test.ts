@@ -10,7 +10,7 @@ import {
 import { EMPTY_DIRECTORY_LOOKUP } from "./directory";
 import { at, syntheticDirectory, SYNTHETIC_QUEUE_EXTENSION, SYNTHETIC_SALES_DID } from "./fixtures";
 import { classifyEndpoint, toE164, toNationalTenDigit } from "./phone";
-import { nextState, resolveWindowPlan, resolveWindowStart, type ReconcileConfig, type WindowResult } from "./reconcileCallLog";
+import { nextState, reconcileSyncSuccessAt, resolveWindowPlan, resolveWindowStart, type ReconcileConfig, type WindowResult } from "./reconcileCallLog";
 
 const directory = syntheticDirectory();
 
@@ -143,6 +143,84 @@ test("CC-03: known_complete_through never passes the oldest provisional start in
     overflow: [{ from: at(-50_000), to: at(-49_940) }],
   });
   assert.deepEqual(overflow.gaps.map((g) => g.reason), ["quarantine_overflow"], "an evicted quarantine entry becomes a repairable gap");
+});
+
+test("A3: observed ignores the provisional cap but honours the ISync cap", () => {
+  const rolling = [window({ from: at(-240 * 60), to: at(0) })];
+  // A stuck provisional row 50 minutes back caps `known`; `observed` keeps only the 15-minute lag.
+  const provisional = nextState({ known_complete_through: at(-7200) }, rolling, at(0), at(1), config, null, {
+    completeThroughCap: at(-3000),
+    observedThroughCap: null,
+  });
+  assert.equal(provisional.known_complete_through?.toISOString(), at(-3000).toISOString());
+  assert.equal(provisional.observed_complete_through?.toISOString(), at(-900).toISOString(), "windowTo minus the finalization lag");
+  // The ISync cap (provider sync time − lag) binds both.
+  const synced = nextState({ known_complete_through: at(-7200) }, rolling, at(0), at(1), config, null, {
+    completeThroughCap: at(-3000),
+    observedThroughCap: at(-1500),
+  });
+  assert.equal(synced.known_complete_through?.toISOString(), at(-3000).toISOString());
+  assert.equal(synced.observed_complete_through?.toISOString(), at(-1500).toISOString());
+});
+
+test("A3: observed is never below known", () => {
+  // No stored observed yet (first A3 run): seeded from `known`, then advanced.
+  const seeded = nextState({ known_complete_through: at(-600) }, [window({ from: at(-240 * 60), to: at(0) })], at(0), at(1), config, null, {
+    observedThroughCap: at(-1500),
+  });
+  assert.equal(seeded.known_complete_through?.toISOString(), at(-600).toISOString(), "known never moves backwards");
+  assert.equal(seeded.observed_complete_through?.toISOString(), at(-600).toISOString(), "an older ISync cap cannot pull observed below known");
+  // A stored observed older than known (written by an older build) is lifted to known.
+  const lifted = nextState({ known_complete_through: at(-600), observed_complete_through: at(-5000) }, [], at(0), at(1), config);
+  assert.equal(lifted.observed_complete_through?.toISOString(), at(-600).toISOString());
+});
+
+test("A3: observed is monotonic", () => {
+  const behind = nextState(
+    { known_complete_through: at(-7200), observed_complete_through: at(-300) },
+    [window({ from: at(-240 * 60), to: at(0) })],
+    at(0),
+    at(1),
+    config,
+    null,
+    { completeThroughCap: at(-3000), observedThroughCap: at(-1500) },
+  );
+  assert.equal(behind.observed_complete_through?.toISOString(), at(-300).toISOString(), "a lower candidate never lowers it");
+  const ahead = nextState(
+    { known_complete_through: at(-7200), observed_complete_through: at(-3600) },
+    [window({ from: at(-240 * 60), to: at(0) })],
+    at(0),
+    at(1),
+    config,
+  );
+  assert.equal(ahead.observed_complete_through?.toISOString(), at(-900).toISOString());
+});
+
+test("A3: an incomplete rolling window advances neither known nor observed", () => {
+  const state = { known_complete_through: at(-7200), observed_complete_through: at(-6000), gaps: [] as never[] };
+  for (const error_code of ["provider_request_failed", "provider_throttled", "page_limit"] as const) {
+    const result = nextState(state, [window({ from: at(-43200), to: at(0), complete: false, error_code })], at(0), at(1), config, null, {
+      completeThroughCap: null,
+      observedThroughCap: null,
+    });
+    assert.equal(result.known_complete_through?.toISOString(), at(-7200).toISOString(), error_code);
+    assert.equal(result.observed_complete_through?.toISOString(), at(-6000).toISOString(), error_code);
+  }
+  // A complete gap repair is not the rolling window: neither moves.
+  const repaired = nextState(state, [window({ kind: "gap_repair", from: at(-90000), to: at(-80000) })], at(0), at(1), config);
+  assert.equal(repaired.known_complete_through?.toISOString(), at(-7200).toISOString());
+  assert.equal(repaired.observed_complete_through?.toISOString(), at(-6000).toISOString());
+  // Nothing stored at all stays null.
+  const empty = nextState({}, [window({ from: at(-43200), to: at(0), complete: false, error_code: "provider_request_failed" })], at(0), at(1), config);
+  assert.equal(empty.observed_complete_through, null);
+});
+
+test("A3 (F5): a reconcile-carried ISync stamps a success instant only when it stored a token in mode on", () => {
+  const finished = at(60);
+  assert.equal(reconcileSyncSuccessAt({ mode: "on", token_stored: true }, finished)?.toISOString(), finished.toISOString());
+  assert.equal(reconcileSyncSuccessAt({ mode: "on", token_stored: false }, finished), null, "throttle / failed apply: keep the stored instant");
+  assert.equal(reconcileSyncSuccessAt({ mode: "shadow", token_stored: true }, finished), null, "shadow only counts; it confirms nothing");
+  assert.equal(reconcileSyncSuccessAt(null, finished), null, "sync off: no step ran");
 });
 
 test("a clamped window opens a repairable gap instead of losing the range", () => {

@@ -113,10 +113,31 @@ export type IsyncLaneStore = {
   acquire(owner: string, ttlMs: number, now: Date): Promise<LeaseToken | null>;
   renew(token: LeaseToken, ttlMs: number, now: Date): Promise<LeaseToken | null>;
   load(): Promise<IsyncLaneState>;
-  /** Fenced write that also releases the lease; false when the lease was lost. */
+  /** Fenced write that also releases the lease; false when the lease was lost. `last_success_at: null` keeps the stored one. */
   write(token: LeaseToken, update: IsyncLaneWrite, now: Date): Promise<boolean>;
   release(token: LeaseToken, now: Date): Promise<void>;
 };
+
+/**
+ * The fenced `$set` of one lane write (olr A3). `isync_lane` is written field by field so
+ * `last_success_at` is sticky: a run that stored no token leaves the previous success in place instead
+ * of replacing the subdocument with `last_success_at: null` (the freshness input never regresses).
+ */
+export function isyncLaneSetOf(update: IsyncLaneWrite, now: Date): Record<string, unknown> {
+  const lane = update.isync_lane;
+  return {
+    ...(update.call_log_sync ? { call_log_sync: update.call_log_sync } : {}),
+    quarantined_records: update.quarantined_records,
+    record_failures: update.record_failures,
+    "isync_lane.last_run_at": lane.last_run_at,
+    "isync_lane.last_error_code": lane.last_error_code,
+    "isync_lane.last_records": lane.last_records,
+    "isync_lane.last_applied": lane.last_applied,
+    ...(lane.last_success_at ? { "isync_lane.last_success_at": lane.last_success_at } : {}),
+    lease_owner: null,
+    leased_until: now,
+  };
+}
 
 export function mongoIsyncLaneStore(): IsyncLaneStore {
   const leases = new MongoLeaseStore(syncStateLeaseModel());
@@ -129,16 +150,7 @@ export function mongoIsyncLaneStore(): IsyncLaneStore {
     write: async (token, update, now) => {
       const written = await Model().updateOne(
         { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE, lease_owner: token.owner, lease_epoch: token.epoch, leased_until: { $gt: now } },
-        {
-          $set: {
-            ...(update.call_log_sync ? { call_log_sync: update.call_log_sync } : {}),
-            quarantined_records: update.quarantined_records,
-            record_failures: update.record_failures,
-            isync_lane: update.isync_lane,
-            lease_owner: null,
-            leased_until: now,
-          },
-        },
+        { $set: isyncLaneSetOf(update, now) },
       );
       return written.modifiedCount === 1;
     },

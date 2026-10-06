@@ -52,20 +52,24 @@ export class MemoryRepDayStore implements RepDayStore {
 }
 
 export class MemorySweepStore implements SweepStore {
-  state = new Map<SweepKind, { cursor: SweepCursor | null; coverage_from: Date | null; known_complete_through: Date | null }>();
+  state = new Map<SweepKind, { cursor: SweepCursor | null; coverage_from: Date | null; known_complete_through: Date | null; observed_complete_through: Date | null }>();
   sources = new Map<SweepKind, Array<{ id: string; updated_at: Date }>>();
+  /** Capture `known_complete_through` (capped). */
   capture: Date | null = null;
+  /** Capture `observed_complete_through` (uncapped, olr A3). */
+  captureObserved: Date | null = null;
 
   async readState(kind: SweepKind): Promise<SweepState> {
     const row = this.state.get(kind);
     return { cursor: row?.cursor ?? null, coverage_from: row?.coverage_from ?? null };
   }
-  async writeState(kind: SweepKind, update: { cursor: SweepCursor; coverage_from?: Date; known_complete_through?: Date | null }) {
-    const row = this.state.get(kind) ?? { cursor: null, coverage_from: null, known_complete_through: null };
+  async writeState(kind: SweepKind, update: { cursor: SweepCursor; coverage_from?: Date; known_complete_through?: Date | null; observed_complete_through?: Date | null }) {
+    const row = this.state.get(kind) ?? { cursor: null, coverage_from: null, known_complete_through: null, observed_complete_through: null };
     this.state.set(kind, {
       cursor: update.cursor,
       coverage_from: update.coverage_from ?? row.coverage_from,
       known_complete_through: update.known_complete_through ?? row.known_complete_through,
+      observed_complete_through: update.observed_complete_through ?? row.observed_complete_through,
     });
   }
   private ordered(kind: SweepKind) {
@@ -82,8 +86,8 @@ export class MemorySweepStore implements SweepStore {
       .slice(0, limit)
       .map((row) => row.id);
   }
-  async captureKnownCompleteThrough() {
-    return this.capture;
+  async captureWatermarks() {
+    return { known: this.capture, observed: this.captureObserved };
   }
 }
 

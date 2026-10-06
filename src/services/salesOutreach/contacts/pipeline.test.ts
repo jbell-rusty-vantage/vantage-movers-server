@@ -550,6 +550,43 @@ describe("minute sweep and refresh", () => {
     assert.deepEqual([again.changed, again.pages], [0, 1]);
   });
 
+  test("A3: the calls sweep writes observed_complete_through when caught up (only once it caught up, only when capture has one)", async () => {
+    const w = world();
+    const sweep = new MemorySweepStore();
+    const deps = () => ({ loader: fixedConfigurationLoader(activeInspection(desk())), store: sweep, events: w.events, repDays: w.repDays, lease: lease(), transaction: memoryTransaction });
+    // Before the first A3 reconcile run capture has no observed watermark: nothing is invented.
+    sweep.capture = new Date("2026-10-05T18:10:00Z");
+    const call = outboundCall("101", NUMBER, "2026-10-05T14:00:00Z");
+    w.events.calls.set(call.id, call);
+    sweep.sources.set("call", [{ id: call.id, updated_at: new Date("2026-10-05T14:00:05Z") }]);
+    await sweepContactSources("call", NOW, deps());
+    assert.equal(sweep.state.get("call")!.known_complete_through!.toISOString(), "2026-10-05T18:10:00.000Z");
+    assert.equal(sweep.state.get("call")!.observed_complete_through, null);
+    // Capture now carries both: a provisional row holds `known` 50 min back, `observed` trails by the lag only.
+    sweep.capture = new Date("2026-10-05T18:10:00Z");
+    sweep.captureObserved = new Date("2026-10-05T18:44:00Z");
+    const result = await sweepContactSources("call", NOW, deps());
+    assert.equal(result.caught_up, true);
+    const state = sweep.state.get("call")!;
+    assert.equal(state.known_complete_through!.toISOString(), "2026-10-05T18:10:00.000Z", "the derivation watermark keeps the capped value");
+    assert.equal(state.observed_complete_through!.toISOString(), "2026-10-05T18:44:00.000Z", "and stores the uncapped one beside it");
+    // A pass that does not catch up (budget spent on a full page) stores neither.
+    const behind = new MemorySweepStore();
+    behind.capture = new Date("2026-10-05T18:50:00Z");
+    behind.captureObserved = new Date("2026-10-05T18:52:00Z");
+    behind.sources.set("call", Array.from({ length: 250 }, (_, i) => ({ id: `f${String(i).padStart(23, "0")}`, updated_at: new Date(Date.parse("2026-10-05T13:00:00Z") + i * 1000) })));
+    let ticks = 0;
+    await sweepContactSources("call", NOW, { ...deps(), store: behind, clock: () => (ticks++ < 2 ? 0 : 1_000_000), budgetMs: 10 });
+    assert.equal(behind.state.get("call")!.known_complete_through, null);
+    assert.equal(behind.state.get("call")!.observed_complete_through, null);
+    // SMS never carries a call watermark.
+    const sms = new MemorySweepStore();
+    sms.captureObserved = new Date("2026-10-05T18:44:00Z");
+    sms.sources.set("sms", []);
+    await sweepContactSources("sms", NOW, { ...deps(), store: sms });
+    assert.equal(sms.state.get("sms")!.observed_complete_through, null);
+  });
+
   test("a row committed behind the cursor (commit lag) is picked up by the overlap re-scan", async () => {
     const w = world();
     const sweep = new MemorySweepStore();

@@ -206,6 +206,8 @@ export type ReconcileSummary = {
   request_id: string | null;
   cursor_advanced: boolean;
   known_complete_through: string | null;
+  /** A3: `known_complete_through` without the provisional-row cap (never below it). */
+  observed_complete_through: string | null;
   gaps_after: number;
   error_code: ReconcileErrorCode | null;
   runtime_ms: number;
@@ -243,6 +245,7 @@ type StoredState = {
     provider_modified_watermark?: Date | null;
   } | null;
   known_complete_through?: Date | null;
+  observed_complete_through?: Date | null;
   gaps?: StoredGap[];
   consecutive_failures?: number;
   quarantined_records?: QuarantinedRecord[] | null;
@@ -316,6 +319,7 @@ export async function runCallLogReconcileOnce(
     request_id: null,
     cursor_advanced: false,
     known_complete_through: null,
+    observed_complete_through: null,
     gaps_after: 0,
     error_code: null,
     runtime_ms: 0,
@@ -649,17 +653,21 @@ export async function runCallLogReconcileOnce(
     const finishedAt = deps.now();
     // R3: a provisional row inside the horizon means that range is not final,
     // and with ISync driving, nothing past the provider's sync time is known.
+    // A3 (D-A3): the observed watermark keeps the ISync cap and drops only the provisional one.
+    const syncCap =
+      syncDriving && syncStep?.sync_time
+        ? new Date(syncStep.sync_time.getTime() - deps.config.finalizationLagMinutes * 60_000)
+        : null;
     let completeThroughCap = await oldestProvisionalStart(
       new Date(windowTo.getTime() - deps.config.settleHorizonMinutes * 60_000),
     );
-    if (syncDriving && syncStep?.sync_time) {
-      const syncCap = new Date(syncStep.sync_time.getTime() - deps.config.finalizationLagMinutes * 60_000);
-      if (!completeThroughCap || syncCap < completeThroughCap) completeThroughCap = syncCap;
-    }
+    if (syncCap && (!completeThroughCap || syncCap < completeThroughCap)) completeThroughCap = syncCap;
     const next = nextState(state, summary.windows, windowTo, finishedAt, deps.config, plan.skipped, {
       completeThroughCap,
+      observedThroughCap: syncCap,
       overflow: book.overflow,
     });
+    const syncSuccessAt = reconcileSyncSuccessAt(syncStep, finishedAt);
     // The provider-modified watermark is diagnostic only (the skip compares
     // each record with its own row), but it must never advance past evidence
     // this run did not fully observe.
@@ -675,6 +683,7 @@ export async function runCallLogReconcileOnce(
     summary.quarantined = quarantine.quarantined_records.length;
     summary.cursor_advanced = next.cursor_advanced;
     summary.known_complete_through = next.known_complete_through?.toISOString() ?? null;
+    summary.observed_complete_through = next.observed_complete_through?.toISOString() ?? null;
     summary.gaps_after = next.gaps.length;
     summary.error_code = rolling.complete ? null : rolling.error_code;
     summary.runtime_ms = elapsed(startedAt, finishedAt);
@@ -697,6 +706,8 @@ export async function runCallLogReconcileOnce(
             entity_change_id: null,
           },
           known_complete_through: next.known_complete_through,
+          observed_complete_through: next.observed_complete_through,
+          ...(syncSuccessAt ? { reconcile_sync_success_at: syncSuccessAt } : {}),
           gaps: next.gaps,
           consecutive_failures: consecutiveFailures,
           quarantined_records: quarantine.quarantined_records,
@@ -782,6 +793,7 @@ export async function runCallLogReconcileOnce(
       throttledCount: summary.throttled_count,
       cursorAdvanced: summary.cursor_advanced,
       knownCompleteThrough: summary.known_complete_through,
+      observedCompleteThrough: summary.observed_complete_through,
       gapsAfter: summary.gaps_after,
       consecutiveFailures,
       errorCode: summary.error_code,
@@ -794,6 +806,7 @@ export async function runCallLogReconcileOnce(
       summary.error_code = "lease_lost";
       summary.cursor_advanced = false;
       summary.known_complete_through = null;
+      summary.observed_complete_through = null;
       summary.gaps_after = state.gaps?.length ?? 0;
       logger.warn({ msg: "sales_intelligence.call_log_reconcile.lease_lost", leaseOwnerHash: ownerHash });
       event("failed", "warn", summary.ran_at, { leaseOwnerHash: ownerHash, errorCode: "lease_lost" });
@@ -888,12 +901,15 @@ export function nextState(
   options: {
     /** `known_complete_through` never passes this (oldest provisional start, ISync time). */
     completeThroughCap?: Date | null;
+    /** A3: `observed_complete_through` never passes this (ISync time only; no provisional cap). */
+    observedThroughCap?: Date | null;
     /** Start ranges of quarantine entries evicted past the bound. */
     overflow?: ReadonlyArray<{ from: Date; to: Date }>;
   } = {},
 ): {
   cursor_advanced: boolean;
   known_complete_through: Date | null;
+  observed_complete_through: Date | null;
   gaps: StoredGap[];
   opened: StoredGap[];
   closed: StoredGap[];
@@ -902,6 +918,8 @@ export function nextState(
   const opened: StoredGap[] = [];
   const closed: StoredGap[] = [];
   let known = state.known_complete_through ?? null;
+  // A3: seeded from `known` until the first run that writes it; monotonic like `known`.
+  let observed = state.observed_complete_through ?? known;
   let cursorAdvanced = false;
 
   // A bounded incremental window is honest only if what it left behind is
@@ -936,6 +954,11 @@ export function nextState(
         const cap = options.completeThroughCap ?? null;
         if (cap && cap < candidate) candidate = cap;
         if (!known || candidate > known) known = candidate;
+        // D-A3: the observed watermark keeps the lag and the ISync cap, not the provisional cap.
+        let observedCandidate = new Date(windowTo.getTime() - config.finalizationLagMinutes * 60_000);
+        const observedCap = options.observedThroughCap ?? null;
+        if (observedCap && observedCap < observedCandidate) observedCandidate = observedCap;
+        if (!observed || observedCandidate > observed) observed = observedCandidate;
       }
       continue;
     }
@@ -975,7 +998,21 @@ export function nextState(
       ...rest,
     ];
   }
-  return { cursor_advanced: cursorAdvanced, known_complete_through: known, gaps, opened, closed };
+  // Invariant: observed ≥ known (it only drops a cap).
+  if (known && (!observed || observed < known)) observed = known;
+  return { cursor_advanced: cursorAdvanced, known_complete_through: known, observed_complete_through: observed, gaps, opened, closed };
+}
+
+/**
+ * A3 (F5): the instant this run's own Call Log Sync step confirmed calls — a token stored in mode `on`
+ * (every record applied or quarantined). Shadow only counts, so it never confirms. Null leaves the
+ * stored `reconcile_sync_success_at` unchanged (sticky).
+ */
+export function reconcileSyncSuccessAt(
+  step: Pick<SyncStepResult, "mode" | "token_stored"> | null,
+  finishedAt: Date,
+): Date | null {
+  return step?.mode === "on" && step.token_stored ? finishedAt : null;
 }
 
 type ReconcileEventKind =
