@@ -46,7 +46,8 @@ import {
  * transaction, so on its own the subject would stay stale until the Lead-change job drains, and every
  * retry would 409 again. The command therefore refreshes the subject from its Lead in a transaction of
  * its own (`refreshStaleAssignment`), publishes the change live, and only then refuses with
- * `{ path: "assignment", code: "assignment_changed", message: "refreshed" }`. It never overwrites the
+ * `{ path: "assignment", code: "assignment_changed", message: "refreshed" }` (the plain refusal, with no
+ * message, when the refresh failed or lost its CAS race; see `refreshedRefusal`). It never overwrites the
  * Lead's new receiver silently: the Owner re-reads (`assignment.in_sync: true`, a new
  * `assignment_revision`) and confirms; the retry with that revision succeeds.
  */
@@ -220,14 +221,19 @@ export async function assignSubject(input: AssignmentInput, deps: AssignmentDeps
 
 /**
  * After the aborted command (olr B9): refresh the stale subject, tell the desk live stream (the stale
- * assignee may lose the row, the Lead's receiver may gain it), and return the 409 to answer, with
- * `message: "refreshed"`. A refresh that failed keeps the original refusal (the re-read still shows
- * `in_sync: false`).
+ * assignee may lose the row, the Lead's receiver may gain it), and return the 409 to answer.
+ * - `refreshed` / `unchanged`: this refresh committed the Lead's receiver, or found the subject already
+ *   current, so the 409 says `message: "refreshed"` (the re-read is `in_sync: true`).
+ * - `conflict`: the refresh lost its CAS to a concurrent writer. The subject moved, so the live hint is
+ *   still published, but this command did not see what that writer left: the original refusal with no
+ *   message, never a "refreshed" claim it cannot make (the admin re-reads and trusts `assignment.in_sync`).
+ * - `failed`: the original refusal and nothing published (the re-read still shows `in_sync: false`).
  */
 async function refreshedRefusal(copy: StaleCopy, refusal: OutreachError, deps: AssignmentDeps): Promise<OutreachError> {
   const refresh = deps.refreshStale ?? ((lead: DeskLeadRef) => refreshStaleAssignment(lead, { loader: deps.loader, subjectStore: deps.subjectStore, transaction: deps.transaction }));
   const outcome = await refresh(copy.lead);
   if (outcome === "failed") return refusal;
   await publishCommandLive([{ topic: "outreach_desk", subject_ids: [copy.subject_id], agent_ids: copy.agent_ids, cause: "command" }], deps);
+  if (outcome === "conflict") return refusal;
   return new OutreachError("REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed", message: "refreshed" }]);
 }

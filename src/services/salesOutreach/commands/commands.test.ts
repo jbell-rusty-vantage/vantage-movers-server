@@ -471,9 +471,24 @@ test("B9: a concurrent real change still answers 409; a stale expected_revision 
     return true;
   });
   assert.equal(h.live.length, published);
-  // A refresh that lost its CAS to a concurrent writer (the Lead-change job) left the subject current too: "refreshed".
-  h.overrideRefresh("conflict");
-  await refusedRefreshed(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "c-5", expected_revision: 3, agent_id: TEST_AGENT_A }, h.deps));
+});
+
+test("B9: a refresh that loses its CAS race answers the plain 409 assignment_changed (no 'refreshed' claim) and still publishes the moved subject live", async () => {
+  const h = harness("new");
+  leadOf(h).receiver_agent_id = TEST_AGENT_B;
+  h.overrideRefresh("conflict"); // a concurrent writer (the Lead-change job) moved the subject first
+  await assert.rejects(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "r-1", expected_revision: 1, agent_id: TEST_AGENT_A }, h.deps), (error: unknown) => {
+    assert.ok(error instanceof OutreachError);
+    assert.deepEqual([error.code, error.issues], ["REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed" }]]);
+    assert.ok(!error.issues!.some((issue) => "message" in issue), "the lost race never claims 'refreshed'");
+    return true;
+  });
+  assert.deepEqual(h.refreshes, [deskLeadKey(h.subject.lead)], "the refresh was attempted once");
+  assert.deepEqual(h.live, [[{ topic: "outreach_desk", subject_ids: [h.subject.id], agent_ids: [TEST_AGENT_A, TEST_AGENT_B], cause: "command" }]], "the moved subject is published live");
+  assert.deepEqual([leadOf(h).receiver_agent_id, h.store.entityChanges.length, h.ledger.ledger.size], [TEST_AGENT_B, 0, 0], "the refused command writes nothing");
+  // An 'unchanged' refresh (the copy was already current when the refresh ran) still answers "refreshed".
+  h.overrideRefresh("unchanged");
+  await refusedRefreshed(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "r-2", expected_revision: 1, agent_id: TEST_AGENT_A }, h.deps));
 });
 
 test("B9 refreshStaleAssignment: the Lead-change sync in its own transaction moves the subject to the Lead's receiver; current is unchanged; a CAS race is a conflict; a failure never throws", async () => {
