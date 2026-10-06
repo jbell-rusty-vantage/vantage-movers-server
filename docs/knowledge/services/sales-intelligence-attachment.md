@@ -15,7 +15,7 @@ tags: [sales-intelligence, attachment]
 
 **What replaced it:** the All Numbers lead link on the Contact Number itself — `lead`, `other_leads` and `lead_link` (`src/services/numberActivity/leadLink.ts`, `leadLinkJobs.ts`). Candidates are the Leads whose phone is exactly the number (the same indexed phone paths, plus a Call Lead's RingCentral telephony session); the newest wins unless the Owner pinned one, and the Owner's Unlink excludes a Lead for good. See [number-activity-reads.md](./number-activity-reads.md) (lead link, Owner command) and [number-activity-capture.md](./number-activity-capture.md) (triggers). The Sales Outreach Desk credits a call to the number's current `lead` ([sales-outreach-desk.md](./sales-outreach-desk.md), IMPL-07).
 
-**What remains:** Form Lead Contact Numbers (`numberActivity/formLeadNumber.ts`, still behind `SALES_INTELLIGENCE_FORM_LEAD_NUMBERS`), now minted by the Lead's `lead_link` job. The phone-path indexes in `src/models/leadContactPhoneIndexes.ts` serve the lead link.
+**What remains:** Form Lead Contact Numbers (`numberActivity/leadContactNumber.ts`, still behind `SALES_INTELLIGENCE_FORM_LEAD_NUMBERS`), now minted by the Lead's `lead_link` job, which also mints Call Lead numbers (outreach lifecycle repair C2b). The phone-path indexes in `src/models/leadContactPhoneIndexes.ts` serve the lead link.
 
 **Migration:** `ops/numbers-v2/migrate.ts` seeded each number's link from its edges before they were dropped: the newest Owner-confirmed attached Lead became an Owner pin at its decision time, and Owner-rejected Leads became `lead_link.excluded`.
 

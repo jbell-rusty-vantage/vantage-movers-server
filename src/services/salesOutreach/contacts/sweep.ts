@@ -184,7 +184,7 @@ export async function recountRepDays(
       const result = await transaction(async (session) => {
         const configuration = await loader.requireActive(session);
         if (!wantsContactEvidence(configuration)) throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "controls", code: "disabled" }]);
-        return recountRepDay(key, configuration, now, store, session);
+        return recountRepDay(key, configuration, now, store, session, { materialize: key.materialize === true });
       });
       if (result.outcome === "written" && result.publication_revision !== null)
         published.push({ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision });
@@ -275,6 +275,13 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
  * the configured scope of the day (olr C1a: rows an older build wrote under another scope self-correct
  * within a minute of the deploy) — so coverage catches up and each day freezes its goal after
  * midnight even without new calls. Bounded by the roster.
+ *
+ * Zero-activity days (olr C5): after New York midnight, every roster rep without a row yesterday gets a
+ * `materialize` key, so the recount writes a zero row with yesterday's goal snapshot frozen (P08a: a
+ * later roster or schedule edit no longer rewrites that day's goal). Idempotent: once the row exists it
+ * is an ordinary row (recounted only while incomplete); a racing writer of the same rep-day loses on
+ * `sod_rep_day_unique`, which fails that key's transaction and the next minute recounts the existing
+ * row. Never today, never an Agent off the roster.
  */
 export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {}): Promise<{ skipped: boolean; reason: string | null; recounted: number; failures: number }> {
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
@@ -285,12 +292,18 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
   const today = newYorkBusinessDay(now);
   const keys: RepDayKey[] = [];
   const schedule = inspected.value.goals?.count_scope_schedule;
-  for (const day of [addDays(today, -1), today]) {
+  const yesterday = addDays(today, -1);
+  const roster = (inspected.value.goals?.rep_work_schedules ?? []).map((row) => row.agent_id);
+  for (const day of [yesterday, today]) {
     const scope = countScopeForDay(day, schedule);
-    for (const row of await store.rowsOfDay(day)) {
+    const rows = await store.rowsOfDay(day);
+    for (const row of rows) {
       if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope)
         keys.push({ agent_id: row.agent_id, business_day: day });
     }
+    if (day !== yesterday) continue;
+    const have = new Set(rows.map((row) => row.agent_id));
+    for (const agent of roster) if (!have.has(agent)) keys.push({ agent_id: agent, business_day: day, materialize: true });
   }
   const result = await recountRepDays(keys, loader, now, store, deps.transaction ?? withTransaction, deps.publishGoal);
   return { skipped: false, reason: null, ...result };

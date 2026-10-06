@@ -12,6 +12,9 @@ import { OutreachError } from "../errors";
 import { composeCapabilities } from "./capabilities";
 import { baseRead, commonRead, readFreshness, requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
 import { repDayCoverage } from "../contacts/repDay";
+import { deskTimingOf } from "../config/timing";
+import type { CallWatermarks } from "../evidence/coverage";
+import type { CaptureSyncRow } from "./freshness";
 import {
   composeRepDay,
   composeTeamGoals,
@@ -32,6 +35,21 @@ export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from 
  */
 
 /**
+ * The call watermarks a rep-day read needs (olr C0), from the two rows the read already loads: the Call
+ * Log capture row (`readCallsCapture`: capped `known`, uncapped `observed`) and the contact-event
+ * derivation row (`readContactDerivation`, null before S3's first sweep).
+ */
+export function repDayCallWatermarks(calls: CaptureSyncRow | null, derivation: ContactDerivationMark | null): CallWatermarks {
+  return {
+    capture_known: calls?.known_complete_through ?? null,
+    capture_observed: calls?.observed_complete_through ?? null,
+    derived_known: derivation?.known_complete_through ?? null,
+    derived_observed: derivation?.observed_complete_through ?? null,
+    coverage_from: derivation?.coverage_from ?? null,
+  };
+}
+
+/**
  * Per-rep goal rows for one day. `agentId` narrows to one rep; otherwise roster reps (in roster
  * order) come first, then Agents with a row that day who are not on the roster. Each row carries the
  * rep's current cadence counts (same rule as the team cards, at `now`).
@@ -44,9 +62,8 @@ async function composeRepDays(input: {
   today: string;
   now: Date;
   agent_id: string | null;
-  calls_known_complete_through: Date | null;
-  /** The contact-event derivation watermark (`outreach_contact_calls`); null until S3's sweep has run. */
-  derivation: ContactDerivationMark | null;
+  /** Capture + derivation call watermarks (`repDayCallWatermarks`). */
+  watermarks: CallWatermarks;
 }) {
   const { store, configuration, business_day, today, now } = input;
   const roster = (configuration.value.goals.rep_work_schedules ?? []).map((row) => row.agent_id);
@@ -56,13 +73,10 @@ async function composeRepDays(input: {
     ? [input.agent_id]
     : [...roster, ...rows.map((row) => row.agent_id).filter((id) => !roster.includes(id)).sort()];
   const names = await store.findReviewedRepNames(agents, now);
-  // A missing rep-day row is a confirmed 0 only when capture (minus the settlement allowance) AND the
-  // contact-event derivation cover the day, and the day starts on/after the derivation's coverage start.
-  const coverage = repDayCoverage(business_day, today, now, {
-    capture_known_complete_through: input.calls_known_complete_through,
-    derived_through: input.derivation?.known_complete_through ?? null,
-    coverage_from: input.derivation?.coverage_from ?? null,
-  });
+  // A missing rep-day row is a confirmed 0 only when goal call coverage (observed capture minus the
+  // settlement allowance, never past the contact-event derivation; D-A3) reaches the day's requirement
+  // (today: as_of − today tolerance), and the day starts on/after the derivation's coverage start (olr C0).
+  const coverage = repDayCoverage(business_day, today, now, input.watermarks, deskTimingOf(configuration.value));
   const fallback = fallbackCountScope(configuration.value.goals, business_day);
   const cadence = await composeRepCadence({ configuration, now, queueStore: input.queueStore, agentIds: agents });
   const reps = agents.map((agent_id) => {
@@ -126,8 +140,7 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
     today,
     now: deps.now,
     agent_id,
-    calls_known_complete_through: calls?.known_complete_through ?? null,
-    derivation: await store.readContactDerivation(),
+    watermarks: repDayCallWatermarks(calls, await store.readContactDerivation()),
   });
   return {
     ...commonRead(actor, deps.now, agent_id, configuration, days.projection_revision, freshness),
@@ -159,8 +172,7 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
         today,
         now: deps.now,
         agent_id: null,
-        calls_known_complete_through: calls?.known_complete_through ?? null,
-        derivation: await store.readContactDerivation(),
+        watermarks: repDayCallWatermarks(calls, await store.readContactDerivation()),
       })
     : null;
   const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore, readStore: store });

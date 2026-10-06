@@ -9,10 +9,10 @@ export type SalesOutreachFreshness = z.infer<typeof salesOutreachFreshnessSchema
 export type SalesOutreachCoverage = z.infer<typeof salesOutreachCoverageSchema>;
 
 /**
- * Today's call-count coverage counts as current while it trails the reference instant by at most this
- * much (`requiredCoverageThrough`, and the evaluation projection's coverage block). Header freshness
- * no longer uses it: it reads `deskTimingOf` (outreach lifecycle repair A3-fresh). Rep-day coverage
- * (C0) and the projection coverage (A1/A2) move to `today_coverage_tolerance_ms` in their own tasks.
+ * The evaluation projection's channel coverage block counts as current while it trails `computed_as_of`
+ * by at most this much. Header freshness (A3-fresh) and rep-day coverage (C0, `requiredCoverageThrough`)
+ * no longer use it: they read `deskTimingOf`. The projection coverage (A1/A2) moves to
+ * `today_coverage_tolerance_ms` in its own task.
  */
 export const CAPTURE_CURRENT_TOLERANCE_MS = 10 * 60_000;
 
@@ -181,12 +181,19 @@ export function composeFreshness(input: {
 }
 
 /**
- * The instant a business day's call count needs capture coverage through: the end of a past day,
- * or `now − tolerance` for today (so a Call Log a few minutes behind still counts as current).
+ * The instant a business day's call count needs capture coverage through: the end of a past day, or
+ * `now − today_coverage_tolerance` for today (olr C0; `evidence.today_coverage_tolerance_minutes`,
+ * default 25 = the 15-minute Call Log finalization lag + the 5-minute reconcile cadence + the 2-minute
+ * settlement allowance + 3 minutes of runtime), so a Call Log at its normal lag still counts as current.
  */
-export function requiredCoverageThrough(businessDay: string, today: string, now: Date): Date {
+export function requiredCoverageThrough(
+  businessDay: string,
+  today: string,
+  now: Date,
+  timing: Pick<DeskTiming, "today_coverage_tolerance_ms">,
+): Date {
   if (businessDay < today) return newYorkDayBounds(businessDay).end;
-  return new Date(now.getTime() - CAPTURE_CURRENT_TOLERANCE_MS);
+  return new Date(now.getTime() - timing.today_coverage_tolerance_ms);
 }
 
 /** Calls coverage for one business day from the Call Log reconcile watermark. */

@@ -26,7 +26,9 @@ import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { addDays } from "../../src/services/salesOutreach/engine/calendar";
 import { createConfigurationLoader, type ConfigurationInspection } from "../../src/services/salesOutreach/config/load";
 import { configurationContentHash, type ConfigurationStore } from "../../src/services/salesOutreach/config/store";
-import { repDayCoverage, type CoverageWatermarks } from "../../src/services/salesOutreach/contacts/repDay";
+import { repDayCoverage } from "../../src/services/salesOutreach/contacts/repDay";
+import { deskTimingOf } from "../../src/services/salesOutreach/config/timing";
+import type { CallWatermarks } from "../../src/services/salesOutreach/evidence/coverage";
 import { newYorkBusinessDay } from "../../src/services/salesOutreach/reads/businessDay";
 import { composeRepDay, fallbackCountScope, resolveRepDayGoal, type RepDayRow } from "../../src/services/salesOutreach/reads/goals";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
@@ -389,7 +391,8 @@ export function composeServedRepDays(input: {
   now: Date;
   configuration: ConfigurationInspection;
   rows: readonly RepDayRow[];
-  marks: CoverageWatermarks;
+  /** Capture + derivation call watermarks, as the read assembles them (`reads/service.ts` `repDayCallWatermarks`). */
+  marks: CallWatermarks;
 }): ServedRepDays {
   const { business_day, today, now, configuration } = input;
   if (configuration.state !== "active") return { business_day, available: false, reason: "configuration_not_active" };
@@ -398,7 +401,7 @@ export function composeServedRepDays(input: {
   const rows = input.rows.filter((row) => row.business_day === business_day);
   const rowByAgent = new Map(rows.map((row) => [row.agent_id, row]));
   const agents = [...roster, ...rows.map((row) => row.agent_id).filter((id) => !roster.includes(id)).sort()];
-  const capture = repDayCoverage(business_day, today, now, input.marks);
+  const capture = repDayCoverage(business_day, today, now, input.marks, deskTimingOf(configuration.value));
   const fallback = fallbackCountScope(goals, business_day);
   const reps = agents.map((agent_id) => {
     const row = rowByAgent.get(agent_id) ?? null;
@@ -813,9 +816,12 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     { $sort: { "_id.day": -1, "_id.scope": 1 } },
   ]);
   const contactCallsRow = rowOf(DESK_STATE_SCOPES.contact_calls);
-  const marks: CoverageWatermarks = {
-    capture_known_complete_through: asDate(rowOf(DESK_STATE_SCOPES.call_log)?.known_complete_through),
-    derived_through: asDate(contactCallsRow?.known_complete_through),
+  const callLogRow = rowOf(DESK_STATE_SCOPES.call_log);
+  const marks: CallWatermarks = {
+    capture_known: asDate(callLogRow?.known_complete_through),
+    capture_observed: asDate(callLogRow?.observed_complete_through),
+    derived_known: asDate(contactCallsRow?.known_complete_through),
+    derived_observed: asDate(contactCallsRow?.observed_complete_through),
     coverage_from: asDate(contactCallsRow?.cursor?.outreach_coverage_from),
   };
   const servedRows = repDayRows.map(repDayRowOf);

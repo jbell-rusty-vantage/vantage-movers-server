@@ -56,7 +56,15 @@ export type ContactEventStore = {
   fillEmptyReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number>;
 };
 
-export type RepDayKey = Readonly<{ agent_id: string; business_day: string }>;
+export type RepDayKey = Readonly<{
+  agent_id: string;
+  business_day: string;
+  /**
+   * olr C5: the refresh pass's zero-activity key for a roster rep without a row yesterday (see
+   * `recountRepDay` `materialize`). Not part of the identity: `repDayKeyOf` and `repDayJob` ignore it.
+   */
+  materialize?: boolean;
+}>;
 
 export type ApplyResult = {
   derived: number;
@@ -134,7 +142,7 @@ export async function applyContactSources(
   };
   const markRepDay = (agent: string | null, day: string, mark: string) => {
     if (!agent) return;
-    const key = { agent_id: agent, business_day: day };
+    const key: RepDayKey = { agent_id: agent, business_day: day };
     const entry = repDays.get(repDayKeyOf(key)) ?? { key, marks: [] };
     entry.marks.push(mark);
     repDays.set(repDayKeyOf(key), entry);

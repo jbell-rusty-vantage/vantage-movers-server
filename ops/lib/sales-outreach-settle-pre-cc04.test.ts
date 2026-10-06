@@ -6,6 +6,7 @@ import {
   internalLeftFilter,
   parseSettleArgs,
   settleFilter,
+  settleUpdate,
   summarizeSettle,
   type SettleCandidate,
 } from "./sales-outreach-settle-pre-cc04";
@@ -91,4 +92,22 @@ test("summarizeSettle: nothing left to settle reads as an empty, zero summary", 
     0,
     0,
   ]);
+});
+
+test("settleUpdate (olr CW0): updatedAt from the database clock, no operator instant anywhere in the write", () => {
+  const update = settleUpdate();
+  assert.deepEqual(update, {
+    $set: { call_log_state: "settled" },
+    $currentDate: { updatedAt: true },
+    $inc: { projection_revision: 1 },
+  });
+  // A fast or slow operator clock cannot reach the sweep cursor: the write carries no client Date.
+  const dates: unknown[] = [];
+  const walk = (value: unknown) => {
+    if (value instanceof Date) dates.push(value);
+    else if (value && typeof value === "object") Object.values(value).forEach(walk);
+  };
+  walk(update);
+  assert.deepEqual(dates, []);
+  assert.equal("updatedAt" in update.$set, false, "updatedAt is never $set from the client");
 });

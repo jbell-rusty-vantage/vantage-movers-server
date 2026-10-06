@@ -24,7 +24,26 @@
  * - count scope from the configuration (olr C1a): a PATCH with a `goals.count_scope_schedule` entry on
  *   or before today is `count_scope_not_prospective` and writes nothing; a future entry commits; the
  *   recount writes `all_outbound` the day before the flip and `eligible_new_quoted` on it; the refresh
- *   pass rewrites a row an older build counted under another scope, once.
+ *   pass rewrites a row an older build counted under another scope, once;
+ * - re-derive wake (olr C4): a call derived `none` before its Lead was admitted is nominated by the
+ *   admission's own transaction (`admit:<subject>` job identity; the activation's New York date only, a
+ *   call the day before is not), a replayed nomination dedupes, and draining the job associates and
+ *   credits the call and nominates the subject's evaluation; an earlier same-date call stays `none` but
+ *   carries the subject;
+ * - P05f/P10a subtraction (olr C4): two Leads enrolled in one cohort at 15:00 ET; the one called twice
+ *   earlier that day owes 0 calls on the activation date after the wake drains, the other owes 2;
+ * - subjects without numbers (olr C2a/C2b): a Call Lead received before capture began enrolls with no
+ *   number; the read-only diagnostic lists it as `no_contact_number`, the mint script's dry run writes
+ *   nothing, its apply mints the number (`created_via: call_lead`, audited), links it and nominates the
+ *   subject's lead change in the same transaction; the drained job gives the subject the number and the
+ *   diagnostic reports `no_contact_number: 0`; a rerun writes nothing;
+ * - zero-activity days (olr C5): the refresh after New York midnight writes one zero row with a frozen
+ *   goal snapshot per roster rep without a row yesterday (strict model, `sod_rep_day_unique`), none
+ *   today or off the roster; a second pass rewrites nothing and racing passes converge on one row per rep.
+ * - rep-day coverage (olr C0, D-A3): with the capped watermarks 50 min behind and the observed ones 17–18
+ *   min behind, the recount (watermarks read in its transaction) and GET /rep-days both read today complete
+ *   through as_of − 20 against as_of − 25, so a zero-call roster rep reads 0 / no_activity_recorded; with
+ *   the capped watermarks alone the same rep reads Pending.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -78,6 +97,8 @@ async function main() {
     models.getSalesOutreachContactEventModel(),
     models.getSalesOutreachRepDayProjectionModel(),
     models.getSalesOutreachEnrollmentRunModel(),
+    models.getSalesOutreachProjectionModel(),
+    models.getSalesOutreachFollowupScheduleModel(),
   ] as unknown as Array<mongoose.Model<unknown>>) {
     await Model.createCollection();
     await Model.createIndexes();
@@ -287,11 +308,17 @@ async function main() {
   assert.equal((await getCallInteractionModel().findById(pre._id).lean())?.call_log_state, null, "the dry run writes nothing");
 
   const preUpdatedAt = (await getCallInteractionModel().findById(pre._id).lean())!.updatedAt as Date;
+  // olr CW0: the stamp is the database clock ($currentDate), bracketed by the server's own `localTime`.
+  const dbClock = async () => ((await mongoose.connection.db!.admin().command({ hello: 1 })) as { localTime: Date }).localTime;
+  const dbBefore = await dbClock();
   const settled = await applySettle({ actor: csiOperatorActor("settle-pre-cc04-replica"), run_id: "settle-pre-cc04-replica" }, { batch: 1 });
+  const dbAfter = await dbClock();
   assert.deepEqual([settled.settled, settled.batches, settled.ids], [1, 1, [String(pre._id)]]);
   const settledRow = await getCallInteractionModel().findById(pre._id).lean();
   assert.deepEqual([settledRow?.call_log_state, settledRow?.projection_revision], ["settled", 2]);
-  assert.ok((settledRow?.updatedAt as Date).getTime() > preUpdatedAt.getTime(), "updatedAt moves so the sweep cursor sees the row");
+  const settledAt = settledRow?.updatedAt as Date;
+  assert.ok(settledAt.getTime() > preUpdatedAt.getTime(), "updatedAt moves so the sweep cursor sees the row");
+  assert.ok(+settledAt >= +dbBefore && +settledAt <= +dbAfter, `updatedAt ${settledAt.toISOString()} is the database clock [${dbBefore.toISOString()}, ${dbAfter.toISOString()}]`);
   for (const untouched of [preInternal, late]) {
     const row = await getCallInteractionModel().findById(untouched._id).lean();
     assert.deepEqual([row?.call_log_state, row?.projection_revision], [null, 1], "Internal and post-CC-04 rows are untouched");
@@ -299,6 +326,7 @@ async function main() {
   const audits = await getSalesIntelligenceAuditEventModel().find({ event_kind: "call_interactions_settled_pre_cc04" }).lean();
   assert.equal(audits.length, 1, "one audit row per batch");
   assert.deepEqual((audits[0]?.current as { ids?: string[] } | undefined)?.ids, [String(pre._id)], "the audit row holds the rollback id set");
+  assert.equal(+(audits[0]?.happened_at as Date), +settledAt, "the audit row is dated with the database stamp, not the operator clock");
 
   // The minute sweep re-derives the settled row from its cursor (no wake, no job).
   const resweep = await sweepContactSources("call", settleSweepAt, { loader });
@@ -390,6 +418,282 @@ async function main() {
   assert.equal(corrected?.publication_revision, (staleBefore?.publication_revision ?? 0) + 1);
   await refreshOpenRepDays(refreshAt, { loader: fixedConfigurationLoader(configuration) });
   assert.equal((await Rows.findOne(staleKey).lean())?.publication_revision, corrected?.publication_revision, "a second refresh does not rewrite the corrected row");
+
+  // --- olr C4: a subject created after its first call re-derives that call ---------------------------
+  // The call is derived while its Lead is no subject (`none`); intake then admits the Lead with an
+  // activation boundary before the call. The admission's transaction nominates the call's
+  // `outreach_contact_change` job (`admit:<subject>`); draining it associates and credits the call and
+  // nominates the subject's evaluation. The wake covers the activation's New York date: an earlier
+  // same-date call re-derives as `none` carrying the subject (P05f/P10a input), a call the day before is
+  // not woken; a replay dedupes.
+  const { syncSubject, loadSubjectPageContext } = await import("../../src/services/salesOutreach/subjects/sync.js");
+  const { mongoDeskSubjectStore } = await import("../../src/services/salesOutreach/subjects/store.js");
+  const { accepted, deskConfiguration, leadFacts } = await import("../../src/services/salesOutreach/subjects/testing.js");
+  const { runOutreachContactChangeJob } = await import("../../src/services/salesOutreach/contacts/jobs.js");
+  const c4Lead = new mongoose.Types.ObjectId();
+  const c4Number = new mongoose.Types.ObjectId();
+  const c4Arrival = new Date("2026-10-04T14:00:00Z");
+  const c4NumberFor = async (numberId: mongoose.Types.ObjectId, e164: string, lead: mongoose.Types.ObjectId, receivedAt: Date) =>
+    getContactNumberModel().create({ _id: numberId, e164, digits_reversed: e164.slice(1).split("").reverse().join(""), first_observed_at: receivedAt, last_activity_at: receivedAt,
+      lead: { model: "FormLead", id: lead, received_at: receivedAt, state: "open" }, lead_link: { source: "automatic", set_at: receivedAt } });
+  await c4NumberFor(c4Number, "+15550100044", c4Lead, c4Arrival);
+  const c4Call = async (at: string, session: string, numberId = c4Number) => {
+    const started = new Date(at);
+    const row = await getCallInteractionModel().create({
+      provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction: "Outbound",
+      contact_number_id: numberId, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
+      parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: started, result: "Call connected" }],
+      call_log_state: "settled", terminal: true, first_observed_at: started, last_observed_at: started,
+    });
+    return { source_kind: "call" as const, source_id: String(row._id) };
+  };
+  const prevDayCall = await c4Call("2026-10-03T20:00:00Z", "s-c4-prev-day");
+  const earlyCall = await c4Call("2026-10-04T13:00:00Z", "s-c4-early"); // 09:00 ET, before arrival, same date
+  const gapCall = await c4Call("2026-10-04T14:00:30Z", "s-c4-gap");
+  const c4Now = new Date("2026-10-04T14:01:30Z");
+  await withTransaction((session) => applyContactSources([prevDayCall, earlyCall, gapCall], { now: c4Now, queueRepDays: false }, mongoContactEventStore, session));
+  const gapEventId = contactEventId("call", gapCall.source_id);
+  assert.deepEqual([(await Events.findById(gapEventId).lean())?.association, (await Events.findById(gapEventId).lean())?.subject_id ?? null], ["none", null], "derived before the admission: no subject");
+  // ET wall clock 10:00 on 2026-10-04 (= 14:00Z): the Lead arrives at 14:00Z and intake activates at arrival.
+  const c4Facts = leadFacts({ model: "FormLead", id: String(c4Lead), timestamp: new Date("2026-10-04T10:00:00.000Z"), created_at: new Date("2026-10-04T14:00:05Z") });
+  const c4Config = deskConfiguration({ controls: { desk_enabled: true } });
+  const admitted = await withTransaction(async (session) => {
+    const context = await loadSubjectPageContext(mongoDeskSubjectStore, [c4Facts], c4Now, session);
+    return syncSubject(
+      { facts: c4Facts, subject: null, enrollment: { cohort_id: "intake:c4", kind: "intake", enrolled_at: c4Now, activation_at: c4Arrival, manifest_hash: null }, configuration: c4Config, context },
+      mongoDeskSubjectStore,
+      session,
+    );
+  });
+  assert.deepEqual([admitted.outcome, admitted.contact_wakes], ["created", 2], "the activation date's two calls are woken");
+  const Jobs = getSalesIntelligenceJobModel();
+  const wakeKey = `sod:contact_change:call:${gapCall.source_id}:admit:${admitted.subject_id}`;
+  const wakeJob = await Jobs.findOne({ dedupe_key: wakeKey }).lean();
+  assert.ok(wakeJob, "the admission's transaction enqueued the re-derive");
+  assert.equal(wakeJob?.subject_key, `call:${gapCall.source_id}`);
+  const earlyJob = await Jobs.findOne({ dedupe_key: `sod:contact_change:call:${earlyCall.source_id}:admit:${admitted.subject_id}` }).lean();
+  assert.ok(earlyJob, "an earlier same-date call is woken");
+  assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:contact_change:call:${prevDayCall.source_id}:` } }), 0, "a call the day before is not woken");
+  const replayed = await withTransaction((session) =>
+    mongoDeskSubjectStore.nominateContactSources({ lead: { model: "FormLead", id: String(c4Lead) }, since: c4Arrival, source_revision: `admit:${admitted.subject_id}`, limit_per_kind: 50, now: c4Now }, session));
+  assert.equal(replayed, 1);
+  assert.equal(await Jobs.countDocuments({ dedupe_key: wakeKey }), 1, "a replay dedupes on the job identity");
+  const drainC4 = (jobId: unknown, now: Date) =>
+    runOutreachContactChangeJob(String(jobId), { loader: fixedConfigurationLoader(configuration), now: () => now, publish: async () => undefined });
+  assert.equal((await drainC4(wakeJob!._id, c4Now)).status, "completed");
+  assert.equal((await drainC4(earlyJob!._id, c4Now)).status, "completed");
+  const gapEvent = await Events.findById(gapEventId).lean();
+  assert.deepEqual(
+    [gapEvent?.association, String(gapEvent?.subject_id), gapEvent?.subject_workflow, gapEvent?.goal_scope_eligible, gapEvent?.goal_credit],
+    ["unique", admitted.subject_id, "new", true, "confirmed"],
+    "the re-derive associates and credits the call",
+  );
+  const earlyEvent = await Events.findById(contactEventId("call", earlyCall.source_id)).lean();
+  assert.deepEqual(
+    [earlyEvent?.association, String(earlyEvent?.subject_id), earlyEvent?.subject_workflow ?? null, earlyEvent?.goal_scope_eligible, earlyEvent?.verification],
+    ["none", admitted.subject_id, null, false, "confirmed"],
+    "an earlier same-date call stays uncredited but carries the subject",
+  );
+  assert.equal((await Events.findById(contactEventId("call", prevDayCall.source_id)).lean())?.subject_id ?? null, null, "the day before carries nothing");
+  assert.equal(await Jobs.countDocuments({ stage: "outreach_evaluate", dedupe_key: { $regex: `^sod:evaluate:${admitted.subject_id}:r1:contacts:` } }), 2, "and each drained re-derive nominates the subject's evaluation");
+
+  // --- olr C4: P05f/P10a — a late-enrolled Lead's earlier same-date calls lower its activation-date quota ---
+  // Two older Leads (received 2026-10-01) enter one cohort at 15:00 ET on 2026-10-05. Lead A was called
+  // at 10:00 and 11:00 ET that day (derived `none`: not enrolled yet); Lead B was not called. After the
+  // enrollment's wake drains, the evaluator (Mongo stores) owes A 0 calls on the activation date and B 2.
+  const { mongoEvaluationStore } = await import("../../src/services/salesOutreach/evaluation/store.js");
+  const { evaluateAndProject, evaluationAdmissionOf } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
+  const { completeConfigurationInput } = await import("../../src/services/salesOutreach/evaluation/testing.js");
+  const cohortActivation = new Date("2026-10-05T19:00:00Z");
+  const cohortNow = new Date("2026-10-05T19:01:00Z");
+  const cohortReceived = new Date("2026-10-01T14:00:00Z");
+  const leadA = new mongoose.Types.ObjectId();
+  const leadB = new mongoose.Types.ObjectId();
+  const numberA = new mongoose.Types.ObjectId();
+  const numberB = new mongoose.Types.ObjectId();
+  await c4NumberFor(numberA, "+15550100045", leadA, cohortReceived);
+  await c4NumberFor(numberB, "+15550100046", leadB, cohortReceived);
+  const priorCalls = [await c4Call("2026-10-05T14:00:00Z", "s-c4-a-1", numberA), await c4Call("2026-10-05T15:00:00Z", "s-c4-a-2", numberA)];
+  await withTransaction((session) => applyContactSources(priorCalls, { now: cohortNow, queueRepDays: false }, mongoContactEventStore, session));
+  const cohortFacts = [leadA, leadB].map((id) =>
+    leadFacts({ model: "FormLead", id: String(id), timestamp: new Date("2026-10-01T10:00:00.000Z"), created_at: new Date("2026-10-01T14:00:05Z"), ...accepted("0", "2026-10-02T14:00:00Z") }));
+  const enrolled = await withTransaction(async (session) => {
+    const context = await loadSubjectPageContext(mongoDeskSubjectStore, cohortFacts, cohortNow, session);
+    const out = [];
+    for (const facts of cohortFacts)
+      out.push(await syncSubject(
+        { facts, subject: null, enrollment: { cohort_id: "expansion:c4", kind: "expansion", enrolled_at: cohortNow, activation_at: cohortActivation, manifest_hash: null }, configuration: c4Config, context },
+        mongoDeskSubjectStore,
+        session,
+      ));
+    return out;
+  });
+  assert.deepEqual(enrolled.map((r) => [r.outcome, r.contact_wakes]), [["created", 2], ["created", 0]], "the cohort wakes Lead A's two same-date calls");
+  for (const call of priorCalls) {
+    const job = await Jobs.findOne({ dedupe_key: `sod:contact_change:call:${call.source_id}:admit:${enrolled[0]!.subject_id}` }).lean();
+    assert.equal((await drainC4(job!._id, cohortNow)).status, "completed");
+  }
+  const carried = await mongoEvaluationStore.loadContactEvents(enrolled[0]!.subject_id, null);
+  assert.deepEqual(carried.map((e) => [e.kind, e.verification]), [["outbound_attempt", "confirmed"], ["outbound_attempt", "confirmed"]], "the evaluator reads both earlier calls");
+  const admission = evaluationAdmissionOf(activeInspection(completeConfigurationInput({ cadence_enforcement_enabled: true }), "v-c4", 2));
+  assert.ok(admission.ok);
+  for (const result of enrolled)
+    await withTransaction((session) => evaluateAndProject(result.subject_id, admission.context, cohortNow, mongoEvaluationStore, session));
+  const required = async (subjectId: string) =>
+    ((await models.getSalesOutreachProjectionModel().findOne({ subject_id: new mongoose.Types.ObjectId(subjectId) }).lean()) as { call?: { required?: number } } | null)?.call?.required;
+  assert.deepEqual([await required(enrolled[0]!.subject_id), await required(enrolled[1]!.subject_id)], [0, 2], "two earlier same-date calls lower the activation date's quota by two");
+
+  // --- olr C5: zero-activity days freeze their goal snapshot -----------------------------------------
+  // After New York midnight the refresh writes a zero row (frozen snapshot) for each roster rep without a
+  // row yesterday, through the strict model and `sod_rep_day_unique`; never today, never off the roster.
+  // Two refreshes racing on the same day converge on one row per rep (the loser's insert fails on the
+  // unique index and the next pass sees the row); a later pass writes nothing.
+  const c5Bob = new mongoose.Types.ObjectId();
+  const stranger = new mongoose.Types.ObjectId();
+  const c5Config = activeInspection(
+    {
+      controls: { desk_enabled: true, goal_metrics_enabled: true },
+      goals: {
+        roster_version: "r-c5", default_scheduled_goal: 100, zero_goal_rule: "no_goal_today_excluded_from_denominator",
+        rep_work_schedules: [String(alice), String(c5Bob)].map((agent_id) => ({ agent_id, working_days: [1, 2, 3, 4, 5, 6, 7] })), effective_day_overrides: [],
+      },
+    },
+    "v-c5",
+    9,
+  );
+  const c5Rows = (day: string) => Rows.find({ business_day: day }).lean();
+  // 2026-11-02 00:30 New York (EST after the DST change): yesterday = 2026-11-01, nobody has a row.
+  const c5Midnight = new Date("2026-11-02T05:30:00Z");
+  assert.equal((await c5Rows("2026-11-01")).length, 0);
+  const c5First = await refreshOpenRepDays(c5Midnight, { loader: fixedConfigurationLoader(c5Config) });
+  assert.deepEqual([c5First.skipped, c5First.recounted, c5First.failures], [false, 2, 0]);
+  const zeroRows = await c5Rows("2026-11-01");
+  assert.deepEqual(zeroRows.map((r) => String(r.agent_id)).sort(), [String(alice), String(c5Bob)].sort(), "one zero row per roster rep");
+  for (const zero of zeroRows) {
+    assert.deepEqual([zero.actual_confirmed, zero.actual_awaiting_confirmation, zero.unattributed, zero.count_scope, zero.publication_revision], [0, 0, 0, "all_outbound", 1]);
+    assert.deepEqual([zero.goal_snapshot?.configuration_version, zero.goal_snapshot?.goal], ["v-c5", 100], "the goal snapshot is frozen");
+  }
+  assert.equal(await Rows.countDocuments({ agent_id: stranger }), 0, "off the roster: nothing");
+  assert.equal((await c5Rows("2026-11-02")).length, 0, "never today");
+  await refreshOpenRepDays(c5Midnight, { loader: fixedConfigurationLoader(c5Config) });
+  assert.deepEqual((await c5Rows("2026-11-01")).map((r) => r.publication_revision), [1, 1], "a second refresh rewrites nothing");
+  // Racing refreshes on the next day: one row per rep.
+  const c5Next = new Date("2026-11-03T05:30:00Z");
+  const raced = await Promise.all([1, 2].map(() => refreshOpenRepDays(c5Next, { loader: fixedConfigurationLoader(c5Config) })));
+  const racedRows = await c5Rows("2026-11-02");
+  assert.equal(racedRows.length, 2, "sod_rep_day_unique: one row per rep under racing refreshes");
+  assert.ok(raced.reduce((sum, r) => sum + r.failures, 0) <= 2, "a racing loser fails only its own key");
+  await refreshOpenRepDays(c5Next, { loader: fixedConfigurationLoader(c5Config) });
+  assert.equal(await Rows.countDocuments({ business_day: "2026-11-02" }), 2);
+  assert.ok((await c5Rows("2026-11-02")).every((r) => r.goal_snapshot?.configuration_version === "v-c5"));
+
+  // --- olr C2a/C2b: a Call Lead older than every call gets its Contact Number ------------------------
+  // A Call Lead received before capture began has no number, so its subject enrolls with
+  // `contact_number_ids: []`. The read-only diagnostic names it `no_contact_number`; the mint script's dry
+  // run writes nothing; its apply mints the number (`created_via: call_lead`, audited), links it and, in
+  // the same transaction, nominates the subject's `outreach_lead_change`; draining that job gives the
+  // subject the number and the diagnostic no longer lists it. A rerun writes nothing.
+  const { readOnlyDeskStateReader } = await import("../lib/sales-outreach-desk-state.js");
+  const { collectSubjectsWithoutNumbers } = await import("../lib/sales-outreach-subjects-without-numbers.js");
+  const { runMintLeadNumbers } = await import("../numbers-v2/mint-lead-numbers.js");
+  const { getCallLeadModel } = await import("../../src/models/CallLead.js");
+  const { runOutreachLeadChangeJob } = await import("../../src/services/salesOutreach/subjects/leadChangeJob.js");
+  await getCallLeadModel().createCollection();
+  const c2Lead = new mongoose.Types.ObjectId();
+  const c2Received = new Date("2026-07-27T15:00:00Z");
+  await getCallLeadModel().collection.insertOne({ _id: c2Lead, name: "C2 Caller", timestamp: c2Received, createdAt: c2Received, domain_revision: 1,
+    phone_number: "(555) 010-0088", normalized_phone_number: "5550100088", ringcentral: { telephony_session_id: "s-c2-before-capture" } });
+  const c2Now = new Date();
+  const c2Subject = await withTransaction(async (session) => {
+    const [facts] = await mongoDeskSubjectStore.loadLeads([{ model: "CallLead", id: String(c2Lead) }], session);
+    const context = await loadSubjectPageContext(mongoDeskSubjectStore, [facts!], c2Now, session);
+    return syncSubject({ facts: { ...facts!, ...accepted("0", "2026-07-28T14:00:00Z") }, subject: null,
+      enrollment: { cohort_id: "expansion:c2", kind: "expansion", enrolled_at: c2Now, activation_at: c2Now, manifest_hash: null }, configuration: c4Config, context },
+    mongoDeskSubjectStore, session);
+  });
+  assert.equal(c2Subject.outcome, "created");
+  const Subjects = models.getSalesOutreachSubjectModel();
+  assert.deepEqual((await Subjects.findById(c2Subject.subject_id).lean())?.contact_number_ids, [], "enrolled with no number");
+  const diagnose = () => collectSubjectsWithoutNumbers(readOnlyDeskStateReader(mongoose.connection.db!), { database, now: new Date(), account: null });
+  const c2Before = await diagnose();
+  const c2Row = c2Before.rows.find((row) => row.subject_id === c2Subject.subject_id);
+  assert.deepEqual([c2Row?.reason, c2Row?.lead_model, c2Row?.e164_masked, c2Row?.received_at], ["no_contact_number", "CallLead", "…0088", c2Received.toISOString()]);
+  const quiet = () => undefined;
+  const mintDry = await runMintLeadNumbers([`--target=${database}`], quiet);
+  assert.equal(mintDry.mode, "dry_run");
+  assert.ok((mintDry.numbers_to_create as number) >= 1 && (mintDry.to_mint_by_model as { CallLead: number }).CallLead === 1, JSON.stringify(mintDry));
+  assert.equal(await getContactNumberModel().countDocuments({ e164: "+15550100088" }), 0, "the dry run writes nothing");
+  const mintApplied = await runMintLeadNumbers([`--target=${database}`, "--apply"], quiet) as { applied: { numbers_created: number; links_changed: number;
+    desk_subjects_nominated: number; failures: Record<string, number> }; after: { numbers_to_create: number }; desk_wants_contact_evidence: boolean };
+  assert.deepEqual(mintApplied.applied.failures, {});
+  assert.ok(mintApplied.applied.numbers_created >= 1 && mintApplied.applied.links_changed >= 1);
+  assert.equal(mintApplied.after.numbers_to_create, 0, "nothing left to mint");
+  assert.equal(mintApplied.desk_wants_contact_evidence, true);
+  assert.ok(mintApplied.applied.desk_subjects_nominated >= 1);
+  const c2Number = await getContactNumberModel().findOne({ e164: "+15550100088" }).lean();
+  assert.deepEqual([c2Number?.created_via, String(c2Number?.lead?.id), c2Number?.lead?.model, c2Number?.lead_link?.source, c2Number?.calls?.inbound, c2Number?.calls?.outbound],
+    ["call_lead", String(c2Lead), "CallLead", "automatic", 0, 0], "minted, linked to the Call Lead, zero calls");
+  assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ event_kind: "contact_number_created_from_lead", subject_key: `number:${String(c2Number!._id)}` }), 1);
+  const c2Job = await Jobs.findOne({ stage: "outreach_lead_change", dedupe_key: `sod:lead-change:CallLead:${String(c2Lead)}:link:${String(c2Number!._id)}:r${c2Number!.revision}` }).lean();
+  assert.ok(c2Job, "the link write nominated the subject's lead change in the same transaction");
+  assert.equal((await runOutreachLeadChangeJob(String(c2Job!._id))).status, "completed");
+  assert.deepEqual(((await Subjects.findById(c2Subject.subject_id).lean())?.contact_number_ids ?? []).map(String), [String(c2Number!._id)], "the subject holds its number");
+  const c2After = await diagnose();
+  assert.ok(!c2After.rows.some((row) => row.subject_id === c2Subject.subject_id), "the diagnostic no longer lists it");
+  assert.ok(c2Before.without_numbers.by_reason.no_contact_number >= 1);
+  assert.equal(c2After.without_numbers.by_reason.no_contact_number, 0, "plan §2 C2 acceptance: no subject's phone lacks a Contact Number");
+  const mintAgain = await runMintLeadNumbers([`--target=${database}`, "--apply"], quiet) as { applied: { numbers_created: number; links_changed: number } };
+  assert.deepEqual([mintAgain.applied.numbers_created, mintAgain.applied.links_changed], [0, 0], "a rerun writes nothing");
+
+  // --- olr C0: rep-day coverage from goal coverage (D-A3) -------------------------------------------
+  // A stuck provisional Call Log row holds both capped watermarks 50 min back; the observed ones are 17–18
+  // min behind. The recount reads both scopes inside its transaction (`loadCallWatermarks`) and the
+  // GET /rep-days read assembles the same marks from its own rows: today is complete through as_of − 20
+  // (required as_of − 25), so a zero-call roster rep reads 0 / `no_activity_recorded`, not Pending.
+  // Without the observed values (a pre-A3 row) the same day is partial and the rep reads Pending.
+  const { readRepDays } = await import("../../src/services/salesOutreach/reads/service.js");
+  const c0Now = new Date("2026-12-01T19:00:00Z"); // 14:00 New York (EST)
+  const c0Min = (m: number) => new Date(c0Now.getTime() + m * 60_000);
+  const c0Zero = new mongoose.Types.ObjectId();
+  const c0Config = activeInspection(
+    {
+      controls: { desk_enabled: true, goal_metrics_enabled: true },
+      goals: {
+        roster_version: "r-c0", default_scheduled_goal: 100, zero_goal_rule: "no_goal_today_excluded_from_denominator",
+        rep_work_schedules: [{ agent_id: String(c0Zero), working_days: [1, 2, 3, 4, 5, 6, 7] }], effective_day_overrides: [],
+      },
+    },
+    "v-c0",
+    10,
+  );
+  assert.equal(c0Config.state, "active");
+  if (c0Config.state !== "active") return;
+  const setMarks = async (known: Date, observed: { capture: Date; derived: Date } | null) => {
+    for (const [scope, value] of [[CALL_LOG_ALL_DIRECTIONS_SCOPE, observed?.capture], ["outreach_contact_calls", observed?.derived]] as const)
+      await SyncState.updateOne({ scope }, observed ? { $set: { known_complete_through: known, observed_complete_through: value } } : { $set: { known_complete_through: known }, $unset: { observed_complete_through: 1 } });
+  };
+  await setMarks(c0Min(-50), { capture: c0Min(-18), derived: c0Min(-17) });
+  const c0Key = { agent_id: String(c0Zero), business_day: "2026-12-01" };
+  const c0Recount = await withTransaction((session) => recountRepDay(c0Key, c0Config, c0Now, mongoRepDayStore, session));
+  assert.equal(c0Recount.outcome, "no_activity", "a zero-call rep still gets no row today");
+  assert.deepEqual(
+    [c0Recount.fields.coverage.state, c0Recount.fields.coverage.known_complete_through, c0Recount.fields.coverage.required_through],
+    ["complete", c0Min(-20).toISOString(), c0Min(-25).toISOString()],
+    "C0: goal coverage = min(observed capture − 2 min, observed derivation) against as_of − 25 min",
+  );
+  const c0Owner = { role: "owner" as const, actor: { kind: "owner" as const, id: "owner-c0", request_id: "r-c0", run_id: null }, agent_id: null };
+  const c0Read = async () => (await readRepDays(c0Owner, { business_day: "2026-12-01" }, { loader: fixedConfigurationLoader(c0Config), now: c0Now })).reps!.find((rep) => rep.agent_id === String(c0Zero))!;
+  const c0Served = await c0Read();
+  assert.deepEqual(
+    [c0Served.actual_confirmed, c0Served.actual_basis, c0Served.coverage.state, c0Served.coverage.required_through, c0Served.unknown_reason],
+    [0, "no_activity_recorded", "complete", c0Min(-25).toISOString(), null],
+    "C0 acceptance: a zero-call rep reads 0, not Pending",
+  );
+  await setMarks(c0Min(-50), null);
+  const c0Capped = await c0Read();
+  assert.deepEqual([c0Capped.actual_confirmed, c0Capped.actual_basis, c0Capped.coverage.state], [null, "pending", "partial"], "capped watermarks alone stay Pending");
+  const c0CappedRecount = await withTransaction((session) => recountRepDay(c0Key, c0Config, c0Now, mongoRepDayStore, session));
+  assert.equal(c0CappedRecount.fields.coverage.state, "partial");
 
   console.log(JSON.stringify({ ok: true, database }));
 }

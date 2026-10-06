@@ -15,6 +15,7 @@ import { csiOperatorActor, CsiError } from "../../src/services/salesIntelligence
 import { allNumbersQuerySchema } from "../../src/validation/v1/allNumbers";
 import { runNumbersV2Migration } from "./migrate";
 import { runNumbersV2Cleanup } from "./cleanup";
+import { runMintLeadNumbers } from "./mint-lead-numbers";
 
 /**
  * All Numbers v2 replica proof on the csi01 loopback replica (all-numbers CONTRACT §2–§5, phase A):
@@ -22,7 +23,8 @@ import { runNumbersV2Cleanup } from "./cleanup";
  * attachments, recomputes links and summaries, stamps every number and is idempotent; capture keeps the
  * summary current and nominates the link job; the Lead-change scan mints a Form Lead's number and
  * reverts a pin when a newer Lead arrives; the reads and the Owner's pin/unlink follow §4; Accounts
- * connects, changes and disconnects through reviewed links.
+ * connects, changes and disconnects through reviewed links; a Call Lead older than every call gets its
+ * number from its own lead-link job (no Form Lead flag needed) and from the mint script (olr C2b).
  */
 const oid = () => new mongoose.Types.ObjectId();
 const at = (iso: string) => new Date(iso);
@@ -333,4 +335,49 @@ test("All Numbers v2: migration, capture summary, lead link, reads, Owner comman
   assert.equal(afterCleanup.data.counts.all, 7, "reads work on cleaned rows");
   const rerun = await runNumbersV2Migration(["--target=testvantagemovers_allnumbers", "--apply", "--all"], quiet);
   assert.equal(rerun.failures_total, 0, "the migration still runs after the cleanup (nothing left to seed)");
+
+  // ── olr C2b: Call Lead numbers ─────────────────────────────────────────
+  // Call Lead minting never depends on the Form Lead flag.
+  const formLeadFlag = process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS;
+  process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS = "false";
+  t.after(() => { process.env.SALES_INTELLIGENCE_FORM_LEAD_NUMBERS = formLeadFlag; });
+  // The script: a Call Lead received before capture began (its phone was never called) and a Duplicate on that phone.
+  const L12 = oid(), L13 = oid();
+  await db.collection("call_leads").insertMany([
+    { _id: L12, name: "Lu Twelve", job_no: "J-12", timestamp: at("2026-07-27T12:00:00Z"), normalized_phone_number: "5550100388" },
+    { _id: L13, name: "Mo Thirteen", job_no: "J-13", timestamp: at("2026-07-28T12:00:00Z"), normalized_phone_number: "5550100388", duplicate: true },
+  ]);
+  const mintDry = await runMintLeadNumbers(["--target=testvantagemovers_allnumbers", "--scope=all"], quiet);
+  assert.deepEqual([mintDry.mode, mintDry.leads_checked, mintDry.numbers_to_create, mintDry.numbers_reused], ["dry_run", 2, 1, 1],
+    "L12 needs a number; L2's original caller already has N1; the Duplicate is never a candidate");
+  assert.equal(await db.collection("contact_numbers").countDocuments({ e164: "+15550100388" }), 0, "the dry run writes nothing");
+  type MintRun = { numbers_to_create: number; applied: { numbers_created: number; links_changed: number; failures: Record<string, number> };
+    after: { numbers_to_create: number } };
+  const mintApply = await runMintLeadNumbers(["--target=testvantagemovers_allnumbers", "--scope=all", "--apply"], quiet) as unknown as MintRun;
+  assert.deepEqual(mintApply.applied.failures, {});
+  assert.deepEqual([mintApply.applied.numbers_created, mintApply.applied.links_changed, mintApply.after.numbers_to_create], [1, 1, 0]);
+  const lu = await db.collection("contact_numbers").findOne({ e164: "+15550100388" });
+  assert.ok(lu);
+  assert.equal(lu.created_via, "call_lead");
+  assert.equal(String(lu.lead.id), String(L12), "the script links the minted number to its Call Lead");
+  assert.equal(lu.lead.model, "CallLead");
+  assert.deepEqual(lu.other_leads, [], "the Duplicate stays out");
+  assert.deepEqual(lu.calls, { inbound: 0, outbound: 0, missed: 0 });
+  assert.equal(lu.summary_version, 1);
+  assert.ok(lu.search_terms.includes("lu twelve") && lu.search_terms.includes("j-12"));
+  const luRow = await listAllNumbers(allNumbersQuerySchema.parse({ q: "0388" }));
+  assert.deepEqual(luRow.data.items.map((row) => [row.id, row.source]), [[String(lu._id), "call"]], "served as source call: the admin enum is unchanged");
+  assert.equal(await db.collection("sales_intelligence_audit_events").countDocuments({ event_kind: "contact_number_created_from_lead", "current.lead_model": "CallLead" }), 1);
+  const mintAgain = await runMintLeadNumbers(["--target=testvantagemovers_allnumbers", "--scope=all", "--apply"], quiet) as unknown as MintRun;
+  assert.deepEqual([mintAgain.numbers_to_create, mintAgain.applied.numbers_created, mintAgain.applied.links_changed], [0, 0, 0], "a rerun writes nothing");
+  // The lead-link job: a new Call Lead's own job mints and links its number.
+  const L14 = oid();
+  await db.collection("call_leads").insertOne({ _id: L14, name: "Ned Fourteen", job_no: "J-14", timestamp: new Date(), normalized_phone_number: "5550100377" });
+  await db.collection("entity_changes").insertOne({ ...change(L14), entity: { model: "CallLead", id: String(L14) } });
+  assert.ok((await scanLeadChangesForLeadLinks()).nominated >= 1);
+  await drainLeadLinkJobs(20, 30_000);
+  const ned = await db.collection("contact_numbers").findOne({ e164: "+15550100377" });
+  assert.ok(ned, "the Call Lead's job minted its number with the Form Lead flag off");
+  assert.equal(ned.created_via, "call_lead");
+  assert.equal(String(ned.lead.id), String(L14), "and linked it in the same job");
 });
