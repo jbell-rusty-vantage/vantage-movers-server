@@ -15,6 +15,9 @@
  * - olr B1: a review subject whose priority is accepted a day later opens one late first period
  *   (`activation`, at the observation time), and the repair script moves a pre-B1 row (intake start
  *   at the boundary) to that start in one audited transaction with its evaluate nomination, once;
+ *   olr BW1: the same transaction nominates the C4 contact re-derive of the window the start moved
+ *   over (`repair:<period_id>`), and draining it takes the call there out of the old period's workflow
+ *   and goal scope (still the subject's); calls outside the window are not woken;
  * - olr B7: `GET /enrollment/candidates` lists only the report's backfill scope (review count = the
  *   report's, in_scope = its selection, older unchanged), and the explained plans stay bounded: the
  *   upcoming-move branch reads `sod_form_lead_move_date`, the window branch examines only Leads created
@@ -69,6 +72,14 @@ async function main() {
   const { getSalesOutreachEnrollmentRunModel } = await import("../../src/models/salesOutreach/enrollmentRuns.js");
   const { FINAL01_CADENCE } = await import("../lib/sales-outreach-final01.js");
   const { applyRepair, reportRepair, REPAIR_EVENT_KIND } = await import("../lib/sales-outreach-repair-late-first-periods.js");
+  const { getCallInteractionModel } = await import("../../src/models/CallInteraction.js");
+  const { getContactNumberModel } = await import("../../src/models/ContactNumber.js");
+  const { getSalesIntelligenceContactRestrictionModel } = await import("../../src/models/SalesIntelligenceContactRestriction.js");
+  const { applyContactSources } = await import("../../src/services/salesOutreach/contacts/apply.js");
+  const { contactEventId } = await import("../../src/services/salesOutreach/contacts/derive.js");
+  const { mongoContactEventStore } = await import("../../src/services/salesOutreach/contacts/mongoStore.js");
+  const { runOutreachContactChangeJob } = await import("../../src/services/salesOutreach/contacts/jobs.js");
+  const { activeInspection, fixedConfigurationLoader } = await import("../../src/services/salesOutreach/reads/testing.js");
   await connectMongo();
   assert.equal(mongoose.connection.name, database);
 
@@ -78,6 +89,9 @@ async function main() {
     getSalesIntelligenceCommandExecutionModel(),
     getSalesIntelligenceAuditEventModel(),
     getEntityChangeModel(),
+    getCallInteractionModel(),
+    getContactNumberModel(),
+    getSalesIntelligenceContactRestrictionModel(),
     ...SALES_OUTREACH_MODEL_REGISTRY.map((e) => e.model()),
   ];
   for (const Model of csiModels) {
@@ -264,11 +278,41 @@ async function main() {
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+  // olr BW1: the legacy Lead's number has a call before the old start, one the repair's moved start
+  // uncovers (derived inside the old quoted period: workflow + goal scope) and one after the new start.
+  const legacyActivation = legacySubject.enrollment.activation_at;
+  const legacyNumber = oid();
+  await getContactNumberModel().create({ _id: legacyNumber, e164: "+15550100077", digits_reversed: "77001005551", first_observed_at: legacyActivation, last_activity_at: legacyActivation,
+    lead: { model: "FormLead", id: new mongoose.Types.ObjectId(legacy.id), received_at: legacyActivation, state: "open" }, lead_link: { source: "automatic", set_at: legacyActivation } });
+  const legacyCall = async (startedAt: Date, telephonySession: string) => {
+    const row = await getCallInteractionModel().create({
+      provider_account_id: "800000000001", telephony_session_id: telephonySession, identity_basis: "telephony_session_id", direction: "Outbound",
+      contact_number_id: legacyNumber, external_endpoint_kind: "external", started_at: startedAt, provider_connected: true, provider_result: "Call connected",
+      parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: startedAt, result: "Call connected" }],
+      call_log_state: "settled", terminal: true, first_observed_at: startedAt, last_observed_at: startedAt,
+    });
+    return { source_kind: "call" as const, source_id: String(row._id) };
+  };
+  const callBefore = await legacyCall(new Date(+legacyActivation - 3_600_000), "s-bw1-before");
+  const callBetween = await legacyCall(new Date(+observedAt - 2 * 3_600_000), "s-bw1-between");
+  const callAfter = await legacyCall(new Date(+observedAt + 30 * 60_000), "s-bw1-after");
+  // In the past of any real clock (the job is claimable), after the new start, within the lookback.
+  const repairNow = at("2026-10-05T20:00:00Z");
+  await withTransaction((session) => applyContactSources([callBefore, callBetween, callAfter], { now: repairNow, queueRepDays: false }, mongoContactEventStore, session));
+  const Events = SALES_OUTREACH_MODEL_REGISTRY.find((e) => e.name === "SalesOutreachContactEvent")!.model();
+  const eventOf = async (source: { source_id: string }) => {
+    const event = (await Events.findById(contactEventId("call", source.source_id)).lean()) as { association?: string; subject_id?: unknown; subject_workflow?: string | null; goal_scope_eligible?: boolean } | null;
+    return [event?.association, event?.subject_id ? String(event.subject_id) : null, event?.subject_workflow ?? null, event?.goal_scope_eligible];
+  };
+  assert.deepEqual(await eventOf(callBetween), ["unique", String(legacySubject._id), "quoted", true], "pre-repair: derived inside the old (boundary) period");
+
   const dry = await reportRepair();
   assert.equal(dry.summary.repairable, 1, "only the pre-B1 row (step 1's intake period was written with its subject)");
   assert.equal(await Periods.countDocuments({ _id: legacyPeriodId, start_kind: "intake" }), 1, "the dry run writes nothing");
-  const repairRun = await applyRepair({ actor: owner, run_id: "replica-repair" });
-  assert.deepEqual([repairRun.repaired, repairRun.conflicts], [[String(legacyPeriodId)], []]);
+  // This replica's configuration has the desk controls off (C4's gate then nominates nothing); BW1's
+  // window and identity are what this step proves, so the gate is answered yes here (unit-tested both ways).
+  const repairRun = await applyRepair({ actor: owner, run_id: "replica-repair" }, { now: () => repairNow, wanted: async () => true });
+  assert.deepEqual([repairRun.repaired, repairRun.conflicts, repairRun.contact_wakes], [[String(legacyPeriodId)], [], 1]);
   const repaired = (await Periods.findById(legacyPeriodId).lean())!;
   assert.deepEqual(
     [repaired.start_kind, repaired.started_at.toISOString(), repaired.time_basis, repaired.revision],
@@ -276,8 +320,20 @@ async function main() {
   );
   assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ event_kind: REPAIR_EVENT_KIND, "invalidation.target_id": String(legacyPeriodId) }), 1, "one audit row");
   assert.ok(await Jobs.exists({ dedupe_key: `sod:evaluate:${String(legacySubject._id)}:repair:${String(legacyPeriodId)}`, stage: "outreach_evaluate" }), "evaluate nominated");
+  const rederive = await Jobs.findOne({ dedupe_key: `sod:contact_change:call:${callBetween.source_id}:repair:${String(legacyPeriodId)}`, stage: "outreach_contact_change" }).lean();
+  assert.ok(rederive, "BW1: the repair's transaction nominated the moved-over call's re-derive");
+  for (const outside of [callBefore, callAfter])
+    assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:contact_change:call:${outside.source_id}:` } }), 0, "calls outside [old start, new start) are not woken");
+  const deskOn = activeInspection({ controls: { desk_enabled: true } });
+  assert.equal(
+    (await runOutreachContactChangeJob(String(rederive!._id), { loader: fixedConfigurationLoader(deskOn), now: () => repairNow, publish: async () => undefined })).status,
+    "completed",
+  );
+  assert.deepEqual(await eventOf(callBetween), ["unique", String(legacySubject._id), null, false], "re-derived before the repaired start: no workflow, no goal scope, still the subject's");
+  assert.deepEqual(await eventOf(callAfter), ["unique", String(legacySubject._id), "quoted", true], "after the new start: unchanged");
   assert.equal((await reportRepair()).summary.repairable, 0, "dry run reports 0 after the apply");
-  assert.deepEqual((await applyRepair({ actor: owner, run_id: "replica-repair-2" })).repaired, [], "a re-run writes nothing");
+  const rerun = await applyRepair({ actor: owner, run_id: "replica-repair-2" }, { now: () => repairNow, wanted: async () => true });
+  assert.deepEqual([rerun.repaired, rerun.contact_wakes], [[], 0], "a re-run writes and wakes nothing");
 
   // 6. olr B7: GET /enrollment/candidates is scoped like the report, and its Mongo plans are bounded.
   for (const { collection, indexes } of SALES_OUTREACH_READ_INDEXES)
@@ -380,7 +436,7 @@ async function main() {
   const settled = await reconcileOutreachRevisions(new Date());
   assert.deepEqual([settled.decision_nominated, settled.decision_deferred], [0, 0], "settled: nothing left to re-decide");
 
-  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair, B7 scoped candidates + bounded plans, B2 decision reconcile");
+  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair (+ BW1 contact re-derive), B7 scoped candidates + bounded plans, B2 decision reconcile");
 }
 
 main()

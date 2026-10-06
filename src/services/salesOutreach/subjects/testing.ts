@@ -116,8 +116,9 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
     this.writes.push(`requestEvaluation:${subjectId}`);
   }
   /**
-   * Same selection as the Mongo store: credited numbers only, at or after `since` (an SMS by
-   * `provider_created_at` or `send_at`), newest first per kind (SMS by `provider_created_at`).
+   * Same selection as the Mongo store: credited numbers only, at or after `since` and before `until`
+   * when given (an SMS by `provider_created_at` or `send_at`), newest first per kind (SMS by
+   * `provider_created_at`).
    */
   async nominateContactSources(request: ContactWakeRequest) {
     this.contactWakes.push(structuredClone(request));
@@ -126,11 +127,13 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
     const ids = new Set(numbers.map((n) => n.id));
     const e164s = new Set(numbers.flatMap((n) => (n.e164 ? [n.e164] : [])));
     const since = +request.since;
+    const until = request.until ? +request.until : Infinity;
+    const inWindow = (at: Date | null | undefined) => at != null && +at >= since && +at < until;
     const newest = <T extends { id: string }>(rows: T[], at: (row: T) => Date) =>
       rows.sort((a, b) => +at(b) - +at(a) || (a.id < b.id ? 1 : -1)).slice(0, request.limit_per_kind);
-    const smsInWindow = (m: MemoryDeskSubjectStore["sms"][number]) => +m.provider_created_at >= since || (m.send_at != null && +m.send_at >= since);
+    const smsInWindow = (m: MemoryDeskSubjectStore["sms"][number]) => inWindow(m.provider_created_at) || inWindow(m.send_at);
     const sources: ContactChangeSource[] = [
-      ...newest(this.calls.filter((c) => ids.has(c.contact_number_id) && !c.merged_into_id && +c.started_at >= since), (c) => c.started_at)
+      ...newest(this.calls.filter((c) => ids.has(c.contact_number_id) && !c.merged_into_id && inWindow(c.started_at)), (c) => c.started_at)
         .map((c) => ({ source_kind: "call" as const, source_id: c.id, source_revision: request.source_revision })),
       ...newest(this.sms.filter((m) => m.counterpart_numbers.some((e) => e164s.has(e)) && smsInWindow(m)), (m) => m.provider_created_at)
         .map((m) => ({ source_kind: "sms" as const, source_id: m.id, source_revision: request.source_revision })),

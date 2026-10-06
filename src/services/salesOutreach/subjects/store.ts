@@ -68,12 +68,18 @@ export type PeriodProvenance = Readonly<{
 /**
  * olr C4 re-derive wake: `outreach_contact_change` for the newest calls and SMS (each up to
  * `limit_per_kind`) of the Contact Numbers whose `lead` is this Lead (only those credit it), at or
- * after `since`. `source_revision` makes the dedupe key (`sod:contact_change:<kind>:<id>:<revision>`),
- * so a replayed change enqueues nothing new.
+ * after `since` (and before `until` when given). `source_revision` makes the dedupe key
+ * (`sod:contact_change:<kind>:<id>:<revision>`), so a replayed change enqueues nothing new.
  */
 export type ContactWakeRequest = Readonly<{
   lead: DeskLeadRef;
   since: Date;
+  /**
+   * olr BW1: optional exclusive upper bound (the B1 repair re-derives only the window its moved period
+   * start uncovered; contacts at or after the new start keep the same period and workflow).
+   * Absent = no bound (C4 wakes).
+   */
+  until?: Date | null;
   source_revision: string;
   limit_per_kind: number;
   now: Date;
@@ -113,6 +119,8 @@ export type DeskSubjectStore = {
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
+/** The wake's time range on one instant field: `[since, until)`, or `[since, ∞)` without `until`. */
+const windowOf = (request: ContactWakeRequest) => (request.until ? { $gte: request.since, $lt: request.until } : { $gte: request.since });
 const leadModel = (model: SalesOutreachLeadModel) => (model === "FormLead" ? getFormLeadModel() : getCallLeadModel());
 const MAX_OBSERVATIONS = 500;
 
@@ -356,7 +364,7 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
     if (!numbers.length) return 0;
     // Index `call_interaction_number_started_id` (contact_number_id, started_at desc, _id desc).
     const calls = await getCallInteractionModel()
-      .find({ contact_number_id: { $in: numbers.map((row) => row._id) }, merged_into_id: null, started_at: { $gte: request.since } }, { _id: 1 })
+      .find({ contact_number_id: { $in: numbers.map((row) => row._id) }, merged_into_id: null, started_at: windowOf(request) }, { _id: 1 })
       .sort({ started_at: -1, _id: -1 })
       .limit(request.limit_per_kind)
       .session(session)
@@ -367,7 +375,7 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
     const sms = e164s.length
       ? await getRingCentralRepSmsEvidenceModel()
         .find(
-          { counterpart_numbers: { $in: e164s }, $or: [{ provider_created_at: { $gte: request.since } }, { send_at: { $gte: request.since } }] },
+          { counterpart_numbers: { $in: e164s }, $or: [{ provider_created_at: windowOf(request) }, { send_at: windowOf(request) }] },
           { _id: 1 },
         )
         .sort({ provider_created_at: -1, _id: -1 })

@@ -16,6 +16,14 @@
  *   fields and `$inc revision`; one `appendCsiAudit` row (`kind: outreach`,
  *   `event_kind: sales_outreach_period_repaired`, prior/current values); one `outreach_evaluate`
  *   nomination `sod:evaluate:<subject>:repair:<period_id>` (input revision 1);
+ * - olr BW1, same transaction: the C4 contact re-derive (`repairContactWakeOf`, through the subject
+ *   store's `nominateContactSources`) for the subject's credited numbers' calls and SMS in
+ *   `[old start, new start)`, job identity `sod:contact_change:<call|sms>:<id>:repair:<period_id>`.
+ *   Those contacts were derived inside the old period (its workflow, goal scope); re-derived they fall
+ *   before the period (no workflow, no goal scope, still the subject's, so an activation date's
+ *   partial quota subtracts them). Contacts at or after the new start keep the same period. Only while
+ *   the persisted desk wants contact evidence (`deskWantsContactEvidence`, C4's rule); never earlier
+ *   than C4's `SUBJECT_WAKE_LOOKBACK_MS`, at most `SUBJECT_WAKE_SOURCES_PER_KIND` per kind;
  * - idempotent: a repaired row is `activation`, so a re-run selects 0 and writes nothing.
  *
  * Pure parts are unit-tested (`sales-outreach-repair-late-first-periods.test.ts`); the Mongo parts are
@@ -29,7 +37,11 @@ import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from 
 import type { CsiActor } from "../../src/services/salesIntelligence/auth";
 import { enqueueCsiJob } from "../../src/services/salesIntelligence/jobs";
 import { appendCsiAudit } from "../../src/services/salesIntelligence/transactions";
+import { deskWantsContactEvidence } from "../../src/services/salesOutreach/capture/contactChangeWake";
 import { evaluationJob } from "../../src/services/salesOutreach/evaluation/evaluateJob";
+import type { DeskLeadRef } from "../../src/services/salesOutreach/subjects/leadFacts";
+import { mongoDeskSubjectStore, type ContactWakeRequest } from "../../src/services/salesOutreach/subjects/store";
+import { SUBJECT_WAKE_LOOKBACK_MS, SUBJECT_WAKE_SOURCES_PER_KIND } from "../../src/services/salesOutreach/subjects/sync";
 
 export const REPAIR_VERSION = "repair-late-first-periods-v1";
 export const REPAIR_EVENT_KIND = "sales_outreach_period_repaired";
@@ -64,6 +76,8 @@ export function parseRepairArgs(argv: readonly string[]): RepairCliArgs {
 export type RepairCandidate = Readonly<{
   period_id: string;
   subject_id: string;
+  /** The subject's Lead (whose credited numbers the BW1 contact re-derive reads). */
+  lead: DeskLeadRef;
   period_revision: number;
   started_at: Date;
   ended_at: Date | null;
@@ -84,6 +98,7 @@ export type RepairPlan =
       action: "repair";
       period_id: string;
       subject_id: string;
+      lead: DeskLeadRef;
       expected_revision: number;
       prior: PeriodStartFields;
       next: Readonly<{ started_at: Date; start_kind: "activation"; time_basis: SalesOutreachTimeBasis }>;
@@ -110,10 +125,26 @@ export function planLateFirstPeriodRepair(row: RepairCandidate): RepairPlan {
   return {
     action: "repair",
     ...ids,
+    lead: row.lead,
     expected_revision: row.period_revision,
     prior: { started_at: row.started_at, start_kind: "intake", time_basis: row.time_basis },
     next: { started_at: startedAt, start_kind: "activation", time_basis: timeBasis },
   };
+}
+
+/** The BW1 re-derive identity suffix (`sod:contact_change:<kind>:<id>:repair:<period_id>`). */
+export const repairContactRevision = (periodId: string) => `repair:${periodId}`;
+
+/**
+ * olr BW1: the C4 contact re-derive one repaired row needs (pure; null = nothing to re-derive). The
+ * window is `[old start, new start)` floored at C4's lookback before `now`; contacts at or after the
+ * new start were derived inside the same period and workflow, so they do not change.
+ */
+export function repairContactWakeOf(plan: Extract<RepairPlan, { action: "repair" }>, now: Date): ContactWakeRequest | null {
+  const since = new Date(Math.max(+plan.prior.started_at, +now - SUBJECT_WAKE_LOOKBACK_MS));
+  const until = plan.next.started_at;
+  if (+since >= +until || +since >= +now) return null;
+  return { lead: plan.lead, since, until, source_revision: repairContactRevision(plan.period_id), limit_per_kind: SUBJECT_WAKE_SOURCES_PER_KIND, now };
 }
 
 export type RepairSummary = Readonly<{
@@ -157,7 +188,13 @@ type PeriodDoc = {
   priority_source_ref?: string | null;
   createdAt: Date;
 };
-type SubjectDoc = { _id: mongoose.Types.ObjectId; createdAt: Date; enrollment: { activation_at: Date } };
+type SubjectDoc = {
+  _id: mongoose.Types.ObjectId;
+  createdAt: Date;
+  enrollment: { activation_at: Date };
+  lead_model: DeskLeadRef["model"];
+  lead_id: mongoose.Types.ObjectId;
+};
 
 /** Reads every `intake` period with its subject and observation facts (session optional: dry run reads unbound). */
 export async function loadRepairCandidates(session: ClientSession | null = null): Promise<{ intake_periods: number; candidates: RepairCandidate[] }> {
@@ -171,7 +208,7 @@ export async function loadRepairCandidates(session: ClientSession | null = null)
   if (periods.length > REPAIR_MAX_ROWS) throw new Error(`more than ${REPAIR_MAX_ROWS} intake periods; refusing to plan an unbounded repair`);
   const subjects = periods.length
     ? ((await getSalesOutreachSubjectModel()
-        .find({ _id: { $in: [...new Set(periods.map((p) => String(p.subject_id)))].map((id) => new mongoose.Types.ObjectId(id)) } }, { createdAt: 1, "enrollment.activation_at": 1 })
+        .find({ _id: { $in: [...new Set(periods.map((p) => String(p.subject_id)))].map((id) => new mongoose.Types.ObjectId(id)) } }, { createdAt: 1, "enrollment.activation_at": 1, lead_model: 1, lead_id: 1 })
         .session(session)
         .lean()) as unknown as SubjectDoc[])
     : [];
@@ -195,6 +232,7 @@ export async function loadRepairCandidates(session: ClientSession | null = null)
       return {
         period_id: String(p._id),
         subject_id: String(p.subject_id),
+        lead: { model: subject.lead_model, id: String(subject.lead_id) },
         period_revision: p.revision,
         started_at: p.started_at,
         ended_at: p.ended_at ?? null,
@@ -216,12 +254,36 @@ export async function reportRepair(): Promise<{ summary: RepairSummary; plans: R
   return { summary: summarizeRepair(intake_periods, plans), plans };
 }
 
-export type RepairApplyResult = Readonly<{ run_id: string; repaired: string[]; conflicts: string[]; skipped: Record<string, number> }>;
+export type RepairApplyResult = Readonly<{
+  run_id: string;
+  repaired: string[];
+  conflicts: string[];
+  skipped: Record<string, number>;
+  /** BW1: `outreach_contact_change` jobs the repairs nominated (new or deduplicated). */
+  contact_wakes: number;
+}>;
 
 export type RepairApplyDeps = Readonly<{
   transaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
   now?: () => Date;
+  /** BW1: does the persisted desk want contact evidence (default: C4's `deskWantsContactEvidence`). */
+  wanted?: (session: ClientSession) => Promise<boolean>;
+  /** BW1: the C4 nomination (default: the Mongo subject store's `nominateContactSources`). */
+  nominate?: (request: ContactWakeRequest, session: ClientSession) => Promise<number>;
 }>;
+
+/** BW1: nominate one repaired row's contact re-derive in the repair transaction; returns the jobs enqueued. */
+export async function nominateRepairContactWake(
+  plan: Extract<RepairPlan, { action: "repair" }>,
+  now: Date,
+  session: ClientSession,
+  deps: Pick<RepairApplyDeps, "wanted" | "nominate"> = {},
+): Promise<number> {
+  const wake = repairContactWakeOf(plan, now);
+  if (!wake) return 0;
+  if (!(await (deps.wanted ?? deskWantsContactEvidence)(session))) return 0;
+  return (deps.nominate ?? mongoDeskSubjectStore.nominateContactSources)(wake, session);
+}
 
 /**
  * Repairs each planned row in its own transaction (CAS on the revision and the `intake` start kind, so a
@@ -234,16 +296,17 @@ export async function applyRepair(input: { actor: CsiActor; run_id: string }, de
   const { plans, summary } = await reportRepair();
   const repaired: string[] = [];
   const conflicts: string[] = [];
+  let contactWakes = 0;
   for (const plan of plans) {
     if (plan.action !== "repair") continue;
-    const done = await transaction(async (session) => {
+    const wakes = await transaction(async (session): Promise<number | null> => {
       const at = now();
       const result = await getSalesOutreachPolicyPeriodModel().updateOne(
         { _id: new mongoose.Types.ObjectId(plan.period_id), revision: plan.expected_revision, start_kind: "intake" },
         { $set: { started_at: plan.next.started_at, start_kind: plan.next.start_kind, time_basis: plan.next.time_basis }, $inc: { revision: 1 } },
         { session, runValidators: true },
       );
-      if (result.modifiedCount !== 1) return false;
+      if (result.modifiedCount !== 1) return null;
       await appendCsiAudit(
         { session, command_id: new mongoose.Types.ObjectId(), now: at, actor: input.actor },
         {
@@ -257,9 +320,14 @@ export async function applyRepair(input: { actor: CsiActor; run_id: string }, de
         },
       );
       await enqueueCsiJob(evaluationJob(plan.subject_id, `repair:${plan.period_id}`, 1), session);
-      return true;
+      // The period update ran in this session, so each re-derive reads the repaired start.
+      return nominateRepairContactWake(plan, at, session, deps);
     });
-    (done ? repaired : conflicts).push(plan.period_id);
+    if (wakes === null) conflicts.push(plan.period_id);
+    else {
+      repaired.push(plan.period_id);
+      contactWakes += wakes;
+    }
   }
-  return { run_id: input.run_id, repaired, conflicts, skipped: summary.skipped };
+  return { run_id: input.run_id, repaired, conflicts, skipped: summary.skipped, contact_wakes: contactWakes };
 }
