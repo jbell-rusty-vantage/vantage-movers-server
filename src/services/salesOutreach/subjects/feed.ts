@@ -15,6 +15,7 @@ import type { SalesOutreachConfigurationValue } from "../../../validation/v1/sal
 import type { ConfigurationLoader } from "../config/load";
 import { salesOutreachConfigurationLoader } from "../config/load";
 import { deskLeadKey, type DeskLeadRef } from "./leadFacts";
+import { deskDecisionFingerprint } from "./policyMapping";
 
 /**
  * IMPL-05: Lead changes reach the desk through the `entity_changes` feed (the single durable input the
@@ -55,6 +56,18 @@ export function feedLoopOf(value: Pick<SalesOutreachConfigurationValue, "migrati
   });
 }
 
+/**
+ * Code default of the decision reconcile cap (olr B2): decision re-nominations per reconcile run. The
+ * configuration key `migration.decision_reconcile_per_run` (1–5,000) is optional without a schema
+ * default (A0 evolution rule), so an absent key resolves here.
+ */
+export const DECISION_RECONCILE_DEFAULT_PER_RUN = 300;
+
+/** Effective decision reconcile cap for a configuration value (absent key → `DECISION_RECONCILE_DEFAULT_PER_RUN`). */
+export function decisionReconcilePerRunOf(value: Pick<SalesOutreachConfigurationValue, "migration"> | null | undefined): number {
+  return value?.migration?.decision_reconcile_per_run ?? DECISION_RECONCILE_DEFAULT_PER_RUN;
+}
+
 export type LeadChangeRow = Readonly<{
   id: string;
   lead: DeskLeadRef;
@@ -72,6 +85,22 @@ export function leadChangeJobInput(lead: DeskLeadRef, revision: number): JobInpu
     subject_key: `outreach-lead:${lead.model}:${lead.id}`,
     dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:r${revision}`,
     input_revision: revision,
+    input_refs: [lead.id],
+  };
+}
+
+/**
+ * The `outreach_lead_change` job that re-decides one subject under the active configuration (olr B2;
+ * LANE-B §0.2): one identity per subject per decision fingerprint and configuration revision, so a
+ * replay dedupes and an A→B→A flip (a new revision) re-nominates. The job is the ordinary lead-change
+ * job: `syncSubject` reads the configuration in its transaction and stamps the fingerprint.
+ */
+export function decisionJobInput(lead: DeskLeadRef, fingerprint: string, configurationRevision: number): JobInput {
+  return {
+    stage: "outreach_lead_change",
+    subject_key: `outreach-lead:${lead.model}:${lead.id}`,
+    dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:decision:${fingerprint.slice(0, 16)}:c${configurationRevision}`,
+    input_revision: configurationRevision,
     input_refs: [lead.id],
   };
 }
@@ -99,6 +128,8 @@ export function nominateLeadChanges(
   return nominations;
 }
 
+export type ReconcileSubject = Readonly<{ id: string; lead: DeskLeadRef; lead_revision_seen: number; decision_fingerprint: string | null }>;
+
 export type OutreachFeedStore = {
   readTailCursor(session: ClientSession): Promise<FeedCursor | null>;
   writeTailCursor(cursor: FeedCursor, session: ClientSession): Promise<void>;
@@ -109,8 +140,8 @@ export type OutreachFeedStore = {
   subjectLeadKeys(leads: readonly DeskLeadRef[], session: ClientSession): Promise<Set<string>>;
   readReconcileCursor(session: ClientSession): Promise<string | null>;
   writeReconcileCursor(subjectId: string | null, session: ClientSession): Promise<void>;
-  /** Open (non-closed) subjects after `afterId` by `_id`. */
-  subjectsAfter(afterId: string | null, limit: number, session: ClientSession): Promise<Array<{ id: string; lead: DeskLeadRef; lead_revision_seen: number }>>;
+  /** Open (non-closed) subjects after `afterId` by `_id`, with the decision fingerprint they were last decided under (olr B2). */
+  subjectsAfter(afterId: string | null, limit: number, session: ClientSession): Promise<ReconcileSubject[]>;
   leadRevisions(leads: readonly DeskLeadRef[], session: ClientSession): Promise<Map<string, number>>;
   enqueue(job: JobInput, session: ClientSession): Promise<"enqueued" | "conflict">;
 };
@@ -195,7 +226,10 @@ export const mongoOutreachFeedStore: OutreachFeedStore = {
   },
   async subjectsAfter(afterId, limit, session) {
     const rows = await getSalesOutreachSubjectModel()
-      .find({ status: { $in: ["active", "review"] }, ...(afterId ? { _id: { $gt: oid(afterId) } } : {}) }, { lead_model: 1, lead_id: 1, lead_revision_seen: 1 })
+      .find(
+        { status: { $in: ["active", "review"] }, ...(afterId ? { _id: { $gt: oid(afterId) } } : {}) },
+        { lead_model: 1, lead_id: 1, lead_revision_seen: 1, decision_fingerprint: 1 },
+      )
       .sort({ _id: 1 })
       .limit(limit)
       .session(session)
@@ -204,6 +238,7 @@ export const mongoOutreachFeedStore: OutreachFeedStore = {
       id: String(row._id),
       lead: { model: row.lead_model as SalesOutreachLeadModel, id: String(row.lead_id) },
       lead_revision_seen: Number(row.lead_revision_seen ?? 0),
+      decision_fingerprint: typeof row.decision_fingerprint === "string" ? row.decision_fingerprint : null,
     }));
   },
   async leadRevisions(leads, session) {
@@ -389,13 +424,34 @@ function uniqueLeads(leads: readonly DeskLeadRef[]): DeskLeadRef[] {
   return [...byKey.values()];
 }
 
-export type ReconcilePassResult = Readonly<{ skipped: boolean; reason: string | null; pages: number; checked: number; nominated: number; wrapped: boolean }>;
+export type ReconcilePassResult = Readonly<{
+  skipped: boolean;
+  reason: string | null;
+  pages: number;
+  checked: number;
+  /** Revision (`r<rev>`) nominations newly enqueued (uncapped). */
+  nominated: number;
+  wrapped: boolean;
+  /** olr B2: decision re-nominations attempted this run (new or already queued), at most `decision_cap`. */
+  decision_nominated: number;
+  /** olr B2: subjects left for a later run because the cap was reached. */
+  decision_deferred: number;
+  /** olr B2: the effective cap of this run (`decisionReconcilePerRunOf`). */
+  decision_cap: number;
+}>;
 
 /**
  * The revision reconcile (cron every 5 minutes): open subjects whose Lead `domain_revision` differs from
  * `lead_revision_seen` get an `outreach_lead_change` job — the net for a Lead write that skipped its
  * EntityChange. Pages of 100 subjects by `_id`, each page's nominations and cursor in one transaction;
  * a short page wraps the cursor so the next run starts over. Single runner (lease in the cursor row).
+ *
+ * olr B2 decision reconcile: an open subject whose Lead revision is current but whose
+ * `decision_fingerprint` differs from the active configuration's (null included) gets the decision job
+ * (`decisionJobInput`), at most `migration.decision_reconcile_per_run` attempts per run (default 300;
+ * an attempt that dedupes onto a still-queued job counts, which throttles the wave to the drain). The
+ * rest wait for a later run; the cursor still moves and wraps. A subject whose revision differs gets
+ * only the `r<rev>` job, which stamps the fingerprint too. Closed subjects are never re-decided.
  */
 export async function reconcileOutreachRevisions(
   now = new Date(),
@@ -404,13 +460,18 @@ export async function reconcileOutreachRevisions(
   const store = deps.store ?? mongoOutreachFeedStore;
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
   const inspection = await loader.inspect();
-  if (inspection.state !== "active") return { skipped: true, reason: `configuration_${inspection.state}`, pages: 0, checked: 0, nominated: 0, wrapped: false };
+  const decisionCap = decisionReconcilePerRunOf(inspection.state === "active" ? inspection.value : null);
+  const idle = { pages: 0, checked: 0, nominated: 0, wrapped: false, decision_nominated: 0, decision_deferred: 0, decision_cap: decisionCap };
+  if (inspection.state !== "active") return { skipped: true, reason: `configuration_${inspection.state}`, ...idle };
   const lease = deps.lease ?? mongoReconcileLease(now);
-  if (!(await lease.acquire())) return { skipped: true, reason: "lease_held", pages: 0, checked: 0, nominated: 0, wrapped: false };
+  if (!(await lease.acquire())) return { skipped: true, reason: "lease_held", ...idle };
+  const activeFingerprint = deskDecisionFingerprint(inspection.value.cadence);
   const transaction = deps.transaction ?? withTransaction;
   let pages = 0;
   let checked = 0;
   let nominated = 0;
+  let decisions = 0;
+  let deferred = 0;
   let wrapped = false;
   try {
     while (pages < RECONCILE_MAX_PAGES && !wrapped) {
@@ -419,24 +480,38 @@ export async function reconcileOutreachRevisions(
         const subjects = await store.subjectsAfter(after, OUTREACH_FEED_PAGE, session);
         const revisions = await store.leadRevisions(subjects.map((s) => s.lead), session);
         let count = 0;
+        let decided = 0;
+        let waiting = 0;
         for (const subject of subjects) {
           const revision = revisions.get(deskLeadKey(subject.lead));
-          if (revision === undefined || revision === subject.lead_revision_seen) continue;
-          if ((await store.enqueue(leadChangeJobInput(subject.lead, revision), session)) === "enqueued") count++;
+          if (revision === undefined) continue;
+          if (revision !== subject.lead_revision_seen) {
+            if ((await store.enqueue(leadChangeJobInput(subject.lead, revision), session)) === "enqueued") count++;
+            continue;
+          }
+          if (subject.decision_fingerprint === activeFingerprint) continue;
+          if (decisions + decided >= decisionCap) {
+            waiting++;
+            continue;
+          }
+          await store.enqueue(decisionJobInput(subject.lead, activeFingerprint, inspection.revision), session);
+          decided++;
         }
         const short = subjects.length < OUTREACH_FEED_PAGE;
         await store.writeReconcileCursor(short ? null : subjects.at(-1)!.id, session);
-        return { size: subjects.length, count, short };
+        return { size: subjects.length, count, decided, waiting, short };
       });
       pages++;
       checked += page.size;
       nominated += page.count;
+      decisions += page.decided;
+      deferred += page.waiting;
       wrapped = page.short;
     }
   } finally {
     await lease.release();
   }
-  return { skipped: false, reason: null, pages, checked, nominated, wrapped };
+  return { skipped: false, reason: null, pages, checked, nominated, wrapped, decision_nominated: decisions, decision_deferred: deferred, decision_cap: decisionCap };
 }
 
 function mongoReconcileLease(now: Date) {

@@ -234,6 +234,9 @@ const migrationSchema = z
     // olr B10 Lead-change tail loop (optional, no default; effective values from `feedLoopOf` in `subjects/feed.ts`).
     feed_max_passes_per_run: z.number().int().min(1).max(50).optional(),
     feed_budget_seconds: z.number().int().min(1).max(40).optional(),
+    // olr B2 decision reconcile: decision re-nominations per 5-minute run (optional, no default; effective value
+    // from `decisionReconcilePerRunOf` in `subjects/feed.ts`, code default 300).
+    decision_reconcile_per_run: z.number().int().min(1).max(5000).optional(),
   })
   .strict()
   .refine((m) => m.batch_size <= m.batch_ceiling, "batch_size above batch_ceiling");

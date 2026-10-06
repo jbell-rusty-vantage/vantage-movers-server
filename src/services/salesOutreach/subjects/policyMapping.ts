@@ -1,10 +1,29 @@
+import { createHash } from "node:crypto";
 import type { SalesOutreachWorkflow } from "../../../config/domain/salesOutreach";
 import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
+import { canonicalJson } from "../../durableWork/checksum";
 import type { DeskLeadFacts } from "./leadFacts";
 
 type Cadence = SalesOutreachConfigurationValue["cadence"];
 type PriorityMap = NonNullable<Cadence["priority_map"]>;
 type IntakeDefaults = NonNullable<Cadence["intake_default_rule"]>;
+
+/** Version of the decision fingerprint's input shape (olr B2); a change re-decides every open subject once. */
+export const DESK_DECISION_VERSION = "sod-decision-v1";
+
+/**
+ * olr B2: the fingerprint of the configuration that decides a subject's workflow — only
+ * `cadence.priority_map` and `cadence.intake_default_rule` (`resolveDeskPolicy`). Controls, goals and
+ * the other cadence values never re-decide a subject. Map codes are compared as a set (sorted by code),
+ * so reordering the map is not a decision change. sha256 hex of the canonical JSON.
+ */
+export function deskDecisionFingerprint(cadence: Pick<Cadence, "priority_map" | "intake_default_rule">): string {
+  const map = cadence.priority_map
+    ? { ...cadence.priority_map, codes: [...cadence.priority_map.codes].sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)) }
+    : null;
+  const input = { v: DESK_DECISION_VERSION, priority_map: map, intake_default_rule: cadence.intake_default_rule ?? null };
+  return createHash("sha256").update(canonicalJson(input)).digest("hex");
+}
 
 /** P05e intake sources, keyed like `cadence.intake_default_rule`. */
 export type DeskIntakeSource = keyof IntakeDefaults;

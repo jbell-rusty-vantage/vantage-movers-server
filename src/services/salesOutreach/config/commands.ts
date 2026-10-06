@@ -5,6 +5,7 @@ import { salesOutreachConfigurationValueSchema, type SalesOutreachConfigurationV
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { appendCsiAudit, duplicateKey, executeCsiCommand } from "../../salesIntelligence/transactions";
 import { OutreachError, zodIssues } from "../errors";
+import { deskEnginePolicy } from "../evaluation/policyAdapter";
 import { publishOutreachLive } from "../live/publish";
 import { newYorkBusinessDay } from "../reads/businessDay";
 import {
@@ -72,6 +73,23 @@ async function assertCountScopeProspective(
 }
 
 /**
+ * olr B3 guard (`engine_policy_unavailable`): while cadence runs (shadow or enforcement), the submitted
+ * value must resolve to an engine policy (`deskEnginePolicy`). A value the schema accepts but the
+ * engine cannot represent (for example a native intake source set to review) would make every
+ * evaluation fail with `policy_unavailable` and stall the desk, so it is refused with every reason.
+ * With cadence off the evaluator does not run and nothing is checked (bootstrap, staged edits).
+ */
+function assertEnginePolicyResolvable(value: SalesOutreachConfigurationValue): void {
+  if (!value.controls.cadence_shadow_enabled && !value.controls.cadence_enforcement_enabled) return;
+  const resolved = deskEnginePolicy(value);
+  if (resolved.ok) return;
+  throw new OutreachError(
+    "INVALID_INPUT",
+    resolved.reasons.map((message) => ({ path: "cadence", code: "engine_policy_unavailable", message })),
+  );
+}
+
+/**
  * PATCH /configuration (CONTRACTS): full replacement of the validated value with `expected_revision`
  * (0 = explicit Owner initialization, which creates the pointer at revision 1) and an
  * Idempotency-Key. The new immutable version, the pointer CAS, the audit event and the command
@@ -105,8 +123,9 @@ export async function patchSalesOutreachConfiguration(
         if ((pointer?.revision ?? 0) !== input.expected_revision) throw new CsiError("REVISION_CONFLICT");
         if (pointer && pointer.content_hash === content_hash)
           return { revision: pointer.revision, version: pointer.version, content_hash, changed: false };
-        // Guards on the change itself, in plan order (olr §3): C1a count scope first.
+        // Guards on the change itself, in plan order (olr §3): C1a count scope first, B3 engine policy second.
         await assertCountScopeProspective(store, pointer, value, context.now, context.session);
+        assertEnginePolicyResolvable(value);
         await writer.insertVersion(
           { version, value, content_hash, approval_ref: value.cadence.approval_ref, actor: context.actor },
           context.session,

@@ -76,7 +76,9 @@ export const cadenceFieldSchemas = {
   cooldown_warning_hours: z.number().int().min(1).max(168),
   cooldown_mode: z.literal("advisory"),
   assignment_timeline_rule: z.literal("continuous"),
-  intake_default_rule: z.strictObject({ native_intake: z.literal("new"), granot_created_missing_priority: z.literal("review") }),
+  // P05e: native intake is always New; a Granot-created Lead without a priority is Review (FINAL-01) or
+  // New (Owner amendment P05e-1, olr B3). Not carried into the engine policy (desk mapping only).
+  intake_default_rule: z.strictObject({ native_intake: z.literal("new"), granot_created_missing_priority: z.enum(["review", "new"]) }),
   uncertain_priority_rule: z.literal("retain_last_verified"),
   transition_day_rule: z.strictObject({ kind: z.literal("prospective_partial_day"), quoted_activation_call_through_minute: minuteOfDay }),
   move_date_rule: z.literal("review_label_only"),

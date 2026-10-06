@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fakeSession, MemoryDeskSubjectStore } from "../../src/services/salesOutreach/subjects/testing";
+import { SUBJECT_WAKE_SOURCES_PER_KIND } from "../../src/services/salesOutreach/subjects/sync";
 import {
   isLateFirstPeriod,
+  nominateRepairContactWake,
   parseRepairArgs,
   planLateFirstPeriodRepair,
+  repairContactWakeOf,
   summarizeRepair,
   type RepairCandidate,
+  type RepairPlan,
 } from "./sales-outreach-repair-late-first-periods";
 
 const at = (iso: string) => new Date(iso);
@@ -13,6 +18,7 @@ const at = (iso: string) => new Date(iso);
 const row = (overrides: Partial<RepairCandidate> = {}): RepairCandidate => ({
   period_id: "p".repeat(24),
   subject_id: "s".repeat(24),
+  lead: { model: "FormLead", id: "l".repeat(24) },
   period_revision: 1,
   started_at: at("2026-10-05T14:00:00Z"),
   ended_at: null,
@@ -87,4 +93,75 @@ test("summarizeRepair: counts repairable rows and real skips; ids and instants o
     { period_id: "p".repeat(24), subject_id: "s".repeat(24), action: "repair", from: "2026-10-05T14:00:00.000Z", to: "2026-10-07T18:00:00.000Z", time_basis: "accepted_observation_captured_at" },
     { period_id: "a".repeat(24), subject_id: "s".repeat(24), action: "skip", reason: "starts_after_end" },
   ]);
+});
+
+const repairOf = (overrides: Partial<RepairCandidate> = {}) => {
+  const plan = planLateFirstPeriodRepair(row(overrides));
+  assert.equal(plan.action, "repair");
+  return plan as Extract<RepairPlan, { action: "repair" }>;
+};
+
+test("BW1 repairContactWakeOf: the window the start moved over [old start, new start), C4 bounds, repair identity", () => {
+  const plan = repairOf();
+  const now = at("2026-10-08T12:00:00Z");
+  assert.deepEqual(repairContactWakeOf(plan, now), {
+    lead: { model: "FormLead", id: "l".repeat(24) },
+    since: at("2026-10-05T14:00:00Z"),
+    until: at("2026-10-07T18:00:00Z"),
+    source_revision: `repair:${"p".repeat(24)}`,
+    limit_per_kind: SUBJECT_WAKE_SOURCES_PER_KIND,
+    now,
+  });
+  // Never earlier than C4's 14-day lookback before now.
+  assert.equal(repairContactWakeOf(plan, at("2026-10-20T14:00:00Z"))?.since.toISOString(), "2026-10-06T14:00:00.000Z");
+  // The whole window is older than the lookback: nothing to re-derive.
+  assert.equal(repairContactWakeOf(plan, at("2026-10-22T12:00:00Z")), null);
+  // The boundary wins (the start does not move): nothing to re-derive.
+  assert.equal(repairContactWakeOf(repairOf({ observation_captured_at: at("2026-10-01T09:00:00Z") }), now), null);
+});
+
+test("BW1 nominateRepairContactWake: only while the desk wants contact evidence; the C4 nomination gets the window", async () => {
+  const plan = repairOf();
+  const now = at("2026-10-08T12:00:00Z");
+  const requests: unknown[] = [];
+  const nominate = async (request: unknown) => (requests.push(request), 3);
+  assert.equal(await nominateRepairContactWake(plan, now, fakeSession, { wanted: async () => false, nominate }), 0);
+  assert.equal(requests.length, 0, "controls off: nothing nominated (C4's rule, fail closed)");
+  assert.equal(await nominateRepairContactWake(plan, now, fakeSession, { wanted: async () => true, nominate }), 3);
+  assert.deepEqual(requests, [repairContactWakeOf(plan, now)]);
+  let asked = false;
+  const noMove = repairOf({ observation_captured_at: at("2026-10-01T09:00:00Z") });
+  assert.equal(await nominateRepairContactWake(noMove, now, fakeSession, { wanted: async () => ((asked = true), true), nominate }), 0);
+  assert.equal(asked, false, "an empty window reads no configuration");
+});
+
+test("BW1 with C4's store: only the subject's calls and SMS between the old and the new start are re-derived, once", async () => {
+  const store = new MemoryDeskSubjectStore();
+  store.creditedNumbers.set(`FormLead:${"l".repeat(24)}`, [{ id: "n1", e164: "+15550100001" }]);
+  store.creditedNumbers.set("FormLead:other", [{ id: "n2", e164: "+15550100002" }]);
+  const call = (id: string, iso: string, number = "n1") => store.calls.push({ id, contact_number_id: number, started_at: at(iso) });
+  call("c-before-old-start", "2026-10-05T13:59:59Z");
+  call("c-at-old-start", "2026-10-05T14:00:00Z");
+  call("c-between", "2026-10-06T16:00:00Z");
+  call("c-at-new-start", "2026-10-07T18:00:00Z");
+  call("c-after", "2026-10-07T19:00:00Z");
+  call("c-other-lead", "2026-10-06T16:00:00Z", "n2");
+  store.sms.push({ id: "m-between", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-10-06T17:00:00Z") });
+  store.sms.push({ id: "m-scheduled-before-sent-between", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-10-05T12:00:00Z"), send_at: at("2026-10-06T12:00:00Z") });
+  store.sms.push({ id: "m-after", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-10-07T20:00:00Z") });
+  const plan = repairOf();
+  const now = at("2026-10-08T12:00:00Z");
+  const deps = { wanted: async () => true, nominate: store.nominateContactSources.bind(store) };
+  assert.equal(await nominateRepairContactWake(plan, now, fakeSession, deps), 4);
+  assert.deepEqual(
+    [...store.contactJobs.keys()].sort(),
+    [
+      `sod:contact_change:call:c-at-old-start:repair:${"p".repeat(24)}`,
+      `sod:contact_change:call:c-between:repair:${"p".repeat(24)}`,
+      `sod:contact_change:sms:m-between:repair:${"p".repeat(24)}`,
+      `sod:contact_change:sms:m-scheduled-before-sent-between:repair:${"p".repeat(24)}`,
+    ],
+  );
+  await nominateRepairContactWake(plan, now, fakeSession, deps);
+  assert.equal(store.contactJobs.size, 4, "a replay dedupes on the job identity");
 });
