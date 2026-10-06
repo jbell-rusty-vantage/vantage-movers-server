@@ -42,7 +42,7 @@ app.use(
     },
     reconcile: async () => {
       calls.push("reconcile");
-      return { skipped: false, reason: null, pages: 1, checked: 3, nominated: 1, wrapped: true, decision_nominated: 0, decision_deferred: 0, decision_cap: 300 };
+      return { skipped: false, reason: null, pages: 1, checked: 3, nominated: 1, wrapped: true, decision_nominated: 0, decision_deferred: 0, decision_cap: 300, hold_nominated: 0 };
     },
     evaluationSweep: async () => {
       calls.push("sweep");

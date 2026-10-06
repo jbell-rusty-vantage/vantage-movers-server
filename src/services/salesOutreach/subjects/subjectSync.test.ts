@@ -8,6 +8,7 @@ import { DESK_LEAD_PROJECTION, toDeskLeadFacts } from "./leadFacts";
 import { deskDecisionFingerprint } from "./policyMapping";
 import { receivedFactsOf, subjectStatusOf } from "./subjectBuilder";
 import {
+  admissionHoldOf,
   configurationDrivenDesired,
   contactWakeOf,
   ENROLLMENT_WAKE_SOURCES_PER_KIND,
@@ -202,15 +203,19 @@ describe("intake admission gate (outreach_intake; P05e, P10b automatic intake sc
     assert.equal(fx.historical_records_treated_as_fresh, false);
   });
 
-  test("ineligible, closed, unverifiable or ambiguous Leads are not admitted", async () => {
+  test("ineligible or closed Leads are not admitted; the refusal is the job's result (olr B8 admissions read)", async () => {
     assert.equal(intakeAdmissionOf(leadFacts({ duplicate: true }), config, asOf).admit, false);
     assert.equal(intakeAdmissionOf(leadFacts({ booked_id: "b" }), config, asOf).admit, false);
     assert.deepEqual(intakeAdmissionOf(leadFacts({ ...accepted("5", "2026-10-01T14:00:00Z") }), config, asOf), { admit: false, reason: "closed_priority" });
-    assert.deepEqual(intakeAdmissionOf(leadFacts({ timestamp: null }), config, asOf), { admit: false, reason: "received_time_unreliable" });
     const store = new MemoryDeskSubjectStore();
-    const a = store.addLead(leadFacts({ normalized_job_no: "J-1" }));
-    store.addLead(leadFacts({ model: "CallLead", normalized_job_no: "J-1" }));
-    assert.deepEqual(await refreshLeadForOutreach(a.ref, config, asOf, store, fakeSession), { outcome: "not_admitted", subject_id: null, reason: "ambiguous_identity" });
+    const closed = store.addLead(leadFacts({ ...accepted("5", "2026-10-01T14:00:00Z") }));
+    assert.deepEqual(await refreshLeadForOutreach(closed.ref, config, asOf, store, fakeSession), {
+      outcome: "not_admitted",
+      subject_id: null,
+      reason: "closed_priority",
+      status: null,
+      admission: null,
+    });
   });
 
   test("an existing Lead that is not a subject is never auto-enrolled by a later change", async () => {
@@ -220,6 +225,98 @@ describe("intake admission gate (outreach_intake; P05e, P10b automatic intake sc
     const result = await refreshLeadForOutreach(lead.ref, config, asOf, store, fakeSession);
     assert.equal(result.outcome, "not_admitted");
     assert.equal(store.subjects.length, 0);
+  });
+});
+
+describe("olr B8: intake admission hold (ambiguous identity, missing/unreliable received time)", () => {
+  const config = intakeOn();
+  const asOf = at("2026-10-01T15:00:00Z");
+
+  test("an ambiguous fresh Lead is admitted as a review subject with no period; when the other Lead is marked duplicate the first period opens at the clearing sync (activation, desk_decision_at)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const a = store.addLead(leadFacts({ normalized_job_no: "J-1" }));
+    const b = store.addLead(leadFacts({ model: "CallLead", normalized_job_no: "J-1" }));
+    const admitted = await refreshLeadForOutreach(a.ref, config, asOf, store, fakeSession);
+    assert.deepEqual(admitted, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "review", admission: "intake" }, "admitted held, never refused");
+    const held = store.subjects[0]!;
+    assert.deepEqual([held.status, held.review_reasons], ["review", ["ambiguous_identity"]]);
+    assert.equal(held.enrollment.kind, "intake");
+    assert.equal(+held.enrollment.activation_at, +held.received_at!, "a reliable received time keeps the arrival boundary");
+    assert.equal(store.periods.length, 0, "no period while held: nothing is owed");
+    // Still ambiguous: the re-check writes nothing.
+    const writes = store.writes.length;
+    assert.equal((await refreshLeadForOutreach(a.ref, config, at("2026-10-01T15:15:00Z"), store, fakeSession)).outcome, "unchanged");
+    assert.equal(store.writes.length, writes);
+    // The Owner marks the other Lead a Duplicate in Granot: the 15-min hold re-check clears the hold.
+    store.addLead({ ...b, duplicate: true, domain_revision: 2 });
+    const cleared = at("2026-10-01T16:30:00Z");
+    const result = await refreshLeadForOutreach(a.ref, config, cleared, store, fakeSession);
+    assert.deepEqual([result.outcome, result.status], ["updated", "active"]);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+    assert.deepEqual(
+      store.periods.map((p) => [p.workflow, p.start_kind, p.started_at.toISOString(), p.time_basis]),
+      [["new", "activation", cleared.toISOString(), "desk_decision_at"]],
+      "late first period at the clearing sync: no retroactive day, no initial-response clock",
+    );
+  });
+
+  test("missing/unreliable received at intake: review subject, boundary max(gate, created_at), no period; a corrected timestamp opens a late first period", async () => {
+    for (const timestamp of [null, at("2026-10-03T14:00:00Z")]) {
+      const quality = timestamp === null ? "received_time_missing" : "received_time_unreliable";
+      const facts = leadFacts({ timestamp, created_at: at("2026-10-01T14:20:00Z") });
+      const admission = intakeAdmissionOf(facts, config, asOf);
+      assert.ok(admission.admit, quality);
+      assert.equal(+admission.enrollment.activation_at, +at("2026-10-01T14:20:00Z"), "boundary = creation (after the gate), never a guessed arrival");
+      const store = new MemoryDeskSubjectStore();
+      const lead = store.addLead(facts);
+      const created = await refreshLeadForOutreach(lead.ref, config, asOf, store, fakeSession);
+      assert.deepEqual([created.outcome, created.status, created.admission], ["created", "review", "intake"]);
+      assert.deepEqual(store.subjects[0]!.review_reasons, [quality]);
+      assert.equal(store.periods.length, 0, `${quality}: no period while held`);
+      // The timestamp is corrected (the Lead's own change): the hold clears on that sync.
+      store.addLead({ ...lead, timestamp: toFloridaTimestamp(at("2026-10-01T14:10:00Z")), domain_revision: 2 });
+      const fixedAt = at("2026-10-02T15:00:00Z");
+      await refreshLeadForOutreach(lead.ref, config, fixedAt, store, fakeSession);
+      assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+      assert.deepEqual(
+        store.periods.map((p) => [p.start_kind, p.started_at.toISOString(), p.time_basis]),
+        [["activation", fixedAt.toISOString(), "desk_decision_at"]],
+        `${quality}: the late first period starts at the clearing sync`,
+      );
+    }
+  });
+
+  test("the hold applies only before the first period; a closure is never held", () => {
+    const facts = leadFacts({ normalized_job_no: "J-2" });
+    const context = { job_number_counts: new Map([["J-2", 2]]) };
+    const received = receivedFactsOf(facts, asOf);
+    const eligible = { outcome: "eligible" } as Parameters<typeof admissionHoldOf>[0]["eligibility"];
+    assert.deepEqual(admissionHoldOf({ facts, context, eligibility: eligible, received, has_periods: false }), { held: true, reasons: ["ambiguous_identity"] });
+    assert.deepEqual(
+      admissionHoldOf({ facts, context, eligibility: eligible, received, has_periods: true }),
+      { held: false, reasons: [] },
+      "an active subject whose Job Number becomes shared later is untouched",
+    );
+    const closed = { outcome: "closed", reason: "official_booking" } as Parameters<typeof admissionHoldOf>[0]["eligibility"];
+    assert.deepEqual(admissionHoldOf({ facts, context, eligibility: closed, received, has_periods: false }), { held: false, reasons: [] });
+    const missing = receivedFactsOf(leadFacts({ timestamp: null }), asOf);
+    assert.deepEqual(
+      admissionHoldOf({ facts: leadFacts(), context: { job_number_counts: new Map() }, eligibility: eligible, received: missing, has_periods: false }),
+      { held: true, reasons: [] },
+      "the received reasons are the subject's own review reasons",
+    );
+  });
+
+  test("a held subject that is booked closes (the closure is not held)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const a = store.addLead(leadFacts({ normalized_job_no: "J-3" }));
+    store.addLead(leadFacts({ model: "CallLead", normalized_job_no: "J-3" }));
+    await refreshLeadForOutreach(a.ref, config, asOf, store, fakeSession);
+    assert.equal(store.subjects[0]!.status, "review");
+    store.addLead({ ...a, booked_id: "b-1", domain_revision: 2, last_changed_at: at("2026-10-01T17:00:00Z") });
+    await refreshLeadForOutreach(a.ref, config, at("2026-10-01T17:05:00Z"), store, fakeSession);
+    assert.equal(store.subjects[0]!.status, "closed");
+    assert.deepEqual(store.periods.map((p) => [p.workflow, p.start_kind]), [["closed", "activation"]]);
   });
 });
 

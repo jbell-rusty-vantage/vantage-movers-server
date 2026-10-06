@@ -44,6 +44,21 @@ test("outreach_lead_change job: claims its own stage and enrolls a fresh intake 
   assert.equal(store.subjects.length, 1);
 });
 
+test("olr B8: the stored job result names the subject status and the admission path (read by GET /enrollment/admissions)", async () => {
+  const { deps, store } = harness();
+  let stored: unknown;
+  deps.complete = (async (_lease: unknown, mutation: (s: typeof fakeSession) => Promise<unknown>, options: { resultFrom: (value: unknown) => unknown }) => {
+    stored = options.resultFrom(await mutation(fakeSession));
+    return stored;
+  }) as never;
+  await runOutreachLeadChangeJob(undefined, deps);
+  assert.deepEqual(stored, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "active", admission: "intake" });
+  const refused = harness(leadFacts({ created_at: at("2026-09-30T12:00:00Z") }));
+  refused.deps.complete = deps.complete;
+  await runOutreachLeadChangeJob(undefined, refused.deps);
+  assert.deepEqual(stored, { outcome: "not_admitted", subject_id: null, reason: "created_before_intake", status: null, admission: null });
+});
+
 test("no active configuration at admission: nothing is claimed", async () => {
   const { calls, deps } = harness(leadFacts(), fixedConfigurationLoader({ state: "uninitialized" }));
   assert.deepEqual(await runOutreachLeadChangeJob(undefined, deps), { status: "configuration_unavailable" });
