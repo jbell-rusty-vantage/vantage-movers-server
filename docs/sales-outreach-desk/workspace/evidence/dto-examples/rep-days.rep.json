@@ -66,8 +66,14 @@
         "progress": 1,
         "goal_reached": true,
         "other_outbound": {
-          "count": null,
+          "count": 94,
           "label": "Other outbound"
+        },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 14,
+          "actual_awaiting_confirmation": 1
         },
         "coverage": {
           "state": "unknown",

@@ -419,6 +419,70 @@ async function main() {
   await refreshOpenRepDays(refreshAt, { loader: fixedConfigurationLoader(configuration) });
   assert.equal((await Rows.findOne(staleKey).lean())?.publication_revision, corrected?.publication_revision, "a second refresh does not rewrite the corrected row");
 
+  // --- olr C1b: both counts stored, the other scope served, recount-rep-days ---------------------------
+  // The recounts above stored both scopes' counts through the strict model; GET /rep-days and GET /team
+  // serve the other scope as `alternate_scope` / `outbound_calls.alternate`. A row written before C1b
+  // (fields absent) reads null — never 0 — until `recount-rep-days` (dry run writes nothing; apply writes
+  // it; a second run is unchanged). `--materialize-roster` writes a frozen zero row for a roster rep
+  // without a row on a past day.
+  assert.deepEqual(
+    [dayBefore?.actual_confirmed_all, dayBefore?.actual_confirmed_eligible, dayBefore?.actual_awaiting_all, dayBefore?.actual_awaiting_eligible],
+    [2, 1, 0, 0],
+    "C1b: the day before the flip stores both scopes",
+  );
+  assert.deepEqual([dayOf?.actual_confirmed, dayOf?.actual_confirmed_all, dayOf?.actual_confirmed_eligible], [1, 2, 1], "C1b: the headline is the row's scope, both counts stored");
+  const { readRepDays: c1bReadRepDays, readTeam: c1bReadTeam } = await import("../../src/services/salesOutreach/reads/service.js");
+  const c1bOwner = { role: "owner" as const, actor: { kind: "owner" as const, id: "owner-c1b", request_id: "r-c1b", run_id: null }, agent_id: null };
+  const c1bDeps = { loader: fixedConfigurationLoader(scheduled), now: scopeNow };
+  const c1bRep = async (day: string) => (await c1bReadRepDays(c1bOwner, { business_day: day }, c1bDeps)).reps!.find((rep) => rep.agent_id === String(alice))!;
+  assert.deepEqual((await c1bRep(flipDay)).alternate_scope, { count_scope: "all_outbound", count_scope_label: "Outbound calls", actual_confirmed: 2, actual_awaiting_confirmation: 0 });
+  assert.deepEqual((await c1bRep(beforeFlip)).alternate_scope?.actual_confirmed, 1, "the day before the flip: eligible-only is the secondary figure");
+  const c1bTeam = await c1bReadTeam(c1bOwner, { business_day: flipDay }, c1bDeps);
+  assert.deepEqual([c1bTeam.goals?.outbound_calls.actual, c1bTeam.goals?.outbound_calls.alternate], [1, { count_scope: "all_outbound", actual: 2 }], "C1b: /team serves the alternate total");
+  // A row written before C1b: the four fields absent.
+  const preC1b = { agent_id: alice, business_day: beforeFlip };
+  await Rows.collection.updateOne(preC1b, {
+    $unset: { actual_confirmed_all: 1, actual_confirmed_eligible: 1, actual_awaiting_all: 1, actual_awaiting_eligible: 1 },
+    $set: { input_fingerprint: "pre-c1b" },
+  });
+  assert.equal((await c1bRep(beforeFlip)).alternate_scope, null, "a pre-C1b row serves alternate_scope null, never 0");
+  assert.equal((await c1bReadTeam(c1bOwner, { business_day: beforeFlip }, c1bDeps)).goals?.outbound_calls.alternate?.actual, null);
+  const { dryRunRepDayStore, planRecountKeys, readRowsInRange, runRecount, summarizeRecount } = await import("../lib/sales-outreach-recount-rep-days.js");
+  const c1bZero = new mongoose.Types.ObjectId();
+  const c1bConfig = activeInspection(
+    {
+      controls: { desk_enabled: true, goal_metrics_enabled: true },
+      goals: {
+        roster_version: "r1", default_scheduled_goal: 100, zero_goal_rule: "no_goal_today_excluded_from_denominator", effective_day_overrides: [],
+        rep_work_schedules: [String(alice), String(c1bZero)].map((agent_id) => ({ agent_id, working_days: [1, 2, 3, 4, 5, 6, 7] })),
+        count_scope_schedule: [{ from_day: flipDay, scope: "eligible_new_quoted" }],
+      },
+    },
+    "v-c1b",
+    11,
+  );
+  assert.equal(c1bConfig.state, "active");
+  if (c1bConfig.state !== "active") return;
+  const c1bToday = newYorkBusinessDay(scopeNow);
+  const c1bRun = async (apply: boolean) => {
+    const rows = await readRowsInRange(beforeFlip, flipDay);
+    const keys = planRecountKeys({ rows, roster: [String(alice), String(c1bZero)], from: beforeFlip, to: flipDay, today: c1bToday, materialize_roster: true });
+    return summarizeRecount(rows, await runRecount({ keys, loader: fixedConfigurationLoader(c1bConfig), now: scopeNow, store: apply ? mongoRepDayStore : dryRunRepDayStore(mongoRepDayStore), transaction: withTransaction, publishGoal: async () => undefined }));
+  };
+  const c1bDry = await c1bRun(false);
+  assert.deepEqual([c1bDry.keys, c1bDry.materialize_keys, c1bDry.outcomes, c1bDry.both_counts_added, c1bDry.rows_created], [4, 2, { written: 3, unchanged: 1, no_activity: 0, failed: 0 }, 1, 2], JSON.stringify(c1bDry));
+  assert.equal((await Rows.findOne(preC1b).lean())?.actual_confirmed_all, undefined, "the dry run writes nothing");
+  assert.equal(await Rows.countDocuments({ agent_id: c1bZero }), 0);
+  const c1bApplied = await c1bRun(true);
+  assert.deepEqual([c1bApplied.outcomes.written, c1bApplied.outcomes.failed], [3, 0]);
+  const restored = await Rows.findOne(preC1b).lean();
+  assert.deepEqual([restored?.actual_confirmed_all, restored?.actual_confirmed_eligible, restored?.count_scope], [2, 1, "all_outbound"], "apply restores both counts");
+  const zeroes = await Rows.find({ agent_id: c1bZero }).lean();
+  assert.deepEqual(zeroes.map((z) => [z.business_day, z.actual_confirmed_all, z.goal_snapshot?.configuration_version]).sort(), [[beforeFlip, 0, "v-c1b"], [flipDay, 0, "v-c1b"]], "materialized frozen zero rows");
+  assert.equal((await c1bRep(beforeFlip)).alternate_scope?.actual_confirmed, 1);
+  const c1bAgain = await c1bRun(false);
+  assert.deepEqual(c1bAgain.outcomes, { written: 0, unchanged: 4, no_activity: 0, failed: 0 }, "a second run is unchanged for every key");
+
   // --- olr C4: a subject created after its first call re-derives that call ---------------------------
   // The call is derived while its Lead is no subject (`none`); intake then admits the Lead with an
   // activation boundary before the call. The admission's transaction nominates the call's

@@ -20,6 +20,8 @@ export type StoredRepDay = Readonly<{
   coverage_state: string | null;
   /** The scope the row was counted under (olr C1a: a differing configured scope rewrites the row). */
   count_scope: SalesOutreachGoalCountScope | null;
+  /** olr C1b: the row stores both scopes' counts; a row without them is rewritten even when its fingerprint matches. */
+  both_counts: boolean;
 }>;
 
 export type RepDayRefreshRow = Readonly<{
@@ -27,6 +29,8 @@ export type RepDayRefreshRow = Readonly<{
   coverage_state: string | null;
   frozen: boolean;
   count_scope: SalesOutreachGoalCountScope | null;
+  /** olr C1b: whether the row stores both scopes' counts (`actual_confirmed_all` present); false for an older row. */
+  both_counts: boolean;
 }>;
 
 export type RepDayStore = {
@@ -35,7 +39,7 @@ export type RepDayStore = {
   writeRow(fields: RepDayRowFields, previous: StoredRepDay | null, now: Date, session: ClientSession): Promise<number>;
   /** Capture + derivation call watermarks (`loadCallWatermarks`), read inside the recount transaction. */
   watermarks(session: ClientSession): Promise<CallWatermarks>;
-  /** Rows of a day (refresh pass): agent id, coverage state, whether the goal is frozen and the stored count scope. */
+  /** Rows of a day (refresh pass): agent id, coverage state, whether the goal is frozen, the stored count scope and whether both scopes' counts are stored. */
   rowsOfDay(day: string): Promise<RepDayRefreshRow[]>;
 };
 
@@ -57,7 +61,7 @@ export const mongoRepDayStore: RepDayStore = {
 
   async readRow(key, session) {
     const row = (await getSalesOutreachRepDayProjectionModel()
-      .findOne({ agent_id: oid(key.agent_id), business_day: key.business_day }, { goal_snapshot: 1, input_fingerprint: 1, publication_revision: 1, revision: 1, coverage: 1, count_scope: 1 })
+      .findOne({ agent_id: oid(key.agent_id), business_day: key.business_day }, { goal_snapshot: 1, input_fingerprint: 1, publication_revision: 1, revision: 1, coverage: 1, count_scope: 1, actual_confirmed_all: 1 })
       .session(session)
       .lean()) as unknown as {
       goal_snapshot?: GoalSnapshot | null;
@@ -66,6 +70,7 @@ export const mongoRepDayStore: RepDayStore = {
       revision: number;
       coverage?: { state?: string } | null;
       count_scope?: SalesOutreachGoalCountScope | null;
+      actual_confirmed_all?: number | null;
     } | null;
     if (!row) return null;
     return {
@@ -75,6 +80,7 @@ export const mongoRepDayStore: RepDayStore = {
       revision: row.revision ?? 1,
       coverage_state: row.coverage?.state ?? null,
       count_scope: row.count_scope ?? null,
+      both_counts: typeof row.actual_confirmed_all === "number",
     };
   },
 
@@ -86,6 +92,10 @@ export const mongoRepDayStore: RepDayStore = {
       actual_confirmed: fields.actual_confirmed,
       actual_awaiting_confirmation: fields.actual_awaiting_confirmation,
       unattributed: fields.unattributed,
+      actual_confirmed_all: fields.actual_confirmed_all,
+      actual_confirmed_eligible: fields.actual_confirmed_eligible,
+      actual_awaiting_all: fields.actual_awaiting_all,
+      actual_awaiting_eligible: fields.actual_awaiting_eligible,
       remaining: fields.remaining,
       progress: fields.progress,
       goal_state: fields.goal_state,
@@ -114,12 +124,13 @@ export const mongoRepDayStore: RepDayStore = {
 
   async rowsOfDay(day) {
     const rows = (await getSalesOutreachRepDayProjectionModel()
-      .find({ business_day: day }, { agent_id: 1, coverage: 1, count_scope: 1, "goal_snapshot.configuration_version": 1 })
+      .find({ business_day: day }, { agent_id: 1, coverage: 1, count_scope: 1, actual_confirmed_all: 1, "goal_snapshot.configuration_version": 1 })
       .limit(MAX_REFRESH_ROWS)
       .lean()) as unknown as Array<{
       agent_id: unknown;
       coverage?: { state?: string } | null;
       count_scope?: SalesOutreachGoalCountScope | null;
+      actual_confirmed_all?: number | null;
       goal_snapshot?: { configuration_version?: string | null } | null;
     }>;
     return rows.map((row) => ({
@@ -127,6 +138,7 @@ export const mongoRepDayStore: RepDayStore = {
       coverage_state: row.coverage?.state ?? null,
       frozen: Boolean(row.goal_snapshot?.configuration_version),
       count_scope: row.count_scope ?? null,
+      both_counts: typeof row.actual_confirmed_all === "number",
     }));
   },
 };
@@ -154,9 +166,9 @@ export function materializesZeroRow(key: RepDayKey, configuration: ActiveConfigu
 
 /**
  * Recounts one rep-day inside the caller's transaction and writes the row only when its fingerprint
- * changed (publication revision + 1). A rep with no credited, awaiting or other outbound activity and
- * no row gets no row: the read shows zero-call reps from the roster. With `materialize` (olr C5, the
- * refresh pass after New York midnight) a roster rep's past day is written anyway: counts 0, the goal
+ * changed (publication revision + 1). A rep with no confirmed or awaiting outbound call in either scope
+ * (olr C1b: `actual_confirmed_all + actual_awaiting_all === 0`) and no row gets no row: the read shows
+ * zero-call reps from the roster. With `materialize` (olr C5, the refresh pass after New York midnight) a roster rep's past day is written anyway: counts 0, the goal
  * snapshot frozen, coverage computed — the read still shows the 0 as pending until coverage is complete.
  */
 export async function recountRepDay(
@@ -189,12 +201,13 @@ export async function recountRepDay(
     timing: deskTimingOf(configuration.value),
   });
   // The fingerprint covers the scope; the stored-scope check also rewrites a row whose scope field
-  // disagrees with its fingerprint, so the refresh pass never re-selects it forever.
-  if (previous?.input_fingerprint === fields.input_fingerprint && previous.count_scope === fields.count_scope)
+  // disagrees with its fingerprint, so the refresh pass never re-selects it forever; likewise a row that
+  // lacks the two-scope counts (olr C1b) is rewritten once.
+  if (previous?.input_fingerprint === fields.input_fingerprint && previous.count_scope === fields.count_scope && previous.both_counts)
     return { outcome: "unchanged", publication_revision: previous.publication_revision, fields };
   if (
     !previous &&
-    fields.actual_confirmed + fields.actual_awaiting_confirmation + fields.unattributed === 0 &&
+    fields.actual_confirmed_all + fields.actual_awaiting_all === 0 &&
     !(options.materialize && materializesZeroRow(key, configuration, today))
   )
     return { outcome: "no_activity", publication_revision: null, fields };

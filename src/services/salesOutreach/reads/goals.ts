@@ -53,6 +53,14 @@ export type RepDayRow = Readonly<{
   actual_confirmed: number;
   actual_awaiting_confirmation: number;
   unattributed: number;
+  /**
+   * olr C1b: the day under each scope. Absent or null on a row written before both counts were stored —
+   * never read as 0.
+   */
+  actual_confirmed_all?: number | null;
+  actual_confirmed_eligible?: number | null;
+  actual_awaiting_all?: number | null;
+  actual_awaiting_eligible?: number | null;
   coverage: unknown;
   computed_as_of: Date | null;
   publication_revision: number;
@@ -200,6 +208,34 @@ export function fallbackCountScope(goals: Pick<GoalsConfiguration, "count_scope_
   return countScopeForDay(businessDay, goals?.count_scope_schedule);
 }
 
+/** The other of the two count scopes (olr C1b: the secondary figure's scope). */
+export function alternateCountScope(scope: SalesOutreachGoalCountScope): SalesOutreachGoalCountScope {
+  return scope === "all_outbound" ? "eligible_new_quoted" : "all_outbound";
+}
+
+/**
+ * The rep-day's count under the other scope (olr C1b), with the headline's honesty rule: a positive
+ * count is a confirmed lower bound, a 0 only once coverage is complete. A rep without a row reads 0
+ * once coverage is complete (pending before). A row written before both counts were stored is null.
+ */
+function alternateScopeOf(row: RepDayRow | null, scope: SalesOutreachGoalCountScope, complete: boolean): SalesOutreachRepDayDto["alternate_scope"] {
+  const count_scope = alternateCountScope(scope);
+  const label = SALES_OUTREACH_COUNT_SCOPE_LABELS[count_scope];
+  if (!row) {
+    return { count_scope, count_scope_label: label, actual_confirmed: complete ? 0 : null, actual_awaiting_confirmation: complete ? 0 : null };
+  }
+  const all = count_scope === "all_outbound";
+  const confirmed = (all ? row.actual_confirmed_all : row.actual_confirmed_eligible) ?? null;
+  const awaiting = (all ? row.actual_awaiting_all : row.actual_awaiting_eligible) ?? null;
+  if (confirmed === null || awaiting === null) return null;
+  return {
+    count_scope,
+    count_scope_label: label,
+    actual_confirmed: confirmed > 0 || complete ? confirmed : null,
+    actual_awaiting_confirmation: awaiting,
+  };
+}
+
 /** A rep-day row's goal parts; the cadence counts are composed separately (`teamCadence.ts` `composeRepCadence`). */
 export type RepDayGoalDto = Omit<SalesOutreachRepDayDto, "overdue_leads" | "calls_due_today" | "sms_due_today">;
 
@@ -255,6 +291,7 @@ export function composeRepDay(input: {
     progress: cappedProgress(actual, goal.goal),
     goal_reached: reached,
     other_outbound: { count: other, label: SALES_OUTREACH_OTHER_OUTBOUND_LABEL },
+    alternate_scope: alternateScopeOf(row, scope, complete),
     coverage,
     unknown_reason: complete ? null : "coverage_incomplete",
     projection_revision: row?.publication_revision ?? null,
@@ -281,6 +318,19 @@ export function composeTeamGoals(
   }
   const goalReps = roster.filter((rep) => rep.goal_state === "goal");
   const effectiveScope = scope ?? (roster[0]?.count_scope ?? null);
+  // olr C1b: the team's secondary figure sums the roster reps' alternate counts; one unknown (pending,
+  // a pre-C1b row, or a rep presented under another scope) makes the sum unknown, never a partial sum.
+  let alternate: NonNullable<SalesOutreachTeamDto["goals"]>["outbound_calls"]["alternate"] = null;
+  if (effectiveScope && effectiveScope !== "mixed") {
+    const alternateScope = alternateCountScope(effectiveScope);
+    const known = roster.every(
+      (rep) => rep.alternate_scope?.count_scope === alternateScope && rep.alternate_scope.actual_confirmed !== null,
+    );
+    alternate = {
+      count_scope: alternateScope,
+      actual: known ? roster.reduce((sum, rep) => sum + (rep.alternate_scope?.actual_confirmed ?? 0), 0) : null,
+    };
+  }
   return {
     count_scope: effectiveScope,
     count_scope_label: effectiveScope && effectiveScope !== "mixed" ? SALES_OUTREACH_COUNT_SCOPE_LABELS[effectiveScope] : null,
@@ -291,6 +341,7 @@ export function composeTeamGoals(
       incomplete: pending.length > 0,
       pending_agent_ids: pending.map((rep) => rep.agent_id),
       unknown_reason: unknownReason,
+      alternate,
     },
     reps_at_goal: {
       count: goalReps.filter((rep) => rep.goal_reached === true).length,

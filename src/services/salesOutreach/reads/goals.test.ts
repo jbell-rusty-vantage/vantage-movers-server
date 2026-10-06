@@ -307,3 +307,63 @@ test("olr C0 GET /rep-days: a rep with no row reads 0 / no_activity_recorded whe
   const tightRep = repOf(salesOutreachRepDaysSchema.parse(await read(tight)), TEST_AGENT_B);
   assert.deepEqual([tightRep.actual_basis, tightRep.coverage.required_through], ["pending", min(-18).toISOString()]);
 });
+
+test("olr C1b alternate_scope: the other scope's count with the headline's honesty rule; null for a pre-C1b row", () => {
+  const both = (all: number, eligible: number, awaitingAll = 0, awaitingEligible = 0) => ({
+    actual_confirmed_all: all,
+    actual_confirmed_eligible: eligible,
+    actual_awaiting_all: awaitingAll,
+    actual_awaiting_eligible: awaitingEligible,
+  });
+  const goalPart = salesOutreachRepDaySchema.omit({ overdue_leads: true, calls_due_today: true, sms_due_today: true });
+  // All-outbound headline: the alternate is eligible-only.
+  const m1 = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, actual_awaiting_confirmation: 2, unattributed: 21, ...both(30, 9, 2, 1) }));
+  goalPart.parse(m1);
+  assert.deepEqual(m1.alternate_scope, { count_scope: "eligible_new_quoted", count_scope_label: "Outbound calls (New/Quoted leads)", actual_confirmed: 9, actual_awaiting_confirmation: 1 });
+  assert.equal(m1.actual_confirmed, 30, "the headline is unchanged");
+  // Eligible headline: the alternate is all outbound.
+  const m2 = compose(agentOf("b"), repDayRow({ agent_id: agentOf("b"), business_day: DAY, count_scope: "eligible_new_quoted", actual_confirmed: 9, unattributed: 21, ...both(30, 9) }));
+  assert.deepEqual(m2.alternate_scope, { count_scope: "all_outbound", count_scope_label: "Outbound calls", actual_confirmed: 30, actual_awaiting_confirmation: 0 });
+  // Partial coverage: a positive alternate is a lower bound, a 0 is pending.
+  const partialPositive = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, ...both(30, 4) }), PARTIAL);
+  assert.equal(partialPositive.alternate_scope?.actual_confirmed, 4);
+  const partialZero = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, ...both(30, 0) }), PARTIAL);
+  assert.deepEqual([partialZero.actual_confirmed, partialZero.alternate_scope?.actual_confirmed], [30, null]);
+  const completeZero = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, ...both(30, 0) }));
+  assert.equal(completeZero.alternate_scope?.actual_confirmed, 0);
+  // No row: 0 once coverage is complete, pending before.
+  assert.deepEqual(compose(agentOf("c"), null).alternate_scope, { count_scope: "eligible_new_quoted", count_scope_label: "Outbound calls (New/Quoted leads)", actual_confirmed: 0, actual_awaiting_confirmation: 0 });
+  assert.deepEqual([compose(agentOf("c"), null, PARTIAL).alternate_scope?.actual_confirmed, compose(agentOf("c"), null, PARTIAL).alternate_scope?.actual_awaiting_confirmation], [null, null]);
+  // A row written before both counts were stored: null, never a guessed 0.
+  const older = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30 }));
+  assert.equal(older.alternate_scope, null);
+  goalPart.parse(older);
+  const nulls = compose(agentOf("a"), repDayRow({ agent_id: agentOf("a"), business_day: DAY, actual_confirmed: 30, actual_confirmed_all: null, actual_confirmed_eligible: null, actual_awaiting_all: null, actual_awaiting_eligible: null }));
+  assert.equal(nulls.alternate_scope, null);
+});
+
+test("olr C1b team alternate: the roster's sum; actual null when a rep is pending or pre-C1b; null on a mixed day", () => {
+  const both = (agent: string, all: number, eligible: number) =>
+    repDayRow({ agent_id: agentOf(agent), business_day: DAY, actual_confirmed: all, unattributed: all - eligible, actual_confirmed_all: all, actual_confirmed_eligible: eligible, actual_awaiting_all: 0, actual_awaiting_eligible: 0 });
+  const roster = fixture.rows.map((row) => row.rep);
+  // Every roster rep has a C1b row (or no row with complete coverage reads 0).
+  const reps = roster.map((rep, i) => compose(agentOf(rep), i === roster.length - 1 ? null : both(rep, 20 + i, 5 + i)));
+  const team = composeTeamGoals(reps, "all_outbound");
+  const expected = reps.reduce((sum, rep) => sum + (rep.alternate_scope?.actual_confirmed ?? 0), 0);
+  assert.deepEqual(team.outbound_calls.alternate, { count_scope: "eligible_new_quoted", actual: expected });
+  assert.ok(expected > 0);
+  // A pending rep (no row, partial coverage) makes the alternate unknown.
+  const pending = [...reps.slice(0, -1), compose(agentOf(roster.at(-1)!), null, PARTIAL)];
+  assert.deepEqual(composeTeamGoals(pending, "all_outbound").outbound_calls.alternate, { count_scope: "eligible_new_quoted", actual: null });
+  // A pre-C1b row (no two-scope counts) makes it unknown too.
+  const older = [compose(agentOf(roster[0]!), repDayRow({ agent_id: agentOf(roster[0]!), business_day: DAY, actual_confirmed: 12 })), ...reps.slice(1)];
+  assert.equal(composeTeamGoals(older, "all_outbound").outbound_calls.alternate?.actual, null);
+  // A mixed day serves no alternate.
+  assert.equal(composeTeamGoals(reps, "mixed").outbound_calls.alternate, null);
+  // An eligible day's alternate is all outbound.
+  const eligibleRows = roster.map((rep) => compose(agentOf(rep), { ...both(rep, 10, 4), count_scope: "eligible_new_quoted", actual_confirmed: 4 }));
+  assert.deepEqual(composeTeamGoals(eligibleRows, "eligible_new_quoted").outbound_calls.alternate, { count_scope: "all_outbound", actual: 10 * roster.length });
+  // A rep without a row presented under the configured scope while the rows count another: unknown, never a mixed sum.
+  const mismatched = [...eligibleRows.slice(0, -1), compose(agentOf(roster.at(-1)!), null)];
+  assert.equal(composeTeamGoals(mismatched, "eligible_new_quoted").outbound_calls.alternate?.actual, null);
+});
