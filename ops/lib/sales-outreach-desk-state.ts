@@ -27,6 +27,8 @@ import {
 } from "../../src/models/salesOutreach/configuration";
 import { leadNumberE164s, leadPhonesOf } from "../../src/services/numberActivity/leadContactNumber";
 import type { LeadRow } from "../../src/services/numberActivity/leadLink";
+import { configuredRingCentralAccountId } from "../../src/services/numberActivity/accountIdentity";
+import { reviewedRepMailboxes } from "../../src/services/ringcentral/repSms/mailboxes";
 import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { addDays } from "../../src/services/salesOutreach/engine/calendar";
@@ -35,7 +37,7 @@ import { configurationContentHash, type ConfigurationStore } from "../../src/ser
 import { otherOutboundBucketOf, repDayCoverage } from "../../src/services/salesOutreach/contacts/repDay";
 import { deskTimingOf, type DeskTiming } from "../../src/services/salesOutreach/config/timing";
 import { engineCoverageOf } from "../../src/services/salesOutreach/evaluation/inputs";
-import { smsCoverage, type CallWatermarks, type ChannelCoverage } from "../../src/services/salesOutreach/evidence/coverage";
+import { currentSmsMailboxRows, smsCoverage, type CallWatermarks, type ChannelCoverage } from "../../src/services/salesOutreach/evidence/coverage";
 import { newYorkBusinessDay, newYorkDayBounds } from "../../src/services/salesOutreach/reads/businessDay";
 import { mongoOverdueFilter, overdueCutoffs, type OverdueCutoffs } from "../../src/services/salesOutreach/reads/deskStore";
 import { composeFreshness, inStaffedCaptureWindow } from "../../src/services/salesOutreach/reads/freshness";
@@ -292,6 +294,25 @@ export function summarizeWatermark(scope: string, row: Document | null, now: Dat
       consecutive_expiries: typeof row.call_log_sync.consecutive_expiries === "number" ? row.call_log_sync.consecutive_expiries : null,
     };
   return out;
+}
+
+/**
+ * The extension ids of the current rep SMS mailboxes at `now`: the configured account's links effective at `now`,
+ * resolved by `reviewedRepMailboxes` (an extension resolves `reviewed` only through a `sales_rep` authority, so
+ * reading every effective link of the account yields the same set as `listReviewedRepMailboxes`). No account → none.
+ */
+async function currentRepMailboxIds(reader: DeskStateReader, now: Date): Promise<string[]> {
+  const account = configuredRingCentralAccountId();
+  if (!account) return [];
+  const links = await reader.find(
+    "rep_identity_links",
+    { rc_account_id: account, effective_from: { $lte: now }, $or: [{ effective_to: null }, { effective_to: { $gt: now } }] },
+    {
+      projection: { _id: 1, revision: 1, agent_id: 1, rc_account_id: 1, rc_extension_id: 1, role_kind: 1, status: 1, effective_from: 1, effective_to: 1, reviewed_at: 1, reviewed_by: 1 },
+      limit: 1_000,
+    },
+  );
+  return reviewedRepMailboxes(links as never, account, now).map((mailbox) => mailbox.extension_id);
 }
 
 /** Rep SMS mailboxes (`rep_sms:<extension>` rows): how many, never synced, worst lag. Extension ids are not listed. */
@@ -1106,7 +1127,7 @@ export async function collectDeskStateWithSnapshot(reader: DeskStateReader, cont
   const scopeRows = await reader.find(W, { scope: { $in: Object.values(DESK_STATE_SCOPES) } }, { projection: watermarkProjection, limit: 20 });
   const rowOf = (scope: string) => scopeRows.find((r) => r.scope === scope) ?? null;
   const watermarks = Object.fromEntries(Object.entries(DESK_STATE_SCOPES).map(([name, scope]) => [name, summarizeWatermark(scope, rowOf(scope), now)]));
-  const mailboxes = await reader.find(W, { scope: { $regex: /^rep_sms:/ } }, { projection: { _id: 0, known_complete_through: 1, "message_sync.last_success_at": 1 }, limit: 500 });
+  const mailboxes = await reader.find(W, { scope: { $regex: /^rep_sms:/ } }, { projection: { _id: 0, scope: 1, known_complete_through: 1, "message_sync.last_success_at": 1 }, limit: 500 });
   const subscriptions = countsOf(
     await reader.aggregate("ringcentral_webhook_subscriptions", [{ $group: { _id: { purpose: "$purpose", status: "$status" }, n: { $sum: 1 } } }]),
   );
@@ -1326,10 +1347,12 @@ export async function collectDeskStateWithSnapshot(reader: DeskStateReader, cont
 
   // Wave 2 acceptance (OPS-0c): read-time verification, overdue counts, coverage waits, quiet closed rows.
   const smsCaptureEnabled = inspection.state === "active" && inspection.value.controls.rep_sms_capture_enabled;
-  /** The channels' cadence coverage, as the evaluation, the evaluate sweep and every desk read compute it (`engineCoverageOf`). */
-  const cadence: ChannelCoverage = timing
-    ? engineCoverageOf({ calls: marks, sms_known_complete_through: smsCaptureEnabled ? smsCoverage(mailboxes) : null }, timing)
-    : { call: null, sms: null };
+  /**
+   * The channels' cadence coverage, as the evaluation, the evaluate sweep and every desk read compute it (`engineCoverageOf`);
+   * SMS over the current mailboxes only (`currentSmsMailboxRows`, the same `reviewedRepMailboxes` rule as `listReviewedRepMailboxes`).
+   */
+  const smsThrough = smsCaptureEnabled ? smsCoverage(currentSmsMailboxRows(mailboxes, await currentRepMailboxIds(reader, now))) : null;
+  const cadence: ChannelCoverage = timing ? engineCoverageOf({ calls: marks, sms_known_complete_through: smsThrough }, timing) : { call: null, sms: null };
   const activeRows = await findBySubjectPages(reader, J, active, VERIFICATION_PROJECTION);
   const cutoffs = overdueCutoffs(now, cadence);
   const coverageWait = async (channel: "call" | "sms") => {

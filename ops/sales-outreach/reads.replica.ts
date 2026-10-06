@@ -17,6 +17,7 @@
  * - olr A3-fresh: the Call Log row's projection carries the confirmation instants and the observed
  *   watermark; the newest call webhook receipt is one index walk (no blocking sort) that skips receipts
  *   without a telephony session.
+ * - olr SMS hotfix: the evaluation's and the reads' SMS coverage agree and ignore a retired mailbox's frozen row.
  * - `publishOutreachLive` inserts land on a scoped change stream: a Rep stream sees only its own Agent's
  *   hints (plus configuration), an Owner stream sees all.
  */
@@ -288,6 +289,46 @@ async function main() {
   assert.ok(planText.includes("IXSCAN") && !planText.includes('"SORT"'), `index walk without a blocking sort: ${planText}`);
   assert.ok(webhookPlan.executionStats.totalKeysExamined <= 2, "newest-first walk stops at the first telephony receipt");
 
+  // 4f (olr SMS hotfix). SMS coverage on real Mongo: the evaluation's `loadCoverage` and the reads' `readSmsMailboxes`
+  // take the worst watermark over the current reviewed `sales_rep` mailboxes only; a retired link's frozen row is ignored.
+  const { getRepIdentityLinkModel } = await import("../../src/models/RepIdentityLink.js");
+  const { mongoEvaluationStore } = await import("../../src/services/salesOutreach/evaluation/store.js");
+  const { smsCoverage } = await import("../../src/services/salesOutreach/evidence/coverage.js");
+  process.env.RINGCENTRAL_ACCOUNT_ID = "4001";
+  const smsNow = at("2026-10-06T17:30:00.000Z");
+  const repLink = (extension: string, extra: Record<string, unknown> = {}) => ({
+    revision: 1,
+    agent_id: new mongoose.Types.ObjectId(),
+    agent_name_snapshot: `Rep ${extension}`,
+    rc_account_id: "4001",
+    rc_extension_id: extension,
+    role_kind: "sales_rep",
+    status: "reviewed",
+    effective_from: at("2026-10-06T09:00:00.000Z"),
+    effective_to: null,
+    reviewed_at: at("2026-10-06T09:00:00.000Z"),
+    reviewed_by: "owner",
+    ...extra,
+  });
+  await getRepIdentityLinkModel().collection.insertMany([
+    repLink("101", { status: "retired", effective_to: at("2026-10-06T16:52:00.000Z") }),
+    repLink("102"),
+    repLink("103"),
+  ]);
+  await getSalesIntelligenceSyncStateModel().collection.insertMany([
+    { scope: "rep_sms:101", known_complete_through: at("2026-10-06T16:48:00.000Z") },
+    { scope: "rep_sms:102", known_complete_through: at("2026-10-06T17:28:00.000Z") },
+    { scope: "rep_sms:103", known_complete_through: at("2026-10-06T17:25:00.000Z") },
+  ]);
+  const engineSms = (await mongoEvaluationStore.loadCoverage(true, null, smsNow)).sms_known_complete_through;
+  const readRows = await mongoSalesOutreachReadStore.readSmsMailboxes(smsNow);
+  assert.deepEqual(readRows.map((r) => r.scope).sort(), ["rep_sms:102", "rep_sms:103"], "the retired mailbox is not read");
+  assert.deepEqual([engineSms?.toISOString(), smsCoverage(readRows)?.toISOString()], ["2026-10-06T17:25:00.000Z", "2026-10-06T17:25:00.000Z"]);
+  assert.equal((await mongoEvaluationStore.loadCoverage(true, null, at("2026-10-06T16:00:00.000Z"))).sms_known_complete_through?.toISOString(), "2026-10-06T16:48:00.000Z", "before the retirement it still counts");
+  await getSalesIntelligenceSyncStateModel().collection.updateOne({ scope: "rep_sms:103" }, { $set: { known_complete_through: null } });
+  assert.deepEqual([(await mongoEvaluationStore.loadCoverage(true, null, smsNow)).sms_known_complete_through, smsCoverage(await mongoSalesOutreachReadStore.readSmsMailboxes(smsNow))], [null, null], "a current mailbox without a watermark: null");
+  delete process.env.RINGCENTRAL_ACCOUNT_ID;
+
   // 5. Live: scoped change streams over committed publish rows.
   const repStream = watchOutreachLiveEvents({ role: "rep", agent_id: TEST_AGENT_A });
   const ownerStream = watchOutreachLiveEvents({ role: "owner", agent_id: null });
@@ -309,7 +350,7 @@ async function main() {
   await repStream.close();
   await ownerStream.close();
   console.log(
-    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; A2 coverage-aware overdue counts (4 coverages, pre-A2 branch); S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; scoped live streams`,
+    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; A2 coverage-aware overdue counts (4 coverages, pre-A2 branch); S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; SMS coverage over current mailboxes (evaluation = reads); scoped live streams`,
   );
 }
 

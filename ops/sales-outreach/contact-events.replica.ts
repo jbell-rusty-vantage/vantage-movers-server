@@ -984,9 +984,17 @@ async function main() {
     [2, 0, c7WindowStart.toISOString(), String(alice), c7Now.toISOString()]);
   const c7Clean = await c7Pending("rep_sms:102");
   assert.deepEqual([c7Clean?.identity, c7Clean?.association, c7Clean?.since ?? null], [0, 0, null], "C7: a clean mailbox is written zeros");
-  assert.deepEqual(smsPendingOf(await mongoSalesOutreachReadStore.readSmsMailboxes()), {
-    identity: 2, association: 0, window_days: 7, mailboxes: [{ extension_id: "101", agent_id: String(alice), identity: 2, association: 0 }],
-  }, "C7: the read store projects the counters into freshness.sms.pending");
+  // The read store reads only the current mailboxes (olr SMS hotfix), resolved from the configured account.
+  const c7PriorAccount = process.env.RINGCENTRAL_ACCOUNT_ID;
+  process.env.RINGCENTRAL_ACCOUNT_ID = account;
+  try {
+    assert.deepEqual(smsPendingOf(await mongoSalesOutreachReadStore.readSmsMailboxes(c7Now)), {
+      identity: 2, association: 0, window_days: 7, mailboxes: [{ extension_id: "101", agent_id: String(alice), identity: 2, association: 0 }],
+    }, "C7: the read store projects the current mailboxes' counters into freshness.sms.pending");
+  } finally {
+    if (c7PriorAccount === undefined) delete process.env.RINGCENTRAL_ACCOUNT_ID;
+    else process.env.RINGCENTRAL_ACCOUNT_ID = c7PriorAccount;
+  }
   const c7Plan = await Events.find({ source_kind: "sms", verification: { $in: ["pending_identity", "pending_association"] }, event_at: { $gte: c7WindowStart } }).explain("queryPlanner");
   assert.match(JSON.stringify(c7Plan), /sod_contact_kind_verification_event/, "C7: the counters walk the new index");
   assert.deepEqual(await c7Refresh(new Date(c7Now.getTime() + 60_000)), { skipped: true, reason: "fresh" }, "C7: at most every 5 minutes");

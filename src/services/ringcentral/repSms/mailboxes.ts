@@ -1,3 +1,4 @@
+import type { ClientSession } from "mongoose";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { resolveRepIdentityAt, type TemporalRepLink } from "../../salesIntelligence/repIdentity/resolve";
 import { configuredRingCentralAccountId } from "../../numberActivity/accountIdentity";
@@ -40,9 +41,14 @@ export function reviewedRepMailboxes(rows: readonly MailboxLinkRow[], account: s
 
 /**
  * Reads the effective links of the configured account. Without `RINGCENTRAL_ACCOUNT_ID` there is no
- * account to scope to, so there are no mailboxes (fail closed).
+ * account to scope to, so there are no mailboxes (fail closed). `session` keeps the reads inside a
+ * caller's transaction (the desk evaluation's SMS coverage).
  */
-export async function listReviewedRepMailboxes(at: Date, account: string | null = configuredRingCentralAccountId()): Promise<RepMailbox[]> {
+export async function listReviewedRepMailboxes(
+  at: Date,
+  account: string | null = configuredRingCentralAccountId(),
+  session: ClientSession | null = null,
+): Promise<RepMailbox[]> {
   if (!account) return [];
   const rows = (await getRepIdentityLinkModel()
     .find({
@@ -51,6 +57,7 @@ export async function listReviewedRepMailboxes(at: Date, account: string | null 
       effective_from: { $lte: at },
       $or: [{ effective_to: null }, { effective_to: { $gt: at } }],
     })
+    .session(session)
     .lean()) as unknown as MailboxLinkRow[];
   // Re-read every row of those extensions so a conflicting non-sales_rep authority is not hidden.
   const extensions = [...new Set(rows.map((r) => r.rc_extension_id))];
@@ -62,6 +69,7 @@ export async function listReviewedRepMailboxes(at: Date, account: string | null 
       effective_from: { $lte: at },
       $or: [{ effective_to: null }, { effective_to: { $gt: at } }],
     })
+    .session(session)
     .lean()) as unknown as MailboxLinkRow[];
   return reviewedRepMailboxes(all, account, at);
 }

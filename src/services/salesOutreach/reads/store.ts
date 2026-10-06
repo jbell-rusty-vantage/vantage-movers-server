@@ -9,6 +9,7 @@ import { OUTREACH_CONTACT_CALLS_SCOPE } from "../../../config/domain/salesOutrea
 import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
 import { getRingCentralCollectionName } from "../../ringcentral/ringcentral-config";
+import { currentSmsMailboxIds, currentSmsMailboxRows } from "../evidence/coverage";
 import type { CaptureSyncRow } from "./freshness";
 import type { RepDayRow } from "./goals";
 
@@ -36,7 +37,8 @@ export type SalesOutreachReadStore = {
   readCallsCapture(): Promise<CaptureSyncRow | null>;
   /** Newest call webhook receipt instant (telephony session present); null when none was ever received. */
   readLastCallWebhookAt(): Promise<Date | null>;
-  readSmsMailboxes(): Promise<CaptureSyncRow[]>;
+  /** The sync rows of the rep SMS mailboxes current at `at` (`currentSmsMailboxRows`: retired mailboxes are left out). */
+  readSmsMailboxes(at: Date): Promise<CaptureSyncRow[]>;
   readLatestGranotObservationAt(): Promise<Date | null>;
   /** S3's contact-event derivation watermark (`outreach_contact_calls`); null before its first sweep. */
   readContactDerivation(): Promise<ContactDerivationMark | null>;
@@ -221,12 +223,13 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
     return row?.receivedAt instanceof Date ? row.receivedAt : null;
   },
 
-  async readSmsMailboxes() {
+  async readSmsMailboxes(at) {
+    const current = await currentSmsMailboxIds(at);
     const rows = await getSalesIntelligenceSyncStateModel()
       .find({ scope: { $regex: `^${REP_SMS_SYNC_SCOPE_PREFIX}` } }, SMS_SYNC_PROJECTION)
       .limit(MAX_MAILBOXES)
       .lean();
-    return (rows as unknown as SyncStateLean[]).map(toSmsCaptureRow);
+    return currentSmsMailboxRows(rows as unknown as SyncStateLean[], current).map(toSmsCaptureRow);
   },
 
   async readContactDerivation() {
