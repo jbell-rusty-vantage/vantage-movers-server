@@ -37,6 +37,7 @@ function reconcileSummary(partial: Partial<ReconcileSummary>): ReconcileSummary 
     request_id: null,
     cursor_advanced: false,
     known_complete_through: null,
+    observed_complete_through: null,
     gaps_after: 0,
     error_code: null,
     runtime_ms: 0,

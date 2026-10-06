@@ -8,6 +8,7 @@ import type { TouchedInteraction } from "./callLogApplier";
 import {
   ISYNC_LANE_PAGE_BUDGET,
   isyncLaneMinute,
+  isyncLaneSetOf,
   runCallLogIsyncLaneOnce,
   storedTokenUsable,
   type IsyncLaneDeps,
@@ -221,6 +222,34 @@ test("ISync lane: a throttle stores nothing new and reports it; the shared gate 
   assert.equal(calls.writes[0]!.call_log_sync, null, "the stored token is left as it was");
   assert.equal(calls.writes[0]!.isync_lane.last_success_at, null);
   assert.equal(run.woken.length, 0);
+});
+
+test("A3: a run that stores no token keeps the previous last_success_at (sticky, never set to null)", async () => {
+  const { store, calls } = fakeStore(freshToken);
+  const throttle = new RingCentralApiError("throttled", 429, "Too Many Requests", "/call-log-sync", "GET", null, { retryAfterMs: 60_000 });
+  await runCallLogIsyncLaneOnce(laneDeps({ store, pages: [throttle] }).deps);
+  const write = calls.writes[0]!;
+  assert.equal(write.isync_lane.last_success_at, null, "the run itself had no success");
+  const set = isyncLaneSetOf(write, STAFFED);
+  assert.equal("isync_lane.last_success_at" in set, false, "no last_success_at key in the $set: the stored instant stays");
+  assert.equal("isync_lane" in set, false, "the subdocument is never replaced whole");
+  assert.equal(set["isync_lane.last_run_at"], STAFFED);
+  assert.equal(set["isync_lane.last_error_code"], "provider_throttled");
+  assert.equal(set["isync_lane.last_records"], 0);
+  assert.equal("call_log_sync" in set, false, "the stored token is left as it was");
+  assert.equal(set.lease_owner, null);
+});
+
+test("A3: a successful run sets last_success_at through a dotted $set", async () => {
+  const { store, calls } = fakeStore(freshToken);
+  await runCallLogIsyncLaneOnce(laneDeps({ store, pages: [{ records: [], syncType: "ISync", syncToken: "tok-2", syncTime: STAFFED }] }).deps);
+  const set = isyncLaneSetOf(calls.writes[0]!, STAFFED);
+  assert.equal((set["isync_lane.last_success_at"] as Date).getTime(), STAFFED.getTime());
+  assert.equal((set.call_log_sync as { token: string }).token, "tok-2");
+  assert.deepEqual(
+    Object.keys(set).filter((key) => key.startsWith("isync_lane")).sort(),
+    ["isync_lane.last_applied", "isync_lane.last_error_code", "isync_lane.last_records", "isync_lane.last_run_at", "isync_lane.last_success_at"],
+  );
 });
 
 test("ISync lane: a failing record is counted toward quarantine and holds the token (replayed next minute)", async () => {

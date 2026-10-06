@@ -150,12 +150,49 @@ async function main() {
   assert.deepEqual([row?.actual_confirmed, row?.actual_awaiting_confirmation, row?.publication_revision], [1, 0, 2]);
 
   // --- minute sweep: cursor, watermark, lease -----------------------------------------------------
-  await getSalesIntelligenceSyncStateModel().updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: { known_complete_through: new Date("2026-10-05T18:40:00Z") } }, { upsert: true });
+  // olr A3: capture carries both watermarks (the observed one is not capped by provisional rows); the
+  // strict sync-state schema must accept them and the reconcile's sticky success instant.
+  await getSalesIntelligenceSyncStateModel().updateOne(
+    { scope: CALL_LOG_ALL_DIRECTIONS_SCOPE },
+    { $set: { known_complete_through: new Date("2026-10-05T18:40:00Z"), observed_complete_through: new Date("2026-10-05T18:44:00Z"), reconcile_sync_success_at: new Date("2026-10-05T18:58:00Z") } },
+    { upsert: true },
+  );
   const loader = fixedConfigurationLoader(configuration);
   const swept = await sweepContactSources("call", now, { loader });
   assert.equal(swept.caught_up, true);
   const state = await getSalesIntelligenceSyncStateModel().findOne({ scope: "outreach_contact_calls" }).lean();
   assert.equal(state?.known_complete_through?.toISOString(), "2026-10-05T18:40:00.000Z");
+  assert.equal(state?.observed_complete_through?.toISOString(), "2026-10-05T18:44:00.000Z", "A3: the sweep stores the observed derivation watermark");
+  const { loadCallWatermarks, cadenceCallCoverage, goalCallCoverage } = await import("../../src/services/salesOutreach/evidence/coverage.js");
+  const { deskTimingOf } = await import("../../src/services/salesOutreach/config/timing.js");
+  const marks = await withTransaction((session) => loadCallWatermarks(session));
+  assert.deepEqual(
+    [marks.capture_known, marks.capture_observed, marks.derived_known, marks.derived_observed].map((d) => d?.toISOString() ?? null),
+    ["2026-10-05T18:40:00.000Z", "2026-10-05T18:44:00.000Z", "2026-10-05T18:40:00.000Z", "2026-10-05T18:44:00.000Z"],
+    "A3: one find over both call scopes",
+  );
+  assert.ok(marks.coverage_from, "coverage_from from the sweep cursor");
+  assert.equal(cadenceCallCoverage(marks, deskTimingOf(null))?.toISOString(), "2026-10-05T18:38:00.000Z");
+  assert.equal(goalCallCoverage(marks, deskTimingOf(null))?.toISOString(), "2026-10-05T18:42:00.000Z");
+  // olr A3: the ISync lane's dotted $set keeps `isync_lane.last_success_at` when a run stores no token.
+  const { isyncLaneSetOf } = await import("../../src/services/numberActivity/callLogIsyncLane.js");
+  const laneWrite = (success: Date | null, ran: Date) => ({
+    call_log_sync: null,
+    quarantined_records: [],
+    record_failures: [],
+    isync_lane: { last_run_at: ran, last_success_at: success, last_error_code: success ? null : "provider_throttled", last_records: 0, last_applied: 0 },
+  });
+  const SyncState = getSalesIntelligenceSyncStateModel();
+  await SyncState.updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: isyncLaneSetOf(laneWrite(new Date("2026-10-05T18:57:00Z"), new Date("2026-10-05T18:57:00Z")), now) });
+  await SyncState.updateOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }, { $set: isyncLaneSetOf(laneWrite(null, new Date("2026-10-05T18:59:00Z")), now) });
+  const lane = (await SyncState.findOne({ scope: CALL_LOG_ALL_DIRECTIONS_SCOPE }).lean()) as unknown as {
+    isync_lane?: { last_run_at?: Date; last_success_at?: Date | null; last_error_code?: string | null };
+    reconcile_sync_success_at?: Date;
+  } | null;
+  assert.equal(lane?.isync_lane?.last_success_at?.toISOString(), "2026-10-05T18:57:00.000Z", "A3: last_success_at never regresses to null");
+  assert.equal(lane?.isync_lane?.last_run_at?.toISOString(), "2026-10-05T18:59:00.000Z");
+  assert.equal(lane?.isync_lane?.last_error_code, "provider_throttled");
+  assert.equal(lane?.reconcile_sync_success_at?.toISOString(), "2026-10-05T18:58:00.000Z", "A3: the lane write leaves the reconcile's instant alone");
   assert.ok(state?.cursor?.outreach_source_updated_at, "cursor stored");
   const { MongoLeaseStore } = await import("../../src/services/durableWork/leases.js");
   const leases = new MongoLeaseStore(getSalesIntelligenceSyncStateModel());
