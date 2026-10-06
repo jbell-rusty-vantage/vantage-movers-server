@@ -4,7 +4,7 @@
  * the writes are proven on the replica (`ops/numbers-v2/all-numbers.replica.test.ts`).
  */
 import type { DirectoryLookup } from "../../src/services/numberActivity/directory";
-import { leadNumberE164 } from "../../src/services/numberActivity/leadContactNumber";
+import { leadNumberE164s, leadNumberTarget, leadPhonesOf } from "../../src/services/numberActivity/leadContactNumber";
 import type { LeadModel, LeadRow } from "../../src/services/numberActivity/leadLink";
 import { ALLOW_SCHEMA_DRIFT_FLAG } from "./production-writer-guard";
 
@@ -51,31 +51,38 @@ export type MintDecision =
   | { kind: "numbered"; e164: string }
   | { kind: "mint"; e164: string };
 
-/** The ensure-function's input from a Lead row (live phone; a Call Lead's original caller as fallback). */
+/** The ensure-function's input from a Lead row (its four phone paths, `leadPhonesOf`; olr CW1). */
 export function mintSourceOf(row: LeadRow) {
   return {
     _id: String(row._id),
     timestamp: row.timestamp ?? row.createdAt ?? null,
     duplicate: row.duplicate === true,
     bad_lead: row.bad_lead ? String(row.bad_lead) : null,
-    normalized_phone_number: row.normalized_phone_number ?? null,
-    original_caller_phone: row.ringcentral?.original_caller?.normalized_phone_number ?? null,
+    ...leadPhonesOf(row),
   };
+}
+
+/** Every E.164 the Lead's mint may consult (the batch read of existing numbers covers them all); [] for a skipped Lead. */
+export function mintCandidatesOf(model: LeadModel, row: LeadRow): string[] {
+  const plan = leadNumberE164s(model, mintSourceOf(row));
+  return "skip" in plan ? [] : plan.e164s;
 }
 
 /**
  * What the script does for one Lead: the same rules as `ensureLeadContactNumber` (skip Duplicates, Bad
- * Leads, no usable phone, our own DIDs; reuse an existing E.164), decided from a batch read of the
+ * Leads, no usable phone; walk the phones in mint order, reusing an existing E.164 and passing over our own
+ * DIDs: `leadNumberTarget`), decided from a batch read of the
  * existing numbers. `planned` holds the E.164s an earlier Lead of this run mints, so two Leads on one
  * phone mint one number.
  */
 export function decideLeadMint(model: LeadModel, row: LeadRow, existing: ReadonlySet<string>, planned: ReadonlySet<string>,
   directory: DirectoryLookup | null): MintDecision {
-  const plan = leadNumberE164(model, mintSourceOf(row));
+  const plan = leadNumberE164s(model, mintSourceOf(row));
   if ("skip" in plan) return { kind: "skip", reason: plan.skip };
-  if (existing.has(plan.e164) || planned.has(plan.e164)) return { kind: "numbered", e164: plan.e164 };
-  if (directory?.companyNumberByE164(plan.e164)) return { kind: "skip", reason: "company_number" };
-  return { kind: "mint", e164: plan.e164 };
+  // olr CW1: the ensure-function's own walk (`leadNumberTarget`), over the batch-read rows and this run's plan.
+  const target = leadNumberTarget(plan.e164s, (e164) => existing.has(e164) || planned.has(e164), (e164) => Boolean(directory?.companyNumberByE164(e164)));
+  if (target.action === "company_number") return { kind: "skip", reason: "company_number" };
+  return target.action === "reuse" ? { kind: "numbered", e164: target.e164 } : { kind: "mint", e164: target.e164 };
 }
 
 export type MintTally = {

@@ -192,8 +192,9 @@ export async function syncSubject(
     current_status: subject?.status ?? null,
     contact: {
       number_ids: built.contact_number_ids,
-      // The same phone the Lead's number is minted and linked from (olr C2c review fix): live, else a Call Lead's original caller.
-      phone_e164: leadPhoneE164(facts.ref.model, { normalized_phone_number: facts.normalized_phone, original_caller_phone: facts.original_caller_phone }),
+      // The mint's own phone rule (olr C2c review fix, CW1): live, a Call Lead's original caller, then the intake and Granot snapshots.
+      phone_e164: leadPhoneE164(facts.ref.model, { normalized_phone_number: facts.normalized_phone, original_caller_phone: facts.original_caller_phone,
+        ingested_phone: facts.ingested_phone, granot_phone: facts.granot_phone }),
       rule: configuration.value.cadence.no_contact_number_rule,
     },
   });

@@ -185,8 +185,8 @@ export const ADMISSION_HOLD_REASONS: ReadonlySet<string> = new Set(["ambiguous_i
 
 /**
  * olr C2c inputs: the subject's linked Contact Numbers, the E.164 its Lead's number is minted from
- * (`leadPhoneE164`: the live phone, else a Call Lead's original caller; null when there is none or it never
- * forms one) and the Owner's `cadence.no_contact_number_rule`.
+ * (`leadPhoneE164`, the mint's phone rule: the live phone, a Call Lead's original caller, then the intake and
+ * Granot snapshots; null when none forms an E.164) and the Owner's `cadence.no_contact_number_rule`.
  */
 export type DeskSubjectContactFacts = Readonly<{
   number_ids: readonly string[];

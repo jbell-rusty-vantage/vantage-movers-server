@@ -7,7 +7,7 @@ import { getEntityChangeModel } from "../../models/EntityChange";
 import { getSalesIntelligenceSyncStateModel } from "../../models/SalesIntelligenceSyncState";
 import { CsiError } from "../salesIntelligence/auth";
 import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobInput } from "../salesIntelligence/jobs";
-import { ensureLeadContactNumber } from "./leadContactNumber";
+import { ensureLeadContactNumber, leadPhonesOf } from "./leadContactNumber";
 import { payloadHash } from "../salesIntelligence/transactions";
 import { loadLeadRow, numbersForLead, recomputeLeadLink, type LeadLinkChange, type LeadModel, type LeadRow } from "./leadLink";
 import { publishRunnableWakeups } from "./webhookFanout";
@@ -262,8 +262,7 @@ export async function leadLinkJobWork(subjectKey: string, ref: string, session: 
     if (row) {
       // Neither the quote form nor call capture waits on this: the Lead's own job turns its phone into a Contact Number.
       await deps.ensureLeadContactNumber(model, { _id: String(row._id), timestamp: row.timestamp ?? now, duplicate: row.duplicate === true,
-        bad_lead: row.bad_lead ? String(row.bad_lead) : null, normalized_phone_number: row.normalized_phone_number ?? null,
-        original_caller_phone: row.ringcentral?.original_caller?.normalized_phone_number ?? null }, session, jobId, now);
+        bad_lead: row.bad_lead ? String(row.bad_lead) : null, ...leadPhonesOf(row) }, session, jobId, now);
     }
     for (const numberId of await deps.numbersForLead({ model, id: ref }, row, session)) {
       const change = await deps.recomputeLeadLink(numberId, session, { now });

@@ -579,6 +579,17 @@ describe("olr C2c: cadence.no_contact_number_rule (D-C2c; off unless the Owner s
     assert.deepEqual([formStore.subjects[0]!.status, formStore.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
   });
 
+  test("olr CW1: a Lead whose only usable phone is a snapshot will get a number (the mint's phone rule): stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ ...noPhone, granot_phone: "5550100004" }));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ingested_contact_snapshot.normalized_phone_number"));
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "granot_contact_snapshot.normalized_phone_number"));
+    const raw = { _id: "f".repeat(24), ingested_contact_snapshot: { normalized_phone_number: "5550100005" }, granot_contact_snapshot: { normalized_phone_number: " " } };
+    assert.deepEqual([toDeskLeadFacts("FormLead", raw).ingested_phone, toDeskLeadFacts("FormLead", raw).granot_phone], ["5550100005", null]);
+  });
+
   test("review fix: toDeskLeadFacts reads a Call Lead's ringcentral.original_caller phone (projected), never a Form Lead's", () => {
     assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ringcentral.original_caller.normalized_phone_number"));
     const raw = { _id: "f".repeat(24), ringcentral: { original_caller: { normalized_phone_number: "5550100003" } } };

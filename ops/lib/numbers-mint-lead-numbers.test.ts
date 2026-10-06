@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SYNTHETIC_COMPANY_DID, syntheticDirectory } from "../../src/services/numberActivity/fixtures";
-import { decideLeadMint, emptyMintTally, mintSourceOf, parseMintArgs, tallyMint } from "./numbers-mint-lead-numbers";
+import { decideLeadMint, emptyMintTally, mintCandidatesOf, mintSourceOf, parseMintArgs, tallyMint } from "./numbers-mint-lead-numbers";
 
 test("mint args: target required and plain, dry run and desk scope by default, unknown flags refused", () => {
   assert.deepEqual(parseMintArgs(["--target=testdb"]), { target: "testdb", scope: "desk", apply: false, limit: null });
@@ -34,10 +34,25 @@ test("mint decision: skip rules, existing number reused, two Leads on one phone 
     { kind: "mint", e164: "+12025550177" }, "a Call Lead without a live phone mints its original caller");
 });
 
+test("olr CW1 mint decision: snapshot-only Leads mint, the live phone stays first, a DID passes to the next phone; the batch read covers every phone", () => {
+  const directory = syntheticDirectory();
+  const none = new Set<string>();
+  const snapshotOnly = { _id: "s1", granot_contact_snapshot: { normalized_phone_number: "2025550104" } };
+  assert.deepEqual(decideLeadMint("CallLead", snapshotOnly, none, none, directory), { kind: "mint", e164: "+12025550104" });
+  const both = { _id: "s2", normalized_phone_number: "2025550101", ingested_contact_snapshot: { normalized_phone_number: "2025550103" } };
+  assert.deepEqual(decideLeadMint("FormLead", both, new Set(["+12025550103"]), none, directory), { kind: "mint", e164: "+12025550101" });
+  const didFirst = { _id: "s3", normalized_phone_number: SYNTHETIC_COMPANY_DID.slice(2), ingested_contact_snapshot: { normalized_phone_number: "2025550103" } };
+  assert.deepEqual(decideLeadMint("CallLead", didFirst, none, none, directory), { kind: "mint", e164: "+12025550103" });
+  assert.deepEqual(decideLeadMint("CallLead", didFirst, new Set(["+12025550103"]), none, directory), { kind: "numbered", e164: "+12025550103" });
+  assert.deepEqual(mintCandidatesOf("CallLead", didFirst), [SYNTHETIC_COMPANY_DID, "+12025550103"]);
+  assert.deepEqual(mintCandidatesOf("CallLead", { _id: "d", normalized_phone_number: "2025550100", duplicate: true }), []);
+});
+
 test("mint source and tally", () => {
   const received = new Date("2026-08-01T00:00:00Z");
   assert.deepEqual(mintSourceOf({ _id: "c1", createdAt: received, bad_lead: "spam", normalized_phone_number: "2025550100" }),
-    { _id: "c1", timestamp: received, duplicate: false, bad_lead: "spam", normalized_phone_number: "2025550100", original_caller_phone: null });
+    { _id: "c1", timestamp: received, duplicate: false, bad_lead: "spam", normalized_phone_number: "2025550100", original_caller_phone: null,
+      ingested_phone: null, granot_phone: null });
   const tally = emptyMintTally();
   for (const decision of [{ kind: "mint", e164: "+1" }, { kind: "numbered", e164: "+2" }, { kind: "skip", reason: "no_phone" },
     { kind: "skip", reason: "company_number" }, { kind: "mint", e164: "+3" }] as const) tallyMint(tally, decision);
