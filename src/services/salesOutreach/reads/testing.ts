@@ -46,6 +46,8 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   /** Agent record names (no reviewed link needed). */
   agentNames = new Map<string, string>();
   calls: CaptureSyncRow | null = null;
+  /** Newest call webhook receipt (`readLastCallWebhookAt`). */
+  callWebhookAt: Date | null = null;
   mailboxes: CaptureSyncRow[] = [];
   granot: Date | null = null;
   /** Contact-event derivation watermark; null = S3's sweep has not run (every missing row is pending). */
@@ -64,6 +66,9 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   }
   async readCallsCapture() {
     return this.calls;
+  }
+  async readLastCallWebhookAt() {
+    return this.callWebhookAt;
   }
   async readSmsMailboxes() {
     return this.mailboxes;

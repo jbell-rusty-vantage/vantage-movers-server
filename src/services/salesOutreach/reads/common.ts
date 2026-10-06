@@ -1,6 +1,7 @@
 import { SALES_OUTREACH_CONTRACT_VERSION, SALES_OUTREACH_TIMEZONE } from "../../../config/domain/salesOutreach";
 import type { OutreachActor } from "../auth";
 import type { ActiveConfiguration, ConfigurationLoader } from "../config/load";
+import { deskTimingOf } from "../config/timing";
 import { OutreachError } from "../errors";
 import { newYorkBusinessDay } from "./businessDay";
 import { composeFreshness, type SalesOutreachFreshness } from "./freshness";
@@ -54,14 +55,23 @@ export function resolveBusinessDay(requested: string | undefined, now: Date): { 
 
 export async function readFreshness(store: SalesOutreachReadStore, configuration: ActiveConfiguration, now: Date) {
   const smsEnabled = configuration.value.controls.rep_sms_capture_enabled;
-  const [calls, mailboxes, granot] = await Promise.all([
+  const [calls, lastCallWebhookAt, mailboxes, granot] = await Promise.all([
     store.readCallsCapture(),
+    store.readLastCallWebhookAt(),
     smsEnabled ? store.readSmsMailboxes() : Promise.resolve([]),
     store.readLatestGranotObservationAt(),
   ]);
   return {
     calls,
-    freshness: composeFreshness({ now, calls, sms_capture_enabled: smsEnabled, sms_mailboxes: mailboxes, granot_last_observed_at: granot }),
+    freshness: composeFreshness({
+      now,
+      timing: deskTimingOf(configuration.value),
+      calls,
+      last_call_webhook_at: lastCallWebhookAt,
+      sms_capture_enabled: smsEnabled,
+      sms_mailboxes: mailboxes,
+      granot_last_observed_at: granot,
+    }),
   };
 }
 

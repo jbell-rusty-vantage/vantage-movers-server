@@ -75,8 +75,13 @@ Gating (fail closed): uninitialized or unavailable configuration, and `controls.
 
 Common read data: `contract_version: "sod-v1"`, `as_of`, `timezone`, `scope {role, agent_id}`, `configuration_state/version/revision`, `projection_revision` (highest `publication_revision` of the rows read, null when none) and `freshness`:
 
-- `calls` — from the `call_log_all_directions` sync-state row: `fresh` when `known_complete_through` is within 10 minutes of `as_of`, else `delayed`; `unknown` without a row.
-- `sms` — `not_connected` while `controls.rep_sms_capture_enabled` is false; otherwise the worst `rep_sms:<extension>` mailbox row (any mailbox without coverage → `unknown`).
+- `calls` (RINGCENTRAL-CAPTURE §8, outreach lifecycle repair A3-fresh; `reads/freshness.ts` `composeFreshness`, store `readCallsCapture` + `readLastCallWebhookAt`) — from the `call_log_all_directions` sync-state row and the newest call webhook receipt. Thresholds come from `deskTimingOf(configuration)`.
+  - Confirmation instant `last_confirmation_at`: the later of `isync_lane.last_success_at` (minute ISync lane) and the reconcile's own sync success, i.e. `reconcile_sync_success_at`, or on a row written before that field existed, `last_run.finished_at` when that run stored a sync token without a sync error. Outside staffed hours only the reconcile confirms calls.
+  - `last_webhook_at`: the newest `ringcentral_webhook_events` receipt that has a telephony session id (`receivedAt` only; one covered index read, newest first).
+  - Staffed window: New York [07:45, 20:30), the ISync lane's window (`inStaffedCaptureWindow`). Inside it, `last_updated_at` ("Calls updated") is min(confirmation, webhook). Outside it, the webhook is ignored and `last_updated_at` is the confirmation. `age_seconds` is measured from `last_updated_at`.
+  - `fresh` needs all three: the confirmation within `evidence.capture_freshness_tolerance_minutes` (default 10); capture coverage within `evidence.today_coverage_tolerance_minutes` + `evidence.call_settlement_allowance_minutes` (default 25 + 2); and, in the staffed window, a call webhook within `evidence.webhook_silence_minutes` (default 30). Coverage here is `observed_complete_through` (no provisional-row cap), falling back to `known_complete_through`, so a stuck provisional Call Log row does not turn the header red. Cadence verdicts keep the capped watermark. `known_complete_through` is still served as the capped value.
+  - Otherwise `delayed`, with `reason` set to the first that applies: the reconcile's `last_run.error_code`, then `confirmation_stale`, `coverage_behind`, `webhook_silent`. `unknown` when there is neither a confirmation nor a watermark (`reason` is the error code or `no_capture_state`).
+- `sms` — `not_connected` while `controls.rep_sms_capture_enabled` is false; otherwise the worst `rep_sms:<extension>` mailbox row (any mailbox without coverage → `unknown`), `fresh` while it is known complete within `evidence.capture_freshness_tolerance_minutes`. `last_confirmation_at` and `last_webhook_at` are always null for SMS.
 - `granot` — newest `granot_observations.captured_at` (`observed`/`unknown`; no staleness threshold).
 
 Per-rep row (`sales_outreach_rep_day_projections` is read only; lane S3 writes it):
@@ -285,7 +290,7 @@ One module turns the watermarks into "activity is known through T" for the evalu
 - `cadenceCallCoverage(w, timing)` = min(`capture_known` − allowance, `derived_known`); null when either is missing. For verdicts that can establish a miss: a stuck provisional row holds it back.
 - `goalCallCoverage(w, timing)` = min(max(`capture_observed`, `capture_known`) − allowance, max(`derived_observed`, `derived_known`)) (an absent observed value reads as the known one); null when either side is missing. Never behind cadence coverage. For counting (D-A3): a provisional terminal call already counts as confirmed and a non-terminal one as awaiting, so a provisional row does not make the count's coverage incomplete. Falls back to the capped watermarks until the first A3 reconcile run and sweep have written the observed ones.
 - `smsCoverage(rows)`: the worst reviewed mailbox `known_complete_through`; null with no mailbox or any mailbox without one. The evaluation's coverage load uses it.
-- Wiring: A3-cap adds the module and the capture fields only; the engine, rep-days and freshness keep their current inputs until A1 (engine coverage), C0 (rep-day coverage) and A3-fresh land.
+- Wiring: A3-cap adds the module and the capture fields only. The engine and rep-days keep their current inputs until A1 (engine coverage) and C0 (rep-day coverage) land. A3-fresh wires header freshness: `freshness.calls` reads `observed_complete_through`, `reconcile_sync_success_at` and the sticky `isync_lane.last_success_at` (see "Common read data").
 
 ### Rate gate
 

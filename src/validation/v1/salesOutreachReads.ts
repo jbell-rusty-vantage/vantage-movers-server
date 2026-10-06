@@ -94,11 +94,24 @@ export const salesOutreachCoverageSchema = z
 const captureFreshnessSchema = z
   .object({
     state: z.enum(SALES_OUTREACH_CAPTURE_FRESHNESS_STATES),
-    /** Latest successful capture progress (calls: Call Log reconcile; SMS: worst reviewed mailbox). */
+    /**
+     * Latest capture progress. Calls: min(last Call Log confirmation, newest call webhook receipt) in the
+     * staffed window [07:45, 20:30) New York, the confirmation alone outside it (RINGCENTRAL-CAPTURE §8).
+     * SMS: the worst reviewed mailbox's last sync.
+     */
     last_updated_at: nullableInstant,
     known_complete_through: nullableInstant,
+    /** Calls: seconds since `last_updated_at`. SMS: seconds since `known_complete_through`. */
     age_seconds: z.number().int().min(0).nullable(),
+    /**
+     * Why the state is not `fresh` (null when fresh). Free string. Calls: the reconcile's last error code,
+     * else `confirmation_stale` | `coverage_behind` | `webhook_silent`, or `no_capture_state` when unknown.
+     */
     reason: z.string().nullable(),
+    /** Calls diagnostics (olr A3-fresh): last Call Log confirmation (max of ISync lane and reconcile sync success). Null for SMS. */
+    last_confirmation_at: nullableInstant,
+    /** Calls diagnostics (olr A3-fresh): newest call webhook receipt, inside or outside the staffed window. Null for SMS. */
+    last_webhook_at: nullableInstant,
   })
   .strict();
 
