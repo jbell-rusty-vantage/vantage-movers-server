@@ -32,6 +32,11 @@
  *   carries the subject;
  * - P05f/P10a subtraction (olr C4): two Leads enrolled in one cohort at 15:00 ET; the one called twice
  *   earlier that day owes 0 calls on the activation date after the wake drains, the other owes 2;
+ * - subjects without numbers (olr C2a/C2b): a Call Lead received before capture began enrolls with no
+ *   number; the read-only diagnostic lists it as `no_contact_number`, the mint script's dry run writes
+ *   nothing, its apply mints the number (`created_via: call_lead`, audited), links it and nominates the
+ *   subject's lead change in the same transaction; the drained job gives the subject the number and the
+ *   diagnostic reports `no_contact_number: 0`; a rerun writes nothing;
  * - zero-activity days (olr C5): the refresh after New York midnight writes one zero row with a frozen
  *   goal snapshot per roster rep without a row yesterday (strict model, `sod_rep_day_unique`), none
  *   today or off the roster; a second pass rewrites nothing and racing passes converge on one row per rep.
@@ -570,6 +575,64 @@ async function main() {
   await refreshOpenRepDays(c5Next, { loader: fixedConfigurationLoader(c5Config) });
   assert.equal(await Rows.countDocuments({ business_day: "2026-11-02" }), 2);
   assert.ok((await c5Rows("2026-11-02")).every((r) => r.goal_snapshot?.configuration_version === "v-c5"));
+
+  // --- olr C2a/C2b: a Call Lead older than every call gets its Contact Number ------------------------
+  // A Call Lead received before capture began has no number, so its subject enrolls with
+  // `contact_number_ids: []`. The read-only diagnostic names it `no_contact_number`; the mint script's dry
+  // run writes nothing; its apply mints the number (`created_via: call_lead`, audited), links it and, in
+  // the same transaction, nominates the subject's `outreach_lead_change`; draining that job gives the
+  // subject the number and the diagnostic no longer lists it. A rerun writes nothing.
+  const { readOnlyDeskStateReader } = await import("../lib/sales-outreach-desk-state.js");
+  const { collectSubjectsWithoutNumbers } = await import("../lib/sales-outreach-subjects-without-numbers.js");
+  const { runMintLeadNumbers } = await import("../numbers-v2/mint-lead-numbers.js");
+  const { getCallLeadModel } = await import("../../src/models/CallLead.js");
+  const { runOutreachLeadChangeJob } = await import("../../src/services/salesOutreach/subjects/leadChangeJob.js");
+  await getCallLeadModel().createCollection();
+  const c2Lead = new mongoose.Types.ObjectId();
+  const c2Received = new Date("2026-07-27T15:00:00Z");
+  await getCallLeadModel().collection.insertOne({ _id: c2Lead, name: "C2 Caller", timestamp: c2Received, createdAt: c2Received, domain_revision: 1,
+    phone_number: "(555) 010-0088", normalized_phone_number: "5550100088", ringcentral: { telephony_session_id: "s-c2-before-capture" } });
+  const c2Now = new Date();
+  const c2Subject = await withTransaction(async (session) => {
+    const [facts] = await mongoDeskSubjectStore.loadLeads([{ model: "CallLead", id: String(c2Lead) }], session);
+    const context = await loadSubjectPageContext(mongoDeskSubjectStore, [facts!], c2Now, session);
+    return syncSubject({ facts: { ...facts!, ...accepted("0", "2026-07-28T14:00:00Z") }, subject: null,
+      enrollment: { cohort_id: "expansion:c2", kind: "expansion", enrolled_at: c2Now, activation_at: c2Now, manifest_hash: null }, configuration: c4Config, context },
+    mongoDeskSubjectStore, session);
+  });
+  assert.equal(c2Subject.outcome, "created");
+  const Subjects = models.getSalesOutreachSubjectModel();
+  assert.deepEqual((await Subjects.findById(c2Subject.subject_id).lean())?.contact_number_ids, [], "enrolled with no number");
+  const diagnose = () => collectSubjectsWithoutNumbers(readOnlyDeskStateReader(mongoose.connection.db!), { database, now: new Date(), account: null });
+  const c2Before = await diagnose();
+  const c2Row = c2Before.rows.find((row) => row.subject_id === c2Subject.subject_id);
+  assert.deepEqual([c2Row?.reason, c2Row?.lead_model, c2Row?.e164_masked, c2Row?.received_at], ["no_contact_number", "CallLead", "…0088", c2Received.toISOString()]);
+  const quiet = () => undefined;
+  const mintDry = await runMintLeadNumbers([`--target=${database}`], quiet);
+  assert.equal(mintDry.mode, "dry_run");
+  assert.ok((mintDry.numbers_to_create as number) >= 1 && (mintDry.to_mint_by_model as { CallLead: number }).CallLead === 1, JSON.stringify(mintDry));
+  assert.equal(await getContactNumberModel().countDocuments({ e164: "+15550100088" }), 0, "the dry run writes nothing");
+  const mintApplied = await runMintLeadNumbers([`--target=${database}`, "--apply"], quiet) as { applied: { numbers_created: number; links_changed: number;
+    desk_subjects_nominated: number; failures: Record<string, number> }; after: { numbers_to_create: number }; desk_wants_contact_evidence: boolean };
+  assert.deepEqual(mintApplied.applied.failures, {});
+  assert.ok(mintApplied.applied.numbers_created >= 1 && mintApplied.applied.links_changed >= 1);
+  assert.equal(mintApplied.after.numbers_to_create, 0, "nothing left to mint");
+  assert.equal(mintApplied.desk_wants_contact_evidence, true);
+  assert.ok(mintApplied.applied.desk_subjects_nominated >= 1);
+  const c2Number = await getContactNumberModel().findOne({ e164: "+15550100088" }).lean();
+  assert.deepEqual([c2Number?.created_via, String(c2Number?.lead?.id), c2Number?.lead?.model, c2Number?.lead_link?.source, c2Number?.calls?.inbound, c2Number?.calls?.outbound],
+    ["call_lead", String(c2Lead), "CallLead", "automatic", 0, 0], "minted, linked to the Call Lead, zero calls");
+  assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ event_kind: "contact_number_created_from_lead", subject_key: `number:${String(c2Number!._id)}` }), 1);
+  const c2Job = await Jobs.findOne({ stage: "outreach_lead_change", dedupe_key: `sod:lead-change:CallLead:${String(c2Lead)}:link:${String(c2Number!._id)}:r${c2Number!.revision}` }).lean();
+  assert.ok(c2Job, "the link write nominated the subject's lead change in the same transaction");
+  assert.equal((await runOutreachLeadChangeJob(String(c2Job!._id))).status, "completed");
+  assert.deepEqual(((await Subjects.findById(c2Subject.subject_id).lean())?.contact_number_ids ?? []).map(String), [String(c2Number!._id)], "the subject holds its number");
+  const c2After = await diagnose();
+  assert.ok(!c2After.rows.some((row) => row.subject_id === c2Subject.subject_id), "the diagnostic no longer lists it");
+  assert.ok(c2Before.without_numbers.by_reason.no_contact_number >= 1);
+  assert.equal(c2After.without_numbers.by_reason.no_contact_number, 0, "plan §2 C2 acceptance: no subject's phone lacks a Contact Number");
+  const mintAgain = await runMintLeadNumbers([`--target=${database}`, "--apply"], quiet) as { applied: { numbers_created: number; links_changed: number } };
+  assert.deepEqual([mintAgain.applied.numbers_created, mintAgain.applied.links_changed], [0, 0], "a rerun writes nothing");
 
   console.log(JSON.stringify({ ok: true, database }));
 }
