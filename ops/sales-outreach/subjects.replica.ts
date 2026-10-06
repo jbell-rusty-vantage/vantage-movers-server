@@ -11,7 +11,10 @@
  *   until its lease expires, then the run resumes from the checkpoint with no duplicates and the same
  *   activation boundary; re-apply is idempotent; verify is consistent;
  * - the entity_changes tail: durable (applied_at, _id) cursor, overlap pick-up of a late commit,
- *   jobs nominated once per Lead revision; the revision reconcile nominates a drifted Lead.
+ *   jobs nominated once per Lead revision; the revision reconcile nominates a drifted Lead;
+ * - olr B1: a review subject whose priority is accepted a day later opens one late first period
+ *   (`activation`, at the observation time), and the repair script moves a pre-B1 row (intake start
+ *   at the boundary) to that start in one audited transaction with its evaluate nomination, once.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -56,6 +59,7 @@ async function main() {
   const { mongoEnrollmentStore } = await import("../../src/services/salesOutreach/enrollment/store.js");
   const { getSalesOutreachEnrollmentRunModel } = await import("../../src/models/salesOutreach/enrollmentRuns.js");
   const { FINAL01_CADENCE } = await import("../lib/sales-outreach-final01.js");
+  const { applyRepair, reportRepair, REPAIR_EVENT_KIND } = await import("../lib/sales-outreach-repair-late-first-periods.js");
   await connectMongo();
   assert.equal(mongoose.connection.name, database);
 
@@ -194,7 +198,79 @@ async function main() {
   const reconciled = await reconcileOutreachRevisions(new Date());
   assert.ok(reconciled.nominated >= 1);
   assert.ok(await Jobs.exists({ dedupe_key: `sod:lead-change:FormLead:${lead.id}:r9` }));
-  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile");
+
+  // 4. olr B1: intake review subject, priority accepted one day later, on real transactions.
+  const refreshLead = (ref: { model: "FormLead"; id: string }, asOf: string) =>
+    withTransaction(async (session) => refreshLeadForOutreach(ref, (await loader.requireActive(session)), at(asOf), mongoDeskSubjectStore, session));
+  const granotLead = (received: string) =>
+    insertLead({ ingestion_origin: "granot_lead_created", timestamp: at(received), createdAt: at(received), last_changed_at: at(received) });
+  const review = await granotLead("2026-10-04T14:00:00Z");
+  assert.equal((await refreshLead(review, "2026-10-04T14:05:00Z")).outcome, "created", "admitted as a review subject");
+  const reviewSubject = await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(review.id) }).lean();
+  assert.equal(reviewSubject?.status, "review");
+  assert.equal(await Periods.countDocuments({ subject_id: reviewSubject!._id }), 0, "no guessed cadence while in review");
+  const acceptedAt = at("2026-10-05T15:00:00Z");
+  await forms.updateOne(
+    { _id: new mongoose.Types.ObjectId(review.id) },
+    { $set: { granot_priority: "0", last_accepted_granot_observation: { observation_id: oid(), captured_at: acceptedAt }, domain_revision: 2, last_changed_at: acceptedAt } },
+  );
+  await refreshLead(review, "2026-10-05T16:00:00Z");
+  const latePeriods = await Periods.find({ subject_id: reviewSubject!._id }).lean();
+  assert.equal(latePeriods.length, 1, "one period");
+  assert.deepEqual(
+    [latePeriods[0]!.workflow, latePeriods[0]!.start_kind, latePeriods[0]!.started_at.toISOString(), latePeriods[0]!.time_basis],
+    ["new", "activation", acceptedAt.toISOString(), "accepted_observation_captured_at"],
+    "late first period: activation at the observation time, not at received",
+  );
+  assert.equal((await Subjects.findOne({ _id: reviewSubject!._id }).lean())?.status, "active");
+
+  // 5. olr B1 repair script: a pre-B1 row (intake start at the boundary, written a day after its subject).
+  const legacy = await granotLead("2026-10-04T15:00:00Z");
+  await refreshLead(legacy, "2026-10-04T15:05:00Z");
+  const legacySubject = (await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(legacy.id) }).lean())!;
+  await Subjects.collection.updateOne({ _id: legacySubject._id }, { $set: { createdAt: new Date(Date.now() - 86_400_000) } });
+  const observationId = oid();
+  const observedAt = at("2026-10-05T17:30:00Z");
+  await db.collection("granot_observations").insertOne({ _id: observationId, captured_at: observedAt });
+  const legacyPeriodId = oid();
+  await Periods.collection.insertOne({
+    _id: legacyPeriodId,
+    subject_id: legacySubject._id,
+    transition_key: `priority:observation:${observationId}:quoted:1`,
+    policy_version: "replica",
+    activation_boundary: legacySubject.enrollment.activation_at,
+    workflow: "quoted",
+    start_kind: "intake",
+    priority: "1",
+    priority_source_ref: String(observationId),
+    priority_source_revision: 2,
+    started_at: legacySubject.enrollment.activation_at,
+    ended_at: null,
+    end_reason: null,
+    time_basis: "activation_boundary",
+    age_anchor: "2026-10-04",
+    anchor_quality: "instant",
+    adapter_version: "lead-instant-v1",
+    revision: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  const dry = await reportRepair();
+  assert.equal(dry.summary.repairable, 1, "only the pre-B1 row (step 1's intake period was written with its subject)");
+  assert.equal(await Periods.countDocuments({ _id: legacyPeriodId, start_kind: "intake" }), 1, "the dry run writes nothing");
+  const repairRun = await applyRepair({ actor: owner, run_id: "replica-repair" });
+  assert.deepEqual([repairRun.repaired, repairRun.conflicts], [[String(legacyPeriodId)], []]);
+  const repaired = (await Periods.findById(legacyPeriodId).lean())!;
+  assert.deepEqual(
+    [repaired.start_kind, repaired.started_at.toISOString(), repaired.time_basis, repaired.revision],
+    ["activation", observedAt.toISOString(), "accepted_observation_captured_at", 2],
+  );
+  assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ event_kind: REPAIR_EVENT_KIND, "invalidation.target_id": String(legacyPeriodId) }), 1, "one audit row");
+  assert.ok(await Jobs.exists({ dedupe_key: `sod:evaluate:${String(legacySubject._id)}:repair:${String(legacyPeriodId)}`, stage: "outreach_evaluate" }), "evaluate nominated");
+  assert.equal((await reportRepair()).summary.repairable, 0, "dry run reports 0 after the apply");
+  assert.deepEqual((await applyRepair({ actor: owner, run_id: "replica-repair-2" })).repaired, [], "a re-run writes nothing");
+
+  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair");
 }
 
 main()

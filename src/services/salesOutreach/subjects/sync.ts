@@ -7,6 +7,7 @@ import { planPeriodTransition, type PeriodPlan } from "./periodPlanner";
 import { resolveDeskPolicy, type DeskPolicyDecision } from "./policyMapping";
 import type { DeskEnrollment, DeskSubjectRow, DeskSubjectStore, ReadSession, SubjectUpdate } from "./store";
 import {
+  ADMISSION_HOLD_REASONS,
   buildSubjectFacts,
   desiredPeriodOf,
   isReliableReceived,
@@ -59,7 +60,8 @@ export type SubjectSyncOutcome = Readonly<{
  *   assignment, IMPL-07 linked numbers);
  * - P05h eligibility and the P05d/P05e policy decision, from the persisted configuration only;
  * - the policy-period plan: close + open in this same session (one transaction), a repeated accepted
- *   priority or a replayed transition is a no-op, a closure is final;
+ *   priority or a replayed transition is a no-op, a closure is final; a first period opened on a later
+ *   sync (a review subject decided afterwards) is a late `activation` start (olr B1);
  * - CAS on the subject revision, and an `outreach_evaluate` nomination for every new revision.
  * Identical inputs write nothing (no revision bump solely to touch the row).
  */
@@ -92,7 +94,13 @@ export async function syncSubject(
     active,
     desired: desiredPeriodOf(facts, eligibility, decision, context.as_of),
     recorded_keys: new Set(periods.map((p) => p.transition_key)),
-    first_start: { kind: enrollment.kind === "intake" ? "intake" : "activation", boundary: enrollment.activation_at, has_prior_periods: periods.length > 0 },
+    first_start: {
+      kind: enrollment.kind === "intake" ? "intake" : "activation",
+      boundary: enrollment.activation_at,
+      at_enrollment: subject === null,
+      as_of: context.as_of,
+      held_before: (subject?.review_reasons ?? []).some((reason) => ADMISSION_HOLD_REASONS.has(reason)),
+    },
   });
   const activeWorkflowAfter = plan.action === "none" ? (active?.workflow ?? null) : plan.period.workflow;
   const { status, review_reasons } = subjectStatusOf({

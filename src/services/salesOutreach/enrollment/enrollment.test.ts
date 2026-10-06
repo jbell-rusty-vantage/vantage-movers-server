@@ -7,7 +7,8 @@ import { evaluateSubject } from "../engine";
 import { fixture, policyWith } from "../engine/testSupport";
 import { fixedConfigurationLoader } from "../reads/testing";
 import { deskLeadKey, type DeskLeadFacts } from "../subjects/leadFacts";
-import { accepted, deskConfiguration, leadFacts, MemoryDeskSubjectStore, objectId } from "../subjects/testing";
+import { refreshLeadForOutreach } from "../subjects/leadChangeJob";
+import { accepted, deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore, objectId } from "../subjects/testing";
 import { enrollmentManifestHash } from "./classify";
 import { applyEnrollment, listEnrollmentCandidates, reportEnrollment, verifyEnrollment } from "./service";
 import { memoryEnrollmentDeps, MemoryEnrollmentStore } from "./testing";
@@ -288,6 +289,24 @@ describe("enrollment verify and candidates", () => {
     assert.deepEqual(w.subjects.writes, subjectWrites);
     assert.deepEqual(w.store.runs.map((r) => r.run_key).sort(), ["run-v", "verify:run-v"]);
     await assert.rejects(verifyEnrollment({ actor: owner(), run_key: "nope" }, w.deps), (e: unknown) => (e as { code?: string }).code === "NOT_FOUND");
+  });
+
+  test("olr B1: run-enrolled first periods stay at the boundary; later syncs keep verify's first_period_not_at_boundary clean", async () => {
+    const w = world();
+    const leads = seedNew(w.subjects, 6);
+    const { result } = await reportAndApply(w, "run-b1");
+    assert.equal(result.counts.enrolled, 6);
+    // A later Lead change on an enrolled subject (a transition) and a no-op refresh: the first period is untouched.
+    w.subjects.addLead({ ...leads[0]!, ...accepted("1", "2026-10-05T13:00:00Z"), domain_revision: 2 });
+    w.subjects.addLead({ ...leads[1]!, domain_revision: 2 });
+    for (const lead of leads.slice(0, 2)) await refreshLeadForOutreach(lead.ref, configured(), new Date("2026-10-05T14:00:00Z"), w.subjects, fakeSession);
+    for (const subject of w.subjects.subjects) {
+      const [first] = await w.subjects.findPeriods(subject.id);
+      assert.deepEqual([first!.start_kind, first!.started_at.toISOString(), first!.time_basis], ["activation", AS_OF, "activation_boundary"]);
+    }
+    assert.ok(w.subjects.periods.some((p) => p.start_kind === "transition"), "the transition happened");
+    const verified = await verifyEnrollment({ actor: owner(), run_key: "run-b1" }, w.deps);
+    assert.deepEqual([verified.consistent, verified.counts.enrolled_by_run, verified.mismatches.map((m) => m.problem)], [true, 6, []]);
   });
 
   test("candidates: 'Not enrolled — older' and the review list page newest first across both models", async () => {

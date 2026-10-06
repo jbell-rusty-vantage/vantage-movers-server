@@ -164,6 +164,13 @@ export function desiredPeriodOf(facts: DeskLeadFacts, eligibility: DeskEligibili
   return null;
 }
 
+/**
+ * Review reasons that hold a subject's admission (identity or received time not trustworthy). A first
+ * period opened after such a hold clears starts at the decision instant (`desk_decision_at`, olr B1),
+ * because no fact time exists for the hold clearing. B8 adds the hold itself.
+ */
+export const ADMISSION_HOLD_REASONS: ReadonlySet<string> = new Set(["ambiguous_identity", "received_time_unreliable", "received_time_missing"]);
+
 /** Subject status and the current review reasons (recomputed from facts, never accumulated). */
 export function subjectStatusOf(input: {
   eligibility: DeskEligibility;

@@ -45,15 +45,25 @@ export type SalesOutreachWorkflow = (typeof SALES_OUTREACH_WORKFLOWS)[number];
 /**
  * How a policy period started (engine `PeriodStartKind`): `intake` = a fresh Lead arrival (P05e),
  * `transition` = an accepted priority change or closure on an enrolled subject (P05d/P05f),
- * `activation` = the fixed cohort activation boundary of an existing Lead (P10a).
+ * `activation` = the fixed cohort activation boundary of an existing Lead (P10a), or the late first
+ * period of an enrolled subject whose policy became decidable after enrollment (olr B1).
  */
 export const SALES_OUTREACH_PERIOD_START_KINDS = ["intake", "transition", "activation"] as const;
 export type SalesOutreachPeriodStartKind = (typeof SALES_OUTREACH_PERIOD_START_KINDS)[number];
+/**
+ * Which instant a period's `started_at` is (internal; no read DTO serves it):
+ * - `desk_decision_at`: a late first period opened when an admission hold cleared, so no fact time
+ *   exists; it starts at the sync instant (olr B1/B8);
+ * - `configuration_activated_at`: opened because a configuration change made the policy decidable (olr B2).
+ */
 export const SALES_OUTREACH_TIME_BASES = [
   "accepted_observation_captured_at",
   "entity_change_applied_at",
   "activation_boundary",
+  "desk_decision_at",
+  "configuration_activated_at",
 ] as const;
+export type SalesOutreachTimeBasis = (typeof SALES_OUTREACH_TIME_BASES)[number];
 
 export const SALES_OUTREACH_FOLLOWUP_KINDS = ["quoted_date", "callback"] as const;
 export const SALES_OUTREACH_FOLLOWUP_STATUSES = [
