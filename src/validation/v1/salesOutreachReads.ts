@@ -74,6 +74,24 @@ export const SALES_OUTREACH_COUNT_SCOPE_LABELS = {
   eligible_new_quoted: "Outbound calls (New/Quoted leads)",
 } as const satisfies Record<(typeof SALES_OUTREACH_GOAL_COUNT_SCOPES)[number], string>;
 export const SALES_OUTREACH_OTHER_OUTBOUND_LABEL = "Other outbound" as const;
+
+/**
+ * olr C8: "Other outbound" by why the calls did not count (the contact events' `association_reason`;
+ * `unknown` = events derived before the reason was stored). Keys, not an enum value: the admin renders
+ * the labels. Sums to the matching `other_outbound` count.
+ */
+export const salesOutreachOtherOutboundBreakdownSchema = z
+  .object({
+    no_lead: z.number().int().min(0),
+    lead_not_enrolled: z.number().int().min(0),
+    lead_closed: z.number().int().min(0),
+    before_activation: z.number().int().min(0),
+    ambiguous: z.number().int().min(0),
+    not_new_quoted: z.number().int().min(0),
+    unknown: z.number().int().min(0),
+  })
+  .strict();
+export type SalesOutreachOtherOutboundBreakdownDto = z.infer<typeof salesOutreachOtherOutboundBreakdownSchema>;
 export const SALES_OUTREACH_GOAL_STATE_LABELS = {
   goal: null,
   no_goal_today: "No goal today",
@@ -415,8 +433,17 @@ export const salesOutreachRepDaySchema = z
     progress: z.number().min(0).max(1).nullable(),
     /** actual ≥ goal for a positive goal; false on a zero-goal day; null when unknown or not on roster. */
     goal_reached: z.boolean().nullable(),
-    /** Calls kept out of the count (no eligible Lead), labelled "Other outbound". */
-    other_outbound: z.object({ count: z.number().int().min(0).nullable(), label: z.literal(SALES_OUTREACH_OTHER_OUTBOUND_LABEL) }).strict(),
+    /**
+     * Calls kept out of the count (no eligible Lead), labelled "Other outbound". olr C8 `breakdown`: the
+     * same calls by reason; null while `count` is null and for a row written before the breakdown was stored.
+     */
+    other_outbound: z
+      .object({
+        count: z.number().int().min(0).nullable(),
+        label: z.literal(SALES_OUTREACH_OTHER_OUTBOUND_LABEL),
+        breakdown: salesOutreachOtherOutboundBreakdownSchema.nullable(),
+      })
+      .strict(),
     /**
      * olr C1b: the same day counted under the other scope (a secondary figure, never the goal). Same
      * honesty rule as the headline: a positive count is a lower bound, a 0 only once coverage is complete.
@@ -498,6 +525,11 @@ export const salesOutreachTeamGoalsSchema = z
       .object({ count: z.number().int().min(0), of: z.number().int().min(0), pending: z.number().int().min(0) })
       .strict(),
     other_outbound_total: z.number().int().min(0).nullable(),
+    /**
+     * olr C8: roster reps' "Other outbound" breakdowns summed; null when any roster rep's breakdown is
+     * null (pending, or a row written before the breakdown was stored) — never a partial sum.
+     */
+    other_outbound_breakdown: salesOutreachOtherOutboundBreakdownSchema.nullable(),
     roster_size: z.number().int().min(0),
   })
   .strict();

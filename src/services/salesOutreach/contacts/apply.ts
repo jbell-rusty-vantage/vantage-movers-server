@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
+import type { SalesOutreachCallAssociationRule } from "../../../validation/v1/salesOutreach";
 import type { JobInput } from "../../salesIntelligence/jobs";
 import {
   contactEventId,
@@ -24,6 +25,9 @@ import { receiverFillCandidates, type ReceiverFillCandidate } from "./receiverFi
  *    returned for the rep-day recount (queued as `outreach_rep_day` by the consumer, recounted inline
  *    by the sweep);
  * 4. fill an empty Lead receiver from the most recent reviewed-rep call on its subject (`receiverFill.ts`).
+ *
+ * `observe` (olr C8, `ops/sales-outreach/rederive-contact-events.ts`) sees every derived row and whether
+ * it differs from the stored one, so the operator re-derive can report by `association_reason`.
  */
 
 export type ContactSource = Readonly<{ source_kind: "call" | "sms"; source_id: string }>;
@@ -41,6 +45,8 @@ export type ContextRequest = Readonly<{
   account_extensions: ReadonlyArray<{ account: string; extension: string }>;
   number_ids: readonly string[];
   e164s: readonly string[];
+  /** olr C2d: also load the numbers' `other_leads` and their subjects (only for `single_active_subject_on_link`). */
+  other_leads?: boolean;
 }>;
 
 export type ContactEventStore = {
@@ -106,7 +112,11 @@ export function repDayJob(key: RepDayKey, marks: readonly string[]): JobInput {
 export const repDayKeyOf = (key: RepDayKey) => `${key.agent_id}|${key.business_day}`;
 
 /** Also used by the operator desk-receiver backfill (re-derives pre-activation calls). */
-export function contextRequest(calls: readonly CallSourceRow[], sms: readonly SmsSourceRow[]): ContextRequest {
+export function contextRequest(
+  calls: readonly CallSourceRow[],
+  sms: readonly SmsSourceRow[],
+  associationRule?: SalesOutreachCallAssociationRule,
+): ContextRequest {
   const extensions = new Map<string, { account: string; extension: string }>();
   for (const row of calls) {
     const ids = [...row.parties.map((p) => p.extension_id), ...row.legs.map((l) => l.extension_id)];
@@ -116,12 +126,22 @@ export function contextRequest(calls: readonly CallSourceRow[], sms: readonly Sm
     account_extensions: [...extensions.values()],
     number_ids: [...new Set(calls.flatMap((row) => (row.contact_number_id ? [row.contact_number_id] : [])))],
     e164s: [...new Set(sms.flatMap((row) => row.counterpart_numbers))],
+    ...(associationRule === "single_active_subject_on_link" ? { other_leads: true } : {}),
   };
 }
 
+export type ApplyOptions = Readonly<{
+  now: Date;
+  queueRepDays: boolean;
+  /** Sees each derived row and whether its fingerprint differs from the stored row (olr C8 re-derive report). */
+  observe?: (draft: ContactEventDraft, changed: boolean) => void;
+  /** olr C2d: the active configuration's `evidence.call_association_rule` (absent = `number_lead`). */
+  association_rule?: SalesOutreachCallAssociationRule;
+}>;
+
 export async function applyContactSources(
   sources: readonly ContactSource[],
-  options: { now: Date; queueRepDays: boolean },
+  options: ApplyOptions,
   store: ContactEventStore,
   session: ClientSession,
 ): Promise<ApplyResult> {
@@ -130,7 +150,8 @@ export async function applyContactSources(
   // Sequential on purpose: a session cannot run two operations at once inside a transaction.
   const calls = callIds.length ? await store.loadCalls(callIds, session) : [];
   const sms = smsIds.length ? await store.loadSms(smsIds, session) : [];
-  const context = await store.loadContext(contextRequest(calls, sms), session);
+  const loaded = await store.loadContext(contextRequest(calls, sms, options.association_rule), session);
+  const context: DerivationContext = options.association_rule ? { ...loaded, association_rule: options.association_rule } : loaded;
   const drafts = [...calls.map((row) => deriveCallContactEvent(row, context)), ...sms.map((row) => deriveSmsContactEvent(row, context))];
   const ids = drafts.map((d) => contactEventId(d.source_kind, d.source_id));
   const existing = await store.loadEvents(ids, session);
@@ -153,7 +174,9 @@ export async function applyContactSources(
     const draft = drafts[i]!;
     const id = ids[i]!;
     const previous = existing.get(id) ?? null;
-    if (previous?.input_fingerprint === draft.input_fingerprint) continue;
+    const differs = previous?.input_fingerprint !== draft.input_fingerprint;
+    options.observe?.(draft, differs);
+    if (!differs) continue;
     const revision = await store.writeEvent(id, draft, previous, options.now, session);
     changed++;
     const mark = `${draft.source_kind}:${draft.source_id}:v${revision}`;

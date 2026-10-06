@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Document } from "mongodb";
-import { SYNTHETIC_COMPANY_DID } from "../../src/services/numberActivity/fixtures";
+import { SYNTHETIC_COMPANY_DID, syntheticDirectory } from "../../src/services/numberActivity/fixtures";
+import type { LeadRow } from "../../src/services/numberActivity/leadLink";
+import { decideLeadMint } from "./numbers-mint-lead-numbers";
 import type { DeskStateReader } from "./sales-outreach-desk-state";
 import {
   classifyNumberless, collectSubjectsWithoutNumbers, maskE164, parseDiagnosticArgs, shadowingLead, type DiagnosticNumber,
@@ -69,6 +71,39 @@ test("numberless reasons, in order, from the All Numbers link rules", () => {
   assert.equal(classify(lead(), [number("N1", "+12025550100")]), "link_pending");
   assert.equal(classify(lead({ normalized_phone_number: null, ringcentral: { original_caller: { normalized_phone_number: "2025550100" } } })), "no_contact_number",
     "the original caller is a phone path too");
+});
+
+test("olr CW1: the diagnostic and the mint share one phone rule: no_contact_number exactly when the mint creates a number", () => {
+  const directory = syntheticDirectory();
+  const did = SYNTHETIC_COMPANY_DID.slice(2);
+  const leads: Array<[string, Document]> = [
+    ["live", { normalized_phone_number: "2025550101" }],
+    ["original caller only (Call Lead)", { ringcentral: { original_caller: { normalized_phone_number: "2025550102" } } }],
+    ["intake snapshot only", { ingested_contact_snapshot: { normalized_phone_number: "2025550103" } }],
+    ["Granot snapshot only", { granot_contact_snapshot: { normalized_phone_number: "2025550104" } }],
+    ["live is a DID, snapshot usable", { normalized_phone_number: did, granot_contact_snapshot: { normalized_phone_number: "2025550104" } }],
+    ["only a DID", { normalized_phone_number: did }],
+    ["unusable live, usable snapshot", { normalized_phone_number: "12", ingested_contact_snapshot: { normalized_phone_number: "2025550103" } }],
+    ["no phone", {}],
+    ["duplicate", { normalized_phone_number: "2025550101", duplicate: true }],
+  ];
+  const stored: Array<Set<string>> = [new Set(), new Set(["+12025550104"]), new Set(["+12025550101", "+12025550103"])];
+  for (const model of ["CallLead", "FormLead"] as const)
+    for (const [label, fields] of leads)
+      for (const rows of stored) {
+        const lead = { _id: "L1", ...fields };
+        const reason = classifyNumberless({ lead_model: model, lead_id: "L1", lead,
+          numbersByE164: new Map([...rows].map((e164) => [e164, number(`N${e164}`, e164)])), directory }).reason;
+        const decision = decideLeadMint(model, lead as LeadRow, rows, new Set(), directory);
+        assert.equal(reason === "no_contact_number", decision.kind === "mint", `${model} ${label} rows=${[...rows].join(",")}: ${reason} vs ${decision.kind}`);
+        if (decision.kind === "skip") assert.ok(!["no_contact_number", "number_purged", "stale_subject", "excluded_by_owner", "link_truncated", "link_pending"].includes(reason),
+          `${model} ${label}: a Lead the mint skips is not counted as having a phone (${reason})`);
+      }
+  // The case the wave-1 review found: a snapshot-only phone was counted as a phone but never minted.
+  assert.equal(classifyNumberless({ lead_model: "FormLead", lead_id: "L1", lead: { _id: "L1", granot_contact_snapshot: { normalized_phone_number: "2025550104" } },
+    numbersByE164: new Map(), directory }).reason, "no_contact_number");
+  assert.deepEqual(decideLeadMint("FormLead", { _id: "L1", granot_contact_snapshot: { normalized_phone_number: "2025550104" } }, new Set(), new Set(), directory),
+    { kind: "mint", e164: "+12025550104" });
 });
 
 test("shadowed: the subject's numbers credit another Lead (or none)", () => {

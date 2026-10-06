@@ -122,6 +122,7 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
         actual_confirmed_eligible: 1,
         actual_awaiting_all: 1,
         actual_awaiting_eligible: 1,
+        other_outbound: 1,
         coverage: 1,
         computed_as_of: 1,
         publication_revision: 1,
@@ -149,6 +150,8 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
       actual_confirmed_eligible: row.actual_confirmed_eligible ?? null,
       actual_awaiting_all: row.actual_awaiting_all ?? null,
       actual_awaiting_eligible: row.actual_awaiting_eligible ?? null,
+      // olr C8: a row written before the breakdown was stored reads null.
+      other_outbound: row.other_outbound ?? null,
       coverage: row.coverage ?? null,
       computed_as_of: row.computed_as_of ?? null,
       publication_revision: row.publication_revision ?? 0,

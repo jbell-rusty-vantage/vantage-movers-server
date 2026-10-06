@@ -87,7 +87,12 @@ export async function runOutreachContactChangeJob(jobId?: string, deps: ContactJ
       lease,
       async (session) => {
         await recheck(loader, admitted, session);
-        return applyContactSources([source], { now, queueRepDays: true }, deps.store ?? mongoContactEventStore, session);
+        return applyContactSources(
+          [source],
+          { now, queueRepDays: true, association_rule: admitted.value.evidence.call_association_rule },
+          deps.store ?? mongoContactEventStore,
+          session,
+        );
       },
       { resultFrom: (value) => ({ derived: value.derived, changed: value.changed, missing: value.missing, evaluations: value.evaluations, rep_days: value.rep_days.length }) },
     );

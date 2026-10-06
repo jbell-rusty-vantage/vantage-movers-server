@@ -4,6 +4,7 @@
  *
  *   node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts --target=<database>            # dry run (default): reads only
  *   node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts --target=<database> --apply    # enqueues desk jobs
+ *   node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts --target=<database> --all-open [--apply]
  *
  * The phase A migration wrote every number's lead link while the desk still read the attachments, so
  * nothing woke the desk: a lead-link change only wakes it from phase B code (`capture/leadLinkWake.ts`).
@@ -23,17 +24,32 @@
  * Idempotent: the job identities carry the fixed tag `numbers-v2-switch`, so a rerun enqueues nothing
  * new, and once the jobs ran no drift is left to nominate. Production applies pass the
  * production-writer guard. Prints one JSON summary.
+ *
+ * `--all-open` (outreach lifecycle repair C2c, LANE-C §C2 migration): step 1 nominates every non-closed
+ * subject, drifted or not, so a changed subject rule (`cadence.no_contact_number_rule`) is recomputed
+ * for every open subject without waiting for its Lead to change. Those jobs carry the tag
+ * `lane-c-review-rule-r<active configuration revision>`: a rerun under the same revision enqueues
+ * nothing new, and a later PATCH (turning the rule off again) gets fresh identities. Step 2 is unchanged.
+ * Without an active configuration, `--all-open --apply` enqueues nothing (`skipped: configuration_not_active`).
+ *
+ * Step 2 follows the active `evidence.call_association_rule` (olr C2d): under
+ * `single_active_subject_on_link` a call whose number Lead has no subject active at the call expects the
+ * single active `other_leads` subject (`ops/lib/numbers-v2-desk-resync.ts`), so shadow credit is not drift.
  */
 import mongoose from "mongoose";
 import { connectMongo, withTransaction } from "../../src/db";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { enqueueCsiJob } from "../../src/services/salesIntelligence/jobs";
 import { deskWantsContactEvidence, enqueueOutreachContactChangeJobs, type ContactChangeSource } from "../../src/services/salesOutreach/capture/contactChangeWake";
+import { salesOutreachConfigurationLoader } from "../../src/services/salesOutreach/config/load";
 import { assertProductionWriterMatchesDeployment } from "../lib/production-writer-guard";
 import { assertTargetMatchesDatabase } from "../lib/sales-outreach-indexes";
 import { parseNumbersV2Args } from "../lib/numbers-v2";
+import { expectedCallSubject, type ResyncSubject } from "../lib/numbers-v2-desk-resync";
 
 export const DESK_RESYNC_TAG = "numbers-v2-switch";
+/** olr C2c: `--all-open` lead-change tag, per active configuration revision. */
+export const reviewRuleTag = (revision: number) => `lane-c-review-rule-r${revision}`;
 const BATCH = 100;
 const CALL_PAGE = 1_000;
 
@@ -50,7 +66,8 @@ async function inBatches<T>(items: readonly T[], work: (batch: readonly T[], ses
 }
 
 export async function runDeskResync(argv: readonly string[], log: (line: string) => void = console.log) {
-  const args = parseNumbersV2Args(argv, { allowed: ["--apply"] });
+  const allOpen = argv.includes("--all-open");
+  const args = parseNumbersV2Args(argv.filter((arg) => arg !== "--all-open"), { allowed: ["--apply"] });
   assertTargetMatchesDatabase(args.target, getMongoDatabaseName());
   await connectMongo();
   const db = mongoose.connection.useDb(args.target, { useCache: true }).db;
@@ -59,10 +76,12 @@ export async function runDeskResync(argv: readonly string[], log: (line: string)
   // Every Lead → the numbers whose `lead` or `other_leads` hold it; every number → its current Lead.
   const linked = new Map<string, string[]>();
   const currentLead = new Map<string, string>();
+  const otherLeads = new Map<string, string[]>();
   const numbers = db.collection<NumberRow>("contact_numbers")
     .find({ purged_at: null, $or: [{ lead: { $type: "object" } }, { "other_leads.0": { $exists: true } }] }, { projection: { lead: 1, other_leads: 1 } });
   for await (const number of numbers) {
     if (number.lead) currentLead.set(String(number._id), keyOf(number.lead));
+    if (number.other_leads?.length) otherLeads.set(String(number._id), number.other_leads.map(keyOf));
     for (const lead of [...(number.lead ? [number.lead] : []), ...(number.other_leads ?? [])])
       linked.set(keyOf(lead), [...(linked.get(keyOf(lead)) ?? []), String(number._id)]);
   }
@@ -70,8 +89,14 @@ export async function runDeskResync(argv: readonly string[], log: (line: string)
   const subjects = (await db.collection("sales_outreach_subjects")
     .find({ status: { $ne: "closed" } }, { projection: { lead_model: 1, lead_id: 1, status: 1, contact_number_ids: 1, enrollment: 1 } })
     .toArray()) as unknown as SubjectRow[];
-  const subjectByLead = new Map(subjects.map((s) => [keyOf({ model: s.lead_model, id: s.lead_id }), s]));
+  const subjectByLead = new Map<string, ResyncSubject>(subjects.map((s) => [keyOf({ model: s.lead_model, id: s.lead_id }),
+    { id: String(s._id), activation_at: s.enrollment?.activation_at instanceof Date ? s.enrollment.activation_at : null }]));
   const drifted = subjects.filter((s) => !sameIds(s.contact_number_ids ?? [], linked.get(keyOf({ model: s.lead_model, id: s.lead_id })) ?? []));
+  const inspected = await salesOutreachConfigurationLoader.inspect();
+  const active = inspected.state === "active" ? inspected : null;
+  const associationRule = active?.value.evidence.call_association_rule;
+  const leadTag = allOpen ? (active ? reviewRuleTag(active.revision) : null) : DESK_RESYNC_TAG;
+  const toResync = allOpen ? subjects : drifted;
 
   // Calls since the earliest activation whose stored event credits a different subject than the number's current Lead.
   const activations = subjects.map((s) => s.enrollment?.activation_at).filter((at): at is Date => at instanceof Date);
@@ -93,10 +118,9 @@ export async function runDeskResync(argv: readonly string[], log: (line: string)
       for (const call of page) {
         callsChecked += 1;
         if (!events.has(String(call._id))) continue; // not derived yet: the contact sweep owns it
-        const lead = currentLead.get(String(call.contact_number_id));
-        const subject = lead ? subjectByLead.get(lead) : undefined;
-        const activeAtCall = subject?.enrollment?.activation_at && +subject.enrollment.activation_at <= +call.started_at;
-        const expected = subject && activeAtCall ? String(subject._id) : null;
+        const numberId = String(call.contact_number_id);
+        const expected = expectedCallSubject({ number_lead: currentLead.get(numberId) ?? null, other_leads: otherLeads.get(numberId) ?? [],
+          started_at: call.started_at, subject_by_lead: subjectByLead, rule: associationRule });
         if (events.get(String(call._id)) !== expected) calls.push({ source_kind: "call", source_id: String(call._id), source_revision: DESK_RESYNC_TAG });
       }
       if (page.length < CALL_PAGE) break;
@@ -105,25 +129,27 @@ export async function runDeskResync(argv: readonly string[], log: (line: string)
 
   const summary: Record<string, unknown> = {
     mode: args.apply ? "apply" : "dry_run", database: args.target, since: since?.toISOString() ?? null,
-    subjects_checked: subjects.length, subjects_to_resync: drifted.length, calls_checked: callsChecked, calls_to_rederive: calls.length,
+    subjects_checked: subjects.length, subjects_to_resync: toResync.length, calls_checked: callsChecked, calls_to_rederive: calls.length,
+    call_association_rule: associationRule ?? "number_lead",
+    ...(allOpen ? { all_open: true, subjects_drifted: drifted.length, lead_change_tag: leadTag } : {}),
   };
   if (!args.apply) {
     log(JSON.stringify(summary, null, 2));
     return summary;
   }
   await assertProductionWriterMatchesDeployment();
-  if (!(await deskWantsContactEvidence())) {
-    summary.applied = { skipped: "desk_configuration_wants_no_contact_evidence" };
+  if (!leadTag || !(await deskWantsContactEvidence())) {
+    summary.applied = { skipped: leadTag ? "desk_configuration_wants_no_contact_evidence" : "configuration_not_active", ...(leadTag ? {} : { configuration_state: inspected.state }) };
     log(JSON.stringify(summary, null, 2));
     return summary;
   }
   const now = new Date();
-  const leadJobs = await inBatches(drifted, async (batch, session) => {
+  const leadJobs = await inBatches(toResync, async (batch, session) => {
     let created = 0;
     for (const subject of batch) {
       const id = String(subject.lead_id);
       const row = await enqueueCsiJob({ stage: "outreach_lead_change", subject_key: `outreach-lead:${subject.lead_model}:${id}`,
-        dedupe_key: `sod:lead-change:${subject.lead_model}:${id}:${DESK_RESYNC_TAG}`, input_revision: 1, input_refs: [id] }, session, now);
+        dedupe_key: `sod:lead-change:${subject.lead_model}:${id}:${leadTag}`, input_revision: 1, input_refs: [id] }, session, now);
       if ((row as { createdAt?: Date }).createdAt?.getTime() === now.getTime()) created += 1;
     }
     return created;

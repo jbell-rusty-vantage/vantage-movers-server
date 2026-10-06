@@ -344,10 +344,11 @@ test("served rep-days: actual_basis per rep as GET /rep-days composes it, roster
     [
       [agentTail(TEST_AGENT_A), true, true, "projection", 12],
       [agentTail(TEST_AGENT_B), true, false, "no_activity_recorded", 0],
-      ["4494ff", false, true, "projection", 0],
+      // olr CW1: a row that records no outbound call reads like no row: a recorded 0, not a projection.
+      ["4494ff", false, true, "no_activity_recorded", 0],
     ],
   );
-  assert.deepEqual([complete.actual_basis, complete.pending_without_row, complete.goal_metrics_enabled], [{ no_activity_recorded: 1, projection: 2 }, 0, true]);
+  assert.deepEqual([complete.actual_basis, complete.pending_without_row, complete.goal_metrics_enabled], [{ no_activity_recorded: 2, projection: 1 }, 0, true]);
 
   // Capture an hour behind: zero counts are not zeros yet; the roster rep without a row is Pending.
   const behind = composeServedRepDays({ business_day: "2026-10-06", today: "2026-10-06", now: NOW, configuration, rows, marks: { ...covered, capture_known: min(-60) } });

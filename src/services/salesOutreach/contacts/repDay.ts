@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import type { SalesOutreachGoalCountScope } from "../../../config/domain/salesOutreach";
-import type { SalesOutreachGoalCredit } from "../../../config/domain/salesOutreachContacts";
+import {
+  SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS,
+  type SalesOutreachAssociationReason,
+  type SalesOutreachGoalCredit,
+  type SalesOutreachOtherOutboundBreakdown,
+  type SalesOutreachOtherOutboundBucket,
+} from "../../../config/domain/salesOutreachContacts";
 import type { DeskTiming } from "../config/timing";
 import { repDayGoal } from "../engine/credit";
 import { goalCallCoverage, type CallWatermarks } from "../evidence/coverage";
@@ -23,7 +29,10 @@ import { resolveConfiguredGoal, type GoalsConfiguration } from "../reads/goals";
  * - `unattributed` ("Other outbound"): confirmed attempts without an eligible subject, in both scopes
  *   (in M2 they are excluded from the goal until associated);
  * - olr C1b: the confirmed and awaiting counts of both scopes are stored too (`actual_*_all`,
- *   `actual_*_eligible`) and are part of the fingerprint.
+ *   `actual_*_eligible`) and are part of the fingerprint;
+ * - olr C8: `other_outbound` breaks `unattributed` down by the events' `association_reason` (a missing
+ *   reason — an event derived before the field — counts as `unknown`); it always sums to `unattributed`
+ *   and is part of the fingerprint.
  *
  * Goal snapshot (SPECIFICATION §13.4, P08a): from the configured roster/schedule/override via S1's
  * `resolveConfiguredGoal`. Today's row carries no `configuration_version` (the read resolves today from
@@ -43,7 +52,24 @@ export type RepDayEventFacts = Readonly<{
   source_id: string;
   goal_credit: SalesOutreachGoalCredit;
   goal_scope_eligible: boolean;
+  /** olr C8: the event's stored reason; null/absent for an event derived before the field existed. */
+  association_reason?: SalesOutreachAssociationReason | null;
 }>;
+
+/** A breakdown with every bucket at 0 (olr C8). */
+export function emptyOtherOutboundBreakdown(): SalesOutreachOtherOutboundBreakdown {
+  return Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, 0])) as SalesOutreachOtherOutboundBreakdown;
+}
+
+/**
+ * The "Other outbound" bucket of a confirmed event without an eligible subject (olr C8). `eligible` on
+ * such an event (impossible from `derive.ts`: an eligible outbound is in the goal scope) and a missing
+ * reason both read `unknown`, so the breakdown always sums to `unattributed`.
+ */
+export function otherOutboundBucketOf(reason: SalesOutreachAssociationReason | null | undefined): SalesOutreachOtherOutboundBucket {
+  if (!reason || reason === "eligible") return "unknown";
+  return reason;
+}
 
 /**
  * A rep-day's counts (olr C1b): both scopes are counted in one pass. `actual_confirmed` and
@@ -59,6 +85,8 @@ export type RepDayCounts = Readonly<{
   actual_confirmed_eligible: number;
   actual_awaiting_all: number;
   actual_awaiting_eligible: number;
+  /** olr C8: `unattributed` by association reason (sums to `unattributed`). */
+  other_outbound: SalesOutreachOtherOutboundBreakdown;
 }>;
 
 export function countRepDay(events: readonly RepDayEventFacts[], scope: SalesOutreachGoalCountScope): RepDayCounts {
@@ -67,12 +95,14 @@ export function countRepDay(events: readonly RepDayEventFacts[], scope: SalesOut
   let confirmedEligible = 0;
   let awaitingAll = 0;
   let awaitingEligible = 0;
+  const other = emptyOtherOutboundBreakdown();
   for (const event of events) {
     if (seen.has(event.source_id)) continue;
     seen.add(event.source_id);
     if (event.goal_credit === "confirmed") {
       confirmedAll++;
       if (event.goal_scope_eligible) confirmedEligible++;
+      else other[otherOutboundBucketOf(event.association_reason)]++;
     } else if (event.goal_credit === "awaiting_confirmation") {
       awaitingAll++;
       if (event.goal_scope_eligible) awaitingEligible++;
@@ -88,6 +118,7 @@ export function countRepDay(events: readonly RepDayEventFacts[], scope: SalesOut
     actual_confirmed_eligible: confirmedEligible,
     actual_awaiting_all: awaitingAll,
     actual_awaiting_eligible: awaitingEligible,
+    other_outbound: other,
   };
 }
 
@@ -163,6 +194,8 @@ export type RepDayRowFields = {
   actual_confirmed_eligible: number;
   actual_awaiting_all: number;
   actual_awaiting_eligible: number;
+  /** olr C8: "Other outbound" by association reason; sums to `unattributed`. */
+  other_outbound: SalesOutreachOtherOutboundBreakdown;
   remaining: number | null;
   progress: number | null;
   goal_state: "goal" | "no_goal_today" | "not_on_roster";

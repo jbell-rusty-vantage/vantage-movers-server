@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
+import { leadPhoneE164 } from "../../numberActivity/leadContactNumber";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ActiveConfiguration } from "../config/load";
 import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
@@ -131,7 +132,10 @@ const wantsContactEvidence = (configuration: ActiveConfiguration) =>
  *   (`configurationDrivenDesired`); a stamp-only change is bookkeeping;
  * - CAS on the subject revision, and an `outreach_evaluate` nomination for every new revision;
  * - olr C4: a created subject, or a past-effective period change, nominates `outreach_contact_change`
- *   for the calls and SMS it re-contextualizes (`contactWakeOf`), in this same transaction.
+ *   for the calls and SMS it re-contextualizes (`contactWakeOf`), in this same transaction;
+ * - olr C2c: with `cadence.no_contact_number_rule: review_no_cadence`, a subject with no linked number
+ *   whose Lead's live phone forms no E.164 is `review` (`no_contact_number`); a link arriving later
+ *   (`capture/leadLinkWake.ts` nominates this sync) or a phone edit clears it.
  * Identical inputs write nothing (no revision bump solely to touch the row).
  */
 export async function syncSubject(
@@ -186,6 +190,13 @@ export async function syncSubject(
     received: built,
     active_workflow: activeWorkflowAfter,
     current_status: subject?.status ?? null,
+    contact: {
+      number_ids: built.contact_number_ids,
+      // The mint's own phone rule (olr C2c review fix, CW1): live, a Call Lead's original caller, then the intake and Granot snapshots.
+      phone_e164: leadPhoneE164(facts.ref.model, { normalized_phone_number: facts.normalized_phone, original_caller_phone: facts.original_caller_phone,
+        ingested_phone: facts.ingested_phone, granot_phone: facts.granot_phone }),
+      rule: configuration.value.cadence.no_contact_number_rule,
+    },
   });
 
   let subjectId: string;

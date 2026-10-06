@@ -236,16 +236,24 @@ export const mongoContactEventStore: ContactEventStore = {
     const numberIds = [...new Set([...request.number_ids, ...numbersByE164.values()])];
 
     // All Numbers: a call credits the number's current Lead (`contact_numbers.lead`), when that Lead is a desk subject.
+    // olr C2d: with `single_active_subject_on_link` the numbers' `other_leads` (and their subjects) are loaded too.
     const linked = new Map<string, DeskLeadKey[]>();
+    const others = new Map<string, DeskLeadKey[]>();
     const restrictions = new Map<string, RestrictionInterval[]>();
     const subjects = new Map<DeskLeadKey, SubjectFacts>();
     if (numberIds.length) {
+      const projection = request.other_leads
+        ? { "lead.model": 1, "lead.id": 1, "other_leads.model": 1, "other_leads.id": 1 }
+        : { "lead.model": 1, "lead.id": 1 };
       const numbers = await getContactNumberModel()
-        .find({ _id: { $in: numberIds.map(oid) } }, { "lead.model": 1, "lead.id": 1 })
+        .find({ _id: { $in: numberIds.map(oid) } }, projection)
         .session(session)
         .lean();
-      for (const row of numbers as Array<{ _id: unknown; lead?: { model: string; id: unknown } | null }>) {
+      type LinkRef = { model: string; id: unknown };
+      for (const row of numbers as Array<{ _id: unknown; lead?: LinkRef | null; other_leads?: LinkRef[] | null }>) {
         if (row.lead) linked.set(String(row._id), [`${row.lead.model}:${String(row.lead.id)}` as DeskLeadKey]);
+        const rest = (row.other_leads ?? []).filter((lead) => (LEAD_MODELS as readonly string[]).includes(lead.model));
+        if (request.other_leads && rest.length) others.set(String(row._id), rest.map((lead) => `${lead.model}:${String(lead.id)}` as DeskLeadKey));
       }
       const restrictionRows = await getSalesIntelligenceContactRestrictionModel()
         .find({ contact_number_id: { $in: numberIds.map(oid) } }, { contact_number_id: 1, channels: 1, until: 1, resolved_at: 1, createdAt: 1 })
@@ -259,7 +267,7 @@ export const mongoContactEventStore: ContactEventStore = {
         list.push({ channels: row.channels, from: row.createdAt, to });
         restrictions.set(String(row.contact_number_id), list);
       }
-      const leads = [...new Set([...linked.values()].flat())];
+      const leads = [...new Set([...linked.values(), ...others.values()].flat())];
       if (leads.length) {
         const or = LEAD_MODELS.flatMap((model) => {
           const ids = leads.filter((key) => key.startsWith(`${model}:`)).map((key) => oid(key.slice(model.length + 1)));
@@ -297,7 +305,14 @@ export const mongoContactEventStore: ContactEventStore = {
         }
       }
     }
-    return { links, linked_leads: linked, subjects, restrictions, numbers_by_e164: numbersByE164 };
+    return {
+      links,
+      linked_leads: linked,
+      subjects,
+      restrictions,
+      numbers_by_e164: numbersByE164,
+      ...(request.other_leads ? { other_leads: others } : {}),
+    };
   },
 
   async loadEvents(ids, session) {

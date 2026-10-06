@@ -501,3 +501,51 @@ test("B3: guard order is C1a count scope first, B3 engine policy second (olr §3
     },
   );
 });
+
+// ---- olr C2c/C2d: cadence.no_contact_number_rule, evidence.call_association_rule ------------------
+
+test("C2cd: the revision-5 value (neither rule) re-parses to the same hash; both keys stay absent", () => {
+  const parsed = salesOutreachConfigurationValueSchema.parse(revision5());
+  assert.equal(configurationContentHash(parsed), REVISION_5_HASH);
+  assert.equal("no_contact_number_rule" in parsed.cadence, false, "no default leaks into old versions");
+  assert.equal("call_association_rule" in parsed.evidence, false, "no default leaks into old versions");
+});
+
+test("C2cd PATCH: only the known rule values are accepted (400 INVALID_INPUT otherwise); set values are hashed and load active", async () => {
+  const db = new MemoryConfigurationDb();
+  storeRaw(db, revision5(), REVISION_5_HASH);
+  const attempt = (mutate: (value: ReturnType<typeof revision5>) => void, key: string, expected = 5) => {
+    const value = revision5();
+    mutate(value);
+    return patchSalesOutreachConfiguration({ actor: owner, idempotency_key: `c2cd-${key}`, expected_revision: expected, value }, db.deps());
+  };
+  const refusedAt = async (promise: Promise<unknown>, path: string) =>
+    assert.rejects(promise, (error: unknown) => {
+      assert.ok(error instanceof OutreachError);
+      assert.equal(error.code, "INVALID_INPUT");
+      assert.ok(error.issues!.some((i) => i.path === path), JSON.stringify(error.issues));
+      return true;
+    });
+  await refusedAt(attempt((v) => void (v.cadence!.no_contact_number_rule = "review"), "bad-c"), "cadence.no_contact_number_rule");
+  await refusedAt(attempt((v) => void (v.cadence!.no_contact_number_rule = null), "null-c"), "cadence.no_contact_number_rule");
+  await refusedAt(attempt((v) => void (v.evidence!.call_association_rule = "any_subject_on_link"), "bad-d"), "evidence.call_association_rule");
+  await refusedAt(attempt((v) => void (v.evidence!.call_association_rule = null), "null-d"), "evidence.call_association_rule");
+  assert.equal(db.pointer!.revision, 5, "nothing written");
+
+  const onC = await attempt((v) => void (v.cadence!.no_contact_number_rule = "review_no_cadence"), "on-c");
+  assert.deepEqual([onC.response.changed, onC.response.revision], [true, 6]);
+  assert.notEqual(onC.response.content_hash, REVISION_5_HASH);
+  const onD = await attempt((v) => {
+    v.cadence!.no_contact_number_rule = "review_no_cadence";
+    v.evidence!.call_association_rule = "single_active_subject_on_link";
+  }, "on-d", 6);
+  assert.equal(onD.response.revision, 7);
+  const active = await createConfigurationLoader(db.store).requireActive();
+  assert.deepEqual([active.value.cadence.no_contact_number_rule, active.value.evidence.call_association_rule], ["review_no_cadence", "single_active_subject_on_link"]);
+  // Explicit `number_lead` is valid (= absent behaviour) and a real content change.
+  const explicit = await attempt((v) => void (v.evidence!.call_association_rule = "number_lead"), "explicit-d", 7);
+  assert.equal(explicit.response.revision, 8);
+  // Rollback = PATCH the keys absent again: the revision-5 content hash comes back.
+  const back = await attempt(() => undefined, "rollback", 8);
+  assert.deepEqual([back.response.changed, back.response.content_hash], [true, REVISION_5_HASH]);
+});

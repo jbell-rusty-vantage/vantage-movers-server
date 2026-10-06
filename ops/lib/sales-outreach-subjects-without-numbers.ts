@@ -5,15 +5,21 @@
  * Two populations, classified with the All Numbers link rules (CONTRACT §3, `numberActivity/leadLink.ts`):
  * - `contact_number_ids` empty, with one reason (first match wins, in this order):
  *   `lead_missing` (the Lead row is gone), `no_phone` (no phone path), `phone_not_e164` (a phone path
- *   that forms no E.164), `company_number` (every E.164 is one of our DIDs), `lead_not_candidate` (a
- *   Duplicate or Bad Lead: never a link candidate), `no_contact_number` (no row for any E.164; C2b mints
- *   it), `number_purged`, `stale_subject` (a number's link holds the Lead but the subject was not
+ *   that forms no E.164), `company_number` (the mint would number none of its phones: each is one of our
+ *   DIDs, or the first numbered one is), `lead_not_candidate` (a Duplicate or Bad Lead: never a link
+ *   candidate), `no_contact_number` (the C2b mint would create its number now), `number_purged`,
+ *   `stale_subject` (a number's link holds the Lead but the subject was not
  *   re-synced: desk-resync drift), `excluded_by_owner` (the Owner unlinked the Lead), `link_truncated`
  *   (the number lists `OTHER_LEADS_MAX` other Leads and this one is beyond them), `link_pending` (the
  *   number exists and the Lead is a candidate, but the link was not recomputed yet);
  * - `contact_number_ids` non-empty but the Lead is no number's `lead`: `shadowed`, with the shadowing
  *   Lead's state (`active_subject` = a non-closed desk subject, `closed_subject`, `not_enrolled`, or
  *   `no_lead` when the subject's numbers have no Lead at all). Calls to those numbers never credit it.
+ *
+ * Phones: the Lead's E.164s and the number the mint would reuse or create come from the mint's own rule
+ * (olr CW1: `leadPhoneE164Candidates` + `leadNumberTarget` in `numberActivity/leadContactNumber.ts`), so
+ * `no_contact_number` is exactly "the mint creates a number for this Lead" and a phone this diagnostic
+ * counts is a phone the mint numbers.
  *
  * Read-only by construction (the `DeskStateReader` of OPS-0 plus its driver guard in the CLI). The output
  * is counts plus at most `LISTED_ROWS` rows of ids, the received time, the reason and the phone masked to
@@ -22,7 +28,8 @@
 import type { Document, ObjectId } from "mongodb";
 import { SALES_OUTREACH_LEAD_MODELS } from "../../src/config/domain/salesOutreach";
 import { buildDirectoryLookup, type DirectoryLookup } from "../../src/services/numberActivity/directory";
-import { leadPhoneE164s, OTHER_LEADS_MAX, type LeadRow } from "../../src/services/numberActivity/leadLink";
+import { leadNumberTarget, leadPhoneE164Candidates, leadPhonesOf } from "../../src/services/numberActivity/leadContactNumber";
+import { OTHER_LEADS_MAX, type LeadModel, type LeadRow } from "../../src/services/numberActivity/leadLink";
 import { LEAD_COLLECTIONS, type DeskStateReader } from "./sales-outreach-desk-state";
 
 export const NUMBERLESS_REASONS = [
@@ -91,7 +98,8 @@ const holds = (number: DiagnosticNumber, model: string, id: unknown) =>
 
 /**
  * The reason a subject with no `contact_number_ids` has none. Pure. `numbersByE164` holds every stored
- * number for the Lead's E.164s (purged rows included).
+ * number for the Lead's E.164s (purged rows included). The phone rule and the number the mint would use
+ * are the mint's own (olr CW1).
  */
 export function classifyNumberless(input: {
   lead_model: string;
@@ -103,16 +111,17 @@ export function classifyNumberless(input: {
   const { lead, lead_model: model, lead_id: id } = input;
   if (!lead) return { reason: "lead_missing", e164: null };
   if (!hasAnyPhonePath(lead)) return { reason: "no_phone", e164: null };
-  const e164s = leadPhoneE164s(lead as LeadRow);
+  const e164s = leadPhoneE164Candidates(model as LeadModel, leadPhonesOf(lead as LeadRow));
   if (!e164s.length) return { reason: "phone_not_e164", e164: null };
-  const external = e164s.filter((e164) => !input.directory?.companyNumberByE164(e164));
-  if (!external.length) return { reason: "company_number", e164: e164s[0]! };
-  const first = external[0]!;
-  if (lead.duplicate === true || lead.bad_lead) return { reason: "lead_not_candidate", e164: first };
-  const numbers = external.map((e164) => input.numbersByE164.get(e164)).filter((n): n is DiagnosticNumber => Boolean(n));
-  if (!numbers.length) return { reason: "no_contact_number", e164: first };
+  const isCompany = (e164: string) => Boolean(input.directory?.companyNumberByE164(e164));
+  const target = leadNumberTarget(e164s, (e164) => input.numbersByE164.has(e164), isCompany);
+  // Nothing the mint would number: every phone a DID, or the first numbered phone is one.
+  if (target.action === "company_number" || (target.action === "reuse" && isCompany(target.e164))) return { reason: "company_number", e164: e164s[0]! };
+  if (lead.duplicate === true || lead.bad_lead) return { reason: "lead_not_candidate", e164: target.e164 };
+  if (target.action === "create") return { reason: "no_contact_number", e164: target.e164 };
+  const numbers = e164s.filter((e164) => !isCompany(e164)).map((e164) => input.numbersByE164.get(e164)).filter((n): n is DiagnosticNumber => Boolean(n));
   const live = numbers.filter((number) => !number.purged_at);
-  if (!live.length) return { reason: "number_purged", e164: numbers[0]!.e164 };
+  if (!live.length) return { reason: "number_purged", e164: target.e164 };
   const holding = live.find((number) => holds(number, model, id));
   if (holding) return { reason: "stale_subject", e164: holding.e164 };
   const excluded = live.find((number) => (number.lead_link?.excluded ?? []).some((lead) => same(lead, model, id)));
@@ -205,7 +214,8 @@ export async function collectSubjectsWithoutNumbers(reader: DeskStateReader,
       if (ids.length) for (const lead of await reader.find(LEAD_COLLECTIONS[model], { _id: { $in: ids } }, { projection: DIAGNOSTIC_LEAD_PROJECTION, limit: ids.length }))
         leads.set(`${model}:${String(lead._id)}`, lead);
     }
-    const e164s = [...new Set([...leads.values()].flatMap((lead) => leadPhoneE164s(lead as LeadRow)))];
+    const e164s = [...new Set([...leads].flatMap(([key, lead]) =>
+      leadPhoneE164Candidates(key.slice(0, key.indexOf(":")) as LeadModel, leadPhonesOf(lead as LeadRow))))];
     const numbersByE164 = new Map<string, DiagnosticNumber>();
     for (let i = 0; i < e164s.length; i += SUBJECT_PAGE)
       for (const number of await reader.find("contact_numbers", { e164: { $in: e164s.slice(i, i + SUBJECT_PAGE) } }, { projection: NUMBER_PROJECTION, limit: SUBJECT_PAGE }))

@@ -7,6 +7,7 @@ import {
   SALES_OUTREACH_WORKFLOWS,
 } from "../../config/domain/salesOutreach";
 import {
+  SALES_OUTREACH_ASSOCIATION_REASONS,
   SALES_OUTREACH_CONTACT_ASSOCIATIONS,
   SALES_OUTREACH_CONTACT_OUTCOMES,
   SALES_OUTREACH_GOAL_CREDITS,
@@ -53,6 +54,12 @@ export const SalesOutreachContactEventSchema = new Schema(
     restricted_at_contact: { type: Boolean, required: true, default: false },
     /** IMPL-07 association of the source's contact number(s) at contact time. */
     association: enumeration(SALES_OUTREACH_CONTACT_ASSOCIATIONS),
+    /**
+     * olr C8: why the source is or is not associated with an eligible New/Quoted subject at contact time
+     * (`SALES_OUTREACH_ASSOCIATION_REASONS`); null for rows excluded before association and for rows
+     * derived before the field existed. Rep-day "Other outbound" is broken down by it.
+     */
+    association_reason: { type: String, enum: [...SALES_OUTREACH_ASSOCIATION_REASONS], default: null },
     /** Workflow of the subject's policy period active at `event_at` (null without a subject or period). */
     subject_workflow: { type: String, enum: [...SALES_OUTREACH_WORKFLOWS], default: null },
     /** P06b: whether the customer was reached. */

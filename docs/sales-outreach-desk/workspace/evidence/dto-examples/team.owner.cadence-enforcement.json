@@ -61,6 +61,15 @@
         "pending": 0
       },
       "other_outbound_total": 120,
+      "other_outbound_breakdown": {
+        "no_lead": 16,
+        "lead_not_enrolled": 64,
+        "lead_closed": 1,
+        "before_activation": 38,
+        "ambiguous": 0,
+        "not_new_quoted": 1,
+        "unknown": 0
+      },
       "roster_size": 5
     },
     "goals_unknown_reason": null,
@@ -90,7 +99,16 @@
         "goal_reached": true,
         "other_outbound": {
           "count": 94,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 11,
+            "lead_not_enrolled": 51,
+            "lead_closed": 1,
+            "before_activation": 30,
+            "ambiguous": 0,
+            "not_new_quoted": 1,
+            "unknown": 0
+          }
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",
@@ -145,7 +163,16 @@
         "goal_reached": false,
         "other_outbound": {
           "count": 0,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 0,
+            "lead_not_enrolled": 0,
+            "lead_closed": 0,
+            "before_activation": 0,
+            "ambiguous": 0,
+            "not_new_quoted": 0,
+            "unknown": 0
+          }
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",
@@ -200,7 +227,16 @@
         "goal_reached": false,
         "other_outbound": {
           "count": 19,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 3,
+            "lead_not_enrolled": 10,
+            "lead_closed": 0,
+            "before_activation": 6,
+            "ambiguous": 0,
+            "not_new_quoted": 0,
+            "unknown": 0
+          }
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",
@@ -259,7 +295,16 @@
         "goal_reached": false,
         "other_outbound": {
           "count": 0,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 0,
+            "lead_not_enrolled": 0,
+            "lead_closed": 0,
+            "before_activation": 0,
+            "ambiguous": 0,
+            "not_new_quoted": 0,
+            "unknown": 0
+          }
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",
@@ -318,7 +363,16 @@
         "goal_reached": false,
         "other_outbound": {
           "count": 7,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 2,
+            "lead_not_enrolled": 3,
+            "lead_closed": 0,
+            "before_activation": 2,
+            "ambiguous": 0,
+            "not_new_quoted": 0,
+            "unknown": 0
+          }
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",
@@ -373,7 +427,8 @@
         "goal_reached": null,
         "other_outbound": {
           "count": 4,
-          "label": "Other outbound"
+          "label": "Other outbound",
+          "breakdown": null
         },
         "alternate_scope": {
           "count_scope": "eligible_new_quoted",

@@ -35,7 +35,7 @@ import { deskWantsContactEvidence } from "../../src/services/salesOutreach/captu
 import { movedLeads } from "../../src/services/salesOutreach/capture/leadLinkWake";
 import { assertProductionWriterMatchesDeployment } from "../lib/production-writer-guard";
 import { assertTargetMatchesDatabase } from "../lib/sales-outreach-indexes";
-import { decideLeadMint, emptyMintTally, mintSourceOf, parseMintArgs, tallyMint, type MintArgs, type MintTally } from "../lib/numbers-mint-lead-numbers";
+import { decideLeadMint, emptyMintTally, mintCandidatesOf, mintSourceOf, parseMintArgs, tallyMint, type MintArgs, type MintTally } from "../lib/numbers-mint-lead-numbers";
 
 const LEAD_COLLECTION: Record<LeadModel, string> = { FormLead: "form_leads", CallLead: "call_leads" };
 /** Leads read per page (and the `$in` batch of E.164s checked against `contact_numbers`). */
@@ -47,10 +47,7 @@ type Candidate = { model: LeadModel; row: LeadRow; e164: string };
 /** One page of Lead rows → the decisions, folding each into the tally; returns the Leads that need a number. */
 async function decidePage(db: Db, model: LeadModel, rows: readonly LeadRow[], planned: Set<string>, directory: DirectoryLookup | null,
   tally: MintTally): Promise<Candidate[]> {
-  const e164s = rows.flatMap((row) => {
-    const decision = decideLeadMint(model, row, new Set(), new Set(), null);
-    return decision.kind === "skip" ? [] : [decision.e164];
-  });
+  const e164s = rows.flatMap((row) => mintCandidatesOf(model, row));
   const existing = new Set((await db.collection("contact_numbers").find({ e164: { $in: [...new Set(e164s)] } }, { projection: { e164: 1 } }).toArray())
     .map((number) => String(number.e164)));
   const out: Candidate[] = [];

@@ -4,9 +4,9 @@ import { toFloridaTimestamp } from "../../../utils/easternTime";
 import { fixture } from "../engine/testSupport";
 import type { ActiveConfiguration } from "../config/load";
 import { refreshLeadForOutreach } from "./leadChangeJob";
-import { toDeskLeadFacts } from "./leadFacts";
+import { DESK_LEAD_PROJECTION, toDeskLeadFacts } from "./leadFacts";
 import { deskDecisionFingerprint } from "./policyMapping";
-import { receivedFactsOf } from "./subjectBuilder";
+import { receivedFactsOf, subjectStatusOf } from "./subjectBuilder";
 import {
   configurationDrivenDesired,
   contactWakeOf,
@@ -529,5 +529,114 @@ describe("olr B2: decision fingerprint (priority map + intake defaults) and pros
       configurationDrivenDesired(desired, { ...input, configuration: { revision: 7, updated_at: at("2026-10-02T12:09:00Z") } })!.effective_at.toISOString(),
       "2026-10-02T12:05:00.000Z",
     );
+  });
+});
+
+describe("olr C2c: cadence.no_contact_number_rule (D-C2c; off unless the Owner sets it)", () => {
+  const ruleOn = () => deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: GATE }, cadence: { no_contact_number_rule: "review_no_cadence" } });
+  const noPhone = { phone: null, normalized_phone: null };
+
+  test("rule on, no linked number and no phone: review no_contact_number, the period still opens (no cadence while in review)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    const subject = store.subjects[0]!;
+    assert.deepEqual([subject.status, subject.review_reasons, subject.contact_number_ids], ["review", ["no_contact_number"], []]);
+    assert.equal(store.periods.length, 1, "the New period is recorded, so age survives the review");
+    assert.equal(store.evaluations.length, 1, "the evaluator sees the review status (engine: no routine obligations)");
+  });
+
+  test("rule absent (today's behaviour): the same subject stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, intakeOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+  });
+
+  test("rule on, a phone without a Contact Number yet is a linking delay: stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts());
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons, store.subjects[0]!.contact_number_ids], ["active", [], []]);
+  });
+
+  test("rule on, a phone that never forms an E.164 counts as no phone", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ phone: "12", normalized_phone: "12" }));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
+  });
+
+  test("review fix: a Call Lead with only its original caller's phone will get a number (C2b mint): stays active, no review flap", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const call = store.addLead(leadFacts({ model: "CallLead", ...noPhone, original_caller_phone: "5550100002" }));
+    await refreshLeadForOutreach(call.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons, store.subjects[0]!.contact_number_ids], ["active", [], []]);
+    // The mint uses the original caller only for Call Leads, so a Form Lead never borrows it.
+    const formStore = new MemoryDeskSubjectStore();
+    const form = formStore.addLead(leadFacts({ ...noPhone, original_caller_phone: "5550100002" }));
+    await refreshLeadForOutreach(form.ref, ruleOn(), at("2026-10-01T15:00:00Z"), formStore, fakeSession);
+    assert.deepEqual([formStore.subjects[0]!.status, formStore.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
+  });
+
+  test("olr CW1: a Lead whose only usable phone is a snapshot will get a number (the mint's phone rule): stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ ...noPhone, granot_phone: "5550100004" }));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ingested_contact_snapshot.normalized_phone_number"));
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "granot_contact_snapshot.normalized_phone_number"));
+    const raw = { _id: "f".repeat(24), ingested_contact_snapshot: { normalized_phone_number: "5550100005" }, granot_contact_snapshot: { normalized_phone_number: " " } };
+    assert.deepEqual([toDeskLeadFacts("FormLead", raw).ingested_phone, toDeskLeadFacts("FormLead", raw).granot_phone], ["5550100005", null]);
+  });
+
+  test("review fix: toDeskLeadFacts reads a Call Lead's ringcentral.original_caller phone (projected), never a Form Lead's", () => {
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ringcentral.original_caller.normalized_phone_number"));
+    const raw = { _id: "f".repeat(24), ringcentral: { original_caller: { normalized_phone_number: "5550100003" } } };
+    assert.equal(toDeskLeadFacts("CallLead", raw).original_caller_phone, "5550100003");
+    assert.equal(toDeskLeadFacts("FormLead", raw).original_caller_phone, null);
+    assert.equal(toDeskLeadFacts("CallLead", { _id: "f".repeat(24) }).original_caller_phone, null);
+  });
+
+  test("a link arriving clears the reason: back to active, same period (age and deadlines unchanged)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    const period = { ...store.periods[0]! };
+    assert.equal(store.subjects[0]!.status, "review");
+    // leadLinkWake nominates this Lead's outreach_lead_change when the Lead enters a number's link.
+    store.numbers.set(`FormLead:${lead.ref.id}`, ["n1"]);
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-02T15:00:00Z"), store, fakeSession);
+    const subject = store.subjects[0]!;
+    assert.deepEqual([subject.status, subject.review_reasons, subject.contact_number_ids], ["active", [], ["n1"]]);
+    assert.equal(store.periods.length, 1, "no new period");
+    assert.deepEqual([store.periods[0]!.id, store.periods[0]!.started_at.toISOString(), store.periods[0]!.ended_at], [period.id, period.started_at.toISOString(), null]);
+    assert.equal(store.evaluations.length, 2, "the status change re-evaluates the subject");
+  });
+
+  test("a phone added to the Lead clears the reason on its Lead change", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    store.addLead({ ...lead, phone: "(555) 010-0001", normalized_phone: "5550100001", domain_revision: 2 });
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T16:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+  });
+
+  test("subjectStatusOf: the reason joins the other reasons; closed stays closed", () => {
+    const base = {
+      eligibility: { outcome: "eligible" } as never,
+      decision: { kind: "intake_default", source: "website_form" } as never,
+      received: { received_at: null, received_date: null, received_quality: "missing", adapter_version: "lead-instant-v1" } as const,
+      active_workflow: "new" as const,
+      current_status: "active" as const,
+    };
+    const contact = { number_ids: [], phone_e164: null, rule: "review_no_cadence" as const };
+    assert.deepEqual(subjectStatusOf({ ...base, contact }).review_reasons, ["received_time_missing", "no_contact_number"]);
+    assert.deepEqual(subjectStatusOf({ ...base, contact: { ...contact, rule: undefined } }).review_reasons, ["received_time_missing"]);
+    assert.deepEqual(subjectStatusOf(base).review_reasons, ["received_time_missing"], "no contact input = pre-C2c");
+    assert.deepEqual(subjectStatusOf({ ...base, contact: { ...contact, number_ids: ["n1"] } }).review_reasons, ["received_time_missing"]);
+    assert.deepEqual(subjectStatusOf({ ...base, contact: { ...contact, phone_e164: "+15550100000" } }).review_reasons, ["received_time_missing"]);
+    assert.deepEqual(subjectStatusOf({ ...base, active_workflow: "closed", contact }), { status: "closed", review_reasons: [] });
   });
 });

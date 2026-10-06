@@ -8,7 +8,7 @@ import { changeTriggersLeadLink, leadLinkFingerprint } from "./leadLinkJobs";
 import { allNumbersFilter, decodeAllNumbersCursor, displayPhone, encodeAllNumbersCursor, leadSearchFilters, toNumberRow } from "./allNumbers";
 import { canMessage, strongestCandidate } from "../salesIntelligence/repIdentity/accounts";
 import { CsiError } from "../salesIntelligence/auth";
-import { enqueueDeskWakeForLeadLink, movedLeads } from "../salesOutreach/capture/leadLinkWake";
+import { enqueueDeskWakeForLeadLink, movedLeads, sourcesNeedRederive } from "../salesOutreach/capture/leadLinkWake";
 import { parseSearchTerm } from "./numberSearch";
 
 const id = () => new mongoose.Types.ObjectId();
@@ -182,4 +182,18 @@ test("desk wake: only Leads that entered or left the link move; nothing is enque
     session, new Date(), { wanted: async () => { throw new Error("not consulted"); } }), []);
   assert.deepEqual(await enqueueDeskWakeForLeadLink({ number_id: "n", changed: true, revision: 2, before: { lead: a, leads: [a] }, after: { lead: c, leads: [c] } },
     session, new Date(), { wanted: async () => false }), []);
+});
+
+test("olr C2d desk wake: other_leads membership moves re-derive the number's sources only under single_active_subject_on_link", () => {
+  const a = { model: "FormLead", id: "a" }, b = { model: "CallLead", id: "b" }, c = { model: "FormLead", id: "c" };
+  const leadMoved = { before: { lead: a, leads: [a, b] }, after: { lead: c, leads: [c, b] } };
+  const otherEntered = { before: { lead: a, leads: [a] }, after: { lead: a, leads: [a, b] } };
+  const swap = { before: { lead: a, leads: [a, b] }, after: { lead: b, leads: [b, a] } };
+  for (const rule of ["number_lead", "single_active_subject_on_link"] as const) {
+    assert.equal(sourcesNeedRederive(leadMoved, rule), true, `a lead change always re-derives (${rule})`);
+    assert.equal(sourcesNeedRederive(swap, rule), true, `a lead swap always re-derives (${rule})`);
+  }
+  assert.equal(sourcesNeedRederive(otherEntered, "number_lead"), false, "as built: other_leads never credit, nothing to re-derive");
+  assert.equal(sourcesNeedRederive(otherEntered, "single_active_subject_on_link"), true);
+  assert.equal(sourcesNeedRederive({ before: { lead: a, leads: [a, b] }, after: { lead: a, leads: [a, b] } }, "single_active_subject_on_link"), false);
 });
