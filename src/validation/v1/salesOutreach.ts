@@ -230,6 +230,9 @@ const migrationSchema = z
     max_replication_lag_seconds: nullable(z.number().int().min(0)),
     max_consumer_lag_seconds: nullable(z.number().int().min(0)),
     max_incremental_write_bytes_per_second: nullable(z.number().int().min(1)),
+    // olr B10 Lead-change tail loop (optional, no default; effective values from `feedLoopOf` in `subjects/feed.ts`).
+    feed_max_passes_per_run: z.number().int().min(1).max(50).optional(),
+    feed_budget_seconds: z.number().int().min(1).max(40).optional(),
   })
   .strict()
   .refine((m) => m.batch_size <= m.batch_ceiling, "batch_size above batch_ceiling");

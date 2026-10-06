@@ -10,9 +10,11 @@ import { OutreachError } from "../errors";
 import { evaluationAdmissionOf } from "../evaluation/evaluateJob";
 import { buildEngineInput, toEngineRestriction } from "../evaluation/inputs";
 import { completeConfigurationInput, periodRow, subjectRow, TEST_AGENT_A, TEST_AGENT_B } from "../evaluation/testing";
-import { activeInspection } from "../reads/testing";
-import { deskLeadKey } from "../subjects/leadFacts";
-import { assignSubject } from "./assignment";
+import { activeInspection, fixedConfigurationLoader } from "../reads/testing";
+import { refreshLeadForOutreach } from "../subjects/leadChangeJob";
+import { deskLeadKey, type DeskLeadRef } from "../subjects/leadFacts";
+import { deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore } from "../subjects/testing";
+import { assignSubject, refreshStaleAssignment, type AssignmentDeps, type StaleRefreshOutcome } from "./assignment";
 import type { DeskCommandDeps } from "./common";
 import { commandCallback, setQuotedFollowup } from "./plans";
 import { addRestriction, confirmRestriction, liftRestriction, listRestrictions } from "./restrictions";
@@ -61,14 +63,45 @@ function harness(workflow: "quoted" | "new" = "quoted", configuration = complete
     },
   };
   const published: string[][] = [];
-  const deps: DeskCommandDeps = { loader, store, run: ledger.run, audit: ledger.audit, publish: async (ids) => void published.push([...ids]) };
+  const refreshes: string[] = [];
+  let refreshOverride: StaleRefreshOutcome | null = null;
+  /**
+   * The B9 stale-copy refresh over the in-memory command store: the subject takes its Lead's effective
+   * receiver (a reviewed sales_rep, else Unassigned) and `assignment_revision` bumps, as the Lead-change
+   * sync does. The real `refreshStaleAssignment` is proven below and in the replica.
+   */
+  const refreshStale = async (lead: DeskLeadRef): Promise<StaleRefreshOutcome> => {
+    refreshes.push(deskLeadKey(lead));
+    if (refreshOverride) return refreshOverride;
+    const row = [...store.subjects.values()].find((s) => deskLeadKey(s.lead) === deskLeadKey(lead));
+    const facts = store.leads.get(deskLeadKey(lead));
+    const effective = facts?.receiver_agent_id && store.repNames.has(facts.receiver_agent_id) ? facts.receiver_agent_id : null;
+    if (!row || !facts || row.assigned_agent_id === effective) return "unchanged";
+    store.subjects.set(row.id, { ...row, assigned_agent_id: effective, assignment_revision: row.assignment_revision + 1, lead_revision_seen: facts.domain_revision, revision: row.revision + 1 });
+    return "refreshed";
+  };
+  const live: unknown[] = [];
+  const deps: AssignmentDeps = {
+    loader,
+    store,
+    run: ledger.run,
+    audit: ledger.audit,
+    publish: async (ids) => void published.push([...ids]),
+    publishLive: async (p) => void live.push(p),
+    refreshStale,
+  };
   return {
     store,
     ledger,
     subject,
     period,
     published,
+    refreshes,
+    live,
     deps,
+    overrideRefresh: (outcome: StaleRefreshOutcome | null) => {
+      refreshOverride = outcome;
+    },
     setConfiguration: (next: ConfigurationInspection) => {
       inspection = next;
     },
@@ -360,6 +393,129 @@ test("IMPL-01: unassign, no-op, unreviewed target, stale revision, stale desk co
   await rejectsWith(assignSubject({ actor: repA, subject_id: stale.subject.id, idempotency_key: "r", expected_revision: 1, agent_id: TEST_AGENT_A }, stale.deps), "FORBIDDEN");
   await rejectsWith(assignSubject({ actor: owner, subject_id: "e".repeat(24), idempotency_key: "m", expected_revision: 1, agent_id: null }, stale.deps), "NOT_FOUND");
   assert.equal(stale.store.entityChanges.length, 0, "nothing written by a refused command");
+});
+
+/* ------------------------------------------------------------------ Stale desk copy: refresh, then 409 (olr B9) */
+
+/** The Lead row as stored now (a refused command restores a cloned map, so never hold the row across commands). */
+const leadOf = (h: Harness) => h.store.leads.get(deskLeadKey(h.subject.lead))!;
+
+/** The detail read's `assignment.in_sync` rule (reads/detail.ts) over the in-memory stores. */
+function inSync(h: Harness) {
+  const subject = h.store.subjects.get(h.subject.id)!;
+  const receiver = h.store.leads.get(deskLeadKey(subject.lead))!.receiver_agent_id;
+  return subject.assigned_agent_id === (receiver && h.store.repNames.has(receiver) ? receiver : null);
+}
+
+async function refusedRefreshed(promise: Promise<unknown>) {
+  await assert.rejects(promise, (error: unknown) => {
+    assert.ok(error instanceof OutreachError);
+    assert.equal(error.code, "REVISION_CONFLICT");
+    assert.deepEqual(error.issues, [{ path: "assignment", code: "assignment_changed", message: "refreshed" }]);
+    return true;
+  });
+}
+
+test("B9: a stale desk copy answers 409 assignment_changed after refreshing the subject; the re-read shows the Lead's receiver and the retry with the new revision succeeds", async () => {
+  const h = harness("new");
+  Object.assign(leadOf(h), { receiver_agent_id: TEST_AGENT_B, domain_revision: 5 }); // Granot moved it; the Lead-change job has not drained
+  assert.equal(inSync(h), false);
+
+  await refusedRefreshed(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "b9-1", expected_revision: 1, agent_id: TEST_AGENT_A }, h.deps));
+  assert.deepEqual(h.refreshes, [deskLeadKey(h.subject.lead)], "the stale subject is refreshed once");
+  assert.deepEqual(
+    [leadOf(h).receiver_agent_id, leadOf(h).receiver_agent_source, h.store.entityChanges.length, h.ledger.audits.length, h.ledger.ledger.size],
+    [TEST_AGENT_B, "granot_username_match", 0, 0, 0],
+    "the refused command writes nothing: the Lead's new receiver is never overwritten silently",
+  );
+  const refreshed = h.store.subjects.get(h.subject.id)!;
+  assert.deepEqual([refreshed.assigned_agent_id, refreshed.assignment_revision], [TEST_AGENT_B, 2]);
+  assert.equal(inSync(h), true, "the re-read is in sync");
+  assert.deepEqual(h.live, [[{ topic: "outreach_desk", subject_ids: [h.subject.id], agent_ids: [TEST_AGENT_A, TEST_AGENT_B], cause: "command" }]], "published live after the refresh");
+  assert.equal(h.published.length, 0, "a refusal wakes no command jobs");
+
+  // The Owner confirms against the refreshed revision: the retry succeeds and moves the Lead to A (manual).
+  const retried = await assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "b9-2", expected_revision: 2, agent_id: TEST_AGENT_A }, h.deps);
+  assert.deepEqual([retried.changed, retried.previous_agent_id, retried.assigned_agent_id, retried.assignment_revision], [true, TEST_AGENT_B, TEST_AGENT_A, 3]);
+  assert.deepEqual([leadOf(h).receiver_agent_id, leadOf(h).receiver_agent_source], [TEST_AGENT_A, "manual"]);
+  assert.equal(h.refreshes.length, 1, "a current copy needs no refresh");
+});
+
+test("B9: a concurrent real change still answers 409; a stale expected_revision is a plain 409 without a refresh; a failed refresh keeps the plain refusal", async () => {
+  const h = harness("new");
+  h.store.repNames.set(AGENT_C, "Cara Rep");
+  leadOf(h).receiver_agent_id = TEST_AGENT_B;
+  await refusedRefreshed(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "c-1", expected_revision: 1, agent_id: TEST_AGENT_A }, h.deps));
+  // A real change lands between the re-read and the retry: the retry is refused again, after another refresh.
+  leadOf(h).receiver_agent_id = AGENT_C;
+  await refusedRefreshed(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "c-2", expected_revision: 2, agent_id: TEST_AGENT_A }, h.deps));
+  assert.deepEqual([leadOf(h).receiver_agent_id, h.store.entityChanges.length], [AGENT_C, 0], "the concurrent receiver stands");
+  const subject = h.store.subjects.get(h.subject.id)!;
+  assert.deepEqual([subject.assigned_agent_id, subject.assignment_revision, h.refreshes.length], [AGENT_C, 3, 2]);
+
+  // A stale expected_revision on a current copy is the ordinary revision 409: no refresh.
+  await assert.rejects(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "c-3", expected_revision: 2, agent_id: TEST_AGENT_A }, h.deps), (error: unknown) => {
+    assert.ok(error instanceof CsiError);
+    assert.deepEqual([error.code, error.issues], ["REVISION_CONFLICT", undefined]);
+    return true;
+  });
+  assert.equal(h.refreshes.length, 2);
+
+  // The refresh failed (for example no active configuration): the original refusal, without "refreshed", and nothing published.
+  leadOf(h).receiver_agent_id = TEST_AGENT_B;
+  h.overrideRefresh("failed");
+  const published = h.live.length;
+  await assert.rejects(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "c-4", expected_revision: 3, agent_id: TEST_AGENT_A }, h.deps), (error: unknown) => {
+    assert.ok(error instanceof OutreachError);
+    assert.deepEqual([error.code, error.issues], ["REVISION_CONFLICT", [{ path: "assignment", code: "assignment_changed" }]]);
+    return true;
+  });
+  assert.equal(h.live.length, published);
+  // A refresh that lost its CAS to a concurrent writer (the Lead-change job) left the subject current too: "refreshed".
+  h.overrideRefresh("conflict");
+  await refusedRefreshed(assignSubject({ actor: owner, subject_id: h.subject.id, idempotency_key: "c-5", expected_revision: 3, agent_id: TEST_AGENT_A }, h.deps));
+});
+
+test("B9 refreshStaleAssignment: the Lead-change sync in its own transaction moves the subject to the Lead's receiver; current is unchanged; a CAS race is a conflict; a failure never throws", async () => {
+  const now = () => at("2026-10-01T15:00:00Z");
+  const loader = fixedConfigurationLoader(deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: "2026-10-01T00:00:00.000Z" } }));
+  const store = new MemoryDeskSubjectStore();
+  store.reviewedReps = new Set([TEST_AGENT_A, TEST_AGENT_B]);
+  const facts = store.addLead(leadFacts({ receiver_agent_id: TEST_AGENT_A }));
+  assert.equal((await refreshLeadForOutreach(facts.ref, await loader.requireActive(fakeSession), now(), store, fakeSession)).outcome, "created");
+  assert.deepEqual([store.subjects[0]!.assigned_agent_id, store.subjects[0]!.assignment_revision], [TEST_AGENT_A, 1]);
+
+  let transactions = 0;
+  /** Transaction stand-in: the callback's writes roll back when it throws. */
+  const transaction = async <T>(fn: (session: typeof fakeSession) => Promise<T>): Promise<T> => {
+    const restore = store.snapshot();
+    transactions += 1;
+    try {
+      return await fn(fakeSession);
+    } catch (error) {
+      restore();
+      throw error;
+    }
+  };
+  const deps = { loader, subjectStore: store, transaction, now };
+  store.addLead({ ...facts, receiver_agent_id: TEST_AGENT_B, domain_revision: 2 });
+  assert.equal(await refreshStaleAssignment(facts.ref, deps), "refreshed");
+  assert.deepEqual([store.subjects[0]!.assigned_agent_id, store.subjects[0]!.assignment_revision, transactions], [TEST_AGENT_B, 2, 1]);
+  assert.equal(await refreshStaleAssignment(facts.ref, deps), "unchanged");
+
+  // A receiver without a reviewed sales_rep link leaves the subject Unassigned (the detail read's in_sync rule).
+  store.addLead({ ...facts, receiver_agent_id: AGENT_C, domain_revision: 3 });
+  assert.equal(await refreshStaleAssignment(facts.ref, deps), "refreshed");
+  assert.deepEqual([store.subjects[0]!.assigned_agent_id, store.subjects[0]!.assignment_revision], [null, 3]);
+
+  // A concurrent writer moved the subject first: the CAS refuses, the refresh reports a conflict and writes nothing.
+  store.addLead({ ...facts, receiver_agent_id: TEST_AGENT_A, domain_revision: 4 });
+  const racing = Object.assign(Object.create(store) as MemoryDeskSubjectStore, { updateSubject: async () => false });
+  assert.equal(await refreshStaleAssignment(facts.ref, { ...deps, subjectStore: racing }), "conflict");
+  assert.equal(store.subjects[0]!.assigned_agent_id, null);
+  // No active configuration: the refresh fails and does not throw.
+  assert.equal(await refreshStaleAssignment(facts.ref, { ...deps, loader: fixedConfigurationLoader({ state: "uninitialized" }) }), "failed");
+  assert.equal(store.subjects[0]!.assigned_agent_id, null);
 });
 
 /* ------------------------------------------------------------------ Restrictions (P06c) */

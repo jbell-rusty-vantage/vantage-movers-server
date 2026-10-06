@@ -11,6 +11,7 @@ import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelli
 import { MongoLeaseStore } from "../../durableWork/leases";
 import { CsiError } from "../../salesIntelligence/auth";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
 import type { ConfigurationLoader } from "../config/load";
 import { salesOutreachConfigurationLoader } from "../config/load";
 import { deskLeadKey, type DeskLeadRef } from "./leadFacts";
@@ -35,6 +36,24 @@ export const OUTREACH_FEED_PAGE = 100;
 const OVERLAP_LIMIT = 500;
 /** Reconcile pages per run (5,000 subjects per 5-minute run; the cursor carries the rest). */
 const RECONCILE_MAX_PAGES = 50;
+
+/**
+ * Code defaults of the tail loop's tunables (olr B10). The configuration keys
+ * `migration.feed_max_passes_per_run` (1–50) and `migration.feed_budget_seconds` (1–40) are optional
+ * without a schema default (A0 evolution rule), so absent keys resolve here.
+ */
+export const OUTREACH_FEED_LOOP_DEFAULTS = { feed_max_passes_per_run: 10, feed_budget_seconds: 15 } as const;
+
+export type FeedLoopTuning = Readonly<{ max_passes: number; budget_ms: number }>;
+
+/** Effective tail-loop tunables for a configuration value (absent keys → `OUTREACH_FEED_LOOP_DEFAULTS`). */
+export function feedLoopOf(value: Pick<SalesOutreachConfigurationValue, "migration"> | null | undefined): FeedLoopTuning {
+  const migration = value?.migration;
+  return Object.freeze({
+    max_passes: migration?.feed_max_passes_per_run ?? OUTREACH_FEED_LOOP_DEFAULTS.feed_max_passes_per_run,
+    budget_ms: (migration?.feed_budget_seconds ?? OUTREACH_FEED_LOOP_DEFAULTS.feed_budget_seconds) * 1000,
+  });
+}
 
 export type LeadChangeRow = Readonly<{
   id: string;
@@ -214,34 +233,46 @@ export type OutreachFeedDeps = {
   store?: OutreachFeedStore;
   loader?: ConfigurationLoader;
   transaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
+  /** Wall clock of the tail loop's time budget (tests inject one); defaults to `Date.now`. */
+  clock?: () => number;
 };
 
 export type TailPassResult = Readonly<{
   skipped: boolean;
   reason: string | null;
   scanned: number;
+  /** Changes taken beyond the cursor (the overlap re-scan excluded); a full page (100) means more may wait. */
+  page_size: number;
   nominated: number;
   conflicts: number;
   cursor: { applied_at: string; id: string } | null;
 }>;
 
+export type TailPassOptions = Readonly<{
+  /** Re-scan the commit-lag overlap behind the stored cursor (default true; the loop scans it on its first pass only). */
+  overlap?: boolean;
+}>;
+
 /**
- * One bounded pass of the tail (cron every minute): re-scans the commit-lag overlap, takes ≤ 100 changes
- * beyond the cursor, nominates jobs and advances the cursor in the same transaction. A first pass
- * starts at `now − overlap` (older Leads are enrollment's, not the tail's). Fails closed while the
+ * One bounded pass of the tail: re-scans the commit-lag overlap (unless `overlap: false`), takes ≤ 100
+ * changes beyond the cursor, nominates jobs and advances the cursor in the same transaction. A first
+ * pass starts at `now − overlap` (older Leads are enrollment's, not the tail's). Fails closed while the
  * configuration is not active: the cursor does not move, so nothing is skipped.
  */
-export async function scanOutreachLeadChanges(now = new Date(), deps: OutreachFeedDeps = {}): Promise<TailPassResult> {
-  const store = deps.store ?? mongoOutreachFeedStore;
+export async function scanOutreachLeadChanges(now = new Date(), deps: OutreachFeedDeps = {}, options: TailPassOptions = {}): Promise<TailPassResult> {
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
   const inspection = await loader.inspect();
   if (inspection.state !== "active")
-    return { skipped: true, reason: `configuration_${inspection.state}`, scanned: 0, nominated: 0, conflicts: 0, cursor: null };
-  const intakeOpen = inspection.value.transition.intake_admission_enabled;
+    return { skipped: true, reason: `configuration_${inspection.state}`, scanned: 0, page_size: 0, nominated: 0, conflicts: 0, cursor: null };
+  return runTailPass(now, deps, inspection.value.transition.intake_admission_enabled, options.overlap ?? true);
+}
+
+async function runTailPass(now: Date, deps: OutreachFeedDeps, intakeOpen: boolean, scanOverlap: boolean): Promise<TailPassResult> {
+  const store = deps.store ?? mongoOutreachFeedStore;
   return (deps.transaction ?? withTransaction)(async (session) => {
     const stored = await store.readTailCursor(session);
     const cursor = stored ?? { applied_at: new Date(+now - OUTREACH_LEAD_CHANGE_OVERLAP_MS), id: ZERO_ID };
-    const overlap = stored ? await store.changesInOverlap(cursor, OUTREACH_LEAD_CHANGE_OVERLAP_MS, OVERLAP_LIMIT, session) : [];
+    const overlap = stored && scanOverlap ? await store.changesInOverlap(cursor, OUTREACH_LEAD_CHANGE_OVERLAP_MS, OVERLAP_LIMIT, session) : [];
     const page = await store.changesAfter(cursor, OUTREACH_FEED_PAGE, session);
     const changes = [...overlap, ...page];
     const subjects = await store.subjectLeadKeys(uniqueLeads(changes.map((c) => c.lead)), session);
@@ -255,8 +286,102 @@ export async function scanOutreachLeadChanges(now = new Date(), deps: OutreachFe
     const next = last ? { applied_at: last.applied_at, id: last.id } : cursor;
     if (last || !stored) await store.writeTailCursor(next, session);
     if (conflicts) logger.warn({ msg: "sales_outreach.lead_change.conflict_skipped", conflicts });
-    return { skipped: false, reason: null, scanned: changes.length, nominated, conflicts, cursor: { applied_at: next.applied_at.toISOString(), id: next.id } };
+    return {
+      skipped: false,
+      reason: null,
+      scanned: changes.length,
+      page_size: page.length,
+      nominated,
+      conflicts,
+      cursor: { applied_at: next.applied_at.toISOString(), id: next.id },
+    };
   });
+}
+
+export type TailLoopStop = "caught_up" | "max_passes" | "budget" | "error";
+
+export type TailLoopResult = Readonly<{
+  skipped: boolean;
+  reason: string | null;
+  passes: number;
+  scanned: number;
+  nominated: number;
+  conflicts: number;
+  /** The cursor after the last committed pass. */
+  cursor: { applied_at: string; id: string } | null;
+  /** The last pass took a short page: nothing was waiting beyond the cursor. */
+  caught_up: boolean;
+  /** Why the loop ended: a short page, the pass cap, the time budget, or a failed later pass. */
+  stopped_by: TailLoopStop | null;
+  /** The effective tunables of this run (`feedLoopOf`). */
+  max_passes: number;
+  budget_seconds: number;
+}>;
+
+/**
+ * The tail loop (cron every minute, olr B10): tail passes back to back while the last page was full
+ * (`OUTREACH_FEED_PAGE` changes), at most `migration.feed_max_passes_per_run` passes and while the
+ * clock is inside `migration.feed_budget_seconds` (both resolved by `feedLoopOf`). Only the first pass
+ * re-scans the overlap. Each pass is its own transaction, so the cursor commits per page and a stop
+ * (cap, budget, error) leaves it at the last committed page. A failure of the first pass propagates
+ * (the cron logs it and still drains); a later failure ends the loop with what was committed.
+ */
+export async function scanOutreachLeadChangesUntilCaughtUp(now = new Date(), deps: OutreachFeedDeps = {}): Promise<TailLoopResult> {
+  const loader = deps.loader ?? salesOutreachConfigurationLoader;
+  const clock = deps.clock ?? Date.now;
+  const started = clock();
+  const inspection = await loader.inspect();
+  const tuning = feedLoopOf(inspection.state === "active" ? inspection.value : null);
+  const effective = { max_passes: tuning.max_passes, budget_seconds: tuning.budget_ms / 1000 };
+  if (inspection.state !== "active")
+    return {
+      skipped: true,
+      reason: `configuration_${inspection.state}`,
+      passes: 0,
+      scanned: 0,
+      nominated: 0,
+      conflicts: 0,
+      cursor: null,
+      caught_up: false,
+      stopped_by: null,
+      ...effective,
+    };
+  const intakeOpen = inspection.value.transition.intake_admission_enabled;
+  let passes = 0;
+  let scanned = 0;
+  let nominated = 0;
+  let conflicts = 0;
+  let cursor: TailPassResult["cursor"] = null;
+  let stoppedBy: TailLoopStop;
+  for (;;) {
+    let pass: TailPassResult;
+    try {
+      pass = await runTailPass(now, deps, intakeOpen, passes === 0);
+    } catch (error) {
+      if (passes === 0) throw error;
+      logger.warn({ msg: "sales_outreach.lead_change.tail_loop_pass_failed", passes, errorName: error instanceof Error ? error.name : "Error" });
+      stoppedBy = "error";
+      break;
+    }
+    passes++;
+    scanned += pass.scanned;
+    nominated += pass.nominated;
+    conflicts += pass.conflicts;
+    cursor = pass.cursor;
+    if (pass.page_size < OUTREACH_FEED_PAGE) {
+      stoppedBy = "caught_up";
+      break;
+    }
+    if (passes >= tuning.max_passes) {
+      stoppedBy = "max_passes";
+      break;
+    }
+    if (clock() >= started + tuning.budget_ms) {
+      stoppedBy = "budget";
+      break;
+    }
+  }
+  return { skipped: false, reason: null, passes, scanned, nominated, conflicts, cursor, caught_up: stoppedBy === "caught_up", stopped_by: stoppedBy, ...effective };
 }
 
 function uniqueLeads(leads: readonly DeskLeadRef[]): DeskLeadRef[] {
