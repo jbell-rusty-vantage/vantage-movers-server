@@ -10,7 +10,7 @@ import { configurationContentHash } from "../../src/services/salesOutreach/confi
 import { MemoryConfigurationDb } from "../../src/services/salesOutreach/config/testing";
 import { FINAL_01_CADENCE_VALUE } from "../../src/services/salesOutreach/engine/approvedStartingValues";
 import { resolveEnginePolicy } from "../../src/services/salesOutreach/engine";
-import { deskEnginePolicy } from "../../src/services/salesOutreach/evaluation/policyAdapter";
+import { deskEnginePolicy, policyFingerprint } from "../../src/services/salesOutreach/evaluation/policyAdapter";
 import { TEST_FINAL01_CADENCE } from "../../src/services/salesOutreach/evaluation/testing";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { salesOutreachConfigurationValueSchema, type SalesOutreachConfigurationValue } from "../../src/validation/v1/salesOutreach";
@@ -485,4 +485,22 @@ test("the installed FINAL-01 cadence adapts to S2's FINAL-01 engine policy (same
   assert.ok(ours.ok && theirs.ok);
   assert.deepEqual({ ...ours.policy, policy_version: "", approval_ref: "" }, { ...theirs.policy, policy_version: "", approval_ref: "" });
   assert.deepEqual([ours.policy.policy_version, ours.policy.approval_ref], [FINAL01_POLICY_VERSION, FINAL01_APPROVAL_REF]);
+});
+
+test("olr B3: the adapter resolves FINAL-01 with granot_created: new to the same engine policy and policy fingerprint as FINAL-01", () => {
+  const installed = buildFinal01Configuration({ current: salesOutreachConfigurationValueSchema.parse({}), rosterAgentIds: [A], installedOn: "2026-10-05" });
+  const amended = structuredClone(installed);
+  amended.cadence.intake_default_rule!.granot_created = "new";
+  const before = deskEnginePolicy(installed);
+  const after = deskEnginePolicy(amended);
+  assert.ok(before.ok && after.ok, "granot_created: new is resolvable (it stalled the evaluator before B3)");
+  assert.deepEqual(after.policy, before.policy);
+  for (const exposure of ["shadow", "enforcement"] as const)
+    assert.equal(policyFingerprint(after.policy, exposure), policyFingerprint(before.policy, exposure), "nothing is re-evaluated by the amendment itself");
+  // P05e still approves only New for native intake.
+  const nativeReview = structuredClone(amended);
+  nativeReview.cadence.intake_default_rule!.manual = "review";
+  const refused = deskEnginePolicy(nativeReview);
+  assert.equal(refused.ok, false);
+  if (!refused.ok) assert.deepEqual(refused.reasons, ["cadence.intake_default_rule: the engine encodes only native intake = new"]);
 });
