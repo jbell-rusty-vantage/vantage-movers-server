@@ -26,9 +26,12 @@
  *   recount writes `all_outbound` the day before the flip and `eligible_new_quoted` on it; the refresh
  *   pass rewrites a row an older build counted under another scope, once;
  * - re-derive wake (olr C4): a call derived `none` before its Lead was admitted is nominated by the
- *   admission's own transaction (`admit:<subject>` job identity; a call before arrival is not), a
- *   replayed nomination dedupes, and draining the job associates and credits the call and nominates the
- *   subject's evaluation.
+ *   admission's own transaction (`admit:<subject>` job identity; the activation's New York date only, a
+ *   call the day before is not), a replayed nomination dedupes, and draining the job associates and
+ *   credits the call and nominates the subject's evaluation; an earlier same-date call stays `none` but
+ *   carries the subject;
+ * - P05f/P10a subtraction (olr C4): two Leads enrolled in one cohort at 15:00 ET; the one called twice
+ *   earlier that day owes 0 calls on the activation date after the wake drains, the other owes 2.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -82,6 +85,8 @@ async function main() {
     models.getSalesOutreachContactEventModel(),
     models.getSalesOutreachRepDayProjectionModel(),
     models.getSalesOutreachEnrollmentRunModel(),
+    models.getSalesOutreachProjectionModel(),
+    models.getSalesOutreachFollowupScheduleModel(),
   ] as unknown as Array<mongoose.Model<unknown>>) {
     await Model.createCollection();
     await Model.createIndexes();
@@ -399,30 +404,35 @@ async function main() {
   // The call is derived while its Lead is no subject (`none`); intake then admits the Lead with an
   // activation boundary before the call. The admission's transaction nominates the call's
   // `outreach_contact_change` job (`admit:<subject>`); draining it associates and credits the call and
-  // nominates the subject's evaluation. A call before the boundary is not woken; a replay dedupes.
+  // nominates the subject's evaluation. The wake covers the activation's New York date: an earlier
+  // same-date call re-derives as `none` carrying the subject (P05f/P10a input), a call the day before is
+  // not woken; a replay dedupes.
   const { syncSubject, loadSubjectPageContext } = await import("../../src/services/salesOutreach/subjects/sync.js");
   const { mongoDeskSubjectStore } = await import("../../src/services/salesOutreach/subjects/store.js");
-  const { deskConfiguration, leadFacts } = await import("../../src/services/salesOutreach/subjects/testing.js");
+  const { accepted, deskConfiguration, leadFacts } = await import("../../src/services/salesOutreach/subjects/testing.js");
   const { runOutreachContactChangeJob } = await import("../../src/services/salesOutreach/contacts/jobs.js");
   const c4Lead = new mongoose.Types.ObjectId();
   const c4Number = new mongoose.Types.ObjectId();
   const c4Arrival = new Date("2026-10-04T14:00:00Z");
-  await getContactNumberModel().create({ _id: c4Number, e164: "+15550100044", digits_reversed: "44001005551", first_observed_at: c4Arrival, last_activity_at: c4Arrival,
-    lead: { model: "FormLead", id: c4Lead, received_at: c4Arrival, state: "open" }, lead_link: { source: "automatic", set_at: c4Arrival } });
-  const c4Call = async (at: string, session: string) => {
+  const c4NumberFor = async (numberId: mongoose.Types.ObjectId, e164: string, lead: mongoose.Types.ObjectId, receivedAt: Date) =>
+    getContactNumberModel().create({ _id: numberId, e164, digits_reversed: e164.slice(1).split("").reverse().join(""), first_observed_at: receivedAt, last_activity_at: receivedAt,
+      lead: { model: "FormLead", id: lead, received_at: receivedAt, state: "open" }, lead_link: { source: "automatic", set_at: receivedAt } });
+  await c4NumberFor(c4Number, "+15550100044", c4Lead, c4Arrival);
+  const c4Call = async (at: string, session: string, numberId = c4Number) => {
     const started = new Date(at);
     const row = await getCallInteractionModel().create({
       provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction: "Outbound",
-      contact_number_id: c4Number, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
+      contact_number_id: numberId, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
       parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: started, result: "Call connected" }],
       call_log_state: "settled", terminal: true, first_observed_at: started, last_observed_at: started,
     });
     return { source_kind: "call" as const, source_id: String(row._id) };
   };
-  const earlyCall = await c4Call("2026-10-04T13:00:00Z", "s-c4-early");
+  const prevDayCall = await c4Call("2026-10-03T20:00:00Z", "s-c4-prev-day");
+  const earlyCall = await c4Call("2026-10-04T13:00:00Z", "s-c4-early"); // 09:00 ET, before arrival, same date
   const gapCall = await c4Call("2026-10-04T14:00:30Z", "s-c4-gap");
   const c4Now = new Date("2026-10-04T14:01:30Z");
-  await withTransaction((session) => applyContactSources([earlyCall, gapCall], { now: c4Now, queueRepDays: false }, mongoContactEventStore, session));
+  await withTransaction((session) => applyContactSources([prevDayCall, earlyCall, gapCall], { now: c4Now, queueRepDays: false }, mongoContactEventStore, session));
   const gapEventId = contactEventId("call", gapCall.source_id);
   assert.deepEqual([(await Events.findById(gapEventId).lean())?.association, (await Events.findById(gapEventId).lean())?.subject_id ?? null], ["none", null], "derived before the admission: no subject");
   // ET wall clock 10:00 on 2026-10-04 (= 14:00Z): the Lead arrives at 14:00Z and intake activates at arrival.
@@ -436,26 +446,83 @@ async function main() {
       session,
     );
   });
-  assert.deepEqual([admitted.outcome, admitted.contact_wakes], ["created", 1], "one call since arrival is woken");
+  assert.deepEqual([admitted.outcome, admitted.contact_wakes], ["created", 2], "the activation date's two calls are woken");
   const Jobs = getSalesIntelligenceJobModel();
   const wakeKey = `sod:contact_change:call:${gapCall.source_id}:admit:${admitted.subject_id}`;
   const wakeJob = await Jobs.findOne({ dedupe_key: wakeKey }).lean();
   assert.ok(wakeJob, "the admission's transaction enqueued the re-derive");
   assert.equal(wakeJob?.subject_key, `call:${gapCall.source_id}`);
-  assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:contact_change:call:${earlyCall.source_id}:` } }), 0, "a call before arrival is not woken");
+  const earlyJob = await Jobs.findOne({ dedupe_key: `sod:contact_change:call:${earlyCall.source_id}:admit:${admitted.subject_id}` }).lean();
+  assert.ok(earlyJob, "an earlier same-date call is woken");
+  assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:contact_change:call:${prevDayCall.source_id}:` } }), 0, "a call the day before is not woken");
   const replayed = await withTransaction((session) =>
     mongoDeskSubjectStore.nominateContactSources({ lead: { model: "FormLead", id: String(c4Lead) }, since: c4Arrival, source_revision: `admit:${admitted.subject_id}`, limit_per_kind: 50, now: c4Now }, session));
   assert.equal(replayed, 1);
   assert.equal(await Jobs.countDocuments({ dedupe_key: wakeKey }), 1, "a replay dedupes on the job identity");
-  const drained = await runOutreachContactChangeJob(String(wakeJob!._id), { loader: fixedConfigurationLoader(configuration), now: () => c4Now, publish: async () => undefined });
-  assert.equal(drained.status, "completed");
+  const drainC4 = (jobId: unknown, now: Date) =>
+    runOutreachContactChangeJob(String(jobId), { loader: fixedConfigurationLoader(configuration), now: () => now, publish: async () => undefined });
+  assert.equal((await drainC4(wakeJob!._id, c4Now)).status, "completed");
+  assert.equal((await drainC4(earlyJob!._id, c4Now)).status, "completed");
   const gapEvent = await Events.findById(gapEventId).lean();
   assert.deepEqual(
     [gapEvent?.association, String(gapEvent?.subject_id), gapEvent?.subject_workflow, gapEvent?.goal_scope_eligible, gapEvent?.goal_credit],
     ["unique", admitted.subject_id, "new", true, "confirmed"],
     "the re-derive associates and credits the call",
   );
-  assert.equal(await Jobs.countDocuments({ stage: "outreach_evaluate", dedupe_key: { $regex: `^sod:evaluate:${admitted.subject_id}:r1:contacts:` } }), 1, "and nominates the subject's evaluation");
+  const earlyEvent = await Events.findById(contactEventId("call", earlyCall.source_id)).lean();
+  assert.deepEqual(
+    [earlyEvent?.association, String(earlyEvent?.subject_id), earlyEvent?.subject_workflow ?? null, earlyEvent?.goal_scope_eligible, earlyEvent?.verification],
+    ["none", admitted.subject_id, null, false, "confirmed"],
+    "an earlier same-date call stays uncredited but carries the subject",
+  );
+  assert.equal((await Events.findById(contactEventId("call", prevDayCall.source_id)).lean())?.subject_id ?? null, null, "the day before carries nothing");
+  assert.equal(await Jobs.countDocuments({ stage: "outreach_evaluate", dedupe_key: { $regex: `^sod:evaluate:${admitted.subject_id}:r1:contacts:` } }), 2, "and each drained re-derive nominates the subject's evaluation");
+
+  // --- olr C4: P05f/P10a — a late-enrolled Lead's earlier same-date calls lower its activation-date quota ---
+  // Two older Leads (received 2026-10-01) enter one cohort at 15:00 ET on 2026-10-05. Lead A was called
+  // at 10:00 and 11:00 ET that day (derived `none`: not enrolled yet); Lead B was not called. After the
+  // enrollment's wake drains, the evaluator (Mongo stores) owes A 0 calls on the activation date and B 2.
+  const { mongoEvaluationStore } = await import("../../src/services/salesOutreach/evaluation/store.js");
+  const { evaluateAndProject, evaluationAdmissionOf } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
+  const { completeConfigurationInput } = await import("../../src/services/salesOutreach/evaluation/testing.js");
+  const cohortActivation = new Date("2026-10-05T19:00:00Z");
+  const cohortNow = new Date("2026-10-05T19:01:00Z");
+  const cohortReceived = new Date("2026-10-01T14:00:00Z");
+  const leadA = new mongoose.Types.ObjectId();
+  const leadB = new mongoose.Types.ObjectId();
+  const numberA = new mongoose.Types.ObjectId();
+  const numberB = new mongoose.Types.ObjectId();
+  await c4NumberFor(numberA, "+15550100045", leadA, cohortReceived);
+  await c4NumberFor(numberB, "+15550100046", leadB, cohortReceived);
+  const priorCalls = [await c4Call("2026-10-05T14:00:00Z", "s-c4-a-1", numberA), await c4Call("2026-10-05T15:00:00Z", "s-c4-a-2", numberA)];
+  await withTransaction((session) => applyContactSources(priorCalls, { now: cohortNow, queueRepDays: false }, mongoContactEventStore, session));
+  const cohortFacts = [leadA, leadB].map((id) =>
+    leadFacts({ model: "FormLead", id: String(id), timestamp: new Date("2026-10-01T10:00:00.000Z"), created_at: new Date("2026-10-01T14:00:05Z"), ...accepted("0", "2026-10-02T14:00:00Z") }));
+  const enrolled = await withTransaction(async (session) => {
+    const context = await loadSubjectPageContext(mongoDeskSubjectStore, cohortFacts, cohortNow, session);
+    const out = [];
+    for (const facts of cohortFacts)
+      out.push(await syncSubject(
+        { facts, subject: null, enrollment: { cohort_id: "expansion:c4", kind: "expansion", enrolled_at: cohortNow, activation_at: cohortActivation, manifest_hash: null }, configuration: c4Config, context },
+        mongoDeskSubjectStore,
+        session,
+      ));
+    return out;
+  });
+  assert.deepEqual(enrolled.map((r) => [r.outcome, r.contact_wakes]), [["created", 2], ["created", 0]], "the cohort wakes Lead A's two same-date calls");
+  for (const call of priorCalls) {
+    const job = await Jobs.findOne({ dedupe_key: `sod:contact_change:call:${call.source_id}:admit:${enrolled[0]!.subject_id}` }).lean();
+    assert.equal((await drainC4(job!._id, cohortNow)).status, "completed");
+  }
+  const carried = await mongoEvaluationStore.loadContactEvents(enrolled[0]!.subject_id, null);
+  assert.deepEqual(carried.map((e) => [e.kind, e.verification]), [["outbound_attempt", "confirmed"], ["outbound_attempt", "confirmed"]], "the evaluator reads both earlier calls");
+  const admission = evaluationAdmissionOf(activeInspection(completeConfigurationInput({ cadence_enforcement_enabled: true }), "v-c4", 2));
+  assert.ok(admission.ok);
+  for (const result of enrolled)
+    await withTransaction((session) => evaluateAndProject(result.subject_id, admission.context, cohortNow, mongoEvaluationStore, session));
+  const required = async (subjectId: string) =>
+    ((await models.getSalesOutreachProjectionModel().findOne({ subject_id: new mongoose.Types.ObjectId(subjectId) }).lean()) as { call?: { required?: number } } | null)?.call?.required;
+  assert.deepEqual([await required(enrolled[0]!.subject_id), await required(enrolled[1]!.subject_id)], [0, 2], "two earlier same-date calls lower the activation date's quota by two");
 
   console.log(JSON.stringify({ ok: true, database }));
 }

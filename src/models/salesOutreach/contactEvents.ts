@@ -22,7 +22,10 @@ import { at, count, defineCsiModel, enumeration, index, oid, ref, revision, str,
  * (`contactEventId`), so concurrent derivations of one source collide instead of duplicating. A source
  * with no unique active subject at contact time keeps a row with `subject_id: null` so the M1
  * all-outbound rep-day count (FAST-TRACK "M1 goal scope") and "Other outbound" stay recountable from
- * this collection alone; subject reads (`{subject_id, event_at}`) never see those rows.
+ * this collection alone; subject reads (`{subject_id, event_at}`) never see those rows. The one
+ * exception (olr C4, P05f/P10a): a contact before the subject's activation boundary on the same New York
+ * date keeps `association: "none"` and no goal scope but carries `subject_id`, so the evaluator can
+ * subtract it from the activation date's partial-start quota.
  */
 export const SALES_OUTREACH_CONTACT_EVENT_INDEXES = [
   unique("sod_contact_source_unique", { source_kind: 1, source_id: 1, subject_id: 1 }),
@@ -32,7 +35,7 @@ export const SALES_OUTREACH_CONTACT_EVENT_INDEXES = [
 
 export const SalesOutreachContactEventSchema = new Schema(
   {
-    /** The unique active desk subject at contact time (IMPL-07), else null. */
+    /** The unique active desk subject at contact time (IMPL-07), or the same-date prior subject (P05f/P10a), else null. */
     subject_id: ref,
     source_kind: enumeration(SALES_OUTREACH_CONTACT_SOURCE_KINDS),
     source_id: oid,

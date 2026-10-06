@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ActiveConfiguration } from "../config/load";
+import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
 import { evaluateDeskEligibility, type DeskEligibility } from "./eligibility";
 import { deskLeadKey, type DeskLeadFacts } from "./leadFacts";
 import { planPeriodTransition, type PeriodPlan } from "./periodPlanner";
@@ -70,9 +71,11 @@ export type ContactWake = Omit<ContactWakeRequest, "lead" | "now">;
  * activation boundary and its periods when a source is derived, so a call derived before the change
  * keeps the old context until something re-derives it:
  * - (i) a subject created after its first calls (intake admits about a minute after the Lead arrives;
- *   an enrollment activates at the apply moment): its numbers' calls and SMS since the Lead was received
- *   (never later than the activation boundary). Those at or after the boundary now associate and credit;
- *   the earlier ones re-derive as the Lead's pre-activation contact.
+ *   an enrollment activates at the apply moment): its numbers' calls and SMS since the start of the
+ *   activation boundary's New York date. Those at or after the boundary now associate and credit; the
+ *   earlier same-date ones carry the subject id so the activation date's partial quota subtracts them
+ *   (P05f/P10a, `contacts/derive.ts` `same_date_prior`). Earlier dates derive nothing for the subject,
+ *   so an older Lead's history is not woken.
  * - (iv) a period opened, or a transition/closure, whose effective instant is in the past: the calls and
  *   SMS since that instant take the new workflow (`subject_workflow`, `goal_scope_eligible`, closure).
  * Never earlier than `SUBJECT_WAKE_LOOKBACK_MS` before now. Identity-link and restriction changes take
@@ -83,7 +86,6 @@ export function contactWakeOf(
     outcome: SubjectSyncOutcome["outcome"];
     subject_id: string;
     enrollment: DeskEnrollment;
-    received_at: Date | null;
     plan: PeriodPlan;
     as_of: Date;
   }>,
@@ -91,10 +93,9 @@ export function contactWakeOf(
   const floor = +input.as_of - SUBJECT_WAKE_LOOKBACK_MS;
   let wake: ContactWake | null = null;
   if (input.outcome === "created") {
-    const activation = +input.enrollment.activation_at;
-    const from = input.received_at ? Math.min(+input.received_at, activation) : activation;
+    const activationDate = newYorkDayBounds(newYorkBusinessDay(input.enrollment.activation_at)).start;
     wake = {
-      since: new Date(Math.max(from, floor)),
+      since: new Date(Math.max(+activationDate, floor)),
       source_revision: `admit:${input.subject_id}`,
       limit_per_kind: input.enrollment.kind === "intake" ? SUBJECT_WAKE_SOURCES_PER_KIND : ENROLLMENT_WAKE_SOURCES_PER_KIND,
     };
@@ -208,8 +209,7 @@ export async function syncSubject(
     );
   if (!bookkeepingOnly) await store.requestEvaluation(subjectId, revision, session);
   // `insertPeriod` already ran in this session, so the re-derive reads the new period.
-  const received_at = isReliableReceived(built) ? built.received_at : null;
-  const wake = contactWakeOf({ outcome, subject_id: subjectId, enrollment, received_at, plan, as_of: context.as_of });
+  const wake = contactWakeOf({ outcome, subject_id: subjectId, enrollment, plan, as_of: context.as_of });
   const contactWakes = wake && wantsContactEvidence(configuration)
     ? await store.nominateContactSources({ ...wake, lead: facts.ref, now: context.as_of }, session)
     : 0;

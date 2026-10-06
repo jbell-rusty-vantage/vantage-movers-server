@@ -223,8 +223,10 @@ describe("intake admission gate (outreach_intake; P05e, P10b automatic intake sc
 describe("olr C4: re-derive wakes when a subject or its period changes after the contact", () => {
   const deskOn = (controls: { desk_enabled?: boolean; goal_metrics_enabled?: boolean } = { desk_enabled: true }) =>
     deskConfiguration({ controls, transition: { intake_admission_enabled: true, intake_admission_at: GATE } });
-  // leadFacts(): received 2026-10-01 10:00 ET = 14:00Z; intake activates at arrival.
-  const received = "2026-10-01T14:00:00.000Z";
+  // leadFacts(): received 2026-10-01 10:00 ET = 14:00Z; intake activates at arrival. The wake covers the
+  // activation's New York date, from midnight ET (04:00Z under EDT): earlier same-date contact carries the
+  // subject for the P05f/P10a subtraction.
+  const activationDate = "2026-10-01T04:00:00.000Z";
 
   function seeded() {
     const store = new MemoryDeskSubjectStore();
@@ -237,7 +239,9 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     store.numbers.set(`FormLead:${lead.ref.id}`, ["n-shared", "n1"]);
     const call = (id: string, number: string, iso: string, merged: string | null = null) =>
       store.calls.push({ id, contact_number_id: number, started_at: at(iso), merged_into_id: merged });
-    call("c-before", "n1", "2026-10-01T13:59:00Z"); // before the Lead was received
+    call("c-prev-day", "n1", "2026-09-30T23:00:00Z"); // 19:00 ET the day before: not the activation date
+    call("c-prev-late", "n1", "2026-10-01T03:59:00Z"); // 23:59 ET the day before (UTC already 10-01)
+    call("c-before", "n1", "2026-10-01T13:59:00Z"); // before the Lead was received, same New York date
     call("c-arrival", "n1", "2026-10-01T14:00:00Z");
     call("c-gap", "n1", "2026-10-01T14:30:00Z"); // derived `none` before the admission committed
     call("c-merged", "n1", "2026-10-01T14:40:00Z", "c-gap");
@@ -245,12 +249,15 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     call("c-other", "n-other", "2026-10-01T14:36:00Z");
     store.sms.push({ id: "m-gap", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-10-01T14:10:00Z") });
     store.sms.push({ id: "m-before", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-10-01T13:00:00Z") });
+    store.sms.push({ id: "m-prev-day", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-09-30T20:00:00Z") });
+    // Scheduled the day before, sent on the activation date: its event time is `send_at`.
+    store.sms.push({ id: "m-scheduled", counterpart_numbers: ["+15550100001"], provider_created_at: at("2026-09-30T20:00:00Z"), send_at: at("2026-10-01T14:05:00Z") });
     store.sms.push({ id: "m-other", counterpart_numbers: ["+15550100009"], provider_created_at: at("2026-10-01T14:20:00Z") });
     return { store, lead };
   }
   const nominated = (store: MemoryDeskSubjectStore) => [...store.contactJobs.keys()].sort();
 
-  test("creating a subject nominates its credited numbers' calls and SMS since arrival, and none before", async () => {
+  test("creating a subject nominates its credited numbers' calls and SMS of the activation date, and none before it", async () => {
     const { store, lead } = seeded();
     const result = await refreshLeadForOutreach(lead.ref, deskOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
     assert.equal(result.outcome, "created");
@@ -259,14 +266,17 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
       nominated(store),
       [
         `sod:contact_change:call:c-arrival:admit:${subjectId}`,
+        `sod:contact_change:call:c-before:admit:${subjectId}`,
         `sod:contact_change:call:c-gap:admit:${subjectId}`,
+        `sod:contact_change:sms:m-before:admit:${subjectId}`,
         `sod:contact_change:sms:m-gap:admit:${subjectId}`,
+        `sod:contact_change:sms:m-scheduled:admit:${subjectId}`,
       ],
-      "merged rows, earlier rows, `other_leads`-only numbers and other Leads' numbers are not woken",
+      "merged rows, earlier New York dates, `other_leads`-only numbers and other Leads' numbers are not woken; a scheduled send is",
     );
     assert.deepEqual(
       store.contactWakes.map((w) => [w.since.toISOString(), w.limit_per_kind, w.now.toISOString()]),
-      [[received, SUBJECT_WAKE_SOURCES_PER_KIND, "2026-10-01T15:00:00.000Z"]],
+      [[activationDate, SUBJECT_WAKE_SOURCES_PER_KIND, "2026-10-01T15:00:00.000Z"]],
     );
   });
 
@@ -278,7 +288,7 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     const calls = nominated(store).filter((key) => key.includes(":call:"));
     assert.equal(calls.length, SUBJECT_WAKE_SOURCES_PER_KIND);
     assert.ok(calls.some((key) => key.includes(":c-burst-54:")) && !calls.some((key) => key.includes(":c-burst-00:")), "newest first");
-    assert.equal(nominated(store).filter((key) => key.includes(":sms:")).length, 1, "SMS have their own bound");
+    assert.equal(nominated(store).filter((key) => key.includes(":sms:")).length, 3, "SMS have their own bound");
   });
 
   test("a replay nominates nothing new (unchanged sync, and the same dedupe keys)", async () => {
@@ -333,7 +343,7 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     assert.equal(on.store.contactWakes.length, 1, "assignment is prospective: no re-derive wake");
   });
 
-  test("contactWakeOf: enrollment bound and window, the 14-day floor, a future boundary", () => {
+  test("contactWakeOf: enrollment bound and window (the activation date, not the Lead's age), the 14-day floor, a future boundary", () => {
     const enrollment = {
       cohort_id: "expansion-1",
       kind: "expansion" as const,
@@ -343,13 +353,16 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     };
     const none = { action: "none" as const, reason: "no_policy" as const };
     const asOf = at("2026-10-06T15:01:00Z");
-    const enrolled = contactWakeOf({ outcome: "created", subject_id: "s1", enrollment, received_at: at("2026-10-06T13:00:00Z"), plan: none, as_of: asOf });
-    assert.deepEqual(enrolled, { since: at("2026-10-06T13:00:00Z"), source_revision: "admit:s1", limit_per_kind: ENROLLMENT_WAKE_SOURCES_PER_KIND });
+    // 15:00Z = 11:00 ET; an older Lead received weeks ago still wakes only the activation date (from 00:00 ET).
+    const enrolled = contactWakeOf({ outcome: "created", subject_id: "s1", enrollment, plan: none, as_of: asOf });
+    assert.deepEqual(enrolled, { since: at("2026-10-06T04:00:00Z"), source_revision: "admit:s1", limit_per_kind: ENROLLMENT_WAKE_SOURCES_PER_KIND });
     assert.equal(ENROLLMENT_WAKE_SOURCES_PER_KIND, 10);
-    const old = contactWakeOf({ outcome: "created", subject_id: "s1", enrollment, received_at: at("2026-07-01T13:00:00Z"), plan: none, as_of: asOf });
-    assert.equal(+old!.since, +asOf - SUBJECT_WAKE_LOOKBACK_MS, "never older than 14 days");
-    const noReceived = contactWakeOf({ outcome: "created", subject_id: "s1", enrollment, received_at: null, plan: none, as_of: asOf });
-    assert.equal(+noReceived!.since, +enrollment.activation_at, "no received time: the activation boundary");
+    // An evening activation (22:30 ET = 02:30Z the next UTC day) keeps its New York date.
+    const evening = contactWakeOf({ outcome: "created", subject_id: "s1", enrollment: { ...enrollment, activation_at: at("2026-10-07T02:30:00Z") }, plan: none, as_of: at("2026-10-07T02:31:00Z") });
+    assert.equal(evening!.since.toISOString(), "2026-10-06T04:00:00.000Z");
+    const replayedLate = at("2026-10-25T15:00:00Z");
+    const old = contactWakeOf({ outcome: "created", subject_id: "s1", enrollment, plan: none, as_of: replayedLate });
+    assert.equal(+old!.since, +replayedLate - SUBJECT_WAKE_LOOKBACK_MS, "never older than 14 days");
     const period = {
       transition_key: "priority:granot:quoted:1",
       workflow: "quoted" as const,
@@ -361,10 +374,10 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     };
     const later = at("2026-10-06T15:30:00Z");
     const future = { action: "open" as const, period: { ...period, started_at: at("2026-10-06T16:00:00Z") } };
-    assert.equal(contactWakeOf({ outcome: "updated", subject_id: "s1", enrollment, received_at: null, plan: future, as_of: later }), null, "nothing derived after now");
-    assert.equal(contactWakeOf({ outcome: "updated", subject_id: "s1", enrollment, received_at: null, plan: none, as_of: later }), null);
+    assert.equal(contactWakeOf({ outcome: "updated", subject_id: "s1", enrollment, plan: future, as_of: later }), null, "nothing derived after now");
+    assert.equal(contactWakeOf({ outcome: "updated", subject_id: "s1", enrollment, plan: none, as_of: later }), null);
     const pastPlan = { ...future, period: { ...period, started_at: at("2026-10-06T14:00:00Z") } };
-    const past = contactWakeOf({ outcome: "updated", subject_id: "s1", enrollment, received_at: null, plan: pastPlan, as_of: later });
+    const past = contactWakeOf({ outcome: "updated", subject_id: "s1", enrollment, plan: pastPlan, as_of: later });
     assert.equal(past!.limit_per_kind, SUBJECT_WAKE_SOURCES_PER_KIND);
     assert.equal(+past!.since, +at("2026-10-06T14:00:00Z"));
     assert.match(past!.source_revision, /^period:s1:[0-9a-f]{16}$/);

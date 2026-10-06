@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, test } from "node:test";
 import { goalCreditAgent, isCadenceQualifying, selectSpacedStarts } from "../engine/credit";
 import { contactEventId, deriveCallContactEvent, outboundInitiator, toEngineContactEvent, type ContactEventDraft } from "./derive";
+import { evaluate, obligationsOn, period, scenario } from "../engine/testSupport";
 import { countRepDay } from "./repDay";
 import { ContextBuilder, inboundCall, leg, newId, outboundCall, party, subjectFacts } from "./testing";
 
@@ -310,3 +311,55 @@ describe("lane cases: exclusions and verification", () => {
   });
 });
 
+
+describe("P05f/P10a same-date prior contact (olr C4): carried for the activation date's subtraction, never credited", () => {
+  // Activation at 15:00 ET (19:00Z) on 2026-10-05; the Lead was received 2026-10-01 (an older cohort Lead).
+  const ACTIVATION = "2026-10-05T19:00:00.000Z";
+  const lateEnrolled = () => {
+    const ctx = new ContextBuilder().link(ALICE, "101");
+    const lead = ctx.lead(NUMBER, subjectFacts({ activation_at: new Date(ACTIVATION) }));
+    return { context: ctx.build(), subject: lead.subject! };
+  };
+
+  test("an outbound call earlier on the activation date keeps `none` and its M1 credit, carries the subject, and is a confirmed attempt", () => {
+    const { context, subject } = lateEnrolled();
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, "2026-10-05T14:00:00.000Z"), context);
+    assert.deepEqual(
+      [draft.association, draft.subject_id, draft.subject_workflow, draft.goal_scope_eligible, draft.goal_credit, draft.kind, draft.verification, draft.exclusion_reason],
+      ["none", subject.id, null, false, "confirmed", "outbound_attempt", "confirmed", null],
+    );
+    assert.deepEqual(countRepDay([draft], "eligible_new_quoted"), { actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 1 }, "still Other outbound");
+    assert.deepEqual(countRepDay([draft], "all_outbound"), { actual_confirmed: 1, actual_awaiting_confirmation: 0, unattributed: 1 }, "M1 unchanged");
+  });
+
+  test("an earlier New York date is not carried (00:30 ET the day after is not the same date either way)", () => {
+    const { context } = lateEnrolled();
+    // 23:59 ET on 2026-10-04 = 03:59Z on 2026-10-05 (the UTC date matches, the New York date does not).
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, "2026-10-05T03:59:00.000Z"), context);
+    assert.deepEqual([draft.association, draft.subject_id, draft.verification, draft.exclusion_reason], ["none", null, "excluded", "no_associated_subject"]);
+  });
+
+  test("an answered inbound earlier on the activation date is carried for cadence only; never the originating inbound", () => {
+    const ctx = new ContextBuilder().link(ALICE, "101");
+    const session = "s-originating";
+    const lead = ctx.lead(NUMBER, subjectFacts({ activation_at: new Date(ACTIVATION), originating_session_id: session }));
+    const draft = deriveCallContactEvent(inboundCall("101", NUMBER, "2026-10-05T14:00:00.000Z", "2026-10-05T14:00:05.000Z", { telephony_session_id: session }), ctx.build());
+    assert.deepEqual(
+      [draft.association, draft.subject_id, draft.kind, draft.verification, draft.goal_credit, draft.originating_inbound],
+      ["none", lead.subject!.id, "inbound_answered", "confirmed", "none", false],
+    );
+  });
+
+  test("end to end: the evaluator subtracts the carried calls from the activation date's quota", () => {
+    const { context } = lateEnrolled();
+    const prior = ["2026-10-05T14:00:00.000Z", "2026-10-05T15:00:00.000Z"].map((at) => engine(deriveCallContactEvent(outboundCall("101", NUMBER, at), context)));
+    const input = (events: ReturnType<typeof engine>[]) =>
+      scenario({ received_at: "2026-10-01T14:00:00.000Z", activation_at: ACTIVATION, periods: [period("n1", "new", ACTIVATION, "activation")], events });
+    const asOf = "2026-10-05T19:01:00.000Z";
+    const without = obligationsOn(evaluate(input([]), asOf), "2026-10-05", "call").length;
+    const withPrior = obligationsOn(evaluate(input(prior), asOf), "2026-10-05", "call").length;
+    assert.equal(without, 2, "the 15:00 partial start date owes two calls without earlier contact");
+    assert.equal(withPrior, 0, "two spaced earlier same-date calls lower the quota by two");
+    assert.equal(obligationsOn(evaluate(input(prior.slice(0, 1)), asOf), "2026-10-05", "call").length, 1, "one earlier call lowers it by one");
+  });
+});

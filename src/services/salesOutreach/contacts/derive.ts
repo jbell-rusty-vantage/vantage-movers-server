@@ -31,6 +31,9 @@ import { newYorkBusinessDay } from "../reads/businessDay";
  *   `awaiting_confirmation`, never a miss;
  * - IMPL-07 (All Numbers): the number's current Lead (`contact_numbers.lead`), when it is a desk subject
  *   active at contact time; several Leads across an SMS's numbers are `ambiguous`, none is `none`;
+ * - P05f/P10a: a contact before the subject's activation boundary on the same New York date stays `none`
+ *   (no workflow, no goal scope, no credit) but carries `subject_id`, so the activation date's partial
+ *   quota subtracts it;
  * - P07g: outbound at the verified start (a call crossing midnight belongs to its start date),
  *   answered inbound at the reviewed handler's answer, SMS at the confirmed sent time;
  * - restricted contact (an active restriction on the number covering the channel at contact time)
@@ -229,7 +232,21 @@ function identityAt(links: readonly TemporalRepLink[], account: string, pick: { 
   return { agent_id: null, identity: resolution.status === "conflicting" ? "ambiguous" : "unreviewed" };
 }
 
-type Association = { state: SalesOutreachContactAssociation; subject: SubjectFacts | null; workflow: SalesOutreachWorkflow | null };
+type Association = {
+  state: SalesOutreachContactAssociation;
+  subject: SubjectFacts | null;
+  workflow: SalesOutreachWorkflow | null;
+  /**
+   * P05f/P10a (olr C4): the Lead's subject when the contact precedes its activation boundary on the same
+   * New York business date. The row stays `none` (no workflow, no goal scope: nothing is owed or credited
+   * before the boundary) but carries the subject id and its real kind/verification, so the evaluator's
+   * partial-start quota subtracts the earlier same-date contact (`engine/reentry.ts` priorSameDateCredit).
+   */
+  same_date_prior: SubjectFacts | null;
+};
+
+const NO_ASSOCIATION: Association = { state: "none", subject: null, workflow: null, same_date_prior: null };
+const AMBIGUOUS: Association = { state: "ambiguous", subject: null, workflow: null, same_date_prior: null };
 
 function periodAt(subject: SubjectFacts, at: Date): SubjectPeriodFacts | null {
   const ms = at.getTime();
@@ -240,14 +257,28 @@ function periodAt(subject: SubjectFacts, at: Date): SubjectPeriodFacts | null {
 export function associate(numberIds: readonly string[], at: Date, context: DerivationContext): Association {
   const leads = new Set<DeskLeadKey>();
   for (const id of numberIds) for (const lead of context.linked_leads.get(id) ?? []) leads.add(lead);
-  if (leads.size === 0) return { state: "none", subject: null, workflow: null };
-  if (leads.size > 1) return { state: "ambiguous", subject: null, workflow: null };
+  if (leads.size === 0) return NO_ASSOCIATION;
+  if (leads.size > 1) return AMBIGUOUS;
   const subject = context.subjects.get([...leads][0]!) ?? null;
-  if (!subject || subject.activation_at.getTime() > at.getTime()) return { state: "none", subject: null, workflow: null };
+  if (!subject) return NO_ASSOCIATION;
+  if (subject.activation_at.getTime() > at.getTime()) {
+    const sameDate = newYorkBusinessDay(subject.activation_at) === newYorkBusinessDay(at);
+    return sameDate ? { ...NO_ASSOCIATION, same_date_prior: subject } : NO_ASSOCIATION;
+  }
   const period = periodAt(subject, at);
   // A subject whose closed period had started is no longer an active desk subject at contact time.
-  if (period?.workflow === "closed") return { state: "none", subject: null, workflow: null };
-  return { state: "unique", subject, workflow: period?.workflow ?? null };
+  if (period?.workflow === "closed") return NO_ASSOCIATION;
+  return { state: "unique", subject, workflow: period?.workflow ?? null, same_date_prior: null };
+}
+
+/** The association the evidence classifier sees: a same-date prior contact keeps its real kind and verification. */
+function evidenceAssociation(association: Association): AssociationState {
+  return (association.same_date_prior ? "unique" : association.state) as AssociationState;
+}
+
+/** The row's `subject_id`: the associated subject, else the same-date prior subject (evaluator input only). */
+function subjectIdOf(association: Association): string | null {
+  return association.subject?.id ?? association.same_date_prior?.id ?? null;
 }
 
 export function restrictedAt(numberIds: readonly string[], channel: "call" | "text", at: Date, context: DerivationContext): boolean {
@@ -319,13 +350,13 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
       in_call_log: row.call_log_state !== null,
       initiator,
       handler: null,
-      association: association.state as AssociationState,
+      association: evidenceAssociation(association),
     });
     const reviewed = initiator.identity === "reviewed" && initiator.agent_id !== null;
     const goalCredit: SalesOutreachGoalCredit = !actualAttempt || !reviewed || restricted ? "none" : confirmed ? "confirmed" : "awaiting_confirmation";
     return finish({
       ...base,
-      subject_id: association.subject?.id ?? null,
+      subject_id: subjectIdOf(association),
       direction: "outbound",
       event_at: eventAt,
       business_date: newYorkBusinessDay(eventAt),
@@ -359,11 +390,11 @@ export function deriveCallContactEvent(row: CallSourceRow, context: DerivationCo
     in_call_log: row.call_log_state !== null,
     initiator: { agent_id: null, identity: "none" },
     handler,
-    association: association.state as AssociationState,
+    association: evidenceAssociation(association),
   });
   return finish({
     ...base,
-    subject_id: association.subject?.id ?? null,
+    subject_id: subjectIdOf(association),
     direction: "inbound",
     event_at: eventAt,
     business_date: newYorkBusinessDay(eventAt),
@@ -392,9 +423,9 @@ export function deriveSmsContactEvent(row: SmsSourceRow, context: DerivationCont
   const eventAt = row.direction === "outbound" ? (row.send_at ?? row.provider_created_at) : row.provider_created_at;
   const numbers = [...new Set(row.counterpart_numbers.map((n) => context.numbers_by_e164?.get(n)).filter((id): id is string => Boolean(id)))];
   const association: Association = row.is_group
-    ? { state: "ambiguous", subject: null, workflow: null }
+    ? AMBIGUOUS
     : numbers.length === 0
-      ? { state: "none", subject: null, workflow: null }
+      ? NO_ASSOCIATION
       : associate(numbers, eventAt, context);
   const restricted = restrictedAt(numbers, "text", eventAt, context);
   const base = {
@@ -426,11 +457,11 @@ export function deriveSmsContactEvent(row: SmsSourceRow, context: DerivationCont
     // an unproven sender keeps the origin unknown (P07e pending identity).
     origin: reviewed ? "rep_deliberate" : "unknown",
     sender: { agent_id: reviewed ? row.reviewed_agent_id : null, identity: reviewed ? "reviewed" : "unreviewed" },
-    association: association.state as AssociationState,
+    association: evidenceAssociation(association),
   });
   return finish({
     ...base,
-    subject_id: association.subject?.id ?? null,
+    subject_id: subjectIdOf(association),
     actor_agent_id: classified.actor_agent_id,
     kind: classified.kind,
     verification: classified.verification,

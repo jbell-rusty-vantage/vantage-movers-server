@@ -361,10 +361,14 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
       .session(session)
       .lean();
     const e164s = numbers.flatMap((row) => (row.e164 ? [row.e164] : []));
-    // Index `sod_rsms_counterpart_created`.
+    // Index `sod_rsms_counterpart_created` (bounded by the Lead's numbers). Outbound event time is
+    // `send_at ?? provider_created_at`, so a message scheduled before `since` and sent after it is in the window.
     const sms = e164s.length
       ? await getRingCentralRepSmsEvidenceModel()
-        .find({ counterpart_numbers: { $in: e164s }, provider_created_at: { $gte: request.since } }, { _id: 1 })
+        .find(
+          { counterpart_numbers: { $in: e164s }, $or: [{ provider_created_at: { $gte: request.since } }, { send_at: { $gte: request.since } }] },
+          { _id: 1 },
+        )
         .sort({ provider_created_at: -1, _id: -1 })
         .limit(request.limit_per_kind)
         .session(session)
