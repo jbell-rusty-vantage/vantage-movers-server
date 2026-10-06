@@ -1,14 +1,18 @@
+import type { ClientSession } from "mongoose";
+import { z } from "zod";
 import { SALES_OUTREACH_COMMAND_KINDS } from "../../../config/domain/salesOutreach";
-import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
+import { salesOutreachConfigurationValueSchema, type SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { appendCsiAudit, duplicateKey, executeCsiCommand } from "../../salesIntelligence/transactions";
 import { OutreachError, zodIssues } from "../errors";
 import { publishOutreachLive } from "../live/publish";
+import { newYorkBusinessDay } from "../reads/businessDay";
 import {
   configurationContentHash,
   configurationVersionFor,
   mongoConfigurationStore,
   mongoConfigurationWriter,
+  type ConfigurationPointer,
   type ConfigurationStore,
   type ConfigurationWriter,
 } from "./store";
@@ -31,6 +35,41 @@ export type ConfigurationCommandDeps = {
   /** After-commit live publish (tests inject a recorder). */
   publishLive?: typeof publishOutreachLive;
 };
+
+type CountScopeEntry = Readonly<{ from_day: string; scope: string }>;
+
+/** The schedule as a stored version holds it; read leniently so an older or odd version never blocks the guard's read. */
+const storedCountScopeScheduleSchema = z.object({ goals: z.object({ count_scope_schedule: z.array(z.object({ from_day: z.string(), scope: z.string() })).optional() }).optional() });
+
+/**
+ * olr C1a guard (`count_scope_not_prospective`, P08a "changes are prospective"): the schedule entries
+ * on or before today (New York) must be identical in the active and the submitted value — no edit,
+ * addition or removal of an entry whose day has started. So a switch takes effect tomorrow at the
+ * earliest and each business day keeps one count scope. The first initialization (no pointer) has
+ * nothing to protect. An active version that cannot be read (dangling, or a malformed schedule) skips
+ * the guard so the Owner can still repair the configuration.
+ */
+async function assertCountScopeProspective(
+  store: ConfigurationStore,
+  pointer: ConfigurationPointer | null,
+  value: SalesOutreachConfigurationValue,
+  now: Date,
+  session: ClientSession,
+): Promise<void> {
+  if (!pointer) return;
+  const active = await store.readVersion(pointer.version, session);
+  const stored = active ? storedCountScopeScheduleSchema.safeParse(active.value) : null;
+  if (!stored?.success) return;
+  const today = newYorkBusinessDay(now);
+  const started = (rows: readonly CountScopeEntry[]) =>
+    rows.filter((row) => row.from_day <= today).map((row) => `${row.from_day}=${row.scope}`);
+  const before = started(stored.data.goals?.count_scope_schedule ?? []);
+  const after = started(value.goals.count_scope_schedule ?? []);
+  if (before.length === after.length && before.every((entry, i) => entry === after[i])) return;
+  throw new OutreachError("INVALID_INPUT", [
+    { path: "goals.count_scope_schedule", code: "count_scope_not_prospective", message: `entries on or before ${today} cannot change; start a new scope from a later day` },
+  ]);
+}
 
 /**
  * PATCH /configuration (CONTRACTS): full replacement of the validated value with `expected_revision`
@@ -66,6 +105,8 @@ export async function patchSalesOutreachConfiguration(
         if ((pointer?.revision ?? 0) !== input.expected_revision) throw new CsiError("REVISION_CONFLICT");
         if (pointer && pointer.content_hash === content_hash)
           return { revision: pointer.revision, version: pointer.version, content_hash, changed: false };
+        // Guards on the change itself, in plan order (olr §3): C1a count scope first.
+        await assertCountScopeProspective(store, pointer, value, context.now, context.session);
         await writer.insertVersion(
           { version, value, content_hash, approval_ref: value.cadence.approval_ref, actor: context.actor },
           context.session,

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CALL_CAPTURE_FINALIZATION_LAG_MINUTES,
   DESK_TIMING_DEFAULTS,
+  SALES_OUTREACH_GOAL_COUNT_SCOPES,
   SALES_OUTREACH_TIMEZONE,
 } from "../../config/domain/salesOutreach";
 
@@ -287,6 +288,24 @@ const goalsSchema = z
         ),
     ),
     zero_goal_rule: rule(["no_goal_today_excluded_from_denominator"] as const),
+    /**
+     * olr C1a: which calls count toward the daily goal, per New York business day. Each entry
+     * applies from its `from_day` until the next entry; absent or empty = `all_outbound` for every
+     * day (code default in `countScopeForDay`). Optional with no default (R0). The PATCH refuses an
+     * edit of any entry on or before today (`count_scope_not_prospective`), so each day keeps one scope.
+     */
+    count_scope_schedule: z
+      .array(
+        z
+          .object({
+            from_day: salesOutreachBusinessDateSchema,
+            scope: z.enum(SALES_OUTREACH_GOAL_COUNT_SCOPES),
+          })
+          .strict(),
+      )
+      .max(50)
+      .refine((rows) => rows.every((row, i) => i === 0 || row.from_day > rows[i - 1]!.from_day), "count_scope_schedule must ascend by from_day")
+      .optional(),
   })
   .strict();
 

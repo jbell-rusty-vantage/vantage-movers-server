@@ -340,3 +340,84 @@ test("timing keys are bounded; today tolerance must exceed settlement + 15 (400 
   const ok = await attempt({ evidence: { call_settlement_allowance_minutes: 5, today_coverage_tolerance_minutes: 21 } });
   assert.equal(ok.response.changed, true);
 });
+
+// ---- olr C1a: goals.count_scope_schedule ----------------------------------------------------
+
+test("C1a: the revision-5 value (no count_scope_schedule) re-parses to the same hash; the key stays absent", () => {
+  const parsed = salesOutreachConfigurationValueSchema.parse(revision5());
+  assert.equal(configurationContentHash(parsed), REVISION_5_HASH);
+  assert.equal("count_scope_schedule" in parsed.goals, false, "no default leaks into old versions");
+});
+
+test("C1a count_scope_not_prospective: entries on or before today are immutable; a later entry is accepted", async () => {
+  const db = new MemoryConfigurationDb();
+  storeRaw(db, revision5(), REVISION_5_HASH);
+  db.now = new Date("2026-10-06T15:00:00Z"); // 11:00 New York, business day 2026-10-06
+  let revision = 5;
+  const withSchedule = (schedule: unknown) => {
+    const value = revision5();
+    value.goals!.count_scope_schedule = schedule;
+    return value;
+  };
+  const patch = (schedule: unknown, key: string) =>
+    patchSalesOutreachConfiguration({ actor: owner, idempotency_key: `c1a-${key}`, expected_revision: revision, value: withSchedule(schedule) }, db.deps());
+  const refusedProspective = async (schedule: unknown, key: string) =>
+    assert.rejects(patch(schedule, key), (error: unknown) => {
+      assert.ok(error instanceof OutreachError);
+      assert.equal(error.code, "INVALID_INPUT");
+      assert.deepEqual(error.issues!.map((i) => [i.path, i.code]), [["goals.count_scope_schedule", "count_scope_not_prospective"]]);
+      return true;
+    });
+
+  // A new entry at today (or in the past) would change a day that has started.
+  await refusedProspective([{ from_day: "2026-10-06", scope: "eligible_new_quoted" }], "today");
+  await refusedProspective([{ from_day: "2026-10-01", scope: "eligible_new_quoted" }], "past");
+  assert.equal(db.pointer!.revision, 5, "nothing written");
+
+  // The D1 PATCH shape: from tomorrow. Accepted.
+  const tomorrow = await patch([{ from_day: "2026-10-07", scope: "eligible_new_quoted" }], "tomorrow");
+  assert.deepEqual([tomorrow.response.changed, tomorrow.response.revision], [true, 6]);
+  revision = 6;
+  // Still in the future: the entry may be edited or removed.
+  const moved = await patch([{ from_day: "2026-10-08", scope: "eligible_new_quoted" }], "move-future");
+  assert.equal(moved.response.revision, 7);
+  revision = 7;
+
+  // The next day: the 2026-10-08 entry has started.
+  db.now = new Date("2026-10-08T13:00:00Z");
+  await refusedProspective([{ from_day: "2026-10-08", scope: "all_outbound" }], "edit-started");
+  await refusedProspective([], "remove-started");
+  await refusedProspective([{ from_day: "2026-10-07", scope: "all_outbound" }, { from_day: "2026-10-08", scope: "eligible_new_quoted" }], "insert-before");
+  // Appending a later flip back keeps the started entry identical: accepted.
+  const back = await patch([{ from_day: "2026-10-08", scope: "eligible_new_quoted" }, { from_day: "2026-10-09", scope: "all_outbound" }], "flip-back");
+  assert.equal(back.response.revision, 8);
+  const active = await createConfigurationLoader(db.store).requireActive();
+  assert.deepEqual(active.value.goals.count_scope_schedule, [
+    { from_day: "2026-10-08", scope: "eligible_new_quoted" },
+    { from_day: "2026-10-09", scope: "all_outbound" },
+  ]);
+});
+
+test("C1a: the schedule must ascend by from_day, use known scopes and valid dates (400); initialization skips the guard", async () => {
+  const db = new MemoryConfigurationDb();
+  db.now = new Date("2026-10-06T15:00:00Z");
+  const attempt = (schedule: unknown) =>
+    patchSalesOutreachConfiguration({ actor: owner, idempotency_key: `c1a-shape-${Math.random()}`, expected_revision: 0, value: { goals: { count_scope_schedule: schedule } } }, db.deps());
+  await assert.rejects(
+    attempt([{ from_day: "2026-10-09", scope: "all_outbound" }, { from_day: "2026-10-08", scope: "eligible_new_quoted" }]),
+    (error: unknown) => {
+      assert.ok(error instanceof OutreachError);
+      assert.equal(error.code, "INVALID_INPUT");
+      assert.ok(error.issues!.some((i) => i.path === "goals.count_scope_schedule"));
+      return true;
+    },
+  );
+  await rejectsWith(attempt([{ from_day: "2026-10-08", scope: "eligible_new_quoted" }, { from_day: "2026-10-08", scope: "all_outbound" }]), "INVALID_INPUT");
+  await rejectsWith(attempt([{ from_day: "2026-10-08", scope: "enrolled_only" }]), "INVALID_INPUT");
+  await rejectsWith(attempt([{ from_day: "2026-02-30", scope: "all_outbound" }]), "INVALID_INPUT");
+  await rejectsWith(attempt([{ from_day: "2026-10-08", scope: "all_outbound", note: "x" }]), "INVALID_INPUT");
+  assert.equal(db.pointer, null);
+  // Explicit initialization (no active value) has nothing to protect, even with a past entry.
+  const init = await attempt([{ from_day: "2026-10-01", scope: "all_outbound" }]);
+  assert.deepEqual([init.response.changed, init.response.revision], [true, 1]);
+});

@@ -16,6 +16,7 @@ import { applyContactSources, repDayKeyOf, type ContactEventStore, type RepDayKe
 import { publishGoalChangesSafely, type OutreachGoalChange, type OutreachGoalPublisher } from "./goalPublish";
 import { wantsContactEvidence } from "./jobs";
 import { mongoContactEventStore } from "./mongoStore";
+import { countScopeForDay } from "./repDay";
 import { mongoRepDayStore, recountRepDay, type RepDayStore } from "./repDayService";
 
 /**
@@ -260,8 +261,10 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
 
 /**
  * Refresh pass (every minute): recounts today's and yesterday's existing rep-day rows whose coverage
- * is not complete yet, or whose past-day goal is not frozen yet — so coverage catches up and each day
- * freezes its goal after midnight even without new calls. Bounded by the roster.
+ * is not complete yet, whose past-day goal is not frozen yet, or whose stored count scope differs from
+ * the configured scope of the day (olr C1a: rows an older build wrote under another scope self-correct
+ * within a minute of the deploy) — so coverage catches up and each day freezes its goal after
+ * midnight even without new calls. Bounded by the roster.
  */
 export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {}): Promise<{ skipped: boolean; reason: string | null; recounted: number; failures: number }> {
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
@@ -271,9 +274,12 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
   const store = deps.repDays ?? mongoRepDayStore;
   const today = newYorkBusinessDay(now);
   const keys: RepDayKey[] = [];
+  const schedule = inspected.value.goals?.count_scope_schedule;
   for (const day of [addDays(today, -1), today]) {
+    const scope = countScopeForDay(day, schedule);
     for (const row of await store.rowsOfDay(day)) {
-      if (row.coverage_state !== "complete" || (day < today && !row.frozen)) keys.push({ agent_id: row.agent_id, business_day: day });
+      if (row.coverage_state !== "complete" || (day < today && !row.frozen) || row.count_scope !== scope)
+        keys.push({ agent_id: row.agent_id, business_day: day });
     }
   }
   const result = await recountRepDays(keys, loader, now, store, deps.transaction ?? withTransaction, deps.publishGoal);

@@ -3,17 +3,22 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
-import { salesOutreachRepDaySchema } from "../../../validation/v1/salesOutreachReads";
+import { salesOutreachRepDaySchema, salesOutreachRepDaysSchema } from "../../../validation/v1/salesOutreachReads";
 import { callsCoverageForDay } from "./freshness";
 import {
   composeRepDay,
   composeTeamGoals,
   dayCountScope,
+  fallbackCountScope,
   resolveConfiguredGoal,
   resolveRepDayGoal,
   type RepDayRow,
 } from "./goals";
-import { repDayRow } from "./testing";
+import type { OutreachActor } from "../auth";
+import { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } from "../evaluation/testing";
+import { MemoryDeskReadStore } from "./deskTesting";
+import { readRepDays } from "./service";
+import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow } from "./testing";
 
 /**
  * P08a roster/goal arithmetic (contracts/fixtures/p08a-roster-goals.json) and the honest-count
@@ -194,4 +199,32 @@ test("count scopes: Other outbound stays separate and mixed scopes never sum", (
   const team = composeTeamGoals([rep, compose(agentOf("b"), m1)], dayCountScope([m2, m1]));
   assert.deepEqual([team.outbound_calls.actual, team.outbound_calls.unknown_reason, team.count_scope_label], [null, "mixed_count_scope", null]);
   assert.equal(dayCountScope([]), null);
+});
+
+test("olr C1a fallbackCountScope: a rep without a row takes the configured scope of the day, never the rows'", () => {
+  assert.equal(fallbackCountScope(undefined, DAY), "all_outbound");
+  assert.equal(fallbackCountScope({ count_scope_schedule: undefined }, DAY), "all_outbound", "absent schedule = all_outbound (D1 A)");
+  const goals = salesOutreachConfigurationValueSchema.parse({
+    goals: { count_scope_schedule: [{ from_day: "2026-10-07", scope: "eligible_new_quoted" }] },
+  }).goals;
+  assert.equal(fallbackCountScope(goals, "2026-10-06"), "all_outbound");
+  assert.equal(fallbackCountScope(goals, "2026-10-07"), "eligible_new_quoted");
+});
+
+test("olr C1a GET /rep-days: a rep without a row reads the configured scope even when another rep's stale row says eligible", async () => {
+  const NOW = new Date("2026-10-05T15:00:00.000Z"); // 11:00 New York on DAY
+  const store = new MemoryReadStore();
+  // A row an older build wrote under eligible_new_quoted (2026-10-06 before the refresh corrects it).
+  store.rows = [repDayRow({ agent_id: TEST_AGENT_A, business_day: DAY, count_scope: "eligible_new_quoted", actual_confirmed: 12, computed_as_of: new Date("2026-10-05T14:55:00Z") })];
+  store.calls = { scope: "call_log_all_directions", known_complete_through: new Date("2026-10-05T14:57:00Z"), last_finished_at: NOW, last_error_code: null };
+  store.derivation = { known_complete_through: new Date("2026-10-05T14:58:00Z"), coverage_from: new Date("2026-10-01T04:00:00Z") };
+  const owner: OutreachActor = { role: "owner", actor: { kind: "owner", id: "owner-1", request_id: "r1", run_id: null }, agent_id: null };
+  const read = (input: ReturnType<typeof completeConfigurationInput>) =>
+    readRepDays(owner, { business_day: DAY }, { loader: fixedConfigurationLoader(activeInspection(input)), store, queueStore: new MemoryDeskReadStore(), now: NOW });
+  const absent = salesOutreachRepDaysSchema.parse(await read(completeConfigurationInput({ goal_metrics_enabled: true })));
+  const scopeOf = (body: typeof absent, agent: string) => body.reps!.find((rep) => rep.agent_id === agent)!.count_scope;
+  assert.deepEqual([scopeOf(absent, TEST_AGENT_A), scopeOf(absent, TEST_AGENT_B)], ["eligible_new_quoted", "all_outbound"], "the row keeps what it counted; the no-row rep follows the configuration");
+  const configured = completeConfigurationInput({ goal_metrics_enabled: true });
+  configured.goals = { ...configured.goals, count_scope_schedule: [{ from_day: DAY, scope: "eligible_new_quoted" }] };
+  assert.equal(scopeOf(salesOutreachRepDaysSchema.parse(await read(configured)), TEST_AGENT_B), "eligible_new_quoted");
 });

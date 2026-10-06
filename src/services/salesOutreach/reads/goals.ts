@@ -181,13 +181,23 @@ export function dayCountScope(rows: readonly RepDayRow[]): SalesOutreachGoalCoun
 }
 
 /**
- * The scope a rep without a row is presented in: the day's uniform scope, the most recently computed
- * row's scope on a mixed day, or `all_outbound` (FAST-TRACK M1) when the day has no rows.
+ * The count scope of a New York business day from the configuration (olr C1a, Owner decision D1):
+ * the last `goals.count_scope_schedule` entry with `from_day <= day`, else `all_outbound`. Absent or
+ * empty schedule = `all_outbound` for every day. The PATCH guard keeps entries on or before today
+ * immutable, so a day's scope never changes once the day has started.
  */
-export function fallbackCountScope(rows: readonly RepDayRow[]): SalesOutreachGoalCountScope {
-  if (!rows.length) return "all_outbound";
-  const latest = [...rows].sort((a, b) => (b.computed_as_of?.getTime() ?? 0) - (a.computed_as_of?.getTime() ?? 0))[0]!;
-  return latest.count_scope;
+export function countScopeForDay(day: string, schedule: GoalsConfiguration["count_scope_schedule"] | null | undefined): SalesOutreachGoalCountScope {
+  let scope: SalesOutreachGoalCountScope = "all_outbound";
+  for (const entry of schedule ?? []) {
+    if (entry.from_day > day) break;
+    scope = entry.scope;
+  }
+  return scope;
+}
+
+/** The scope a rep without a row is presented in: the configured scope of the day (rows are not consulted). */
+export function fallbackCountScope(goals: Pick<GoalsConfiguration, "count_scope_schedule"> | null | undefined, businessDay: string): SalesOutreachGoalCountScope {
+  return countScopeForDay(businessDay, goals?.count_scope_schedule);
 }
 
 /** A rep-day row's goal parts; the cadence counts are composed separately (`teamCadence.ts` `composeRepCadence`). */

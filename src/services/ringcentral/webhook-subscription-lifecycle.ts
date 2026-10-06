@@ -18,7 +18,9 @@ export type { SubscriptionPurpose, StoredSubscriptionMeta } from "./webhook-subs
  * testable paths with ownership checks: this module never renews, deletes or
  * replaces a subscription this application did not create (its id must be in
  * the stored subscription metadata). Foreign subscriptions — including ones
- * that point at our webhook address — are reported, never touched.
+ * that point at our webhook address — are reported, never touched. An owned
+ * `calls` subscription whose filters or address drifted is updated in place
+ * (`PUT`, `filter_drift`), never duplicated by a create.
  *
  * Two callers apply plans: the ops command
  * `ops/ringcentral/sales-intelligence-subscription.ts` (read-only by
@@ -252,6 +254,9 @@ export type SubscriptionHealth = "active" | "expiring" | "blacklisted" | "unknow
 
 const TERMINAL_STATUSES = new Set(["blacklisted", "suspended"]);
 
+/** Healthiest first: the order the plans use to pick the one owned subscription they manage. */
+const HEALTH_RANK: Record<SubscriptionHealth, number> = { active: 0, expiring: 1, unknown: 2, blacklisted: 3 };
+
 export function subscriptionHealth(record: SubscriptionRecord, now: Date, renewWithinMs: number): SubscriptionHealth {
   const status = record.status?.trim().toLowerCase() ?? null;
   if (status !== null && TERMINAL_STATUSES.has(status)) return "blacklisted";
@@ -343,9 +348,9 @@ export async function planAllDirectionSubscription(deps: LifecycleDeps): Promise
   if (classified.owned_matching.length > 1) {
     warnings.push(`${classified.owned_matching.length} owned matching subscriptions exist; only the healthiest is managed`);
   }
-  const rank: Record<SubscriptionHealth, number> = { active: 0, expiring: 1, unknown: 2, blacklisted: 3 };
-  const best = [...classified.owned_matching].sort((a, b) => rank[a.health] - rank[b.health])[0];
-  if (!best) return { action: "create", warnings };
+  const renewWithinMs = deps.renewWithinMs ?? DEFAULT_RENEW_WITHIN_MS;
+  const best = [...classified.owned_matching].sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health])[0];
+  if (!best) return planDriftedCallsSubscription(classified.owned_other, deps, now, renewWithinMs, warnings);
   const expiration_time = best.record.expirationTime?.toISOString() ?? null;
   if (best.health === "active" || best.health === "expiring") {
     const meta = deps.store.meta ? (await deps.store.meta()).get(best.record.id) : undefined;
@@ -364,6 +369,48 @@ export async function planAllDirectionSubscription(deps: LifecycleDeps): Promise
     `owned subscription ${best.record.id} reports status ${best.record.status ?? "(missing)"}; not repaired automatically`,
   );
   return { action: "noop", subscription_id: best.record.id, expiration_time, warnings };
+}
+
+const TELEPHONY_SESSIONS_FILTER = /\/telephony\/sessions$/;
+
+/**
+ * An owned subscription that serves the `calls` channel: recorded with purpose `calls`, or a legacy
+ * owned row recorded before `purpose` existed whose filters include the account/extension
+ * `/telephony/sessions` path (no query string, so a legacy inbound-only subscription is not one).
+ * The owned `rep_sms` subscription never is.
+ */
+function servesCallsChannel(record: SubscriptionRecord, meta: ReadonlyMap<string, StoredSubscriptionMeta>): boolean {
+  const purpose = meta.get(record.id)?.purpose ?? null;
+  if (purpose !== null) return purpose === "calls";
+  return record.eventFilters.some((filter) => TELEPHONY_SESSIONS_FILTER.test(normalizeEventFilter(filter)));
+}
+
+/**
+ * C6 (outreach lifecycle repair): no owned subscription matches the wanted filters and address. An
+ * owned `calls` subscription whose filters or delivery address drifted is repaired in place
+ * (`update`, a `PUT` on the owned id with `filter_drift`; blacklisted → `repair`), so the daily cron
+ * never creates a duplicate next to it. Only when none exists is the plan `create`.
+ */
+async function planDriftedCallsSubscription(
+  ownedOther: readonly SubscriptionRecord[],
+  deps: LifecycleDeps,
+  now: Date,
+  renewWithinMs: number,
+  warnings: string[],
+): Promise<SubscriptionPlan> {
+  if (!ownedOther.length) return { action: "create", warnings };
+  const meta = deps.store.meta ? await deps.store.meta() : new Map<string, StoredSubscriptionMeta>();
+  const drifted = ownedOther
+    .filter((record) => servesCallsChannel(record, meta))
+    .map((record) => ({ record, health: subscriptionHealth(record, now, renewWithinMs) }))
+    .sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health]);
+  const managed = drifted[0];
+  if (!managed) return { action: "create", warnings };
+  if (drifted.length > 1) warnings.push(`${drifted.length} owned calls subscriptions drifted; only the healthiest is managed`);
+  if (managed.health === "blacklisted") {
+    return { action: "repair", subscription_id: managed.record.id, health: managed.health, warnings };
+  }
+  return { action: "update", subscription_id: managed.record.id, reasons: ["filter_drift"], warnings };
 }
 
 export type LifecycleResult =
@@ -583,10 +630,9 @@ export async function planRepSmsSubscription(deps: RepSmsLifecycleDeps): Promise
   }
   if (owned.length > 1) warnings.push(`${owned.length} owned rep_sms subscriptions exist; only the healthiest is managed`);
   const renewWithinMs = deps.renewWithinMs ?? DEFAULT_RENEW_WITHIN_MS;
-  const rank: Record<SubscriptionHealth, number> = { active: 0, expiring: 1, unknown: 2, blacklisted: 3 };
   const best = owned
     .map((record) => ({ record, health: subscriptionHealth(record, now, renewWithinMs) }))
-    .sort((a, b) => rank[a.health] - rank[b.health])[0];
+    .sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health])[0];
   const base = { warnings, event_filters: eventFilters };
   if (!eventFilters.length) {
     warnings.push("no reviewed sales_rep mailbox; nothing to subscribe");

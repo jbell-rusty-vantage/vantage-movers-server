@@ -6,7 +6,8 @@
  *
  * Dry run by default: lists the plan for each purpose and changes nothing. `--apply`:
  * - `calls`: ensures the app-owned account telephony subscription and, when it has no stored
- *   verification token, `PUT`s one onto it (creates the subscription only when none owned exists);
+ *   verification token, `PUT`s one onto it; `PUT`s an owned one whose filters or address drifted
+ *   (`filter_drift`); creates the subscription only when no owned `calls` one exists;
  * - `rep_sms`: creates the app-owned message-store subscription with one filter per reviewed
  *   `sales_rep` mailbox, or `PUT`s the owned one when filters drifted / no token; repairs a
  *   blacklisted one (delete + recreate).

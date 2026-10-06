@@ -1,16 +1,13 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { OUTREACH_CONTACT_CALLS_SCOPE } from "../../../config/domain/salesOutreachContacts";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
-import {
-  getSalesOutreachContactEventModel,
-  getSalesOutreachEnrollmentRunModel,
-  getSalesOutreachRepDayProjectionModel,
-} from "../../../models/salesOutreach";
+import type { SalesOutreachGoalCountScope } from "../../../config/domain/salesOutreach";
+import { getSalesOutreachContactEventModel, getSalesOutreachRepDayProjectionModel } from "../../../models/salesOutreach";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
 import type { ActiveConfiguration } from "../config/load";
 import { newYorkBusinessDay } from "../reads/businessDay";
 import type { RepDayKey } from "./apply";
-import { composeRepDayRow, countScopeFor, type CoverageWatermarks, type GoalSnapshot, type RepDayEventFacts, type RepDayRowFields } from "./repDay";
+import { composeRepDayRow, countScopeForDay, type CoverageWatermarks, type GoalSnapshot, type RepDayEventFacts, type RepDayRowFields } from "./repDay";
 
 /** Events of one rep-day are bounded by a day's dialing; the cap only guards a corrupt day. */
 const MAX_REP_DAY_EVENTS = 5000;
@@ -22,16 +19,24 @@ export type StoredRepDay = Readonly<{
   publication_revision: number;
   revision: number;
   coverage_state: string | null;
+  /** The scope the row was counted under (olr C1a: a differing configured scope rewrites the row). */
+  count_scope: SalesOutreachGoalCountScope | null;
+}>;
+
+export type RepDayRefreshRow = Readonly<{
+  agent_id: string;
+  coverage_state: string | null;
+  frozen: boolean;
+  count_scope: SalesOutreachGoalCountScope | null;
 }>;
 
 export type RepDayStore = {
   events(key: RepDayKey, session: ClientSession): Promise<RepDayEventFacts[]>;
   readRow(key: RepDayKey, session: ClientSession): Promise<StoredRepDay | null>;
   writeRow(fields: RepDayRowFields, previous: StoredRepDay | null, now: Date, session: ClientSession): Promise<number>;
-  firstActivationAt(session: ClientSession): Promise<Date | null>;
   watermarks(session: ClientSession): Promise<CoverageWatermarks>;
-  /** Rows of a day (refresh pass): agent id, coverage state and whether the goal is frozen. */
-  rowsOfDay(day: string): Promise<Array<{ agent_id: string; coverage_state: string | null; frozen: boolean }>>;
+  /** Rows of a day (refresh pass): agent id, coverage state, whether the goal is frozen and the stored count scope. */
+  rowsOfDay(day: string): Promise<RepDayRefreshRow[]>;
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -52,9 +57,16 @@ export const mongoRepDayStore: RepDayStore = {
 
   async readRow(key, session) {
     const row = (await getSalesOutreachRepDayProjectionModel()
-      .findOne({ agent_id: oid(key.agent_id), business_day: key.business_day }, { goal_snapshot: 1, input_fingerprint: 1, publication_revision: 1, revision: 1, coverage: 1 })
+      .findOne({ agent_id: oid(key.agent_id), business_day: key.business_day }, { goal_snapshot: 1, input_fingerprint: 1, publication_revision: 1, revision: 1, coverage: 1, count_scope: 1 })
       .session(session)
-      .lean()) as unknown as { goal_snapshot?: GoalSnapshot | null; input_fingerprint: string; publication_revision: number; revision: number; coverage?: { state?: string } | null } | null;
+      .lean()) as unknown as {
+      goal_snapshot?: GoalSnapshot | null;
+      input_fingerprint: string;
+      publication_revision: number;
+      revision: number;
+      coverage?: { state?: string } | null;
+      count_scope?: SalesOutreachGoalCountScope | null;
+    } | null;
     if (!row) return null;
     return {
       goal_snapshot: row.goal_snapshot ?? null,
@@ -62,6 +74,7 @@ export const mongoRepDayStore: RepDayStore = {
       publication_revision: row.publication_revision ?? 0,
       revision: row.revision ?? 1,
       coverage_state: row.coverage?.state ?? null,
+      count_scope: row.count_scope ?? null,
     };
   },
 
@@ -95,16 +108,6 @@ export const mongoRepDayStore: RepDayStore = {
     return publication;
   },
 
-  async firstActivationAt(session) {
-    // A handful of runs exist (one per cohort); the earliest completed apply decides the M2 date.
-    const row = (await getSalesOutreachEnrollmentRunModel()
-      .findOne({ mode: "apply", status: "completed" }, { activation_at: 1 })
-      .sort({ activation_at: 1 })
-      .session(session)
-      .lean()) as unknown as { activation_at: Date } | null;
-    return row?.activation_at ?? null;
-  },
-
   async watermarks(session) {
     const rows = (await getSalesIntelligenceSyncStateModel()
       .find({ scope: { $in: [CALL_LOG_ALL_DIRECTIONS_SCOPE, OUTREACH_CONTACT_CALLS_SCOPE] } }, { scope: 1, known_complete_through: 1, "cursor.outreach_coverage_from": 1 })
@@ -121,13 +124,19 @@ export const mongoRepDayStore: RepDayStore = {
 
   async rowsOfDay(day) {
     const rows = (await getSalesOutreachRepDayProjectionModel()
-      .find({ business_day: day }, { agent_id: 1, coverage: 1, "goal_snapshot.configuration_version": 1 })
+      .find({ business_day: day }, { agent_id: 1, coverage: 1, count_scope: 1, "goal_snapshot.configuration_version": 1 })
       .limit(MAX_REFRESH_ROWS)
-      .lean()) as unknown as Array<{ agent_id: unknown; coverage?: { state?: string } | null; goal_snapshot?: { configuration_version?: string | null } | null }>;
+      .lean()) as unknown as Array<{
+      agent_id: unknown;
+      coverage?: { state?: string } | null;
+      count_scope?: SalesOutreachGoalCountScope | null;
+      goal_snapshot?: { configuration_version?: string | null } | null;
+    }>;
     return rows.map((row) => ({
       agent_id: String(row.agent_id),
       coverage_state: row.coverage?.state ?? null,
       frozen: Boolean(row.goal_snapshot?.configuration_version),
+      count_scope: row.count_scope ?? null,
     }));
   },
 };
@@ -154,7 +163,6 @@ export async function recountRepDay(
   // server refuse the second `startTransaction` (ConflictingOperationInProgress, code 117).
   const events = await store.events(key, session);
   const previous = await store.readRow(key, session);
-  const firstActivation = await store.firstActivationAt(session);
   const watermarks = await store.watermarks(session);
   const fields = composeRepDayRow({
     agent_id: key.agent_id,
@@ -162,13 +170,17 @@ export async function recountRepDay(
     today: newYorkBusinessDay(now),
     now,
     events,
-    scope: countScopeFor(key.business_day, firstActivation),
+    // olr C1a: the day's scope is configuration (`goals.count_scope_schedule`, absent = all_outbound).
+    scope: countScopeForDay(key.business_day, configuration.value.goals?.count_scope_schedule),
     goals: configuration.value.goals ?? null,
     configuration_version: configuration.version,
     existing_snapshot: previous?.goal_snapshot ?? null,
     watermarks,
   });
-  if (previous?.input_fingerprint === fields.input_fingerprint) return { outcome: "unchanged", publication_revision: previous.publication_revision, fields };
+  // The fingerprint covers the scope; the stored-scope check also rewrites a row whose scope field
+  // disagrees with its fingerprint, so the refresh pass never re-selects it forever.
+  if (previous?.input_fingerprint === fields.input_fingerprint && previous.count_scope === fields.count_scope)
+    return { outcome: "unchanged", publication_revision: previous.publication_revision, fields };
   if (!previous && fields.actual_confirmed + fields.actual_awaiting_confirmation + fields.unattributed === 0)
     return { outcome: "no_activity", publication_revision: null, fields };
   const publication = await store.writeRow(fields, previous, now, session);
