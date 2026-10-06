@@ -260,6 +260,17 @@ async function main() {
     [callsRow?.confirmation_success_at?.toISOString(), callsRow?.observed_complete_through?.toISOString(), callsRow?.known_complete_through?.toISOString()],
     ["2026-10-05T14:59:20.000Z", "2026-10-05T14:44:00.000Z", "2026-10-05T14:10:00.000Z"],
   );
+  // AW1: a row without the sticky instants falls back to the last run, which confirms only in sync mode on;
+  // the projection must carry last_run.sync_mode for that (a shadow run never confirms).
+  const legacyRow = { scope: "call_log_all_directions" };
+  const legacyRun = (syncMode: string) => ({
+    $unset: { reconcile_sync_success_at: "", isync_lane: "" },
+    $set: { "last_run.sync_mode": syncMode },
+  });
+  await getSalesIntelligenceSyncStateModel().collection.updateOne(legacyRow, legacyRun("shadow"));
+  assert.equal((await mongoSalesOutreachReadStore.readCallsCapture())?.confirmation_success_at ?? null, null, "AW1: a shadow run never confirms");
+  await getSalesIntelligenceSyncStateModel().collection.updateOne(legacyRow, legacyRun("on"));
+  assert.equal((await mongoSalesOutreachReadStore.readCallsCapture())?.confirmation_success_at?.toISOString(), "2026-10-05T14:58:00.000Z", "AW1: mode on confirms");
   await ensureRingCentralWebhookEventIndexes();
   const receipts = mongoose.connection.db!.collection(getRingCentralCollectionName("webhookEvents"));
   await receipts.insertMany([

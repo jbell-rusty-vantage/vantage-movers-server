@@ -96,7 +96,8 @@ const captureFreshnessSchema = z
     state: z.enum(SALES_OUTREACH_CAPTURE_FRESHNESS_STATES),
     /**
      * Latest capture progress. Calls: min(last Call Log confirmation, newest call webhook receipt) in the
-     * staffed window [07:45, 20:30) New York, the confirmation alone outside it (RINGCENTRAL-CAPTURE §8).
+     * staffed window [07:45, 20:30) New York once the day's first call webhook has arrived; the confirmation
+     * alone outside the window and before that first receipt (RINGCENTRAL-CAPTURE §8, olr AW1).
      * SMS: the worst reviewed mailbox's last sync.
      */
     last_updated_at: nullableInstant,
