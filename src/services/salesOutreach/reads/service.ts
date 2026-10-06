@@ -10,11 +10,19 @@ import type { ActiveConfiguration } from "../config/load";
 import { configurationActivationBlockers } from "../config/reads";
 import { OutreachError } from "../errors";
 import { composeCapabilities } from "./capabilities";
-import { baseRead, commonRead, readFreshness, requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
+import {
+  baseRead,
+  commonRead,
+  readCallWatermarks,
+  readFreshness,
+  requireDeskConfiguration,
+  resolveBusinessDay,
+  type DeskReadCoverage,
+  type DeskReadDeps,
+} from "./common";
 import { repDayCoverage } from "../contacts/repDay";
 import { deskTimingOf } from "../config/timing";
 import type { CallWatermarks } from "../evidence/coverage";
-import type { CaptureSyncRow } from "./freshness";
 import {
   composeRepDay,
   composeTeamGoals,
@@ -24,7 +32,7 @@ import {
   type RepDayRow,
 } from "./goals";
 import { mongoDeskQueueStore, type DeskQueueStore } from "./deskStore";
-import { mongoSalesOutreachReadStore, type ContactDerivationMark, type SalesOutreachReadStore } from "./store";
+import { mongoSalesOutreachReadStore, type SalesOutreachReadStore } from "./store";
 import { composeRepCadence, composeTeamCadence } from "./teamCadence";
 
 export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from "./common";
@@ -35,19 +43,11 @@ export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from 
  */
 
 /**
- * The call watermarks a rep-day read needs (olr C0), from the two rows the read already loads: the Call
- * Log capture row (`readCallsCapture`: capped `known`, uncapped `observed`) and the contact-event
- * derivation row (`readContactDerivation`, null before S3's first sweep).
+ * The call watermarks a rep-day read needs (olr C0): the Call Log capture row and the contact-event
+ * derivation row `readFreshness` loads (olr A2 moved the assembly to `common.ts` `readCallWatermarks`
+ * so every desk read shares it).
  */
-export function repDayCallWatermarks(calls: CaptureSyncRow | null, derivation: ContactDerivationMark | null): CallWatermarks {
-  return {
-    capture_known: calls?.known_complete_through ?? null,
-    capture_observed: calls?.observed_complete_through ?? null,
-    derived_known: derivation?.known_complete_through ?? null,
-    derived_observed: derivation?.observed_complete_through ?? null,
-    coverage_from: derivation?.coverage_from ?? null,
-  };
-}
+export const repDayCallWatermarks = readCallWatermarks;
 
 /**
  * Per-rep goal rows for one day. `agentId` narrows to one rep; otherwise roster reps (in roster
@@ -64,6 +64,8 @@ async function composeRepDays(input: {
   agent_id: string | null;
   /** Capture + derivation call watermarks (`repDayCallWatermarks`). */
   watermarks: CallWatermarks;
+  /** The read's channel coverage (olr A2): the overdue counts honour it. */
+  coverage: DeskReadCoverage;
 }) {
   const { store, configuration, business_day, today, now } = input;
   const roster = (configuration.value.goals.rep_work_schedules ?? []).map((row) => row.agent_id);
@@ -78,7 +80,7 @@ async function composeRepDays(input: {
   // (today: as_of − today tolerance), and the day starts on/after the derivation's coverage start (olr C0).
   const coverage = repDayCoverage(business_day, today, now, input.watermarks, deskTimingOf(configuration.value));
   const fallback = fallbackCountScope(configuration.value.goals, business_day);
-  const cadence = await composeRepCadence({ configuration, now, queueStore: input.queueStore, agentIds: agents });
+  const cadence = await composeRepCadence({ configuration, now, queueStore: input.queueStore, agentIds: agents, coverage: input.coverage });
   const reps = agents.map((agent_id) => {
     const row = rowByAgent.get(agent_id) ?? null;
     const goals = composeRepDay({
@@ -121,7 +123,7 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
   const agent_id = actor.role === "rep" ? actor.agent_id : (query.agent_id ?? null);
   const configuration = await requireDeskConfiguration(deps.loader);
   const { business_day, today } = resolveBusinessDay(query.business_day, deps.now);
-  const { calls, freshness } = await readFreshness(store, configuration, deps.now);
+  const { freshness, watermarks, coverage } = await readFreshness(store, configuration, deps.now);
   const base = { business_day, is_today: business_day === today, goal_metrics_enabled: configuration.value.controls.goal_metrics_enabled };
   if (!base.goal_metrics_enabled) {
     return {
@@ -140,7 +142,8 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
     today,
     now: deps.now,
     agent_id,
-    watermarks: repDayCallWatermarks(calls, await store.readContactDerivation()),
+    watermarks,
+    coverage,
   });
   return {
     ...commonRead(actor, deps.now, agent_id, configuration, days.projection_revision, freshness),
@@ -160,7 +163,7 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
   const store = deps.store ?? mongoSalesOutreachReadStore;
   const configuration = await requireDeskConfiguration(deps.loader);
   const { business_day, today } = resolveBusinessDay(query.business_day, deps.now);
-  const { calls, freshness } = await readFreshness(store, configuration, deps.now);
+  const { freshness, watermarks, coverage } = await readFreshness(store, configuration, deps.now);
   const goalMetrics = configuration.value.controls.goal_metrics_enabled;
   const queueStore = deps.queueStore ?? mongoDeskQueueStore;
   const days = goalMetrics
@@ -172,10 +175,11 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
         today,
         now: deps.now,
         agent_id: null,
-        watermarks: repDayCallWatermarks(calls, await store.readContactDerivation()),
+        watermarks,
+        coverage,
       })
     : null;
-  const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore, readStore: store });
+  const cadence = await composeTeamCadence({ configuration, now: deps.now, queueStore, readStore: store, coverage });
   const attentionRevision = (cadence.leads_needing_attention.rows ?? []).reduce<number | null>((max, row) => Math.max(max ?? 0, row.publication_revision), null);
   const projection_revision =
     days?.projection_revision === null || days?.projection_revision === undefined ? attentionRevision : Math.max(days.projection_revision, attentionRevision ?? 0);

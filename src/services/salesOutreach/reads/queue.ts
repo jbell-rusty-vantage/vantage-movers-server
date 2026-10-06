@@ -195,7 +195,7 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
     limit: normalized.limit,
     cadence_exposure: cadence.exposure,
     enforcement_labels: cadence.exposure === "enforcement",
-    rows: visible.map((row) => presentQueueRow(row, { as_of: asOf, today, names, exposure: cadence.exposure })),
+    rows: visible.map((row) => presentQueueRow(row, { as_of: asOf, today, names, exposure: cadence.exposure, coverage: freshnessRead.coverage })),
     next_cursor,
     has_more,
     counts: {

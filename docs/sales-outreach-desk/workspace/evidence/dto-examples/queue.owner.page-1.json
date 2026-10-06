@@ -84,7 +84,12 @@
             "known_complete_through": "2026-10-05T14:57:00.000Z",
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": {
+            "state": "verified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": null
+          }
         },
         "sms": {
           "required": 1,
@@ -99,7 +104,8 @@
             "known_complete_through": null,
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": null
         },
         "status_flags": {
           "needs_contact": true,
@@ -146,7 +152,12 @@
             "known_complete_through": "2026-10-05T14:57:00.000Z",
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": {
+            "state": "verified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": null
+          }
         },
         "sms": {
           "required": 1,
@@ -161,7 +172,8 @@
             "known_complete_through": null,
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": null
         },
         "status_flags": {
           "needs_contact": true,

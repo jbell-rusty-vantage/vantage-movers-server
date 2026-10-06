@@ -94,7 +94,8 @@ async function seeded(controls?: Parameters<typeof completeConfigurationInput>[0
   const admission = evaluationAdmissionOf(inspection);
   assert.ok(admission.ok);
   await runInFakeTransaction((session) => evaluateAndProject(subject.id, admission.context, at("2026-10-05T14:59:00.000Z"), store.evaluation, session));
-  const readStore = new MemoryReadStore();
+  // The reads see the same call coverage the evaluation used (olr A2 read-time verification).
+  const readStore = new MemoryReadStore().coverCalls(at("2026-10-05T14:58:00.000Z"));
   readStore.names = new Map([[REP_A, "Alice Rep"], [REP_B, "Bob Rep"]]);
   const deps = { loader: fixedConfigurationLoader(inspection), store: readStore, queueStore: store, now: NOW };
   return { store, subject, deps };

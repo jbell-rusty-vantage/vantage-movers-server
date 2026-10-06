@@ -157,7 +157,8 @@
           "known_complete_through": "2026-10-05T14:57:00.000Z",
           "gaps": []
         },
-        "blocked_reason": null
+        "blocked_reason": null,
+        "verification": null
       },
       "sms": {
         "required": 1,
@@ -172,7 +173,8 @@
           "known_complete_through": null,
           "gaps": []
         },
-        "blocked_reason": null
+        "blocked_reason": null,
+        "verification": null
       }
     },
     "status_flags": {

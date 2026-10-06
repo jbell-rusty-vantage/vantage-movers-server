@@ -58,7 +58,15 @@ export type QueueKeys = Readonly<{
   received_asc: Date;
   received_desc: Date;
   last_interaction: Date;
+  /**
+   * The SMS channel's earliest unsatisfied actionable deadline (olr A2: the coverage-aware overdue counts);
+   * null on a row written before A2 (engine v1). Never a sort key.
+   */
+  sms_due: Date | null;
 }>;
+
+/** The never-null `queue_keys` (every sort key, and `call_due`). */
+export type QueueDateKey = Exclude<keyof QueueKeys, "sms_due">;
 
 /** The fields of a stored projection row the queue matches on. */
 export type QueueMatchable = Readonly<{
@@ -195,7 +203,7 @@ export function mongoQueueQuery(plan: QueuePagePlan): { filter: Record<string, u
 
 function sortValue(row: QueueMatchable, field: QueueSortField): number | string {
   if (field === "subject_id") return row.subject_id;
-  const key = field.slice("queue_keys.".length) as keyof QueueKeys;
+  const key = field.slice("queue_keys.".length) as QueueDateKey;
   return +row.queue_keys[key];
 }
 
@@ -213,7 +221,7 @@ export function compareQueueRows(sort: QueueSortSpec, a: QueueMatchable, b: Queu
 export function keysetOf(sort: QueueSortSpec, row: QueueMatchable): string[] {
   return sort.map(({ field }) => {
     if (field === "subject_id") return row.subject_id;
-    return row.queue_keys[field.slice("queue_keys.".length) as keyof QueueKeys].toISOString();
+    return row.queue_keys[field.slice("queue_keys.".length) as QueueDateKey].toISOString();
   });
 }
 

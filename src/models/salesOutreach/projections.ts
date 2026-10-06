@@ -113,8 +113,14 @@ const queueKeysSchema = new Schema(
     urgency_due: at,
     /** Next future scheduled action due; far future when none. */
     urgency_next: at,
-    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card). */
+    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card, coverage-aware overdue counts). */
     call_due: at,
+    /**
+     * The SMS channel's earliest unsatisfied actionable deadline (olr A2: the overdue counts compare each
+     * channel with its own coverage). Absent on rows written before A2; no index (the counts scan the
+     * small active set, as the quoted card already does on `call_due`).
+     */
+    sms_due: at,
     /** Received instant; unknown sorts last ascending (far future). */
     received_asc: at,
     /** Received instant; unknown sorts last descending (epoch). */

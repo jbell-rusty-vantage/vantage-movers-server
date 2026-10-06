@@ -144,8 +144,12 @@ function alignSnapshot(store: MemoryDeskReadStore, inspection: ConfigurationInsp
   for (const row of store.evaluation.projections.values()) (row.doc as Record<string, unknown>).policy_fingerprint = fp;
 }
 
-function deps(store: MemoryDeskReadStore, inspection: ConfigurationInspection = config(), now = NOW) {
+/** Call capture known through 14:58 (2 min before NOW) ⇒ cadence call coverage 14:56 after the 2-minute allowance. */
+const CAPTURED = at("2026-10-05T14:58:00.000Z");
+
+function deps(store: MemoryDeskReadStore, inspection: ConfigurationInspection = config(), now = NOW, capture: Date | null = CAPTURED) {
   const readStore = new MemoryReadStore();
+  if (capture) readStore.coverCalls(capture);
   readStore.names = new Map([
     [REP_A, "Alice Rep"],
     [REP_B, "Bob Rep"],
@@ -338,6 +342,60 @@ test("read-time status: a due requirement past its deadline reads overdue under 
     assert.equal(row.oldest_actionable_due_at, "2026-10-05T14:30:00.000Z", "deadlines stay visible in shadow");
   }
   assert.deepEqual(store.evaluation.writes, [], "reads never write projections");
+});
+
+test("read-time verification (olr A2): a passed deadline coverage cannot prove reads due/unverified and stays in Needs contact; once coverage reaches it, overdue/verified", async () => {
+  const store = new MemoryDeskReadStore();
+  // Deadline 14:57 has passed at NOW (15:00); cadence call coverage = capture − 2 min.
+  const id = seed(store, { urgency: "2026-10-05T14:57:00.000Z", call_status: "due" });
+  const future = seed(store, { urgency: "2026-10-05T16:00:00.000Z", call_status: "due" });
+  alignSnapshot(store, config());
+  const rowAt = async (capture: Date | null, inspection = config(), subject = id) => {
+    const body = salesOutreachQueueSchema.parse(await readQueue(owner, q({}), deps(store, inspection, NOW, capture)));
+    return body.rows.find((r) => r.subject_id === subject)!;
+  };
+
+  // Capture through 14:58 ⇒ coverage 14:56 < 14:57: not yet verified, still listed under Needs contact.
+  const behind = await rowAt(CAPTURED);
+  assert.equal(behind.call.status, "due");
+  assert.deepEqual(behind.call.verification, { state: "unverified", verified_through: "2026-10-05T14:56:00.000Z", unverified_since: "2026-10-05T14:57:00.000Z" });
+  assert.equal(behind.status_flags.overdue, false);
+  assert.equal(behind.status_flags.needs_contact, true);
+  assert.equal(behind.oldest_actionable_due_at, null, "no overdue deadline is claimed");
+  // The coverage block is the live capture watermark (2 min behind: complete within the 25-min tolerance).
+  assert.deepEqual(behind.call.coverage, { state: "complete", known_complete_through: "2026-10-05T14:58:00.000Z", gaps: [] });
+
+  // No capture coverage at all: unverified with no "known through", coverage unknown.
+  const none = await rowAt(null);
+  assert.deepEqual([none.call.status, none.call.verification], ["due", { state: "unverified", verified_through: null, unverified_since: "2026-10-05T14:57:00.000Z" }]);
+  assert.equal(none.call.coverage.state, "unknown");
+
+  // Capture through 15:05 ⇒ coverage 15:03 ≥ 14:57: overdue, verified through the coverage instant.
+  const caught = await rowAt(at("2026-10-05T15:05:00.000Z"));
+  assert.equal(caught.call.status, "overdue");
+  assert.deepEqual(caught.call.verification, { state: "verified", verified_through: "2026-10-05T15:03:00.000Z", unverified_since: null });
+  assert.equal(caught.status_flags.overdue, true);
+  assert.equal(caught.oldest_actionable_due_at, "2026-10-05T14:57:00.000Z");
+
+  // A deadline still ahead carries no verification; shadow carries none either (no performance label).
+  assert.equal((await rowAt(CAPTURED, config(), future)).call.verification, null);
+  const shadow = config({ cadence_shadow_enabled: true });
+  alignSnapshot(store, shadow);
+  const masked = await rowAt(at("2026-10-05T15:05:00.000Z"), shadow);
+  assert.deepEqual([masked.call.status, masked.call.verification, masked.status_flags.overdue], ["due", null, false]);
+  assert.deepEqual(store.evaluation.writes, [], "reads never write projections");
+});
+
+test("read-time verification (olr A2): a stored overdue reads verified; a stale capture reads partial coverage", async () => {
+  const store = new MemoryDeskReadStore();
+  const id = seed(store, { urgency: "2026-10-05T12:00:00.000Z", call_status: "overdue" });
+  alignSnapshot(store, config());
+  const body = salesOutreachQueueSchema.parse(await readQueue(owner, q({}), deps(store, config(), NOW, at("2026-10-05T14:30:00.000Z"))));
+  const row = body.rows.find((r) => r.subject_id === id)!;
+  assert.equal(row.call.status, "overdue");
+  assert.deepEqual(row.call.verification, { state: "verified", verified_through: "2026-10-05T14:28:00.000Z", unverified_since: null });
+  assert.deepEqual(row.call.coverage, { state: "partial", known_complete_through: "2026-10-05T14:30:00.000Z", gaps: [] }, "30 min behind > 25-min tolerance");
+  assert.equal(row.sms.verification, null, "a channel with nothing due has no verification");
 });
 
 test("schedule_day (S4): the stored New schedule day, null for other workflows or when the evaluator stored none; never recomputed", async () => {

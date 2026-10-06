@@ -11,6 +11,7 @@ import { mongoDeskQueueStore } from "./deskStore";
 import {
   channelDto,
   moveDateReviewOf,
+  liveCoverageOf,
   PENDING_CHANNEL,
   presentRequirements,
   type StoredProjectionDetail,
@@ -190,7 +191,8 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
   const shown = view.state === "current" || view.state === "stale_policy" ? projection : null;
   const today = newYorkBusinessDay(deps.now);
   const moveReview = moveDateReviewOf(subject.display.move_date, today);
-  const presented = shown && view.exposure ? presentRequirements(shown, deps.now, today, view.exposure) : null;
+  const presented = shown && view.exposure ? presentRequirements(shown, deps.now, today, view.exposure, freshnessRead.coverage.cadence) : null;
+  const live = liveCoverageOf(freshnessRead.coverage, deps.now);
   const flags: StoredStatusFlags = presented?.status_flags ?? {
     needs_contact: false,
     overdue: false,
@@ -322,8 +324,8 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
       explanation: explanationOf({ subject, projection: shown, view, flags, restrictions }),
     },
     requirements: {
-      call: channelDto(presented?.call ?? PENDING_CHANNEL),
-      sms: channelDto(presented?.sms ?? PENDING_CHANNEL),
+      call: channelDto(presented?.call ?? PENDING_CHANNEL, live.call),
+      sms: channelDto(presented?.sms ?? PENDING_CHANNEL, live.sms),
     },
     status_flags: flags,
     oldest_actionable_due_at: iso(presented?.oldest_actionable_due_at ?? null),

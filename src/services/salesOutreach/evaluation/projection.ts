@@ -77,7 +77,9 @@ function channelUrgency(requirement: EngineChannelRequirement): string | null {
 /**
  * Never-null queue sort keys (CONTRACTS "Queue sort enums"). Urgency = the earliest unsatisfied actionable
  * deadline (overdue deadlines are always earlier than due-today ones, so the order stays right as time
- * passes without a rewrite), then the next future action, then received time (unknown last).
+ * passes without a rewrite), then the next future action, then received time (unknown last). `call_due` /
+ * `sms_due` are each channel's own earliest unsatisfied actionable deadline: the reads count a Lead overdue
+ * per channel only once that channel's coverage proves it (olr A2).
  */
 export function queueKeysOf(result: EvaluateSubjectResult, receivedAt: Date | null) {
   const call = channelUrgency(result.requirements.call);
@@ -87,6 +89,7 @@ export function queueKeysOf(result: EvaluateSubjectResult, receivedAt: Date | nu
     urgency_due: toDate(urgency) ?? QUEUE_KEY_FAR_FUTURE,
     urgency_next: toDate(result.next_action_due_at) ?? QUEUE_KEY_FAR_FUTURE,
     call_due: toDate(call) ?? QUEUE_KEY_FAR_FUTURE,
+    sms_due: toDate(sms) ?? QUEUE_KEY_FAR_FUTURE,
     received_asc: receivedAt ?? QUEUE_KEY_FAR_FUTURE,
     received_desc: receivedAt ?? QUEUE_KEY_EPOCH,
     last_interaction: toDate(result.last_interaction_at) ?? QUEUE_KEY_EPOCH,

@@ -55,6 +55,74 @@
     "enforcement_labels": true,
     "rows": [
       {
+        "subject_id": "6650a1b2c3d4e5f607182a05",
+        "job_no": "P5561205",
+        "job_pending": false,
+        "phone": "(305) 555-0105",
+        "name": "Avery Pending",
+        "move_date": "2026-10-21",
+        "move_date_review": null,
+        "priority_raw": null,
+        "workflow": "new",
+        "subject_status": "active",
+        "assigned_agent_id": "6650a1b2c3d4e5f60718293a",
+        "assigned_agent_name": "Alice Rep",
+        "received_at": "2026-10-05T14:27:00.000Z",
+        "last_interaction_at": null,
+        "oldest_actionable_due_at": null,
+        "next_action_due_at": "2026-10-06T00:00:00.000Z",
+        "call": {
+          "required": 2,
+          "verified_completed": 0,
+          "remaining": 2,
+          "due_at": "2026-10-05T14:57:00.000Z",
+          "oldest_actionable_due_at": null,
+          "status": "due",
+          "completion_kind": null,
+          "coverage": {
+            "state": "complete",
+            "known_complete_through": "2026-10-05T14:57:00.000Z",
+            "gaps": []
+          },
+          "blocked_reason": null,
+          "verification": {
+            "state": "unverified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": "2026-10-05T14:57:00.000Z"
+          }
+        },
+        "sms": {
+          "required": 1,
+          "verified_completed": null,
+          "remaining": null,
+          "due_at": "2026-10-06T00:00:00.000Z",
+          "oldest_actionable_due_at": null,
+          "status": "due",
+          "completion_kind": null,
+          "coverage": {
+            "state": "unknown",
+            "known_complete_through": null,
+            "gaps": []
+          },
+          "blocked_reason": null,
+          "verification": null
+        },
+        "status_flags": {
+          "needs_contact": true,
+          "overdue": false,
+          "blocked": false,
+          "pending": false,
+          "move_date_passed": false,
+          "move_date_unknown": false,
+          "job_pending": false,
+          "advisory_cooldown": false
+        },
+        "exposure": "enforcement",
+        "computed_as_of": "2026-10-05T14:59:00.000Z",
+        "publication_revision": 1,
+        "schedule_day": 1
+      },
+      {
         "subject_id": "6650a1b2c3d4e5f607182a03",
         "job_no": null,
         "job_pending": true,
@@ -69,22 +137,27 @@
         "assigned_agent_name": null,
         "received_at": "2026-10-05T14:30:00.000Z",
         "last_interaction_at": null,
-        "oldest_actionable_due_at": "2026-10-05T15:00:00.000Z",
+        "oldest_actionable_due_at": null,
         "next_action_due_at": "2026-10-05T15:00:00.000Z",
         "call": {
           "required": 2,
           "verified_completed": 0,
           "remaining": 2,
           "due_at": "2026-10-05T15:00:00.000Z",
-          "oldest_actionable_due_at": "2026-10-05T15:00:00.000Z",
-          "status": "overdue",
+          "oldest_actionable_due_at": null,
+          "status": "due",
           "completion_kind": null,
           "coverage": {
             "state": "complete",
             "known_complete_through": "2026-10-05T14:57:00.000Z",
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": {
+            "state": "unverified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": "2026-10-05T15:00:00.000Z"
+          }
         },
         "sms": {
           "required": 1,
@@ -99,11 +172,12 @@
             "known_complete_through": null,
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": null
         },
         "status_flags": {
           "needs_contact": true,
-          "overdue": true,
+          "overdue": false,
           "blocked": false,
           "pending": false,
           "move_date_passed": false,
@@ -115,72 +189,10 @@
         "computed_as_of": "2026-10-05T14:59:00.000Z",
         "publication_revision": 1,
         "schedule_day": 1
-      },
-      {
-        "subject_id": "6650a1b2c3d4e5f607182a02",
-        "job_no": "P5561202",
-        "job_pending": false,
-        "phone": "(305) 555-0102",
-        "name": "Riley Sample",
-        "move_date": null,
-        "move_date_review": "unknown",
-        "priority_raw": null,
-        "workflow": "new",
-        "subject_status": "active",
-        "assigned_agent_id": "6650a1b2c3d4e5f60718293a",
-        "assigned_agent_name": "Alice Rep",
-        "received_at": "2026-10-05T14:50:00.000Z",
-        "last_interaction_at": "2026-10-05T14:55:00.000Z",
-        "oldest_actionable_due_at": null,
-        "next_action_due_at": "2026-10-06T00:00:00.000Z",
-        "call": {
-          "required": 2,
-          "verified_completed": 1,
-          "remaining": 1,
-          "due_at": "2026-10-06T00:00:00.000Z",
-          "oldest_actionable_due_at": null,
-          "status": "due",
-          "completion_kind": null,
-          "coverage": {
-            "state": "complete",
-            "known_complete_through": "2026-10-05T14:57:00.000Z",
-            "gaps": []
-          },
-          "blocked_reason": null
-        },
-        "sms": {
-          "required": 1,
-          "verified_completed": null,
-          "remaining": null,
-          "due_at": "2026-10-06T00:00:00.000Z",
-          "oldest_actionable_due_at": null,
-          "status": "due",
-          "completion_kind": null,
-          "coverage": {
-            "state": "unknown",
-            "known_complete_through": null,
-            "gaps": []
-          },
-          "blocked_reason": null
-        },
-        "status_flags": {
-          "needs_contact": true,
-          "overdue": false,
-          "blocked": false,
-          "pending": false,
-          "move_date_passed": false,
-          "move_date_unknown": true,
-          "job_pending": false,
-          "advisory_cooldown": false
-        },
-        "exposure": "enforcement",
-        "computed_as_of": "2026-10-05T14:59:00.000Z",
-        "publication_revision": 1,
-        "schedule_day": 1
       }
     ],
-    "next_cursor": null,
-    "has_more": false,
+    "next_cursor": "eyJ2IjoxLCJxIjoiNzMzYzUyZTM5NDQ3MzY2OGI3NDc0ZWUxZWJjZjM2ZGFkNWRiZTVkMjFjMWRhMzc3M2YzYWY1NGRhZjYwNzZlMSIsInIiOiJvd25lciIsImEiOm51bGwsImciOiJhbGwiLCJjIjoic29kLWNmZy05ZDRlIiwicCI6ImQzYThkMWQ0N2E0MDUyOGYyZTI0MzJmNmJmODBhZmFhYWUzNTJiZmJjNTEzNjU4ZGNiYzg3NGYzZTNjYjIxMGUiLCJ0IjoxNzkxMjEyNDAwMDAwLCJlIjoxNzkxMjEzMDAwMDAwLCJrIjpbIjIwMjYtMTAtMDVUMTU6MDA6MDAuMDAwWiIsIjIwMjYtMTAtMDVUMTU6MDA6MDAuMDAwWiIsIjIwMjYtMTAtMDVUMTQ6MzA6MDAuMDAwWiIsIjY2NTBhMWIyYzNkNGU1ZjYwNzE4MmEwMyJdfQ.mZrmefbbRtTAruUWlf24WWjFQUvmR0VoFIzWqmXqtaA",
+    "has_more": true,
     "counts": {
       "projection_pending": null,
       "excluded_unknown_move_date": null
