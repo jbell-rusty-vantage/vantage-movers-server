@@ -1,10 +1,8 @@
 import mongoose from "mongoose";
 import {
-  ensureAllDirectionSubscription,
   mongoOwnershipStore,
   planAllDirectionSubscription,
   renewOwnedSubscription,
-  repairOwnedSubscription,
   resolveAllDirectionWebhookAddress,
   ringCentralSubscriptionProvider,
   SubscriptionOwnershipError,
@@ -13,6 +11,13 @@ import {
   type LifecycleDeps,
 } from "../../src/services/ringcentral/webhook-subscription-lifecycle";
 import { buildRingCentralTelephonyEventFilters } from "../../src/services/ringcentral/webhook-subscriptions";
+import {
+  ensureAllDirectionSubscriptionGuarded,
+  planRepointRefusal,
+  productionWebhookAddress,
+  repairOwnedSubscriptionGuarded,
+  SubscriptionRepointRefusedError,
+} from "../lib/ringcentral-subscription-repoint";
 
 /**
  * CSI-03 ops command for the all-direction telephony subscription.
@@ -25,6 +30,13 @@ import { buildRingCentralTelephonyEventFilters } from "../../src/services/ringce
  * subscription id this application did not create. The inbound-only
  * qualified-call subscription (`RINGCENTRAL_WEBHOOK_FILTER_MODE`) is a
  * separate object and is never touched by this command.
+ *
+ * `RINGCENTRAL_NGROK_WEBHOOK_URL`, when set, wins over `RINGCENTRAL_WEBHOOK_URL`
+ * here. Since C6 a drifted owned `calls` subscription plans `update`/`repair`
+ * instead of `create`, so `ensure` and `repair` refuse to move an owned
+ * subscription that delivers to the production address onto any other address
+ * (`ops/lib/ringcentral-subscription-repoint.ts`, olr CW0); `plan` prints the
+ * refusal as a note. Unset the tunnel variable to repair production in place.
  */
 type Action = "plan" | "list" | "ensure" | "renew" | "repair";
 
@@ -49,7 +61,9 @@ async function main(): Promise<void> {
     address: resolveAllDirectionWebhookAddress({ allowNgrok: true }),
   };
   const filters = await buildRingCentralTelephonyEventFilters("all");
+  const productionAddress = productionWebhookAddress();
   console.log(`Webhook delivery address: ${deps.address}`);
+  if (deps.address !== productionAddress) console.log("Delivery address is not RINGCENTRAL_WEBHOOK_URL (developer tunnel or unset production URL).");
   console.log(`All-direction filters: ${JSON.stringify(filters)}`);
 
   if (action === "list") {
@@ -66,6 +80,8 @@ async function main(): Promise<void> {
   if (action === "plan") {
     const plan = await planAllDirectionSubscription(deps);
     console.log(`Plan (read-only): ${JSON.stringify(plan, null, 2)}`);
+    const refusal = await planRepointRefusal(plan, deps, productionAddress);
+    if (refusal) console.log(`Note: --action ensure would refuse this plan. ${refusal}`);
     return;
   }
 
@@ -74,7 +90,7 @@ async function main(): Promise<void> {
   }
 
   if (action === "ensure") {
-    const { plan, result } = await ensureAllDirectionSubscription(deps);
+    const { plan, result } = await ensureAllDirectionSubscriptionGuarded(deps, productionAddress);
     console.log(`Plan: ${JSON.stringify(plan)}`);
     console.log(`Result: ${JSON.stringify(result)}`);
     return;
@@ -82,7 +98,7 @@ async function main(): Promise<void> {
   const id = arg("id");
   if (!id) throw new Error(`--action ${action} requires --id <subscriptionId>`);
   const result =
-    action === "renew" ? await renewOwnedSubscription(id, deps) : await repairOwnedSubscription(id, deps);
+    action === "renew" ? await renewOwnedSubscription(id, deps) : await repairOwnedSubscriptionGuarded(id, deps, productionAddress);
   console.log(`Result: ${JSON.stringify(result)}`);
 }
 
@@ -91,7 +107,8 @@ main()
     if (
       error instanceof SubscriptionOwnershipError ||
       error instanceof SubscriptionOwnershipRecordError ||
-      error instanceof SubscriptionOwnershipUnavailableError
+      error instanceof SubscriptionOwnershipUnavailableError ||
+      error instanceof SubscriptionRepointRefusedError
     ) {
       console.error(error.message);
     } else {

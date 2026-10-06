@@ -16,6 +16,7 @@ applies_to:
   - src/services/numberActivity/webhookSubscriptionCron.ts
   - src/services/ringcentral/webhook-subscription-lifecycle.ts
   - ops/ringcentral/sales-intelligence-subscription.ts
+  - ops/lib/ringcentral-subscription-repoint.ts
   - src/routes/sales-intelligence-cron.routes.ts
   - api/queues/sales-intelligence-consumer.ts
 owners: [team:main-server]
@@ -83,7 +84,7 @@ Run everything from `vantage-main-server` with the production `.env`. The Call L
    Expect: the resolved address is `https://vantage-movers-main-server.vercel.app/api/webhooks/ringcentral`; the in-process handshake echoes `Validation-Token` on a JSON 200; the deployed GET returns `ready: true`; the plan is `create` with no warnings. `--post-validation` also POSTs the handshake to the deployed route. That stores one receipt row (`validationTokenPresent: true`, no job), so use it only when you want that proof.
 3. **Decide the qualification path first.** When `RINGCENTRAL_WEBHOOK_ENABLED` is true (its default), the route runs Lead qualification on every delivery. With an all-direction subscription that turns on webhook-sourced qualified-call Lead ingestion and adds per-delivery Mongo work before the acknowledgement. Keep `RINGCENTRAL_WEBHOOK_ENABLED=false` in Vercel production unless the Owner wants webhook Lead ingestion. Fan-out does not depend on it.
 4. **Vercel production env:** `SALES_INTELLIGENCE_CAPTURE_WEBHOOK=true`, `RINGCENTRAL_WEBHOOK_ENABLED=false` (see step 3). `SALES_INTELLIGENCE_DEPLOYMENT_ID` is already set. Leave `SALES_INTELLIGENCE_WEBHOOK_AUTO_CREATE` unset. Redeploy so the env takes effect.
-5. **Create the subscription** (the one mutating step). Make sure `RINGCENTRAL_NGROK_WEBHOOK_URL` is not set in `.env`; it wins over `RINGCENTRAL_WEBHOOK_URL` for this command. Warm the function with a GET first: RingCentral validates the address with a POST during creation, and a cold start can miss its short timeout.
+5. **Create the subscription** (the one mutating step). Make sure `RINGCENTRAL_NGROK_WEBHOOK_URL` is not set in `.env`; it wins over `RINGCENTRAL_WEBHOOK_URL` for this command. With it set, `ensure` and `repair` refuse to move an owned subscription that delivers to the production address onto the tunnel (olr CW0; `plan` prints the refusal as a note). Warm the function with a GET first: RingCentral validates the address with a POST during creation, and a cold start can miss its short timeout.
    ```sh
    curl -s https://vantage-movers-main-server.vercel.app/api/webhooks/ringcentral
    node --env-file=.env --import tsx ops/ringcentral/sales-intelligence-subscription.ts --action plan
