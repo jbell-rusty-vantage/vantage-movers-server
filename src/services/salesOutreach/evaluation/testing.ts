@@ -112,7 +112,13 @@ export class MemoryEvaluationStore implements EvaluationStore {
   async projectionPolicies(ids: readonly string[]) {
     return new Map(ids.flatMap((id) => (this.projections.has(id) ? [[id, (this.projections.get(id)!.doc.policy_fingerprint as string) ?? null] as const] : [])));
   }
+  async existingJobKeys(keys: readonly string[]) {
+    return new Set(keys.filter((key) => this.jobs.has(key)));
+  }
+  /** Every enqueue call, in order (olr A5: the sweep must not re-enqueue an existing nomination). */
+  enqueueCalls: string[] = [];
   async enqueue(job: JobInput) {
+    this.enqueueCalls.push(job.dedupe_key);
     this.jobs.set(job.dedupe_key, job);
     return "enqueued" as const;
   }

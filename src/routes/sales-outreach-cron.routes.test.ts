@@ -13,6 +13,7 @@ let tailSkipped = false;
 let tailThrows = false;
 let sweepSkipped = false;
 let sweepThrows = false;
+const drainOptions: unknown[] = [];
 
 const app = express();
 app.use(
@@ -52,11 +53,13 @@ app.use(
         due: { pages: 1, nominated: 2 },
         coverage: { pages: 0, nominated: 0, call_through: null, sms_through: null },
         reconcile: { pages: 1, checked: 2, nominated: 0, wrapped: true },
+        drain_options: sweepSkipped ? null : { max: 300, deadlineMs: 50_000, concurrency: 2 },
       };
     },
-    evaluationDrain: async () => {
+    evaluationDrain: async (options) => {
       calls.push("evaluate");
-      return { outcomes: { completed: 2 } };
+      drainOptions.push(options);
+      return { outcomes: { completed: 2 }, jobs: 2, ms_total: 10, ms_p95: 5, options: options ?? { max: 100, deadlineMs: 40_000, concurrency: 1 } };
     },
   }),
 );
@@ -139,4 +142,19 @@ test("evaluate: sweep then drain; a failed sweep never blocks the drain; cadence
   sweepSkipped = true;
   assert.deepEqual((await hit(SALES_OUTREACH_CRON_PATHS.evaluate)).body, { ok: true, skipped: true, reason: "cadence_disabled" });
   assert.deepEqual(calls, ["sweep", "evaluate", "sweep", "evaluate", "sweep"]);
+});
+
+test("evaluate: drain options come from configuration (olr A5); a failed sweep drains with the code defaults", async () => {
+  calls.length = 0;
+  drainOptions.length = 0;
+  sweepSkipped = false;
+  sweepThrows = false;
+  const { body } = await hit(SALES_OUTREACH_CRON_PATHS.evaluate);
+  assert.deepEqual(drainOptions, [{ max: 300, deadlineMs: 50_000, concurrency: 2 }], "the sweep's configured budget reaches the drain");
+  assert.deepEqual((body.drain as { options: unknown }).options, { max: 300, deadlineMs: 50_000, concurrency: 2 });
+  sweepThrows = true;
+  await hit(SALES_OUTREACH_CRON_PATHS.evaluate);
+  sweepThrows = false;
+  assert.deepEqual(drainOptions[1], undefined, "no sweep result: the drain resolves its defaults");
+  assert.deepEqual(calls, ["sweep", "evaluate", "sweep", "evaluate"]);
 });
