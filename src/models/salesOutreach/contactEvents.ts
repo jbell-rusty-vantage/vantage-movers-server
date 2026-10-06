@@ -32,6 +32,8 @@ export const SALES_OUTREACH_CONTACT_EVENT_INDEXES = [
   unique("sod_contact_source_unique", { source_kind: 1, source_id: 1, subject_id: 1 }),
   index("sod_contact_subject_event", { subject_id: 1, event_at: 1 }),
   index("sod_contact_goal_day", { goal_agent_id: 1, business_date: 1 }),
+  // olr C7: the SMS pending counters (`contacts/smsPending.ts`): pending SMS events of the last 7 days.
+  index("sod_contact_kind_verification_event", { source_kind: 1, verification: 1, event_at: 1 }),
 ];
 
 export const SalesOutreachContactEventSchema = new Schema(

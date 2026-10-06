@@ -49,6 +49,12 @@
  *   nothing, apply rewrites each event once, nominates the subject's evaluation and recounts the rep-day
  *   to the real breakdown (strict `other_outbound` subdocument), served by GET /rep-days and GET /team; a
  *   second run changes nothing.
+ * - SMS pending counters and the Accounts re-map (olr C7): three shared-sender texts are pending_identity;
+ *   the counters on `rep_sms:<ext>` (strict `rep_sms_pending`) count the two inside the 7-day window (edge
+ *   inclusive) through `sod_contact_kind_verification_event`, a clean mailbox reads zeros, the read store
+ *   serves them as `freshness.sms.pending`, a second refresh within 5 minutes is skipped; the remap job is
+ *   enqueued once per command, and after the link records the shared number it rewrites the two in its
+ *   window (CAS, revision + 1), wakes them, and their re-derived events are confirmed; a replay changes nothing.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -925,6 +931,88 @@ async function main() {
   await c2dApply("single_active_subject_on_link");
   const c2dTwo = await c2dEvent();
   assert.deepEqual([c2dTwo?.association, c2dTwo?.subject_id ?? null, c2dTwo?.association_reason], ["ambiguous", null, "ambiguous"], "C2d: two active shadows are never guessed");
+
+  // --- olr C7: SMS pending counters and the Accounts re-map of rep SMS identity ------------------------
+  // Alice's mailbox (101) records only her own number; three of her texts went out from a shared number
+  // (`shared_sender` ⇒ pending_identity): one inside the 7-day window, one exactly at its start, one a
+  // millisecond before it. The counters see two; after the link records the shared number, the
+  // `rep_sms_remap` job (enqueued once per command) rewrites the two in its window, and their re-derived
+  // contact events are confirmed.
+  const { mapProviderMessage } = await import("../../src/services/ringcentral/repSms/mapper.js");
+  const { upsertRepSmsEvidence, mongoRepSmsEvidenceStore } = await import("../../src/services/ringcentral/repSms/evidenceStore.js");
+  const { listReviewedRepMailboxes } = await import("../../src/services/ringcentral/repSms/mailboxes.js");
+  const { loadMailboxIdentity } = await import("../../src/services/ringcentral/repSms/mailboxSync.js");
+  const { enqueueRepSmsRemap, remapRepSmsMailbox, runRepSmsRemapJob, REP_SMS_REMAP_STAGE } = await import("../../src/services/ringcentral/repSms/remap.js");
+  const { refreshSmsPendingCounts, SMS_PENDING_REFRESH_MS, SMS_PENDING_WINDOW_MS } = await import("../../src/services/salesOutreach/contacts/smsPending.js");
+  const { mongoSalesOutreachReadStore } = await import("../../src/services/salesOutreach/reads/store.js");
+  const { smsPendingOf } = await import("../../src/services/salesOutreach/reads/freshness.js");
+  const c7Now = new Date("2026-12-29T15:00:00Z");
+  const c7WindowStart = new Date(c7Now.getTime() - SMS_PENDING_WINDOW_MS);
+  const c7RepNumber = "+15550000101";
+  const c7Shared = "+15550000999";
+  const c7Customer = "+15550100055";
+  const c7Lead = new mongoose.Types.ObjectId();
+  const c7Subject = await c2dSubjectFor("FormLead", c7Lead, "new");
+  await getContactNumberModel().create({ e164: c7Customer, digits_reversed: "55001005551", first_observed_at: activation, last_activity_at: activation,
+    lead: { model: "FormLead", id: c7Lead, received_at: activation, state: "open" }, lead_link: { source: "automatic", set_at: activation } });
+  const c7Before = (await listReviewedRepMailboxes(c7Now, account)).find((m) => m.extension_id === "101");
+  assert.ok(c7Before, "C7: extension 101 is Alice's reviewed mailbox");
+  await getRepIdentityLinkModel().updateOne({ _id: c7Before.link_id }, { $set: { rc_direct_numbers: [c7RepNumber] } });
+  const c7Mailbox = (await listReviewedRepMailboxes(c7Now, account)).find((m) => m.extension_id === "101")!;
+  assert.deepEqual(c7Mailbox.sender_numbers, [c7RepNumber]);
+  const c7Context = { provider_account_id: account, extension_id: "101", sender_numbers: c7Mailbox.sender_numbers, identityAt: await loadMailboxIdentity(c7Mailbox) };
+  const c7Text = async (id: number, created: Date) => {
+    const mapped = mapProviderMessage({ id, type: "SMS", direction: "Outbound", messageStatus: "Delivered", creationTime: created.toISOString(), lastModifiedTime: created.toISOString(),
+      from: { phoneNumber: c7Shared }, to: [{ phoneNumber: c7Customer }] }, c7Context);
+    assert.ok(mapped.ok);
+    assert.equal(mapped.evidence.identity_reason, "shared_sender");
+    return (await upsertRepSmsEvidence(mapped.evidence, { now: c7Now, syncKind: "FSync" }, mongoRepSmsEvidenceStore())).id;
+  };
+  const c7Ids = [await c7Text(9701, new Date("2026-12-28T15:00:00Z")), await c7Text(9702, c7WindowStart), await c7Text(9703, new Date(c7WindowStart.getTime() - 1))];
+  const c7Derive = (ids: string[]) =>
+    withTransaction((session) => applyContactSources(ids.map((source_id) => ({ source_kind: "sms" as const, source_id })), { now: c7Now, queueRepDays: false }, mongoContactEventStore, session));
+  await c7Derive(c7Ids);
+  const c7Events = async () => Promise.all(c7Ids.map(async (id) => (await Events.findById(contactEventId("sms", id)).lean())));
+  assert.deepEqual((await c7Events()).map((e) => [e?.verification, String(e?.subject_id)]), c7Ids.map(() => ["pending_identity", String(c7Subject)]), "C7: shared-sender texts are pending_identity");
+  await SyncState.create({ scope: "rep_sms:101", known_complete_through: c7Now });
+  await SyncState.create({ scope: "rep_sms:102", known_complete_through: c7Now });
+  const c7Refresh = (now: Date) => refreshSmsPendingCounts(now, { enabled: async () => true, mailboxes: (at) => listReviewedRepMailboxes(at, account) });
+  assert.deepEqual(await c7Refresh(c7Now), { skipped: false, mailboxes: 2, written: 2, identity: 2, association: 0, unattributed: 0 }, "C7: the window edge is inclusive; a millisecond before it is not counted");
+  const c7Pending = async (scope: string) => (await SyncState.findOne({ scope }).lean())?.rep_sms_pending;
+  const c7Row = await c7Pending("rep_sms:101");
+  assert.deepEqual([c7Row?.identity, c7Row?.association, c7Row?.since?.toISOString(), String(c7Row?.agent_id), c7Row?.computed_at?.toISOString()],
+    [2, 0, c7WindowStart.toISOString(), String(alice), c7Now.toISOString()]);
+  const c7Clean = await c7Pending("rep_sms:102");
+  assert.deepEqual([c7Clean?.identity, c7Clean?.association, c7Clean?.since ?? null], [0, 0, null], "C7: a clean mailbox is written zeros");
+  assert.deepEqual(smsPendingOf(await mongoSalesOutreachReadStore.readSmsMailboxes()), {
+    identity: 2, association: 0, window_days: 7, mailboxes: [{ extension_id: "101", agent_id: String(alice), identity: 2, association: 0 }],
+  }, "C7: the read store projects the counters into freshness.sms.pending");
+  const c7Plan = await Events.find({ source_kind: "sms", verification: { $in: ["pending_identity", "pending_association"] }, event_at: { $gte: c7WindowStart } }).explain("queryPlanner");
+  assert.match(JSON.stringify(c7Plan), /sod_contact_kind_verification_event/, "C7: the counters walk the new index");
+  assert.deepEqual(await c7Refresh(new Date(c7Now.getTime() + 60_000)), { skipped: true, reason: "fresh" }, "C7: at most every 5 minutes");
+
+  // Accounts: one job per command (replay-safe), in the command's transaction.
+  const c7Enqueue = () => withTransaction((session) => enqueueRepSmsRemap({ account, extension_id: "101", command_id: "cmd-c7" }, session, new Date(), { enabled: async () => true }));
+  const [c7JobA, c7JobB] = [await c7Enqueue(), await c7Enqueue()];
+  assert.equal(c7JobA?.job_id, c7JobB?.job_id);
+  assert.equal(await Jobs.countDocuments({ stage: REP_SMS_REMAP_STAGE }), 1);
+  const c7Woken: Array<{ source_kind: "call" | "sms"; source_id: string; source_revision: string }> = [];
+  const c7Remap = (input: { account: string; extension_id: string }) =>
+    remapRepSmsMailbox(input, { now: () => c7Now, wake: async (sources) => void c7Woken.push(...sources) });
+  assert.equal((await c7Remap({ account, extension_id: "101" })).changed, 0, "C7: the same link context changes nothing");
+  await getRepIdentityLinkModel().updateOne({ _id: c7Before.link_id }, { $set: { rc_direct_numbers: [c7RepNumber, c7Shared] } });
+  const c7Job = await runRepSmsRemapJob(undefined, { enabled: async () => true, remap: c7Remap });
+  assert.equal(c7Job.status, "completed");
+  assert.deepEqual(c7Job.status === "completed" && c7Job.summary && [c7Job.summary.state, c7Job.summary.scanned, c7Job.summary.changed], ["remapped", 2, 2], "C7: the two texts in the window");
+  assert.equal((await Jobs.findById(c7JobA!.job_id).lean())?.status, "completed");
+  const c7Evidence = await Promise.all(c7Ids.map((id) => getRingCentralRepSmsEvidenceModel().findById(id).lean()));
+  assert.deepEqual(c7Evidence.map((e) => [e?.identity_state, e?.identity_reason ?? null, e?.source_revision]),
+    [["reviewed", null, 2], ["reviewed", null, 2], ["pending_identity", "shared_sender", 1]], "C7: CAS rewrite with source_revision + 1; outside the window untouched");
+  assert.deepEqual(c7Woken.map((s) => [s.source_id, s.source_revision]).sort(), [[c7Ids[0], "r2"], [c7Ids[1], "r2"]].sort());
+  await c7Derive(c7Woken.map((s) => s.source_id));
+  assert.deepEqual((await c7Events()).map((e) => e?.verification), ["confirmed", "confirmed", "pending_identity"], "C7: the re-derived contact events are confirmed");
+  assert.equal((await c7Remap({ account, extension_id: "101" })).changed, 0, "C7: a replay changes nothing");
+  assert.deepEqual(await c7Refresh(new Date(c7Now.getTime() + SMS_PENDING_REFRESH_MS)), { skipped: false, mailboxes: 2, written: 2, identity: 0, association: 0, unattributed: 0 });
 
   console.log(JSON.stringify({ ok: true, database }));
 }

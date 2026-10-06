@@ -134,10 +134,36 @@ const captureFreshnessSchema = z
   })
   .strict();
 
+/**
+ * olr C7: SMS evidence still `pending_identity` / `pending_association` over the last 7 days (by contact
+ * event time), summed over the rep mailboxes; `mailboxes` lists those with any. Null while rep SMS
+ * capture is off and before the first count. `agent_id` is the mailbox's reviewed rep (null when the
+ * mailbox is no longer reviewed).
+ */
+export const salesOutreachSmsPendingSchema = z
+  .object({
+    identity: z.number().int().min(0),
+    association: z.number().int().min(0),
+    window_days: z.literal(7),
+    mailboxes: z
+      .array(
+        z
+          .object({
+            extension_id: z.string(),
+            agent_id: salesOutreachAgentIdSchema.nullable(),
+            identity: z.number().int().min(0),
+            association: z.number().int().min(0),
+          })
+          .strict(),
+      )
+      .max(100),
+  })
+  .strict();
+
 export const salesOutreachFreshnessSchema = z
   .object({
     calls: captureFreshnessSchema,
-    sms: captureFreshnessSchema,
+    sms: captureFreshnessSchema.extend({ pending: salesOutreachSmsPendingSchema.nullable() }),
     granot: z
       .object({
         state: z.enum(SALES_OUTREACH_GRANOT_FRESHNESS_STATES),

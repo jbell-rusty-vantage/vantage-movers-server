@@ -220,6 +220,21 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
   const ownerFirstPage = await readQueue(owner, query({ limit: "2" }), queueDeps);
   const lagging = exampleStore(new Date("2026-10-05T14:43:00Z"));
   const laggingDesk = await exampleDeskStore(new Date("2026-10-05T14:43:00.000Z"));
+  // olr C7: rep SMS capture on — two reviewed mailboxes synced; Alice's has one SMS awaiting association,
+  // and a mailbox no longer reviewed has one awaiting rep identity (freshness.sms.pending).
+  const smsStore = exampleStore();
+  const synced = (extension: string, through: string) => ({
+    scope: `rep_sms:${extension}`,
+    known_complete_through: new Date(through),
+    last_finished_at: new Date(through),
+    last_error_code: null,
+  });
+  smsStore.mailboxes = [
+    { ...synced("101", "2026-10-05T14:58:00Z"), sms_pending: { identity: 0, association: 1, agent_id: A } },
+    { ...synced("102", "2026-10-05T14:57:30Z"), sms_pending: { identity: 0, association: 0, agent_id: C } },
+    { ...synced("109", "2026-10-05T14:56:00Z"), sms_pending: { identity: 1, association: 0, agent_id: null } },
+  ];
+  const smsCapture: DeskReadDeps = { ...deps({ ...desk, controls: { ...desk.controls, rep_sms_capture_enabled: true } }, "sod-cfg-5e60", 7), store: smsStore };
   const change = { topic: "outreach_desk" as const, subject_ids: [SUBJECTS.due], agent_ids: [A], business_day: null, revision: 2 };
   return {
     "capabilities.owner.json": ok(await readDeskCapabilities(owner, live)),
@@ -237,6 +252,7 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     "team.owner.json": ok(await readTeam(owner, {}, live)),
     "team.manager.json": ok(await readTeam(manager, {}, live)),
     "team.owner.cadence-enforcement.json": ok(await readTeam(owner, {}, cadence)),
+    "team.owner.sms-capture.json": ok(await readTeam(owner, {}, smsCapture)),
     "queue.owner.page-1.json": ok(ownerFirstPage),
     "queue.owner.page-2.json": ok(await readQueue(owner, query({ limit: "2", cursor: ownerFirstPage.next_cursor! }), queueDeps)),
     "queue.manager.unassigned.json": ok(await readQueue(manager, query({ unassigned: "true", state: "all_active" }), queueDeps)),

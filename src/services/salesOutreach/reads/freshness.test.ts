@@ -12,7 +12,7 @@ import {
   staffedCaptureWindowStart,
   type CaptureSyncRow,
 } from "./freshness";
-import { toCallsCaptureRow } from "./store";
+import { toCallsCaptureRow, toSmsCaptureRow } from "./store";
 import { activeInspection, MemoryReadStore } from "./testing";
 
 /** 11:00 New York (EDT): inside the staffed capture window [07:45, 20:30). */
@@ -248,6 +248,42 @@ test("freshness: SMS is not connected while capture is off, else the worst revie
     composeFreshness({ now: NOW, timing, calls: null, last_call_webhook_at: null, sms_capture_enabled: true, sms_mailboxes: eight, granot_last_observed_at: null }).sms.state;
   assert.equal(smsOf(DEFAULTS), "fresh");
   assert.equal(smsOf(deskTimingOf(salesOutreachConfigurationValueSchema.parse({ evidence: { capture_freshness_tolerance_minutes: 5 } }))), "delayed");
+});
+
+test("olr C7 freshness.sms.pending: summed over the mailboxes, the ones with any listed; null while capture is off or before the first count", () => {
+  const ALICE = "6650a1b2c3d4e5f60718293a";
+  const counted = (scope: string, identity: number, association: number, agent_id: string | null): CaptureSyncRow => ({
+    ...row(scope, "2026-10-05T14:59:00Z", "2026-10-05T14:59:30Z"),
+    sms_pending: { identity, association, agent_id },
+  });
+  const compose = (enabled: boolean, mailboxes: CaptureSyncRow[]) => {
+    const freshness = composeFreshness({ now: NOW, timing: DEFAULTS, calls: null, last_call_webhook_at: null, sms_capture_enabled: enabled, sms_mailboxes: mailboxes, granot_last_observed_at: null });
+    salesOutreachFreshnessSchema.parse(freshness);
+    return freshness;
+  };
+  const mailboxes = [counted("rep_sms:102", 0, 1, null), counted("rep_sms:101", 2, 0, ALICE), counted("rep_sms:103", 0, 0, ALICE)];
+  const on = compose(true, mailboxes);
+  assert.deepEqual(on.sms.pending, {
+    identity: 2,
+    association: 1,
+    window_days: 7,
+    mailboxes: [
+      { extension_id: "101", agent_id: ALICE, identity: 2, association: 0 },
+      { extension_id: "102", agent_id: null, identity: 0, association: 1 },
+    ],
+  });
+  assert.equal("pending" in on.calls, false, "calls carry no pending block");
+  assert.equal(compose(false, mailboxes).sms.pending, null, "null while rep SMS capture is off");
+  assert.equal(compose(true, [row("rep_sms:101", "2026-10-05T14:59:00Z")]).sms.pending, null, "null before the first count");
+  assert.equal(compose(true, []).sms.pending, null);
+  // A mailbox row not yet counted adds nothing; the counted ones still sum.
+  assert.deepEqual(compose(true, [row("rep_sms:104", "2026-10-05T14:59:00Z"), counted("rep_sms:102", 0, 1, null)]).sms.pending?.association, 1);
+  // The read store maps the stored subdocument (ObjectId agent) onto the row.
+  assert.deepEqual(
+    toSmsCaptureRow({ scope: "rep_sms:101", known_complete_through: null, rep_sms_pending: { identity: 3, association: 0, agent_id: { toString: () => ALICE } } }).sms_pending,
+    { identity: 3, association: 0, agent_id: ALICE },
+  );
+  assert.equal(toSmsCaptureRow({ scope: "rep_sms:101" }).sms_pending, null);
 });
 
 test("row coverage can only lower capture coverage; unrecognized coverage counts as unknown", () => {

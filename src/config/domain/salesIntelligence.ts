@@ -28,6 +28,9 @@ export const CSI_JOB_STAGES = [
   "outreach_contact_change",
   // Sales Outreach Desk (S3): coalesced per-mailbox rep SMS message sync (RINGCENTRAL-CAPTURE §5).
   "rep_sms_sync",
+  // Outreach lifecycle repair C7: re-map one mailbox's last 7 days of rep SMS identity after an Accounts
+  // connect, change or disconnect (`ringcentral/repSms/remap.ts`).
+  "rep_sms_remap",
   // Sales Outreach Desk (IMPLEMENTATION-PLAN §6.2). `outreach_lead_change` refreshes one Lead's desk
   // subject (P05d/P05e period transitions, intake admission); `outreach_evaluate` re-runs the cadence
   // engine for one subject and upserts its projection when the result changed.

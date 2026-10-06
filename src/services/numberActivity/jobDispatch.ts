@@ -8,6 +8,7 @@ import { runLeadLinkJob } from "./leadLinkJobs";
 import { runNudgeRepairJob } from "../salesIntelligence/nudges/repair";
 import { runCallLogRefreshJob } from "./callLogRefresh";
 import { runRepSmsSyncJob } from "../ringcentral/repSms/intent";
+import { runRepSmsRemapJob } from "../ringcentral/repSms/remap";
 import { retireLegacyCsiJobs } from "../salesIntelligence/jobs";
 import { runOutreachLeadChangeJob } from "../salesOutreach/subjects/leadChangeJob";
 import { runOutreachContactChangeJob, runOutreachRepDayJob } from "../salesOutreach/contacts/jobs";
@@ -56,6 +57,8 @@ export function defaultStageHandlers(capture: CaptureProjectionWorkerDeps = {}):
     outreach_rep_day: (jobId) => runOutreachRepDayJob(jobId),
     // RINGCENTRAL-CAPTURE §5: coalesced per-mailbox rep SMS sync (gated by the desk control).
     rep_sms_sync: (jobId) => runRepSmsSyncJob(jobId),
+    // olr C7: re-map one mailbox's rep SMS identity after an Accounts change (job recovery also drains these).
+    rep_sms_remap: (jobId) => runRepSmsRemapJob(jobId),
     // Sales Outreach Desk: re-run the cadence engine for one subject (the minute evaluate cron also drains these).
     outreach_evaluate: (jobId) => runOutreachEvaluateJob(jobId),
   };

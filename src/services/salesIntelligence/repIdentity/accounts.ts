@@ -14,6 +14,8 @@ import { resolvePolicy } from "../policy";
 import { appendCsiAudit, duplicateKey, executeCsiCommand, payloadHash } from "../transactions";
 import { publishOutreachLive } from "../../salesOutreach/live/publish";
 import { enqueueDeskResyncForAgents } from "../../salesOutreach/subjects/agentWake";
+import { enqueueRepSmsRemap } from "../../ringcentral/repSms/remap";
+import { publishRunnableWakeups } from "../../numberActivity/webhookFanout";
 import { proposeRepLinks } from "./commands";
 import { assertNoRepOverlap, loadRepDirectory, lockRepExtension, proposeRepCandidates } from "./propose";
 import { loadDirectoryAccounts, toRepLinkDto, type DirectoryUserSource } from "./reads";
@@ -198,6 +200,9 @@ const DEFAULT_NUDGE_CHANNELS = ["team_messaging", "pager"];
  * - Desk side effect (IMPL-01): in the same transaction, every open desk subject the old or the new
  *   Agent receives or is assigned is re-synced (`salesOutreach/subjects/agentWake.ts`), so its desk
  *   assignment follows the link at once; after commit the desk live stream is told.
+ * - Rep SMS side effect (olr C7): a connect, change or disconnect also enqueues one `rep_sms_remap` job
+ *   for the extension in the same transaction while `controls.rep_sms_capture_enabled` is on
+ *   (`ringcentral/repSms/remap.ts`); its wake-up is published after commit.
  */
 export async function commandAccountAgent(input: { actor: CsiActor; extension_id: string; body: AccountAgentCommand; idempotency_key?: string }) {
   if (!csiFlag("ENABLED")) throw new CsiError("FEATURE_DISABLED");
@@ -211,6 +216,7 @@ export async function commandAccountAgent(input: { actor: CsiActor; extension_id
   const idempotency_key = input.idempotency_key
     ?? `accounts-agent:${account}:${extensionId}:${latest ? `${String(latest._id)}:${latest.revision}` : "none"}:${payloadHash(body).slice(0, 32)}`;
   let desk: DeskWake = NO_DESK_WAKE;
+  let remapJobId: string | null = null;
   try {
     const { response } = await executeCsiCommand({
       actor: input.actor,
@@ -242,12 +248,17 @@ export async function commandAccountAgent(input: { actor: CsiActor; extension_id
           const ids = agentIds.filter((id): id is string => Boolean(id));
           return { subject_ids: await enqueueDeskResyncForAgents(ids, `account:${String(context.command_id)}`, session, now), agent_ids: ids };
         };
+        // olr C7: re-map the mailbox's last 7 days of rep SMS identity (only while rep SMS capture is on).
+        const remapSms = async () =>
+          (await enqueueRepSmsRemap({ account, extension_id: extensionId, command_id: String(context.command_id) }, session, now))?.job_id ?? null;
         if (body.agent_id === null) {
           await end("Disconnected by the Owner");
-          return { action: current ? "disconnected" : "unchanged", link_id: null, desk: current ? await resync([String(current.agent_id)]) : NO_DESK_WAKE };
+          if (!current) return { action: "unchanged", link_id: null, desk: NO_DESK_WAKE, rep_sms_remap_job_id: null };
+          return { action: "disconnected", link_id: null, desk: await resync([String(current.agent_id)]), rep_sms_remap_job_id: await remapSms() };
         }
         const role = body.role ?? reviewed?.role_kind ?? "sales_rep";
-        if (reviewed && String(reviewed.agent_id) === body.agent_id && reviewed.role_kind === role) return { action: "unchanged", link_id: String(reviewed._id), desk: NO_DESK_WAKE };
+        if (reviewed && String(reviewed.agent_id) === body.agent_id && reviewed.role_kind === role)
+          return { action: "unchanged", link_id: String(reviewed._id), desk: NO_DESK_WAKE, rep_sms_remap_job_id: null };
         const directory = await loadRepDirectory(account, session);
         const extension = directory.snapshot?.extensions.find((e) => e.id === extensionId);
         const agent = directory.agents.find((a) => String(a._id) === body.agent_id);
@@ -273,16 +284,24 @@ export async function commandAccountAgent(input: { actor: CsiActor; extension_id
         await row.save({ session });
         await audit(row, null, "rep.account_connected");
         // Call attribution reads the effective link at each call's time; only the desk assignment needs a re-sync.
-        return { action: reviewed ? "changed" : "connected", link_id: String(row._id), desk: await resync([current ? String(current.agent_id) : null, String(agent._id)]) };
+        return {
+          action: reviewed ? "changed" : "connected",
+          link_id: String(row._id),
+          desk: await resync([current ? String(current.agent_id) : null, String(agent._id)]),
+          rep_sms_remap_job_id: await remapSms(),
+        };
       },
     });
     desk = (response as { desk?: DeskWake }).desk ?? NO_DESK_WAKE;
+    remapJobId = (response as { rep_sms_remap_job_id?: string | null }).rep_sms_remap_job_id ?? null;
   } catch (error) {
     if (duplicateKey(error)) throw new CsiError("IDENTITY_BLOCKED");
     throw error;
   }
   if (desk.subject_ids.length || desk.agent_ids.length)
     await publishOutreachLive({ topic: "outreach_desk", subject_ids: desk.subject_ids, agent_ids: desk.agent_ids, cause: "command" });
+  // Best effort: a lost wake-up is drained by job recovery within the minute.
+  if (remapJobId) await publishRunnableWakeups([remapJobId]).catch(() => undefined);
   const accounts = await readAccounts();
   return accounts.accounts.find((entry) => entry.extension_id === extensionId) ?? null;
 }

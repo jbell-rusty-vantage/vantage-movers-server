@@ -143,6 +143,10 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       calls.push("rep-sms-sync");
       return { claimed: 0 };
     },
+    drainRepSmsRemap: async () => {
+      calls.push("rep-sms-remap");
+      return { claimed: 0 };
+    },
     runWebhookSubscription: async () => {
       calls.push("webhook-subscription");
       return { address: "https://example.test/api/webhooks/ringcentral", plan: "noop", action: "noop", subscription_id: "s", removed_subscription_id: null, expiration_time: null, warnings: [] };
@@ -229,7 +233,7 @@ test("CSI cron routes: cron auth, flag-off and lease_held skips, never a provide
       assert.equal(leadLinkOnly.body.receipt_recovery, null);
       assert.deepEqual(leadLinkOnly.body.lead_link, { scanned: 2, nominated: 1, outcomes: { completed: 1 } });
       assert.equal("rebuild" in leadLinkOnly.body, false, "the Number rollup rebuild drain is retired");
-      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "lead-link"]);
+      assert.deepEqual(calls, ["connect", "retire", "coverage", "message-index", "lead-link", "rep-sms-remap"], "olr C7: the Accounts re-map drain runs under the master flag");
 
       // CSI-04: directory sync cron — flag-off, lease_held, then a run.
       calls.length = 0;
@@ -418,6 +422,7 @@ test("job recovery fences retired stages first and keeps recovering when the swe
       return { retired: 1, stages: { transcription: 1 } };
     },
     runLeadLinkRecovery: async () => { order.push("lead-link"); return { scanned: 0, nominated: 0, outcomes: {} }; },
+    drainRepSmsRemap: async () => ({ claimed: 0 }),
   });
   try {
     await withServer(router, async (call) => {
