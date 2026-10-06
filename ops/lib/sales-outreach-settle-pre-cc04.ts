@@ -9,10 +9,13 @@
  * - candidates: `call_log_state: null`, `terminal`, not merged, not purged, `Inbound`/`Outbound`, at
  *   least one Call Log id, `started_at < CC04_INSTANT`. The `Internal` null rows stay null: CC-04 keeps
  *   the "pre-CC-04 Internal snapshot may still be corrected" door open;
- * - the write (driver collection, not the strict model): `$set {call_log_state: "settled", updatedAt}`
- *   and `$inc {projection_revision: 1}` — a state change alone is a projection revision (CC-04), so the
- *   derived `source_revision` and fingerprint move and the minute contact sweep's `(updatedAt, _id)`
- *   cursor re-derives each row (awaiting → confirmed) and recounts the dirty rep-days;
+ * - the write (driver collection, not the strict model): `$set {call_log_state: "settled"}`,
+ *   `$currentDate {updatedAt}` and `$inc {projection_revision: 1}` — a state change alone is a
+ *   projection revision (CC-04), so the derived `source_revision` and fingerprint move and the minute
+ *   contact sweep's `(updatedAt, _id)` cursor re-derives each row (awaiting → confirmed) and recounts
+ *   the dirty rep-days. `updatedAt` is the database clock, never the operator's: a slow operator clock
+ *   would stamp rows behind the cursor (never re-derived), a fast one would push the cursor into the
+ *   future past rows the capture writes later (olr CW0);
  * - batches of `SETTLE_BATCH` by `_id`, each batch read and written in one transaction together with
  *   one `appendCsiAudit` row (`kind: interaction`, `event_kind: call_interactions_settled_pre_cc04`,
  *   the batch's ids) under the caller's operator actor, so the audited id set is the rollback set;
@@ -205,9 +208,21 @@ export type SettleApplyResult = Readonly<{
 
 export type SettleApplyDeps = Readonly<{
   transaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
-  now?: () => Date;
   batch?: number;
 }>;
+
+/**
+ * The settle write. `updatedAt` comes from the database clock (`$currentDate`), the same clock family
+ * as the capture's own writes, so the stamp is never ahead of or behind the sweep cursor because of the
+ * operator machine's clock. The update carries no client-side instant at all.
+ */
+export function settleUpdate() {
+  return {
+    $set: { call_log_state: "settled" },
+    $currentDate: { updatedAt: true },
+    $inc: { projection_revision: 1 },
+  } as const;
+}
 
 /**
  * Settles every candidate in `_id` batches. Each batch is read and written in one transaction with its
@@ -216,7 +231,6 @@ export type SettleApplyDeps = Readonly<{
  */
 export async function applySettle(input: { actor: CsiActor; run_id: string }, deps: SettleApplyDeps = {}): Promise<SettleApplyResult> {
   const transaction = deps.transaction ?? withTransaction;
-  const now = deps.now ?? (() => new Date());
   const size = deps.batch ?? SETTLE_BATCH;
   const calls = callsCollection();
   const ids: string[] = [];
@@ -231,14 +245,16 @@ export async function applySettle(input: { actor: CsiActor; run_id: string }, de
         .limit(size)
         .toArray()) as unknown as CandidateDoc[];
       if (!docs.length) return null;
-      const at = now();
       const rows = docs.map(toCandidate);
-      const result = await calls.updateMany(
-        { _id: { $in: docs.map((doc) => doc._id) }, ...settleFilter() },
-        { $set: { call_log_state: "settled", updatedAt: at }, $inc: { projection_revision: 1 } },
-        { session },
-      );
+      const batchIds = docs.map((doc) => doc._id);
+      const result = await calls.updateMany({ _id: { $in: batchIds }, ...settleFilter() }, settleUpdate(), { session });
       if (result.modifiedCount !== docs.length) throw new Error(`settle batch changed ${result.modifiedCount} of ${docs.length} rows read in the same transaction`);
+      // The audit row is dated with the database stamp just written, not the operator's clock.
+      const stamped = (await calls.find({ _id: { $in: batchIds } }, { projection: { updatedAt: 1 }, session }).sort({ updatedAt: -1 }).limit(1).toArray())[0] as
+        | { updatedAt?: Date }
+        | undefined;
+      if (!(stamped?.updatedAt instanceof Date)) throw new Error("settle batch: the database did not stamp updatedAt");
+      const at = stamped.updatedAt;
       await appendCsiAudit(
         { session, command_id: new mongoose.Types.ObjectId(), now: at, actor: input.actor },
         {

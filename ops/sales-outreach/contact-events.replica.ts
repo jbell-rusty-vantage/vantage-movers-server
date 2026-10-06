@@ -308,11 +308,17 @@ async function main() {
   assert.equal((await getCallInteractionModel().findById(pre._id).lean())?.call_log_state, null, "the dry run writes nothing");
 
   const preUpdatedAt = (await getCallInteractionModel().findById(pre._id).lean())!.updatedAt as Date;
+  // olr CW0: the stamp is the database clock ($currentDate), bracketed by the server's own `localTime`.
+  const dbClock = async () => ((await mongoose.connection.db!.admin().command({ hello: 1 })) as { localTime: Date }).localTime;
+  const dbBefore = await dbClock();
   const settled = await applySettle({ actor: csiOperatorActor("settle-pre-cc04-replica"), run_id: "settle-pre-cc04-replica" }, { batch: 1 });
+  const dbAfter = await dbClock();
   assert.deepEqual([settled.settled, settled.batches, settled.ids], [1, 1, [String(pre._id)]]);
   const settledRow = await getCallInteractionModel().findById(pre._id).lean();
   assert.deepEqual([settledRow?.call_log_state, settledRow?.projection_revision], ["settled", 2]);
-  assert.ok((settledRow?.updatedAt as Date).getTime() > preUpdatedAt.getTime(), "updatedAt moves so the sweep cursor sees the row");
+  const settledAt = settledRow?.updatedAt as Date;
+  assert.ok(settledAt.getTime() > preUpdatedAt.getTime(), "updatedAt moves so the sweep cursor sees the row");
+  assert.ok(+settledAt >= +dbBefore && +settledAt <= +dbAfter, `updatedAt ${settledAt.toISOString()} is the database clock [${dbBefore.toISOString()}, ${dbAfter.toISOString()}]`);
   for (const untouched of [preInternal, late]) {
     const row = await getCallInteractionModel().findById(untouched._id).lean();
     assert.deepEqual([row?.call_log_state, row?.projection_revision], [null, 1], "Internal and post-CC-04 rows are untouched");
@@ -320,6 +326,7 @@ async function main() {
   const audits = await getSalesIntelligenceAuditEventModel().find({ event_kind: "call_interactions_settled_pre_cc04" }).lean();
   assert.equal(audits.length, 1, "one audit row per batch");
   assert.deepEqual((audits[0]?.current as { ids?: string[] } | undefined)?.ids, [String(pre._id)], "the audit row holds the rollback id set");
+  assert.equal(+(audits[0]?.happened_at as Date), +settledAt, "the audit row is dated with the database stamp, not the operator clock");
 
   // The minute sweep re-derives the settled row from its cursor (no wake, no job).
   const resweep = await sweepContactSources("call", settleSweepAt, { loader });
