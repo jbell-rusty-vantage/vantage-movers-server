@@ -136,6 +136,9 @@ const wantsContactEvidence = (configuration: ActiveConfiguration) =>
  * - olr C2c: with `cadence.no_contact_number_rule: review_no_cadence`, a subject with no linked number
  *   whose Lead's live phone forms no E.164 is `review` (`no_contact_number`); a link arriving later
  *   (`capture/leadLinkWake.ts` nominates this sync) or a phone edit clears it.
+ * - olr B8: a subject with no period yet whose identity is ambiguous or whose received time is missing
+ *   or unreliable is held (`admissionHoldOf`): `review`, no period planned; the sync that finds the hold
+ *   cleared opens a late first period at its own instant (`desk_decision_at`, olr B1).
  * Identical inputs write nothing (no revision bump solely to touch the row).
  */
 export async function syncSubject(
@@ -165,9 +168,10 @@ export async function syncSubject(
   });
   const periods = subject ? await store.findPeriods(subject.id, session) : [];
   const active = periods.find((p) => p.ended_at === null) ?? null;
+  const hold = admissionHoldOf({ facts, context, eligibility, received: built, has_periods: periods.length > 0 });
   const plan = planPeriodTransition({
     active,
-    desired: configurationDrivenDesired(desiredPeriodOf(facts, eligibility, decision, context.as_of), {
+    desired: hold.held ? null : configurationDrivenDesired(desiredPeriodOf(facts, eligibility, decision, context.as_of), {
       stored_fingerprint: subject?.decision_fingerprint ?? null,
       fingerprint,
       eligibility,
@@ -190,6 +194,7 @@ export async function syncSubject(
     received: built,
     active_workflow: activeWorkflowAfter,
     current_status: subject?.status ?? null,
+    hold_reasons: hold.reasons,
     contact: {
       number_ids: built.contact_number_ids,
       // The mint's own phone rule (olr C2c review fix, CW1): live, a Call Lead's original caller, then the intake and Granot snapshots.
@@ -245,6 +250,41 @@ export async function syncSubject(
     period_reason: plan.action === "none" ? plan.reason : null,
     contact_wakes: contactWakes,
   };
+}
+
+/** olr B8 hold reason for an ambiguous Job Number (another non-duplicate Lead carries it, P05h). */
+export const AMBIGUOUS_IDENTITY_REASON = "ambiguous_identity";
+
+export type AdmissionHold = Readonly<{ held: boolean; reasons: string[] }>;
+
+/**
+ * olr B8 admission hold (LANE-B §B8). A subject that has no period yet is held — `review`, no period
+ * planned, so nothing is owed — while its identity is ambiguous (`hasAmbiguousIdentity`) or its
+ * received time is missing or unreliable (P05h/MANUAL-START "ambiguous identity → review", P10a
+ * "missing/unreliable age goes to review"). Intake admits such a fresh Lead as a visible held subject
+ * instead of refusing it silently. The hold clears on the sync that finds both facts sound: the Lead's
+ * own change (timestamp fixed), or, for ambiguity that another Lead's change clears (its `duplicate`
+ * flag), the reconcile's 15-minute hold re-check (`subjects/feed.ts` `holdJobInput`). That sync opens a
+ * late first period at its instant (`desk_decision_at`, olr B1: no retroactive day, no initial response).
+ *
+ * Not held: a subject with any period (an active subject whose Job Number becomes shared later is
+ * untouched), and a closure (official booking/cancellation, Bad Lead), which owes nothing and is final.
+ * `reasons` lists only `ambiguous_identity`; the received reasons are already the subject's review
+ * reasons (`subjectStatusOf`). Pure.
+ */
+export function admissionHoldOf(
+  input: Readonly<{
+    facts: DeskLeadFacts;
+    context: Pick<DeskSubjectPageContext, "job_number_counts">;
+    eligibility: DeskEligibility;
+    received: Parameters<typeof isReliableReceived>[0];
+    has_periods: boolean;
+  }>,
+): AdmissionHold {
+  if (input.has_periods || input.eligibility.outcome === "closed") return { held: false, reasons: [] };
+  const ambiguous = hasAmbiguousIdentity(input.facts, input.context);
+  const held = ambiguous || !isReliableReceived(input.received);
+  return { held, reasons: held && ambiguous ? [AMBIGUOUS_IDENTITY_REASON] : [] };
 }
 
 /**
@@ -304,9 +344,11 @@ function changedFields(subject: DeskSubjectRow, built: DeskSubjectFacts, status:
  * P05e/MANUAL-START automatic intake gate (`outreach_intake`, inside `outreach_lead_change`). A Lead is
  * admitted once, as `kind: intake`, only when the Owner's persisted gate is on and the Lead is genuinely
  * fresh: created after `intake_admission_at` AND received (through `leadInstant`) at or after it, from a
- * non-legacy source. Late-created historical records stay on the enrollment/review path. Ineligible,
- * closed or unverifiable Leads are not admitted; a fresh Lead whose priority needs review is admitted as
- * a visible `review` subject with no guessed cadence.
+ * non-legacy source. Late-created historical records stay on the enrollment/review path. Ineligible or
+ * closed Leads are not admitted; a fresh Lead whose priority needs review is admitted as a visible
+ * `review` subject with no guessed cadence. olr B8: a fresh Lead whose received time is missing or
+ * unreliable, or whose Job Number is ambiguous, is admitted held (`admissionHoldOf`), not refused.
+ * Every refusal is the job's stored result, read by `GET /enrollment/admissions`.
  */
 export type IntakeAdmission =
   | Readonly<{ admit: true; enrollment: DeskEnrollment }>
@@ -327,8 +369,11 @@ export function intakeAdmissionOf(
   if (!facts.created_at || +facts.created_at <= +gate) return { admit: false, reason: "created_before_intake" };
   if (HISTORICAL_ORIGINS.has(facts.ingestion_origin ?? "")) return { admit: false, reason: "historical_import" };
   const received = receivedFactsOf(facts, asOf);
-  if (!isReliableReceived(received) || !received.received_at) return { admit: false, reason: "received_time_unreliable" };
-  if (+received.received_at < +gate) return { admit: false, reason: "received_before_intake" };
+  // olr B8: a missing or unreliable received time no longer refuses. The Lead was created after the gate,
+  // so it is fresh; `received_before_intake` cannot be checked. It is admitted held (`admissionHoldOf`:
+  // review, no period) with its boundary at its creation, never at a guessed arrival.
+  const reliable = isReliableReceived(received) && received.received_at !== null;
+  if (reliable && +received.received_at! < +gate) return { admit: false, reason: "received_before_intake" };
   if (eligibility.outcome !== "eligible") return { admit: false, reason: `${eligibility.outcome}:${eligibility.reason}` };
   if (decision.kind === "unavailable") return { admit: false, reason: "policy_unavailable" };
   if (decision.kind === "accepted" && decision.workflow === "closed") return { admit: false, reason: "closed_priority" };
@@ -340,7 +385,7 @@ export function intakeAdmissionOf(
       cohort_id: `intake:${gate.toISOString()}`,
       kind: "intake",
       enrolled_at: asOf,
-      activation_at: received.received_at,
+      activation_at: reliable ? received.received_at! : new Date(Math.max(+gate, +facts.created_at)),
       manifest_hash: null,
     },
   };

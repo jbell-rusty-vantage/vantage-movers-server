@@ -179,7 +179,7 @@ export function desiredPeriodOf(facts: DeskLeadFacts, eligibility: DeskEligibili
 /**
  * Review reasons that hold a subject's admission (identity or received time not trustworthy). A first
  * period opened after such a hold clears starts at the decision instant (`desk_decision_at`, olr B1),
- * because no fact time exists for the hold clearing. B8 adds the hold itself.
+ * because no fact time exists for the hold clearing. The hold itself is olr B8 (`sync.ts` `admissionHoldOf`).
  */
 export const ADMISSION_HOLD_REASONS: ReadonlySet<string> = new Set(["ambiguous_identity", "received_time_unreliable", "received_time_missing"]);
 
@@ -217,6 +217,8 @@ export function subjectStatusOf(input: {
   current_status: "active" | "closed" | "review" | null;
   /** olr C2c: absent (or the rule absent) = no `no_contact_number` reason, as before C2c. */
   contact?: DeskSubjectContactFacts;
+  /** olr B8: the admission hold's own reasons (`ambiguous_identity`), from `admissionHoldOf`. */
+  hold_reasons?: readonly string[];
 }): { status: "active" | "closed" | "review"; review_reasons: string[] } {
   if (input.current_status === "closed" || input.active_workflow === "closed") return { status: "closed", review_reasons: [] };
   const reasons: string[] = [];
@@ -224,6 +226,7 @@ export function subjectStatusOf(input: {
   if (input.eligibility.outcome === "review") reasons.push(input.eligibility.reason);
   if (input.received.received_quality === "missing") reasons.push("received_time_missing");
   if (input.received.received_quality === "unreliable") reasons.push("received_time_unreliable");
+  reasons.push(...(input.hold_reasons ?? []));
   if (input.active_workflow === null) {
     if (input.decision.kind === "review") reasons.push(input.decision.reason);
     if (input.decision.kind === "unavailable") reasons.push("policy_unavailable");

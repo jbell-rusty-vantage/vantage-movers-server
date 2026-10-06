@@ -11,6 +11,8 @@ import {
   decisionJobInput,
   decisionReconcilePerRunOf,
   feedLoopOf,
+  holdJobInput,
+  holdRecheckBucketOf,
   leadChangeJobInput,
   nominateLeadChanges,
   OUTREACH_FEED_LOOP_DEFAULTS,
@@ -32,7 +34,15 @@ const transaction = <T>(fn: (session: ClientSession) => Promise<T>) => fn(fakeSe
 
 class MemoryFeedStore implements OutreachFeedStore {
   changes: LeadChangeRow[] = [];
-  subjects: Array<{ id: string; lead: DeskLeadRef; lead_revision_seen: number; closed?: boolean; decision_fingerprint?: string | null }> = [];
+  subjects: Array<{
+    id: string;
+    lead: DeskLeadRef;
+    lead_revision_seen: number;
+    closed?: boolean;
+    decision_fingerprint?: string | null;
+    status?: "active" | "review";
+    review_reasons?: string[];
+  }> = [];
   /** Fingerprint of subjects that set none: the default test configuration's (already decided under it). */
   defaultFingerprint = deskDecisionFingerprint(deskConfiguration().value.cadence);
   revisions = new Map<string, number>();
@@ -59,7 +69,14 @@ class MemoryFeedStore implements OutreachFeedStore {
       .filter((s) => !s.closed && (!afterId || s.id > afterId))
       .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, limit)
-      .map((s) => ({ id: s.id, lead: s.lead, lead_revision_seen: s.lead_revision_seen, decision_fingerprint: s.decision_fingerprint === undefined ? this.defaultFingerprint : s.decision_fingerprint }));
+      .map((s) => ({
+        id: s.id,
+        lead: s.lead,
+        lead_revision_seen: s.lead_revision_seen,
+        decision_fingerprint: s.decision_fingerprint === undefined ? this.defaultFingerprint : s.decision_fingerprint,
+        status: s.status ?? "active",
+        review_reasons: s.review_reasons ?? [],
+      }));
   }
   async leadRevisions(leads: readonly DeskLeadRef[]) {
     return new Map(leads.flatMap((l) => (this.revisions.has(deskLeadKey(l)) ? [[deskLeadKey(l), this.revisions.get(deskLeadKey(l))!] as const] : [])));
@@ -197,7 +214,85 @@ describe("revision reconcile (outreach_revision_reconcile)", () => {
       decision_nominated: 0,
       decision_deferred: 0,
       decision_cap: DECISION_RECONCILE_DEFAULT_PER_RUN,
+      hold_nominated: 0,
     });
+  });
+});
+
+describe("hold re-check (olr B8, ambiguous_identity admission hold)", () => {
+  const run = (store: MemoryFeedStore, iso: string, configuration = deskConfiguration()) =>
+    reconcileOutreachRevisions(at(iso), {
+      store,
+      transaction,
+      loader: fixedConfigurationLoader(configuration as never),
+      lease: { acquire: async () => true, release: async () => undefined },
+    });
+  const holdKeys = (store: MemoryFeedStore) => [...store.jobs.keys()].filter((key) => key.includes(":hold:")).sort();
+
+  test("the hold job identity: one per subject per 15-minute bucket (UTC), input_revision 1", () => {
+    const ref = { model: "CallLead" as const, id: "b".repeat(24) };
+    assert.equal(holdRecheckBucketOf(at("2026-10-06T19:44:59.999Z")), "20261006T1930");
+    assert.equal(holdRecheckBucketOf(at("2026-10-06T19:45:00.000Z")), "20261006T1945");
+    assert.deepEqual(holdJobInput(ref, at("2026-10-06T00:07:00Z")), {
+      stage: "outreach_lead_change",
+      subject_key: `outreach-lead:CallLead:${"b".repeat(24)}`,
+      dedupe_key: `sod:lead-change:CallLead:${"b".repeat(24)}:hold:20261006T0000`,
+      input_revision: 1,
+      input_refs: ["b".repeat(24)],
+    });
+  });
+
+  test("held ambiguous review subjects are re-nominated at most once per 15 minutes", async () => {
+    const store = new MemoryFeedStore();
+    const held = lead();
+    const priorityReview = lead();
+    const active = lead();
+    const heldMoved = lead();
+    store.subjects.push(
+      { id: "1".padStart(24, "0"), lead: held, lead_revision_seen: 2, status: "review", review_reasons: ["ambiguous_identity"] },
+      { id: "2".padStart(24, "0"), lead: priorityReview, lead_revision_seen: 2, status: "review", review_reasons: ["priority_needs_review"] },
+      { id: "3".padStart(24, "0"), lead: active, lead_revision_seen: 2 },
+      { id: "4".padStart(24, "0"), lead: heldMoved, lead_revision_seen: 2, status: "review", review_reasons: ["received_time_missing", "ambiguous_identity"] },
+    );
+    for (const ref of [held, priorityReview, active]) store.revisions.set(deskLeadKey(ref), 2);
+    store.revisions.set(deskLeadKey(heldMoved), 3);
+    const first = await run(store, "2026-10-06T14:05:00Z");
+    assert.equal(first.hold_nominated, 1);
+    assert.deepEqual(holdKeys(store), [`sod:lead-change:FormLead:${held.id}:hold:20261006T1400`], "only the held subject; priority review and active subjects are not re-checked");
+    assert.ok(store.jobs.has(`sod:lead-change:FormLead:${heldMoved.id}:r3`), "a held subject whose Lead moved gets its revision job (it re-checks too)");
+    // The 5-minute reconcile runs twice more in the same bucket: the same identity (insert-only enqueue dedupes).
+    await run(store, "2026-10-06T14:10:00Z");
+    await run(store, "2026-10-06T14:14:59Z");
+    assert.equal(holdKeys(store).length, 1, "at most one hold job per 15 minutes");
+    await run(store, "2026-10-06T14:15:00Z");
+    assert.deepEqual(holdKeys(store), [
+      `sod:lead-change:FormLead:${held.id}:hold:20261006T1400`,
+      `sod:lead-change:FormLead:${held.id}:hold:20261006T1415`,
+    ]);
+    // The hold cleared (the job synced the subject active): nothing more.
+    store.subjects[0]!.status = "active";
+    store.subjects[0]!.review_reasons = [];
+    const settled = await run(store, "2026-10-06T14:30:00Z");
+    assert.equal(settled.hold_nominated, 0);
+    assert.equal(holdKeys(store).length, 2);
+  });
+
+  test("a held subject with a decision job this run gets no hold job; deferred by the cap, it still does", async () => {
+    const MAP = APPROVED_MAPPING!.priority_map!;
+    const remapped = (migration: Record<string, unknown>) =>
+      deskConfiguration({ migration, cadence: { priority_map: { ...MAP, codes: [...MAP.codes, { code: "9", workflow: "quoted" as const, closure_reason: null }] } } }, "v7", 7);
+    const store = new MemoryFeedStore();
+    const first = lead();
+    const second = lead();
+    store.subjects.push(
+      { id: "1".padStart(24, "0"), lead: first, lead_revision_seen: 1, status: "review", review_reasons: ["ambiguous_identity"] },
+      { id: "2".padStart(24, "0"), lead: second, lead_revision_seen: 1, status: "review", review_reasons: ["ambiguous_identity"] },
+    );
+    for (const ref of [first, second]) store.revisions.set(deskLeadKey(ref), 1);
+    const result = await run(store, "2026-10-06T14:05:00Z", remapped({ decision_reconcile_per_run: 1 }));
+    assert.deepEqual([result.decision_nominated, result.decision_deferred, result.hold_nominated], [1, 1, 1]);
+    assert.ok([...store.jobs.keys()].some((key) => key.startsWith(`sod:lead-change:FormLead:${first.id}:decision:`)));
+    assert.deepEqual(holdKeys(store), [`sod:lead-change:FormLead:${second.id}:hold:20261006T1400`]);
   });
 });
 

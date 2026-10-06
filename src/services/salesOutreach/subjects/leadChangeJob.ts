@@ -6,19 +6,28 @@ import { salesOutreachConfigurationLoader, type ActiveConfiguration, type Config
 import { OutreachError } from "../errors";
 import type { DeskLeadRef } from "./leadFacts";
 import { mongoDeskSubjectStore, type DeskSubjectStore } from "./store";
-import { hasAmbiguousIdentity, intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
+import { intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
 
+/**
+ * The job's stored result (`sales_intelligence_jobs.result`, kept 14 days), read by
+ * `GET /enrollment/admissions` (olr B8). `status` is the subject's status after the job (null when there
+ * is no subject); `admission` names the path that created the subject (`intake`; null otherwise). Results
+ * stored before B8 carry neither.
+ */
 export type LeadRefreshResult = Readonly<{
   outcome: "created" | "updated" | "unchanged" | "not_admitted" | "lead_missing";
   subject_id: string | null;
   reason: string | null;
+  status: "active" | "review" | "closed" | null;
+  admission: "intake" | null;
 }>;
 
 /**
  * The work of one `outreach_lead_change` job, inside its transaction: refresh the Lead's subject from
  * current facts (P05d transition, P05e retention, P05g display, IMPL-01 assignment, IMPL-07 numbers),
  * or — when the Lead is not a subject — run the intake admission gate (`outreach_intake`) and enroll it
- * once as `kind: intake`. Reads the Lead as it is now, so a job for an older revision is a no-op.
+ * once as `kind: intake` (held as `review` with no period when its identity or received time is not
+ * sound, olr B8). Reads the Lead as it is now, so a job for an older revision is a no-op.
  */
 export async function refreshLeadForOutreach(
   lead: DeskLeadRef,
@@ -29,17 +38,17 @@ export async function refreshLeadForOutreach(
 ): Promise<LeadRefreshResult> {
   const [facts] = await store.loadLeads([lead], session);
   const [subject] = await store.findSubjects([lead], session);
-  if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found" };
+  if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found", status: subject?.status ?? null, admission: null };
   const context = await loadSubjectPageContext(store, [facts], asOf, session);
   if (subject) {
     const synced = await syncSubject({ facts, subject, configuration, context }, store, session);
-    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: synced.period_reason };
+    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: synced.period_reason, status: synced.status, admission: null };
   }
   const admission = intakeAdmissionOf(facts, configuration, asOf);
-  if (!admission.admit) return { outcome: "not_admitted", subject_id: null, reason: admission.reason };
-  if (hasAmbiguousIdentity(facts, context)) return { outcome: "not_admitted", subject_id: null, reason: "ambiguous_identity" };
+  if (!admission.admit) return { outcome: "not_admitted", subject_id: null, reason: admission.reason, status: null, admission: null };
+  // olr B8: an ambiguous Job Number no longer refuses; the subject is admitted held (`admissionHoldOf`).
   const synced = await syncSubject({ facts, subject: null, enrollment: admission.enrollment, configuration, context }, store, session);
-  return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null };
+  return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "intake" };
 }
 
 export type LeadChangeJobDeps = {

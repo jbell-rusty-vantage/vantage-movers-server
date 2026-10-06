@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { SALES_OUTREACH_LEAD_MODELS } from "../../config/domain/salesOutreach";
+import { SALES_OUTREACH_CONTRACT_VERSION, SALES_OUTREACH_LEAD_MODELS, SALES_OUTREACH_TIMEZONE } from "../../config/domain/salesOutreach";
+import { salesOutreachBusinessDateSchema } from "./salesOutreach";
 
 /**
  * Owner enrollment endpoints (IMPLEMENTATION-PLAN §5: `GET /enrollment/candidates`,
- * `POST /enrollment/report|apply|verify`). Strict bodies; the apply run key is the Idempotency-Key.
+ * `POST /enrollment/report|apply|verify`; olr B8 `GET /enrollment/admissions`). Strict bodies; the apply
+ * run key is the Idempotency-Key.
  */
 const MAX_SELECTION = 20_000;
 const scope = z.literal("production").optional();
@@ -48,3 +50,47 @@ export const salesOutreachEnrollmentCandidatesQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).optional(),
   })
   .strict();
+
+/** olr B8: `GET /enrollment/admissions?business_day=YYYY-MM-DD` (default: today in New York). */
+export const salesOutreachEnrollmentAdmissionsQuerySchema = z
+  .object({ scope, business_day: salesOutreachBusinessDateSchema.optional() })
+  .strict();
+
+const count = z.number().int().min(0);
+
+/**
+ * olr B8 response DTO of `GET /enrollment/admissions`: what the `outreach_lead_change` jobs completed on
+ * the New York `business_day` decided for Leads that were not subjects (`enrollment/admissions.ts`).
+ * - `counts.admitted_intake`: fresh Leads enrolled by intake as `active`;
+ * - `counts.admitted_review`: enrolled by intake as visible `review` subjects (held for
+ *   `ambiguous_identity` / `received_time_*`, or a priority that needs review);
+ * - `counts.admitted_expansion`, `counts.deferred`: the expansion admission path (olr B6; 0 until it ships);
+ * - `counts.not_admitted`: refusals by reason (`closed_priority`, `unsupported_intake_source`,
+ *   `excluded:<reason>`, `received_before_intake`, `historical_import`, … — free text, render unknown
+ *   reasons as-is);
+ * - `recent_refusals`: the newest ≤ 50 refusals, newest first.
+ * Completed jobs are kept `retention_days` (14); an older day is 400 `retention_exceeded`.
+ */
+export const salesOutreachAdmissionsSchema = z
+  .object({
+    contract_version: z.literal(SALES_OUTREACH_CONTRACT_VERSION),
+    business_day: salesOutreachBusinessDateSchema,
+    as_of: z.iso.datetime(),
+    timezone: z.literal(SALES_OUTREACH_TIMEZONE),
+    retention_days: z.number().int().positive(),
+    counts: z
+      .object({
+        admitted_intake: count,
+        admitted_review: count,
+        admitted_expansion: count,
+        deferred: count,
+        not_admitted: z.record(z.string(), count),
+      })
+      .strict(),
+    recent_refusals: z
+      .array(z.object({ lead: salesOutreachLeadRefSchema, reason: z.string(), at: z.iso.datetime() }).strict())
+      .max(50),
+  })
+  .strict();
+
+export type SalesOutreachAdmissions = z.infer<typeof salesOutreachAdmissionsSchema>;

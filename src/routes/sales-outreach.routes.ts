@@ -18,6 +18,7 @@ import { salesOutreachConfigurationLoader, type ConfigurationLoader } from "../s
 import { readSalesOutreachConfiguration } from "../services/salesOutreach/config/reads";
 import { OutreachError, sendOutreachError } from "../services/salesOutreach/errors";
 import { rolesWithCapability, type OutreachCapability } from "../services/salesOutreach/permissions";
+import { readEnrollmentAdmissions, type AdmissionsStore } from "../services/salesOutreach/enrollment/admissions";
 import {
   applyEnrollment,
   listEnrollmentCandidates,
@@ -37,6 +38,7 @@ import {
   salesOutreachScopeQuerySchema,
 } from "../validation/v1/salesOutreach";
 import {
+  salesOutreachEnrollmentAdmissionsQuerySchema,
   salesOutreachEnrollmentApplySchema,
   salesOutreachEnrollmentCandidatesQuerySchema,
   salesOutreachEnrollmentReportSchema,
@@ -75,6 +77,8 @@ export type SalesOutreachRouteDeps = {
   live?: Omit<OutreachLiveDeps, "revalidate">;
   /** Enrollment stores/ledger (tests inject in-memory ones); loader and clock come from above. */
   enrollment?: Omit<EnrollmentDeps, "loader" | "now">;
+  /** olr B8 admissions read store (tests inject an in-memory job ledger). */
+  admissions?: AdmissionsStore;
   /** SRV-7 command stores/ledger (tests inject in-memory ones); the loader comes from above. */
   commands?: Omit<DayOverrideDeps, "loader">;
   now?: () => Date;
@@ -238,6 +242,17 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       const query = salesOutreachEnrollmentCandidatesQuerySchema.parse(req.query);
       await connect();
       return res.json({ ok: true, data: await listEnrollmentCandidates(query, enrollmentDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  // olr B8: what intake decided on one New York day (admitted / held as review / refused by reason).
+  router.get(`${SALES_OUTREACH_API_PREFIX}/enrollment/admissions`, guard("migration"), async (req, res) => {
+    try {
+      const query = salesOutreachEnrollmentAdmissionsQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readEnrollmentAdmissions({ business_day: query.business_day }, { store: deps.admissions, now }) });
     } catch (error) {
       return fail(req, res, error);
     }
