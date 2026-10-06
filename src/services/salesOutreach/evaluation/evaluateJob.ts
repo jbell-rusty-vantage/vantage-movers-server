@@ -83,7 +83,7 @@ export async function evaluateAndProject(
   const restrictions = await store.loadRestrictions(subject.contact_number_ids, read);
   const changes = await store.loadAssignmentChanges(subject.lead, read);
   const events = await store.loadContactEvents(subject.id, read);
-  const coverage = await store.loadCoverage(context.configuration.value.controls.rep_sms_capture_enabled, read);
+  const coverage = await store.loadCoverage(context.configuration.value.controls.rep_sms_capture_enabled, read, asOf);
   const agents = [...new Set([subject.assigned_agent_id, ...changes.flatMap((c) => [c.before, c.after])].filter((a): a is string => a !== null))];
   const links = await store.loadRepLinks(agents, read);
   const timing = deskTimingOf(context.configuration.value);
@@ -284,7 +284,7 @@ export async function sweepOutreachEvaluations(now = new Date(), deps: Evaluatio
   }
 
   const value = admission.context.configuration.value;
-  const current = engineCoverageOf(await store.loadCoverage(value.controls.rep_sms_capture_enabled, null), deskTimingOf(value));
+  const current = engineCoverageOf(await store.loadCoverage(value.controls.rep_sms_capture_enabled, null, now), deskTimingOf(value));
   const coverage = { pages: 0, nominated: 0, call_through: current.call?.toISOString() ?? null, sms_through: current.sms?.toISOString() ?? null };
   for (const channel of ["call", "sms"] as const) {
     const through = current[channel];

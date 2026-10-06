@@ -1,7 +1,9 @@
 import type { ClientSession } from "mongoose";
+import { repSmsSyncScope } from "../../../config/domain/ringcentralRepSms";
 import { OUTREACH_CONTACT_CALLS_SCOPE } from "../../../config/domain/salesOutreachContacts";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
+import { listReviewedRepMailboxes } from "../../ringcentral/repSms/mailboxes";
 import type { DeskTiming } from "../config/timing";
 
 /**
@@ -98,7 +100,28 @@ export function goalCallCoverage(w: CallWatermarks, timing: DeskTiming): Date | 
   return coverageOf(laterOf(w.capture_observed, w.capture_known), laterOf(w.derived_observed, w.derived_known), timing);
 }
 
-/** Worst reviewed mailbox `known_complete_through`; null when there is none or any mailbox has none. */
+/**
+ * The rep mailbox sync rows SMS coverage is taken over (olr hotfix): only the *current* mailboxes — the
+ * reviewed `sales_rep` mailboxes the SMS capture syncs at that instant (`listReviewedRepMailboxes`). A
+ * mailbox whose link was retired or moved off `sales_rep` keeps its `rep_sms:<extension>` row, but it is
+ * never synced again, so its frozen watermark must not hold coverage back. Pure; keeps input order. A
+ * current mailbox without a row adds nothing (unchanged); one whose row has no watermark still makes the
+ * coverage null (`smsCoverage`).
+ */
+export function currentSmsMailboxRows<R extends { scope?: string | null }>(rows: readonly R[], currentExtensionIds: Iterable<string>): R[] {
+  const current = new Set([...currentExtensionIds].map(repSmsSyncScope));
+  return rows.filter((row) => typeof row.scope === "string" && current.has(row.scope));
+}
+
+/** The extension ids of the current rep SMS mailboxes at `at` (inside `session` when given). */
+export async function currentSmsMailboxIds(at: Date, session: ClientSession | null = null): Promise<string[]> {
+  return (await listReviewedRepMailboxes(at, undefined, session)).map((mailbox) => mailbox.extension_id);
+}
+
+/**
+ * Worst current mailbox `known_complete_through`; null when there is none or any mailbox has none. Callers
+ * pass `currentSmsMailboxRows(...)`: the evaluation, the evaluate sweep and every desk read share this rule.
+ */
 export function smsCoverage(rows: ReadonlyArray<{ known_complete_through?: Date | null }>): Date | null {
   if (!rows.length) return null;
   let worst: Date | null = null;

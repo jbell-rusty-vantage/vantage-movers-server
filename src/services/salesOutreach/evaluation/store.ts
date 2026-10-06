@@ -12,7 +12,7 @@ import {
 } from "../../../models/salesOutreach";
 import { CsiError } from "../../salesIntelligence/auth";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
-import { loadCallWatermarks, smsCoverage, type CallWatermarks } from "../evidence/coverage";
+import { currentSmsMailboxIds, currentSmsMailboxRows, loadCallWatermarks, smsCoverage, type CallWatermarks } from "../evidence/coverage";
 import { REP_SMS_SYNC_SCOPE_PREFIX } from "../reads/store";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import { mongoDeskSubjectStore, toSubjectRow, type DeskPeriodRow, type DeskSubjectRow, type ReadSession, type SubjectLean } from "../subjects/store";
@@ -123,7 +123,8 @@ export type EvaluationStore = {
   loadAssignmentChanges(lead: DeskLeadRef, session: ReadSession): Promise<AssignmentChangeRow[]>;
   loadRepLinks(agentIds: readonly string[], session: ReadSession): Promise<RepLinkPeriod[]>;
   loadContactEvents(subjectId: string, session: ReadSession): Promise<StoredContactEvent[]>;
-  loadCoverage(smsCaptureEnabled: boolean, session: ReadSession): Promise<CoverageFacts>;
+  /** Call watermarks and SMS coverage over the rep mailboxes current at `at` (`currentSmsMailboxRows`). */
+  loadCoverage(smsCaptureEnabled: boolean, session: ReadSession, at: Date): Promise<CoverageFacts>;
   readProjection(subjectId: string, session: ReadSession): Promise<ProjectionHead | null>;
   insertProjection(subjectId: string, doc: ProjectionWrite, session: ClientSession): Promise<void>;
   /** CAS on the projection `revision`; false when another writer moved it first. */
@@ -275,17 +276,18 @@ export const mongoEvaluationStore: EvaluationStore = {
     }));
   },
 
-  async loadCoverage(smsCaptureEnabled, session) {
+  async loadCoverage(smsCaptureEnabled, session, at) {
     const SyncState = getSalesIntelligenceSyncStateModel();
     // Sequential reads (the job transaction runs one operation at a time): one find over both call scopes.
     const calls = await loadCallWatermarks(session ?? undefined);
     let sms: Date | null = null;
     if (smsCaptureEnabled) {
-      const mailboxes = await SyncState.find({ scope: { $regex: `^${REP_SMS_SYNC_SCOPE_PREFIX}` } }, { known_complete_through: 1 })
+      const current = await currentSmsMailboxIds(at, session);
+      const mailboxes = await SyncState.find({ scope: { $regex: `^${REP_SMS_SYNC_SCOPE_PREFIX}` } }, { scope: 1, known_complete_through: 1 })
         .limit(500)
         .session(session)
         .lean();
-      sms = smsCoverage(mailboxes as Array<{ known_complete_through?: Date | null }>);
+      sms = smsCoverage(currentSmsMailboxRows(mailboxes as Array<{ scope: string; known_complete_through?: Date | null }>, current));
     }
     return { calls, sms_known_complete_through: sms };
   },
