@@ -282,3 +282,84 @@ describe("P10a prospective cutover — New and boundary (fixture p10a-prospectiv
     assert.equal(fx.pending_verified_human_callbacks_preserved, true);
   });
 });
+
+describe("olr A4 — closed and dateless review subjects are quiet (no midnight re-evaluation)", () => {
+  // Received Friday 2026-10-02, New; closed by an accepted Priority 8 on Sunday 2026-10-04 14:00.
+  const closedByCode = () =>
+    scenario({
+      move_date: null,
+      periods: periods(["n1", "new", ny("2026-10-02", "09:00"), "intake"], ["c1", "closed", ny("2026-10-04", "14:00"), "transition", "8"]),
+      events: [outbound(ny("2026-10-02", "09:10"), { outcome: "answered" }), sms(ny("2026-10-02", "09:20"))],
+    });
+  // Official Booking: the subject itself is closed at 2026-10-04 14:00.
+  const closedByBooking = () =>
+    scenario({ move_date: null, status: "closed", closed_at: ny("2026-10-04", "14:00"), periods: [period("n1", "new", ny("2026-10-02", "09:00"), "intake")] });
+  const datelessReview = (plans: Parameters<typeof scenario>[0]["plans"] = []) =>
+    scenario({ received_at: null, status: "review", move_date: null, activation_at: ny("2026-10-05", "08:00"), periods: [], plans });
+
+  test("a closed subject has next_evaluation_at null and the same fingerprint on D+1 and D+30", () => {
+    for (const input of [closedByCode(), closedByBooking()]) {
+      const atClosure = evaluate(input, ny("2026-10-04", "14:05"));
+      const d1 = evaluate(input, ny("2026-10-05", "00:00"));
+      const d30 = evaluate(input, ny("2026-11-03", "10:00"));
+      for (const r of [atClosure, d1, d30]) {
+        assert.equal(r.state, "closed");
+        assert.equal(r.next_evaluation_at, null, "no midnight wake for a closed subject");
+        assert.equal(r.schedule_day, null);
+        assert.deepEqual([r.requirements.call.status, r.requirements.call.required], ["not_required", 0]);
+        assert.deepEqual([r.requirements.sms.status, r.requirements.sms.required], ["not_required", 0]);
+      }
+      assert.notEqual(d1.business_date, d30.business_date);
+      assert.equal(d1.fingerprint, d30.fingerprint, "D+1 and D+30 write the same projection");
+      assert.equal(atClosure.fingerprint, d1.fingerprint, "nothing changes after the closure instant either");
+    }
+  });
+
+  test("closed window history ends at the closure date", () => {
+    const r = evaluate(closedByCode(), ny("2026-11-03", "10:00"));
+    assert.deepEqual(r.window_history.map((e) => e.business_date), ["2026-10-02", "2026-10-03", "2026-10-04"]);
+    assert.equal(r.history_summary.dates, 0);
+    assert.equal(r.window_history[0]!.call.completed, 1, "the closed row keeps its history");
+    const booking = evaluate(closedByBooking(), ny("2026-11-03", "10:00"));
+    assert.equal(booking.window_history.at(-1)!.business_date, "2026-10-04");
+    // Before closure the history still grows to today.
+    const open = evaluate(closedByCode(), ny("2026-10-03", "12:00"));
+    assert.equal(open.window_history.at(-1)!.business_date, "2026-10-03");
+  });
+
+  test("a review subject without received time, periods or plans has next_evaluation_at null", () => {
+    const r = evaluate(datelessReview(), ny("2026-10-05", "12:00"));
+    assert.equal(r.state, "review");
+    assert.equal(r.obligations.length, 0);
+    assert.equal(r.next_evaluation_at, null);
+    assert.equal(evaluate(datelessReview(), ny("2026-10-20", "12:00")).fingerprint, r.fingerprint);
+  });
+
+  test("a review subject with a pending callback keeps its next evaluation", () => {
+    const plans = [callbackPlan("cb1", "n0", ny("2026-10-06", "15:00"), ny("2026-10-05", "10:00"))];
+    const r = evaluate(datelessReview(plans), ny("2026-10-05", "12:00"));
+    assert.equal(r.state, "review");
+    assert.notEqual(r.next_evaluation_at, null);
+    assert.ok(Date.parse(r.next_evaluation_at!) <= Date.parse(ny("2026-10-06", "15:00")));
+  });
+
+  test("a quiet subject still wakes when its advisory cooldown warning expires", () => {
+    const attempts = [9, 10, 11].map((h) => outbound(ny("2026-10-04", `${h}:00`), { outcome: "unanswered" }));
+    const input = { ...closedByCode(), contact_events: attempts };
+    const r = evaluate(input, ny("2026-10-04", "14:05"));
+    assert.equal(r.cooldown.warning, true);
+    assert.equal(r.next_evaluation_at, new Date(Date.parse(ny("2026-10-05", "09:00"))).toISOString(), "first attempt + 24 h, not midnight");
+    assert.equal(evaluate(input, ny("2026-10-05", "12:00")).next_evaluation_at, null);
+  });
+
+  test("business_date alone does not change the fingerprint", () => {
+    const before = evaluate(datelessReview(), ny("2026-10-05", "23:59"));
+    const after = evaluate(datelessReview(), ny("2026-10-06", "00:01"));
+    assert.deepEqual([before.business_date, after.business_date], ["2026-10-05", "2026-10-06"]);
+    assert.equal(before.fingerprint, after.fingerprint);
+    // An active row still changes with the date (obligations, schedule day, history).
+    const active = scenario({ periods: [period("n1", "new", ny("2026-10-05", "09:00"), "intake")] });
+    assert.notEqual(evaluate(active, ny("2026-10-05", "23:59")).fingerprint, evaluate(active, ny("2026-10-06", "00:01")).fingerprint);
+    assert.notEqual(evaluate(active, ny("2026-10-05", "23:59")).next_evaluation_at, null);
+  });
+});

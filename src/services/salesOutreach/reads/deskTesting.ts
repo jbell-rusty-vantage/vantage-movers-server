@@ -1,6 +1,16 @@
 import { MemoryEvaluationStore } from "../evaluation/testing";
+import type { ChannelCoverage } from "../evidence/coverage";
 import { deskLeadKey, type DeskLeadRef } from "../subjects/leadFacts";
-import { assignmentDigest, DUE_CHANNEL_STATUSES, NO_AGENT_CADENCE, type AgentCadenceCounts, type DeskQueueStore, type TeamOverdueCounts } from "./deskStore";
+import {
+  assignmentDigest,
+  DUE_CHANNEL_STATUSES,
+  matchesOverdue,
+  NO_AGENT_CADENCE,
+  overdueCutoffs,
+  type AgentCadenceCounts,
+  type DeskQueueStore,
+  type TeamOverdueCounts,
+} from "./deskStore";
 import { toStoredProjection, type StoredProjectionDetail } from "./present";
 import { matchesQueue, memoryQueuePage, type QueueAssignment, type QueueMatch, type QueuePagePlan } from "./queueQuery";
 
@@ -84,24 +94,28 @@ export class MemoryDeskReadStore implements DeskQueueStore {
     return this.leads.has(key) ? (this.leads.get(key) ?? null) : undefined;
   }
 
-  async teamOverdue(asOf: Date): Promise<TeamOverdueCounts> {
+  async teamOverdue(asOf: Date, coverage: ChannelCoverage): Promise<TeamOverdueCounts> {
     const rows = this.rows();
-    const overdue = rows.filter((r) => r.subject_status === "active" && +r.queue_keys.urgency_due <= +asOf);
+    const unassigned_total = rows.filter((r) => (r.subject_status === "active" || r.subject_status === "review") && r.assigned_agent_id === null).length;
+    const cutoffs = overdueCutoffs(asOf, coverage);
+    if (!cutoffs) return { distinct_overdue: null, quoted_call_overdue: null, unassigned_total, unassigned_overdue: null };
+    const overdue = rows.filter((r) => matchesOverdue(r, cutoffs));
     return {
       distinct_overdue: overdue.length,
-      quoted_call_overdue: rows.filter((r) => r.subject_status === "active" && r.workflow === "quoted" && +r.queue_keys.call_due <= +asOf).length,
-      unassigned_total: rows.filter((r) => (r.subject_status === "active" || r.subject_status === "review") && r.assigned_agent_id === null).length,
+      quoted_call_overdue: rows.filter((r) => r.subject_status === "active" && r.workflow === "quoted" && +r.queue_keys.call_due <= +cutoffs.call).length,
+      unassigned_total,
       unassigned_overdue: overdue.filter((r) => r.assigned_agent_id === null).length,
     };
   }
 
-  async agentCadence(asOf: Date, agentIds: readonly string[]) {
+  async agentCadence(asOf: Date, agentIds: readonly string[], coverage: ChannelCoverage) {
     const due = (status: string) => (DUE_CHANNEL_STATUSES as readonly string[]).includes(status);
-    const out = new Map<string, { -readonly [K in keyof AgentCadenceCounts]: number }>();
+    const cutoffs = overdueCutoffs(asOf, coverage);
+    const out = new Map<string, { -readonly [K in keyof AgentCadenceCounts]: AgentCadenceCounts[K] }>();
     for (const r of this.rows()) {
       if (r.subject_status !== "active" || !r.assigned_agent_id || !agentIds.includes(r.assigned_agent_id)) continue;
-      const c = out.get(r.assigned_agent_id) ?? { ...NO_AGENT_CADENCE };
-      if (+r.queue_keys.urgency_due <= +asOf) c.overdue_leads += 1;
+      const c = out.get(r.assigned_agent_id) ?? { ...NO_AGENT_CADENCE, overdue_leads: cutoffs ? 0 : null };
+      if (cutoffs && matchesOverdue(r, cutoffs)) c.overdue_leads = (c.overdue_leads ?? 0) + 1;
       if (due(r.call.status)) {
         if (r.call.remaining === null) c.call_due_unknown += 1;
         else c.call_due_remaining += r.call.remaining;

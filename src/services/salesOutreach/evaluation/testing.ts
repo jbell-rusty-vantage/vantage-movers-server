@@ -1,6 +1,7 @@
 import type { ClientSession } from "mongoose";
 import type { SalesOutreachConfigurationInput } from "../../../validation/v1/salesOutreach";
 import type { JobInput } from "../../salesIntelligence/jobs";
+import { NO_CALL_WATERMARKS } from "../evidence/coverage";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import type { DeskPeriodRow, DeskSubjectRow } from "../subjects/store";
 import { objectId } from "../subjects/testing";
@@ -25,7 +26,7 @@ export class MemoryEvaluationStore implements EvaluationStore {
   changes = new Map<string, AssignmentChangeRow[]>();
   links: RepLinkPeriod[] = [];
   events: Array<StoredContactEvent & { subject_id: string }> = [];
-  coverage: CoverageFacts = { calls_known_complete_through: null, sms_known_complete_through: null };
+  coverage: CoverageFacts = { calls: NO_CALL_WATERMARKS, sms_known_complete_through: null };
   projections = new Map<string, { doc: ProjectionWrite; revision: number }>();
   jobs = new Map<string, JobInput>();
   cursor: string | null = null;
@@ -89,6 +90,16 @@ export class MemoryEvaluationStore implements EvaluationStore {
       .filter((r) => !after || +r.next_evaluation_at > +after.at || (+r.next_evaluation_at === +after.at && r.subject_id > after.subject_id))
       .slice(0, limit);
   }
+  async coverageWaiting(channel: "call" | "sms", through: Date, after: { at: Date; subject_id: string } | null, limit: number) {
+    return [...this.projections.entries()]
+      .flatMap(([subject_id, row]) => {
+        const wait = (row.doc.coverage_wait as Record<string, Date | null> | undefined)?.[channel] ?? null;
+        return wait && +wait <= +through ? [{ subject_id, wait }] : [];
+      })
+      .sort((a, b) => +a.wait - +b.wait || a.subject_id.localeCompare(b.subject_id))
+      .filter((r) => !after || +r.wait > +after.at || (+r.wait === +after.at && r.subject_id > after.subject_id))
+      .slice(0, limit);
+  }
   async readReconcileCursor() {
     return this.cursor;
   }
@@ -105,6 +116,14 @@ export class MemoryEvaluationStore implements EvaluationStore {
     this.jobs.set(job.dedupe_key, job);
     return "enqueued" as const;
   }
+}
+
+/**
+ * Coverage facts where the contact-event derivation has caught up with the Call Log capture watermark
+ * `calls` (both call watermarks equal), plus the worst mailbox watermark `sms`.
+ */
+export function capturedCoverage(calls: Date | null, sms: Date | null = null): CoverageFacts {
+  return { calls: { ...NO_CALL_WATERMARKS, capture_known: calls, derived_known: calls }, sms_known_complete_through: sms };
 }
 
 export const fakeSession = { inTransaction: () => true } as unknown as ClientSession;

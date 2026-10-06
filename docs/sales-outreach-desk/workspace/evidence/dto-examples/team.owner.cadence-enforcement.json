@@ -47,18 +47,16 @@
         "actual": 180,
         "goal": 350,
         "progress": 0.5143,
-        "incomplete": true,
-        "pending_agent_ids": [
-          "6650a1b2c3d4e5f60718293b"
-        ],
-        "unknown_reason": "coverage_incomplete"
+        "incomplete": false,
+        "pending_agent_ids": [],
+        "unknown_reason": null
       },
       "reps_at_goal": {
         "count": 1,
         "of": 4,
-        "pending": 1
+        "pending": 0
       },
-      "other_outbound_total": null,
+      "other_outbound_total": 0,
       "roster_size": 5
     },
     "goals_unknown_reason": null,
@@ -87,21 +85,16 @@
         "progress": 1,
         "goal_reached": true,
         "other_outbound": {
-          "count": null,
+          "count": 0,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": 41,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
@@ -109,7 +102,7 @@
           "unknown_reason": null
         },
         "calls_due_today": {
-          "value": 3,
+          "value": 5,
           "unknown_reason": null
         },
         "sms_due_today": {
@@ -134,28 +127,23 @@
         },
         "count_scope": "all_outbound",
         "count_scope_label": "Outbound calls",
-        "actual_confirmed": null,
-        "actual_awaiting_confirmation": null,
-        "actual_basis": "pending",
-        "remaining": null,
-        "progress": null,
-        "goal_reached": null,
+        "actual_confirmed": 0,
+        "actual_awaiting_confirmation": 0,
+        "actual_basis": "no_activity_recorded",
+        "remaining": 100,
+        "progress": 0,
+        "goal_reached": false,
         "other_outbound": {
-          "count": null,
+          "count": 0,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": null,
         "computed_as_of": null,
         "overdue_leads": {
@@ -195,21 +183,16 @@
         "progress": 0.37,
         "goal_reached": false,
         "other_outbound": {
-          "count": null,
+          "count": 0,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": 39,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
@@ -253,21 +236,16 @@
         "progress": 0.5,
         "goal_reached": false,
         "other_outbound": {
-          "count": null,
+          "count": 0,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": 40,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
@@ -311,21 +289,16 @@
         "progress": null,
         "goal_reached": false,
         "other_outbound": {
-          "count": null,
+          "count": 0,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": 33,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
@@ -365,21 +338,16 @@
         "progress": null,
         "goal_reached": null,
         "other_outbound": {
-          "count": null,
+          "count": 0,
           "label": "Other outbound"
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": 12,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
@@ -397,7 +365,7 @@
       }
     ],
     "distinct_overdue_leads": {
-      "value": 3,
+      "value": 2,
       "unknown_reason": null
     },
     "quoted_overdue_leads": {
@@ -407,7 +375,7 @@
     "unassigned": {
       "count": 1,
       "overdue": {
-        "value": 1,
+        "value": 0,
         "unknown_reason": null
       }
     },
@@ -443,7 +411,12 @@
               "known_complete_through": "2026-10-05T14:57:00.000Z",
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": {
+              "state": "verified",
+              "verified_through": "2026-10-05T14:55:00.000Z",
+              "unverified_since": null
+            }
           },
           "sms": {
             "required": 1,
@@ -458,7 +431,8 @@
               "known_complete_through": null,
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": null
           },
           "status_flags": {
             "needs_contact": true,
@@ -505,7 +479,12 @@
               "known_complete_through": "2026-10-05T14:57:00.000Z",
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": {
+              "state": "verified",
+              "verified_through": "2026-10-05T14:55:00.000Z",
+              "unverified_since": null
+            }
           },
           "sms": {
             "required": 1,
@@ -520,11 +499,80 @@
               "known_complete_through": null,
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": null
           },
           "status_flags": {
             "needs_contact": true,
             "overdue": true,
+            "blocked": false,
+            "pending": false,
+            "move_date_passed": false,
+            "move_date_unknown": false,
+            "job_pending": false,
+            "advisory_cooldown": false
+          },
+          "exposure": "enforcement",
+          "computed_as_of": "2026-10-05T14:59:00.000Z",
+          "publication_revision": 1,
+          "schedule_day": 1
+        },
+        {
+          "subject_id": "6650a1b2c3d4e5f607182a05",
+          "job_no": "P5561205",
+          "job_pending": false,
+          "phone": "(305) 555-0105",
+          "name": "Avery Pending",
+          "move_date": "2026-10-21",
+          "move_date_review": null,
+          "priority_raw": null,
+          "workflow": "new",
+          "subject_status": "active",
+          "assigned_agent_id": "6650a1b2c3d4e5f60718293a",
+          "assigned_agent_name": "Alice Rep",
+          "received_at": "2026-10-05T14:27:00.000Z",
+          "last_interaction_at": null,
+          "oldest_actionable_due_at": null,
+          "next_action_due_at": "2026-10-06T00:00:00.000Z",
+          "call": {
+            "required": 2,
+            "verified_completed": 0,
+            "remaining": 2,
+            "due_at": "2026-10-05T14:57:00.000Z",
+            "oldest_actionable_due_at": null,
+            "status": "due",
+            "completion_kind": null,
+            "coverage": {
+              "state": "complete",
+              "known_complete_through": "2026-10-05T14:57:00.000Z",
+              "gaps": []
+            },
+            "blocked_reason": null,
+            "verification": {
+              "state": "unverified",
+              "verified_through": "2026-10-05T14:55:00.000Z",
+              "unverified_since": "2026-10-05T14:57:00.000Z"
+            }
+          },
+          "sms": {
+            "required": 1,
+            "verified_completed": null,
+            "remaining": null,
+            "due_at": "2026-10-06T00:00:00.000Z",
+            "oldest_actionable_due_at": null,
+            "status": "due",
+            "completion_kind": null,
+            "coverage": {
+              "state": "unknown",
+              "known_complete_through": null,
+              "gaps": []
+            },
+            "blocked_reason": null,
+            "verification": null
+          },
+          "status_flags": {
+            "needs_contact": true,
+            "overdue": false,
             "blocked": false,
             "pending": false,
             "move_date_passed": false,
@@ -552,22 +600,27 @@
           "assigned_agent_name": null,
           "received_at": "2026-10-05T14:30:00.000Z",
           "last_interaction_at": null,
-          "oldest_actionable_due_at": "2026-10-05T15:00:00.000Z",
+          "oldest_actionable_due_at": null,
           "next_action_due_at": "2026-10-05T15:00:00.000Z",
           "call": {
             "required": 2,
             "verified_completed": 0,
             "remaining": 2,
             "due_at": "2026-10-05T15:00:00.000Z",
-            "oldest_actionable_due_at": "2026-10-05T15:00:00.000Z",
-            "status": "overdue",
+            "oldest_actionable_due_at": null,
+            "status": "due",
             "completion_kind": null,
             "coverage": {
               "state": "complete",
               "known_complete_through": "2026-10-05T14:57:00.000Z",
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": {
+              "state": "unverified",
+              "verified_through": "2026-10-05T14:55:00.000Z",
+              "unverified_since": "2026-10-05T15:00:00.000Z"
+            }
           },
           "sms": {
             "required": 1,
@@ -582,11 +635,12 @@
               "known_complete_through": null,
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": null
           },
           "status_flags": {
             "needs_contact": true,
-            "overdue": true,
+            "overdue": false,
             "blocked": false,
             "pending": false,
             "move_date_passed": false,
@@ -629,7 +683,8 @@
               "known_complete_through": "2026-10-05T14:57:00.000Z",
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": null
           },
           "sms": {
             "required": 1,
@@ -644,7 +699,8 @@
               "known_complete_through": null,
               "gaps": []
             },
-            "blocked_reason": null
+            "blocked_reason": null,
+            "verification": null
           },
           "status_flags": {
             "needs_contact": true,

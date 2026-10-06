@@ -80,6 +80,10 @@ export const SALES_OUTREACH_PROJECTION_INDEXES = [
   index("sod_projection_q_received_desc", { assigned_agent_id: 1, "queue_keys.received_desc": 1, subject_id: 1 }),
   index("sod_projection_q_interaction", { assigned_agent_id: 1, "queue_keys.last_interaction": 1, subject_id: 1 }),
   index("sod_projection_next_evaluation", { next_evaluation_at: 1 }),
+  // olr A1: the evaluate sweep's coverage repair (rows whose verdict waits on a channel's coverage).
+  // Non-unique; writes never need them, and without them the sweep scans the (small) collection.
+  index("sod_projection_coverage_wait_call", { "coverage_wait.call": 1, subject_id: 1 }),
+  index("sod_projection_coverage_wait_sms", { "coverage_wait.sms": 1, subject_id: 1 }),
 ];
 
 /** Subject facts the queue filters and searches on, copied from the subject at the projection's write. */
@@ -109,14 +113,32 @@ const queueKeysSchema = new Schema(
     urgency_due: at,
     /** Next future scheduled action due; far future when none. */
     urgency_next: at,
-    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card). */
+    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card, coverage-aware overdue counts). */
     call_due: at,
+    /**
+     * The SMS channel's earliest unsatisfied actionable deadline (olr A2: the overdue counts compare each
+     * channel with its own coverage). Absent on rows written before A2; no index (the counts scan the
+     * small active set, as the quoted card already does on `call_due`).
+     */
+    sms_due: at,
     /** Received instant; unknown sorts last ascending (far future). */
     received_asc: at,
     /** Received instant; unknown sorts last descending (epoch). */
     received_desc: at,
     /** Last interaction; never contacted = epoch (first ascending, last descending). */
     last_interaction: at,
+  },
+  { _id: false, strict: "throw" },
+);
+
+/**
+ * Per channel, the earliest deadline whose verdict waits on capture coverage (engine `coverage_wait`,
+ * olr A1); null when none. The minute evaluate sweep nominates the row once current coverage reaches it.
+ */
+const coverageWaitSchema = new Schema(
+  {
+    call: date,
+    sms: date,
   },
   { _id: false, strict: "throw" },
 );
@@ -130,6 +152,7 @@ export const SalesOutreachProjectionSchema = new Schema(
     oldest_actionable_due_at: date,
     next_action_due_at: date,
     next_evaluation_at: date,
+    coverage_wait: { type: coverageWaitSchema, required: true, default: () => ({ call: null, sms: null }) },
     last_interaction_at: date,
     received_at: date,
     assigned_agent_id: ref,

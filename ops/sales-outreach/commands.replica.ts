@@ -14,7 +14,11 @@
  *   minute sweep nominates a due projection once;
  * - olr B9: a stale desk copy answers 409 `assignment_changed` ("refreshed") only after the subject's
  *   refresh committed in its own transaction — the detail re-read is `in_sync`, the retry succeeds, a
- *   real change before the retry still answers 409, and the Lead's receiver is never overwritten.
+ *   real change before the retry still answers 409, and the Lead's receiver is never overwritten;
+ * - olr A1 coverage repair: with both call sync-state rows seeded, the minute sweep nominates a row whose
+ *   `coverage_wait.call` <= cadence coverage once (`sod:evaluate:<id>:coverage:call:<wait>:<bucket>`), a
+ *   second sweep adds no job, the coverage query plans on `sod_projection_coverage_wait_call`, and the
+ *   drain (which reads `loadCallWatermarks` inside the job transaction) rewrites the row with the wait cleared.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -54,6 +58,9 @@ async function main() {
   const { evaluationJob, runOutreachEvaluateJob, sweepOutreachEvaluations } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
   const { receiverReplaceableByGranot } = await import("../../src/services/granotLifecycle/leadDesiredState.js");
   const { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } = await import("../../src/services/salesOutreach/evaluation/testing.js");
+  const { COVERAGE_REPAIR_BUCKET_MS } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
+  const { CALL_LOG_ALL_DIRECTIONS_SCOPE } = await import("../../src/services/numberActivity/reconcileCallLog.js");
+  const { OUTREACH_CONTACT_CALLS_SCOPE } = await import("../../src/config/domain/salesOutreachContacts.js");
   const { readOutreachDetail } = await import("../../src/services/salesOutreach/reads/detail.js");
   const { OutreachError } = await import("../../src/services/salesOutreach/errors.js");
   await connectMongo();
@@ -270,8 +277,42 @@ async function main() {
     refusedRefreshed,
   );
   assert.deepEqual([String((await db.collection("form_leads").findOne({ _id: leadId }))?.receiver_agent), (await readDetail()).in_sync], [TEST_AGENT_A, true], "a real change still answers 409, then reads in sync");
+
+  // 7. olr A1 coverage repair (pull on the watermark). Both call watermarks a few minutes ahead of the clock, so
+  //    every passed deadline is provable and the re-evaluation must clear the wait whatever the wall clock is.
+  const Jobs = getSalesIntelligenceJobModel();
+  const drainEvaluations = async () => {
+    for (let i = 0, s = "completed"; i < 50 && (s === "completed" || s === "retry"); i++) s = (await runOutreachEvaluateJob()).status;
+  };
+  await drainEvaluations();
+  const watermark = new Date(Date.now() + 3 * 60_000);
+  for (const scope of [CALL_LOG_ALL_DIRECTIONS_SCOPE, OUTREACH_CONTACT_CALLS_SCOPE])
+    await getSalesIntelligenceSyncStateModel().collection.updateOne({ scope }, { $set: { scope, known_complete_through: watermark } }, { upsert: true });
+  const wait = new Date(Date.now() - 30 * 60_000);
+  await Projections.updateOne({ subject_id: subjectId }, { $set: { "coverage_wait.call": wait } });
+  const coverageKey = /^sod:evaluate:[0-9a-f]{24}:coverage:/;
+  const nominated = await sweepOutreachEvaluations(new Date());
+  const through = new Date(nominated.coverage.call_through!);
+  assert.equal(+through, +watermark - 2 * 60_000, "cadence coverage = capture − 2 min (derivation equal)");
+  assert.equal(nominated.coverage.nominated, 1);
+  const coverageJob = await Jobs.findOne({ dedupe_key: `sod:evaluate:${subjectId}:coverage:call:${+wait}:${Math.floor(+through / COVERAGE_REPAIR_BUCKET_MS)}` }).lean();
+  assert.ok(coverageJob && coverageJob.stage === "outreach_evaluate" && coverageJob.status === "pending", "one coverage nomination");
+  await sweepOutreachEvaluations(new Date());
+  assert.equal(await Jobs.countDocuments({ dedupe_key: coverageKey }), 1, "a second sweep in the same coverage bucket adds no job");
+  const plan = (await Projections.find({ "coverage_wait.call": { $ne: null, $lte: through } }, { subject_id: 1, coverage_wait: 1 })
+    .sort({ "coverage_wait.call": 1, subject_id: 1 })
+    .limit(100)
+    .explain("queryPlanner")) as unknown as { queryPlanner: { winningPlan: unknown } };
+  assert.match(JSON.stringify(plan.queryPlanner.winningPlan), /sod_projection_coverage_wait_call/, "the coverage repair plans on its index");
+  assert.doesNotMatch(JSON.stringify(plan.queryPlanner.winningPlan), /"stage":"SORT"/, "no in-memory sort");
+  await drainEvaluations();
+  assert.equal((await Jobs.findOne({ _id: coverageJob._id }).lean())?.status, "completed");
+  const repaired = await Projections.findOne({ subject_id: subjectId }).lean();
+  assert.equal((repaired as { coverage_wait?: { call: Date | null } } | null)?.coverage_wait?.call ?? null, null, "the re-evaluation cleared the wait");
+  assert.equal((repaired as { engine_version?: string } | null)?.engine_version, "sod-engine-v2");
+  assert.equal((await sweepOutreachEvaluations(new Date())).coverage.nominated, 0, "nothing waits any more");
   console.log(
-    "PASS: assignment atomicity/replay/manual protection, plan race + replacement history, override pointer race, restriction lift, evaluate write/no-op/sweep, B9 stale-copy refresh-then-409",
+    "PASS: assignment atomicity/replay/manual protection, plan race + replacement history, override pointer race, restriction lift, evaluate write/no-op/sweep, B9 stale-copy refresh-then-409, A1 coverage repair (once per bucket, indexed, wait cleared)",
   );
 }
 

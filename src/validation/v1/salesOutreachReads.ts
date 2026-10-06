@@ -96,7 +96,8 @@ const captureFreshnessSchema = z
     state: z.enum(SALES_OUTREACH_CAPTURE_FRESHNESS_STATES),
     /**
      * Latest capture progress. Calls: min(last Call Log confirmation, newest call webhook receipt) in the
-     * staffed window [07:45, 20:30) New York, the confirmation alone outside it (RINGCENTRAL-CAPTURE §8).
+     * staffed window [07:45, 20:30) New York once the day's first call webhook has arrived; the confirmation
+     * alone outside the window and before that first receipt (RINGCENTRAL-CAPTURE §8, olr AW1).
      * SMS: the worst reviewed mailbox's last sync.
      */
     last_updated_at: nullableInstant,
@@ -156,29 +157,46 @@ const commonReadSchema = baseReadSchema.extend({
 
 /**
  * Why a cadence metric has no value: cadence evaluation is off (`cadence_disabled`), runs in shadow so
- * no overdue label may be shown (`cadence_shadow`), or the stored cadence cannot be resolved
- * (`policy_unavailable`). The admin renders a null value as unavailable, never as 0.
+ * no overdue label may be shown (`cadence_shadow`), the stored cadence cannot be resolved
+ * (`policy_unavailable`), or call capture coverage is unknown so no passed deadline can be verified
+ * (`coverage_incomplete`, olr A2). The admin renders a null value as unavailable, never as 0.
  */
-export const SALES_OUTREACH_CADENCE_UNKNOWN_REASONS = ["cadence_disabled", "cadence_shadow", "policy_unavailable"] as const;
+export const SALES_OUTREACH_CADENCE_UNKNOWN_REASONS = ["cadence_disabled", "cadence_shadow", "policy_unavailable", "coverage_incomplete"] as const;
 const cadenceMetricSchema = z
   .object({ value: z.number().int().min(0).nullable(), unknown_reason: z.enum(SALES_OUTREACH_CADENCE_UNKNOWN_REASONS).nullable() })
   .strict();
 /**
- * A due-count metric (rep-days `calls_due_today` / `sms_due_today`): the cadence reasons, plus
- * `coverage_incomplete` when a due requirement's remaining count is unknown because its channel has no
+ * A due-count metric (rep-days `calls_due_today` / `sms_due_today`): the cadence reasons, where
+ * `coverage_incomplete` means a due requirement's remaining count is unknown because its channel has no
  * capture coverage yet (a partial sum would undercount).
  */
-export const SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS = [...SALES_OUTREACH_CADENCE_UNKNOWN_REASONS, "coverage_incomplete"] as const;
+export const SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS = SALES_OUTREACH_CADENCE_UNKNOWN_REASONS;
 const dueTodayMetricSchema = z
   .object({ value: z.number().int().min(0).nullable(), unknown_reason: z.enum(SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS).nullable() })
   .strict();
 
 const subjectIdSchema = z.string().regex(/^[a-f\d]{24}$/);
 
+/** Read-time verification of a channel's passed deadline (olr A2; SPECIFICATION §10.3). */
+export const SALES_OUTREACH_CHANNEL_VERIFICATION_STATES = ["verified", "unverified"] as const;
+const channelVerificationSchema = z
+  .object({
+    state: z.enum(SALES_OUTREACH_CHANNEL_VERIFICATION_STATES),
+    /** The channel's cadence coverage: evidence known through this instant after the settlement allowance and derivation (null = no capture coverage). */
+    verified_through: nullableInstant,
+    /** The earliest passed deadline coverage cannot prove yet; null when verified. */
+    unverified_since: nullableInstant,
+  })
+  .strict();
+
 /**
  * One channel's requirement (CONTRACTS "Common read data"). Calls and SMS are independent; a pending
- * count is null, never 0. `status` is derived at the read's `as_of` (a `due` requirement whose deadline
- * passed reads `overdue`), then masked when the cadence runs in shadow (`overdue` reads `due`).
+ * count is null, never 0. `status` is derived at the read's `as_of` with the channel's cadence coverage
+ * (olr A2): a passed deadline reads `overdue` only when coverage proves it (`verification.state =
+ * verified`); otherwise it reads `due` with `verification.state = unverified` ("not yet verified"; the
+ * Lead stays in Needs contact). `verification` is null while no deadline has passed, for any other
+ * status, and in shadow, where the status is masked (`overdue` reads `due`). `coverage` is the live
+ * capture watermark at `as_of` (calls: the Call Log watermark; SMS: the worst reviewed mailbox).
  */
 export const salesOutreachChannelSchema = z
   .object({
@@ -197,6 +215,7 @@ export const salesOutreachChannelSchema = z
       })
       .strict(),
     blocked_reason: z.string().nullable(),
+    verification: channelVerificationSchema.nullable(),
   })
   .strict();
 export type SalesOutreachChannelDto = z.infer<typeof salesOutreachChannelSchema>;

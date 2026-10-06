@@ -4,26 +4,31 @@ import { getCallLeadModel } from "../../../models/CallLead";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getSalesOutreachProjectionModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { mongoEvaluationStore, type EvaluationStore } from "../evaluation/store";
+import type { ChannelCoverage } from "../evidence/coverage";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import { toStoredProjection, type StoredProjectionDetail, type StoredQueueRow } from "./present";
 import { mongoAssignmentFilter, mongoQueueFilter, mongoQueueQuery, type QueueAssignment, type QueueMatch, type QueuePagePlan } from "./queueQuery";
 
-/** Team cadence counts at one reference instant (overdue = earliest unsatisfied actionable deadline passed). */
+/**
+ * Team cadence counts at one reference instant (overdue = earliest unsatisfied actionable deadline passed
+ * AND proven by the channel's coverage, olr A2). An overdue count is null when call coverage is unknown
+ * (`overdueCutoffs` returns null): no passed deadline can be verified, so a number would be a guess.
+ */
 export type TeamOverdueCounts = Readonly<{
-  distinct_overdue: number;
-  quoted_call_overdue: number;
+  distinct_overdue: number | null;
+  quoted_call_overdue: number | null;
   unassigned_total: number;
-  unassigned_overdue: number;
+  unassigned_overdue: number | null;
 }>;
 
 /**
  * One Agent's cadence counts at a reference instant (rep-days and the team's Daily call goals rows):
- * overdue Leads by the same rule as `teamOverdue`, and the remaining attempts/sends of due or overdue
- * Call/SMS requirements on its active Leads. `*_unknown` counts due requirements whose remaining count
- * is unknown (no capture coverage on that channel yet).
+ * overdue Leads by the same rule as `teamOverdue` (null when call coverage is unknown), and the remaining
+ * attempts/sends of due or overdue Call/SMS requirements on its active Leads. `*_unknown` counts due
+ * requirements whose remaining count is unknown (no capture coverage on that channel yet).
  */
 export type AgentCadenceCounts = Readonly<{
-  overdue_leads: number;
+  overdue_leads: number | null;
   call_due_remaining: number;
   call_due_unknown: number;
   sms_due_remaining: number;
@@ -65,9 +70,10 @@ export type DeskQueueStore = Pick<
   /** Subject id → its Lead's authoritative `receiver_agent` (absent Lead = missing from the map). */
   leadAssignees(subjectIds: readonly string[]): Promise<Map<string, string | null>>;
   leadAssignee(lead: DeskLeadRef): Promise<string | null | undefined>;
-  teamOverdue(asOf: Date): Promise<TeamOverdueCounts>;
+  /** `coverage` = the channels' cadence coverage (`readFreshness`); see `overdueCutoffs`. */
+  teamOverdue(asOf: Date, coverage: ChannelCoverage): Promise<TeamOverdueCounts>;
   /** Per-Agent cadence counts for the named Agents (an Agent with no active Lead is absent from the map). */
-  agentCadence(asOf: Date, agentIds: readonly string[]): Promise<ReadonlyMap<string, AgentCadenceCounts>>;
+  agentCadence(asOf: Date, agentIds: readonly string[], coverage: ChannelCoverage): Promise<ReadonlyMap<string, AgentCadenceCounts>>;
   loadProjectionDetail(subjectId: string): Promise<StoredProjectionDetail | null>;
 };
 
@@ -106,13 +112,52 @@ export function assignmentDigest(pairs: ReadonlyArray<readonly [string, number]>
   return createHash("sha256").update(JSON.stringify(sorted)).digest("hex").slice(0, 32);
 }
 
-/** Active Leads overdue at `asOf`: the earliest unsatisfied actionable deadline (blocked channels excluded) has passed. */
-const overdueFilter = (asOf: Date): Filter => ({ subject_status: "active", "queue_keys.urgency_due": { $lte: asOf } });
+/**
+ * The latest deadline each channel can call overdue at `asOf` (olr A2, the read-time rule of
+ * `present.ts` `deriveChannelAt` applied to the stored keys): `min(asOf, cadence coverage)`; a channel
+ * without coverage proves nothing (null). Null overall when call coverage is unknown — the counts are then
+ * `coverage_incomplete`, never a partial number. SMS without coverage (capture off) only drops the SMS
+ * branch: the engine stores those requirements `pending`, so there is nothing to verify.
+ */
+export type OverdueCutoffs = Readonly<{ call: Date; sms: Date | null }>;
+
+export function overdueCutoffs(asOf: Date, coverage: ChannelCoverage): OverdueCutoffs | null {
+  const cap = (c: Date | null) => (c ? new Date(Math.min(+asOf, +c)) : null);
+  const call = cap(coverage.call);
+  return call ? { call, sms: cap(coverage.sms) } : null;
+}
+
+/**
+ * Verified-overdue active Leads: a channel's earliest unsatisfied actionable deadline (`queue_keys.call_due`
+ * / `sms_due`, blocked channels excluded) is at or before its cutoff. A row written before A2 (no
+ * `sms_due`) falls back to `urgency_due` against the earlier cutoff (transitional; the engine-v2 policy
+ * reconcile rewrites every row within minutes of the deploy).
+ */
+export function mongoOverdueFilter(cutoffs: OverdueCutoffs): Filter {
+  const or: Filter[] = [{ "queue_keys.call_due": { $lte: cutoffs.call } }];
+  if (cutoffs.sms) {
+    or.push({ "queue_keys.sms_due": { $lte: cutoffs.sms } });
+    or.push({ "queue_keys.sms_due": { $exists: false }, "queue_keys.urgency_due": { $lte: new Date(Math.min(+cutoffs.call, +cutoffs.sms)) } });
+  }
+  return { subject_status: "active", $or: or };
+}
+
+/** `mongoOverdueFilter`'s semantics for the in-memory store (`sms_due` null = a pre-A2 row). */
+export function matchesOverdue(
+  row: Readonly<{ subject_status: string; queue_keys: Readonly<{ call_due: Date; sms_due: Date | null; urgency_due: Date }> }>,
+  cutoffs: OverdueCutoffs,
+): boolean {
+  if (row.subject_status !== "active") return false;
+  if (+row.queue_keys.call_due <= +cutoffs.call) return true;
+  if (!cutoffs.sms) return false;
+  if (row.queue_keys.sms_due) return +row.queue_keys.sms_due <= +cutoffs.sms;
+  return +row.queue_keys.urgency_due <= Math.min(+cutoffs.call, +cutoffs.sms);
+}
 
 /** Overdue active Leads per assigned Agent among `agentIds` (the team card's rule, scoped). */
-async function overdueByAgent(asOf: Date, agentIds: readonly string[]): Promise<Map<string, number>> {
+async function overdueByAgent(cutoffs: OverdueCutoffs, agentIds: readonly string[]): Promise<Map<string, number>> {
   const rows = await getSalesOutreachProjectionModel().aggregate<{ _id: unknown; n: number }>([
-    { $match: { ...overdueFilter(asOf), assigned_agent_id: { $in: agentIds.map(oid) } } },
+    { $match: { ...mongoOverdueFilter(cutoffs), assigned_agent_id: { $in: agentIds.map(oid) } } },
     { $group: { _id: "$assigned_agent_id", n: { $sum: 1 } } },
   ]);
   return new Map(rows.map((row) => [String(row._id), row.n]));
@@ -200,11 +245,13 @@ export const mongoDeskQueueStore: DeskQueueStore = {
     return row.receiver_agent ? String(row.receiver_agent) : null;
   },
 
-  async teamOverdue(asOf) {
+  async teamOverdue(asOf, coverage) {
     const Projection = getSalesOutreachProjectionModel();
-    const overdue = overdueFilter(asOf);
-    const quoted: Filter = { subject_status: "active", workflow: "quoted", "queue_keys.call_due": { $lte: asOf } };
     const unassigned: Filter = { subject_status: LISTED, assigned_agent_id: null };
+    const cutoffs = overdueCutoffs(asOf, coverage);
+    if (!cutoffs) return { distinct_overdue: null, quoted_call_overdue: null, unassigned_total: await Projection.countDocuments(unassigned), unassigned_overdue: null };
+    const overdue = mongoOverdueFilter(cutoffs);
+    const quoted: Filter = { subject_status: "active", workflow: "quoted", "queue_keys.call_due": { $lte: cutoffs.call } };
     const unassignedOverdue: Filter = { ...overdue, assigned_agent_id: null };
     const [distinct_overdue, quoted_call_overdue, unassigned_total, unassigned_overdue] = await Promise.all([
       Projection.countDocuments(overdue),
@@ -215,11 +262,12 @@ export const mongoDeskQueueStore: DeskQueueStore = {
     return { distinct_overdue, quoted_call_overdue, unassigned_total, unassigned_overdue };
   },
 
-  async agentCadence(asOf, agentIds) {
+  async agentCadence(asOf, agentIds, coverage) {
     const ids = agentIds.filter((id) => mongoose.isValidObjectId(id));
     if (!ids.length) return new Map();
+    const cutoffs = overdueCutoffs(asOf, coverage);
     const [overdue, due] = await Promise.all([
-      overdueByAgent(asOf, ids),
+      cutoffs ? overdueByAgent(cutoffs, ids) : Promise.resolve(null),
       getSalesOutreachProjectionModel().aggregate<{ _id: unknown } & Omit<AgentCadenceCounts, "overdue_leads">>([
         { $match: { subject_status: "active", assigned_agent_id: { $in: ids.map(oid) } } },
         { $group: { _id: "$assigned_agent_id", ...dueSums("call"), ...dueSums("sms") } },
@@ -228,9 +276,9 @@ export const mongoDeskQueueStore: DeskQueueStore = {
     const out = new Map<string, AgentCadenceCounts>();
     for (const row of due) {
       const { _id, ...sums } = row;
-      out.set(String(_id), { ...NO_AGENT_CADENCE, ...sums, overdue_leads: overdue.get(String(_id)) ?? 0 });
+      out.set(String(_id), { ...NO_AGENT_CADENCE, ...sums, overdue_leads: overdue ? (overdue.get(String(_id)) ?? 0) : null });
     }
-    for (const [agent, n] of overdue) if (!out.has(agent)) out.set(agent, { ...NO_AGENT_CADENCE, overdue_leads: n });
+    for (const [agent, n] of overdue ?? []) if (!out.has(agent)) out.set(agent, { ...NO_AGENT_CADENCE, overdue_leads: n });
     return out;
   },
 

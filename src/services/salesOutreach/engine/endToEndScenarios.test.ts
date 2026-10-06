@@ -100,9 +100,14 @@ describe("END-TO-END-RUN §3 — deterministic behavior", () => {
     const r = evaluate(scenario({ periods: [period("n1", "new", ny(TUE, "10:00"), "intake")], events: [unverified] }), ny(TUE, "10:45"));
     assert.equal(r.initial_response?.outcome, "pending");
     assert.equal(r.requirements.call.status, "pending");
+    // Capture gap (amended per D-A1b, olr A1.2): the outcome stays pending (no guessed failure), but the
+    // channel reads `due` — not yet verified — so the next action stays visible (SPEC §10.3).
     const gap = evaluate(scenario({ periods: [period("n1", "new", ny(TUE, "10:00"), "intake")], call_complete_through: ny(TUE, "10:20") }), ny(TUE, "10:45"));
     assert.equal(gap.initial_response?.outcome, "pending", "coverage does not reach the deadline yet");
-    assert.equal(gap.flags.pending, true);
+    assert.equal(gap.requirements.call.status, "due");
+    assert.equal(gap.requirements.call.verified_completed, 0, "partial coverage: no guessed credit");
+    assert.equal(gap.flags.pending, false);
+    assert.equal(gap.flags.needs_contact, true);
   });
 
   test("§3 Blank/malformed priority update and valid change: retain verified policy with uncertainty; accepted change supersedes once", () => {

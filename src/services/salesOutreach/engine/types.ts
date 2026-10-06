@@ -11,7 +11,12 @@
  * `sales_outreach_followup_schedules`, `sales_outreach_contact_events`, `sales_outreach_projections`).
  */
 
-export const OUTREACH_ENGINE_VERSION = "sod-engine-v1" as const;
+/**
+ * Engine version. The evaluation policy fingerprint carries it, so a bump re-evaluates every projection
+ * once through the minute policy reconcile. v2 (olr A1): `coverage_wait`, the coverage-unverified `due`
+ * ladder (SPEC §10.3) and the seeded spacing anchor (A6); quiet closed/dateless review rows (A4).
+ */
+export const OUTREACH_ENGINE_VERSION = "sod-engine-v2" as const;
 
 /** UTC instant, ISO-8601 (`2026-10-04T14:00:00.000Z`). */
 export type IsoInstant = string;
@@ -163,8 +168,10 @@ export interface EngineContactEvent {
 
 /**
  * Capture coverage per channel (RINGCENTRAL-CAPTURE §8). `complete_through` must already include the
- * settlement allowance (e.g. Call Log `known_complete_through` minus 2 minutes). A deadline after
- * `complete_through` is `pending`, never `missed`. Null = no coverage (e.g. SMS not connected).
+ * settlement allowance and, for calls, the contact-event derivation watermark (`evidence/coverage.ts`
+ * `cadenceCallCoverage`). A deadline after `complete_through` is never `missed`: its obligation is
+ * `pending`; the channel reads `due` (not yet verified) while it has coverage, `pending` without any.
+ * Null = no coverage (e.g. SMS not connected).
  */
 export interface EngineCoverage {
   call: { complete_through: IsoInstant | null };
@@ -257,7 +264,10 @@ export type ObligationOutcome =
   | "open"
   /** Deadline passed, still fulfillable (same date, initial response or callback). */
   | "overdue"
-  /** Deadline passed and coverage does not yet prove the miss (RINGCENTRAL-CAPTURE §8). */
+  /**
+   * Deadline passed and the verdict is not provable yet (RINGCENTRAL-CAPTURE §8): coverage does not reach
+   * the deadline, or unconfirmed evidence (awaiting confirmation / identity / association) may fulfil it.
+   */
   | "pending"
   | "fulfilled"
   /** Fulfilled after the deadline; the deadline miss stays in history. */
@@ -302,6 +312,11 @@ export interface EngineObligation {
   plan_id: string | null;
 }
 
+/**
+ * `due` also covers a passed deadline that coverage cannot prove yet while the channel has coverage
+ * (olr A1.2, SPEC §10.3: the next action stays visible; reads label it "not yet verified"). `pending` =
+ * evidence uncertainty: unconfirmed evidence, or a channel with no coverage at all.
+ */
 export type ChannelStatus = "not_required" | "scheduled" | "due" | "overdue" | "blocked" | "pending" | "completed";
 export type CompletionKind = "fulfilled_in_window" | "fulfilled_late" | "waived" | "superseded" | "cancelled" | "evidence_pending";
 
@@ -409,7 +424,7 @@ export interface EvaluateSubjectResult {
   workflow: OutreachWorkflow | null;
   period_id: string | null;
   priority_raw: string | null;
-  /** New schedule day (received date = Day 1), any workflow; null when age is unknown. */
+  /** New schedule day (received date = Day 1), any workflow; null when age is unknown or the subject is closed (A4). */
   schedule_day: number | null;
   requirements: { call: EngineChannelRequirement; sms: EngineChannelRequirement };
   initial_response: EngineInitialResponseState | null;
@@ -419,17 +434,26 @@ export interface EvaluateSubjectResult {
   flags: EngineStatusFlags;
   oldest_actionable_due_at: IsoInstant | null;
   next_action_due_at: IsoInstant | null;
-  /** Earliest future instant at which the result changes without new input. */
+  /**
+   * Earliest future instant at which the result changes without new input. Null for a quiet subject
+   * (olr A4: closed, or review with nothing dated) unless its advisory cooldown warning still has to expire.
+   */
   next_evaluation_at: IsoInstant | null;
+  /**
+   * Per channel, the earliest deadline of a `pending` obligation that coverage does not reach yet (null
+   * when none). The result changes once channel coverage passes it, so the evaluate sweep re-nominates the
+   * subject when current coverage >= this instant (olr A1: pull on the watermark, never a timed retry).
+   */
+  coverage_wait: { call: IsoInstant | null; sms: IsoInstant | null };
   last_interaction_at: IsoInstant | null;
   current_assignee_agent_id: string | null;
   /** Every obligation of the evaluated horizon (history + today + the next scheduled ones). */
   obligations: EngineObligation[];
-  /** Last 30 business dates; older dates are summarized in `history_summary`. */
+  /** Last 30 business dates up to today (a closed subject: up to its closure date, A4); older dates are summarized in `history_summary`. */
   window_history: EngineWindowHistoryEntry[];
   history_summary: { dates: number; call_missed: number; sms_missed: number };
   /** sha256 of the canonical inputs + policy version (excludes `as_of`). */
   input_fingerprint: string;
-  /** sha256 of the result minus `computed_as_of`; persist only when it changed. */
+  /** sha256 of the result minus `computed_as_of` and `business_date` (olr A4); persist only when it changed. */
   fingerprint: string;
 }

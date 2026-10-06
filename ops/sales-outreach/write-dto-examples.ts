@@ -15,7 +15,7 @@ import path from "node:path";
 import type { OutreachActor } from "../../src/services/salesOutreach/auth";
 import { OutreachError } from "../../src/services/salesOutreach/errors";
 import { evaluateAndProject, evaluationAdmissionOf } from "../../src/services/salesOutreach/evaluation/evaluateJob";
-import { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../../src/services/salesOutreach/evaluation/testing";
+import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../../src/services/salesOutreach/evaluation/testing";
 import { outreachLiveFrame } from "../../src/services/salesOutreach/live/stream";
 import { readOutreachDetail } from "../../src/services/salesOutreach/reads/detail";
 import { MemoryDeskReadStore } from "../../src/services/salesOutreach/reads/deskTesting";
@@ -46,7 +46,8 @@ const desk: SalesOutreachConfigurationInput = {
   },
 };
 
-function exampleStore(): MemoryReadStore {
+/** `captureKnown`: the Call Log watermark (olr A2 `queue.owner.awaiting-capture` reads a lagging one). */
+function exampleStore(captureKnown = new Date("2026-10-05T14:57:00Z")): MemoryReadStore {
   const store = new MemoryReadStore();
   const computed = new Date("2026-10-05T14:58:30Z");
   store.rows = [
@@ -67,7 +68,7 @@ function exampleStore(): MemoryReadStore {
   store.agentNames = new Map([[X, "Xavier Agent"]]);
   store.calls = {
     scope: "call_log_all_directions",
-    known_complete_through: new Date("2026-10-05T14:57:00Z"),
+    known_complete_through: captureKnown,
     last_finished_at: new Date("2026-10-05T14:57:40Z"),
     last_error_code: null,
     // olr A3-fresh: last Call Log confirmation (max of the ISync lane and the reconcile's sync success).
@@ -76,6 +77,13 @@ function exampleStore(): MemoryReadStore {
   // Newest call webhook receipt; 11:00 New York is in the staffed window, so "Calls updated" = min(confirmation, webhook).
   store.callWebhookAt = new Date("2026-10-05T14:58:30Z");
   store.granot = new Date("2026-10-05T14:56:10Z");
+  // olr A2: the contact-event derivation watermark (S3 sweep) — the reads' cadence call coverage is
+  // min(capture − 2-min settlement allowance, derivation) = 14:55 by default.
+  store.derivation = {
+    known_complete_through: new Date("2026-10-05T14:57:00Z"),
+    observed_complete_through: new Date("2026-10-05T14:57:00Z"),
+    coverage_from: new Date("2026-10-01T04:00:00Z"),
+  };
   return store;
 }
 
@@ -91,14 +99,17 @@ const SUBJECTS = {
   due: "6650a1b2c3d4e5f607182a02",
   unassigned: "6650a1b2c3d4e5f607182a03",
   rep_c: "6650a1b2c3d4e5f607182a04",
+  awaiting: "6650a1b2c3d4e5f607182a05",
 } as const;
 
 /**
- * Four synthetic subjects evaluated by the real engine at 14:59 New York-EDT minus 4 h (14:59Z):
+ * Five synthetic subjects evaluated by the real engine at 14:59 New York-EDT minus 4 h (14:59Z):
  * Alice's initial response missed at 10:30 (overdue), Alice's 10:50 arrival due at 11:20 (one verified
- * attempt), one Unassigned arrival and one of Cara's. Ids are fixed so the examples are stable.
+ * attempt), one Unassigned arrival, one of Cara's, and Alice's 10:27 arrival whose 10:57 deadline has
+ * passed but call coverage (capture − 2 min) cannot prove it yet (olr A2: due + "not yet verified").
+ * `captureKnown` is the call coverage the evaluation saw. Ids are fixed so the examples are stable.
  */
-async function exampleDeskStore(): Promise<MemoryDeskReadStore> {
+async function exampleDeskStore(captureKnown = new Date("2026-10-05T14:57:00.000Z")): Promise<MemoryDeskReadStore> {
   const store = new MemoryDeskReadStore();
   const admission = evaluationAdmissionOf(activeInspection(cadenceDesk, "sod-cfg-9d4e", 6));
   if (!admission.ok) throw new Error("example cadence not admitted");
@@ -107,6 +118,7 @@ async function exampleDeskStore(): Promise<MemoryDeskReadStore> {
     { id: SUBJECTS.due, received: "2026-10-05T14:50:00.000Z", agent: A, job: "P5561202", phone: "(305) 555-0102", name: "Riley Sample", move: null },
     { id: SUBJECTS.unassigned, received: "2026-10-05T14:30:00.000Z", agent: null, job: null, phone: "(305) 555-0103", name: "Casey Placeholder", move: "2026-10-09" },
     { id: SUBJECTS.rep_c, received: "2026-10-05T13:40:00.000Z", agent: C, job: "P5561204", phone: "(305) 555-0104", name: "Morgan Synthetic", move: "2026-11-02" },
+    { id: SUBJECTS.awaiting, received: "2026-10-05T14:27:00.000Z", agent: A, job: "P5561205", phone: "(305) 555-0105", name: "Avery Pending", move: "2026-10-21" },
   ];
   for (const [i, s] of seeds.entries()) {
     const received = new Date(s.received);
@@ -153,7 +165,7 @@ async function exampleDeskStore(): Promise<MemoryDeskReadStore> {
     restricted_at_contact: false,
     outcome: "unanswered",
   });
-  store.evaluation.coverage = { calls_known_complete_through: new Date("2026-10-05T14:57:00.000Z"), sms_known_complete_through: null };
+  store.evaluation.coverage = capturedCoverage(captureKnown);
   for (const id of Object.values(SUBJECTS))
     await runInFakeTransaction((session) => evaluateAndProject(id, admission.context, new Date("2026-10-05T14:59:00.000Z"), store.evaluation, session));
   return store;
@@ -185,6 +197,8 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
   const queueDeps = { ...cadence, cursorSecret: "dto-example-cursor-secret" };
   const query = (input: Record<string, string>) => salesOutreachQueueQuerySchema.parse(input);
   const ownerFirstPage = await readQueue(owner, query({ limit: "2" }), queueDeps);
+  const lagging = exampleStore(new Date("2026-10-05T14:43:00Z"));
+  const laggingDesk = await exampleDeskStore(new Date("2026-10-05T14:43:00.000Z"));
   const change = { topic: "outreach_desk" as const, subject_ids: [SUBJECTS.due], agent_ids: [A], business_day: null, revision: 2 };
   return {
     "capabilities.owner.json": ok(await readDeskCapabilities(owner, live)),
@@ -206,6 +220,9 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     "queue.owner.page-2.json": ok(await readQueue(owner, query({ limit: "2", cursor: ownerFirstPage.next_cursor! }), queueDeps)),
     "queue.manager.unassigned.json": ok(await readQueue(manager, query({ unassigned: "true", state: "all_active" }), queueDeps)),
     "queue.rep.lead-received.json": ok(await readQueue(rep, query({ sort: "lead_received", state: "all_active" }), queueDeps)),
+    // olr A2: call capture 17 min behind (known through 10:43 New York): passed deadlines it cannot prove
+    // read due + verification unverified; the ones the evaluation already proved read overdue/verified.
+    "queue.owner.awaiting-capture.json": ok(await readQueue(owner, query({}), { ...queueDeps, store: lagging, queueStore: laggingDesk })),
     "outreach.owner.overdue.json": ok(await readOutreachDetail(owner, SUBJECTS.overdue, cadence)),
     "outreach.rep.due.json": ok(await readOutreachDetail(rep, SUBJECTS.due, cadence)),
     "live.change.json": outreachLiveFrame("change", [change], NOW),

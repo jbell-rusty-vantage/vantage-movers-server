@@ -4,7 +4,14 @@ import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/sa
 import { salesOutreachFreshnessSchema } from "../../../validation/v1/salesOutreachReads";
 import { deskTimingOf, type DeskTiming } from "../config/timing";
 import { readFreshness } from "./common";
-import { callsCoverageForDay, composeFreshness, inStaffedCaptureWindow, mergeRowCoverage, type CaptureSyncRow } from "./freshness";
+import {
+  callsCoverageForDay,
+  composeFreshness,
+  inStaffedCaptureWindow,
+  mergeRowCoverage,
+  staffedCaptureWindowStart,
+  type CaptureSyncRow,
+} from "./freshness";
 import { toCallsCaptureRow } from "./store";
 import { activeInspection, MemoryReadStore } from "./testing";
 
@@ -67,14 +74,53 @@ test("calls: fresh with lane success 40 s ago, coverage 20 min behind and a webh
   assert.deepEqual([webhookNewer.state, webhookNewer.age_seconds], ["fresh", 90]);
 });
 
-test("calls: delayed webhook_silent when the newest call webhook is 45 min old (or missing) in the window", () => {
+test("calls: delayed webhook_silent when today's newest call webhook is 45 min old in the window", () => {
   const silent = calls(NOW, callsRow(NOW, { confirmedAgo: 40, knownAgo: 18 * 60 }), ago(NOW, 45 * 60));
   assert.deepEqual([silent.state, silent.reason], ["delayed", "webhook_silent"]);
   assert.equal(silent.age_seconds, 45 * 60, "age follows min(confirmation, webhook)");
-  const never = calls(NOW, callsRow(NOW, { confirmedAgo: 40, knownAgo: 18 * 60 }), null);
-  assert.deepEqual([never.state, never.reason, never.last_webhook_at, never.age_seconds], ["delayed", "webhook_silent", null, 40]);
   // 29 min of silence is inside the default 30-minute threshold.
   assert.equal(calls(NOW, callsRow(NOW, { confirmedAgo: 40, knownAgo: 18 * 60 }), ago(NOW, 29 * 60)).state, "fresh");
+  // No call webhook ever received: there is no stream to fall silent (the subscription health check reports a missing one).
+  const never = calls(NOW, callsRow(NOW, { confirmedAgo: 40, knownAgo: 18 * 60 }), null);
+  assert.deepEqual([never.state, never.reason, never.last_webhook_at, never.age_seconds], ["fresh", null, null, 40]);
+});
+
+test("staffed capture window start is today's 07:45 New York inside the window, null outside (DST-safe)", () => {
+  assert.equal(staffedCaptureWindowStart(NOW)?.toISOString(), "2026-10-05T11:45:00.000Z", "07:45 EDT");
+  assert.equal(staffedCaptureWindowStart(new Date("2026-10-05T11:45:00Z"))?.toISOString(), "2026-10-05T11:45:00.000Z");
+  assert.equal(staffedCaptureWindowStart(new Date("2026-10-06T00:29:59Z"))?.toISOString(), "2026-10-05T11:45:00.000Z", "20:29 EDT, same day");
+  assert.equal(staffedCaptureWindowStart(new Date("2026-12-07T15:00:00Z"))?.toISOString(), "2026-12-07T12:45:00.000Z", "07:45 EST");
+  assert.equal(staffedCaptureWindowStart(new Date("2026-10-05T11:44:59Z")), null, "07:44 EDT");
+  assert.equal(staffedCaptureWindowStart(NIGHT), null);
+});
+
+test("calls: no webhook_silent from 07:45 until the day's first call webhook (olr AW1)", () => {
+  /** 07:50 New York (EDT), five minutes after the window opened. */
+  const opening = new Date("2026-10-05T11:50:00Z");
+  /** Last night's last call webhook, 19:58 New York the day before. */
+  const lastNight = new Date("2026-10-04T23:58:00Z");
+  const morning = calls(opening, callsRow(opening, { confirmedAgo: 30, knownAgo: 17 * 60 }), lastNight);
+  assert.deepEqual([morning.state, morning.reason], ["fresh", null]);
+  // "Calls updated" is the confirmation alone until today's stream starts; the old receipt is still served.
+  assert.deepEqual([morning.last_updated_at, morning.age_seconds], [ago(opening, 30).toISOString(), 30]);
+  assert.equal(morning.last_webhook_at, lastNight.toISOString());
+  // A quiet morning: 09:30 New York and still no call today is not silence.
+  const late = new Date("2026-10-05T13:30:00Z");
+  assert.deepEqual(
+    [calls(late, callsRow(late, { confirmedAgo: 30, knownAgo: 17 * 60 }), lastNight).state, calls(late, callsRow(late, { confirmedAgo: 30, knownAgo: 17 * 60 }), null).state],
+    ["fresh", "fresh"],
+  );
+  // A receipt before the window opened (an early 07:30 call) does not start today's stream either.
+  const early = new Date("2026-10-05T11:30:00Z");
+  assert.equal(calls(late, callsRow(late, { confirmedAgo: 30, knownAgo: 17 * 60 }), early).reason, null);
+  // Once today's first call webhook arrived (07:46), silence counts from it: 34 min later is webhook_silent.
+  const first = new Date("2026-10-05T11:46:00Z");
+  const afterFirst = new Date("2026-10-05T12:20:00Z");
+  const silent = calls(afterFirst, callsRow(afterFirst, { confirmedAgo: 30, knownAgo: 17 * 60 }), first);
+  assert.deepEqual([silent.state, silent.reason, silent.age_seconds], ["delayed", "webhook_silent", 34 * 60]);
+  // ...and the threshold stays tunable through evidence.webhook_silence_minutes.
+  const patient = deskTimingOf(salesOutreachConfigurationValueSchema.parse({ evidence: { webhook_silence_minutes: 60 } }));
+  assert.deepEqual([calls(afterFirst, callsRow(afterFirst, { confirmedAgo: 30, knownAgo: 17 * 60 }), first, patient).state], ["fresh"]);
 });
 
 test("calls: outside the staffed window the webhook is ignored", () => {
@@ -144,12 +190,20 @@ test("calls row: the confirmation instant is max(ISync lane success, reconcile s
   const sticky = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, reconcile_sync_success_at: reconcile, last_run: { finished_at: reconcile } });
   assert.equal(sticky.confirmation_success_at?.toISOString(), reconcile.toISOString());
   assert.equal(calls(NOW, sticky, ago(NOW, 60)).state, "fresh");
-  // A row written before the sticky field: the last run counts when it stored a token without a sync error.
-  const legacy = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_token_stored: true, sync_error_code: null } });
+  // A row written before the sticky field: the last run counts when it ran in sync mode on and stored a
+  // token without a sync error (the rule that stamps reconcile_sync_success_at).
+  const legacy = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_mode: "on", sync_token_stored: true, sync_error_code: null } });
   assert.equal(legacy.confirmation_success_at?.toISOString(), reconcile.toISOString());
-  const syncFailed = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_token_stored: true, sync_error_code: "CMN-101" } });
+  // A shadow (or off, or unrecorded) sync mode only counts records: never a confirmation (olr AW1).
+  for (const sync_mode of ["shadow", "off", null, undefined]) {
+    const notOn = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_mode, sync_token_stored: true, sync_error_code: null } });
+    assert.equal(notOn.confirmation_success_at?.toISOString(), lane.toISOString(), `sync_mode ${String(sync_mode)}`);
+  }
+  const shadowOnly = toCallsCaptureRow({ ...base, last_run: { finished_at: reconcile, sync_mode: "shadow", sync_token_stored: true, sync_error_code: null } });
+  assert.equal(shadowOnly.confirmation_success_at, null);
+  const syncFailed = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_mode: "on", sync_token_stored: true, sync_error_code: "CMN-101" } });
   assert.equal(syncFailed.confirmation_success_at?.toISOString(), lane.toISOString());
-  const noToken = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_token_stored: false } });
+  const noToken = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: lane }, last_run: { finished_at: reconcile, sync_mode: "on", sync_token_stored: false } });
   assert.equal(noToken.confirmation_success_at?.toISOString(), lane.toISOString());
   // The lane alone (staffed hours) and nothing at all.
   const laneNewer = toCallsCaptureRow({ ...base, isync_lane: { last_success_at: new Date("2026-10-05T14:59:30Z") }, reconcile_sync_success_at: reconcile });

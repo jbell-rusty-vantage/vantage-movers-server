@@ -58,6 +58,7 @@ export type SyncStateLean = {
   last_run?: {
     finished_at?: Date | null;
     error_code?: string | null;
+    sync_mode?: string | null;
     sync_token_stored?: boolean | null;
     sync_error_code?: string | null;
   } | null;
@@ -75,12 +76,16 @@ const latest = (...instants: ReadonlyArray<Date | null | undefined>): Date | nul
 
 /**
  * The Call Log row with its confirmation instant (lane A F5, RINGCENTRAL-CAPTURE §8): the later of the ISync
- * lane's sticky success, the reconcile's sticky sync success (A3-cap) and, for a row whose last reconcile ran
- * before that field existed, the last run's finish when it stored a sync token without a sync error.
+ * lane's sticky success, the reconcile's sticky sync success (A3-cap) and the last run's own sync success.
+ * The last run counts only under the rule that stamps `reconcile_sync_success_at` (`reconcileSyncSuccessAt`):
+ * sync mode `on`, a stored token and no sync error. A shadow run only counts records, so it never confirms.
+ * The fallback is folded into the max on every read. On a row the reconcile has written since A3-cap it is
+ * never later than the sticky field, so it only adds an instant for a row last reconciled before that field.
  */
 export function toCallsCaptureRow(row: SyncStateLean): CaptureSyncRow {
   const run = row.last_run ?? null;
-  const lastRunSyncSuccess = run?.sync_token_stored === true && !run.sync_error_code ? (run.finished_at ?? null) : null;
+  const lastRunSyncSuccess =
+    run?.sync_mode === "on" && run.sync_token_stored === true && !run.sync_error_code ? (run.finished_at ?? null) : null;
   return {
     ...toCaptureRow(row),
     observed_complete_through: row.observed_complete_through ?? null,
@@ -94,6 +99,7 @@ const CALLS_SYNC_PROJECTION = {
   observed_complete_through: 1,
   reconcile_sync_success_at: 1,
   "isync_lane.last_success_at": 1,
+  "last_run.sync_mode": 1,
   "last_run.sync_token_stored": 1,
   "last_run.sync_error_code": 1,
 } as const;

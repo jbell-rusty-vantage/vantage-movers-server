@@ -8,7 +8,7 @@ import {
 import type { OutreachActor } from "../auth";
 import type { ActiveConfiguration } from "../config/load";
 import { OutreachError } from "../errors";
-import { cadenceExposureOf, deskEnginePolicy, policyFingerprint } from "../evaluation/policyAdapter";
+import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint } from "../evaluation/policyAdapter";
 import { newYorkBusinessDay } from "./businessDay";
 import { mongoDeskQueueStore, type DeskQueueStore } from "./deskStore";
 import { presentQueueRow, type StoredQueueRow } from "./present";
@@ -48,7 +48,7 @@ export function deskCadenceOf(configuration: ActiveConfiguration): DeskCadence |
   if (!exposure) return { unavailable: "cadence_disabled" };
   const resolved = deskEnginePolicy(configuration.value);
   if (!resolved.ok) return { unavailable: "policy_unavailable" };
-  return { exposure, snapshot: policyFingerprint(resolved.policy, exposure) };
+  return { exposure, snapshot: deskPolicyFingerprint(configuration.value, resolved.policy, exposure) };
 }
 
 export function requireDeskCadence(configuration: ActiveConfiguration): DeskCadence {
@@ -195,7 +195,7 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
     limit: normalized.limit,
     cadence_exposure: cadence.exposure,
     enforcement_labels: cadence.exposure === "enforcement",
-    rows: visible.map((row) => presentQueueRow(row, { as_of: asOf, today, names, exposure: cadence.exposure })),
+    rows: visible.map((row) => presentQueueRow(row, { as_of: asOf, today, names, exposure: cadence.exposure, coverage: freshnessRead.coverage })),
     next_cursor,
     has_more,
     counts: {
