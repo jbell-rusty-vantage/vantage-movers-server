@@ -8,7 +8,10 @@
  *   state and both hash paths; subjects; periods; projections by status; the `next_evaluation_at`
  *   histogram; open/dead-letter/recently completed jobs; watermarks and the ISync lane; rep SMS
  *   mailbox lag; rep-day rows for NY today/yesterday with count scope and coverage; contact events by
- *   association; unconfirmed `call_interactions` by day; enrollment runs);
+ *   association; unconfirmed `call_interactions` by day and direction with the OPS-1 split before
+ *   CC-04; enrollment runs) and the OPS-0b reads (served `actual_basis` per rep with roster reps
+ *   without a row; calls freshness inputs with the newest call webhook; open subjects without a
+ *   number by whether their Lead has a phone);
  * - stdout is exactly one JSON document and carries no token, display name, phone or Lead selection;
  * - a `--target` that is not the resolved database is refused before connecting;
  * - the database is byte-identical afterwards (every document, every index, the collection list);
@@ -37,7 +40,9 @@ function childEnv(database: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env))
     if (!/RINGCENTRAL|^RC_|BLOB|GATEWAY|OPENAI|ANTHROPIC|VERCEL|KV_REST|REDIS|UPSTASH|QSTASH|GOOGLE|MONGO|DOTENV|^TEST_/i.test(key)) env[key] = value;
-  return { ...env, MONGO_URI: CSI_ENQUEUE_LOCAL_REPLICA_URI, TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: database };
+  // RINGCENTRAL_COLLECTION_MODE is pinned to "test" so a local `.env` loaded by the child cannot switch
+  // it to the production collection names: the seeded webhook events are the test-suffixed ones.
+  return { ...env, MONGO_URI: CSI_ENQUEUE_LOCAL_REPLICA_URI, TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: database, RINGCENTRAL_COLLECTION_MODE: "test" };
 }
 
 const runCli = (database: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}) =>
@@ -77,10 +82,13 @@ async function seed(db: Db, now: Date) {
   ]);
 
   const subjects = [new ObjectId(), new ObjectId(), new ObjectId(), new ObjectId()];
+  // The Lead of the numberless subject has a phone (C2 acceptance: counted, never printed).
+  const callLeadId = new ObjectId();
+  await db.collection("call_leads").insertOne({ _id: callLeadId, name: "Zed Synthetic", phone_number: "(305) 555-0199", normalized_phone_number: "3055550199" });
   await db.collection("sales_outreach_subjects").insertMany([
     { _id: subjects[0], status: "active", assigned_agent_id: agentA, contact_number_ids: [new ObjectId()], enrollment: { kind: "expansion" }, priority: { raw: "1" }, review_reasons: [], display: { name: "Zed Synthetic", normalized_phone: "3055550199" } },
     { _id: subjects[1], status: "active", assigned_agent_id: null, contact_number_ids: [new ObjectId()], enrollment: { kind: "expansion" }, priority: { raw: null }, review_reasons: [] },
-    { _id: subjects[2], status: "active", assigned_agent_id: agentB, contact_number_ids: [], enrollment: { kind: "intake" }, priority: { raw: "1" }, review_reasons: [] },
+    { _id: subjects[2], status: "active", assigned_agent_id: agentB, contact_number_ids: [], enrollment: { kind: "intake" }, priority: { raw: "1" }, review_reasons: [], lead_model: "CallLead", lead_id: callLeadId },
     { _id: subjects[3], status: "closed", assigned_agent_id: agentB, contact_number_ids: [new ObjectId()], enrollment: { kind: "expansion" }, priority: { raw: "5" }, review_reasons: ["priority_closed"] },
   ]);
   await db.collection("sales_outreach_policy_periods").insertMany([
@@ -122,8 +130,8 @@ async function seed(db: Db, now: Date) {
     {
       scope: "call_log_all_directions",
       known_complete_through: min(-15),
-      last_run: { started_at: min(-1), finished_at: min(-1), error_code: null },
-      isync_lane: { last_run_at: min(-1), last_success_at: min(-1), last_error_code: null, last_records: 1 },
+      last_run: { started_at: min(-1), finished_at: min(-1), error_code: null, sync_token_stored: true, sync_error_code: null },
+      isync_lane: { last_run_at: min(-1), last_success_at: min(-4), last_error_code: null, last_records: 1 },
       call_log_sync: { token: "SYNTHETIC-PROVIDER-TOKEN", sync_time: min(-2), consecutive_expiries: 0 },
     },
     { scope: "outreach_contact_calls", known_complete_through: min(-20), cursor: { outreach_coverage_from: min(-90 * 24 * 60) }, last_run: { started_at: min(-2), error_code: null } },
@@ -132,6 +140,13 @@ async function seed(db: Db, now: Date) {
     { scope: "webhook_subscription_health:calls", last_run: { started_at: min(-10), error_code: null } },
     { scope: "rep_sms:101", message_sync: { token: "SYNTHETIC-PROVIDER-TOKEN", last_success_at: min(-6) } },
     { scope: "rep_sms:102", message_sync: { last_success_at: min(-2) } },
+  ]);
+  // The child runs with RINGCENTRAL_COLLECTION_MODE=test, so it reads the test-suffixed collection.
+  await db.collection("ringcentral_webhook_events_test").insertMany([
+    { provider: "ringcentral", telephonySessionId: "s-synthetic-1", receivedAt: min(-2), normalizedPreview: { from: "3055550199" } },
+    { provider: "ringcentral", telephonySessionId: "s-synthetic-0", receivedAt: min(-9) },
+    // Newer, but not a call (no telephony session): ignored.
+    { provider: "ringcentral", telephonySessionId: null, receivedAt: min(-1) },
   ]);
   await db.collection("ringcentral_webhook_subscriptions").insertMany([
     { purpose: "calls", status: "Active", verification_token: "SYNTHETIC-PROVIDER-TOKEN" },
@@ -165,9 +180,11 @@ async function seed(db: Db, now: Date) {
   ]);
 
   await db.collection("call_interactions").insertMany([
-    { started_at: new Date("2026-10-05T15:00:00Z"), terminal: true, call_log_state: "settled" },
-    { started_at: new Date("2026-09-22T15:00:00Z"), terminal: false, call_log_state: null },
-    { started_at: new Date("2026-09-23T15:00:00Z"), terminal: true, call_log_state: null },
+    { started_at: new Date("2026-10-05T15:00:00Z"), terminal: true, call_log_state: "settled", direction: "Outbound" },
+    { started_at: new Date("2026-09-22T15:00:00Z"), terminal: false, call_log_state: null, direction: "Internal" },
+    { started_at: new Date("2026-09-23T15:00:00Z"), terminal: true, call_log_state: null, direction: "Outbound" },
+    // After the CC-04 instant (2026-09-24T01:28:03Z): unconfirmed, but outside the OPS-1 split.
+    { started_at: new Date("2026-09-24T03:00:00Z"), terminal: true, call_log_state: null, direction: "Inbound" },
   ]);
   await db.collection("ringcentral_rep_sms_evidence").insertMany([
     { identity_state: "reviewed", status: "delivered" },
@@ -271,7 +288,7 @@ async function main() {
     assert.deepEqual(j.completed_last_hour_by_stage, { directory: 1, outreach_evaluate: 1, outreach_rep_day: 1 });
 
     const w = s.watermarks;
-    assert.deepEqual([w.call_log.present, w.call_log.lag_min, w.call_log.isync_lane.success_lag_min, w.call_log.isync_lane.last_records], [true, 15, 1, 1]);
+    assert.deepEqual([w.call_log.present, w.call_log.lag_min, w.call_log.isync_lane.success_lag_min, w.call_log.isync_lane.last_records], [true, 15, 4, 1]);
     assert.deepEqual([w.contact_calls.lag_min, w.contact_sms.known_complete_through, w.contact_sms.present], [20, null, true]);
     assert.equal(w.subscription_maintenance.last_run.error_code, "subscription_missing");
     assert.equal(w.subscription_health_calls.last_run.error_code, null);
@@ -288,6 +305,17 @@ async function main() {
     ]);
     assert.deepEqual(rd.today.reps.map((r: { agent: string }) => r.agent), ["32227e", "3221ab"]);
     assert.deepEqual([rd.yesterday.rows, rd.yesterday.totals.confirmed, rd.yesterday.coverage_state], [1, 86, { complete: 1 }]);
+    // Served view: roster reps (the configuration's two synthetic Agents) have no row and capture is
+    // 20 min behind (partial), so they read Pending; the two row Agents are served from the projection.
+    assert.equal(rd.today_served.available, true);
+    assert.equal(rd.today_served.capture_coverage.state, "partial");
+    assert.deepEqual(rd.today_served.actual_basis, { pending: 2, projection: 2 });
+    assert.equal(rd.today_served.pending_without_row, 2);
+    assert.deepEqual(
+      rd.today_served.reps.map((r: { agent: string; on_roster: boolean; has_row: boolean; actual_basis: string }) => [r.agent, r.on_roster, r.has_row, r.actual_basis]),
+      [["aaaaaa", true, false, "pending"], ["bbbbbb", true, false, "pending"], ["3221ab", false, true, "projection"], ["32227e", false, true, "projection"]],
+    );
+    assert.equal(rd.yesterday_served.reps.find((r: { agent: string }) => r.agent === "3221ab").actual_confirmed, 86);
     assert.deepEqual(rd.recent_by_day_scope.map((r: { business_day: string; confirmed: number }) => [r.business_day, r.confirmed]), [[today, 42], [yesterday, 86]]);
 
     const e = s.contact_events;
@@ -300,7 +328,23 @@ async function main() {
     });
     assert.deepEqual(e.yesterday_by_source_direction_credit_association_eligible, { "call/outbound/confirmed/ambiguous/false": 1 });
 
-    assert.deepEqual(s.call_interactions, { total: 3, unconfirmed_total: 2, unconfirmed_by_utc_day: { "2026-09-22": 1, "2026-09-23": 1 } });
+    assert.deepEqual(s.call_interactions, {
+      total: 4,
+      unconfirmed_total: 3,
+      unconfirmed_by_utc_day: { "2026-09-22": 1, "2026-09-23": 1, "2026-09-24": 1 },
+      unconfirmed_by_direction: { Inbound: 1, Internal: 1, Outbound: 1 },
+      unconfirmed_inbound_outbound_total: 2,
+      unconfirmed_internal_total: 1,
+      unconfirmed_by_utc_day_direction: { "2026-09-22": { Internal: 1 }, "2026-09-23": { Outbound: 1 }, "2026-09-24": { Inbound: 1 } },
+      before_cc04: { instant: "2026-09-24T01:28:03.000Z", inbound_outbound: 1, internal: 1 },
+    });
+    assert.deepEqual(s.subjects_without_numbers, { checked: 1, truncated: false, by_status_model_phone: { "active/CallLead/has_phone": 1 }, active_lead_has_phone: 1 });
+    const f = s.freshness_inputs;
+    assert.equal(f.webhook_collection, "ringcentral_webhook_events_test");
+    assert.deepEqual(
+      [f.calls.lane_success_lag_min, f.calls.reconcile.success_lag_min, f.calls.confirmation_lag_min, f.calls.webhook_lag_min, f.calls.known_complete_through_lag_min],
+      [4, 1, 1, 2, 15],
+    );
     assert.deepEqual(s.rep_sms_evidence, { total: 2, by_identity_status: { "reviewed/delivered": 1, "reviewed/received": 1 } });
     assert.equal(s.enrollment_runs.length, 1);
     assert.deepEqual([s.enrollment_runs[0].run_key, s.enrollment_runs[0].counts], ["backfill-synthetic", { enrolled: 3, skipped: 1 }]);
