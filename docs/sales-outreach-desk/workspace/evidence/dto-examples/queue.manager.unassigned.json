@@ -69,22 +69,27 @@
         "assigned_agent_name": null,
         "received_at": "2026-10-05T14:30:00.000Z",
         "last_interaction_at": null,
-        "oldest_actionable_due_at": "2026-10-05T15:00:00.000Z",
+        "oldest_actionable_due_at": null,
         "next_action_due_at": "2026-10-05T15:00:00.000Z",
         "call": {
           "required": 2,
           "verified_completed": 0,
           "remaining": 2,
           "due_at": "2026-10-05T15:00:00.000Z",
-          "oldest_actionable_due_at": "2026-10-05T15:00:00.000Z",
-          "status": "overdue",
+          "oldest_actionable_due_at": null,
+          "status": "due",
           "completion_kind": null,
           "coverage": {
             "state": "complete",
             "known_complete_through": "2026-10-05T14:57:00.000Z",
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": {
+            "state": "unverified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": "2026-10-05T15:00:00.000Z"
+          }
         },
         "sms": {
           "required": 1,
@@ -99,11 +104,12 @@
             "known_complete_through": null,
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": null
         },
         "status_flags": {
           "needs_contact": true,
-          "overdue": true,
+          "overdue": false,
           "blocked": false,
           "pending": false,
           "move_date_passed": false,

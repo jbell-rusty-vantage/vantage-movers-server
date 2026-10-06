@@ -41,7 +41,7 @@ app.use(
     },
     reconcile: async () => {
       calls.push("reconcile");
-      return { skipped: false, reason: null, pages: 1, checked: 3, nominated: 1, wrapped: true };
+      return { skipped: false, reason: null, pages: 1, checked: 3, nominated: 1, wrapped: true, decision_nominated: 0, decision_deferred: 0, decision_cap: 300 };
     },
     evaluationSweep: async () => {
       calls.push("sweep");
@@ -50,6 +50,7 @@ app.use(
         skipped: sweepSkipped,
         reason: sweepSkipped ? "cadence_disabled" : null,
         due: { pages: 1, nominated: 2 },
+        coverage: { pages: 0, nominated: 0, call_through: null, sms_through: null },
         reconcile: { pages: 1, checked: 2, nominated: 0, wrapped: true },
       };
     },

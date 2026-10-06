@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { addDays } from "./calendar";
 import { selectSpacedStarts } from "./credit";
 import { isFixedSmsDay } from "./newCadence";
-import { evaluate, fixture, minutesAfter, nyMinute, obligationsOn, outbound, period, POLICY, policyWith, scenario, sms, type FixtureFile } from "./testSupport";
+import { evaluate, fixture, minutesAfter, ny, nyMinute, obligationsOn, outbound, period, periods, POLICY, policyWith, scenario, sms, type FixtureFile } from "./testSupport";
 
 /** A New subject received before opening on `received` (full arrival allowance), evaluated later. */
 function newSubject(received: string, events: ReturnType<typeof outbound>[] = [], extra: Parameters<typeof scenario>[0] extends infer S ? Partial<S> : never = {}) {
@@ -191,5 +191,49 @@ describe("P02i closures — closed Day 6 waives the fixed SMS without moving the
     assert.equal(nextSms.business_date, c.next_fixed_sms_date);
     assert.equal(r.schedule_day, c.next_fixed_sms_day);
     assert.ok(r.obligations.some((o) => o.business_date < c.closed_date! && o.outcome === "missed"), "historical misses are not erased");
+  });
+});
+
+describe("olr A6 (D-A6) — the spacing anchor is seeded from pre-start same-date calls", () => {
+  // Tuesday 2026-10-06 is Day 4 for a Lead received Saturday 10:00 (two calls; one left after a prior call).
+  const TUE = "2026-10-06";
+  const RECEIVED = ny("2026-10-03", "10:00");
+  const startCalls = (r: ReturnType<typeof evaluate>, periodId: string) => obligationsOn(r, TUE, "call").filter((o) => o.period_id === periodId);
+  const activated = (events: ReturnType<typeof outbound>[]) =>
+    scenario({ received_at: RECEIVED, activation_at: ny(TUE, "10:00"), periods: [period("a1", "new", ny(TUE, "10:00"), "activation")], events });
+
+  test("activation partial start: a call within 60 min of a counted prior same-date call is not credited; one at ≥ 60 min is", () => {
+    const prior = outbound(ny(TUE, "09:30"));
+    const close = outbound(ny(TUE, "10:05"));
+    const r = evaluate(activated([prior, close]), ny(TUE, "10:20"));
+    const obs = startCalls(r, "a1");
+    assert.equal(obs.length, 1, "quota 2 minus the counted prior call");
+    assert.equal(obs[0]!.fulfilled_by_event_id, null, "35 min after the prior call: not spaced");
+    assert.equal(r.requirements.call.remaining, 1);
+
+    const spaced = outbound(ny(TUE, "10:30"));
+    const later = evaluate(activated([prior, close, spaced]), ny(TUE, "10:45"));
+    assert.equal(startCalls(later, "a1")[0]!.fulfilled_by_event_id, spaced.event_id, "60 min after the prior call: credited");
+  });
+
+  test("transition partial start: same", () => {
+    // Quoted from Tuesday 08:00 (its first required date is Wednesday), back to New at 10:00.
+    const list = periods(["n1", "new", RECEIVED, "intake"], ["q1", "quoted", ny(TUE, "08:00"), "transition"], ["n2", "new", ny(TUE, "10:00"), "transition"]);
+    const prior = outbound(ny(TUE, "09:30"));
+    const close = outbound(ny(TUE, "10:05"));
+    const r = evaluate(scenario({ periods: list, events: [prior, close] }), ny(TUE, "10:20"));
+    const obs = startCalls(r, "n2");
+    assert.equal(obs.length, 1);
+    assert.equal(obs[0]!.fulfilled_by_event_id, null);
+    const spaced = outbound(ny(TUE, "10:30"));
+    const later = evaluate(scenario({ periods: list, events: [prior, close, spaced] }), ny(TUE, "10:45"));
+    assert.equal(startCalls(later, "n2")[0]!.fulfilled_by_event_id, spaced.event_id);
+  });
+
+  test("intake (no prior) unchanged: the first call after receipt credits the initial response and an arrival call", () => {
+    const first = outbound(ny(TUE, "10:05"));
+    const r = evaluate(scenario({ periods: [period("i1", "new", ny(TUE, "10:00"), "intake")], events: [first] }), ny(TUE, "10:20"));
+    assert.equal(r.initial_response?.outcome, "fulfilled");
+    assert.equal(startCalls(r, "i1").filter((o) => o.fulfilled_by_event_id === first.event_id).length, 1);
   });
 });

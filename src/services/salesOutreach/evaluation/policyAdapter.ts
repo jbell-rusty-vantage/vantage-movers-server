@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import type { SalesOutreachCadenceExposure } from "../../../config/domain/salesOutreach";
 import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
+import { deskTimingOf } from "../config/timing";
 import {
+  OUTREACH_ENGINE_VERSION,
   resolveEnginePolicy,
   stableStringify,
   type CadenceConfigurationValue,
@@ -44,7 +46,10 @@ const unavailable = (reasons: string[]): ResolveEnginePolicyResult => ({ ok: fal
  * - `quoted_open_minute` must equal that opening minute (the engine opens Quoted dates at opening);
  * - the P05f reentry thresholds are the P02g/P02h `late_arrival_rule` thresholds (identical approved values);
  * - the P10a Quoted activation-date cutoff is `quoted_same_day_cutoff_minute` (both "through 19:30");
- * - `new_call_slots` bands are split at Day 3/4 so only Days 1–3 carry `new_days_1_3_calls.optional`.
+ * - `new_call_slots` bands are split at Day 3/4 so only Days 1–3 carry `new_days_1_3_calls.optional`;
+ * - `intake_default_rule`: native sources must be `new` (P05e); `granot_created` passes through as
+ *   `review` or `new` (olr B3). The engine policy does not carry it, so neither value changes the
+ *   policy or its fingerprint.
  */
 export function toEngineCadence(cadence: Cadence): { ok: true; value: CadenceConfigurationValue } | { ok: false; reasons: string[] } {
   const reasons: string[] = [];
@@ -58,8 +63,9 @@ export function toEngineCadence(cadence: Cadence): { ok: true; value: CadenceCon
     reasons.push("cadence.working_days: per-day hours differ; the engine calendar needs one opening and closing minute");
   if (cadence.quoted_open_minute !== open) reasons.push("cadence.quoted_open_minute: must equal the working-day opening minute");
   const intake = cadence.intake_default_rule!;
-  if ([intake.website_form, intake.best_relocation, intake.ringcentral_call, intake.manual].some((v) => v !== "new") || intake.granot_created !== "review")
-    reasons.push("cadence.intake_default_rule: the engine encodes only native intake = new and Granot-created missing priority = review");
+  // P05e approves only New for native intake; Granot-created missing priority may be review or new (olr B3).
+  if ([intake.website_form, intake.best_relocation, intake.ringcentral_call, intake.manual].some((v) => v !== "new"))
+    reasons.push("cadence.intake_default_rule: the engine encodes only native intake = new");
   const firstThree = cadence.new_days_1_3_calls!;
   const bands: CadenceConfigurationValue["new_call_slots"] = [];
   for (const band of cadence.new_call_slots!) {
@@ -113,7 +119,7 @@ export function toEngineCadence(cadence: Cadence): { ok: true; value: CadenceCon
       cooldown_warning_hours: cadence.cooldown_warning_hours!,
       cooldown_mode: "advisory",
       assignment_timeline_rule: "continuous",
-      intake_default_rule: { native_intake: "new", granot_created_missing_priority: "review" },
+      intake_default_rule: { native_intake: "new", granot_created_missing_priority: intake.granot_created },
       uncertain_priority_rule: "retain_last_verified",
       transition_day_rule: { kind: "prospective_partial_day", quoted_activation_call_through_minute: cadence.quoted_same_day_cutoff_minute! },
       move_date_rule: "review_label_only",
@@ -140,7 +146,22 @@ export function cadenceExposureOf(controls: SalesOutreachConfigurationValue["con
   return null;
 }
 
-/** Hash of the resolved policy and exposure: a change re-evaluates every projection (evaluation reconcile). */
-export function policyFingerprint(policy: EnginePolicy, exposure: SalesOutreachCadenceExposure): string {
-  return createHash("sha256").update(stableStringify({ policy, exposure })).digest("hex");
+/**
+ * What else decides a projection besides the resolved policy and exposure (olr A1.4): the engine version
+ * and the call settlement allowance (`deskTimingOf`). Deploying a new engine or changing the allowance
+ * therefore re-evaluates every projection once through the evaluation reconcile (no backfill script).
+ */
+export type PolicyFingerprintExtras = Readonly<{ engine_version: string; call_settlement_allowance_ms: number }>;
+
+/** Hash of the resolved policy, exposure and extras: a change re-evaluates every projection (evaluation reconcile). */
+export function policyFingerprint(policy: EnginePolicy, exposure: SalesOutreachCadenceExposure, extras: PolicyFingerprintExtras): string {
+  return createHash("sha256").update(stableStringify({ policy, exposure, ...extras })).digest("hex");
+}
+
+/** The fingerprint the evaluator stamps and the reads compare (one place, so the two never diverge). */
+export function deskPolicyFingerprint(value: SalesOutreachConfigurationValue, policy: EnginePolicy, exposure: SalesOutreachCadenceExposure): string {
+  return policyFingerprint(policy, exposure, {
+    engine_version: OUTREACH_ENGINE_VERSION,
+    call_settlement_allowance_ms: deskTimingOf(value).call_settlement_allowance_ms,
+  });
 }

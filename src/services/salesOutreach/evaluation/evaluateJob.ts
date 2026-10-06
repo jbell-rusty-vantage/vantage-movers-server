@@ -6,12 +6,13 @@ import { logger } from "../../../logger";
 import { CsiError } from "../../salesIntelligence/auth";
 import { claimCsiJob, completeCsiJob, failCsiJob, type JobInput, type JobLease } from "../../salesIntelligence/jobs";
 import { salesOutreachConfigurationLoader, type ActiveConfiguration, type ConfigurationLoader } from "../config/load";
+import { deskTimingOf } from "../config/timing";
 import { evaluateSubject, type EnginePolicy } from "../engine";
 import { OutreachError } from "../errors";
 import { publishOutreachLive } from "../live/publish";
 import type { ReadSession } from "../subjects/store";
-import { buildEngineInput } from "./inputs";
-import { cadenceExposureOf, deskEnginePolicy, policyFingerprint } from "./policyAdapter";
+import { buildEngineInput, engineCoverageOf } from "./inputs";
+import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint } from "./policyAdapter";
 import { toProjectionWrite } from "./projection";
 import { mongoEvaluationStore, type EvaluationStore } from "./store";
 
@@ -47,7 +48,12 @@ export function evaluationAdmissionOf(inspection: Awaited<ReturnType<Configurati
   if (!resolved.ok) return { ok: false, status: "policy_unavailable", reasons: resolved.reasons };
   return {
     ok: true,
-    context: { configuration: inspection, policy: resolved.policy, exposure, policy_fingerprint: policyFingerprint(resolved.policy, exposure) },
+    context: {
+      configuration: inspection,
+      policy: resolved.policy,
+      exposure,
+      policy_fingerprint: deskPolicyFingerprint(inspection.value, resolved.policy, exposure),
+    },
   };
 }
 
@@ -80,22 +86,27 @@ export async function evaluateAndProject(
   const coverage = await store.loadCoverage(context.configuration.value.controls.rep_sms_capture_enabled, read);
   const agents = [...new Set([subject.assigned_agent_id, ...changes.flatMap((c) => [c.before, c.after])].filter((a): a is string => a !== null))];
   const links = await store.loadRepLinks(agents, read);
-  const input = buildEngineInput({
-    subject,
-    periods,
-    plans,
-    restrictions,
-    assignment_changes: changes,
-    rep_links: links,
-    contact_events: events,
-    coverage,
-  });
+  const timing = deskTimingOf(context.configuration.value);
+  const input = buildEngineInput(
+    {
+      subject,
+      periods,
+      plans,
+      restrictions,
+      assignment_changes: changes,
+      rep_links: links,
+      contact_events: events,
+      coverage,
+    },
+    timing,
+  );
   const result = evaluateSubject(input, context.policy, asOf.toISOString());
   const doc = toProjectionWrite(subject, result, {
     exposure: context.exposure,
     configuration_version: context.configuration.version,
     policy_fingerprint: context.policy_fingerprint,
     coverage,
+    timing,
   });
   const head = await store.readProjection(subject.id, session);
   if (head && head.result_fingerprint === doc.result_fingerprint)
@@ -207,6 +218,8 @@ export type EvaluationSweepResult = Readonly<{
   skipped: boolean;
   reason: string | null;
   due: { pages: number; nominated: number };
+  /** olr A1 coverage repair: the current cadence coverage per channel and the rows it nominated. */
+  coverage: { pages: number; nominated: number; call_through: string | null; sms_through: string | null };
   reconcile: { pages: number; checked: number; nominated: number; wrapped: boolean };
 }>;
 
@@ -214,17 +227,36 @@ const skippedSweep = (reason: string): EvaluationSweepResult => ({
   skipped: true,
   reason,
   due: { pages: 0, nominated: 0 },
+  coverage: { pages: 0, nominated: 0, call_through: null, sms_through: null },
   reconcile: { pages: 0, checked: 0, nominated: 0, wrapped: false },
 });
+
+/** The coverage repair nominates a waiting row at most once per this step of channel coverage. */
+export const COVERAGE_REPAIR_BUCKET_MS = 5 * 60_000;
+
+/**
+ * Coverage-repair job cause: the channel, the waited deadline and the 5-minute coverage bucket. A backlog
+ * upserts onto the same pending job; a dead-lettered evaluation is re-nominated at the next coverage step
+ * (self-healing without timed retries).
+ */
+export function coverageRepairCause(channel: "call" | "sms", wait: Date, through: Date): string {
+  return `coverage:${channel}:${+wait}:${Math.floor(+through / COVERAGE_REPAIR_BUCKET_MS)}`;
+}
 
 /**
  * The minute evaluation sweep (cron `/api/cron/sales-outreach-evaluate`):
  * 1. clock repair — projections with `next_evaluation_at <= now`, oldest first, in pages of 100 (≤ 5
  *    pages), each nominated once per due instant (`sod:evaluate:<subject>:due:<ms>`);
- * 2. policy reconcile — subjects by `_id` in pages of 100 (≤ 5 pages, durable cursor in
+ * 2. coverage repair (olr A1) — per channel, projections whose `coverage_wait` <= the channel's current
+ *    cadence coverage (the same `engineCoverageOf` the evaluation uses), oldest wait first, in pages of
+ *    100 (≤ 5 pages per channel), nominated as `sod:evaluate:<subject>:coverage:<channel>:<wait ms>:<bucket>`.
+ *    A pull on the watermark: verdicts land once coverage can prove them (≈ 17–22 min after a deadline),
+ *    nothing is re-evaluated while capture is behind, and capture stays unaware of the desk;
+ * 3. policy reconcile — subjects by `_id` in pages of 100 (≤ 5 pages, durable cursor in
  *    `sales_intelligence_sync_state` scope `outreach_evaluation_reconcile`, wraps on a short page)
- *    whose projection is missing or was computed under another resolved policy/exposure.
- * Both only nominate jobs; the drain evaluates them. Nothing runs while evaluation is not admitted.
+ *    whose projection is missing or was computed under another policy fingerprint (resolved policy,
+ *    exposure, engine version, settlement allowance).
+ * All only nominate jobs; the drain evaluates them. Nothing runs while evaluation is not admitted.
  */
 export async function sweepOutreachEvaluations(now = new Date(), deps: EvaluationSweepDeps = {}): Promise<EvaluationSweepResult> {
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
@@ -251,6 +283,29 @@ export async function sweepOutreachEvaluations(now = new Date(), deps: Evaluatio
     if (page.length < EVALUATION_SWEEP_PAGE) break;
   }
 
+  const value = admission.context.configuration.value;
+  const current = engineCoverageOf(await store.loadCoverage(value.controls.rep_sms_capture_enabled, null), deskTimingOf(value));
+  const coverage = { pages: 0, nominated: 0, call_through: current.call?.toISOString() ?? null, sms_through: current.sms?.toISOString() ?? null };
+  for (const channel of ["call", "sms"] as const) {
+    const through = current[channel];
+    if (!through) continue; // no coverage: staying pending is correct, nothing to nominate
+    let waitAfter: { at: Date; subject_id: string } | null = null;
+    for (let pages = 0; pages < EVALUATION_SWEEP_MAX_PAGES; pages++) {
+      const page = await store.coverageWaiting(channel, through, waitAfter, EVALUATION_SWEEP_PAGE);
+      if (!page.length) break;
+      coverage.pages++;
+      coverage.nominated += await transaction(async (session) => {
+        let count = 0;
+        for (const row of page)
+          if ((await store.enqueue(evaluationJob(row.subject_id, coverageRepairCause(channel, row.wait, through)), session)) === "enqueued") count++;
+        return count;
+      });
+      const last = page.at(-1)!;
+      waitAfter = { at: last.wait, subject_id: last.subject_id };
+      if (page.length < EVALUATION_SWEEP_PAGE) break;
+    }
+  }
+
   const reconcile = { pages: 0, checked: 0, nominated: 0, wrapped: false };
   while (reconcile.pages < EVALUATION_SWEEP_MAX_PAGES && !reconcile.wrapped) {
     const page = await transaction(async (session) => {
@@ -271,5 +326,5 @@ export async function sweepOutreachEvaluations(now = new Date(), deps: Evaluatio
     reconcile.nominated += page.count;
     reconcile.wrapped = page.short;
   }
-  return { skipped: false, reason: null, due, reconcile };
+  return { skipped: false, reason: null, due, coverage, reconcile };
 }

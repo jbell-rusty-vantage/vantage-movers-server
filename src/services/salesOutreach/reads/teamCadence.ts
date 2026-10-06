@@ -6,7 +6,8 @@ import type {
 } from "../../../validation/v1/salesOutreachReads";
 import type { ActiveConfiguration } from "../config/load";
 import { newYorkBusinessDay } from "./businessDay";
-import { NO_AGENT_CADENCE, type DeskQueueStore } from "./deskStore";
+import type { DeskReadCoverage } from "./common";
+import { NO_AGENT_CADENCE, overdueCutoffs, type DeskQueueStore } from "./deskStore";
 import { presentQueueRow } from "./present";
 import { deskCadenceOf } from "./queue";
 import { queueSortSpec, type QueueMatch } from "./queueQuery";
@@ -18,10 +19,13 @@ import type { SalesOutreachReadStore } from "./store";
  * first "Leads needing attention" rows; and the per-rep cadence counts shared by GET /rep-days and the
  * team's Daily call goals rows (`composeRepCadence`).
  *
- * Overdue is read-time: a Lead is overdue when its earliest unsatisfied actionable deadline (blocked
- * channels excluded) is at or before `now`. Overdue figures exist only under enforcement; in shadow they
- * are null (`cadence_shadow`) because no overdue label may be shown. The Unassigned count is a count of
- * subjects, not a label, so it is served whenever the desk is on. Goals never hide overdue work.
+ * Overdue is read-time: a Lead is overdue when a channel's earliest unsatisfied actionable deadline
+ * (blocked channels excluded) is at or before `now` AND that channel's cadence coverage proves it (olr
+ * A2: the same rule as each row's `verification`, so the cards and the rows agree and the count does not
+ * dip while capture settles after 12:00/20:00). With call coverage unknown the overdue figures are null
+ * (`coverage_incomplete`). Overdue figures exist only under enforcement; in shadow they are null
+ * (`cadence_shadow`) because no overdue label may be shown. The Unassigned count is a count of subjects,
+ * not a label, so it is served whenever the desk is on. Goals never hide overdue work.
  */
 
 type UnknownReason = (typeof SALES_OUTREACH_CADENCE_UNKNOWN_REASONS)[number];
@@ -31,6 +35,8 @@ export const TEAM_ATTENTION_LIMIT = 10;
 
 const known = (value: number): Metric => ({ value, unknown_reason: null });
 const unknown = (reason: UnknownReason): Metric => ({ value: null, unknown_reason: reason });
+/** A coverage-gated count: null ⇒ call coverage unknown (`coverage_incomplete`). */
+const verifiedCount = (value: number | null): Metric => (value === null ? unknown("coverage_incomplete") : known(value));
 
 export type TeamCadence = Readonly<{
   exposure: SalesOutreachCadenceExposure | null;
@@ -54,8 +60,10 @@ export async function composeTeamCadence(input: {
   now: Date;
   queueStore: DeskQueueStore;
   readStore: SalesOutreachReadStore;
+  /** The read's coverage (`readFreshness`). */
+  coverage: DeskReadCoverage;
 }): Promise<TeamCadence> {
-  const { configuration, now, queueStore } = input;
+  const { configuration, now, queueStore, coverage } = input;
   const cadence = deskCadenceOf(configuration);
   const unassignedScope = await queueStore.countScope({ kind: "unassigned" });
   if ("unavailable" in cadence) {
@@ -77,7 +85,7 @@ export async function composeTeamCadence(input: {
   const agents = [...new Set(page.map((row) => row.assigned_agent_id).filter((id): id is string => id !== null))];
   const names = await input.readStore.findReviewedRepNames(agents, now);
   const today = newYorkBusinessDay(now);
-  const attention = { rows: page.map((row) => presentQueueRow(row, { as_of: now, today, names, exposure: cadence.exposure })), limit: TEAM_ATTENTION_LIMIT, unknown_reason: null };
+  const attention = { rows: page.map((row) => presentQueueRow(row, { as_of: now, today, names, exposure: cadence.exposure, coverage })), limit: TEAM_ATTENTION_LIMIT, unknown_reason: null };
   if (cadence.exposure === "shadow")
     return {
       exposure: "shadow",
@@ -86,12 +94,12 @@ export async function composeTeamCadence(input: {
       unassigned: { count: unassignedScope.subjects, overdue: unknown("cadence_shadow") },
       leads_needing_attention: attention,
     };
-  const counts = await queueStore.teamOverdue(now);
+  const counts = await queueStore.teamOverdue(now, coverage.cadence);
   return {
     exposure: "enforcement",
-    distinct_overdue_leads: known(counts.distinct_overdue),
-    quoted_overdue_leads: known(counts.quoted_call_overdue),
-    unassigned: { count: unassignedScope.subjects, overdue: known(counts.unassigned_overdue) },
+    distinct_overdue_leads: verifiedCount(counts.distinct_overdue),
+    quoted_overdue_leads: verifiedCount(counts.quoted_call_overdue),
+    unassigned: { count: unassignedScope.subjects, overdue: verifiedCount(counts.unassigned_overdue) },
     leads_needing_attention: attention,
   };
 }
@@ -106,7 +114,8 @@ export type RepCadence = (agentId: string) => RepCadenceMetrics;
  * - cadence off or unresolvable → every count null (`cadence_disabled` / `policy_unavailable`);
  * - shadow → overdue null (`cadence_shadow`: no overdue label may be shown); the due counts are served,
  *   because a shadow queue row shows its requirements and remaining counts (its overdue status reads `due`);
- * - enforcement → every count.
+ * - enforcement → every count; overdue Leads by the coverage-aware rule (null `coverage_incomplete`
+ *   while call coverage is unknown).
  * A due count with any due requirement whose remaining is unknown is null (`coverage_incomplete`), never
  * a partial sum.
  */
@@ -115,19 +124,23 @@ export async function composeRepCadence(input: {
   now: Date;
   queueStore: DeskQueueStore;
   agentIds: readonly string[];
+  /** The read's coverage (`readFreshness`). */
+  coverage: DeskReadCoverage;
 }): Promise<RepCadence> {
   const cadence = deskCadenceOf(input.configuration);
   if ("unavailable" in cadence) {
     const none = unknown(cadence.unavailable);
     return () => ({ overdue_leads: none, calls_due_today: none, sms_due_today: none });
   }
-  const counts = input.agentIds.length ? await input.queueStore.agentCadence(input.now, input.agentIds) : new Map();
+  const counts = input.agentIds.length ? await input.queueStore.agentCadence(input.now, input.agentIds, input.coverage.cadence) : new Map();
+  const overdueKnowable = overdueCutoffs(input.now, input.coverage.cadence) !== null;
   const due = (remaining: number, unknownCount: number) =>
     unknownCount > 0 ? { value: null, unknown_reason: "coverage_incomplete" as const } : known(remaining);
   return (agentId) => {
     const c = counts.get(agentId) ?? NO_AGENT_CADENCE;
     return {
-      overdue_leads: cadence.exposure === "enforcement" ? known(c.overdue_leads) : unknown("cadence_shadow"),
+      overdue_leads:
+        cadence.exposure !== "enforcement" ? unknown("cadence_shadow") : verifiedCount(overdueKnowable ? (c.overdue_leads ?? 0) : null),
       calls_due_today: due(c.call_due_remaining, c.call_due_unknown),
       sms_due_today: due(c.sms_due_remaining, c.sms_due_unknown),
     };

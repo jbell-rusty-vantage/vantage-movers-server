@@ -15,9 +15,8 @@ const at = (iso: string) => new Date(iso);
 const mapping = deskConfiguration().value.cadence;
 
 /** Enroll a fresh Lead through intake, then apply each later Lead state as an `outreach_lead_change`. */
-async function lifecycle(states: Array<Partial<ReturnType<typeof leadFacts>>>, start = leadFacts()) {
+async function lifecycle(states: Array<Partial<ReturnType<typeof leadFacts>>>, start = leadFacts(), config = intakeOn()) {
   const store = new MemoryDeskSubjectStore();
-  const config = intakeOn();
   let lead = store.addLead(start);
   const results = [await refreshLeadForOutreach(lead.ref, config, at("2026-10-01T15:00:00Z"), store, fakeSession)];
   let day = 2;
@@ -278,6 +277,38 @@ describe("P05e intake defaults and uncertain priority (fixture p05e-intake-prior
       "2026-10-01T14:10:00.000Z",
     );
     assert.equal(r.initial_response?.outcome, "open", "the 30-working-minute clock runs from received");
+  });
+
+  test("granot_created: new (olr B3) → intake_default New at received; later accepted 0 is a no-op; 1 is a transition", async () => {
+    const granotNew = deskConfiguration({
+      transition: { intake_admission_enabled: true, intake_admission_at: GATE },
+      cadence: { intake_default_rule: { ...mapping.intake_default_rule!, granot_created: "new" } },
+    });
+    const received = "2026-10-01T14:00:00Z";
+    const facts = leadFacts({ ingestion_origin: "granot_lead_created", timestamp: at(received) });
+    assert.deepEqual(resolveDeskPolicy(facts, granotNew.value.cadence), { kind: "intake_default", workflow: "new", source: "granot_created" });
+    const { store, results } = await lifecycle(
+      [{ ...accepted("0", "2026-10-02T15:00:00Z") }, { ...accepted("1", "2026-10-03T15:30:00Z") }],
+      facts,
+      granotNew,
+    );
+    const [first, quoted] = store.periods;
+    // Identical to native intake: New at received with the initial-response clock, no review reason.
+    assert.deepEqual(
+      [first!.workflow, first!.start_kind, first!.time_basis, first!.priority, first!.transition_key],
+      ["new", "intake", "activation_boundary", null, "intake_default:granot_created"],
+    );
+    assert.equal(+first!.started_at, +at(received));
+    assert.equal(results[0]!.outcome, "created");
+    // Granot's later Priority 0 means the same New: nothing restarts, only the priority basis changes.
+    assert.equal(results[1]!.reason, "repeated_priority");
+    // Priority 1 moves the subject to Quoted at the observation time.
+    assert.equal(store.periods.length, 2);
+    assert.deepEqual([quoted!.workflow, quoted!.start_kind, quoted!.priority], ["quoted", "transition", "1"]);
+    assert.equal(+quoted!.started_at, +at("2026-10-03T15:30:00Z"));
+    assert.equal(+first!.ended_at!, +at("2026-10-03T15:30:00Z"));
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+    assert.deepEqual([store.subjects[0]!.priority.raw, store.subjects[0]!.priority.basis], ["1", "accepted_observation"]);
   });
 
   test("an accepted priority after an intake default New with the same workflow restarts nothing", async () => {

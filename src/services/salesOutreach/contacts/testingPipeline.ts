@@ -27,7 +27,7 @@ export class MemoryRepDayStore implements RepDayStore {
   async events(key: { agent_id: string; business_day: string }) {
     return [...this.source.events.values()]
       .filter((e) => e.goal_agent_id === key.agent_id && e.business_date === key.business_day)
-      .map((e) => ({ source_id: e.source_id, goal_credit: e.goal_credit, goal_scope_eligible: e.goal_scope_eligible }));
+      .map((e) => ({ source_id: e.source_id, goal_credit: e.goal_credit, goal_scope_eligible: e.goal_scope_eligible, association_reason: e.association_reason ?? null }));
   }
   async readRow(key: { agent_id: string; business_day: string }): Promise<StoredRepDay | null> {
     const row = this.rows.get(`${key.agent_id}|${key.business_day}`);
@@ -39,6 +39,8 @@ export class MemoryRepDayStore implements RepDayStore {
           revision: row.revision,
           coverage_state: row.coverage.state,
           count_scope: row.count_scope,
+          both_counts: typeof (row as Partial<RepDayRowFields>).actual_confirmed_all === "number",
+          breakdown: (row as Partial<RepDayRowFields>).other_outbound != null,
         }
       : null;
   }
@@ -58,6 +60,8 @@ export class MemoryRepDayStore implements RepDayStore {
         coverage_state: row.coverage.state,
         frozen: Boolean(row.goal_snapshot.configuration_version),
         count_scope: row.count_scope,
+        both_counts: typeof (row as Partial<RepDayRowFields>).actual_confirmed_all === "number",
+        breakdown: (row as Partial<RepDayRowFields>).other_outbound != null,
       }));
   }
   row(agent: string, day: string) {

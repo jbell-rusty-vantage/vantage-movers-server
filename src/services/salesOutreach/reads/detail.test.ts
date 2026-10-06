@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { OutreachActor } from "../auth";
 import { OutreachError } from "../errors";
 import { evaluateAndProject, evaluationAdmissionOf } from "../evaluation/evaluateJob";
-import { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../evaluation/testing";
+import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../evaluation/testing";
 import type { DeskPlanRow } from "../evaluation/store";
 import { salesOutreachDetailSchema, salesOutreachTeamSchema } from "../../../validation/v1/salesOutreachReads";
 import { MemoryDeskReadStore } from "./deskTesting";
@@ -90,11 +90,12 @@ async function seeded(controls?: Parameters<typeof completeConfigurationInput>[0
     resolution_reason: null,
     revision: 1,
   });
-  store.evaluation.coverage = { calls_known_complete_through: at("2026-10-05T14:58:00.000Z"), sms_known_complete_through: null };
+  store.evaluation.coverage = capturedCoverage(at("2026-10-05T14:58:00.000Z"));
   const admission = evaluationAdmissionOf(inspection);
   assert.ok(admission.ok);
   await runInFakeTransaction((session) => evaluateAndProject(subject.id, admission.context, at("2026-10-05T14:59:00.000Z"), store.evaluation, session));
-  const readStore = new MemoryReadStore();
+  // The reads see the same call coverage the evaluation used (olr A2 read-time verification).
+  const readStore = new MemoryReadStore().coverCalls(at("2026-10-05T14:58:00.000Z"));
   readStore.names = new Map([[REP_A, "Alice Rep"], [REP_B, "Bob Rep"]]);
   const deps = { loader: fixedConfigurationLoader(inspection), store: readStore, queueStore: store, now: NOW };
   return { store, subject, deps };

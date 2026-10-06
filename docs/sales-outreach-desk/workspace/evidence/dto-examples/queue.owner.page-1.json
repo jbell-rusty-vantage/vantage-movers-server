@@ -84,7 +84,12 @@
             "known_complete_through": "2026-10-05T14:57:00.000Z",
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": {
+            "state": "verified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": null
+          }
         },
         "sms": {
           "required": 1,
@@ -99,7 +104,8 @@
             "known_complete_through": null,
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": null
         },
         "status_flags": {
           "needs_contact": true,
@@ -146,7 +152,12 @@
             "known_complete_through": "2026-10-05T14:57:00.000Z",
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": {
+            "state": "verified",
+            "verified_through": "2026-10-05T14:55:00.000Z",
+            "unverified_since": null
+          }
         },
         "sms": {
           "required": 1,
@@ -161,7 +172,8 @@
             "known_complete_through": null,
             "gaps": []
           },
-          "blocked_reason": null
+          "blocked_reason": null,
+          "verification": null
         },
         "status_flags": {
           "needs_contact": true,
@@ -179,7 +191,7 @@
         "schedule_day": 1
       }
     ],
-    "next_cursor": "eyJ2IjoxLCJxIjoiNzMzYzUyZTM5NDQ3MzY2OGI3NDc0ZWUxZWJjZjM2ZGFkNWRiZTVkMjFjMWRhMzc3M2YzYWY1NGRhZjYwNzZlMSIsInIiOiJvd25lciIsImEiOm51bGwsImciOiJhbGwiLCJjIjoic29kLWNmZy05ZDRlIiwicCI6ImM5MTcwZTBhYzBhZDYzYjZlNTg3MDMxZmE4YWJmNDc2YzI1ZjE3YjEyYzg4NTFlOTgzYTk2NGQxYzM3MjA2NjIiLCJ0IjoxNzkxMjEyNDAwMDAwLCJlIjoxNzkxMjEzMDAwMDAwLCJrIjpbIjIwMjYtMTAtMDVUMTQ6MzA6MDAuMDAwWiIsIjIwMjYtMTAtMDZUMDA6MDA6MDAuMDAwWiIsIjIwMjYtMTAtMDVUMTQ6MDA6MDAuMDAwWiIsIjY2NTBhMWIyYzNkNGU1ZjYwNzE4MmEwMSJdfQ.qeMKFMSZUOgF24V4Dag47Fab6bS9u2Fga9Qszuk3x7M",
+    "next_cursor": "eyJ2IjoxLCJxIjoiNzMzYzUyZTM5NDQ3MzY2OGI3NDc0ZWUxZWJjZjM2ZGFkNWRiZTVkMjFjMWRhMzc3M2YzYWY1NGRhZjYwNzZlMSIsInIiOiJvd25lciIsImEiOm51bGwsImciOiJhbGwiLCJjIjoic29kLWNmZy05ZDRlIiwicCI6ImQzYThkMWQ0N2E0MDUyOGYyZTI0MzJmNmJmODBhZmFhYWUzNTJiZmJjNTEzNjU4ZGNiYzg3NGYzZTNjYjIxMGUiLCJ0IjoxNzkxMjEyNDAwMDAwLCJlIjoxNzkxMjEzMDAwMDAwLCJrIjpbIjIwMjYtMTAtMDVUMTQ6MzA6MDAuMDAwWiIsIjIwMjYtMTAtMDZUMDA6MDA6MDAuMDAwWiIsIjIwMjYtMTAtMDVUMTQ6MDA6MDAuMDAwWiIsIjY2NTBhMWIyYzNkNGU1ZjYwNzE4MmEwMSJdfQ.MOQrjnGIauaVC31PZnXMuFBP2MCwkUtZaRbUmvrcIMo",
     "has_more": true,
     "counts": {
       "projection_pending": 0,

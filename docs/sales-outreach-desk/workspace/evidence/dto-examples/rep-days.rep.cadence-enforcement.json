@@ -66,21 +66,31 @@
         "progress": 1,
         "goal_reached": true,
         "other_outbound": {
-          "count": null,
-          "label": "Other outbound"
+          "count": 94,
+          "label": "Other outbound",
+          "breakdown": {
+            "no_lead": 11,
+            "lead_not_enrolled": 51,
+            "lead_closed": 1,
+            "before_activation": 30,
+            "ambiguous": 0,
+            "not_new_quoted": 1,
+            "unknown": 0
+          }
+        },
+        "alternate_scope": {
+          "count_scope": "eligible_new_quoted",
+          "count_scope_label": "Outbound calls (New/Quoted leads)",
+          "actual_confirmed": 14,
+          "actual_awaiting_confirmation": 1
         },
         "coverage": {
-          "state": "unknown",
-          "known_complete_through": null,
+          "state": "complete",
+          "known_complete_through": "2026-10-05T14:55:00.000Z",
           "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": [
-            {
-              "from": null,
-              "to": "2026-10-05T14:35:00.000Z"
-            }
-          ]
+          "gaps": []
         },
-        "unknown_reason": "coverage_incomplete",
+        "unknown_reason": null,
         "projection_revision": 41,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
@@ -88,7 +98,7 @@
           "unknown_reason": null
         },
         "calls_due_today": {
-          "value": 3,
+          "value": 5,
           "unknown_reason": null
         },
         "sms_due_today": {

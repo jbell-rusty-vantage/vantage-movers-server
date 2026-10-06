@@ -9,7 +9,8 @@
  * - The target is named and must equal the database this process resolves; unnamed runs are refused.
  * - The dry run prints every plan (ids and instants only) and the skipped rows by reason.
  * - `--apply` passes the production-writer guard, repairs each row in its own audited transaction with
- *   an `outreach_evaluate` nomination, then re-runs the report (expected `repairable: 0`).
+ *   an `outreach_evaluate` nomination and (olr BW1) the C4 contact re-derive of the window the start
+ *   moved over (`contact_wakes`), then re-runs the report (expected `repairable: 0`).
  * - Prints one JSON summary.
  */
 import mongoose from "mongoose";
@@ -41,7 +42,7 @@ async function main() {
         mode: "apply",
         database,
         before: before.summary,
-        applied: { run_id: applied.run_id, repaired: applied.repaired.length, period_ids: applied.repaired, conflicts: applied.conflicts, skipped: applied.skipped },
+        applied: { run_id: applied.run_id, repaired: applied.repaired.length, period_ids: applied.repaired, conflicts: applied.conflicts, skipped: applied.skipped, contact_wakes: applied.contact_wakes },
         after: { repairable: after.summary.repairable, skipped: after.summary.skipped },
       },
       null,

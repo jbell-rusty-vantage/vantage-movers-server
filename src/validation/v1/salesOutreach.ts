@@ -114,6 +114,13 @@ const intakeDefaultRuleSchema = z
   })
   .strict();
 
+/** olr C2c: `cadence.no_contact_number_rule` values (`subjects/subjectBuilder.ts` `subjectStatusOf`). */
+export const SALES_OUTREACH_NO_CONTACT_NUMBER_RULES = ["review_no_cadence"] as const;
+export type SalesOutreachNoContactNumberRule = (typeof SALES_OUTREACH_NO_CONTACT_NUMBER_RULES)[number];
+/** olr C2d: `evidence.call_association_rule` values (`contacts/derive.ts` `associate`). */
+export const SALES_OUTREACH_CALL_ASSOCIATION_RULES = ["number_lead", "single_active_subject_on_link"] as const;
+export type SalesOutreachCallAssociationRule = (typeof SALES_OUTREACH_CALL_ASSOCIATION_RULES)[number];
+
 const cadenceSchema = z
   .object({
     policy_version: nullable(text),
@@ -195,6 +202,8 @@ const cadenceSchema = z
     move_date_rule: rule(["review_label_only"] as const),
     lead_eligibility_rule: rule(["no_sync_viable_duplicates_excluded"] as const),
     precedence_rule: rule(["closure_restriction_schedule_priority"] as const),
+    // olr C2c (D-C2c): optional, no default (R0). Absent = a subject without a callable number stays active.
+    no_contact_number_rule: z.enum(SALES_OUTREACH_NO_CONTACT_NUMBER_RULES).optional(),
   })
   .strict();
 
@@ -215,6 +224,8 @@ const evidenceSchema = z
     today_coverage_tolerance_minutes: z.number().int().min(5).max(180).optional(),
     capture_freshness_tolerance_minutes: z.number().int().min(1).max(60).optional(),
     webhook_silence_minutes: z.number().int().min(5).max(240).optional(),
+    // olr C2d (D-C2d): optional, no default (R0). Absent = `number_lead` (All Numbers CONTRACT §3 as built).
+    call_association_rule: z.enum(SALES_OUTREACH_CALL_ASSOCIATION_RULES).optional(),
   })
   .strict();
 
@@ -234,6 +245,9 @@ const migrationSchema = z
     // olr B10 Lead-change tail loop (optional, no default; effective values from `feedLoopOf` in `subjects/feed.ts`).
     feed_max_passes_per_run: z.number().int().min(1).max(50).optional(),
     feed_budget_seconds: z.number().int().min(1).max(40).optional(),
+    // olr B2 decision reconcile: decision re-nominations per 5-minute run (optional, no default; effective value
+    // from `decisionReconcilePerRunOf` in `subjects/feed.ts`, code default 300).
+    decision_reconcile_per_run: z.number().int().min(1).max(5000).optional(),
   })
   .strict()
   .refine((m) => m.batch_size <= m.batch_ceiling, "batch_size above batch_ceiling");

@@ -6,7 +6,7 @@ import { computeAdminActorSignature, signAdminActorPayload } from "../services/o
 import { buildCanonicalRepActorPayload } from "../services/operationsRegistry/trustedActorCanonical";
 import type { ConfigurationInspection } from "../services/salesOutreach/config/load";
 import { evaluateAndProject, evaluationAdmissionOf } from "../services/salesOutreach/evaluation/evaluateJob";
-import { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../services/salesOutreach/evaluation/testing";
+import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../services/salesOutreach/evaluation/testing";
 import { MemoryDeskReadStore } from "../services/salesOutreach/reads/deskTesting";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore } from "../services/salesOutreach/reads/testing";
 import {
@@ -99,7 +99,7 @@ before(async () => {
     desk.evaluation.periods.push(periodRow(s.id, { started_at: at(received) }));
     desk.setLead(s.lead, agent);
   }
-  desk.evaluation.coverage = { calls_known_complete_through: at("2026-10-05T14:58:00.000Z"), sms_known_complete_through: null };
+  desk.evaluation.coverage = capturedCoverage(at("2026-10-05T14:58:00.000Z"));
   for (const id of Object.values(ids))
     await runInFakeTransaction((session) => evaluateAndProject(id, admission.context, at("2026-10-05T14:59:00.000Z"), desk.evaluation, session));
   await new Promise<void>((resolve) => {

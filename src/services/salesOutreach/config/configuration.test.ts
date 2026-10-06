@@ -4,6 +4,7 @@ import { DESK_TIMING_DEFAULTS } from "../../../config/domain/salesOutreach";
 import { csiOperatorActor } from "../../salesIntelligence/auth";
 import { salesOutreachConfigurationValueSchema, type SalesOutreachConfigurationInput } from "../../../validation/v1/salesOutreach";
 import { OutreachError } from "../errors";
+import { deskEnginePolicy } from "../evaluation/policyAdapter";
 import { patchSalesOutreachConfiguration } from "./commands";
 import { createConfigurationLoader } from "./load";
 import { readSalesOutreachConfiguration } from "./reads";
@@ -420,4 +421,131 @@ test("C1a: the schedule must ascend by from_day, use known scopes and valid date
   // Explicit initialization (no active value) has nothing to protect, even with a past entry.
   const init = await attempt([{ from_day: "2026-10-01", scope: "all_outbound" }]);
   assert.deepEqual([init.response.changed, init.response.revision], [true, 1]);
+});
+
+// ---- olr B3: engine_policy_unavailable ------------------------------------------------------
+
+test("B3 engine_policy_unavailable: PATCH refuses a value whose engine policy is unavailable while cadence is on (400); allowed when cadence is off", async () => {
+  const db = new MemoryConfigurationDb();
+  storeRaw(db, revision5(), REVISION_5_HASH);
+  db.now = new Date("2026-10-06T15:00:00Z");
+  type Rev5 = ReturnType<typeof revision5>;
+  const edit = (change: (value: Rev5) => void) => {
+    const value = revision5();
+    change(value);
+    return value;
+  };
+  const intake = (value: Rev5) => value.cadence!.intake_default_rule as Record<string, string>;
+  const patch = (value: Rev5, key: string, expected_revision: number) =>
+    patchSalesOutreachConfiguration({ actor: owner, idempotency_key: `b3-${key}`, expected_revision, value }, db.deps());
+
+  // A native source set to review parses but cannot be represented by the engine: refused with every reason.
+  await assert.rejects(patch(edit((v) => (intake(v).manual = "review")), "native-review", 5), (error: unknown) => {
+    assert.ok(error instanceof OutreachError);
+    assert.equal(error.code, "INVALID_INPUT");
+    assert.deepEqual(error.issues!.map((i) => [i.path, i.code]), [["cadence", "engine_policy_unavailable"]]);
+    assert.match(error.issues![0]!.message!, /intake_default_rule: the engine encodes only native intake = new/);
+    return true;
+  });
+  // Several engine problems are all listed.
+  await assert.rejects(
+    patch(edit((v) => { intake(v).website_form = "review"; v.cadence!.quoted_open_minute = 600; }), "two-reasons", 5),
+    (error: unknown) => {
+      assert.ok(error instanceof OutreachError);
+      assert.deepEqual(error.issues!.map((i) => i.code), ["engine_policy_unavailable", "engine_policy_unavailable"]);
+      return true;
+    },
+  );
+  assert.deepEqual([db.pointer!.revision, db.versions.size, db.audits.length], [5, 1, 0], "nothing written");
+
+  // The D3 amendment (P05e-1): Granot-created missing priority → New is accepted and resolves.
+  const d3 = await patch(edit((v) => (intake(v).granot_created = "new")), "d3", 5);
+  assert.deepEqual([d3.response.changed, d3.response.revision], [true, 6]);
+  const active = await createConfigurationLoader(db.store).requireActive();
+  assert.equal(active.value.cadence.intake_default_rule?.granot_created, "new");
+  assert.equal(deskEnginePolicy(active.value).ok, true, "projections keep evaluating");
+
+  // With cadence off the evaluator does not run: a staged unresolvable value is accepted.
+  const staged = await patch(
+    edit((v) => {
+      intake(v).manual = "review";
+      v.controls!.cadence_shadow_enabled = false;
+      v.controls!.cadence_enforcement_enabled = false;
+    }),
+    "cadence-off",
+    6,
+  );
+  assert.deepEqual([staged.response.changed, staged.response.revision], [true, 7]);
+  // Turning cadence back on with that value is refused.
+  await assert.rejects(patch(edit((v) => (intake(v).manual = "review")), "cadence-on-again", 7), (error: unknown) => {
+    assert.ok(error instanceof OutreachError);
+    assert.deepEqual(error.issues!.map((i) => i.code), ["engine_policy_unavailable"]);
+    return true;
+  });
+  assert.equal(db.pointer!.revision, 7);
+});
+
+test("B3: guard order is C1a count scope first, B3 engine policy second (olr §3)", async () => {
+  const db = new MemoryConfigurationDb();
+  storeRaw(db, revision5(), REVISION_5_HASH);
+  db.now = new Date("2026-10-06T15:00:00Z");
+  const value = revision5();
+  (value.cadence!.intake_default_rule as Record<string, string>).manual = "review";
+  value.goals!.count_scope_schedule = [{ from_day: "2026-10-06", scope: "eligible_new_quoted" }];
+  await assert.rejects(
+    patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "b3-order", expected_revision: 5, value }, db.deps()),
+    (error: unknown) => {
+      assert.ok(error instanceof OutreachError);
+      assert.deepEqual(error.issues!.map((i) => i.code), ["count_scope_not_prospective"]);
+      return true;
+    },
+  );
+});
+
+// ---- olr C2c/C2d: cadence.no_contact_number_rule, evidence.call_association_rule ------------------
+
+test("C2cd: the revision-5 value (neither rule) re-parses to the same hash; both keys stay absent", () => {
+  const parsed = salesOutreachConfigurationValueSchema.parse(revision5());
+  assert.equal(configurationContentHash(parsed), REVISION_5_HASH);
+  assert.equal("no_contact_number_rule" in parsed.cadence, false, "no default leaks into old versions");
+  assert.equal("call_association_rule" in parsed.evidence, false, "no default leaks into old versions");
+});
+
+test("C2cd PATCH: only the known rule values are accepted (400 INVALID_INPUT otherwise); set values are hashed and load active", async () => {
+  const db = new MemoryConfigurationDb();
+  storeRaw(db, revision5(), REVISION_5_HASH);
+  const attempt = (mutate: (value: ReturnType<typeof revision5>) => void, key: string, expected = 5) => {
+    const value = revision5();
+    mutate(value);
+    return patchSalesOutreachConfiguration({ actor: owner, idempotency_key: `c2cd-${key}`, expected_revision: expected, value }, db.deps());
+  };
+  const refusedAt = async (promise: Promise<unknown>, path: string) =>
+    assert.rejects(promise, (error: unknown) => {
+      assert.ok(error instanceof OutreachError);
+      assert.equal(error.code, "INVALID_INPUT");
+      assert.ok(error.issues!.some((i) => i.path === path), JSON.stringify(error.issues));
+      return true;
+    });
+  await refusedAt(attempt((v) => void (v.cadence!.no_contact_number_rule = "review"), "bad-c"), "cadence.no_contact_number_rule");
+  await refusedAt(attempt((v) => void (v.cadence!.no_contact_number_rule = null), "null-c"), "cadence.no_contact_number_rule");
+  await refusedAt(attempt((v) => void (v.evidence!.call_association_rule = "any_subject_on_link"), "bad-d"), "evidence.call_association_rule");
+  await refusedAt(attempt((v) => void (v.evidence!.call_association_rule = null), "null-d"), "evidence.call_association_rule");
+  assert.equal(db.pointer!.revision, 5, "nothing written");
+
+  const onC = await attempt((v) => void (v.cadence!.no_contact_number_rule = "review_no_cadence"), "on-c");
+  assert.deepEqual([onC.response.changed, onC.response.revision], [true, 6]);
+  assert.notEqual(onC.response.content_hash, REVISION_5_HASH);
+  const onD = await attempt((v) => {
+    v.cadence!.no_contact_number_rule = "review_no_cadence";
+    v.evidence!.call_association_rule = "single_active_subject_on_link";
+  }, "on-d", 6);
+  assert.equal(onD.response.revision, 7);
+  const active = await createConfigurationLoader(db.store).requireActive();
+  assert.deepEqual([active.value.cadence.no_contact_number_rule, active.value.evidence.call_association_rule], ["review_no_cadence", "single_active_subject_on_link"]);
+  // Explicit `number_lead` is valid (= absent behaviour) and a real content change.
+  const explicit = await attempt((v) => void (v.evidence!.call_association_rule = "number_lead"), "explicit-d", 7);
+  assert.equal(explicit.response.revision, 8);
+  // Rollback = PATCH the keys absent again: the revision-5 content hash comes back.
+  const back = await attempt(() => undefined, "rollback", 8);
+  assert.deepEqual([back.response.changed, back.response.content_hash], [true, REVISION_5_HASH]);
 });

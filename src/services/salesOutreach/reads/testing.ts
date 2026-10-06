@@ -79,6 +79,16 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   async readContactDerivation() {
     return this.derivation;
   }
+
+  /**
+   * Call capture known through `capture` and derived through `derived` (default: the same instant), so a
+   * read's cadence call coverage is `min(capture − settlement allowance, derived)` (olr A2).
+   */
+  coverCalls(capture: Date, derived: Date = capture): this {
+    this.calls = { scope: "call_log_all_directions", known_complete_through: capture, last_finished_at: capture, last_error_code: null, observed_complete_through: capture };
+    this.derivation = { known_complete_through: derived, coverage_from: new Date("2026-09-01T04:00:00.000Z"), observed_complete_through: derived };
+    return this;
+  }
 }
 
 /** A rep-day row with M1 defaults (all-outbound scope, no snapshot, no coverage of its own). */

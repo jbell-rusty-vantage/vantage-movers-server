@@ -2,19 +2,11 @@ import type { z } from "zod";
 import type { salesOutreachCoverageSchema, salesOutreachFreshnessSchema } from "../../../validation/v1/salesOutreachReads";
 import { ISYNC_LANE_END_MINUTE, ISYNC_LANE_START_MINUTE, ISYNC_LANE_TIMEZONE } from "../../numberActivity/callLogIsyncLane";
 import type { DeskTiming } from "../config/timing";
-import { minuteOfDay } from "../engine/calendar";
+import { businessDateOf, localInstant, minuteOfDay } from "../engine/calendar";
 import { newYorkDayBounds } from "./businessDay";
 
 export type SalesOutreachFreshness = z.infer<typeof salesOutreachFreshnessSchema>;
 export type SalesOutreachCoverage = z.infer<typeof salesOutreachCoverageSchema>;
-
-/**
- * The evaluation projection's channel coverage block counts as current while it trails `computed_as_of`
- * by at most this much. Header freshness (A3-fresh) and rep-day coverage (C0, `requiredCoverageThrough`)
- * no longer use it: they read `deskTimingOf`. The projection coverage (A1/A2) moves to
- * `today_coverage_tolerance_ms` in its own task.
- */
-export const CAPTURE_CURRENT_TOLERANCE_MS = 10 * 60_000;
 
 /** Why calls freshness is not `fresh`, after the reconcile's own `last_error_code`. A free string in the DTO. */
 export const CALLS_FRESHNESS_REASONS = ["confirmation_stale", "coverage_behind", "webhook_silent"] as const;
@@ -54,6 +46,16 @@ export function inStaffedCaptureWindow(now: Date): boolean {
   return minute >= ISYNC_LANE_START_MINUTE && minute < ISYNC_LANE_END_MINUTE;
 }
 
+/**
+ * The instant today's staffed capture window opened (07:45 New York on `now`'s local date) while `now` is
+ * inside the window; null outside it. DST-safe through the engine calendar.
+ */
+export function staffedCaptureWindowStart(now: Date): Date | null {
+  if (!inStaffedCaptureWindow(now)) return null;
+  const today = businessDateOf(now.getTime(), ISYNC_LANE_TIMEZONE);
+  return new Date(localInstant(today, ISYNC_LANE_START_MINUTE, ISYNC_LANE_TIMEZONE));
+}
+
 /** SMS: fresh while the worst mailbox is known complete within the capture freshness tolerance. */
 function smsFreshness(
   now: Date,
@@ -82,24 +84,31 @@ function smsFreshness(
  * Calls freshness (RINGCENTRAL-CAPTURE §8, outreach lifecycle repair A3-fresh).
  * - Confirmation instant: the later of the ISync lane success and the reconcile's sync success. Outside
  *   the staffed window only the reconcile confirms calls, so the lane alone would read delayed every night.
- * - "Calls updated" (`last_updated_at`, `age_seconds`): min(confirmation, newest call webhook receipt)
- *   inside the staffed window; the confirmation alone outside it.
+ * - Today's call webhook stream: the newest call webhook receipt when it arrived inside the current
+ *   staffed window (at or after today's 07:45 New York). A receipt from before the window opened (last
+ *   night's last call) says nothing about today's stream, so it is ignored like the webhook outside the window.
+ * - "Calls updated" (`last_updated_at`, `age_seconds`): min(confirmation, today's newest call webhook)
+ *   inside the staffed window; the confirmation alone outside it and before the day's first call webhook.
  * - `fresh` needs all three: a confirmation within `capture_freshness_tolerance`; capture coverage within
  *   `today_coverage_tolerance + settlement allowance` (coverage behind never reads green, SPECIFICATION
- *   §16); and, in the staffed window, a call webhook within `webhook_silence`. Otherwise it is `delayed`,
- *   and the reason is the first that applies of: the reconcile's `last_error_code`, `confirmation_stale`,
- *   `coverage_behind`, `webhook_silent`.
+ *   §16); and, once today's stream has started, its newest receipt within `webhook_silence`. Before the
+ *   day's first call webhook there is no stream to fall silent, so the morning (07:45 until the first call)
+ *   never reads `webhook_silent`; a missing or broken subscription is the subscription health check's to
+ *   report. Otherwise it is `delayed`, and the reason is the first that applies of: the reconcile's
+ *   `last_error_code`, `confirmation_stale`, `coverage_behind`, `webhook_silent`.
  * - `unknown`: neither a confirmation nor a watermark yet.
- * Coverage reads the observed watermark (no provisional-row cap) when it is present, else the capped
- * one, so a stuck provisional Call Log row does not make capture look stale (D-A3). `known_complete_through`
- * is still served as the capped watermark.
+ * Coverage reads max(observed, known) — the observed watermark has no provisional-row cap — so a stuck
+ * provisional Call Log row does not make capture look stale (D-A3, extended from goal coverage to header
+ * freshness). `known_complete_through` is still served as the capped watermark.
  */
 function callsFreshness(now: Date, row: CaptureSyncRow | null, lastCallWebhookAt: Date | null, timing: DeskTiming): SalesOutreachFreshness["calls"] {
   const known = row?.known_complete_through ?? null;
   const confirmation = row?.confirmation_success_at ?? null;
   const coverage = laterOf(row?.observed_complete_through ?? null, known);
-  const inWindow = inStaffedCaptureWindow(now);
-  const lastUpdated = inWindow && lastCallWebhookAt && confirmation ? earlierOf(confirmation, lastCallWebhookAt) : confirmation;
+  const windowStart = staffedCaptureWindowStart(now);
+  const webhookToday =
+    windowStart && lastCallWebhookAt && lastCallWebhookAt.getTime() >= windowStart.getTime() ? lastCallWebhookAt : null;
+  const lastUpdated = webhookToday && confirmation ? earlierOf(confirmation, webhookToday) : confirmation;
   const diagnostics = { last_confirmation_at: iso(confirmation), last_webhook_at: iso(lastCallWebhookAt) };
   if (!confirmation && !known) {
     return { state: "unknown", last_updated_at: null, known_complete_through: null, age_seconds: null, reason: row?.last_error_code ?? "no_capture_state", ...diagnostics };
@@ -108,7 +117,7 @@ function callsFreshness(now: Date, row: CaptureSyncRow | null, lastCallWebhookAt
     ? "confirmation_stale"
     : staleAt(now, coverage, timing.today_coverage_tolerance_ms + timing.call_settlement_allowance_ms)
       ? "coverage_behind"
-      : inWindow && staleAt(now, lastCallWebhookAt, timing.webhook_silence_ms)
+      : webhookToday && staleAt(now, webhookToday, timing.webhook_silence_ms)
         ? "webhook_silent"
         : null;
   return {

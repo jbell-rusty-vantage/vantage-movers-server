@@ -85,6 +85,8 @@
     "outreach:settle-pre-cc04": "node --env-file=.env --import tsx ops/sales-outreach/settle-pre-cc04-calls.ts",
     "outreach:repair-late-first-periods": "node --env-file=.env --import tsx ops/sales-outreach/repair-late-first-periods.ts",
     "outreach:subjects-without-numbers": "node --env-file=.env --import tsx ops/sales-outreach/subjects-without-numbers.ts",
+    "outreach:recount-rep-days": "node --env-file=.env --import tsx ops/sales-outreach/recount-rep-days.ts",
+    "outreach:rederive-contact-events": "node --env-file=.env --import tsx ops/sales-outreach/rederive-contact-events.ts",
     "numbers:migrate": "node --env-file=.env --import tsx ops/numbers-v2/migrate.ts",
     "numbers:cleanup": "node --env-file=.env --import tsx ops/numbers-v2/cleanup.ts",
     "numbers:desk-resync": "node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts",

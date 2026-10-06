@@ -7,35 +7,52 @@
  * aggregations whose pipelines are refused when they contain `$out`/`$merge`), and the CLI also
  * installs the driver-level read guard (`installReadOnlyCommandGuard`) that exits before any
  * non-read command is sent. The summary carries counts, instants, run keys, configuration values and
- * Agent id tails only: no customer, message or token field is projected. The one exception is read
- * in memory and never printed: the Lead phone paths of open subjects without a number, reduced to
- * a has-phone boolean (OPS-0b).
+ * Agent/subject id tails only: no customer, message or token field is projected. The one exception is
+ * read in memory and never printed: the Lead phone paths of open subjects without a number, reduced to
+ * a phone state (OPS-0b, OPS-0c). Full subject ids leave only in the closed-row snapshot the CLI writes
+ * to a local file on `--out` (OPS-0c).
  */
 import { createHash } from "node:crypto";
 import type { Db, Document, Filter, MongoClient } from "mongodb";
 import { SALES_OUTREACH_LEAD_MODELS, type SalesOutreachLeadModel } from "../../src/config/domain/salesOutreach";
-import { OUTREACH_CONTACT_CALLS_SCOPE, OUTREACH_CONTACT_SMS_SCOPE } from "../../src/config/domain/salesOutreachContacts";
+import {
+  OUTREACH_CONTACT_CALLS_SCOPE,
+  OUTREACH_CONTACT_SMS_SCOPE,
+  SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS,
+  type SalesOutreachAssociationReason,
+} from "../../src/config/domain/salesOutreachContacts";
 import {
   SALES_OUTREACH_CONFIGURATION_POINTER_KEY,
   salesOutreachConfigurationVersionKey,
 } from "../../src/models/salesOutreach/configuration";
-import { isyncLaneMinute } from "../../src/services/numberActivity/callLogIsyncLane";
-import { leadPhoneE164s, type LeadRow } from "../../src/services/numberActivity/leadLink";
+import { leadNumberE164s, leadPhonesOf } from "../../src/services/numberActivity/leadContactNumber";
+import type { LeadRow } from "../../src/services/numberActivity/leadLink";
 import { getRingCentralCollectionName } from "../../src/services/ringcentral/ringcentral-config";
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import { addDays } from "../../src/services/salesOutreach/engine/calendar";
 import { createConfigurationLoader, type ConfigurationInspection } from "../../src/services/salesOutreach/config/load";
 import { configurationContentHash, type ConfigurationStore } from "../../src/services/salesOutreach/config/store";
-import { repDayCoverage } from "../../src/services/salesOutreach/contacts/repDay";
-import { deskTimingOf } from "../../src/services/salesOutreach/config/timing";
-import type { CallWatermarks } from "../../src/services/salesOutreach/evidence/coverage";
-import { newYorkBusinessDay } from "../../src/services/salesOutreach/reads/businessDay";
+import { otherOutboundBucketOf, repDayCoverage } from "../../src/services/salesOutreach/contacts/repDay";
+import { deskTimingOf, type DeskTiming } from "../../src/services/salesOutreach/config/timing";
+import { engineCoverageOf } from "../../src/services/salesOutreach/evaluation/inputs";
+import { smsCoverage, type CallWatermarks, type ChannelCoverage } from "../../src/services/salesOutreach/evidence/coverage";
+import { newYorkBusinessDay, newYorkDayBounds } from "../../src/services/salesOutreach/reads/businessDay";
+import { mongoOverdueFilter, overdueCutoffs, type OverdueCutoffs } from "../../src/services/salesOutreach/reads/deskStore";
+import { composeFreshness, inStaffedCaptureWindow } from "../../src/services/salesOutreach/reads/freshness";
 import { composeRepDay, fallbackCountScope, resolveRepDayGoal, type RepDayRow } from "../../src/services/salesOutreach/reads/goals";
+import { deriveChannelAt, type StoredChannel } from "../../src/services/salesOutreach/reads/present";
+import { toCallsCaptureRow, type SyncStateLean } from "../../src/services/salesOutreach/reads/store";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
 import { assertReadOnlyPipeline, isCommandAllowed } from "../slimming/lib/guarded-mongo";
 
-/** 2 (OPS-0b): unconfirmed calls by direction + the OPS-1 acceptance split, served rep-day `actual_basis`, calls freshness inputs, subjects without numbers by Lead phone. */
-export const DESK_STATE_SUMMARY_VERSION = 2;
+/**
+ * 2 (OPS-0b): unconfirmed calls by direction + the OPS-1 acceptance split, served rep-day `actual_basis`, calls freshness inputs, subjects without numbers by Lead phone.
+ * 3 (OPS-0c): calls freshness from the sticky `reconcile_sync_success_at` plus the served state; subjects without numbers under the CW1 mint rule
+ * (`not_candidate` apart); `wave2_acceptance` (read-time verification per channel, `distinct_overdue_leads` vs the design count, `coverage_wait`
+ * against the current cadence coverage, closed-row `publication_revision` snapshot and diff); `next_evaluation_at` split open/closed; C8 other
+ * outbound and `association_reason` per day.
+ */
+export const DESK_STATE_SUMMARY_VERSION = 3;
 
 /**
  * CC-04 commit instant: `call_interactions` rows started before it predate the `call_log_state`
@@ -47,13 +64,18 @@ export const DESK_STATE_CC04_INSTANT = new Date("2026-09-24T01:28:03Z");
 export const EXTERNAL_CALL_DIRECTIONS = ["Inbound", "Outbound"] as const;
 /** Lead collection per subject `lead_model` (a unit test pins them to the models). */
 export const LEAD_COLLECTIONS: Readonly<Record<SalesOutreachLeadModel, string>> = { FormLead: "form_leads", CallLead: "call_leads" };
-/** The phone paths `leadPhoneE164s` reads; only these are fetched, and they never leave the process. */
+/**
+ * The Lead fields the mint's phone rule reads (olr CW1 `leadNumberE164s`: the four phone paths of `leadPhonesOf`
+ * plus the Duplicate / Bad Lead skips); only these are fetched, and they never leave the process.
+ */
 export const LEAD_PHONE_PROJECTION = {
   _id: 1,
   normalized_phone_number: 1,
   "ingested_contact_snapshot.normalized_phone_number": 1,
   "granot_contact_snapshot.normalized_phone_number": 1,
   "ringcentral.original_caller.normalized_phone_number": 1,
+  duplicate: 1,
+  bad_lead: 1,
 } as const;
 
 /** Sync-state scopes the snapshot reads (the owning services export the same literals; a unit test pins them). */
@@ -75,29 +97,42 @@ export const LISTED_DAYS = 15;
 export const LISTED_ENROLLMENT_RUNS = 30;
 /** Open subjects without a number read per snapshot (production: 71); `truncated` says when the cap was hit. */
 export const SUBJECTS_WITHOUT_NUMBERS_CAP = 1_000;
+/** Projection rows one paged read collects at most (active rows for verification, closed rows for the snapshot; production ≈ 800 in all). */
+export const PROJECTION_SCAN_CAP = 20_000;
+/** Subjects whose closed-row `publication_revision` went up that the comparison lists (id tails). */
+export const LISTED_CHANGED_SUBJECTS = 20;
 
 // ---------------------------------------------------------------------------------------------
 // Arguments
 // ---------------------------------------------------------------------------------------------
 
-export type DeskStateArgs = { target: string; pretty: boolean };
+export type DeskStateArgs = { target: string; pretty: boolean; out: string | null; compare: string | null };
 
 /**
  * `--target=<database>` is required (never inferred) and must later equal the resolved database;
- * `--pretty` indents the JSON. There is no write mode, so no `--apply`; unknown flags are refused.
+ * `--pretty` indents the JSON; `--out=<file.json>` writes the closed-row `publication_revision` snapshot
+ * to a local file (OPS-0c, for the plan §6 midnight check); `--compare=<file.json>` diffs this run's
+ * closed rows against such a file. There is no write mode on the database, so no `--apply`; unknown
+ * flags are refused.
  */
 export function parseDeskStateArgs(argv: readonly string[]): DeskStateArgs {
   let target: string | null = null;
   let pretty = false;
+  let out: string | null = null;
+  let compare: string | null = null;
   for (const arg of argv) {
     if (arg.startsWith("--target=")) target = arg.slice("--target=".length).trim();
     else if (arg === "--pretty") pretty = true;
+    else if (arg.startsWith("--out=")) out = arg.slice("--out=".length).trim();
+    else if (arg.startsWith("--compare=")) compare = arg.slice("--compare=".length).trim();
     else if (arg === "--apply") throw new Error("desk-state is read-only; there is no --apply");
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (!target) throw new Error("--target=<database name> is required (for example --target=vantagemovers)");
   if (!/^[A-Za-z0-9_]+$/.test(target)) throw new Error("--target must be a plain database name");
-  return { target, pretty };
+  if (out !== null && !out) throw new Error("--out=<file.json> needs a path");
+  if (compare !== null && !compare) throw new Error("--compare=<file.json> needs a path");
+  return { target, pretty, out, compare };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -436,13 +471,25 @@ export function composeServedRepDays(input: {
 }
 
 export type CallsFreshnessInputs = {
-  /** New York minute in the ISync lane window [07:45, 20:30), where the webhook counts (RINGCENTRAL-CAPTURE §8). */
+  /** `now` inside the staffed capture window [07:45, 20:30) New York, where the webhook counts (`reads/freshness.ts` `inStaffedCaptureWindow`). */
   in_staffed_window: boolean;
   lane_success_at: string | null;
   lane_success_lag_min: number | null;
-  /** The last reconcile run counts as a confirmation only when it stored a sync token without a sync error (lane A F5). */
-  reconcile: { finished_at: string | null; sync_token_stored: boolean | null; sync_error_code: string | null; success_at: string | null; success_lag_min: number | null };
-  /** max(lane success, reconcile success): the calls confirmation instant. */
+  /**
+   * The reconcile's sync success as the read takes it (`reads/store.ts` `toCallsCaptureRow`): the sticky
+   * `reconcile_sync_success_at` (A3-cap), or the last run's `finished_at` when that run was in sync mode `on`,
+   * stored a token and hit no sync error (the fallback for a row written before the sticky field); the later of the two.
+   */
+  reconcile: {
+    finished_at: string | null;
+    sync_mode: string | null;
+    sync_token_stored: boolean | null;
+    sync_error_code: string | null;
+    sticky_success_at: string | null;
+    success_at: string | null;
+    success_lag_min: number | null;
+  };
+  /** max(lane success, reconcile success): the calls confirmation instant (`confirmation_success_at`). */
   confirmation_at: string | null;
   confirmation_lag_min: number | null;
   /** Newest call webhook receipt (`ringcentral_webhook_events`, telephony session present). */
@@ -451,32 +498,40 @@ export type CallsFreshnessInputs = {
   known_complete_through_lag_min: number | null;
   observed_complete_through_lag_min: number | null;
   last_error_code: string | null;
+  /** `freshness.calls` as `GET /team` serves it under this build (`composeFreshness` with these inputs); null while the configuration is not active. */
+  served: { state: string; reason: string | null; last_updated_at: string | null; age_seconds: number | null } | null;
 };
 
 /**
- * The inputs of `freshness.calls.state`/`reason` (lane A A3-fresh): the ISync lane success, the
- * reconcile's sync success, their max, the newest call webhook receipt and the coverage lags, at
- * `now`. Inputs only: the served state comes from `GET /team`; these explain it.
+ * The inputs of `freshness.calls.state`/`reason` (lane A A3-fresh) at `now`, read with the read's own
+ * row mapping (`toCallsCaptureRow`), plus the served state itself (`composeFreshness`) when `timing`
+ * (the active configuration's `deskTimingOf`) is given: the ISync lane success, the reconcile's sticky
+ * sync success, their max, the newest call webhook receipt and the coverage lags.
  */
-export function summarizeCallsFreshnessInputs(row: Document | null, lastWebhookAt: unknown, now: Date): CallsFreshnessInputs {
+export function summarizeCallsFreshnessInputs(row: Document | null, lastWebhookAt: unknown, now: Date, timing: DeskTiming | null = null): CallsFreshnessInputs {
+  const capture = row ? toCallsCaptureRow({ ...(row as SyncStateLean), scope: DESK_STATE_SCOPES.call_log }) : null;
   const lane = asDate(row?.isync_lane?.last_success_at);
   const run = row?.last_run ?? null;
   const tokenStored = typeof run?.sync_token_stored === "boolean" ? run.sync_token_stored : null;
   const syncError = typeof run?.sync_error_code === "string" && run.sync_error_code ? run.sync_error_code : null;
-  const reconcile = tokenStored === true && !syncError ? asDate(run?.finished_at) : null;
-  const confirmation = lane && reconcile ? (lane.getTime() >= reconcile.getTime() ? lane : reconcile) : (lane ?? reconcile);
+  const sticky = asDate(row?.reconcile_sync_success_at);
+  // The reconcile's part of the confirmation: the read's own rule without the lane (`toCallsCaptureRow` minus `isync_lane`).
+  const reconcile = row ? toCallsCaptureRow({ ...(row as SyncStateLean), scope: DESK_STATE_SCOPES.call_log, isync_lane: null }).confirmation_success_at ?? null : null;
+  const confirmation = capture?.confirmation_success_at ?? null;
   const webhook = asDate(lastWebhookAt);
+  const served = timing
+    ? composeFreshness({ now, timing, calls: capture, last_call_webhook_at: webhook, sms_capture_enabled: false, sms_mailboxes: [], granot_last_observed_at: null }).calls
+    : null;
   return {
-    in_staffed_window: (() => {
-      const minute = isyncLaneMinute(now);
-      return minute.run || minute.reason !== "outside_staffed_hours";
-    })(),
+    in_staffed_window: inStaffedCaptureWindow(now),
     lane_success_at: isoOrNull(lane),
     lane_success_lag_min: lagMinutes(lane, now),
     reconcile: {
       finished_at: isoOrNull(run?.finished_at),
+      sync_mode: typeof run?.sync_mode === "string" ? run.sync_mode : null,
       sync_token_stored: tokenStored,
       sync_error_code: syncError,
+      sticky_success_at: isoOrNull(sticky),
       success_at: isoOrNull(reconcile),
       success_lag_min: lagMinutes(reconcile, now),
     },
@@ -487,6 +542,7 @@ export function summarizeCallsFreshnessInputs(row: Document | null, lastWebhookA
     known_complete_through_lag_min: lagMinutes(row?.known_complete_through, now),
     observed_complete_through_lag_min: lagMinutes(row?.observed_complete_through, now),
     last_error_code: typeof run?.error_code === "string" && run.error_code ? run.error_code : null,
+    served: served ? { state: served.state, reason: served.reason ?? null, last_updated_at: served.last_updated_at ?? null, age_seconds: served.age_seconds ?? null } : null,
   };
 }
 
@@ -494,28 +550,43 @@ export type SubjectsWithoutNumbersSummary = {
   /** Open (not closed) subjects with `contact_number_ids` empty or null that were checked. */
   checked: number;
   truncated: boolean;
-  /** Keys `status/lead_model/lead_phone` with lead_phone `has_phone` (a phone path forms an E.164), `no_phone` or `lead_missing`. */
+  /**
+   * Keys `status/lead_model/lead_phone`, lead_phone under the mint's rule (olr CW1 `leadNumberE164s`): `has_phone` (a
+   * phone the mint can number), `no_phone` (no path forms an E.164), `not_candidate` (a Duplicate or Bad Lead: the mint
+   * skips it whatever its phone) or `lead_missing`.
+   */
   by_status_model_phone: Counts;
-  /** The wave-1 acceptance number (plan §6): active subjects without a number whose Lead has a phone; 0 after the C2b mint. */
+  /**
+   * The wave-1 acceptance number (plan §6): active subjects without a number whose Lead the mint would number; 0 after
+   * the C2b mint. A Lead whose only phones are company DIDs still counts (the full classification is the C2a diagnostic).
+   */
   active_lead_has_phone: number;
 };
 
+/** A Lead's phone state under the mint's rule (olr CW1): the four phone paths through `leadPhonesOf`, the Duplicate / Bad Lead skips. */
+export function leadPhoneStateOf(model: SalesOutreachLeadModel, lead: Document): "has_phone" | "no_phone" | "not_candidate" {
+  const decision = leadNumberE164s(model, { ...leadPhonesOf(lead as LeadRow), duplicate: lead.duplicate ?? null, bad_lead: lead.bad_lead ?? null });
+  if ("e164s" in decision) return "has_phone";
+  return decision.skip === "no_phone" ? "no_phone" : "not_candidate";
+}
+
 /**
- * Subjects without a callable number, split by whether their Lead has a phone (`leadPhoneE164s`,
- * the rule the number link uses). Only counts leave this function: no phone, Lead or subject id.
+ * Subjects without a callable number, split by whether the C2b mint would number their Lead
+ * (`leadPhoneStateOf`, the one phone rule of the mint, the C2a diagnostic and C2c). Only counts leave
+ * this function: no phone, Lead or subject id.
  */
 export function summarizeSubjectsWithoutNumbers(
   subjects: readonly Document[],
   leads: Readonly<Partial<Record<SalesOutreachLeadModel, readonly Document[]>>>,
   truncated: boolean,
 ): SubjectsWithoutNumbersSummary {
-  const phoneByLead = new Map<string, boolean>();
+  const stateByLead = new Map<string, string>();
   for (const model of SALES_OUTREACH_LEAD_MODELS)
-    for (const lead of leads[model] ?? []) phoneByLead.set(`${model}:${String(lead._id)}`, leadPhoneE164s(lead as LeadRow).length > 0);
+    for (const lead of leads[model] ?? []) stateByLead.set(`${model}:${String(lead._id)}`, leadPhoneStateOf(model, lead));
   const keys = subjects.map((subject) => {
     const model = keyOf(subject.lead_model);
-    const phone = phoneByLead.get(`${model}:${String(subject.lead_id)}`);
-    return { status: keyOf(subject.status), key: `${keyOf(subject.status)}/${model}/${phone === undefined ? "lead_missing" : phone ? "has_phone" : "no_phone"}` };
+    const state = stateByLead.get(`${model}:${String(subject.lead_id)}`) ?? "lead_missing";
+    return { status: keyOf(subject.status), key: `${keyOf(subject.status)}/${model}/${state}` };
   });
   return {
     checked: subjects.length,
@@ -523,6 +594,225 @@ export function summarizeSubjectsWithoutNumbers(
     by_status_model_phone: tally(keys.map((k) => k.key)),
     active_lead_has_phone: keys.filter((k) => k.status === "active" && k.key.endsWith("/has_phone")).length,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wave 2 acceptance (OPS-0c; plan §6 "wave 2, 20:25 ET" and "midnight")
+// ---------------------------------------------------------------------------------------------
+
+/** Channel fields read per active projection for the read-time verification tally (no display or customer field). */
+export const VERIFICATION_PROJECTION = {
+  _id: 0,
+  subject_id: 1,
+  exposure: 1,
+  "call.status": 1,
+  "call.due_at": 1,
+  "call.oldest_actionable_due_at": 1,
+  "sms.status": 1,
+  "sms.due_at": 1,
+  "sms.oldest_actionable_due_at": 1,
+} as const;
+
+/** A stored channel as `deriveChannelAt` needs it (status and deadlines; the rest is not read by the rule). */
+function storedChannelOf(raw: unknown): StoredChannel {
+  const c = (raw ?? {}) as Record<string, unknown>;
+  return {
+    required: null,
+    verified_completed: null,
+    remaining: null,
+    due_at: asDate(c.due_at),
+    oldest_actionable_due_at: asDate(c.oldest_actionable_due_at),
+    status: (typeof c.status === "string" ? c.status : "pending") as StoredChannel["status"],
+    completion_kind: null,
+    coverage: null,
+    blocked_reason: null,
+  };
+}
+
+export type ChannelVerificationTally = {
+  /** The channel's cadence coverage the rule judged with (null = no coverage: every passed deadline is unverified). */
+  coverage_through: string | null;
+  /** Stored `status` of the channel on active rows. */
+  stored_status: Counts;
+  /** Stored `overdue` (the engine stored it once coverage proved the deadline): the 20:25 ET number. */
+  stored_overdue: number;
+  /** Stored `due` whose `due_at` has passed by `as_of`. */
+  due_passed: number;
+  /** What the reads label overdue (`deriveChannelAt`): stored overdue + passed `due` proven by coverage. */
+  read_overdue: number;
+  /** What the reads label "due — not yet verified": passed `due` that coverage cannot prove yet (the 20:00 ET number). */
+  read_due_unverified: number;
+  oldest_unverified_since: string | null;
+};
+
+/**
+ * One channel of active projections read at `now` with the read's own rule (`reads/present.ts`
+ * `deriveChannelAt`, olr A2) and the channel's cadence `coverage`. Exposure masking is not applied (a
+ * shadow row is counted as the engine stored it; `shadow_rows` says how many there are).
+ */
+export function tallyChannelVerification(rows: readonly Document[], channel: "call" | "sms", now: Date, coverage: Date | null): ChannelVerificationTally {
+  let storedOverdue = 0;
+  let duePassed = 0;
+  let readOverdue = 0;
+  let unverified = 0;
+  let oldest: Date | null = null;
+  const statuses: string[] = [];
+  for (const row of rows) {
+    const stored = storedChannelOf(row[channel]);
+    statuses.push(stored.status);
+    if (stored.status === "overdue") storedOverdue++;
+    if (stored.status === "due" && stored.due_at && +stored.due_at <= +now) duePassed++;
+    const read = deriveChannelAt(stored, now, coverage);
+    if (read.status === "overdue") readOverdue++;
+    if (read.verification?.state === "unverified") {
+      unverified++;
+      const since = read.verification.unverified_since;
+      if (since && (!oldest || +since < +oldest)) oldest = since;
+    }
+  }
+  return {
+    coverage_through: isoOrNull(coverage),
+    stored_status: tally(statuses),
+    stored_overdue: storedOverdue,
+    due_passed: duePassed,
+    read_overdue: readOverdue,
+    read_due_unverified: unverified,
+    oldest_unverified_since: isoOrNull(oldest),
+  };
+}
+
+/** Active rows the reads label overdue on either channel (`deriveChannelAt`); the label view of the team overdue count. */
+export function rowsReadingOverdue(rows: readonly Document[], now: Date, coverage: ChannelCoverage): number {
+  return rows.filter(
+    (row) => deriveChannelAt(storedChannelOf(row.call), now, coverage.call).status === "overdue" || deriveChannelAt(storedChannelOf(row.sms), now, coverage.sms).status === "overdue",
+  ).length;
+}
+
+/**
+ * The design's independent count for `GET /team distinct_overdue_leads` (LANE-A A2 acceptance): active rows whose
+ * `queue_keys.call_due` ≤ the call cutoff or `queue_keys.sms_due` ≤ the SMS cutoff, cutoff = min(as_of, cadence
+ * coverage). Unlike the served rule (`reads/deskStore.ts` `mongoOverdueFilter`) it has no fallback for rows written
+ * before A2 (no `sms_due`), so the two agree once engine v2 has rewritten every active row.
+ */
+export function designOverdueFilter(cutoffs: OverdueCutoffs): Filter<Document> {
+  const or: Document[] = [{ "queue_keys.call_due": { $lte: cutoffs.call } }];
+  if (cutoffs.sms) or.push({ "queue_keys.sms_due": { $lte: cutoffs.sms } });
+  return { subject_status: "active", $or: or };
+}
+
+/** The closed-row `publication_revision` snapshot `--out` writes and `--compare` reads (subject id hex → revision). */
+export type ClosedPublicationSnapshot = {
+  tool: "sales-outreach-desk-state/closed-publication";
+  version: 1;
+  database: string;
+  as_of: string;
+  truncated: boolean;
+  rows: Record<string, number>;
+};
+
+export const CLOSED_PUBLICATION_SNAPSHOT_TOOL = "sales-outreach-desk-state/closed-publication" as const;
+
+/** A snapshot read back from a file; refuses anything that is not one (wrong tool, version, database name or row values). */
+export function parseClosedPublicationSnapshot(raw: unknown): ClosedPublicationSnapshot {
+  const doc = raw as Partial<ClosedPublicationSnapshot> | null;
+  if (!doc || typeof doc !== "object" || doc.tool !== CLOSED_PUBLICATION_SNAPSHOT_TOOL || doc.version !== 1)
+    throw new Error("--compare file is not a desk-state closed-publication snapshot (version 1)");
+  if (typeof doc.database !== "string" || !/^[A-Za-z0-9_]+$/.test(doc.database)) throw new Error("--compare snapshot has no plain database name");
+  if (typeof doc.as_of !== "string" || Number.isNaN(Date.parse(doc.as_of))) throw new Error("--compare snapshot has no valid as_of");
+  if (!doc.rows || typeof doc.rows !== "object" || Array.isArray(doc.rows)) throw new Error("--compare snapshot has no rows map");
+  for (const [id, revision] of Object.entries(doc.rows))
+    if (!/^[0-9a-f]{24}$/.test(id) || typeof revision !== "number" || !Number.isFinite(revision)) throw new Error("--compare snapshot has an invalid row");
+  return { tool: doc.tool, version: 1, database: doc.database, as_of: doc.as_of, truncated: doc.truncated === true, rows: doc.rows };
+}
+
+export type ClosedPublicationComparison = {
+  previous_as_of: string;
+  /** Closed rows present in both snapshots. */
+  compared: number;
+  unchanged: number;
+  /** Plan §6 midnight check: closed rows unchanged, so this reads 0. */
+  increased: number;
+  decreased: number;
+  /** Closed now, not in the previous snapshot (closed since it was taken). */
+  newly_closed: number;
+  /** In the previous snapshot, no longer a closed projection (cannot happen: closed is final; investigate). */
+  missing: number;
+  max_increase: number;
+  /** Id tails of the first rows whose revision went up (sorted). */
+  increased_subjects: string[];
+};
+
+/** Closed rows now against a previous snapshot (pure). */
+export function compareClosedPublication(previous: ClosedPublicationSnapshot, current: Readonly<Record<string, number>>): ClosedPublicationComparison {
+  let unchanged = 0;
+  let decreased = 0;
+  let maxIncrease = 0;
+  const increased: string[] = [];
+  for (const [id, before] of Object.entries(previous.rows)) {
+    const now = current[id];
+    if (now === undefined) continue;
+    if (now === before) unchanged++;
+    else if (now > before) {
+      increased.push(id);
+      maxIncrease = Math.max(maxIncrease, now - before);
+    } else decreased++;
+  }
+  const compared = unchanged + increased.length + decreased;
+  return {
+    previous_as_of: previous.as_of,
+    compared,
+    unchanged,
+    increased: increased.length,
+    decreased,
+    newly_closed: Object.keys(current).filter((id) => !(id in previous.rows)).length,
+    missing: Object.keys(previous.rows).length - compared,
+    max_increase: maxIncrease,
+    increased_subjects: increased.sort().slice(0, LISTED_CHANGED_SUBJECTS).map(agentTail),
+  };
+}
+
+export type OtherOutboundByDay = Record<string, Counts & { total: number }>;
+
+/**
+ * Confirmed events without an eligible subject, per business day and C8 bucket, from rows grouped by
+ * `{day, reason}` after the rep-day dedupe (one source per rep-day). The bucket is the rep-day's own
+ * (`contacts/repDay.ts` `otherOutboundBucketOf`: a missing reason or `eligible` reads `unknown`), so a day's
+ * total is the sum of that day's rep-day `unattributed`.
+ */
+export function otherOutboundByDayOf(rows: readonly Document[]): OtherOutboundByDay {
+  const out: OtherOutboundByDay = {};
+  for (const row of rows) {
+    const id = (row._id ?? {}) as { day?: unknown; reason?: unknown };
+    const day = keyOf(id.day);
+    const bucket = otherOutboundBucketOf((typeof id.reason === "string" ? id.reason : null) as SalesOutreachAssociationReason | null);
+    const entry = (out[day] ??= { ...Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((b) => [b, 0])), total: 0 } as Counts & { total: number });
+    entry[bucket] = (entry[bucket] ?? 0) + num(row.n);
+    entry.total += num(row.n);
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => b.localeCompare(a)));
+}
+
+export type RepDayOtherOutboundByDay = Record<string, { rows: number; rows_with_breakdown: number; unattributed: number; breakdown: Counts; breakdown_total: number }>;
+
+/** Stored rep-day rows summed per business day (`$group` by `business_day`): the breakdown the team card sums, against `unattributed`. */
+export function repDayOtherOutboundOf(rows: readonly Document[]): RepDayOtherOutboundByDay {
+  return Object.fromEntries(
+    rows
+      .map((row) => {
+        const breakdown = Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((b) => [b, num(row[b])]));
+        return [
+          keyOf(row._id),
+          {
+            rows: num(row.rows),
+            rows_with_breakdown: num(row.rows_with_breakdown),
+            unattributed: num(row.unattributed),
+            breakdown,
+            breakdown_total: Object.values(breakdown).reduce((s, n) => s + n, 0),
+          },
+        ] as const;
+      })
+      .sort(([a], [b]) => b.localeCompare(a)),
+  );
 }
 
 export type ConfigurationSummary = {
@@ -639,11 +929,49 @@ const groupCount = (field: string) => [{ $group: { _id: `$${field}`, n: { $sum: 
 const flagSum = (flag: string) => ({ $sum: { $cond: [`$status_flags.${flag}`, 1, 0] } });
 const STATUS_FLAGS = ["needs_contact", "overdue", "pending", "blocked", "job_pending", "move_date_passed", "move_date_unknown", "advisory_cooldown"] as const;
 
+/**
+ * Every row of `collection` matching `filter`, keyset-paged on the unique `subject_id` (pages of the reader's
+ * find cap), up to `cap` rows; `truncated` when the cap stopped it.
+ */
+export async function findBySubjectPages(
+  reader: DeskStateReader,
+  collection: string,
+  filter: Filter<Document>,
+  projection: Document,
+  cap = PROJECTION_SCAN_CAP,
+): Promise<{ rows: Document[]; truncated: boolean }> {
+  const rows: Document[] = [];
+  let after: unknown = null;
+  while (rows.length < cap) {
+    const limit = Math.min(FIND_LIMIT_CAP, cap - rows.length);
+    const page = await reader.find(collection, after === null ? filter : { $and: [filter, { subject_id: { $gt: after } }] }, { projection: { ...projection, subject_id: 1 }, sort: { subject_id: 1 }, limit });
+    rows.push(...page);
+    if (page.length < limit) return { rows, truncated: false };
+    after = page.at(-1)!.subject_id;
+  }
+  return { rows, truncated: true };
+}
+
+export type DeskStateContext = {
+  database: string;
+  now: Date;
+  /** A previous closed-row snapshot (`--compare`); it must be of the same database. */
+  previous_closed_snapshot?: ClosedPublicationSnapshot | null;
+};
+
 export type DeskState = Awaited<ReturnType<typeof collectDeskState>>;
 
 /** Every query of PRODUCTION-STATE.md, read-only, against one database at one reference instant. */
-export async function collectDeskState(reader: DeskStateReader, context: { database: string; now: Date }) {
+export async function collectDeskState(reader: DeskStateReader, context: DeskStateContext) {
+  return (await collectDeskStateWithSnapshot(reader, context)).state;
+}
+
+/** `collectDeskState` plus this run's closed-row `publication_revision` snapshot (what `--out` writes; ids are not in the summary). */
+export async function collectDeskStateWithSnapshot(reader: DeskStateReader, context: DeskStateContext) {
   const { now } = context;
+  const previous = context.previous_closed_snapshot ?? null;
+  if (previous && previous.database !== context.database)
+    throw new Error(`--compare snapshot is of database '${previous.database}', not '${context.database}'`);
   const today = newYorkBusinessDay(now);
   const yesterday = addDays(today, -1);
   const ago = (ms: number) => new Date(now.getTime() - ms);
@@ -661,6 +989,8 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     version: versionRow,
     versions_stored: await reader.count("sales_outreach_configuration", { kind: "version" }),
   });
+  /** The active configuration's timing (`deskTimingOf`); null while it is not active (served values are then not computed). */
+  const timing = inspection.state === "active" ? deskTimingOf(inspection.value) : null;
 
   // Subjects and periods
   const S = "sales_outreach_subjects";
@@ -685,6 +1015,17 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
   // Projections
   const J = "sales_outreach_projections";
   const active = { subject_status: "active" };
+  const closed = { subject_status: "closed" };
+  const notClosed = { subject_status: { $ne: "closed" } };
+  const evaluationHistogram = async (match: Document) =>
+    countsOf(
+      await reader.aggregate(J, [
+        { $match: { ...match, next_evaluation_at: { $ne: null } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%dT%HZ", date: "$next_evaluation_at" } }, n: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+        { $limit: NEXT_EVALUATION_HISTOGRAM_BUCKETS },
+      ]),
+    );
   const [flags] = await reader.aggregate(J, [
     { $match: active },
     { $group: { _id: null, ...Object.fromEntries(STATUS_FLAGS.map((f) => [f, flagSum(f)])) } },
@@ -705,14 +1046,14 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     next_evaluation: {
       past_due: await reader.count(J, { next_evaluation_at: { $lte: now } }),
       none: await reader.count(J, { next_evaluation_at: null }),
-      by_utc_hour: countsOf(
-        await reader.aggregate(J, [
-          { $match: { next_evaluation_at: { $ne: null } } },
-          { $group: { _id: { $dateToString: { format: "%Y-%m-%dT%HZ", date: "$next_evaluation_at" } }, n: { $sum: 1 } } },
-          { $sort: { _id: 1 } },
-          { $limit: NEXT_EVALUATION_HISTOGRAM_BUCKETS },
-        ]),
-      ),
+      by_utc_hour: await evaluationHistogram({}),
+      /** OPS-0c (A4): active and review rows. */
+      by_utc_hour_open: await evaluationHistogram(notClosed),
+      /** OPS-0c (A4): closed rows still scheduled; empty once engine v2 has rewritten them. */
+      by_utc_hour_closed: await evaluationHistogram(closed),
+      /** A4 acceptance: 0 within 15 min of the engine-v2 deploy. */
+      closed_scheduled: await reader.count(J, { ...closed, next_evaluation_at: { $ne: null } }),
+      open_none: await reader.count(J, { ...notClosed, next_evaluation_at: null }),
     },
     oldest_computed_as_of: isoOrNull((await reader.find(J, {}, { projection: { _id: 0, computed_as_of: 1 }, sort: { computed_as_of: 1 }, limit: 1 }))[0]?.computed_as_of),
   };
@@ -751,6 +1092,8 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     "last_run.error_code": 1,
     "last_run.sync_token_stored": 1,
     "last_run.sync_error_code": 1,
+    "last_run.sync_mode": 1,
+    reconcile_sync_success_at: 1,
     "cursor.outreach_coverage_from": 1,
     "isync_lane.last_run_at": 1,
     "isync_lane.last_success_at": 1,
@@ -763,7 +1106,7 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
   const scopeRows = await reader.find(W, { scope: { $in: Object.values(DESK_STATE_SCOPES) } }, { projection: watermarkProjection, limit: 20 });
   const rowOf = (scope: string) => scopeRows.find((r) => r.scope === scope) ?? null;
   const watermarks = Object.fromEntries(Object.entries(DESK_STATE_SCOPES).map(([name, scope]) => [name, summarizeWatermark(scope, rowOf(scope), now)]));
-  const mailboxes = await reader.find(W, { scope: { $regex: /^rep_sms:/ } }, { projection: { _id: 0, "message_sync.last_success_at": 1 }, limit: 500 });
+  const mailboxes = await reader.find(W, { scope: { $regex: /^rep_sms:/ } }, { projection: { _id: 0, known_complete_through: 1, "message_sync.last_success_at": 1 }, limit: 500 });
   const subscriptions = countsOf(
     await reader.aggregate("ringcentral_webhook_subscriptions", [{ $group: { _id: { purpose: "$purpose", status: "$status" }, n: { $sum: 1 } } }]),
   );
@@ -776,7 +1119,7 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
   );
   const freshness_inputs = {
     webhook_collection: webhookCollection,
-    calls: summarizeCallsFreshnessInputs(rowOf(DESK_STATE_SCOPES.call_log), lastCallWebhook?.receivedAt ?? null, now),
+    calls: summarizeCallsFreshnessInputs(rowOf(DESK_STATE_SCOPES.call_log), lastCallWebhook?.receivedAt ?? null, now, timing),
   };
 
   // Rep-days
@@ -802,8 +1145,9 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
       limit: 500,
     },
   );
+  const recentFrom = addDays(today, -(RECENT_REP_DAYS - 1));
   const recent = await reader.aggregate(R, [
-    { $match: { business_day: { $gte: addDays(today, -(RECENT_REP_DAYS - 1)) } } },
+    { $match: { business_day: { $gte: recentFrom } } },
     {
       $group: {
         _id: { day: "$business_day", scope: "$count_scope" },
@@ -840,6 +1184,21 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
       awaiting_confirmation: num(r.awaiting_confirmation),
       other_outbound: num(r.other_outbound),
     })),
+    /** OPS-0c (C8): stored rows' "Other outbound" breakdown summed per day (`rows_with_breakdown` < `rows` until the re-derive/recount), against `unattributed`. */
+    other_outbound_by_day: repDayOtherOutboundOf(
+      await reader.aggregate(R, [
+        { $match: { business_day: { $gte: recentFrom } } },
+        {
+          $group: {
+            _id: "$business_day",
+            rows: { $sum: 1 },
+            rows_with_breakdown: { $sum: { $cond: [{ $eq: [{ $type: "$other_outbound" }, "object"] }, 1, 0] } },
+            unattributed: { $sum: "$unattributed" },
+            ...Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((b) => [b, { $sum: `$other_outbound.${b}` }])),
+          },
+        },
+      ]),
+    ),
   };
 
   // Contact events
@@ -867,6 +1226,27 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     /** Keys: `source_kind/direction/goal_credit/association/goal_scope_eligible`. */
     today_by_source_direction_credit_association_eligible: await eventsOn(today),
     yesterday_by_source_direction_credit_association_eligible: await eventsOn(yesterday),
+    /** OPS-0c (C8): every event of the last ten business days by stored `association_reason` (`null` = derived before C8 or excluded before association). */
+    association_reason_by_day: nestedCountsOf(
+      await reader.aggregate(E, [
+        { $match: { business_date: { $gte: recentFrom } } },
+        { $group: { _id: { day: "$business_date", reason: "$association_reason" }, n: { $sum: 1 } } },
+      ]),
+      "day",
+      "reason",
+    ),
+    /**
+     * OPS-0c (C8 acceptance): confirmed rep-attributed events without an eligible subject, one per source per
+     * rep-day (the rep-day count's dedupe), by "Other outbound" bucket per day; a day's `total` is the sum of
+     * its rep-days' `unattributed`.
+     */
+    other_outbound_by_day: otherOutboundByDayOf(
+      await reader.aggregate(E, [
+        { $match: { business_date: { $gte: recentFrom }, goal_agent_id: { $ne: null }, goal_credit: "confirmed", goal_scope_eligible: { $ne: true } } },
+        { $group: { _id: { day: "$business_date", agent: "$goal_agent_id", source: "$source_id" }, reason: { $first: "$association_reason" } } },
+        { $group: { _id: { day: "$_id.day", reason: "$reason" }, n: { $sum: 1 } } },
+      ]),
+    ),
   };
 
   // Calls not yet confirmed by the Call Log (`terminal` false or never seen in the Call Log)
@@ -944,7 +1324,71 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     counts: Object.fromEntries(Object.entries((r.counts ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === "number")),
   }));
 
-  return {
+  // Wave 2 acceptance (OPS-0c): read-time verification, overdue counts, coverage waits, quiet closed rows.
+  const smsCaptureEnabled = inspection.state === "active" && inspection.value.controls.rep_sms_capture_enabled;
+  /** The channels' cadence coverage, as the evaluation, the evaluate sweep and every desk read compute it (`engineCoverageOf`). */
+  const cadence: ChannelCoverage = timing
+    ? engineCoverageOf({ calls: marks, sms_known_complete_through: smsCaptureEnabled ? smsCoverage(mailboxes) : null }, timing)
+    : { call: null, sms: null };
+  const activeRows = await findBySubjectPages(reader, J, active, VERIFICATION_PROJECTION);
+  const cutoffs = overdueCutoffs(now, cadence);
+  const coverageWait = async (channel: "call" | "sms") => {
+    const path = `coverage_wait.${channel}`;
+    const through = cadence[channel];
+    const proven = through ? { [path]: { $ne: null, $lte: through } } : null;
+    return {
+      through: isoOrNull(through),
+      waiting: await reader.count(J, { [path]: { $ne: null } }),
+      /** The sweep's coverage-repair set (`coverage_wait` ≤ current cadence coverage): 0 once the nominated jobs have drained. */
+      proven: proven ? await reader.count(J, proven) : null,
+      proven_and_pending: proven ? await reader.count(J, { ...proven, "status_flags.pending": true }) : null,
+      oldest_proven_wait: proven
+        ? isoOrNull((await reader.find(J, proven, { projection: { _id: 0, [path]: 1 }, sort: { [path]: 1 }, limit: 1 }))[0]?.coverage_wait?.[channel])
+        : null,
+      closed_waiting: await reader.count(J, { ...closed, [path]: { $ne: null } }),
+    };
+  };
+  const closedRows = await findBySubjectPages(reader, J, closed, { _id: 0, publication_revision: 1 });
+  const closedSnapshot: ClosedPublicationSnapshot = {
+    tool: CLOSED_PUBLICATION_SNAPSHOT_TOOL,
+    version: 1,
+    database: context.database,
+    as_of: now.toISOString(),
+    truncated: closedRows.truncated,
+    rows: Object.fromEntries(closedRows.rows.map((row) => [String(row.subject_id), num(row.publication_revision)])),
+  };
+  const wave2_acceptance = {
+    cadence_coverage: { available: timing !== null, call_through: isoOrNull(cadence.call), sms_through: isoOrNull(cadence.sms), sms_capture_enabled: smsCaptureEnabled },
+    active_rows: activeRows.rows.length,
+    active_rows_truncated: activeRows.truncated,
+    shadow_rows: activeRows.rows.filter((row) => row.exposure === "shadow").length,
+    /** Plan §6: at 20:00 ET `call.read_due_unverified`; at 20:25 ET `call.stored_overdue` ≈ that minus the calls confirmed since. */
+    call: tallyChannelVerification(activeRows.rows, "call", now, cadence.call),
+    sms: tallyChannelVerification(activeRows.rows, "sms", now, cadence.sms),
+    rows_reading_overdue: rowsReadingOverdue(activeRows.rows, now, cadence),
+    /** Plan §6: `served_rule` is `GET /team distinct_overdue_leads` under this build; `design_count` the LANE-A A2 formula; equal once every active row carries `sms_due`. */
+    distinct_overdue_leads: cutoffs
+      ? {
+          available: true as const,
+          cutoffs: { call: cutoffs.call.toISOString(), sms: isoOrNull(cutoffs.sms) },
+          served_rule: await reader.count(J, mongoOverdueFilter(cutoffs)),
+          design_count: await reader.count(J, designOverdueFilter(cutoffs)),
+          active_without_sms_due: await reader.count(J, { ...active, "queue_keys.sms_due": { $exists: false } }),
+        }
+      : { available: false as const, unknown_reason: "coverage_incomplete" as const },
+    /** Plan §6: no projection waits on coverage the cadence coverage already proves (`proven` 0 outside the sweep's minute). */
+    coverage_wait: { call: await coverageWait("call"), sms: await coverageWait("sms") },
+    /** Plan §6 midnight: closed rows keep their `publication_revision` (`comparison.increased` 0 with `--compare`). */
+    closed_publication: {
+      rows: closedRows.rows.length,
+      truncated: closedRows.truncated,
+      revision_sum: Object.values(closedSnapshot.rows).reduce((s, n) => s + n, 0),
+      rewritten_since_ny_midnight: await reader.count(J, { ...closed, computed_as_of: { $gte: newYorkDayBounds(today).start } }),
+      comparison: previous ? compareClosedPublication(previous, closedSnapshot.rows) : null,
+    },
+  };
+
+  const state = {
     tool: "sales-outreach-desk-state" as const,
     summary_version: DESK_STATE_SUMMARY_VERSION,
     database: context.database,
@@ -966,5 +1410,7 @@ export async function collectDeskState(reader: DeskStateReader, context: { datab
     rep_sms_evidence,
     subjects_without_numbers,
     enrollment_runs,
+    wave2_acceptance,
   };
+  return { state, closed_snapshot: closedSnapshot };
 }

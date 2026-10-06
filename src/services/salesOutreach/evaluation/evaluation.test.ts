@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ConfigurationInspection, ConfigurationLoader } from "../config/load";
-import { evaluateSubject, resolveEnginePolicy } from "../engine";
+import { deskTimingOf } from "../config/timing";
+import { evaluateSubject, OUTREACH_ENGINE_VERSION, resolveEnginePolicy } from "../engine";
 import { FINAL_01_CADENCE_VALUE } from "../engine/approvedStartingValues";
 import { activeInspection, fixedConfigurationLoader } from "../reads/testing";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import {
+  COVERAGE_REPAIR_BUCKET_MS,
+  coverageRepairCause,
   drainOutreachEvaluateJobs,
   evaluateAndProject,
   evaluationAdmissionOf,
@@ -15,11 +18,13 @@ import {
   type EvaluateJobDeps,
   type EvaluationPolicyContext,
 } from "./evaluateJob";
-import { assignmentIntervals, buildEngineInput, toEngineRestriction } from "./inputs";
-import { cadenceExposureOf, deskEnginePolicy, toEngineCadence } from "./policyAdapter";
+import { NO_CALL_WATERMARKS } from "../evidence/coverage";
+import { assignmentIntervals, buildEngineInput, engineCoverageOf, toEngineRestriction } from "./inputs";
+import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint, policyFingerprint, toEngineCadence } from "./policyAdapter";
 import { presentProjectionExposure } from "./projection";
 import type { DeskRestrictionRow } from "./store";
 import {
+  capturedCoverage,
   completeConfigurationInput,
   fakeSession,
   MemoryEvaluationStore,
@@ -70,7 +75,7 @@ function seeded(overrides: Parameters<typeof subjectRow>[0] = {}) {
   const subject = subjectRow(overrides);
   store.subjects.set(subject.id, subject);
   store.periods.push(periodRow(subject.id, { started_at: at(RECEIVED) }));
-  store.coverage = { calls_known_complete_through: at("2026-10-05T15:30:00.000Z"), sms_known_complete_through: null };
+  store.coverage = capturedCoverage(at("2026-10-05T15:30:00.000Z"));
   return { store, subject };
 }
 
@@ -223,8 +228,8 @@ test("P06d: assignment history from receiver_agent changes, reviewed links only;
     assignment_changes: changes,
     rep_links: links,
     contact_events: [],
-    coverage: { calls_known_complete_through: at("2026-10-05T15:30:00.000Z"), sms_known_complete_through: null },
-  });
+    coverage: capturedCoverage(at("2026-10-05T15:30:00.000Z")),
+  }, deskTimingOf(null));
   assert.equal(input.coverage.call.complete_through, "2026-10-05T15:28:00.000Z", "2-minute settlement allowance");
   const policy = admitted().policy;
   const result = evaluateSubject(input, policy, "2026-10-05T15:05:00.000Z");
@@ -361,8 +366,141 @@ test("P07g (SRV-8 follow-up): the subject's contact event marked originating_inb
     { ...base, id: "1".repeat(24), source_id: "2".repeat(24), event_at: at("2026-10-05T14:05:00.000Z"), originating_inbound: false },
     { ...base, id: "3".repeat(24), source_id: "4".repeat(24), event_at: at("2026-10-05T14:00:00.000Z"), originating_inbound: true },
   ];
-  const input = buildEngineInput({ subject, periods: store.periods, plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: events, coverage: store.coverage });
+  const input = buildEngineInput({ subject, periods: store.periods, plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: events, coverage: store.coverage }, deskTimingOf(null));
   assert.equal(input.subject.originating_contact_event_id, `call:${"4".repeat(24)}`);
-  const none = buildEngineInput({ subject, periods: store.periods, plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: events.slice(0, 1), coverage: store.coverage });
+  const none = buildEngineInput({ subject, periods: store.periods, plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: events.slice(0, 1), coverage: store.coverage }, deskTimingOf(null));
   assert.equal(none.subject.originating_contact_event_id, null);
+});
+
+/* ---------------------------------------------------------------- olr A1: coverage */
+
+const marks = (capture: string | null, derived: string | null) => ({
+  calls: { ...NO_CALL_WATERMARKS, capture_known: capture ? at(capture) : null, derived_known: derived ? at(derived) : null },
+  sms_known_complete_through: null,
+});
+
+function configurationWithAllowance(minutes: number) {
+  const input = completeConfigurationInput({ cadence_shadow_enabled: true });
+  return activeInspection({ ...input, evidence: { ...input.evidence, call_settlement_allowance_minutes: minutes } }, "v-allow", 8);
+}
+
+test("A1.3 (F2): engine coverage = min(capture − allowance, derivation watermark)", () => {
+  const timing = deskTimingOf(null);
+  assert.equal(engineCoverageOf(marks("2026-10-05T16:10:00.000Z", "2026-10-05T16:05:00.000Z"), timing).call?.toISOString(), "2026-10-05T16:05:00.000Z", "derivation behind");
+  assert.equal(engineCoverageOf(marks("2026-10-05T16:10:00.000Z", "2026-10-05T16:20:00.000Z"), timing).call?.toISOString(), "2026-10-05T16:08:00.000Z", "capture − 2 min");
+  assert.equal(engineCoverageOf(marks("2026-10-05T16:10:00.000Z", null), timing).call, null, "no derivation row: no coverage");
+  const subject = subjectRow();
+  const rows = { subject, periods: [periodRow(subject.id)], plans: [], restrictions: [], assignment_changes: [], rep_links: [], contact_events: [] };
+  const input = buildEngineInput({ ...rows, coverage: marks("2026-10-05T16:10:00.000Z", "2026-10-05T16:05:00.000Z") }, timing);
+  assert.equal(input.coverage.call.complete_through, "2026-10-05T16:05:00.000Z");
+});
+
+test("A1.3 (F8): the settlement allowance comes from configuration", () => {
+  const timing = deskTimingOf(admitted(configurationWithAllowance(5)).configuration.value);
+  assert.equal(timing.call_settlement_allowance_ms, 5 * 60_000);
+  assert.equal(engineCoverageOf(marks("2026-10-05T16:10:00.000Z", "2026-10-05T16:20:00.000Z"), timing).call?.toISOString(), "2026-10-05T16:05:00.000Z");
+});
+
+test("A1.4: the policy fingerprint changes with the engine version and the settlement allowance", () => {
+  const base = admitted();
+  const extras = { engine_version: OUTREACH_ENGINE_VERSION, call_settlement_allowance_ms: 120_000 };
+  const fp = policyFingerprint(base.policy, base.exposure, extras);
+  assert.equal(base.policy_fingerprint, fp, "the evaluator stamps engine version + configured allowance");
+  assert.notEqual(policyFingerprint(base.policy, base.exposure, { ...extras, engine_version: "sod-engine-v1" }), fp);
+  assert.notEqual(policyFingerprint(base.policy, base.exposure, { ...extras, call_settlement_allowance_ms: 300_000 }), fp);
+  const allowance5 = admitted(configurationWithAllowance(5));
+  assert.notEqual(allowance5.policy_fingerprint, fp);
+  assert.equal(allowance5.policy_fingerprint, deskPolicyFingerprint(allowance5.configuration.value, allowance5.policy, allowance5.exposure));
+});
+
+/** Intake 10:00 ET (14:00Z), initial response due 10:30 ET; evaluated at 10:40 ET while capture is at 10:20. */
+async function waitingOnCoverage() {
+  const { store, subject } = seeded();
+  store.coverage = capturedCoverage(at("2026-10-05T14:20:00.000Z"));
+  await evaluateAndProject(subject.id, admitted(), at("2026-10-05T14:40:00.000Z"), store, fakeSession);
+  return { store, subject };
+}
+
+test("A1.5: a row whose verdict waits on coverage stores coverage_wait and reads due, not pending", async () => {
+  const { store, subject } = await waitingOnCoverage();
+  const row = store.projections.get(subject.id)!.doc;
+  assert.deepEqual(row.coverage_wait, { call: at("2026-10-05T14:30:00.000Z"), sms: null });
+  assert.equal((row.call as { status: string }).status, "due");
+  assert.equal((row.status_flags as { pending: boolean }).pending, false);
+  assert.equal((row.status_flags as { needs_contact: boolean }).needs_contact, true);
+  assert.equal(row.engine_version, "sod-engine-v2");
+});
+
+test("A1.6: coverage repair nominates rows whose coverage_wait <= current coverage, once per bucket", async () => {
+  const { store, subject } = await waitingOnCoverage();
+  const deps = { loader: fixedConfigurationLoader(configuration()), store, transaction: runInFakeTransaction };
+  const wait = at("2026-10-05T14:30:00.000Z");
+  store.coverage = capturedCoverage(at("2026-10-05T14:35:00.000Z")); // cadence coverage 14:33 >= 14:30
+  const first = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps);
+  assert.deepEqual(first.coverage, { pages: 1, nominated: 1, call_through: "2026-10-05T14:33:00.000Z", sms_through: null });
+  const key = `sod:evaluate:${subject.id}:${coverageRepairCause("call", wait, at("2026-10-05T14:33:00.000Z"))}`;
+  assert.equal(key, `sod:evaluate:${subject.id}:coverage:call:${+wait}:${Math.floor(+at("2026-10-05T14:33:00.000Z") / COVERAGE_REPAIR_BUCKET_MS)}`);
+  assert.ok(store.jobs.has(key));
+  assert.equal(store.jobs.get(key)!.stage, "outreach_evaluate");
+  const coverageJobs = () => [...store.jobs.keys()].filter((k) => k.includes(":coverage:"));
+  await sweepOutreachEvaluations(at("2026-10-05T14:42:00.000Z"), deps);
+  assert.equal(coverageJobs().length, 1, "same coverage bucket: the same job identity");
+  store.coverage = capturedCoverage(at("2026-10-05T14:40:00.000Z")); // 14:38: the next 5-minute bucket
+  await sweepOutreachEvaluations(at("2026-10-05T14:43:00.000Z"), deps);
+  assert.equal(coverageJobs().length, 2, "a later coverage step re-nominates a row that is still waiting");
+
+  // The nominated evaluation sees the coverage and clears the wait: the verdict lands (overdue initial response).
+  await evaluateAndProject(subject.id, admitted(), at("2026-10-05T14:43:00.000Z"), store, fakeSession);
+  const row = store.projections.get(subject.id)!.doc;
+  assert.deepEqual(row.coverage_wait, { call: null, sms: null });
+  assert.equal((row.call as { status: string }).status, "overdue");
+  const quiet = await sweepOutreachEvaluations(at("2026-10-05T14:44:00.000Z"), deps);
+  assert.equal(quiet.coverage.nominated, 0);
+});
+
+test("A1.6: coverage repair ignores rows whose wait is beyond coverage and does nothing when the derivation row is missing", async () => {
+  const { store } = await waitingOnCoverage();
+  const deps = { loader: fixedConfigurationLoader(configuration()), store, transaction: runInFakeTransaction };
+  store.coverage = capturedCoverage(at("2026-10-05T14:31:00.000Z")); // cadence 14:29 < 14:30
+  const behind = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps);
+  assert.deepEqual([behind.coverage.pages, behind.coverage.nominated, behind.coverage.call_through], [0, 0, "2026-10-05T14:29:00.000Z"]);
+  store.coverage = marks("2026-10-05T15:00:00.000Z", null);
+  const noDerivation = await sweepOutreachEvaluations(at("2026-10-05T15:05:00.000Z"), deps);
+  assert.deepEqual(noDerivation.coverage, { pages: 0, nominated: 0, call_through: null, sms_through: null });
+  assert.equal([...store.jobs.keys()].filter((k) => k.includes(":coverage:")).length, 0);
+});
+
+/* ---------------------------------------------------------------- olr A4 */
+
+test("A4: clock sweep never nominates a closed projection; the closed row is not rewritten at midnight", async () => {
+  // Closed by an accepted Priority 8 at 14:00 ET (18:00Z) on its received date; an active subject beside it.
+  const { store, subject } = seeded({ status: "closed" });
+  store.periods[0] = { ...store.periods[0]!, ended_at: at("2026-10-05T18:00:00.000Z"), end_reason: "transition" } as (typeof store.periods)[number];
+  store.periods.push(periodRow(subject.id, { workflow: "closed", priority: "8", start_kind: "transition", transition_key: "granot:8", started_at: at("2026-10-05T18:00:00.000Z") }));
+  const active = subjectRow();
+  store.subjects.set(active.id, active);
+  store.periods.push(periodRow(active.id, { started_at: at(RECEIVED) }));
+  const context = admitted();
+  await evaluateAndProject(subject.id, context, at("2026-10-05T18:05:00.000Z"), store, fakeSession);
+  await evaluateAndProject(active.id, context, at("2026-10-05T18:05:00.000Z"), store, fakeSession);
+  const closed = store.projections.get(subject.id)!;
+  assert.equal(closed.doc.next_evaluation_at, null);
+  assert.equal((closed.doc.detail as { state: string }).state, "closed");
+  assert.equal((closed.doc.window_history as Array<{ business_date: string }>).at(-1)!.business_date, "2026-10-05");
+
+  const deps = { loader: fixedConfigurationLoader(configuration()), store, transaction: runInFakeTransaction };
+  const dueJobs = (id: string) => [...store.jobs.keys()].filter((k) => k.startsWith(`sod:evaluate:${id}:due:`));
+  for (const now of ["2026-10-06T04:00:30.000Z", "2026-10-07T04:00:30.000Z", "2026-11-05T05:00:30.000Z"]) {
+    await sweepOutreachEvaluations(at(now), deps);
+  }
+  assert.equal(dueJobs(subject.id).length, 0, "the clock sweep never nominates the closed row");
+  assert.ok(dueJobs(active.id).length > 0, "the active row still wakes at midnight");
+  assert.equal([...store.jobs.keys()].filter((k) => k.includes(subject.id)).length, 0, "no reconcile nomination either: its policy fingerprint is current");
+
+  // Any later evaluation (a subject revision, a policy change) finds nothing new to write.
+  const writes = store.writes.length;
+  const later = await evaluateAndProject(subject.id, context, at("2026-11-05T05:01:00.000Z"), store, fakeSession);
+  assert.equal(later.outcome, "unchanged");
+  assert.equal(later.publication_revision, closed.doc.publication_revision);
+  assert.equal(store.writes.length, writes);
 });

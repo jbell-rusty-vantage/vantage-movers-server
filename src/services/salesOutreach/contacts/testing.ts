@@ -92,6 +92,9 @@ export class ContextBuilder {
   subjects = new Map<DeskLeadKey, SubjectFacts>();
   restrictions = new Map<string, RestrictionInterval[]>();
   numbers = new Map<string, string>();
+  /** olr C2d: number id → its `other_leads` (only served to derivation when the rule loads them). */
+  others = new Map<string, DeskLeadKey[]>();
+  rule: DerivationContext["association_rule"] = undefined;
 
   link(agentId: string, extension: string, extra: Partial<TemporalRepLink> = {}) {
     this.links.push(reviewedLink(agentId, extension, undefined, extra));
@@ -104,6 +107,18 @@ export class ContextBuilder {
     if (subject) this.subjects.set(key, subject);
     return { key, subject };
   }
+  /** olr C2d: adds a new Lead to `numberId`'s `other_leads` and, unless `subject` is null, enrolls it. */
+  other(numberId: string, subject: SubjectFacts | null = subjectFacts()): { key: DeskLeadKey; subject: SubjectFacts | null } {
+    const key = `CallLead:${newId()}` as DeskLeadKey;
+    this.others.set(numberId, [...(this.others.get(numberId) ?? []), key]);
+    if (subject) this.subjects.set(key, subject);
+    return { key, subject };
+  }
+  /** olr C2d: the `evidence.call_association_rule` derivation runs under. */
+  associationRule(rule: DerivationContext["association_rule"]) {
+    this.rule = rule;
+    return this;
+  }
   restrict(numberId: string, channels: Array<"call" | "text">, from: string, to: string | null = null) {
     this.restrictions.set(numberId, [...(this.restrictions.get(numberId) ?? []), { channels, from: new Date(from), to: to ? new Date(to) : null }]);
     return this;
@@ -113,7 +128,15 @@ export class ContextBuilder {
     return this;
   }
   build(): DerivationContext {
-    return { links: this.links, linked_leads: this.attached, subjects: this.subjects, restrictions: this.restrictions, numbers_by_e164: this.numbers };
+    return {
+      links: this.links,
+      linked_leads: this.attached,
+      subjects: this.subjects,
+      restrictions: this.restrictions,
+      numbers_by_e164: this.numbers,
+      other_leads: this.others,
+      ...(this.rule ? { association_rule: this.rule } : {}),
+    };
   }
 }
 

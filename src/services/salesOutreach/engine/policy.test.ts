@@ -54,3 +54,22 @@ test("FINAL-01 resolves to the approved engine policy (P01–P06, P10a values)",
   assert.deepEqual(p.cooldown, { threshold: 3, window_hours: 24 });
   assert.equal(p.quoted.activation_call_through_minute, 1170);
 });
+
+test("Granot-created missing priority may be review or new; native intake stays new-only (olr B3)", () => {
+  const withRule = (rule: unknown) => resolveEnginePolicy({ ...FINAL_01_CADENCE_VALUE, intake_default_rule: rule });
+  const review = withRule({ native_intake: "new", granot_created_missing_priority: "review" });
+  const asNew = withRule({ native_intake: "new", granot_created_missing_priority: "new" });
+  assert.ok(review.ok && asNew.ok);
+  // The rule is a desk mapping, not an engine input: both values resolve to the same engine policy.
+  assert.deepEqual(asNew.policy, review.policy);
+  for (const refused of [
+    { native_intake: "review", granot_created_missing_priority: "review" },
+    { native_intake: "new", granot_created_missing_priority: "quoted" },
+    { native_intake: "new", granot_created_missing_priority: null },
+    { native_intake: "new" },
+  ]) {
+    const result = withRule(refused);
+    assert.equal(result.ok, false, JSON.stringify(refused));
+    if (!result.ok) assert.ok(result.reasons.some((r) => r.startsWith("cadence.intake_default_rule")), result.reasons.join("; "));
+  }
+});

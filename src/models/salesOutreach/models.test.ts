@@ -67,6 +67,9 @@ test("the plan's uniqueness fences and queue sort indexes are declared", () => {
   assert.ok(byName.get("sod_projection_q_received_desc"));
   assert.ok(byName.get("sod_projection_q_interaction"));
   assert.ok(byName.get("sod_projection_next_evaluation"));
+  // olr A1: the evaluate sweep's coverage repair.
+  assert.deepEqual(byName.get("sod_projection_coverage_wait_call")?.key, { "coverage_wait.call": 1, subject_id: 1 });
+  assert.deepEqual(byName.get("sod_projection_coverage_wait_sms")?.key, { "coverage_wait.sms": 1, subject_id: 1 });
   assert.deepEqual(byName.get("sod_configuration_key_unique")?.key, { key: 1 });
 });
 

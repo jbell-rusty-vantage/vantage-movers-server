@@ -93,3 +93,39 @@ describe("SMS contact events (P07d/P07e)", () => {
     assert.deepEqual([dayBefore.subject_id, dayBefore.verification], [null, "excluded"]);
   });
 });
+
+describe("olr C8 SMS association_reason", () => {
+  test("a matched counterpart is eligible; a group SMS is ambiguous; no known counterpart is no_lead; a duplicate copy is null", () => {
+    assert.equal(deriveSmsContactEvent(smsRow(), smsContext()).association_reason, "eligible");
+    assert.equal(deriveSmsContactEvent(smsRow({ is_group: true, counterpart_numbers: ["+15550100200", "+15550100201"] }), smsContext()).association_reason, "ambiguous");
+    assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550199999"] }), smsContext()).association_reason, "no_lead");
+    const copy = deriveSmsContactEvent(smsRow({ duplicate_copy: true }), smsContext());
+    assert.deepEqual([copy.verification, copy.association_reason], ["excluded", null]);
+  });
+
+  test("a counterpart whose Lead is not enrolled is lead_not_enrolled; one whose subject is closed is lead_closed", () => {
+    const number = newId();
+    const ctx = new ContextBuilder().number("+15550100300", number);
+    ctx.lead(number, null);
+    assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550100300"] }), ctx.build()).association_reason, "lead_not_enrolled");
+    const closed = new ContextBuilder().number("+15550100301", number);
+    closed.lead(number, subjectFacts({ workflow: "closed" }));
+    assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550100301"] }), closed.build()).association_reason, "lead_closed");
+  });
+});
+
+describe("olr C2d: an SMS to a shadowed number credits the single active other_leads subject (rule on only)", () => {
+  test("rule on: unique; rule absent: lead_not_enrolled", () => {
+    const build = (rule?: "single_active_subject_on_link") => {
+      const ctx = new ContextBuilder().number("+15550100200", SMS_NUMBER).associationRule(rule);
+      ctx.lead(SMS_NUMBER, null);
+      const shadow = ctx.other(SMS_NUMBER, subjectFacts()).subject!;
+      return { context: ctx.build(), shadow };
+    };
+    const on = build("single_active_subject_on_link");
+    const credited = deriveSmsContactEvent(smsRow(), on.context);
+    assert.deepEqual([credited.association, credited.subject_id, credited.association_reason], ["unique", on.shadow.id, "eligible"]);
+    const off = deriveSmsContactEvent(smsRow(), build().context);
+    assert.deepEqual([off.association, off.subject_id, off.association_reason], ["none", null, "lead_not_enrolled"]);
+  });
+});

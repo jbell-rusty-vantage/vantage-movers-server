@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { toFloridaTimestamp } from "../../../utils/easternTime";
 import { fixture } from "../engine/testSupport";
+import type { ActiveConfiguration } from "../config/load";
 import { refreshLeadForOutreach } from "./leadChangeJob";
-import { toDeskLeadFacts } from "./leadFacts";
-import { receivedFactsOf } from "./subjectBuilder";
+import { DESK_LEAD_PROJECTION, toDeskLeadFacts } from "./leadFacts";
+import { deskDecisionFingerprint } from "./policyMapping";
+import { receivedFactsOf, subjectStatusOf } from "./subjectBuilder";
 import {
+  configurationDrivenDesired,
   contactWakeOf,
   ENROLLMENT_WAKE_SOURCES_PER_KIND,
   intakeAdmissionOf,
@@ -14,7 +17,7 @@ import {
   SUBJECT_WAKE_SOURCES_PER_KIND,
   syncSubject,
 } from "./sync";
-import { accepted, deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore, objectId } from "./testing";
+import { accepted, APPROVED_MAPPING, deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore, objectId } from "./testing";
 
 const GATE = "2026-10-01T00:00:00.000Z";
 const at = (iso: string) => new Date(iso);
@@ -381,5 +384,259 @@ describe("olr C4: re-derive wakes when a subject or its period changes after the
     assert.equal(past!.limit_per_kind, SUBJECT_WAKE_SOURCES_PER_KIND);
     assert.equal(+past!.since, +at("2026-10-06T14:00:00Z"));
     assert.match(past!.source_revision, /^period:s1:[0-9a-f]{16}$/);
+  });
+});
+
+// ---- olr B2: decision fingerprint and configuration-driven re-decisions ----------------------
+
+describe("olr B2: decision fingerprint (priority map + intake defaults) and prospective re-decisions", () => {
+  const MAP = APPROVED_MAPPING!.priority_map!;
+  /** The approved map with code 9 mapped (the B4 shape); `none` = the FINAL-01 map (9 unmapped → none). */
+  const mapWith9 = (workflow: "quoted" | "none") =>
+    workflow === "none" ? MAP : { ...MAP, codes: [...MAP.codes, { code: "9", workflow, closure_reason: null }] };
+  /** An active configuration at `revision` whose pointer moved at `updatedAt`. */
+  const configAt = (revision: number, updatedAt: string, cadence: NonNullable<Parameters<typeof deskConfiguration>[0]>["cadence"] = {}): ActiveConfiguration => ({
+    ...deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: GATE }, cadence }, `v${revision}`, revision),
+    updated_at: at(updatedAt),
+  });
+
+  test("the decision fingerprint is stamped on create and on sync; a fingerprint-only change is bookkeeping (no outreach_evaluate)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const a = configAt(3, "2026-10-01T00:00:00Z");
+    const lead = store.addLead(leadFacts());
+    await refreshLeadForOutreach(lead.ref, a, at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.equal(store.subjects[0]!.decision_fingerprint, deskDecisionFingerprint(a.value.cadence));
+    assert.match(store.subjects[0]!.decision_fingerprint!, /^[0-9a-f]{64}$/);
+    // A map change that does not concern this subject (code 9 mapped; the subject is an intake-default New).
+    const b = configAt(4, "2026-10-02T15:00:00Z", { priority_map: mapWith9("quoted") });
+    assert.notEqual(deskDecisionFingerprint(b.value.cadence), deskDecisionFingerprint(a.value.cadence));
+    const result = await refreshLeadForOutreach(lead.ref, b, at("2026-10-02T15:03:00Z"), store, fakeSession);
+    assert.equal(result.outcome, "updated");
+    assert.equal(store.subjects[0]!.decision_fingerprint, deskDecisionFingerprint(b.value.cadence));
+    assert.equal(store.subjects[0]!.revision, 2, "the stamp is written");
+    assert.deepEqual(store.evaluations.map((e) => e.revision), [1], "bookkeeping only: no outreach_evaluate");
+    assert.equal(store.periods.length, 1, "no period change");
+    // Controls, goals and the other cadence values never re-decide.
+    const controls: ActiveConfiguration = {
+      ...b,
+      value: { ...b.value, controls: { ...b.value.controls, desk_enabled: !b.value.controls.desk_enabled }, cadence: { ...b.value.cadence, policy_version: "another-policy" } },
+    };
+    assert.equal(deskDecisionFingerprint(controls.value.cadence), deskDecisionFingerprint(b.value.cadence));
+    // Reordering the map's codes is not a decision change.
+    const reordered = { ...b.value.cadence.priority_map!, codes: [...b.value.cadence.priority_map!.codes].reverse() };
+    assert.equal(deskDecisionFingerprint({ ...b.value.cadence, priority_map: reordered }), deskDecisionFingerprint(b.value.cadence));
+  });
+
+  test("a configuration-driven transition starts at the configuration time, never at the older observation time; an A→B→A flip re-decides each time", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(accepted("9", "2026-10-01T14:01:00Z", "9".repeat(24))));
+    // FINAL-01: 9 is unmapped → `none` ("No policy configured").
+    await refreshLeadForOutreach(lead.ref, configAt(3, "2026-10-01T00:00:00Z"), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual(store.periods.map((p) => p.workflow), ["none"]);
+    // The Owner maps 9 → quoted at 2026-10-02T15:00Z (revision 4); the reconcile's job runs 3 minutes later.
+    await refreshLeadForOutreach(lead.ref, configAt(4, "2026-10-02T15:00:00Z", { priority_map: mapWith9("quoted") }), at("2026-10-02T15:03:00Z"), store, fakeSession);
+    const quoted = store.periods.at(-1)!;
+    assert.deepEqual(
+      [quoted.workflow, quoted.start_kind, quoted.started_at.toISOString(), quoted.time_basis, quoted.transition_key],
+      ["quoted", "transition", "2026-10-02T15:00:00.000Z", "configuration_activated_at", `priority:observation:${"9".repeat(24)}:quoted:9:c4`],
+    );
+    assert.equal(store.periods[0]!.ended_at!.toISOString(), "2026-10-02T15:00:00.000Z", "the none period ends at the configuration time");
+    assert.equal(store.evaluations.length, 2, "a real re-decision wakes the evaluator");
+    // Rollback PATCH (revision 5): 9 unmapped again → none from that PATCH, not a replay of the first period's key.
+    await refreshLeadForOutreach(lead.ref, configAt(5, "2026-10-03T16:00:00Z"), at("2026-10-03T16:02:00Z"), store, fakeSession);
+    // And mapped again (revision 6).
+    await refreshLeadForOutreach(lead.ref, configAt(6, "2026-10-04T17:00:00Z", { priority_map: mapWith9("quoted") }), at("2026-10-04T17:01:00Z"), store, fakeSession);
+    assert.deepEqual(
+      store.periods.map((p) => [p.workflow, p.started_at.toISOString(), p.ended_at?.toISOString() ?? null]),
+      [
+        ["none", "2026-10-01T14:00:00.000Z", "2026-10-02T15:00:00.000Z"],
+        ["quoted", "2026-10-02T15:00:00.000Z", "2026-10-03T16:00:00.000Z"],
+        ["none", "2026-10-03T16:00:00.000Z", "2026-10-04T17:00:00.000Z"],
+        ["quoted", "2026-10-04T17:00:00.000Z", null],
+      ],
+    );
+    assert.deepEqual(store.periods.slice(1).map((p) => p.transition_key.split(":").at(-1)), ["c4", "c5", "c6"]);
+    // A replay under the same revision (the job ran twice) writes nothing.
+    const writes = store.writes.length;
+    const replay = await refreshLeadForOutreach(lead.ref, configAt(6, "2026-10-04T17:00:00Z", { priority_map: mapWith9("quoted") }), at("2026-10-04T17:05:00Z"), store, fakeSession);
+    assert.equal(replay.outcome, "unchanged");
+    assert.equal(store.writes.length, writes);
+  });
+
+  test("a null stored fingerprint is not treated as a configuration change", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(accepted("9", "2026-10-01T14:01:00Z", "9".repeat(24))));
+    await refreshLeadForOutreach(lead.ref, configAt(3, "2026-10-01T00:00:00Z"), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    store.subjects[0] = { ...store.subjects[0]!, decision_fingerprint: null }; // a subject written before B2
+    const b = configAt(4, "2026-10-02T15:00:00Z", { priority_map: mapWith9("quoted") });
+    await refreshLeadForOutreach(lead.ref, b, at("2026-10-02T15:03:00Z"), store, fakeSession);
+    const quoted = store.periods.at(-1)!;
+    // Without a stored fingerprint nothing tells the sync the change is the configuration's: the fact time stands.
+    assert.deepEqual(
+      [quoted.workflow, quoted.started_at.toISOString(), quoted.time_basis, quoted.transition_key],
+      ["quoted", "2026-10-01T14:01:00.000Z", "accepted_observation_captured_at", `priority:observation:${"9".repeat(24)}:quoted:9`],
+    );
+    assert.equal(store.subjects[0]!.decision_fingerprint, deskDecisionFingerprint(b.value.cadence), "stamped");
+  });
+
+  test("a review subject decided by an intake-default PATCH opens a late first period at the configuration time (B1 + B2)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ ingestion_origin: "granot_lead_created" }));
+    await refreshLeadForOutreach(lead.ref, configAt(3, "2026-10-01T00:00:00Z"), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons, store.periods.length], ["review", ["priority_needs_review"], 0]);
+    const intake = { ...APPROVED_MAPPING!.intake_default_rule!, granot_created: "new" as const };
+    await refreshLeadForOutreach(lead.ref, configAt(4, "2026-10-03T13:00:00Z", { intake_default_rule: intake }), at("2026-10-03T13:04:00Z"), store, fakeSession);
+    const first = store.periods[0]!;
+    assert.deepEqual(
+      [first.workflow, first.start_kind, first.started_at.toISOString(), first.time_basis, first.transition_key],
+      ["new", "activation", "2026-10-03T13:00:00.000Z", "configuration_activated_at", "intake_default:granot_created:c4"],
+    );
+    assert.equal(store.subjects[0]!.status, "active");
+  });
+
+  test("configurationDrivenDesired: a same or null fingerprint, a closure fact, or a fact newer than the configuration keep the desired period", () => {
+    const desired = {
+      workflow: "quoted" as const,
+      priority: "1",
+      transition_key: "priority:observation:o:quoted:1",
+      priority_source_ref: "o",
+      priority_source_revision: 2,
+      effective_at: at("2026-10-02T10:00:00Z"),
+      time_basis: "accepted_observation_captured_at" as const,
+      end_reason_for_previous: "priority_change" as const,
+    };
+    type Input = Parameters<typeof configurationDrivenDesired>[1];
+    const input: Input = {
+      stored_fingerprint: "a",
+      fingerprint: "b",
+      eligibility: { outcome: "eligible" } as Input["eligibility"],
+      configuration: { revision: 7, updated_at: at("2026-10-02T12:00:00Z") },
+      as_of: at("2026-10-02T12:05:00Z"),
+    };
+    assert.deepEqual(configurationDrivenDesired(desired, input), {
+      ...desired,
+      effective_at: at("2026-10-02T12:00:00Z"),
+      time_basis: "configuration_activated_at",
+      transition_key: `${desired.transition_key}:c7`,
+    });
+    assert.equal(configurationDrivenDesired(desired, { ...input, stored_fingerprint: "b" }), desired);
+    assert.equal(configurationDrivenDesired(desired, { ...input, stored_fingerprint: null }), desired);
+    assert.equal(configurationDrivenDesired(desired, { ...input, eligibility: { outcome: "closed", reason: "official_booking" } as Input["eligibility"] }), desired);
+    assert.equal(configurationDrivenDesired(desired, { ...input, configuration: { revision: 7, updated_at: at("2026-10-02T09:00:00Z") } }), desired, "fact newer than the PATCH");
+    assert.equal(configurationDrivenDesired(null, input), null);
+    // A pointer time after the sync instant (clock skew) never puts the start in the future.
+    assert.equal(
+      configurationDrivenDesired(desired, { ...input, configuration: { revision: 7, updated_at: at("2026-10-02T12:09:00Z") } })!.effective_at.toISOString(),
+      "2026-10-02T12:05:00.000Z",
+    );
+  });
+});
+
+describe("olr C2c: cadence.no_contact_number_rule (D-C2c; off unless the Owner sets it)", () => {
+  const ruleOn = () => deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: GATE }, cadence: { no_contact_number_rule: "review_no_cadence" } });
+  const noPhone = { phone: null, normalized_phone: null };
+
+  test("rule on, no linked number and no phone: review no_contact_number, the period still opens (no cadence while in review)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    const subject = store.subjects[0]!;
+    assert.deepEqual([subject.status, subject.review_reasons, subject.contact_number_ids], ["review", ["no_contact_number"], []]);
+    assert.equal(store.periods.length, 1, "the New period is recorded, so age survives the review");
+    assert.equal(store.evaluations.length, 1, "the evaluator sees the review status (engine: no routine obligations)");
+  });
+
+  test("rule absent (today's behaviour): the same subject stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, intakeOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+  });
+
+  test("rule on, a phone without a Contact Number yet is a linking delay: stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts());
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons, store.subjects[0]!.contact_number_ids], ["active", [], []]);
+  });
+
+  test("rule on, a phone that never forms an E.164 counts as no phone", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ phone: "12", normalized_phone: "12" }));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
+  });
+
+  test("review fix: a Call Lead with only its original caller's phone will get a number (C2b mint): stays active, no review flap", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const call = store.addLead(leadFacts({ model: "CallLead", ...noPhone, original_caller_phone: "5550100002" }));
+    await refreshLeadForOutreach(call.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons, store.subjects[0]!.contact_number_ids], ["active", [], []]);
+    // The mint uses the original caller only for Call Leads, so a Form Lead never borrows it.
+    const formStore = new MemoryDeskSubjectStore();
+    const form = formStore.addLead(leadFacts({ ...noPhone, original_caller_phone: "5550100002" }));
+    await refreshLeadForOutreach(form.ref, ruleOn(), at("2026-10-01T15:00:00Z"), formStore, fakeSession);
+    assert.deepEqual([formStore.subjects[0]!.status, formStore.subjects[0]!.review_reasons], ["review", ["no_contact_number"]]);
+  });
+
+  test("olr CW1: a Lead whose only usable phone is a snapshot will get a number (the mint's phone rule): stays active", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ ...noPhone, granot_phone: "5550100004" }));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ingested_contact_snapshot.normalized_phone_number"));
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "granot_contact_snapshot.normalized_phone_number"));
+    const raw = { _id: "f".repeat(24), ingested_contact_snapshot: { normalized_phone_number: "5550100005" }, granot_contact_snapshot: { normalized_phone_number: " " } };
+    assert.deepEqual([toDeskLeadFacts("FormLead", raw).ingested_phone, toDeskLeadFacts("FormLead", raw).granot_phone], ["5550100005", null]);
+  });
+
+  test("review fix: toDeskLeadFacts reads a Call Lead's ringcentral.original_caller phone (projected), never a Form Lead's", () => {
+    assert.ok(Object.hasOwn(DESK_LEAD_PROJECTION, "ringcentral.original_caller.normalized_phone_number"));
+    const raw = { _id: "f".repeat(24), ringcentral: { original_caller: { normalized_phone_number: "5550100003" } } };
+    assert.equal(toDeskLeadFacts("CallLead", raw).original_caller_phone, "5550100003");
+    assert.equal(toDeskLeadFacts("FormLead", raw).original_caller_phone, null);
+    assert.equal(toDeskLeadFacts("CallLead", { _id: "f".repeat(24) }).original_caller_phone, null);
+  });
+
+  test("a link arriving clears the reason: back to active, same period (age and deadlines unchanged)", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    const period = { ...store.periods[0]! };
+    assert.equal(store.subjects[0]!.status, "review");
+    // leadLinkWake nominates this Lead's outreach_lead_change when the Lead enters a number's link.
+    store.numbers.set(`FormLead:${lead.ref.id}`, ["n1"]);
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-02T15:00:00Z"), store, fakeSession);
+    const subject = store.subjects[0]!;
+    assert.deepEqual([subject.status, subject.review_reasons, subject.contact_number_ids], ["active", [], ["n1"]]);
+    assert.equal(store.periods.length, 1, "no new period");
+    assert.deepEqual([store.periods[0]!.id, store.periods[0]!.started_at.toISOString(), store.periods[0]!.ended_at], [period.id, period.started_at.toISOString(), null]);
+    assert.equal(store.evaluations.length, 2, "the status change re-evaluates the subject");
+  });
+
+  test("a phone added to the Lead clears the reason on its Lead change", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts(noPhone));
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T15:00:00Z"), store, fakeSession);
+    store.addLead({ ...lead, phone: "(555) 010-0001", normalized_phone: "5550100001", domain_revision: 2 });
+    await refreshLeadForOutreach(lead.ref, ruleOn(), at("2026-10-01T16:00:00Z"), store, fakeSession);
+    assert.deepEqual([store.subjects[0]!.status, store.subjects[0]!.review_reasons], ["active", []]);
+  });
+
+  test("subjectStatusOf: the reason joins the other reasons; closed stays closed", () => {
+    const base = {
+      eligibility: { outcome: "eligible" } as never,
+      decision: { kind: "intake_default", source: "website_form" } as never,
+      received: { received_at: null, received_date: null, received_quality: "missing", adapter_version: "lead-instant-v1" } as const,
+      active_workflow: "new" as const,
+      current_status: "active" as const,
+    };
+    const contact = { number_ids: [], phone_e164: null, rule: "review_no_cadence" as const };
+    assert.deepEqual(subjectStatusOf({ ...base, contact }).review_reasons, ["received_time_missing", "no_contact_number"]);
+    assert.deepEqual(subjectStatusOf({ ...base, contact: { ...contact, rule: undefined } }).review_reasons, ["received_time_missing"]);
+    assert.deepEqual(subjectStatusOf(base).review_reasons, ["received_time_missing"], "no contact input = pre-C2c");
+    assert.deepEqual(subjectStatusOf({ ...base, contact: { ...contact, number_ids: ["n1"] } }).review_reasons, ["received_time_missing"]);
+    assert.deepEqual(subjectStatusOf({ ...base, contact: { ...contact, phone_e164: "+15550100000" } }).review_reasons, ["received_time_missing"]);
+    assert.deepEqual(subjectStatusOf({ ...base, active_workflow: "closed", contact }), { status: "closed", review_reasons: [] });
   });
 });

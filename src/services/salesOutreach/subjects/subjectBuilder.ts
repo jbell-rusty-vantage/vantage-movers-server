@@ -1,4 +1,5 @@
 import type { SalesOutreachWorkflow } from "../../../config/domain/salesOutreach";
+import type { SalesOutreachNoContactNumberRule } from "../../../validation/v1/salesOutreach";
 import { newYorkBusinessDay } from "../reads/businessDay";
 import type { DeskEligibility } from "./eligibility";
 import type { DeskLeadFacts } from "./leadFacts";
@@ -68,10 +69,17 @@ export type DeskSubjectFacts = DeskReceivedFacts &
     /** IMPL-07 inputs: Contact Numbers whose `lead` or `other_leads` hold this Lead (All Numbers). */
     contact_number_ids: string[];
     lead_revision_seen: number;
+    /**
+     * olr B2: `deskDecisionFingerprint` of the configuration this subject was last decided under (priority
+     * map + intake defaults). Null on subjects written before B2 (treated as "same", never as a change).
+     */
+    decision_fingerprint: string | null;
   }>;
 
 export type DeskSubjectContext = Readonly<{
   as_of: Date;
+  /** olr B2: the active configuration's decision fingerprint, stamped on the subject. */
+  decision_fingerprint: string;
   /** Agents with a reviewed `sales_rep` identity link effective at `as_of`. */
   reviewed_rep_ids: ReadonlySet<string>;
   contact_number_ids: readonly string[];
@@ -101,6 +109,7 @@ export function buildSubjectFacts(facts: DeskLeadFacts, decision: DeskPolicyDeci
     assigned_agent_id: facts.receiver_agent_id && context.reviewed_rep_ids.has(facts.receiver_agent_id) ? facts.receiver_agent_id : null,
     contact_number_ids: [...new Set(context.contact_number_ids)].sort(),
     lead_revision_seen: facts.domain_revision,
+    decision_fingerprint: context.decision_fingerprint,
   };
 }
 
@@ -115,9 +124,12 @@ export type DesiredPeriod = Readonly<{
   transition_key: string;
   priority_source_ref: string | null;
   priority_source_revision: number | null;
-  /** When the fact took effect (accepted observation `captured_at`, or the Lead change time). */
+  /**
+   * When the fact took effect (accepted observation `captured_at`, or the Lead change time), or — for a
+   * re-decision caused by a configuration change — when that configuration became active (olr B2).
+   */
   effective_at: Date;
-  time_basis: "accepted_observation_captured_at" | "entity_change_applied_at";
+  time_basis: "accepted_observation_captured_at" | "entity_change_applied_at" | "configuration_activated_at";
   end_reason_for_previous: "priority_change" | "closure";
 }>;
 
@@ -171,6 +183,29 @@ export function desiredPeriodOf(facts: DeskLeadFacts, eligibility: DeskEligibili
  */
 export const ADMISSION_HOLD_REASONS: ReadonlySet<string> = new Set(["ambiguous_identity", "received_time_unreliable", "received_time_missing"]);
 
+/**
+ * olr C2c inputs: the subject's linked Contact Numbers, the E.164 its Lead's number is minted from
+ * (`leadPhoneE164`, the mint's phone rule: the live phone, a Call Lead's original caller, then the intake and
+ * Granot snapshots; null when none forms an E.164) and the Owner's `cadence.no_contact_number_rule`.
+ */
+export type DeskSubjectContactFacts = Readonly<{
+  number_ids: readonly string[];
+  phone_e164: string | null;
+  rule: SalesOutreachNoContactNumberRule | undefined;
+}>;
+
+/** olr C2c review reason: nothing can be called or texted (rule on, no linked number, no usable phone). */
+export const NO_CONTACT_NUMBER_REASON = "no_contact_number";
+
+/**
+ * True when the subject has no callable number and none can exist yet (D-C2c). A phone without a number
+ * yet is a linking delay (the Lead's `lead_link` job mints and links it within about a minute, olr C2b),
+ * never a review: review drops every routine obligation (`engine/evaluate.ts`). Pure.
+ */
+export function lacksContactNumber(contact: DeskSubjectContactFacts | undefined): boolean {
+  return contact?.rule === "review_no_cadence" && contact.number_ids.length === 0 && contact.phone_e164 === null;
+}
+
 /** Subject status and the current review reasons (recomputed from facts, never accumulated). */
 export function subjectStatusOf(input: {
   eligibility: DeskEligibility;
@@ -180,6 +215,8 @@ export function subjectStatusOf(input: {
   active_workflow: SalesOutreachWorkflow | null;
   /** Statuses never move out of `closed` (no implicit reopening, P05h/P06f). */
   current_status: "active" | "closed" | "review" | null;
+  /** olr C2c: absent (or the rule absent) = no `no_contact_number` reason, as before C2c. */
+  contact?: DeskSubjectContactFacts;
 }): { status: "active" | "closed" | "review"; review_reasons: string[] } {
   if (input.current_status === "closed" || input.active_workflow === "closed") return { status: "closed", review_reasons: [] };
   const reasons: string[] = [];
@@ -191,5 +228,6 @@ export function subjectStatusOf(input: {
     if (input.decision.kind === "review") reasons.push(input.decision.reason);
     if (input.decision.kind === "unavailable") reasons.push("policy_unavailable");
   }
+  if (lacksContactNumber(input.contact)) reasons.push(NO_CONTACT_NUMBER_REASON);
   return { status: reasons.length ? "review" : "active", review_reasons: reasons };
 }

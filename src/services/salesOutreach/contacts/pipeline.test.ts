@@ -823,3 +823,146 @@ describe("minute sweep and refresh", () => {
     assert.deepEqual(repDayJob({ ...key, materialize: true }, ["m"]), repDayJob(key, ["m"]));
   });
 });
+
+describe("olr C1b: both scopes stored on the rep-day row", () => {
+  const eligibleFrom = (day: string) => active(desk({ goals: { ...desk().goals!, count_scope_schedule: [{ from_day: day, scope: "eligible_new_quoted" }] } }));
+
+  test("the recount stores both scopes' counts; the headline is the row's scope", async () => {
+    const w = world();
+    const sources = [
+      call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")), // eligible, confirmed
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z")), // no subject, confirmed
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:40:00Z", { call_log_state: null, legs: [] })), // no subject, awaiting
+    ];
+    await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE, TODAY, eligibleFrom(TODAY));
+    const row = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual(
+      [row.count_scope, row.actual_confirmed, row.actual_awaiting_confirmation, row.unattributed],
+      ["eligible_new_quoted", 1, 0, 1],
+    );
+    assert.deepEqual([row.actual_confirmed_all, row.actual_confirmed_eligible, row.actual_awaiting_all, row.actual_awaiting_eligible], [2, 1, 1, 0]);
+  });
+
+  test("no-row rule on the all-scope counts: an eligible-scope day with only an awaiting call to a non-eligible number gets a row", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", newId(), "2026-10-05T14:40:00Z", { call_log_state: null, legs: [] }))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    const result = await recount(w, ALICE, TODAY, eligibleFrom(TODAY));
+    assert.equal(result.outcome, "written");
+    const row = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([row.actual_confirmed, row.actual_awaiting_confirmation, row.unattributed, row.actual_awaiting_all], [0, 0, 0, 1]);
+    // No call at all: still no row.
+    assert.equal((await recount(w, BOB, TODAY, eligibleFrom(TODAY))).outcome, "no_activity");
+  });
+
+  test("a row without both counts is rewritten once even when its fingerprint matches; the frozen snapshot stays", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", NUMBER, "2026-10-04T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE, "2026-10-04", active(desk(), "v-frozen", 3));
+    const key = `${ALICE}|2026-10-04`;
+    const written = w.repDays.rows.get(key)!;
+    assert.equal(written.goal_snapshot.configuration_version, "v-frozen");
+    // As a pre-C1b build stored it: no two-scope counts.
+    const older: Record<string, unknown> = { ...written };
+    for (const field of ["actual_confirmed_all", "actual_confirmed_eligible", "actual_awaiting_all", "actual_awaiting_eligible"]) delete older[field];
+    w.repDays.rows.set(key, older as typeof written);
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk({ goals: { ...desk().goals!, default_scheduled_goal: 80 } }), "v-later", 4)), repDays: w.repDays, transaction: memoryTransaction };
+    const first = await refreshOpenRepDays(NOW, deps);
+    assert.equal(first.recounted, 3, "Alice's row without both counts + the C5 zero rows of Bob and Carol");
+    const rewritten = w.repDays.row(ALICE, "2026-10-04")!;
+    assert.deepEqual([rewritten.actual_confirmed_all, rewritten.actual_confirmed_eligible, rewritten.publication_revision], [1, 1, written.publication_revision + 1]);
+    assert.deepEqual(rewritten.goal_snapshot, written.goal_snapshot, "frozen snapshot unchanged (goal 100, v-frozen)");
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0, "then left alone");
+  });
+});
+
+describe("olr C8: the rep-day row stores the Other outbound breakdown", () => {
+  test("apply + recount: each confirmed call without an eligible subject lands in its reason's bucket; the sum is unattributed", async () => {
+    const w = world();
+    const notEnrolled = newId();
+    w.ctx.lead(notEnrolled, null);
+    const sources = [
+      call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")), // eligible: counted
+      call(w.events, outboundCall("101", notEnrolled, "2026-10-05T14:20:00Z")), // lead_not_enrolled
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:30:00Z")), // no_lead
+      call(w.events, outboundCall("101", newId(), "2026-10-05T14:40:00Z", { call_log_state: null, legs: [] })), // awaiting: not Other outbound
+    ];
+    await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE);
+    const row = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([row.actual_confirmed, row.unattributed], [3, 2]);
+    assert.deepEqual(row.other_outbound, { no_lead: 1, lead_not_enrolled: 1, lead_closed: 0, before_activation: 0, ambiguous: 0, not_new_quoted: 0, unknown: 0 });
+    // The Lead is enrolled later and its call re-derived: the bucket moves, the row is rewritten once.
+    w.ctx.subjects.set([...w.ctx.attached.get(notEnrolled)!][0]!, subjectFacts({ workflow: "discretion" }));
+    await applyContactSources([sources[1]!], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    const moved = await recount(w, ALICE);
+    assert.equal(moved.outcome, "written");
+    assert.deepEqual([moved.fields.other_outbound.lead_not_enrolled, moved.fields.other_outbound.not_new_quoted], [0, 1]);
+    assert.equal((await recount(w, ALICE)).outcome, "unchanged", "a replay writes nothing");
+  });
+
+  test("the refresh pass rewrites today's/yesterday's rows that lack the breakdown once, then leaves them alone", async () => {
+    const w = world();
+    await applyContactSources([call(w.events, outboundCall("101", newId(), "2026-10-05T14:10:00Z"))], { now: NOW, queueRepDays: false }, w.events, SESSION);
+    await recount(w, ALICE);
+    const key = `${ALICE}|${TODAY}`;
+    const written = w.repDays.rows.get(key)!;
+    // As a pre-C8 build stored it: same fingerprint field, no breakdown.
+    const older: Record<string, unknown> = { ...written };
+    delete older.other_outbound;
+    w.repDays.rows.set(key, older as typeof written);
+    const deps = { loader: fixedConfigurationLoader(activeInspection(desk(), "v-test", 3)), repDays: w.repDays, transaction: memoryTransaction };
+    const first = await refreshOpenRepDays(NOW, deps);
+    assert.equal(first.recounted, 4, "Alice's row without the breakdown + the C5 zero rows of yesterday (Alice, Bob, Carol)");
+    const rewritten = w.repDays.row(ALICE, TODAY)!;
+    assert.deepEqual([rewritten.other_outbound.no_lead, rewritten.publication_revision], [1, written.publication_revision + 1]);
+    assert.equal((await refreshOpenRepDays(NOW, deps)).recounted, 0, "then left alone");
+    assert.equal(w.repDays.row(ALICE, TODAY)!.publication_revision, rewritten.publication_revision);
+  });
+});
+
+describe("olr C2d: the consumer and the sweep derive under evidence.call_association_rule", () => {
+  const leased = (subject_key: string) => ({ _id: newId(), subject_key, lease_owner: "w", lease_epoch: 1 });
+  /** The number's `lead` is not enrolled; one active desk subject sits in its `other_leads`. */
+  const shadowWorld = () => {
+    const ctx = new ContextBuilder().link(ALICE, "101");
+    ctx.lead(NUMBER, null);
+    const shadow = ctx.other(NUMBER, subjectFacts({ workflow: "new" })).subject!;
+    const events = new MemoryContactEventStore(ctx.build());
+    return { events, shadow, repDays: new MemoryRepDayStore(events) };
+  };
+  const ruleOn = () => desk({ evidence: { call_association_rule: "single_active_subject_on_link" } });
+  const deps = (w: ReturnType<typeof shadowWorld>, input: SalesOutreachConfigurationInput): ContactJobDeps => ({
+    loader: fixedConfigurationLoader(activeInspection(input)),
+    store: w.events,
+    repDayStore: w.repDays,
+    now: () => NOW,
+    complete: (async (_lease: unknown, mutation: (s: unknown) => Promise<unknown>) => mutation(SESSION)) as never,
+    fail: (async () => undefined) as never,
+    publish: async () => undefined,
+  });
+
+  test("contact change job: rule on credits the shadow subject and asks the store for other_leads; rule absent does neither", async () => {
+    for (const [input, expected] of [[ruleOn(), "shadow"], [desk(), null]] as const) {
+      const w = shadowWorld();
+      const source = call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z"));
+      const done = await runOutreachContactChangeJob(undefined, { ...deps(w, input), claim: (async () => leased(`call:${source.source_id}`)) as never });
+      assert.equal(done.status, "completed");
+      const event = w.events.events.get(contactEventId("call", source.source_id))!;
+      assert.deepEqual([event.subject_id, event.association], expected ? [w.shadow.id, "unique"] : [null, "none"]);
+      assert.equal(w.events.requests.at(-1)!.other_leads, expected ? true : undefined);
+    }
+  });
+
+  test("minute sweep: rule on credits the shadow subject", async () => {
+    const w = shadowWorld();
+    const sweep = new MemorySweepStore();
+    sweep.capture = new Date("2026-10-05T18:40:00Z");
+    const row = outboundCall("101", NUMBER, "2026-10-05T14:10:00Z");
+    w.events.calls.set(row.id, row);
+    sweep.sources.set("call", [{ id: row.id, updated_at: new Date("2026-10-05T14:11:00Z") }]);
+    const lease: SweepLease = { acquire: async () => true, release: async () => undefined };
+    await sweepContactSources("call", NOW, { loader: fixedConfigurationLoader(activeInspection(ruleOn())), store: sweep, events: w.events, repDays: w.repDays, lease, transaction: memoryTransaction });
+    assert.equal(w.events.events.get(contactEventId("call", row.id))!.subject_id, w.shadow.id);
+  });
+});

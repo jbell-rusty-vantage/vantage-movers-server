@@ -10,7 +10,9 @@
  *   `sod_projection_q_urgency` index (IXSCAN, no blocking SORT);
  * - counts, team overdue figures and the assignment generation (changes on reassignment) match;
  * - S4: per-Agent cadence counts (overdue Leads, due call attempts / SMS sends, unknown remaining) equal
- *   the in-memory twin and reconcile with the team card; queue rows carry the stored `schedule_day`;
+ *   the in-memory twin and reconcile with the team card; olr A2: under four channel coverages (calls only,
+ *   behind several deadlines, past as_of, call coverage unknown → null counts), including the pre-A2
+ *   transitional `urgency_due` branch for a row without `queue_keys.sms_due`; queue rows carry the stored `schedule_day`;
  *   Agent names resolve in one batched read (history names' fallback).
  * - olr A3-fresh: the Call Log row's projection carries the confirmation instants and the observed
  *   watermark; the newest call webhook receipt is one index walk (no blocking sort) that skips receipts
@@ -40,12 +42,13 @@ async function main() {
   const { SALES_OUTREACH_MODEL_REGISTRY } = await import("../../src/models/salesOutreach/registry.js");
   const { getSalesOutreachProjectionModel, getSalesOutreachSubjectModel } = await import("../../src/models/salesOutreach/index.js");
   const { evaluateAndProject, evaluationAdmissionOf } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
-  const { completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow, TEST_AGENT_A, TEST_AGENT_B } = await import(
+  const { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow, TEST_AGENT_A, TEST_AGENT_B } = await import(
     "../../src/services/salesOutreach/evaluation/testing.js"
   );
   const { activeInspection } = await import("../../src/services/salesOutreach/reads/testing.js");
   const { MemoryDeskReadStore } = await import("../../src/services/salesOutreach/reads/deskTesting.js");
-  const { mongoDeskQueueStore } = await import("../../src/services/salesOutreach/reads/deskStore.js");
+  const { mongoDeskQueueStore, mongoOverdueFilter } = await import("../../src/services/salesOutreach/reads/deskStore.js");
+  const { QUEUE_KEY_FAR_FUTURE } = await import("../../src/services/salesOutreach/evaluation/projection.js");
   const { mongoSalesOutreachReadStore } = await import("../../src/services/salesOutreach/reads/store.js");
   const { Agent } = await import("../../src/models/Agent.js");
   const { mongoQueueQuery, queueSearchOf, queueSortSpec, keysetOf } = await import("../../src/services/salesOutreach/reads/queueQuery.js");
@@ -86,7 +89,7 @@ async function main() {
     memory.evaluation.subjects.set(subject.id, subject);
     memory.evaluation.periods.push(periodRow(subject.id, { started_at: received, workflow: i % 6 === 5 ? "quoted" : "new" }));
   }
-  memory.evaluation.coverage = { calls_known_complete_through: at("2026-10-05T18:58:00.000Z"), sms_known_complete_through: null };
+  memory.evaluation.coverage = capturedCoverage(at("2026-10-05T18:58:00.000Z"));
   for (const id of memory.evaluation.subjects.keys())
     await runInFakeTransaction((session) => evaluateAndProject(id, admission.context, at("2026-10-05T18:59:00.000Z"), memory.evaluation, session));
   const oid = (v: unknown) => (typeof v === "string" && /^[a-f\d]{24}$/.test(v) ? new mongoose.Types.ObjectId(v) : v);
@@ -153,24 +156,69 @@ async function main() {
   assert.match(winning, /sod_projection_q_urgency/);
   assert.doesNotMatch(winning, /"stage":"SORT"/);
 
-  // 4. Team overdue figures and the assignment generation.
+  // 4. Team overdue figures (olr A2: coverage-aware, per channel) and the assignment generation.
+  // Fixture shapes the evaluator does not produce here (SMS has no coverage in this fixture): two rows get
+  // a passed SMS deadline, and one row is a pre-A2 (engine v1) row without `queue_keys.sms_due` whose only
+  // passed deadline is in `urgency_due` (the transitional branch must count it on both stores).
+  const projectionIds = [...memory.evaluation.projections.keys()];
+  const keysOf = (id: string) => (memory.evaluation.projections.get(id)!.doc as unknown as { queue_keys: Record<string, Date | undefined> }).queue_keys;
+  for (const [i, id] of projectionIds.slice(0, 2).entries()) {
+    const smsDue = at(i === 0 ? "2026-10-05T16:00:00.000Z" : "2026-10-05T18:30:00.000Z");
+    const keys = keysOf(id);
+    const urgency = new Date(Math.min(+keys.urgency_due!, +smsDue));
+    Object.assign(keys, { sms_due: smsDue, urgency_due: urgency });
+    await getSalesOutreachProjectionModel().collection.updateOne(
+      { subject_id: new mongoose.Types.ObjectId(id) },
+      { $set: { "queue_keys.sms_due": smsDue, "queue_keys.urgency_due": urgency } },
+    );
+  }
+  const legacyId = projectionIds[2]!;
+  const legacyKeys = keysOf(legacyId);
+  delete legacyKeys.sms_due;
+  Object.assign(legacyKeys, { call_due: QUEUE_KEY_FAR_FUTURE, urgency_due: at("2026-10-05T17:00:00.000Z") });
+  await getSalesOutreachProjectionModel().collection.updateOne(
+    { subject_id: new mongoose.Types.ObjectId(legacyId) },
+    { $unset: { "queue_keys.sms_due": "" }, $set: { "queue_keys.call_due": QUEUE_KEY_FAR_FUTURE, "queue_keys.urgency_due": legacyKeys.urgency_due } },
+  );
   const asOf = at("2026-10-05T19:00:00.000Z");
-  const mongoTeam = await mongoDeskQueueStore.teamOverdue(asOf);
-  const memoryTeam = await memory.teamOverdue(asOf);
-  assert.deepEqual(mongoTeam, memoryTeam);
-
-  // 4b (S4). Per-Agent cadence counts: Mongo equals the twin, and the per-rep overdue Leads plus the
-  // Unassigned overdue part add up to the team's distinct overdue card (one rule).
   const unknownAgent = new mongoose.Types.ObjectId().toHexString();
   const agents = [TEST_AGENT_A, TEST_AGENT_B, unknownAgent, "not-an-id"];
   const sorted = (m: ReadonlyMap<string, unknown>) => [...m].sort(([a], [b]) => (a < b ? -1 : 1));
-  const mongoCadence = await mongoDeskQueueStore.agentCadence(asOf, agents);
-  assert.deepEqual(sorted(mongoCadence), sorted(await memory.agentCadence(asOf, agents)));
-  assert.ok(!mongoCadence.has(unknownAgent), "an Agent without active Leads is absent");
-  const perRepOverdue = [...mongoCadence.values()].reduce((sum, c) => sum + c.overdue_leads, 0);
-  assert.equal(perRepOverdue + mongoTeam.unassigned_overdue, mongoTeam.distinct_overdue);
-  assert.ok([...mongoCadence.values()].some((c) => c.call_due_remaining > 0 || c.overdue_leads > 0), "the fixture exercises the counts");
-  assert.ok([...mongoCadence.values()].some((c) => c.sms_due_unknown > 0), "SMS without coverage counts as unknown, never 0");
+  const scenarios = [
+    { name: "calls only (SMS capture off)", coverage: { call: at("2026-10-05T18:56:00.000Z"), sms: null } },
+    { name: "coverage behind several deadlines", coverage: { call: at("2026-10-05T15:00:00.000Z"), sms: at("2026-10-05T17:00:00.000Z") } },
+    { name: "coverage past as_of (capped)", coverage: { call: at("2026-10-05T20:00:00.000Z"), sms: at("2026-10-05T20:00:00.000Z") } },
+    { name: "call coverage unknown", coverage: { call: null, sms: at("2026-10-05T18:00:00.000Z") } },
+  ];
+  const distinct = new Map<string, number | null>();
+  let callsOnly: Awaited<ReturnType<typeof mongoDeskQueueStore.agentCadence>> | null = null;
+  for (const { name, coverage } of scenarios) {
+    const team = await mongoDeskQueueStore.teamOverdue(asOf, coverage);
+    assert.deepEqual(team, await memory.teamOverdue(asOf, coverage), name);
+    distinct.set(name, team.distinct_overdue);
+    // 4b (S4 + olr A2). Per-Agent cadence counts: Mongo equals the twin, and the per-rep overdue Leads plus
+    // the Unassigned overdue part add up to the team's distinct overdue card (one rule) under every coverage.
+    const cadence = await mongoDeskQueueStore.agentCadence(asOf, agents, coverage);
+    assert.deepEqual(sorted(cadence), sorted(await memory.agentCadence(asOf, agents, coverage)), name);
+    assert.ok(!cadence.has(unknownAgent), "an Agent without active Leads is absent");
+    if (team.distinct_overdue === null) {
+      assert.deepEqual([team.quoted_call_overdue, team.unassigned_overdue], [null, null], name);
+      assert.ok([...cadence.values()].every((c) => c.overdue_leads === null), name);
+      continue;
+    }
+    const perRepOverdue = [...cadence.values()].reduce((sum, c) => sum + (c.overdue_leads ?? 0), 0);
+    assert.equal(perRepOverdue + (team.unassigned_overdue ?? 0), team.distinct_overdue, name);
+    if (name.startsWith("calls only")) callsOnly = cadence;
+  }
+  assert.equal(distinct.get("call coverage unknown"), null, "no call coverage: the counts are unknown, never a guess");
+  assert.ok(distinct.get("coverage behind several deadlines")! < distinct.get("coverage past as_of (capped)")!, "coverage gates the count");
+  const legacyOverdue = (sms: Date | null) =>
+    getSalesOutreachProjectionModel().countDocuments({ ...mongoOverdueFilter({ call: asOf, sms }), subject_id: new mongoose.Types.ObjectId(legacyId) });
+  assert.equal(await legacyOverdue(asOf), 1, "a pre-A2 row is counted through the transitional urgency_due branch");
+  assert.equal(await legacyOverdue(null), 0, "…only when both channels have coverage");
+  assert.ok(callsOnly);
+  assert.ok([...callsOnly.values()].some((c) => c.call_due_remaining > 0 || (c.overdue_leads ?? 0) > 0), "the fixture exercises the counts");
+  assert.ok([...callsOnly.values()].some((c) => c.sms_due_unknown > 0), "SMS without coverage counts as unknown, never 0");
 
   // 4c (S4). Queue rows carry the stored schedule day (projection reads only `detail.schedule_day`).
   const allMatch = { assignment: { kind: "all" as const }, state: "all_active" as const, priority: { kind: "all" as const }, workflow: null, move_date: null, search: null };
@@ -212,6 +260,17 @@ async function main() {
     [callsRow?.confirmation_success_at?.toISOString(), callsRow?.observed_complete_through?.toISOString(), callsRow?.known_complete_through?.toISOString()],
     ["2026-10-05T14:59:20.000Z", "2026-10-05T14:44:00.000Z", "2026-10-05T14:10:00.000Z"],
   );
+  // AW1: a row without the sticky instants falls back to the last run, which confirms only in sync mode on;
+  // the projection must carry last_run.sync_mode for that (a shadow run never confirms).
+  const legacyRow = { scope: "call_log_all_directions" };
+  const legacyRun = (syncMode: string) => ({
+    $unset: { reconcile_sync_success_at: "", isync_lane: "" },
+    $set: { "last_run.sync_mode": syncMode },
+  });
+  await getSalesIntelligenceSyncStateModel().collection.updateOne(legacyRow, legacyRun("shadow"));
+  assert.equal((await mongoSalesOutreachReadStore.readCallsCapture())?.confirmation_success_at ?? null, null, "AW1: a shadow run never confirms");
+  await getSalesIntelligenceSyncStateModel().collection.updateOne(legacyRow, legacyRun("on"));
+  assert.equal((await mongoSalesOutreachReadStore.readCallsCapture())?.confirmation_success_at?.toISOString(), "2026-10-05T14:58:00.000Z", "AW1: mode on confirms");
   await ensureRingCentralWebhookEventIndexes();
   const receipts = mongoose.connection.db!.collection(getRingCentralCollectionName("webhookEvents"));
   await receipts.insertMany([
@@ -250,7 +309,7 @@ async function main() {
   await repStream.close();
   await ownerStream.close();
   console.log(
-    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; scoped live streams`,
+    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; A2 coverage-aware overdue counts (4 coverages, pre-A2 branch); S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; scoped live streams`,
   );
 }
 

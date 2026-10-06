@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { SalesOutreachGoalCountScope } from "../../../config/domain/salesOutreach";
+import {
+  SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS,
+  type SalesOutreachOtherOutboundBreakdown,
+} from "../../../config/domain/salesOutreachContacts";
 import type { SalesOutreachConfigurationValue } from "../../../validation/v1/salesOutreach";
 import {
   SALES_OUTREACH_COUNT_SCOPE_LABELS,
@@ -53,6 +57,16 @@ export type RepDayRow = Readonly<{
   actual_confirmed: number;
   actual_awaiting_confirmation: number;
   unattributed: number;
+  /**
+   * olr C1b: the day under each scope. Absent or null on a row written before both counts were stored —
+   * never read as 0.
+   */
+  actual_confirmed_all?: number | null;
+  actual_confirmed_eligible?: number | null;
+  actual_awaiting_all?: number | null;
+  actual_awaiting_eligible?: number | null;
+  /** olr C8: `unattributed` by association reason. Absent or null on a row written before the breakdown was stored. */
+  other_outbound?: SalesOutreachOtherOutboundBreakdown | null;
   coverage: unknown;
   computed_as_of: Date | null;
   publication_revision: number;
@@ -200,6 +214,71 @@ export function fallbackCountScope(goals: Pick<GoalsConfiguration, "count_scope_
   return countScopeForDay(businessDay, goals?.count_scope_schedule);
 }
 
+/** The other of the two count scopes (olr C1b: the secondary figure's scope). */
+export function alternateCountScope(scope: SalesOutreachGoalCountScope): SalesOutreachGoalCountScope {
+  return scope === "all_outbound" ? "eligible_new_quoted" : "all_outbound";
+}
+
+/**
+ * The rep-day's count under the other scope (olr C1b), with the headline's honesty rule: a positive
+ * count is a confirmed lower bound, a 0 only once coverage is complete. A rep without a row reads 0
+ * once coverage is complete (pending before). A row written before both counts were stored is null.
+ */
+function alternateScopeOf(row: RepDayRow | null, scope: SalesOutreachGoalCountScope, complete: boolean): SalesOutreachRepDayDto["alternate_scope"] {
+  const count_scope = alternateCountScope(scope);
+  const label = SALES_OUTREACH_COUNT_SCOPE_LABELS[count_scope];
+  if (!row) {
+    return { count_scope, count_scope_label: label, actual_confirmed: complete ? 0 : null, actual_awaiting_confirmation: complete ? 0 : null };
+  }
+  const all = count_scope === "all_outbound";
+  const confirmed = (all ? row.actual_confirmed_all : row.actual_confirmed_eligible) ?? null;
+  const awaiting = (all ? row.actual_awaiting_all : row.actual_awaiting_eligible) ?? null;
+  if (confirmed === null || awaiting === null) return null;
+  return {
+    count_scope,
+    count_scope_label: label,
+    actual_confirmed: confirmed > 0 || complete ? confirmed : null,
+    actual_awaiting_confirmation: awaiting,
+  };
+}
+
+const zeroBreakdown = (): SalesOutreachOtherOutboundBreakdown =>
+  Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, 0])) as SalesOutreachOtherOutboundBreakdown;
+
+/**
+ * The rep-day's "Other outbound" breakdown (olr C8), served with its count: null while the count is
+ * null (same honesty rule), null for a row written before the breakdown was stored, all zeros for a rep
+ * without a row once coverage is complete.
+ */
+function otherOutboundBreakdownOf(row: RepDayRow | null, count: number | null): SalesOutreachOtherOutboundBreakdown | null {
+  if (count === null) return null;
+  if (!row) return zeroBreakdown();
+  const stored = row.other_outbound;
+  if (!stored) return null;
+  return Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, stored[bucket] ?? 0])) as SalesOutreachOtherOutboundBreakdown;
+}
+
+/** The team sum of roster reps' breakdowns (olr C8); null when any is null, never a partial sum. */
+function teamOtherOutboundBreakdown(roster: readonly RepDayGoalDto[]): SalesOutreachOtherOutboundBreakdown | null {
+  const sum = zeroBreakdown();
+  for (const rep of roster) {
+    const breakdown = rep.other_outbound.breakdown;
+    if (!breakdown) return null;
+    for (const bucket of SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS) sum[bucket] += breakdown[bucket];
+  }
+  return sum;
+}
+
+/**
+ * Whether a stored rep-day row records no outbound call at all (olr CW1): the recount's no-row test
+ * (`actual_confirmed_all + actual_awaiting_all === 0`, olr C1b), so such a row reads like a rep without
+ * one. A row written before both scopes were stored falls back to its own counts and "Other outbound".
+ */
+export function repDayRowRecordsNoActivity(row: RepDayRow): boolean {
+  if (row.actual_confirmed_all != null && row.actual_awaiting_all != null) return row.actual_confirmed_all + row.actual_awaiting_all === 0;
+  return row.actual_confirmed + row.actual_awaiting_confirmation + row.unattributed === 0;
+}
+
 /** A rep-day row's goal parts; the cadence counts are composed separately (`teamCadence.ts` `composeRepCadence`). */
 export type RepDayGoalDto = Omit<SalesOutreachRepDayDto, "overdue_leads" | "calls_due_today" | "sms_due_today">;
 
@@ -224,7 +303,9 @@ export function composeRepDay(input: {
     actual = row.actual_confirmed > 0 || complete ? row.actual_confirmed : null;
     awaiting = row.actual_awaiting_confirmation;
     other = row.unattributed > 0 || complete ? row.unattributed : null;
-    basis = actual === null ? "pending" : "projection";
+    // olr CW1: a row that records no activity (a C5 materialized zero row, or one whose calls were
+    // re-derived away) is the same recorded 0 as a rep without a row.
+    basis = actual === null ? "pending" : repDayRowRecordsNoActivity(row) ? "no_activity_recorded" : "projection";
   } else {
     actual = complete ? 0 : null;
     awaiting = complete ? 0 : null;
@@ -254,7 +335,8 @@ export function composeRepDay(input: {
     remaining,
     progress: cappedProgress(actual, goal.goal),
     goal_reached: reached,
-    other_outbound: { count: other, label: SALES_OUTREACH_OTHER_OUTBOUND_LABEL },
+    other_outbound: { count: other, label: SALES_OUTREACH_OTHER_OUTBOUND_LABEL, breakdown: otherOutboundBreakdownOf(row, other) },
+    alternate_scope: alternateScopeOf(row, scope, complete),
     coverage,
     unknown_reason: complete ? null : "coverage_incomplete",
     projection_revision: row?.publication_revision ?? null,
@@ -281,6 +363,19 @@ export function composeTeamGoals(
   }
   const goalReps = roster.filter((rep) => rep.goal_state === "goal");
   const effectiveScope = scope ?? (roster[0]?.count_scope ?? null);
+  // olr C1b: the team's secondary figure sums the roster reps' alternate counts; one unknown (pending,
+  // a pre-C1b row, or a rep presented under another scope) makes the sum unknown, never a partial sum.
+  let alternate: NonNullable<SalesOutreachTeamDto["goals"]>["outbound_calls"]["alternate"] = null;
+  if (effectiveScope && effectiveScope !== "mixed") {
+    const alternateScope = alternateCountScope(effectiveScope);
+    const known = roster.every(
+      (rep) => rep.alternate_scope?.count_scope === alternateScope && rep.alternate_scope.actual_confirmed !== null,
+    );
+    alternate = {
+      count_scope: alternateScope,
+      actual: known ? roster.reduce((sum, rep) => sum + (rep.alternate_scope?.actual_confirmed ?? 0), 0) : null,
+    };
+  }
   return {
     count_scope: effectiveScope,
     count_scope_label: effectiveScope && effectiveScope !== "mixed" ? SALES_OUTREACH_COUNT_SCOPE_LABELS[effectiveScope] : null,
@@ -291,6 +386,7 @@ export function composeTeamGoals(
       incomplete: pending.length > 0,
       pending_agent_ids: pending.map((rep) => rep.agent_id),
       unknown_reason: unknownReason,
+      alternate,
     },
     reps_at_goal: {
       count: goalReps.filter((rep) => rep.goal_reached === true).length,
@@ -300,6 +396,7 @@ export function composeTeamGoals(
     other_outbound_total: roster.some((rep) => rep.other_outbound.count === null)
       ? null
       : roster.reduce((sum, rep) => sum + (rep.other_outbound.count ?? 0), 0),
+    other_outbound_breakdown: teamOtherOutboundBreakdown(roster),
     roster_size: roster.length,
   };
 }

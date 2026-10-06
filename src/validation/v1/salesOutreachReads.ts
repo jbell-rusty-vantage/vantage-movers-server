@@ -74,6 +74,24 @@ export const SALES_OUTREACH_COUNT_SCOPE_LABELS = {
   eligible_new_quoted: "Outbound calls (New/Quoted leads)",
 } as const satisfies Record<(typeof SALES_OUTREACH_GOAL_COUNT_SCOPES)[number], string>;
 export const SALES_OUTREACH_OTHER_OUTBOUND_LABEL = "Other outbound" as const;
+
+/**
+ * olr C8: "Other outbound" by why the calls did not count (the contact events' `association_reason`;
+ * `unknown` = events derived before the reason was stored). Keys, not an enum value: the admin renders
+ * the labels. Sums to the matching `other_outbound` count.
+ */
+export const salesOutreachOtherOutboundBreakdownSchema = z
+  .object({
+    no_lead: z.number().int().min(0),
+    lead_not_enrolled: z.number().int().min(0),
+    lead_closed: z.number().int().min(0),
+    before_activation: z.number().int().min(0),
+    ambiguous: z.number().int().min(0),
+    not_new_quoted: z.number().int().min(0),
+    unknown: z.number().int().min(0),
+  })
+  .strict();
+export type SalesOutreachOtherOutboundBreakdownDto = z.infer<typeof salesOutreachOtherOutboundBreakdownSchema>;
 export const SALES_OUTREACH_GOAL_STATE_LABELS = {
   goal: null,
   no_goal_today: "No goal today",
@@ -96,7 +114,8 @@ const captureFreshnessSchema = z
     state: z.enum(SALES_OUTREACH_CAPTURE_FRESHNESS_STATES),
     /**
      * Latest capture progress. Calls: min(last Call Log confirmation, newest call webhook receipt) in the
-     * staffed window [07:45, 20:30) New York, the confirmation alone outside it (RINGCENTRAL-CAPTURE §8).
+     * staffed window [07:45, 20:30) New York once the day's first call webhook has arrived; the confirmation
+     * alone outside the window and before that first receipt (RINGCENTRAL-CAPTURE §8, olr AW1).
      * SMS: the worst reviewed mailbox's last sync.
      */
     last_updated_at: nullableInstant,
@@ -156,29 +175,46 @@ const commonReadSchema = baseReadSchema.extend({
 
 /**
  * Why a cadence metric has no value: cadence evaluation is off (`cadence_disabled`), runs in shadow so
- * no overdue label may be shown (`cadence_shadow`), or the stored cadence cannot be resolved
- * (`policy_unavailable`). The admin renders a null value as unavailable, never as 0.
+ * no overdue label may be shown (`cadence_shadow`), the stored cadence cannot be resolved
+ * (`policy_unavailable`), or call capture coverage is unknown so no passed deadline can be verified
+ * (`coverage_incomplete`, olr A2). The admin renders a null value as unavailable, never as 0.
  */
-export const SALES_OUTREACH_CADENCE_UNKNOWN_REASONS = ["cadence_disabled", "cadence_shadow", "policy_unavailable"] as const;
+export const SALES_OUTREACH_CADENCE_UNKNOWN_REASONS = ["cadence_disabled", "cadence_shadow", "policy_unavailable", "coverage_incomplete"] as const;
 const cadenceMetricSchema = z
   .object({ value: z.number().int().min(0).nullable(), unknown_reason: z.enum(SALES_OUTREACH_CADENCE_UNKNOWN_REASONS).nullable() })
   .strict();
 /**
- * A due-count metric (rep-days `calls_due_today` / `sms_due_today`): the cadence reasons, plus
- * `coverage_incomplete` when a due requirement's remaining count is unknown because its channel has no
+ * A due-count metric (rep-days `calls_due_today` / `sms_due_today`): the cadence reasons, where
+ * `coverage_incomplete` means a due requirement's remaining count is unknown because its channel has no
  * capture coverage yet (a partial sum would undercount).
  */
-export const SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS = [...SALES_OUTREACH_CADENCE_UNKNOWN_REASONS, "coverage_incomplete"] as const;
+export const SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS = SALES_OUTREACH_CADENCE_UNKNOWN_REASONS;
 const dueTodayMetricSchema = z
   .object({ value: z.number().int().min(0).nullable(), unknown_reason: z.enum(SALES_OUTREACH_DUE_TODAY_UNKNOWN_REASONS).nullable() })
   .strict();
 
 const subjectIdSchema = z.string().regex(/^[a-f\d]{24}$/);
 
+/** Read-time verification of a channel's passed deadline (olr A2; SPECIFICATION §10.3). */
+export const SALES_OUTREACH_CHANNEL_VERIFICATION_STATES = ["verified", "unverified"] as const;
+const channelVerificationSchema = z
+  .object({
+    state: z.enum(SALES_OUTREACH_CHANNEL_VERIFICATION_STATES),
+    /** The channel's cadence coverage: evidence known through this instant after the settlement allowance and derivation (null = no capture coverage). */
+    verified_through: nullableInstant,
+    /** The earliest passed deadline coverage cannot prove yet; null when verified. */
+    unverified_since: nullableInstant,
+  })
+  .strict();
+
 /**
  * One channel's requirement (CONTRACTS "Common read data"). Calls and SMS are independent; a pending
- * count is null, never 0. `status` is derived at the read's `as_of` (a `due` requirement whose deadline
- * passed reads `overdue`), then masked when the cadence runs in shadow (`overdue` reads `due`).
+ * count is null, never 0. `status` is derived at the read's `as_of` with the channel's cadence coverage
+ * (olr A2): a passed deadline reads `overdue` only when coverage proves it (`verification.state =
+ * verified`); otherwise it reads `due` with `verification.state = unverified` ("not yet verified"; the
+ * Lead stays in Needs contact). `verification` is null while no deadline has passed, for any other
+ * status, and in shadow, where the status is masked (`overdue` reads `due`). `coverage` is the live
+ * capture watermark at `as_of` (calls: the Call Log watermark; SMS: the worst reviewed mailbox).
  */
 export const salesOutreachChannelSchema = z
   .object({
@@ -197,6 +233,7 @@ export const salesOutreachChannelSchema = z
       })
       .strict(),
     blocked_reason: z.string().nullable(),
+    verification: channelVerificationSchema.nullable(),
   })
   .strict();
 export type SalesOutreachChannelDto = z.infer<typeof salesOutreachChannelSchema>;
@@ -396,8 +433,31 @@ export const salesOutreachRepDaySchema = z
     progress: z.number().min(0).max(1).nullable(),
     /** actual ≥ goal for a positive goal; false on a zero-goal day; null when unknown or not on roster. */
     goal_reached: z.boolean().nullable(),
-    /** Calls kept out of the count (no eligible Lead), labelled "Other outbound". */
-    other_outbound: z.object({ count: z.number().int().min(0).nullable(), label: z.literal(SALES_OUTREACH_OTHER_OUTBOUND_LABEL) }).strict(),
+    /**
+     * Calls kept out of the count (no eligible Lead), labelled "Other outbound". olr C8 `breakdown`: the
+     * same calls by reason; null while `count` is null and for a row written before the breakdown was stored.
+     */
+    other_outbound: z
+      .object({
+        count: z.number().int().min(0).nullable(),
+        label: z.literal(SALES_OUTREACH_OTHER_OUTBOUND_LABEL),
+        breakdown: salesOutreachOtherOutboundBreakdownSchema.nullable(),
+      })
+      .strict(),
+    /**
+     * olr C1b: the same day counted under the other scope (a secondary figure, never the goal). Same
+     * honesty rule as the headline: a positive count is a lower bound, a 0 only once coverage is complete.
+     * Null for a row written before both counts were stored.
+     */
+    alternate_scope: z
+      .object({
+        count_scope: z.enum(SALES_OUTREACH_GOAL_COUNT_SCOPES),
+        count_scope_label: z.string(),
+        actual_confirmed: z.number().int().min(0).nullable(),
+        actual_awaiting_confirmation: z.number().int().min(0).nullable(),
+      })
+      .strict()
+      .nullable(),
     coverage: salesOutreachCoverageSchema,
     unknown_reason: z.string().nullable(),
     projection_revision: z.number().int().min(0).nullable(),
@@ -449,6 +509,15 @@ export const salesOutreachTeamGoalsSchema = z
         incomplete: z.boolean(),
         pending_agent_ids: z.array(salesOutreachAgentIdSchema),
         unknown_reason: z.string().nullable(),
+        /**
+         * olr C1b: roster reps' confirmed calls under the other scope (secondary figure). Null when the day
+         * mixes scopes or has none; `actual` is null when any roster rep's alternate count is unknown
+         * (pending, or a row written before both counts were stored).
+         */
+        alternate: z
+          .object({ count_scope: z.enum(SALES_OUTREACH_GOAL_COUNT_SCOPES), actual: z.number().int().min(0).nullable() })
+          .strict()
+          .nullable(),
       })
       .strict(),
     /** Card 2: reps at goal / reps with a positive goal (zero-goal reps excluded from the denominator). */
@@ -456,6 +525,11 @@ export const salesOutreachTeamGoalsSchema = z
       .object({ count: z.number().int().min(0), of: z.number().int().min(0), pending: z.number().int().min(0) })
       .strict(),
     other_outbound_total: z.number().int().min(0).nullable(),
+    /**
+     * olr C8: roster reps' "Other outbound" breakdowns summed; null when any roster rep's breakdown is
+     * null (pending, or a row written before the breakdown was stored) — never a partial sum.
+     */
+    other_outbound_breakdown: salesOutreachOtherOutboundBreakdownSchema.nullable(),
     roster_size: z.number().int().min(0),
   })
   .strict();

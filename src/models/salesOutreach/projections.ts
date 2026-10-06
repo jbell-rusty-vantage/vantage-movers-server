@@ -8,6 +8,7 @@ import {
   SALES_OUTREACH_SUBJECT_STATUSES,
   SALES_OUTREACH_WORKFLOWS,
 } from "../../config/domain/salesOutreach";
+import { SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS } from "../../config/domain/salesOutreachContacts";
 import { at, count, date, defineCsiModel, enumeration, index, oid, ref, revision, str, text, unique, validatedJson } from "../salesIntelligence/common";
 
 const nullableCount = { type: Number, default: null, min: 0, validate: (v: unknown) => v === null || Number.isSafeInteger(v) } as const;
@@ -80,6 +81,10 @@ export const SALES_OUTREACH_PROJECTION_INDEXES = [
   index("sod_projection_q_received_desc", { assigned_agent_id: 1, "queue_keys.received_desc": 1, subject_id: 1 }),
   index("sod_projection_q_interaction", { assigned_agent_id: 1, "queue_keys.last_interaction": 1, subject_id: 1 }),
   index("sod_projection_next_evaluation", { next_evaluation_at: 1 }),
+  // olr A1: the evaluate sweep's coverage repair (rows whose verdict waits on a channel's coverage).
+  // Non-unique; writes never need them, and without them the sweep scans the (small) collection.
+  index("sod_projection_coverage_wait_call", { "coverage_wait.call": 1, subject_id: 1 }),
+  index("sod_projection_coverage_wait_sms", { "coverage_wait.sms": 1, subject_id: 1 }),
 ];
 
 /** Subject facts the queue filters and searches on, copied from the subject at the projection's write. */
@@ -109,14 +114,32 @@ const queueKeysSchema = new Schema(
     urgency_due: at,
     /** Next future scheduled action due; far future when none. */
     urgency_next: at,
-    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card). */
+    /** The Call channel's earliest unsatisfied actionable deadline (team "quoted overdue call" card, coverage-aware overdue counts). */
     call_due: at,
+    /**
+     * The SMS channel's earliest unsatisfied actionable deadline (olr A2: the overdue counts compare each
+     * channel with its own coverage). Absent on rows written before A2; no index (the counts scan the
+     * small active set, as the quoted card already does on `call_due`).
+     */
+    sms_due: at,
     /** Received instant; unknown sorts last ascending (far future). */
     received_asc: at,
     /** Received instant; unknown sorts last descending (epoch). */
     received_desc: at,
     /** Last interaction; never contacted = epoch (first ascending, last descending). */
     last_interaction: at,
+  },
+  { _id: false, strict: "throw" },
+);
+
+/**
+ * Per channel, the earliest deadline whose verdict waits on capture coverage (engine `coverage_wait`,
+ * olr A1); null when none. The minute evaluate sweep nominates the row once current coverage reaches it.
+ */
+const coverageWaitSchema = new Schema(
+  {
+    call: date,
+    sms: date,
   },
   { _id: false, strict: "throw" },
 );
@@ -130,6 +153,7 @@ export const SalesOutreachProjectionSchema = new Schema(
     oldest_actionable_due_at: date,
     next_action_due_at: date,
     next_evaluation_at: date,
+    coverage_wait: { type: coverageWaitSchema, required: true, default: () => ({ call: null, sms: null }) },
     last_interaction_at: date,
     received_at: date,
     assigned_agent_id: ref,
@@ -184,6 +208,12 @@ const goalSnapshotSchema = new Schema(
   { _id: false, strict: "throw" },
 );
 
+/** olr C8: one count per "Other outbound" bucket (`SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS`). */
+const otherOutboundBreakdownSchema = new Schema(
+  Object.fromEntries(SALES_OUTREACH_OTHER_OUTBOUND_BUCKETS.map((bucket) => [bucket, count])),
+  { _id: false, strict: "throw" },
+);
+
 /**
  * `sales_outreach_rep_day_projections` — one rep's outbound-goal day (IMPLEMENTATION-PLAN §4.6,
  * P08a). Recomputed from evidence when dirty, including older days. Calls to numbers with no
@@ -203,6 +233,19 @@ export const SalesOutreachRepDayProjectionSchema = new Schema(
     actual_confirmed: count,
     actual_awaiting_confirmation: count,
     unattributed: count,
+    /**
+     * olr C1b: the day counted under each scope (`actual_confirmed` / `actual_awaiting_confirmation` stay
+     * the headline under `count_scope`). Absent on a row written before C1b; the read serves them as null.
+     */
+    actual_confirmed_all: count,
+    actual_confirmed_eligible: count,
+    actual_awaiting_all: count,
+    actual_awaiting_eligible: count,
+    /**
+     * olr C8: `unattributed` ("Other outbound") broken down by the events' association reason; sums to
+     * `unattributed`. Null/absent on a row written before C8; the read serves the breakdown as null.
+     */
+    other_outbound: { type: otherOutboundBreakdownSchema, default: null },
     remaining: nullableCount,
     /** Goal progress in [0, 1] (capped); null without a positive goal. */
     progress: { type: Number, default: null, min: 0, max: 1 },

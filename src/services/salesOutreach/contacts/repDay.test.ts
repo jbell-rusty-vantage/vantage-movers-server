@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
 import { deskTimingOf } from "../config/timing";
 import { cadenceCallCoverage } from "../evidence/coverage";
-import { repDayCoverage } from "./repDay";
+import { composeRepDayRow, countRepDay, emptyOtherOutboundBreakdown, repDayCoverage, type RepDayEventFacts } from "./repDay";
 import { callMarks } from "./testingPipeline";
 
 /**
@@ -62,5 +62,128 @@ describe("olr C0 rep-day coverage", () => {
     assert.equal(repDayCoverage(TODAY, "2026-10-06", after, marksAt(new Date("2026-10-06T04:02:00Z")), DEFAULT).state, "complete");
     const early = repDayCoverage("2026-09-30", "2026-10-06", after, marksAt(new Date("2026-10-06T04:02:00Z")), DEFAULT);
     assert.deepEqual([early.state, early.known_complete_through], ["unknown", null]);
+  });
+});
+
+/** olr C1b: both scopes counted in one pass, stored, and part of the fingerprint. */
+describe("olr C1b two-scope counts", () => {
+  const AGENT = "a".repeat(24);
+  const goals = salesOutreachConfigurationValueSchema.parse({
+    goals: { roster_version: "r1", default_scheduled_goal: 100, rep_work_schedules: [{ agent_id: AGENT, working_days: [1, 2, 3, 4, 5, 6, 7] }] },
+  }).goals;
+  const event = (source_id: string, goal_credit: RepDayEventFacts["goal_credit"], goal_scope_eligible: boolean): RepDayEventFacts => ({ source_id, goal_credit, goal_scope_eligible });
+  const events = [
+    event("c1", "confirmed", true),
+    event("c2", "confirmed", false),
+    event("c2", "confirmed", false), // a second row of one canonical call: one credit
+    event("c3", "confirmed", true),
+    event("w1", "awaiting_confirmation", true),
+    event("w2", "awaiting_confirmation", false),
+    event("w3", "awaiting_confirmation", false),
+    event("n1", "none", true), // no credit in either scope
+  ];
+  const row = (input: readonly RepDayEventFacts[], scope: "all_outbound" | "eligible_new_quoted" = "all_outbound") =>
+    composeRepDayRow({
+      agent_id: AGENT, business_day: TODAY, today: TODAY, now: NOW, events: input, scope, goals, configuration_version: "v1",
+      existing_snapshot: null, watermarks: callMarks(NOW, NOW), timing: DEFAULT,
+    });
+
+  test("countRepDay: both scopes from one event set; the headline follows the scope", () => {
+    // c2 was derived before olr C8 (no association_reason): its "Other outbound" bucket is `unknown`.
+    const other_outbound = { ...emptyOtherOutboundBreakdown(), unknown: 1 };
+    const both = { actual_confirmed_all: 3, actual_confirmed_eligible: 2, actual_awaiting_all: 3, actual_awaiting_eligible: 1, unattributed: 1, other_outbound };
+    assert.deepEqual(countRepDay(events, "all_outbound"), { ...both, actual_confirmed: 3, actual_awaiting_confirmation: 3 });
+    assert.deepEqual(countRepDay(events, "eligible_new_quoted"), { ...both, actual_confirmed: 2, actual_awaiting_confirmation: 1 });
+    assert.deepEqual(countRepDay([], "all_outbound"), {
+      actual_confirmed: 0, actual_awaiting_confirmation: 0, unattributed: 0,
+      actual_confirmed_all: 0, actual_confirmed_eligible: 0, actual_awaiting_all: 0, actual_awaiting_eligible: 0,
+      other_outbound: emptyOtherOutboundBreakdown(),
+    });
+  });
+
+  test("composeRepDayRow stores the four fields under either scope", () => {
+    for (const scope of ["all_outbound", "eligible_new_quoted"] as const) {
+      const fields = row(events, scope);
+      assert.deepEqual(
+        [fields.count_scope, fields.actual_confirmed_all, fields.actual_confirmed_eligible, fields.actual_awaiting_all, fields.actual_awaiting_eligible],
+        [scope, 3, 2, 3, 1],
+      );
+    }
+  });
+
+  test("the fingerprint changes when only an eligible count changes (headline, unattributed and scope unchanged)", () => {
+    const before = row(events);
+    // w2 becomes eligible: the all-outbound headline, awaiting_all and unattributed stay; only actual_awaiting_eligible moves.
+    const after = row(events.map((e) => (e.source_id === "w2" ? { ...e, goal_scope_eligible: true } : e)));
+    assert.deepEqual(
+      [after.actual_confirmed, after.actual_awaiting_confirmation, after.unattributed, after.actual_awaiting_eligible],
+      [before.actual_confirmed, before.actual_awaiting_confirmation, before.unattributed, before.actual_awaiting_eligible + 1],
+    );
+    assert.notEqual(after.input_fingerprint, before.input_fingerprint);
+    // Same inputs, same fingerprint.
+    assert.equal(row(events).input_fingerprint, before.input_fingerprint);
+  });
+});
+
+/** olr C8: "Other outbound" broken down by the events' association reason, stored and fingerprinted. */
+describe("olr C8 other-outbound breakdown", () => {
+  const AGENT = "b".repeat(24);
+  const goals = salesOutreachConfigurationValueSchema.parse({
+    goals: { roster_version: "r1", default_scheduled_goal: 100, rep_work_schedules: [{ agent_id: AGENT, working_days: [1, 2, 3, 4, 5, 6, 7] }] },
+  }).goals;
+  const event = (
+    source_id: string,
+    goal_credit: RepDayEventFacts["goal_credit"],
+    goal_scope_eligible: boolean,
+    association_reason: RepDayEventFacts["association_reason"],
+  ): RepDayEventFacts => ({ source_id, goal_credit, goal_scope_eligible, association_reason });
+  const events = [
+    event("e1", "confirmed", true, "eligible"), // counted, not Other outbound
+    event("l1", "confirmed", false, "lead_not_enrolled"),
+    event("l2", "confirmed", false, "lead_not_enrolled"),
+    event("l2", "confirmed", false, "lead_not_enrolled"), // a second row of one canonical call: one bucket entry
+    event("b1", "confirmed", false, "before_activation"),
+    event("n1", "confirmed", false, "no_lead"),
+    event("x1", "confirmed", false, "lead_closed"),
+    event("a1", "confirmed", false, "ambiguous"),
+    event("q1", "confirmed", false, "not_new_quoted"),
+    event("u1", "confirmed", false, null), // derived before the reason was stored
+    event("u2", "confirmed", false, undefined),
+    event("w1", "awaiting_confirmation", false, "lead_not_enrolled"), // not confirmed: not Other outbound
+    event("r1", "none", false, "no_lead"), // restricted / unreviewed: no credit, not Other outbound
+  ];
+  const row = (input: readonly RepDayEventFacts[], scope: "all_outbound" | "eligible_new_quoted" = "all_outbound") =>
+    composeRepDayRow({
+      agent_id: AGENT, business_day: TODAY, today: TODAY, now: NOW, events: input, scope, goals, configuration_version: "v1",
+      existing_snapshot: null, watermarks: callMarks(NOW, NOW), timing: DEFAULT,
+    });
+  const sum = (breakdown: Record<string, number>) => Object.values(breakdown).reduce((a, b) => a + b, 0);
+
+  test("countRepDay buckets every confirmed non-eligible call by reason; the breakdown sums to unattributed in either scope", () => {
+    for (const scope of ["all_outbound", "eligible_new_quoted"] as const) {
+      const counts = countRepDay(events, scope);
+      assert.deepEqual(counts.other_outbound, {
+        no_lead: 1, lead_not_enrolled: 2, lead_closed: 1, before_activation: 1, ambiguous: 1, not_new_quoted: 1, unknown: 2,
+      });
+      assert.equal(counts.unattributed, 9);
+      assert.equal(sum(counts.other_outbound), counts.unattributed);
+    }
+  });
+
+  test("a missing reason or an `eligible` reason on a non-eligible event reads unknown (the sum invariant holds)", () => {
+    const counts = countRepDay([event("z1", "confirmed", false, "eligible"), event("z2", "confirmed", false, null)], "all_outbound");
+    assert.deepEqual(counts.other_outbound, { ...emptyOtherOutboundBreakdown(), unknown: 2 });
+    assert.equal(sum(counts.other_outbound), counts.unattributed);
+  });
+
+  test("the row stores the breakdown and fingerprints it: a reason change alone rewrites the row", () => {
+    const before = row(events);
+    assert.deepEqual(before.other_outbound, countRepDay(events, "all_outbound").other_outbound);
+    // u1 gains its reason (the re-derive): counts and unattributed stay, only the breakdown moves.
+    const after = row(events.map((e) => (e.source_id === "u1" ? { ...e, association_reason: "no_lead" as const } : e)));
+    assert.deepEqual([after.actual_confirmed, after.unattributed], [before.actual_confirmed, before.unattributed]);
+    assert.deepEqual([after.other_outbound.unknown, after.other_outbound.no_lead], [before.other_outbound.unknown - 1, before.other_outbound.no_lead + 1]);
+    assert.notEqual(after.input_fingerprint, before.input_fingerprint);
+    assert.equal(row(events).input_fingerprint, before.input_fingerprint, "same inputs, same fingerprint");
   });
 });

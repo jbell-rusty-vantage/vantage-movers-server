@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
+import { leadPhoneE164 } from "../../numberActivity/leadContactNumber";
 import { CsiError } from "../../salesIntelligence/auth";
 import type { ActiveConfiguration } from "../config/load";
 import { newYorkBusinessDay, newYorkDayBounds } from "../reads/businessDay";
 import { evaluateDeskEligibility, type DeskEligibility } from "./eligibility";
 import { deskLeadKey, type DeskLeadFacts } from "./leadFacts";
 import { planPeriodTransition, type PeriodPlan } from "./periodPlanner";
-import { resolveDeskPolicy, type DeskPolicyDecision } from "./policyMapping";
+import { deskDecisionFingerprint, resolveDeskPolicy, type DeskPolicyDecision } from "./policyMapping";
 import type { ContactWakeRequest, DeskEnrollment, DeskSubjectRow, DeskSubjectStore, ReadSession, SubjectUpdate } from "./store";
 import {
   ADMISSION_HOLD_REASONS,
@@ -15,6 +16,7 @@ import {
   isReliableReceived,
   receivedFactsOf,
   subjectStatusOf,
+  type DesiredPeriod,
   type DeskSubjectFacts,
 } from "./subjectBuilder";
 
@@ -125,9 +127,15 @@ const wantsContactEvidence = (configuration: ActiveConfiguration) =>
  * - the policy-period plan: close + open in this same session (one transaction), a repeated accepted
  *   priority or a replayed transition is a no-op, a closure is final; a first period opened on a later
  *   sync (a review subject decided afterwards) is a late `activation` start (olr B1);
+ * - olr B2: the decision fingerprint (priority map + intake defaults) is stamped on the subject; a
+ *   re-decision caused by a configuration change starts at the configuration time, never earlier
+ *   (`configurationDrivenDesired`); a stamp-only change is bookkeeping;
  * - CAS on the subject revision, and an `outreach_evaluate` nomination for every new revision;
  * - olr C4: a created subject, or a past-effective period change, nominates `outreach_contact_change`
- *   for the calls and SMS it re-contextualizes (`contactWakeOf`), in this same transaction.
+ *   for the calls and SMS it re-contextualizes (`contactWakeOf`), in this same transaction;
+ * - olr C2c: with `cadence.no_contact_number_rule: review_no_cadence`, a subject with no linked number
+ *   whose Lead's live phone forms no E.164 is `review` (`no_contact_number`); a link arriving later
+ *   (`capture/leadLinkWake.ts` nominates this sync) or a phone edit clears it.
  * Identical inputs write nothing (no revision bump solely to touch the row).
  */
 export async function syncSubject(
@@ -147,8 +155,10 @@ export async function syncSubject(
   if (!enrollment) throw new CsiError("INVALID_INPUT", [{ path: "enrollment", code: "required_for_new_subject" }]);
   const eligibility = evaluateDeskEligibility({ kind: "lead", facts });
   const decision = resolveDeskPolicy(facts, configuration.value.cadence);
+  const fingerprint = deskDecisionFingerprint(configuration.value.cadence);
   const built = buildSubjectFacts(facts, decision, {
     as_of: context.as_of,
+    decision_fingerprint: fingerprint,
     reviewed_rep_ids: context.reviewed_rep_ids,
     contact_number_ids: context.numbers_by_lead.get(deskLeadKey(facts.ref)) ?? [],
     priority_uncertain: context.uncertain_leads.has(deskLeadKey(facts.ref)),
@@ -157,7 +167,13 @@ export async function syncSubject(
   const active = periods.find((p) => p.ended_at === null) ?? null;
   const plan = planPeriodTransition({
     active,
-    desired: desiredPeriodOf(facts, eligibility, decision, context.as_of),
+    desired: configurationDrivenDesired(desiredPeriodOf(facts, eligibility, decision, context.as_of), {
+      stored_fingerprint: subject?.decision_fingerprint ?? null,
+      fingerprint,
+      eligibility,
+      configuration,
+      as_of: context.as_of,
+    }),
     recorded_keys: new Set(periods.map((p) => p.transition_key)),
     first_start: {
       kind: enrollment.kind === "intake" ? "intake" : "activation",
@@ -174,6 +190,13 @@ export async function syncSubject(
     received: built,
     active_workflow: activeWorkflowAfter,
     current_status: subject?.status ?? null,
+    contact: {
+      number_ids: built.contact_number_ids,
+      // The mint's own phone rule (olr C2c review fix, CW1): live, a Call Lead's original caller, then the intake and Granot snapshots.
+      phone_e164: leadPhoneE164(facts.ref.model, { normalized_phone_number: facts.normalized_phone, original_caller_phone: facts.original_caller_phone,
+        ingested_phone: facts.ingested_phone, granot_phone: facts.granot_phone }),
+      rule: configuration.value.cadence.no_contact_number_rule,
+    },
   });
 
   let subjectId: string;
@@ -196,7 +219,7 @@ export async function syncSubject(
     subjectId = subject.id;
     revision = subject.revision + 1;
     outcome = "updated";
-    bookkeepingOnly = plan.action === "none" && Object.keys(update).every((key) => key === "lead_revision_seen");
+    bookkeepingOnly = plan.action === "none" && Object.keys(update).every((key) => BOOKKEEPING_FIELDS.has(key));
   }
   if (plan.action === "close_and_open" && !(await store.closePeriod(plan.close.id, plan.close.ended_at, plan.close.end_reason, session)))
     throw new CsiError("REVISION_CONFLICT");
@@ -221,6 +244,48 @@ export async function syncSubject(
     period: plan.action,
     period_reason: plan.action === "none" ? plan.reason : null,
     contact_wakes: contactWakes,
+  };
+}
+
+/**
+ * Subject fields whose change alone is bookkeeping (no requirement can move): the seen Lead revision
+ * (reconcile) and the decision fingerprint stamp (olr B2 re-decision that changed nothing).
+ */
+const BOOKKEEPING_FIELDS: ReadonlySet<string> = new Set(["lead_revision_seen", "decision_fingerprint"]);
+
+/**
+ * olr B2 prospective effect (SPECIFICATION §12 "Policy version activated | Apply prospectively … never
+ * silently reprice historical requirements"). When the subject was last decided under another
+ * decision fingerprint (priority map / intake defaults), the configuration change is what re-decides
+ * it, so a period it opens never starts before the configuration became active (`updated_at` of the
+ * active pointer, at most the sync instant): `effective_at = max(fact time, configuration time)` with
+ * `time_basis: configuration_activated_at`. The transition key then carries the configuration revision
+ * (`…:c<revision>`), so a later flip back (A→B→A, e.g. a rollback PATCH) is a new transition rather
+ * than a replay of the first period's key.
+ * - A null stored fingerprint (written before B2) is "same": no adjustment; the sync stamps it.
+ * - A closure fact (official booking/cancellation, bad Lead) is not decided by the map: unchanged.
+ * - A fact newer than the configuration keeps its own time and key.
+ * Pure.
+ */
+export function configurationDrivenDesired(
+  desired: DesiredPeriod | null,
+  input: Readonly<{
+    stored_fingerprint: string | null;
+    fingerprint: string;
+    eligibility: DeskEligibility;
+    configuration: Pick<ActiveConfiguration, "revision" | "updated_at">;
+    as_of: Date;
+  }>,
+): DesiredPeriod | null {
+  if (!desired || input.stored_fingerprint === null || input.stored_fingerprint === input.fingerprint) return desired;
+  if (input.eligibility.outcome === "closed") return desired;
+  const activatedAt = new Date(Math.min(+(input.configuration.updated_at ?? input.as_of), +input.as_of));
+  if (+activatedAt <= +desired.effective_at) return desired;
+  return {
+    ...desired,
+    effective_at: activatedAt,
+    time_basis: "configuration_activated_at",
+    transition_key: `${desired.transition_key}:c${input.configuration.revision}`,
   };
 }
 

@@ -37,6 +37,12 @@ export type DeskLeadFacts = Readonly<{
   normalized_job_no: string | null;
   phone: string | null;
   normalized_phone: string | null;
+  /** Call Leads only: the caller of the call that created the Lead (`ringcentral.original_caller`); olr C2c phone fallback. */
+  original_caller_phone?: string | null;
+  /** The phone the Lead arrived with (`ingested_contact_snapshot`); olr CW1, the mint's phone rule. */
+  ingested_phone?: string | null;
+  /** The phone Granot last reported (`granot_contact_snapshot`); olr CW1, the mint's phone rule. */
+  granot_phone?: string | null;
   name: string | null;
   /** Canonical move date `YYYY-MM-DD` (Form Lead `move_date`, stored as UTC midnight); null when unknown. */
   move_date: string | null;
@@ -64,6 +70,9 @@ export const DESK_LEAD_PROJECTION = {
   normalized_job_no: 1,
   phone_number: 1,
   normalized_phone_number: 1,
+  "ringcentral.original_caller.normalized_phone_number": 1,
+  "ingested_contact_snapshot.normalized_phone_number": 1,
+  "granot_contact_snapshot.normalized_phone_number": 1,
   name: 1,
   first_name: 1,
   last_name: 1,
@@ -108,6 +117,9 @@ export function toDeskLeadFacts(model: SalesOutreachLeadModel, raw: RawLead): De
     normalized_job_no: str(raw.normalized_job_no),
     phone: str(raw.phone_number),
     normalized_phone: str(raw.normalized_phone_number),
+    original_caller_phone: model === "CallLead" ? str((raw.ringcentral as { original_caller?: { normalized_phone_number?: unknown } } | null | undefined)?.original_caller?.normalized_phone_number) : null,
+    ingested_phone: str((raw.ingested_contact_snapshot as { normalized_phone_number?: unknown } | null | undefined)?.normalized_phone_number),
+    granot_phone: str((raw.granot_contact_snapshot as { normalized_phone_number?: unknown } | null | undefined)?.normalized_phone_number),
     name,
     move_date: model === "FormLead" ? moveDateOf(raw.move_date) : null,
   };
