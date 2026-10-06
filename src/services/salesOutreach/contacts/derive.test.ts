@@ -463,3 +463,77 @@ describe("olr C8 association_reason: why a contact is or is not associated with 
     assert.notEqual(fa, fb);
   });
 });
+
+describe("olr C2d evidence.call_association_rule: single_active_subject_on_link (D-C2d; off by default)", () => {
+  const CLOSED_PERIODS = [
+    { workflow: "new" as const, started_at: new Date("2026-09-01T12:00:00Z"), ended_at: new Date("2026-10-01T00:00:00Z") },
+    { workflow: "closed" as const, started_at: new Date("2026-10-01T00:00:00Z"), ended_at: null },
+  ];
+  /** The number's `lead` (null subject = not enrolled), plus one `other_leads` entry per given subject. */
+  const shadowed = (numberLead: ReturnType<typeof subjectFacts> | null, others: Array<ReturnType<typeof subjectFacts> | null>, rule?: "number_lead" | "single_active_subject_on_link") => {
+    const ctx = new ContextBuilder().link(ALICE, "101").associationRule(rule);
+    ctx.lead(NUMBER, numberLead);
+    const shadows = others.map((subject) => ctx.other(NUMBER, subject).subject);
+    return { context: ctx.build(), shadows };
+  };
+  const RULE = "single_active_subject_on_link" as const;
+
+  test("the number's Lead not enrolled: the only active other_leads subject is credited", () => {
+    const { context, shadows } = shadowed(null, [subjectFacts({ workflow: "new" })], RULE);
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), context);
+    assert.deepEqual(
+      [draft.association, draft.subject_id, draft.association_reason, draft.subject_workflow, draft.goal_scope_eligible, draft.goal_credit],
+      ["unique", shadows[0]!.id, "eligible", "new", true, "confirmed"],
+    );
+  });
+
+  test("the number's Lead closed: the only active other_leads subject is credited (inbound too, cadence only)", () => {
+    const { context, shadows } = shadowed(subjectFacts({ periods: CLOSED_PERIODS }), [subjectFacts({ workflow: "quoted" })], RULE);
+    const outbound = deriveCallContactEvent(outboundCall("101", NUMBER, T0), context);
+    assert.deepEqual([outbound.association, outbound.subject_id, outbound.subject_workflow], ["unique", shadows[0]!.id, "quoted"]);
+    const inbound = deriveCallContactEvent(inboundCall("101", NUMBER, T0), context);
+    assert.deepEqual([inbound.association, inbound.subject_id, inbound.goal_credit], ["unique", shadows[0]!.id, "none"]);
+  });
+
+  test("two active other_leads subjects are ambiguous: no credit is guessed (P05h)", () => {
+    const { context } = shadowed(null, [subjectFacts(), subjectFacts({ workflow: "quoted" })], RULE);
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), context);
+    assert.deepEqual([draft.association, draft.subject_id, draft.association_reason, draft.goal_scope_eligible], ["ambiguous", null, "ambiguous", false]);
+  });
+
+  test("other_leads subjects that are not active at contact time (not enrolled, closed, not yet activated) do not count", () => {
+    const later = subjectFacts({ activation_at: new Date("2026-10-07T14:00:00Z") });
+    const { context, shadows } = shadowed(null, [null, subjectFacts({ periods: CLOSED_PERIODS }), later, subjectFacts()], RULE);
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), context);
+    assert.deepEqual([draft.association, draft.subject_id], ["unique", shadows[3]!.id], "only the one active subject counts");
+    const none = shadowed(null, [null, subjectFacts({ periods: CLOSED_PERIODS }), later], RULE).context;
+    const stays = deriveCallContactEvent(outboundCall("101", NUMBER, T0), none);
+    assert.deepEqual([stays.association, stays.subject_id, stays.association_reason], ["none", null, "lead_not_enrolled"], "no active shadow: the number Lead's outcome stands");
+  });
+
+  test("an active, or not yet activated, number Lead keeps the credit rule: other_leads are never consulted", () => {
+    const active = shadowed(subjectFacts({ workflow: "quoted" }), [subjectFacts()], RULE);
+    const draft = deriveCallContactEvent(outboundCall("101", NUMBER, T0), active.context);
+    assert.deepEqual([draft.association, draft.subject_workflow], ["unique", "quoted"]);
+    assert.notEqual(draft.subject_id, active.shadows[0]!.id);
+    const pending = shadowed(subjectFacts({ activation_at: new Date("2026-10-07T14:00:00Z") }), [subjectFacts()], RULE);
+    const before = deriveCallContactEvent(outboundCall("101", NUMBER, T0), pending.context);
+    assert.deepEqual([before.association, before.association_reason, before.subject_id], ["none", "before_activation", null]);
+  });
+
+  test("rule absent or number_lead: results are unchanged (All Numbers CONTRACT §3 as built)", () => {
+    const row = outboundCall("101", NUMBER, T0);
+    for (const rule of [undefined, "number_lead"] as const) {
+      const { context } = shadowed(null, [subjectFacts()], rule);
+      const draft = deriveCallContactEvent(row, context);
+      assert.deepEqual([draft.association, draft.subject_id, draft.association_reason], ["none", null, "lead_not_enrolled"], String(rule));
+      const plain = deriveCallContactEvent(row, withNumberLeadOnly());
+      assert.equal(draft.input_fingerprint, plain.input_fingerprint, "other_leads in the context change nothing without the rule");
+    }
+    function withNumberLeadOnly() {
+      const ctx = new ContextBuilder().link(ALICE, "101");
+      ctx.lead(NUMBER, null);
+      return ctx.build();
+    }
+  });
+});

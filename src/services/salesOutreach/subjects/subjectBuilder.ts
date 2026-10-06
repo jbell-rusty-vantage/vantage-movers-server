@@ -1,4 +1,5 @@
 import type { SalesOutreachWorkflow } from "../../../config/domain/salesOutreach";
+import type { SalesOutreachNoContactNumberRule } from "../../../validation/v1/salesOutreach";
 import { newYorkBusinessDay } from "../reads/businessDay";
 import type { DeskEligibility } from "./eligibility";
 import type { DeskLeadFacts } from "./leadFacts";
@@ -182,6 +183,28 @@ export function desiredPeriodOf(facts: DeskLeadFacts, eligibility: DeskEligibili
  */
 export const ADMISSION_HOLD_REASONS: ReadonlySet<string> = new Set(["ambiguous_identity", "received_time_unreliable", "received_time_missing"]);
 
+/**
+ * olr C2c inputs: the subject's linked Contact Numbers, the E.164 its Lead's live phone forms (null when
+ * there is no phone or it never forms one) and the Owner's `cadence.no_contact_number_rule`.
+ */
+export type DeskSubjectContactFacts = Readonly<{
+  number_ids: readonly string[];
+  phone_e164: string | null;
+  rule: SalesOutreachNoContactNumberRule | undefined;
+}>;
+
+/** olr C2c review reason: nothing can be called or texted (rule on, no linked number, no usable phone). */
+export const NO_CONTACT_NUMBER_REASON = "no_contact_number";
+
+/**
+ * True when the subject has no callable number and none can exist yet (D-C2c). A phone without a number
+ * yet is a linking delay (the Lead's `lead_link` job mints and links it within about a minute, olr C2b),
+ * never a review: review drops every routine obligation (`engine/evaluate.ts`). Pure.
+ */
+export function lacksContactNumber(contact: DeskSubjectContactFacts | undefined): boolean {
+  return contact?.rule === "review_no_cadence" && contact.number_ids.length === 0 && contact.phone_e164 === null;
+}
+
 /** Subject status and the current review reasons (recomputed from facts, never accumulated). */
 export function subjectStatusOf(input: {
   eligibility: DeskEligibility;
@@ -191,6 +214,8 @@ export function subjectStatusOf(input: {
   active_workflow: SalesOutreachWorkflow | null;
   /** Statuses never move out of `closed` (no implicit reopening, P05h/P06f). */
   current_status: "active" | "closed" | "review" | null;
+  /** olr C2c: absent (or the rule absent) = no `no_contact_number` reason, as before C2c. */
+  contact?: DeskSubjectContactFacts;
 }): { status: "active" | "closed" | "review"; review_reasons: string[] } {
   if (input.current_status === "closed" || input.active_workflow === "closed") return { status: "closed", review_reasons: [] };
   const reasons: string[] = [];
@@ -202,5 +227,6 @@ export function subjectStatusOf(input: {
     if (input.decision.kind === "review") reasons.push(input.decision.reason);
     if (input.decision.kind === "unavailable") reasons.push("policy_unavailable");
   }
+  if (lacksContactNumber(input.contact)) reasons.push(NO_CONTACT_NUMBER_REASON);
   return { status: reasons.length ? "review" : "active", review_reasons: reasons };
 }

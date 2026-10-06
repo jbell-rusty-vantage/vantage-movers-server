@@ -18,6 +18,9 @@
  * - Refused (exit 3, nothing written) unless the configuration is active with the desk or goal metrics
  *   enabled — the same admission as the sweep. Exit 1 when a page or a rep-day recount failed (re-run:
  *   idempotent).
+ * - Derives under the active configuration's `evidence.call_association_rule` (olr C2d; echoed in the
+ *   header), exactly as the live consumer and sweep do: after the Owner sets or clears the rule, an apply
+ *   from the earliest affected day moves past credit to match.
  * - Prints one JSON summary.
  */
 import mongoose from "mongoose";
@@ -61,10 +64,18 @@ async function main() {
     mode,
     database,
     range: { from: range.from, from_instant: range.from_instant.toISOString(), kind: args.kind, today },
-    configuration: { version: inspected.version, revision: inspected.revision },
+    configuration: { version: inspected.version, revision: inspected.revision, call_association_rule: inspected.value.evidence.call_association_rule ?? "number_lead" },
   };
   const pass = (store: typeof mongoContactEventStore) =>
-    rederivePages({ kinds: kindsOf(args.kind), from: range.from_instant, now, pager: mongoRederiveSourcePager, store, transaction: withTransaction });
+    rederivePages({
+      kinds: kindsOf(args.kind),
+      from: range.from_instant,
+      now,
+      pager: mongoRederiveSourcePager,
+      store,
+      transaction: withTransaction,
+      association_rule: inspected.value.evidence.call_association_rule,
+    });
 
   if (!args.apply) {
     console.log(JSON.stringify({ ...header, ...summarizeRederive(await pass(dryRunContactEventStore(mongoContactEventStore)), "dry_run") }, null, 2));

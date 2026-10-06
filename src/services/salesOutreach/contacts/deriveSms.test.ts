@@ -113,3 +113,19 @@ describe("olr C8 SMS association_reason", () => {
     assert.equal(deriveSmsContactEvent(smsRow({ counterpart_numbers: ["+15550100301"] }), closed.build()).association_reason, "lead_closed");
   });
 });
+
+describe("olr C2d: an SMS to a shadowed number credits the single active other_leads subject (rule on only)", () => {
+  test("rule on: unique; rule absent: lead_not_enrolled", () => {
+    const build = (rule?: "single_active_subject_on_link") => {
+      const ctx = new ContextBuilder().number("+15550100200", SMS_NUMBER).associationRule(rule);
+      ctx.lead(SMS_NUMBER, null);
+      const shadow = ctx.other(SMS_NUMBER, subjectFacts()).subject!;
+      return { context: ctx.build(), shadow };
+    };
+    const on = build("single_active_subject_on_link");
+    const credited = deriveSmsContactEvent(smsRow(), on.context);
+    assert.deepEqual([credited.association, credited.subject_id, credited.association_reason], ["unique", on.shadow.id, "eligible"]);
+    const off = deriveSmsContactEvent(smsRow(), build().context);
+    assert.deepEqual([off.association, off.subject_id, off.association_reason], ["none", null, "lead_not_enrolled"]);
+  });
+});

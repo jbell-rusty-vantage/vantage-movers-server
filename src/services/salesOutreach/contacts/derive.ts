@@ -7,6 +7,7 @@ import type {
   SalesOutreachGoalCredit,
 } from "../../../config/domain/salesOutreachContacts";
 import type { RepSmsStatus } from "../../../config/domain/ringcentralRepSms";
+import type { SalesOutreachCallAssociationRule } from "../../../validation/v1/salesOutreach";
 import { engineSmsStatus } from "../../ringcentral/repSms/mapper";
 import { resolveRepIdentityAt, type TemporalRepLink } from "../../salesIntelligence/repIdentity/resolve";
 import { classifyCallEvidence, classifySmsEvidence, type AssociationState, type ClassifiedEvidence, type IdentityState } from "../engine/credit";
@@ -32,6 +33,9 @@ import { newYorkBusinessDay } from "../reads/businessDay";
  *   `awaiting_confirmation`, never a miss;
  * - IMPL-07 (All Numbers): the number's current Lead (`contact_numbers.lead`), when it is a desk subject
  *   active at contact time; several Leads across an SMS's numbers are `ambiguous`, none is `none`;
+ * - olr C2d (Owner switch `evidence.call_association_rule: single_active_subject_on_link`, off by default):
+ *   when that Lead is not enrolled or its subject is closed, the one desk subject active at contact time
+ *   among the numbers' `other_leads` is credited instead; two or more are `ambiguous` (P05h: no guess);
  * - P05f/P10a: a contact before the subject's activation boundary on the same New York date stays `none`
  *   (no workflow, no goal scope, no credit) but carries `subject_id`, so the activation date's partial
  *   quota subtracts it;
@@ -124,6 +128,13 @@ export type DerivationContext = Readonly<{
   restrictions: ReadonlyMap<string, readonly RestrictionInterval[]>;
   /** SMS only: counterpart E.164 → contact number id. */
   numbers_by_e164?: ReadonlyMap<string, string>;
+  /**
+   * olr C2d: contact number id → the Leads in its `other_leads` (All Numbers link), loaded only while the
+   * rule below is `single_active_subject_on_link`; their subjects are in `subjects` too.
+   */
+  other_leads?: ReadonlyMap<string, readonly DeskLeadKey[]>;
+  /** olr C2d: `evidence.call_association_rule`; absent = `number_lead` (All Numbers CONTRACT §3 as built). */
+  association_rule?: SalesOutreachCallAssociationRule;
 }>;
 
 /** The derived row (everything but `_id`, `revision` and timestamps). */
@@ -266,18 +277,48 @@ function periodAt(subject: SubjectFacts, at: Date): SubjectPeriodFacts | null {
   return subject.periods.find((p) => p.started_at.getTime() <= ms && (p.ended_at === null || p.ended_at.getTime() > ms)) ?? null;
 }
 
+/** olr C2d: the number Lead's outcomes after which a single active `other_leads` subject is credited. */
+const SHADOWED_REASONS: ReadonlySet<SalesOutreachAssociationReason> = new Set(["lead_not_enrolled", "lead_closed"]);
+
 /**
  * IMPL-07 over the source's contact numbers, with the olr C8 reason: no number Lead → `no_lead`; several
  * Leads → `ambiguous`; a Lead without a desk subject → `lead_not_enrolled`; before the subject's
  * activation boundary → `before_activation`; once its closed period started → `lead_closed`; otherwise
  * unique — `eligible` in a New/Quoted period, else `not_new_quoted`.
+ * olr C2d, only with `association_rule: single_active_subject_on_link`: a `lead_not_enrolled` or
+ * `lead_closed` outcome falls back to the numbers' `other_leads` (`singleActiveOnLink`).
  */
 export function associate(numberIds: readonly string[], at: Date, context: DerivationContext): Association {
   const leads = new Set<DeskLeadKey>();
   for (const id of numberIds) for (const lead of context.linked_leads.get(id) ?? []) leads.add(lead);
   if (leads.size === 0) return NO_LEAD;
   if (leads.size > 1) return AMBIGUOUS;
-  const subject = context.subjects.get([...leads][0]!) ?? null;
+  const lead = [...leads][0]!;
+  const primary = associateLead(lead, at, context);
+  if (context.association_rule !== "single_active_subject_on_link" || !SHADOWED_REASONS.has(primary.reason)) return primary;
+  return singleActiveOnLink(numberIds, lead, at, context) ?? primary;
+}
+
+/**
+ * olr C2d (D-C2d): the one desk subject active at `at` (enrolled, boundary passed, not closed) among the
+ * numbers' `other_leads`, other than the number Lead. None → null (the number Lead's outcome stands); two
+ * or more → `ambiguous`, so no credit is guessed between two opportunities of one customer (P05h).
+ */
+function singleActiveOnLink(numberIds: readonly string[], numberLead: DeskLeadKey, at: Date, context: DerivationContext): Association | null {
+  const active = new Map<string, Association>();
+  for (const id of numberIds)
+    for (const other of context.other_leads?.get(id) ?? []) {
+      if (other === numberLead) continue;
+      const association = associateLead(other, at, context);
+      if (association.state === "unique") active.set(association.subject!.id, association);
+    }
+  if (active.size === 0) return null;
+  return active.size === 1 ? [...active.values()][0]! : AMBIGUOUS;
+}
+
+/** One Lead's association at `at` (its subject, boundary and period). */
+function associateLead(lead: DeskLeadKey, at: Date, context: DerivationContext): Association {
+  const subject = context.subjects.get(lead) ?? null;
   if (!subject) return notAssociated("lead_not_enrolled");
   if (subject.activation_at.getTime() > at.getTime()) {
     const sameDate = newYorkBusinessDay(subject.activation_at) === newYorkBusinessDay(at);

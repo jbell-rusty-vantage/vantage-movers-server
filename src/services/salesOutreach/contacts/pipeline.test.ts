@@ -920,3 +920,49 @@ describe("olr C8: the rep-day row stores the Other outbound breakdown", () => {
     assert.equal(w.repDays.row(ALICE, TODAY)!.publication_revision, rewritten.publication_revision);
   });
 });
+
+describe("olr C2d: the consumer and the sweep derive under evidence.call_association_rule", () => {
+  const leased = (subject_key: string) => ({ _id: newId(), subject_key, lease_owner: "w", lease_epoch: 1 });
+  /** The number's `lead` is not enrolled; one active desk subject sits in its `other_leads`. */
+  const shadowWorld = () => {
+    const ctx = new ContextBuilder().link(ALICE, "101");
+    ctx.lead(NUMBER, null);
+    const shadow = ctx.other(NUMBER, subjectFacts({ workflow: "new" })).subject!;
+    const events = new MemoryContactEventStore(ctx.build());
+    return { events, shadow, repDays: new MemoryRepDayStore(events) };
+  };
+  const ruleOn = () => desk({ evidence: { call_association_rule: "single_active_subject_on_link" } });
+  const deps = (w: ReturnType<typeof shadowWorld>, input: SalesOutreachConfigurationInput): ContactJobDeps => ({
+    loader: fixedConfigurationLoader(activeInspection(input)),
+    store: w.events,
+    repDayStore: w.repDays,
+    now: () => NOW,
+    complete: (async (_lease: unknown, mutation: (s: unknown) => Promise<unknown>) => mutation(SESSION)) as never,
+    fail: (async () => undefined) as never,
+    publish: async () => undefined,
+  });
+
+  test("contact change job: rule on credits the shadow subject and asks the store for other_leads; rule absent does neither", async () => {
+    for (const [input, expected] of [[ruleOn(), "shadow"], [desk(), null]] as const) {
+      const w = shadowWorld();
+      const source = call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z"));
+      const done = await runOutreachContactChangeJob(undefined, { ...deps(w, input), claim: (async () => leased(`call:${source.source_id}`)) as never });
+      assert.equal(done.status, "completed");
+      const event = w.events.events.get(contactEventId("call", source.source_id))!;
+      assert.deepEqual([event.subject_id, event.association], expected ? [w.shadow.id, "unique"] : [null, "none"]);
+      assert.equal(w.events.requests.at(-1)!.other_leads, expected ? true : undefined);
+    }
+  });
+
+  test("minute sweep: rule on credits the shadow subject", async () => {
+    const w = shadowWorld();
+    const sweep = new MemorySweepStore();
+    sweep.capture = new Date("2026-10-05T18:40:00Z");
+    const row = outboundCall("101", NUMBER, "2026-10-05T14:10:00Z");
+    w.events.calls.set(row.id, row);
+    sweep.sources.set("call", [{ id: row.id, updated_at: new Date("2026-10-05T14:11:00Z") }]);
+    const lease: SweepLease = { acquire: async () => true, release: async () => undefined };
+    await sweepContactSources("call", NOW, { loader: fixedConfigurationLoader(activeInspection(ruleOn())), store: sweep, events: w.events, repDays: w.repDays, lease, transaction: memoryTransaction });
+    assert.equal(w.events.events.get(contactEventId("call", row.id))!.subject_id, w.shadow.id);
+  });
+});

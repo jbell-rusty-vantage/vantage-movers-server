@@ -828,6 +828,96 @@ async function main() {
   const c8Team = await c8ReadTeam(c8Owner, { business_day: c8Day }, c8Deps);
   assert.deepEqual([c8Team.goals?.other_outbound_total, c8Team.goals?.other_outbound_breakdown], [2, c8Rep.other_outbound.breakdown], "C8: /team serves the roster sum");
 
+  // --- olr C2c: cadence.no_contact_number_rule through the strict subject model ---------------------
+  // A Call Lead with no phone enrolls with `contact_number_ids: []`. Rule absent: active (today). Re-synced
+  // under `review_no_cadence`: review `no_contact_number`. A Contact Number linking the Lead (the link's
+  // own wake nominates this sync) clears it: active again, the same single period (age kept).
+  const c2cLead = new mongoose.Types.ObjectId();
+  const c2cReceived = new Date("2026-12-20T15:00:00Z");
+  await getCallLeadModel().collection.insertOne({ _id: c2cLead, name: "C2c Caller", timestamp: c2cReceived, createdAt: c2cReceived, domain_revision: 1 });
+  const c2cRef = { model: "CallLead" as const, id: String(c2cLead) };
+  const c2cRuleOn = deskConfiguration({ controls: { desk_enabled: true }, cadence: { no_contact_number_rule: "review_no_cadence" } });
+  const c2cSync = (config: typeof c4Config, at: Date) =>
+    withTransaction(async (session) => {
+      const [facts] = await mongoDeskSubjectStore.loadLeads([c2cRef], session);
+      const [subject] = await mongoDeskSubjectStore.findSubjects([c2cRef], session);
+      const context = await loadSubjectPageContext(mongoDeskSubjectStore, [facts!], at, session);
+      return syncSubject({ facts: { ...facts!, ...accepted("0", "2026-12-20T16:00:00Z") }, subject: subject ?? null,
+        enrollment: { cohort_id: "expansion:c2c", kind: "expansion", enrolled_at: at, activation_at: at, manifest_hash: null }, configuration: config, context },
+      mongoDeskSubjectStore, session);
+    });
+  const c2cCreated = await c2cSync(c4Config, new Date("2026-12-21T15:00:00Z"));
+  const c2cRow = async () => Subjects.findById(c2cCreated.subject_id).lean();
+  const c2cInitial = await c2cRow();
+  assert.deepEqual([c2cInitial?.status, c2cInitial?.review_reasons, c2cInitial?.contact_number_ids], ["active", [], []], "C2c rule absent: unchanged");
+  await c2cSync(c2cRuleOn, new Date("2026-12-21T15:05:00Z"));
+  const c2cReview = await c2cRow();
+  assert.deepEqual([c2cReview?.status, c2cReview?.review_reasons], ["review", ["no_contact_number"]], "C2c rule on: review, no cadence");
+  const c2cPeriods = async () => models.getSalesOutreachPolicyPeriodModel().find({ subject_id: c2cCreated.subject_id }, { started_at: 1, ended_at: 1 }).lean();
+  const c2cPeriodsBefore = await c2cPeriods();
+  assert.equal(c2cPeriodsBefore.length, 1);
+  const c2cNumber = new mongoose.Types.ObjectId();
+  await getContactNumberModel().create({ _id: c2cNumber, e164: "+15550100077", digits_reversed: "77001005551", first_observed_at: c2cReceived, last_activity_at: c2cReceived,
+    lead: { model: "CallLead", id: c2cLead, received_at: c2cReceived, state: "open" }, lead_link: { source: "automatic", set_at: c2cReceived } });
+  await c2cSync(c2cRuleOn, new Date("2026-12-21T15:10:00Z"));
+  const c2cCleared = await c2cRow();
+  assert.deepEqual([c2cCleared?.status, c2cCleared?.review_reasons, (c2cCleared?.contact_number_ids ?? []).map(String)], ["active", [], [String(c2cNumber)]], "C2c: a link clears it");
+  const periodKey = (p: { _id: unknown; started_at: Date; ended_at?: Date | null }) => [String(p._id), p.started_at.toISOString(), p.ended_at ?? null];
+  assert.deepEqual((await c2cPeriods()).map(periodKey), c2cPeriodsBefore.map(periodKey), "C2c: same period, age unchanged");
+
+  // --- olr C2d: evidence.call_association_rule through the Mongo context load ------------------------
+  // A number whose `lead` is a Lead that is not enrolled, with one active desk subject's Lead in its
+  // `other_leads`. Rule absent: the call credits nobody (`lead_not_enrolled`). Re-derived under
+  // `single_active_subject_on_link`: the store loads `other_leads` and their subjects, the event credits
+  // that subject (fingerprint moves, its evaluation is nominated). A second shadow subject makes it ambiguous.
+  const c2dSubjectFor = async (model: "FormLead" | "CallLead", leadId: mongoose.Types.ObjectId, workflow: "new" | "quoted") => {
+    const id = new mongoose.Types.ObjectId();
+    await models.getSalesOutreachSubjectModel().create({
+      _id: id, lead_model: model, lead_id: leadId,
+      enrollment: { cohort_id: "c2d", kind: "pilot", enrolled_at: activation, activation_at: activation, manifest_hash: null },
+      status: "active", received_quality: "instant", adapter_version: "v1",
+    });
+    await models.getSalesOutreachPolicyPeriodModel().create({
+      subject_id: id, transition_key: "activation", policy_version: "v-test", activation_boundary: activation, workflow,
+      start_kind: "activation", started_at: activation, time_basis: "activation_boundary",
+    });
+    return id;
+  };
+  const c2dLead = new mongoose.Types.ObjectId();
+  const c2dSubject = await c2dSubjectFor("FormLead", c2dLead, "new");
+  const c2dNumber = new mongoose.Types.ObjectId();
+  await getContactNumberModel().create({ _id: c2dNumber, e164: "+15550100066", digits_reversed: "66001005551", first_observed_at: activation, last_activity_at: activation,
+    lead: { model: "FormLead", id: new mongoose.Types.ObjectId(), received_at: activation, state: "open" },
+    other_leads: [{ model: "FormLead", id: c2dLead, received_at: activation, state: "open" }], lead_link: { source: "automatic", set_at: activation } });
+  const c2dStart = new Date("2026-12-22T15:00:00Z");
+  const c2dCall = await getCallInteractionModel().create({
+    provider_account_id: account, telephony_session_id: "s-c2d", identity_basis: "telephony_session_id", direction: "Outbound",
+    contact_number_id: c2dNumber, external_endpoint_kind: "external", started_at: c2dStart, provider_connected: true, provider_result: "Call connected",
+    parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: c2dStart, result: "Call connected" }],
+    call_log_state: "settled", terminal: true, first_observed_at: c2dStart, last_observed_at: c2dStart,
+  });
+  const c2dSource = { source_kind: "call" as const, source_id: String(c2dCall._id) };
+  const c2dNow = new Date("2026-12-22T16:00:00Z");
+  const c2dApply = (rule?: "single_active_subject_on_link") =>
+    withTransaction((session) => applyContactSources([c2dSource], { now: c2dNow, queueRepDays: false, association_rule: rule }, mongoContactEventStore, session));
+  const c2dEvent = async () => Events.findById(contactEventId("call", c2dSource.source_id)).lean();
+  await c2dApply();
+  const c2dOff = await c2dEvent();
+  assert.deepEqual([c2dOff?.association, c2dOff?.subject_id ?? null, c2dOff?.association_reason], ["none", null, "lead_not_enrolled"], "C2d rule absent: CONTRACT §3 as built");
+  const c2dEvaluations = () => Jobs.countDocuments({ stage: "outreach_evaluate", subject_key: `outreach-subject:${String(c2dSubject)}` });
+  const c2dOn = await c2dApply("single_active_subject_on_link");
+  const c2dCredited = await c2dEvent();
+  assert.deepEqual([c2dOn.changed, c2dCredited?.association, String(c2dCredited?.subject_id), c2dCredited?.association_reason, c2dCredited?.goal_scope_eligible],
+    [1, "unique", String(c2dSubject), "eligible", true], "C2d rule on: the single active other_leads subject is credited");
+  assert.equal(await c2dEvaluations(), 1, "the credited subject's evaluation is nominated in the same transaction");
+  assert.equal((await c2dApply("single_active_subject_on_link")).changed, 0, "a replay writes nothing");
+  const c2dSecondLead = new mongoose.Types.ObjectId();
+  await c2dSubjectFor("CallLead", c2dSecondLead, "quoted");
+  await getContactNumberModel().updateOne({ _id: c2dNumber }, { $push: { other_leads: { model: "CallLead", id: c2dSecondLead, received_at: activation, state: "open" } } });
+  await c2dApply("single_active_subject_on_link");
+  const c2dTwo = await c2dEvent();
+  assert.deepEqual([c2dTwo?.association, c2dTwo?.subject_id ?? null, c2dTwo?.association_reason], ["ambiguous", null, "ambiguous"], "C2d: two active shadows are never guessed");
+
   console.log(JSON.stringify({ ok: true, database }));
 }
 

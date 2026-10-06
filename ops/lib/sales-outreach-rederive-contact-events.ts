@@ -32,6 +32,7 @@ import type { RepDayRecount, RepDayStore } from "../../src/services/salesOutreac
 import { recountRepDays } from "../../src/services/salesOutreach/contacts/sweep";
 import { addDays, daysBetween } from "../../src/services/salesOutreach/engine/calendar";
 import { newYorkDayBounds } from "../../src/services/salesOutreach/reads/businessDay";
+import type { SalesOutreachCallAssociationRule } from "../../src/validation/v1/salesOutreach";
 
 /** Sources per transaction (the minute sweep's page). */
 export const REDERIVE_PAGE = 200;
@@ -202,6 +203,8 @@ export async function rederivePages(input: {
   store: ContactEventStore;
   transaction: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
   pageSize?: number;
+  /** olr C2d: the active configuration's `evidence.call_association_rule`, so the re-derive matches the live consumer. */
+  association_rule?: SalesOutreachCallAssociationRule;
 }): Promise<RederiveTally> {
   const tally = emptyTally();
   const dirty = new Map<string, RepDayKey>();
@@ -219,7 +222,12 @@ export async function rederivePages(input: {
         // Observed into a page-local tally so a retried page is not counted twice.
         const local = emptyTally();
         const result = await input.transaction((session) =>
-          applyContactSources(sources, { now: input.now, queueRepDays: false, observe: (draft, changed) => observeDraft(local, draft, changed) }, input.store, session),
+          applyContactSources(
+            sources,
+            { now: input.now, queueRepDays: false, association_rule: input.association_rule, observe: (draft, changed) => observeDraft(local, draft, changed) },
+            input.store,
+            session,
+          ),
         );
         return { local, result };
       };

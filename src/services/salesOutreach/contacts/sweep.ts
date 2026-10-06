@@ -237,7 +237,7 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
         const ids = [...new Set([...overlap, ...rows.map((row) => row.id)])];
         const result = await applyContactSources(
           ids.map((source_id) => ({ source_kind: kind, source_id })),
-          { now, queueRepDays: false },
+          { now, queueRepDays: false, association_rule: current.value.evidence.call_association_rule },
           deps.events ?? mongoContactEventStore,
           session,
         );

@@ -5,6 +5,7 @@ import { enqueueCsiJob } from "../../salesIntelligence/jobs";
 import { publishRunnableWakeups } from "../../numberActivity/webhookFanout";
 import type { TouchedInteraction } from "../../numberActivity/callLogApplier";
 import { salesOutreachConfigurationLoader } from "../config/load";
+import type { SalesOutreachCallAssociationRule } from "../../../validation/v1/salesOutreach";
 
 /**
  * Desk wake for changed capture evidence (RINGCENTRAL-CAPTURE §4.5, IMPLEMENTATION-PLAN §6.2).
@@ -61,6 +62,19 @@ export type ContactChangeDeps = {
   publish?: (jobIds: readonly string[]) => Promise<unknown>;
   now?: () => Date;
 };
+
+/**
+ * olr C2d: the active configuration's `evidence.call_association_rule` (absent, or no active
+ * configuration, = `number_lead`).
+ */
+export async function deskCallAssociationRule(session?: ClientSession): Promise<SalesOutreachCallAssociationRule> {
+  try {
+    const loaded = await salesOutreachConfigurationLoader.load(session);
+    return loaded.state === "active" ? (loaded.value.evidence.call_association_rule ?? "number_lead") : "number_lead";
+  } catch {
+    return "number_lead";
+  }
+}
 
 /** Persisted desk controls decide; an uninitialized or broken configuration wants nothing. */
 export async function deskWantsContactEvidence(session?: ClientSession): Promise<boolean> {

@@ -4,7 +4,8 @@ import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach/repSmsEvidence";
 import { enqueueCsiJob } from "../../salesIntelligence/jobs";
-import { deskWantsContactEvidence, enqueueOutreachContactChangeJobs, type ContactChangeSource } from "./contactChangeWake";
+import type { SalesOutreachCallAssociationRule } from "../../../validation/v1/salesOutreach";
+import { deskCallAssociationRule, deskWantsContactEvidence, enqueueOutreachContactChangeJobs, type ContactChangeSource } from "./contactChangeWake";
 
 /**
  * Desk wake for an All Numbers lead-link change (all-numbers CONTRACT §3 "Outreach Desk", §4.3).
@@ -16,7 +17,9 @@ import { deskWantsContactEvidence, enqueueOutreachContactChangeJobs, type Contac
  * - every desk subject whose Lead entered or left the number gets an `outreach_lead_change` job, so
  *   its `contact_number_ids` (restrictions, SMS association) are refreshed;
  * - when the number's `lead` changed, the number's newest calls and SMS get an
- *   `outreach_contact_change` job each, so their credit moves to the new Lead.
+ *   `outreach_contact_change` job each, so their credit moves to the new Lead; with the Owner's
+ *   `evidence.call_association_rule: single_active_subject_on_link` (olr C2d) a Lead entering or
+ *   leaving `other_leads` can move credit too, so it re-derives them as well (`sourcesNeedRederive`).
  * Keys carry the number and its new revision, so a replayed recompute enqueues nothing new. Nothing
  * is enqueued unless the persisted desk configuration wants contact evidence (fail closed).
  */
@@ -41,11 +44,24 @@ export function movedLeads(change: Pick<LeadLinkChangeLike, "before" | "after">)
   return [...out.values()];
 }
 
+/**
+ * Whether the number's calls and SMS must be re-derived: always when its `lead` changed; under
+ * `single_active_subject_on_link` (olr C2d) also when any Lead entered or left the link. Pure.
+ */
+export function sourcesNeedRederive(change: Pick<LeadLinkChangeLike, "before" | "after">, rule: SalesOutreachCallAssociationRule): boolean {
+  if (keyOf(change.before.lead) !== keyOf(change.after.lead)) return true;
+  return rule === "single_active_subject_on_link" && movedLeads(change).length > 0;
+}
+
 export async function enqueueDeskWakeForLeadLink(
   change: LeadLinkChangeLike,
   session: ClientSession,
   now: Date,
-  deps: { wanted?: (session?: ClientSession) => Promise<boolean> } = {},
+  deps: {
+    wanted?: (session?: ClientSession) => Promise<boolean>;
+    /** olr C2d: the configured call association rule (default: the active configuration's). */
+    associationRule?: (session?: ClientSession) => Promise<SalesOutreachCallAssociationRule>;
+  } = {},
 ): Promise<string[]> {
   if (!change.changed) return [];
   if (!(await (deps.wanted ?? deskWantsContactEvidence)(session))) return [];
@@ -68,7 +84,10 @@ export async function enqueueDeskWakeForLeadLink(
       jobIds.push(String(row._id));
     }
   }
-  if (keyOf(change.before.lead) !== keyOf(change.after.lead)) {
+  const leadChanged = keyOf(change.before.lead) !== keyOf(change.after.lead);
+  // The rule is read only when membership alone moved (the common lead change needs no extra read).
+  const rule = leadChanged || !moved.length ? "number_lead" : await (deps.associationRule ?? deskCallAssociationRule)(session);
+  if (sourcesNeedRederive(change, rule)) {
     const numberId = new mongoose.Types.ObjectId(change.number_id);
     const source_revision = `link${change.revision}`;
     const calls = await getCallInteractionModel()
