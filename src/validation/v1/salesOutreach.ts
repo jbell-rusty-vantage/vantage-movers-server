@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { SALES_OUTREACH_TIMEZONE } from "../../config/domain/salesOutreach";
+import {
+  CALL_CAPTURE_FINALIZATION_LAG_MINUTES,
+  DESK_TIMING_DEFAULTS,
+  SALES_OUTREACH_TIMEZONE,
+} from "../../config/domain/salesOutreach";
 
 /**
  * Strict persisted value of `sales_outreach_configuration` (CONTRACTS "Persisted configuration",
@@ -12,6 +16,10 @@ import { SALES_OUTREACH_TIMEZONE } from "../../config/domain/salesOutreach";
  *   script. Exact encodings are engineering-owned (CONTRACTS "Additional target semantics").
  * - Approved FINAL-01 values are written only by `ops/sales-outreach/install-approved-policy.ts`
  *   through the same PATCH service path; the server never falls back to them.
+ * - Evolution rule (olr A0): every key added after revision 5 is `.optional()` with no
+ *   `.default()`, and a new namespace is `.optional()` with no `.prefault()`. An absent key stays
+ *   absent in the parsed value, so a version stored before the addition re-parses to the same
+ *   content hash; the effective default lives in a code resolver (`config/timing.ts`).
  */
 
 const BUSINESS_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -201,6 +209,11 @@ const evidenceSchema = z
     operating_window_rule: rule(["goal_full_date_cadence_open_hours"] as const),
     originating_inbound_rule: rule(["unique_association_initial_response"] as const),
     restricted_contact_rule: rule(["history_only_zero_credit"] as const),
+    // olr A0 capture tunables (optional, no default; effective values from `deskTimingOf`).
+    call_settlement_allowance_minutes: z.number().int().min(0).max(30).optional(),
+    today_coverage_tolerance_minutes: z.number().int().min(5).max(180).optional(),
+    capture_freshness_tolerance_minutes: z.number().int().min(1).max(60).optional(),
+    webhook_silence_minutes: z.number().int().min(5).max(240).optional(),
   })
   .strict();
 
@@ -220,6 +233,15 @@ const migrationSchema = z
   })
   .strict()
   .refine((m) => m.batch_size <= m.batch_ceiling, "batch_size above batch_ceiling");
+
+/** olr A0: evaluate-drain tunables (optional namespace, no prefault; effective values from `deskTimingOf`). */
+const operationsSchema = z
+  .object({
+    evaluate_drain_max_jobs: z.number().int().min(1).max(1000).optional(),
+    evaluate_drain_budget_seconds: z.number().int().min(5).max(55).optional(),
+    evaluate_drain_concurrency: z.number().int().min(1).max(4).optional(),
+  })
+  .strict();
 
 const repWorkScheduleSchema = z
   .object({
@@ -325,6 +347,7 @@ export const salesOutreachConfigurationValueSchema = z
     evidence: evidenceSchema.prefault({}),
     migration: migrationSchema.prefault({}),
     goals: goalsSchema.prefault({}),
+    operations: operationsSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -345,6 +368,15 @@ export const salesOutreachConfigurationValueSchema = z
     if (controls.goal_metrics_enabled) missing("goals", GOALS_REQUIRED_FOR_ACTIVATION, "controls.goal_metrics_enabled");
     if (transition.intake_admission_enabled && transition.intake_admission_at === null)
       ctx.addIssue({ code: "custom", path: ["transition", "intake_admission_at"], message: "required by intake_admission_enabled" });
+    // Below settlement + the capture finalization lag, today's coverage could never read complete.
+    const settlement = value.evidence.call_settlement_allowance_minutes ?? DESK_TIMING_DEFAULTS.call_settlement_allowance_minutes;
+    const tolerance = value.evidence.today_coverage_tolerance_minutes ?? DESK_TIMING_DEFAULTS.today_coverage_tolerance_minutes;
+    if (tolerance <= settlement + CALL_CAPTURE_FINALIZATION_LAG_MINUTES)
+      ctx.addIssue({
+        code: "custom",
+        path: ["evidence", "today_coverage_tolerance_minutes"],
+        message: `must exceed call_settlement_allowance_minutes + ${CALL_CAPTURE_FINALIZATION_LAG_MINUTES}`,
+      });
     const roster = new Set((value.goals.rep_work_schedules ?? []).map((r) => r.agent_id));
     (value.goals.effective_day_overrides ?? []).forEach((override, i) => {
       if (!roster.has(override.agent_id))

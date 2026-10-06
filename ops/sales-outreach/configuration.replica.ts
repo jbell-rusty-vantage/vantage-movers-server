@@ -105,7 +105,51 @@ async function main() {
   const repaired = await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "repair", expected_revision: 2, value: {} });
   assert.equal(repaired.response.revision, 3);
   assert.equal((await fresh.requireActive()).revision, 3);
-  console.log("PASS: uninitialized reads, initialization race, version+pointer+audit+ledger atomicity, replay/conflicts, two-instance reload, immutable versions, dangling-pointer repair, idempotent index plan");
+
+  // olr A0: a version written before a schema addition (raw insert of the revision-5 shape, which
+  // lacks every key the repair adds) round-trips through Mongo and loads active with its stored hash.
+  const { CONFIGURATION_REVISION_5_HASH, configurationRevision5Value } = await import("../../src/services/salesOutreach/config/testing.js");
+  const { configurationContentHash } = await import("../../src/services/salesOutreach/config/store.js");
+  const insertRawVersion = async (version: string, value: unknown, content_hash: string) => {
+    await Configuration.collection.insertOne({
+      kind: "version",
+      key: `version:${version}`,
+      version,
+      schema_version: 1,
+      value,
+      content_hash,
+      approval_ref: "owner-session-2026-10-03-FINAL-01",
+      created_by: { kind: "operator", id: "sod-config-replica" },
+      revision: null,
+      updated_by: null,
+    });
+    await Configuration.updateOne({ kind: "pointer", key: "active" }, { $set: { version, content_hash }, $inc: { revision: 1 } }).exec();
+  };
+  await insertRawVersion("sod-config-legacy-rev5", configurationRevision5Value(), CONFIGURATION_REVISION_5_HASH);
+  const legacy = await createConfigurationLoader().inspect();
+  assert.equal(legacy.state, "active", "a pre-addition version stays active");
+  assert.equal(legacy.state === "active" && legacy.content_hash, CONFIGURATION_REVISION_5_HASH);
+  assert.equal(legacy.state === "active" && legacy.revision, 4);
+  const stored = await Configuration.findOne({ kind: "version", version: "sod-config-legacy-rev5" }).lean<{ value: unknown }>();
+  assert.equal(configurationContentHash(stored!.value as never), CONFIGURATION_REVISION_5_HASH, "the Mongo round trip keeps the canonical hash");
+  assert.equal((await readSalesOutreachConfiguration(createConfigurationLoader())).content_hash, CONFIGURATION_REVISION_5_HASH);
+  const same = await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "rev5-same", expected_revision: 4, value: configurationRevision5Value() });
+  assert.deepEqual([same.response.changed, same.response.revision], [false, 4], "re-submitting the stored content writes nothing");
+
+  const tampered = configurationRevision5Value();
+  tampered.goals!.default_scheduled_goal = 1;
+  await insertRawVersion("sod-config-tampered", tampered, CONFIGURATION_REVISION_5_HASH);
+  const broken = await createConfigurationLoader().inspect();
+  assert.equal(broken.state === "unavailable" && broken.reason, "hash_mismatch", "an out-of-band edit still fails closed");
+  // Repair with a value that also sets a new optional key: it is hashed only because it is set.
+  const repairValue = configurationRevision5Value();
+  repairValue.evidence!.webhook_silence_minutes = 30;
+  const fixed = await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "rev5-repair", expected_revision: 5, value: repairValue });
+  assert.equal(fixed.response.revision, 6);
+  assert.notEqual(fixed.response.content_hash, CONFIGURATION_REVISION_5_HASH);
+  const repairedActive = await createConfigurationLoader().requireActive();
+  assert.deepEqual([repairedActive.revision, repairedActive.value.evidence.webhook_silence_minutes], [6, 30]);
+  console.log("PASS: uninitialized reads, initialization race, version+pointer+audit+ledger atomicity, replay/conflicts, two-instance reload, immutable versions, dangling-pointer repair, idempotent index plan, pre-addition version loads active (A0), tampered value fails closed");
 }
 
 main()
