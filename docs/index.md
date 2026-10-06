@@ -14,6 +14,8 @@ Server/admin slimming (October 2026): the historical database, OperationalEvents
 
 All Numbers + Accounts (October 2026): the Owner's Numbers surface became **All Numbers** (who a number is and who is **Waiting on us**) and **Accounts** (RingCentral Users and their Agent). The Number model v2, the lead link and the endpoints are in [number-activity-reads.md](knowledge/services/number-activity-reads.md); the call summary in [number-activity-capture.md](knowledge/services/number-activity-capture.md). The Number↔Lead attachment and the classification/eligibility analysis are retired. Build contract: workspace `all-numbers/CONTRACT.md` (outside this repo). Operator order: deploy phase A → `pnpm numbers:migrate --apply` → verify → deploy phase B → `pnpm numbers:desk-resync --apply` → verify → `pnpm numbers:cleanup --apply`.
 
+Sales Outreach Desk (October 2026): start at the Reference [knowledge/sales-outreach-lifecycle.md](knowledge/sales-outreach-lifecycle.md) — how a Lead enters and leaves the desk, the cadence clock, how calls and SMS become progress, crons and jobs, the daily operator checks, repairs, the Owner PATCH procedure and rollback, as deployed after the Outreach lifecycle repair (2026-10-06, server `6b585f5b`, configuration revision 10). Per-module detail: [sales-outreach-desk.md](knowledge/services/sales-outreach-desk.md). Build contract: [sales-outreach-desk/](sales-outreach-desk/README.md).
+
 CSI-16 certification (historical, pre-slimming): packet, checks, execution matrix. Removed from the tree in `b67f740f` before the slimming (git history only).
 
 ## Service
@@ -26,7 +28,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
-| [sales-outreach-desk.md](knowledge/services/sales-outreach-desk.md) | **Draft.** Sales Outreach Desk (sod-v1): desk roles and `requireOutreachActor`, persisted versioned `sales_outreach_configuration` (GET/PATCH, fail closed), desk collections, index build and FINAL-01 policy install scripts. |
+| [sales-outreach-desk.md](knowledge/services/sales-outreach-desk.md) | Sales Outreach Desk (sod-v1), per module: roles and `requireOutreachActor`, persisted versioned `sales_outreach_configuration` (GET/PATCH, fail closed, R0 evolution rule), subjects, Lead-change feed, intake and automatic expansion admission, enrollment, evaluator and engine v2, commands, queue/team/live reads, RingCentral capture, contact events and rep-days, operator scripts. Known limits and decisions. Lifecycle overview: [sales-outreach-lifecycle.md](knowledge/sales-outreach-lifecycle.md). |
 | [sales-intelligence-live.md](knowledge/services/sales-intelligence-live.md) | Owner-only SSE of committed Numbers and RingCentral Accounts changes from a Mongo change stream; topic slugs only. |
 | [sales-intelligence-nudges.md](knowledge/services/sales-intelligence-nudges.md) | RingCentral Accounts messages: the Owner's own `review_context` text to one directory User by Team Messaging or pager; single attempt, receipt-only repair, unknown delivery never resent. |
 | [sales-intelligence-rep-identity.md](knowledge/services/sales-intelligence-rep-identity.md) | Rep Identity Links: directory proposals, temporal account-scoped resolution, and the Owner's Accounts connect/change/disconnect (reviewed at once; successor intervals). |
@@ -96,6 +98,12 @@ Kept as stubs with `status: retired`. Each names what was removed, what remains 
 | Path | Description |
 | --- | --- |
 | [environment.md](knowledge/environment.md) | Every environment variable the server reads, by owning module, plus the names retired by the slimming that the operator deletes from Vercel after the deploy. Values are never stored. |
+
+## Reference (Sales Outreach Desk)
+
+| Path | Description |
+| --- | --- |
+| [sales-outreach-lifecycle.md](knowledge/sales-outreach-lifecycle.md) | How the outreach lifecycle works as deployed 2026-10-06: Lead sources, eligibility, policy decision, the four kinds of review, intake / automatic expansion admission / dated runs; the cadence clock and status ladder (`due` + unverified, narrowed `pending`, `coverage_wait`); call and SMS hops with latencies, association reasons, count scopes, coverage and freshness tolerances, the RingCentral subscription token rule; vocabulary; crons and job dedupe keys; daily `desk-state` checks, commands, Owner PATCH, rollback (R0); decisions and limits. |
 
 ## ADR
 

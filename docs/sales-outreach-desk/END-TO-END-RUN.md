@@ -32,7 +32,7 @@ Read [SPECIFICATION.md](SPECIFICATION.md), [FINAL-POLICY-REVIEW.md](FINAL-POLICY
 | Originating answered inbound Call Lead | Proven association/rep handling satisfies initial response and at most one applicable arrival call; zero outbound goal |
 | Helpers/transfers/duplicate receipts | One canonical credit, initiator-only outbound goal, no role/assignment widening |
 | SMS sent/delivered then confirmed failure | Single logical-message credit; failure revokes it with historical bounded recomputation; no Call/goal change |
-| Unverified identity/origin/association or capture gap | Pending/partial coverage, no guessed credit or false zero/failure |
+| Unverified identity/origin/association or capture gap | Pending/partial coverage, no guessed credit or false zero/failure. Amended 2026-10-06 (decision D-A1b, engine `sod-engine-v2`): unverified identity/origin/association keeps the channel `pending`; a capture gap past a deadline keeps the obligation outcome `pending` (no guessed failure) while the channel reads `due` with `verification.state: unverified` ("Due — not yet verified", `flags.pending` false, the Lead stays in Needs contact) until coverage proves the deadline |
 | Blank/malformed priority update and valid change | Retain existing verified policy with uncertainty; accepted changes use shared mapping and supersede routine work once |
 | Quoted date/no-date/reentry | Approved working-date selection/default, original-age reentry, same-date active-policy credit and no restarted initial clock |
 | Three unsuccessful attempts | Advisory warning only; actual restrictions still block and restricted outbound earns zero credit |

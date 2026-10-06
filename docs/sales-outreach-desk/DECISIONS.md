@@ -500,3 +500,41 @@ Approved P10b launch-design baseline (October 3, 2026, adopted by finalization i
 Finalized October 3, 2026 under the user's instruction to finalize all additions faithfully for the end-to-end run tomorrow morning (October 4, 2026, America/New_York). This finalization adopts the consolidated business policy and manual-start design as the documentation baseline. It does not record a prior yes answer to Question 15 or claim that live deployment, activation, migration or provider operations occurred. Runtime release remains subject to implemented proof gates and deliberate Owner-controlled admission. All substantive business choices are resolved. Runtime/provider/role/config/producer/migration/production proofs remain pending; no feature implementation or live operation performed by this interview. Configuration bootstrap approval_ref remains null; complete documentation approval is recorded separately in POLICY-APPROVAL.json. Historical partial fixtures retain original false scope flags, while later/current decisions govern implementation.
 
 Affected: finalized spec/review/runbooks/contracts/task cards, intake gate bootstrap defaults, approval/launch fixture and validator, source fidelity and mirror integrity. No branch switches/commits/pushes, no runtime model/API/provider/DB/customer changes by this finalization. S5–S7 and >=40% capacity protected.
+
+
+## Outreach lifecycle repair decisions — October 6, 2026
+
+Approval reference: the user's decisions recorded 2026-10-06 in the Outreach lifecycle repair decision log (workspace `outreach-lifecycle-repair/DECISIONS.md`, outside this packet), applied in production by one audited Owner configuration PATCH per decision under the user's standing go of 2026-10-06 19:40Z (and 19:55Z for adding Sil), recorded in that workspace's LEDGER "Decisions applied". Each PATCH changed only its own key; the stored `cadence.approval_ref` stays `owner-session-2026-10-03-FINAL-01` and `cadence.policy_version` is unchanged. These entries amend the FINAL-01 baseline only where they say so; everything else above stands. Deployed code: server `main@6b585f5b` (waves 0–3 and hotfix `521d0fff`), admin `main@8c3f403`.
+
+| Revision | Version | Applied (UTC) | Decision |
+| --- | --- | --- | --- |
+| 6 | `sod-config-368054f458593e6456a17b4a` | 2026-10-06 21:50Z | D-C2c `cadence.no_contact_number_rule: "review_no_cadence"`; then `desk-resync --all-open` (`lane-c-review-rule-r6`) |
+| 7 | `sod-config-bca459e45c2b432154654b8a` | 2026-10-06 23:22Z | D2 (partial): Sil added to the goals roster (`install-approved-policy --set-controls --refresh-roster`) |
+| 8 | `sod-config-5790e4b4f8e2c19bb9fc7e42` | 2026-10-06 23:24Z | D3 A / P05e-1 `cadence.intake_default_rule.granot_created: "new"`; run `expansion-granot-new-2026-10-06` (210, consistent) |
+| 9 | `sod-config-de1890b8d7cd5158572b428e` | 2026-10-06 23:32Z | D7 / P10b-1 `transition.expansion_admission_enabled: true` |
+| 10 | — | 2026-10-06 23:33Z | A5 `operations {evaluate_drain_concurrency: 2, evaluate_drain_max_jobs: 300, evaluate_drain_budget_seconds: 50}` (measurement waived by the user) |
+
+**D1 A — goal headline scope.** The rep-day headline stays all confirmed outbound calls; the count to enrolled New/Quoted Leads is stored and shown beside it ("97 outbound · 12 to enrolled Leads"). Mechanism: `goals.count_scope_schedule` (absent = `all_outbound`), changes only prospective (`count_scope_not_prospective`). No PATCH. Amends the M2 narrowing of the goal count to `eligible_new_quoted` from the day after the first apply.
+
+**D2 — unowned work.** Sil and Jason become desk reps on their own RingCentral extensions. Sil was connected by the Owner in Accounts (2026-10-06 16:52Z) and added to the roster (revision 7). Jason: extension still owed; nothing is done for him until the user names it. Aging rule for untouched old New Leads: not approved (revisit after a week of data).
+
+**D3 A — P05e-1, Granot-created Leads without a priority are New.** Amends P05e: a Granot-created Lead with no accepted priority starts New from its intake default instead of Priority needs review. Prerequisites shipped first: B1 (late first periods start at the decision, never at the received time), B2 (configuration-driven re-decision from the PATCH instant) and B3 (engine and PATCH guard accept `new`). Office-entered Leads are included. Setting `review` again does not un-enroll (P05e retention). See SPECIFICATION §12 "Amendments applied by the Outreach lifecycle repair".
+
+**D4 — P05d-2, codes 2 and 9: pending.** Map both through `priority_map.codes` once the Owner reads their labels off Granot's Priority dropdown. Until then they remain accepted unmapped codes (P05c: No policy configured, no routine cadence) and the Leads stay on the review list (`unmapped_priority`). Then: one PATCH, the decision reconcile for enrolled subjects, and a dated run `expansion-codes-29-<date>`.
+
+**D5 (i) — legacy-origin Leads are left.** No default for `legacy_unknown` / `legacy_import`; they leave the 90-day backfill window by 2026-11-17.
+
+**D6 — P05g kept.** A passed move date stays a label; cadence continues. Revisit with D2's aging question.
+
+**D7 — P10b-1, automatic bounded expansion admission.** Amends P10b/MANUAL-START step 8 ("existing unselected Leads are not silently mass-enrolled"): a Lead that is not a subject and whose later change touches a decision field is admitted automatically when it is in the FAST-01 backfill scope and decidable New/Quoted, with `activation_at` = the admission instant (P10a partial start, no debt before it), cohort `admission:<New York date>`, `kind: expansion`. Off by PATCHing `false`; before a server rollback below wave 3 the key must be removed. Eligibility caused by a configuration PATCH and Leads with no change still need a dated run. The release-hashed P10b fixture is unchanged.
+
+**Design decisions (user, 2026-10-06; built as the defaults).**
+
+- **D-A1b:** a passed deadline that capture cannot yet prove reads `due` with `verification.state: unverified` ("Due — not yet verified"), not `pending`, so the Lead stays in Needs contact (SPECIFICATION §10.3). The obligation outcome stays `pending`; no miss is recorded until coverage proves it. Amends END-TO-END-RUN §3 (capture-gap row). Engine `sod-engine-v2`.
+- **D-A3:** goal (rep-day) coverage ignores the provisional-row cap; cadence verdicts keep it. Extended as built (A3-fresh) to the "Calls updated" header coverage; see RINGCENTRAL-CAPTURE §8.
+- **D-A6:** the 60-minute spacing anchor of a New partial start is seeded from the last counted prior same-date call.
+- **D-C2c:** a subject whose Lead has no linked Contact Number and no usable E.164 phone is `review` (`no_contact_number`) with no routine obligations; it returns to `active` with its original age when a number links. On since revision 6, after the Lead-number mint left 0 such subjects.
+- **D-C2d:** `evidence.call_association_rule: "single_active_subject_on_link"` is built and left **off** (All Numbers CONTRACT §3 "current lead" rule unchanged).
+- **D-C3:** rep-day rows before 2026-10-05 freeze with the roster of the day they were frozen.
+
+**Operational facts that change how the packet reads.** The RingCentral `verificationToken` is accepted only when a subscription is created; a `PUT` ignores it, so adding a token takes a replacement (incident 2026-10-05 17:12Z → 2026-10-06 15:20Z; RINGCENTRAL-CAPTURE §3). SMS coverage counts only the current reviewed rep mailboxes (hotfix `521d0fff`).

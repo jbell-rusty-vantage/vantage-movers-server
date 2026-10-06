@@ -1,16 +1,16 @@
 {
   "contract_version": "sod-v1",
-  "date": "2026-10-04",
+  "date": "2026-10-06",
   "canonical": "vantage-main-server/docs/sales-outreach-desk",
   "mirror": "vantage-admin/docs/sales-outreach-desk",
   "files": {
-    "CODE-MAP.md": "d3fe7f8122a4952d7c160320048571490d858b2ad2802ce2c7c2f18238633f26",
+    "CODE-MAP.md": "269d89a56b5dc33ddef0f9e59006c742102738b3db9834288d44f20d3c2d290f",
     "contracts/configuration-defaults.json": "39599122b52a26f94b54d9f0d0aaf57548113b389d6653b96a9c61e2ac7da84b",
     "contracts/fixtures/synthetic.json": "39ba3a5d96ba724c8d35f11dd6bcd6b755e3e936a4aeb0f819be394cd66ead9e",
     "contracts/README.md": "43954ff27943e25fb9538b6391028b674f315b1761f5cdefa2cc1cabaa5b7566",
     "CONTRACTS.md": "52a3066c9d4ff0c204ec63635442bbc5ec1210be678787055971f76fa70367e3",
     "DATA-READINESS.md": "3341a5c2dc216741309b6aeb9189f74617786c6cedb141dcb5ec47f102012d17",
-    "DECISIONS.md": "5eadda0ce804e96cf9a3d191096430ac9a2bde4b214874585c97da826ab414b1",
+    "DECISIONS.md": "9b76aab47442fb2e2ad36923a82e5a4f65eaa02cb37b281a939e3650ecc816ef",
     "README.md": "81aff8e3b9948ab0e75f20d5251ee8ae0431a5804c3ff73d8419409cbfad0411",
     "references/manager-desk.webp": "7b0dc083020c03f6c35e1cc7ee847d6276590d998624d3587bb6400c46865546",
     "references/sales-rep-desk.webp": "59414960b4a7a5c0ebd3c31e7f472925a01f112c74027f99f29f65f2bd547e05",
@@ -35,7 +35,7 @@
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md": "295d5bb5a5d14fc498d1a5003920bcb6f37f2ec27a83fb372ae3e13650b9f7aa",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md": "0ba027d57ae887f064311b8c2e4ac18e985684a2b59bd940103e943f8ab39c0b",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md": "f4a224df55b87801c656fc2dcbde9b548b42042410cb6dc138792dbec31563ae",
-    "SPECIFICATION.md": "e4e3c81bfc6c62664706d79a18abd9d995ec5455692d30b092de9eb38623a644",
+    "SPECIFICATION.md": "37b0de96b560c8cbbd4935382990d594198e5059c7ed036de0ceda86eee59d1c",
     "SPRINT.md": "3389e0bd30c317da90b36088908eccad163dab34588bfc348c38ce770c31d657",
     "validate.mjs": "335d9686e7ee66702b950c777e55fca1c50043f8a862630df2f3e547be58a118",
     "VALIDATION.md": "960eced36b69351abf369c15440504530aa9dbceaa9b85714bc1fe4ff8b40937",
@@ -93,10 +93,10 @@
     "MANUAL-START.md": "e43350689314eb3d5a430106938c21df39f4bae31e6ec4533b44415ec38025cf",
     "POLICY-APPROVAL.json": "326f6a3c7f164186118fb54f7b0bd59d71447d358df98b71860658d895af9e21",
     "contracts/fixtures/p10b-manual-start.json": "58072b95bb37970ed71c276b161286023da15ba8f22d54228e39c3fbc4cc2c8d",
-    "END-TO-END-RUN.md": "40603c6fb2a70fb3e630963e7c16769909776d71bac077bc1a6317a25a0ab8fe",
+    "END-TO-END-RUN.md": "4854f86441ee74e4dc72eb27ffc2e8c550800ad8de279aefdd985540428c89c6",
     "FINAL-HANDBACK.md": "d8654a9bc72c71487ac438fb80939cda86ebd518315005826b7384763184f78a",
     "IMPLEMENTATION-PLAN.md": "2cd2bf97c268b2b5a79a268fbb272200b47c35a378140d1d0cc37f066af02feb",
-    "RINGCENTRAL-CAPTURE.md": "8693988ed3b7978bcf7cd5840c796ca28db16b240e6d093f09319fcb63fd97bf",
+    "RINGCENTRAL-CAPTURE.md": "e65ed9a66e0417af6bcc7332a58b142e6ab4e98f7c7b6e315b111849f3f2a07d",
     "workspace/SERVER-TEAM.md": "5202bd9a31d065e1b63eb5ecad2cd1341667a1617e83a4d2f2b5a7672b047052",
     "workspace/ADMIN-TEAM.md": "a811a91265e3690870bb5b24135819e35ed1835889b54d64fa3fdda5c1538ba7",
     "SPRINT-RUNBOOK.md": "25283365c2ef442fd096463640ae4b4682609830f811d97f5835b17d8677cae2",
@@ -104,5 +104,5 @@
   },
   "preparation_assessment_version": 1,
   "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1",
-  "release_note": "sod-v1.3 desk look: the bubbly reference look is required and deliberately differs from the existing Admin dashboard (route-scoped desk tokens); FAST-01 fast track unchanged"
+  "release_note": "Outreach lifecycle repair docs (2026-10-06, server main@6b585f5b): RINGCENTRAL-CAPTURE §3 token rule (CW2) and §8 states and freshness source as built, SPECIFICATION §12 amendments (P05e-1 applied, codes 2/9 still unmapped), END-TO-END-RUN §3 capture-gap row per D-A1b, CODE-MAP repair additions, DECISIONS repair entries (revisions 6-10); manifest re-pinned from committed bytes. Previous: sod-v1.3 desk look: the bubbly reference look is required and deliberately differs from the existing Admin dashboard (route-scoped desk tokens); FAST-01 fast track unchanged"
 }

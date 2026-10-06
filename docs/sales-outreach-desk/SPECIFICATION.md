@@ -457,6 +457,12 @@ Acceptance examples: [return-to-New age](contracts/fixtures/p05a-return-to-new-a
 
 The actual `granot_priority` plus accepted provenance selects cadence. The existing `quoted` boolean can remain true after later changes and cannot by itself identify the currently active Quoted workflow. Closing or superseding work is not rep fulfillment. A real conversation satisfies one call requirement under these owner rules, not the whole cadence; a deterministic callback/priority command must establish any pause.
 
+### Amendments applied by the Outreach lifecycle repair — 2026-10-06
+
+- **P05e-1 (decision D3 A).** A Granot-created Lead with no accepted priority starts New from its intake default (`cadence.intake_default_rule.granot_created: "new"`) instead of Priority needs review. Applied at configuration revision 8 (2026-10-06 23:24Z); the review-list Leads in scope were enrolled by the dated run `expansion-granot-new-2026-10-06` (210, verify consistent). Effect from the PATCH instant, never backdated: enrolled review subjects are re-decided by the 5-minute decision reconcile with their first period at the configuration time. A later accepted Priority 0 is a no-op, 1 a transition to Quoted. A malformed or unvouched update still retains the last verified policy (P05e). Setting the key back to `review` does not un-enroll a subject that has a New period.
+- **Policy version activated (row above), as built.** A PATCH of `priority_map` or `intake_default_rule` re-decides every open subject prospectively: the new period starts at `max(fact time, configuration time)` and closures are never re-decided by the map.
+- **Codes 2 and 9 (P05d-2, decision D4) — still unmapped.** Their Granot labels are owed. Until one PATCH adds them to `priority_map.codes`, an accepted 2 or 9 is the "Accepted unmapped code" row (No policy configured, no routine cadence) and the Leads stay on the review list as `unmapped_priority`.
+
 ## 13. Qualifying provider activity and daily goal
 
 ### 13.1 Calls

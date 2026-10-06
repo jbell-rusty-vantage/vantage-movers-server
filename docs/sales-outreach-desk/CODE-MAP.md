@@ -33,6 +33,30 @@ Paths are relative to the named repository.
 
 `src/services/salesOutreach/` (`engine/`, `subjects/`, `evidence/`, `goals/`, `commands/`, `reads/`, `enrollment/`, `config/`, `jobs/`), `src/models/salesOutreach/`, `src/validation/v1/salesOutreach.ts`, `src/routes/sales-outreach.routes.ts`, `src/routes/sales-outreach-cron.routes.ts`, `src/services/ringcentral/repSms/`, `ops/sales-outreach/*`, `ops/ringcentral/prove-rep-sms-access.ts`. Collections and routes: [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) §4–§5.
 
+## Server — Outreach lifecycle repair additions (deployed 2026-10-06, `main@6b585f5b`)
+
+Built on the desk (`main@7e68a117`) in waves 0–3 plus the SMS-coverage hotfix `521d0fff`. The lifecycle overview is the server Reference doc `docs/knowledge/sales-outreach-lifecycle.md`; per-module detail is the Service doc `docs/knowledge/services/sales-outreach-desk.md`.
+
+| Path | Use |
+| --- | --- |
+| `src/services/salesOutreach/config/timing.ts`, `config/fixtures/configuration-revision-5.json` | `deskTimingOf()`: the only reader of the capture tolerances and `operations.evaluate_drain_*` (code defaults in `DESK_TIMING_DEFAULTS`); the revision-5 fixture guards the R0 hash rule (A0) |
+| `src/services/salesOutreach/evidence/coverage.ts` | `loadCallWatermarks`, `cadenceCallCoverage` (verdicts), `goalCallCoverage` (counts, D-A3), `smsCoverage` over the current reviewed mailboxes (A3, hotfix) |
+| `src/services/salesOutreach/reads/freshness.ts` (changed) | "Calls updated" from the ISync/reconcile successes and the newest call webhook; `reason` values; `freshness.sms.pending` (A3-fresh, C7) |
+| `src/services/salesOutreach/engine/**` (changed, `sod-engine-v2`) | status ladder `due` + unverified, narrowed `pending`, `coverage_wait`, quiet closed rows, seeded spacing anchor (A1, A4, A6) |
+| `src/services/salesOutreach/evaluation/evaluateJob.ts` (changed) | evaluate cron coverage repair (`…:coverage:<channel>:<wait ms>:<bucket>`), existing-job skip, configured drain (A1, A5) |
+| `src/services/salesOutreach/subjects/{feed,leadChangeJob,sync}.ts` (changed) | tail loop (B10), decision reconcile and `decision_fingerprint` (B2), late first period (B1), admission hold and 15-minute re-check (B8), automatic expansion admission (B6), C4 contact wakes |
+| `src/services/salesOutreach/enrollment/admissions.ts` | `GET /enrollment/admissions` read over the job ledger (B8); `POST /enrollment/verify {cohort_id}` lives in the enrollment service (B6) |
+| `src/services/salesOutreach/contacts/smsPending.ts`, `src/services/ringcentral/repSms/remap.ts` | SMS pending counters on `rep_sms:<extension>` rows; `rep_sms_remap` job re-mapping 7 days of SMS identity after an Accounts change (C7) |
+| `src/services/salesOutreach/contacts/{derive,repDay,repDayService}.ts` (changed) | `association_reason`, both count scopes, `other_outbound` breakdown, zero-activity rows, count scope from `goals.count_scope_schedule` (C1a, C1b, C5, C8) |
+| `src/services/numberActivity/leadContactNumber.ts` (replaces `formLeadNumber.ts`) | the Lead's `lead_link` job mints its Contact Number, Call Leads included; the one phone rule for the mint, the diagnostic and `no_contact_number` (C2b, CW1) |
+| `src/services/ringcentral/webhook-subscription-lifecycle.ts`, `subscriptionHealth.ts`, `src/routes/ringcentral-webhook.routes.ts` (changed) | drifted `calls` plans `update`; a `PUT` never mints a token; `replace`; refusal counter and `deliveries_refused` health (C6, CW2) |
+| `ops/sales-outreach/desk-state.ts` + `ops/lib/sales-outreach-desk-state.ts` | read-only production snapshot used for every acceptance check (OPS-0) |
+| `ops/sales-outreach/{settle-pre-cc04-calls,repair-late-first-periods,subjects-without-numbers,recount-rep-days,rederive-contact-events}.ts` + `ops/lib/sales-outreach-*.ts` | one-off and repeatable repairs (C3, B1, C2a, C1b/C5, C8); `pnpm outreach:*` scripts |
+| `ops/numbers-v2/mint-lead-numbers.ts` + `ops/lib/numbers-mint-lead-numbers.ts`; `ops/lib/numbers-v2-desk-resync.ts` | Lead number backfill (C2b); `desk-resync --all-open` after a rule PATCH (C2c) |
+| `ops/lib/ringcentral-subscription-repoint.ts` | refuses to re-point the production `calls` subscription to another address (CW0) |
+| New job stage `rep_sms_remap`; new dedupe variants `sod:lead-change:…:decision:<fp16>:c<rev>`, `…:hold:<bucket>`, `…:admission:r<rev>`; `sod:evaluate:…:coverage:…` | registered in `config/domain/salesIntelligence.ts` / `jobDispatch.ts`; drained by job recovery and the desk crons |
+| New indexes | `form_leads.sod_form_lead_move_date` (B7), `sales_outreach_projections.sod_projection_coverage_wait_call` / `_sms` (A1), `sales_outreach_subjects.sod_subject_cohort` (B6), `sales_outreach_contact_events.sod_contact_kind_verification_event` (C7); `pnpm outreach:indexes` |
+
 ## Admin — existing code to read or extend
 
 | Path | Use |
