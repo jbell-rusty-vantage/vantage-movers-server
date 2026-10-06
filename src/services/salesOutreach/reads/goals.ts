@@ -269,6 +269,16 @@ function teamOtherOutboundBreakdown(roster: readonly RepDayGoalDto[]): SalesOutr
   return sum;
 }
 
+/**
+ * Whether a stored rep-day row records no outbound call at all (olr CW1): the recount's no-row test
+ * (`actual_confirmed_all + actual_awaiting_all === 0`, olr C1b), so such a row reads like a rep without
+ * one. A row written before both scopes were stored falls back to its own counts and "Other outbound".
+ */
+export function repDayRowRecordsNoActivity(row: RepDayRow): boolean {
+  if (row.actual_confirmed_all != null && row.actual_awaiting_all != null) return row.actual_confirmed_all + row.actual_awaiting_all === 0;
+  return row.actual_confirmed + row.actual_awaiting_confirmation + row.unattributed === 0;
+}
+
 /** A rep-day row's goal parts; the cadence counts are composed separately (`teamCadence.ts` `composeRepCadence`). */
 export type RepDayGoalDto = Omit<SalesOutreachRepDayDto, "overdue_leads" | "calls_due_today" | "sms_due_today">;
 
@@ -293,7 +303,9 @@ export function composeRepDay(input: {
     actual = row.actual_confirmed > 0 || complete ? row.actual_confirmed : null;
     awaiting = row.actual_awaiting_confirmation;
     other = row.unattributed > 0 || complete ? row.unattributed : null;
-    basis = actual === null ? "pending" : "projection";
+    // olr CW1: a row that records no activity (a C5 materialized zero row, or one whose calls were
+    // re-derived away) is the same recorded 0 as a rep without a row.
+    basis = actual === null ? "pending" : repDayRowRecordsNoActivity(row) ? "no_activity_recorded" : "projection";
   } else {
     actual = complete ? 0 : null;
     awaiting = complete ? 0 : null;

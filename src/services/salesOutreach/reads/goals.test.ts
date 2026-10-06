@@ -232,7 +232,7 @@ test("olr C1a GET /rep-days: a rep without a row reads the configured scope even
   assert.equal(scopeOf(salesOutreachRepDaysSchema.parse(await read(configured)), TEST_AGENT_B), "eligible_new_quoted");
 });
 
-test("olr C5: a materialized zero row is pending while coverage is partial and a projected 0 once complete; its frozen goal wins", () => {
+test("olr C5 + CW1: a materialized zero row is pending while coverage is partial and a recorded 0 (no_activity_recorded) once complete; its frozen goal wins", () => {
   // The refresh after New York midnight writes the zero row of 2026-10-04 (composeRepDayRow, no events).
   const PAST = "2026-10-04";
   const afterMidnight = new Date("2026-10-05T04:30:00Z"); // 00:30 New York on DAY
@@ -266,8 +266,35 @@ test("olr C5: a materialized zero row is pending while coverage is partial and a
 
   const complete = serve(materialized(new Date("2026-10-05T04:20:00Z")));
   assert.equal(complete.coverage.state, "complete");
-  assert.deepEqual([complete.actual_confirmed, complete.actual_basis, complete.remaining, complete.progress, complete.goal_reached], [0, "projection", 100, 0, false]);
+  assert.deepEqual([complete.actual_confirmed, complete.actual_basis, complete.remaining, complete.progress, complete.goal_reached], [0, "no_activity_recorded", 100, 0, false]);
   assert.deepEqual([complete.goal, complete.goal_provenance.source], [100, "projection_snapshot"]);
+  assert.deepEqual([complete.other_outbound.count, complete.actual_awaiting_confirmation, complete.unknown_reason], [0, 0, null]);
+});
+
+test("olr CW1: a row is no_activity_recorded only when it records no outbound call in either scope", () => {
+  const PAST = "2026-10-04";
+  const coverage = COMPLETE;
+  assert.equal(coverage.state, "complete");
+  const basisOf = (row: RepDayRow) =>
+    composeRepDay({
+      agent_id: agentOf("b"), agent_name: null, reviewed_link: true,
+      goal: resolveRepDayGoal({ goals, configuration_version: "v1", agent_id: agentOf("b"), business_day: PAST, today: DAY, row }),
+      row, fallback_scope: row.count_scope, capture_coverage: coverage,
+    }).actual_basis;
+  const base = { agent_id: agentOf("b"), business_day: PAST } as const;
+  const zeroBoth = { actual_confirmed_all: 0, actual_confirmed_eligible: 0, actual_awaiting_all: 0, actual_awaiting_eligible: 0 };
+  // Both scopes stored (olr C1b): the recount's no-row test decides.
+  assert.equal(basisOf(repDayRow({ ...base, ...zeroBoth })), "no_activity_recorded", "zero in both scopes");
+  assert.equal(
+    basisOf(repDayRow({ ...base, count_scope: "eligible_new_quoted", unattributed: 4, ...zeroBoth, actual_confirmed_all: 4 })),
+    "projection",
+    "0 to enrolled Leads but 4 outbound calls is a counted 0, not an absence of activity",
+  );
+  assert.equal(basisOf(repDayRow({ ...base, ...zeroBoth, actual_awaiting_all: 1, actual_awaiting_confirmation: 1 })), "projection", "a call awaiting confirmation is activity");
+  assert.equal(basisOf(repDayRow({ ...base, actual_confirmed: 3, ...zeroBoth, actual_confirmed_all: 3 })), "projection");
+  // A row written before both scopes were stored falls back to its own counts and "Other outbound".
+  assert.equal(basisOf(repDayRow(base)), "no_activity_recorded");
+  assert.equal(basisOf(repDayRow({ ...base, count_scope: "eligible_new_quoted", unattributed: 2 })), "projection");
 });
 
 test("olr C0 GET /rep-days: a rep with no row reads 0 / no_activity_recorded when goal coverage is complete", async () => {
