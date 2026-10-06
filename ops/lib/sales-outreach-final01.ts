@@ -6,8 +6,15 @@
  * Only `ops/sales-outreach/install-approved-policy.ts` uses this, and it writes the result through
  * the same PATCH service path the Owner uses. The server never reads these constants: a missing or
  * invalid configuration still fails closed (they are not a runtime default).
+ *
+ * Drift guard (olr B5): once a policy is installed, the Owner may PATCH policy keys (cadence,
+ * evidence, goals, backfill scope). A policy install refuses to overwrite such an edit
+ * (`policyDrift`) unless `--force-policy`; control flips go through `--set-controls`
+ * (`buildControlsChange`), which leaves every policy namespace byte-identical.
  */
 import { createHash } from "node:crypto";
+import { canonicalJson } from "../../src/services/durableWork/checksum";
+import { configurationContentHash } from "../../src/services/salesOutreach/config/store";
 import {
   salesOutreachConfigurationValueSchema,
   type SalesOutreachConfigurationValue,
@@ -121,6 +128,7 @@ export function buildFinal01Configuration(input: {
   const controls = { ...input.current.controls };
   for (const control of input.enableControls ?? []) controls[control] = true;
   const keptOverrides = (input.current.goals.effective_day_overrides ?? []).filter((o) => agents.includes(o.agent_id));
+  // Keys FINAL-01 does not name (optional keys added after FINAL-01) are carried over, never dropped.
   return salesOutreachConfigurationValueSchema.parse({
     controls,
     transition: {
@@ -129,10 +137,11 @@ export function buildFinal01Configuration(input: {
       backfill_include_upcoming_moves: true,
       ...(input.intakeAdmissionAt ? { intake_admission_enabled: true, intake_admission_at: input.intakeAdmissionAt.toISOString() } : {}),
     },
-    cadence: FINAL01_CADENCE,
-    evidence: final01Evidence(rosterVersion),
+    cadence: { ...input.current.cadence, ...FINAL01_CADENCE },
+    evidence: { ...input.current.evidence, ...final01Evidence(rosterVersion) },
     migration: input.migrationPaused === undefined ? input.current.migration : { ...input.current.migration, paused: input.migrationPaused },
     goals: {
+      ...input.current.goals,
       roster_version: rosterVersion,
       rep_work_schedules: agents.map((agent_id) => ({ agent_id, working_days: ALL_WEEKDAYS, scheduled_goal: null })),
       default_scheduled_goal: 100,
@@ -146,6 +155,16 @@ export type InstallArgs = {
   target: string;
   apply: boolean;
   enableControls: InstallableControl[];
+  /** `--disable=<controls>`: switches listed controls off; only with `--set-controls`. */
+  disableControls: InstallableControl[];
+  /** `--set-controls`: change controls / migration pacing / intake only; every policy namespace stays verbatim. */
+  setControls: boolean;
+  /** `--force-policy`: a policy install overwrites a stored policy that differs from FINAL-01. */
+  forcePolicy: boolean;
+  /** `--refresh-roster` (with `--set-controls`): add newly reviewed reps, keep existing rows and goals. */
+  refreshRoster: boolean;
+  /** `--drop-unreviewed` (with `--refresh-roster`): also remove roster agents no longer reviewed. */
+  dropUnreviewed: boolean;
   /** Present only when `--migration-paused=true|false` was given. */
   migrationPaused?: boolean;
   /** Present only when `--intake-admission-at=<ISO instant|now>` was given. */
@@ -159,23 +178,34 @@ export type InstallArgs = {
  * (sets `transition.intake_admission_enabled` and `intake_admission_at`). `--migration=running|paused` is an
  * alias of `--migration-paused` (S4 lane brief); the two spellings must agree when both are given. Unknown
  * flags and values are refused.
+ *
+ * Modes (olr B5): `--set-controls` changes only controls (`--enable`, `--disable`), migration pacing and
+ * intake admission; `--refresh-roster` (and `--drop-unreviewed`) need it. `--force-policy` lets a policy
+ * install overwrite a drifted policy and cannot be combined with `--set-controls`. Whether the switch
+ * flags also need `--set-controls` depends on the stored value (`assertInstallMode`).
  */
 export function parseInstallArgs(argv: readonly string[]): InstallArgs {
   let target: string | null = null;
   let apply = false;
   let enableControls: InstallableControl[] = [];
+  let disableControls: InstallableControl[] = [];
+  let setControls = false;
+  let forcePolicy = false;
+  let refreshRoster = false;
+  let dropUnreviewed = false;
   let migrationPaused: boolean | undefined;
   let intakeAdmissionAt: Date | undefined;
   for (const arg of argv) {
     if (arg.startsWith("--target=")) target = arg.slice("--target=".length).trim();
     else if (arg === "--apply") apply = true;
     else if (arg === "--dry-run") apply = false;
-    else if (arg.startsWith("--enable=")) {
-      const names = arg.slice("--enable=".length).split(",").map((v) => v.trim()).filter(Boolean);
-      for (const name of names)
-        if (!(INSTALLABLE_CONTROLS as readonly string[]).includes(name)) throw new Error(`Unknown control: ${name}`);
-      enableControls = names as InstallableControl[];
-    } else if (arg.startsWith("--migration-paused=")) {
+    else if (arg.startsWith("--enable=")) enableControls = parseControls(arg.slice("--enable=".length));
+    else if (arg.startsWith("--disable=")) disableControls = parseControls(arg.slice("--disable=".length));
+    else if (arg === "--set-controls") setControls = true;
+    else if (arg === "--force-policy") forcePolicy = true;
+    else if (arg === "--refresh-roster") refreshRoster = true;
+    else if (arg === "--drop-unreviewed") dropUnreviewed = true;
+    else if (arg.startsWith("--migration-paused=")) {
       const raw = arg.slice("--migration-paused=".length).trim();
       if (raw !== "true" && raw !== "false") throw new Error(`--migration-paused must be true or false, got: ${raw}`);
       migrationPaused = setMigrationPaused(migrationPaused, raw === "true");
@@ -193,13 +223,31 @@ export function parseInstallArgs(argv: readonly string[]): InstallArgs {
   }
   if (!target) throw new Error("--target=<database name> is required (for example --target=vantagemovers)");
   if (!/^[A-Za-z0-9_]+$/.test(target)) throw new Error("--target must be a plain database name");
+  if (forcePolicy && setControls) throw new Error("--force-policy and --set-controls are mutually exclusive");
+  if (disableControls.length && !setControls) throw new Error("--disable requires --set-controls");
+  if (refreshRoster && !setControls) throw new Error("--refresh-roster requires --set-controls");
+  if (dropUnreviewed && !refreshRoster) throw new Error("--drop-unreviewed requires --refresh-roster");
+  const both = enableControls.filter((c) => disableControls.includes(c));
+  if (both.length) throw new Error(`Controls both enabled and disabled: ${both.join(",")}`);
   return {
     target,
     apply,
     enableControls,
+    disableControls,
+    setControls,
+    forcePolicy,
+    refreshRoster,
+    dropUnreviewed,
     ...(migrationPaused === undefined ? {} : { migrationPaused }),
     ...(intakeAdmissionAt === undefined ? {} : { intakeAdmissionAt }),
   };
+}
+
+function parseControls(raw: string): InstallableControl[] {
+  const names = raw.split(",").map((v) => v.trim()).filter(Boolean);
+  for (const name of names)
+    if (!(INSTALLABLE_CONTROLS as readonly string[]).includes(name)) throw new Error(`Unknown control: ${name}`);
+  return [...new Set(names)] as InstallableControl[];
 }
 
 function setMigrationPaused(previous: boolean | undefined, next: boolean): boolean {
@@ -210,4 +258,262 @@ function setMigrationPaused(previous: boolean | undefined, next: boolean): boole
 /** Deterministic Idempotency-Key: a re-run after a lost response replays instead of writing twice. */
 export function installIdempotencyKey(contentHash: string, expectedRevision: number): string {
   return `install-final01:${FINAL01_APPROVAL_REF}:${expectedRevision}:${contentHash.slice(0, 32)}`;
+}
+
+/** Same scheme as `installIdempotencyKey` for a `--set-controls` write (its own key prefix). */
+export function setControlsIdempotencyKey(contentHash: string, expectedRevision: number): string {
+  return `set-controls:${expectedRevision}:${contentHash.slice(0, 32)}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Drift guard and control-only changes (olr B5)
+// ---------------------------------------------------------------------------------------------
+
+/** One policy key whose stored value differs from what a FINAL-01 policy install would write. */
+export type PolicyDrift = { path: string; current: unknown; installer: unknown };
+
+/** Shown in a drift row for a key that one side does not carry. */
+export const ABSENT_KEY = "(absent)";
+
+/** A value carries an installed policy once `cadence.policy_version` is set; the bootstrap value has none. */
+export function policyInstalled(value: SalesOutreachConfigurationValue): boolean {
+  return value.cadence.policy_version !== null;
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Canonical JSON with `undefined` (an absent optional key) dropped, as the stored document has it. */
+function canonicalOf(value: unknown): string {
+  return value === undefined ? ABSENT_KEY : canonicalJson(JSON.parse(JSON.stringify(value)));
+}
+
+/** Objects recurse key by key (union of both sides); arrays and scalars compare whole. */
+function diffInto(out: PolicyDrift[], path: string, current: unknown, installer: unknown): void {
+  if (isPlainObject(current) && isPlainObject(installer)) {
+    const keys = [...new Set([...Object.keys(current), ...Object.keys(installer)])].sort();
+    for (const key of keys) diffInto(out, `${path}.${key}`, current[key], installer[key]);
+    return;
+  }
+  if (canonicalOf(current) === canonicalOf(installer)) return;
+  out.push({ path, current: current === undefined ? ABSENT_KEY : current, installer: installer === undefined ? ABSENT_KEY : installer });
+}
+
+function withoutRosterVersion(evidence: SalesOutreachConfigurationValue["evidence"]): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...evidence };
+  delete copy.roster_version;
+  return copy;
+}
+
+/**
+ * The policy keys a policy install would overwrite with a different value: every `cadence` key,
+ * `evidence` except `roster_version`, the FAST-01 backfill scope, the default goal and zero-goal
+ * rule, and `working_days`/`scheduled_goal` of every agent on both rosters. A bootstrap value
+ * (no installed policy) has no drift. Roster membership changes are not drift: they are what a
+ * re-install is for.
+ */
+export function policyDrift(current: SalesOutreachConfigurationValue, built: SalesOutreachConfigurationValue): PolicyDrift[] {
+  if (!policyInstalled(current)) return [];
+  const drift: PolicyDrift[] = [];
+  diffInto(drift, "cadence", current.cadence, built.cadence);
+  diffInto(drift, "evidence", withoutRosterVersion(current.evidence), withoutRosterVersion(built.evidence));
+  for (const key of ["backfill_lookback_days", "backfill_include_upcoming_moves"] as const)
+    diffInto(drift, `transition.${key}`, current.transition[key], built.transition[key]);
+  for (const key of ["default_scheduled_goal", "zero_goal_rule"] as const) diffInto(drift, `goals.${key}`, current.goals[key], built.goals[key]);
+  const builtRows = new Map((built.goals.rep_work_schedules ?? []).map((row) => [row.agent_id, row]));
+  for (const row of current.goals.rep_work_schedules ?? []) {
+    const installer = builtRows.get(row.agent_id);
+    if (!installer) continue;
+    diffInto(drift, `goals.rep_work_schedules[${row.agent_id}].working_days`, row.working_days, installer.working_days);
+    diffInto(drift, `goals.rep_work_schedules[${row.agent_id}].scheduled_goal`, row.scheduled_goal, installer.scheduled_goal);
+  }
+  return drift;
+}
+
+/** Everything a `--set-controls` write must leave untouched, as canonical JSON. */
+function outsideControls(value: SalesOutreachConfigurationValue): string {
+  const migration: Record<string, unknown> = { ...value.migration };
+  delete migration.paused;
+  const transition: Record<string, unknown> = { ...value.transition };
+  delete transition.intake_admission_enabled;
+  delete transition.intake_admission_at;
+  return canonicalOf({ transition, cadence: value.cadence, evidence: value.evidence, migration, goals: value.goals });
+}
+
+/**
+ * `--set-controls`: `current` with only the listed controls switched, and (when given) migration
+ * pacing and the intake admission instant. Cadence, evidence, goals and the rest of transition and
+ * migration stay byte-identical; that is re-verified on the result before it is returned.
+ */
+export function buildControlsChange(input: {
+  current: SalesOutreachConfigurationValue;
+  enable?: readonly InstallableControl[];
+  disable?: readonly InstallableControl[];
+  migrationPaused?: boolean;
+  intakeAdmissionAt?: Date;
+}): SalesOutreachConfigurationValue {
+  const { current } = input;
+  const controls = { ...current.controls };
+  for (const control of input.enable ?? []) controls[control] = true;
+  for (const control of input.disable ?? []) controls[control] = false;
+  const value = salesOutreachConfigurationValueSchema.parse({
+    ...current,
+    controls,
+    migration: input.migrationPaused === undefined ? current.migration : { ...current.migration, paused: input.migrationPaused },
+    transition: input.intakeAdmissionAt
+      ? { ...current.transition, intake_admission_enabled: true, intake_admission_at: input.intakeAdmissionAt.toISOString() }
+      : current.transition,
+  });
+  if (outsideControls(value) !== outsideControls(current))
+    throw new Error("--set-controls would change more than controls, migration.paused and intake admission");
+  return value;
+}
+
+export type RosterRefresh = { added: string[]; unreviewed: string[]; dropped: string[] };
+
+/**
+ * `--refresh-roster`: add reviewed `sales_rep` agents missing from the roster (all seven days,
+ * default goal), keep every existing row with its goals, and list rostered agents who are no
+ * longer reviewed; they are removed (with their day overrides) only with `dropUnreviewed`. When
+ * membership changes, `goals.roster_version` and `evidence.roster_version` move together;
+ * otherwise `current` is returned unchanged.
+ */
+export function refreshRoster(input: {
+  current: SalesOutreachConfigurationValue;
+  reviewedAgentIds: readonly string[];
+  installedOn: string;
+  dropUnreviewed: boolean;
+}): { value: SalesOutreachConfigurationValue } & RosterRefresh {
+  const { current } = input;
+  const reviewed = new Set(input.reviewedAgentIds.map((id) => id.toLowerCase()));
+  const rows = current.goals.rep_work_schedules ?? [];
+  const onRoster = new Set(rows.map((row) => row.agent_id));
+  const added = [...reviewed].filter((id) => !onRoster.has(id)).sort();
+  const unreviewed = rows.map((row) => row.agent_id).filter((id) => !reviewed.has(id)).sort();
+  const dropped = input.dropUnreviewed ? unreviewed : [];
+  if (!added.length && !dropped.length) return { value: current, added, unreviewed, dropped };
+  const nextRows = [
+    ...rows.filter((row) => !dropped.includes(row.agent_id)),
+    ...added.map((agent_id) => ({ agent_id, working_days: ALL_WEEKDAYS, scheduled_goal: null })),
+  ];
+  const rosterVersion = rosterVersionFor(nextRows.map((row) => row.agent_id), input.installedOn);
+  const overrides = current.goals.effective_day_overrides;
+  const value = salesOutreachConfigurationValueSchema.parse({
+    ...current,
+    evidence: { ...current.evidence, roster_version: rosterVersion },
+    goals: {
+      ...current.goals,
+      roster_version: rosterVersion,
+      rep_work_schedules: nextRows,
+      effective_day_overrides: overrides === null ? null : overrides.filter((o) => !dropped.includes(o.agent_id)),
+    },
+  });
+  return { value, added, unreviewed, dropped };
+}
+
+/**
+ * Refuses flag combinations that do not fit the stored value. Once a policy is installed, control,
+ * migration and intake flips no longer ride a policy install: they need `--set-controls`. A
+ * `--set-controls` run needs an installed policy.
+ */
+export function assertInstallMode(args: InstallArgs, current: SalesOutreachConfigurationValue): void {
+  const installed = policyInstalled(current);
+  if (args.setControls && !installed)
+    throw new Error("--set-controls needs an installed policy; run the policy install (without --set-controls) first");
+  if (args.setControls || !installed) return;
+  const switches = [
+    args.enableControls.length ? `--enable=${args.enableControls.join(",")}` : null,
+    args.migrationPaused === undefined ? null : `--migration-paused=${args.migrationPaused}`,
+    args.intakeAdmissionAt === undefined ? null : `--intake-admission-at=${args.intakeAdmissionAt.toISOString()}`,
+  ].filter((flag): flag is string => flag !== null);
+  if (switches.length)
+    throw new Error(
+      `${switches.join(" ")} requires --set-controls on an installed policy (a policy install no longer flips switches). ` +
+        `Run: pnpm outreach:install-policy --target=${args.target} --set-controls ${switches.join(" ")}`,
+    );
+}
+
+export type InstallPlan =
+  | { kind: "refused"; refused: "policy_drift"; drift: PolicyDrift[]; hint: string }
+  | {
+      kind: "write";
+      mode: "policy_install" | "set_controls";
+      value: SalesOutreachConfigurationValue;
+      content_hash: string;
+      idempotency_key: string;
+      /** CSI operator request id for the PATCH actor. */
+      request_id: string;
+      /** Drift a `--force-policy` install overwrites (empty otherwise). */
+      drift: PolicyDrift[];
+      forced: boolean;
+      roster: RosterRefresh | null;
+    };
+
+/**
+ * What one installer run would write, decided from the stored value only (no I/O):
+ * - `--set-controls`: `buildControlsChange` (after `refreshRoster` when asked);
+ * - otherwise a FINAL-01 policy install, refused with `policy_drift` when the stored policy
+ *   differs from FINAL-01, unless `--force-policy`.
+ */
+export function planInstall(input: {
+  args: InstallArgs;
+  current: SalesOutreachConfigurationValue;
+  expectedRevision: number;
+  reviewedAgentIds: readonly string[];
+  installedOn: string;
+}): InstallPlan {
+  const { args, current } = input;
+  assertInstallMode(args, current);
+  if (args.setControls) {
+    const refreshed = args.refreshRoster
+      ? refreshRoster({ current, reviewedAgentIds: input.reviewedAgentIds, installedOn: input.installedOn, dropUnreviewed: args.dropUnreviewed })
+      : null;
+    const value = buildControlsChange({
+      current: refreshed?.value ?? current,
+      enable: args.enableControls,
+      disable: args.disableControls,
+      migrationPaused: args.migrationPaused,
+      intakeAdmissionAt: args.intakeAdmissionAt,
+    });
+    const content_hash = configurationContentHash(value);
+    return {
+      kind: "write",
+      mode: "set_controls",
+      value,
+      content_hash,
+      idempotency_key: setControlsIdempotencyKey(content_hash, input.expectedRevision),
+      request_id: `sod-set-controls-${content_hash.slice(0, 16)}`,
+      drift: [],
+      forced: false,
+      roster: refreshed && { added: refreshed.added, unreviewed: refreshed.unreviewed, dropped: refreshed.dropped },
+    };
+  }
+  const value = buildFinal01Configuration({
+    current,
+    rosterAgentIds: input.reviewedAgentIds,
+    installedOn: input.installedOn,
+    enableControls: args.enableControls,
+    migrationPaused: args.migrationPaused,
+    intakeAdmissionAt: args.intakeAdmissionAt,
+  });
+  const drift = policyDrift(current, value);
+  if (drift.length && !args.forcePolicy)
+    return {
+      kind: "refused",
+      refused: "policy_drift",
+      drift,
+      hint: "The stored policy differs from FINAL-01 (an Owner edit). Nothing was written. Use --set-controls to flip controls without touching policy, or --force-policy to overwrite the listed keys with FINAL-01.",
+    };
+  const content_hash = configurationContentHash(value);
+  return {
+    kind: "write",
+    mode: "policy_install",
+    value,
+    content_hash,
+    idempotency_key: installIdempotencyKey(content_hash, input.expectedRevision),
+    request_id: `sod-install-final01-${content_hash.slice(0, 16)}`,
+    drift,
+    forced: drift.length > 0,
+    roster: null,
+  };
 }
