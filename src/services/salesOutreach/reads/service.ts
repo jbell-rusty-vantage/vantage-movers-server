@@ -63,7 +63,7 @@ async function composeRepDays(input: {
     derived_through: input.derivation?.known_complete_through ?? null,
     coverage_from: input.derivation?.coverage_from ?? null,
   });
-  const fallback = fallbackCountScope(rows);
+  const fallback = fallbackCountScope(configuration.value.goals, business_day);
   const cadence = await composeRepCadence({ configuration, now, queueStore: input.queueStore, agentIds: agents });
   const reps = agents.map((agent_id) => {
     const row = rowByAgent.get(agent_id) ?? null;

@@ -7,7 +7,6 @@ import type { SweepCursor, SweepKind, SweepState, SweepStore } from "./sweep";
 
 export class MemoryRepDayStore implements RepDayStore {
   rows = new Map<string, RepDayRowFields & { publication_revision: number; revision: number; computed_as_of: Date }>();
-  firstActivation: Date | null = null;
   marks: CoverageWatermarks = { capture_known_complete_through: null, derived_through: null, coverage_from: null };
   constructor(private readonly source: MemoryContactEventStore) {}
 
@@ -19,7 +18,14 @@ export class MemoryRepDayStore implements RepDayStore {
   async readRow(key: { agent_id: string; business_day: string }): Promise<StoredRepDay | null> {
     const row = this.rows.get(`${key.agent_id}|${key.business_day}`);
     return row
-      ? { goal_snapshot: row.goal_snapshot, input_fingerprint: row.input_fingerprint, publication_revision: row.publication_revision, revision: row.revision, coverage_state: row.coverage.state }
+      ? {
+          goal_snapshot: row.goal_snapshot,
+          input_fingerprint: row.input_fingerprint,
+          publication_revision: row.publication_revision,
+          revision: row.revision,
+          coverage_state: row.coverage.state,
+          count_scope: row.count_scope,
+        }
       : null;
   }
   async writeRow(fields: RepDayRowFields, previous: StoredRepDay | null, now: Date) {
@@ -27,16 +33,18 @@ export class MemoryRepDayStore implements RepDayStore {
     this.rows.set(`${fields.agent_id}|${fields.business_day}`, { ...fields, publication_revision: publication, revision: (previous?.revision ?? 0) + 1, computed_as_of: now });
     return publication;
   }
-  async firstActivationAt() {
-    return this.firstActivation;
-  }
   async watermarks() {
     return this.marks;
   }
   async rowsOfDay(day: string) {
     return [...this.rows.values()]
       .filter((row) => row.business_day === day)
-      .map((row) => ({ agent_id: row.agent_id, coverage_state: row.coverage.state, frozen: Boolean(row.goal_snapshot.configuration_version) }));
+      .map((row) => ({
+        agent_id: row.agent_id,
+        coverage_state: row.coverage.state,
+        frozen: Boolean(row.goal_snapshot.configuration_version),
+        count_scope: row.count_scope,
+      }));
   }
   row(agent: string, day: string) {
     return this.rows.get(`${agent}|${day}`) ?? null;

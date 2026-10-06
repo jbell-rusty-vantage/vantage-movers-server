@@ -20,7 +20,11 @@
  * - pre-CC-04 settle (olr C3): the dry run reports only the null Inbound/Outbound row before CC-04
  *   (the Internal row is left, the post-CC-04 row is an anomaly); apply settles it with a revision bump
  *   and one audit row, the sweep re-derives it awaiting → confirmed and the rep-day follows with one
- *   publication; a second apply matches 0.
+ *   publication; a second apply matches 0;
+ * - count scope from the configuration (olr C1a): a PATCH with a `goals.count_scope_schedule` entry on
+ *   or before today is `count_scope_not_prospective` and writes nothing; a future entry commits; the
+ *   recount writes `all_outbound` the day before the flip and `eligible_new_quoted` on it; the refresh
+ *   pass rewrites a row an older build counted under another scope, once.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -273,6 +277,82 @@ async function main() {
   const again = await applySettle({ actor: csiOperatorActor("settle-pre-cc04-replica-2"), run_id: "settle-pre-cc04-replica-2" });
   assert.deepEqual([again.settled, again.batches], [0, 0], "a second apply matches 0");
   assert.equal(await getSalesIntelligenceAuditEventModel().countDocuments({ event_kind: "call_interactions_settled_pre_cc04" }), 1, "and audits nothing");
+
+  // --- olr C1a: count scope from the configuration ------------------------------------------------
+  // Through the real PATCH (Mongo transaction, command ledger) and loader: an entry on or before today
+  // is refused with nothing written; a future entry commits; recounts then write each day's scope from
+  // the schedule; the refresh pass rewrites a row an older build counted under another scope.
+  const { getSalesOutreachConfigurationModel } = await import("../../src/models/salesOutreach/configuration.js");
+  const { getSalesIntelligenceCommandExecutionModel } = await import("../../src/models/SalesIntelligenceCommandExecution.js");
+  const { patchSalesOutreachConfiguration } = await import("../../src/services/salesOutreach/config/commands.js");
+  const { createConfigurationLoader } = await import("../../src/services/salesOutreach/config/load.js");
+  const { refreshOpenRepDays } = await import("../../src/services/salesOutreach/contacts/sweep.js");
+  const { newYorkBusinessDay } = await import("../../src/services/salesOutreach/reads/businessDay.js");
+  const { addDays } = await import("../../src/services/salesOutreach/engine/calendar.js");
+  for (const Model of [getSalesOutreachConfigurationModel(), getSalesIntelligenceCommandExecutionModel()] as unknown as Array<mongoose.Model<unknown>>) {
+    await Model.createCollection();
+    await Model.createIndexes();
+  }
+  const owner = csiOperatorActor("sod-c1a-replica");
+  const goalsValue = {
+    controls: { desk_enabled: true, goal_metrics_enabled: true },
+    goals: { roster_version: "r1", default_scheduled_goal: 100, zero_goal_rule: "no_goal_today_excluded_from_denominator", rep_work_schedules: [{ agent_id: String(alice), working_days: [1, 2, 3, 4, 5, 6, 7] }], effective_day_overrides: [] },
+  };
+  const withSchedule = (schedule: unknown) => ({ ...goalsValue, goals: { ...goalsValue.goals, count_scope_schedule: schedule } });
+  await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "c1a-init", expected_revision: 0, value: goalsValue });
+  const realToday = newYorkBusinessDay(new Date()); // the PATCH guard runs on the command's wall clock
+  const flipDay = addDays(realToday, 2);
+  await assert.rejects(
+    patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "c1a-today", expected_revision: 1, value: withSchedule([{ from_day: realToday, scope: "eligible_new_quoted" }]) }),
+    (error: unknown) => {
+      const issues = (error as { code?: string; issues?: Array<{ code: string }> }).issues ?? [];
+      return (error as { code?: string }).code === "INVALID_INPUT" && issues.some((i) => i.code === "count_scope_not_prospective");
+    },
+  );
+  const Configuration = getSalesOutreachConfigurationModel();
+  assert.equal(await Configuration.countDocuments({ kind: "version" }), 1, "a refused PATCH writes no version");
+  const flip = await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "c1a-flip", expected_revision: 1, value: withSchedule([{ from_day: flipDay, scope: "eligible_new_quoted" }]) });
+  assert.equal(flip.response.revision, 2);
+  const scheduled = await createConfigurationLoader().requireActive();
+  assert.deepEqual(scheduled.value.goals.count_scope_schedule, [{ from_day: flipDay, scope: "eligible_new_quoted" }]);
+  // Alice calls her Lead and a number with no subject on the day before the flip and on the flip day.
+  const otherNumber = new mongoose.Types.ObjectId();
+  const scopeCall = async (day: string, contact: mongoose.Types.ObjectId, session: string) => {
+    const started = new Date(`${day}T15:00:00Z`);
+    const row = await getCallInteractionModel().create({
+      provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction: "Outbound",
+      contact_number_id: contact, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
+      parties: [{ role: "user", direction: "Outbound", extension_id: "101" }], legs: [{ extension_id: "101", direction: "Outbound", start_time: started, result: "Call connected" }],
+      call_log_state: "settled", terminal: true, first_observed_at: started, last_observed_at: started,
+    });
+    return { source_kind: "call" as const, source_id: String(row._id) };
+  };
+  const beforeFlip = addDays(flipDay, -1);
+  const scopeSources = [
+    await scopeCall(beforeFlip, number, "s-c1a-1"), await scopeCall(beforeFlip, otherNumber, "s-c1a-2"),
+    await scopeCall(flipDay, number, "s-c1a-3"), await scopeCall(flipDay, otherNumber, "s-c1a-4"),
+  ];
+  const scopeNow = new Date(`${addDays(flipDay, 1)}T16:00:00Z`);
+  await withTransaction((session) => applyContactSources(scopeSources, { now: scopeNow, queueRepDays: false }, mongoContactEventStore, session));
+  for (const day of [beforeFlip, flipDay])
+    await withTransaction((session) => recountRepDay({ agent_id: String(alice), business_day: day }, scheduled, scopeNow, mongoRepDayStore, session));
+  const dayBefore = await Rows.findOne({ agent_id: alice, business_day: beforeFlip }).lean();
+  const dayOf = await Rows.findOne({ agent_id: alice, business_day: flipDay }).lean();
+  assert.deepEqual([dayBefore?.count_scope, dayBefore?.actual_confirmed, dayBefore?.unattributed], ["all_outbound", 2, 1], "the day before the flip counts all outbound");
+  assert.deepEqual([dayOf?.count_scope, dayOf?.actual_confirmed, dayOf?.unattributed], ["eligible_new_quoted", 1, 1], "the flip day counts eligible only");
+  // The 2026-10-06 production case: a row an older build counted eligible-only while the configuration
+  // has no schedule. The refresh (at `now`, business day 2026-10-05) rewrites it as all_outbound.
+  const staleKey = { agent_id: alice, business_day: "2026-10-05" };
+  const staleBefore = await Rows.findOne(staleKey).lean();
+  await Rows.updateOne(staleKey, { $set: { count_scope: "eligible_new_quoted", input_fingerprint: "pre-c1a" } });
+  const refreshAt = new Date(+settleSweepAt + 121_000);
+  const refreshed = await refreshOpenRepDays(refreshAt, { loader: fixedConfigurationLoader(configuration) });
+  assert.equal(refreshed.skipped, false);
+  const corrected = await Rows.findOne(staleKey).lean();
+  assert.equal(corrected?.count_scope, "all_outbound", "the refresh self-corrects the stored scope");
+  assert.equal(corrected?.publication_revision, (staleBefore?.publication_revision ?? 0) + 1);
+  await refreshOpenRepDays(refreshAt, { loader: fixedConfigurationLoader(configuration) });
+  assert.equal((await Rows.findOne(staleKey).lean())?.publication_revision, corrected?.publication_revision, "a second refresh does not rewrite the corrected row");
 
   console.log(JSON.stringify({ ok: true, database }));
 }

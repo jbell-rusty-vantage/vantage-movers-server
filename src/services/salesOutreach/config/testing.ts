@@ -19,6 +19,8 @@ export class MemoryConfigurationDb {
   ledger = new Map<string, { hash: string; response: unknown }>();
   reads = { pointer: 0, version: 0 };
   failReads = false;
+  /** The command clock (`context.now`); null = the wall clock (olr C1a guard tests pin it). */
+  now: Date | null = null;
 
   readonly store: ConfigurationStore = {
     readPointer: async () => {
@@ -75,7 +77,7 @@ export class MemoryConfigurationDb {
       const response = await input.operation({
         session: { inTransaction: () => true } as unknown as ClientSession,
         command_id: new mongoose.Types.ObjectId(),
-        now: new Date(),
+        now: this.now ?? new Date(),
         actor: input.actor as CsiActor,
       });
       this.ledger.set(key, { hash, response });
