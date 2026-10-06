@@ -5,6 +5,7 @@
  */
 import { canonicalJson } from "../../src/services/durableWork/checksum";
 import type { CsiIndex } from "../../src/models/salesIntelligence/common";
+import { SALES_OUTREACH_FORM_LEAD_READ_INDEXES } from "../../src/services/salesOutreach/enrollment/store";
 
 export type ObservedIndex = {
   name?: string;
@@ -16,6 +17,13 @@ export type ObservedIndex = {
 };
 
 export type DeclaredCollection = { collection: string; indexes: readonly CsiIndex[] };
+
+/**
+ * Indexes the desk declares on collections it reads but does not own (no registry model; building one
+ * writes no document). The build appends them to the registry's list (olr B7: the enrollment
+ * candidates' upcoming-move branch on `form_leads`).
+ */
+export const SALES_OUTREACH_READ_INDEXES: readonly DeclaredCollection[] = [{ collection: "form_leads", indexes: SALES_OUTREACH_FORM_LEAD_READ_INDEXES }];
 
 export type IndexAction =
   | { collection: string; name: string; action: "exists" }

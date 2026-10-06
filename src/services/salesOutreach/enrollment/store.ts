@@ -47,13 +47,50 @@ export type LeadScanFilter = Readonly<{
   move_date_from?: Date;
   /** Only Leads whose stored `timestamp` is before this (the "older" listing). */
   timestamp_before?: Date;
+  /** Only Leads whose `_id` (24-hex ObjectId) is on or after this: bounds the `_id` walk (olr B7 branch `w`). */
+  id_from?: string;
+  /** Only Leads whose `_id` (24-hex ObjectId) is before this (olr B7 branch `u`, older Leads with upcoming moves). */
+  id_before?: string;
 }>;
+
+/**
+ * Index on a collection the desk reads but does not own (olr B7): the enrollment candidates' upcoming-move
+ * branch (`move_date ≥ today`, `_id` below the received-window bound, newest first) reads it instead of
+ * walking every older Form Lead. Built by `pnpm outreach:indexes`; creating it writes no Lead.
+ */
+export const SALES_OUTREACH_FORM_LEAD_READ_INDEXES = [{ name: "sod_form_lead_move_date", key: { move_date: 1, _id: -1 } }] as const;
+
+const minHex = (a: string | undefined, b: string | undefined) => (a === undefined ? b : b === undefined ? a : a < b ? a : b);
+
+/** The `find` of one `scanLeads` page (pure; the replica proof explains exactly this query). */
+export function leadScanQuery(
+  model: SalesOutreachLeadModel,
+  page: Readonly<{ after_id: string | null; limit: number; direction: 1 | -1; filter: LeadScanFilter | null }>,
+): { filter: Record<string, unknown>; sort: { _id: 1 | -1 }; limit: number } {
+  const f = page.filter;
+  const after = page.after_id?.toLowerCase();
+  const idRange: Record<string, unknown> = {};
+  const lower = page.direction === 1 ? after : undefined;
+  const upper = minHex(page.direction === -1 ? after : undefined, f?.id_before?.toLowerCase());
+  if (lower) idRange.$gt = oid(lower);
+  if (f?.id_from) idRange.$gte = oid(f.id_from);
+  if (upper) idRange.$lt = oid(upper);
+  const filter: Record<string, unknown> = {};
+  if (Object.keys(idRange).length) filter._id = idRange;
+  if (f?.timestamp_before) filter.timestamp = { $lt: f.timestamp_before };
+  const window = [
+    ...(f?.timestamp_from ? [{ timestamp: { $gte: f.timestamp_from } }] : []),
+    ...(f?.move_date_from && model === "FormLead" ? [{ move_date: { $gte: f.move_date_from } }] : []),
+  ];
+  if (window.length) filter.$or = window;
+  return { filter, sort: { _id: page.direction }, limit: page.limit };
+}
 
 /** Skipped Leads kept on the run row (the counts stay complete). */
 export const MAX_RECORDED_SKIPS = 2_000;
 
 export type EnrollmentStore = {
-  /** Lead facts of one model after `afterId` by `_id` (asc or desc), optionally prefiltered. Read-only. */
+  /** Lead facts of one model after `afterId` by `_id` (asc or desc), optionally prefiltered and `_id`-bounded. Read-only. */
   scanLeads(
     model: SalesOutreachLeadModel,
     page: Readonly<{ after_id: string | null; limit: number; direction: 1 | -1; filter: LeadScanFilter | null }>,
@@ -111,16 +148,8 @@ const leadModel = (model: SalesOutreachLeadModel) =>
 
 export const mongoEnrollmentStore: EnrollmentStore = {
   async scanLeads(model, page) {
-    const filter: Record<string, unknown> = {};
-    if (page.after_id) filter._id = { [page.direction === 1 ? "$gt" : "$lt"]: oid(page.after_id) };
-    const f = page.filter;
-    if (f?.timestamp_before) filter.timestamp = { $lt: f.timestamp_before };
-    const window = [
-      ...(f?.timestamp_from ? [{ timestamp: { $gte: f.timestamp_from } }] : []),
-      ...(f?.move_date_from && model === "FormLead" ? [{ move_date: { $gte: f.move_date_from } }] : []),
-    ];
-    if (window.length) filter.$or = window;
-    const rows = await leadModel(model).find(filter, DESK_LEAD_PROJECTION).sort({ _id: page.direction }).limit(page.limit).lean();
+    const { filter, sort, limit } = leadScanQuery(model, page);
+    const rows = await leadModel(model).find(filter, DESK_LEAD_PROJECTION).sort(sort).limit(limit).lean();
     return (rows as Array<Record<string, unknown> & { _id: unknown }>).map((row) => toDeskLeadFacts(model, row));
   },
 

@@ -83,6 +83,7 @@
     "outreach:desk-state": "node --env-file=.env --import tsx ops/sales-outreach/desk-state.ts",
     "outreach:seed-pilot": "node --import tsx ops/sales-outreach/seed-synthetic-pilot.ts",
     "outreach:settle-pre-cc04": "node --env-file=.env --import tsx ops/sales-outreach/settle-pre-cc04-calls.ts",
+    "outreach:repair-late-first-periods": "node --env-file=.env --import tsx ops/sales-outreach/repair-late-first-periods.ts",
     "numbers:migrate": "node --env-file=.env --import tsx ops/numbers-v2/migrate.ts",
     "numbers:cleanup": "node --env-file=.env --import tsx ops/numbers-v2/cleanup.ts",
     "numbers:desk-resync": "node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts",
