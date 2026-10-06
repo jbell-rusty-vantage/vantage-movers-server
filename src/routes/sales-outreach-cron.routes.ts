@@ -3,7 +3,7 @@ import { connectMongo } from "../db";
 import { logger } from "../logger";
 import { drainOutreachEvaluateJobs, sweepOutreachEvaluations } from "../services/salesOutreach/evaluation/evaluateJob";
 import { drainOutreachLeadChangeJobs } from "../services/salesOutreach/subjects/leadChangeJob";
-import { reconcileOutreachRevisions, scanOutreachLeadChanges } from "../services/salesOutreach/subjects/feed";
+import { reconcileOutreachRevisions, scanOutreachLeadChangesUntilCaughtUp } from "../services/salesOutreach/subjects/feed";
 import { requireCronAuth } from "./sales-intelligence-cron.routes";
 
 /**
@@ -14,8 +14,9 @@ import { requireCronAuth } from "./sales-intelligence-cron.routes";
  * answers `{ ok: true, skipped: true, reason }` while it is uninitialized or unavailable (fail closed;
  * the tail cursor does not move, so nothing is lost).
  *
- * - lead changes (every minute): one bounded `entity_changes` tail pass, then a drain of
- *   `outreach_lead_change` jobs (≤ 100, 40 s). A failed tail pass never blocks the drain.
+ * - lead changes (every minute): the `entity_changes` tail loop (olr B10: pages of 100 while the
+ *   page is full, within `migration.feed_max_passes_per_run` / `feed_budget_seconds`, defaults 10 /
+ *   15 s), then a drain of `outreach_lead_change` jobs (≤ 100, 40 s). A failed tail never blocks the drain.
  * - revision reconcile (every 5 minutes): the net for Lead writes that skipped an EntityChange.
  * - evaluate (every minute): the `next_evaluation_at` clock repair and the policy reconcile (bounded
  *   pages of 100), then a drain of `outreach_evaluate` jobs (≤ 100, 40 s). A failed sweep never blocks
@@ -29,7 +30,7 @@ export const SALES_OUTREACH_CRON_PATHS = {
 
 export type SalesOutreachCronDeps = {
   connect?: typeof connectMongo;
-  scan?: () => ReturnType<typeof scanOutreachLeadChanges>;
+  scan?: () => ReturnType<typeof scanOutreachLeadChangesUntilCaughtUp>;
   drain?: () => ReturnType<typeof drainOutreachLeadChangeJobs>;
   reconcile?: () => ReturnType<typeof reconcileOutreachRevisions>;
   evaluationSweep?: () => ReturnType<typeof sweepOutreachEvaluations>;
@@ -45,7 +46,7 @@ export function createSalesOutreachCronRouter(deps: SalesOutreachCronDeps = {}):
   router.all(SALES_OUTREACH_CRON_PATHS.leadChanges, requireCronAuth, async (_req, res) => {
     try {
       await connect();
-      const tail = await (deps.scan ?? (() => scanOutreachLeadChanges()))().catch((error: unknown) => {
+      const tail = await (deps.scan ?? (() => scanOutreachLeadChangesUntilCaughtUp()))().catch((error: unknown) => {
         logger.warn({ msg: "sales_outreach.cron.lead_change_scan_failed", errorName: errorName(error) });
         return null;
       });
