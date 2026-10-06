@@ -71,7 +71,7 @@ export function readCallWatermarks(calls: CaptureSyncRow | null, derivation: Con
 
 /**
  * The coverage every desk read labels channels with (olr A2):
- * - `cadence`: what the engine judges deadlines against (`cadenceCallCoverage`; SMS = worst reviewed
+ * - `cadence`: what the engine judges deadlines against (`cadenceCallCoverage`; SMS = worst current reviewed
  *   mailbox, null while SMS capture is off) — a passed deadline reads overdue only when this proves it;
  * - `capture`: the raw watermark the channel's `coverage` block shows (Call Log `known_complete_through`;
  *   SMS the same worst mailbox), `complete` while it trails `as_of` by at most `today_tolerance_ms`.
@@ -84,7 +84,7 @@ export async function readFreshness(store: SalesOutreachReadStore, configuration
   const [calls, lastCallWebhookAt, mailboxes, granot, derivation] = await Promise.all([
     store.readCallsCapture(),
     store.readLastCallWebhookAt(),
-    smsEnabled ? store.readSmsMailboxes() : Promise.resolve([]),
+    smsEnabled ? store.readSmsMailboxes(now) : Promise.resolve([]),
     store.readLatestGranotObservationAt(),
     store.readContactDerivation(),
   ]);
