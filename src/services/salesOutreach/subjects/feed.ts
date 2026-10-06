@@ -74,6 +74,8 @@ export type LeadChangeRow = Readonly<{
   revision_before: number;
   revision_after: number;
   applied_at: Date;
+  /** The Lead paths the change wrote (`entity_changes.changed_paths`), read by the olr B6 admission nomination. */
+  changed_paths: readonly string[];
 }>;
 
 export type FeedCursor = Readonly<{ applied_at: Date; id: string }>;
@@ -106,29 +108,125 @@ export function decisionJobInput(lead: DeskLeadRef, fingerprint: string, configu
 }
 
 /**
- * Which changes of a page nominate a job: every change of a Lead that is a desk subject, and — only
- * while the persisted intake gate is on — a Lead's creation (`revision_before` 0), which the job then
- * runs through the intake admission. Other Leads are not the desk's concern (expansion is explicit).
+ * The `outreach_lead_change` job that runs only the expansion admission path for a Lead that is not a
+ * desk subject (olr B6; LANE-B §0.2): one identity per Lead revision, distinct from the `r<rev>` intake
+ * identity, so the job knows its trigger from its own `dedupe_key` (`leadChangeJob.ts` `triggerOfJob`).
+ */
+export function admissionJobInput(lead: DeskLeadRef, revision: number): JobInput {
+  return {
+    stage: "outreach_lead_change",
+    subject_key: `outreach-lead:${lead.model}:${lead.id}`,
+    dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:admission:r${revision}`,
+    input_revision: revision,
+    input_refs: [lead.id],
+  };
+}
+
+/**
+ * Lead paths whose change can move a non-subject Lead into the expansion scope (olr B6): accepted
+ * priority, the P05h exclusions and closures, the received time, identity (Job Number), the upcoming
+ * move date and the intake source (the P05e default). A changed path matches exactly or as a parent
+ * (`booked` matches `booked.id`). A code constant: a path found later is added here.
+ */
+export const ADMISSION_DECISION_PATHS = [
+  "granot_priority",
+  "last_accepted_granot_observation",
+  "duplicate",
+  "booked",
+  "cancelled",
+  "bad_lead",
+  "created_on_unmatched",
+  "timestamp",
+  "normalized_job_no",
+  "move_date",
+  "ingestion_origin",
+] as const;
+
+/** The change wrote at least one `ADMISSION_DECISION_PATHS` path (exact, or a sub-path of one). */
+export const touchesAdmissionDecision = (paths: readonly string[]) =>
+  paths.some((path) => ADMISSION_DECISION_PATHS.some((decision) => path === decision || path.startsWith(`${decision}.`)));
+
+/**
+ * olr B6: the tail nominates expansion admission jobs only while the Owner switch
+ * `transition.expansion_admission_enabled` is on (absent = off) and the migration is not paused.
+ */
+export const expansionAdmissionOpenOf = (value: Pick<SalesOutreachConfigurationValue, "transition" | "migration">) =>
+  value.transition.expansion_admission_enabled === true && !value.migration.paused;
+
+/** olr B8: the hold re-check bucket length (a held subject is re-checked at most once per bucket). */
+export const HOLD_RECHECK_BUCKET_MS = 15 * 60_000;
+
+/** `YYYYMMDDTHHmm` (UTC) of the start of the 15-minute bucket holding `now` (LANE-B §0.2 `hold:<bucket>`). */
+export function holdRecheckBucketOf(now: Date): string {
+  const start = new Date(Math.floor(+now / HOLD_RECHECK_BUCKET_MS) * HOLD_RECHECK_BUCKET_MS);
+  return start.toISOString().slice(0, 16).replace(/[-:]/g, "");
+}
+
+/**
+ * The `outreach_lead_change` job that re-checks one held subject (olr B8; LANE-B §0.2): one identity per
+ * subject per 15-minute bucket, so the 5-minute reconcile wakes a held subject at most 4 times an hour.
+ * Ambiguity can clear through another Lead's change (its `duplicate` flag), which nominates nothing for
+ * this Lead; the ordinary job re-syncs it and, once the hold has cleared, opens its late first period.
+ */
+export function holdJobInput(lead: DeskLeadRef, now: Date): JobInput {
+  return {
+    stage: "outreach_lead_change",
+    subject_key: `outreach-lead:${lead.model}:${lead.id}`,
+    dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:hold:${holdRecheckBucketOf(now)}`,
+    input_revision: 1,
+    input_refs: [lead.id],
+  };
+}
+
+/** A subject held for an ambiguous Job Number (`sync.ts` `admissionHoldOf`): the reconcile re-checks it. */
+export const isHeldForIdentity = (subject: Pick<ReconcileSubject, "status" | "review_reasons">) =>
+  subject.status === "review" && subject.review_reasons.includes("ambiguous_identity");
+
+export type LeadChangeNomination = Readonly<{ lead: DeskLeadRef; revision: number; kind: "change" | "admission" }>;
+
+/**
+ * Which changes of a page nominate a job:
+ * - every change of a Lead that is a desk subject (`change`, the `r<rev>` job);
+ * - only while the persisted intake gate is on, a Lead's creation (`revision_before` 0; `change`), which
+ *   the job runs through the intake admission;
+ * - olr B6, only while expansion admission is open (`expansionAdmissionOpenOf`), a later change of a
+ *   non-subject Lead that wrote a decision path (`admission`, the `admission:r<rev>` job), which the job
+ *   runs through the expansion admission only.
+ * Other changes of other Leads are not the desk's concern.
  */
 export function nominateLeadChanges(
   changes: readonly LeadChangeRow[],
   subjectLeadKeys: ReadonlySet<string>,
   intakeOpen: boolean,
-): Array<{ lead: DeskLeadRef; revision: number }> {
+  admissionOpen = false,
+): LeadChangeNomination[] {
   const seen = new Set<string>();
-  const nominations: Array<{ lead: DeskLeadRef; revision: number }> = [];
+  const nominations: LeadChangeNomination[] = [];
   for (const change of changes) {
     const key = deskLeadKey(change.lead);
-    if (!subjectLeadKeys.has(key) && !(intakeOpen && change.revision_before === 0)) continue;
-    const identity = `${key}:${change.revision_after}`;
+    const kind = subjectLeadKeys.has(key) || (intakeOpen && change.revision_before === 0)
+      ? "change"
+      : admissionOpen && change.revision_before > 0 && touchesAdmissionDecision(change.changed_paths)
+        ? "admission"
+        : null;
+    if (!kind) continue;
+    const identity = `${key}:${kind}:${change.revision_after}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
-    nominations.push({ lead: change.lead, revision: change.revision_after });
+    nominations.push({ lead: change.lead, revision: change.revision_after, kind });
   }
   return nominations;
 }
 
-export type ReconcileSubject = Readonly<{ id: string; lead: DeskLeadRef; lead_revision_seen: number; decision_fingerprint: string | null }>;
+export type ReconcileSubject = Readonly<{
+  id: string;
+  lead: DeskLeadRef;
+  lead_revision_seen: number;
+  decision_fingerprint: string | null;
+  /** olr B8: status and review reasons, so the reconcile can re-check held subjects. */
+  status: "active" | "review";
+  review_reasons: string[];
+}>;
 
 export type OutreachFeedStore = {
   readTailCursor(session: ClientSession): Promise<FeedCursor | null>;
@@ -140,7 +238,7 @@ export type OutreachFeedStore = {
   subjectLeadKeys(leads: readonly DeskLeadRef[], session: ClientSession): Promise<Set<string>>;
   readReconcileCursor(session: ClientSession): Promise<string | null>;
   writeReconcileCursor(subjectId: string | null, session: ClientSession): Promise<void>;
-  /** Open (non-closed) subjects after `afterId` by `_id`, with the decision fingerprint they were last decided under (olr B2). */
+  /** Open (non-closed) subjects after `afterId` by `_id`, with the decision fingerprint they were last decided under (olr B2), status and review reasons (olr B8). */
   subjectsAfter(afterId: string | null, limit: number, session: ClientSession): Promise<ReconcileSubject[]>;
   leadRevisions(leads: readonly DeskLeadRef[], session: ClientSession): Promise<Map<string, number>>;
   enqueue(job: JobInput, session: ClientSession): Promise<"enqueued" | "conflict">;
@@ -150,15 +248,23 @@ const ZERO_ID = "000000000000000000000000";
 const LEAD_MODELS: SalesOutreachLeadModel[] = ["FormLead", "CallLead"];
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 
-type ChangeLean = { _id: unknown; entity: { model: string; id: string }; revision_before: number; revision_after: number; applied_at: Date };
+type ChangeLean = {
+  _id: unknown;
+  entity: { model: string; id: string };
+  revision_before: number;
+  revision_after: number;
+  applied_at: Date;
+  changed_paths?: string[] | null;
+};
 const toChange = (row: ChangeLean): LeadChangeRow => ({
   id: String(row._id),
   lead: { model: row.entity.model as SalesOutreachLeadModel, id: row.entity.id },
   revision_before: row.revision_before,
   revision_after: row.revision_after,
   applied_at: row.applied_at,
+  changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
 });
-const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1 } as const;
+const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1, changed_paths: 1 } as const;
 
 export const mongoOutreachFeedStore: OutreachFeedStore = {
   async readTailCursor(session) {
@@ -228,7 +334,7 @@ export const mongoOutreachFeedStore: OutreachFeedStore = {
     const rows = await getSalesOutreachSubjectModel()
       .find(
         { status: { $in: ["active", "review"] }, ...(afterId ? { _id: { $gt: oid(afterId) } } : {}) },
-        { lead_model: 1, lead_id: 1, lead_revision_seen: 1, decision_fingerprint: 1 },
+        { lead_model: 1, lead_id: 1, lead_revision_seen: 1, decision_fingerprint: 1, status: 1, review_reasons: 1 },
       )
       .sort({ _id: 1 })
       .limit(limit)
@@ -239,6 +345,8 @@ export const mongoOutreachFeedStore: OutreachFeedStore = {
       lead: { model: row.lead_model as SalesOutreachLeadModel, id: String(row.lead_id) },
       lead_revision_seen: Number(row.lead_revision_seen ?? 0),
       decision_fingerprint: typeof row.decision_fingerprint === "string" ? row.decision_fingerprint : null,
+      status: row.status === "review" ? ("review" as const) : ("active" as const),
+      review_reasons: Array.isArray(row.review_reasons) ? row.review_reasons.map(String) : [],
     }));
   },
   async leadRevisions(leads, session) {
@@ -299,10 +407,17 @@ export async function scanOutreachLeadChanges(now = new Date(), deps: OutreachFe
   const inspection = await loader.inspect();
   if (inspection.state !== "active")
     return { skipped: true, reason: `configuration_${inspection.state}`, scanned: 0, page_size: 0, nominated: 0, conflicts: 0, cursor: null };
-  return runTailPass(now, deps, inspection.value.transition.intake_admission_enabled, options.overlap ?? true);
+  return runTailPass(now, deps, tailGatesOf(inspection.value), options.overlap ?? true);
 }
 
-async function runTailPass(now: Date, deps: OutreachFeedDeps, intakeOpen: boolean, scanOverlap: boolean): Promise<TailPassResult> {
+/** Which creation/admission nominations the tail makes this run (from the configuration it inspected). */
+type TailGates = Readonly<{ intake: boolean; admission: boolean }>;
+const tailGatesOf = (value: SalesOutreachConfigurationValue): TailGates => ({
+  intake: value.transition.intake_admission_enabled,
+  admission: expansionAdmissionOpenOf(value),
+});
+
+async function runTailPass(now: Date, deps: OutreachFeedDeps, gates: TailGates, scanOverlap: boolean): Promise<TailPassResult> {
   const store = deps.store ?? mongoOutreachFeedStore;
   return (deps.transaction ?? withTransaction)(async (session) => {
     const stored = await store.readTailCursor(session);
@@ -313,8 +428,9 @@ async function runTailPass(now: Date, deps: OutreachFeedDeps, intakeOpen: boolea
     const subjects = await store.subjectLeadKeys(uniqueLeads(changes.map((c) => c.lead)), session);
     let nominated = 0;
     let conflicts = 0;
-    for (const nomination of nominateLeadChanges(changes, subjects, intakeOpen)) {
-      if ((await store.enqueue(leadChangeJobInput(nomination.lead, nomination.revision), session)) === "conflict") conflicts++;
+    for (const nomination of nominateLeadChanges(changes, subjects, gates.intake, gates.admission)) {
+      const job = nomination.kind === "admission" ? admissionJobInput(nomination.lead, nomination.revision) : leadChangeJobInput(nomination.lead, nomination.revision);
+      if ((await store.enqueue(job, session)) === "conflict") conflicts++;
       else nominated++;
     }
     const last = page.at(-1);
@@ -381,7 +497,7 @@ export async function scanOutreachLeadChangesUntilCaughtUp(now = new Date(), dep
       stopped_by: null,
       ...effective,
     };
-  const intakeOpen = inspection.value.transition.intake_admission_enabled;
+  const gates = tailGatesOf(inspection.value);
   let passes = 0;
   let scanned = 0;
   let nominated = 0;
@@ -391,7 +507,7 @@ export async function scanOutreachLeadChangesUntilCaughtUp(now = new Date(), dep
   for (;;) {
     let pass: TailPassResult;
     try {
-      pass = await runTailPass(now, deps, intakeOpen, passes === 0);
+      pass = await runTailPass(now, deps, gates, passes === 0);
     } catch (error) {
       if (passes === 0) throw error;
       logger.warn({ msg: "sales_outreach.lead_change.tail_loop_pass_failed", passes, errorName: error instanceof Error ? error.name : "Error" });
@@ -438,6 +554,8 @@ export type ReconcilePassResult = Readonly<{
   decision_deferred: number;
   /** olr B2: the effective cap of this run (`decisionReconcilePerRunOf`). */
   decision_cap: number;
+  /** olr B8: hold re-check nominations attempted this run (`hold:<15-min bucket>`; a replay in the same bucket dedupes). */
+  hold_nominated: number;
 }>;
 
 /**
@@ -452,6 +570,10 @@ export type ReconcilePassResult = Readonly<{
  * an attempt that dedupes onto a still-queued job counts, which throttles the wave to the drain). The
  * rest wait for a later run; the cursor still moves and wraps. A subject whose revision differs gets
  * only the `r<rev>` job, which stamps the fingerprint too. Closed subjects are never re-decided.
+ *
+ * olr B8 hold re-check: a `review` subject held for `ambiguous_identity` whose revision is current and
+ * that got no decision job this run gets `holdJobInput` (one per 15-minute bucket), uncapped: the hold
+ * is rare (a handful of subjects) and each job is one cheap re-sync.
  */
 export async function reconcileOutreachRevisions(
   now = new Date(),
@@ -461,7 +583,7 @@ export async function reconcileOutreachRevisions(
   const loader = deps.loader ?? salesOutreachConfigurationLoader;
   const inspection = await loader.inspect();
   const decisionCap = decisionReconcilePerRunOf(inspection.state === "active" ? inspection.value : null);
-  const idle = { pages: 0, checked: 0, nominated: 0, wrapped: false, decision_nominated: 0, decision_deferred: 0, decision_cap: decisionCap };
+  const idle = { pages: 0, checked: 0, nominated: 0, wrapped: false, decision_nominated: 0, decision_deferred: 0, decision_cap: decisionCap, hold_nominated: 0 };
   if (inspection.state !== "active") return { skipped: true, reason: `configuration_${inspection.state}`, ...idle };
   const lease = deps.lease ?? mongoReconcileLease(now);
   if (!(await lease.acquire())) return { skipped: true, reason: "lease_held", ...idle };
@@ -472,6 +594,7 @@ export async function reconcileOutreachRevisions(
   let nominated = 0;
   let decisions = 0;
   let deferred = 0;
+  let holds = 0;
   let wrapped = false;
   try {
     while (pages < RECONCILE_MAX_PAGES && !wrapped) {
@@ -482,6 +605,7 @@ export async function reconcileOutreachRevisions(
         let count = 0;
         let decided = 0;
         let waiting = 0;
+        let held = 0;
         for (const subject of subjects) {
           const revision = revisions.get(deskLeadKey(subject.lead));
           if (revision === undefined) continue;
@@ -489,29 +613,46 @@ export async function reconcileOutreachRevisions(
             if ((await store.enqueue(leadChangeJobInput(subject.lead, revision), session)) === "enqueued") count++;
             continue;
           }
-          if (subject.decision_fingerprint === activeFingerprint) continue;
-          if (decisions + decided >= decisionCap) {
+          if (subject.decision_fingerprint !== activeFingerprint) {
+            if (decisions + decided < decisionCap) {
+              await store.enqueue(decisionJobInput(subject.lead, activeFingerprint, inspection.revision), session);
+              decided++;
+              continue;
+            }
             waiting++;
-            continue;
           }
-          await store.enqueue(decisionJobInput(subject.lead, activeFingerprint, inspection.revision), session);
-          decided++;
+          if (isHeldForIdentity(subject)) {
+            await store.enqueue(holdJobInput(subject.lead, now), session);
+            held++;
+          }
         }
         const short = subjects.length < OUTREACH_FEED_PAGE;
         await store.writeReconcileCursor(short ? null : subjects.at(-1)!.id, session);
-        return { size: subjects.length, count, decided, waiting, short };
+        return { size: subjects.length, count, decided, waiting, held, short };
       });
       pages++;
       checked += page.size;
       nominated += page.count;
       decisions += page.decided;
       deferred += page.waiting;
+      holds += page.held;
       wrapped = page.short;
     }
   } finally {
     await lease.release();
   }
-  return { skipped: false, reason: null, pages, checked, nominated, wrapped, decision_nominated: decisions, decision_deferred: deferred, decision_cap: decisionCap };
+  return {
+    skipped: false,
+    reason: null,
+    pages,
+    checked,
+    nominated,
+    wrapped,
+    decision_nominated: decisions,
+    decision_deferred: deferred,
+    decision_cap: decisionCap,
+    hold_nominated: holds,
+  };
 }
 
 function mongoReconcileLease(now: Date) {

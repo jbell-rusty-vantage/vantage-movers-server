@@ -13,6 +13,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { OutreachActor } from "../../src/services/salesOutreach/auth";
+import { readEnrollmentAdmissions } from "../../src/services/salesOutreach/enrollment/admissions";
+import { MemoryAdmissionsStore } from "../../src/services/salesOutreach/enrollment/testing";
 import { OutreachError } from "../../src/services/salesOutreach/errors";
 import { evaluateAndProject, evaluationAdmissionOf } from "../../src/services/salesOutreach/evaluation/evaluateJob";
 import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTransaction, subjectRow } from "../../src/services/salesOutreach/evaluation/testing";
@@ -192,6 +194,24 @@ async function exampleDeskStore(captureKnown = new Date("2026-10-05T14:57:00.000
   return store;
 }
 
+/**
+ * olr B8: a synthetic job ledger for `GET /enrollment/admissions` on 2026-10-05 — intake admitted three
+ * fresh Leads (one held as review for an ambiguous Job Number) and refused three (fixed ids).
+ */
+function exampleAdmissionsStore(): MemoryAdmissionsStore {
+  const lead = (model: "FormLead" | "CallLead", n: number) => ({ model, id: `6650a1b2c3d4e5f607183a0${n}` });
+  const created = (n: number, status: "active" | "review") => ({ outcome: "created", subject_id: `6650a1b2c3d4e5f607183b0${n}`, reason: null, status, admission: "intake" });
+  const refused = (reason: string) => ({ outcome: "not_admitted", subject_id: null, reason, status: null, admission: null });
+  const store = new MemoryAdmissionsStore();
+  store.complete(lead("FormLead", 1), "2026-10-05T13:10:00.000Z", created(1, "active"), { _id: "6650a1b2c3d4e5f607183c01" });
+  store.complete(lead("CallLead", 2), "2026-10-05T13:42:00.000Z", created(2, "active"), { _id: "6650a1b2c3d4e5f607183c02" });
+  store.complete(lead("FormLead", 3), "2026-10-05T14:05:00.000Z", created(3, "review"), { _id: "6650a1b2c3d4e5f607183c03" });
+  store.complete(lead("FormLead", 4), "2026-10-05T14:20:00.000Z", refused("closed_priority"), { _id: "6650a1b2c3d4e5f607183c04" });
+  store.complete(lead("CallLead", 5), "2026-10-05T14:31:00.000Z", refused("excluded:duplicate"), { _id: "6650a1b2c3d4e5f607183c05" });
+  store.complete(lead("FormLead", 6), "2026-10-05T14:48:00.000Z", refused("unsupported_intake_source"), { _id: "6650a1b2c3d4e5f607183c06" });
+  return store;
+}
+
 /** Every example file name with its payload. */
 export async function buildDtoExamples(): Promise<Record<string, unknown>> {
   const store = exampleStore();
@@ -220,6 +240,21 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
   const ownerFirstPage = await readQueue(owner, query({ limit: "2" }), queueDeps);
   const lagging = exampleStore(new Date("2026-10-05T14:43:00Z"));
   const laggingDesk = await exampleDeskStore(new Date("2026-10-05T14:43:00.000Z"));
+  // olr C7: rep SMS capture on — two reviewed mailboxes synced; Alice's has one SMS awaiting association,
+  // and a mailbox no longer reviewed has one awaiting rep identity (freshness.sms.pending).
+  const smsStore = exampleStore();
+  const synced = (extension: string, through: string) => ({
+    scope: `rep_sms:${extension}`,
+    known_complete_through: new Date(through),
+    last_finished_at: new Date(through),
+    last_error_code: null,
+  });
+  smsStore.mailboxes = [
+    { ...synced("101", "2026-10-05T14:58:00Z"), sms_pending: { identity: 0, association: 1, agent_id: A } },
+    { ...synced("102", "2026-10-05T14:57:30Z"), sms_pending: { identity: 0, association: 0, agent_id: C } },
+    { ...synced("109", "2026-10-05T14:56:00Z"), sms_pending: { identity: 1, association: 0, agent_id: null } },
+  ];
+  const smsCapture: DeskReadDeps = { ...deps({ ...desk, controls: { ...desk.controls, rep_sms_capture_enabled: true } }, "sod-cfg-5e60", 7), store: smsStore };
   const change = { topic: "outreach_desk" as const, subject_ids: [SUBJECTS.due], agent_ids: [A], business_day: null, revision: 2 };
   return {
     "capabilities.owner.json": ok(await readDeskCapabilities(owner, live)),
@@ -237,6 +272,7 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     "team.owner.json": ok(await readTeam(owner, {}, live)),
     "team.manager.json": ok(await readTeam(manager, {}, live)),
     "team.owner.cadence-enforcement.json": ok(await readTeam(owner, {}, cadence)),
+    "team.owner.sms-capture.json": ok(await readTeam(owner, {}, smsCapture)),
     "queue.owner.page-1.json": ok(ownerFirstPage),
     "queue.owner.page-2.json": ok(await readQueue(owner, query({ limit: "2", cursor: ownerFirstPage.next_cursor! }), queueDeps)),
     "queue.manager.unassigned.json": ok(await readQueue(manager, query({ unassigned: "true", state: "all_active" }), queueDeps)),
@@ -246,6 +282,7 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     "queue.owner.awaiting-capture.json": ok(await readQueue(owner, query({}), { ...queueDeps, store: lagging, queueStore: laggingDesk })),
     "outreach.owner.overdue.json": ok(await readOutreachDetail(owner, SUBJECTS.overdue, cadence)),
     "outreach.rep.due.json": ok(await readOutreachDetail(rep, SUBJECTS.due, cadence)),
+    "enrollment-admissions.owner.json": ok(await readEnrollmentAdmissions({ business_day: DAY }, { store: exampleAdmissionsStore(), now: () => NOW })),
     "live.change.json": outreachLiveFrame("change", [change], NOW),
     "live.connect.json": outreachLiveFrame("connect", [], NOW),
     "error.cursor-expired.json": refusal(new OutreachError("CURSOR_EXPIRED", [{ path: "cursor", code: "assignment_changed", message: "resnapshot" }])),
@@ -256,6 +293,9 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
       new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "controls.desk_enabled", code: "desk_disabled" }]),
     ),
     "error.rep-foreign-agent.json": refusal(new OutreachError("FORBIDDEN", [{ path: "agent_id", code: "foreign_agent" }])),
+    "error.admissions-retention-exceeded.json": refusal(
+      new OutreachError("INVALID_INPUT", [{ path: "business_day", code: "retention_exceeded", message: "completed jobs are kept 14 days" }]),
+    ),
   };
 }
 

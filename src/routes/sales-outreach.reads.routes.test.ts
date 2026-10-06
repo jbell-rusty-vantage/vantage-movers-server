@@ -11,6 +11,7 @@ import type { ConfigurationInspection } from "../services/salesOutreach/config/l
 import { MemoryDeskReadStore } from "../services/salesOutreach/reads/deskTesting";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow } from "../services/salesOutreach/reads/testing";
 import type { SalesOutreachConfigurationInput } from "../validation/v1/salesOutreach";
+import { salesOutreachAdmissionsSchema } from "../validation/v1/salesOutreachEnrollment";
 import {
   salesOutreachCapabilitiesSchema,
   salesOutreachDetailSchema,
@@ -329,7 +330,9 @@ test("DTO examples for the admin team parse with the exported schemas and match 
               ? salesOutreachReadEnvelope(salesOutreachDetailSchema)
               : name.startsWith("live.")
                 ? salesOutreachLiveFrameSchema
-                : salesOutreachReadEnvelope(salesOutreachTeamSchema);
+                : name.startsWith("enrollment-admissions.")
+                  ? salesOutreachReadEnvelope(salesOutreachAdmissionsSchema)
+                  : salesOutreachReadEnvelope(salesOutreachTeamSchema);
   const built = await buildDtoExamples();
   const files = readdirSync(DTO_EXAMPLES_DIR).filter((name) => name.endsWith(".json")).sort();
   assert.deepEqual(files, Object.keys(built).sort(), "regenerate with ops/sales-outreach/write-dto-examples.ts");

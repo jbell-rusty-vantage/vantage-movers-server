@@ -268,6 +268,23 @@ export const SalesIntelligenceSyncStateSchema = new Schema(
       ),
       default: undefined,
     },
+    // Outreach lifecycle repair C7: this mailbox's SMS contact events still `pending_identity` /
+    // `pending_association` with `event_at` in the last 7 days (scope `rep_sms:<extensionId>`), refreshed by
+    // the contact-events cron at most every 5 minutes. `agent_id` is the mailbox's reviewed rep at
+    // `computed_at` (null when it is no longer a reviewed mailbox); `since` the oldest pending event.
+    rep_sms_pending: {
+      type: new Schema(
+        {
+          identity: count,
+          association: count,
+          since: date,
+          agent_id: ref,
+          computed_at: at,
+        },
+        { _id: false, strict: "throw" },
+      ),
+      default: undefined,
+    },
     // CC-06: consecutive sweeps that found drift (scope `call_log_sweep`).
     consecutive_drift_runs: { type: Number, min: 0, default: undefined },
     gaps: {

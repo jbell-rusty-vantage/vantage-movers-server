@@ -64,6 +64,8 @@ export type SyncStateLean = {
     sync_token_stored?: boolean | null;
     sync_error_code?: string | null;
   } | null;
+  /** `rep_sms:<extension>` rows only (olr C7): the mailbox's pending SMS counters. */
+  rep_sms_pending?: { identity?: number | null; association?: number | null; agent_id?: unknown } | null;
 };
 
 const toCaptureRow = (row: SyncStateLean): CaptureSyncRow => ({
@@ -96,6 +98,24 @@ export function toCallsCaptureRow(row: SyncStateLean): CaptureSyncRow {
 }
 
 const SYNC_PROJECTION = { scope: 1, known_complete_through: 1, "last_run.finished_at": 1, "last_run.error_code": 1 } as const;
+/** olr C7: SMS mailbox rows also carry their pending counters (`contacts/smsPending.ts`). */
+const SMS_SYNC_PROJECTION = {
+  ...SYNC_PROJECTION,
+  "rep_sms_pending.identity": 1,
+  "rep_sms_pending.association": 1,
+  "rep_sms_pending.agent_id": 1,
+} as const;
+
+/** An SMS mailbox row with its pending counters (null before the first refresh wrote them). */
+export function toSmsCaptureRow(row: SyncStateLean): CaptureSyncRow {
+  const pending = row.rep_sms_pending ?? null;
+  return {
+    ...toCaptureRow(row),
+    sms_pending: pending
+      ? { identity: pending.identity ?? 0, association: pending.association ?? 0, agent_id: pending.agent_id ? String(pending.agent_id) : null }
+      : null,
+  };
+}
 const CALLS_SYNC_PROJECTION = {
   ...SYNC_PROJECTION,
   observed_complete_through: 1,
@@ -206,10 +226,10 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
   async readSmsMailboxes(at) {
     const current = await currentSmsMailboxIds(at);
     const rows = await getSalesIntelligenceSyncStateModel()
-      .find({ scope: { $regex: `^${REP_SMS_SYNC_SCOPE_PREFIX}` } }, SYNC_PROJECTION)
+      .find({ scope: { $regex: `^${REP_SMS_SYNC_SCOPE_PREFIX}` } }, SMS_SYNC_PROJECTION)
       .limit(MAX_MAILBOXES)
       .lean();
-    return currentSmsMailboxRows(rows as unknown as SyncStateLean[], current).map(toCaptureRow);
+    return currentSmsMailboxRows(rows as unknown as SyncStateLean[], current).map(toSmsCaptureRow);
   },
 
   async readContactDerivation() {

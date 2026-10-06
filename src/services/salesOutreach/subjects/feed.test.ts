@@ -7,10 +7,16 @@ import { configurationContentHash } from "../config/store";
 import { CONFIGURATION_REVISION_5_HASH, configurationRevision5Value } from "../config/testing";
 import { fixedConfigurationLoader } from "../reads/testing";
 import {
+  ADMISSION_DECISION_PATHS,
+  admissionJobInput,
+  expansionAdmissionOpenOf,
+  touchesAdmissionDecision,
   DECISION_RECONCILE_DEFAULT_PER_RUN,
   decisionJobInput,
   decisionReconcilePerRunOf,
   feedLoopOf,
+  holdJobInput,
+  holdRecheckBucketOf,
   leadChangeJobInput,
   nominateLeadChanges,
   OUTREACH_FEED_LOOP_DEFAULTS,
@@ -32,7 +38,15 @@ const transaction = <T>(fn: (session: ClientSession) => Promise<T>) => fn(fakeSe
 
 class MemoryFeedStore implements OutreachFeedStore {
   changes: LeadChangeRow[] = [];
-  subjects: Array<{ id: string; lead: DeskLeadRef; lead_revision_seen: number; closed?: boolean; decision_fingerprint?: string | null }> = [];
+  subjects: Array<{
+    id: string;
+    lead: DeskLeadRef;
+    lead_revision_seen: number;
+    closed?: boolean;
+    decision_fingerprint?: string | null;
+    status?: "active" | "review";
+    review_reasons?: string[];
+  }> = [];
   /** Fingerprint of subjects that set none: the default test configuration's (already decided under it). */
   defaultFingerprint = deskDecisionFingerprint(deskConfiguration().value.cadence);
   revisions = new Map<string, number>();
@@ -59,7 +73,14 @@ class MemoryFeedStore implements OutreachFeedStore {
       .filter((s) => !s.closed && (!afterId || s.id > afterId))
       .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, limit)
-      .map((s) => ({ id: s.id, lead: s.lead, lead_revision_seen: s.lead_revision_seen, decision_fingerprint: s.decision_fingerprint === undefined ? this.defaultFingerprint : s.decision_fingerprint }));
+      .map((s) => ({
+        id: s.id,
+        lead: s.lead,
+        lead_revision_seen: s.lead_revision_seen,
+        decision_fingerprint: s.decision_fingerprint === undefined ? this.defaultFingerprint : s.decision_fingerprint,
+        status: s.status ?? "active",
+        review_reasons: s.review_reasons ?? [],
+      }));
   }
   async leadRevisions(leads: readonly DeskLeadRef[]) {
     return new Map(leads.flatMap((l) => (this.revisions.has(deskLeadKey(l)) ? [[deskLeadKey(l), this.revisions.get(deskLeadKey(l))!] as const] : [])));
@@ -72,12 +93,13 @@ class MemoryFeedStore implements OutreachFeedStore {
 }
 
 const lead = (model: DeskLeadRef["model"] = "FormLead"): DeskLeadRef => ({ model, id: objectId() });
-const change = (ref: DeskLeadRef, revisionBefore: number, appliedAt: string, id = objectId()): LeadChangeRow => ({
+const change = (ref: DeskLeadRef, revisionBefore: number, appliedAt: string, id = objectId(), changedPaths: string[] = ["notes"]): LeadChangeRow => ({
   id,
   lead: ref,
   revision_before: revisionBefore,
   revision_after: revisionBefore + 1,
   applied_at: at(appliedAt),
+  changed_paths: changedPaths,
 });
 
 describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
@@ -87,8 +109,11 @@ describe("entity_changes tail (IMPL-05, outreach_lead_change)", () => {
     const other = lead();
     const changes = [change(subject, 3, "2026-10-04T14:00:00Z"), change(subject, 3, "2026-10-04T14:00:00Z"), change(fresh, 0, "2026-10-04T14:00:01Z"), change(other, 5, "2026-10-04T14:00:02Z")];
     const keys = new Set([deskLeadKey(subject)]);
-    assert.deepEqual(nominateLeadChanges(changes, keys, false), [{ lead: subject, revision: 4 }]);
-    assert.deepEqual(nominateLeadChanges(changes, keys, true), [{ lead: subject, revision: 4 }, { lead: fresh, revision: 1 }]);
+    assert.deepEqual(nominateLeadChanges(changes, keys, false), [{ lead: subject, revision: 4, kind: "change" }]);
+    assert.deepEqual(nominateLeadChanges(changes, keys, true), [
+      { lead: subject, revision: 4, kind: "change" },
+      { lead: fresh, revision: 1, kind: "change" },
+    ]);
   });
 
   test("the job identity is per Lead revision (tail, reconcile and wake converge)", () => {
@@ -197,7 +222,85 @@ describe("revision reconcile (outreach_revision_reconcile)", () => {
       decision_nominated: 0,
       decision_deferred: 0,
       decision_cap: DECISION_RECONCILE_DEFAULT_PER_RUN,
+      hold_nominated: 0,
     });
+  });
+});
+
+describe("hold re-check (olr B8, ambiguous_identity admission hold)", () => {
+  const run = (store: MemoryFeedStore, iso: string, configuration = deskConfiguration()) =>
+    reconcileOutreachRevisions(at(iso), {
+      store,
+      transaction,
+      loader: fixedConfigurationLoader(configuration as never),
+      lease: { acquire: async () => true, release: async () => undefined },
+    });
+  const holdKeys = (store: MemoryFeedStore) => [...store.jobs.keys()].filter((key) => key.includes(":hold:")).sort();
+
+  test("the hold job identity: one per subject per 15-minute bucket (UTC), input_revision 1", () => {
+    const ref = { model: "CallLead" as const, id: "b".repeat(24) };
+    assert.equal(holdRecheckBucketOf(at("2026-10-06T19:44:59.999Z")), "20261006T1930");
+    assert.equal(holdRecheckBucketOf(at("2026-10-06T19:45:00.000Z")), "20261006T1945");
+    assert.deepEqual(holdJobInput(ref, at("2026-10-06T00:07:00Z")), {
+      stage: "outreach_lead_change",
+      subject_key: `outreach-lead:CallLead:${"b".repeat(24)}`,
+      dedupe_key: `sod:lead-change:CallLead:${"b".repeat(24)}:hold:20261006T0000`,
+      input_revision: 1,
+      input_refs: ["b".repeat(24)],
+    });
+  });
+
+  test("held ambiguous review subjects are re-nominated at most once per 15 minutes", async () => {
+    const store = new MemoryFeedStore();
+    const held = lead();
+    const priorityReview = lead();
+    const active = lead();
+    const heldMoved = lead();
+    store.subjects.push(
+      { id: "1".padStart(24, "0"), lead: held, lead_revision_seen: 2, status: "review", review_reasons: ["ambiguous_identity"] },
+      { id: "2".padStart(24, "0"), lead: priorityReview, lead_revision_seen: 2, status: "review", review_reasons: ["priority_needs_review"] },
+      { id: "3".padStart(24, "0"), lead: active, lead_revision_seen: 2 },
+      { id: "4".padStart(24, "0"), lead: heldMoved, lead_revision_seen: 2, status: "review", review_reasons: ["received_time_missing", "ambiguous_identity"] },
+    );
+    for (const ref of [held, priorityReview, active]) store.revisions.set(deskLeadKey(ref), 2);
+    store.revisions.set(deskLeadKey(heldMoved), 3);
+    const first = await run(store, "2026-10-06T14:05:00Z");
+    assert.equal(first.hold_nominated, 1);
+    assert.deepEqual(holdKeys(store), [`sod:lead-change:FormLead:${held.id}:hold:20261006T1400`], "only the held subject; priority review and active subjects are not re-checked");
+    assert.ok(store.jobs.has(`sod:lead-change:FormLead:${heldMoved.id}:r3`), "a held subject whose Lead moved gets its revision job (it re-checks too)");
+    // The 5-minute reconcile runs twice more in the same bucket: the same identity (insert-only enqueue dedupes).
+    await run(store, "2026-10-06T14:10:00Z");
+    await run(store, "2026-10-06T14:14:59Z");
+    assert.equal(holdKeys(store).length, 1, "at most one hold job per 15 minutes");
+    await run(store, "2026-10-06T14:15:00Z");
+    assert.deepEqual(holdKeys(store), [
+      `sod:lead-change:FormLead:${held.id}:hold:20261006T1400`,
+      `sod:lead-change:FormLead:${held.id}:hold:20261006T1415`,
+    ]);
+    // The hold cleared (the job synced the subject active): nothing more.
+    store.subjects[0]!.status = "active";
+    store.subjects[0]!.review_reasons = [];
+    const settled = await run(store, "2026-10-06T14:30:00Z");
+    assert.equal(settled.hold_nominated, 0);
+    assert.equal(holdKeys(store).length, 2);
+  });
+
+  test("a held subject with a decision job this run gets no hold job; deferred by the cap, it still does", async () => {
+    const MAP = APPROVED_MAPPING!.priority_map!;
+    const remapped = (migration: Record<string, unknown>) =>
+      deskConfiguration({ migration, cadence: { priority_map: { ...MAP, codes: [...MAP.codes, { code: "9", workflow: "quoted" as const, closure_reason: null }] } } }, "v7", 7);
+    const store = new MemoryFeedStore();
+    const first = lead();
+    const second = lead();
+    store.subjects.push(
+      { id: "1".padStart(24, "0"), lead: first, lead_revision_seen: 1, status: "review", review_reasons: ["ambiguous_identity"] },
+      { id: "2".padStart(24, "0"), lead: second, lead_revision_seen: 1, status: "review", review_reasons: ["ambiguous_identity"] },
+    );
+    for (const ref of [first, second]) store.revisions.set(deskLeadKey(ref), 1);
+    const result = await run(store, "2026-10-06T14:05:00Z", remapped({ decision_reconcile_per_run: 1 }));
+    assert.deepEqual([result.decision_nominated, result.decision_deferred, result.hold_nominated], [1, 1, 1]);
+    assert.ok([...store.jobs.keys()].some((key) => key.startsWith(`sod:lead-change:FormLead:${first.id}:decision:`)));
+    assert.deepEqual(holdKeys(store), [`sod:lead-change:FormLead:${second.id}:hold:20261006T1400`]);
   });
 });
 
@@ -386,6 +489,95 @@ describe("tail loop (olr B10, migration.feed_max_passes_per_run / feed_budget_se
       value.migration = { ...value.migration, ...bad };
       assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
     }
+  });
+});
+
+// ---- olr B6: event-driven expansion admission (transition.expansion_admission_enabled) ----------
+
+describe("expansion admission nomination (olr B6)", () => {
+  const admissionOn = (paused = false) =>
+    deskConfiguration({ transition: { backfill_lookback_days: 90, backfill_include_upcoming_moves: true, expansion_admission_enabled: true }, migration: { paused } });
+
+  test("the admission job identity: …:admission:r<rev>, input_revision = the Lead revision, distinct from the r<rev> identity", () => {
+    const ref = { model: "FormLead" as const, id: "b".repeat(24) };
+    assert.deepEqual(admissionJobInput(ref, 7), {
+      stage: "outreach_lead_change",
+      subject_key: `outreach-lead:FormLead:${"b".repeat(24)}`,
+      dedupe_key: `sod:lead-change:FormLead:${"b".repeat(24)}:admission:r7`,
+      input_revision: 7,
+      input_refs: ["b".repeat(24)],
+    });
+    assert.notEqual(admissionJobInput(ref, 7).dedupe_key, leadChangeJobInput(ref, 7).dedupe_key);
+  });
+
+  test("decision paths match exactly or as a parent; unrelated paths do not", () => {
+    assert.ok(touchesAdmissionDecision(["granot_priority"]));
+    assert.ok(touchesAdmissionDecision(["notes", "booked.id"]));
+    assert.ok(touchesAdmissionDecision(["last_accepted_granot_observation"]));
+    assert.ok(!touchesAdmissionDecision(["notes", "receiver_agent", "bookedx"]));
+    assert.ok(!touchesAdmissionDecision([]));
+    for (const path of ["granot_priority", "last_accepted_granot_observation", "duplicate", "booked", "cancelled", "bad_lead", "created_on_unmatched", "timestamp", "normalized_job_no", "move_date"])
+      assert.ok((ADMISSION_DECISION_PATHS as readonly string[]).includes(path), path);
+  });
+
+  test("non-subject changes with decision paths nominate an admission job only while expansion admission is on and migration is not paused", async () => {
+    const pre = lead();
+    const changes = [change(pre, 6, "2026-10-06T14:04:30Z", objectId(), ["granot_priority", "last_accepted_granot_observation"])];
+    assert.deepEqual(nominateLeadChanges(changes, new Set(), true, false), [], "switch off: nothing");
+    assert.deepEqual(nominateLeadChanges(changes, new Set(), false, true), [{ lead: pre, revision: 7, kind: "admission" }]);
+    assert.equal(expansionAdmissionOpenOf(deskConfiguration().value), false, "absent key = off");
+    assert.equal(expansionAdmissionOpenOf(admissionOn().value), true);
+    assert.equal(expansionAdmissionOpenOf(admissionOn(true).value), false, "a paused migration closes admission");
+
+    for (const [configuration, expected] of [[deskConfiguration(), 0], [admissionOn(true), 0], [admissionOn(), 1]] as const) {
+      const store = new MemoryFeedStore();
+      store.tail = { applied_at: at("2026-10-06T14:04:00Z"), id: "0".repeat(24) };
+      store.changes.push(...changes);
+      const result = await scanOutreachLeadChanges(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(configuration as never) });
+      assert.equal(result.nominated, expected);
+      assert.equal(store.jobs.has(`sod:lead-change:FormLead:${pre.id}:admission:r7`), expected === 1);
+      assert.equal(store.jobs.has(`sod:lead-change:FormLead:${pre.id}:r7`), false, "never the intake/refresh identity");
+    }
+  });
+
+  test("unrelated paths (e.g. notes) nominate nothing; a subject's change stays the r<rev> job", async () => {
+    const pre = lead();
+    const subject = lead();
+    const store = new MemoryFeedStore();
+    store.subjects.push({ id: objectId(), lead: subject, lead_revision_seen: 2 });
+    store.tail = { applied_at: at("2026-10-06T14:04:00Z"), id: "0".repeat(24) };
+    store.changes.push(change(pre, 3, "2026-10-06T14:04:10Z", objectId(), ["notes", "receiver_agent"]));
+    store.changes.push(change(subject, 2, "2026-10-06T14:04:20Z", objectId(), ["granot_priority"]));
+    await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(admissionOn() as never) });
+    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${subject.id}:r3`]);
+  });
+
+  test("creation still nominates the r<rev> intake identity (never admission), even with a decision path", () => {
+    const fresh = lead("CallLead");
+    const created = change(fresh, 0, "2026-10-06T14:04:10Z", objectId(), ["granot_priority", "timestamp"]);
+    assert.deepEqual(nominateLeadChanges([created], new Set(), true, true), [{ lead: fresh, revision: 1, kind: "change" }]);
+    assert.deepEqual(nominateLeadChanges([created], new Set(), false, true), [], "intake closed: a creation is not an admission");
+  });
+
+  test("configuration: expansion_admission_enabled is optional without default (R0) and requires both backfill scope keys", () => {
+    const parsed = salesOutreachConfigurationValueSchema.parse(configurationRevision5Value());
+    assert.equal(configurationContentHash(parsed), CONFIGURATION_REVISION_5_HASH, "the revision-5 value re-parses to the same content hash");
+    assert.equal("expansion_admission_enabled" in parsed.transition, false, "no default leaks into old versions");
+    const on = configurationRevision5Value();
+    on.transition = { ...on.transition, expansion_admission_enabled: true };
+    const set = salesOutreachConfigurationValueSchema.parse(on);
+    assert.equal(set.transition.expansion_admission_enabled, true);
+    assert.notEqual(configurationContentHash(set), CONFIGURATION_REVISION_5_HASH, "a set key is hashed");
+    for (const key of ["backfill_lookback_days", "backfill_include_upcoming_moves"] as const) {
+      const missing = configurationRevision5Value();
+      missing.transition = { ...missing.transition, expansion_admission_enabled: true, [key]: null };
+      const result = salesOutreachConfigurationValueSchema.safeParse(missing);
+      assert.equal(result.success, false, key);
+      assert.ok(result.error!.issues.some((i) => i.path.join(".") === `transition.${key}` && i.message === "required by expansion_admission_enabled"));
+    }
+    const off = configurationRevision5Value();
+    off.transition = { ...off.transition, expansion_admission_enabled: false, backfill_lookback_days: null };
+    assert.equal(salesOutreachConfigurationValueSchema.safeParse(off).success, true, "off needs no scope");
   });
 });
 

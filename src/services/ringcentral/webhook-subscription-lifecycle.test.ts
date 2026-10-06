@@ -19,6 +19,8 @@ import {
   SubscriptionOwnershipError,
   SubscriptionOwnershipRecordError,
   validationEchoHeaders,
+  DELIVERY_REFUSAL_RECENT_MS,
+  deliveriesRefusedNow,
   type LifecycleDeps,
   type OwnershipStore,
   type StoredSubscriptionMeta,
@@ -309,19 +311,113 @@ test("C6 drift: an owned calls subscription with other filters plans update [fil
   assert.deepEqual(drift.updates, [
     { id: "owned-calls", input: { eventFilters: ALL, address: ADDRESS, expiresIn: DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS, verificationToken: "stored-token" } },
   ]);
-  assert.deepEqual(drift.recordedMeta, [{ purpose: "calls", verificationToken: "stored-token" }], "the PUT response is recorded as the owned calls subscription");
+  assert.deepEqual(drift.recordedMeta, [{ purpose: "calls" }], "the PUT response is recorded as the owned calls subscription; the stored token is left as it is (CW2)");
 });
 
 test("C6 drift: an owned calls subscription delivering to another address plans update, and the PUT carries the current address", async () => {
   const drift = driftFakes([record({ id: "owned-calls", address: "https://old.example.test/api/webhooks/ringcentral" })], {
-    "owned-calls": { purpose: "calls", verificationToken: null },
+    "owned-calls": { purpose: "calls", verificationToken: "stored-token" },
   });
   const plan = await planAllDirectionSubscription(drift.deps);
   assert.deepEqual(plan, { action: "update", subscription_id: "owned-calls", reasons: ["filter_drift"], warnings: [] });
   await applyAllDirectionSubscriptionPlan(plan, drift.deps);
   assert.deepEqual(drift.calls, ["update:owned-calls"]);
   assert.equal(drift.updates[0]!.input.address, ADDRESS);
-  assert.match(drift.updates[0]!.input.verificationToken ?? "", /^[0-9a-f]{32}$/, "a missing token is generated on the same PUT");
+});
+
+test("CW2: a drifted owned calls subscription with no stored token plans replace (create with a token, then delete), never a PUT", async () => {
+  const drift = driftFakes([record({ id: "owned-calls", address: "https://old.example.test/api/webhooks/ringcentral" })], {
+    "owned-calls": { purpose: "calls", verificationToken: null },
+  });
+  const plan = await planAllDirectionSubscription(drift.deps);
+  assert.deepEqual(plan, { action: "replace", subscription_id: "owned-calls", reasons: ["filter_drift", "verification_token_missing"], warnings: [] });
+  assert.deepEqual(await applyAllDirectionSubscriptionPlan(plan, drift.deps), { action: "replaced", removed_subscription_id: "owned-calls", subscription_id: "new-1" });
+  assert.deepEqual(
+    drift.calls,
+    [`create:${ALL[0]}:${ADDRESS}:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`, "delete:owned-calls"],
+    "the new subscription exists before the old one is deleted; no PUT",
+  );
+  assert.deepEqual(drift.statuses, [["owned-calls", "Deleted"]]);
+  assert.equal(drift.updates.length, 0);
+  const recorded = drift.recordedMeta[0];
+  assert.equal(recorded?.purpose, "calls");
+  assert.match(recorded?.verificationToken ?? "", /^[0-9a-f]{32}$/, "the token is the one sent on the create");
+});
+
+test("CW2: a PUT never mints or records a verification token; with none stored the PUT carries none", async () => {
+  // A store without meta: the token state is unknown, so the drift repair stays a PUT, without a token.
+  const noMeta = fakes([record({ id: "owned-legacy", eventFilters: EXTENSION_SESSIONS })], ["owned-legacy"]);
+  const updates: SubscriptionWriteInput[] = [];
+  noMeta.deps.provider.update = async (id, input) => {
+    updates.push(input);
+    return { id, eventFilters: input.eventFilters, status: "Active" };
+  };
+  const recordedMeta: Array<Partial<StoredSubscriptionMeta> | undefined> = [];
+  const recordOwned = noMeta.deps.store.record;
+  noMeta.deps.store.record = async (raw, m) => {
+    recordedMeta.push(m);
+    await recordOwned(raw, m);
+  };
+  const plan = await planAllDirectionSubscription(noMeta.deps);
+  assert.equal(plan.action, "update");
+  await applyAllDirectionSubscriptionPlan(plan, noMeta.deps);
+  assert.equal(updates.length, 1);
+  assert.equal("verificationToken" in updates[0]!, false, "no token on the PUT");
+  assert.deepEqual(recordedMeta, [{ purpose: "calls" }], "no token recorded from a PUT");
+
+  // A stored token is sent unchanged and never replaced in the store.
+  const kept = driftFakes([record({ id: "owned-calls", eventFilters: EXTENSION_SESSIONS })], { "owned-calls": { purpose: "calls", verificationToken: "stored-token" } });
+  await applyAllDirectionSubscriptionPlan(await planAllDirectionSubscription(kept.deps), kept.deps);
+  assert.equal(kept.updates[0]!.input.verificationToken, "stored-token");
+  assert.deepEqual(kept.recordedMeta, [{ purpose: "calls" }]);
+});
+
+test("CW2: an Active matching subscription whose deliveries the route refuses plans replace [deliveries_refused]; an accepted delivery since, or an old refusal, does not", async () => {
+  const refusedAt = new Date(NOW.getTime() - 5 * 60_000);
+  const withRefusals = (accepted_since: boolean, at = refusedAt) => {
+    const f = driftFakes([record({ id: "owned-calls" })], { "owned-calls": { purpose: "calls", verificationToken: "stored-token" } });
+    f.deps.store.deliveryRefusals = async (id) =>
+      id === "owned-calls" ? { count: 42, last_refused_at: at, last_reason: "token_missing", accepted_since } : null;
+    return f;
+  };
+  const refused = withRefusals(false);
+  const plan = await planAllDirectionSubscription(refused.deps);
+  assert.equal(plan.action, "replace");
+  assert.deepEqual(plan.action === "replace" ? plan.reasons : null, ["deliveries_refused"]);
+  assert.equal(plan.warnings.length, 1);
+  assert.match(plan.warnings[0]!, /refused its deliveries \(42 counted/);
+  assert.deepEqual(await applyAllDirectionSubscriptionPlan(plan, refused.deps), { action: "replaced", removed_subscription_id: "owned-calls", subscription_id: "new-1" });
+  assert.deepEqual(refused.calls.map((c) => c.split(":")[0]), ["create", "delete"]);
+
+  assert.equal((await planAllDirectionSubscription(withRefusals(true).deps)).action, "noop", "a delivery was accepted after the refusal");
+  const old = withRefusals(false, new Date(NOW.getTime() - DELIVERY_REFUSAL_RECENT_MS - 60_000));
+  assert.equal((await planAllDirectionSubscription(old.deps)).action, "noop", "a refusal older than the window is history");
+});
+
+test("CW2: deliveriesRefusedNow (pure)", () => {
+  const facts = { count: 1, last_refused_at: new Date(NOW.getTime() - DELIVERY_REFUSAL_RECENT_MS), last_reason: "token_mismatch", accepted_since: false };
+  assert.equal(deliveriesRefusedNow(facts, NOW), true, "the window edge counts");
+  assert.equal(deliveriesRefusedNow({ ...facts, accepted_since: true }, NOW), false);
+  assert.equal(deliveriesRefusedNow({ ...facts, last_refused_at: new Date(NOW.getTime() - DELIVERY_REFUSAL_RECENT_MS - 1) }, NOW), false);
+  assert.equal(deliveriesRefusedNow(null, NOW), false);
+});
+
+test("CW2: replace refuses a foreign id and deletes nothing when the create fails", async () => {
+  const foreign = driftFakes([record({ id: "foreign" })], {});
+  await assert.rejects(
+    applyAllDirectionSubscriptionPlan({ action: "replace", subscription_id: "foreign", reasons: ["deliveries_refused"], warnings: [] }, foreign.deps),
+    SubscriptionOwnershipError,
+  );
+  assert.deepEqual(foreign.calls, []);
+  const failing = driftFakes([record({ id: "owned-calls" })], { "owned-calls": { purpose: "calls", verificationToken: null } });
+  failing.deps.provider.create = async () => {
+    throw new Error("provider refused");
+  };
+  await assert.rejects(
+    applyAllDirectionSubscriptionPlan({ action: "replace", subscription_id: "owned-calls", reasons: ["verification_token_missing"], warnings: [] }, failing.deps),
+    /provider refused/,
+  );
+  assert.deepEqual(failing.calls, [], "the old subscription is kept");
 });
 
 test("C6 drift: an owned rep_sms subscription alone is not the calls channel; the plan is still create", async () => {
@@ -334,8 +430,11 @@ test("C6 drift: an owned rep_sms subscription alone is not the calls channel; th
 
 test("C6 drift: a legacy owned row without a purpose is the calls channel only when it carries telephony-session filters", async () => {
   const echoed = EXTENSION_SESSIONS.map((f) => f.replace("/account/~/", "/account/62948571023/"));
-  const legacy = driftFakes([record({ id: "owned-legacy", eventFilters: echoed })], { "owned-legacy": { purpose: null, verificationToken: null } });
+  const legacy = driftFakes([record({ id: "owned-legacy", eventFilters: echoed })], { "owned-legacy": { purpose: null, verificationToken: "t" } });
   assert.deepEqual(await planAllDirectionSubscription(legacy.deps), { action: "update", subscription_id: "owned-legacy", reasons: ["filter_drift"], warnings: [] });
+  // CW2: the same legacy row without a stored token is replaced, not PUT.
+  const tokenless = driftFakes([record({ id: "owned-legacy", eventFilters: echoed })], { "owned-legacy": { purpose: null, verificationToken: null } });
+  assert.equal((await planAllDirectionSubscription(tokenless.deps)).action, "replace");
 
   // A store without meta (purpose unknown): the same filter rule decides.
   const noMeta = fakes([record({ id: "owned-legacy", eventFilters: EXTENSION_SESSIONS })], ["owned-legacy"]);

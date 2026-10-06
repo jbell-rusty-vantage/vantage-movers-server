@@ -12,6 +12,7 @@ import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach/repSmsEvidence";
+import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { enqueueCsiJob } from "../../salesIntelligence/jobs";
 import { enqueueOutreachContactChangeJobs, type ContactChangeSource } from "../capture/contactChangeWake";
 import { DESK_LEAD_PROJECTION, deskLeadKey, toDeskLeadFacts, type DeskLeadFacts, type DeskLeadRef } from "./leadFacts";
@@ -116,6 +117,12 @@ export type DeskSubjectStore = {
   requestEvaluation(subjectId: string, subjectRevision: number, session: ClientSession): Promise<void>;
   /** olr C4: nominates the re-derive of the Lead's credited calls and SMS; returns the jobs enqueued (new or deduplicated). */
   nominateContactSources(request: ContactWakeRequest, session: ClientSession): Promise<number>;
+  /**
+   * olr B6 fresh-Lead guard: the Lead's creation job (`sod:lead-change:<m>:<id>:r1`, the intake trigger)
+   * has settled: it reached a terminal status (completed, dead-lettered, retired), or there is no such
+   * row (never nominated, or completed and expired after 14 days). One `findOne` on `csi_job_dedupe_unique`.
+   */
+  creationJobSettled(lead: DeskLeadRef, session: ReadSession): Promise<boolean>;
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -173,6 +180,33 @@ function toStored(update: SubjectUpdate): Record<string, unknown> {
   return stored;
 }
 
+/** One lean `sales_outreach_policy_periods` document. */
+export type PeriodLean = {
+  _id: unknown;
+  subject_id: unknown;
+  transition_key: string;
+  workflow: string;
+  start_kind: string;
+  priority?: string | null;
+  started_at: Date;
+  ended_at?: Date | null;
+  end_reason?: string | null;
+};
+
+export function toPeriodRow(row: PeriodLean): DeskPeriodRow {
+  return {
+    id: String(row._id),
+    subject_id: String(row.subject_id),
+    transition_key: row.transition_key,
+    workflow: row.workflow as SalesOutreachWorkflow,
+    start_kind: row.start_kind as SalesOutreachPeriodStartKind,
+    priority: row.priority ?? null,
+    started_at: row.started_at,
+    ended_at: row.ended_at ?? null,
+    end_reason: row.end_reason ?? null,
+  };
+}
+
 export const mongoDeskSubjectStore: DeskSubjectStore = {
   async loadLeads(refs, session) {
     const facts: DeskLeadFacts[] = [];
@@ -204,17 +238,7 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
       .limit(1000)
       .session(session)
       .lean();
-    return rows.map((row) => ({
-      id: String(row._id),
-      subject_id: String(row.subject_id),
-      transition_key: row.transition_key,
-      workflow: row.workflow as SalesOutreachWorkflow,
-      start_kind: row.start_kind as SalesOutreachPeriodStartKind,
-      priority: row.priority ?? null,
-      started_at: row.started_at,
-      ended_at: row.ended_at ?? null,
-      end_reason: row.end_reason ?? null,
-    }));
+    return rows.map((row) => toPeriodRow(row as unknown as PeriodLean));
   },
 
   async reviewedRepIds(agentIds, at, session) {
@@ -391,7 +415,21 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
     const jobs = await enqueueOutreachContactChangeJobs(sources, session, request.now, { wanted: async () => true });
     return jobs.length;
   },
+
+  async creationJobSettled(lead, session) {
+    const row = (await getSalesIntelligenceJobModel()
+      .findOne({ dedupe_key: creationJobDedupeKey(lead) }, { status: 1 })
+      .session(session)
+      .lean()) as { status?: string } | null;
+    return !row || SETTLED_JOB_STATUSES.has(String(row.status));
+  },
 };
+
+/** Job statuses after which a creation job will not run again (olr B6 fresh-Lead guard). */
+export const SETTLED_JOB_STATUSES: ReadonlySet<string> = new Set(["completed", "dead_letter", "retired"]);
+
+/** The `dedupe_key` of a Lead's creation (intake) job: the tail's `r<rev>` identity for revision 1. */
+export const creationJobDedupeKey = (lead: DeskLeadRef) => `sod:lead-change:${lead.model}:${lead.id}:r1`;
 
 /** The `outreach_evaluate` job identity for one subject revision (idempotent per revision). */
 export function evaluationJobInput(subjectId: string, subjectRevision: number) {

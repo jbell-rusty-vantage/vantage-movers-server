@@ -94,6 +94,35 @@ export function engineSmsStatus(status: RepSmsStatus): SmsProviderStatus | null 
   }
 }
 
+export type MessageIdentity = {
+  identity_state: RepSmsIdentityState;
+  identity_reason: string | null;
+  reviewed_rep_ref: { agent_id: string; link_id: string } | null;
+};
+
+/**
+ * P07e rep identity of one mailbox message, shared by the mapper and the olr C7 re-map (`remap.ts`):
+ * - the owner is the mailbox's reviewed `sales_rep` link at the message's creation instant
+ *   (prospective identity: a link reviewed later never claims an earlier message);
+ * - no owner ⇒ `pending_identity` / `owner_not_reviewed_sales_rep`;
+ * - an outbound message whose sender is not one of the numbers the current reviewed link recorded ⇒
+ *   `pending_identity` / `shared_sender` (no recorded numbers = unknown, not checked).
+ * `from_number` is the normalized sender, as `mapProviderMessage` stores it.
+ */
+export function identityForMessage(
+  message: { direction: RepSmsDirection; from_number: string | null; created: Date },
+  mailbox: Pick<MailboxContext, "sender_numbers" | "identityAt">,
+): MessageIdentity {
+  const owner = mailbox.identityAt(message.created);
+  if (!owner) return { identity_state: "pending_identity", identity_reason: "owner_not_reviewed_sales_rep", reviewed_rep_ref: null };
+  if (message.direction === "outbound" && mailbox.sender_numbers.length) {
+    const own = new Set(mailbox.sender_numbers.map((n) => number(n)).filter((n): n is string => n !== null));
+    if (!message.from_number || !own.has(message.from_number))
+      return { identity_state: "pending_identity", identity_reason: "shared_sender", reviewed_rep_ref: owner };
+  }
+  return { identity_state: "reviewed", identity_reason: null, reviewed_rep_ref: owner };
+}
+
 export type MapResult = { ok: true; evidence: MappedRepSms } | { ok: false; reason: "not_sms" | "id_missing" | "direction_missing" | "created_missing" };
 
 export function mapProviderMessage(raw: ProviderMessage, mailbox: MailboxContext): MapResult {
@@ -110,19 +139,7 @@ export function mapProviderMessage(raw: ProviderMessage, mailbox: MailboxContext
   const to = (Array.isArray(raw.to) ? raw.to : []).map((p) => number(p?.phoneNumber)).filter((n): n is string => n !== null);
   const counterparts = direction === "outbound" ? [...new Set(to)] : from ? [from] : [];
 
-  const owner = mailbox.identityAt(created);
-  let identity_state: RepSmsIdentityState = "reviewed";
-  let identity_reason: string | null = null;
-  if (!owner) {
-    identity_state = "pending_identity";
-    identity_reason = "owner_not_reviewed_sales_rep";
-  } else if (direction === "outbound" && mailbox.sender_numbers.length) {
-    const own = new Set(mailbox.sender_numbers.map((n) => number(n)).filter((n): n is string => n !== null));
-    if (!from || !own.has(from)) {
-      identity_state = "pending_identity";
-      identity_reason = "shared_sender";
-    }
-  }
+  const { identity_state, identity_reason, reviewed_rep_ref: owner } = identityForMessage({ direction, from_number: from, created }, mailbox);
 
   return {
     ok: true,

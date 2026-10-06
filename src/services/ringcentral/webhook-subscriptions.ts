@@ -46,7 +46,15 @@ export type RingCentralWebhookSubscriptionMetadata = {
   createdAt: Date;
   updatedAt: Date;
   raw: unknown;
+  /** olr CW2: deliveries the webhook route refused for this subscription (`verification_failed`). */
+  delivery_refusals?: StoredDeliveryRefusals;
 };
+
+/**
+ * olr CW2: the route's refusal counter on an owned subscription's metadata row. `count` is cumulative;
+ * `last_at` / `last_reason` describe the newest refusal (`token_missing` | `token_mismatch`).
+ */
+export type StoredDeliveryRefusals = { count: number; last_at: Date; last_reason: string };
 
 export type RingCentralSubscriptionStoreResult = {
   saved: boolean;
@@ -207,6 +215,46 @@ export async function findStoredSubscriptionVerificationToken(subscriptionId: st
   );
   if (!row) return undefined;
   return typeof row.verificationToken === "string" && row.verificationToken ? row.verificationToken : null;
+}
+
+/**
+ * olr CW2: counts one delivery the webhook route refused (`verification_failed`) on the owned
+ * subscription's metadata row. Never inserts: the route refuses only subscriptions that already have a
+ * stored token, so a missing row means the delivery was not ours. Returns whether a row was counted.
+ */
+export async function recordStoredSubscriptionDeliveryRefusal(
+  subscriptionId: string,
+  reason: string,
+  at: Date,
+): Promise<boolean> {
+  if (!process.env.MONGO_URI?.trim()) return false;
+  const collection = await getSubscriptionsCollection();
+  const result = await collection.updateOne(
+    { provider: "ringcentral", subscriptionId },
+    {
+      $inc: { "delivery_refusals.count": 1 },
+      $max: { "delivery_refusals.last_at": at },
+      $set: { "delivery_refusals.last_reason": reason },
+    },
+  );
+  return result.matchedCount > 0;
+}
+
+/** olr CW2: the refusal counter of one owned subscription; null when none was ever refused (or it is not ours). */
+export async function findStoredSubscriptionDeliveryRefusals(subscriptionId: string): Promise<StoredDeliveryRefusals | null> {
+  if (!process.env.MONGO_URI?.trim()) return null;
+  const collection = await getSubscriptionsCollection();
+  const row = await collection.findOne(
+    { provider: "ringcentral", subscriptionId },
+    { projection: { delivery_refusals: 1 } },
+  );
+  const refusals = row?.delivery_refusals;
+  if (!refusals || !(refusals.last_at instanceof Date)) return null;
+  return {
+    count: typeof refusals.count === "number" ? refusals.count : 0,
+    last_at: refusals.last_at,
+    last_reason: typeof refusals.last_reason === "string" ? refusals.last_reason : "unknown",
+  };
 }
 
 /** CSI-03 additive: records a lifecycle status (e.g. `Deleted`) on an owned subscription's metadata; never removes the row. */

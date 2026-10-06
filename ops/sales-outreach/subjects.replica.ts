@@ -24,7 +24,18 @@
  *   since its `_id` bound;
  * - olr B2: a priority-map PATCH (code 9 → quoted, `migration.decision_reconcile_per_run: 5`) is applied
  *   to every open subject by the capped reconcile + drain, each stamped with the new decision fingerprint;
- *   the unmapped-9 subject's quoted period starts at the PATCH (`configuration_activated_at`).
+ *   the unmapped-9 subject's quoted period starts at the PATCH (`configuration_activated_at`);
+ * - olr B8: intake admits an ambiguous-Job-Number Lead and a Lead without a received time as held
+ *   `review` subjects with no period (job results stored on real job rows); marking the twin Lead a
+ *   Duplicate lets the reconcile's `hold:<15-min bucket>` job (once per bucket) open the late first
+ *   period at the clearing sync (`activation`, `desk_decision_at`); `GET /enrollment/admissions`'s
+ *   aggregation counts the day's admissions and refusals from the job ledger through an index;
+ * - olr B6: with `transition.expansion_admission_enabled` PATCHed on, an EntityChange on a pre-gate
+ *   non-subject Lead (priority 7 → 0) is nominated by the tail as `…:admission:r<rev>` (an unrelated
+ *   path nominates nothing), and its job enrolls it as `kind: expansion`, cohort `admission:<date>`, with
+ *   one `activation` period at the admission instant; a post-gate Lead whose creation job is still
+ *   pending is deferred to intake; `verify {cohort_id}` is consistent, writes nothing and reads
+ *   `sod_subject_cohort`.
  */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -65,8 +76,12 @@ async function main() {
   const { mongoDeskSubjectStore } = await import("../../src/services/salesOutreach/subjects/store.js");
   const { deskDecisionFingerprint } = await import("../../src/services/salesOutreach/subjects/policyMapping.js");
   const { refreshLeadForOutreach, runOutreachLeadChangeJob } = await import("../../src/services/salesOutreach/subjects/leadChangeJob.js");
-  const { scanOutreachLeadChanges, reconcileOutreachRevisions, OUTREACH_LEAD_CHANGE_SCOPE } = await import("../../src/services/salesOutreach/subjects/feed.js");
-  const { reportEnrollment, applyEnrollment, verifyEnrollment, listEnrollmentCandidates, candidateLegs } = await import("../../src/services/salesOutreach/enrollment/service.js");
+  const { scanOutreachLeadChanges, reconcileOutreachRevisions, OUTREACH_LEAD_CHANGE_SCOPE, leadChangeJobInput, holdRecheckBucketOf } = await import("../../src/services/salesOutreach/subjects/feed.js");
+  const { newYorkBusinessDay } = await import("../../src/services/salesOutreach/reads/businessDay.js");
+  const { reportEnrollment, applyEnrollment, verifyEnrollment, verifyCohort, listEnrollmentCandidates, candidateLegs } = await import("../../src/services/salesOutreach/enrollment/service.js");
+  const { readEnrollmentAdmissions, ADMISSION_OUTCOMES } = await import("../../src/services/salesOutreach/enrollment/admissions.js");
+  const { enqueueCsiJob } = await import("../../src/services/salesIntelligence/jobs.js");
+  const { csiDataset } = await import("../../src/config/domain/salesIntelligence.js");
   const { mongoEnrollmentStore, leadScanQuery } = await import("../../src/services/salesOutreach/enrollment/store.js");
   const { SALES_OUTREACH_READ_INDEXES, createIndexOptions } = await import("../lib/sales-outreach-indexes.js");
   const { getSalesOutreachEnrollmentRunModel } = await import("../../src/models/salesOutreach/enrollmentRuns.js");
@@ -436,7 +451,133 @@ async function main() {
   const settled = await reconcileOutreachRevisions(new Date());
   assert.deepEqual([settled.decision_nominated, settled.decision_deferred], [0, 0], "settled: nothing left to re-decide");
 
-  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair (+ BW1 contact re-derive), B7 scoped candidates + bounded plans, B2 decision reconcile");
+  // 8. olr B8: intake admission hold, the 15-minute hold re-check and the admissions read, on real Mongo.
+  // Each intake runs as a real `outreach_lead_change` job so its result lands on the job row.
+  const runLeadChange = async (ref: { model: "FormLead"; id: string }) => {
+    const job = await withTransaction((session) => enqueueCsiJob(leadChangeJobInput(ref, 1), session));
+    const run = await runOutreachLeadChangeJob(String(job._id));
+    assert.equal(run.status, "completed");
+    return run.result!;
+  };
+  const b8JobNo = `B8${randomBytes(4).toString("hex")}`;
+  const ambiguousLead = await insertLead({ job_no: b8JobNo, normalized_job_no: b8JobNo });
+  const twin = await insertLead({ job_no: b8JobNo, normalized_job_no: b8JobNo });
+  const noReceived = await insertLead({ timestamp: null });
+  const closedLead = await insertLead({ granot_priority: "5", last_accepted_granot_observation: { observation_id: oid(), captured_at: at("2026-10-02T14:01:00Z") } });
+  const heldResult = await runLeadChange(ambiguousLead);
+  assert.deepEqual([heldResult.outcome, heldResult.status, heldResult.admission], ["created", "review", "intake"], "an ambiguous Lead is admitted held, not refused");
+  const heldSubject = (await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(ambiguousLead.id) }).lean())!;
+  assert.deepEqual([heldSubject.status, heldSubject.review_reasons], ["review", ["ambiguous_identity"]]);
+  assert.equal(await Periods.countDocuments({ subject_id: heldSubject._id }), 0, "no period while held");
+  const missingResult = await runLeadChange(noReceived);
+  assert.deepEqual([missingResult.outcome, missingResult.status], ["created", "review"]);
+  const missingSubject = (await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(noReceived.id) }).lean())!;
+  assert.deepEqual(missingSubject.review_reasons, ["received_time_missing"]);
+  assert.equal(+missingSubject.enrollment.activation_at, +at("2026-10-02T14:00:03Z"), "boundary = creation, never a guessed arrival");
+  assert.equal(await Periods.countDocuments({ subject_id: missingSubject._id }), 0);
+  assert.deepEqual([(await runLeadChange(closedLead)).outcome], ["not_admitted"]);
+  // Still ambiguous: the reconcile's hold job re-checks it and writes nothing.
+  const holdKey = (ref: { id: string }, instant: Date) => `sod:lead-change:FormLead:${ref.id}:hold:${holdRecheckBucketOf(instant)}`;
+  const firstCheck = new Date();
+  const recheck = await reconcileOutreachRevisions(firstCheck);
+  assert.equal(recheck.hold_nominated, 1, "only the ambiguous subject is re-checked (received_time_missing clears on its own Lead change)");
+  const firstHold = await Jobs.findOne({ dedupe_key: holdKey(ambiguousLead, firstCheck) }).lean();
+  assert.ok(firstHold, "hold job nominated with the 15-minute bucket identity");
+  assert.equal(firstHold!.input_revision, 1);
+  assert.equal((await runOutreachLeadChangeJob(String(firstHold!._id))).result?.outcome, "unchanged", "still ambiguous: nothing written");
+  await reconcileOutreachRevisions(firstCheck);
+  assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:lead-change:FormLead:${ambiguousLead.id}:hold:` } }), 1, "one hold job per bucket");
+  // The twin is marked a Duplicate (in Granot): the next bucket's hold job clears the hold.
+  await forms.updateOne({ _id: new mongoose.Types.ObjectId(twin.id) }, { $set: { duplicate: true } });
+  const nextBucket = new Date(+firstCheck + 15 * 60_000);
+  await reconcileOutreachRevisions(nextBucket);
+  const secondHold = await Jobs.findOne({ dedupe_key: holdKey(ambiguousLead, nextBucket) }).lean();
+  assert.ok(secondHold, "the next bucket re-checks again");
+  const clearedFrom = new Date();
+  const cleared = await runOutreachLeadChangeJob(String(secondHold!._id));
+  assert.deepEqual([cleared.result?.outcome, cleared.result?.status], ["updated", "active"]);
+  const releasedPeriods = await Periods.find({ subject_id: heldSubject._id }).lean();
+  assert.equal(releasedPeriods.length, 1);
+  assert.deepEqual([releasedPeriods[0]!.workflow, releasedPeriods[0]!.start_kind, releasedPeriods[0]!.time_basis], ["new", "activation", "desk_decision_at"]);
+  assert.ok(+releasedPeriods[0]!.started_at >= +clearedFrom && +releasedPeriods[0]!.started_at <= Date.now(), "the late first period starts at the clearing sync, not at received");
+  assert.equal((await reconcileOutreachRevisions(new Date(+nextBucket + 15 * 60_000))).hold_nominated, 0, "an active subject is never re-checked");
+  // GET /enrollment/admissions over the real job ledger (today in New York).
+  const admissions = await readEnrollmentAdmissions({});
+  assert.deepEqual(
+    [admissions.counts.admitted_review, admissions.counts.admitted_intake, admissions.counts.not_admitted],
+    [2, 0, { closed_priority: 1 }],
+    "the held intakes count as admitted review; the closed Lead is a refusal",
+  );
+  assert.deepEqual(admissions.recent_refusals.map((r) => [r.lead.id, r.reason]), [[closedLead.id, "closed_priority"]]);
+  const { start: dayStart, end: dayEnd } = (await import("../../src/services/salesOutreach/reads/businessDay.js")).newYorkDayBounds(admissions.business_day);
+  const admissionsPlan = (await Jobs.collection
+    .find({ ...csiDataset(), stage: "outreach_lead_change", status: "completed", completed_at: { $gte: dayStart, $lt: dayEnd }, "result.outcome": { $in: [...ADMISSION_OUTCOMES] } })
+    .explain("executionStats")) as unknown as { queryPlanner: { winningPlan: unknown } };
+  const admissionIndexes = indexNames(admissionsPlan.queryPlanner.winningPlan);
+  assert.ok(admissionIndexes.some((name) => name === "csi_job_claim" || name === "csi_job_completed_ttl"), `the admissions match reads an index: ${admissionIndexes.join(",")}`);
+
+  // 9. olr B6: event-driven expansion admission (switch PATCHed on), on real Mongo.
+  await drain();
+  const beforeB6 = await loader.requireActive();
+  assert.equal(beforeB6.value.transition.expansion_admission_enabled, undefined, "absent until the Owner sets it");
+  const switched = structuredClone(beforeB6.value);
+  switched.transition = { ...switched.transition, expansion_admission_enabled: true };
+  assert.equal((await patchSalesOutreachConfiguration({ actor: owner, idempotency_key: "sod-subjects-b6-switch", expected_revision: beforeB6.revision, value: switched })).response.changed, true);
+  const leadChange = (ref: { id: string }, revisionBefore: number, paths: string[], appliedAt: Date) => ({
+    ...change(revisionBefore, appliedAt),
+    entity: { model: "FormLead", id: ref.id },
+    changed_paths: paths,
+    fields: paths.map((path) => ({ path, value_mode: "stored", before: null, after: null })),
+  });
+  // A pre-gate Lead (created and received 2026-09-30, inside the 90-day window) refused as Priority 7, now accepted New.
+  const preGate = await insertLead({
+    createdAt: at("2026-09-30T14:00:03Z"),
+    timestamp: wallClock("2026-09-30T14:00:00Z"),
+    granot_priority: "0",
+    last_accepted_granot_observation: { observation_id: oid(), captured_at: new Date(Date.now() - 20_000) },
+    domain_revision: 4,
+  });
+  const untouched = await insertLead({ createdAt: at("2026-09-30T15:00:03Z"), timestamp: wallClock("2026-09-30T15:00:00Z"), granot_priority: "0", domain_revision: 2 });
+  await changes.insertOne(leadChange(preGate, 3, ["granot_priority", "last_accepted_granot_observation"], new Date(Date.now() - 10_000)));
+  await changes.insertOne(leadChange(untouched, 1, ["notes"], new Date(Date.now() - 9_000)));
+  await scanOutreachLeadChanges(new Date());
+  const admissionJob = await Jobs.findOne({ dedupe_key: `sod:lead-change:FormLead:${preGate.id}:admission:r4` }).lean();
+  assert.ok(admissionJob, "the tail nominates the admission identity");
+  assert.equal(admissionJob!.input_revision, 4);
+  assert.equal(await Jobs.exists({ dedupe_key: `sod:lead-change:FormLead:${preGate.id}:r4` }), null, "never the intake/refresh identity");
+  assert.equal(await Jobs.countDocuments({ dedupe_key: { $regex: `^sod:lead-change:FormLead:${untouched.id}:` } }), 0, "an unrelated path nominates nothing");
+  const admitted = await runOutreachLeadChangeJob(String(admissionJob!._id));
+  assert.deepEqual([admitted.status, admitted.result?.outcome, admitted.result?.admission, admitted.result?.status], ["completed", "created", "expansion", "active"]);
+  const admittedSubject = (await Subjects.findOne({ lead_id: new mongoose.Types.ObjectId(preGate.id) }).lean())!;
+  const cohortId = `admission:${newYorkBusinessDay(admittedSubject.enrollment.enrolled_at)}`;
+  assert.deepEqual([admittedSubject.enrollment.kind, admittedSubject.enrollment.cohort_id, admittedSubject.enrollment.manifest_hash], ["expansion", cohortId, null]);
+  assert.equal(+admittedSubject.enrollment.activation_at, +admittedSubject.enrollment.enrolled_at, "the boundary is the admission instant");
+  const admittedPeriods = await Periods.find({ subject_id: admittedSubject._id }).lean();
+  assert.deepEqual(
+    admittedPeriods.map((p) => [p.workflow, p.start_kind, +p.started_at, p.time_basis]),
+    [["new", "activation", +admittedSubject.enrollment.activation_at, "activation_boundary"]],
+    "one activation period at the admission instant (partial day), never at received",
+  );
+  // A post-gate Lead whose creation (intake) job is still pending: the admission job defers, writing nothing.
+  const fresh = await insertLead({ createdAt: new Date(Date.now() - 60_000), timestamp: wallClock(new Date(Date.now() - 61_000).toISOString()), domain_revision: 2 });
+  const creationJob = await withTransaction((session) => enqueueCsiJob(leadChangeJobInput(fresh, 1), session));
+  await changes.insertOne(leadChange(fresh, 1, ["granot_priority"], new Date(Date.now() - 5_000)));
+  await scanOutreachLeadChanges(new Date());
+  const freshAdmission = await Jobs.findOne({ dedupe_key: `sod:lead-change:FormLead:${fresh.id}:admission:r2` }).lean();
+  assert.ok(freshAdmission);
+  const deferred = await runOutreachLeadChangeJob(String(freshAdmission!._id));
+  assert.deepEqual([deferred.result?.outcome, deferred.result?.reason], ["deferred", "deferred_to_intake"]);
+  assert.equal(await Subjects.countDocuments({ lead_id: new mongoose.Types.ObjectId(fresh.id) }), 0, "intake decides it");
+  assert.deepEqual([(await runOutreachLeadChangeJob(String(creationJob._id))).result?.admission], ["intake"]);
+  // POST /enrollment/verify { cohort_id }: consistent, read-only, through the cohort index.
+  const beforeVerify = await counts();
+  const cohortVerify = await verifyCohort({ cohort_id: cohortId });
+  assert.deepEqual([cohortVerify.consistent, cohortVerify.complete, cohortVerify.counts.subjects, cohortVerify.mismatches], [true, true, 1, []]);
+  assert.deepEqual(await counts(), beforeVerify, "verify by cohort writes nothing");
+  const cohortPlan = (await Subjects.collection.find({ "enrollment.cohort_id": cohortId }).sort({ _id: 1 }).limit(100).explain("queryPlanner")) as unknown as { queryPlanner: { winningPlan: unknown } };
+  assert.ok(indexNames(cohortPlan.queryPlanner.winningPlan).includes("sod_subject_cohort"), `the cohort page reads its index: ${indexNames(cohortPlan.queryPlanner.winningPlan).join(",")}`);
+
+  console.log("PASS: period transition atomicity/uniqueness, enrollment report/apply/crash-resume/re-apply/verify, tail cursor + overlap, revision reconcile, B1 late first period + repair (+ BW1 contact re-derive), B7 scoped candidates + bounded plans, B2 decision reconcile, B8 admission hold + hold re-check + admissions read, B6 expansion admission + fresh-Lead guard + verify by cohort");
 }
 
 main()

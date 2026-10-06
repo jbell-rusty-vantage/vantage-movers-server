@@ -64,6 +64,9 @@ const transitionSchema = z
     // FAST-01 backfill scope (FAST-TRACK.md "Backfill scope").
     backfill_lookback_days: nullable(z.number().int().min(1).max(3650)),
     backfill_include_upcoming_moves: nullable(z.boolean()),
+    // olr B6 (D7, P10b-1): event-driven expansion admission of non-subject Leads whose decision facts
+    // change into the backfill scope. Optional, no default (A0 evolution rule); absent = off.
+    expansion_admission_enabled: z.boolean().optional(),
   })
   .strict();
 
@@ -404,6 +407,11 @@ export const salesOutreachConfigurationValueSchema = z
     if (controls.goal_metrics_enabled) missing("goals", GOALS_REQUIRED_FOR_ACTIVATION, "controls.goal_metrics_enabled");
     if (transition.intake_admission_enabled && transition.intake_admission_at === null)
       ctx.addIssue({ code: "custom", path: ["transition", "intake_admission_at"], message: "required by intake_admission_enabled" });
+    // olr B6: expansion admission is bounded to the FAST-01 backfill scope, so both scope keys must be installed.
+    if (transition.expansion_admission_enabled === true)
+      for (const key of ["backfill_lookback_days", "backfill_include_upcoming_moves"] as const)
+        if (transition[key] === null)
+          ctx.addIssue({ code: "custom", path: ["transition", key], message: "required by expansion_admission_enabled" });
     // Below settlement + the capture finalization lag, today's coverage could never read complete.
     const settlement = value.evidence.call_settlement_allowance_minutes ?? DESK_TIMING_DEFAULTS.call_settlement_allowance_minutes;
     const tolerance = value.evidence.today_coverage_tolerance_minutes ?? DESK_TIMING_DEFAULTS.today_coverage_tolerance_minutes;

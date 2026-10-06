@@ -36,7 +36,7 @@ test("vercel.json registers queue/v2beta topic sales-intelligence-events*", () =
 
 test("only retained stages have a consumer", () => {
   assert.deepEqual(Object.keys(defaultStageHandlers()).sort(),
-    ["call_log_refresh", "capture_projection", "lead_link", "nudge_repair", "outreach_contact_change", "outreach_evaluate", "outreach_lead_change", "outreach_rep_day", "rep_sms_sync"]);
+    ["call_log_refresh", "capture_projection", "lead_link", "nudge_repair", "outreach_contact_change", "outreach_evaluate", "outreach_lead_change", "outreach_rep_day", "rep_sms_remap", "rep_sms_sync"]);
   for (const stage of CSI_RETIRED_JOB_STAGES) assert.equal((CSI_JOB_STAGES as readonly string[]).includes(stage), false, stage);
 });
 

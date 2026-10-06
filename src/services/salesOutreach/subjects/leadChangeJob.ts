@@ -6,19 +6,42 @@ import { salesOutreachConfigurationLoader, type ActiveConfiguration, type Config
 import { OutreachError } from "../errors";
 import type { DeskLeadRef } from "./leadFacts";
 import { mongoDeskSubjectStore, type DeskSubjectStore } from "./store";
-import { hasAmbiguousIdentity, intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
+import { expansionAdmissionOf, expansionNeedsCreationSettled, hasAmbiguousIdentity, intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
 
+/**
+ * The job's stored result (`sales_intelligence_jobs.result`, kept 14 days), read by
+ * `GET /enrollment/admissions` (olr B8). `status` is the subject's status after the job (null when there
+ * is no subject); `admission` names the path that created the subject (`intake`, or `expansion` for the
+ * olr B6 admission; null otherwise). `deferred` (olr B6): an admission job left a fresh Lead to its
+ * creation job (`deferred_to_intake`), writing nothing. Results stored before B8 carry neither field.
+ */
 export type LeadRefreshResult = Readonly<{
-  outcome: "created" | "updated" | "unchanged" | "not_admitted" | "lead_missing";
+  outcome: "created" | "updated" | "unchanged" | "not_admitted" | "deferred" | "lead_missing";
   subject_id: string | null;
   reason: string | null;
+  status: "active" | "review" | "closed" | null;
+  admission: "intake" | "expansion" | null;
 }>;
+
+/**
+ * Which path a job runs for a Lead that is not a subject (olr B6; LANE-B §0.2): `admission` for the
+ * tail's `…:admission:r<rev>` nomination (expansion only, never intake), `default` otherwise (the intake
+ * gate on a creation, a plain refresh for a subject).
+ */
+export type LeadChangeTrigger = "default" | "admission";
+
+/** The trigger of a claimed `outreach_lead_change` row, from its own `dedupe_key`. */
+export const triggerOfJob = (dedupeKey: string): LeadChangeTrigger => (dedupeKey.includes(":admission:") ? "admission" : "default");
 
 /**
  * The work of one `outreach_lead_change` job, inside its transaction: refresh the Lead's subject from
  * current facts (P05d transition, P05e retention, P05g display, IMPL-01 assignment, IMPL-07 numbers),
- * or — when the Lead is not a subject — run the intake admission gate (`outreach_intake`) and enroll it
- * once as `kind: intake`. Reads the Lead as it is now, so a job for an older revision is a no-op.
+ * whatever the trigger; or — when the Lead is not a subject —
+ * - `default`: run the intake admission gate (`outreach_intake`) and enroll it once as `kind: intake`
+ *   (held as `review` with no period when its identity or received time is not sound, olr B8);
+ * - `admission` (olr B6): run only the expansion admission (`expansionAdmissionOf`) and enroll it once as
+ *   `kind: expansion`, cohort `admission:<date>`, starting now.
+ * Reads the Lead as it is now, so a job for an older revision is a no-op.
  */
 export async function refreshLeadForOutreach(
   lead: DeskLeadRef,
@@ -26,20 +49,30 @@ export async function refreshLeadForOutreach(
   asOf: Date,
   store: DeskSubjectStore,
   session: ClientSession,
+  trigger: LeadChangeTrigger = "default",
 ): Promise<LeadRefreshResult> {
   const [facts] = await store.loadLeads([lead], session);
   const [subject] = await store.findSubjects([lead], session);
-  if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found" };
+  if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found", status: subject?.status ?? null, admission: null };
   const context = await loadSubjectPageContext(store, [facts], asOf, session);
   if (subject) {
     const synced = await syncSubject({ facts, subject, configuration, context }, store, session);
-    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: synced.period_reason };
+    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: synced.period_reason, status: synced.status, admission: null };
+  }
+  if (trigger === "admission") {
+    // Sequential reads: the session is inside the job transaction. The guard's job read only when it applies.
+    const settled = expansionNeedsCreationSettled(facts, configuration) ? await store.creationJobSettled(lead, session) : true;
+    const expansion = expansionAdmissionOf(facts, configuration, asOf, { ambiguous_identity: hasAmbiguousIdentity(facts, context), creation_settled: settled });
+    if (!expansion.admit)
+      return { outcome: expansion.deferred ? "deferred" : "not_admitted", subject_id: null, reason: expansion.reason, status: null, admission: null };
+    const synced = await syncSubject({ facts, subject: null, enrollment: expansion.enrollment, configuration, context }, store, session);
+    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "expansion" };
   }
   const admission = intakeAdmissionOf(facts, configuration, asOf);
-  if (!admission.admit) return { outcome: "not_admitted", subject_id: null, reason: admission.reason };
-  if (hasAmbiguousIdentity(facts, context)) return { outcome: "not_admitted", subject_id: null, reason: "ambiguous_identity" };
+  if (!admission.admit) return { outcome: "not_admitted", subject_id: null, reason: admission.reason, status: null, admission: null };
+  // olr B8: an ambiguous Job Number no longer refuses; the subject is admitted held (`admissionHoldOf`).
   const synced = await syncSubject({ facts, subject: null, enrollment: admission.enrollment, configuration, context }, store, session);
-  return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null };
+  return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "intake" };
 }
 
 export type LeadChangeJobDeps = {
@@ -75,7 +108,8 @@ export async function runOutreachLeadChangeJob(jobId?: string, deps: LeadChangeJ
         const current = await loader.requireActive(session);
         if (current.revision !== admitted.revision || current.version !== admitted.version)
           throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "configuration", code: "revision_changed" }]);
-        return refreshLeadForOutreach({ model, id }, current, (deps.now ?? (() => new Date()))(), deps.store ?? mongoDeskSubjectStore, session);
+        const now = (deps.now ?? (() => new Date()))();
+        return refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, triggerOfJob(String(row.dedupe_key ?? "")));
       },
       { resultFrom: (value) => value },
     );

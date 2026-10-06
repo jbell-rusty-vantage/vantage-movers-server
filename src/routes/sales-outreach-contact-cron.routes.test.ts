@@ -24,6 +24,10 @@ app.use(
       if (smsThrows) throw new TypeError("boom");
       return { skipped: false, pages: 0 };
     },
+    refreshSmsPending: async () => {
+      calls.push("sms_pending");
+      return { skipped: true, reason: "capture_disabled" };
+    },
     drainContactChanges: async () => {
       calls.push("contact_changes");
       return { outcomes: {} };
@@ -77,7 +81,8 @@ test("runs every step in order; a failed step is reported and never blocks the n
   const { status, body } = await hit();
   smsThrows = false;
   assert.equal(status, 200);
-  assert.deepEqual(calls, ["calls", "sms", "contact_changes", "rep_days", "refresh"]);
+  assert.deepEqual(calls, ["calls", "sms", "sms_pending", "contact_changes", "rep_days", "refresh"]);
   assert.deepEqual(body.sms, { ok: false, error: "TypeError" });
   assert.deepEqual(body.calls, { skipped: false, pages: 1 });
+  assert.deepEqual(body.sms_pending, { skipped: true, reason: "capture_disabled" }, "olr C7: step 2b runs after the SMS sweep, even when it failed");
 });

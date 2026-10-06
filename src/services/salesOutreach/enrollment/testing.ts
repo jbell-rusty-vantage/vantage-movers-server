@@ -4,6 +4,7 @@ import type { CsiActor } from "../../salesIntelligence/auth";
 import type { appendCsiAudit, executeCsiCommand } from "../../salesIntelligence/transactions";
 import { deskLeadKey, type DeskLeadFacts } from "../subjects/leadFacts";
 import { fakeSession, objectId, type MemoryDeskSubjectStore } from "../subjects/testing";
+import { ADMISSION_OUTCOMES, type AdmissionGroup, type AdmissionsStore } from "./admissions";
 import type { EnrollmentDeps } from "./service";
 import type { EnrollmentLease, EnrollmentRunRow, EnrollmentSkip, EnrollmentStore, LeadScanFilter, NewEnrollmentRun } from "./store";
 
@@ -78,6 +79,15 @@ export class MemoryEnrollmentStore implements EnrollmentStore {
     this.runs.push({ ...structuredClone(apply), run_key: key, mode: "verify", selected_leads: [], counts: results.counts, results: { skipped: [], pause_reason: null, verify: results.verify }, finished_at: now, status: "completed", actor });
     this.writes.push(`verify:${apply.run_key}`);
   }
+  async cohortSubjects(cohortId: string, afterId: string | null, limit: number) {
+    const rows = this.subjects.subjects
+      .filter((s) => s.enrollment.cohort_id === cohortId && (!afterId || s.id > afterId))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .slice(0, limit);
+    const out = [];
+    for (const subject of rows) out.push({ subject: structuredClone(subject), periods: await this.subjects.findPeriods(subject.id) });
+    return out;
+  }
 }
 
 /** Deps wiring memory stores, a rolling-back transaction, a recording ledger/audit and a controllable clock. */
@@ -130,3 +140,63 @@ export function memoryEnrollmentDeps(subjects: MemoryDeskSubjectStore, store: Me
 }
 
 export const leadKeys = (leads: readonly DeskLeadFacts[]) => leads.map((l) => deskLeadKey(l.ref)).sort();
+
+/** One `sales_intelligence_jobs` row as the olr B8 admissions read sees it (synthetic ledger stand-in). */
+export type MemoryJobRow = {
+  _id: string;
+  stage: string;
+  status: string;
+  completed_at: Date | null;
+  subject_key: string;
+  input_refs: string[];
+  result: unknown;
+};
+
+/**
+ * In-memory job ledger for `GET /enrollment/admissions` (olr B8): the same filter, grouping and
+ * newest-first refusal list as `mongoAdmissionsStore`'s aggregation.
+ */
+export class MemoryAdmissionsStore implements AdmissionsStore {
+  rows: MemoryJobRow[] = [];
+  /** Adds a completed `outreach_lead_change` job for a Lead with the given stored result. */
+  complete(lead: { model: string; id: string }, completedAt: string, result: Record<string, unknown> | null, overrides: Partial<MemoryJobRow> = {}) {
+    this.rows.push({
+      _id: objectId(),
+      stage: "outreach_lead_change",
+      status: "completed",
+      completed_at: new Date(completedAt),
+      subject_key: `outreach-lead:${lead.model}:${lead.id}`,
+      input_refs: [lead.id],
+      result,
+      ...overrides,
+    });
+    return this;
+  }
+  async leadChangeResults(window: Readonly<{ from: Date; to: Date }>, recentLimit: number) {
+    const field = (row: MemoryJobRow, key: string) => {
+      const value = (row.result as Record<string, unknown> | null)?.[key];
+      return typeof value === "string" ? value : null;
+    };
+    const rows = this.rows.filter(
+      (row) =>
+        row.stage === "outreach_lead_change" &&
+        row.status === "completed" &&
+        row.completed_at !== null &&
+        +row.completed_at >= +window.from &&
+        +row.completed_at < +window.to &&
+        (ADMISSION_OUTCOMES as readonly string[]).includes(field(row, "outcome") ?? ""),
+    );
+    const groups = new Map<string, AdmissionGroup>();
+    for (const row of rows) {
+      const group = { outcome: field(row, "outcome")!, reason: field(row, "reason"), status: field(row, "status"), admission: field(row, "admission") };
+      const key = JSON.stringify(group);
+      groups.set(key, { ...group, count: (groups.get(key)?.count ?? 0) + 1 });
+    }
+    const recent = rows
+      .filter((row) => field(row, "outcome") === "not_admitted")
+      .sort((a, b) => +b.completed_at! - +a.completed_at! || (a._id < b._id ? 1 : -1))
+      .slice(0, recentLimit)
+      .map((row) => ({ subject_key: row.subject_key, input_refs: row.input_refs, reason: field(row, "reason"), completed_at: row.completed_at! }));
+    return { groups: [...groups.values()], recent };
+  }
+}

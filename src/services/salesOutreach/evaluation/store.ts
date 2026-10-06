@@ -2,6 +2,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import type { SalesOutreachCadenceExposure } from "../../../config/domain/salesOutreach";
 import { getEntityChangeModel } from "../../../models/EntityChange";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
+import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import {
@@ -113,7 +114,8 @@ export const EVALUATION_LIMITS = { periods: 1000, plans: 500, restrictions: 200,
  * - assignment history `entity_change_entity_applied`; links `ril_agent_current` (agent prefix);
  * - contact events `sod_contact_subject_event`; capture rows `sales_intelligence_sync_state` scope;
  * - projections `sod_projection_subject_unique`, `sod_projection_next_evaluation`,
- *   `sod_projection_coverage_wait_call` / `_sms` (the sweep's coverage repair).
+ *   `sod_projection_coverage_wait_call` / `_sms` (the sweep's coverage repair);
+ * - jobs `csi_job_dedupe_unique` (the sweep's existing-nomination check, olr A5).
  */
 export type EvaluationStore = {
   loadSubject(subjectId: string, session: ReadSession): Promise<DeskSubjectRow | null>;
@@ -147,6 +149,8 @@ export type EvaluationStore = {
   subjectIdsAfter(afterId: string | null, limit: number, session: ClientSession): Promise<string[]>;
   /** Subject id → stored `policy_fingerprint` (absent = no projection yet). */
   projectionPolicies(subjectIds: readonly string[], session: ClientSession): Promise<Map<string, string | null>>;
+  /** olr A5: the `dedupe_key`s among `keys` that already have a job row, any status (`csi_job_dedupe_unique`). */
+  existingJobKeys(keys: readonly string[], session: ClientSession): Promise<Set<string>>;
   enqueue(job: JobInput, session: ClientSession): Promise<"enqueued" | "conflict">;
 };
 
@@ -389,6 +393,16 @@ export const mongoEvaluationStore: EvaluationStore = {
       .lean();
     for (const row of rows) out.set(String(row.subject_id), (row as { policy_fingerprint?: string }).policy_fingerprint ?? null);
     return out;
+  },
+
+  async existingJobKeys(keys, session) {
+    const unique = [...new Set(keys)];
+    if (!unique.length) return new Set<string>();
+    const rows = await getSalesIntelligenceJobModel()
+      .find({ dedupe_key: { $in: unique } }, { _id: 0, dedupe_key: 1 })
+      .session(session)
+      .lean();
+    return new Set(rows.map((row) => String(row.dedupe_key)));
   },
 
   async enqueue(job, session) {

@@ -55,7 +55,7 @@ async function main() {
   const { setQuotedFollowup, commandCallback } = await import("../../src/services/salesOutreach/commands/plans.js");
   const { setGoalDayOverride } = await import("../../src/services/salesOutreach/commands/dayOverride.js");
   const { liftRestriction } = await import("../../src/services/salesOutreach/commands/restrictions.js");
-  const { evaluationJob, runOutreachEvaluateJob, sweepOutreachEvaluations } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
+  const { drainOutreachEvaluateJobs, evaluationJob, runOutreachEvaluateJob, sweepOutreachEvaluations } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
   const { receiverReplaceableByGranot } = await import("../../src/services/granotLifecycle/leadDesiredState.js");
   const { completeConfigurationInput, TEST_AGENT_A, TEST_AGENT_B } = await import("../../src/services/salesOutreach/evaluation/testing.js");
   const { COVERAGE_REPAIR_BUCKET_MS } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
@@ -238,6 +238,7 @@ async function main() {
   await Projections.updateOne({ subject_id: subjectId }, { $set: { next_evaluation_at: new Date(Date.now() - 1_000) } });
   const swept = await sweepOutreachEvaluations(new Date());
   assert.ok(swept.due.nominated >= 1, "the due projection is nominated");
+  assert.equal((await sweepOutreachEvaluations(new Date())).due.nominated, 0, "olr A5: the pending due job is not re-enqueued");
 
   // 6. olr B9 refresh-then-409: a Lead write the desk has not synced yet (the Lead-change job is not drained here)
   //    makes the desk copy stale. The command answers 409 assignment_changed "refreshed" after refreshing the subject
@@ -297,8 +298,13 @@ async function main() {
   assert.equal(nominated.coverage.nominated, 1);
   const coverageJob = await Jobs.findOne({ dedupe_key: `sod:evaluate:${subjectId}:coverage:call:${+wait}:${Math.floor(+through / COVERAGE_REPAIR_BUCKET_MS)}` }).lean();
   assert.ok(coverageJob && coverageJob.stage === "outreach_evaluate" && coverageJob.status === "pending", "one coverage nomination");
-  await sweepOutreachEvaluations(new Date());
+  const again = await sweepOutreachEvaluations(new Date());
   assert.equal(await Jobs.countDocuments({ dedupe_key: coverageKey }), 1, "a second sweep in the same coverage bucket adds no job");
+  assert.equal(again.coverage.nominated, 0, "olr A5: the pending coverage job is skipped, not re-upserted");
+  const dedupePlan = (await Jobs.find({ dedupe_key: { $in: [coverageJob.dedupe_key, "sod:evaluate:absent"] } }, { _id: 0, dedupe_key: 1 }).explain(
+    "queryPlanner",
+  )) as unknown as { queryPlanner: { winningPlan: unknown } };
+  assert.match(JSON.stringify(dedupePlan.queryPlanner.winningPlan), /csi_job_dedupe_unique/, "olr A5: the existing-nomination check reads the unique dedupe index");
   const plan = (await Projections.find({ "coverage_wait.call": { $ne: null, $lte: through } }, { subject_id: 1, coverage_wait: 1 })
     .sort({ "coverage_wait.call": 1, subject_id: 1 })
     .limit(100)
@@ -311,8 +317,22 @@ async function main() {
   assert.equal((repaired as { coverage_wait?: { call: Date | null } } | null)?.coverage_wait?.call ?? null, null, "the re-evaluation cleared the wait");
   assert.equal((repaired as { engine_version?: string } | null)?.engine_version, "sod-engine-v2");
   assert.equal((await sweepOutreachEvaluations(new Date())).coverage.nominated, 0, "nothing waits any more");
+
+  // 8. olr A5: a drain with two claim loops over two jobs of the same subject. Each job is claimed exactly once
+  //    (atomic claim), each runs in its own transaction, and an unchanged result writes nothing.
+  await drainEvaluations();
+  const steady = await Projections.findOne({ subject_id: subjectId }).lean();
+  const pair = ["replica-a5-1", "replica-a5-2"].map((cause) => evaluationJob(String(subjectId), cause));
+  for (const job of pair) await withTransaction((session) => enqueueCsiJob(job, session));
+  const concurrent = await drainOutreachEvaluateJobs({ max: 10, deadlineMs: 30_000, concurrency: 2 });
+  assert.deepEqual(concurrent.options, { max: 10, deadlineMs: 30_000, concurrency: 2 });
+  assert.equal(concurrent.jobs, 2, `two jobs claimed: ${JSON.stringify(concurrent.outcomes)}`);
+  assert.equal(concurrent.outcomes.lease_lost ?? 0, 0);
+  const pairRows = await Jobs.find({ dedupe_key: { $in: pair.map((job) => job.dedupe_key) } }).lean();
+  assert.deepEqual(pairRows.map((row) => [row.status, row.lease_epoch]).sort(), [["completed", 1], ["completed", 1]], "each job claimed once and completed");
+  assert.equal((await Projections.findOne({ subject_id: subjectId }).lean())?.revision, steady?.revision, "unchanged result: no write");
   console.log(
-    "PASS: assignment atomicity/replay/manual protection, plan race + replacement history, override pointer race, restriction lift, evaluate write/no-op/sweep, B9 stale-copy refresh-then-409, A1 coverage repair (once per bucket, indexed, wait cleared)",
+    "PASS: assignment atomicity/replay/manual protection, plan race + replacement history, override pointer race, restriction lift, evaluate write/no-op/sweep, B9 stale-copy refresh-then-409, A1 coverage repair (once per bucket, indexed, wait cleared), A5 sweep skips pending nominations + concurrent drain",
   );
 }
 

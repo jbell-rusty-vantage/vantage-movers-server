@@ -23,6 +23,7 @@ import {
 } from "./webhook-subscription-lifecycle";
 import {
   compareVerificationToken,
+  setDeliveryRefusalRecorderForTests,
   setVerificationTokenLookupForTests,
   verifyRingCentralDelivery,
 } from "./webhook-verification";
@@ -108,21 +109,26 @@ test("calls create carries a generated verification token, recorded with purpose
   assert.deepEqual(f.recorded[0], { id: "new-1", meta: { purpose: "calls", verificationToken: a!.input.verificationToken } });
 });
 
-test("calls without a stored token: the cron only warns; the operator ensure PUTs a token onto the owned subscription", async () => {
-  const f = fakes([record({ id: "owned-calls" }), record({ id: "foreign" })], { "owned-calls": { purpose: null, verificationToken: null } });
+test("calls without a stored token: the cron only warns; the operator ensure replaces it (create with a token, then delete), never a PUT (olr CW2)", async () => {
+  const records = [record({ id: "owned-calls" }), record({ id: "foreign" })];
+  const f = fakes(records, { "owned-calls": { purpose: null, verificationToken: null } });
   const cron = { provider: f.provider, store: f.store, address: ADDRESS, now: () => NOW, eventFilters: async () => CALLS };
   const cronPlan = await planAllDirectionSubscription(cron);
   assert.equal(cronPlan.action, "noop");
   assert.ok(cronPlan.warnings.some((w) => w.includes("no verification token")));
   const operator = { ...cron, requireVerificationToken: true };
   const plan = await planAllDirectionSubscription(operator);
-  assert.deepEqual(plan, { action: "update", subscription_id: "owned-calls", reasons: ["verification_token_missing"], warnings: ["foreign subscription foreign delivers to this address and is not managed here"] });
-  assert.deepEqual(await applyAllDirectionSubscriptionPlan(plan, operator), { action: "updated", subscription_id: "owned-calls" });
-  assert.deepEqual(f.calls, ["update:owned-calls"]);
+  assert.deepEqual(plan, { action: "replace", subscription_id: "owned-calls", reasons: ["verification_token_missing"], warnings: ["foreign subscription foreign delivers to this address and is not managed here"] });
+  assert.deepEqual(await applyAllDirectionSubscriptionPlan(plan, operator), { action: "replaced", removed_subscription_id: "owned-calls", subscription_id: "new-1" });
+  assert.deepEqual(f.calls, ["create:new-1", "delete:owned-calls", "mark:owned-calls:Deleted"], "create first, then delete; no PUT");
+  assert.equal(f.writes[0]!.op, "create");
   assert.deepEqual(f.writes[0]!.input.eventFilters, CALLS);
-  assert.equal(f.stored.get("owned-calls")?.purpose, "calls");
-  assert.match(f.stored.get("owned-calls")!.verificationToken!, /^[0-9a-f]{32}$/);
-  // Idempotent: the next plan is a noop.
+  const token = f.writes[0]!.input.verificationToken!;
+  assert.match(token, /^[0-9a-f]{32}$/);
+  assert.deepEqual(f.stored.get("new-1"), { purpose: "calls", verificationToken: token }, "the stored token is exactly the one RingCentral received on the create");
+  assert.equal(f.stored.get("owned-calls")?.verificationToken, null, "no token is ever stored for a subscription that did not receive it");
+  // Idempotent: once the provider lists the new subscription instead of the old one, the next plan is a noop.
+  records.splice(0, records.length, record({ id: "new-1" }), record({ id: "foreign" }));
   assert.equal((await planAllDirectionSubscription(operator)).action, "noop");
 });
 
@@ -185,6 +191,28 @@ test("rep_sms plan: filter drift against the reviewed rep set PUTs the new filte
   assert.equal(plan.health, "filter_drift");
   assert.deepEqual(await applyRepSmsSubscriptionPlan(plan, deps, { allowCreate: false }), { action: "updated", subscription_id: "owned-sms" });
   assert.deepEqual(f.writes[0], { op: "update", id: "owned-sms", input: { eventFilters: SMS("101", "103"), address: ADDRESS, expiresIn: 315_360_000, verificationToken: "keep-me" } });
+});
+
+test("rep_sms plan: no stored token → replace (the cron skips it; the operator creates with a token, then deletes); refused deliveries → deliveries_refused (olr CW2)", async () => {
+  const tokenless = fakes([record({ id: "owned-sms", eventFilters: SMS("101") })], { "owned-sms": { purpose: "rep_sms", verificationToken: null } });
+  const deps = repSmsDeps(tokenless, ["101"]);
+  const plan = await planRepSmsSubscription(deps);
+  assert.equal(plan.action, "replace");
+  assert.equal(plan.health, "token_missing");
+  assert.deepEqual(plan.action === "replace" ? plan.reasons : null, ["verification_token_missing"]);
+  assert.deepEqual(await applyRepSmsSubscriptionPlan(plan, deps, { allowCreate: false }), { action: "skipped", reason: "create_not_allowed" });
+  assert.deepEqual(tokenless.calls, [], "the daily cron never PUTs a token on");
+  assert.deepEqual(await applyRepSmsSubscriptionPlan(plan, deps, { allowCreate: true }), { action: "replaced", removed_subscription_id: "owned-sms", subscription_id: "new-1" });
+  assert.deepEqual(tokenless.calls, ["create:new-1", "delete:owned-sms", "mark:owned-sms:Deleted"]);
+  assert.deepEqual(tokenless.writes[0]!.input.eventFilters, SMS("101"));
+  assert.deepEqual(tokenless.stored.get("new-1"), { purpose: "rep_sms", verificationToken: tokenless.writes[0]!.input.verificationToken });
+
+  const refused = fakes([record({ id: "owned-sms", eventFilters: SMS("101") })], { "owned-sms": { purpose: "rep_sms", verificationToken: "t" } });
+  refused.store.deliveryRefusals = async () => ({ count: 3, last_refused_at: new Date(NOW.getTime() - 60_000), last_reason: "token_mismatch", accepted_since: false });
+  const refusedPlan = await planRepSmsSubscription(repSmsDeps(refused, ["101", "102"]));
+  assert.equal(refusedPlan.action, "replace");
+  assert.equal(refusedPlan.health, "deliveries_refused");
+  assert.deepEqual(refusedPlan.action === "replace" ? refusedPlan.reasons : null, ["filter_drift", "deliveries_refused"]);
 });
 
 test("rep_sms plan: healthy → noop; expiring → renew; blacklisted → repair only for the operator; no mailboxes → nothing created", async () => {
@@ -283,6 +311,13 @@ test("webhook route: Verification-Token is matched case-insensitively; a wrong o
   process.env.RINGCENTRAL_WEBHOOK_ENABLED = "false";
   process.env.SALES_INTELLIGENCE_CAPTURE_WEBHOOK = "true";
   setVerificationTokenLookupForTests(async (id) => (id === "sub-1" ? "secret-token" : undefined));
+  const refusals: Array<{ subscriptionId: string; reason: string }> = [];
+  let refusalStoreDown = false;
+  setDeliveryRefusalRecorderForTests(async ({ subscriptionId, reason, at }) => {
+    assert.ok(at instanceof Date);
+    if (refusalStoreDown) throw new Error("store down");
+    refusals.push({ subscriptionId, reason });
+  });
   const app = express();
   app.use(express.json());
   app.use(ringCentralWebhookRoutes);
@@ -306,7 +341,15 @@ test("webhook route: Verification-Token is matched case-insensitively; a wrong o
     assert.deepEqual(await wrong.json(), { ok: false, provider: "ringcentral", error: "verification_failed" });
     assert.equal((await post({})).status, 403);
     assert.equal((await post({}, "foreign-sub")).status, 200, "a subscription that is not ours keeps the old behaviour");
+    // olr CW2: each refusal is counted against its subscription; accepted deliveries are not.
+    assert.deepEqual(refusals, [
+      { subscriptionId: "sub-1", reason: "token_mismatch" },
+      { subscriptionId: "sub-1", reason: "token_missing" },
+    ]);
+    refusalStoreDown = true;
+    assert.equal((await post({})).status, 403, "a counter failure never changes the refusal");
   } finally {
+    setDeliveryRefusalRecorderForTests(null);
     setVerificationTokenLookupForTests(null);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

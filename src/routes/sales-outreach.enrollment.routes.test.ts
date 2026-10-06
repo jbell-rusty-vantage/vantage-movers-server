@@ -4,15 +4,16 @@ import { after, before, test } from "node:test";
 import express from "express";
 import { computeAdminActorSignature, signAdminActorPayload } from "../services/operationsRegistry/trustedActor";
 import { buildCanonicalRepActorPayload } from "../services/operationsRegistry/trustedActorCanonical";
-import { memoryEnrollmentDeps, MemoryEnrollmentStore } from "../services/salesOutreach/enrollment/testing";
+import { MemoryAdmissionsStore, memoryEnrollmentDeps, MemoryEnrollmentStore } from "../services/salesOutreach/enrollment/testing";
 import { fixedConfigurationLoader } from "../services/salesOutreach/reads/testing";
 import { accepted, deskConfiguration, leadFacts, MemoryDeskSubjectStore } from "../services/salesOutreach/subjects/testing";
 import { toFloridaTimestamp } from "../utils/easternTime";
+import { salesOutreachAdmissionsSchema } from "../validation/v1/salesOutreachEnrollment";
 import { createSalesOutreachRouter } from "./sales-outreach.routes";
 
 /**
  * Owner enrollment endpoints: `GET /enrollment/candidates`, `POST /enrollment/report|apply|verify`
- * (IMPLEMENTATION-PLAN §5). Owner only (`migration`); report writes nothing; apply needs an
+ * (IMPLEMENTATION-PLAN §5) and `GET /enrollment/admissions` (olr B8). Owner only (`migration`); report writes nothing; apply needs an
  * Idempotency-Key (the run key); in-memory stores, no Mongo.
  */
 const API_SECRET = "synthetic-sod-enrollment-secret";
@@ -26,6 +27,9 @@ const subjects = new MemoryDeskSubjectStore();
 const store = new MemoryEnrollmentStore(subjects);
 const configuration = deskConfiguration({ transition: { backfill_lookback_days: 90, backfill_include_upcoming_moves: true }, migration: { paused: false } });
 const harness = memoryEnrollmentDeps(subjects, store);
+const admissions = new MemoryAdmissionsStore()
+  .complete({ model: "FormLead", id: "c".repeat(24) }, "2026-10-05T10:00:00Z", { outcome: "created", subject_id: "d".repeat(24), reason: null, status: "review", admission: "intake" })
+  .complete({ model: "CallLead", id: "e".repeat(24) }, "2026-10-05T11:00:00Z", { outcome: "not_admitted", subject_id: null, reason: "closed_priority", status: null, admission: null });
 harness.setClock(NOW.toISOString());
 // Ids carry the insert time (olr B7: candidates bound the `_id` walk by the received window).
 const createdSeconds = Math.floor(Date.parse("2026-10-01T14:00:02Z") / 1000).toString(16);
@@ -39,6 +43,7 @@ app.use(
     connect: async () => undefined,
     loader: fixedConfigurationLoader(configuration),
     enrollment: { subjects, store, run: harness.deps.run, audit: harness.deps.audit, transaction: harness.deps.transaction, sleep: async () => undefined },
+    admissions,
     auth: { hasReviewedSalesRepLink: async (agent) => agent === REP },
     now: () => NOW,
   }),
@@ -100,6 +105,7 @@ test("enrollment routes are Owner-only (migration capability); Manager, Rep, gen
     ["POST", "/enrollment/report", { selection: { mode: "backfill_scope" } }],
     ["POST", "/enrollment/apply", { kind: "expansion", cohort_id: "c", lead_refs: [{ model: "FormLead", id: "0".repeat(24) }], manifest_hash: "a".repeat(64) }],
     ["POST", "/enrollment/verify", { run_key: "nope" }],
+    ["GET", "/enrollment/admissions", undefined],
   ];
   for (const [method, route, body] of routes)
     for (const caller of ["manager", "rep", "admin", "unsigned"] as const) {
@@ -127,6 +133,20 @@ test("report → apply (Idempotency-Key = run key) → verify, through the API",
   assert.deepEqual([missing.status, missing.body.code], [404, "NOT_FOUND"]);
 });
 
+test("olr B6: verify takes { cohort_id } (admission:<date> / intake:<gate>), read-only; a mixed or malformed body is 400", async () => {
+  const runs = structuredClone(store.runs);
+  const cohort = await call("owner", "POST", "/enrollment/verify", { cohort_id: "admission:2026-10-05" });
+  assert.equal(cohort.status, 200);
+  assert.deepEqual(
+    [cohort.body.data!.mode, cohort.body.data!.cohort_id, cohort.body.data!.run_key, cohort.body.data!.run_status, cohort.body.data!.consistent, cohort.body.data!.complete],
+    ["verify", "admission:2026-10-05", null, null, true, true],
+  );
+  assert.deepEqual(store.runs, runs, "no verify document");
+  for (const bad of [{ cohort_id: "pilot:2026-10-05" }, { cohort_id: "admission:x" }, { cohort_id: "admission:2026-10-05", run_key: "r" }, {}])
+    assert.deepEqual([(await call("owner", "POST", "/enrollment/verify", bad)).status], [400], JSON.stringify(bad));
+  assert.equal((await call("manager", "POST", "/enrollment/verify", { cohort_id: "admission:2026-10-05" })).status, 403);
+});
+
 test("strict inputs: unknown keys, bad partitions and bad hashes are 400", async () => {
   assert.equal((await call("owner", "GET", "/enrollment/candidates?partition=everything")).status, 400);
   assert.equal((await call("owner", "GET", "/enrollment/candidates?partition=older&extra=1")).status, 400);
@@ -138,4 +158,19 @@ test("strict inputs: unknown keys, bad partitions and bad hashes are 400", async
   const page = await call("owner", "GET", "/enrollment/candidates?partition=already_enrolled&limit=2");
   assert.equal(page.status, 200);
   assert.equal((page.body.data!.items as unknown[]).length, 2);
+});
+
+test("olr B8: GET /enrollment/admissions answers the day's intake decisions; strict query; retention bound", async () => {
+  const today = await call("owner", "GET", "/enrollment/admissions");
+  assert.equal(today.status, 200);
+  const data = salesOutreachAdmissionsSchema.parse(today.body.data);
+  assert.equal(data.business_day, "2026-10-05", "default: today in New York");
+  assert.deepEqual([data.counts.admitted_review, data.counts.not_admitted], [1, { closed_priority: 1 }]);
+  assert.deepEqual(data.recent_refusals, [{ lead: { model: "CallLead", id: "e".repeat(24) }, reason: "closed_priority", at: "2026-10-05T11:00:00.000Z" }]);
+  const yesterday = salesOutreachAdmissionsSchema.parse((await call("owner", "GET", "/enrollment/admissions?business_day=2026-10-04")).body.data);
+  assert.deepEqual([yesterday.counts.admitted_review, yesterday.recent_refusals.length], [0, 0]);
+  const old = await call("owner", "GET", "/enrollment/admissions?business_day=2026-09-01");
+  assert.deepEqual([old.status, old.body.code, (old.body as { issues?: Array<{ code: string }> }).issues?.[0]?.code], [400, "INVALID_INPUT", "retention_exceeded"]);
+  assert.equal((await call("owner", "GET", "/enrollment/admissions?business_day=2026-13-01")).status, 400);
+  assert.equal((await call("owner", "GET", "/enrollment/admissions?day=2026-10-05")).status, 400);
 });

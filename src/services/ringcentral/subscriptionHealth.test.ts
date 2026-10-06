@@ -169,7 +169,42 @@ test("calls plan mapping (pure): every plan action has one channel health", () =
   assert.equal(callsHealthFromPlan({ action: "repair", subscription_id: "a", health: "blacklisted", warnings }), "blacklisted");
   assert.equal(callsHealthFromPlan({ action: "repair", subscription_id: "a", health: "unknown", warnings }), "expired");
   assert.equal(callsHealthFromPlan({ action: "update", subscription_id: "a", reasons: ["filter_drift"], warnings }), "filter_drift");
-  assert.equal(callsHealthFromPlan({ action: "update", subscription_id: "a", reasons: ["verification_token_missing"], warnings }), "token_missing");
+  assert.equal(callsHealthFromPlan({ action: "replace", subscription_id: "a", reasons: ["verification_token_missing"], warnings }), "token_missing");
+  assert.equal(callsHealthFromPlan({ action: "replace", subscription_id: "a", reasons: ["filter_drift", "verification_token_missing"], warnings }), "filter_drift");
+  assert.equal(callsHealthFromPlan({ action: "replace", subscription_id: "a", reasons: ["filter_drift", "deliveries_refused"], warnings }), "deliveries_refused");
+});
+
+test("calls Active but every delivery refused (incident 2026-10-06): deliveries_refused recorded, no mutation; clears once a delivery is accepted (olr CW2)", async () => {
+  const facts = { count: 120, last_refused_at: new Date(NOW.getTime() - 2 * 60_000), last_reason: "token_missing", accepted_since: false };
+  const h = harness([callsRecord(), repSmsRecord()]);
+  const asked: string[] = [];
+  h.deps.store!.deliveryRefusals = async (id) => {
+    asked.push(id);
+    return id === "calls-1" ? facts : null;
+  };
+  const summary = await runSubscriptionHealthCheck(h.deps);
+  assert.equal(summary.calls.health, "deliveries_refused");
+  assert.equal(summary.calls.subscription_id, "calls-1");
+  assert.equal(summary.calls.warnings, 1);
+  assert.equal(outcomeOf(h, SUBSCRIPTION_HEALTH_SCOPE_CALLS)?.error_code, "deliveries_refused");
+  assert.equal(summary.rep_sms.health, "ok", "the rep_sms subscription has no refusals");
+  assert.deepEqual(asked, ["calls-1", "sms-1"]);
+  assert.deepEqual(h.mutations, [], "the health check never replaces");
+
+  const recovered = harness([callsRecord(), repSmsRecord()]);
+  recovered.deps.store!.deliveryRefusals = async () => ({ ...facts, accepted_since: true });
+  assert.equal((await runSubscriptionHealthCheck(recovered.deps)).calls.health, "ok");
+});
+
+test("rep_sms Active but its deliveries refused: deliveries_refused recorded (olr CW2)", async () => {
+  const h = harness([callsRecord(), repSmsRecord()]);
+  h.deps.store!.deliveryRefusals = async (id) =>
+    id === "sms-1" ? { count: 4, last_refused_at: new Date(NOW.getTime() - 60_000), last_reason: "token_mismatch", accepted_since: false } : null;
+  const summary = await runSubscriptionHealthCheck(h.deps);
+  assert.equal(summary.calls.health, "ok");
+  assert.equal(summary.rep_sms.health, "deliveries_refused");
+  assert.equal(outcomeOf(h, SUBSCRIPTION_HEALTH_SCOPE_REP_SMS)?.error_code, "deliveries_refused");
+  assert.deepEqual(h.mutations, []);
 });
 
 test("rep_sms disabled: not_connected, skipped but still recorded; calls still evaluated", async () => {

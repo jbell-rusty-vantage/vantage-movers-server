@@ -28,6 +28,7 @@ import { runWebhookSubscriptionMaintenance } from "../services/numberActivity/we
 import { runRepSmsSubscriptionMaintenance } from "../services/ringcentral/repSms/subscriptionMaintenance";
 import { runSubscriptionHealthCheck } from "../services/ringcentral/subscriptionHealth";
 import { drainRepSmsSyncJobs } from "../services/ringcentral/repSms/intent";
+import { drainRepSmsRemapJobs } from "../services/ringcentral/repSms/remap";
 import { runRepSmsSafetyPoll } from "../services/ringcentral/repSms/poll";
 import { recordDeploymentCommitOnce } from "../services/salesIntelligence/deploymentStamp";
 
@@ -95,6 +96,8 @@ export type SalesIntelligenceCronRouteDeps = {
   runSubscriptionHealth?: typeof runSubscriptionHealthCheck;
   /** RINGCENTRAL-CAPTURE §5: due `rep_sms_sync` jobs (job recovery) and the staffed-hours safety poll. */
   drainRepSmsSync?: () => Promise<unknown>;
+  /** olr C7: due `rep_sms_remap` jobs (Accounts connect/change/disconnect), drained by job recovery under `ENABLED`. */
+  drainRepSmsRemap?: () => Promise<unknown>;
   runRepSmsPoll?: typeof runRepSmsSafetyPoll;
   /** CC-00 drift guard: records the deployed commit once per process (Vercel production only; never throws). */
   recordDeployment?: () => Promise<unknown>;
@@ -149,6 +152,12 @@ export function createSalesIntelligenceCronRouter(
       name: "rep_sms_sync",
       flag: "CAPTURE_WEBHOOK" as const,
       run: () => (deps.drainRepSmsSync ?? (() => drainRepSmsSyncJobs()))(),
+    });
+    // olr C7: the Accounts re-map of one mailbox's rep SMS identity (each job re-checks controls.rep_sms_capture_enabled).
+    extraRecovery.push({
+      name: "rep_sms_remap",
+      flag: "ENABLED" as const,
+      run: () => (deps.drainRepSmsRemap ?? (() => drainRepSmsRemapJobs()))(),
     });
   }
 

@@ -5,12 +5,14 @@
  *     --target=<RingCentral account id> --database=<database> [--purpose=calls|rep_sms|all] [--apply]
  *
  * Dry run by default: lists the plan for each purpose and changes nothing. `--apply`:
- * - `calls`: ensures the app-owned account telephony subscription and, when it has no stored
- *   verification token, `PUT`s one onto it; `PUT`s an owned one whose filters or address drifted
- *   (`filter_drift`); creates the subscription only when no owned `calls` one exists;
+ * - `calls`: ensures the app-owned account telephony subscription; replaces it (create with a
+ *   verification token, then delete the old one) when it has no stored token or the webhook route has
+ *   been refusing its deliveries — RingCentral ignores a token sent on `PUT` (olr CW2, incident
+ *   2026-10-06); `PUT`s an owned one whose filters or address drifted (`filter_drift`); creates the
+ *   subscription only when no owned `calls` one exists;
  * - `rep_sms`: creates the app-owned message-store subscription with one filter per reviewed
- *   `sales_rep` mailbox, or `PUT`s the owned one when filters drifted / no token; repairs a
- *   blacklisted one (delete + recreate).
+ *   `sales_rep` mailbox, `PUT`s the owned one when filters drifted, replaces it when it has no token
+ *   or its deliveries are refused; repairs a blacklisted one (delete + recreate).
  * Idempotent: a second `--apply` plans `noop`. Foreign subscriptions are listed and never touched.
  * The target is named and must match this process (account + database); production applies pass
  * the production-writer guard. Verification tokens and provider bodies are never printed.

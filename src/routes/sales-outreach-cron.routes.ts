@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { connectMongo } from "../db";
 import { logger } from "../logger";
-import { drainOutreachEvaluateJobs, sweepOutreachEvaluations } from "../services/salesOutreach/evaluation/evaluateJob";
+import { drainOutreachEvaluateJobs, sweepOutreachEvaluations, type EvaluateDrainOptions } from "../services/salesOutreach/evaluation/evaluateJob";
 import { drainOutreachLeadChangeJobs } from "../services/salesOutreach/subjects/leadChangeJob";
 import { reconcileOutreachRevisions, scanOutreachLeadChangesUntilCaughtUp } from "../services/salesOutreach/subjects/feed";
 import { requireCronAuth } from "./sales-intelligence-cron.routes";
@@ -18,9 +18,12 @@ import { requireCronAuth } from "./sales-intelligence-cron.routes";
  *   page is full, within `migration.feed_max_passes_per_run` / `feed_budget_seconds`, defaults 10 /
  *   15 s), then a drain of `outreach_lead_change` jobs (≤ 100, 40 s). A failed tail never blocks the drain.
  * - revision reconcile (every 5 minutes): the net for Lead writes that skipped an EntityChange.
- * - evaluate (every minute): the `next_evaluation_at` clock repair and the policy reconcile (bounded
- *   pages of 100), then a drain of `outreach_evaluate` jobs (≤ 100, 40 s). A failed sweep never blocks
- *   the drain. Skipped unless `cadence_shadow_enabled` or `cadence_enforcement_enabled` is on.
+ * - evaluate (every minute): the `next_evaluation_at` clock repair, the coverage repair and the policy
+ *   reconcile (bounded pages of 100; existing nominations are skipped), then a drain of
+ *   `outreach_evaluate` jobs with the configured budget (olr A5: `operations.evaluate_drain_max_jobs` /
+ *   `_budget_seconds` / `_concurrency`, defaults 100 / 40 s / 1, returned by the sweep as
+ *   `drain_options`). A failed sweep never blocks the drain, which then uses the code defaults.
+ *   Skipped unless `cadence_shadow_enabled` or `cadence_enforcement_enabled` is on.
  */
 export const SALES_OUTREACH_CRON_PATHS = {
   leadChanges: "/api/cron/sales-outreach-lead-changes",
@@ -34,7 +37,8 @@ export type SalesOutreachCronDeps = {
   drain?: () => ReturnType<typeof drainOutreachLeadChangeJobs>;
   reconcile?: () => ReturnType<typeof reconcileOutreachRevisions>;
   evaluationSweep?: () => ReturnType<typeof sweepOutreachEvaluations>;
-  evaluationDrain?: () => ReturnType<typeof drainOutreachEvaluateJobs>;
+  /** Receives the sweep's configured drain budget (`undefined` after a failed sweep: the code defaults). */
+  evaluationDrain?: (options?: EvaluateDrainOptions) => ReturnType<typeof drainOutreachEvaluateJobs>;
 };
 
 const errorName = (error: unknown) => (error instanceof Error ? error.name : "Error");
@@ -79,7 +83,8 @@ export function createSalesOutreachCronRouter(deps: SalesOutreachCronDeps = {}):
         return null;
       });
       if (sweep?.skipped) return res.json({ ok: true, skipped: true, reason: sweep.reason });
-      const drain = await (deps.evaluationDrain ?? (() => drainOutreachEvaluateJobs()))();
+      const options = sweep?.drain_options ?? undefined;
+      const drain = await (deps.evaluationDrain ?? ((o?: EvaluateDrainOptions) => drainOutreachEvaluateJobs(o)))(options);
       return res.json({ ok: true, skipped: false, sweep, drain });
     } catch (error) {
       logger.error({ msg: "sales_outreach.cron.evaluate_failed", errorName: errorName(error) });

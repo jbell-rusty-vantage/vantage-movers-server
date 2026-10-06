@@ -27,7 +27,42 @@ export type CaptureSyncRow = Readonly<{
   confirmation_success_at?: Date | null;
   /** Calls only: `observed_complete_through` (the watermark without the provisional-row cap; A3-cap). */
   observed_complete_through?: Date | null;
+  /**
+   * SMS only (olr C7): the mailbox's `rep_sms_pending` counters (pending SMS events of the last 7 days) and
+   * its reviewed rep when they were computed; absent/null before the first refresh wrote them.
+   */
+  sms_pending?: Readonly<{ identity: number; association: number; agent_id: string | null }> | null;
 }>;
+
+/** `freshness.sms.pending` window (olr C7; `contacts/smsPending.ts` SMS_PENDING_WINDOW_DAYS). */
+export const SMS_PENDING_WINDOW_DAYS = 7 as const;
+/** At most this many mailboxes are listed (the DTO bound). */
+const SMS_PENDING_MAILBOXES_MAX = 100;
+
+/**
+ * olr C7: pending SMS evidence summed over the mailboxes, with the mailboxes that have any (by extension).
+ * Null until at least one mailbox row carries counters.
+ */
+export function smsPendingOf(mailboxes: readonly CaptureSyncRow[]): SalesOutreachFreshness["sms"]["pending"] {
+  const counted = mailboxes.filter((row) => row.sms_pending);
+  if (!counted.length) return null;
+  const extension = (row: CaptureSyncRow) => (row.scope.startsWith("rep_sms:") ? row.scope.slice("rep_sms:".length) : row.scope);
+  return {
+    identity: counted.reduce((n, row) => n + row.sms_pending!.identity, 0),
+    association: counted.reduce((n, row) => n + row.sms_pending!.association, 0),
+    window_days: SMS_PENDING_WINDOW_DAYS,
+    mailboxes: counted
+      .filter((row) => row.sms_pending!.identity + row.sms_pending!.association > 0)
+      .map((row) => ({
+        extension_id: extension(row),
+        agent_id: row.sms_pending!.agent_id,
+        identity: row.sms_pending!.identity,
+        association: row.sms_pending!.association,
+      }))
+      .sort((a, b) => a.extension_id.localeCompare(b.extension_id))
+      .slice(0, SMS_PENDING_MAILBOXES_MAX),
+  };
+}
 
 const iso = (value: Date | null) => (value ? value.toISOString() : null);
 const ageSeconds = (now: Date, at: Date | null) => (at ? Math.max(0, Math.floor((now.getTime() - at.getTime()) / 1000)) : null);
@@ -77,6 +112,7 @@ function smsFreshness(
     reason: state === "fresh" ? null : (reason ?? (state === "unknown" ? "no_capture_state" : "capture_behind")),
     last_confirmation_at: null,
     last_webhook_at: null,
+    pending: null,
   };
 }
 
@@ -135,7 +171,8 @@ function callsFreshness(now: Date, row: CaptureSyncRow | null, lastCallWebhookAt
  *
  * - calls: `callsFreshness` (Call Log confirmation, capture coverage, the call webhook stream).
  * - sms: "not connected" while `controls.rep_sms_capture_enabled` is false; otherwise the worst
- *   reviewed mailbox (`rep_sms:<extension>` rows), unknown when no mailbox has synced.
+ *   reviewed mailbox (`rep_sms:<extension>` rows), unknown when no mailbox has synced. `pending` (olr C7)
+ *   sums the mailboxes' pending SMS counters; null while capture is off or before the first refresh.
  * - granot: the newest captured observation (event-driven, so no staleness threshold is implied).
  * Thresholds come from `deskTimingOf(configuration)`.
  */
@@ -160,6 +197,7 @@ export function composeFreshness(input: {
       reason: "rep_sms_capture_disabled",
       last_confirmation_at: null,
       last_webhook_at: null,
+      pending: null,
     };
   } else if (!input.sms_mailboxes.length) {
     sms = smsFreshness(now, null, null, "no_mailbox_synced", timing);
@@ -176,7 +214,7 @@ export function composeFreshness(input: {
       (min, row) => (row.last_finished_at && (!min || row.last_finished_at < min) ? row.last_finished_at : min),
       null,
     );
-    sms = smsFreshness(now, worst, lastUpdated, missing ? "mailbox_without_coverage" : null, timing);
+    sms = { ...smsFreshness(now, worst, lastUpdated, missing ? "mailbox_without_coverage" : null, timing), pending: smsPendingOf(input.sms_mailboxes) };
   }
   return {
     calls: callsFreshness(now, input.calls, input.last_call_webhook_at, timing),

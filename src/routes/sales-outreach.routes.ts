@@ -18,10 +18,12 @@ import { salesOutreachConfigurationLoader, type ConfigurationLoader } from "../s
 import { readSalesOutreachConfiguration } from "../services/salesOutreach/config/reads";
 import { OutreachError, sendOutreachError } from "../services/salesOutreach/errors";
 import { rolesWithCapability, type OutreachCapability } from "../services/salesOutreach/permissions";
+import { readEnrollmentAdmissions, type AdmissionsStore } from "../services/salesOutreach/enrollment/admissions";
 import {
   applyEnrollment,
   listEnrollmentCandidates,
   reportEnrollment,
+  verifyCohort,
   verifyEnrollment,
   type EnrollmentDeps,
 } from "../services/salesOutreach/enrollment/service";
@@ -37,6 +39,7 @@ import {
   salesOutreachScopeQuerySchema,
 } from "../validation/v1/salesOutreach";
 import {
+  salesOutreachEnrollmentAdmissionsQuerySchema,
   salesOutreachEnrollmentApplySchema,
   salesOutreachEnrollmentCandidatesQuerySchema,
   salesOutreachEnrollmentReportSchema,
@@ -75,6 +78,8 @@ export type SalesOutreachRouteDeps = {
   live?: Omit<OutreachLiveDeps, "revalidate">;
   /** Enrollment stores/ledger (tests inject in-memory ones); loader and clock come from above. */
   enrollment?: Omit<EnrollmentDeps, "loader" | "now">;
+  /** olr B8 admissions read store (tests inject an in-memory job ledger). */
+  admissions?: AdmissionsStore;
   /** SRV-7 command stores/ledger (tests inject in-memory ones); the loader comes from above. */
   commands?: Omit<DayOverrideDeps, "loader">;
   now?: () => Date;
@@ -243,6 +248,17 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
     }
   });
 
+  // olr B8: what intake decided on one New York day (admitted / held as review / refused by reason).
+  router.get(`${SALES_OUTREACH_API_PREFIX}/enrollment/admissions`, guard("migration"), async (req, res) => {
+    try {
+      const query = salesOutreachEnrollmentAdmissionsQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readEnrollmentAdmissions({ business_day: query.business_day }, { store: deps.admissions, now }) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
   router.post(`${SALES_OUTREACH_API_PREFIX}/enrollment/report`, guard("migration"), async (req, res) => {
     try {
       salesOutreachScopeQuerySchema.parse(req.query);
@@ -284,6 +300,8 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       salesOutreachScopeQuerySchema.parse(req.query);
       const body = salesOutreachEnrollmentVerifySchema.parse(req.body);
       await connect();
+      // olr B6: a cohort with no apply run (`admission:<date>`, `intake:<gate>`) is verified read-only.
+      if ("cohort_id" in body) return res.json({ ok: true, data: await verifyCohort({ cohort_id: body.cohort_id }, enrollmentDeps()) });
       return res.json({ ok: true, data: await verifyEnrollment({ actor: outreachActorOf(res).actor, run_key: body.run_key }, enrollmentDeps()) });
     } catch (error) {
       return fail(req, res, error);

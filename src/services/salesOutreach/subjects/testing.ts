@@ -8,6 +8,7 @@ import type { NewPeriod } from "./periodPlanner";
 import { contactChangeDedupeKey, type ContactChangeSource } from "../capture/contactChangeWake";
 import {
   CONTACT_WAKE_MAX_NUMBERS,
+  SETTLED_JOB_STATUSES,
   type ContactWakeRequest,
   type DeskPeriodRow,
   type DeskSubjectRow,
@@ -39,6 +40,8 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
   /** `outreach_contact_change` jobs by dedupe key (insert-only, like `enqueueCsiJob`). */
   contactJobs = new Map<string, ContactChangeSource>();
   contactWakes: ContactWakeRequest[] = [];
+  /** olr B6: creation-job status by Lead key (absent = no row, which counts as settled). */
+  creationJobs = new Map<string, string>();
 
   /** Transaction stand-in: the writes of a failed callback are rolled back. */
   snapshot() {
@@ -110,6 +113,10 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
     this.periods.push({ id, subject_id: subjectId, ...period, ended_at: null, end_reason: null, provenance, policy_version: provenance.policy_version });
     this.writes.push(`insertPeriod:${id}`);
     return id;
+  }
+  async creationJobSettled(lead: DeskLeadRef) {
+    const status = this.creationJobs.get(deskLeadKey(lead));
+    return status === undefined || SETTLED_JOB_STATUSES.has(status);
   }
   async requestEvaluation(subjectId: string, revision: number) {
     this.evaluations.push({ subject_id: subjectId, revision });

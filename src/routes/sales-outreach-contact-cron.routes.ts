@@ -2,6 +2,7 @@ import { Router } from "express";
 import { connectMongo } from "../db";
 import { logger } from "../logger";
 import { drainContactJobs } from "../services/salesOutreach/contacts/jobs";
+import { refreshSmsPendingCounts } from "../services/salesOutreach/contacts/smsPending";
 import { refreshOpenRepDays, sweepContactSources } from "../services/salesOutreach/contacts/sweep";
 import { requireCronAuth } from "./sales-intelligence-cron.routes";
 
@@ -14,6 +15,8 @@ import { requireCronAuth } from "./sales-intelligence-cron.routes";
  * 1. calls sweep — derive contact events for `call_interactions` changed since the cursor (the net
  *    under the queued wake) and recount the rep-days it moved; publishes the derivation watermark;
  * 2. SMS sweep — the same over `ringcentral_rep_sms_evidence`;
+ * 2b. SMS pending counters (olr C7) — pending SMS events of the last 7 days per mailbox onto the
+ *    `rep_sms:<extension>` rows, at most every 5 minutes, only while rep SMS capture is on;
  * 3. drain queued `outreach_contact_change` and `outreach_rep_day` jobs (wake-ups that the queue lost);
  * 4. refresh — today's/yesterday's rep-days whose coverage is incomplete or whose goal is not frozen.
  */
@@ -23,6 +26,7 @@ export type SalesOutreachContactCronDeps = {
   connect?: typeof connectMongo;
   sweepCalls?: () => Promise<unknown>;
   sweepSms?: () => Promise<unknown>;
+  refreshSmsPending?: () => Promise<unknown>;
   drainContactChanges?: () => Promise<unknown>;
   drainRepDays?: () => Promise<unknown>;
   refreshRepDays?: () => Promise<unknown>;
@@ -47,10 +51,11 @@ export function createSalesOutreachContactCronRouter(deps: SalesOutreachContactC
       await connect();
       const calls = await step("calls", deps.sweepCalls ?? (() => sweepContactSources("call", new Date(), { budgetMs: 25_000 })));
       const sms = await step("sms", deps.sweepSms ?? (() => sweepContactSources("sms", new Date(), { budgetMs: 8_000 })));
+      const smsPending = await step("sms_pending", deps.refreshSmsPending ?? (() => refreshSmsPendingCounts(new Date())));
       const contactChanges = await step("contact_changes", deps.drainContactChanges ?? (() => drainContactJobs("outreach_contact_change", 100, 10_000)));
       const repDays = await step("rep_days", deps.drainRepDays ?? (() => drainContactJobs("outreach_rep_day", 100, 5_000)));
       const refresh = await step("refresh", deps.refreshRepDays ?? (() => refreshOpenRepDays()));
-      return res.json({ ok: true, calls, sms, contact_changes: contactChanges, rep_days: repDays, refresh });
+      return res.json({ ok: true, calls, sms, sms_pending: smsPending, contact_changes: contactChanges, rep_days: repDays, refresh });
     } catch (error) {
       logger.error({ msg: "sales_outreach.cron.contact_events_failed", errorName: errorName(error) });
       return res.status(500).json({ ok: false, error: "Sales Outreach contact events failed" });
