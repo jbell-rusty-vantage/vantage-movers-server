@@ -99,6 +99,8 @@ test("repointRefusal: only an owned subscription on the production address movin
 test("planTarget: update and repair move a subscription; create, noop and renew do not", () => {
   assert.equal(planTarget({ action: "update", subscription_id: "a", reasons: ["filter_drift"], warnings: [] }), "a");
   assert.equal(planTarget({ action: "repair", subscription_id: "b", health: "blacklisted", warnings: [] }), "b");
+  // olr CW2: a replacement recreates the subscription at the command's address, so it is guarded too.
+  assert.equal(planTarget({ action: "replace", subscription_id: "e", reasons: ["deliveries_refused"], warnings: [] }), "e");
   assert.equal(planTarget({ action: "create", warnings: [] }), null);
   assert.equal(planTarget({ action: "noop", subscription_id: "c", expiration_time: null, warnings: [] }), null);
   assert.equal(planTarget({ action: "renew", subscription_id: "d", expiration_time: null, warnings: [] }), null);

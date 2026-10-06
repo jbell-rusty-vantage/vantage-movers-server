@@ -20,13 +20,15 @@ import { listReviewedRepMailboxes } from "./mailboxes";
  * Daily `rep_sms` subscription maintenance, run by the existing subscription cron
  * (`/api/cron/sales-intelligence-webhook-subscription`, `15 6 * * *`) after the `calls` step
  * (RINGCENTRAL-CAPTURE §3): renew when expiring, and `PUT` the owned subscription when its filters
- * drifted from the current reviewed `sales_rep` mailbox set or it lacks a verification token. It never
- * creates or recreates the subscription (that is the operator's user-authorized step,
+ * drifted from the current reviewed `sales_rep` mailbox set. A subscription without a stored
+ * verification token, or whose deliveries the webhook route has been refusing, needs a replacement
+ * (olr CW2: a `PUT` cannot add a token); the cron reports it (`token_missing` / `deliveries_refused`)
+ * and skips it. It never creates, recreates or replaces the subscription (that is the operator's user-authorized step,
  * `ops/ringcentral/rep-sms-subscription.ts`) and never touches a subscription it did not create.
  *
  * Runs only when `controls.rep_sms_capture_enabled` is on. Each run stores the channel health on the
  * sync-state row `webhook_subscription_maintenance:rep_sms` (`last_run.error_code`: null when healthy,
- * else `subscription_missing` / `expired` / `blacklisted` / `filter_drift` / `token_missing` /
+ * else `subscription_missing` / `expired` / `blacklisted` / `filter_drift` / `token_missing` / `deliveries_refused` /
  * `no_mailboxes`, or the failure's error class name).
  */
 export const REP_SMS_SUBSCRIPTION_SCOPE = "webhook_subscription_maintenance:rep_sms";

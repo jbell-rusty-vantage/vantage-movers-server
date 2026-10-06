@@ -42,6 +42,7 @@ import {
   type FanoutResult,
 } from "../services/numberActivity/webhookFanout";
 import {
+  recordDeliveryRefusal,
   verifyRingCentralDelivery,
   type DeliveryVerification,
 } from "../services/ringcentral/webhook-verification";
@@ -116,6 +117,13 @@ router.post("/api/webhooks/ringcentral", async (req: Request, res: Response) => 
       reason: verification.reason,
       subscriptionId: normalizedPreview.subscriptionId,
     });
+    // olr CW2: counted on the subscription's metadata row so the health check can report
+    // `deliveries_refused`; a counter failure never changes the refusal.
+    try {
+      await recordDeliveryRefusal({ subscriptionId: normalizedPreview.subscriptionId, reason: verification.reason, at: receivedAt });
+    } catch (error) {
+      log.warn({ msg: "ringcentral.webhook.refusal_count_failed", errorName: error instanceof Error ? error.name : "Error" });
+    }
     return res.status(403).json({ ok: false, provider: "ringcentral", error: "verification_failed" });
   }
 

@@ -27,7 +27,11 @@ function record(partial: Partial<SubscriptionRecord> & { id: string }): Subscrip
   };
 }
 
-function harness(records: SubscriptionRecord[], owned: string[], options: { autoCreate?: boolean; failCreate?: boolean; purposes?: Record<string, "calls" | "rep_sms"> } = {}) {
+function harness(
+  records: SubscriptionRecord[],
+  owned: string[],
+  options: { autoCreate?: boolean; failCreate?: boolean; purposes?: Record<string, "calls" | "rep_sms">; refusedIds?: string[]; tokenless?: string[] } = {},
+) {
   const calls: string[] = [];
   const outcomes: Array<string | null> = [];
   const ownedIds = new Set(owned);
@@ -56,7 +60,12 @@ function harness(records: SubscriptionRecord[], owned: string[], options: { auto
       ownedIds.add((raw as { id: string }).id);
     },
     markStatus: async () => undefined,
-    meta: async () => new Map([...ownedIds].map((id) => [id, { purpose: options.purposes?.[id] ?? "calls", verificationToken: "t" }])),
+    meta: async () =>
+      new Map([...ownedIds].map((id) => [id, { purpose: options.purposes?.[id] ?? "calls", verificationToken: options.tokenless?.includes(id) ? null : "t" }])),
+    deliveryRefusals: async (id) =>
+      options.refusedIds?.includes(id)
+        ? { count: 10, last_refused_at: new Date(NOW.getTime() - 60_000), last_reason: "token_missing", accepted_since: false }
+        : null,
   };
   const deps: WebhookSubscriptionMaintenanceDeps = {
     provider,
@@ -151,6 +160,26 @@ test("C6 drift: an owned calls subscription with drifted filters or address is P
   assert.equal(moved.action, "updated");
   assert.deepEqual(address.calls, [`update:owned:${ALL[0]}:${ADDRESS}`]);
   assert.deepEqual(address.outcomes, [null]);
+});
+
+test("CW2: an owned calls subscription whose deliveries are refused is replaced (create, then delete), even with auto-create off", async () => {
+  const h = harness([record({ id: "owned" })], ["owned"], { refusedIds: ["owned"] });
+  const summary = await runWebhookSubscriptionMaintenance(h.deps);
+  assert.equal(summary.plan, "replace");
+  assert.equal(summary.action, "replaced");
+  assert.equal(summary.subscription_id, "new-1");
+  assert.equal(summary.removed_subscription_id, "owned");
+  assert.deepEqual(h.calls, [`create:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`, "delete:owned"], "the new one exists before the old one goes");
+  assert.deepEqual(h.outcomes, [null]);
+});
+
+test("CW2: a drifted owned calls subscription with no stored token is replaced, never PUT (a PUT cannot add a token)", async () => {
+  const h = harness([record({ id: "owned", address: "https://old.example.test/api/webhooks/ringcentral" })], ["owned"], { tokenless: ["owned"] });
+  const summary = await runWebhookSubscriptionMaintenance(h.deps);
+  assert.equal(summary.plan, "replace");
+  assert.equal(summary.action, "replaced");
+  assert.deepEqual(h.calls, [`create:${DEFAULT_SUBSCRIPTION_EXPIRES_IN_SECONDS}`, "delete:owned"]);
+  assert.equal(h.calls.some((c) => c.startsWith("update:")), false);
 });
 
 test("C6 drift: an owned rep_sms subscription is never PUT by the calls maintenance; the calls channel is still missing", async () => {

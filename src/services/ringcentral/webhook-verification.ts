@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { findStoredSubscriptionVerificationToken } from "./webhook-subscriptions";
+import { findStoredSubscriptionVerificationToken, recordStoredSubscriptionDeliveryRefusal } from "./webhook-subscriptions";
 
 /**
  * Delivery verification (RINGCENTRAL-CAPTURE §3, §9.2). A subscription created or updated by this
@@ -62,4 +62,32 @@ export async function verifyRingCentralDelivery(
   if (expected === undefined) return { ok: true, reason: "not_owned" };
   if (expected === null) return { ok: true, reason: "no_token_on_record" };
   return compareVerificationToken(expected, input.providedToken);
+}
+
+// ---------------------------------------------------------------------------
+// Refusal counter (olr CW2)
+// ---------------------------------------------------------------------------
+
+/** Counts one refused delivery against the named subscription. */
+export type DeliveryRefusalRecorder = (input: { subscriptionId: string; reason: "token_missing" | "token_mismatch"; at: Date }) => Promise<unknown>;
+
+const storedRefusalRecorder: DeliveryRefusalRecorder = ({ subscriptionId, reason, at }) =>
+  recordStoredSubscriptionDeliveryRefusal(subscriptionId, reason, at);
+
+let refusalRecorderOverride: DeliveryRefusalRecorder | null = null;
+
+/** Test seam: inject a recorder (`null` restores the stored-subscription counter). */
+export function setDeliveryRefusalRecorderForTests(recorder: DeliveryRefusalRecorder | null): void {
+  refusalRecorderOverride = recorder;
+}
+
+/**
+ * olr CW2 (incident 2026-10-06): the route counts every delivery it refuses on the subscription's
+ * metadata row, so the subscription health check can report a subscription the provider calls Active
+ * while every delivery is refused (`deliveries_refused`). Best effort: a store failure never changes
+ * the 403 the route answers.
+ */
+export async function recordDeliveryRefusal(input: { subscriptionId: string | null; reason: "token_missing" | "token_mismatch"; at: Date }): Promise<void> {
+  if (!input.subscriptionId) return;
+  await (refusalRecorderOverride ?? storedRefusalRecorder)({ subscriptionId: input.subscriptionId, reason: input.reason, at: input.at });
 }

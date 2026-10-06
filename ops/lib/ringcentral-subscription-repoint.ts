@@ -47,9 +47,9 @@ export function productionWebhookAddress(): string | null {
   }
 }
 
-/** The subscription a plan would move (`update` PUTs it, `repair` deletes and recreates it); null otherwise. */
+/** The subscription a plan would move (`update` PUTs it, `repair` / `replace` recreate it at the command's address); null otherwise. */
 export function planTarget(plan: SubscriptionPlan): string | null {
-  return plan.action === "update" || plan.action === "repair" ? plan.subscription_id : null;
+  return plan.action === "update" || plan.action === "repair" || plan.action === "replace" ? plan.subscription_id : null;
 }
 
 /** Null when the write may go ahead; otherwise the operator-facing reason it is refused. */
