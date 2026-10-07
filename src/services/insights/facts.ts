@@ -4,7 +4,7 @@
  * plain rows. Volume is small (≈2k leads and ≈230 bookings a month), so the reports aggregate in memory.
  */
 import type { Document } from "mongodb";
-import { ObjectId } from "mongodb";
+import mongoose from "mongoose";
 import { easternDayKey, easternHour } from "../dailyOperations/dayDocument";
 import { leadInstant } from "../salesOutreach/subjects/leadInstant";
 import { insightsCollection, type InsightsCatalog, type InsightsFeed } from "./catalog";
@@ -181,7 +181,7 @@ export function toBookingFact(catalog: InsightsCatalog, doc: Document, lead: Doc
 }
 
 async function findLeadsByIds(ids: string[]): Promise<Map<string, Document>> {
-  const objectIds = [...new Set(ids)].filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id));
+  const objectIds = [...new Set(ids)].filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id));
   const map = new Map<string, Document>();
   if (!objectIds.length) return map;
   const [form, call] = await Promise.all([
@@ -243,7 +243,7 @@ export async function loadPeriodFacts(catalog: InsightsCatalog, range: RangeLike
   // Cohort: the bookings of this period's leads, wherever their book date falls.
   const cohortIds = leads.map((lead) => lead.booked_id).filter((id): id is string => Boolean(id) && !bookingById.has(id!));
   const cancelledBookingIds = cancellationDocs.map((doc) => str(doc.booked_lead)).filter((id) => id && !bookingById.has(id));
-  const extraIds = [...new Set([...cohortIds, ...cancelledBookingIds])].filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id));
+  const extraIds = [...new Set([...cohortIds, ...cancelledBookingIds])].filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id));
   const extra = extraIds.length
     ? await bookingFacts(catalog, await insightsCollection("booked_leads").find({ _id: { $in: extraIds } }, { projection: BOOKING_PROJECTION }).toArray())
     : [];
