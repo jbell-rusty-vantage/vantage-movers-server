@@ -53,6 +53,7 @@ generated:
 
 - `cplSchedule.ts` — authoritative CPL periods + `resolveCpl` / `resolveCplFromPeriods`. Lead writes go through `leads/leadCplResolution.ts`. Owner date-range edits (Feed + From + Through) are planned as `set_range` — pack [`../../lead-costs-owner-editing/README.md`](../../lead-costs-owner-editing/README.md). Do not treat that command as shipped.
 - `cplCorrections.ts` — owner correction jobs against stored lead snapshots.
+- Readers price leads live from these periods ([`insights.md`](./insights.md) `pricing.ts`), so a saved schedule changes Insights, Today and the Desk at once. `insertPeriods` writes a dated change's two periods with `{ session, ordered: true }` (2026-10-06: without it Mongoose refused the save with "Cannot call `create()` with a session and multiple documents unless `ordered: true` is set"; replica proof `ops/insights/cpl-schedule.replica.ts`).
 - `catalogRegistry.ts` — Agent/Merchant mutations used by the catalog facade.
 - `ringCentralRegistry.ts` / `ringCentralValidation.ts` — inbound-route snapshot used at Call Qualification time. Assignment DTOs include Lead Source / Feed labels (`lead_source_name`, `lead_source_company_slug`, `feed_display_name`). Dependency preview no longer returns `can_deactivate`.
 - HTTP: registry overview/health/changes plus catalog, CPL admin, and RC inbound-route routes in `v1.routes.ts`. Mutations require a signed Owner actor.

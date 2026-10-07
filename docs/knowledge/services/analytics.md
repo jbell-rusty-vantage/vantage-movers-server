@@ -35,6 +35,11 @@ generated:
 
 # Analytics Service
 
+> **Insights (2026-10-06):** the admin's Insights › Analytics page reads [`insights.md`](./insights.md) (live lead cost,
+> comparisons, New York half-open periods, split credit). These reports stay for compatibility and CSV export; their
+> known gaps (UTC `$lte to` cuts off the last day, full deposit credited to each split agent, stamped `cpl` sums) are
+> fixed there, not here.
+
 **System of Record:** Read-only MongoDB aggregations over the production Form Lead, Call Lead, Booking, and Cancellation collections. **Analytics** does not query **Reporting Sheets**. No writes, no **Sheet Sync**. The historical database was retired in the 2026-10 slimming (SLIM-03). // pragma: allowlist secret
 
 **Role:** Dispatch `report` + `query` to a concrete report over the production models. // pragma: allowlist secret

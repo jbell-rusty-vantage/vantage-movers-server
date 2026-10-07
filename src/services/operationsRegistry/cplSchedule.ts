@@ -820,7 +820,9 @@ const mongoCplScheduleStore: CplScheduleStore = {
           actor_role: actor.actorRole,
         },
       })),
-      { session },
+      // A dated change writes the closed predecessor and the new open period together; Mongoose refuses a multi-document
+      // create inside a transaction session unless the inserts are ordered.
+      { session, ordered: true },
     );
     return docs.map((doc) =>
       toCplPeriod(

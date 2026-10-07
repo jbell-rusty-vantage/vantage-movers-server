@@ -15,6 +15,7 @@ import googleDriveOAuthRoutes from "./google-drive-oauth.routes";
 import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import dailyOperationsAdminRoutes from "./daily-operations-admin.routes";
+import insightsAdminRoutes from "./insights-admin.routes";
 import jobNumberTimelineAdminRoutes from "./job-number-timeline-admin.routes";
 import extensionUsersAdminRoutes from "./extension-users-admin.routes";
 import adminInviteEmailInternalRoutes from "./admin-invite-email-internal.routes";
@@ -266,6 +267,7 @@ router.use(createSalesIntelligenceAdminRouter());
 router.use(ringCentralRegistryRoutes);
 router.use(granotLifecycleAdminRoutes);
 router.use(dailyOperationsAdminRoutes);
+router.use(insightsAdminRoutes);
 router.use(jobNumberTimelineAdminRoutes);
 router.use(extensionUsersAdminRoutes);
 // S8-USERS: signed-Owner internal send of an Admin user invite email.

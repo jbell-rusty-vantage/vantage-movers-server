@@ -52,6 +52,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [lead-browse.md](knowledge/services/lead-browse.md) | Extension GET browse, pagination, and attachment chips. |
 | [admin-search.md](knowledge/services/admin-search.md) | Global admin free-text search across the four Lead/Booking/Cancellation resources (production only). |
 | [analytics.md](knowledge/services/analytics.md) | Admin analytics reports and the Overview sibling, production database only. |
+| [insights.md](knowledge/services/insights.md) | **Start here for Insights › Analytics.** Period vs comparison, rankings with rank change, Reviews, the Desk's lead cost per rep, the live daily lead spend and Today's Money tab; every lead priced live from the lead-cost schedule. |
 | [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
 | [testimonial.md](knowledge/services/testimonial.md) | Read-only public and admin testimonials; ingest stays in helpers and ops scripts. |
 | [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
