@@ -44,6 +44,8 @@ generated:
 
 This file is a **Service pointer** only. It does not copy contract rules, hook tables, or wire shapes.
 
+**Retention (disk trim, 2026-10-07):** `daily_operations_events` rows expire 400 days after `createdAt` (`daily_operations_event_created_ttl`, declared on `DailyOperationsEvent.ts` and created in production by `ops/disk-trim/trim.ts`). The live board reads today, yesterday and the day before; 400 days is the bound already chosen for this log. The board key `day` is a string and cannot carry the TTL.
+
 - [Daily Operations specification](../../daily-operations/daily-operations-specification.md) — Owner category panels plus complementary Arrivals on `/daily`. Mongo day projection, after-commit facts, Redis doorbell, SSE. Sections marked `DOP-10` / `DOP-11` (§2.2, §2.3, §3.2, §4.1, §4.2, §5, §8.1, §16.1) hold the focus / trend / colour / rail / backfill rules. **Wins.** Pack files live at [`internal_hidden_docs/daily-operations/`](../../../internal_hidden_docs/daily-operations/).
 - [Pack README](../../daily-operations/README.md) — DOP-01–11 shipped ([PROGRESS.md](../../daily-operations/PROGRESS.md) is the live ledger). Arrivals is on `/daily`. Pointers only; not a second spec.
 - [Pre-specification](../../daily-operations/daily-operations-pre-specification.md) — superseded one mixed feed. Do not implement from it.

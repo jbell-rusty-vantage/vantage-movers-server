@@ -18,6 +18,21 @@ export const RINGCENTRAL_TELEPHONY_SESSIONS_EVENT_FILTER =
 export const WEBHOOK_EVENTS_TEST_COLLECTION =
   getRingCentralCollectionName("webhookEvents");
 
+/**
+ * Disk trim (2026-10-07): a raw receipt (`rawBody` is the bulk, about 4 MB a
+ * day) is read only by the capture-projection job that the route fans out for
+ * it, normally within the minute, and by the 12-hour receipt watermark
+ * recovery. Receipts expire after 7 days on `receivedAt`. A `capture_projection`
+ * job still pending past that cannot load its body; the Call Log sync is the
+ * backfill for that case. Never below 48 hours.
+ */
+export const WEBHOOK_EVENT_RETENTION_SECONDS = 7 * 24 * 60 * 60;
+export const WEBHOOK_EVENT_TTL_INDEX = {
+  name: "ringcentral_webhook_event_received_ttl",
+  key: { receivedAt: 1 } as const,
+  expireAfterSeconds: WEBHOOK_EVENT_RETENTION_SECONDS,
+};
+
 export type NormalizedPreview = {
   subscriptionId: string | null;
   event: string | null;
@@ -293,6 +308,10 @@ async function createWebhookEventIndexes(): Promise<void> {
     { provider: 1, receivedAt: 1, _id: 1 },
     { partialFilterExpression: { telephonySessionId: { $type: "string" } } },
   );
+  await collection.createIndex(WEBHOOK_EVENT_TTL_INDEX.key, {
+    name: WEBHOOK_EVENT_TTL_INDEX.name,
+    expireAfterSeconds: WEBHOOK_EVENT_TTL_INDEX.expireAfterSeconds,
+  });
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

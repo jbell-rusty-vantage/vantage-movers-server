@@ -306,33 +306,3 @@ export const getSalesIntelligenceSyncStateModel = defineCsiModel(
   SalesIntelligenceSyncStateSchema,
   SALES_INTELLIGENCE_SYNC_STATE_INDEXES,
 );
-export const SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES = [
-  unique("csi_window_unique", { stream: 1, window_from: 1 }),
-];
-export const SalesIntelligenceSyncWindowSchema = new Schema(
-  {
-    stream: str,
-    window_from: at,
-    window_to: at,
-    status: enumeration(
-      ["planned", "running", "complete", "partial", "failed"],
-      "planned",
-    ),
-    pages_done: count,
-    records: count,
-    checkpoint_page: count,
-    attempts: count,
-    last_error_code: text,
-    completed_at: date,
-    work_lease_owner: text,
-    work_lease_epoch: count,
-    work_leased_until: date,
-    retry_after_until: date,
-  },
-  { collection: "sales_intelligence_sync_windows" },
-);
-export const getSalesIntelligenceSyncWindowModel = defineCsiModel(
-  "SalesIntelligenceSyncWindow",
-  SalesIntelligenceSyncWindowSchema,
-  SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
-);

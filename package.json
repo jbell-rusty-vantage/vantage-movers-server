@@ -78,6 +78,7 @@
     "granot:lifecycle:unit34:seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/granot-lifecycle-unit34/seed-disposable-certification.ts",
     "migration:csi:indexes": "node --env-file=.env --import tsx scripts/migrations/sales-intelligence-indexes.ts",
     "outreach:indexes": "node --env-file=.env --import tsx ops/sales-outreach/build-indexes.ts",
+    "disk:trim": "node --env-file=.env --import tsx ops/disk-trim/trim.ts",
     "outreach:install-policy": "node --env-file=.env --import tsx ops/sales-outreach/install-approved-policy.ts",
     "outreach:enrollment": "node --env-file=.env --import tsx ops/sales-outreach/enrollment.ts",
     "outreach:desk-state": "node --env-file=.env --import tsx ops/sales-outreach/desk-state.ts",

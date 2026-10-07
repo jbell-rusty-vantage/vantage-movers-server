@@ -5,7 +5,7 @@ import { logger } from "../../logger";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { ringCentralRequest } from "../ringcentral/client";
-import { csiWorkerActor, CsiError } from "../salesIntelligence/auth";
+import { CsiError } from "../salesIntelligence/auth";
 import {
   claimCsiJob,
   completeCsiJob,
@@ -13,7 +13,6 @@ import {
   failCsiJob,
   type JobLease,
 } from "../salesIntelligence/jobs";
-import { appendCsiAudit } from "../salesIntelligence/transactions";
 import {
   accountIdFromProviderPath,
   configuredRingCentralAccountId,
@@ -350,25 +349,10 @@ export async function runCallLogRefreshJob(
   };
 
   const finish = async (): Promise<CallLogRefreshOutcome> => {
-    const at = now();
-    await complete(
-      lease,
-      async (session) => {
-        await appendCsiAudit(
-          { session, command_id: new mongoose.Types.ObjectId(), now: at, actor: csiWorkerActor(lease.job_id) },
-          {
-            subject_key: `job:${lease.job_id}`,
-            event_kind: "call_log_refresh.completed",
-            prior: { status: "leased", lease_epoch: lease.epoch },
-            current: { status: "completed", ...result },
-            target_id: lease.job_id,
-            revision: lease.epoch,
-            kind: "job",
-          },
-        );
-      },
-      { result },
-    );
+    // Disk trim (2026-10-07): the bounded `result` on the job row is the whole
+    // record of this completion; the former `call_log_refresh.completed` audit
+    // row is no longer written.
+    await complete(lease, async () => undefined, { result });
     return { status: "completed", job_id: lease.job_id, result };
   };
 

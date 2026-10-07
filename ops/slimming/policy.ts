@@ -63,7 +63,13 @@ export const ADMIN_DROP_COLLECTIONS: Record<string, { spec: string; owner: strin
   admin_audit_logs: { spec: "§6", owner: "vantage-admin server/models/AdminAuditLog.ts", gate: "SLIM-08: Admin page/API/auth/proxy writers removed and deployed" },
 };
 
-/** Collections in the main DB that no purge step may drop. Cleanups may touch the `migrate` ones only. */
+/**
+ * Collections in the main DB that no purge step may drop. Cleanups may touch the `migrate` ones only.
+ * The slimming purge ran to completion on 2026-10-04. The disk trim (DISK-TRIM.md, `ops/disk-trim/trim.ts`,
+ * 2026-10-07) later dropped `sales_intelligence_owner_instructions`, `sales_intelligence_sync_windows` and
+ * `sales_intelligence_review_items`; they stay listed here only so the checked-in manifest, its hash and
+ * `manifestPolicyDrift` keep describing the purge as it ran.
+ */
 export const NEVER_DROP = [
   "granot_webhook_receipts",
   "entity_changes",

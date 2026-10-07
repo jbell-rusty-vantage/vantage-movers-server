@@ -62,7 +62,9 @@ test("the model registry holds no retired collection", () => {
   const collections = CSI_MODEL_REGISTRY.map((entry) => entry.model().collection.collectionName);
   for (const retired of ["outreach_records", "outreach_followups", "outreach_band_transitions", "outreach_rep_days",
     "sales_intelligence_attention_snapshots", "sales_intelligence_attention_artifacts", "sales_intelligence_ai_budget",
-    "sales_intelligence_ai_reservations", "intelligence_runs", "lead_conversations", "move_assessment_artifacts"]) {
+    "sales_intelligence_ai_reservations", "intelligence_runs", "lead_conversations", "move_assessment_artifacts",
+    // Disk trim (2026-10-07): dropped leftovers; registering them again would recreate the collections.
+    "sales_intelligence_owner_instructions", "sales_intelligence_review_items", "sales_intelligence_sync_windows"]) {
     assert.equal(collections.includes(retired), false, retired);
   }
 });

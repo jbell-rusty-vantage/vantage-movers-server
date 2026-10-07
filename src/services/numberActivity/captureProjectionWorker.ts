@@ -1,14 +1,13 @@
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import { logger } from "../../logger";
-import { csiWorkerActor, CsiError } from "../salesIntelligence/auth";
+import { CsiError } from "../salesIntelligence/auth";
 import {
   claimCsiJob,
   completeCsiJob,
   failCsiJob,
   type JobLease,
 } from "../salesIntelligence/jobs";
-import { appendCsiAudit } from "../salesIntelligence/transactions";
 import {
   normalizeWebhookPartyObservations,
   observeRingCentralWebhookEvents,
@@ -35,9 +34,12 @@ import { findWebhookReceiptById } from "./webhookReceipts";
  * Claims one `capture_projection` job through `claimCsiJob`, loads the stored
  * receipt named by `input_refs[0]` (never the queue payload), normalizes it
  * with the CSI-02 normalizer and projects it with
- * `observeRingCentralWebhookEvents`, passing the job id as `request_id` so
- * every audit row ties back to this job. The queue consumer and the recovery
- * cron call this same function.
+ * `observeRingCentralWebhookEvents`, passing the job id as `request_id`. The
+ * queue consumer and the recovery cron call this same function.
+ *
+ * Disk trim (2026-10-07): completion writes the bounded `result` onto the job
+ * row only. The former `capture_projection.completed` audit row duplicated it
+ * at about 8,000 rows a day and nothing read it.
  *
  * Completion semantics: projection itself is idempotent (CSI-02 semantic
  * replay is a no-op), so a crash between projection and completion is safe.
@@ -195,18 +197,6 @@ export async function runCaptureProjectionJob(
           enqueued.push(await (deps.enqueueRefresh ?? enqueueCallLogRefreshJob)(candidate, session, at));
         }
         contactJobs.push(...(await (deps.enqueueContactChange ?? enqueueOutreachContactChangeJobs)(contactSources, session, at)));
-        await appendCsiAudit(
-          { session, command_id: new mongoose.Types.ObjectId(), now: at, actor: csiWorkerActor(lease.job_id) },
-          {
-            subject_key: `job:${lease.job_id}`,
-            event_kind: "capture_projection.completed",
-            prior: { status: "leased", lease_epoch: lease.epoch },
-            current: { status: "completed", ...result },
-            target_id: lease.job_id,
-            revision: lease.epoch,
-            kind: "job",
-          },
-        );
       },
       { result },
     );

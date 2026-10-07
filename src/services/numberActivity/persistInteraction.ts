@@ -3,13 +3,9 @@ import { withTransaction } from "../../db";
 import { getCallInteractionModel } from "../../models/CallInteraction";
 import { getCallInteractionAliasModel } from "../../models/CallInteractionAlias";
 import { CONTACT_NUMBER_SUMMARY_VERSION, getContactNumberModel } from "../../models/ContactNumber";
-import { csiWorkerActor, CsiError } from "../salesIntelligence/auth";
+import { CsiError } from "../salesIntelligence/auth";
 import { enqueueCsiJob } from "../salesIntelligence/jobs";
-import {
-  appendCsiAudit,
-  duplicateKey,
-  type CsiTransactionContext,
-} from "../salesIntelligence/transactions";
+import { duplicateKey } from "../salesIntelligence/transactions";
 import {
   loadRingCentralRouteSnapshot,
   resolveRingCentralInboundRoute,
@@ -45,13 +41,18 @@ import type {
  *
  * One Mongo transaction per observation carries: alias reservation (the
  * account-scoped unique identity fence), interaction insert or revision-CAS
- * update, merge-with-proof tombstones, the Contact Number observation, the CSI audit
- * invalidation row, the All Numbers call summary of every touched number and the
- * durable lead-link job intent. Either all of it
- * commits or none of it does. No provider or network call happens inside.
+ * update, merge-with-proof tombstones, the Contact Number observation, the All
+ * Numbers call summary of every touched number and the durable lead-link job
+ * intent. Either all of it commits or none of it does. No provider or network
+ * call happens inside.
+ *
+ * Disk trim (2026-10-07): the per-observation `interaction.created|updated|merged`
+ * audit rows are no longer written. They were worker exhaust (about 10 MB/day) that
+ * no screen read; the call row itself, its aliases and `projection_revision` carry
+ * the evidence. Owner and desk commands keep writing `sales_intelligence_audit_events`.
  *
  * Identical semantic input is detected before any write and returns
- * `noop: true` without a revision, audit row or job.
+ * `noop: true` without a revision or job.
  */
 export type ObservationInput =
   | { kind: "webhook"; events: WebhookPartyObservation[]; proof_ref: string }
@@ -78,10 +79,10 @@ export type PersistDependencies = {
   resolveRoute?: RouteResolver;
   maxAttempts?: number;
   /**
-   * Durable job / run id (24-hex) recorded as the audit actor `request_id` so
-   * every audit row ties back to the work item that produced it. When absent
-   * a fresh id is generated and flagged `request_id_generated` on the audit
-   * row instead of masquerading as a job id.
+   * Durable job / run id (24-hex) of the work item that produced the
+   * observation. Callers keep passing it (the job workers hand their job id
+   * through); since the disk trim retired the per-observation audit row it is
+   * accepted for provenance at the call site only and nothing persists it.
    */
   request_id?: string | null;
   /**
@@ -173,8 +174,6 @@ export async function applyInteractionObservation(
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-const REQUEST_ID_PATTERN = /^[a-f\d]{24}$/i;
 
 function isRetryable(error: unknown): boolean {
   if (duplicateKey(error)) return true;
@@ -293,23 +292,6 @@ async function applyOnce(
     };
   }
 
-  const suppliedRequestId =
-    deps.request_id && REQUEST_ID_PATTERN.test(deps.request_id) ? deps.request_id : null;
-  const requestId = suppliedRequestId ?? String(new mongoose.Types.ObjectId());
-  const context: CsiTransactionContext = {
-    session,
-    command_id: new mongoose.Types.ObjectId(),
-    now,
-    actor: csiWorkerActor(requestId),
-  };
-  // Every audit row carries the provider evidence that caused it and whether
-  // the actor request id is a real job/run id or a generated placeholder.
-  const provenance = {
-    proof_ref: input.proof_ref,
-    input_kind: input.kind,
-    request_id_generated: suppliedRequestId === null,
-  };
-
   // Contact Number first so the interaction can reference it.
   const number = await upsertContactNumber(
     outcome.next,
@@ -357,21 +339,12 @@ async function applyOnce(
     );
     if (tombstone.modifiedCount !== 1) throw new CsiError("REVISION_CONFLICT");
     // Re-point aliases only. Each alias keeps the `proof_ref` that originally
-    // proved it; the merge proof lives on the `interaction.merged` audit row.
+    // proved it; the merge proof is the tombstone's `merged_into_id`.
     await Alias.updateMany(
       { interaction_id: other._id },
       { $set: { interaction_id: interactionId } },
       { session },
     );
-    await appendCsiAudit(context, {
-      subject_key: `interaction:${String(other._id)}`,
-      event_kind: "interaction.merged",
-      prior: summarize(toProjection(other), other.projection_revision, other.contact_number_id),
-      current: { merged_into_id: String(interactionId), ...provenance },
-      target_id: String(other._id),
-      revision: other.projection_revision + 1,
-      kind: "interaction",
-    });
   }
 
   if (missingAliases.length) {
@@ -387,26 +360,6 @@ async function applyOnce(
       { session },
     );
   }
-
-  await appendCsiAudit(context, {
-    subject_key: `interaction:${String(interactionId)}`,
-    event_kind: canonical ? "interaction.updated" : "interaction.created",
-    // The audit schema requires a JSON prior; creation records an explicit "no prior row".
-    prior: canonical
-      ? summarize(toProjection(canonical), canonical.projection_revision, canonical.contact_number_id)
-      : { exists: false },
-    current: {
-      ...summarize(outcome.next, revision, number.id),
-      ...provenance,
-      // New identity evidence is a real change even when the projection body
-      // is unchanged; name it so the row never reads as a phantom update.
-      aliases_added: missingAliases.map((a) => `${a.kind}:${a.value}`),
-      merged_interaction_ids: others.map((o) => String(o._id)),
-    },
-    target_id: String(interactionId),
-    revision,
-    kind: "interaction",
-  });
 
   // All Numbers v2: every number this observation touched gets its call summary recomputed from its
   // calls, in this transaction (the number it is on, the one it left, and the merged losers' numbers).
@@ -594,27 +547,6 @@ async function scheduleDownstream(
   return [job.dedupe_key];
 }
 
-function summarize(
-  projection: InteractionProjection,
-  revision: number,
-  contactNumberId: mongoose.Types.ObjectId | null,
-) {
-  return {
-    projection_revision: revision,
-    contact_number_id: contactNumberId ? String(contactNumberId) : null,
-    direction: projection.direction,
-    external_e164: projection.external_e164,
-    external_endpoint_kind: projection.external_endpoint_kind,
-    terminal: projection.terminal,
-    call_log_state: projection.call_log_state,
-    provider_result: projection.provider_result,
-    provider_connected: projection.provider_connected,
-    contact_type: projection.contact_type,
-    recordings: projection.recordings.length,
-    started_at: projection.started_at.toISOString(),
-    sources: projection.sources,
-  };
-}
 
 /** Converts a stored row (lean) into the plain projection shape used by pure code. */
 export function toProjection(row: StoredInteraction | Record<string, unknown>): InteractionProjection {

@@ -216,11 +216,11 @@ No destructive "heal" that could fight the drainer for the same rows.
 | Collection | Model | Purpose |
 |------------|-------|---------|
 | `sheet_sync_jobs` | `SheetSyncJob` | Durable outbox |
-| `sheet_sync_runs` | `SheetSyncRun` | Per-drain audit |
-| `sheet_sync_attempts` | `SheetSyncAttempt` | Per-target write outcomes |
+| `sheet_sync_runs` | `SheetSyncRun` | Per-drain audit; expires 90 days after `started_at` (`sheet_sync_run_started_ttl`, disk trim 2026-10-07) |
+| `sheet_sync_attempts` | `SheetSyncAttempt` | Per-target write outcomes; expires 90 days after `createdAt` (`sheet_sync_attempt_created_ttl`) |
 | `sheet_sync_leases` | `SheetSyncLease` | Global drain mutex |
 
-`QuotaLimiter` uses `SheetSyncQuotaBucket` for per-minute budgets. Domain documents store `sheet_sync[]` (spreadsheet, tab, `row_number` hint, status).
+`sheet_sync_jobs` (the outbox) has no TTL; the admin run list reads the newest page only, so nothing selects a run older than 90 days. `QuotaLimiter` uses `SheetSyncQuotaBucket` for per-minute budgets. Domain documents store `sheet_sync[]` (spreadsheet, tab, `row_number` hint, status).
 
 ## Invariants
 

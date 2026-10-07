@@ -37,6 +37,17 @@ const SheetSyncAttemptSchema = new Schema(
 SheetSyncAttemptSchema.index({ run_id: 1, createdAt: 1 });
 SheetSyncAttemptSchema.index({ job_id: 1, createdAt: 1 });
 SheetSyncAttemptSchema.index({ status: 1, createdAt: -1 });
+/** Disk trim (2026-10-07): per-target detail of a run expires with the runs (90 days). */
+export const SHEET_SYNC_ATTEMPT_RETENTION_SECONDS = 90 * 24 * 60 * 60;
+export const SHEET_SYNC_ATTEMPT_TTL_INDEX = {
+  name: "sheet_sync_attempt_created_ttl",
+  key: { createdAt: 1 } as const,
+  expireAfterSeconds: SHEET_SYNC_ATTEMPT_RETENTION_SECONDS,
+};
+SheetSyncAttemptSchema.index(SHEET_SYNC_ATTEMPT_TTL_INDEX.key, {
+  name: SHEET_SYNC_ATTEMPT_TTL_INDEX.name,
+  expireAfterSeconds: SHEET_SYNC_ATTEMPT_TTL_INDEX.expireAfterSeconds,
+});
 
 export type SheetSyncAttemptDocument = InferSchemaType<
   typeof SheetSyncAttemptSchema

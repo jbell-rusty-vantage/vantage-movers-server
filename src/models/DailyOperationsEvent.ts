@@ -130,6 +130,21 @@ DailyOperationsEventSchema.index({ day: 1, occurred_at: -1, _id: -1 });
 DailyOperationsEventSchema.index({ day: 1, lane: 1, occurred_at: -1 });
 DailyOperationsEventSchema.index({ parent_receipt_id: 1, occurred_at: 1 });
 DailyOperationsEventSchema.index({ entity_type: 1, entity_id: 1 });
+/**
+ * Disk trim (2026-10-07): the live board reads today, yesterday and the day
+ * before; 400 days is the bound already chosen for this log. The board key
+ * `day` is a string, so the TTL rides on the `timestamps` `createdAt` date.
+ */
+export const DAILY_OPERATIONS_EVENT_RETENTION_SECONDS = 400 * 24 * 60 * 60;
+export const DAILY_OPERATIONS_EVENT_TTL_INDEX = {
+  name: "daily_operations_event_created_ttl",
+  key: { createdAt: 1 } as const,
+  expireAfterSeconds: DAILY_OPERATIONS_EVENT_RETENTION_SECONDS,
+};
+DailyOperationsEventSchema.index(DAILY_OPERATIONS_EVENT_TTL_INDEX.key, {
+  name: DAILY_OPERATIONS_EVENT_TTL_INDEX.name,
+  expireAfterSeconds: DAILY_OPERATIONS_EVENT_TTL_INDEX.expireAfterSeconds,
+});
 
 export function getDailyOperationsEventModel(): Model<DailyOperationsEventDocument> {
   return getDailyOperationsModel<DailyOperationsEventDocument>(

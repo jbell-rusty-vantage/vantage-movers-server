@@ -91,12 +91,25 @@ export const getSalesIntelligenceJobModel = defineCsiModel(
   SalesIntelligenceJobSchema,
   SALES_INTELLIGENCE_JOB_INDEXES,
 );
+/**
+ * Disk trim (2026-10-07): audit rows are Owner/desk history (a few dozen a day
+ * since the worker call-capture kinds stopped being written) and expire after
+ * 90 days on `happened_at`, which every row carries as a date. Idempotency
+ * receipts live in `sales_intelligence_command_executions`, never here, so a
+ * command replay does not depend on an audit row surviving.
+ */
+export const CSI_AUDIT_RETENTION_SECONDS = 90 * 24 * 60 * 60;
 export const SALES_INTELLIGENCE_AUDIT_EVENT_INDEXES = [
   unique("csi_audit_semantic_unique", { semantic_key: 1 }),
   index("csi_audit_stream", { recorded_at: 1, _id: 1 }),
   index("csi_audit_subject", { subject_key: 1, happened_at: 1 }),
   // S9-READS (addendum §6.2 flow): "moved to Quoted" reads `lead_progress_updated` rows in the period.
   index("csi_audit_kind_happened", { event_kind: 1, happened_at: 1 }),
+  {
+    name: "csi_audit_happened_ttl",
+    key: { happened_at: 1 as const },
+    expireAfterSeconds: CSI_AUDIT_RETENTION_SECONDS,
+  },
 ];
 export const SalesIntelligenceAuditEventSchema = new Schema(
   {

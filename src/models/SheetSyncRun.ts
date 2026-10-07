@@ -34,6 +34,21 @@ const SheetSyncRunSchema = new Schema(
 
 SheetSyncRunSchema.index({ started_at: -1 });
 SheetSyncRunSchema.index({ status: 1, started_at: -1 });
+/**
+ * Disk trim (2026-10-07): the admin run list reads the newest page only, so a
+ * run expires 90 days after it started. The outbox (`sheet_sync_jobs`) has no
+ * TTL; this is history, not work.
+ */
+export const SHEET_SYNC_RUN_RETENTION_SECONDS = 90 * 24 * 60 * 60;
+export const SHEET_SYNC_RUN_TTL_INDEX = {
+  name: "sheet_sync_run_started_ttl",
+  key: { started_at: 1 } as const,
+  expireAfterSeconds: SHEET_SYNC_RUN_RETENTION_SECONDS,
+};
+SheetSyncRunSchema.index(SHEET_SYNC_RUN_TTL_INDEX.key, {
+  name: SHEET_SYNC_RUN_TTL_INDEX.name,
+  expireAfterSeconds: SHEET_SYNC_RUN_TTL_INDEX.expireAfterSeconds,
+});
 
 export type SheetSyncRunDocument = InferSchemaType<typeof SheetSyncRunSchema> & {
   _id: mongoose.Types.ObjectId;

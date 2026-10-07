@@ -19,14 +19,6 @@ import {
   SALES_INTELLIGENCE_POLICY_POINTER_INDEXES,
 } from "./infrastructure";
 import {
-  getSalesIntelligenceOwnerInstructionModel,
-  SALES_INTELLIGENCE_OWNER_INSTRUCTION_INDEXES,
-} from "./review";
-import {
-  getSalesIntelligenceReviewItemModel,
-  SALES_INTELLIGENCE_REVIEW_ITEM_INDEXES,
-} from "./review";
-import {
   getSalesIntelligenceContactRestrictionModel,
   SALES_INTELLIGENCE_CONTACT_RESTRICTION_INDEXES,
 } from "./review";
@@ -41,10 +33,6 @@ import {
 import {
   getSalesIntelligenceSyncStateModel,
   SALES_INTELLIGENCE_SYNC_STATE_INDEXES,
-} from "./capture";
-import {
-  getSalesIntelligenceSyncWindowModel,
-  SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
 } from "./capture";
 import {
   getContactNumberModel,
@@ -63,6 +51,8 @@ import {
   OWNER_REP_NUDGE_INDEXES,
 } from "../OwnerRepNudge";
 import { SALES_OUTREACH_MODEL_REGISTRY } from "../salesOutreach/registry";
+// Disk trim (2026-10-07): `sales_intelligence_owner_instructions`, `_review_items` and
+// `_sync_windows` were dropped (no writer, no reader) and are no longer registered.
 export const CSI_MODEL_REGISTRY = [
   {
     name: "SalesIntelligenceJob",
@@ -90,16 +80,6 @@ export const CSI_MODEL_REGISTRY = [
     indexes: SALES_INTELLIGENCE_POLICY_POINTER_INDEXES,
   },
   {
-    name: "SalesIntelligenceOwnerInstruction",
-    model: getSalesIntelligenceOwnerInstructionModel,
-    indexes: SALES_INTELLIGENCE_OWNER_INSTRUCTION_INDEXES,
-  },
-  {
-    name: "SalesIntelligenceReviewItem",
-    model: getSalesIntelligenceReviewItemModel,
-    indexes: SALES_INTELLIGENCE_REVIEW_ITEM_INDEXES,
-  },
-  {
     name: "SalesIntelligenceContactRestriction",
     model: getSalesIntelligenceContactRestrictionModel,
     indexes: SALES_INTELLIGENCE_CONTACT_RESTRICTION_INDEXES,
@@ -118,11 +98,6 @@ export const CSI_MODEL_REGISTRY = [
     name: "SalesIntelligenceSyncState",
     model: getSalesIntelligenceSyncStateModel,
     indexes: SALES_INTELLIGENCE_SYNC_STATE_INDEXES,
-  },
-  {
-    name: "SalesIntelligenceSyncWindow",
-    model: getSalesIntelligenceSyncWindowModel,
-    indexes: SALES_INTELLIGENCE_SYNC_WINDOW_INDEXES,
   },
   {
     name: "ContactNumber",
