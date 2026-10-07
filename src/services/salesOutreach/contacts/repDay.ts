@@ -13,6 +13,7 @@ import { goalCallCoverage, type CallWatermarks } from "../evidence/coverage";
 import { newYorkDayBounds } from "../reads/businessDay";
 import { callsCoverageForDay, requiredCoverageThrough, type SalesOutreachCoverage } from "../reads/freshness";
 import { resolveConfiguredGoal, type GoalsConfiguration } from "../reads/goals";
+import type { EffectiveRoster } from "../roster/rule";
 
 /**
  * Rep-day recount (IMPLEMENTATION-PLAN §4.6 / §6.2 `outreach_rep_day`, P07a/P07b/P07g, P08a, FAST-TRACK
@@ -151,7 +152,12 @@ export type GoalSnapshot = {
   override: { agent_id: string; business_date: string; goal: number; reason: string } | null;
 };
 
-/** The goal for the row: a frozen snapshot stays; otherwise resolve from the active configuration. */
+/**
+ * The goal for the row: a frozen snapshot stays; otherwise resolve from the active configuration and
+ * the effective roster at the day's roster instant (P08a-1; absent = the configured list). The
+ * snapshot's `roster_version` is the effective roster's, so a frozen day says which member set it was
+ * frozen under (a `roster-desk-…` digest under `desk_reps`).
+ */
 export function goalSnapshotFor(input: {
   agent_id: string;
   business_day: string;
@@ -159,17 +165,19 @@ export function goalSnapshotFor(input: {
   goals: GoalsConfiguration | null;
   configuration_version: string;
   existing: GoalSnapshot | null;
+  roster?: EffectiveRoster | null;
 }): GoalSnapshot {
   if (input.existing?.configuration_version) return input.existing;
   const freeze = input.business_day < input.today;
   if (!input.goals) return { roster_version: null, configuration_version: null, goal: null, scheduled: false, override: null };
+  const rosterVersion = input.roster ? input.roster.roster_version : (input.goals.roster_version ?? null);
   try {
-    const resolved = resolveConfiguredGoal(input.goals, input.configuration_version, input.agent_id, input.business_day);
+    const resolved = resolveConfiguredGoal(input.goals, input.configuration_version, input.agent_id, input.business_day, input.roster ?? undefined);
     const override = resolved.provenance.override
       ? { agent_id: input.agent_id, ...resolved.provenance.override }
       : null;
     return {
-      roster_version: input.goals.roster_version ?? null,
+      roster_version: rosterVersion,
       configuration_version: freeze ? input.configuration_version : null,
       goal: resolved.goal,
       scheduled: resolved.provenance.scheduled_working_day === true,
@@ -177,7 +185,7 @@ export function goalSnapshotFor(input: {
     };
   } catch {
     // Goals not resolvable (e.g. no default goal installed): leave the goal to the read, which fails closed.
-    return { roster_version: input.goals.roster_version ?? null, configuration_version: null, goal: null, scheduled: false, override: null };
+    return { roster_version: rosterVersion, configuration_version: null, goal: null, scheduled: false, override: null };
   }
 }
 
@@ -216,6 +224,8 @@ export function composeRepDayRow(input: {
   watermarks: CallWatermarks;
   /** Effective desk timing of the configuration the recount runs under (`deskTimingOf`). */
   timing: DeskTiming;
+  /** The effective roster at the day's roster instant (P08a-1); absent = the configured list. */
+  roster?: EffectiveRoster | null;
 }): RepDayRowFields {
   const counts = countRepDay(input.events, input.scope);
   const goal_snapshot = goalSnapshotFor({
@@ -225,6 +235,7 @@ export function composeRepDayRow(input: {
     goals: input.goals,
     configuration_version: input.configuration_version,
     existing: input.existing_snapshot,
+    roster: input.roster ?? null,
   });
   const coverage = repDayCoverage(input.business_day, input.today, input.now, input.watermarks, input.timing);
   let remaining: number | null = null;

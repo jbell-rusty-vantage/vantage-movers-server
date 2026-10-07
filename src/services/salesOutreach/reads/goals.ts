@@ -13,6 +13,7 @@ import {
   type SalesOutreachTeamDto,
 } from "../../../validation/v1/salesOutreachReads";
 import { OutreachError } from "../errors";
+import { effectiveRoster, type EffectiveRoster } from "../roster/rule";
 import { isoWeekdayOf } from "./businessDay";
 import { mergeRowCoverage, type SalesOutreachCoverage } from "./freshness";
 
@@ -75,15 +76,20 @@ export type RepDayRow = Readonly<{
 const stateOf = (goal: number | null): ResolvedGoal["goal_state"] =>
   goal === null ? "not_on_roster" : goal === 0 ? "no_goal_today" : "goal";
 
-/** The rep's goal for `businessDay` from the active configuration's roster, schedules and overrides. */
+/**
+ * The rep's goal for `businessDay` from the roster, schedules and overrides. `roster` is the effective
+ * roster at the day's roster instant (P08a-1, `roster/rule.ts`); without one the configured list is the
+ * roster (the `explicit` rule), which is what every pre-P08a-1 caller and test means.
+ */
 export function resolveConfiguredGoal(
   goals: GoalsConfiguration,
   configurationVersion: string,
   agentId: string,
   businessDay: string,
+  roster: EffectiveRoster = effectiveRoster({ ...goals, roster_rule: "explicit" }, null),
 ): ResolvedGoal {
-  const base = { source: "configuration" as const, configuration_version: configurationVersion, roster_version: goals.roster_version };
-  const schedule = (goals.rep_work_schedules ?? []).find((row) => row.agent_id === agentId);
+  const base = { source: "configuration" as const, configuration_version: configurationVersion, roster_version: roster.roster_version };
+  const schedule = roster.members.find((row) => row.agent_id === agentId);
   if (!schedule) {
     return {
       goal_state: "not_on_roster",
@@ -171,12 +177,14 @@ export function resolveRepDayGoal(input: {
   business_day: string;
   today: string;
   row: RepDayRow | null;
+  /** The effective roster at the day's roster instant (P08a-1); absent = the configured list. */
+  roster?: EffectiveRoster;
 }): ResolvedGoal {
   if (input.row && input.business_day < input.today) {
     const snapshot = resolveSnapshotGoal(input.row);
     if (snapshot) return snapshot;
   }
-  return resolveConfiguredGoal(input.goals, input.configuration_version, input.agent_id, input.business_day);
+  return resolveConfiguredGoal(input.goals, input.configuration_version, input.agent_id, input.business_day, input.roster);
 }
 
 const round4 = (value: number) => Math.round(value * 10_000) / 10_000;
@@ -344,10 +352,27 @@ export function composeRepDay(input: {
   };
 }
 
+/**
+ * Calls of the day by Agents who are not on the effective roster (P08a-1, F1): under the derived roster a
+ * non-rep with activity gets no rep row and no goal, so the Owner is told the calls exist instead of
+ * losing them silently. Null under the explicit rule (such Agents are listed as rows there).
+ */
+export type OtherCallers = NonNullable<NonNullable<SalesOutreachTeamDto["goals"]>["other_callers"]>;
+
+export function composeOtherCallers(rows: readonly RepDayRow[]): OtherCallers {
+  return {
+    agents: rows.length,
+    agent_ids: rows.map((row) => row.agent_id).sort(),
+    confirmed: rows.reduce((sum, row) => sum + row.actual_confirmed, 0),
+    awaiting_confirmation: rows.reduce((sum, row) => sum + row.actual_awaiting_confirmation, 0),
+  };
+}
+
 /** The team goal cards (Team outreach cards 1–2) from the composed per-rep rows. */
 export function composeTeamGoals(
   reps: readonly RepDayGoalDto[],
   scope: SalesOutreachGoalCountScope | "mixed" | null,
+  otherCallers: OtherCallers | null = null,
 ): NonNullable<SalesOutreachTeamDto["goals"]> {
   const roster = reps.filter((rep) => rep.goal_state !== "not_on_roster");
   const goal = roster.reduce((sum, rep) => sum + (rep.goal ?? 0), 0);
@@ -398,5 +423,6 @@ export function composeTeamGoals(
       : roster.reduce((sum, rep) => sum + (rep.other_outbound.count ?? 0), 0),
     other_outbound_breakdown: teamOtherOutboundBreakdown(roster),
     roster_size: roster.length,
+    other_callers: otherCallers,
   };
 }

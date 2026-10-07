@@ -17,7 +17,7 @@ import { publishGoalChangesSafely, type OutreachGoalChange, type OutreachGoalPub
 import { wantsContactEvidence } from "./jobs";
 import { mongoContactEventStore } from "./mongoStore";
 import { countScopeForDay } from "./repDay";
-import { mongoRepDayStore, recountRepDay, type RepDayRecount, type RepDayStore } from "./repDayService";
+import { mongoRepDayStore, recountRepDay, rosterForRepDay, type RepDayRecount, type RepDayStore } from "./repDayService";
 
 /**
  * The minute sweep — the net under the queued `outreach_contact_change` wake (IMPLEMENTATION-PLAN §6.2):
@@ -303,7 +303,9 @@ export async function refreshOpenRepDays(now = new Date(), deps: SweepDeps = {})
   const keys: RepDayKey[] = [];
   const schedule = inspected.value.goals?.count_scope_schedule;
   const yesterday = addDays(today, -1);
-  const roster = (inspected.value.goals?.rep_work_schedules ?? []).map((row) => row.agent_id);
+  // P08a-1: yesterday's zero rows go to the effective roster at the end of yesterday (desk reps under
+  // `desk_reps`, the configured list otherwise); the recount re-checks membership inside its transaction.
+  const roster = (await rosterForRepDay(inspected, yesterday, now, store)).members.map((member) => member.agent_id);
   for (const day of [yesterday, today]) {
     const scope = countScopeForDay(day, schedule);
     const rows = await store.rowsOfDay(day);

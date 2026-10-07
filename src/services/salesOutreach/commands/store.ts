@@ -2,7 +2,6 @@ import mongoose, { type ClientSession } from "mongoose";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getFormLeadModel } from "../../../models/FormLead";
-import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesIntelligenceContactRestrictionModel } from "../../../models/SalesIntelligenceContactRestriction";
 import { getSalesOutreachFollowupScheduleModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { LeadChangeRecorder } from "../../domainCommands/leadChangeEmission";
@@ -11,6 +10,7 @@ import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { duplicateKey } from "../../salesIntelligence/transactions";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
 import { mongoEvaluationStore, toRestrictionRow, type DeskPlanRow, type DeskRestrictionRow, type EvaluationStore } from "../evaluation/store";
+import { findDeskRepsAt } from "../roster/store";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 
 /** The Lead's authoritative assignment (IMPL-01: `receiver_agent`), read at the command boundary. */
@@ -109,20 +109,9 @@ export const mongoDeskCommandStore: DeskCommandStore = {
 
   async reviewedRepName(agentId, at, session) {
     if (!mongoose.isValidObjectId(agentId)) return null;
-    const row = await getRepIdentityLinkModel()
-      .findOne(
-        {
-          agent_id: oid(agentId),
-          status: "reviewed",
-          role_kind: "sales_rep",
-          effective_from: { $lte: at },
-          $or: [{ effective_to: null }, { effective_to: { $gt: at } }],
-        },
-        { agent_name_snapshot: 1 },
-      )
-      .session(session)
-      .lean();
-    return row ? row.agent_name_snapshot : null;
+    // P08a-1 (F1): a reassignment target must be a desk rep (active Agent with a reviewed `sales_rep` link).
+    const [rep] = await findDeskRepsAt(at, session, [agentId]);
+    return rep?.agent_name ?? null;
   },
 
   async insertPlan(plan, session) {

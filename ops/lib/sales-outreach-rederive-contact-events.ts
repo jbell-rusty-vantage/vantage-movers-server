@@ -160,6 +160,11 @@ export type RederiveTally = {
   other_outbound_by_day: Record<string, ReturnType<typeof emptyOtherOutboundBreakdown>>;
   /** `outreach_evaluate` nominations (apply: enqueued; dry run: would be). */
   evaluations: number;
+  /**
+   * Final review (C8 minor): `Lead.receiver_agent` values the receiver fill wrote (apply only; the dry-run
+   * store fills nothing). A re-derivation can fill an empty receiver from the newest reviewed-rep call.
+   */
+  receivers_filled: number;
   dirty_rep_days: RepDayKey[];
 };
 
@@ -175,6 +180,7 @@ export function emptyTally(): RederiveTally {
     derived_by_reason: emptyReasons(),
     other_outbound_by_day: {},
     evaluations: 0,
+    receivers_filled: 0,
     dirty_rep_days: [],
   };
 }
@@ -242,6 +248,7 @@ export async function rederivePages(input: {
         tally.derived += applied.result.derived;
         tally.changed += applied.result.changed;
         tally.evaluations += applied.result.evaluations;
+        tally.receivers_filled += applied.result.receivers_filled;
         for (const key of applied.result.rep_days) dirty.set(repDayKeyOf(key), key);
       } else tally.pages_failed++;
       const last = rows.at(-1)!;
@@ -297,6 +304,7 @@ export function summarizeRederive(tally: RederiveTally, mode: "dry_run" | "apply
     derived_by_reason: tally.derived_by_reason,
     other_outbound_by_day: Object.fromEntries(days.map((day) => [day, tally.other_outbound_by_day[day]!])),
     [mode === "apply" ? "evaluations_enqueued" : "evaluations_would_enqueue"]: tally.evaluations,
+    receivers_filled: tally.receivers_filled,
     rep_days_dirty: tally.dirty_rep_days.length,
   };
 }

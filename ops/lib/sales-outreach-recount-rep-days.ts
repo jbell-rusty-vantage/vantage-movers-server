@@ -112,7 +112,8 @@ export async function readRowsInRange(from: string, to: string): Promise<Recount
  */
 export function planRecountKeys(input: {
   rows: readonly RecountRowBefore[];
-  roster: readonly string[];
+  /** The roster: one list for every day, or (P08a-1 `desk_reps`) the effective roster of each day. */
+  roster: readonly string[] | ((day: string) => readonly string[]);
   from: string;
   to: string;
   today: string;
@@ -124,13 +125,14 @@ export function planRecountKeys(input: {
     agents.push(row.agent_id);
     agentsByDay.set(row.business_day, agents);
   }
+  const rosterOf = typeof input.roster === "function" ? input.roster : () => input.roster as readonly string[];
   const keys: RepDayKey[] = [];
   for (let day = input.from; day <= input.to; day = addDays(day, 1)) {
     const agents = [...(agentsByDay.get(day) ?? [])].sort();
     const have = new Set(agents);
     for (const agent of agents) keys.push({ agent_id: agent, business_day: day });
     if (!input.materialize_roster || day >= input.today) continue;
-    for (const agent of [...new Set(input.roster)].sort()) if (!have.has(agent)) keys.push({ agent_id: agent, business_day: day, materialize: true });
+    for (const agent of [...new Set(rosterOf(day))].sort()) if (!have.has(agent)) keys.push({ agent_id: agent, business_day: day, materialize: true });
   }
   return keys;
 }
@@ -142,6 +144,7 @@ export function dryRunRepDayStore(base: RepDayStore): RepDayStore {
     readRow: (key, session) => base.readRow(key, session),
     watermarks: (session) => base.watermarks(session),
     rowsOfDay: (day) => base.rowsOfDay(day),
+    deskReps: (at, session) => base.deskReps(at, session),
     writeRow: async (_fields, previous) => (previous?.publication_revision ?? 0) + 1,
   };
 }

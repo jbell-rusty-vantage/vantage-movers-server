@@ -9,8 +9,8 @@
       "agent_id": null
     },
     "configuration_state": "active",
-    "configuration_version": "sod-cfg-7f3a",
-    "configuration_revision": 4,
+    "configuration_version": "sod-cfg-a1f2",
+    "configuration_revision": 8,
     "projection_revision": 41,
     "freshness": {
       "calls": {
@@ -52,8 +52,8 @@
         "goal": 100,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
-          "roster_version": "m1-roster-2026-10-05",
+          "configuration_version": "sod-cfg-a1f2",
+          "roster_version": "roster-desk-583f125c21cd",
           "basis": "default_goal",
           "scheduled_working_day": true,
           "override": null
@@ -116,8 +116,8 @@
         "goal": 100,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
-          "roster_version": "m1-roster-2026-10-05",
+          "configuration_version": "sod-cfg-a1f2",
+          "roster_version": "roster-desk-583f125c21cd",
           "basis": "default_goal",
           "scheduled_working_day": true,
           "override": null
@@ -180,8 +180,8 @@
         "goal": 100,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
-          "roster_version": "m1-roster-2026-10-05",
+          "configuration_version": "sod-cfg-a1f2",
+          "roster_version": "roster-desk-583f125c21cd",
           "basis": "default_goal",
           "scheduled_working_day": true,
           "override": null
@@ -244,8 +244,8 @@
         "goal": 50,
         "goal_provenance": {
           "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
-          "roster_version": "m1-roster-2026-10-05",
+          "configuration_version": "sod-cfg-a1f2",
+          "roster_version": "roster-desk-583f125c21cd",
           "basis": "override",
           "scheduled_working_day": true,
           "override": {
@@ -289,130 +289,6 @@
         },
         "unknown_reason": null,
         "projection_revision": 40,
-        "computed_as_of": "2026-10-05T14:58:30.000Z",
-        "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
-        },
-        "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
-        },
-        "sms_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
-        }
-      },
-      {
-        "agent_id": "6650a1b2c3d4e5f60718293e",
-        "agent_name": "Eve Rep",
-        "reviewed_link": true,
-        "goal_state": "no_goal_today",
-        "goal_label": "No goal today",
-        "goal": 0,
-        "goal_provenance": {
-          "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
-          "roster_version": "m1-roster-2026-10-05",
-          "basis": "override",
-          "scheduled_working_day": true,
-          "override": {
-            "business_date": "2026-10-05",
-            "goal": 0,
-            "reason": "absence"
-          }
-        },
-        "count_scope": "all_outbound",
-        "count_scope_label": "Outbound calls",
-        "actual_confirmed": 10,
-        "actual_awaiting_confirmation": 0,
-        "actual_basis": "projection",
-        "remaining": 0,
-        "progress": null,
-        "goal_reached": false,
-        "other_outbound": {
-          "count": 7,
-          "label": "Other outbound",
-          "breakdown": {
-            "no_lead": 2,
-            "lead_not_enrolled": 3,
-            "lead_closed": 0,
-            "before_activation": 2,
-            "ambiguous": 0,
-            "not_new_quoted": 0,
-            "unknown": 0
-          }
-        },
-        "alternate_scope": {
-          "count_scope": "eligible_new_quoted",
-          "count_scope_label": "Outbound calls (New/Quoted leads)",
-          "actual_confirmed": 3,
-          "actual_awaiting_confirmation": 0
-        },
-        "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:55:00.000Z",
-          "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": []
-        },
-        "unknown_reason": null,
-        "projection_revision": 33,
-        "computed_as_of": "2026-10-05T14:58:30.000Z",
-        "overdue_leads": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
-        },
-        "calls_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
-        },
-        "sms_due_today": {
-          "value": null,
-          "unknown_reason": "cadence_disabled"
-        }
-      },
-      {
-        "agent_id": "6650a1b2c3d4e5f60718293f",
-        "agent_name": "Xavier Agent",
-        "reviewed_link": false,
-        "goal_state": "not_on_roster",
-        "goal_label": "Not on roster",
-        "goal": null,
-        "goal_provenance": {
-          "source": "configuration",
-          "configuration_version": "sod-cfg-7f3a",
-          "roster_version": "m1-roster-2026-10-05",
-          "basis": "not_on_roster",
-          "scheduled_working_day": null,
-          "override": null
-        },
-        "count_scope": "all_outbound",
-        "count_scope_label": "Outbound calls",
-        "actual_confirmed": 4,
-        "actual_awaiting_confirmation": 0,
-        "actual_basis": "projection",
-        "remaining": null,
-        "progress": null,
-        "goal_reached": null,
-        "other_outbound": {
-          "count": 4,
-          "label": "Other outbound",
-          "breakdown": null
-        },
-        "alternate_scope": {
-          "count_scope": "eligible_new_quoted",
-          "count_scope_label": "Outbound calls (New/Quoted leads)",
-          "actual_confirmed": 0,
-          "actual_awaiting_confirmation": 0
-        },
-        "coverage": {
-          "state": "complete",
-          "known_complete_through": "2026-10-05T14:55:00.000Z",
-          "required_through": "2026-10-05T14:35:00.000Z",
-          "gaps": []
-        },
-        "unknown_reason": null,
-        "projection_revision": 12,
         "computed_as_of": "2026-10-05T14:58:30.000Z",
         "overdue_leads": {
           "value": null,

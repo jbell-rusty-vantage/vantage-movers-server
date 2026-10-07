@@ -64,6 +64,13 @@ export class MemoryRepDayStore implements RepDayStore {
         breakdown: (row as Partial<RepDayRowFields>).other_outbound != null,
       }));
   }
+  /** P08a-1: the desk reps a test declares (`deskRepIds`), whatever the instant; the lookups are recorded. */
+  deskRepIds: string[] = [];
+  deskRepQueries: Date[] = [];
+  async deskReps(at: Date) {
+    this.deskRepQueries.push(at);
+    return this.deskRepIds;
+  }
   row(agent: string, day: string) {
     return this.rows.get(`${agent}|${day}`) ?? null;
   }

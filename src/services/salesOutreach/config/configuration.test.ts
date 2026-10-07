@@ -549,3 +549,30 @@ test("C2cd PATCH: only the known rule values are accepted (400 INVALID_INPUT oth
   const back = await attempt(() => undefined, "rollback", 8);
   assert.deepEqual([back.response.changed, back.response.content_hash], [true, REVISION_5_HASH]);
 });
+
+// ---- P08a-1: goals.roster_rule --------------------------------------------------------------
+
+test("P08a-1: the revision-5 value (no roster_rule) re-parses to the same hash; the key stays absent", () => {
+  const parsed = salesOutreachConfigurationValueSchema.parse(revision5());
+  assert.equal(configurationContentHash(parsed), REVISION_5_HASH);
+  assert.equal("roster_rule" in parsed.goals, false, "no default leaks into old versions");
+});
+
+test("P08a-1: an override for an Agent off the configured list is refused under explicit and accepted under desk_reps; the rule is a closed enum", () => {
+  const stranger = "9".repeat(24);
+  const withOverride = (rule?: unknown) => {
+    const value = revision5();
+    value.goals!.effective_day_overrides = [{ agent_id: stranger, business_date: "2026-10-05", goal: 0, reason: "absence" }];
+    if (rule !== undefined) value.goals!.roster_rule = rule;
+    return value;
+  };
+  const explicit = salesOutreachConfigurationValueSchema.safeParse(withOverride());
+  assert.equal(explicit.success, false);
+  assert.ok(explicit.error!.issues.some((i) => i.path.join(".") === "goals.effective_day_overrides.0.agent_id"), "override for a rep not on the roster");
+  const explicitNamed = salesOutreachConfigurationValueSchema.safeParse(withOverride("explicit"));
+  assert.equal(explicitNamed.success, false);
+  const derived = salesOutreachConfigurationValueSchema.safeParse(withOverride("desk_reps"));
+  assert.equal(derived.success, true, JSON.stringify(derived.error?.issues));
+  assert.equal(derived.data!.goals.roster_rule, "desk_reps");
+  assert.equal(salesOutreachConfigurationValueSchema.safeParse(withOverride("everyone")).success, false, "closed enum");
+});

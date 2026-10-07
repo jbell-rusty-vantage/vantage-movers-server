@@ -124,6 +124,19 @@ export const SALES_OUTREACH_GOAL_STATES = ["goal", "no_goal_today", "not_on_rost
 export const SALES_OUTREACH_GOAL_COUNT_SCOPES = ["all_outbound", "eligible_new_quoted"] as const;
 export type SalesOutreachGoalCountScope = (typeof SALES_OUTREACH_GOAL_COUNT_SCOPES)[number];
 
+/**
+ * Who is on the daily-goal roster (P08a-1, Owner decision 2026-10-07 "only active Agents with a
+ * RingCentral Account connection"). `explicit`: the configured `goals.rep_work_schedules` list is the
+ * roster (the original P08a encoding). `desk_reps`: the roster is derived — every Agent that is
+ * `active` and holds a reviewed `sales_rep` identity link at the instant of the read (today) or at the
+ * end of a past day; `rep_work_schedules` then only holds per-rep settings (working days, goal) and
+ * may name Agents who are not reps yet. Code default when `goals.roster_rule` is absent: `explicit`.
+ */
+export const SALES_OUTREACH_ROSTER_RULES = ["explicit", "desk_reps"] as const;
+export type SalesOutreachRosterRule = (typeof SALES_OUTREACH_ROSTER_RULES)[number];
+/** Every ISO weekday: the working days of a desk rep without a configured schedule (same as the installer). */
+export const SALES_OUTREACH_ALL_WEEKDAYS: readonly number[] = Object.freeze([1, 2, 3, 4, 5, 6, 7]);
+
 export const SALES_OUTREACH_ENROLLMENT_MODES = ["report", "apply", "verify"] as const;
 export const SALES_OUTREACH_ENROLLMENT_RUN_STATUSES = ["running", "completed", "failed", "paused"] as const;
 

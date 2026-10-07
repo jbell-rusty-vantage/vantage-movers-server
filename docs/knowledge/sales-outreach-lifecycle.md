@@ -102,7 +102,7 @@ Every created subject re-derives its Lead's calls and SMS since New York midnigh
 
 ### 1.6 Assignment, changes and the ways out
 
-- **Assignment.** The assignee (`assigned_agent_id`) is the Lead's Receiver agent only while that Agent has a reviewed `sales_rep` link; otherwise Unassigned. The Receiver agent comes from Granot's rep, the extension's CRM username, a desk reassignment (`manual`, never overridden by Granot) or the reviewed rep who most recently called the Lead (`ringcentral_rep_call`, a placeholder Granot's rep replaces). An Accounts connect, change or disconnect re-syncs the affected subjects at once. Sil was connected by the Owner on 2026-10-06 and added to the goals roster at revision 7; Jason waits for his extension (D2).
+- **Assignment.** The assignee (`assigned_agent_id`) is the Lead's Receiver agent only while that Agent is a **desk rep** — `active` in Setup → People and holding a reviewed `sales_rep` link (P08a-1, since 2026-10-07); otherwise Unassigned. Deactivating an Agent re-syncs that Agent's open subjects to Unassigned the same way a disconnect does; reassignment targets and Rep sign-ins need a desk rep too. The Receiver agent comes from Granot's rep, the extension's CRM username, a desk reassignment (`manual`, never overridden by Granot) or the reviewed rep who most recently called the Lead (`ringcentral_rep_call`, a placeholder Granot's rep replaces). An Accounts connect, change or disconnect re-syncs the affected subjects at once. Sil was connected by the Owner on 2026-10-06 and added to the goals roster at revision 7; Jason waits for his extension (D2).
 - **Lead changes reach the desk** through the `entity_changes` tail (every minute) plus the 5-minute revision reconcile; the subject is rebuilt from current facts in an `outreach_lead_change` job. A desk assignment that finds a stale copy refreshes the subject, publishes live and answers 409 `assignment_changed` with `message: "refreshed"` (B9).
 - **Ways out.** An official Booking or Cancellation, a Bad Lead, or an accepted Priority 5/7/8 closes the subject permanently. Priority 3 or an unmapped code keeps it open with no routine cadence. Reassignment never changes age or history.
 
@@ -154,6 +154,7 @@ A call shows on the desk twice: first as **awaiting confirmation** seconds after
 ### 3.3 Goal rows and count scope
 
 - One `sales_outreach_rep_day_projections` row per rep per New York date with activity, plus a frozen zero row for each roster rep's past day without activity (C5). Goal = effective-dated override, else the scheduled goal, else 0; `remaining = max(0, goal − actual)`; team goal = sum of roster goals. Yesterday's snapshot freezes on the first recount after midnight.
+- **Who is on the roster (P08a-1, F1/F2, 2026-10-07).** With `goals.roster_rule: desk_reps` the roster is derived: every Agent that is `active` (Setup → People) and holds a reviewed `sales_rep` link (Accounts) at the roster instant — now for today, the end of the New York day for a past day. Those **desk reps** are the only Daily call goals rows, the only goal holders, the only C5 zero rows and the team denominator; `goals.rep_work_schedules` keeps per-rep working days and goals (a rep without a row: every weekday, the default goal) and may name Agents who are not reps yet. Connecting an active Agent in Accounts, or activating a connected one, enrolls them at once; disconnecting or deactivating removes them at once (today's denominator moves; frozen past days do not). Calls by anyone else keep their credit on the contact events but are not rows: the Owner sees "Also today: N outbound calls by M people not on the roster" under the table. With the key absent (`explicit`) the configured list is the roster, as before.
 - **Count scope from configuration (C1a, decision D1 A).** `goals.count_scope_schedule[] {from_day, scope}` decides the headline per day; absent = `all_outbound` every day. It is absent in production, so the headline is all confirmed outbound calls. A PATCH may only change days after today (`count_scope_not_prospective`).
 - **Both scopes are stored (C1b).** Each row stores `actual_{confirmed,awaiting}_{all,eligible}`; the read serves the headline scope and the other as `alternate_scope` (team: `goals.outbound_calls.alternate`), shown as "97 outbound · 12 to enrolled Leads". The alternate count never drives remaining, progress or goal reached.
 
@@ -183,7 +184,7 @@ All tolerances are runtime configuration read through `deskTimingOf` (`config/ti
 - Two owned subscriptions: `calls` (one account-level telephony-session filter) and `rep_sms` (one message-store filter per current reviewed `sales_rep` mailbox). Each create generates a `deliveryMode.verificationToken`; the webhook route refuses (403, nothing stored) a delivery for a token-bearing subscription whose `Verification-Token` header is missing or wrong, and counts the refusal on the subscription row.
 - **A token can only be set at create.** RingCentral ignores `verificationToken` on `PUT`. A `PUT` (renewal, filter drift) therefore never mints or records a token (CW2). Adding a token, or recovering a subscription whose deliveries are refused, takes `replace`: create a new subscription with a fresh token, record it, then delete the old one.
 - Incident 2026-10-05 17:12Z → 2026-10-06 15:20Z: an operator `--apply` `PUT` a new token onto `calls`; RingCentral kept delivering without the header, every telephony delivery was refused for about 22 hours and RingCentral blacklisted the subscription. Calls were not lost (the Call Log lane captured them); awaiting-confirmation, live fan-out and the freshness chip were dead. It was repaired by delete + create and fixed in code by CW2.
-- Health (`*/5`, read-only): `webhook_subscription_health:{calls,rep_sms}` `last_run.error_code` null when healthy, else `subscription_missing`, `expired`, `blacklisted`, `filter_drift`, `token_missing`, `deliveries_refused` (Active at the provider while the route refuses its deliveries; clears on the first stored delivery or 30 min after the last refusal), and for `rep_sms` `no_mailboxes` / `not_connected`. The daily 06:15Z cron renews, `PUT`s drifted filters and applies a `calls` `replace`; it never replaces `rep_sms` (the operator script does).
+- Health (`*/5`, read-only): `webhook_subscription_health:{calls,rep_sms}` `last_run.error_code` null when healthy, else `subscription_missing`, `expired`, `blacklisted`, `filter_drift`, `token_missing`, `deliveries_refused` (Active at the provider while the route refuses its deliveries: at least 3 refusals within 30 min and no stored delivery since, so one stray POST naming our subscription id never triggers a replace; clears on the first stored delivery or 30 min after the last refusal), and for `rep_sms` `no_mailboxes` / `not_connected`. The daily 06:15Z cron renews, `PUT`s drifted filters and applies a `calls` `replace`; it never replaces `rep_sms` (the operator script does).
 
 ## 4. Vocabulary that confuses
 
@@ -201,6 +202,7 @@ All tolerances are runtime configuration read through `deskTimingOf` (`config/ti
 | coverage `partial` on today's rows | capture is still inside the 25-minute tail or behind | an outage (see freshness for that) |
 | `delayed` / `webhook_silent` | the newest call webhook is older than 30 min after today's stream started | a missing subscription (the health rows report that) |
 | `admission` | B6 automatic expansion admission (`admission:<date>` cohort) or the B8 admissions read | intake |
+| desk rep | an Agent that is `active` and holds a reviewed `sales_rep` link at the instant in question (P08a-1): on the roster, assignable, able to sign in as a Rep | any Agent with a RingCentral extension, or any reviewed link (a deactivated Agent's link stays reviewed but makes nobody a rep) |
 
 ## 5. Crons, jobs and identities
 
@@ -292,6 +294,7 @@ All production writes pass the production-writer guard (local HEAD must equal th
 
 | Rolling the server back below | First PATCH out | Present in production now |
 | --- | --- | --- |
+| P08a-1 F1/F2 (the commit after `ebfc07ef`) | `goals.roster_rule` (the derived roster; the explicit list keeps working without it — re-add the retired reps' rows only if the Owner wants them back) | set to `desk_reps` on 2026-10-07 (see §7.1) |
 | wave 3 (`6b585f5b` → e.g. `521d0fff`) | `transition.expansion_admission_enabled` (B6) | yes, `true` (revision 9) |
 | wave 2 (`0159ec52`) | `cadence.no_contact_number_rule`, `evidence.call_association_rule`, `migration.decision_reconcile_per_run`; and set `intake_default_rule.granot_created` back to `review` (pre-B3 code refuses `new` as `policy_unavailable`) | `no_contact_number_rule` yes (revision 6); `granot_created: new` yes (revision 8) |
 | wave 0 (`11c9adee`, A0) | `operations`, `evidence.*_minutes`, `migration.feed_*`, `goals.count_scope_schedule` | `operations` yes (revision 10) |
@@ -319,6 +322,7 @@ All production writes pass the production-writer guard (local HEAD must equal th
 | D-C2d | `single_active_subject_on_link` built, **left off** | none |
 | D-C3 | rep-day rows before 2026-10-05 freeze with the roster of the day they were frozen | none |
 | A5 / OPS-6 | evaluate drain 300 jobs / 50 s / concurrency 2 | revision 10 |
+| P08a-1 (F1/F2, user 2026-10-07) | the roster is the desk reps: active Agents with a reviewed `sales_rep` link; automatic enrollment and removal; non-rep callers are an Owner footnote; event-level credit unchanged; deactivation retires no link | `goals.roster_rule: desk_reps` (revision 11), the four retired reps' settings rows dropped (revision 12); see the LEDGER for the instants |
 
 The packet record with approval references is [DECISIONS.md](../sales-outreach-desk/DECISIONS.md) ("Outreach lifecycle repair" entries).
 
@@ -334,5 +338,6 @@ The packet record with approval references is [DECISIONS.md](../sales-outreach-d
 - **Subscriptions.** The daily cron rarely sees a refusal ≤ 30 min old, so a `deliveries_refused` subscription is healed by the operator `--apply` (`replace`) during staffed hours, not by the 06:15Z cron. A failed DELETE after a successful `replace` create leaves two subscriptions (delete the leftover).
 - **What the engine hard-codes or ignores** (FINDINGS T7): credit rules are code (`engine/credit.ts`); `evidence.*` labels; per-day open/close minutes must be uniform and `quoted_open_minute` must equal the opening; the P05f reentry thresholds reuse `late_arrival_rule`; the P10a Quoted activation cutoff reuses `quoted_same_day_cutoff_minute`; 400-day horizon and 30-date window history.
 - **Minor edges** (FINDINGS T8): 19:30:59 counts as "through 19:30"; a Quoted date more than 400 days out reads `not_required`.
-- **Historic rep-days** before 2026-10-05 carry the roster snapshot of the day they were frozen (D-C3).
+- **Historic rep-days** before 2026-10-05 carry the roster snapshot of the day they were frozen (D-C3). Days frozen before P08a-1 (2026-10-05 and 2026-10-06) keep the explicit roster of revision 7–10, which still names the four retired reps at goal 100.
+- **`Agent.active` has no history** (P08a-1). The identity links are temporal, so a past day's roster reads the link that was effective at that day's end but the Agent's *current* active flag; it only matters for a past day without a frozen row (C5 freezes every desk rep's row after midnight).
 - **Not covered by the C4 wake:** a subject created later does not re-derive a number where its Lead is only in `other_leads`.

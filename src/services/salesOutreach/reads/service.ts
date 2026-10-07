@@ -2,6 +2,7 @@ import type {
   SalesOutreachCapabilitiesDto,
   SalesOutreachRepDaysDto,
   SalesOutreachRepDaysQuery,
+  SalesOutreachRosterDto,
   SalesOutreachTeamDto,
   SalesOutreachTeamQuery,
 } from "../../../validation/v1/salesOutreachReads";
@@ -23,12 +24,15 @@ import {
 import { repDayCoverage } from "../contacts/repDay";
 import { deskTimingOf } from "../config/timing";
 import type { CallWatermarks } from "../evidence/coverage";
+import { effectiveRoster, onRoster, rosterInstant, rosterRuleOf, type EffectiveRoster } from "../roster/rule";
 import {
+  composeOtherCallers,
   composeRepDay,
   composeTeamGoals,
   dayCountScope,
   fallbackCountScope,
   resolveRepDayGoal,
+  type OtherCallers,
   type RepDayRow,
 } from "./goals";
 import { mongoDeskQueueStore, type DeskQueueStore } from "./deskStore";
@@ -50,9 +54,48 @@ export { requireDeskConfiguration, resolveBusinessDay, type DeskReadDeps } from 
 export const repDayCallWatermarks = readCallWatermarks;
 
 /**
- * Per-rep goal rows for one day. `agentId` narrows to one rep; otherwise roster reps (in roster
- * order) come first, then Agents with a row that day who are not on the roster. Each row carries the
- * rep's current cadence counts (same rule as the team cards, at `now`).
+ * The effective roster of a business day for a read (P08a-1): under `desk_reps` the desk reps (active
+ * Agents with a current reviewed `sales_rep` link) at the day's roster instant — `now` today, the end
+ * of the New York day for a past day — joined to their configured settings; under the explicit rule
+ * the configured list. Names come from the reviewed link; a past-day member without a current link
+ * falls back to the Agent record.
+ */
+async function readEffectiveRoster(input: {
+  store: SalesOutreachReadStore;
+  configuration: ActiveConfiguration;
+  business_day: string;
+  today: string;
+  now: Date;
+}): Promise<{ roster: EffectiveRoster; at: Date; names: Map<string, string> }> {
+  const goals = input.configuration.value.goals;
+  const at = rosterInstant(input.business_day, input.today, input.now);
+  if (rosterRuleOf(goals) === "explicit") return { roster: effectiveRoster(goals, null), at, names: new Map() };
+  const reps = await input.store.findDeskReps(at);
+  return { roster: effectiveRoster(goals, [...reps.keys()]), at, names: reps };
+}
+
+function rosterDto(roster: EffectiveRoster, at: Date, names: Map<string, string>): SalesOutreachRosterDto {
+  return {
+    rule: roster.rule,
+    roster_version: roster.roster_version,
+    at: at.toISOString(),
+    members: roster.members.map((member) => ({
+      agent_id: member.agent_id,
+      agent_name: names.get(member.agent_id) ?? null,
+      working_days: [...member.working_days],
+      scheduled_goal: member.scheduled_goal,
+      schedule_source: member.schedule_source,
+    })),
+  };
+}
+
+/**
+ * Per-rep goal rows for one day. `agentId` narrows to one rep. Otherwise, under the explicit roster
+ * rule, roster reps (in roster order) come first, then Agents with a row that day who are not on the
+ * roster; under `desk_reps` (P08a-1) only the effective roster's reps are rows, and the calls of any
+ * other Agent with a row are summed into `other_callers` (the Owner's footnote), never listed as a rep
+ * or counted in the team goal. Each row carries the rep's current cadence counts (same rule as the
+ * team cards, at `now`).
  */
 async function composeRepDays(input: {
   store: SalesOutreachReadStore;
@@ -68,13 +111,22 @@ async function composeRepDays(input: {
   coverage: DeskReadCoverage;
 }) {
   const { store, configuration, business_day, today, now } = input;
-  const roster = (configuration.value.goals.rep_work_schedules ?? []).map((row) => row.agent_id);
+  const effective = await readEffectiveRoster({ store, configuration, business_day, today, now });
+  const { roster } = effective;
+  const derived = roster.rule === "desk_reps";
+  const rosterIds = roster.members.map((member) => member.agent_id);
   const rows: RepDayRow[] = await store.findRepDayRows(business_day, input.agent_id ? [input.agent_id] : null);
   const rowByAgent = new Map(rows.map((row) => [row.agent_id, row]));
+  const offRoster = rows.filter((row) => !onRoster(roster, row.agent_id));
   const agents = input.agent_id
     ? [input.agent_id]
-    : [...roster, ...rows.map((row) => row.agent_id).filter((id) => !roster.includes(id)).sort()];
-  const names = await store.findReviewedRepNames(agents, now);
+    : derived
+      ? rosterIds
+      : [...rosterIds, ...offRoster.map((row) => row.agent_id).sort()];
+  const reviewed = await store.findReviewedRepNames(agents, now);
+  // A past-day member without a current reviewed link keeps its name from the Agent record (not "Unknown rep").
+  const agentNames = await store.findAgentNames(agents.filter((id) => !reviewed.has(id) && !effective.names.has(id)));
+  const nameOf = (id: string) => reviewed.get(id) ?? effective.names.get(id) ?? agentNames.get(id) ?? null;
   // A missing rep-day row is a confirmed 0 only when goal call coverage (observed capture minus the
   // settlement allowance, never past the contact-event derivation; D-A3) reaches the day's requirement
   // (today: as_of − today tolerance), and the day starts on/after the derivation's coverage start (olr C0).
@@ -85,8 +137,8 @@ async function composeRepDays(input: {
     const row = rowByAgent.get(agent_id) ?? null;
     const goals = composeRepDay({
       agent_id,
-      agent_name: names.get(agent_id) ?? null,
-      reviewed_link: names.has(agent_id),
+      agent_name: nameOf(agent_id),
+      reviewed_link: reviewed.has(agent_id),
       goal: resolveRepDayGoal({
         goals: configuration.value.goals,
         configuration_version: configuration.version,
@@ -94,6 +146,7 @@ async function composeRepDays(input: {
         business_day,
         today,
         row,
+        roster,
       }),
       row,
       fallback_scope: fallback,
@@ -102,7 +155,14 @@ async function composeRepDays(input: {
     return { ...goals, ...cadence(agent_id) };
   });
   const projection_revision = rows.reduce<number | null>((max, row) => Math.max(max ?? 0, row.publication_revision), null);
-  return { reps, scope: dayCountScope(rows), projection_revision };
+  const other_callers: OtherCallers | null = derived && !input.agent_id ? composeOtherCallers(offRoster) : null;
+  return {
+    reps,
+    scope: dayCountScope(rows),
+    projection_revision,
+    roster: rosterDto(roster, effective.at, new Map([...effective.names, ...reviewed, ...agentNames])),
+    other_callers,
+  };
 }
 
 
@@ -157,7 +217,8 @@ export async function readRepDays(actor: OutreachActor, query: SalesOutreachRepD
 /**
  * `GET /team` — Owner/Manager. M1 serves the goal parts (cards 1–2, Daily call goals table) and
  * freshness; overdue cards, Unassigned and Leads needing attention are explicit
- * `not_available_in_m1` fields until the queue lands. Readiness blockers are Owner-only.
+ * `not_available_in_m1` fields until the queue lands. Readiness blockers are Owner-only, and so is
+ * the `other_callers` footnote (P08a-1).
  */
 export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQuery, deps: DeskReadDeps): Promise<SalesOutreachTeamDto> {
   const store = deps.store ?? mongoSalesOutreachReadStore;
@@ -188,9 +249,10 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
     business_day,
     is_today: business_day === today,
     goal_metrics_enabled: goalMetrics,
-    goals: days ? composeTeamGoals(days.reps, days.scope) : null,
+    goals: days ? composeTeamGoals(days.reps, days.scope, actor.role === "owner" ? days.other_callers : null) : null,
     goals_unknown_reason: days ? null : "goal_metrics_disabled",
     daily_call_goals: days ? days.reps : null,
+    roster: days ? days.roster : null,
     distinct_overdue_leads: cadence.distinct_overdue_leads,
     quoted_overdue_leads: cadence.quoted_overdue_leads,
     unassigned: cadence.unassigned,

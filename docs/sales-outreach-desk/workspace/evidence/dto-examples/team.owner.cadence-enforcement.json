@@ -71,7 +71,8 @@
         "not_new_quoted": 1,
         "unknown": 0
       },
-      "roster_size": 5
+      "roster_size": 5,
+      "other_callers": null
     },
     "goals_unknown_reason": null,
     "daily_call_goals": [
@@ -405,7 +406,7 @@
       },
       {
         "agent_id": "6650a1b2c3d4e5f60718293f",
-        "agent_name": null,
+        "agent_name": "Xavier Agent",
         "reviewed_link": false,
         "goal_state": "not_on_roster",
         "goal_label": "Not on roster",
@@ -460,6 +461,88 @@
         }
       }
     ],
+    "roster": {
+      "rule": "explicit",
+      "roster_version": "m1-roster-2026-10-05",
+      "at": "2026-10-05T15:00:00.000Z",
+      "members": [
+        {
+          "agent_id": "6650a1b2c3d4e5f60718293a",
+          "agent_name": "Alice Rep",
+          "working_days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "scheduled_goal": null,
+          "schedule_source": "configured"
+        },
+        {
+          "agent_id": "6650a1b2c3d4e5f60718293b",
+          "agent_name": "Bob Rep",
+          "working_days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "scheduled_goal": null,
+          "schedule_source": "configured"
+        },
+        {
+          "agent_id": "6650a1b2c3d4e5f60718293c",
+          "agent_name": "Cara Rep",
+          "working_days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "scheduled_goal": null,
+          "schedule_source": "configured"
+        },
+        {
+          "agent_id": "6650a1b2c3d4e5f60718293d",
+          "agent_name": "Dan Rep",
+          "working_days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "scheduled_goal": null,
+          "schedule_source": "configured"
+        },
+        {
+          "agent_id": "6650a1b2c3d4e5f60718293e",
+          "agent_name": "Eve Rep",
+          "working_days": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "scheduled_goal": null,
+          "schedule_source": "configured"
+        }
+      ]
+    },
     "distinct_overdue_leads": {
       "value": 2,
       "unknown_reason": null

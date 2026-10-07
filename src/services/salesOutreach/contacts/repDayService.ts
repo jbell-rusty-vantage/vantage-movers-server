@@ -5,6 +5,8 @@ import type { ActiveConfiguration } from "../config/load";
 import { deskTimingOf } from "../config/timing";
 import { loadCallWatermarks, type CallWatermarks } from "../evidence/coverage";
 import { newYorkBusinessDay } from "../reads/businessDay";
+import { onRoster, rosterInstant, type EffectiveRoster } from "../roster/rule";
+import { findDeskRepIdsAt, loadEffectiveRoster } from "../roster/store";
 import type { RepDayKey } from "./apply";
 import { composeRepDayRow, countScopeForDay, type GoalSnapshot, type RepDayEventFacts, type RepDayRowFields } from "./repDay";
 
@@ -45,6 +47,8 @@ export type RepDayStore = {
   watermarks(session: ClientSession): Promise<CallWatermarks>;
   /** Rows of a day (refresh pass): agent id, coverage state, whether the goal is frozen, the stored count scope and whether both scopes' counts and the breakdown are stored. */
   rowsOfDay(day: string): Promise<RepDayRefreshRow[]>;
+  /** P08a-1: the desk reps (active Agents with a reviewed `sales_rep` link) at `at`; read inside the recount transaction when a session is given. */
+  deskReps(at: Date, session?: ClientSession | null): Promise<readonly string[]>;
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -152,7 +156,27 @@ export const mongoRepDayStore: RepDayStore = {
       breakdown: row.other_outbound != null,
     }));
   },
+
+  deskReps(at, session) {
+    return findDeskRepIdsAt(at, session);
+  },
 };
+
+/**
+ * The effective roster a rep-day of `businessDay` is counted under (P08a-1): the configuration's rule
+ * applied at the day's roster instant (today: `now`; a past day: the end of that New York day), read
+ * through the store so a recount sees it inside its own transaction.
+ */
+export function rosterForRepDay(
+  configuration: ActiveConfiguration,
+  businessDay: string,
+  now: Date,
+  store: Pick<RepDayStore, "deskReps">,
+  session?: ClientSession | null,
+): Promise<EffectiveRoster> {
+  const today = newYorkBusinessDay(now);
+  return loadEffectiveRoster(configuration.value.goals, rosterInstant(businessDay, today, now), (at, s) => store.deskReps(at, s), session);
+}
 
 export type RepDayRecount = Readonly<{
   outcome: "written" | "unchanged" | "no_activity";
@@ -169,10 +193,13 @@ export type RepDayRecountOptions = Readonly<{
   materialize?: boolean;
 }>;
 
-/** Whether the zero-activity row of `key` may be materialized under `configuration` at `today` (olr C5). */
-export function materializesZeroRow(key: RepDayKey, configuration: ActiveConfiguration, today: string): boolean {
+/**
+ * Whether the zero-activity row of `key` may be materialized at `today` (olr C5): a past day and an Agent
+ * on the effective roster of that day (P08a-1: under `desk_reps` only an active, connected rep).
+ */
+export function materializesZeroRow(key: RepDayKey, roster: EffectiveRoster, today: string): boolean {
   if (key.business_day >= today) return false;
-  return (configuration.value.goals?.rep_work_schedules ?? []).some((row) => row.agent_id === key.agent_id);
+  return onRoster(roster, key.agent_id);
 }
 
 /**
@@ -196,6 +223,9 @@ export async function recountRepDay(
   const events = await store.events(key, session);
   const previous = await store.readRow(key, session);
   const watermarks = await store.watermarks(session);
+  // P08a-1: the roster of the day (desk reps at the day's roster instant under `desk_reps`), read in the
+  // same transaction; a frozen snapshot ignores it (`goalSnapshotFor`).
+  const roster = await rosterForRepDay(configuration, key.business_day, now, store, session);
   const fields = composeRepDayRow({
     agent_id: key.agent_id,
     business_day: key.business_day,
@@ -210,6 +240,7 @@ export async function recountRepDay(
     watermarks,
     // olr C0: settlement allowance and today tolerance from the configuration (code defaults when unset).
     timing: deskTimingOf(configuration.value),
+    roster,
   });
   // The fingerprint covers the scope; the stored-scope check also rewrites a row whose scope field
   // disagrees with its fingerprint, so the refresh pass never re-selects it forever; likewise a row that
@@ -219,7 +250,7 @@ export async function recountRepDay(
   if (
     !previous &&
     fields.actual_confirmed_all + fields.actual_awaiting_all === 0 &&
-    !(options.materialize && materializesZeroRow(key, configuration, today))
+    !(options.materialize && materializesZeroRow(key, roster, today))
   )
     return { outcome: "no_activity", publication_revision: null, fields };
   const publication = await store.writeRow(fields, previous, now, session);

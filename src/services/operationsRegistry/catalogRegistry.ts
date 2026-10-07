@@ -6,6 +6,8 @@ import { FormLead } from "../../models/FormLead";
 import { Merchant, type MerchantDocument } from "../../models/Merchant";
 import { normalizeAgentName } from "../agents/agentName";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
+import { publishOutreachLive } from "../salesOutreach/live/publish";
+import { enqueueDeskResyncForAgents } from "../salesOutreach/subjects/agentWake";
 import { normalizeGranotCrmUsername } from "./catalogNormalization";
 import { RegistryError } from "./errors";
 import { withRegistryMutation } from "./registryAudit";
@@ -421,7 +423,12 @@ async function setCatalogActivation(
   const entityType = kind === "agents" ? "agent" : "merchant";
   const audit = mutableAudit(entityType, command.id, command.reason);
   audit.action = command.active ? "activate" : "deactivate";
-  return withRegistryMutation({
+  // Sales Outreach Desk (P08a-1, F1/F2): an Agent's activation changes who is a desk rep. The desk
+  // assigns a Lead only to an active Agent with a reviewed `sales_rep` link, so the Agent's open
+  // subjects are re-synced in this transaction (the same wake an Accounts connect/disconnect uses)
+  // and the desk is told after commit. The roster itself is derived at read time, so nothing else moves.
+  let deskSubjectIds: string[] = [];
+  const item = await withRegistryMutation({
     actor,
     audit,
     invalidateKeys: [kind, "catalog", "facets"],
@@ -467,9 +474,14 @@ async function setCatalogActivation(
       const item = toCatalogItem(documentToCatalogLean(doc));
       audit.before = record(before);
       audit.after = item as unknown as Record<string, unknown>;
+      if (kind === "agents" && (before.active !== false) !== command.active)
+        deskSubjectIds = await enqueueDeskResyncForAgents([command.id], `activation:${new mongoose.Types.ObjectId().toHexString()}`, session, new Date());
       return item;
     },
   });
+  if (kind === "agents" && deskSubjectIds.length)
+    await publishOutreachLive({ topic: "outreach_desk", subject_ids: deskSubjectIds, agent_ids: [command.id], cause: "command" });
+  return item;
 }
 
 async function assertCatalogNameAvailable(

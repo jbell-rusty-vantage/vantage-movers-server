@@ -45,6 +45,8 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   names = new Map<string, string>();
   /** Agent record names (no reviewed link needed). */
   agentNames = new Map<string, string>();
+  /** Agents with `active: false` (P08a-1): a reviewed link alone does not make them desk reps. */
+  inactiveAgents = new Set<string>();
   calls: CaptureSyncRow | null = null;
   /** Newest call webhook receipt (`readLastCallWebhookAt`). */
   callWebhookAt: Date | null = null;
@@ -63,6 +65,13 @@ export class MemoryReadStore implements SalesOutreachReadStore {
   }
   async findAgentNames(agentIds: readonly string[]) {
     return new Map([...this.agentNames].filter(([id]) => agentIds.includes(id)));
+  }
+  /** The instants `findDeskReps` was asked for (P08a-1: `now` today, the end of a past New York day). */
+  deskRepQueries: Date[] = [];
+  /** Desk reps = every reviewed name (`names`) whose Agent is not in `inactiveAgents`; the instant is recorded, not applied. */
+  async findDeskReps(at: Date) {
+    this.deskRepQueries.push(at);
+    return new Map([...this.names].filter(([id]) => !this.inactiveAgents.has(id)));
   }
   async readCallsCapture() {
     return this.calls;

@@ -395,11 +395,17 @@ test("CW2: an Active matching subscription whose deliveries the route refuses pl
 });
 
 test("CW2: deliveriesRefusedNow (pure)", () => {
-  const facts = { count: 1, last_refused_at: new Date(NOW.getTime() - DELIVERY_REFUSAL_RECENT_MS), last_reason: "token_mismatch", accepted_since: false };
+  const facts = { count: 3, last_refused_at: new Date(NOW.getTime() - DELIVERY_REFUSAL_RECENT_MS), last_reason: "token_mismatch", accepted_since: false };
   assert.equal(deliveriesRefusedNow(facts, NOW), true, "the window edge counts");
   assert.equal(deliveriesRefusedNow({ ...facts, accepted_since: true }, NOW), false);
   assert.equal(deliveriesRefusedNow({ ...facts, last_refused_at: new Date(NOW.getTime() - DELIVERY_REFUSAL_RECENT_MS - 1) }, NOW), false);
   assert.equal(deliveriesRefusedNow(null, NOW), false);
+  // Final-review hardening: one refused POST naming our id is not an outage; a row without kept instants falls back to its total.
+  assert.equal(deliveriesRefusedNow({ ...facts, count: 1 }, NOW), false, "fewer than DELIVERY_REFUSAL_MIN_RECENT");
+  const minute = (n: number) => new Date(NOW.getTime() - n * 60_000);
+  assert.equal(deliveriesRefusedNow({ ...facts, count: 50, recent: [minute(1)] }, NOW), false, "kept instants decide: one inside the window");
+  assert.equal(deliveriesRefusedNow({ ...facts, count: 50, recent: [minute(45), minute(40), minute(1)] }, NOW), false, "two of three are outside the window");
+  assert.equal(deliveriesRefusedNow({ ...facts, count: 50, recent: [minute(25), minute(10), minute(1)] }, NOW), true);
 });
 
 test("CW2: replace refuses a foreign id and deletes nothing when the create fails", async () => {

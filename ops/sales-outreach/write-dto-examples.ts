@@ -255,6 +255,14 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     { ...synced("109", "2026-10-05T14:56:00Z"), sms_pending: { identity: 1, association: 0, agent_id: null } },
   ];
   const smsCapture: DeskReadDeps = { ...deps({ ...desk, controls: { ...desk.controls, rep_sms_capture_enabled: true } }, "sod-cfg-5e60", 7), store: smsStore };
+  // P08a-1 (F1/F2): the derived roster — desk reps are the active Agents with a current reviewed `sales_rep`
+  // link. Eve's Agent is deactivated (her link alone no longer makes her a rep) and Xavier has calls without
+  // a link: neither is a row; Xavier's calls are the Owner's `other_callers` footnote. Bob has no schedule
+  // entry and takes the defaults (every weekday, the default goal).
+  const deskRepsStore = exampleStore();
+  deskRepsStore.inactiveAgents = new Set([E]);
+  const deskRepsGoals = { ...desk.goals!, roster_rule: "desk_reps" as const, rep_work_schedules: desk.goals!.rep_work_schedules!.filter((row) => row.agent_id !== B) };
+  const deskReps: DeskReadDeps = { ...deps({ ...desk, goals: deskRepsGoals }, "sod-cfg-a1f2", 8), store: deskRepsStore };
   const change = { topic: "outreach_desk" as const, subject_ids: [SUBJECTS.due], agent_ids: [A], business_day: null, revision: 2 };
   return {
     "capabilities.owner.json": ok(await readDeskCapabilities(owner, live)),
@@ -273,6 +281,8 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
     "team.manager.json": ok(await readTeam(manager, {}, live)),
     "team.owner.cadence-enforcement.json": ok(await readTeam(owner, {}, cadence)),
     "team.owner.sms-capture.json": ok(await readTeam(owner, {}, smsCapture)),
+    "team.owner.desk-reps.json": ok(await readTeam(owner, {}, deskReps)),
+    "rep-days.owner.desk-reps.json": ok(await readRepDays(owner, {}, deskReps)),
     "queue.owner.page-1.json": ok(ownerFirstPage),
     "queue.owner.page-2.json": ok(await readQueue(owner, query({ limit: "2", cursor: ownerFirstPage.next_cursor! }), queueDeps)),
     "queue.manager.unassigned.json": ok(await readQueue(manager, query({ unassigned: "true", state: "all_active" }), queueDeps)),

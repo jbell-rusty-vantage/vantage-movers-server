@@ -54,7 +54,13 @@ export type RingCentralWebhookSubscriptionMetadata = {
  * olr CW2: the route's refusal counter on an owned subscription's metadata row. `count` is cumulative;
  * `last_at` / `last_reason` describe the newest refusal (`token_missing` | `token_mismatch`).
  */
-export type StoredDeliveryRefusals = { count: number; last_at: Date; last_reason: string };
+export type StoredDeliveryRefusals = {
+  count: number;
+  last_at: Date;
+  last_reason: string;
+  /** The newest refusal instants (at most `DELIVERY_REFUSAL_RECENT_KEPT`); absent on a row counted before they were kept. */
+  recent?: Date[];
+};
 
 export type RingCentralSubscriptionStoreResult = {
   saved: boolean;
@@ -235,6 +241,8 @@ export async function recordStoredSubscriptionDeliveryRefusal(
       $inc: { "delivery_refusals.count": 1 },
       $max: { "delivery_refusals.last_at": at },
       $set: { "delivery_refusals.last_reason": reason },
+      // The newest instants, so the lifecycle can require several refusals inside its window.
+      $push: { "delivery_refusals.recent": { $each: [at], $slice: -DELIVERY_REFUSAL_RECENT_KEPT } },
     },
   );
   return result.matchedCount > 0;
@@ -254,8 +262,12 @@ export async function findStoredSubscriptionDeliveryRefusals(subscriptionId: str
     count: typeof refusals.count === "number" ? refusals.count : 0,
     last_at: refusals.last_at,
     last_reason: typeof refusals.last_reason === "string" ? refusals.last_reason : "unknown",
+    recent: Array.isArray(refusals.recent) ? refusals.recent.filter((at: unknown): at is Date => at instanceof Date) : undefined,
   };
 }
+
+/** How many refusal instants `recordStoredSubscriptionDeliveryRefusal` keeps on the row (`delivery_refusals.recent`). */
+export const DELIVERY_REFUSAL_RECENT_KEPT = 20;
 
 /** CSI-03 additive: records a lifecycle status (e.g. `Deleted`) on an owned subscription's metadata; never removes the row. */
 export async function markStoredRingCentralWebhookSubscriptionStatus(

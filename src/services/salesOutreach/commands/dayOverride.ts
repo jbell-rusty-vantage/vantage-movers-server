@@ -14,6 +14,8 @@ import {
 } from "../config/store";
 import { OutreachError, zodIssues } from "../errors";
 import { newYorkBusinessDay } from "../reads/businessDay";
+import { rosterRuleOf } from "../roster/rule";
+import { isDeskRepAt } from "../roster/store";
 import { commandLoader, publishCommandLive, type DeskCommandDeps } from "./common";
 
 /**
@@ -29,7 +31,12 @@ import { commandLoader, publishCommandLive, type DeskCommandDeps } from "./commo
 
 type DayOverrideResult = Omit<SalesOutreachDayOverrideResponse, "replayed">;
 
-export type DayOverrideDeps = DeskCommandDeps & { configStore?: ConfigurationStore; writer?: ConfigurationWriter };
+export type DayOverrideDeps = DeskCommandDeps & {
+  configStore?: ConfigurationStore;
+  writer?: ConfigurationWriter;
+  /** P08a-1: whether the Agent is a desk rep at `at` (tests); default `isDeskRepAt`. */
+  isDeskRep?: (agentId: string, at: Date, session?: Parameters<typeof isDeskRepAt>[2]) => Promise<boolean>;
+};
 
 export type DayOverrideInput = Readonly<{
   actor: OutreachActor;
@@ -59,8 +66,13 @@ export async function setGoalDayOverride(input: DayOverrideInput, deps: DayOverr
         const goals = configuration.value.goals;
         if (!goals.rep_work_schedules)
           throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "goals.rep_work_schedules", code: "goals_not_installed" }]);
-        if (!goals.rep_work_schedules.some((r) => r.agent_id === agentId))
-          throw new OutreachError("INVALID_INPUT", [{ path: "agent_id", code: "agent_not_on_roster" }]);
+        // P08a-1: under the derived roster the rep must be a desk rep now (active + reviewed link); the
+        // explicit list keeps its membership test.
+        const onRoster =
+          rosterRuleOf(goals) === "desk_reps"
+            ? await (deps.isDeskRep ?? isDeskRepAt)(agentId, context.now, context.session)
+            : goals.rep_work_schedules.some((r) => r.agent_id === agentId);
+        if (!onRoster) throw new OutreachError("INVALID_INPUT", [{ path: "agent_id", code: "agent_not_on_roster" }]);
         if (input.actor.role === "manager" && input.business_date < newYorkBusinessDay(context.now))
           throw new OutreachError("FORBIDDEN", [{ path: "business_date", code: "historical_edit_owner_only" }]);
         const overrides = goals.effective_day_overrides ?? [];

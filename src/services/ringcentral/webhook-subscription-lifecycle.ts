@@ -101,6 +101,8 @@ export type DeliveryRefusalFacts = {
   last_reason: string;
   /** A delivery from this subscription was accepted (stored) after `last_refused_at`. */
   accepted_since: boolean;
+  /** The newest refusal instants (at most `DELIVERY_REFUSAL_RECENT_KEPT`); absent on a row counted before they were kept. */
+  recent?: readonly Date[];
 };
 
 /**
@@ -109,11 +111,26 @@ export type DeliveryRefusalFacts = {
  * health check runs every 5 minutes and a staffed hour carries many telephony events.
  */
 export const DELIVERY_REFUSAL_RECENT_MS = 30 * 60_000;
+/**
+ * Final-review hardening: a `replace` needs this many refusals inside the window. One refused POST
+ * (anything that names our subscription id with a wrong or missing token) must not make the daily cron
+ * or the operator plan replace a healthy subscription; RingCentral retries a refused delivery and a real
+ * token problem refuses every event, so a genuine outage crosses this at once.
+ */
+export const DELIVERY_REFUSAL_MIN_RECENT = 3;
+/** How many refusal instants the metadata row keeps (`delivery_refusals.recent`; defined with the recorder). */
+export { DELIVERY_REFUSAL_RECENT_KEPT } from "./webhook-subscriptions";
 
-/** Pure: the newest delivery of the subscription was refused within `DELIVERY_REFUSAL_RECENT_MS`. */
+/**
+ * Pure: the subscription's deliveries are being refused — at least `DELIVERY_REFUSAL_MIN_RECENT` refusals
+ * within `DELIVERY_REFUSAL_RECENT_MS` of `now` (a row without kept instants falls back to its total count)
+ * and no delivery accepted after the newest one.
+ */
 export function deliveriesRefusedNow(facts: DeliveryRefusalFacts | null | undefined, now: Date): boolean {
   if (!facts || facts.accepted_since) return false;
-  return now.getTime() - facts.last_refused_at.getTime() <= DELIVERY_REFUSAL_RECENT_MS;
+  if (now.getTime() - facts.last_refused_at.getTime() > DELIVERY_REFUSAL_RECENT_MS) return false;
+  const recent = facts.recent ? facts.recent.filter((at) => now.getTime() - at.getTime() <= DELIVERY_REFUSAL_RECENT_MS).length : facts.count;
+  return recent >= DELIVERY_REFUSAL_MIN_RECENT;
 }
 
 /** 32 hex characters from a CSPRNG (RingCentral accepts an opaque string). Never logged. */
@@ -244,6 +261,7 @@ export function mongoOwnershipStore(): OwnershipStore {
         last_refused_at: stored.last_at,
         last_reason: stored.last_reason,
         accepted_since: await hasWebhookReceiptForSubscriptionSince(subscriptionId, stored.last_at),
+        recent: stored.recent,
       };
     },
   };

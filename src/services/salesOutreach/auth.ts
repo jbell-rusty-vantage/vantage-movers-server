@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { SalesOutreachRole } from "../../config/domain/salesOutreach";
-import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
 import { ADMIN_PROXY_HEADER_NAMES } from "../operationsRegistry/trustedActorCanonical";
+import { isDeskRepAt } from "./roster/store";
 import {
   CsiError,
   requireCsiManager,
@@ -36,18 +36,12 @@ export type OutreachAuthDeps = {
   hasReviewedSalesRepLink?: (agentId: string, at: Date) => Promise<boolean>;
 };
 
+/**
+ * Rep access needs a desk rep (P08a-1, F1): an `active` Agent with a reviewed `sales_rep` link
+ * effective at `at`. A deactivated Agent's sign-in reads `REP_NOT_LINKED` like a disconnected one's.
+ */
 export async function hasReviewedSalesRepLink(agentId: string, at: Date): Promise<boolean> {
-  const row = await getRepIdentityLinkModel()
-    .findOne({
-      agent_id: agentId,
-      status: "reviewed",
-      role_kind: "sales_rep",
-      effective_from: { $lte: at },
-      $or: [{ effective_to: null }, { effective_to: { $gt: at } }],
-    })
-    .select({ _id: 1 })
-    .lean();
-  return row !== null;
+  return isDeskRepAt(agentId, at);
 }
 
 function signedRole(req: Request): string | null {

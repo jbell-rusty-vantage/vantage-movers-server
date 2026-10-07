@@ -23,7 +23,10 @@ import { connectMongo, withTransaction } from "../../src/db";
 import { salesOutreachConfigurationLoader } from "../../src/services/salesOutreach/config/load";
 import { wantsContactEvidence } from "../../src/services/salesOutreach/contacts/jobs";
 import { mongoRepDayStore } from "../../src/services/salesOutreach/contacts/repDayService";
+import { addDays } from "../../src/services/salesOutreach/engine/calendar";
 import { newYorkBusinessDay } from "../../src/services/salesOutreach/reads/businessDay";
+import { rosterInstant } from "../../src/services/salesOutreach/roster/rule";
+import { loadEffectiveRoster } from "../../src/services/salesOutreach/roster/store";
 import { mongoSalesOutreachReadStore } from "../../src/services/salesOutreach/reads/store";
 import { assertProductionWriterMatchesDeployment } from "../lib/production-writer-guard";
 import {
@@ -61,10 +64,19 @@ async function main() {
     today,
     coverage_from_day: derivation?.coverage_from ? newYorkBusinessDay(derivation.coverage_from) : null,
   });
-  const roster = (inspected.value.goals?.rep_work_schedules ?? []).map((row) => row.agent_id);
+  // P08a-1: the roster of each past day in the range (desk reps at the end of that day under `desk_reps`,
+  // the configured list otherwise); read once per day, re-checked inside each recount transaction.
+  const rosterByDay = new Map<string, readonly string[]>();
+  if (args.materialize_roster) {
+    for (let day = range.from; day <= range.to && day < today; day = addDays(day, 1)) {
+      const roster = await loadEffectiveRoster(inspected.value.goals, rosterInstant(day, today, now));
+      rosterByDay.set(day, roster.members.map((member) => member.agent_id));
+    }
+  }
+  const rosterOf = (day: string) => rosterByDay.get(day) ?? [];
   const plan = async () => {
     const rows = await readRowsInRange(range.from, range.to);
-    return { rows, keys: planRecountKeys({ rows, roster, ...range, today, materialize_roster: args.materialize_roster }) };
+    return { rows, keys: planRecountKeys({ rows, roster: rosterOf, ...range, today, materialize_roster: args.materialize_roster }) };
   };
   const header = {
     mode,

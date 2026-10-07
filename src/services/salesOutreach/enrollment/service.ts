@@ -592,7 +592,8 @@ export async function verifyEnrollment(input: Readonly<{ actor: CsiActor; run_ke
       }
       counts.enrolled_by_run++;
       if (+subject.enrollment.activation_at !== +run.activation_at) mismatch(ref, "boundary_mismatch");
-      if (!subject.received_at) mismatch(ref, "received_missing");
+      // A review subject held for a missing or unreliable received time (B8) has no received_at on purpose.
+      if (!subject.received_at && subject.status !== "review") mismatch(ref, "received_missing");
       const periods = await d.subjects.findPeriods(subject.id, null);
       const active = periods.filter((p) => p.ended_at === null);
       if (active.length !== 1) mismatch(ref, active.length ? "multiple_active_periods" : "no_active_period");
@@ -664,7 +665,8 @@ export async function verifyCohort(input: Readonly<{ cohort_id: string }>, deps:
       counts[`status_${subject.status}`] = (counts[`status_${subject.status}`] ?? 0) + 1;
       const boundary = +subject.enrollment.activation_at;
       if (admission && boundary !== +subject.enrollment.enrolled_at) mismatch(subject.lead, "boundary_mismatch");
-      if (!subject.received_at) mismatch(subject.lead, "received_missing");
+      // A review subject held for a missing or unreliable received time (B8) has no received_at on purpose.
+      if (!subject.received_at && subject.status !== "review") mismatch(subject.lead, "received_missing");
       const active = periods.filter((p) => p.ended_at === null);
       if (active.length > 1) mismatch(subject.lead, "multiple_active_periods");
       else if (!active.length && subject.status === "active") mismatch(subject.lead, "no_active_period");

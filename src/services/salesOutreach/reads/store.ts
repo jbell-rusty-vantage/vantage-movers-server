@@ -10,6 +10,7 @@ import { getMongoDatabaseName } from "../../../config/domain/runtime";
 import { CALL_LOG_ALL_DIRECTIONS_SCOPE } from "../../numberActivity/reconcileCallLog";
 import { getRingCentralCollectionName } from "../../ringcentral/ringcentral-config";
 import { currentSmsMailboxIds, currentSmsMailboxRows } from "../evidence/coverage";
+import { findDeskRepsAt } from "../roster/store";
 import type { CaptureSyncRow } from "./freshness";
 import type { RepDayRow } from "./goals";
 
@@ -34,6 +35,8 @@ export type SalesOutreachReadStore = {
   findReviewedRepNames(agentIds: readonly string[], at: Date): Promise<Map<string, string>>;
   /** Agent id → the Agent record's name (no link requirement); absent Agents are missing from the map. */
   findAgentNames(agentIds: readonly string[]): Promise<Map<string, string>>;
+  /** Agent id → name for every desk rep at `at` (P08a-1: `Agent.active` and a reviewed `sales_rep` link effective at `at`). */
+  findDeskReps(at: Date): Promise<Map<string, string>>;
   readCallsCapture(): Promise<CaptureSyncRow | null>;
   /** Newest call webhook receipt instant (telephony session present); null when none was ever received. */
   readLastCallWebhookAt(): Promise<Date | null>;
@@ -202,6 +205,10 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
     if (!ids.length) return new Map();
     const rows = await Agent.find({ _id: { $in: oids(ids) } }, { name: 1 }).lean();
     return new Map(rows.map((row) => [String(row._id), row.name]));
+  },
+
+  async findDeskReps(at) {
+    return new Map((await findDeskRepsAt(at)).map((rep) => [rep.agent_id, rep.agent_name]));
   },
 
   async readCallsCapture() {

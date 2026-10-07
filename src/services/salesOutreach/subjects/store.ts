@@ -9,12 +9,12 @@ import { getCallLeadModel } from "../../../models/CallLead";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getGranotObservationModel } from "../../../models/GranotObservation";
 import { getContactNumberModel } from "../../../models/ContactNumber";
-import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach/repSmsEvidence";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
 import { enqueueCsiJob } from "../../salesIntelligence/jobs";
 import { enqueueOutreachContactChangeJobs, type ContactChangeSource } from "../capture/contactChangeWake";
+import { findDeskRepsAt } from "../roster/store";
 import { DESK_LEAD_PROJECTION, deskLeadKey, toDeskLeadFacts, type DeskLeadFacts, type DeskLeadRef } from "./leadFacts";
 import type { NewPeriod } from "./periodPlanner";
 import type { DeskReceivedFacts, DeskSubjectFacts } from "./subjectBuilder";
@@ -244,20 +244,9 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
   async reviewedRepIds(agentIds, at, session) {
     const unique = [...new Set(agentIds)].filter((id) => mongoose.isValidObjectId(id));
     if (!unique.length) return new Set();
-    const rows = await getRepIdentityLinkModel()
-      .find(
-        {
-          agent_id: { $in: unique.map(oid) },
-          status: "reviewed",
-          role_kind: "sales_rep",
-          effective_from: { $lte: at },
-          $or: [{ effective_to: null }, { effective_to: { $gt: at } }],
-        },
-        { agent_id: 1 },
-      )
-      .session(session)
-      .lean();
-    return new Set(rows.map((row) => String(row.agent_id)));
+    // P08a-1 (F1): a desk assignment needs an active Agent with a reviewed `sales_rep` link, so a
+    // deactivated Agent's Leads read Unassigned the same as a disconnected one's.
+    return new Set((await findDeskRepsAt(at, session, unique)).map((rep) => rep.agent_id));
   },
 
   async linkedNumberIds(refs, session) {

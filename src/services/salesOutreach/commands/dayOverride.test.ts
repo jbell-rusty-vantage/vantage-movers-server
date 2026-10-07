@@ -33,6 +33,39 @@ async function installed() {
   return { db, loader, deps };
 }
 
+test("P08a-1 desk_reps: the roster test is 'is a desk rep now', so an Agent without a schedule entry can take an override and a configured non-rep cannot", async () => {
+  const db = new MemoryConfigurationDb();
+  const base = completeConfigurationInput();
+  await patchSalesOutreachConfiguration(
+    { actor: csiOperatorActor("install"), idempotency_key: "install", expected_revision: 0, value: { ...base, goals: { ...base.goals, roster_rule: "desk_reps" } } },
+    db.deps(),
+  );
+  const loader = createConfigurationLoader(db.store);
+  const run: DayOverrideDeps["run"] = (async (input: Parameters<NonNullable<DayOverrideDeps["run"]>>[0]) =>
+    db.run({ ...input, operation: (context) => input.operation({ ...context, now: NOW }) })) as DayOverrideDeps["run"];
+  const asked: string[] = [];
+  const deps = (deskReps: readonly string[]): DayOverrideDeps => ({
+    loader,
+    run,
+    audit: db.audit,
+    configStore: db.store,
+    writer: db.writer,
+    isDeskRep: async (agentId) => {
+      asked.push(agentId);
+      return deskReps.includes(agentId);
+    },
+  });
+  const stranger = "c".repeat(24);
+  // TEST_AGENT_B is configured but no longer a desk rep: refused.
+  await rejectsWith(override(deps([TEST_AGENT_A, stranger]), owner, { agent_id: TEST_AGENT_B }), "INVALID_INPUT", "agent_not_on_roster");
+  // The stranger is a desk rep without a schedule entry: the override is accepted and stored.
+  const accepted = await override(deps([TEST_AGENT_A, stranger]), owner, { agent_id: stranger, idempotency_key: "stranger-1" });
+  assert.deepEqual([accepted.changed, accepted.revision, accepted.agent_id], [true, 2, stranger]);
+  const active = await loader.requireActive();
+  assert.deepEqual(active.value.goals.effective_day_overrides!.map((o) => o.agent_id), [stranger]);
+  assert.deepEqual(asked, [TEST_AGENT_B, stranger]);
+});
+
 const override = (deps: DayOverrideDeps, actor = manager, body: Partial<Parameters<typeof setGoalDayOverride>[0]> = {}) =>
   setGoalDayOverride({ actor, agent_id: TEST_AGENT_B, idempotency_key: `o-${Math.random()}`, expected_revision: 1, business_date: "2026-10-05", goal: 0, reason: "absence", ...body }, deps);
 

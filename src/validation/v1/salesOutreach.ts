@@ -3,6 +3,7 @@ import {
   CALL_CAPTURE_FINALIZATION_LAG_MINUTES,
   DESK_TIMING_DEFAULTS,
   SALES_OUTREACH_GOAL_COUNT_SCOPES,
+  SALES_OUTREACH_ROSTER_RULES,
   SALES_OUTREACH_TIMEZONE,
 } from "../../config/domain/salesOutreach";
 
@@ -323,6 +324,13 @@ const goalsSchema = z
       .max(50)
       .refine((rows) => rows.every((row, i) => i === 0 || row.from_day > rows[i - 1]!.from_day), "count_scope_schedule must ascend by from_day")
       .optional(),
+    /**
+     * P08a-1 (F2): who is on the roster. `desk_reps` derives it from the active Agents with a current
+     * reviewed `sales_rep` identity link (`roster/rule.ts`); `rep_work_schedules` then only carries
+     * per-rep settings and may name Agents who are not reps yet. Optional with no default (R0): absent
+     * reads as `explicit`, the configured list.
+     */
+    roster_rule: z.enum(SALES_OUTREACH_ROSTER_RULES).optional(),
   })
   .strict();
 
@@ -421,11 +429,15 @@ export const salesOutreachConfigurationValueSchema = z
         path: ["evidence", "today_coverage_tolerance_minutes"],
         message: `must exceed call_settlement_allowance_minutes + ${CALL_CAPTURE_FINALIZATION_LAG_MINUTES}`,
       });
-    const roster = new Set((value.goals.rep_work_schedules ?? []).map((r) => r.agent_id));
-    (value.goals.effective_day_overrides ?? []).forEach((override, i) => {
-      if (!roster.has(override.agent_id))
-        ctx.addIssue({ code: "custom", path: ["goals", "effective_day_overrides", i, "agent_id"], message: "override for a rep not on the roster" });
-    });
+    // P08a-1: under the derived roster (`desk_reps`) membership is not in the value, so an override may
+    // name any Agent (it applies once that Agent is a desk rep); the explicit list keeps the guard.
+    if ((value.goals.roster_rule ?? "explicit") === "explicit") {
+      const roster = new Set((value.goals.rep_work_schedules ?? []).map((r) => r.agent_id));
+      (value.goals.effective_day_overrides ?? []).forEach((override, i) => {
+        if (!roster.has(override.agent_id))
+          ctx.addIssue({ code: "custom", path: ["goals", "effective_day_overrides", i, "agent_id"], message: "override for a rep not on the roster" });
+      });
+    }
   });
 
 export type SalesOutreachConfigurationValue = z.infer<typeof salesOutreachConfigurationValueSchema>;

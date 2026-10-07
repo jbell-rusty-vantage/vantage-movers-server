@@ -8,6 +8,7 @@ import {
   SALES_OUTREACH_FOLLOWUP_KINDS,
   SALES_OUTREACH_FOLLOWUP_STATUSES,
   SALES_OUTREACH_GOAL_COUNT_SCOPES,
+  SALES_OUTREACH_ROSTER_RULES,
   SALES_OUTREACH_GOAL_STATES,
   SALES_OUTREACH_LEAD_MODELS,
   SALES_OUTREACH_LIVE_TOPICS,
@@ -557,8 +558,49 @@ export const salesOutreachTeamGoalsSchema = z
      */
     other_outbound_breakdown: salesOutreachOtherOutboundBreakdownSchema.nullable(),
     roster_size: z.number().int().min(0),
+    /**
+     * P08a-1 (F1): confirmed and awaiting outbound calls of the day by Agents who are not on the effective
+     * roster (not active, or without a current reviewed `sales_rep` link) — they get no rep row and no goal,
+     * so the Owner is told the calls exist. Null under the explicit roster rule and for a Manager.
+     */
+    other_callers: z
+      .object({
+        agents: z.number().int().min(0),
+        agent_ids: z.array(salesOutreachAgentIdSchema),
+        confirmed: z.number().int().min(0),
+        awaiting_confirmation: z.number().int().min(0),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
+
+/**
+ * P08a-1 (F2): the effective roster the day's goal rows were composed from. Under `desk_reps` the members
+ * are the active Agents with a current reviewed `sales_rep` link at the roster instant (today: `as_of`; a
+ * past day: the end of that New York day), each with its schedule (`configured` from
+ * `goals.rep_work_schedules`, else `default`: every weekday and the default goal).
+ */
+export const salesOutreachRosterSchema = z
+  .object({
+    rule: z.enum(SALES_OUTREACH_ROSTER_RULES),
+    roster_version: z.string().nullable(),
+    /** The instant the members were read at. */
+    at: z.iso.datetime(),
+    members: z.array(
+      z
+        .object({
+          agent_id: salesOutreachAgentIdSchema,
+          agent_name: z.string().nullable(),
+          working_days: z.array(z.number().int().min(1).max(7)),
+          scheduled_goal: z.number().int().min(0).nullable(),
+          schedule_source: z.enum(["configured", "default"]),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type SalesOutreachRosterDto = z.infer<typeof salesOutreachRosterSchema>;
 
 export const salesOutreachTeamSchema = commonReadSchema
   .extend({
@@ -567,8 +609,14 @@ export const salesOutreachTeamSchema = commonReadSchema
     goal_metrics_enabled: z.boolean(),
     goals: salesOutreachTeamGoalsSchema.nullable(),
     goals_unknown_reason: z.enum(["goal_metrics_disabled"]).nullable(),
-    /** Daily call goals table rows (roster reps first, then reps with activity who are not on the roster). */
+    /**
+     * Daily call goals table rows: the effective roster's reps (P08a-1 `desk_reps`: only active Agents with a
+     * current reviewed link, in id order), or under the explicit rule the configured roster first and then
+     * reps with activity who are not on it.
+     */
     daily_call_goals: z.array(salesOutreachRepDaySchema).nullable(),
+    /** P08a-1: the effective roster behind `daily_call_goals`; null while goal metrics are off. */
+    roster: salesOutreachRosterSchema.nullable(),
     /** Card 3: distinct active Leads with an overdue requirement at `as_of` (goals never hide them). */
     distinct_overdue_leads: cadenceMetricSchema,
     /** Card 4: Quoted Leads whose Call requirement is overdue at `as_of`. */

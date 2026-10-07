@@ -34,10 +34,10 @@
 import mongoose from "mongoose";
 import { connectMongo } from "../../src/db";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
-import { getRepIdentityLinkModel } from "../../src/models/RepIdentityLink";
 import { csiOperatorActor } from "../../src/services/salesIntelligence/auth";
 import { patchSalesOutreachConfiguration } from "../../src/services/salesOutreach/config/commands";
 import { createConfigurationLoader } from "../../src/services/salesOutreach/config/load";
+import { findDeskRepIdsAt } from "../../src/services/salesOutreach/roster/store";
 import { floridaCalendarDateInputValue } from "../../src/utils/easternTime";
 import { salesOutreachConfigurationValueSchema } from "../../src/validation/v1/salesOutreach";
 import { assertProductionWriterMatchesDeployment } from "../lib/production-writer-guard";
@@ -47,14 +47,14 @@ import { assertTargetMatchesDatabase } from "../lib/sales-outreach-indexes";
 /** Exit code of a run refused by the drift guard (nothing written). */
 const POLICY_DRIFT_EXIT_CODE = 3;
 
+/**
+ * The reps a policy install or `--refresh-roster` puts on the explicit roster: the desk reps at `at`
+ * (P08a-1: `Agent.active` and a reviewed `sales_rep` link effective now — P08a "explicitly selects
+ * active sales reps"). Under `goals.roster_rule: desk_reps` the list is derived at read time and this
+ * only seeds `rep_work_schedules` settings.
+ */
 async function reviewedSalesRepAgents(at: Date): Promise<string[]> {
-  const ids = await getRepIdentityLinkModel().distinct("agent_id", {
-    status: "reviewed",
-    role_kind: "sales_rep",
-    effective_from: { $lte: at },
-    $or: [{ effective_to: null }, { effective_to: { $gt: at } }],
-  });
-  return ids.map((id) => String(id).toLowerCase()).sort();
+  return (await findDeskRepIdsAt(at)).map((id) => id.toLowerCase()).sort();
 }
 
 async function main() {
