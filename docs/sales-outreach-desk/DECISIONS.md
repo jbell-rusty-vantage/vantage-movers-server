@@ -513,6 +513,8 @@ Approval reference: the user's decisions recorded 2026-10-06 in the Outreach lif
 | 8 | `sod-config-5790e4b4f8e2c19bb9fc7e42` | 2026-10-06 23:24Z | D3 A / P05e-1 `cadence.intake_default_rule.granot_created: "new"`; run `expansion-granot-new-2026-10-06` (210, consistent) |
 | 9 | `sod-config-de1890b8d7cd5158572b428e` | 2026-10-06 23:32Z | D7 / P10b-1 `transition.expansion_admission_enabled: true` |
 | 10 | — | 2026-10-06 23:33Z | A5 `operations {evaluate_drain_concurrency: 2, evaluate_drain_max_jobs: 300, evaluate_drain_budget_seconds: 50}` (measurement waived by the user) |
+| 11 | `sod-config-25a2250742ce3c6bf6bd1b55` | 2026-10-07 01:38Z | P08a-1 / F2 `goals.roster_rule: "desk_reps"` — the roster is the active, connected reps (9 at the PATCH; team goal 900) |
+| 12 | `sod-config-599ab61a8568c411fc3ff24f` | 2026-10-07 01:39Z | P08a-1 cleanup: the four retired reps' `rep_work_schedules` rows dropped (13 → 9 settings rows) |
 
 **D1 A — goal headline scope.** The rep-day headline stays all confirmed outbound calls; the count to enrolled New/Quoted Leads is stored and shown beside it ("97 outbound · 12 to enrolled Leads"). Mechanism: `goals.count_scope_schedule` (absent = `all_outbound`), changes only prospective (`count_scope_not_prospective`). No PATCH. Amends the M2 narrowing of the goal count to `eligible_new_quoted` from the day after the first apply.
 
