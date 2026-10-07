@@ -259,6 +259,11 @@ function sourceRows(
   });
   for (const row of rows) {
     withActivity(row, bookNow.get(row.key), bookThen?.get(row.key), Boolean(then));
+    // Referrals and direct bookings have no leads to rank on: no "new", no rank change.
+    if (row.key in PSEUDO_COMPANIES) {
+      row.rank_change = null;
+      row.is_new = false;
+    }
     const feedKeys = [...new Set([...feedNow.keys(), ...feedBookNow.keys()])].filter((feedKey) => catalog.feedByKey.get(feedKey)?.company_slug === row.key);
     if (!feedKeys.length) continue;
     const children = rankedRows({

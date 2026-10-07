@@ -108,3 +108,6 @@ rules, split credit, rank change, cohort vs activity, sources filter, time to bo
 spend, money, reviews); `src/routes/insights-admin.routes.test.ts` (Owner gates, validation, envelope).
 CPL save regression (the "multiple documents unless `ordered: true`" error): `ops/insights/cpl-schedule.replica.ts`
 on the local `csi01` replica (`node --import tsx ops/insights/cpl-schedule.replica.ts`).
+Browser walk against the real server (2026-10-06): `node --import tsx ops/insights/seed-synthetic.ts
+--database=testvantagemovers_insights` (≈150 days of synthetic leads, bookings, cancellations, lead costs, reviews on
+the loopback replica), then `ops/local-integration/serve.ts` and the Admin per `ops/local-integration/README.md`.
