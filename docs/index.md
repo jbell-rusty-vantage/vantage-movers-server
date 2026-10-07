@@ -45,6 +45,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [customer.md](knowledge/services/customer.md) | Customer CRUD and booking-time upsert from lead or contact. |
 | [agent-allocation.md](knowledge/services/agent-allocation.md) | Binder splits, catalog resolve, primary agent, and cancellation snapshot. |
 | [sheet-sync.md](knowledge/services/sheet-sync.md) | Write-behind outbox, queue wake-up, drainer, and sheet-sync modes. |
+| [systems-capacity.md](knowledge/services/systems-capacity.md) | **Start here for the Systems tab.** Owner-edited locations list (Change history) and live database / Master Sheet capacity with "time until full" from a daily snapshot cron. |
 | [google-sheets.md](knowledge/services/google-sheets.md) | Tab routing, projections, upsert/delete, and master vs source writes. |
 | [domain-commands.md](knowledge/services/domain-commands.md) | Transaction-owning command executor, adapters, and append-only EntityChange. |
 | [form-lead-search.md](knowledge/services/form-lead-search.md) | Scored Form Lead identity search, ambiguity, and duplicate quarantine. |

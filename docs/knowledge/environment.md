@@ -158,6 +158,8 @@ Other Sales Intelligence settings:
 
 Sheet container ids are required through `getRequiredEnv` (`runtime.ts`, names in `sheets.ts`); in `TEST_MODE` the same names are read with a `TEST_` prefix. Not secrets: `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, `GETMOVERS_LEADS_SHEET_ID`, `MAINSITE_LEADS_SHEET_ID`. `TARIFF_SHEET_ID` (`tariff.ts`) is the tariff adjustment workbook.
 
+The Systems tab ([systems-capacity.md](services/systems-capacity.md), 2026-10-07) adds **no names**: its locations list is a Mongo document (`systems_locations`), its Master Sheet links reuse `MASTER_LEADS_SHEET_ID` / `MASTER_BOOKED_SHEET_ID`, its capacity reads use the existing Mongo user and Sheets service account, and its cron uses `CRON_SECRET`.
+
 | Name | Default | Secret | Owner and purpose |
 | --- | --- | --- | --- |
 | `WRITE_SOURCE_LEAD_SHEETS` | off | no | Also write source-company lead sheets. |

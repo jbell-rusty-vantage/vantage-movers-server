@@ -13,6 +13,7 @@ export const REGISTRY_CHANGE_ENTITY_TYPES = [
   "granot_crm_source_sms_policy",
   "granot_automation_source",
   "source_label_mapping",
+  "systems_locations",
 ] as const;
 
 export type RegistryChangeEntityType = (typeof REGISTRY_CHANGE_ENTITY_TYPES)[number];
