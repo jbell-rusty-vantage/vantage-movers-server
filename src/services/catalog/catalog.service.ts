@@ -16,6 +16,9 @@ import {
 } from "../operationsRegistry";
 import { V1ServiceError } from "../v1ServiceError";
 import { normalizeAgentName } from "../agents/agentName";
+import type { OutreachDeskSetting } from "../../config/domain/salesOutreach";
+import { deskMembershipsNow } from "../salesOutreach/roster/store";
+import type { DeskMembership } from "../salesOutreach/roster/rule";
 
 export type CatalogKind = "agents" | "merchants";
 
@@ -28,6 +31,13 @@ export type CatalogItem = {
   created_from: string;
   role?: string;
   granot_crm_username?: string;
+  name_aliases?: string[];
+  archived_at?: Date;
+  deactivation_reason?: string;
+  /** Agents: the Owner's Outreach Desk control (`auto` when never set). */
+  outreach_desk?: OutreachDeskSetting;
+  /** Agents, on reads: whether the Agent is a desk rep now, and why (`deskMembership`). */
+  desk_membership?: DeskMembership;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -36,21 +46,42 @@ export function normalizeCatalogName(name: string): string {
   return normalizeAgentName(name);
 }
 
+export type CatalogReadDeps = { deskMemberships?: typeof deskMembershipsNow };
+
 export async function listCatalogItems(
   kind: CatalogKind,
   options: { includeInactive?: boolean } = {},
+  deps: CatalogReadDeps = {},
 ): Promise<CatalogItem[]> {
-  const items =
-    kind === "agents"
-      ? await listRegistryAgents(options)
-      : await listRegistryMerchants(options);
-  return items.map(toLegacyCatalogItem);
+  if (kind === "merchants") {
+    return (await listRegistryMerchants(options)).map(toLegacyCatalogItem);
+  }
+  return withDeskMembership(await listRegistryAgents(options), deps);
 }
 
 export async function getCatalogItem(kind: CatalogKind, id: string): Promise<CatalogItem> {
-  const item =
-    kind === "agents" ? await getRegistryAgent(id) : await getRegistryMerchant(id);
-  return toLegacyCatalogItem(item);
+  if (kind === "merchants") return toLegacyCatalogItem(await getRegistryMerchant(id));
+  const [item] = await withDeskMembership([await getRegistryAgent(id)]);
+  return item;
+}
+
+/** Agents with their current desk membership (one bounded link read for the whole list). */
+async function withDeskMembership(agents: RegistryCatalogItem[], deps: CatalogReadDeps = {}): Promise<CatalogItem[]> {
+  const memberships = await (deps.deskMemberships ?? deskMembershipsNow)(
+    agents.map((agent) => ({
+      _id: agent.id,
+      id: agent.id,
+      name: agent.name,
+      active: agent.active,
+      outreach_desk: agent.outreach_desk ?? null,
+      granot_crm_username: agent.granot_crm_username ?? null,
+      granot_identity: agent.granot_identity ?? null,
+    })),
+  );
+  return agents.map((agent) => {
+    const membership = memberships.get(agent.id);
+    return { ...toLegacyCatalogItem(agent), ...(membership ? { desk_membership: membership } : {}) };
+  });
 }
 
 export async function createCatalogItem(
@@ -65,6 +96,7 @@ export async function createCatalogItem(
             name: input.name,
             role: input.role,
             granot_crm_username: input.granot_crm_username,
+            outreach_desk: input.outreach_desk,
             active: input.active,
             created_from: input.created_from,
           },
@@ -95,6 +127,7 @@ export async function updateCatalogItem(
             name: input.name,
             role: input.role,
             granot_crm_username: input.granot_crm_username,
+            outreach_desk: input.outreach_desk,
             active: input.active,
             reason: input.reason,
           },
@@ -150,6 +183,10 @@ function toLegacyCatalogItem(item: RegistryCatalogItem): CatalogItem {
     created_from: item.created_from,
     ...(item.role ? { role: item.role } : {}),
     ...(username ? { granot_crm_username: username } : {}),
+    ...(item.name_aliases?.length ? { name_aliases: item.name_aliases } : {}),
+    ...(item.archived_at ? { archived_at: item.archived_at } : {}),
+    ...(item.deactivation_reason ? { deactivation_reason: item.deactivation_reason } : {}),
+    ...(item.outreach_desk ? { outreach_desk: item.outreach_desk } : {}),
     ...(item.createdAt ? { createdAt: item.createdAt } : {}),
     ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
   };

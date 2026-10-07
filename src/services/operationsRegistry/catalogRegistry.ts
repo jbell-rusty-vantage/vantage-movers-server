@@ -6,6 +6,7 @@ import { FormLead } from "../../models/FormLead";
 import { Merchant, type MerchantDocument } from "../../models/Merchant";
 import { normalizeAgentName } from "../agents/agentName";
 import { REGISTRY_ERROR_CODES } from "../errors/registryErrorCodes";
+import { OUTREACH_DESK_SETTINGS, type OutreachDeskSetting } from "../../config/domain/salesOutreach";
 import { publishOutreachLive } from "../salesOutreach/live/publish";
 import { enqueueDeskResyncForAgents } from "../salesOutreach/subjects/agentWake";
 import { normalizeGranotCrmUsername } from "./catalogNormalization";
@@ -29,6 +30,7 @@ export type RegistryCatalogItem = {
     last_observed_at?: Date;
   };
   granot_crm_username?: string;
+  outreach_desk?: OutreachDeskSetting;
   archived_at?: Date;
   deactivation_reason?: string;
   created_from: string;
@@ -40,7 +42,9 @@ export type AgentRegistryCommand = {
   id?: string;
   name?: string;
   role?: string;
-  granot_crm_username?: string;
+  /** A username sets or corrects it; `null` clears it (the Agent has no Granot login). */
+  granot_crm_username?: string | null;
+  outreach_desk?: OutreachDeskSetting;
   created_from?: string;
   active?: boolean;
   reason?: string;
@@ -83,6 +87,7 @@ type CatalogLeanDocument = Record<string, unknown> & {
     last_observed_at?: Date;
   };
   granot_crm_username?: string;
+  outreach_desk?: string;
   archived_at?: Date;
   deactivation_reason?: string;
   createdAt?: Date;
@@ -171,8 +176,11 @@ export async function createOrUpdateAgent(
 ): Promise<RegistryCatalogItem> {
   assertOwner(actor);
   const audit = mutableAudit("agent", command.id, command.reason);
+  // A change to who may be a desk rep (the Granot username's presence, the Owner's Outreach Desk
+  // control, activation) re-syncs the Agent's open desk subjects, as `setCatalogActivation` does.
+  let deskSubjectIds: string[] = [];
 
-  return withRegistryMutation({
+  const item = await withRegistryMutation({
     actor,
     audit,
     invalidateKeys: ["agents", "catalog", "facets"],
@@ -200,6 +208,8 @@ export async function createOrUpdateAgent(
       );
       const usernameChanging =
         username !== undefined && username !== existingUsername;
+      const usernameClearing =
+        command.granot_crm_username === null && existingUsername !== undefined;
 
       const normalizedNameChanging =
         !before || before.normalized_name !== normalizedName;
@@ -240,7 +250,15 @@ export async function createOrUpdateAgent(
         update.granot_identity = { username, verified: false };
         update.granot_crm_username = username;
       }
+      if (command.outreach_desk !== undefined) {
+        update.outreach_desk = command.outreach_desk;
+      }
 
+      // Clearing the Granot username drops the whole nested identity. It runs unvalidated on its own: an
+      // `$unset` of `granot_identity` under `runValidators` trips the nested `verified` required rule.
+      if (command.id && usernameClearing) {
+        await Agent.updateOne({ _id: command.id }, { $unset: { granot_identity: 1, granot_crm_username: 1 } }, { session });
+      }
       const doc = command.id
         ? ((await Agent.findByIdAndUpdate(
             command.id,
@@ -267,9 +285,27 @@ export async function createOrUpdateAgent(
             : "rename";
       audit.before = record(before);
       audit.after = item as unknown as Record<string, unknown>;
+      if (before && deskInputsChanged(before, item)) {
+        deskSubjectIds = await enqueueDeskResyncForAgents([item.id], `agent-update:${new mongoose.Types.ObjectId().toHexString()}`, session, new Date());
+      }
       return item;
     },
   });
+  if (deskSubjectIds.length) {
+    await publishOutreachLive({ topic: "outreach_desk", subject_ids: deskSubjectIds, agent_ids: [item.id], cause: "command" });
+  }
+  return item;
+}
+
+/** Whether an Agent update moved any input of `deskMembership`: activation, the Granot username's presence, or the Owner's control. */
+function deskInputsChanged(before: CatalogLeanDocument, after: RegistryCatalogItem): boolean {
+  const hadUsername = Boolean(before.granot_identity?.username ?? before.granot_crm_username);
+  const hasUsername = Boolean(after.granot_identity?.username ?? after.granot_crm_username);
+  return (
+    (before.active !== false) !== after.active ||
+    hadUsername !== hasUsername ||
+    (before.outreach_desk ?? "auto") !== (after.outreach_desk ?? "auto")
+  );
 }
 
 export async function createOrUpdateMerchant(
@@ -619,6 +655,10 @@ function toCatalogItem(doc: CatalogLeanDocument): RegistryCatalogItem {
       : {}),
     ...(typeof doc.granot_crm_username === "string"
       ? { granot_crm_username: doc.granot_crm_username }
+      : {}),
+    ...(typeof doc.outreach_desk === "string" &&
+    (OUTREACH_DESK_SETTINGS as readonly string[]).includes(doc.outreach_desk)
+      ? { outreach_desk: doc.outreach_desk as OutreachDeskSetting }
       : {}),
     ...(doc.archived_at instanceof Date ? { archived_at: doc.archived_at } : {}),
     ...(typeof doc.deactivation_reason === "string"

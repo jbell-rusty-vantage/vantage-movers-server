@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { salesOutreachConfigurationValueSchema } from "../../../validation/v1/salesOutreach";
-import { deskRosterVersion, effectiveRoster, onRoster, rosterInstant, rosterRuleOf } from "./rule";
+import { deskMembership, deskRosterVersion, effectiveRoster, onRoster, rosterInstant, rosterRuleOf } from "./rule";
 
 /**
  * P08a-1 (F2): the derived roster is a pure function of the configuration's settings and the desk reps
@@ -75,4 +75,15 @@ test("rosterInstant: today and later read at now; a past day at the end of that 
   // Just after midnight: yesterday's end is later than now? No — it equals midnight, which is ≤ now.
   const afterMidnight = new Date("2026-10-06T04:00:30.000Z");
   assert.equal(rosterInstant("2026-10-05", "2026-10-06", afterMidnight).toISOString(), "2026-10-06T04:00:00.000Z");
+});
+
+test("deskMembership: the Owner's control wins, then a Granot username or a reviewed sales_rep link; inactive never", () => {
+  const agent = (over: Partial<{ active: boolean; outreach_desk: string | null; granot_username: string | null }> = {}) => ({ active: true, outreach_desk: null, granot_username: null, ...over });
+  assert.deepEqual(deskMembership(agent({ granot_username: "MIKEM" }), false), { on: true, reason: "granot" });
+  assert.deepEqual(deskMembership(agent(), true), { on: true, reason: "ringcentral" });
+  assert.deepEqual(deskMembership(agent(), false), { on: false, reason: "none" });
+  assert.deepEqual(deskMembership(agent({ outreach_desk: "on" }), false), { on: true, reason: "owner_on" });
+  assert.deepEqual(deskMembership(agent({ outreach_desk: "off", granot_username: "MIKEM" }), true), { on: false, reason: "owner_off" });
+  assert.deepEqual(deskMembership(agent({ outreach_desk: "auto", granot_username: "  " }), false), { on: false, reason: "none" });
+  assert.deepEqual(deskMembership(agent({ active: false, outreach_desk: "on", granot_username: "MIKEM" }), true), { on: false, reason: "inactive" });
 });

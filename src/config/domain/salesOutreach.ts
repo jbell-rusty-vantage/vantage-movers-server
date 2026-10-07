@@ -134,6 +134,15 @@ export type SalesOutreachGoalCountScope = (typeof SALES_OUTREACH_GOAL_COUNT_SCOP
  */
 export const SALES_OUTREACH_ROSTER_RULES = ["explicit", "desk_reps"] as const;
 export type SalesOutreachRosterRule = (typeof SALES_OUTREACH_ROSTER_RULES)[number];
+
+/**
+ * The Owner's per-Agent Outreach Desk control (`Agent.outreach_desk`, People & access 2026-10-07).
+ * `auto` (also when absent): an active Agent is a desk rep when it has a Granot username or a reviewed
+ * `sales_rep` RingCentral link. `on`: an active Agent is a desk rep without either. `off`: never.
+ * An inactive Agent is never a desk rep.
+ */
+export const OUTREACH_DESK_SETTINGS = ["auto", "on", "off"] as const;
+export type OutreachDeskSetting = (typeof OUTREACH_DESK_SETTINGS)[number];
 /** Every ISO weekday: the working days of a desk rep without a configured schedule (same as the installer). */
 export const SALES_OUTREACH_ALL_WEEKDAYS: readonly number[] = Object.freeze([1, 2, 3, 4, 5, 6, 7]);
 

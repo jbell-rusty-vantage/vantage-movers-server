@@ -11,14 +11,15 @@ import { newYorkDayBounds } from "../reads/businessDay";
  * - `explicit` (code default when `goals.roster_rule` is absent): the roster is the configured
  *   `goals.rep_work_schedules` list, versioned by `goals.roster_version` (the original encoding).
  * - `desk_reps`: the roster is the **desk reps** the caller resolved (`roster/store.ts`
- *   `findDeskRepsAt`: `Agent.active` and a reviewed `sales_rep` identity link effective at the roster
- *   instant), each joined to its `rep_work_schedules` entry when one exists, else every weekday and the
+ *   `findDeskRepsAt`, rule `deskMembership`: an active Agent with a Granot username or a reviewed
+ *   `sales_rep` identity link effective at the roster instant, unless the Owner set
+ *   `Agent.outreach_desk` to `on` or `off`), each joined to its `rep_work_schedules` entry when one exists, else every weekday and the
  *   default goal (the same defaults the installer gives a new rep). The version is a deterministic
  *   digest of the member set, so a frozen rep-day snapshot says which roster it was frozen under.
  *
  * Roster instant: today reads the roster at `now`; a past day at the end of that New York day (the
- * identity links are temporal; `Agent.active` carries no history, so a past day reads the Agent's
- * current flag — a documented limit that only matters for a past day without a frozen row).
+ * identity links are temporal; `Agent.active`, the Granot username and `Agent.outreach_desk` carry no
+ * history, so a past day reads the Agent's current values — a documented limit that only matters for a past day without a frozen row).
  */
 
 export type GoalsConfiguration = SalesOutreachConfigurationValue["goals"];
@@ -37,6 +38,28 @@ export type EffectiveRoster = Readonly<{
   roster_version: string | null;
   members: readonly RosterMember[];
 }>;
+
+/** Why an Agent is (or is not) a desk rep; People & access shows it beside the Owner's control. */
+export type DeskMembershipReason = "inactive" | "owner_off" | "owner_on" | "granot" | "ringcentral" | "none";
+
+export type DeskMembership = Readonly<{ on: boolean; reason: DeskMembershipReason }>;
+
+/**
+ * Whether one Agent is a desk rep (People & access 2026-10-07, extends P08a-1): never when inactive or
+ * when the Owner turned it `off`; always when the Owner turned it `on`; otherwise (`auto`) when it has a
+ * Granot username (its Leads arrive under that name) or a reviewed `sales_rep` RingCentral link.
+ */
+export function deskMembership(
+  agent: Readonly<{ active: boolean; outreach_desk?: string | null; granot_username?: string | null }>,
+  hasSalesRepLink: boolean,
+): DeskMembership {
+  if (!agent.active) return { on: false, reason: "inactive" };
+  if (agent.outreach_desk === "off") return { on: false, reason: "owner_off" };
+  if (agent.outreach_desk === "on") return { on: true, reason: "owner_on" };
+  if (agent.granot_username?.trim()) return { on: true, reason: "granot" };
+  if (hasSalesRepLink) return { on: true, reason: "ringcentral" };
+  return { on: false, reason: "none" };
+}
 
 /** The configured rule; absent = `explicit` (R0 code default). */
 export function rosterRuleOf(goals: Pick<GoalsConfiguration, "roster_rule"> | null | undefined): SalesOutreachRosterRule {

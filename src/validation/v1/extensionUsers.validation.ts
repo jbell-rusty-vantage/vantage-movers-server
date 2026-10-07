@@ -8,6 +8,7 @@ export const createExtensionUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   roles: rolesSchema,
+  agent_id: objectIdSchema.nullable().optional(),
 });
 
 export const updateExtensionUserSchema = z
@@ -20,11 +21,15 @@ export const updateExtensionUserSchema = z
       return value;
     }, z.string().min(8).optional()),
     roles: rolesSchema.optional(),
+    agent_id: objectIdSchema.nullable().optional(),
   })
   .refine(
     (value) =>
-      value.email !== undefined || value.password !== undefined || value.roles !== undefined,
-    { message: "At least one of email, password, or roles is required" },
+      value.email !== undefined ||
+      value.password !== undefined ||
+      value.roles !== undefined ||
+      value.agent_id !== undefined,
+    { message: "At least one of email, password, roles, or agent_id is required" },
   );
 
 export const extensionUserIdParamSchema = z.object({

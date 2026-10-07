@@ -5,6 +5,8 @@ import {
   rolesSetsEqual,
   type CurrentExtensionRole,
 } from "../../auth/extension/roles";
+import mongoose from "mongoose";
+import { Agent } from "../../models/Agent";
 import {
   ExtensionUser,
   type ExtensionUserDocument,
@@ -13,12 +15,16 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors";
 
 const DUPLICATE_EMAIL_MESSAGE = "An Extension User already uses this email.";
 const NOT_FOUND_MESSAGE = "Extension User not found.";
+const AGENT_TAKEN_MESSAGE = "Another extension login is already connected to this Agent.";
+const AGENT_NOT_FOUND_MESSAGE = "That Agent is not on the roster.";
 
 export type AdminExtensionUser = {
   id: string;
   email: string;
   roles: CurrentExtensionRole[];
   active: boolean;
+  /** The Agent (roster person) this login belongs to; null for a login with no Agent, e.g. the Owner's. */
+  agent_id: string | null;
   created_at: string;
   last_login_at: string | null;
 };
@@ -27,12 +33,15 @@ export type CreateExtensionUserInput = {
   email: string;
   password: string;
   roles: CurrentExtensionRole[];
+  agent_id?: string | null;
 };
 
 export type UpdateExtensionUserInput = {
   email?: string;
   password?: string;
   roles?: CurrentExtensionRole[];
+  /** An Agent id connects the login to that Agent; `null` disconnects it. Never signs the login out. */
+  agent_id?: string | null;
 };
 
 export type StoredExtensionUserRecord = {
@@ -43,6 +52,7 @@ export type StoredExtensionUserRecord = {
   password_hash: string;
   token_version: number;
   active: boolean;
+  agent_id?: string | null;
   created_at: Date | string;
   last_login_at?: Date | string | null;
 };
@@ -51,17 +61,21 @@ export type ExtensionUserStoreUpdate = {
   email?: string;
   password_hash?: string;
   roles?: CurrentExtensionRole[];
+  /** `undefined` leaves it; `null` clears it. */
+  agent_id?: string | null;
   increment_token_version: boolean;
   set_password_changed_at: boolean;
 };
 
 export type ExtensionUserStore = {
   findByEmail(email: string): Promise<{ id: string } | null>;
+  findByAgentId(agentId: string): Promise<{ id: string } | null>;
   findById(id: string): Promise<StoredExtensionUserRecord | null>;
   create(input: {
     email: string;
     password_hash: string;
     roles: CurrentExtensionRole[];
+    agent_id?: string;
   }): Promise<AdminExtensionUser>;
   update(id: string, patch: ExtensionUserStoreUpdate): Promise<AdminExtensionUser | null>;
   delete(id: string): Promise<{ id: string } | null>;
@@ -71,11 +85,22 @@ export type ExtensionUserStore = {
 export type ExtensionUserServiceDeps = {
   store?: ExtensionUserStore;
   hashPassword?: (password: string) => Promise<string>;
+  /** Whether an Agent with this id exists (any activation); default reads `agents`. */
+  agentExists?: (agentId: string) => Promise<boolean>;
 };
+
+async function mongoAgentExists(agentId: string): Promise<boolean> {
+  if (!mongoose.isValidObjectId(agentId)) return false;
+  return Boolean(await Agent.exists({ _id: new mongoose.Types.ObjectId(agentId) }));
+}
 
 const mongoStore: ExtensionUserStore = {
   async findByEmail(email) {
     const user = await ExtensionUser.findOne({ email }).select({ _id: 1 }).lean();
+    return user ? { id: String(user._id) } : null;
+  },
+  async findByAgentId(agentId) {
+    const user = await ExtensionUser.findOne({ agent_id: new mongoose.Types.ObjectId(agentId) }).select({ _id: 1 }).lean();
     return user ? { id: String(user._id) } : null;
   },
   async findById(id) {
@@ -87,6 +112,7 @@ const mongoStore: ExtensionUserStore = {
         password_hash: 1,
         token_version: 1,
         active: 1,
+        agent_id: 1,
         created_at: 1,
         last_login_at: 1,
       })
@@ -102,6 +128,7 @@ const mongoStore: ExtensionUserStore = {
       password_hash: user.password_hash,
       token_version: user.token_version,
       active: user.active,
+      agent_id: user.agent_id ? String(user.agent_id) : null,
       created_at: user.created_at,
       last_login_at: user.last_login_at ?? null,
     };
@@ -112,6 +139,7 @@ const mongoStore: ExtensionUserStore = {
       email: input.email,
       password_hash: input.password_hash,
       roles: input.roles,
+      ...(input.agent_id ? { agent_id: new mongoose.Types.ObjectId(input.agent_id) } : {}),
       active: true,
       token_version: 0,
       created_at: now,
@@ -135,10 +163,13 @@ const mongoStore: ExtensionUserStore = {
     if (patch.set_password_changed_at) {
       $set.password_changed_at = now;
     }
+    if (patch.agent_id) {
+      $set.agent_id = new mongoose.Types.ObjectId(patch.agent_id);
+    }
 
     const update: Record<string, unknown> = {
       $set,
-      $unset: { role: 1 },
+      $unset: { role: 1, ...(patch.agent_id === null ? { agent_id: 1 } : {}) },
     };
     if (patch.increment_token_version) {
       update.$inc = { token_version: 1 };
@@ -154,7 +185,7 @@ const mongoStore: ExtensionUserStore = {
   async list() {
     const users = await ExtensionUser.find()
       .sort({ created_at: -1 })
-      .select({ email: 1, roles: 1, role: 1, active: 1, created_at: 1, last_login_at: 1 })
+      .select({ email: 1, roles: 1, role: 1, active: 1, agent_id: 1, created_at: 1, last_login_at: 1 })
       .lean();
     return users.map(toAdminExtensionUser);
   },
@@ -179,12 +210,16 @@ export async function createExtensionUser(
   if (existing) {
     throw new ConflictError(DUPLICATE_EMAIL_MESSAGE);
   }
+  if (input.agent_id) {
+    await assertAgentConnectable(input.agent_id, null, store, deps.agentExists ?? mongoAgentExists);
+  }
 
   try {
     return await store.create({
       email,
       password_hash: await hash(input.password),
       roles,
+      ...(input.agent_id ? { agent_id: input.agent_id } : {}),
     });
   } catch (error) {
     if (isDuplicateKeyError(error)) {
@@ -217,18 +252,25 @@ export async function updateExtensionUser(
   const passwordChanged = Boolean(input.password);
   const emailChanged = nextEmail !== user.email;
   const rolesChanged = input.roles !== undefined && !rolesSetsEqual(nextRoles, storedRoles);
+  const agentChanged = input.agent_id !== undefined && (input.agent_id ?? null) !== (user.agent_id ?? null);
 
-  if (!emailChanged && !passwordChanged && !rolesChanged) {
+  if (!emailChanged && !passwordChanged && !rolesChanged && !agentChanged) {
     return toAdminExtensionUser({
       _id: { toString: () => user.id },
       email: user.email,
       roles: storedRoles,
       role: user.role,
       active: user.active,
+      agent_id: user.agent_id ?? null,
       created_at: user.created_at,
       last_login_at: user.last_login_at ?? null,
     });
   }
+  if (agentChanged && input.agent_id) {
+    await assertAgentConnectable(input.agent_id, id, store, deps.agentExists ?? mongoAgentExists);
+  }
+  // Connecting or disconnecting an Agent is bookkeeping: it never ends the extension session.
+  const signsOut = emailChanged || passwordChanged || rolesChanged;
 
   if (emailChanged) {
     const existing = await store.findByEmail(nextEmail);
@@ -242,7 +284,8 @@ export async function updateExtensionUser(
       email: emailChanged ? nextEmail : undefined,
       password_hash: passwordChanged && input.password ? await hash(input.password) : undefined,
       roles: nextRoles,
-      increment_token_version: true,
+      ...(agentChanged ? { agent_id: input.agent_id ?? null } : {}),
+      increment_token_version: signsOut,
       set_password_changed_at: passwordChanged,
     });
     if (!updated) {
@@ -274,6 +317,7 @@ export function toAdminExtensionUser(
     _id: { toString(): string };
     roles?: unknown;
     role?: unknown;
+    agent_id?: { toString(): string } | string | null;
     created_at: Date | string;
     last_login_at?: Date | string | null;
   },
@@ -287,9 +331,26 @@ export function toAdminExtensionUser(
     email: user.email,
     roles,
     active: user.active,
+    agent_id: user.agent_id ? String(user.agent_id) : null,
     created_at: toIso(user.created_at),
     last_login_at: user.last_login_at ? toIso(user.last_login_at) : null,
   };
+}
+
+/** An Agent may hold one extension login: it must exist and not be connected to another login. */
+async function assertAgentConnectable(
+  agentId: string,
+  userId: string | null,
+  store: ExtensionUserStore,
+  agentExists: (agentId: string) => Promise<boolean>,
+): Promise<void> {
+  if (!(await agentExists(agentId))) {
+    throw new BadRequestError(AGENT_NOT_FOUND_MESSAGE);
+  }
+  const holder = await store.findByAgentId(agentId);
+  if (holder && holder.id !== userId) {
+    throw new ConflictError(AGENT_TAKEN_MESSAGE);
+  }
 }
 
 function requireNormalizedRoles(input: unknown): CurrentExtensionRole[] {

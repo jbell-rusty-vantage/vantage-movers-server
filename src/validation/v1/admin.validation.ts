@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OUTREACH_DESK_SETTINGS } from "../../config/domain/salesOutreach";
 import {
   booleanInput,
   localSchema,
@@ -127,12 +128,19 @@ export const catalogCreateSchema = z
     // agents created that way (`extension_sales_rep_match`) instead of
     // `admin`.
     created_from: nonEmptyString.optional(),
+    // Agents only: the Owner's Outreach Desk control (People & access).
+    outreach_desk: z.enum(OUTREACH_DESK_SETTINGS).optional(),
   })
   .strict();
 
 export const catalogUpdateSchema = catalogCreateSchema
   .partial()
   .extend({
+    // `null` (or an empty string) clears an Agent's Granot username.
+    granot_crm_username: z
+      .union([z.string().trim(), z.null()])
+      .transform((value) => value || null)
+      .optional(),
     reason: optionalTrimmedString,
   })
   .refine(
@@ -140,6 +148,7 @@ export const catalogUpdateSchema = catalogCreateSchema
       value.name !== undefined ||
       value.role !== undefined ||
       value.granot_crm_username !== undefined ||
+      value.outreach_desk !== undefined ||
       value.active !== undefined ||
       value.created_from !== undefined,
     "At least one catalog field must be provided",

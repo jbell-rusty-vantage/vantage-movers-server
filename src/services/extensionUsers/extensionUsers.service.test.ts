@@ -27,6 +27,10 @@ function memoryStore(seed: MemoryRow[] = []): ExtensionUserStore & {
       const user = users.find((row) => row.email === email);
       return user ? { id: user.id } : null;
     },
+    async findByAgentId(agentId) {
+      const user = users.find((row) => row.agent_id === agentId);
+      return user ? { id: user.id } : null;
+    },
     async findById(id) {
       const user = users.find((row) => row.id === id);
       return user ? { ...user } : null;
@@ -38,6 +42,7 @@ function memoryStore(seed: MemoryRow[] = []): ExtensionUserStore & {
         email: input.email,
         password_hash: input.password_hash,
         roles: input.roles,
+        agent_id: input.agent_id ?? null,
         token_version: 0,
         active: true,
         created_at: "2026-09-03T16:00:00.000Z",
@@ -60,6 +65,9 @@ function memoryStore(seed: MemoryRow[] = []): ExtensionUserStore & {
       if (patch.roles !== undefined) {
         user.roles = patch.roles;
         delete user.role;
+      }
+      if (patch.agent_id !== undefined) {
+        user.agent_id = patch.agent_id;
       }
       if (patch.increment_token_version) {
         user.token_version += 1;
@@ -87,6 +95,7 @@ function toAdmin(user: MemoryRow): AdminExtensionUser {
     roles: user.roles,
     role: user.role,
     active: user.active,
+    agent_id: user.agent_id ?? null,
     created_at: user.created_at,
     last_login_at: user.last_login_at ?? null,
   });
@@ -323,4 +332,29 @@ test("deleteExtensionUser returns not found for a missing id", async () => {
     (error: unknown) =>
       error instanceof NotFoundError && error.message === "Extension User not found.",
   );
+});
+
+test("an extension login connects to one Agent without signing it out", async () => {
+  const agents = new Set(["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"]);
+  const deps = (store: ExtensionUserStore) => ({ store, hashPassword: async (password: string) => `hashed:${password}`, agentExists: async (id: string) => agents.has(id) });
+  const store = memoryStore([
+    { id: "user-1", email: "rep@vantage.com", password_hash: "h", roles: ["sales"], token_version: 2, active: true, created_at: "2026-09-01T12:00:00.000Z", last_login_at: null },
+  ]);
+
+  const connected = await updateExtensionUser("user-1", { agent_id: "aaaaaaaaaaaaaaaaaaaaaaaa" }, deps(store));
+  assert.equal(connected.agent_id, "aaaaaaaaaaaaaaaaaaaaaaaa");
+  assert.equal(store.rows[0]?.token_version, 2);
+
+  const made = await createExtensionUser({ email: "other@vantage.com", password: "secret-123", roles: ["sales"], agent_id: "bbbbbbbbbbbbbbbbbbbbbbbb" }, deps(store));
+  assert.equal(made.agent_id, "bbbbbbbbbbbbbbbbbbbbbbbb");
+
+  await assert.rejects(updateExtensionUser("user-1", { agent_id: "bbbbbbbbbbbbbbbbbbbbbbbb" }, deps(store)), ConflictError);
+  await assert.rejects(
+    createExtensionUser({ email: "third@vantage.com", password: "secret-123", roles: ["sales"], agent_id: "cccccccccccccccccccccccc" }, deps(store)),
+    /not on the roster/,
+  );
+
+  const cleared = await updateExtensionUser("user-1", { agent_id: null }, deps(store));
+  assert.equal(cleared.agent_id, null);
+  assert.equal(store.rows[0]?.token_version, 2);
 });

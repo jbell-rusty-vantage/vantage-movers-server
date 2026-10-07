@@ -44,7 +44,7 @@ generated:
 
 Shared persisted fields: `name`, `normalized_name` (unique vs aliases), `name_aliases[]`, `active`, `created_from`, optional `archived_at` / `deactivation_reason`, timestamps.
 
-The public `CatalogItem` DTO exposes `id` and `_id` as the same string, plus optional flattened `granot_crm_username`. It does **not** return `name_aliases`, nested `granot_identity`, `archived_at`, or `deactivation_reason`. `resolveActiveAgentByName` returns the full `RegistryCatalogItem` (aliases + identity).
+The public `CatalogItem` DTO exposes `id` and `_id` as the same string, plus optional flattened `granot_crm_username`, `name_aliases`, `archived_at`, `deactivation_reason` and, for Agents, `outreach_desk` (the Owner's Outreach Desk control: `auto` | `on` | `off`, absent = `auto`). Agent reads (list and get) also carry `desk_membership {on, reason}` — whether the Agent is a desk rep now and why (`inactive`, `owner_off`, `owner_on`, `granot`, `ringcentral`, `none`; rule `deskMembership` in `src/services/salesOutreach/roster/rule.ts`, one bounded link read per list). It does **not** return nested `granot_identity`. `resolveActiveAgentByName` returns the full `RegistryCatalogItem` (aliases + identity).
 
 ## Name handling
 
@@ -78,7 +78,7 @@ List query (`catalogListQuerySchema`): `include_inactive=true` lists deactivated
 
 `GET /api/v1/admin/agents` and `GET /api/v1/admin/agents/:id` were the Agent browse/detail reads with Booking metrics. The 2026-10 server/admin slimming removed the Admin `/agents` page, the Agent browse resource and `exports/agents.csv`; both paths now serve the Agent catalog (the Operations Registry Agents and Users tabs read them) and still return 400 for a retired `historical`/`combined` `database_scope`. Catalog pickers and the extension list Agents at `GET /api/v1/admin/catalog/agents`.
 
-Create (`catalogCreateSchema`): required `name`; optional `role` (agents), `granot_crm_username` (agents), `active`, `created_from`. Update is partial plus optional `reason`; at least one of `name`, `role`, `granot_crm_username`, `active`, `created_from` is required. Activation body is `{ active, reason? }`.
+Create (`catalogCreateSchema`): required `name`; optional `role` (agents), `granot_crm_username` (agents), `outreach_desk` (agents), `active`, `created_from`. Update is partial plus optional `reason`; at least one of `name`, `role`, `granot_crm_username`, `outreach_desk`, `active`, `created_from` is required. An Agent's `granot_crm_username: null` (or `""`) clears the username and the nested `granot_identity` (an Agent may have no Granot login). An update that changes activation, the username's presence or `outreach_desk` re-syncs the Agent's open Outreach Desk subjects in the same transaction and publishes the desk live hint after commit. Activation body is `{ active, reason? }`.
 
 Zod comments still mention a `CATALOGS` map in `catalog.service.ts`. **That map is gone.** Defaults live in `catalogRegistry.ts` (known gap vs the schema comment).
 

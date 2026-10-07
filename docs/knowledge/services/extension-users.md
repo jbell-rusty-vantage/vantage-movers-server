@@ -53,15 +53,15 @@ Owner-only (`requireRegistryOwnerActor`). Admin Dashboard Admin → `403`.
 | Edit | `PATCH /api/v1/admin/extension-users/:id` | `200 { ok: true, data }` |
 | Delete | `DELETE /api/v1/admin/extension-users/:id` | `200 { ok: true, data: { id } }` |
 
-Create body: `{ email, password, roles }`. PATCH body: `{ email?, password?, roles? }` — omitted fields stay unchanged; empty password string is omitted; at least one of email, password, or roles must remain. `roles` is a non-empty array of `owner`, `sales`, or `customer_service`. `employee` or empty `roles` → `400`. Invalid ObjectId → `400`. Unknown id → `404`. Duplicate email → `409` `{ ok: false, error: "An Extension User already uses this email." }`.
+Create body: `{ email, password, roles, agent_id? }`. PATCH body: `{ email?, password?, roles?, agent_id? }` — omitted fields stay unchanged; empty password string is omitted; at least one of email, password, roles or agent_id must remain. `agent_id` (People & access, 2026-10-07) connects the login to the Agent (roster person) it belongs to; `null` disconnects it. The Agent must exist (else `400` "That Agent is not on the roster.") and may hold one extension login (another login already connected → `409` "Another extension login is already connected to this Agent."). `roles` is a non-empty array of `owner`, `sales`, or `customer_service`. `employee` or empty `roles` → `400`. Invalid ObjectId → `400`. Unknown id → `404`. Duplicate email → `409` `{ ok: false, error: "An Extension User already uses this email." }`.
 
-The service `normalizeEmail`s (trim + lowercase) before persist and hashes a provided password. Create always stores `active: true` and `token_version: 0`. Write paths `$set` `roles` and `$unset` leftover `role`. DTO (`id`, `email`, `roles`, `active`, `created_at`, `last_login_at`): never includes password or `password_hash`. List is newest `created_at` first, dual-reads leftover Employee as Sales plus Customer Service, and has no `active` filter.
+The service `normalizeEmail`s (trim + lowercase) before persist and hashes a provided password. Create always stores `active: true` and `token_version: 0`. Write paths `$set` `roles` and `$unset` leftover `role`. DTO (`id`, `email`, `roles`, `active`, `agent_id` (string or null), `created_at`, `last_login_at`): never includes password or `password_hash`. List is newest `created_at` first, dual-reads leftover Employee as Sales plus Customer Service, and has no `active` filter.
 
 Delete hard-removes the Mongo document. That email may be used on a new create. These routes do not deactivate or reactivate.
 
 ## Session invalidation
 
-Access tokens are `{ sub, email, roles, token_version }` (`src/auth/extension/`). An actual email, password, or roles-set change increments `token_version` (roles-set compare is membership, not array order). A no-op PATCH does not. Password change also sets `password_changed_at`. Delete does not bump version — the user is gone. `getExtensionUserFromAccessToken` requires a matching email, roles set, and `token_version`.
+Access tokens are `{ sub, email, roles, token_version }` (`src/auth/extension/`). An actual email, password, or roles-set change increments `token_version` (roles-set compare is membership, not array order). A no-op PATCH does not, and neither does connecting or disconnecting an Agent (`agent_id` is bookkeeping for Setup → People & access). Password change also sets `password_changed_at`. Delete does not bump version — the user is gone. `getExtensionUserFromAccessToken` requires a matching email, roles set, and `token_version`.
 
 ## Migration
 
@@ -76,7 +76,8 @@ Access tokens are `{ sub, email, roles, token_version }` (`src/auth/extension/`)
 - Unique email.
 - Password never leaves the server after create or edit.
 - Admin Dashboard Admin cannot list, create, edit, or delete.
-- Creating an Extension User does not create an Agent.
+- Creating an Extension User does not create an Agent; the Admin's People & access sheet creates the Agent first when the Owner asks, then sends its id.
+- One extension login per Agent (`agent_id`); a login without one is allowed (for example the Owner's own).
 - Employee cannot be created or PATCHed.
 
 ## Not the same as

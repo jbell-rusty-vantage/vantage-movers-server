@@ -22,6 +22,8 @@ const ExtensionUserSchema = new Schema(
       enum: STORED_EXTENSION_ROLES,
     },
     active: { type: Boolean, required: true, default: true },
+    // The Agent (roster person) this login belongs to, set by the Owner in People & access; absent = none.
+    agent_id: { type: Schema.Types.ObjectId, ref: "Agent" },
     token_version: { type: Number, required: true, default: 0 },
     created_at: { type: Date, required: true, default: Date.now },
     updated_at: { type: Date, required: true, default: Date.now },

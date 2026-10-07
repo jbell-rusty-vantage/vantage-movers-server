@@ -28,6 +28,8 @@ const AgentSchema = new Schema(
       sparse: true,
       unique: true,
     },
+    // Owner's Outreach Desk control (`OUTREACH_DESK_SETTINGS`); absent = "auto".
+    outreach_desk: { type: String, enum: ["auto", "on", "off"] },
   },
   {
     collection: "agents",

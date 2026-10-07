@@ -18,6 +18,7 @@ const listed: AdminExtensionUser[] = [
     roles: ["owner"],
     active: true,
     created_at: "2026-09-03T16:00:00.000Z",
+    agent_id: null,
     last_login_at: null,
   },
 ];
@@ -42,7 +43,8 @@ app.use(
         roles: input.roles,
         active: true,
         created_at: "2026-09-03T16:05:00.000Z",
-        last_login_at: null,
+        agent_id: null,
+    last_login_at: null,
       };
       created.push(user);
       return user;
@@ -60,7 +62,8 @@ app.use(
         roles: input.roles ?? ["sales"],
         active: true,
         created_at: "2026-09-03T16:05:00.000Z",
-        last_login_at: null,
+        agent_id: null,
+    last_login_at: null,
       };
       updated.push(user);
       return user;

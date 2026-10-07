@@ -38,10 +38,13 @@ test("active catalog list excludes inactive rows by default", async () => {
     ]);
   };
 
-  const items = await listCatalogItems("agents");
+  const items = await listCatalogItems("agents", {}, {
+    deskMemberships: async (agents) => new Map(agents.map((agent) => [String(agent.id), { on: false, reason: "none" as const }])),
+  });
 
   assert.deepEqual(capture.filter, { active: true });
   assert.equal(items[0]?.name, "Austin");
+  assert.deepEqual(items[0]?.desk_membership, { on: false, reason: "none" });
 });
 
 test("agent resolution rejects inactive or unknown names", async () => {
