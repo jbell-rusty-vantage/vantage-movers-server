@@ -22,7 +22,7 @@ import { previewCallLeadEnrichment } from "../enrichment";
 import { previewBookedCallLeadReconciliation } from "../reconciliation";
 import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../domainCommands/types";
 import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
-import { applyAutomationPlanAction } from "../granotLifecycle/automationApply";
+import { applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import {
   buildGranotOperationPayloads,
@@ -428,7 +428,10 @@ export function assertReviewedEstimatesWindow(value: unknown, now: Date): void {
   }
 }
 
-export async function runGranotWorker(): Promise<{
+export async function runGranotWorker(deps: {
+  applyAction?: typeof applyAutomationPlanAction;
+  loadReplayStates?: typeof loadAutomationReplayStates;
+} = {}): Promise<{
   claimed: boolean;
   run_id?: string;
   status?: string;
@@ -456,7 +459,7 @@ export async function runGranotWorker(): Promise<{
     // Approved work takes precedence over new planning so an owner does not
     // wait behind a large sibling plan after explicitly approving a checksum.
     const run =
-      (await claimGranotRun({ status: "applying" }, lease, now)) ??
+      (await claimGranotRun({ status: "applying", ...granotApplyReadyFilter(now) }, lease, now)) ??
       (await claimGranotRun(
         {
           $or: [
@@ -477,12 +480,12 @@ export async function runGranotWorker(): Promise<{
     if (!run) return { claimed: false };
     runId = String(run._id);
     if (run.status === "applying") {
-      const status = await applyRun(runId, lease);
+      const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
     }
     const plannedStatus = await planRun(runId, lease);
     if (plannedStatus === "applying") {
-      const status = await applyRun(runId, lease);
+      const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
     }
     return { claimed: true, run_id: runId, status: plannedStatus };
@@ -825,7 +828,11 @@ async function planCallWorkflow(
   };
 }
 
-async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
+async function applyRun(runId: string, lease: LeaseToken, deps: {
+  applyAction?: typeof applyAutomationPlanAction;
+  loadReplayStates?: typeof loadAutomationReplayStates;
+} = {}): Promise<string> {
+  const applyAction = deps.applyAction ?? applyAutomationPlanAction;
   const run = await GranotAutomationRun.findOne({
     ...fenced(runId, lease, ["applying"]),
     expires_at: { $gt: new Date() },
@@ -863,12 +870,24 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
   let completed = [...receiptsByAction.values()].filter((receipt) =>
     isTerminalAutomationActionOutcome(receipt.outcome),
   ).length;
+  const replayStates = await (deps.loadReplayStates ?? loadAutomationReplayStates)(
+    [...receiptsByAction.values()].filter((r) => isPendingAutomationActionOutcome(r.outcome)).map((r) => r.lifecycle_receipt_id),
+    new Date(),
+  );
+  let pendingReplays = 0;
 
   for (const action of plan.actions) {
     if (!selectedSet.has(action.action_id)) continue;
     const existing = receiptsByAction.get(action.action_id);
     if (existing && isTerminalAutomationActionOutcome(existing.outcome)) {
       continue;
+    }
+    const replay = existing ? replayStates.get(existing.lifecycle_receipt_id) : undefined;
+    if (existing) {
+      if (replay?.ready === false) continue;
+      // A stale/non-due claim can poll for five seconds. At most one pending
+      // replay gets that budget; fresh actions and terminal reads still proceed.
+      if (!replay?.terminal && pendingReplays++ >= 1) continue;
     }
     if (!action.lifecycle_apply) {
       throw new GranotRunConflict(
@@ -879,7 +898,7 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
     await renewRunLease(runId, lease, "applying");
     let receipt: GranotAutomationActionReceipt;
     try {
-      receipt = await applyAutomationPlanAction({
+      receipt = await applyAction({
         action_id: action.action_id,
         lifecycle_apply: action.lifecycle_apply,
         initiator: approval.approved_by,
@@ -905,10 +924,8 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
     }
     await upsertActionReceipt(runId, lease, receipt, terminal ? completed : undefined);
     receiptsByAction.set(action.action_id, receipt);
-    if (isPendingAutomationActionOutcome(receipt.outcome)) {
-      await yieldApplyingRun(runId, lease);
-      return "applying";
-    }
+    // A pending match owns only this action. Independent reviewed actions must
+    // still reach their canonical decisions before the run waits for retries.
   }
 
   const status = automationRunCompletionStatus(
@@ -916,7 +933,7 @@ async function applyRun(runId: string, lease: LeaseToken): Promise<string> {
     selected,
   );
   if (status === "applying") {
-    await yieldApplyingRun(runId, lease);
+    await yieldApplyingRun(runId, lease, completed);
     return status;
   }
   const finished = await GranotAutomationRun.updateOne(
@@ -966,13 +983,15 @@ async function upsertActionReceipt(
   if (saved.modifiedCount !== 1) throw new Error("Granot apply checkpoint lost its fenced lease.");
 }
 
-async function yieldApplyingRun(runId: string, lease: LeaseToken): Promise<void> {
+async function yieldApplyingRun(runId: string, lease: LeaseToken, completed: number): Promise<void> {
   const yielded = await GranotAutomationRun.updateOne(
     fenced(runId, lease, ["applying"]),
     {
       $set: {
         lease_owner: null,
         leased_until: null,
+        last_attempt_at: new Date(),
+        checkpoint: checkpoint("waiting_match", completed),
       },
     },
   ).exec();
@@ -1114,23 +1133,33 @@ export async function recoverGranotRuns(): Promise<{
   queue_published: boolean;
 }> {
   await connectMongo();
-  const exists = await GranotAutomationRun.exists({
-    $or: [
-      { status: "queued" },
-      {
-        status: { $in: ["planning", "applying"] },
-        $or: [
-          { leased_until: { $lte: new Date() } },
-          { leased_until: null },
-          { leased_until: { $exists: false } },
-        ],
-      },
-    ],
-  });
+  const exists = await GranotAutomationRun.exists(granotRecoverableFilter(new Date()));
   return {
     recoverable: Boolean(exists),
     queue_published: exists ? await publishGranotWakeup(String(exists._id), "recovery") : false,
   };
+}
+
+/** Bounded polling only; the lifecycle receipt still owns its exact retry clock. */
+export function granotApplyReadyFilter(now: Date): Record<string, unknown> {
+  return { $or: [
+    { "checkpoint.phase": { $ne: "waiting_match" } },
+    { last_attempt_at: { $lte: new Date(+now - 60_000) } },
+    { last_attempt_at: null },
+  ] };
+}
+
+function granotRecoverableFilter(now: Date): Record<string, unknown> {
+  const leaseAvailable = { $or: [
+    { leased_until: { $lte: now } },
+    { leased_until: null },
+    { leased_until: { $exists: false } },
+  ] };
+  return { $or: [
+    { status: "queued" },
+    { status: "planning", ...leaseAvailable },
+    { status: "applying", $and: [leaseAvailable, granotApplyReadyFilter(now)] },
+  ] };
 }
 
 export async function continueGranotRuns(completedRunId: string): Promise<{
@@ -1138,19 +1167,7 @@ export async function continueGranotRuns(completedRunId: string): Promise<{
   queue_published: boolean;
 }> {
   await connectMongo();
-  const exists = await GranotAutomationRun.exists({
-    $or: [
-      { status: "queued" },
-      {
-        status: { $in: ["planning", "applying"] },
-        $or: [
-          { leased_until: { $lte: new Date() } },
-          { leased_until: null },
-          { leased_until: { $exists: false } },
-        ],
-      },
-    ],
-  });
+  const exists = await GranotAutomationRun.exists(granotRecoverableFilter(new Date()));
   return {
     recoverable: Boolean(exists),
     queue_published: exists
@@ -1396,7 +1413,7 @@ async function claimGranotRun(
       },
       $inc: { attempt_count: 1 },
     },
-    { sort: { createdAt: 1 }, returnDocument: "after" },
+    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after" },
   )
     .lean()
     .exec();

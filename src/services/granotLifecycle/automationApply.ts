@@ -10,6 +10,25 @@ import {
 } from "./capture";
 import { claimAndProcessOrPoll, type SyncClaimResult } from "./drainer";
 import type { SynchronizationOutcome } from "./types";
+import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+
+export type AutomationReplayState = { terminal: boolean; ready: boolean };
+
+/** Read only: receipt clocks remain authoritative; bulk-check before polling old actions. */
+export async function loadAutomationReplayStates(ids: string[], now: Date): Promise<Map<string, AutomationReplayState>> {
+  if (!ids.length) return new Map();
+  const rows = await getGranotObservationReceiptModel().find({ _id: { $in: ids } })
+    .select({ _id: 1, processing: 1 }).lean().exec();
+  return new Map(rows.map((row) => {
+    const p = row.processing;
+    const terminal = p.state === "completed" || p.state === "dead_letter";
+    return [String(row._id), {
+      terminal,
+      ready: terminal || p.state === "dead_letter" || (+new Date(p.next_attempt_at) <= +now &&
+        (p.state !== "claimed" || !p.leased_until || +new Date(p.leased_until) <= +now)),
+    }];
+  }));
+}
 
 export type GranotAutomationActionReceipt = {
   action_id: string;
@@ -49,7 +68,8 @@ export async function applyAutomationPlanAction(
   }
 
   const capture = deps.capture ?? captureChannelOperationReceipt;
-  const claimAndProcess = deps.claimAndProcess ?? claimAndProcessOrPoll;
+  const claimAndProcess = deps.claimAndProcess ?? ((id: string) =>
+    claimAndProcessOrPoll(id, { syncPollDeadlineMs: input.existing_receipt ? 0 : undefined }));
   const item = input.lifecycle_apply;
   const captured = await capture({
     observation_channel: "granot_http_automation",

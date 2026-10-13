@@ -521,3 +521,24 @@ test("queue wakeup parser accepts only { receipt_id }", async () => {
   await assert.rejects(() => parseReceiptWakeup("not-an-object"));
 });
 
+
+test("nonblocking automation refresh reads live dead-letter state without polling", async () => {
+  const row = snapshot({ processing: { state: "dead_letter", technical_attempts: 10, match_attempt: 0, next_attempt_at: capturedAt, manual_requeue_count: 0 } });
+  const deps = memoryStore([row]);
+  deps.syncPollDeadlineMs = 0;
+  const started = deps.now!().getTime();
+  const result = await claimAndProcessOrPoll(String(row._id), deps);
+  assert.equal(result.status, "accepted_for_processing");
+  if (result.status === "accepted_for_processing") assert.equal(result.state, "dead_letter");
+  assert.equal(deps.now!().getTime(), started);
+  assert.equal(deps.processorCalls.length, 0);
+});
+
+test("nonblocking refresh honors an Owner requeue before the canonical claim", async () => {
+  const row = snapshot();
+  const deps = memoryStore([row]);
+  deps.syncPollDeadlineMs = 0;
+  const result = await claimAndProcessOrPoll(String(row._id), deps);
+  assert.equal(result.status, "processed");
+  assert.equal(deps.processorCalls.length, 1);
+});
