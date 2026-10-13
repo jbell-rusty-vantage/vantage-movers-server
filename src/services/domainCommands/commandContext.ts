@@ -2,6 +2,7 @@ import type { ObservationChannel } from "../granotLifecycle/types";
 import { DomainCommandContextError } from "./types";
 import type { CanonicalCommandContext } from "./types";
 import {
+  GRANOT_ESTIMATES_CRON_ACTOR_ID,
   GRANOT_LIFECYCLE_PROCESSOR_ACTOR_ID,
   GRANOT_LIFECYCLE_PROCESSOR_ACTOR_LABEL,
   GRANOT_WEBHOOK_INITIATOR_ID,
@@ -168,6 +169,12 @@ function assertGranotLifecycleContext(context: CanonicalCommandContext): void {
   if (isTrustedHumanActor(context.initiator, "vantage_admin")) {
     return;
   }
+  if (
+    channel === "granot_http_automation" &&
+    isEstimatesCronInitiator(context.initiator)
+  ) {
+    return;
+  }
   throw new DomainCommandContextError(
     "Granot lifecycle commands require the webhook system initiator or a server-authenticated Owner.",
   );
@@ -219,6 +226,18 @@ function isGranotWebhookInitiator(
     actor.actor_role === "system" &&
     actor.origin === "granot_lifecycle" &&
     actor.request_id === receiptId
+  );
+}
+
+function isEstimatesCronInitiator(
+  actor: CanonicalCommandContext["actor"],
+): boolean {
+  return (
+    actor.actor_type === "system" &&
+    actor.actor_id === GRANOT_ESTIMATES_CRON_ACTOR_ID &&
+    actor.actor_role === "system" &&
+    actor.origin === "vantage_admin" &&
+    Boolean(actor.request_id.trim())
   );
 }
 

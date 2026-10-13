@@ -184,6 +184,7 @@ export const GRANOT_LIFECYCLE_PROCESSOR_ACTOR_ID =
 export const GRANOT_LIFECYCLE_PROCESSOR_ACTOR_LABEL =
   "Granot Lifecycle Processor";
 export const GRANOT_WEBHOOK_INITIATOR_ID = "granot-webhook";
+export const GRANOT_ESTIMATES_CRON_ACTOR_ID = "granot-estimates-in-process-cron";
 export const RINGCENTRAL_CALL_INGEST_ACTOR_ID = "ringcentral-call-ingest";
 
 export const OWNER_COMMAND_IDEMPOTENCY_KEY_PATTERN =

@@ -124,6 +124,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/granot-estimates-in-process",
+      "schedule": "0 * * * *"
+    },
+    {
       "path": "/api/cron/granot-lifecycle-drain",
       "schedule": "*/5 * * * *"
     },

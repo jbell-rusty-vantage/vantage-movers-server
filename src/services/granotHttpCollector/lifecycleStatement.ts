@@ -28,7 +28,7 @@ export type SealableAutomationAction = {
 };
 
 export type SealableAutomationPlan = {
-  kind: "form_leads" | "call_leads";
+  kind: "form_leads" | "call_leads" | "estimates_in_process";
   schema_version: number;
   actions: SealableAutomationAction[];
   counters: Record<string, number>;
