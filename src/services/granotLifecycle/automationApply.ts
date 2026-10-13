@@ -10,6 +10,26 @@ import {
 } from "./capture";
 import { claimAndProcessOrPoll, type SyncClaimResult } from "./drainer";
 import type { SynchronizationOutcome } from "./types";
+import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+
+export type AutomationReplayState = { terminal: boolean; dead_letter: boolean; ready: boolean };
+
+/** Read only: receipt clocks remain authoritative; bulk-check before polling old actions. */
+export async function loadAutomationReplayStates(ids: string[], now: Date): Promise<Map<string, AutomationReplayState>> {
+  if (!ids.length) return new Map();
+  const rows = await getGranotObservationReceiptModel().find({ _id: { $in: ids } })
+    .select({ _id: 1, processing: 1 }).lean().exec();
+  return new Map(rows.map((row) => {
+    const p = row.processing;
+    const terminal = p.state === "completed" || p.state === "dead_letter";
+    return [String(row._id), {
+      terminal,
+      dead_letter: p.state === "dead_letter",
+      ready: terminal || (+new Date(p.next_attempt_at) <= +now &&
+        (p.state !== "claimed" || !p.leased_until || +new Date(p.leased_until) <= +now)),
+    }];
+  }));
+}
 
 export type GranotAutomationActionReceipt = {
   action_id: string;

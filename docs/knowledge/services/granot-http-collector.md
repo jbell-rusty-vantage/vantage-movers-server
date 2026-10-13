@@ -218,3 +218,9 @@ and is eligible for bounded polling after one minute (the receipt's own drainer
 still controls whether a claim is due). Claims use least-recent-attempt order so
 one pending run cannot starve other approved work; heartbeat and continuation
 only nominate eligible runs. No lifecycle outcome is converted or forced.
+
+Existing pending receipts are bulk-read before replay. Non-due or actively claimed
+receipts are skipped, terminal results can refresh immediately, and at most one
+potentially blocking pending replay is attempted per pass. Dead letters become
+the existing technical-failure receipt without polling. Fresh selected actions
+remain independent; this bounds replay polling while preserving lifecycle clocks.

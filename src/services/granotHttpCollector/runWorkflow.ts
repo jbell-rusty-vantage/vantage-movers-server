@@ -22,7 +22,7 @@ import { previewCallLeadEnrichment } from "../enrichment";
 import { previewBookedCallLeadReconciliation } from "../reconciliation";
 import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../domainCommands/types";
 import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
-import { applyAutomationPlanAction } from "../granotLifecycle/automationApply";
+import { applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import {
   buildGranotOperationPayloads,
@@ -430,6 +430,7 @@ export function assertReviewedEstimatesWindow(value: unknown, now: Date): void {
 
 export async function runGranotWorker(deps: {
   applyAction?: typeof applyAutomationPlanAction;
+  loadReplayStates?: typeof loadAutomationReplayStates;
 } = {}): Promise<{
   claimed: boolean;
   run_id?: string;
@@ -479,12 +480,12 @@ export async function runGranotWorker(deps: {
     if (!run) return { claimed: false };
     runId = String(run._id);
     if (run.status === "applying") {
-      const status = await applyRun(runId, lease, deps.applyAction);
+      const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
     }
     const plannedStatus = await planRun(runId, lease);
     if (plannedStatus === "applying") {
-      const status = await applyRun(runId, lease, deps.applyAction);
+      const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
     }
     return { claimed: true, run_id: runId, status: plannedStatus };
@@ -827,7 +828,11 @@ async function planCallWorkflow(
   };
 }
 
-async function applyRun(runId: string, lease: LeaseToken, applyAction = applyAutomationPlanAction): Promise<string> {
+async function applyRun(runId: string, lease: LeaseToken, deps: {
+  applyAction?: typeof applyAutomationPlanAction;
+  loadReplayStates?: typeof loadAutomationReplayStates;
+} = {}): Promise<string> {
+  const applyAction = deps.applyAction ?? applyAutomationPlanAction;
   const run = await GranotAutomationRun.findOne({
     ...fenced(runId, lease, ["applying"]),
     expires_at: { $gt: new Date() },
@@ -865,12 +870,24 @@ async function applyRun(runId: string, lease: LeaseToken, applyAction = applyAut
   let completed = [...receiptsByAction.values()].filter((receipt) =>
     isTerminalAutomationActionOutcome(receipt.outcome),
   ).length;
+  const replayStates = await (deps.loadReplayStates ?? loadAutomationReplayStates)(
+    [...receiptsByAction.values()].filter((r) => isPendingAutomationActionOutcome(r.outcome)).map((r) => r.lifecycle_receipt_id),
+    new Date(),
+  );
+  let pendingReplays = 0;
 
   for (const action of plan.actions) {
     if (!selectedSet.has(action.action_id)) continue;
     const existing = receiptsByAction.get(action.action_id);
     if (existing && isTerminalAutomationActionOutcome(existing.outcome)) {
       continue;
+    }
+    const replay = existing ? replayStates.get(existing.lifecycle_receipt_id) : undefined;
+    if (existing && !replay?.dead_letter) {
+      if (replay?.ready === false) continue;
+      // A stale/non-due claim can poll for five seconds. At most one pending
+      // replay gets that budget; fresh actions and terminal reads still proceed.
+      if (!replay?.terminal && pendingReplays++ >= 1) continue;
     }
     if (!action.lifecycle_apply) {
       throw new GranotRunConflict(
@@ -881,7 +898,12 @@ async function applyRun(runId: string, lease: LeaseToken, applyAction = applyAut
     await renewRunLease(runId, lease, "applying");
     let receipt: GranotAutomationActionReceipt;
     try {
-      receipt = await applyAction({
+      receipt = replay?.dead_letter && existing ? {
+        ...existing,
+        outcome: "technical_failure",
+        error_code: "GRANOT_RECEIPT_DEAD_LETTER",
+        applied_at: new Date(),
+      } : await applyAction({
         action_id: action.action_id,
         lifecycle_apply: action.lifecycle_apply,
         initiator: approval.approved_by,
