@@ -5,7 +5,7 @@ const NEW_YORK = "America/New_York";
 
 export type EstimatesCronDecision =
   | { run: false; reason: "outside_estimates_hours" }
-  | { run: true; dateWindow: { from: string; to: string } };
+  | { run: true; dateWindow: { from: string; to: string }; slotKey: string };
 
 /**
  * Hourly cron gate. Vercel schedules are UTC; the New York hour decides, so
@@ -15,7 +15,8 @@ export function estimatesCronDecision(now: Date): EstimatesCronDecision {
   if (!ESTIMATES_RUN_HOURS.includes(newYorkHour(now) as (typeof ESTIMATES_RUN_HOURS)[number])) {
     return { run: false, reason: "outside_estimates_hours" };
   }
-  return { run: true, dateWindow: estimatesDateWindow(now) };
+  const dateWindow = estimatesDateWindow(now);
+  return { run: true, dateWindow, slotKey: `${dateWindow.to}:${newYorkHour(now)}` };
 }
 
 /** Open Date yesterday through today in America/New_York, `MM/DD/YYYY`. */

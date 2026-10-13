@@ -190,3 +190,22 @@ Admin `GET .../runs/:runId?details=owner` redacts `granot_statement` from the pl
 - [`granot-http-automation.mdc`](../../../.cursor/rules/granot-http-automation.mdc)
 - [`estimates-in-process-update.md`](../estimates-in-process-update.md) — next slice. Leaves this collector in place.
 - Tests: `granotHttpCollector.test.ts`, `runWorkflow.test.ts`, `formWorkflow.test.ts`, `sourceCatalog.test.ts`, `lifecycleStatement.test.ts`, `granot-automation.routes.test.ts`
+
+
+## Reviewed bounded Estimates apply
+
+An Owner may POST `/api/v1/admin/granot-automation/runs/:runId/apply-reviewed-estimates`
+with `plan_checksum` and `selected_action_ids` after reviewing a completed Estimates
+preview. The stored Open Date window must contain 1–90 inclusive real calendar dates
+ending no later than today in America/New_York. The unexpired schema-v2 plan and checksum
+are reused without recollecting. Only selected approvable actions are authorized;
+conflicts, unmatched rows, and unresolved sources cannot be selected. A fenced state
+change promotes the preview to `workflow: apply`, sets `request_snapshot.auto_apply: true`,
+and stores the signed Owner approval. The existing worker and lifecycle apply perform
+the effects. This narrow path skips the ordinary automation flag, retains every
+lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
+
+The recurring cron still uses yesterday through today at 8, 13, and 18 New York.
+A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
+and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
+The existing Mongo `_id` index enforces uniqueness; no index migration is required.

@@ -36,3 +36,13 @@ test("every estimates run uses Open Date yesterday through today in New York", (
   const yearBoundary = estimatesDateWindow(new Date("2026-01-01T13:00:00.000Z"));
   assert.deepEqual(yearBoundary, { from: "12/31/2025", to: "01/01/2026" });
 });
+
+
+test("cron retries share a slot identity, while the next scheduled hour gets a new identity", () => {
+  const first = estimatesCronDecision(new Date("2026-10-13T12:00:00Z"));
+  const retry = estimatesCronDecision(new Date("2026-10-13T12:59:59Z"));
+  const next = estimatesCronDecision(new Date("2026-10-13T17:00:00Z"));
+  assert.ok(first.run && retry.run && next.run);
+  assert.equal(first.slotKey, retry.slotKey);
+  assert.notEqual(first.slotKey, next.slotKey);
+});

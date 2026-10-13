@@ -15,6 +15,7 @@ import {
 } from "../services/operationsRegistry";
 import {
   approveGranotRun,
+  applyReviewedEstimatesRun,
   createGranotRun,
   createGranotRunGroup,
   getGranotRun,
@@ -303,6 +304,21 @@ router.get(`${base}/:runId`, async (req, res) => {
           code: "RUN_NOT_FOUND",
           error: "Granot automation run was not found.",
         });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.post(`${base}/:runId/apply-reviewed-estimates`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    const runId = z.string().regex(/^[a-f\d]{24}$/i).parse(req.params.runId);
+    const body = z.object({
+      plan_checksum: z.string().regex(/^[a-f\d]{64}$/i),
+      selected_action_ids: z.array(z.string().min(1)).min(1).max(5_000),
+    }).strict().parse(req.body);
+    const data = await applyReviewedEstimatesRun({ run_id: runId, ...body, approved_by: actor });
+    return res.status(202).json({ ok: true, data });
   } catch (error) {
     return sendError(res, error);
   }

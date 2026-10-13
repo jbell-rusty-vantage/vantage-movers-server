@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { send } from "@vercel/queue";
 import { Types } from "mongoose";
 import { connectMongo, withTransaction } from "../../db";
@@ -39,6 +39,7 @@ import {
   type EstimatesPartition,
 } from "./estimatesInProcess";
 import { GranotRunConflict } from "./errors";
+import { estimatesDateWindow } from "./estimatesCron";
 import {
   planGranotFormWorkflow,
   type GranotFormPlan,
@@ -77,10 +78,13 @@ export type GranotRunRequest = Omit<GranotCollectionRequest, "credentials"> & {
   initiator: DurableActor;
   sourceIds?: string[];
   /**
-   * Estimates cron only. Plans, approves every approvable action as the system
+   * Estimates cron creates this flag; reviewed Owner promotion also stores it.
+   * Cron plans and approves every approvable action as the system
    * actor, and applies in the same lease. Owner approval stays on every other run.
    */
   autoApply?: boolean;
+  /** Cron retry identity, scoped to an Estimates date and New York hour. */
+  scheduledSlotKey?: string;
 };
 export type GranotRunGroupRequest = {
   operations: GranotLeadOperation[];
@@ -165,24 +169,47 @@ export async function createGranotRun(
     sourceLabels = sources.map((source) => source.label);
     sourceIds = sources.map((source) => source.id);
   }
-  const run = await GranotAutomationRun.create(
-    buildQueuedRun({
-      operation: request.operation,
-      workflow: request.workflow,
-      dateWindow: request.dateWindow,
-      sourceIds,
-      sourceLabels,
-      filters: request.filters,
-      initiator: request.initiator,
-      autoApply: request.autoApply,
-    }),
-  );
+  const document = buildQueuedRun({
+    operation: request.operation,
+    workflow: request.workflow,
+    dateWindow: request.dateWindow,
+    sourceIds,
+    sourceLabels,
+    filters: request.filters,
+    initiator: request.initiator,
+    autoApply: request.autoApply,
+  });
+  let run;
+  if (request.scheduledSlotKey) {
+    if (request.operation !== "estimates_in_process" || !request.autoApply) {
+      throw new GranotRunConflict("INVALID_SCHEDULED_RUN", "Only Estimates auto-apply may use a scheduled slot.");
+    }
+    const id = scheduledEstimatesRunId(request.scheduledSlotKey);
+    // _id is already unique in Mongo: no new production index is required.
+    // Both a retry and concurrent requests retain the first run and its plan.
+    try {
+      await GranotAutomationRun.updateOne(
+        { _id: id },
+        { $setOnInsert: { ...document, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey } } },
+        { upsert: true },
+      ).exec();
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000) throw error;
+    }
+    run = { _id: id };
+  } else {
+    run = await GranotAutomationRun.create(document);
+  }
   const runId = String(run._id);
   return {
     run_id: runId,
     status: "queued" as const,
     queue_published: await publishGranotWakeup(runId, "create"),
   };
+}
+
+export function scheduledEstimatesRunId(slotKey: string): Types.ObjectId {
+  return new Types.ObjectId(createHash("sha256").update(`granot-estimates-slot-v1:${slotKey}`).digest("hex").slice(0, 24));
 }
 
 export async function createGranotRunGroup(
@@ -296,21 +323,34 @@ function buildQueuedRun(input: {
   };
 }
 
-export async function approveGranotRun(input: {
+type GranotApprovalInput = {
   run_id: string;
   plan_checksum: string;
   selected_action_ids: string[];
   approved_by: DurableActor;
-}): Promise<{ approved: boolean }> {
+};
+
+export async function approveGranotRun(input: GranotApprovalInput): Promise<{ approved: boolean }> {
+  return approveSealedRun(input, false);
+}
+
+/** Owner selection from a completed, bounded preview; no recollect or direct Lead writer. */
+export async function applyReviewedEstimatesRun(input: GranotApprovalInput): Promise<{ approved: boolean }> {
+  return approveSealedRun(input, true);
+}
+
+async function approveSealedRun(input: GranotApprovalInput, reviewedEstimates: boolean): Promise<{ approved: boolean }> {
   await connectMongo();
-  if (!granotApplyEnabled()) {
+  if (!reviewedEstimates && !granotApplyEnabled()) {
     throw new GranotRunConflict("APPLY_DISABLED", "GRANOT_AUTOMATION_APPLY_ENABLED must be true before apply.");
   }
   const now = new Date();
+  const stateFilter = reviewedEstimates
+    ? { operation: "estimates_in_process", status: "completed", workflow: "preview" } as const
+    : { status: "awaiting_approval", workflow: "apply" } as const;
   const run = await GranotAutomationRun.findOne({
     _id: input.run_id,
-    status: "awaiting_approval",
-    workflow: "apply",
+    ...stateFilter,
     plan_checksum: input.plan_checksum.toLowerCase(),
     expires_at: { $gt: now },
   })
@@ -322,6 +362,12 @@ export async function approveGranotRun(input: {
       "Run is expired, not awaiting approval, or checksum does not match.",
     );
   }
+  if (reviewedEstimates) {
+    assertReviewedEstimatesWindow((run.request_snapshot as { dateWindow?: unknown }).dateWindow, now);
+    if (run.approval || run.receipts.length > 0) {
+      throw new GranotRunConflict("RUN_NOT_APPROVABLE", "Reviewed preview already has apply state.");
+    }
+  }
   const plan = run.plan_snapshot as unknown as GranotPlan;
   assertSealedAutomationPlan(plan);
   assertPlanChecksum(plan, input.plan_checksum);
@@ -332,19 +378,20 @@ export async function approveGranotRun(input: {
       .map((action) => action.action_id),
   );
   const selected = [...new Set(input.selected_action_ids)];
-  if (selected.some((id) => !validIds.has(id))) {
+  if (selected.length === 0 || selected.some((id) => !validIds.has(id))) {
     throw new GranotRunConflict("UNKNOWN_ACTION", "One or more selected actions are not in the immutable plan.");
   }
   const approved = await GranotAutomationRun.updateOne(
     {
       _id: input.run_id,
-      status: "awaiting_approval",
+      ...stateFilter,
       plan_checksum: input.plan_checksum.toLowerCase(),
       expires_at: { $gt: now },
     },
     {
       $set: {
         status: "applying",
+        ...(reviewedEstimates ? { workflow: "apply", "request_snapshot.auto_apply": true, completed_at: null } : {}),
         lease_owner: null,
         leased_until: null,
         lease_epoch: 0,
@@ -362,6 +409,23 @@ export async function approveGranotRun(input: {
   }
   await publishGranotWakeup(input.run_id, "approval");
   return { approved: true };
+}
+
+/** At most 90 inclusive Open Dates, with no future dates, through the reviewed path. */
+export function assertReviewedEstimatesWindow(value: unknown, now: Date): void {
+  const window = value as { from?: unknown; to?: unknown } | null;
+  const parse = (input: unknown) => {
+    if (typeof input !== "string" || !/^\d{2}\/\d{2}\/\d{4}$/.test(input)) return NaN;
+    const [month, day, year] = input.split("/").map(Number);
+    const date = new Date(Date.UTC(year!, month! - 1, day!));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month! - 1 && date.getUTCDate() === day ? +date : NaN;
+  };
+  const from = parse(window?.from);
+  const to = parse(window?.to);
+  const today = parse(estimatesDateWindow(now).to);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to > today || to - from > 89 * 86_400_000) {
+    throw new GranotRunConflict("INVALID_BACKFILL_WINDOW", "Reviewed Estimates apply requires 1–90 inclusive calendar dates ending no later than today in New York.");
+  }
 }
 
 export async function runGranotWorker(): Promise<{

@@ -39,6 +39,7 @@ test("Granot automation exposes the durable admin run contract", () => {
   assert.equal(method(`${base}/sources`, "post"), true);
   assert.equal(method(`${base}/worker`, "post"), true);
   assert.equal(method(`${base}/:runId/approve`, "post"), true);
+  assert.equal(method(`${base}/:runId/apply-reviewed-estimates`, "post"), true);
   assert.equal(method(`${base}/:runId`, "get"), true);
 });
 

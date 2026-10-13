@@ -53,6 +53,7 @@ router.all(
         dateWindow: decision.dateWindow,
         sourceLabels: [],
         autoApply: true,
+        scheduledSlotKey: decision.slotKey,
         initiator: estimatesCronActor(),
       });
       if (!created.queue_published) {

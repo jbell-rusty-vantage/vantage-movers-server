@@ -461,3 +461,19 @@ describe("olr B1 late first period — engine view (start_kind activation, no en
     assert.equal(withPlan.obligations.filter((o) => o.channel === "call" && o.business_date <= WED).length, 0);
   });
 });
+
+test("accepted New → daily 2 ↔ 3 → unmapped → Quoted → closed preserves boundaries and never reopens", async () => {
+  const { store } = await lifecycle([
+    { ...accepted("2", "2026-10-02T14:00:00Z") },
+    { ...accepted("3", "2026-10-03T14:00:00Z") },
+    { ...accepted("2", "2026-10-04T14:00:00Z") },
+    { ...accepted("4", "2026-10-05T14:00:00Z") },
+    { ...accepted("1", "2026-10-06T14:00:00Z") },
+    { ...accepted("8", "2026-10-07T14:00:00Z") },
+    { ...accepted("0", "2026-10-08T14:00:00Z") },
+  ], leadFacts({ ...accepted("0", "2026-10-01T14:01:00Z") }));
+  assert.deepEqual(store.periods.map((p) => p.workflow), ["new", "daily", "none", "quoted", "closed"]);
+  assert.equal(store.periods[1]!.started_at.toISOString(), "2026-10-02T14:00:00.000Z", "2↔3 does not restart the daily period");
+  for (let i = 0; i < store.periods.length - 1; i++) assert.equal(+store.periods[i]!.ended_at!, +store.periods[i + 1]!.started_at);
+  assert.equal(store.subjects[0]!.status, "closed");
+});
