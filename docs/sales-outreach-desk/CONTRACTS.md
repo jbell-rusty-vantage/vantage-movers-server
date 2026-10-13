@@ -215,3 +215,20 @@ Callback set/reschedule must use a real future/current appointment instant and e
 Approved P10b launch-design baseline (October 3, 2026, adopted by finalization instruction): manually select approximately 20 current eligible Leads across two or three reps; report/preview exact starting facts and expected work; reconcile shadow behavior for one working date; prefer fixed 08:00 New York cohort activation; verify one full working date afterward; then enable prospective automatic eligible intake and expand remaining existing Leads in reviewed bounded cohorts. Preserve full approved daily-goal scope or explicit pending/partial coverage. Pilot size and observation controls are editable starting choices; selected IDs, policy/input versions and cohort/intake boundaries are fixed audited manifest inputs. Seeding builds current outreach state for existing canonical Leads without replacing them, resetting age or creating preactivation debt. P10a governs actual cutover. No production execution is performed or separately scheduled here.
 
 Persist exact selected-ID cohort scope, approved manifest hash, activation/reference boundary, source revisions/watermarks and paused/active state using the migration run/config authority. Add transition.intake_admission_enabled (default false), transition.intake_admission_at (default null) and transition.intake_admission_watermark (default null). Only trusted Admin/Owner changes these through audited revisioned configuration; Manager/Rep denied. Enrollment checks permitted prospective intake and records cohort/config/input provenance, dedupes canonical Lead membership and revalidates closure/priority/identity/time/coverage. Goal capture scope remains independent of cadence pilot membership. No report/GET/admission-default initializes the system or enrolls the full existing corpus. See MANUAL-START.md and POLICY-APPROVAL.json.
+
+
+## P05d daily-priority amendment — October 13, 2026
+
+The Owner's Estimates rollout amendment supersedes the historical P05b/P05d
+routine-cadence rules for codes 2 and 3 above and in the October 3 fixtures.
+Both map to `daily`: one ordinary call per working day, including the entry date
+when its working window remains open. A future move date keeps the subject open.
+Daily uses the working calendar and has no Quoted goals, credit, or cutoff;
+it is excluded from the New/Quoted goal set. Extra rep follow-up does not remove
+the daily requirement. Codes 4, 6, and 9 remain unmapped, and 5/7/8 close.
+Only an accepted Lead priority can transition the subject. Replays and repeated
+priorities keep the current period; 2↔3 keeps the same daily period. History,
+misses, prospective supersession, and closed-subject protections remain intact.
+The stored map is still Owner-controlled: install the mapping, verify B2 open-
+subject re-decision, and run dated enrollment for eligible previously held Leads.
+This packet amendment itself performs no production configuration change.

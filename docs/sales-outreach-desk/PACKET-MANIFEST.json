@@ -1,6 +1,6 @@
 {
   "contract_version": "sod-v1",
-  "date": "2026-10-07",
+  "date": "2026-10-13",
   "canonical": "vantage-main-server/docs/sales-outreach-desk",
   "mirror": "vantage-admin/docs/sales-outreach-desk",
   "files": {
@@ -8,9 +8,9 @@
     "contracts/configuration-defaults.json": "39599122b52a26f94b54d9f0d0aaf57548113b389d6653b96a9c61e2ac7da84b",
     "contracts/fixtures/synthetic.json": "39ba3a5d96ba724c8d35f11dd6bcd6b755e3e936a4aeb0f819be394cd66ead9e",
     "contracts/README.md": "43954ff27943e25fb9538b6391028b674f315b1761f5cdefa2cc1cabaa5b7566",
-    "CONTRACTS.md": "52a3066c9d4ff0c204ec63635442bbc5ec1210be678787055971f76fa70367e3",
+    "CONTRACTS.md": "88a47ecad87e6a6d906ec97753967f45c6560496560768d6281b4b4e66422008",
     "DATA-READINESS.md": "3341a5c2dc216741309b6aeb9189f74617786c6cedb141dcb5ec47f102012d17",
-    "DECISIONS.md": "72f0f4e9620dbe88b13f33b2ed77887e989cedb726a59a744b5252acfcd18324",
+    "DECISIONS.md": "de84c8ee292719255afaedbe195d57959f921cc5d0fc160c2e4e4a2e7770d031",
     "README.md": "81aff8e3b9948ab0e75f20d5251ee8ae0431a5804c3ff73d8419409cbfad0411",
     "references/manager-desk.webp": "7b0dc083020c03f6c35e1cc7ee847d6276590d998624d3587bb6400c46865546",
     "references/sales-rep-desk.webp": "59414960b4a7a5c0ebd3c31e7f472925a01f112c74027f99f29f65f2bd547e05",
@@ -35,9 +35,9 @@
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md": "295d5bb5a5d14fc498d1a5003920bcb6f37f2ec27a83fb372ae3e13650b9f7aa",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md": "0ba027d57ae887f064311b8c2e4ac18e985684a2b59bd940103e943f8ab39c0b",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md": "f4a224df55b87801c656fc2dcbde9b548b42042410cb6dc138792dbec31563ae",
-    "SPECIFICATION.md": "a5901daa8cff919dce24edae24a4378fbc609b9340259cc2ce74f87366f13b49",
+    "SPECIFICATION.md": "6a3f1820e992d194ca23c11b17e1a555e56067bde4e1c87fd29955889d4acdd3",
     "SPRINT.md": "3389e0bd30c317da90b36088908eccad163dab34588bfc348c38ce770c31d657",
-    "validate.mjs": "335d9686e7ee66702b950c777e55fca1c50043f8a862630df2f3e547be58a118",
+    "validate.mjs": "b4baf936a3270c2ea8f0c0f20bba03b8f4ec2e2f6a744d8211fb09c24a2b272d",
     "VALIDATION.md": "960eced36b69351abf369c15440504530aa9dbceaa9b85714bc1fe4ff8b40937",
     "READINESS-PREPARATION.md": "09518bcc7c66d9206e895bbf3e1535f4290d30b9985aa74d0056779f3476a712",
     "contracts/fixtures/p01-call-count.json": "72c4de1e3a48fc13c5b0e78ea4ed6ad7b5dffa85bd7eee0811c3a38f1bf9f574",
@@ -59,7 +59,7 @@
     "contracts/fixtures/p05a-return-to-new-age.json": "bee018ea9b875299648178c15b6b184f19ac6c6f88a871138c3800bd28cad153",
     "contracts/fixtures/p05b-priority-three.json": "9349a1cfd77fe388ce6107736090df4c9aca9723bcf279af7298e730fd9dd49c",
     "contracts/fixtures/p05c-unmapped-priority.json": "53232ac4a77a2141aca14df3118acafe8c205b689779428e9fbf10491ed40bcb",
-    "contracts/fixtures/p05d-priority-map-manager-read.json": "ca08f1893a8d54afbda87d6346f38c018467ecd4990e43962f48614c586f6bad",
+    "contracts/fixtures/p05d-priority-map-manager-read.json": "5a0a0a7497e9dc1c323ef4e5eb47c59472fd74ec7cb3a6e2ea691fbd08632593",
     "contracts/fixtures/p06a-bounded-catchup.json": "8350fd727955d2e10c055ab7885bec9325d69561344a032a140fddf73babcac6",
     "contracts/fixtures/p07a-call-credit.json": "b0cc448a104e04064d48acf8f41fd1528409c677e4a291117314c70be0c33f9d",
     "contracts/fixtures/p07b-outbound-attribution.json": "c1fbd069bc711e35a9565a671f9942192ec96b9a0d31e8f4771257dcb9c9a634",
@@ -103,6 +103,6 @@
     "FAST-TRACK.md": "cd12dcdfb5a01374981116a3f345003cc38b503f881773e1fd921138a166fc32"
   },
   "preparation_assessment_version": 1,
-  "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1",
-  "release_note": "Outreach lifecycle repair docs (2026-10-06, server main@6b585f5b): RINGCENTRAL-CAPTURE §3 token rule (CW2) and §8 states and freshness source as built, SPECIFICATION §12 amendments (P05e-1 applied, codes 2/9 still unmapped), END-TO-END-RUN §3 capture-gap row per D-A1b, CODE-MAP repair additions, DECISIONS repair entries (revisions 6-10); manifest re-pinned from committed bytes. Previous: sod-v1.3 desk look: the bubbly reference look is required and deliberately differs from the existing Admin dashboard (route-scoped desk tokens); FAST-01 fast track unchanged"
+  "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1+P05d-daily-2026-10-13",
+  "release_note": "October 13 Owner Estimates amendment: priorities 2 and 3 daily, with historical P05b preserved and superseded by the dated P05d amendment. Specification, Decisions, Contracts, P05d fixture and validator released coherently; canonical hashes regenerated and mirrored to admin. Stored priority-map PATCH remains pending Owner authorization."
 }
