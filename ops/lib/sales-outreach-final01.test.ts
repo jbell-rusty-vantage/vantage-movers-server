@@ -65,8 +65,8 @@ test("FINAL-01 install values match POLICY-APPROVAL.json and the decision fixtur
   assert.equal(cadence.callback_window_minutes, fixture("p06e-explicit-callback.json").callback_window_elapsed_minutes);
   const known = fixture("p05d-priority-map-manager-read.json").known_priority_map as Record<string, string>;
   assert.deepEqual(cadence.priority_map?.codes.map((c) => c.code), Object.keys(known));
-  assert.deepEqual(cadence.priority_map?.codes.slice(0, 3).map((c) => c.workflow), ["new", "quoted", "discretion"]);
-  assert.ok(cadence.priority_map?.codes.slice(3).every((c) => c.workflow === "closed"));
+  assert.deepEqual(cadence.priority_map?.codes.slice(0, 4).map((c) => c.workflow), ["new", "quoted", "daily", "daily"]);
+  assert.ok(cadence.priority_map?.codes.slice(4).every((c) => c.workflow === "closed"));
   assert.equal(cadence.intake_default_rule?.granot_created, "review"); // P05e
   assert.equal(cadence.holidays?.length, 0); // P02i
   // Nothing required for activation is left null.
@@ -254,7 +254,7 @@ test("B5: drift covers every guarded namespace and ignores roster membership, ev
       `goals.rep_work_schedules[${B}].working_days`,
     ],
   );
-  assert.equal(built.cadence.priority_map?.codes.length, 6, "the installer would have reverted the map");
+  assert.equal(built.cadence.priority_map?.codes.length, 7, "the installer would have reverted the map");
 });
 
 test("B5: bootstrap has no drift", () => {

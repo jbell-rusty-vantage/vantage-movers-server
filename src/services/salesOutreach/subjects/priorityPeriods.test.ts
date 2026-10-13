@@ -36,7 +36,7 @@ describe("P05d priority map from persisted configuration (fixture p05d-priority-
     seven_eight: { official_duplicate_flag_inferred: boolean; booked_elsewhere_reason_inferred: boolean };
     transition: { historical_misses_preserved: boolean; implicit_reopen: boolean };
   }>("p05d-priority-map-manager-read.json");
-  const expected: Record<string, string> = { new: "new", quoted: "quoted", rep_discretion_no_routine_cadence: "discretion" };
+  const expected: Record<string, string> = { new: "new", quoted: "quoted", one_call_a_day: "daily", rep_discretion_no_routine_cadence: "discretion" };
 
   test("each known code maps to its workflow through cadence.priority_map (no hard-coded map)", () => {
     for (const [code, meaning] of Object.entries(fx.known_priority_map)) {
@@ -120,8 +120,8 @@ describe("P05d priority map from persisted configuration (fixture p05d-priority-
 describe("P05b/P05c S1 parts: unvouched codes and closed subjects (fixtures p05b, p05c)", () => {
   for (const file of ["p05b-priority-three.json", "p05c-unmapped-priority.json"] as const) {
     const code = file.startsWith("p05b") ? "3" : "42";
-    const workflow = code === "3" ? "discretion" : "none";
-    test(`${file.slice(0, 4)}: an accepted ${code} ends routine cadence with a new ${workflow} period (lead stays open, visible)`, async () => {
+    const workflow = code === "3" ? "daily" : "none";
+    test(`${file.slice(0, 4)}: an accepted ${code} opens a ${workflow} period and the lead stays open`, async () => {
       const { store } = await lifecycle([{ ...accepted(code, "2026-10-02T14:00:00Z") }], leadFacts({ ...accepted("0", "2026-10-01T14:01:00Z") }));
       assert.deepEqual(store.periods.map((p) => p.workflow), ["new", workflow]);
       assert.equal(store.subjects[0]!.status, "active");
@@ -198,10 +198,10 @@ describe("P05e intake defaults and uncertain priority (fixture p05e-intake-prior
         assert.equal(store.subjects[0]!.priority.uncertain, true);
         return;
       }
-      // accepted_three / accepted_unmapped at intake: visible subject, no routine cadence period.
+      // accepted_three is one call a day. accepted_unmapped stays none, with no routine cadence.
       const code = c.id === "accepted_three" ? "3" : "42";
       const { store } = await lifecycle([], leadFacts({ ...accepted(code, "2026-10-01T14:01:00Z") }));
-      assert.equal(store.periods[0]!.workflow, code === "3" ? "discretion" : "none");
+      assert.equal(store.periods[0]!.workflow, code === "3" ? "daily" : "none");
       const r = evaluateSubject(
         {
           subject: { subject_id: "s", status: "active", closed_at: null, received_at: "2026-10-01T14:00:00.000Z", move_date: null, priority_uncertain: false, activation_at: "2026-10-01T14:00:00.000Z", originating_contact_event_id: null },
@@ -212,6 +212,12 @@ describe("P05e intake defaults and uncertain priority (fixture p05e-intake-prior
         policyWith({}),
         "2026-10-01T18:00:00.000Z",
       );
+      if (code === "3") {
+        assert.equal(r.state, "active");
+        assert.ok(r.obligations.some((obligation) => obligation.kind === "ordinary" && obligation.channel === "call"));
+        assert.ok(r.obligations.every((obligation) => obligation.kind !== "quoted"));
+        return;
+      }
       assert.equal(r.obligations.length, 0, c.label);
     });
   }

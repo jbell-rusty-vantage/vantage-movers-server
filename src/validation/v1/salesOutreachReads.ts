@@ -663,7 +663,7 @@ export const salesOutreachErrorEnvelopeSchema = z
 // ---------------------------------------------------------------------------
 
 /** Workflows a queue filter may name (closed subjects never appear in the queue). */
-export const SALES_OUTREACH_QUEUE_WORKFLOWS = ["new", "quoted", "discretion", "none"] as const;
+export const SALES_OUTREACH_QUEUE_WORKFLOWS = ["new", "quoted", "daily", "discretion", "none"] as const;
 export const SALES_OUTREACH_MOVE_DATE_UNKNOWN_MODES = ["include", "exclude", "only"] as const;
 export const SALES_OUTREACH_QUEUE_DEFAULT_LIMIT = 25;
 export const SALES_OUTREACH_QUEUE_MAX_LIMIT = 100;

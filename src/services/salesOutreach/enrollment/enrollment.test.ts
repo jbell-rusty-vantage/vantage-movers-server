@@ -65,11 +65,11 @@ describe("enrollment report (zero writes, FAST-01 backfill scope)", () => {
     const report = await reportEnrollment({ selection: { mode: "backfill_scope" } }, deps);
     assert.deepEqual(report.scope, { mode: "backfill_scope", today: "2026-10-05", cutoff_date: "2026-07-07", lookback_days: 90, include_upcoming_moves: true });
     const keys = report.lead_refs.map(deskLeadKey);
-    for (const lead of [leads.newRecent, leads.quotedUpcoming, leads.cutoffIn, leads.callNew]) assert.ok(keys.includes(deskLeadKey(lead.ref)), deskLeadKey(lead.ref));
-    assert.equal(keys.length, 4);
+    for (const lead of [leads.newRecent, leads.quotedUpcoming, leads.discretion, leads.cutoffIn, leads.callNew]) assert.ok(keys.includes(deskLeadKey(lead.ref)), deskLeadKey(lead.ref));
+    assert.equal(keys.length, 5);
     assert.equal(report.counts.closed, 2);
     assert.equal(report.counts.excluded, 1);
-    assert.equal(report.counts.not_new_or_quoted, 1);
+    assert.equal(report.counts.not_new_or_quoted, 0);
     assert.equal(report.counts.review, 5, "granot missing, unmapped, legacy source, two ambiguous");
     assert.equal(report.reasons["review:ambiguous_identity"], 2);
     assert.equal(report.reasons["review:priority_needs_review"], 1);
