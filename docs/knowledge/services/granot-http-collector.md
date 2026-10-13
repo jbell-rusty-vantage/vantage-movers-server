@@ -73,7 +73,7 @@ The collector signs in through two Granot pages, in order. `readCredentials()` p
 
 Operations: `form_leads` or `call_leads`. Form planning never **creates** Form Leads (`no_match` / `conflict` only).
 
-**Approvable:** Form `classification === "update"`; Call `syncable` (`preview.status === "updateable"` **or** a `target_receiver_agent` binding). Unchanged / no_match / conflict / non-syncable rows stay in the plan but cannot be selected.
+**Approvable:** Form `classification === "update"`; Call `syncable` (`preview.status === "updateable"` **or** a `target_receiver_agent` binding). For Estimates only, matched unchanged rows with a priority digit also enter the lifecycle snapshot decision, because the legacy preview does not compare priority, Form job attachment, or receiver replacement. Form rows become `update` with reason `lifecycle_snapshot_check`; Call rows become syncable. Other unchanged / no_match / conflict / non-syncable rows stay in the plan but cannot be selected.
 
 Create body: `from`/`to` as real `MM/DD/YYYY`; `source_ids` **or** `source_labels` (not both); optional filters default `date_factor=OPEN`, `type=ALL`, `status=10`. Max 50 sources.
 

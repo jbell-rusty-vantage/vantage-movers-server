@@ -78,8 +78,9 @@ export function samePath(a, b) {
   return normalizePath(a) === normalizePath(b);
 }
 export function normalizePath(value) {
-  const resolved = path.resolve(value).replaceAll('\\', '/').replace(/\/+$/, '');
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  const windowsPath = /^[a-z]:[\\/]/i.test(value) || /^\\\\/.test(value);
+  const resolved = (windowsPath ? path.win32.resolve(value) : path.resolve(value)).replaceAll('\\', '/').replace(/\/+$/, '');
+  return windowsPath || process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 /** True when a session root and a repository overlap: same folder, the root contains it, or the root is inside it. */
 export function rootTouchesRepo(root, repo) {

@@ -13,6 +13,7 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
+import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import type { DurableActor } from "../durableWork/types";
 import { applyAutomationPlanAction } from "../granotLifecycle/automationApply";
@@ -322,6 +323,31 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
             claimAndProcessOrPoll(receiptId, { flags: writeFlags, processor }),
         },
       );
+
+    const suppressedFlags = { ...writeFlags, lead_writes_enabled: false };
+    const suppressedProcessor = createGranotObservationProcessor({ flags: suppressedFlags });
+    const suppressed = await applyAutomationPlanAction({
+      action_id: `${freshAction.action_id}:suppressed`,
+      lifecycle_apply: {
+        ...freshAction.lifecycle_apply!,
+        operation_id: `${freshAction.lifecycle_apply!.operation_id}:suppressed`,
+      },
+      initiator,
+      captured_at: capturedAt,
+      request_id: runId,
+    }, {
+      claimAndProcess: (receiptId) => claimAndProcessOrPoll(receiptId, {
+        flags: suppressedFlags, processor: suppressedProcessor,
+      }),
+    });
+    assert.equal(suppressed.outcome, "policy_blocked");
+    assert.ok(suppressed.decision_id, "disabled writes persist a decision");
+    const suppressedDecision = await getSynchronizationDecisionModel().findById(suppressed.decision_id).lean();
+    assert.equal(suppressedDecision?.reason_code, "global_effect_disabled");
+    const untouched = await CallLead.findById(freshId).lean();
+    assert.equal(untouched?.granot_priority, undefined);
+    assert.equal(untouched?.job_no, undefined);
+    assert.equal(untouched?.receiver_agent, undefined);
 
     const freshResult = await apply(freshAction);
     assert.equal(freshResult.outcome, "applied");

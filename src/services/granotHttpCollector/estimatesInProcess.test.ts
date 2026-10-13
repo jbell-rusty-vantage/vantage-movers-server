@@ -203,6 +203,50 @@ test("registry route is unresolved when both operations are ready", () => {
   assert.equal(missing.reason, "missing_registry");
 });
 
+test("matched unchanged Form and Call snapshots still enter lifecycle priority decisions", async () => {
+  const form = collection("Form Only", "P100");
+  const call = collection("Call Only", "P200");
+  const plan = await assembleEstimatesPlan([form, call], {
+    runId: "507f1f77bcf86cd799439011",
+    lookup: async (label) => [registrySource("a".repeat(24), [label === "Form Only" ? "FormLead" : "CallLead"])],
+    planForm: async (sources) => {
+      const planned = emptyFormPlan(sources);
+      planned.actions[0]!.classification = "unchanged";
+      planned.actions[0]!.lead_id = "b".repeat(24);
+      planned.counters.no_match = 0;
+      planned.counters.unchanged = 1;
+      return planned;
+    },
+    planCall: async () => ({
+      kind: "call_leads",
+      schema_version: 1,
+      actions: [{
+        action_id: `enrichment:Call Only:${call.sections.followUpEstimates[0]!.id}`,
+        operation: "enrichment",
+        row: { row_id: `Call Only:${call.sections.followUpEstimates[0]!.id}`, row_index: 1 },
+        preview: { status: "unchanged" },
+        syncable: false,
+        target_binding: {
+          call_lead_id: "c".repeat(24), call_lead_updated_at: null,
+          booking_id: null, booking_updated_at: null, receiver_username: "DEV",
+          expected_receiver_agent: "d".repeat(24), target_receiver_agent: null,
+        },
+      }],
+      counters: { unchanged: 1 },
+    }),
+  });
+  const [formAction, callAction] = plan.actions;
+  assert.ok(formAction && "classification" in formAction);
+  assert.equal(formAction.classification, "update");
+  assert.equal(formAction.reason, "lifecycle_snapshot_check");
+  assert.ok(callAction && "syncable" in callAction);
+  assert.equal(callAction.syncable, true);
+  assert.equal(formAction.lifecycle_apply?.granot_statement.priority, "0");
+  assert.equal(callAction.lifecycle_apply?.granot_statement.priority, "0");
+  assert.equal(plan.counters.update, 1);
+  assert.equal(plan.counters.unchanged, 1);
+});
+
 function collection(label: string, job: string): GranotSourceCollection {
   return {
     sourceLabel: label,

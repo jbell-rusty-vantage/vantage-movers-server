@@ -107,7 +107,7 @@ Set the posted names explicitly. A radio label that contains the word “to” m
 
 `STATUS=V15` (Today’s Recent 50 Estimates Priority 0) is a different query. This cycle does not post it. Booked Jobs on this form (`STATUS=V5` and the other booked radios) are a later slice. This cycle posts Follow-Up Estimates only, so every sealed action is `lead_snapshot_apply`. The statement must not carry `event_type: "Booked"`.
 
-The three-a-day window (8:00, 13:00, 18:00 America/New_York, Open Date yesterday through today, plus one wider midday window still unmeasured) is a schedule note in the priorities reference. This slice accepts `from` and `to` on the run and does not register a cron.
+The cron is registered hourly in UTC and runs only at 8:00, 13:00, and 18:00 America/New_York, using Open Date yesterday through today. Manual runs accept `from` and `to`. The wider midday window remains unmeasured and is not used.
 
 ## Parse
 
@@ -160,7 +160,7 @@ The page mixes source companies. Resolve each row’s `source` string through th
 
 Paid Overflow appeared on the proved page and is not one of the nine labels the seeded catalog walks. A missing Registry row stays not approvable. This slice does not seed Paid Overflow or any other label.
 
-Seal each partition with `sealAutomationPlan` so `findCollectedRow` still sees the kind it expects (`form_leads` or `call_leads`). Merge the sealed actions onto one run plan of schema version 2. `applyRun` already applies whatever `lifecycle_apply` is on the selected action. Form actions stay approvable when `classification === "update"`. Call actions stay approvable when `syncable` (`preview.status === "updateable"` or a `target_receiver_agent` binding). Approval is still “selected action ids ⊆ approvable ids” on the existing approve route.
+Seal each partition with `sealAutomationPlan` so `findCollectedRow` still sees the kind it expects (`form_leads` or `call_leads`). Merge the sealed actions onto one run plan of schema version 2. `applyRun` already applies whatever `lifecycle_apply` is on the selected action. Form actions are approvable when `classification === "update"`; Call actions when `syncable`. For Estimates only, matched `unchanged` rows with a priority digit are also submitted for a lifecycle snapshot decision (Form classification `update` with reason `lifecycle_snapshot_check`, Call `syncable: true`). The legacy preview does not compare priority, Form job attachment, or replacement of a call-inferred receiver; the canonical synchronizer decides whether those actually change. Conflict, unmatched, and unresolved rows are not promoted. Approval is still “selected action ids ⊆ approvable ids” on the existing approve route.
 
 `expected_target` keeps the preview id when a planner found one. Identity on the processor is still the write-time match. Preview is Owner guidance.
 

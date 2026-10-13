@@ -591,6 +591,22 @@ export async function assembleEstimatesPlan(
     input.runId,
     partition.unresolved.map((entry) => entry.source),
   );
+  // The legacy preview patches do not include Granot priority, job attachment on
+  // Forms, or replacing a call-inferred receiver. A matched "unchanged" row
+  // still needs the canonical lifecycle decision for this snapshot.
+  for (const action of sealedForm.actions) {
+    if (action.classification === "unchanged" && action.lead_id && hasEstimatesPriority(action)) {
+      action.classification = "update";
+      action.reason = "lifecycle_snapshot_check";
+      sealedForm.counters.unchanged -= 1;
+      sealedForm.counters.update += 1;
+    }
+  }
+  for (const action of sealedCall.actions) {
+    if (action.preview.status === "unchanged" && action.target_binding.call_lead_id && hasEstimatesPriority(action)) {
+      action.syncable = true;
+    }
+  }
   return {
     kind: "estimates_in_process",
     schema_version: 2,
@@ -605,6 +621,10 @@ export async function assembleEstimatesPlan(
       unresolvedCounters(partition.unresolved),
     ),
   };
+}
+
+function hasEstimatesPriority(action: { lifecycle_apply?: GranotAutomationLifecycleApply }): boolean {
+  return /^[0-9]$/.test(String(action.lifecycle_apply?.granot_statement.priority ?? ""));
 }
 
 function unresolvedEstimatesPlan(
