@@ -30,7 +30,7 @@ test("replica: pending match does not block later actions or another approved ru
     loadReplayStates: async (ids: string[]) => {
       const row = await GranotAutomationRun.findById(first).lean();
       const race = await GranotAutomationRun.findById(requeued).lean();
-      const raceStates = (race?.receipts ?? []).filter((r) => ids.includes(r.lifecycle_receipt_id)).map((r) => [r.lifecycle_receipt_id, { terminal: false, ready: true }] as const);
+      const raceStates = (race?.receipts ?? []).filter((r) => ids.includes(r.lifecycle_receipt_id)).map((r) => [r.lifecycle_receipt_id, { terminal: true, ready: true }] as const);
       return new Map([...raceStates, ...(row?.receipts ?? []).filter((r) => ids.includes(r.lifecycle_receipt_id)).map((r) => [r.lifecycle_receipt_id, {
         terminal: settledSecond && r.action_id === "pending-two",
         ready: !(deferFirst && r.action_id === "pending-one"),
@@ -65,10 +65,10 @@ test("replica: pending match does not block later actions or another approved ru
     assert.equal(calls.filter((id) => id === "pending-one").length, 2, "non-due receipt is skipped");
     assert.equal(calls.filter((id) => id === "pending-two").length, 2, "only one due pending receipt polled on the previous pass");
     assert.equal((await GranotAutomationRun.findById(first))?.checkpoint?.completed_units, 3);
-    await seed(requeued, ["dead-race"], new Date("2000-01-01"));
-    await GranotAutomationRun.updateOne({ _id: requeued }, { $set: { receipts: [{ action_id: "dead-race", lifecycle_receipt_id: String(new mongoose.Types.ObjectId()), outcome: "accepted_for_processing", applied_at: new Date() }] } });
+    await seed(requeued, ["dead-race", "dead-race-2", "dead-race-3"], new Date("2000-01-01"));
+    await GranotAutomationRun.updateOne({ _id: requeued }, { $set: { receipts: ["dead-race", "dead-race-2", "dead-race-3"].map((action_id) => ({ action_id, lifecycle_receipt_id: String(new mongoose.Types.ObjectId()), outcome: "accepted_for_processing", applied_at: new Date() })) } });
     assert.equal((await runGranotWorker(deps)).run_id, String(requeued));
-    assert.equal(calls.at(-1), "dead-race", "the canonical claim rechecks the live receipt after an Owner requeue");
+    assert.equal(calls.filter((id) => id.startsWith("dead-race")).length, 3, "the canonical claim rechecks the live receipt after an Owner requeue");
     assert.equal((await GranotAutomationRun.findById(requeued))?.status, "completed", "no failure fabricated from a dead-letter snapshot");
   } finally {
     await GranotAutomationRun.deleteMany({ _id: { $in: [first, second, requeued] } });

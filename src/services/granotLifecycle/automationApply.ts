@@ -21,7 +21,7 @@ export async function loadAutomationReplayStates(ids: string[], now: Date): Prom
     .select({ _id: 1, processing: 1 }).lean().exec();
   return new Map(rows.map((row) => {
     const p = row.processing;
-    const terminal = p.state === "completed";
+    const terminal = p.state === "completed" || p.state === "dead_letter";
     return [String(row._id), {
       terminal,
       ready: terminal || p.state === "dead_letter" || (+new Date(p.next_attempt_at) <= +now &&
@@ -68,7 +68,8 @@ export async function applyAutomationPlanAction(
   }
 
   const capture = deps.capture ?? captureChannelOperationReceipt;
-  const claimAndProcess = deps.claimAndProcess ?? claimAndProcessOrPoll;
+  const claimAndProcess = deps.claimAndProcess ?? ((id: string) =>
+    claimAndProcessOrPoll(id, { syncPollDeadlineMs: input.existing_receipt ? 0 : undefined }));
   const item = input.lifecycle_apply;
   const captured = await capture({
     observation_channel: "granot_http_automation",

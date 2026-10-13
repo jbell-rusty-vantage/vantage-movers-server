@@ -225,3 +225,9 @@ potentially blocking pending replay is attempted per pass. Dead letters use the 
 claim/poll so an intervening Owner requeue cannot be terminalized from a stale
 snapshot. Fresh selected actions
 remain independent; this bounds replay polling while preserving lifecycle clocks.
+
+Automation replays use the canonical claim/poll with a zero polling deadline:
+it still claims due work and reads the live terminal state, including after an
+Owner requeue, but does not sleep on another claimant. Completed/dead-letter
+refreshes do not share the pending retry cap and can all settle in the same pass.
+Other synchronous lifecycle callers retain their default five-second poll.

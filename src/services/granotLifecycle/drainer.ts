@@ -174,6 +174,8 @@ export type DrainerDeps = {
   now?: () => Date;
   random?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Automation replays can refresh live state without waiting on another claimant. */
+  syncPollDeadlineMs?: number;
   flags?: GranotLifecycleFlags;
   processor?: GranotObservationProcessor;
   createOwner?: (trigger: DrainTrigger) => string;
@@ -647,8 +649,9 @@ async function pollForResult(
   const nowFn = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? defaultSleep;
   const started = nowFn().getTime();
+  const deadlineMs = Math.min(SYNC_POLL_DEADLINE_MS, Math.max(0, deps.syncPollDeadlineMs ?? SYNC_POLL_DEADLINE_MS));
   let iteration = 0;
-  while (nowFn().getTime() - started < SYNC_POLL_DEADLINE_MS) {
+  while (nowFn().getTime() - started < deadlineMs) {
     const receipt = await (deps.loadReceipt ?? defaultLoadReceipt)(receiptId);
     if (!receipt) {
       return { status: "skipped", reason: "not_found" };
@@ -661,7 +664,7 @@ async function pollForResult(
         return { status: "processed", result: stored };
       }
     }
-    const remaining = SYNC_POLL_DEADLINE_MS - (nowFn().getTime() - started);
+    const remaining = deadlineMs - (nowFn().getTime() - started);
     if (remaining <= 0) {
       break;
     }
