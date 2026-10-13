@@ -25,8 +25,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T05:53:00Z
+  by: process:owner-instructions
+  at: 2026-10-13T18:10:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotHttpCollector/`  
@@ -51,7 +51,16 @@ Apply effects after capture are owned by [`automation-apply.md`](../granot-lifec
 
 `publishGranotWakeup` returns true only on Vercel **and** production `NODE_ENV`. Otherwise it returns false (no throw). Non-Vercel `POST /runs` and `POST /run-groups` then call `runGranotWorker` inline. Cron returns **503** when work is recoverable but the wakeup did not publish. // pragma: allowlist secret
 
-Local/non-Vercel workers may run without a queue publish. Collector credentials come from `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` / `GRANOT_USERNAME` / `GRANOT_PASSWORD` (legacy `MAIN_LOGIN_*` / `SPECIFIC_*` fallbacks). Do not log values.
+Local/non-Vercel workers may run without a queue publish. Do not log credential values.
+
+The collector signs in through two Granot pages, in order. `readCredentials()` prefers `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` and `GRANOT_USERNAME` / `GRANOT_PASSWORD`. Each legacy alias is used only when its `GRANOT_*` name is empty: `MAIN_LOGIN_USERNAME` / `MAIN_LOGIN_PASSWORD` for the network page, and `SPECIFIC_USERNAME` / `SPECIFIC_PASSWORD` for the user page.
+
+| Page | Request | Posted fields | Env, in order |
+|------|---------|---------------|---------------|
+| Network Login | `GET /wc.dll?mp~NetLogonWc~VANTAGE`, then POST `mp~netlogonret` | `LOGON_USER`, `PASSWORD` | `GRANOT_NETWORK_*`, else `MAIN_LOGIN_*` |
+| User Login | POST `mp~loginret~{session}~login` | `USERNAME`, `PASSWORD`, `LOGON=Login` | `GRANOT_USERNAME` / `GRANOT_PASSWORD`, else `SPECIFIC_*` |
+
+`/vantage/admin.htm` is the unsigned frame that loads the network login. It is not the main menu. After the user POST the session is the cookie jar plus the id in `mv~mainmenuwc~{session}~LOGIN`. A copied `wc.dll` URL without those cookies returns Granot's cookie security alert. `SAVEPASS` is dropped before the network POST.
 
 ## Workflows
 
@@ -85,7 +94,7 @@ Create-source limit is 200 labels. Exact duplicate label → `GRANOT_SOURCE_ALRE
 ## Collector happy path
 
 ```
-network login → user login (session token)
+network login (LOGON_USER) → user login (USERNAME)
   → report menu → DATE1/DATE2 filter
   → source selector (adverlistwc links)
   → each requested label: parse Booked Jobs + Follow Up Estimates
@@ -96,6 +105,10 @@ Date window must be real calendar `MM/DD/YYYY` and `to >= from` (`invalid_reques
 A recognized table needs headers `job_no` and `customer`. Data rows also require a numeric `no` plus `job_no` or `customer`. Default collector host is `https://eagle.hellomoving.com`; 20s per request.
 
 `buildGranotOperationPayloads` maps Follow Up → enrichment rows and Booked Jobs → booked-reconciliation rows. `user` or `rep` becomes `granot_crm_username`.
+
+## Estimates in Process
+
+A second Granot page, proved 13 October 2026. `collectGranotReport` keeps walking the source-company report above. Main menu `submitFunction(2)` opens `mv~estprocesswc`. Follow-Up Estimates is `STATUS=V9`, posted to `mv~estprocessret` with `TYPEDTE`, `DATE1`, `DATE2`, `FUSTATUS`, and `USER`. The procedure, the columns, and the three-runs-a-day date recommendation are in [granot-priorities-and-rep-desk.md](../granot-priorities-and-rep-desk.md). The build contract for the parse and lead-update cycle is [estimates-in-process-update.md](../estimates-in-process-update.md). The default radio on that form, Today’s Recent 50 Estimates Priority 0, is a different query.
 
 ## Plan schema v2
 
@@ -167,4 +180,5 @@ Admin `GET .../runs/:runId?details=owner` redacts `granot_statement` from the pl
 - [`capture.md`](../granot-lifecycle/capture.md)
 - [`operations-registry.md`](./operations-registry.md)
 - [`granot-http-automation.mdc`](../../../.cursor/rules/granot-http-automation.mdc)
+- [`estimates-in-process-update.md`](../estimates-in-process-update.md) — next slice. Leaves this collector in place.
 - Tests: `granotHttpCollector.test.ts`, `runWorkflow.test.ts`, `formWorkflow.test.ts`, `sourceCatalog.test.ts`, `lifecycleStatement.test.ts`, `granot-automation.routes.test.ts`
