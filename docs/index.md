@@ -106,6 +106,7 @@ Kept as stubs with `status: retired`. Each names what was removed, what remains 
 | Path | Description |
 | --- | --- |
 | [sales-outreach-lifecycle.md](knowledge/sales-outreach-lifecycle.md) | How the outreach lifecycle works as deployed 2026-10-06: Lead sources, eligibility, policy decision, the four kinds of review, intake / automatic expansion admission / dated runs; the cadence clock and status ladder (`due` + unverified, narrowed `pending`, `coverage_wait`); call and SMS hops with latencies, association reasons, count scopes, coverage and freshness tolerances, the RingCentral subscription token rule; vocabulary; crons and job dedupe keys; daily `desk-state` checks, commands, Owner PATCH, rollback (R0); decisions and limits. |
+| [granot-priorities-and-rep-desk.md](knowledge/granot-priorities-and-rep-desk.md) | Owner instructions 13 October 2026, not the running desk: Granot priority meanings 0–8, stop call-inferred assignment, rep-desk move date and binder, and the proved Estimates in Process / Follow-Up Estimates read. |
 
 ## ADR
 

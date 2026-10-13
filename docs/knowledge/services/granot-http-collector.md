@@ -25,8 +25,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T05:53:00Z
+  by: process:owner-instructions
+  at: 2026-10-13T17:50:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotHttpCollector/`  
@@ -105,6 +105,10 @@ Date window must be real calendar `MM/DD/YYYY` and `to >= from` (`invalid_reques
 A recognized table needs headers `job_no` and `customer`. Data rows also require a numeric `no` plus `job_no` or `customer`. Default collector host is `https://eagle.hellomoving.com`; 20s per request.
 
 `buildGranotOperationPayloads` maps Follow Up → enrichment rows and Booked Jobs → booked-reconciliation rows. `user` or `rep` becomes `granot_crm_username`.
+
+## Estimates in Process
+
+A separate Granot page, proved 13 October 2026 and not what `collectGranotReport` requests. Main menu `submitFunction(2)` opens `mv~estprocesswc`. Follow-Up Estimates is `STATUS=V9`, posted to `mv~estprocessret` with `TYPEDTE`, `DATE1`, `DATE2`, `FUSTATUS`, and `USER`. The procedure, the columns, and the three-runs-a-day date recommendation are in [granot-priorities-and-rep-desk.md](../granot-priorities-and-rep-desk.md). The default radio on that form, Today’s Recent 50 Estimates Priority 0, is a different query. This collector still walks the source-company report above.
 
 ## Plan schema v2
 
