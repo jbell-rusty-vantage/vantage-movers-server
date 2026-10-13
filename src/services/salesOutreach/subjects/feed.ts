@@ -71,6 +71,8 @@ export function decisionReconcilePerRunOf(value: Pick<SalesOutreachConfiguration
 export type LeadChangeRow = Readonly<{
   id: string;
   lead: DeskLeadRef;
+  /** Canonical command; revision zero can also belong to a legacy Lead update. */
+  command_name?: string;
   revision_before: number;
   revision_after: number;
   applied_at: Date;
@@ -187,9 +189,9 @@ export type LeadChangeNomination = Readonly<{ lead: DeskLeadRef; revision: numbe
 /**
  * Which changes of a page nominate a job:
  * - every change of a Lead that is a desk subject (`change`, the `r<rev>` job);
- * - only while the persisted intake gate is on, a Lead's creation (`revision_before` 0; `change`), which
+ * - only while the persisted intake gate is on, a Lead's creation (`createFormLead`/`createCallLead`, revision 0; `change`), which
  *   the job runs through the intake admission;
- * - olr B6, only while expansion admission is open (`expansionAdmissionOpenOf`), a later change of a
+ * - olr B6, only while expansion admission is open (`expansionAdmissionOpenOf`), an update of a
  *   non-subject Lead that wrote a decision path (`admission`, the `admission:r<rev>` job), which the job
  *   runs through the expansion admission only.
  * Other changes of other Leads are not the desk's concern.
@@ -204,9 +206,13 @@ export function nominateLeadChanges(
   const nominations: LeadChangeNomination[] = [];
   for (const change of changes) {
     const key = deskLeadKey(change.lead);
-    const kind = subjectLeadKeys.has(key) || (intakeOpen && change.revision_before === 0)
+    // Missing command names retain the historical revision-zero interpretation. Canonical updates
+    // of legacy Leads may start at zero and must use expansion, never intake.
+    const creation = change.revision_before === 0 && (change.command_name === undefined
+      || change.command_name === "createFormLead" || change.command_name === "createCallLead");
+    const kind = subjectLeadKeys.has(key) || (intakeOpen && creation)
       ? "change"
-      : admissionOpen && change.revision_before > 0 && touchesAdmissionDecision(change.changed_paths)
+      : admissionOpen && !creation && touchesAdmissionDecision(change.changed_paths)
         ? "admission"
         : null;
     if (!kind) continue;
@@ -251,6 +257,8 @@ const oid = (id: string) => new mongoose.Types.ObjectId(id);
 type ChangeLean = {
   _id: unknown;
   entity: { model: string; id: string };
+  /** Canonical command; revision zero can also belong to a legacy Lead update. */
+  command_name?: string;
   revision_before: number;
   revision_after: number;
   applied_at: Date;
@@ -259,12 +267,13 @@ type ChangeLean = {
 const toChange = (row: ChangeLean): LeadChangeRow => ({
   id: String(row._id),
   lead: { model: row.entity.model as SalesOutreachLeadModel, id: row.entity.id },
+  command_name: row.command_name,
   revision_before: row.revision_before,
   revision_after: row.revision_after,
   applied_at: row.applied_at,
   changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
 });
-const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1, changed_paths: 1 } as const;
+const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1, changed_paths: 1, command_name: 1 } as const;
 
 export const mongoOutreachFeedStore: OutreachFeedStore = {
   async readTailCursor(session) {
