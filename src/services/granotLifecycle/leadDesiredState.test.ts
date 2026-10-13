@@ -686,6 +686,22 @@ test("Bad exact Form target plans only valid Priority; Duplicate has no target",
   assert.deepEqual(duplicate.desired_values, {});
 });
 
+test("Bad Form with a missing Job and asserted Agent still plans Priority only", () => {
+  const lead = wordpressLead({ job_no: undefined, normalized_job_no: undefined });
+  const result = plan({
+    lead,
+    identity: {
+      ...matchedIdentity(lead.id),
+      target_eligibility: "priority_only",
+      agent: { target: { model: "Agent", id: String(objectId()) }, normalized_username: "synthetic.agent" },
+    },
+  });
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(result.changed_paths, ["granot_priority"]);
+  assert.deepEqual(result.desired_values, { granot_priority: "1" });
+  assert.deepEqual(result.agent_changed_paths, []);
+});
+
 test("letter-prefixed Lead Job matches Granot digits and does not conflict", () => {
   const lead = wordpressLead({
     normalized_job_no: "P5562366",

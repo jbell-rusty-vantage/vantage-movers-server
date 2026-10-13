@@ -569,6 +569,8 @@ test("[AC-05] replica Bad Form stores Priority only and Duplicate never becomes 
   });
   try {
     await seedFormLead({ id: badId, job, extra: { bad_lead: "disconnected_number" } });
+    // Legacy Bad Form targets may predate Job linking; priority-only must not plan a Job fill.
+    await FormLead.collection.updateOne({ _id: badId }, { $unset: { job_no: "", normalized_job_no: "" } });
     const bad = await processLive({
       observation: incoming,
       identity: identityFor(String(badId), "FormLead", { target_eligibility: "priority_only" }),
@@ -579,6 +581,9 @@ test("[AC-05] replica Bad Form stores Priority only and Duplicate never becomes 
     assert.equal(lead?.quoted, false);
     assert.equal(lead?.name, "Submitted Name");
     assert.equal(lead?.pickup_zip, "10001");
+    assert.equal(lead?.job_no, undefined);
+    assert.equal(lead?.normalized_job_no, undefined);
+    assert.equal(lead?.receiver_agent, undefined);
 
     const duplicateObs = observation({ job: jobPair(`dup-${String(objectId())}`), priority: "1" });
     const duplicate = await processLive({

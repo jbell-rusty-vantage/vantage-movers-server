@@ -344,7 +344,8 @@ function planMatchedLead(input: LeadDesiredStateInput): LeadDesiredStatePlan {
     desired.set("granot_priority", input.observation.priority.canonical);
   }
 
-  if (!lead.normalized_job_no && input.observation.identity?.normalized_job_no) {
+  const priorityOnly = input.identity.target_eligibility === "priority_only";
+  if (!priorityOnly && !lead.normalized_job_no && input.observation.identity?.normalized_job_no) {
     desired.set("normalized_job_no", input.observation.identity.normalized_job_no);
     if (input.observation.identity.job_no_raw) {
       desired.set("job_no", input.observation.identity.job_no_raw);
@@ -353,6 +354,7 @@ function planMatchedLead(input: LeadDesiredStateInput): LeadDesiredStatePlan {
 
   const latestWins = input.receiver_latest_wins ?? receiverLatestWinsEnabled();
   const canFillAgent =
+    !priorityOnly &&
     Boolean(input.identity.agent) &&
     receiverFillableByGranot(lead, input.identity.agent?.target.id, input.observation.captured_at, latestWins) &&
     input.observation.priority?.valid === true &&
@@ -365,7 +367,7 @@ function planMatchedLead(input: LeadDesiredStateInput): LeadDesiredStatePlan {
   }
 
   const broad =
-    input.identity.target_eligibility !== "priority_only" &&
+    !priorityOnly &&
     !skipPriority &&
     input.observation.priority?.valid === true &&
     BROAD_ENRICHMENT_PRIORITIES.has(input.observation.priority.canonical ?? "");

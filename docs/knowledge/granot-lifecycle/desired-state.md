@@ -66,6 +66,8 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 
 The same Agent never re-stamps the source. The projection loaders (`processor.ts`, `synchronizeLeadFromGranot.ts`) add `receiver_agent_source` and `receiver_agent_set_at`; nothing else reads them. `identity.ts` exports `resolveAgentAssertion` (unchanged) for the backfill.
 
+A Bad Form exact target with `priority_only` eligibility plans only valid Priority, even when its Job or receiver is missing. Missing Job fills and Agent assertion fills require full target eligibility; the canonical command rechecks the same priority-only limit.
+
 ## No-match and minimum data
 
 - `link_only`: `pending_match` / `pending_source_scoped_match` with `next_match_attempt_at` from the Unit 08 offsets; at/after 24h `unmatched` / `match_window_expired`
