@@ -2,7 +2,7 @@
 okf_version: "0.2"
 type: Reference
 title: Granot priorities, Estimates in Process, and the rep desk
-description: Owner instructions recorded 13 October 2026. Granot priority meanings 0–8, the decision to stop call-inferred assignment, the rep-desk move date and binder presentation, and the proved Estimates in Process / Follow-Up Estimates read. Not a description of the running desk.
+description: Owner instructions recorded 13 October 2026. Granot priority meanings 0–8, the outbound-assignment stop, the rep-desk move date and binder presentation, and the proved Estimates in Process / Follow-Up Estimates read. The cadence and outbound sections say what the code does now. The binder and move-date presentation are not built.
 tags: [sales-outreach-desk, granot-lifecycle]
 status: draft
 stale_after: 2027-01-13
@@ -48,17 +48,18 @@ These are the sales meanings of Granot’s priority codes. A rep changes the cod
 
 The Estimates in Process priority filter also offers **9 Pool**. The owner list above stops at 8. Do not invent a meaning for 9.
 
-### What the desk still does
+### What the desk does with these codes
 
-The running priority map is the approved P05d map, not this table.
+The running map is the stored `cadence.priority_map`, not a table in the engine.
 
-- 0 is New. 1 is Quoted, one call each working day.
-- 2 is unmapped: no routine cadence, “No policy configured.”
-- 3 is discretion: routine cadence ends, and the lead stays visible.
+FINAL-01 and the configuration fixtures now map:
+
+- 0 to New. 1 to Quoted, one call each working day.
+- 2 and 3 to workflow `daily`: one ordinary call each working day. The subject stays open. A move date in the future is not a reason to close or hide the lead. Priority 3 still means the rep may do more than that call. The desk does not drop the lead and does not end the daily call. `daily` is not Quoted: it does not use quoted goals, credit, or cutoffs.
 - 5, 7, and 8 close the desk subject. 5 does not create an official Booking.
-- 4 and 6 are unmapped.
+- 4, 6, and 9 stay unmapped. 9 Pool has no owner meaning.
 
-Call cadence for 2 and 3, and the three-day moves into Priority 2, are not built.
+The map stored on the deployed database was not patched. Until an Owner PATCH, a subject there still follows whatever that database stores (code 2 unmapped and code 3 discretion, on the map that was current before this change). The three-day moves into Priority 2 are not built. The desk does not write Granot priority.
 
 ## Assignment
 
@@ -69,11 +70,11 @@ Stop assigning a rep because that rep made an outbound call to an unassigned num
 
 A lead with no Granot user and no Owner assignment stays unassigned. An outbound call still counts as that rep’s work. It does not take the lead.
 
-### What the code still does
+### What the code does
 
-`receiverFill.ts`, applied from `applyContactSources`, still fills an empty `receiver_agent` when the desk subject is unassigned. The candidate is the latest reviewed-rep call on that one subject: kind `outbound_attempt` or `inbound_answered`, verification `confirmed` or `awaiting_confirmation`. The write source is `ringcentral_rep_call`. The subject feed then assigns the lead to that rep. A later call does not move it. A matching Granot user replaces it. An Owner or Manager desk assignment (`manual`) replaces it and Granot does not override `manual`.
+`receiverFill.ts`, applied from `applyContactSources`, fills an empty `receiver_agent` when the desk subject is unassigned and the latest reviewed-rep call on that subject is `inbound_answered` with verification `confirmed` or `awaiting_confirmation`. The write source is `ringcentral_rep_call`. An `outbound_attempt` is not a candidate. The outbound still counts as that rep’s work. A later call does not move a receiver that was already written. A matching Granot user replaces a stored `ringcentral_rep_call`. An Owner or Manager desk assignment (`manual`) replaces it, and Granot does not override `manual`.
 
-The owner named the outbound case. The same function also fills from an answered inbound. Removing the outbound fill means changing this function; leaving the inbound half in place would keep a call-inferred assignment. `ringcentral_answered` is a different write: the reviewed rep who answered the call that created a Call Lead, and only into an empty receiver.
+`ringcentral_answered` is a different write: the reviewed rep who answered the call that created a Call Lead, and only into an empty receiver.
 
 ## Rep desk
 
@@ -168,25 +169,24 @@ Paid Overflow is a source value on this page. It is not one of the nine labels t
 
 ### Date window for three runs a day
 
-Recommendation, not a scheduled job.
+`ALL /api/cron/granot-estimates-in-process` is hourly in UTC (`0 * * * *`) and returns immediately unless the America/New_York hour is 8, 13, or 18. Each of those three runs uses the same Open Date window: yesterday through today. The wider midday window was considered, never measured, and is not used.
 
 | Run (America/New_York) | Open Date | Other filters |
 | --- | --- | --- |
 | 8:00 | Yesterday through today | Follow-Up Estimates, all users, all priorities |
-| 13:00 | Yesterday through today, and one wider Open Date window still to measure | Same |
+| 13:00 | Yesterday through today | Same |
 | 18:00 | Yesterday through today | Same |
 
-Open Date is the column `open_date`. Move Date would skip a lead opened today whose move is later. Neither factor means “edited today,” so a priority or user change on an older open is missed by yesterday–today. The wider midday window is how that catch-up would work. It was not measured. The two-day query returned 99 rows and was not the Recent 50 cap. Do not automate `STATUS=V15`.
+Open Date is the column `open_date`. Move Date would skip a lead opened today whose move is later. Neither factor means “edited today,” so a priority or user change on an older open is missed by yesterday–today. The two-day query returned 99 rows and was not the Recent 50 cap. Do not automate `STATUS=V15`.
 
 The collector’s own report is still Leads & Advertising, one source label at a time, with `DATE1` / `DATE2` / `TYPEDTE` on that other form. Its Follow Up Estimates table is parsed for job, source, customer, phone, email, from, to, estimated cubic feet, and rep. Priority on that path is the booked-jobs column, not the follow-up cell on Estimates in Process. That collector stays. The parse and lead-update cycle for this page is specified in [estimates-in-process-update.md](estimates-in-process-update.md).
 
 ## Not built
 
-- Priority meanings and the three-day moves into Priority 2.
-- One call a day for Priority 2 and Priority 3.
-- Stopping `ringcentral_rep_call`.
+- The three-day moves into Priority 2. The desk does not write Granot priority.
 - “in N days” / “N days ago”, the Future and Past labels, and move-date sort.
 - Renaming Last outreach to Last interaction.
 - Booked binder for today, this week, this month, and all time on My view.
 - The count of open assigned leads next to that binder.
-- A three-times-a-day Estimates in Process cron. The parse and update cycle those runs would call is specified in [estimates-in-process-update.md](estimates-in-process-update.md) and is the next implementation. The cron itself is still later.
+
+The Estimates in Process collector, its cron, the `daily` workflow for priorities 2 and 3 in FINAL-01, and the stop on outbound assignment are specified as shipped in [estimates-in-process-update.md](estimates-in-process-update.md). The priority map stored on the deployed database was not patched.

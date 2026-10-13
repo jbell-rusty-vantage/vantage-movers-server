@@ -393,6 +393,9 @@ The Sales Intelligence crons use `CRON_SECRET` (`Authorization: Bearer`), not th
 /api/cron/sales-intelligence-directory-sync         20 5 * * *
 /api/cron/sales-intelligence-webhook-subscription   15 6 * * *
 /api/cron/sales-intelligence-call-log-sweep         40 7 * * *
+/api/cron/granot-estimates-in-process               0 * * * *
 ```
+
+`/api/cron/granot-estimates-in-process` uses the same `CRON_SECRET` and returns immediately unless the America/New_York hour is 8, 13, or 18.
 
 The cutover runbook (`docs/server-admin-slimming/CUTOVER.md`) triggers the job-recovery cron once by hand after the slim deploy.

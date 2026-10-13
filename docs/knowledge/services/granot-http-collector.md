@@ -8,6 +8,8 @@ stale_after: 2026-09-21
 resource: src/services/granotHttpCollector/
 applies_to:
   - src/services/granotHttpCollector/index.ts
+  - src/services/granotHttpCollector/estimatesInProcess.ts
+  - src/services/granotHttpCollector/estimatesCron.ts
   - src/services/granotHttpCollector/runWorkflow.ts
   - src/services/granotHttpCollector/sourceCatalog.ts
   - src/services/granotHttpCollector/formWorkflow.ts
@@ -108,7 +110,11 @@ A recognized table needs headers `job_no` and `customer`. Data rows also require
 
 ## Estimates in Process
 
-A second Granot page, proved 13 October 2026. `collectGranotReport` keeps walking the source-company report above. Main menu `submitFunction(2)` opens `mv~estprocesswc`. Follow-Up Estimates is `STATUS=V9`, posted to `mv~estprocessret` with `TYPEDTE`, `DATE1`, `DATE2`, `FUSTATUS`, and `USER`. The procedure, the columns, and the three-runs-a-day date recommendation are in [granot-priorities-and-rep-desk.md](../granot-priorities-and-rep-desk.md). The build contract for the parse and lead-update cycle is [estimates-in-process-update.md](../estimates-in-process-update.md). The default radio on that form, Today’s Recent 50 Estimates Priority 0, is a different query.
+A second collector, `collectEstimatesInProcess`, and a run operation `estimates_in_process`. `collectGranotReport` keeps walking the source-company report above and still requests `mprep`. It does not request `estprocesswc`. The Estimates collector shares the two-page login (`openGranotAuthenticatedSession`) and the account lease `granot:automation:account`. After login it opens `mv~estprocesswc` and POSTs `mv~estprocessret` with `STATUS=V9`, `TYPEDTE=OPEN`, `DATE1` and `DATE2` from the run, `FUSTATUS=10`, empty `USER`, `DEPT=ALL`, `TYPE=V1`, `SORT=V6`. It does not post `STATUS=V15` and does not request `mprep`. The table has no numeric `no` column, so a separate parser maps rows onto the statement keys the normalizer already reads and drops the totals row that has no job number. Priority is the `prior:` digit inside `follow_up`.
+
+Each source label is partitioned through the Registry. A Call-only label uses `planCallWorkflow`. A Form-only label uses `planGranotFormWorkflow`. A missing label, or one that permits both, stays in the plan and is not approvable. Seal, then `applyAutomationPlanAction`, `claimAndProcessOrPoll`, and `synchronizeLeadFromGranot`. The cycle does not call `updateFormLead`, `syncCallLeadEnrichment`, `syncBookedCallLeadReconciliation`, or `createLeadFromGranot`, and it does not set `event_type` to `lead_created` or Booked.
+
+`ALL /api/cron/granot-estimates-in-process` (`CRON_SECRET`, `vercel.json` `0 * * * *`) runs only when the America/New_York hour is 8, 13, or 18. Every run uses Open Date yesterday through today. The cron sets `auto_apply` and applies approvable rows without waiting for an Owner and without `GRANOT_AUTOMATION_APPLY_ENABLED`. Owner-created apply runs, including an Owner `estimates_in_process` apply, still stop at `awaiting_approval` and still require that flag. Lifecycle lead-write gates are unchanged: when they are off, the processor persists the suppressed decision. The cron initiator is the system actor `granot-estimates-in-process-cron` with `origin` `vantage_admin`, which is what automation capture requires. The procedure and columns are in [granot-priorities-and-rep-desk.md](../granot-priorities-and-rep-desk.md). The build contract is [estimates-in-process-update.md](../estimates-in-process-update.md). The default radio on that form, Today’s Recent 50 Estimates Priority 0, is a different query.
 
 ## Plan schema v2
 
@@ -132,7 +138,9 @@ Call planner: one `previewCallLeadEnrichment` / `previewBookedCallLeadReconcilia
 
 ```
 GRANOT_AUTOMATION_APPLY_ENABLED === "true"
+  (skipped only for an estimates_in_process run whose request_snapshot.auto_apply is true)
   → approveGranotRun (awaiting_approval + matching checksum + unexpired)
+  (the estimates cron writes that approval itself, as the system actor, before the worker applies)
   → selected ids ⊆ approvable action ids (max 5000, unique)
   → status applying; publish wakeup
   → worker claims applying before queued/planning

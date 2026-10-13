@@ -54,7 +54,7 @@ WordPress Form: primary name/phone/email and both ingested snapshots stay off `c
 
 ## Receiver latest wins (S6-AGENT, assignment addendum §3.1)
 
-`receiverFillableByGranot(lead, agentId, captured_at, latestWins)` is the one rule, used by the planner (`canFillAgent`) and by `synchronizeLeadFromGranot`'s in-transaction re-check. Flag on: `receiverReplaceableByGranot` (table below). Flag off (`receiver_latest_wins` input, default the env flag): an empty field is filled, and a different Agent replaces a `ringcentral_rep_call` receiver (the Sales Outreach Desk's call-inferred placeholder, so Granot's rep always takes over from it); nothing else is replaced.
+`receiverFillableByGranot(lead, agentId, captured_at, latestWins)` is the one rule, used by the planner (`canFillAgent`) and by `synchronizeLeadFromGranot`'s in-transaction re-check. Flag on: `receiverReplaceableByGranot` (table below). Flag off (`receiver_latest_wins` input, default the env flag): an empty field is filled, and a different Agent replaces a `ringcentral_rep_call` receiver (an answered inbound on an unassigned desk subject; an outbound attempt does not write that source); nothing else is replaced.
 
 | Current `receiver_agent_source` | A different resolved Agent replaces it when |
 | --- | --- |

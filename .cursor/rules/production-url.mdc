@@ -324,6 +324,9 @@ Cron-secret endpoints (not API-secret operator calls), schedules from `vercel.js
 /api/cron/sales-intelligence-webhook-subscription  15 6 * * *
 /api/cron/sales-intelligence-retention             30 4 * * *
 /api/cron/sales-intelligence-call-log-sweep        40 7 * * *
+/api/cron/granot-estimates-in-process              0 * * * *
 ```
+
+`/api/cron/granot-estimates-in-process` returns immediately unless the America/New_York hour is 8, 13, or 18. Each of those hours collects Follow-Up Estimates for Open Date yesterday through today.
 
 Services: `docs/knowledge/services/number-activity-reads.md`, `number-activity-capture.md`, `sales-intelligence-foundation.md`. Listing these routes does not authorize production execution or flag enablement.

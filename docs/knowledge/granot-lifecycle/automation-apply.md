@@ -82,4 +82,4 @@ Nonterminal `accepted_for_processing` does not increment completed progress, yie
 
 ## Flags
 
-Lifecycle defaults stay processing/shadow true and all eight effect flags false. `GRANOT_AUTOMATION_APPLY_ENABLED` remains the preexisting Owner apply gate and is not enabled by this unit.
+Lifecycle defaults stay processing/shadow true and all eight effect flags false. `GRANOT_AUTOMATION_APPLY_ENABLED` remains the preexisting Owner apply gate and is not enabled by this unit. An `estimates_in_process` run with `request_snapshot.auto_apply` (the Estimates cron) skips that flag and still enters the same receipt and `synchronizeLeadFromGranot` path. When the lifecycle lead-write gates are off, the processor persists the suppressed decision. There is no bypass of those gates.
