@@ -542,3 +542,16 @@ Approval reference: the user's decisions recorded 2026-10-06 in the Outreach lif
 - **D-C3:** rep-day rows before 2026-10-05 freeze with the roster of the day they were frozen.
 
 **Operational facts that change how the packet reads.** The RingCentral `verificationToken` is accepted only when a subscription is created; a `PUT` ignores it, so adding a token takes a replacement (incident 2026-10-05 17:12Z → 2026-10-06 15:20Z; RINGCENTRAL-CAPTURE §3). SMS coverage counts only the current reviewed rep mailboxes (hotfix `521d0fff`).
+
+
+## P05d daily-priority amendment — October 13, 2026
+
+Authority: the Owner's Estimates rollout request maps both codes 2 and 3 to
+one ordinary call per working day (`daily`). This supersedes code 2 unmapped
+and code 3 no-routine-discretion in the historical October 3 baseline.
+The revised P05d fixture carries `P05d-daily-2026-10-13` and approval reference
+`owner-session-2026-10-13-estimates-daily`; the original P05b fixture remains
+historical evidence. Specification §12, the Contracts amendment, fixture,
+validator, and shared packet manifest are released together to the admin mirror.
+The deployed Owner PATCH and its B2/detailed enrollment verification remain
+separate execution steps; a packet release does not authorize that PATCH.
