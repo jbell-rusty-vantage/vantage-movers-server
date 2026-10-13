@@ -189,7 +189,7 @@ export type LeadChangeNomination = Readonly<{ lead: DeskLeadRef; revision: numbe
 /**
  * Which changes of a page nominate a job:
  * - every change of a Lead that is a desk subject (`change`, the `r<rev>` job);
- * - only while the persisted intake gate is on, a Lead's creation (`createFormLead`/`createCallLead`, revision 0; `change`), which
+ * - only while the persisted intake gate is on, a Lead's creation (canonical create command, revision 0; `change`), which
  *   the job runs through the intake admission;
  * - olr B6, only while expansion admission is open (`expansionAdmissionOpenOf`), an update of a
  *   non-subject Lead that wrote a decision path (`admission`, the `admission:r<rev>` job), which the job
@@ -209,7 +209,8 @@ export function nominateLeadChanges(
     // Missing command names retain the historical revision-zero interpretation. Canonical updates
     // of legacy Leads may start at zero and must use expansion, never intake.
     const creation = change.revision_before === 0 && (change.command_name === undefined
-      || change.command_name === "createFormLead" || change.command_name === "createCallLead");
+      || change.command_name === "createFormLead" || change.command_name === "createCallLead"
+      || change.command_name === "createLeadFromGranot");
     const kind = subjectLeadKeys.has(key) || (intakeOpen && creation)
       ? "change"
       : admissionOpen && !creation && touchesAdmissionDecision(change.changed_paths)

@@ -560,7 +560,7 @@ describe("expansion admission nomination (olr B6)", () => {
     assert.deepEqual(nominateLeadChanges([updated], new Set(), true, false), [], "expansion off: no intake fallback");
     assert.deepEqual(nominateLeadChanges([{ ...updated, changed_paths: ["receiver_agent"] }], new Set(), true, true), []);
     assert.deepEqual(nominateLeadChanges([updated], new Set([deskLeadKey(pre)]), true, true), [{ lead: pre, revision: 1, kind: "change" }]);
-    for (const command_name of ["createFormLead", "createCallLead"]) {
+    for (const command_name of ["createFormLead", "createCallLead", "createLeadFromGranot"]) {
       assert.deepEqual(nominateLeadChanges([{ ...updated, command_name }], new Set(), true, true), [{ lead: pre, revision: 1, kind: "change" }]);
       assert.deepEqual(nominateLeadChanges([{ ...updated, command_name }], new Set(), false, true), []);
     }
