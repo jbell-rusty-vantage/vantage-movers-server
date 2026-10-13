@@ -318,6 +318,12 @@ router.post(`${base}/:runId/apply-reviewed-estimates`, async (req, res) => {
       selected_action_ids: z.array(z.string().min(1)).min(1).max(5_000),
     }).strict().parse(req.body);
     const data = await applyReviewedEstimatesRun({ run_id: runId, ...body, approved_by: actor });
+    if (process.env.VERCEL !== "1") {
+      return res.status(202).json({
+        ok: true,
+        data: { ...data, local_worker: await runGranotWorker() },
+      });
+    }
     return res.status(202).json({ ok: true, data });
   } catch (error) {
     return sendError(res, error);
