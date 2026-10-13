@@ -51,7 +51,16 @@ Apply effects after capture are owned by [`automation-apply.md`](../granot-lifec
 
 `publishGranotWakeup` returns true only on Vercel **and** production `NODE_ENV`. Otherwise it returns false (no throw). Non-Vercel `POST /runs` and `POST /run-groups` then call `runGranotWorker` inline. Cron returns **503** when work is recoverable but the wakeup did not publish. // pragma: allowlist secret
 
-Local/non-Vercel workers may run without a queue publish. Collector credentials come from `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` / `GRANOT_USERNAME` / `GRANOT_PASSWORD` (legacy `MAIN_LOGIN_*` / `SPECIFIC_*` fallbacks). Do not log values.
+Local/non-Vercel workers may run without a queue publish. Do not log credential values.
+
+The collector signs in through two Granot pages, in order. `readCredentials()` prefers `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` and `GRANOT_USERNAME` / `GRANOT_PASSWORD`. Each legacy alias is used only when its `GRANOT_*` name is empty: `MAIN_LOGIN_USERNAME` / `MAIN_LOGIN_PASSWORD` for the network page, and `SPECIFIC_USERNAME` / `SPECIFIC_PASSWORD` for the user page.
+
+| Page | Request | Posted fields | Env, in order |
+|------|---------|---------------|---------------|
+| Network Login | `GET /wc.dll?mp~NetLogonWc~VANTAGE`, then POST `mp~netlogonret` | `LOGON_USER`, `PASSWORD` | `GRANOT_NETWORK_*`, else `MAIN_LOGIN_*` |
+| User Login | POST `mp~loginret~{session}~login` | `USERNAME`, `PASSWORD`, `LOGON=Login` | `GRANOT_USERNAME` / `GRANOT_PASSWORD`, else `SPECIFIC_*` |
+
+`/vantage/admin.htm` is the unsigned frame that loads the network login. It is not the main menu. After the user POST the session is the cookie jar plus the id in `mv~mainmenuwc~{session}~LOGIN`. A copied `wc.dll` URL without those cookies returns Granot's cookie security alert. `SAVEPASS` is dropped before the network POST.
 
 ## Workflows
 
@@ -85,7 +94,7 @@ Create-source limit is 200 labels. Exact duplicate label → `GRANOT_SOURCE_ALRE
 ## Collector happy path
 
 ```
-network login → user login (session token)
+network login (LOGON_USER) → user login (USERNAME)
   → report menu → DATE1/DATE2 filter
   → source selector (adverlistwc links)
   → each requested label: parse Booked Jobs + Follow Up Estimates

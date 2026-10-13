@@ -73,8 +73,19 @@ Admin has its own variables. Three names must match across the two processes: `V
 | `CRM_API_ID` | none | to submit Form Leads | yes | `crm/crmConfig.ts`: Granot lead-gateway credential. |
 | `CRM_MOVER_REF` | none | to submit Form Leads | yes | Granot mover-ref credential. |
 | `GRANOT_WEBHOOK_SECRET` | none | webhooks reject if unset | yes | `granotWebhook.ts`: shared secret for inbound Granot webhooks. |
-| `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` | none | to run the HTTP collector | yes | `granotHttpCollector/runWorkflow.ts`. Legacy aliases `MAIN_LOGIN_USERNAME` / `MAIN_LOGIN_PASSWORD`. |
-| `GRANOT_USERNAME` / `GRANOT_PASSWORD` | none | to run the HTTP collector | yes | Same module. Legacy aliases `SPECIFIC_USERNAME` / `SPECIFIC_PASSWORD`. |
+| `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` | none | to pass Granot's network login | yes | First web login. Legacy aliases `MAIN_LOGIN_USERNAME` / `MAIN_LOGIN_PASSWORD`. |
+| `GRANOT_USERNAME` / `GRANOT_PASSWORD` | none | to pass Granot's user login | yes | Second web login. Legacy aliases `SPECIFIC_USERNAME` / `SPECIFIC_PASSWORD`. |
+
+### Granot web login
+
+`readCredentials()` in `granotHttpCollector/runWorkflow.ts` reads each `GRANOT_*` name first. It uses the legacy alias only when that `GRANOT_*` value is empty. Both names set means the `GRANOT_*` pair wins. Values are not logged. The collector does not post `SAVEPASS`.
+
+The two pages are a sequence, not alternatives:
+
+1. **Network login.** `GET /wc.dll?mp~NetLogonWc~VANTAGE`. This is the frame `/vantage/admin.htm` loads before anyone is signed in. The page title is Network Login. The posted fields are `LOGON_USER` and `PASSWORD`. Fill them from `GRANOT_NETWORK_USERNAME` and `GRANOT_NETWORK_PASSWORD`, or from `MAIN_LOGIN_USERNAME` and `MAIN_LOGIN_PASSWORD` when the network pair is unset.
+2. **User login.** Granot shows this page only after the network POST succeeds. The title is User Login. The posted fields are `USERNAME` and `PASSWORD`, and the submit control sends `LOGON=Login`. Fill them from `GRANOT_USERNAME` and `GRANOT_PASSWORD`, or from `SPECIFIC_USERNAME` and `SPECIFIC_PASSWORD` when that pair is unset.
+
+The network POST lands on `mp~netlogonret`. The user POST lands on `mp~loginret` and then the main menu, `mv~mainmenuwc`. Later `wc.dll` paths carry a session id, and the cookie jar from this login has to travel with them. A copied menu URL without those cookies is rejected.
 
 ## RingCentral
 
