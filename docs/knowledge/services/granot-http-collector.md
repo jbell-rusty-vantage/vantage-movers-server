@@ -26,7 +26,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:owner-instructions
-  at: 2026-10-13T17:50:00Z
+  at: 2026-10-13T18:10:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotHttpCollector/`  
@@ -108,7 +108,7 @@ A recognized table needs headers `job_no` and `customer`. Data rows also require
 
 ## Estimates in Process
 
-A separate Granot page, proved 13 October 2026 and not what `collectGranotReport` requests. Main menu `submitFunction(2)` opens `mv~estprocesswc`. Follow-Up Estimates is `STATUS=V9`, posted to `mv~estprocessret` with `TYPEDTE`, `DATE1`, `DATE2`, `FUSTATUS`, and `USER`. The procedure, the columns, and the three-runs-a-day date recommendation are in [granot-priorities-and-rep-desk.md](../granot-priorities-and-rep-desk.md). The default radio on that form, Today’s Recent 50 Estimates Priority 0, is a different query. This collector still walks the source-company report above.
+A second Granot page, proved 13 October 2026. `collectGranotReport` keeps walking the source-company report above. Main menu `submitFunction(2)` opens `mv~estprocesswc`. Follow-Up Estimates is `STATUS=V9`, posted to `mv~estprocessret` with `TYPEDTE`, `DATE1`, `DATE2`, `FUSTATUS`, and `USER`. The procedure, the columns, and the three-runs-a-day date recommendation are in [granot-priorities-and-rep-desk.md](../granot-priorities-and-rep-desk.md). The build contract for the parse and lead-update cycle is [estimates-in-process-update.md](../estimates-in-process-update.md). The default radio on that form, Today’s Recent 50 Estimates Priority 0, is a different query.
 
 ## Plan schema v2
 
@@ -180,4 +180,5 @@ Admin `GET .../runs/:runId?details=owner` redacts `granot_statement` from the pl
 - [`capture.md`](../granot-lifecycle/capture.md)
 - [`operations-registry.md`](./operations-registry.md)
 - [`granot-http-automation.mdc`](../../../.cursor/rules/granot-http-automation.mdc)
+- [`estimates-in-process-update.md`](../estimates-in-process-update.md) — next slice. Leaves this collector in place.
 - Tests: `granotHttpCollector.test.ts`, `runWorkflow.test.ts`, `formWorkflow.test.ts`, `sourceCatalog.test.ts`, `lifecycleStatement.test.ts`, `granot-automation.routes.test.ts`

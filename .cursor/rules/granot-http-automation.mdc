@@ -15,3 +15,4 @@ Owner invariants: [`docs/knowledge/services/granot-http-collector.md`](../../doc
 - Queue topic `granot-automation-events` → `api/queues/granot-automation-consumer.ts` → `runGranotWorker()`. Cron heartbeat recovers leased runs.
 - Run-level `receipts` on `GranotAutomationRun` store lifecycle IDs and bounded outcomes, including `accepted_for_processing`. They are not the Observation Receipt document.
 - Schema-v1 plans fail closed (`RUN_REPLAN_REQUIRED`). Preview remains guidance-only and creates no receipt.
+- Estimates in Process is a second collector (`estimates_in_process`). Build contract: [`docs/knowledge/estimates-in-process-update.md`](../../docs/knowledge/estimates-in-process-update.md). `collectGranotReport`, `form_leads`, and `call_leads` stay on the Leads & Advertising path.

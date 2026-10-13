@@ -178,7 +178,7 @@ Recommendation, not a scheduled job.
 
 Open Date is the column `open_date`. Move Date would skip a lead opened today whose move is later. Neither factor means “edited today,” so a priority or user change on an older open is missed by yesterday–today. The wider midday window is how that catch-up would work. It was not measured. The two-day query returned 99 rows and was not the Recent 50 cap. Do not automate `STATUS=V15`.
 
-The collector’s own report is still Leads & Advertising, one source label at a time, with `DATE1` / `DATE2` / `TYPEDTE` on that other form. Its Follow Up Estimates table is parsed for job, source, customer, phone, email, from, to, estimated cubic feet, and rep. Priority on that path is the booked-jobs column, not the follow-up cell on Estimates in Process.
+The collector’s own report is still Leads & Advertising, one source label at a time, with `DATE1` / `DATE2` / `TYPEDTE` on that other form. Its Follow Up Estimates table is parsed for job, source, customer, phone, email, from, to, estimated cubic feet, and rep. Priority on that path is the booked-jobs column, not the follow-up cell on Estimates in Process. That collector stays. The parse and lead-update cycle for this page is specified in [estimates-in-process-update.md](estimates-in-process-update.md).
 
 ## Not built
 
@@ -189,4 +189,4 @@ The collector’s own report is still Leads & Advertising, one source label at a
 - Renaming Last outreach to Last interaction.
 - Booked binder for today, this week, this month, and all time on My view.
 - The count of open assigned leads next to that binder.
-- A three-times-a-day Estimates in Process cron.
+- A three-times-a-day Estimates in Process cron. The parse and update cycle those runs would call is specified in [estimates-in-process-update.md](estimates-in-process-update.md) and is the next implementation. The cron itself is still later.
