@@ -12,7 +12,7 @@ import { claimAndProcessOrPoll, type SyncClaimResult } from "./drainer";
 import type { SynchronizationOutcome } from "./types";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 
-export type AutomationReplayState = { terminal: boolean; dead_letter: boolean; ready: boolean };
+export type AutomationReplayState = { terminal: boolean; ready: boolean };
 
 /** Read only: receipt clocks remain authoritative; bulk-check before polling old actions. */
 export async function loadAutomationReplayStates(ids: string[], now: Date): Promise<Map<string, AutomationReplayState>> {
@@ -21,11 +21,10 @@ export async function loadAutomationReplayStates(ids: string[], now: Date): Prom
     .select({ _id: 1, processing: 1 }).lean().exec();
   return new Map(rows.map((row) => {
     const p = row.processing;
-    const terminal = p.state === "completed" || p.state === "dead_letter";
+    const terminal = p.state === "completed";
     return [String(row._id), {
       terminal,
-      dead_letter: p.state === "dead_letter",
-      ready: terminal || (+new Date(p.next_attempt_at) <= +now &&
+      ready: terminal || p.state === "dead_letter" || (+new Date(p.next_attempt_at) <= +now &&
         (p.state !== "claimed" || !p.leased_until || +new Date(p.leased_until) <= +now)),
     }];
   }));

@@ -883,7 +883,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
       continue;
     }
     const replay = existing ? replayStates.get(existing.lifecycle_receipt_id) : undefined;
-    if (existing && !replay?.dead_letter) {
+    if (existing) {
       if (replay?.ready === false) continue;
       // A stale/non-due claim can poll for five seconds. At most one pending
       // replay gets that budget; fresh actions and terminal reads still proceed.
@@ -898,12 +898,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     await renewRunLease(runId, lease, "applying");
     let receipt: GranotAutomationActionReceipt;
     try {
-      receipt = replay?.dead_letter && existing ? {
-        ...existing,
-        outcome: "technical_failure",
-        error_code: "GRANOT_RECEIPT_DEAD_LETTER",
-        applied_at: new Date(),
-      } : await applyAction({
+      receipt = await applyAction({
         action_id: action.action_id,
         lifecycle_apply: action.lifecycle_apply,
         initiator: approval.approved_by,
