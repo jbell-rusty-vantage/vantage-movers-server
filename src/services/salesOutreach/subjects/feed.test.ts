@@ -552,6 +552,25 @@ describe("expansion admission nomination (olr B6)", () => {
     assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${subject.id}:r3`]);
   });
 
+  test("canonical updates of legacy revision-zero Leads use expansion, not intake", async () => {
+    const pre = lead();
+    const updated = { ...change(pre, 0, "2026-10-06T14:04:10Z", objectId(), ["granot_priority"]), command_name: "synchronizeLeadFromGranot" };
+    assert.deepEqual(nominateLeadChanges([updated], new Set(), true, true), [{ lead: pre, revision: 1, kind: "admission" }]);
+    assert.deepEqual(nominateLeadChanges([updated], new Set(), false, true), [{ lead: pre, revision: 1, kind: "admission" }]);
+    assert.deepEqual(nominateLeadChanges([updated], new Set(), true, false), [], "expansion off: no intake fallback");
+    assert.deepEqual(nominateLeadChanges([{ ...updated, changed_paths: ["receiver_agent"] }], new Set(), true, true), []);
+    assert.deepEqual(nominateLeadChanges([updated], new Set([deskLeadKey(pre)]), true, true), [{ lead: pre, revision: 1, kind: "change" }]);
+    for (const command_name of ["createFormLead", "createCallLead", "createLeadFromGranot"]) {
+      assert.deepEqual(nominateLeadChanges([{ ...updated, command_name }], new Set(), true, true), [{ lead: pre, revision: 1, kind: "change" }]);
+      assert.deepEqual(nominateLeadChanges([{ ...updated, command_name }], new Set(), false, true), []);
+    }
+    const store = new MemoryFeedStore();
+    store.tail = { applied_at: at("2026-10-06T14:04:00Z"), id: "0".repeat(24) };
+    store.changes.push(updated);
+    await scanOutreachLeadChangesUntilCaughtUp(at("2026-10-06T14:05:00Z"), { store, transaction, loader: fixedConfigurationLoader(admissionOn() as never) });
+    assert.deepEqual([...store.jobs.keys()], [`sod:lead-change:FormLead:${pre.id}:admission:r1`]);
+  });
+
   test("creation still nominates the r<rev> intake identity (never admission), even with a decision path", () => {
     const fresh = lead("CallLead");
     const created = change(fresh, 0, "2026-10-06T14:04:10Z", objectId(), ["granot_priority", "timestamp"]);
