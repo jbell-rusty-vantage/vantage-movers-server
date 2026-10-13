@@ -1,11 +1,12 @@
 import type { ContactEventDraft } from "./derive";
 
 /**
- * Call-inferred assignment: a desk Lead with no `receiver_agent` takes the reviewed rep who most recently
- * called it (or answered its call) as a `ringcentral_rep_call` receiver. The Lead write goes through
- * `writeReceiverAgent` (EntityChange + revision stamp), so the subject feed re-syncs the subject and
- * IMPL-01 assigns it. The receiver is a placeholder: a matching Granot rep replaces it
- * (`granotLifecycle/leadDesiredState.ts` `receiverFillableByGranot`), and a desk reassignment (`manual`) wins.
+ * Call-inferred assignment: a desk Lead with no `receiver_agent` takes the reviewed rep who answered
+ * its inbound call as a `ringcentral_rep_call` receiver. An outbound attempt still counts as that
+ * rep's work and does not set `receiver_agent`. The Lead write goes through `writeReceiverAgent`
+ * (EntityChange + revision stamp), so the subject feed re-syncs the subject and IMPL-01 assigns it.
+ * The receiver is a placeholder: a matching Granot user replaces it
+ * (`granotLifecycle/leadDesiredState.ts` `receiverFillableByGranot`), and an Owner manual assignment wins.
  *
  * Only an empty receiver is filled: a Lead whose receiver is an unreviewed Agent stays as it is.
  */
@@ -18,7 +19,7 @@ export type ReceiverFillCandidate = Readonly<{
   event_at: Date;
 }>;
 
-const REP_CALL_KINDS = new Set(["outbound_attempt", "inbound_answered"]);
+const REP_CALL_KINDS = new Set(["inbound_answered"]);
 const REP_CALL_VERIFICATIONS = new Set(["confirmed", "awaiting_confirmation"]);
 
 /** Does this derived event show a reviewed rep working exactly one desk subject by phone? */

@@ -23,7 +23,7 @@ import { CatchUpLedger } from "./catchup";
 import { isCadenceQualifying } from "./credit";
 import { applyCutoverGuard } from "./cutover";
 import { arrivalDateObligations, fullNewDayObligations, initialResponseObligation } from "./newCadence";
-import { earliestTermination, isCreditableAt, terminatedBeforeDeadline, type WorkingObligation } from "./obligation";
+import { earliestTermination, isCreditableAt, makeObligation, terminatedBeforeDeadline, type WorkingObligation } from "./obligation";
 import { closureInstant, periodAt, subjectState, timedPeriods, type TimedPeriod } from "./precedence";
 import { governingSegment, quotedObligationsForDate, quotedSegments, type QuotedSegment } from "./quoted";
 import { partialStartNewObligations, priorSameDateCredit } from "./reentry";
@@ -158,10 +158,15 @@ function deriveObligations(ctx: Context): WorkingObligation[] {
   let all: WorkingObligation[] = [];
   if (ctx.input.subject.status !== "review") {
     ctx.periods.forEach((period, index) => {
-      if (period.workflow !== "new" && period.workflow !== "quoted") return;
+      if (period.workflow !== "new" && period.workflow !== "quoted" && period.workflow !== "daily") return;
       const endMs = Math.min(period.endMs, ctx.closureMs ?? Number.POSITIVE_INFINITY);
       if (endMs <= period.startMs) return;
-      const obs = period.workflow === "new" ? newPeriodObligations(ctx, period, endMs) : quotedPeriodObligations(ctx, period, endMs);
+      const obs =
+        period.workflow === "new"
+          ? newPeriodObligations(ctx, period, endMs)
+          : period.workflow === "quoted"
+            ? quotedPeriodObligations(ctx, period, endMs)
+            : dailyPeriodObligations(ctx, period, endMs);
       const next = ctx.periods[index + 1];
       const byClosure = (ctx.closureMs !== null && endMs >= ctx.closureMs) || next?.workflow === "closed";
       if (Number.isFinite(endMs)) {
@@ -236,6 +241,39 @@ function newPeriodObligations(ctx: Context, period: TimedPeriod, endMs: number):
       obs = fullNewDayObligations(dayCtx);
     }
     out.push(...obs.filter((ob) => ob.opens < endMs));
+  }
+  return out;
+}
+
+/**
+ * One ordinary call on each working day from the period start date, including that date.
+ * Opens at the later of the period start and the calendar opening; due and close at closing.
+ * Does not read quoted goals, credit, or cutoffs.
+ */
+function dailyPeriodObligations(ctx: Context, period: TimedPeriod, endMs: number): WorkingObligation[] {
+  const { cal } = ctx;
+  const startDate = cal.dateOf(period.startMs);
+  const out: WorkingObligation[] = [];
+  const future = () => out.some((obligation) => obligation.opens > ctx.asOf);
+  for (const date of periodDates(ctx, startDate, endMs, future)) {
+    if (!cal.isWorkingDate(date)) continue;
+    const opening = cal.opening(date);
+    const closing = cal.closing(date);
+    const opens = date === startDate ? Math.max(period.startMs, opening) : opening;
+    if (opens >= closing || opens >= endMs) continue;
+    out.push(
+      makeObligation({
+        period_id: period.period_id,
+        channel: "call",
+        kind: "ordinary",
+        date,
+        slot: 0,
+        opens,
+        due: closing,
+        closes: closing,
+        plan_id: null,
+      }),
+    );
   }
   return out;
 }

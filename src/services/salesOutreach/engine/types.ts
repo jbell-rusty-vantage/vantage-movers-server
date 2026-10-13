@@ -31,10 +31,11 @@ export type Channel = "call" | "sms";
 
 /**
  * Routine workflow of a policy period (IMPLEMENTATION-PLAN §4.2, priority map §6.3).
- * `discretion` = accepted Priority 3 (No routine cadence); `none` = accepted unmapped code
- * (No policy configured); `closed` = Priority 5/7/8, official Booking or another authoritative closure.
+ * `daily` = one ordinary call each working day (priorities 2 and 3); `discretion` = no routine
+ * cadence; `none` = accepted unmapped code (No policy configured); `closed` = Priority 5/7/8,
+ * official Booking or another authoritative closure.
  */
-export type OutreachWorkflow = "new" | "quoted" | "discretion" | "none" | "closed";
+export type OutreachWorkflow = "new" | "quoted" | "daily" | "discretion" | "none" | "closed";
 
 /**
  * How the period started, which selects the start-date rules:

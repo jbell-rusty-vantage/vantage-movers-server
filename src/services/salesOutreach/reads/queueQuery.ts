@@ -31,7 +31,7 @@ export type QueueMatch = Readonly<{
   assignment: QueueAssignment;
   state: SalesOutreachQueueState;
   priority: Readonly<{ kind: "all" }> | Readonly<{ kind: "unknown" }> | Readonly<{ kind: "code"; code: string }>;
-  workflow: "new" | "quoted" | "discretion" | "none" | null;
+  workflow: "new" | "quoted" | "daily" | "discretion" | "none" | null;
   move_date: Readonly<{ from: string | null; to: string | null; unknown: "include" | "exclude" | "only" }> | null;
   search: QueueSearch | null;
 }>;

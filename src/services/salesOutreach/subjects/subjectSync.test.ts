@@ -267,7 +267,7 @@ describe("olr B6: event-driven expansion admission (transition.expansion_admissi
       [preGate({ timestamp: toFloridaTimestamp(at("2026-05-01T14:00:00Z")), created_at: at("2026-05-01T14:00:05Z") }), "expansion:older:outside_backfill_scope"],
       [preGate({ ...accepted("5", "2026-10-06T14:58:00Z") }), "expansion:closed:granot_booked"],
       [preGate({ duplicate: true }), "expansion:excluded:duplicate"],
-      [preGate({ ...accepted("3", "2026-10-06T14:58:00Z") }), "expansion:not_new_or_quoted:priority_discretion"],
+      [preGate({ ...accepted("4", "2026-10-06T14:58:00Z") }), "expansion:review:unmapped_priority"],
       [preGate({ granot_priority: null, accepted_observation: null, ingestion_origin: "granot_lead_created" }), "expansion:review:priority_needs_review"],
       [preGate({ timestamp: null, created_at: null }), "expansion:review:received_time_missing"],
       [twin, "expansion:review:ambiguous_identity"],

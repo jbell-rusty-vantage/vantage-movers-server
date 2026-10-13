@@ -82,4 +82,23 @@ Nonterminal `accepted_for_processing` does not increment completed progress, yie
 
 ## Flags
 
-Lifecycle defaults stay processing/shadow true and all eight effect flags false. `GRANOT_AUTOMATION_APPLY_ENABLED` remains the preexisting Owner apply gate and is not enabled by this unit.
+Lifecycle defaults stay processing/shadow true and all eight effect flags false. `GRANOT_AUTOMATION_APPLY_ENABLED` remains the preexisting Owner apply gate and is not enabled by this unit. An `estimates_in_process` run with `request_snapshot.auto_apply` (the Estimates cron) skips that flag and still enters the same receipt and `synchronizeLeadFromGranot` path. When the lifecycle lead-write gates are off, the processor persists the suppressed decision. There is no bypass of those gates.
+
+
+## Reviewed bounded Estimates apply
+
+An Owner may POST `/api/v1/admin/granot-automation/runs/:runId/apply-reviewed-estimates`
+with `plan_checksum` and `selected_action_ids` after reviewing a completed Estimates
+preview. The stored Open Date window must contain 1–90 inclusive real calendar dates
+ending no later than today in America/New_York. The unexpired schema-v2 plan and checksum
+are reused without recollecting. Only selected approvable actions are authorized;
+conflicts, unmatched rows, and unresolved sources cannot be selected. A fenced state
+change promotes the preview to `workflow: apply`, sets `request_snapshot.auto_apply: true`,
+and stores the signed Owner approval. The existing worker and lifecycle apply perform
+the effects. This narrow path skips the ordinary automation flag, retains every
+lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
+
+The recurring cron still uses yesterday through today at 8, 13, and 18 New York.
+A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
+and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
+The existing Mongo `_id` index enforces uniqueness; no index migration is required.

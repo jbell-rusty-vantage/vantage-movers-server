@@ -5,7 +5,14 @@ import {
   type Request,
   type Response,
 } from "express";
-import { recoverGranotRuns } from "../services/granotHttpCollector/runWorkflow";
+import { estimatesCronDecision } from "../services/granotHttpCollector/estimatesCron";
+import {
+  createGranotRun,
+  recoverGranotRuns,
+  runGranotWorker,
+} from "../services/granotHttpCollector/runWorkflow";
+import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../services/domainCommands/types";
+import type { DurableActor } from "../services/durableWork/types";
 
 const router = Router();
 
@@ -30,6 +37,61 @@ router.all(
     }
   },
 );
+
+router.all(
+  "/api/cron/granot-estimates-in-process",
+  requireCronAuth,
+  async (_req: Request, res: Response) => {
+    const decision = estimatesCronDecision(new Date());
+    if (!decision.run) {
+      return res.json({ ok: true, skipped: true, reason: decision.reason });
+    }
+    try {
+      const created = await createGranotRun({
+        operation: "estimates_in_process",
+        workflow: "apply",
+        dateWindow: decision.dateWindow,
+        sourceLabels: [],
+        autoApply: true,
+        scheduledSlotKey: decision.slotKey,
+        initiator: estimatesCronActor(),
+      });
+      if (!created.queue_published) {
+        const worker = await runGranotWorker();
+        return res.json({
+          ok: true,
+          skipped: false,
+          run_id: created.run_id,
+          date_window: decision.dateWindow,
+          local_worker: worker,
+        });
+      }
+      return res.json({
+        ok: true,
+        skipped: false,
+        run_id: created.run_id,
+        date_window: decision.dateWindow,
+        queue_published: true,
+      });
+    } catch {
+      return res.status(500).json({
+        ok: false,
+        error: "Estimates in Process cron failed.",
+      });
+    }
+  },
+);
+
+function estimatesCronActor(): DurableActor {
+  return {
+    actor_type: "system",
+    actor_id: GRANOT_ESTIMATES_CRON_ACTOR_ID,
+    actor_label: "Estimates in Process",
+    actor_role: "system",
+    request_id: "granot-estimates-in-process-cron",
+    origin: "vantage_admin",
+  };
+}
 
 function requireCronAuth(
   req: Request,

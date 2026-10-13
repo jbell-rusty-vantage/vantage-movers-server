@@ -74,6 +74,8 @@ test('session roots touch a repository when equal, containing, or inside it', ()
   assert.ok(rootTouchesRepo('c:/work/vantage/server/src', 'C:/work/vantage/server'));
   assert.ok(!rootTouchesRepo('C:/work/vantage/admin', 'C:/work/vantage/server'));
   assert.ok(!rootTouchesRepo('C:/work/vantage/server-old', 'C:/work/vantage/server'));
+  assert.ok(rootTouchesRepo('/work/vantage/server/src', '/work/vantage/server'));
+  if (process.platform !== 'win32') assert.ok(!rootTouchesRepo('/work/Vantage/server', '/work/vantage/server'));
 });
 
 test('secret, dependency and log paths never reach a model', () => {

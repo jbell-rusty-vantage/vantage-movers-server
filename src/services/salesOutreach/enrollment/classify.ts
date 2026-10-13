@@ -16,13 +16,13 @@ export const ENROLLMENT_MAX_SELECTION = 20_000;
 
 /**
  * Where an existing Lead stands for enrollment (FAST-TRACK "Backfill scope", MANUAL-START step 2):
- * - `in_scope`: eligible (P05h) New/Quoted by accepted priority or New by intake default (P05e), with a
+ * - `in_scope`: eligible (P05h) New, Quoted, or `daily` by accepted priority, or New by intake default (P05e), with a
  *   reliable received time, and inside the backfill scope (or explicitly selected);
  * - `older`: the same, but outside the backfill scope ("Not enrolled — older", one-click Enroll);
  * - `already_enrolled`, `closed`, `excluded` (duplicate / unmatched Booking anchor);
  * - `review`: missing/unreliable received time, ambiguous identity, unsupported or unmapped priority,
  *   Priority needs review — never a guessed enrollment;
- * - `not_new_or_quoted`: accepted Priority 3 (No routine cadence).
+ * - `not_new_or_quoted`: accepted `discretion` (no routine cadence). FINAL-01 maps priority 3 to `daily`, which falls through to `in_scope`.
  */
 export type EnrollmentPartition = "in_scope" | "older" | "already_enrolled" | "closed" | "excluded" | "review" | "not_new_or_quoted";
 export const ENROLLMENT_PARTITIONS: readonly EnrollmentPartition[] = ["in_scope", "older", "already_enrolled", "closed", "excluded", "review", "not_new_or_quoted"];

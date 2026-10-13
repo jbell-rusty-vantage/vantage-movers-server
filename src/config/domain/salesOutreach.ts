@@ -40,7 +40,7 @@ export const SALES_OUTREACH_RECEIVED_QUALITIES = ["instant", "wall_clock", "miss
 export const SALES_OUTREACH_PRIORITY_BASES = ["accepted_observation", "intake_default", "none"] as const;
 
 /** Policy-period workflow (IMPLEMENTATION-PLAN §4.2). */
-export const SALES_OUTREACH_WORKFLOWS = ["new", "quoted", "discretion", "none", "closed"] as const;
+export const SALES_OUTREACH_WORKFLOWS = ["new", "quoted", "daily", "discretion", "none", "closed"] as const;
 export type SalesOutreachWorkflow = (typeof SALES_OUTREACH_WORKFLOWS)[number];
 /**
  * How a policy period started (engine `PeriodStartKind`): `intake` = a fresh Lead arrival (P05e),

@@ -157,7 +157,8 @@ export const APPROVED_MAPPING: SalesOutreachConfigurationInput["cadence"] = {
     codes: [
       { code: "0", workflow: "new", closure_reason: null },
       { code: "1", workflow: "quoted", closure_reason: null },
-      { code: "3", workflow: "discretion", closure_reason: null },
+      { code: "2", workflow: "daily", closure_reason: null },
+      { code: "3", workflow: "daily", closure_reason: null },
       { code: "5", workflow: "closed", closure_reason: "granot_booked" },
       { code: "7", workflow: "closed", closure_reason: "crm_bad_disposition" },
       { code: "8", workflow: "closed", closure_reason: "crm_dead_disposition" },

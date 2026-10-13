@@ -15,6 +15,7 @@ import {
 } from "../services/operationsRegistry";
 import {
   approveGranotRun,
+  applyReviewedEstimatesRun,
   createGranotRun,
   createGranotRunGroup,
   getGranotRun,
@@ -38,24 +39,29 @@ const runGroupsBase = `${apiBase}/run-groups`;
 router.use(apiBase, requireApiSecret);
 
 const datePattern = /^\d{2}\/\d{2}\/\d{4}$/;
-const requestSchema = z
+const workflowField = z.enum(["preview", "apply"]).default("preview");
+const dateFields = {
+  from: z.string().regex(datePattern, "from must use MM/DD/YYYY"),
+  to: z.string().regex(datePattern, "to must use MM/DD/YYYY"),
+};
+const filtersField = z
+  .object({
+    date_factor: z.enum(["OPEN", "BOOK"]).default("OPEN"),
+    type: z.string().trim().default("ALL"),
+    department: z.string().trim().default(""),
+    state: z.string().trim().default(""),
+    status: z.string().trim().default("10"),
+  })
+  .strict()
+  .optional();
+const leadRequestSchema = z
   .object({
     operation: z.enum(["form_leads", "call_leads"]),
-    workflow: z.enum(["preview", "apply"]).default("preview"),
-    from: z.string().regex(datePattern, "from must use MM/DD/YYYY"),
-    to: z.string().regex(datePattern, "to must use MM/DD/YYYY"),
+    workflow: workflowField,
+    ...dateFields,
     source_labels: z.array(z.string().trim().min(1)).min(1).max(50).optional(),
     source_ids: z.array(z.string().regex(/^[a-f\d]{24}$/i)).min(1).max(50).optional(),
-    filters: z
-      .object({
-        date_factor: z.enum(["OPEN", "BOOK"]).default("OPEN"),
-        type: z.string().trim().default("ALL"),
-        department: z.string().trim().default(""),
-        state: z.string().trim().default(""),
-        status: z.string().trim().default("10"),
-      })
-      .strict()
-      .optional(),
+    filters: filtersField,
   })
   .strict()
   .superRefine((value, context) => {
@@ -73,30 +79,17 @@ const requestSchema = z
         message: "submit source_ids or source_labels, not both",
       });
     }
-    const from = parseGranotDate(value.from);
-    const to = parseGranotDate(value.to);
-    if (!from) {
-      context.addIssue({
-        code: "custom",
-        path: ["from"],
-        message: "from must be a real calendar date",
-      });
-    }
-    if (!to) {
-      context.addIssue({
-        code: "custom",
-        path: ["to"],
-        message: "to must be a real calendar date",
-      });
-    }
-    if (from && to && from.getTime() > to.getTime()) {
-      context.addIssue({
-        code: "custom",
-        path: ["to"],
-        message: "to must be on or after from",
-      });
-    }
+    validateDateWindow(value, context);
   });
+const estimatesRequestSchema = z
+  .object({
+    operation: z.literal("estimates_in_process"),
+    workflow: workflowField,
+    ...dateFields,
+  })
+  .strict()
+  .superRefine(validateDateWindow);
+const requestSchema = z.union([leadRequestSchema, estimatesRequestSchema]);
 
 router.get(`${base}/sources`, async (req, res) => {
   try {
@@ -154,19 +147,22 @@ router.post(base, async (req, res) => {
   try {
     const actor = ownerActor(req);
     const parsed = requestSchema.parse(req.body);
+    const estimates = parsed.operation === "estimates_in_process";
     const data = await createGranotRun({
       operation: parsed.operation,
       workflow: parsed.workflow,
       dateWindow: { from: parsed.from, to: parsed.to },
-      sourceLabels: parsed.source_labels ?? [],
-      sourceIds: parsed.source_ids,
-      filters: {
-        dateFactor: parsed.filters?.date_factor,
-        type: parsed.filters?.type,
-        department: parsed.filters?.department,
-        state: parsed.filters?.state,
-        status: parsed.filters?.status,
-      },
+      sourceLabels: estimates ? [] : (parsed.source_labels ?? []),
+      sourceIds: estimates ? undefined : parsed.source_ids,
+      filters: estimates
+        ? undefined
+        : {
+            dateFactor: parsed.filters?.date_factor,
+            type: parsed.filters?.type,
+            department: parsed.filters?.department,
+            state: parsed.filters?.state,
+            status: parsed.filters?.status,
+          },
       initiator: actor,
     });
     if (!data.queue_published && process.env.VERCEL !== "1") {
@@ -308,6 +304,27 @@ router.get(`${base}/:runId`, async (req, res) => {
           code: "RUN_NOT_FOUND",
           error: "Granot automation run was not found.",
         });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.post(`${base}/:runId/apply-reviewed-estimates`, async (req, res) => {
+  try {
+    const actor = ownerActor(req);
+    const runId = z.string().regex(/^[a-f\d]{24}$/i).parse(req.params.runId);
+    const body = z.object({
+      plan_checksum: z.string().regex(/^[a-f\d]{64}$/i),
+      selected_action_ids: z.array(z.string().min(1)).min(1).max(5_000),
+    }).strict().parse(req.body);
+    const data = await applyReviewedEstimatesRun({ run_id: runId, ...body, approved_by: actor });
+    if (process.env.VERCEL !== "1") {
+      return res.status(202).json({
+        ok: true,
+        data: { ...data, local_worker: await runGranotWorker() },
+      });
+    }
+    return res.status(202).json({ ok: true, data });
   } catch (error) {
     return sendError(res, error);
   }

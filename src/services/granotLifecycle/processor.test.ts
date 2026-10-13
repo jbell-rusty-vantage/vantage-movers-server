@@ -2218,3 +2218,28 @@ test("same observation/attempt replay does not increment Daily Operations again"
   await processGranotObservation({ receipt_id: String(row.receipt_id) }, replay);
   assert.equal(getCapturedDailyOperationsFacts().length, afterFirst);
 });
+
+test("booking status evidence is processed independently of a companion Priority 5, including delayed delivery", async () => {
+  for (const winnerAt of [null, new Date(+capturedAt - 1000), new Date(+capturedAt + 1000)]) {
+    const row = observation({ kind: "booking_action_snapshot", route_event_class: "booking_status_changed", priority: { valid: false }, booking_action: { raw: "Booked", normalized: "booked" } });
+    const leadId = String(objectId());
+    let bookingCalls = 0;
+    const deps = memoryDeps({
+      observation: row,
+      activation: { activated_at: new Date("2026-08-17T14:00:00Z") },
+      flags: { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, shadow_mode: false, lead_writes_enabled: true, booking_cases_enabled: true },
+      identity: matchedFormIdentity(leadId),
+      lead: currentLead(leadId, { granot_priority: winnerAt ? "5" : undefined, last_accepted_granot_observation: winnerAt ? { observation_id: String(objectId()), captured_at: winnerAt } : undefined }),
+      reconcileBooking: async () => {
+        bookingCalls++;
+        return { kind: "opened", case_ref: { model: "GranotBookingReconciliationCase", id: String(objectId()) }, outcome: "linked", reason_code: "booking_case_opened" };
+      },
+      synchronizeLead: async () => { throw new Error("Booking evidence routes through its documented reconciliation branch."); },
+      createLead: async () => { throw new Error("Booking evidence never creates a Lead."); },
+    });
+    const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
+    assert.equal(bookingCalls, 1);
+    assert.deepEqual(result.effects.map((e) => e.kind), ["booking_case_opened"]);
+    assert.equal(deps.createLeadCalls, 0);
+  }
+});

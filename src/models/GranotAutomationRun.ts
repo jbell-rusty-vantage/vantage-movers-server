@@ -18,7 +18,7 @@ const GranotAutomationRunSchema = new Schema(
     operation: {
       type: String,
       required: true,
-      enum: ["form_leads", "call_leads"],
+      enum: ["form_leads", "call_leads", "estimates_in_process"],
     },
     run_group_id: {
       type: String,

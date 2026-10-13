@@ -86,7 +86,7 @@ const callSlotBandSchema = z
   .refine((band) => band.to_day === null || band.to_day >= band.from_day, "to_day before from_day")
   .refine((band) => strictlyAscendingUnique(band.deadline_minutes), "deadline_minutes must ascend");
 
-const PRIORITY_WORKFLOWS = ["new", "quoted", "discretion", "closed", "none"] as const;
+const PRIORITY_WORKFLOWS = ["new", "quoted", "daily", "discretion", "closed", "none"] as const;
 const priorityMapSchema = z
   .object({
     codes: z

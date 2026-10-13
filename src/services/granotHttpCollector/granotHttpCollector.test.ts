@@ -188,6 +188,8 @@ test("collector follows the Granot report flow and records absent sources", asyn
   assert.equal(requests[2]?.cookie, "network=one");
   assert.equal(requests[5]?.method, "POST");
   assert.match(requests[6]?.url ?? "", /TBM%20Forms%20Prime$/);
+  assert.ok(requests.some((request) => request.url.includes("mprep")));
+  assert.ok(requests.every((request) => !request.url.includes("estprocess")));
   assert.deepEqual(sourceCheckpoints, ["TBM Forms Prime"]);
 });
 

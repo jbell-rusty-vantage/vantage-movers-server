@@ -9,14 +9,19 @@ stale_after: 2027-01-13
 resource: src/services/granotHttpCollector/
 applies_to:
   - src/services/granotHttpCollector/index.ts
+  - src/services/granotHttpCollector/estimatesInProcess.ts
+  - src/services/granotHttpCollector/estimatesCron.ts
   - src/services/granotHttpCollector/runWorkflow.ts
   - src/services/granotHttpCollector/lifecycleStatement.ts
   - src/services/granotHttpCollector/formWorkflow.ts
   - src/routes/granot-automation.routes.ts
+  - src/routes/granot-automation-cron.routes.ts
   - src/models/GranotAutomationRun.ts
   - src/services/granotLifecycle/leadDesiredState.ts
   - src/services/granotLifecycle/identity.ts
   - src/services/salesOutreach/subjects/feed.ts
+  - src/services/salesOutreach/contacts/receiverFill.ts
+  - src/services/salesOutreach/engine/evaluate.ts
 owners: [team:main-server]
 sources:
   - id: owner
@@ -35,9 +40,9 @@ generated:
 
 # Estimates in Process update cycle
 
-Owner request **13 October 2026**. The next implementation is this page only: parse Granot **Estimates in Process → Follow-Up Estimates**, then update the matched lead and let outreach react. The running Leads & Advertising automation stays available for when that path is still needed.
+Owner request **13 October 2026**. Parse Granot **Estimates in Process → Follow-Up Estimates**, then update the matched lead and let outreach react. The running Leads & Advertising automation stays available for when that path is still needed.
 
-This page is the build contract. It does not turn on a write, a cron, or a lifecycle flag. The proved read, the priority meanings, and the rep-desk presentation live in [granot-priorities-and-rep-desk.md](granot-priorities-and-rep-desk.md).
+This page is the build contract. The collector, the `estimates_in_process` operation, the New York hour cron, the priority 2 and 3 one-call-a-day workflow, and the stop on outbound-call assignment are in the code. Checked-in lifecycle effect flags stay off, and this work does not patch deployed configuration. The proved read, the priority meanings, and the rep-desk presentation live in [granot-priorities-and-rep-desk.md](granot-priorities-and-rep-desk.md).
 
 ## Leave the other automation in place
 
@@ -102,7 +107,7 @@ Set the posted names explicitly. A radio label that contains the word “to” m
 
 `STATUS=V15` (Today’s Recent 50 Estimates Priority 0) is a different query. This cycle does not post it. Booked Jobs on this form (`STATUS=V5` and the other booked radios) are a later slice. This cycle posts Follow-Up Estimates only, so every sealed action is `lead_snapshot_apply`. The statement must not carry `event_type: "Booked"`.
 
-The three-a-day window (8:00, 13:00, 18:00 America/New_York, Open Date yesterday through today, plus one wider midday window still unmeasured) is a schedule note in the priorities reference. This slice accepts `from` and `to` on the run and does not register a cron.
+The cron is registered hourly in UTC and runs only at 8:00, 13:00, and 18:00 America/New_York, using Open Date yesterday through today. Manual runs accept `from` and `to`. The wider midday window remains unmeasured and is not used.
 
 ## Parse
 
@@ -155,7 +160,7 @@ The page mixes source companies. Resolve each row’s `source` string through th
 
 Paid Overflow appeared on the proved page and is not one of the nine labels the seeded catalog walks. A missing Registry row stays not approvable. This slice does not seed Paid Overflow or any other label.
 
-Seal each partition with `sealAutomationPlan` so `findCollectedRow` still sees the kind it expects (`form_leads` or `call_leads`). Merge the sealed actions onto one run plan of schema version 2. `applyRun` already applies whatever `lifecycle_apply` is on the selected action. Form actions stay approvable when `classification === "update"`. Call actions stay approvable when `syncable` (`preview.status === "updateable"` or a `target_receiver_agent` binding). Approval is still “selected action ids ⊆ approvable ids” on the existing approve route.
+Seal each partition with `sealAutomationPlan` so `findCollectedRow` still sees the kind it expects (`form_leads` or `call_leads`). Merge the sealed actions onto one run plan of schema version 2. `applyRun` already applies whatever `lifecycle_apply` is on the selected action. Form actions are approvable when `classification === "update"`; Call actions when `syncable`. For Estimates only, matched `unchanged` rows with a priority digit are also submitted for a lifecycle snapshot decision (Form classification `update` with reason `lifecycle_snapshot_check`, Call `syncable: true`). The legacy preview does not compare priority, Form job attachment, or replacement of a call-inferred receiver; the canonical synchronizer decides whether those actually change. Conflict, unmatched, and unresolved rows are not promoted. Approval is still “selected action ids ⊆ approvable ids” on the existing approve route.
 
 `expected_target` keeps the preview id when a planner found one. Identity on the processor is still the write-time match. Preview is Owner guidance.
 
@@ -196,7 +201,7 @@ The planner in `leadDesiredState.ts` is the authority. This slice sends it a com
 
 Priority 0 is the common new-assignment code on this page. A priority 0 follow-up updates priority, fills a missing job, and can set `receiver_agent`. It does not receive `granot_contact_snapshot`, cubic feet, or move date. Keeping snapshots means the 1/5 rows still go through this planner, which already plans those snapshots. Widening that set, or writing `move_date` onto a Call Lead, is a later change to the locked planner. It is not part of making this page parse.
 
-Stopping the desk’s `ringcentral_rep_call` fill is specified in the priorities reference and is not this slice. While that fill still runs, a later Estimates apply replaces it when the Granot user resolves to a different Agent. An Owner `manual` assignment stays.
+An `outbound_attempt` on an unassigned subject no longer writes `receiver_agent`. An `inbound_answered` still can, with source `ringcentral_rep_call`. A later Estimates apply replaces that stored source when the Granot user resolves to a different Agent. An Owner `manual` assignment stays.
 
 ## Outreach
 
@@ -206,7 +211,7 @@ Priority and receiver go out in the same `synchronizeLeadFromGranot`. The lead-c
 - A lead that is not yet a subject is nominated for expansion admission only while `transition.expansion_admission_enabled` is on. `granot_priority` and `normalized_job_no` are in `ADMISSION_DECISION_PATHS`. `receiver_agent` is not. Putting priority in the same revision is what admits the new subject. Leave that path list as it is.
 - `move_date` is also an admission path. Call Leads do not receive `move_date` from this planner, so a Call Lead admission from this cycle comes from priority or from the new job number.
 
-The desk’s running priority map (P05d) is unchanged by this slice. Owner meanings 0–8, one call a day for 2 and 3, and the three-day move into 2 are documented and not built here.
+FINAL-01 and the configuration fixtures map codes 2 and 3 to workflow `daily`: one ordinary call each working day, the subject stays open, and a future move date does not close or hide the lead. That workflow is not Quoted. It is not in the new/quoted goal set. The three-day move from priority 0 to priority 2 stays a rep action in Granot. The `cadence.priority_map` stored on the deployed database was not patched. Until an Owner PATCH, a subject there still follows that stored map.
 
 ## Run shape
 
@@ -222,7 +227,9 @@ Add operation `estimates_in_process` beside `form_leads` and `call_leads`.
 
 `planRun` branches to the new collector only when the operation is `estimates_in_process`. The `form_leads` / `call_leads` branch keeps calling `collectGranotReport` and one planner.
 
-Preview runs complete with no approval. Apply runs with at least one approvable action stop at `awaiting_approval`. `GRANOT_AUTOMATION_APPLY_ENABLED` remains the apply gate.
+Preview runs complete with no approval. An Owner-created apply run with at least one approvable action stops at `awaiting_approval`, and `GRANOT_AUTOMATION_APPLY_ENABLED` remains that gate for `form_leads`, `call_leads`, and an Owner-created `estimates_in_process` apply.
+
+The cron is the exception. `ALL /api/cron/granot-estimates-in-process` is guarded by `CRON_SECRET` the same way the other cron routes are, and `vercel.json` schedules it `0 * * * *` (UTC). The handler returns `{ ok: true, skipped: true, reason: "outside_estimates_hours" }` unless the current America/New_York hour is 8, 13, or 18. Each of those three runs collects Follow-Up Estimates for Open Date yesterday through today, all users, all priorities. The wider midday window was never measured and is not used. The create body sets `request_snapshot.auto_apply`. `planRun` then writes status `applying` and an approval of every approvable action, with the system actor `granot-estimates-in-process-cron` (`actor_role` `system`, `origin` `vantage_admin`). That origin is what `granot_http_automation` capture requires. The same actor is the only extra initiator `assertGranotLifecycleContext` accepts, and only on channel `granot_http_automation`. The processor actor stays `granot-lifecycle-processor`. One worker invocation plans and, when the run is `applying`, applies in the same lease. That apply skips `GRANOT_AUTOMATION_APPLY_ENABLED`. It does not skip the lifecycle lead-write gates. When those gates are off, the processor persists the suppressed decision. A run with nothing approvable completes without an approval.
 
 ## Test database, then a live read
 
@@ -246,7 +253,7 @@ Edit:
 - `granot-automation.routes.ts` — create-body variant for `estimates_in_process`.
 - `GranotAutomationRun.ts` — operation enum gains `estimates_in_process`.
 
-Leave closed: `leadDesiredState.ts`, `identity.ts`, `normalization.ts`, `synchronizeLeadFromGranot.ts`, `receiverFill.ts`, `ADMISSION_DECISION_PATHS`, `collectGranotReport`, `parseSection`.
+Leave closed: `leadDesiredState.ts`, `identity.ts`, `normalization.ts`, `synchronizeLeadFromGranot.ts`, `ADMISSION_DECISION_PATHS`, `collectGranotReport`, `parseSection`. `receiverFill.ts` changed only so `outbound_attempt` is not a fill candidate. `inbound_answered` stays.
 
 ## Tests that define done
 
@@ -275,13 +282,31 @@ Form coverage on the same fixture is one row whose Registry route is Form-only: 
 
 ## Later
 
-Specified elsewhere, and not this implementation:
+Still not this implementation:
 
-- The 8:00 / 13:00 / 18:00 cron, including the unmeasured wider midday Open Date window.
-- Booked Jobs from this form.
-- Priority meanings as desk policy, one call a day for priorities 2 and 3, and the three-day move into priority 2.
-- Removing `ringcentral_rep_call` (`receiverFill.ts` still fills from `outbound_attempt` and `inbound_answered`).
-- Move-date copy, move-date sort, the Last interaction column rename, and both binder figures on My view.
+- Booked Jobs from this form, and `STATUS=V15`.
+- The three-day move from priority 0 into priority 2. That stays a rep action in Granot. The desk does not write Granot priority.
+- The unmeasured wider midday Open Date window. All three cron hours use yesterday through today.
+- Move-date copy, move-date sort, the Future and Past labels, the Last interaction column rename, and both binder figures on My view.
 - Snapshots or Call Lead `move_date` for priorities other than 1 and 5.
 - Seeding Paid Overflow.
-- Turning on production lifecycle effect flags.
+- Patching the priority map stored on the deployed database, and turning lifecycle effect flags on. FINAL-01 and the fixtures already map codes 2 and 3 to `daily`. An `inbound_answered` can still write `ringcentral_rep_call`. Checked-in flag defaults stay off.
+
+
+## Reviewed bounded Estimates apply
+
+An Owner may POST `/api/v1/admin/granot-automation/runs/:runId/apply-reviewed-estimates`
+with `plan_checksum` and `selected_action_ids` after reviewing a completed Estimates
+preview. The stored Open Date window must contain 1–90 inclusive real calendar dates
+ending no later than today in America/New_York. The unexpired schema-v2 plan and checksum
+are reused without recollecting. Only selected approvable actions are authorized;
+conflicts, unmatched rows, and unresolved sources cannot be selected. A fenced state
+change promotes the preview to `workflow: apply`, sets `request_snapshot.auto_apply: true`,
+and stores the signed Owner approval. The existing worker and lifecycle apply perform
+the effects. This narrow path skips the ordinary automation flag, retains every
+lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
+
+The recurring cron still uses yesterday through today at 8, 13, and 18 New York.
+A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
+and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
+The existing Mongo `_id` index enforces uniqueness; no index migration is required.
