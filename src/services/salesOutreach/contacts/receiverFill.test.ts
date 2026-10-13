@@ -29,10 +29,11 @@ const draft = (overrides: Partial<ContactEventDraft> = {}): ContactEventDraft =>
   ...overrides,
 });
 
-test("only a reviewed-rep call or answered inbound uniquely on a subject qualifies", () => {
-  assert.ok(isRepCallOnSubject(draft()));
-  assert.ok(isRepCallOnSubject(draft({ verification: "awaiting_confirmation" })));
+test("an answered inbound uniquely on a subject qualifies; an outbound attempt does not", () => {
+  assert.equal(isRepCallOnSubject(draft()), false);
+  assert.equal(isRepCallOnSubject(draft({ verification: "awaiting_confirmation" })), false);
   assert.ok(isRepCallOnSubject(draft({ direction: "inbound", kind: "inbound_answered" })));
+  assert.ok(isRepCallOnSubject(draft({ direction: "inbound", kind: "inbound_answered", verification: "awaiting_confirmation" })));
   for (const bad of [
     draft({ source_kind: "sms", channel: "sms", kind: "sms_sent" }),
     draft({ association: "ambiguous" }),
@@ -45,12 +46,15 @@ test("only a reviewed-rep call or answered inbound uniquely on a subject qualifi
     assert.equal(isRepCallOnSubject(bad), false, JSON.stringify(bad));
 });
 
-test("one candidate per subject: the latest call, ties broken by source id", () => {
+test("one candidate per subject: the latest answered inbound, ties broken by source id", () => {
+  const inbound = (overrides: Partial<ContactEventDraft> = {}) =>
+    draft({ direction: "inbound", kind: "inbound_answered", ...overrides });
   const candidates = receiverFillCandidates([
-    draft({ source_id: "c1", actor_agent_id: "a1", event_at: new Date("2026-10-05T14:00:00Z") }),
-    draft({ source_id: "c2", actor_agent_id: "a2", event_at: new Date("2026-10-05T15:00:00Z") }),
-    draft({ source_id: "c3", actor_agent_id: "a3", event_at: new Date("2026-10-05T15:00:00Z") }),
-    draft({ source_id: "c4", subject_id: "s2", actor_agent_id: "a1" }),
+    inbound({ source_id: "c1", actor_agent_id: "a1", event_at: new Date("2026-10-05T14:00:00Z") }),
+    inbound({ source_id: "c2", actor_agent_id: "a2", event_at: new Date("2026-10-05T15:00:00Z") }),
+    inbound({ source_id: "c3", actor_agent_id: "a3", event_at: new Date("2026-10-05T15:00:00Z") }),
+    draft({ source_id: "c9", actor_agent_id: "a9", event_at: new Date("2026-10-05T16:00:00Z") }),
+    inbound({ source_id: "c4", subject_id: "s2", actor_agent_id: "a1" }),
   ]);
   assert.deepEqual(
     candidates.map((c) => [c.subject_id, c.agent_id, c.source_id]),

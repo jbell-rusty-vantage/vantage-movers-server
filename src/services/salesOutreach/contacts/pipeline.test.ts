@@ -129,20 +129,16 @@ describe("apply: one event per source, idempotent, dirty marks", () => {
 });
 
 describe("call-inferred receiver fill", () => {
-  test("the most recent reviewed-rep call on a subject names its receiver; a replay or a filled receiver writes nothing more", async () => {
+  test("an outbound attempt on an unassigned subject does not set receiver_agent", async () => {
     const w = world();
     const sources = [
       call(w.events, outboundCall("101", NUMBER, "2026-10-05T14:10:00Z")),
       call(w.events, outboundCall("102", NUMBER, "2026-10-05T15:10:00Z")),
     ];
     const first = await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
-    assert.equal(first.receivers_filled, 1);
-    assert.equal(w.events.receivers.get(w.subject.id), BOB, "the later caller wins");
-    assert.deepEqual(w.events.fills.map((f) => f.source_id), [sources[1]!.source_id]);
-
-    const replay = await applyContactSources(sources, { now: NOW, queueRepDays: false }, w.events, SESSION);
-    assert.equal(replay.receivers_filled, 0, "the receiver is no longer empty");
-    assert.equal(w.events.receivers.get(w.subject.id), BOB);
+    assert.equal(first.receivers_filled, 0);
+    assert.equal(w.events.receivers.get(w.subject.id), undefined);
+    assert.equal(w.events.fills.length, 0);
   });
 
   test("an answered inbound by a reviewed rep fills; a missed inbound, an unreviewed caller or no subject does not", async () => {
