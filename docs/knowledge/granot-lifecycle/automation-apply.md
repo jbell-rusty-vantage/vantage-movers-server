@@ -102,3 +102,12 @@ The recurring cron still uses yesterday through today at 8, 13, and 18 New York.
 A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
 and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
 The existing Mongo `_id` index enforces uniqueness; no index migration is required.
+
+
+Pending-match actions keep their lifecycle retry clock and operation identity.
+The worker attempts the remaining independent selected actions before yielding;
+terminal receipts are skipped on replay. A waiting run checkpoints `waiting_match`
+and is eligible for bounded polling after one minute (the receipt's own drainer
+still controls whether a claim is due). Claims use least-recent-attempt order so
+one pending run cannot starve other approved work; heartbeat and continuation
+only nominate eligible runs. No lifecycle outcome is converted or forced.
