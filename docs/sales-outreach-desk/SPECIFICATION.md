@@ -805,3 +805,62 @@ Approved P10b launch-design baseline (October 3, 2026, adopted by finalization i
 ### Final handback
 
 See [FINAL-HANDBACK.md](FINAL-HANDBACK.md) for the continuation decision map and faithful finalization provenance. Business policy is finalized; engineering/runtime proof remains pending.
+
+
+### Phase 1 rep money and presentation — October 14, 2026
+
+The Owner's October 13 New York execution brief,
+`docs/knowledge/overnight-rep-desk-and-pool.md`, authorizes this narrow amendment
+to §§6–7. The [Phase 1 contract](CONTRACTS.md#phase-1-rep-money-and-presentation-amendment--october-14-2026)
+and [admin presentation contract](REP-MONEY-AND-PRESENTATION.md) define the exact
+read DTO, coverage, live refresh and URL behavior. Older source/window and
+presentation text is historical where superseded here. All unchanged lifecycle,
+contact-credit, role and official Booking protections remain; codes 2/3 stay
+Daily under the October 13 amendment. This does not implement Pool.
+
+The Rep desk and Owner/Manager's selected-Rep desk show **Booked binder**:
+Today, **Last Week** (the complete prior Monday–Sunday), **Last Month** (the
+complete prior calendar month), and All Time. Use official Booking allocations
+for the selected stable Agent id, with cents/splits preserved, across all records.
+Retain cancelled official Bookings in clearly labeled gross credit. Stored
+calendar-date `book_date` is not shifted to New York. Dated windows follow the
+current New York date, including year and daylight saving boundaries; unknown
+allocation/date coverage labels known subtotals rather than complete totals.
+
+**Potential binder on assigned leads** uses the attached Booking's stored
+`total_binder_amount` over complete current canonical FormLead/CallLead assignment,
+independent of historical allocation credit, loaded/enrolled queue rows and goal
+day. A linked-booked Lead can supply this amount even after cadence closure.
+Exclude priorities 7/8/9, duplicate/bad/cancelled Leads and unmatched Booking-only
+anchors; deduplicate by canonical Lead/Booking with reciprocal anchors. Independent
+Cancellation facts apply even with an absent Lead mirror. Ambiguous identities,
+missing/dangling/mismatched links and missing amounts remain explicit partial
+coverage; stored zero is known zero. Reassignment changes potential ownership,
+not historical allocation credit. Never manufacture a monetary forecast or
+placeholder Booking. A count may accompany this known dollar subtotal.
+
+Money uses role-scoped `GET /rep-metrics` and `outreach_rep_metrics` invalidation
+on the existing desk connection, including committed Booking/Lead/Cancellation
+changes. Recovery, offline polling and New York rollover refetch it. Rep may
+read only self; Owner/Manager supply the selected id. Show actual loading,
+unavailable, partial and stale state. No Owner-only Insights API or second live
+connection is required.
+
+Move filters show **Future** (today or later), **Past** (through yesterday) and
+**Unknown**, alongside existing presets/custom ranges. Unknown never belongs to
+Future or Past. **Move date** sorting is server-side soonest first, null last,
+with stable subject-id ties and full cursor/filter composition. URL state
+survives navigation/refresh. Use only authoritative `display.move_date`; CallLead
+remains null, with no Granot fill or data backfill. A passed date changes no
+cadence/enrollment/closure policy.
+
+Both queues and the lead panel show **Today**, **Move date in X days**, **X days
+ago** or **No move date** by New York calendar days. Rename Last outreach to
+**Last interaction**, with advancing relative ages, exact timestamp on hover,
+No interaction for null and honest future/clock-skew wording. Preserve the
+confirmed outbound-attempt, inbound answered/missed and sent/inbound SMS
+definition, exclusions and existing server Last interaction sort. Verify money
+splits/all-record scope/coverage/roles/live recovery and January/DST boundaries;
+move ties/nulls across pages, combined filters/URL state and time/null/future
+presentation; unchanged cadence and CallLead move-date boundary. Runtime and
+merge evidence belongs to the Phase 1 verification handoff, not this amendment.

@@ -401,7 +401,7 @@ export const salesOutreachCapabilitiesSchema = baseReadSchema
     /** The role's P09 capability set, deployed or not (for disabling future controls honestly). */
     role_capabilities: z.array(z.string()),
     /** Desk reads served by this server build. */
-    deployed_reads: z.array(z.enum(["capabilities", "rep_days", "team", "queue", "outreach_detail", "live"])),
+    deployed_reads: z.array(z.enum(["capabilities", "rep_days", "team", "queue", "outreach_detail", "live", "rep_metrics"])),
     /** Read-only copy of the configured cadence for every desk role; null unless the configuration is active. */
     cadence_summary: salesOutreachCadenceSummarySchema.nullable(),
   })
@@ -1021,3 +1021,31 @@ export const salesOutreachLiveFrameSchema = z
   })
   .strict();
 export type SalesOutreachLiveFrame = z.infer<typeof salesOutreachLiveFrameSchema>;
+
+/** Canonical, unpaged rep money reads. Dollars use stored Booking allocation/total cents. */
+export const salesOutreachRepMetricsQuerySchema = z.object({
+  scope: z.literal("production").optional(), agent_id: salesOutreachAgentIdSchema.optional(),
+}).strict();
+export type SalesOutreachRepMetricsQuery = z.infer<typeof salesOutreachRepMetricsQuerySchema>;
+const repMetricMoney = z.number().finite().nonnegative();
+const repMetricCount = z.number().int().nonnegative();
+const repMetricWindow = z.object({ from: salesOutreachBusinessDateSchema, to: salesOutreachBusinessDateSchema }).strict();
+export const salesOutreachRepMetricsDtoSchema = z.object({
+  contract_version: z.literal(SALES_OUTREACH_CONTRACT_VERSION), as_of: instant,
+  timezone: z.literal(SALES_OUTREACH_TIMEZONE), agent_id: salesOutreachAgentIdSchema,
+  business_day: salesOutreachBusinessDateSchema,
+  official_binder: z.object({
+    basis: z.literal("gross_own_allocation"), today: repMetricMoney, last_week: repMetricMoney,
+    last_month: repMetricMoney, all_time: repMetricMoney, booking_count: repMetricCount,
+    missing_amount_count: repMetricCount, missing_book_date_count: repMetricCount,
+    windows: z.object({ today: repMetricWindow, last_week: repMetricWindow, last_month: repMetricWindow }).strict(),
+  }).strict(),
+  assigned_potential: z.object({
+    basis: z.literal("current_assignment_attached_booking_total"), known_binder_total: repMetricMoney,
+    eligible_lead_count: repMetricCount, linked_booking_count: repMetricCount,
+    missing_link_count: repMetricCount, dangling_link_count: repMetricCount, missing_amount_count: repMetricCount,
+    mismatched_link_count: repMetricCount, deduplicated_lead_count: repMetricCount, ambiguous_identity_count: repMetricCount,
+    coverage: z.enum(["complete", "partial"]),
+  }).strict(),
+}).strict();
+export type SalesOutreachRepMetricsDto = z.infer<typeof salesOutreachRepMetricsDtoSchema>;

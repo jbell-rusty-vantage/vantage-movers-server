@@ -7,7 +7,7 @@ import { mongoEvaluationStore, type EvaluationStore } from "../evaluation/store"
 import type { ChannelCoverage } from "../evidence/coverage";
 import type { DeskLeadRef } from "../subjects/leadFacts";
 import { toStoredProjection, type StoredProjectionDetail, type StoredQueueRow } from "./present";
-import { mongoAssignmentFilter, mongoQueueFilter, mongoQueueQuery, type QueueAssignment, type QueueMatch, type QueuePagePlan } from "./queueQuery";
+import { mongoAssignmentFilter, mongoQueueFilter, mongoQueuePageQueries, type QueueAssignment, type QueueMatch, type QueuePagePlan } from "./queueQuery";
 
 /**
  * Team cadence counts at one reference instant (overdue = earliest unsatisfied actionable deadline passed
@@ -186,9 +186,14 @@ export const mongoDeskQueueStore: DeskQueueStore = {
   loadContactEvents: mongoEvaluationStore.loadContactEvents,
 
   async findQueuePage(plan) {
-    const { filter, sort } = mongoQueueQuery(plan);
-    const rows = await getSalesOutreachProjectionModel().find(filter, QUEUE_PROJECTION).sort(sort).limit(plan.limit).allowDiskUse(true).lean();
-    return rows.map((row) => toStoredProjection(String(row.subject_id), row as unknown as Record<string, unknown>));
+    const page: StoredQueueRow[] = [];
+    for (const { filter, sort } of mongoQueuePageQueries(plan)) {
+      const remaining = plan.limit - page.length;
+      if (remaining <= 0) break;
+      const rows = await getSalesOutreachProjectionModel().find(filter, QUEUE_PROJECTION).sort(sort).limit(remaining).allowDiskUse(true).lean();
+      page.push(...rows.map((row) => toStoredProjection(String(row.subject_id), row as unknown as Record<string, unknown>)));
+    }
+    return page;
   },
 
   countQueue: (match) => getSalesOutreachProjectionModel().countDocuments(mongoQueueFilter(match)),

@@ -20,6 +20,7 @@ import {
   salesOutreachQueueSchema,
   salesOutreachReadEnvelope,
   salesOutreachRepDaysSchema,
+  salesOutreachRepMetricsDtoSchema,
   salesOutreachTeamSchema,
 } from "../validation/v1/salesOutreachReads";
 import { createSalesOutreachRouter } from "./sales-outreach.routes";
@@ -67,6 +68,7 @@ app.use(
       requireActive: () => fixedConfigurationLoader(inspection).requireActive(),
     },
     readStore: store,
+    metricsStore: { ownBookings: async () => [], assignedLeads: async () => [], attachedBookings: async () => [] },
     queueStore: new MemoryDeskReadStore(),
     auth: { hasReviewedSalesRepLink: async (agent) => agent === REP_A || agent === REP_B },
     now: () => NOW,
@@ -170,8 +172,8 @@ test("capabilities: role-shaped views/filters/commands and safe controls only", 
   assert.deepEqual(owner.permitted_filters.rep_days, ["business_day", "agent_id"]);
   assert.deepEqual(owner.permitted_filters.team, ["business_day"]);
   assert.ok(owner.permitted_filters.queue.includes("agent_id") && owner.permitted_filters.queue.includes("unassigned"));
-  assert.deepEqual(owner.live_topics, ["outreach_desk", "outreach_goal", "outreach_configuration"]);
-  assert.deepEqual(owner.deployed_reads, ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live"]);
+  assert.deepEqual(owner.live_topics, ["outreach_desk", "outreach_goal", "outreach_configuration", "outreach_rep_metrics"]);
+  assert.deepEqual(owner.deployed_reads, ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live", "rep_metrics"]);
   assert.deepEqual([owner.configuration_state, owner.configuration_version, owner.configuration_revision, owner.desk_available], ["active", "v-test", 3, true]);
   assert.ok(owner.role_capabilities.includes("activation"));
   assert.equal(JSON.stringify(owner).includes("batch_size"), false, "no migration budgets");
@@ -324,7 +326,9 @@ test("DTO examples for the admin team parse with the exported schemas and match 
         ? salesOutreachReadEnvelope(salesOutreachCapabilitiesSchema)
         : name.startsWith("rep-days.")
           ? salesOutreachReadEnvelope(salesOutreachRepDaysSchema)
-          : name.startsWith("queue.")
+          : name.startsWith("rep-metrics.")
+            ? salesOutreachReadEnvelope(salesOutreachRepMetricsDtoSchema)
+            : name.startsWith("queue.")
             ? salesOutreachReadEnvelope(salesOutreachQueueSchema)
             : name.startsWith("outreach.")
               ? salesOutreachReadEnvelope(salesOutreachDetailSchema)
@@ -366,4 +370,20 @@ test("stale capture: today's rep without a row is pending, never a confirmed zer
   assert.deepEqual([b?.actual_confirmed, b?.actual_basis, b?.coverage.state], [null, "pending", "partial"]);
   assert.deepEqual([team.goals?.outbound_calls.actual, team.goals?.outbound_calls.incomplete], [5, true]);
   assert.deepEqual([team.freshness.calls.state, team.freshness.calls.reason], ["delayed", "RateLimited"]);
+});
+
+
+test("rep-metrics signed route: self and selected Owner/Manager; foreign, unsigned and unlinked denial", async () => {
+  const self = await get("rep-a", "/rep-metrics");
+  assert.equal(self.status, 200);
+  assert.equal(salesOutreachRepMetricsDtoSchema.parse(self.body.data).agent_id, REP_A);
+  const foreign = await get("rep-a", `/rep-metrics?agent_id=${REP_B}`);
+  assert.deepEqual([foreign.status, foreign.body.code], [403, "FORBIDDEN"]);
+  for (const caller of ["owner", "manager"] as const) {
+    const selected = await get(caller, `/rep-metrics?agent_id=${REP_B}`);
+    assert.equal(selected.status, 200);
+    assert.equal(salesOutreachRepMetricsDtoSchema.parse(selected.body.data).agent_id, REP_B);
+    assert.equal((await get(caller, "/rep-metrics")).status, 400);
+  }
+  for (const caller of ["unsigned", "rep-unlinked", "admin"] as const) assert.equal((await get(caller, "/rep-metrics")).status, 403);
 });

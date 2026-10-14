@@ -29,6 +29,7 @@ import {
 } from "../services/salesOutreach/enrollment/service";
 import { readOutreachDetail } from "../services/salesOutreach/reads/detail";
 import type { DeskQueueStore } from "../services/salesOutreach/reads/deskStore";
+import { readRepMetrics, type RepMetricsStore } from "../services/salesOutreach/reads/repMetrics";
 import { readQueue } from "../services/salesOutreach/reads/queue";
 import { readDeskCapabilities, readRepDays, readTeam, requireDeskConfiguration } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
@@ -60,6 +61,7 @@ import {
   salesOutreachLiveQuerySchema,
   salesOutreachQueueQuerySchema,
   salesOutreachRepDaysQuerySchema,
+  salesOutreachRepMetricsQuerySchema,
   salesOutreachTeamQuerySchema,
 } from "../validation/v1/salesOutreachReads";
 
@@ -70,6 +72,7 @@ export type SalesOutreachRouteDeps = {
   auth?: OutreachAuthDeps;
   /** Desk read store (tests inject an in-memory one). */
   readStore?: SalesOutreachReadStore;
+  metricsStore?: RepMetricsStore;
   /** Queue / outreach-view / team-cadence store (tests inject an in-memory one). */
   queueStore?: DeskQueueStore;
   /** Queue cursor HMAC secret override (tests); production derives it from the admin proxy signing secret. */
@@ -151,6 +154,16 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       const query = salesOutreachRepDaysQuerySchema.parse(req.query);
       await connect();
       return res.json({ ok: true, data: await readRepDays(outreachActorOf(res), query, readDeps()) });
+    } catch (error) {
+      return fail(req, res, error);
+    }
+  });
+
+  router.get(`${SALES_OUTREACH_API_PREFIX}/rep-metrics`, anyDeskRole, async (req, res) => {
+    try {
+      const query = salesOutreachRepMetricsQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readRepMetrics(outreachActorOf(res), query, { ...readDeps(), metricsStore: deps.metricsStore }) });
     } catch (error) {
       return fail(req, res, error);
     }

@@ -69,7 +69,8 @@
       "team",
       "queue",
       "outreach_detail",
-      "live"
+      "live",
+      "rep_metrics"
     ],
     "cadence_summary": {
       "policy_version": null,

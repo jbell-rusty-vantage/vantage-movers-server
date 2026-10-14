@@ -21,6 +21,8 @@ import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTrans
 import { outreachLiveFrame } from "../../src/services/salesOutreach/live/stream";
 import { readOutreachDetail } from "../../src/services/salesOutreach/reads/detail";
 import { MemoryDeskReadStore } from "../../src/services/salesOutreach/reads/deskTesting";
+import { readRepMetrics, toRepMetricBooking } from "../../src/services/salesOutreach/reads/repMetrics";
+import { toDeskLeadFacts } from "../../src/services/salesOutreach/subjects/leadFacts";
 import { readQueue } from "../../src/services/salesOutreach/reads/queue";
 import { readDeskCapabilities, readRepDays, readTeam, type DeskReadDeps } from "../../src/services/salesOutreach/reads/service";
 import { salesOutreachQueueQuerySchema } from "../../src/validation/v1/salesOutreachReads";
@@ -264,7 +266,23 @@ export async function buildDtoExamples(): Promise<Record<string, unknown>> {
   const deskRepsGoals = { ...desk.goals!, roster_rule: "desk_reps" as const, rep_work_schedules: desk.goals!.rep_work_schedules!.filter((row) => row.agent_id !== B) };
   const deskReps: DeskReadDeps = { ...deps({ ...desk, goals: deskRepsGoals }, "sod-cfg-a1f2", 8), store: deskRepsStore };
   const change = { topic: "outreach_desk" as const, subject_ids: [SUBJECTS.due], agent_ids: [A], business_day: null, revision: 2 };
+  const metricBookingId = "77".repeat(12);
+  const metricLeadId = "88".repeat(12);
+  const metricBooking = toRepMetricBooking({
+    _id: metricBookingId, book_date: new Date(`${DAY}T00:00:00Z`),
+    agent_allocations: [{ agent: A, binder_amount: 50.01 }, { agent: B, binder_amount: 50 }],
+    total_binder_amount: 100.01, lead_model: "FormLead", lead_ref: metricLeadId,
+  });
+  const metricLeads = [
+    toDeskLeadFacts("FormLead", { _id: metricLeadId, receiver_agent: A, booked: metricBookingId, granot_priority: "5" }),
+    toDeskLeadFacts("CallLead", { _id: "99".repeat(12), receiver_agent: A }),
+  ];
+  const metrics = await readRepMetrics(rep, {}, { ...live, metricsStore: {
+    ownBookings: async () => [metricBooking], assignedLeads: async () => metricLeads,
+    attachedBookings: async () => [metricBooking],
+  } });
   return {
+    "rep-metrics.rep.json": ok(metrics),
     "capabilities.owner.json": ok(await readDeskCapabilities(owner, live)),
     "capabilities.manager.json": ok(await readDeskCapabilities(manager, live)),
     "capabilities.rep.json": ok(await readDeskCapabilities(rep, live)),

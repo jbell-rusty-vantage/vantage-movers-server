@@ -202,8 +202,8 @@ export const SALES_OUTREACH_RESTRICTION_CHANNELS = ["call", "sms"] as const;
 /** Queue `state` filter (CONTRACTS "GET /queue"); `needs_contact` is the default. */
 export const SALES_OUTREACH_QUEUE_STATES = ["needs_contact", "all_active", "blocked", "pending"] as const;
 export type SalesOutreachQueueState = (typeof SALES_OUTREACH_QUEUE_STATES)[number];
-/** Queue sorts (CONTRACTS "Queue sort enums"); urgency has a fixed direction. */
-export const SALES_OUTREACH_QUEUE_SORTS = ["urgency", "lead_received", "last_interaction"] as const;
+/** Queue sorts (CONTRACTS "Queue sort enums"); urgency and move date have a fixed ascending direction. */
+export const SALES_OUTREACH_QUEUE_SORTS = ["urgency", "lead_received", "last_interaction", "move_date"] as const;
 export type SalesOutreachQueueSort = (typeof SALES_OUTREACH_QUEUE_SORTS)[number];
 /** Every `GET /queue` query parameter; `agent_id`/`unassigned` are Owner/Manager-only filters. */
 export const SALES_OUTREACH_QUEUE_FILTERS = [
@@ -223,7 +223,7 @@ export const SALES_OUTREACH_QUEUE_FILTERS = [
 ] as const;
 
 /** Scoped SSE invalidation topics of `GET /live` (IMPLEMENTATION-PLAN §5). */
-export const SALES_OUTREACH_LIVE_TOPICS = ["outreach_desk", "outreach_goal", "outreach_configuration"] as const;
+export const SALES_OUTREACH_LIVE_TOPICS = ["outreach_desk", "outreach_goal", "outreach_configuration", "outreach_rep_metrics"] as const;
 export type SalesOutreachLiveTopic = (typeof SALES_OUTREACH_LIVE_TOPICS)[number];
 /** Live frame schema versions this server speaks (topic schema/version negotiation, CONTRACTS "SSE"). */
 export const SALES_OUTREACH_LIVE_VERSIONS = [1] as const;

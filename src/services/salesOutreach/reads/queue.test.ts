@@ -11,7 +11,7 @@ import { salesOutreachQueueQuerySchema, salesOutreachQueueSchema, type SalesOutr
 import { MemoryDeskReadStore } from "./deskTesting";
 import { readQueue } from "./queue";
 import { decodeQueueCursor, encodeQueueCursor } from "./queueCursor";
-import { mongoQueueQuery, queueSortSpec, type QueuePagePlan } from "./queueQuery";
+import { mongoQueuePageQueries, mongoQueueQuery, queueSortSpec, type QueuePagePlan } from "./queueQuery";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore } from "./testing";
 
 /**
@@ -213,6 +213,49 @@ test("lead received: newest first by default, oldest first on request, unknown r
   alignSnapshot(store, config());
   assert.deepEqual(await allPages(owner, { sort: "lead_received", limit: "2" }, store), [c, b, a, unknown]);
   assert.deepEqual(await allPages(owner, { sort: "lead_received", direction: "asc", limit: "2" }, store), [a, b, c, unknown]);
+});
+
+test("move date: full-scope soonest first, date and null ties stable over page boundaries, direction fixed ascending", async () => {
+  const store = new MemoryDeskReadStore();
+  // Deliberately insert later/unknown rows first: ordering must precede limiting.
+  const unknownB = seed(store, { needs: true }, "f".repeat(24));
+  const later = seed(store, { needs: true, move: "2026-11-01" }, "d".repeat(24));
+  const todayB = seed(store, { needs: true, move: "2026-10-05" }, "4".repeat(24));
+  const unknownA = seed(store, { needs: true }, "e".repeat(24));
+  const earlier = seed(store, { needs: true, move: "2026-10-04" }, "8".repeat(24));
+  const todayA = seed(store, { needs: true, move: "2026-10-05" }, "3".repeat(24));
+  alignSnapshot(store, config());
+  const expected = [earlier, todayA, todayB, later, unknownA, unknownB];
+  for (const limit of [1, 2, 3, 4]) {
+    const got = await allPages(repA, { sort: "move_date", limit: String(limit) }, store);
+    assert.deepEqual(got, expected, `page size ${limit}`);
+    assert.equal(new Set(got).size, expected.length, "no repeats or omissions");
+  }
+  assert.deepEqual(await allPages(repA, { sort: "move_date", direction: "desc", limit: "2" }, store), expected);
+  const page = await readQueue(repA, q({ sort: "move_date", direction: "desc", limit: "2" }), deps(store));
+  assert.equal(page.direction, "asc");
+  assert.deepEqual(store.evaluation.writes, [], "existing projections suffice; reads never backfill");
+});
+
+test("move date combines search, priority, workflow, assignment and date filters across pages", async () => {
+  const store = new MemoryDeskReadStore();
+  const matching = { needs: true, name: "Ada .* Customer", priority: "1", workflow: "quoted" };
+  const unknown = seed(store, matching);
+  const future = seed(store, { ...matching, move: "2026-10-06" });
+  const today = seed(store, { ...matching, move: "2026-10-05" });
+  const past = seed(store, { ...matching, move: "2026-10-04" });
+  seed(store, { ...matching, agent: REP_B, move: "2026-10-05" });
+  seed(store, { ...matching, priority: "0", move: "2026-10-05" });
+  seed(store, { ...matching, workflow: "new", move: "2026-10-05" });
+  seed(store, { ...matching, name: "Someone Else", move: "2026-10-05" });
+  seed(store, { ...matching, status: "closed", move: "2026-10-05" });
+  alignSnapshot(store, config());
+  const query = { sort: "move_date", limit: "1", search: "ada .*", priority: "1", workflow: "quoted", agent_id: REP_A };
+  assert.deepEqual(await allPages(manager, query, store), [past, today, future, unknown]);
+  assert.deepEqual(await allPages(manager, { ...query, move_date_from: "2026-10-05" }, store), [today, future]);
+  assert.deepEqual(await allPages(manager, { ...query, move_date_to: "2026-10-04" }, store), [past]);
+  assert.deepEqual(await allPages(manager, { ...query, move_date_from: "2026-10-05", move_date_unknown: "include" }, store), [today, future, unknown]);
+  assert.deepEqual(await allPages(manager, { ...query, move_date_unknown: "only" }, store), [unknown]);
 });
 
 test("last interaction: oldest first with never-contacted first; newest first puts never-contacted last", async () => {
@@ -427,6 +470,26 @@ test("fail closed: desk off or uninitialized is 503 CONFIGURATION_UNAVAILABLE; c
   const body = await readQueue(owner, q({}), deps(store));
   assert.equal(body.counts.projection_pending, 1, "a subject with no projection is pending, never an empty-ready queue");
   await rejects(readQueue(owner, q({}), { ...deps(store), cursorSecret: null }), "SERVICE_UNAVAILABLE");
+});
+
+test("move-date Mongo walks preserve the full match, date-only keyset and the one-way unknown phase", () => {
+  const match = { assignment: { kind: "agent" as const, agent_id: REP_A }, state: "all_active" as const, priority: { kind: "code" as const, code: "1" }, workflow: "quoted" as const, move_date: null, search: null };
+  const plan = { match, sort: queueSortSpec("move_date", "asc"), after: null, limit: 2 };
+  const first = mongoQueuePageQueries(plan);
+  assert.equal(first.length, 2);
+  assert.deepEqual(first.map((q) => q.sort), [{ "display.move_date": 1, subject_id: 1 }, { "display.move_date": 1, subject_id: 1 }]);
+  for (const query of first) {
+    assert.match(JSON.stringify(query.filter), /"priority_raw":"1"/);
+    assert.match(JSON.stringify(query.filter), /"workflow":"quoted"/);
+    assert.match(JSON.stringify(query.filter), /"assigned_agent_id":"aaaaaaaaaaaaaaaaaaaaaaaa"/);
+  }
+  const dated = JSON.stringify(mongoQueuePageQueries({ ...plan, after: ["2026-10-05", "1".repeat(24)] }));
+  assert.match(dated, /"display.move_date":\{"\$gt":"2026-10-05"\}/);
+  assert.doesNotMatch(dated, /2026-10-05T/);
+  const unknown = mongoQueuePageQueries({ ...plan, after: ["", "1".repeat(24)] });
+  assert.equal(unknown.length, 1);
+  assert.match(JSON.stringify(unknown[0]!.filter), /"display.move_date":null/);
+  assert.match(JSON.stringify(unknown[0]!.filter), /"subject_id":\{"\$gt":"111111111111111111111111"\}/);
 });
 
 test("the Mongo plan: filter, keyset and sort translate the same semantics (escaped literals, never-null keys)", () => {

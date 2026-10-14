@@ -1,6 +1,6 @@
 {
   "contract_version": "sod-v1",
-  "date": "2026-10-13",
+  "date": "2026-10-14",
   "canonical": "vantage-main-server/docs/sales-outreach-desk",
   "mirror": "vantage-admin/docs/sales-outreach-desk",
   "files": {
@@ -8,10 +8,10 @@
     "contracts/configuration-defaults.json": "39599122b52a26f94b54d9f0d0aaf57548113b389d6653b96a9c61e2ac7da84b",
     "contracts/fixtures/synthetic.json": "39ba3a5d96ba724c8d35f11dd6bcd6b755e3e936a4aeb0f819be394cd66ead9e",
     "contracts/README.md": "43954ff27943e25fb9538b6391028b674f315b1761f5cdefa2cc1cabaa5b7566",
-    "CONTRACTS.md": "88a47ecad87e6a6d906ec97753967f45c6560496560768d6281b4b4e66422008",
+    "CONTRACTS.md": "d27317ad48589e6b28a885655d1f4d755fd1ab214b489ac264ddea73c059eaad",
     "DATA-READINESS.md": "3341a5c2dc216741309b6aeb9189f74617786c6cedb141dcb5ec47f102012d17",
     "DECISIONS.md": "de84c8ee292719255afaedbe195d57959f921cc5d0fc160c2e4e4a2e7770d031",
-    "README.md": "81aff8e3b9948ab0e75f20d5251ee8ae0431a5804c3ff73d8419409cbfad0411",
+    "README.md": "802ec4faf5b5f741748aae97875d5b5fd5389b329bf0790c027420d867e171f5",
     "references/manager-desk.webp": "7b0dc083020c03f6c35e1cc7ee847d6276590d998624d3587bb6400c46865546",
     "references/sales-rep-desk.webp": "59414960b4a7a5c0ebd3c31e7f472925a01f112c74027f99f29f65f2bd547e05",
     "SOURCE-LIMITS.md": "01238b722ca3b422fadf9d341b34702ff7172451ea862955b28dd6119115fd8b",
@@ -35,7 +35,7 @@
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-outreach.md": "295d5bb5a5d14fc498d1a5003920bcb6f37f2ec27a83fb372ae3e13650b9f7aa",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-rep-identity.md": "0ba027d57ae887f064311b8c2e4ac18e985684a2b59bd940103e943f8ab39c0b",
     "sources/vantage-main-server/docs/knowledge/services/sales-intelligence-webhook-fanout.md": "f4a224df55b87801c656fc2dcbde9b548b42042410cb6dc138792dbec31563ae",
-    "SPECIFICATION.md": "6a3f1820e992d194ca23c11b17e1a555e56067bde4e1c87fd29955889d4acdd3",
+    "SPECIFICATION.md": "6fc693e905210579a06097681669f74f79ce4a3971e37fa61f6ac251fd9629ea",
     "SPRINT.md": "3389e0bd30c317da90b36088908eccad163dab34588bfc348c38ce770c31d657",
     "validate.mjs": "b4baf936a3270c2ea8f0c0f20bba03b8f4ec2e2f6a744d8211fb09c24a2b272d",
     "VALIDATION.md": "960eced36b69351abf369c15440504530aa9dbceaa9b85714bc1fe4ff8b40937",
@@ -100,9 +100,17 @@
     "workspace/SERVER-TEAM.md": "5202bd9a31d065e1b63eb5ecad2cd1341667a1617e83a4d2f2b5a7672b047052",
     "workspace/ADMIN-TEAM.md": "a811a91265e3690870bb5b24135819e35ed1835889b54d64fa3fdda5c1538ba7",
     "SPRINT-RUNBOOK.md": "25283365c2ef442fd096463640ae4b4682609830f811d97f5835b17d8677cae2",
-    "FAST-TRACK.md": "cd12dcdfb5a01374981116a3f345003cc38b503f881773e1fd921138a166fc32"
+    "FAST-TRACK.md": "cd12dcdfb5a01374981116a3f345003cc38b503f881773e1fd921138a166fc32",
+    "REP-MONEY-AND-PRESENTATION.md": "b999c6c75d092d20ea22adf08bf2a863e3091f80894ed3369aa76c27737b73aa",
+    "workspace/evidence/dto-examples/rep-metrics.rep.json": "21b47c429c33f67110550fdd95e8ec366750af45f5c049b952c271115ccbcb32",
+    "workspace/evidence/dto-examples/capabilities.manager.json": "88fc2d1125c330f1d46f6e33c6a6e45c2563acb71d8b3b13a9f54d15b3c358cb",
+    "workspace/evidence/dto-examples/capabilities.owner.desk-disabled.json": "462cceb8c95ceee5820f43d4cf9654dcbab111e78046e547117ca4eb13083c46",
+    "workspace/evidence/dto-examples/capabilities.owner.json": "d8aeba0b23aa9a2c091eed7ef79d2dd024d9e26053de2880bd0e8cf7987a1c34",
+    "workspace/evidence/dto-examples/capabilities.rep.cadence-enforcement.json": "18bef12f5abe53935f377685904f939c6ca3d2522811fd2bb7f7171686803b20",
+    "workspace/evidence/dto-examples/capabilities.rep.json": "0e83b5a4902453503c849867281d02e442ba47b2052318bd1c3115302e07a705"
   },
   "preparation_assessment_version": 1,
   "policy_decision_revision": "P01-v1+P02a-v1+P02b-v1+P02c-v1+P02d-v1+P02e-v1+P02f-v1+P02g-v1+P03-v1+P02h-v1+P02i-v1+P04a-v1+P04b-v1+P04c-v1+P04d-v1+P05a-v1+P05b-v1+P05c-v1+P05d-v1+P09a-v1+P06a-v1+P07a-v1+P07b-v1+P07c-v1+P07d-v1+P07e-v1+P07f-v1+P05d-daily-2026-10-13",
-  "release_note": "October 13 Owner Estimates amendment: priorities 2 and 3 daily, with historical P05b preserved and superseded by the dated P05d amendment. Specification, Decisions, Contracts, P05d fixture and validator released coherently; canonical hashes regenerated and mirrored to admin. Stored priority-map PATCH remains pending Owner authorization."
+  "release_note": "October 14 Owner Phase 1 amendment: official gross own-allocation Today/Last Week/Last Month/All Time, canonical current-assignment attached-Booking potential with honest coverage, role-scoped rep-metrics/live topic, server move-date sort and relative interaction presentation. October 13 P05d codes 2/3 Daily remain operative; latest brief records prior revision-26 rollout as complete. Historical policy/fixtures preserved. No Pool implementation, production backfill or new policy PATCH is performed by this packet release. Runtime/merge evidence is recorded separately.",
+  "presentation_amendment_revision": "phase1-rep-money-and-presentation-2026-10-14"
 }
