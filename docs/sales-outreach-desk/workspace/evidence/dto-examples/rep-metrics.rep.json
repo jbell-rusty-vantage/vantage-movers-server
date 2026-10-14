@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "data": {
+    "contract_version": "sod-v1",
+    "as_of": "2026-10-05T15:00:00.000Z",
+    "timezone": "America/New_York",
+    "agent_id": "6650a1b2c3d4e5f60718293a",
+    "business_day": "2026-10-05",
+    "official_binder": {
+      "basis": "gross_own_allocation",
+      "today": 50.01,
+      "last_week": 0,
+      "last_month": 0,
+      "all_time": 50.01,
+      "booking_count": 1,
+      "missing_amount_count": 0,
+      "missing_book_date_count": 0,
+      "windows": {
+        "today": {
+          "from": "2026-10-05",
+          "to": "2026-10-05"
+        },
+        "last_week": {
+          "from": "2026-09-28",
+          "to": "2026-10-04"
+        },
+        "last_month": {
+          "from": "2026-09-01",
+          "to": "2026-09-30"
+        }
+      }
+    },
+    "assigned_potential": {
+      "basis": "current_assignment_attached_booking_total",
+      "known_binder_total": 100.01,
+      "eligible_lead_count": 2,
+      "linked_booking_count": 1,
+      "missing_link_count": 1,
+      "dangling_link_count": 0,
+      "missing_amount_count": 0,
+      "mismatched_link_count": 0,
+      "deduplicated_lead_count": 0,
+      "ambiguous_identity_count": 0,
+      "coverage": "partial"
+    }
+  }
+}

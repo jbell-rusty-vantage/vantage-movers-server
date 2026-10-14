@@ -88,7 +88,7 @@ Use existing CSI {ok,data}/error envelope and CsiError/command primitives, with 
 
 Common read data: contract_version:'sod-v1', as_of, timezone, scope {role,agent_id}, configuration_version/revision, projection_revision, freshness {calls,sms,granot}, nullable metrics/unknown reasons. Each channel: required, verified_completed, remaining, due_at, oldest_actionable_due_at, status (not_required/scheduled/due/overdue/blocked/pending/completed), completion_kind, coverage {state,known_complete_through,gaps}, blocked_reason. Do not represent incomplete evidence as confirmed zero. A pending count is null. Calls and SMS cannot satisfy one another.
 
-Queue sort enums: urgency, lead_received, last_interaction with direction asc/desc for the latter two. Urgency is fixed: actionable overdue by oldest deadline, next action due, normalized received time oldest-first, outreach_id stable tie. Lead received defaults desc; last interaction defaults asc with never-contacted first. Direction toggles use never-contacted first for interaction asc, last for desc; unknown received last in both. All filtering and order apply to full result set before paging. Max limit 100, default 25; search trimmed max 100 chars, escaped literal semantics (Job Number, normalized phone, name). Opaque signed/versioned cursor binds filter/sort/direction hash, actor scope/current-assignment generation, configuration version and snapshot revision; mismatch/expiration/reassignment => 409 CURSOR_EXPIRED with resnapshot action. Rep agent_id/unassigned filters rejected, never silently broadened. UI resets cursor on filters/role/day and selection survives by ID only while authorized.
+Queue sort enums: urgency, lead_received, last_interaction and move_date. Lead received and last interaction accept direction asc/desc. Move date is fixed asc: authoritative display.move_date soonest first, unknown last, subject_id ascending stable tie; every page composes known/unknown keyset phases over the full result set. Urgency is fixed: actionable overdue by oldest deadline, next action due, normalized received time oldest-first, outreach_id stable tie. Lead received defaults desc; last interaction defaults asc with never-contacted first. Direction toggles use never-contacted first for interaction asc, last for desc; unknown received last in both. All filtering and order apply to full result set before paging. Max limit 100, default 25; search trimmed max 100 chars, escaped literal semantics (Job Number, normalized phone, name). Opaque signed/versioned cursor binds filter/sort/direction hash, actor scope/current-assignment generation, configuration version and snapshot revision; mismatch/expiration/reassignment => 409 CURSOR_EXPIRED with resnapshot action. Rep agent_id/unassigned filters rejected, never silently broadened. UI resets cursor on filters/role/day and selection survives by ID only while authorized.
 
 SSE: reuse /api/v1/admin/sales-intelligence/live transport with new outreach_desk/outreach_goal/outreach_configuration invalidation topics and topic schema/version negotiation. Notifications contain scoped topic/revision IDs only, no raw customer/provider records. Unknown version, disconnect, stale token and reconnect force scoped full refetch. Use committed publication ordering, not business event time, for corrections. Revalidate auth/assignment promptly; if existing stream cannot target scoped topics safely, ship snapshot fallback until it can. Browser visible fallback 30 seconds for this desk, pause hidden pages, refresh New York midnight. Daily Operations retains its independent five-minute contract and single stream per mounted board.
 
@@ -232,3 +232,119 @@ misses, prospective supersession, and closed-subject protections remain intact.
 The stored map is still Owner-controlled: install the mapping, verify B2 open-
 subject re-decision, and run dated enrollment for eligible previously held Leads.
 This packet amendment itself performs no production configuration change.
+
+
+## Phase 1 rep money and presentation amendment — October 14, 2026
+
+Authority: the Owner's October 13 New York execution brief,
+`docs/knowledge/overnight-rep-desk-and-pool.md`. This amendment supersedes older
+money-window/source and move-date/interaction presentation requirements only.
+The October 13 P05d amendment remains operative: codes 2/3 are Daily. Neither
+this metric nor its filters reopen/close subjects, change cadence/history,
+replace assignment protection, admit Pool, or authorize a production backfill.
+Implementation details for the admin consumer are in
+[Rep money and presentation](REP-MONEY-AND-PRESENTATION.md).
+
+### Rep money read and DTO
+
+`GET /api/v1/admin/sales-outreach/rep-metrics` uses the existing authenticated
+BFF and trusted Owner/Manager/linked-Rep actor boundary. Query:
+`{scope?: 'production', agent_id?: <stable Agent id>}`. Owner/Manager must supply
+`agent_id`; Rep defaults to its linked Agent and may supply only that same id.
+A foreign id is `403 FORBIDDEN`, never a silently broadened read. Existing
+initialized/enabled desk-configuration checks apply. Capabilities advertise
+`rep_metrics` in `deployed_reads`; admin shows unavailable rather than
+cached dollars or indefinite loading if that capability is absent. This read is
+unpaged and independent of enrollment, queue filters and the selected goal day.
+
+The strict `sod-v1` response is `{contract_version, as_of, timezone:
+'America/New_York', agent_id, business_day, official_binder, assigned_potential}`.
+Money is nonnegative finite dollars accumulated in integer cents, not commission.
+
+| DTO block | Fields and meaning |
+| --- | --- |
+| `official_binder` | `basis: 'gross_own_allocation'`; `today`, `last_week`, `last_month`, `all_time`; `booking_count`, `missing_amount_count`, `missing_book_date_count`; `windows: {today, last_week, last_month}`, each `{from,to}` inclusive date-only bounds |
+| `assigned_potential` | `basis: 'current_assignment_attached_booking_total'`; `known_binder_total`, `eligible_lead_count`, `linked_booking_count`, `missing_link_count`, `dangling_link_count`, `missing_amount_count`, `mismatched_link_count`, `deduplicated_lead_count`, `ambiguous_identity_count`; `coverage: 'complete' | 'partial'` |
+
+Official credit sums only the selected Agent's
+`BookedLead.agent_allocations[].binder_amount`, keyed by stable Agent id, once
+per official Booking. An attached canonical Lead, explicit Referral or existing
+authorized official leadless Booking establishes official status; an unlinked
+pending intake, priority 5 or scraped estimate alone does not. Cancelled official
+Bookings remain in gross credit. No refund/net deduction is inferred. Today is
+the current New York date; Last Week is the complete previous Monday–Sunday;
+Last Month is the complete previous calendar month; All Time has no date or
+ranking/page cap. Stored UTC-midnight `book_date` encodes a calendar date and is
+compared as that date without a New York timezone shift. Unknown allocation
+amounts are omitted from known sums and counted; unknown dates still contribute
+known allocations to All Time but not dated windows. The UI identifies these
+figures as known subtotals where coverage is incomplete.
+
+Potential reads the complete current `receiver_agent` assignment across both
+FormLead and CallLead. Its separate metric eligibility includes linked-booked
+Leads even when official Booking closed their outreach cadence. Exclude
+priorities 7/8/9, duplicate/bad Leads, unmatched Booking-only anchors and canonical
+cancellation. Cancellation protection includes `Lead.cancelled`,
+`BookedLead.cancelled` and independent `CancelledLead` anchors by Lead or Booking,
+even when a legacy mirror is absent. No-Sync alone is not an exclusion.
+
+`Lead.booked` supplies the attached `BookedLead.total_binder_amount`, once per
+canonical Lead/Booking, independent of past booking-agent allocations. Require
+the reciprocal Booking `lead_model`/`lead_ref` to name that Lead; cross-model or
+cross-Rep alias links cannot claim another Lead's amount. Conflicting reciprocal
+Bookings for the same normalized Job Number are ambiguous and excluded from the
+known subtotal; an unlinked same-job alias does not erase a verified amount.
+Missing, dangling, mismatched and ambiguous links or missing stored amounts
+produce the corresponding counters and `partial` coverage. A genuine stored
+zero is known zero. Reassignment moves current potential ownership without
+moving historical official allocation credit. Known linked money and unknown
+coverage must remain distinguishable; no placeholder Booking or guessed rate.
+
+### Committed invalidation and refresh
+
+The existing `GET /api/v1/admin/sales-outreach/live` connection adds
+`outreach_rep_metrics` to the version-1 topic enum. It consumes committed canonical
+`EntityChange` inserts for FormLead/CallLead/BookedLead/CancelledLead changes to
+allocation, total, book date, assignment, priority, link, cancellation and metric
+eligibility fields. Before/after allocation and receiver ids refresh previous
+and current holders; attached-Lead assignment and historical allocation credit
+may refresh different Reps. Rep hints expose only that Rep's Agent id and no
+entity id, money or foreign-Rep metadata. Deletes and cancellations can safely
+broadcast a topic-only self-read refresh when old ownership cannot be resolved.
+
+Admin invalidates money on money/desk topics; connect, reconnect, clock and
+configuration recovery refetch the scoped desk. Existing offline polling,
+visibility recovery and actual next New York midnight also refresh it. Use one
+connection; no Owner-only Insights/Daily Operations API dependency. Loading,
+unavailable, partial and cached/stale wording use actual read/connection state.
+
+### Move date and Last interaction
+
+`sort: 'move_date'` joins urgency/lead_received/last_interaction. It is fixed
+ascending even if a direction is supplied: `display.move_date` soonest first,
+null/missing last, `subject_id` ascending for ties. The server queries dated and
+unknown partitions in that order and signs the cursor with the existing complete
+filter/scope/revision binding; it never sorts only a browser page. Projection
+indexes `sod_projection_q_move_date` (assigned Agent, date, subject) and
+`sod_projection_q_team_move_date` (date, subject) are declared through the existing
+index registry/process. No new sort-key field or projection-data backfill is
+required; an index declaration does not claim production index application.
+
+Future uses `move_date_from = current New York date`; Past uses
+`move_date_to = yesterday`; both exclude unknown. Unknown uses
+`move_date_unknown: 'only'`. Existing include/exclude/only, custom inclusive
+ranges, search, priority, workflow, rep scope, state and pagination compose.
+Admin URL `move=upcoming` remains Future, with `move=past|unknown` and
+`sort=move_date`; URL navigation/refresh preserves filters and authorized selection.
+`display.move_date` remains the authoritative date-only field; CallLead stays
+null regardless of raw dates. These labels never alter enrollment or closure.
+
+Queue rows/cards and lead panels show Today / Move date in X days / X days ago /
+No move date using New York calendar-day differences. Last outreach becomes
+**Last interaction** consistently, with just-now/minute/hour/day ages, exact
+UTC-instant hover timestamp, No interaction for null and honest future-time
+wording. Labels advance while open from server `as_of` plus monotonic elapsed
+time. The unchanged `last_interaction_at` qualification is confirmed
+`outbound_attempt`, `inbound_answered`, `inbound_missed`, `sms_sent`, `sms_inbound`;
+failed/unconfirmed/automation SMS, Granot notes and dashboard clicks add no
+interaction or contact credit. Existing Last interaction ordering remains.

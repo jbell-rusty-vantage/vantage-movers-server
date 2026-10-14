@@ -53,3 +53,31 @@ Coordinator: local Claude Code session on this Windows machine, running the serv
 | 2026-10-05 ~18:15 | **Backfill applied + all controls on.** Installer flags `--migration-paused` / `--intake-admission-at` deployed (`main@805457bf`, `main@705841a6`). Revision 3 unpaused; `apply backfill-2026-10-05` enrolled 782 (verify consistent); revision 4 shadow; revision 5 enforcement + intake admission open 18:14Z. 782 projections, 0 dead letters. Review list investigation (Granot `lead_created` carries no priority; `legacy_unknown` = pre-2026-08-20 Leads) in `evidence/RELEASE.md` §9. RELEASE M1 + M2 server: **done**; admin build next. |
 | 2026-10-05 ~18:20 | **S4 admin contract follow-ups** (branch `feat/outreach-desk-s4` from `main@206f4d99`, rebased onto `main@0984e759`). The six admin requests from ADMIN-SUMMARY §4, all additive: rep-days `overdue_leads`/`calls_due_today`/`sms_due_today` (team rule; due counts add `coverage_incomplete`); queue `schedule_day`; `activity`/Manager `settings` views; `cadence_summary`; history names; installer `--migration=running\|paused` as an alias of the `--migration-paused` flag another session shipped meanwhile (`a60d2664`). Gates: typecheck + lint green; full suite 3270 / 3132 pass / 0 fail / 138 skipped (the `wiring.test.ts` failure did not appear); `pnpm test:outreach:replica` 6/6 PASS (reads proof extended); `validate.mjs` passed. Merged into `feat/outreach-desk` (not main, not deployed). Evidence: `evidence/S4.md`. |
 | 2026-10-05 ~19:10 | **RELEASE (S4 + admin desk), FAST-01.** Server gates on `feat/outreach-desk@5049b662`: typecheck and lint green. Full suite: 3269 tests, 3130 pass, 1 fail (the pre-existing `attachment/wiring.test.ts` Mongo timeout), 138 skipped. Replica 6/6 PASS; `validate.mjs` passed. Merged as **`main@03b4710c`** (run 37357915254, green); stamped 18:55Z. Admin S4 consumers `d70db30`; admin gates green (lint at the 11/7 baseline, 741 tests pass, build green). Merged as **admin `main@68ac287`** (run 37359428234, green). Production smoke, signed as the Owner: every desk read is 200 and parses with the admin schemas; revision 5, all controls on; Daily Operations and Numbers 200. Cleanup: worktrees `-s4`, `vantage-admin-a1/-a2` removed; lane branches and `feat/outreach-desk` deleted locally and on origin in both repos. `../vantage-main-server-p2` kept (untracked P2 helpers). Evidence: `evidence/RELEASE.md` §12. |
+
+| 2026-10-14 | Overnight Phase 1 backend claim: reads/repMetrics.ts + tests, live/repMetrics.ts + tests, live/stream.ts, rep-metrics route/DTO/live enum additions, matching Service/CONTRACTS/rep-metrics DTO example. Runtime contract sod-v1 unchanged; additive read/topic. Integration review remains coordinator-owned. |
+
+
+## PHASE1-DOCS — October 14, 2026
+
+Coordinator-delegated documentation lane, branch `codex/phase1-owner-sales-control`,
+server initial HEAD `eb532d96`; concurrent Phase 1 app/Service/proof edits preserved.
+Claims: canonical `CONTRACTS.md`, `SPECIFICATION.md`, `README.md`,
+`REP-MONEY-AND-PRESENTATION.md` (admin lane content), `PACKET-MANIFEST.json` and
+exact admin mirrors. Narrow money/presentation amendment only; historical policy
+and codes 2/3 Daily remain. Packet-integrity verification precedes coordinator
+handoff; only integrated VERIFY/coordinator evidence can mark runtime acceptance.
+
+PHASE1-DOCS handoff: `node docs/sales-outreach-desk/validate.mjs` PASS in both
+repositories (99 release files; server 307/admin 305 operative local links);
+100 manifest-listed files including manifest byte-identical across repositories.
+`git diff --check -- docs/sales-outreach-desk` PASS in both. Evidence scope is
+packet integrity/portability/examples; runtime acceptance and merge remain
+coordinator-owned. All lane edits unstaged; no commit or application edit.
+
+PHASE1-DOCS final capability/generator re-freeze: capabilities advertise
+`rep_metrics`; five generated capability examples and the service-generated
+`rep-metrics.rep.json` are hashed and mirrored. Both packet validators PASS
+(104 release files, server 307/admin 305 links); all 105 listed files including
+manifest byte-identical, all 34 canonical DTO JSON files byte-identical in admin
+packet/test fixtures. Scoped diff-check PASS. Earlier 99-file pass is historical;
+this re-freeze is the final packet handoff. No application edits or staging.

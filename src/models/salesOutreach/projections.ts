@@ -59,7 +59,7 @@ const statusFlagsSchema = new Schema(
  */
 export const SALES_OUTREACH_PROJECTION_INDEXES = [
   unique("sod_projection_subject_unique", { subject_id: 1 }),
-  // Queue sorts (CONTRACTS "Queue sort enums") over never-null `queue_keys`, so null ordering is never
+  // Instant sorts (CONTRACTS "Queue sort enums") over never-null `queue_keys`, so null ordering is never
   // left to the database: one index per sort for an assigned scope (Rep, rep filter, Unassigned) and
   // the team default (Most overdue + Needs contact) across every rep.
   index("sod_projection_q_urgency", {
@@ -80,6 +80,10 @@ export const SALES_OUTREACH_PROJECTION_INDEXES = [
   index("sod_projection_q_received_asc", { assigned_agent_id: 1, "queue_keys.received_asc": 1, subject_id: 1 }),
   index("sod_projection_q_received_desc", { assigned_agent_id: 1, "queue_keys.received_desc": 1, subject_id: 1 }),
   index("sod_projection_q_interaction", { assigned_agent_id: 1, "queue_keys.last_interaction": 1, subject_id: 1 }),
+  // Move date uses the existing date-only display value: dated and unknown walks share these indexes.
+  // No new stored queue key or projection backfill; build through the report-first outreach:indexes CLI.
+  index("sod_projection_q_move_date", { assigned_agent_id: 1, "display.move_date": 1, subject_id: 1 }),
+  index("sod_projection_q_team_move_date", { "display.move_date": 1, subject_id: 1 }),
   index("sod_projection_next_evaluation", { next_evaluation_at: 1 }),
   // olr A1: the evaluate sweep's coverage repair (rows whose verdict waits on a channel's coverage).
   // Non-unique; writes never need them, and without them the sweep scans the (small) collection.

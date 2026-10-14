@@ -6,11 +6,12 @@ import { foldName } from "../evaluation/projection";
 /**
  * The queue's filter and order as data (CONTRACTS "GET /queue", "Queue sort enums"; SPECIFICATION §7).
  *
- * One plan drives both stores: `mongoQueueFilter`/`mongoQueueSort` translate it for MongoDB (every
+ * One plan drives both stores: `mongoQueueFilter`/`mongoQueuePageQueries` translate it for MongoDB (every
  * predicate and the order run in the database over the full result set before paging, on the declared
  * `sod_projection_q_*` indexes) and `matchesQueue`/`compareQueueRows` give the same semantics to the
- * in-memory test store. All sort keys are non-null (`queue_keys` sentinels), so no null ordering is
- * ever left to either implementation; the subject id is the stable final tie.
+ * in-memory test store. Instant keys use non-null sentinels. Move dates use the authoritative stored
+ * date-only field: two bounded index walks place dated rows before unknowns without rewriting any
+ * projections. The subject id is the stable final tie.
  */
 
 export type QueueAssignment =
@@ -42,10 +43,11 @@ export type QueueSortField =
   | "queue_keys.received_asc"
   | "queue_keys.received_desc"
   | "queue_keys.last_interaction"
+  | "display.move_date"
   | "subject_id";
 export type QueueSortSpec = ReadonlyArray<Readonly<{ field: QueueSortField; dir: 1 | -1 }>>;
 
-/** Keyset position after the last row of a page: one ISO instant per date key, then the subject id. */
+/** Keyset: ISO instants or a date-only move date (empty string = unknown), then the subject id. */
 export type QueueKeyset = readonly string[];
 
 export type QueuePagePlan = Readonly<{ match: QueueMatch; sort: QueueSortSpec; after: QueueKeyset | null; limit: number }>;
@@ -80,9 +82,9 @@ export type QueueMatchable = Readonly<{
   queue_keys: QueueKeys;
 }>;
 
-/** Sort direction applied for a sort; urgency is fixed (CONTRACTS). */
+/** Sort direction applied for a sort; urgency and move date are fixed ascending. */
 export function queueDirectionOf(sort: SalesOutreachQueueSort, requested: "asc" | "desc" | undefined): "asc" | "desc" {
-  if (sort === "urgency") return "asc";
+  if (sort === "urgency" || sort === "move_date") return "asc";
   if (requested) return requested;
   return sort === "lead_received" ? "desc" : "asc";
 }
@@ -91,8 +93,10 @@ export function queueDirectionOf(sort: SalesOutreachQueueSort, requested: "asc" 
  * Most overdue: earliest unsatisfied actionable deadline, next action due, received oldest-first, id.
  * Lead received: newest first by default; unknown last in both directions (separate sentinel keys).
  * Last interaction: oldest first by default with never-contacted first; never-contacted last descending.
+ * Move date: soonest first, unknown last, stable id ascending (direction is fixed).
  */
 export function queueSortSpec(sort: SalesOutreachQueueSort, direction: "asc" | "desc"): QueueSortSpec {
+  if (sort === "move_date") return [{ field: "display.move_date", dir: 1 }, { field: "subject_id", dir: 1 }];
   if (sort === "urgency")
     return [
       { field: "queue_keys.urgency_due", dir: 1 },
@@ -176,7 +180,8 @@ export function mongoQueueFilter(match: QueueMatch): Record<string, unknown> {
   return parts.length === 1 ? parts[0]! : { $and: parts };
 }
 
-const keyValue = (field: QueueSortField, value: string) => (field === "subject_id" ? oid(value) : new Date(value));
+const keyValue = (field: QueueSortField, value: string) =>
+  field === "subject_id" ? oid(value) : field === "display.move_date" ? value || null : new Date(value);
 
 /** Strictly after `after` in `sort` order (lexicographic expansion over non-null keys). */
 export function mongoKeysetFilter(sort: QueueSortSpec, after: QueueKeyset): Record<string, unknown> {
@@ -192,9 +197,35 @@ export function mongoKeysetFilter(sort: QueueSortSpec, after: QueueKeyset): Reco
 }
 
 export function mongoQueueQuery(plan: QueuePagePlan): { filter: Record<string, unknown>; sort: Record<string, 1 | -1> } {
+  // One unpartitioned Mongo sort would put null dates first; callers must use the page walks below.
+  if (plan.sort[0]?.field === "display.move_date") throw new Error("Move-date pages require mongoQueuePageQueries");
   const base = mongoQueueFilter(plan.match);
   const filter = plan.after ? { $and: [base, mongoKeysetFilter(plan.sort, plan.after)] } : base;
   return { filter, sort: Object.fromEntries(plan.sort.map(({ field, dir }) => [field, dir])) };
+}
+
+/**
+ * The ordered database walks for one page. Move date reads dated rows then unknowns, each with the
+ * complete match and an indexed stable order. The store limits each walk to the page's remaining
+ * capacity. A cursor in the unknown phase never returns to dates. No computed sort or backfill.
+ */
+export function mongoQueuePageQueries(plan: QueuePagePlan): ReturnType<typeof mongoQueueQuery>[] {
+  if (plan.sort[0]?.field !== "display.move_date") return [mongoQueueQuery(plan)];
+  const base = mongoQueueFilter(plan.match);
+  const queries: ReturnType<typeof mongoQueueQuery>[] = [];
+  const unknownAfter = plan.after?.[0] === "";
+  if (!unknownAfter && plan.match.move_date?.unknown !== "only") {
+    const and: Record<string, unknown>[] = [base, { "display.move_date": { $ne: null } }];
+    if (plan.after) and.push(mongoKeysetFilter(plan.sort, plan.after));
+    queries.push({ filter: { $and: and }, sort: { "display.move_date": 1, subject_id: 1 } });
+  }
+  if (plan.match.move_date?.unknown !== "exclude") {
+    const unknown: Record<string, unknown>[] = [base, { "display.move_date": null }];
+    if (unknownAfter) unknown.push({ subject_id: { $gt: oid(plan.after![1]!) } });
+    // Retain the date key in the sort: it is constant in this walk, and both phases use the same index.
+    queries.push({ filter: { $and: unknown }, sort: { "display.move_date": 1, subject_id: 1 } });
+  }
+  return queries;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +234,7 @@ export function mongoQueueQuery(plan: QueuePagePlan): { filter: Record<string, u
 
 function sortValue(row: QueueMatchable, field: QueueSortField): number | string {
   if (field === "subject_id") return row.subject_id;
+  if (field === "display.move_date") return row.display.move_date ?? "\uffff";
   const key = field.slice("queue_keys.".length) as QueueDateKey;
   return +row.queue_keys[key];
 }
@@ -221,6 +253,7 @@ export function compareQueueRows(sort: QueueSortSpec, a: QueueMatchable, b: Queu
 export function keysetOf(sort: QueueSortSpec, row: QueueMatchable): string[] {
   return sort.map(({ field }) => {
     if (field === "subject_id") return row.subject_id;
+    if (field === "display.move_date") return row.display.move_date ?? "";
     return row.queue_keys[field.slice("queue_keys.".length) as QueueDateKey].toISOString();
   });
 }
@@ -228,7 +261,7 @@ export function keysetOf(sort: QueueSortSpec, row: QueueMatchable): string[] {
 function afterKeyset(sort: QueueSortSpec, row: QueueMatchable, after: QueueKeyset): boolean {
   for (let i = 0; i < sort.length; i++) {
     const { field, dir } = sort[i]!;
-    const stored = field === "subject_id" ? after[i]! : +new Date(after[i]!);
+    const stored = field === "subject_id" ? after[i]! : field === "display.move_date" ? after[i] || "\uffff" : +new Date(after[i]!);
     const c = cmp(sortValue(row, field), stored) * dir;
     if (c !== 0) return c > 0;
   }

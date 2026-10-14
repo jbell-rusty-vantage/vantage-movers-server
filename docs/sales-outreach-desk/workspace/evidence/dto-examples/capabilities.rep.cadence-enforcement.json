@@ -47,7 +47,8 @@
     "live_topics": [
       "outreach_desk",
       "outreach_goal",
-      "outreach_configuration"
+      "outreach_configuration",
+      "outreach_rep_metrics"
     ],
     "permitted_commands": [
       "quoted_followup",
@@ -64,7 +65,8 @@
       "team",
       "queue",
       "outreach_detail",
-      "live"
+      "live",
+      "rep_metrics"
     ],
     "cadence_summary": {
       "policy_version": "final-policy-2026-10-03-v1",

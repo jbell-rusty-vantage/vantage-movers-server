@@ -6,7 +6,7 @@ import type { ConfigurationInspection } from "../config/load";
 import { ROLE_CAPABILITIES } from "../permissions";
 
 /** Desk reads this server build serves. Capabilities never advertise undeployed work. */
-export const DEPLOYED_DESK_READS = ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live"] as const;
+export const DEPLOYED_DESK_READS = ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live", "rep_metrics"] as const;
 
 /** Queue filters per role: a Rep never gets the rep or Unassigned filters (CONTRACTS, P09a/P09b). */
 const COORDINATOR_QUEUE_FILTERS = SALES_OUTREACH_QUEUE_FILTERS;

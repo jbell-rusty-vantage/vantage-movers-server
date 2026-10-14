@@ -15,7 +15,7 @@ Start here from either vantage-main-server or vantage-admin. Business policy is 
 
 ## Precedence
 
-- **Business rules:** SPECIFICATION and FINAL-POLICY-REVIEW. They are unchanged.
+- **Business rules:** SPECIFICATION and FINAL-POLICY-REVIEW, including dated amendments. The October 13 P05d amendment maps codes 2/3 to Daily; historical policy/fixtures retain their original scope. The October 14 Phase 1 amendment changes only rep money and presentation; see [CONTRACTS](CONTRACTS.md#phase-1-rep-money-and-presentation-amendment--october-14-2026) and [Rep money and presentation](REP-MONEY-AND-PRESENTATION.md). The latest Owner brief is `docs/knowledge/overnight-rep-desk-and-pool.md` in the canonical server; Phase 1 implementation/merge is authorized and Phase 2 remains approval-gated discovery/design.
 - **How and where to build:** IMPLEMENTATION-PLAN and CODE-MAP. They win over older packet text about reusing `outreach_records`, "Outreach ID", legacy producer fencing, `/sales-intelligence?view=…` routes, `repScope` and the Sales Intelligence live stream. The slimming removed or changed all of those.
 - **RingCentral:** RINGCENTRAL-CAPTURE wins over SPECIFICATION §15.
 - [DECISIONS](DECISIONS.md), [READINESS-PREPARATION](READINESS-PREPARATION.md), [SPRINT](SPRINT.md), [DATA-READINESS](DATA-READINESS.md), [MANUAL-START](MANUAL-START.md) and [END-TO-END-RUN](END-TO-END-RUN.md) remain the policy provenance and launch runbooks. Their S5–S7 migration machinery now applies to bulk expansion cohorts, because there is no legacy history left to migrate. See plan §8.

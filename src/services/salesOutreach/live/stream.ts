@@ -6,6 +6,9 @@ import {
   SALES_OUTREACH_LIVE_VERSIONS,
   type SalesOutreachLiveTopic,
 } from "../../../config/domain/salesOutreach";
+import { getMongoDatabaseName } from "../../../config/domain/runtime";
+import { ENTITY_CHANGE_COLLECTION } from "../../../models/EntityChange";
+import { isMetricEntityChange, metricEntityChangeHint, METRIC_ENTITY_MODELS } from "./repMetrics";
 import { getSalesOutreachLiveEventModel } from "../../../models/salesOutreach/liveEvents";
 import type { SalesOutreachLiveChange, SalesOutreachLiveFrame } from "../../../validation/v1/salesOutreachReads";
 import { streamLiveInvalidations, type LiveChanges, type LiveFrameReason } from "../../salesIntelligence/live";
@@ -17,9 +20,9 @@ import { OutreachError } from "../errors";
  *
  * It reuses the Sales Intelligence transport (`streamLiveInvalidations`: full refetch on connect,
  * reconnect and clock frames, 250 ms coalescing, ~240 s lifetime, slow-consumer close) behind a separate
- * endpoint, over `sales_outreach_live_events` inserts only. Scope is enforced server-side twice: the
- * change-stream pipeline of a Rep matches only events naming its own Agent (plus configuration
- * invalidations), and every hint is re-filtered in process. A Rep's hints carry only its own Agent id.
+ * endpoint, over committed `sales_outreach_live_events` and metric-relevant `entity_changes` inserts. The database pipeline scopes ordinary desk hints to a Rep
+ * (plus configuration invalidations); the domain adapter resolves metric owners from canonical records
+ * and allocation/receiver history before every hint is re-filtered in process. A Rep's hints carry only its own Agent id.
  * The Rep's reviewed link and the desk configuration are re-checked on every clock tick; a failure
  * closes the stream (the reconnect then meets the route's own refusal).
  */
@@ -59,8 +62,48 @@ export function liveWatchPipeline(scope: LiveScope): Record<string, unknown>[] {
   ];
 }
 
-export function watchOutreachLiveEvents(scope: LiveScope): LiveChanges {
-  return getSalesOutreachLiveEventModel().collection.watch(liveWatchPipeline(scope), { maxAwaitTimeMS: 1000 });
+/** One database change stream serves desk hints and committed domain metric changes. */
+export function outreachCombinedWatchPipeline(scope: LiveScope, liveCollection: string): Record<string, unknown>[] {
+  const deskMatch = liveWatchPipeline(scope)[0]!.$match as Record<string, unknown>;
+  return [
+    { $match: { operationType: "insert", $or: [
+      { ...deskMatch, "ns.coll": liveCollection },
+      { "ns.coll": ENTITY_CHANGE_COLLECTION, "fullDocument.entity.model": { $in: METRIC_ENTITY_MODELS } },
+    ] } },
+    { $project: {
+      "ns.coll": 1, "fullDocument.topic": 1, "fullDocument.subject_ids": 1,
+      "fullDocument.agent_ids": 1, "fullDocument.business_day": 1, "fullDocument.revision": 1,
+      "fullDocument.entity": 1, "fullDocument.changed_paths": 1,
+      // A field allowlist excludes contact fields and provenance; only safe scoped hints leave the adapter.
+      "fullDocument.fields": { $map: {
+        input: { $filter: { input: { $ifNull: ["$fullDocument.fields", []] }, as: "field", cond: { $in: ["$$field.path", ["receiver_agent", "agent_allocations"]] } } },
+        as: "field", in: { path: "$$field.path", value_mode: "$$field.value_mode", before: "$$field.before", after: "$$field.after" },
+      } },
+    } },
+  ];
+}
+
+export function watchOutreachLiveEvents(scope: LiveScope): LiveChanges & { tryNext(): Promise<unknown> } {
+  const db = mongoose.connection.useDb(getMongoDatabaseName(), { useCache: true }).db;
+  if (!db) throw new Error("Outreach database unavailable");
+  const source = db.watch(outreachCombinedWatchPipeline(scope, getSalesOutreachLiveEventModel().collection.collectionName), { maxAwaitTimeMS: 1000 });
+  return {
+    async next() {
+      for (;;) {
+        const change = await source.next();
+        if (!isMetricEntityChange(change)) return change;
+        const hint = await metricEntityChangeHint(change, scope);
+        if (hint) return { fullDocument: hint };
+      }
+    },
+    async tryNext() {
+      const change = await source.tryNext();
+      if (!change || !isMetricEntityChange(change)) return change;
+      const hint = await metricEntityChangeHint(change, scope);
+      return hint ? { fullDocument: hint } : null;
+    },
+    close: () => source.close(),
+  };
 }
 
 const ids = (value: unknown): string[] => (Array.isArray(value) ? value.map(String).filter((id) => /^[a-f\d]{24}$/.test(id)) : []);

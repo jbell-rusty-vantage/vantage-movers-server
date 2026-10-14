@@ -5,7 +5,7 @@
  * Proves on real Mongo what the unit suites prove on the in-memory twin:
  * - the queue plan's Mongo translation returns exactly the in-memory semantics (`queueQuery.ts`) for
  *   every sort/direction, state, filter and search, page by page through the keyset, with the
- *   sentinel `queue_keys` (no reliance on Mongo's null ordering);
+ *   sentinel `queue_keys` and bounded dated/unknown move-date walks (no reliance on Mongo's null ordering);
  * - the default Rep queue (`assigned_agent_id` + Needs contact + urgency) is served by the
  *   `sod_projection_q_urgency` index (IXSCAN, no blocking SORT);
  * - counts, team overdue figures and the assignment generation (changes on reassignment) match;
@@ -52,7 +52,7 @@ async function main() {
   const { QUEUE_KEY_FAR_FUTURE } = await import("../../src/services/salesOutreach/evaluation/projection.js");
   const { mongoSalesOutreachReadStore } = await import("../../src/services/salesOutreach/reads/store.js");
   const { Agent } = await import("../../src/models/Agent.js");
-  const { mongoQueueQuery, queueSearchOf, queueSortSpec, keysetOf } = await import("../../src/services/salesOutreach/reads/queueQuery.js");
+  const { mongoQueuePageQueries, mongoQueueQuery, queueSearchOf, queueSortSpec, keysetOf } = await import("../../src/services/salesOutreach/reads/queueQuery.js");
   const { publishOutreachLive } = await import("../../src/services/salesOutreach/live/publish.js");
   const { watchOutreachLiveEvents, outreachLiveHint } = await import("../../src/services/salesOutreach/live/stream.js");
   await connectMongo();
@@ -84,7 +84,8 @@ async function main() {
         phone: `(305) 555-01${String(i).padStart(2, "0")}`,
         normalized_phone: `30555501${String(i).padStart(2, "0")}`,
         name: names[i % names.length]!,
-        move_date: i % 4 === 3 ? null : `2026-10-${String(6 + (i % 20)).padStart(2, "0")}`,
+        // Repeated dates and unknowns span keyset boundaries, even within an assigned scope.
+        move_date: i % 4 === 3 ? null : `2026-10-${String(6 + (i % 3)).padStart(2, "0")}`,
       },
     });
     memory.evaluation.subjects.set(subject.id, subject);
@@ -116,7 +117,7 @@ async function main() {
 
   // 2. Every plan: Mongo pages through the keyset equal the in-memory semantics.
   const assignments = [{ kind: "all" as const }, { kind: "agent" as const, agent_id: TEST_AGENT_A }, { kind: "unassigned" as const }];
-  const sorts = [["urgency", "asc"], ["lead_received", "desc"], ["lead_received", "asc"], ["last_interaction", "asc"], ["last_interaction", "desc"]] as const;
+  const sorts = [["urgency", "asc"], ["lead_received", "desc"], ["lead_received", "asc"], ["last_interaction", "asc"], ["last_interaction", "desc"], ["move_date", "asc"]] as const;
   const states = ["needs_contact", "all_active", "blocked", "pending"] as const;
   let plans = 0;
   for (const assignment of assignments)
@@ -156,6 +157,74 @@ async function main() {
   const winning = JSON.stringify(explain.queryPlanner.winningPlan);
   assert.match(winning, /sod_projection_q_urgency/);
   assert.doesNotMatch(winning, /"stage":"SORT"/);
+
+  // 3b. Every move-date walk uses its declared index (Rep, Unassigned and Team) without a blocking
+  // SORT. Paging dated ties and unknown ties stays identical to the in-memory twin at every page size,
+  // with combined assignment/priority/workflow/date/search filtering over the complete scope.
+  for (const assignment of assignments) {
+    for (const mode of ["all", "combined", "known", "unknown"] as const) {
+      const combined = mode === "combined";
+      const match = {
+        assignment, state: "all_active" as const,
+        priority: combined ? { kind: "code" as const, code: "0" } : { kind: "all" as const },
+        workflow: combined ? "new" as const : null,
+        move_date: combined ? { from: "2026-10-07", to: "2026-10-08", unknown: "include" as const }
+          : mode === "known" ? { from: "2026-10-07", to: null, unknown: "exclude" as const }
+          : mode === "unknown" ? { from: null, to: null, unknown: "only" as const } : null,
+        search: queueSearchOf(combined ? "p5561" : undefined),
+      };
+      const spec = queueSortSpec("move_date", "asc");
+      const expected = (await memory.findQueuePage({ match, sort: spec, after: null, limit: 1000 })).map((r) => r.subject_id);
+      for (const limit of [1, 2, 3, 4]) {
+        const got: string[] = [];
+        let after: string[] | null = null;
+        for (let page = 0; page < 40; page++) {
+          const rows = await mongoDeskQueueStore.findQueuePage({ match, sort: spec, after, limit });
+          got.push(...rows.map((r) => r.subject_id));
+          if (rows.length < limit) break;
+          after = keysetOf(spec, rows.at(-1)!);
+        }
+        assert.deepEqual(got, expected, JSON.stringify({ assignment, mode, limit }));
+        assert.equal(new Set(got).size, got.length, "no repeats across move-date phases");
+      }
+      // Observe both phase walks at first page and a date tie cursor, then the unknown-only cursor.
+      const rows = await memory.findQueuePage({ match, sort: spec, after: null, limit: 1000 });
+      const known = rows.find((r) => r.display.move_date !== null);
+      const unknown = rows.find((r) => r.display.move_date === null);
+      for (const after of [null, ...(known ? [keysetOf(spec, known)] : []), ...(unknown ? [keysetOf(spec, unknown)] : [])]) {
+        for (const { filter, sort } of mongoQueuePageQueries({ match, sort: spec, after, limit: 4 })) {
+          // Mongoose retains the find-row generic on explain; the runtime value is Mongo's plan,
+          // matching the existing urgency explain boundary above.
+          const explained = (await getSalesOutreachProjectionModel().find(filter).sort(sort).limit(4).explain("queryPlanner")) as unknown as {
+            queryPlanner: { winningPlan: unknown };
+          };
+          const plan = JSON.stringify(explained.queryPlanner.winningPlan);
+          assert.match(plan, /sod_projection_q_(team_)?move_date/);
+          assert.doesNotMatch(plan, /"stage":"SORT"/, `move date never requires a blocking sort: ${plan}`);
+        }
+      }
+    }
+  }
+
+  // 3c. The additive indexes improve the plan, but correctness has no index/backfill prerequisite.
+  // Only this isolated synthetic local database is touched; absence can use Mongo's blocking sort.
+  await getSalesOutreachProjectionModel().collection.dropIndex("sod_projection_q_move_date");
+  await getSalesOutreachProjectionModel().collection.dropIndex("sod_projection_q_team_move_date");
+  for (const assignment of assignments) {
+    const match = { assignment, state: "all_active" as const, priority: { kind: "all" as const }, workflow: null, move_date: null, search: null };
+    const spec = queueSortSpec("move_date", "asc");
+    const expected = (await memory.findQueuePage({ match, sort: spec, after: null, limit: 1000 })).map((r) => r.subject_id);
+    const got: string[] = [];
+    let after: string[] | null = null;
+    for (let page = 0; page < 40; page++) {
+      const rows = await mongoDeskQueueStore.findQueuePage({ match, sort: spec, after, limit: 2 });
+      got.push(...rows.map((r) => r.subject_id));
+      if (rows.length < 2) break;
+      after = keysetOf(spec, rows.at(-1)!);
+    }
+    assert.deepEqual(got, expected, `without new indexes: ${assignment.kind}`);
+    assert.equal(new Set(got).size, got.length);
+  }
 
   // 4. Team overdue figures (olr A2: coverage-aware, per channel) and the assignment generation.
   // Fixture shapes the evaluator does not produce here (SMS has no coverage in this fixture): two rows get
@@ -350,7 +419,7 @@ async function main() {
   await repStream.close();
   await ownerStream.close();
   console.log(
-    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; team/generation; A2 coverage-aware overdue counts (4 coverages, pre-A2 branch); S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; SMS coverage over current mailboxes (evaluation = reads); scoped live streams`,
+    `PASS: ${plans} queue plans equal the in-memory semantics page by page; index used; move date: ties/nulls across pages, combined/known/unknown filters, both phases indexed with no blocking SORT, correct without new indexes; team/generation; A2 coverage-aware overdue counts (4 coverages, pre-A2 branch); S4 agent cadence, schedule_day, agent names; A3-fresh calls freshness inputs + webhook index read; SMS coverage over current mailboxes (evaluation = reads); scoped live streams`,
   );
 }
 
