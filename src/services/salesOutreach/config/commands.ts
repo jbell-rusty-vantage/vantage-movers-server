@@ -8,6 +8,7 @@ import { OutreachError, zodIssues } from "../errors";
 import { deskEnginePolicy } from "../evaluation/policyAdapter";
 import { publishOutreachLive } from "../live/publish";
 import { newYorkBusinessDay } from "../reads/businessDay";
+import { closePoolSharing } from "../pool/admission";
 import {
   configurationContentHash,
   configurationVersionFor,
@@ -126,6 +127,11 @@ export async function patchSalesOutreachConfiguration(
         // Guards on the change itself, in plan order (olr §3): C1a count scope first, B3 engine policy second.
         await assertCountScopeProspective(store, pointer, value, context.now, context.session);
         assertEnginePolicyResolvable(value);
+        if (!value.pool?.enabled && pointer && store === mongoConfigurationStore) {
+          const prior = await store.readVersion(pointer.version, context.session);
+          if ((prior?.value as { pool?: { enabled?: boolean } } | undefined)?.pool?.enabled)
+            await closePoolSharing(context.now, context.session);
+        }
         await writer.insertVersion(
           { version, value, content_hash, approval_ref: value.cadence.approval_ref, actor: context.actor },
           context.session,

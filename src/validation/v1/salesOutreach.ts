@@ -395,9 +395,19 @@ export const salesOutreachConfigurationValueSchema = z
     migration: migrationSchema.prefault({}),
     goals: goalsSchema.prefault({}),
     operations: operationsSchema.optional(),
+    // Absent preserves every historical content hash and keeps Pool disabled (R0).
+    pool: z.object({ enabled: z.boolean(), admission_enabled: z.boolean(), policy_version: text, approval_ref: text }).strict().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.pool?.admission_enabled && !value.pool.enabled)
+      ctx.addIssue({ code: "custom", path: ["pool", "admission_enabled"], message: "requires Pool enabled" });
+    if (value.pool?.enabled) {
+      if (!value.cadence.working_days || !value.controls.desk_enabled || (!value.controls.cadence_shadow_enabled && !value.controls.cadence_enforcement_enabled))
+        ctx.addIssue({ code: "custom", path: ["pool"], message: "requires configured shared calendar and active desk cadence" });
+      const priority9 = value.cadence.priority_map?.codes.find((p) => p.code === "9");
+      if (priority9 && priority9.workflow !== "none") ctx.addIssue({ code: "custom", path: ["cadence", "priority_map"], message: "Pool9 uses shared work, ordinary mapping must remain none" });
+    }
     const missing = (namespace: "cadence" | "evidence" | "goals", keys: readonly string[], because: string) => {
       const record = value[namespace] as Record<string, unknown>;
       for (const key of keys)

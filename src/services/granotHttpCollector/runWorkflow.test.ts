@@ -11,6 +11,8 @@ import {
   type GranotRunGroupRuntime,
   estimatesActionCaptureTime,
   granotRecoverableFilter,
+  scheduledEstimatesRunId,
+  validateEstimatesRunSelection,
 } from "./runWorkflow";
 import {
   GranotAutomationSourceValidationError,
@@ -25,6 +27,17 @@ const actor = {
   request_id: "request-1",
   origin: "vantage_admin",
 } as const;
+
+test('Pool schedules cannot collide with ALL retry identity or bypass selector/lane validation',()=>{
+  const slot='10/14/2026:8:07/17/2026:07/23/2026';
+  assert.equal(String(scheduledEstimatesRunId(slot)),String(scheduledEstimatesRunId(slot,'all')));
+  assert.notEqual(String(scheduledEstimatesRunId(slot,'all')),String(scheduledEstimatesRunId(slot,'pool')));
+  assert.equal(String(scheduledEstimatesRunId(slot,'pool')),String(scheduledEstimatesRunId(slot,'pool')));
+  validateEstimatesRunSelection({operation:'estimates_in_process',estimatesSelection:'pool',estimatesLane:'pool_discovery'});
+  assert.throws(()=>validateEstimatesRunSelection({operation:'form_leads',estimatesSelection:'pool'}),/must agree/);
+  assert.throws(()=>validateEstimatesRunSelection({operation:'estimates_in_process',estimatesSelection:'all',estimatesLane:'pool_refresh'}),/must agree/);
+  assert.deepEqual(granotRecoverableFilter(new Date())['request_snapshot.waiting_for_all'],{$ne:true});
+});
 
 const formSource: GranotAutomationSourceItem = {
   id: "507f1f77bcf86cd799439011",

@@ -1,5 +1,7 @@
 # Pool discovery and matching prototype
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 **Status: read-only prototype verified; actual current-month Granot Pool discovery is blocked.** Phase 1 was merged and production verification opened Phase 2 at `2026-10-14T03:07:37Z`. This work is on `codex/pool-discovery-approval`, based on the completed desk. Nothing here creates, reprioritizes, reassigns, enrolls, syncs, deduplicates or reconciles production Pool records. No Pool feature, route, configuration or effect flag was implemented.
 
 The prototype and its checks are under [`ops/pool-prototype/`](../../ops/pool-prototype/). The model and Owner decisions are in [POOL-MODEL.md](POOL-MODEL.md), collection/Sheets design in [POOL-COLLECTION-AND-SHEETS.md](POOL-COLLECTION-AND-SHEETS.md), and combined approval brief in [POOL-APPROVAL-SPEC.md](POOL-APPROVAL-SPEC.md). Those are proposed designs, not approved reconciliation behavior.

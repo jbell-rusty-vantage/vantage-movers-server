@@ -1,5 +1,7 @@
 # Pool collection and Sheets design
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 Design only, October 14, 2026 UTC / October 13 New York. Phase 1 is merged and
 production-verified; this Phase 2 branch starts at server `beadfd11` with admin
 `5fc16d9`. Authority: [Owner overnight brief](../knowledge/overnight-rep-desk-and-pool.md).

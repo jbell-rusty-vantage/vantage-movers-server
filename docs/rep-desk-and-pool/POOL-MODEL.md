@@ -1,5 +1,7 @@
 # Pool canonical model and transition proposal
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 Status: **design only; provisional pending the Phase 2 discovery/collision report and Owner decisions below**. No Pool models, commands, routes, permission changes, sync changes, data migrations or production mutations are implemented by this document. Phase 1 baseline is server main `beadfd11` (PR #218), with its Rep money and move-date contracts retained.
 
 Authority: `docs/knowledge/overnight-rep-desk-and-pool.md`, October 13 New York / October 14 UTC. The Owner authorized read-only discovery and an approval-ready recommendation. Any reconciliation of Pool rows with existing Leads requires separate Owner approval. Companion documents: [Pool desk design](POOL-DESK-DESIGN.md), discovery/prototype findings and [boundary review](POOL-REVIEW.md) in this folder; discovery links and measured findings are to be reconciled before handoff.

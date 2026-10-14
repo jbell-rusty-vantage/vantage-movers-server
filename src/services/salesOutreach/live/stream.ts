@@ -47,6 +47,7 @@ export function liveWatchPipeline(scope: LiveScope): Record<string, unknown>[] {
     match.$or = [
       { "fullDocument.agent_ids": scope.agent_id ? new mongoose.Types.ObjectId(scope.agent_id) : null },
       { "fullDocument.topic": "outreach_configuration" },
+      { "fullDocument.topic": "outreach_pool" },
     ];
   return [
     { $match: match },
@@ -115,13 +116,13 @@ export function outreachLiveHint(change: unknown, scope: LiveScope): SalesOutrea
   const topic = doc.topic as SalesOutreachLiveTopic;
   if (!SALES_OUTREACH_LIVE_TOPICS.includes(topic)) return null;
   const agents = ids(doc.agent_ids);
-  if (scope.role === "rep" && topic !== "outreach_configuration" && (!scope.agent_id || !agents.includes(scope.agent_id))) return null;
+  if (scope.role === "rep" && topic !== "outreach_configuration" && topic !== "outreach_pool" && (!scope.agent_id || !agents.includes(scope.agent_id))) return null;
   const businessDay = typeof doc.business_day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(doc.business_day) ? doc.business_day : null;
   const revision = typeof doc.revision === "number" && Number.isSafeInteger(doc.revision) && doc.revision >= 0 ? doc.revision : null;
   return {
     topic,
     subject_ids: ids(doc.subject_ids).slice(0, 100),
-    agent_ids: scope.role === "rep" ? (topic === "outreach_configuration" ? [] : [scope.agent_id!]) : agents.slice(0, 10),
+    agent_ids: scope.role === "rep" ? (topic === "outreach_configuration" || topic === "outreach_pool" ? [] : [scope.agent_id!]) : agents.slice(0, 10),
     business_day: businessDay,
     revision,
   };

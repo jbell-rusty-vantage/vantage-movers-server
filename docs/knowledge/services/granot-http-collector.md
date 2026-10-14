@@ -12,6 +12,8 @@ applies_to:
   - src/services/granotHttpCollector/estimatesCollection.ts
   - src/services/granotHttpCollector/estimatesIdentityPlanning.ts
   - src/models/GranotEstimatesOpenDate.ts
+  - src/models/GranotEstimatesScheduleSlot.ts
+  - src/services/granotHttpCollector/poolCron.ts
   - src/services/granotHttpCollector/estimatesCron.ts
   - src/services/granotHttpCollector/runWorkflow.ts
   - src/services/granotHttpCollector/sourceCatalog.ts
@@ -31,7 +33,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:owner-instructions
-  at: 2026-10-13T18:10:00Z
+  at: 2026-10-14T21:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **Primary code:** `src/services/granotHttpCollector/`  
@@ -113,7 +115,7 @@ A recognized table needs headers `job_no` and `customer`. Data rows also require
 
 ## Estimates in Process
 
-A second collector, `collectEstimatesInProcess`, and a run operation `estimates_in_process`. `collectGranotReport` keeps walking the source-company report above and still requests `mprep`. It does not request `estprocesswc`. The Estimates collector shares the two-page login (`openGranotAuthenticatedSession`) and the account lease `granot:automation:account`. After login it opens `mv~estprocesswc` and POSTs `mv~estprocessret` with `STATUS=V9`, `TYPEDTE=OPEN`, `DATE1` and `DATE2` from the run, `FUSTATUS=10`, empty `USER`, `DEPT=ALL`, `TYPE=V1`, `SORT=V6`. It does not post `STATUS=V15` and does not request `mprep`. The table has no numeric `no` column, so a separate parser maps rows onto the statement keys the normalizer already reads and drops the totals row that has no job number. Priority is one unambiguous `prior:` value inside `follow_up`. Exact observed `prior: Pool` maps to 9 only with the verified Pool=9 selector; ALL=10 is a filter only. This adds parser support, not a Pool workflow.
+A second collector, `collectEstimatesInProcess`, and a run operation `estimates_in_process`. `collectGranotReport` keeps walking the source-company report above and still requests `mprep`. It does not request `estprocesswc`. The Estimates collector shares the two-page login (`openGranotAuthenticatedSession`) and the account lease `granot:automation:account`. After login it opens `mv~estprocesswc` and POSTs `mv~estprocessret` with `STATUS=V9`, `TYPEDTE=OPEN`, `DATE1` and `DATE2` from the run, `FUSTATUS=10`, empty `USER`, `DEPT=ALL`, `TYPE=V1`, `SORT=V6`. It does not post `STATUS=V15` and does not request `mprep`. The table has no numeric `no` column, so a separate parser maps rows onto the statement keys the normalizer already reads and drops the totals row that has no job number. Priority is one unambiguous `prior:` value inside `follow_up`. Exact observed `prior: Pool` maps to 9 only with the verified Pool=9 selector; ALL=10 is a filter only. Selection defaults to ALL; explicit Pool runs post `FUSTATUS=9` and reject any returned non-Pool priority. Sharing and daily duties belong to the Outreach Pool service, not this collector.
 
 `estimatesCollection.ts` validates enabled query selectors, required direct headers, direct-cell alignment, explicit empty reports, same-session pagination and transaction totals. Multi-day reports split adaptively when their renderer is incomplete; incomplete single-day results, unsafe/repeated pages and out-of-request Open Dates fail closed. Blank individual values are allowed where the column exists. Malformed or conflicting priority evidence stays held. Optional phone2 and provider Open Date remain evidence, not new matching keys.
 
@@ -198,6 +200,16 @@ Admin `GET .../runs/:runId?details=owner` redacts `granot_statement` from the pl
 - [`estimates-in-process-update.md`](../estimates-in-process-update.md) — current Estimates contract; keeps Leads & Advertising available.
 - Tests: `granotHttpCollector.test.ts`, `runWorkflow.test.ts`, `formWorkflow.test.ts`, `sourceCatalog.test.ts`, `lifecycleStatement.test.ts`, `granot-automation.routes.test.ts`
 
+
+## Priority Pool collection and recovery
+
+The existing hourly Estimates dispatcher also schedules Pool refresh at 08:00, 13:00 and 18:00 America/New_York, after complete ALL collection for the same frozen slot, plus nightly Pool discovery at 06:00 from January 1, 2020 through today. Pool scheduling requires active Outreach configuration with Pool enabled. Refresh covers the trailing 90 inclusive provider Open Dates and every older observed provider Open Date month. A rolling 90-day-only query is insufficient: the inspected inventory included 227 Pool results older than that boundary. The nightly discovery floor is explicit; dates before 2020 are not claimed covered.
+
+`granot_estimates_schedule_slots` freezes the complete scope before child runs exist. First insert wins when the date directory changes during a slot. The ALL parent durably records its correlated Pool intent before dispatch; recovery regenerates missing manifests and children outside the original cron hour. Disabled Pool manifests cannot block ALL recovery. Pool refresh remains ineligible until every declared ALL partition has complete collection. Deterministic identities distinguish Pool from ALL without changing existing ALL identities. The shared account lease serializes collection, and ordinary lifecycle matching, assignment protection and sheet transitions remain unchanged.
+
+Discovery partitions are at most 31 days to fit the existing 120-second collection/planning budget; adaptive splitting still fails closed. Pool permits at most 256 total transport requests across session retries and 192 collection requests per child. Eighty historical children imply approximately 480 base authentication/form/report HTTP requests before adaptive splits and retries; the earlier shared-session inspection's 85 requests is not the production scheduler's traffic estimate. No authenticated session is persisted.
+
+Freshness reports ALL, Pool refresh and Pool discovery separately, including missing children from durable manifests, oldest uncovered range, held rows, collection lag and synchronization progress. Complete ALL coverage never implies complete Pool coverage. Accepted live `already_current` Estimates decisions also refresh Pool membership before the ordinary open-subject nomination gate; held or unsuccessful decisions cannot admit Pool work. Webhook `priority_updated: 9` enters the same canonical membership policy through Lead change processing. See [release evidence](../../rep-desk-and-pool/POOL-RELEASE-2026-10-14.md).
 
 ## Reviewed bounded Estimates apply
 

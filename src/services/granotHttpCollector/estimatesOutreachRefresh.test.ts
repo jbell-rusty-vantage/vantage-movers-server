@@ -8,6 +8,18 @@ import type { JobInput } from "../salesIntelligence/jobs";
 const receipt: GranotAutomationActionReceipt = { action_id: "synthetic-action", lifecycle_receipt_id: "a".repeat(24), decision_id: "b".repeat(24), outcome: "already_current", applied_at: new Date("2026-10-14T17:00:00Z") };
 const session = {} as ClientSession;
 
+test('accepted no-op Pool refresh runs before ordinary-subject lookup, within the same transaction',async()=>{
+  const steps:string[]=[];
+  await refreshExistingEstimatesOutreach(receipt,{
+    transaction:async work=>work(session),
+    decision:async()=>({execution_mode:'live',outcome:'already_current',target:{model:'FormLead',id:'c'.repeat(24)}}),
+    refreshPool:async(_lead,actualSession)=>{assert.equal(actualSession,session);steps.push('pool');},
+    openSubject:async()=>{steps.push('ordinary');return false;},
+    enqueue:async()=>{throw new Error('No ordinary subject');},
+  });
+  assert.deepEqual(steps,['pool','ordinary']);
+});
+
 test("successful live canonical no-op targets nominate existing open subjects per receipt, never preview authority", async () => {
   const jobs: JobInput[] = [];
   const deps: EstimatesOutreachRefreshDeps = {

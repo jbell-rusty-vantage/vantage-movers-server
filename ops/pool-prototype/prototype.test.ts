@@ -30,6 +30,8 @@ test('new table has no old numeric no requirement; nested tables and totals do n
  const original=syntheticPage([{job:'P101'}]);
  const nested=original.replace('<th>cf</th>','<th>cf</th><th><table><tr><th>customer</th></tr></table></th>').replace('<td>300</td>','<td>300</td><td><table><tr><td>nested fake row</td></tr></table></td>').replace('</table>','</table>');
  const parsed=parsePoolPage(nested);assert.equal(parsed.schema,'table');assert.equal(parsed.rows.length,1);assert.equal(parsed.rows[0]!.priority,'9');
+ const provider=original.replace('<td>P101</td>','<td>P101<br>provider annotation</td>').replace('Prior: 9','Prior: Pool').replace('10/01/2026','10/01/2026 09:30 AM');
+ const liveShape=parsePoolPage(provider);assert.equal(liveShape.rows[0]!.job_no,'P101');assert.equal(liveShape.rows[0]!.priority,'9');assert.equal(liveShape.rows[0]!.open_date,'2026-10-01');
  assert.equal(parsePoolPage(syntheticPage([{job:'P101'}],{oldNo:true})).schema,'invalid');
  const totals=original.replace('</table>','<tr><td></td><td></td><td></td><td></td><td>Totals</td><td></td><td></td><td></td><td></td><td></td><td>300</td></tr></table>');
  assert.equal(parsePoolPage(totals).rows.length,1);

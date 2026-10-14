@@ -177,6 +177,14 @@ const dueSums = (channel: "call" | "sms") => {
 /** Assigned scopes larger than this fall back to a count + revision-sum digest (still changes on any move). */
 const GENERATION_EXACT_LIMIT = 5000;
 
+/** Entitlement has already been freshly checked; shared duty state now precedes every query operation. */
+export function poolOverlayPipeline(match: QueueMatch): mongoose.PipelineStage[] {
+  if (!match.pool_overrides?.length) return [];
+  return [{ $replaceWith: { $mergeObjects: ["$$ROOT", { $switch: {
+    branches: match.pool_overrides.map((o) => ({ case: { $eq: ["$subject_id", oid(o.subject_id)] }, then: { $literal: o.fields } })), default: {},
+  } }] } }];
+}
+
 export const mongoDeskQueueStore: DeskQueueStore = {
   loadSubject: mongoEvaluationStore.loadSubject,
   loadPeriods: mongoEvaluationStore.loadPeriods,
@@ -190,13 +198,19 @@ export const mongoDeskQueueStore: DeskQueueStore = {
     for (const { filter, sort } of mongoQueuePageQueries(plan)) {
       const remaining = plan.limit - page.length;
       if (remaining <= 0) break;
-      const rows = await getSalesOutreachProjectionModel().find(filter, QUEUE_PROJECTION).sort(sort).limit(remaining).allowDiskUse(true).lean();
+      const rows = plan.match.pool_overrides?.length
+        ? await getSalesOutreachProjectionModel().aggregate([...poolOverlayPipeline(plan.match), { $match: filter }, { $sort: sort }, { $limit: remaining }, { $project: QUEUE_PROJECTION }]).allowDiskUse(true)
+        : await getSalesOutreachProjectionModel().find(filter, QUEUE_PROJECTION).sort(sort).limit(remaining).allowDiskUse(true).lean();
       page.push(...rows.map((row) => toStoredProjection(String(row.subject_id), row as unknown as Record<string, unknown>)));
     }
     return page;
   },
 
-  countQueue: (match) => getSalesOutreachProjectionModel().countDocuments(mongoQueueFilter(match)),
+  async countQueue(match) {
+    if (!match.pool_overrides?.length) return getSalesOutreachProjectionModel().countDocuments(mongoQueueFilter(match));
+    const [row] = await getSalesOutreachProjectionModel().aggregate<{ n: number }>([...poolOverlayPipeline(match), { $match: mongoQueueFilter(match) }, { $count: "n" }]);
+    return row?.n ?? 0;
+  },
 
   async countScope(assignment) {
     const scope = mongoAssignmentFilter(assignment);

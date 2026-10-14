@@ -12,6 +12,7 @@ import {
   type SmsSourceRow,
 } from "./derive";
 import { receiverFillCandidates, type ReceiverFillCandidate } from "./receiverFill";
+import type { ActiveConfiguration } from "../config/load";
 
 /**
  * Applies contact-event derivation for a set of sources inside one transaction (IMPLEMENTATION-PLAN
@@ -60,6 +61,7 @@ export type ContactEventStore = {
   enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean }>;
   /** Writes `ringcentral_rep_call` receivers on unassigned subjects whose Lead has none; returns how many. */
   fillEmptyReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number>;
+  recomputePoolDuties?(keys: ReadonlyArray<{ subject_id: string; business_date: string }>, configuration: ActiveConfiguration, now: Date, session: ClientSession): Promise<void>;
 };
 
 export type RepDayKey = Readonly<{
@@ -137,6 +139,7 @@ export type ApplyOptions = Readonly<{
   observe?: (draft: ContactEventDraft, changed: boolean) => void;
   /** olr C2d: the active configuration's `evidence.call_association_rule` (absent = `number_lead`). */
   association_rule?: SalesOutreachCallAssociationRule;
+  configuration?: ActiveConfiguration;
 }>;
 
 export async function applyContactSources(
@@ -170,10 +173,12 @@ export async function applyContactSources(
   };
 
   let changed = 0;
+  const poolDates = new Map<string, { subject_id: string; business_date: string }>();
   for (let i = 0; i < drafts.length; i++) {
     const draft = drafts[i]!;
     const id = ids[i]!;
     const previous = existing.get(id) ?? null;
+    for (const event of [previous, draft]) if (event?.subject_id) poolDates.set(`${event.subject_id}:${event.business_date}`, { subject_id: event.subject_id, business_date: event.business_date });
     const differs = previous?.input_fingerprint !== draft.input_fingerprint;
     options.observe?.(draft, differs);
     if (!differs) continue;
@@ -185,6 +190,9 @@ export async function applyContactSources(
     if (previous) markRepDay(previous.goal_agent_id, previous.business_date, mark);
     markRepDay(draft.goal_agent_id, draft.business_date, mark);
   }
+
+  if (poolDates.size && options.configuration && store.recomputePoolDuties)
+    await store.recomputePoolDuties([...poolDates.values()], options.configuration, options.now, session);
 
   const created: string[] = [];
   const revisions = subjectMarks.size ? await store.subjectRevisions([...subjectMarks.keys()], session) : new Map<string, number>();

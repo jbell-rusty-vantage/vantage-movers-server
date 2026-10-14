@@ -1,5 +1,7 @@
 # Pool independent review and evidence boundary
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 Status: **design and local read-only prototype independently reviewed; current live Granot Pool discovery remains blocked**. All five concrete prototype findings below are resolved and covered by passing focused checks. This is not approval to implement Pool or reconcile production records. Phase 2 opened only after both Phase 1 merges and deployed-read verification at `2026-10-14T03:07:37Z`; its baseline is server `beadfd11872acad0eede2774148fa11db651178c` and admin `5fc16d9538a308e7086dc28e157b7788f6f4c107`.
 
 Authority: [Owner brief](../knowledge/overnight-rep-desk-and-pool.md). Reviewed companions: [nine-decision approval draft](POOL-APPROVAL-SPEC.md), [canonical model](POOL-MODEL.md), [desk/shared-call design](POOL-DESK-DESIGN.md), [collection/Sheets design](POOL-COLLECTION-AND-SHEETS.md), [prototype findings](POOL-PROTOTYPE.md) and the local [prototype](../../ops/pool-prototype/). The coordinator owns the measured production API evidence and final discovery summary. This review does not alter application code, remote configuration, production data or feature permissions.

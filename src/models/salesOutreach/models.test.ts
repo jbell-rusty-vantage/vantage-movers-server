@@ -15,6 +15,8 @@ afterEach(() => {
 });
 
 const EXPECTED_COLLECTIONS = [
+  "sales_outreach_pool_work",
+  "sales_outreach_pool_duties",
   "sales_outreach_configuration",
   "sales_outreach_subjects",
   "sales_outreach_policy_periods",

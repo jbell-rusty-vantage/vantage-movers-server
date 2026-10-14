@@ -1,5 +1,7 @@
 # Pool read evidence and GET-only reproducers
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 These scripts preserve the coordinator's actual Phase 2 read method, separately from the Granot parser/matching prototype under `ops/pool-prototype/`. They perform Owner-signed GETs against the fixed deployed server API. They do not connect to Mongo, log into Granot, start/drain workers, submit POST/PATCH requests or change production data. No Pool feature or reconciliation is implemented.
 
 ## Recorded observations

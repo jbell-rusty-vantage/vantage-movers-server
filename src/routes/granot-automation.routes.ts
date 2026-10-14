@@ -86,6 +86,7 @@ const estimatesRequestSchema = z
   .object({
     operation: z.literal("estimates_in_process"),
     workflow: workflowField,
+    estimates_selection: z.enum(['all','pool']).optional(),
     ...dateFields,
   })
   .strict()
@@ -155,6 +156,7 @@ router.post(base, async (req, res) => {
       dateWindow: { from: parsed.from, to: parsed.to },
       sourceLabels: estimates ? [] : (parsed.source_labels ?? []),
       sourceIds: estimates ? undefined : parsed.source_ids,
+      estimatesSelection: parsed.operation === 'estimates_in_process' ? parsed.estimates_selection : undefined,
       filters: estimates
         ? undefined
         : {

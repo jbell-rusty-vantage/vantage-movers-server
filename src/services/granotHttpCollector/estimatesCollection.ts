@@ -13,6 +13,8 @@ export type EstimatesCoverage = {
 export type EstimatesCollectionCoverage = EstimatesCoverage;
 
 export type EstimatesCollectionControls = {
+  /** A business selector, distinct from the priority actually returned on each row. */
+  selection?: "all" | "pool";
   additionalDateWindows?: Array<{ from: string; to: string }>;
   maxRequests?: number;
   maxPages?: number;
@@ -55,6 +57,8 @@ export async function collectVerifiedEstimates(
   controls: EstimatesCollectionControls,
 ): Promise<GranotSourceCollection[]> {
   const maxRequests = controls.maxRequests ?? 128, maxPages = controls.maxPages ?? 32, chunkDays = controls.chunkDays ?? 7;
+  const selection = controls.selection ?? "all";
+  if (selection !== "all" && selection !== "pool") throw new GranotCollectorError('invalid_request', 'Invalid Estimates selection');
   if (![maxRequests, maxPages, chunkDays].every(n => Number.isInteger(n) && n > 0 && n <= 1024)) throw new GranotCollectorError('invalid_request', 'Invalid Estimates collection budget');
   const coverage: EstimatesCoverage = { complete: true, captured_at: '', requests: 0, rows: 0, windows: [] };
   const request = async (path: string, init?: Parameters<GranotAuthenticatedSession['request']>[1]) => {
@@ -69,7 +73,7 @@ export async function collectVerifiedEstimates(
   if (!verifyEstimatesForm(form)) fail('Granot Estimates form controls could not be verified');
   const sources: GranotSourceCollection[] = [];
   const collectWindow = async (from: number, to: number): Promise<void> => {
-    const body = new URLSearchParams({ STATUS:'V9', TYPEDTE:'OPEN', DATE1:format(from), DATE2:format(to), FUSTATUS:'10', USER:'', DEPT:'ALL', TYPE:'V1', SORT:'V6' });
+    const body = new URLSearchParams({ STATUS:'V9', TYPEDTE:'OPEN', DATE1:format(from), DATE2:format(to), FUSTATUS:selection === 'pool' ? '9' : '10', USER:'', DEPT:'ALL', TYPE:'V1', SORT:'V6' });
     let html: string;
     try { html = await request(`/wc.dll?mv~estprocessret~${session.sessionToken}`, { method:'POST', body }); }
     catch (error) {
@@ -84,6 +88,7 @@ export async function collectVerifiedEstimates(
         await split(); return;
       }
       if (!parsed.recognized || parsed.diagnostics.length) fail(`Granot Estimates schema invalid: ${parsed.diagnostics.join(',')}`);
+      if (selection === 'pool' && parsed.sources.some(source => source.sections.followUpEstimates.some(row => row.values.priority !== '9'))) fail('Granot Pool query returned a non-Pool or ambiguous priority');
       if (parsed.reportedTotal === null) fail('Granot Estimates transaction total missing');
       if (total !== null && total !== parsed.reportedTotal) fail('Granot Estimates transaction total changed across pages');
       total = parsed.reportedTotal;

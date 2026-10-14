@@ -57,9 +57,17 @@ export async function collectEstimatesInProcess(
   if (dateProblem) {
     throw new GranotCollectorError("invalid_request", dateProblem);
   }
+  let transportRequests = 0;
+  const budgetedDependencies: GranotCollectorDependencies = input.selection === 'pool' ? {
+    ...dependencies,
+    fetch: async (url, init) => {
+      if (++transportRequests > 256) throw new GranotCollectorError('schema_drift', 'Pool transport request budget exhausted');
+      return (dependencies.fetch ?? globalThis.fetch)(url, init);
+    },
+  } : dependencies;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await collectEstimatesInProcessOnce(input, dependencies);
+      return await collectEstimatesInProcessOnce(input, budgetedDependencies);
     } catch (error) {
       if (
         attempt === 0 &&

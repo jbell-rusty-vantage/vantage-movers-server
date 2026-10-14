@@ -50,6 +50,21 @@ const ESTIMATES_HTML = `<h1>Follow-Up Estimates, Total of: 2 Transactions</h1>
   </tr>
 </table>`;
 
+test("Pool selection posts verified priority9 and refuses a non-Pool returned row", async () => {
+  const posted: string[] = [];
+  let result = ESTIMATES_HTML.replace('prior: 0', 'prior: Pool').replace('called yesterday', 'prior: 9');
+  const session = { sessionToken: 'SYNTHETIC', request: async (_path: string, init?: { body?: unknown }) => {
+    if (!init) return ESTIMATES_FORM;
+    posted.push(String(init.body));
+    return result;
+  }};
+  const rows = await collectVerifiedEstimates(session, { from: '10/12/2026', to: '10/12/2026' }, { selection: 'pool' });
+  assert.equal(new URLSearchParams(posted[0]).get('FUSTATUS'), '9');
+  assert.equal(rows[0]?.sections.followUpEstimates.length, 2);
+  result = result.replace('prior: Pool', 'prior: 1');
+  await assert.rejects(() => collectVerifiedEstimates(session, { from: '10/12/2026', to: '10/12/2026' }, { selection: 'pool' }), /non-Pool/);
+});
+
 test("estimates parser keeps the prior digit and drops the totals row", () => {
   const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML);
   assert.equal(parsed.recognized, true);

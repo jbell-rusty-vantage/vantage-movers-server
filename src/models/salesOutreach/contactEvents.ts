@@ -54,6 +54,8 @@ export const SalesOutreachContactEventSchema = new Schema(
     verification: enumeration(SALES_OUTREACH_VERIFICATION_STATES),
     exclusion_reason: text,
     restricted_at_contact: { type: Boolean, required: true, default: false },
+    /** First Pool caller eligibility decision; retained across later roster changes, invalidated by caller/time corrections. */
+    pool_caller_eligibility: { type: new Schema({ agent_id: oid, event_at: at, eligible: { type: Boolean, required: true }, checked_at: at, reason: text }, { _id: false, strict: "throw" }), default: null },
     /** IMPL-07 association of the source's contact number(s) at contact time. */
     association: enumeration(SALES_OUTREACH_CONTACT_ASSOCIATIONS),
     /**

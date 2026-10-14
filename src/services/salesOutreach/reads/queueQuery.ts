@@ -32,7 +32,12 @@ export type QueueMatch = Readonly<{
   assignment: QueueAssignment;
   state: SalesOutreachQueueState;
   priority: Readonly<{ kind: "all" }> | Readonly<{ kind: "unknown" }> | Readonly<{ kind: "code"; code: string }>;
-  workflow: "new" | "quoted" | "daily" | "discretion" | "none" | null;
+  workflow: "new" | "quoted" | "daily" | "discretion" | "none" | "other" | null;
+  /** Other omits priority 9 only while shared Pool is enabled. */
+  exclude_pool_priority?: boolean;
+  pool_subject_ids?: readonly string[];
+  /** Fresh shared-duty/Lead overlays, applied in Mongo before match/sort/count/keyset. */
+  pool_overrides?: readonly { subject_id: string; fields: Record<string, unknown> }[];
   move_date: Readonly<{ from: string | null; to: string | null; unknown: "include" | "exclude" | "only" }> | null;
   search: QueueSearch | null;
 }>;
@@ -156,9 +161,11 @@ export function mongoAssignmentFilter(assignment: QueueAssignment): Record<strin
 /** The MongoDB filter for a match (no keyset). */
 export function mongoQueueFilter(match: QueueMatch): Record<string, unknown> {
   const and: Record<string, unknown>[] = [mongoAssignmentFilter(match.assignment), stateFilter(match.state)];
+  if (match.pool_subject_ids) and.push({ subject_id: { $in: match.pool_subject_ids.map(oid) } });
   if (match.priority.kind === "unknown") and.push({ priority_raw: null });
   if (match.priority.kind === "code") and.push({ priority_raw: match.priority.code });
-  if (match.workflow) and.push({ workflow: match.workflow });
+  if (match.workflow === "other") and.push({ workflow: { $nin: ["new", "quoted"] }, ...(match.exclude_pool_priority ? { priority_raw: { $ne: "9" } } : {}) });
+  else if (match.workflow) and.push({ workflow: match.workflow });
   if (match.move_date) {
     const { from, to, unknown } = match.move_date;
     const range: Record<string, string> = {};
@@ -269,6 +276,7 @@ function afterKeyset(sort: QueueSortSpec, row: QueueMatchable, after: QueueKeyse
 }
 
 export function matchesQueue(match: QueueMatch, row: QueueMatchable): boolean {
+  if (match.pool_subject_ids && !match.pool_subject_ids.includes(row.subject_id)) return false;
   const a = match.assignment;
   if (a.kind === "agent" && row.assigned_agent_id !== a.agent_id) return false;
   if (a.kind === "unassigned" && row.assigned_agent_id !== null) return false;
@@ -289,7 +297,8 @@ export function matchesQueue(match: QueueMatch, row: QueueMatchable): boolean {
   }
   if (match.priority.kind === "unknown" && row.priority_raw !== null) return false;
   if (match.priority.kind === "code" && row.priority_raw !== match.priority.code) return false;
-  if (match.workflow && row.workflow !== match.workflow) return false;
+  if (match.workflow === "other") { if (row.workflow === "new" || row.workflow === "quoted" || (match.exclude_pool_priority && row.priority_raw === "9")) return false; }
+  else if (match.workflow && row.workflow !== match.workflow) return false;
   if (match.move_date) {
     const { from, to, unknown } = match.move_date;
     const date = row.display.move_date;
@@ -313,6 +322,7 @@ export function matchesQueue(match: QueueMatch, row: QueueMatchable): boolean {
 /** The in-memory page: filter the full set, order it, then take the keyset page. */
 export function memoryQueuePage<T extends QueueMatchable>(rows: readonly T[], plan: QueuePagePlan): T[] {
   return rows
+    .map((row) => { const overlay = plan.match.pool_overrides?.find((o) => o.subject_id === row.subject_id); return overlay ? { ...row, ...overlay.fields } as T : row; })
     .filter((row) => matchesQueue(plan.match, row))
     .filter((row) => !plan.after || afterKeyset(plan.sort, row, plan.after))
     .sort((a, b) => compareQueueRows(plan.sort, a, b))
