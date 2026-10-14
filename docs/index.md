@@ -18,6 +18,8 @@ Sales Outreach Desk (October 2026): start at the Reference [knowledge/sales-outr
 
 CSI-16 certification (historical, pre-slimming): packet, checks, execution matrix. Removed from the tree in `b67f740f` before the slimming (git history only).
 
+Owner overnight task (October 13 New York): [Rep binder metrics, outreach dates/interactions, then Pool prototype](knowledge/overnight-rep-desk-and-pool.md). Complete and merge the desk changes first; Pool stops at discovery and an approval-ready design. This brief supersedes the older this-week/month presentation windows.
+
 ## Service
 
 Canonical bodies live under `docs/knowledge/`.
