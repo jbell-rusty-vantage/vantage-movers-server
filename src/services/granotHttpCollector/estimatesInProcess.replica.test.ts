@@ -103,33 +103,22 @@ function estimatesHtml(input: {
   user: string;
   rows: Array<{ job: string; phone: string; priority: string }>;
 }): string {
+  const headers = ["job_no", "open_date", "follow_up", "user", "customer", "email", "phone1", "phone2", "from_city", "from_state", "from_zip", "to_city", "to_state", "to_zip", "cf", "miles", "lbs", "rate", "source", "move_date", "ref_no"];
   const body = input.rows
     .map(
       (row) => `<tr>
-        <td>${row.job}</td><td>10/12/2026</td><td>prior: ${row.priority}</td><td>${input.user}</td>
-        <td>Granot Customer</td><td>granot@example.test</td><td>${row.phone}</td><td>5550009999</td>
-        <td>Miami</td><td>FL</td><td></td>
+        <td><a href="#synthetic">${row.job}</a><br><br><b>FLAG</b></td><td>10/12/2026 12:44:11 am</td><td>10/12/2026 <br><b>prior: ${row.priority}</b></td><td>${input.user}</td>
+        <td>Granot Customer</td><td>granot@example.test<br><b>VALID</b></td><td>${row.phone}</td><td>5550009999</td>
+        <td>Miami</td><td>FL</td><td>33101</td><td>Tampa</td><td>FL</td><td>33601</td>
         <td>250</td><td>12</td><td>400</td><td>1.5</td><td>${input.label}</td>
-        <td>${MOVE_DATE}</td>
+        <td><b>${MOVE_DATE}</b><br>11/21/2026</td><td></td>
       </tr>`,
     )
     .join("");
-  return `<table>
-    <tr>
-      <th>job_no</th><th>open_date</th><th>follow_up</th><th>user</th>
-      <th>customer</th><th>email</th><th>phone1</th><th>phone2</th>
-      <th>from_city</th><th>from_state</th><th>from_zip</th>
-      <th>cf</th><th>miles</th><th>lbs</th><th>rate</th><th>source</th>
-      <th>move_date</th>
-    </tr>
+  return `<h1>Follow-Up Estimates, Total of: ${input.rows.length} Transactions</h1><table>
+    <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
     ${body}
-    <tr>
-      <td></td><td></td><td></td><td></td>
-      <td>Totals</td><td></td><td></td><td></td>
-      <td></td><td></td><td></td>
-      <td>900</td><td>40</td><td>1000</td><td>3</td><td></td>
-      <td></td>
-    </tr>
+    <tr>${headers.map((header) => `<td>${header === "customer" ? "Totals" : header === "cf" ? "900" : ""}</td>`).join("")}</tr>
   </table>`;
 }
 
@@ -288,6 +277,15 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
       }),
     );
     assert.equal(parsed.recognized, true);
+    assert.equal(parsed.rowCount, 4);
+    assert.equal(parsed.reportedTotal, 4);
+    for (const source of parsed.sources) for (const row of source.sections.followUpEstimates) {
+      row.collectedAt = capturedAt.toISOString();
+      assert.equal(row.values.estimates_hold_reason, undefined);
+      assert.equal(row.values.email, "granot@example.test");
+      assert.equal(row.values.move_date, MOVE_DATE);
+      assert.ok(row.values.job_no_annotation_evidence?.includes("FLAG"));
+    }
     const plan = await assembleEstimatesPlan(parsed.sources, { runId });
     assert.equal(
       await getGranotObservationReceiptModel().countDocuments(),
@@ -304,8 +302,13 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     };
     const freshAction = actionFor(freshJob);
     const quotedAction = actionFor(quotedJob);
-    assert.equal("syncable" in freshAction && freshAction.syncable, true);
-    assert.equal("syncable" in quotedAction && quotedAction.syncable, true);
+    assert.equal("classification" in freshAction && freshAction.classification, "update", JSON.stringify("warnings" in freshAction ? freshAction.warnings : []));
+    assert.equal("classification" in quotedAction && quotedAction.classification, "update");
+    assert.equal(freshAction.collection_captured_at, capturedAt.toISOString());
+    assert.deepEqual(freshAction.lifecycle_apply?.expected_target, { model: "CallLead", id: String(freshId) });
+    const conflictAction = actionFor(incomingConflictJob), unmatchedAction = actionFor(unmatchedJob);
+    assert.equal("classification" in conflictAction && conflictAction.classification, "conflict");
+    assert.equal("classification" in unmatchedAction && unmatchedAction.classification, "no_match");
     assert.equal(freshAction.lifecycle_apply?.granot_statement.event_type, undefined);
 
     const processor = createGranotObservationProcessor({ flags: writeFlags });
