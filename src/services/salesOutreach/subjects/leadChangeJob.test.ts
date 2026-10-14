@@ -48,6 +48,31 @@ test("outreach_lead_change job: claims its own stage and enrolls a fresh intake 
   assert.equal(store.subjects.length, 1);
 });
 
+test("Estimates receipt refresh refuses missing/closed subjects at execution and nominates evaluation even when current facts are unchanged", async () => {
+  const lead = leadFacts();
+  const key = `sod:lead-change:FormLead:${lead.ref.id}:estimates-refresh:${"a".repeat(24)}`;
+  assert.equal(triggerOfJob(key), "estimates_refresh");
+  const missing = harness(lead, undefined, key);
+  assert.equal((await runOutreachLeadChangeJob(undefined, missing.deps)).result?.reason, "estimates_refresh_existing_open_only");
+  assert.equal(missing.store.subjects.length, 0);
+  const existing = harness(lead);
+  await runOutreachLeadChangeJob(undefined, existing.deps);
+  const initial = structuredClone(existing.store.subjects[0]!);
+  const refresh = harness(lead, undefined, key);
+  refresh.store.subjects.push(initial);
+  refresh.store.periods.push(...structuredClone(existing.store.periods));
+  const evaluationJobs: unknown[] = [];
+  refresh.deps.enqueue = async (job) => { evaluationJobs.push(job); };
+  const result = await runOutreachLeadChangeJob(undefined, refresh.deps);
+  assert.equal(result.result?.outcome, "unchanged");
+  assert.equal(evaluationJobs.length, 1, "existing no-op subjects still refresh their queue projection");
+  assert.deepEqual(refresh.store.subjects[0], initial);
+  const closed = harness(lead, undefined, key);
+  closed.store.subjects.push({ ...initial, status: "closed" });
+  assert.equal((await runOutreachLeadChangeJob(undefined, closed.deps)).result?.reason, "estimates_refresh_existing_open_only");
+  assert.equal(closed.store.subjects[0]!.status, "closed");
+});
+
 test("olr B8: the stored job result names the subject status and the admission path (read by GET /enrollment/admissions)", async () => {
   const { deps, store } = harness();
   let stored: unknown;

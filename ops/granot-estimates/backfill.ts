@@ -87,7 +87,8 @@ async function main() {
       for (let attempt = 0; attempt < 250; attempt++) {
         run = await ownerApi<Run>("GET", `${RUNS_PATH}/${entry.run_id}`, undefined, { details: "owner" });
         if (["completed", "failed", "expired"].includes(run.status)) break;
-        await ownerApi("POST", `${RUNS_PATH}/worker`, { action: "execute" });
+        const worker = await ownerApi<{ claimed?: boolean }>("POST", `${RUNS_PATH}/worker`, { action: "execute" });
+        if (!worker.claimed) await new Promise((done) => setTimeout(done, 2000));
       }
       if (!run || run.status !== "completed" || !run.plan || !run.plan_checksum) throw new Error(`Preview incomplete for ${entry.window.from}; inspect run ${entry.run_id}.`);
       if (run.collection?.coverage?.complete !== true) throw new Error("Preview incomplete: deployed collector did not attest complete coverage.");
@@ -129,7 +130,8 @@ async function main() {
     await save();
     console.log(JSON.stringify({ kind: "backfill_status", at: new Date().toISOString(), pending_runs: pending, outcomes: manifest.entries.reduce<Record<string, number>>((out, e) => { for (const [key, count] of Object.entries(e.outcomes ?? {})) out[key] = (out[key] ?? 0) + count; return out; }, {}), ...(!pending || mode === "verify" ? { statuses: manifest.entries.map((e) => ({ window: e.window, run_id: e.run_id, status: e.status, outcomes: e.outcomes })) } : {}) }));
     if (!pending || mode === "verify") return;
-    await ownerApi("POST", `${RUNS_PATH}/worker`, { action: "execute" });
+    const worker = await ownerApi<{ claimed?: boolean }>("POST", `${RUNS_PATH}/worker`, { action: "execute" });
+    if (!worker.claimed) await new Promise((done) => setTimeout(done, 2000));
   }
   throw new Error("Backfill execution budget reached; manifest is resumable.");
 }

@@ -38,6 +38,7 @@ export type GranotAutomationActionReceipt = {
   outcome: SynchronizationOutcome | "accepted_for_processing" | "technical_failure";
   applied_at: Date;
   error_code?: string;
+  outreach_refresh_completed?: boolean;
 };
 
 export type ApplyAutomationActionInput = {

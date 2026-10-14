@@ -137,6 +137,34 @@ test("exposure: enforcement wins, shadow alone is shadow, both off evaluates not
 
 /* ---------------------------------------------------------------- evaluate + project */
 
+test("queue priority follows current accepted subject facts while same-workflow cadence periods stay immutable", async () => {
+  for (const scenario of [
+    { previous: null, accepted: "0", workflow: "new" as const },
+    { previous: "2", accepted: "3", workflow: "daily" as const },
+  ]) {
+    const { store, subject } = seeded({ priority: { raw: scenario.previous, accepted_at: null, observation_id: null, basis: scenario.previous === null ? "intake_default" : "accepted_observation", uncertain: false } });
+    store.periods[0] = { ...store.periods[0]!, workflow: scenario.workflow, priority: scenario.previous };
+    const originalPeriods = structuredClone(store.periods);
+    const asOf = at("2026-10-05T14:10:00.000Z");
+    const context = admitted();
+    await evaluateAndProject(subject.id, context, asOf, store, fakeSession);
+    const before = structuredClone(store.projections.get(subject.id)!);
+    store.subjects.set(subject.id, { ...subject, priority: { raw: scenario.accepted, accepted_at: asOf, observation_id: "accepted-priority-observation", basis: "accepted_observation", uncertain: false }, revision: subject.revision + 1 });
+    const changed = await evaluateAndProject(subject.id, context, asOf, store, fakeSession);
+    const after = store.projections.get(subject.id)!;
+    assert.equal(changed.outcome, "updated", "the projection fingerprint includes accepted priority even when cadence is unchanged");
+    assert.equal(after.doc.priority_raw, scenario.accepted);
+    assert.equal(after.doc.workflow, scenario.workflow);
+    assert.equal(after.doc.period_id, before.doc.period_id);
+    assert.deepEqual(after.doc.call, before.doc.call);
+    assert.deepEqual(after.doc.sms, before.doc.sms);
+    assert.deepEqual(after.doc.window_history, before.doc.window_history);
+    assert.deepEqual(store.periods, originalPeriods, "period history and its original priority basis remain intact");
+    assert.notEqual(after.doc.result_fingerprint, before.doc.result_fingerprint);
+    assert.equal((await evaluateAndProject(subject.id, context, asOf, store, fakeSession)).outcome, "unchanged");
+  }
+});
+
 test("evaluate: the first run writes the projection; identical input writes nothing; new evidence writes a new publication", async () => {
   const { store, subject } = seeded({ assigned_agent_id: TEST_AGENT_A });
   store.links.push({ agent_id: TEST_AGENT_A, effective_from: at("2026-01-01T00:00:00Z"), effective_to: null });

@@ -110,6 +110,7 @@ export function resultFingerprint(result: EvaluateSubjectResult, subject: DeskSu
     received_at: subject.received_at?.toISOString() ?? null,
     job_pending: !subject.display.job_no,
     subject_status: subject.status,
+    priority_raw: subject.priority.raw,
     display: projectionDisplayOf(subject),
   });
 }
@@ -132,7 +133,9 @@ export function toProjectionWrite(subject: DeskSubjectRow, result: EvaluateSubje
     display: projectionDisplayOf(subject),
     queue_keys: queueKeysOf(result, subject.received_at),
     workflow: result.workflow,
-    priority_raw: result.priority_raw,
+    // A same-workflow priority change preserves the cadence period's basis.
+    // Queue display/filtering follows the current accepted Lead fact instead.
+    priority_raw: subject.priority.raw,
     status_flags: {
       needs_contact: result.flags.needs_contact,
       overdue: result.flags.overdue,

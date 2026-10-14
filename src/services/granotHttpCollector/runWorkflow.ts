@@ -41,6 +41,9 @@ import {
   type EstimatesPartition,
 } from "./estimatesInProcess";
 import type { EstimatesCollectionCoverage } from "./estimatesCollection";
+import { refreshExistingEstimatesOutreach } from "./estimatesOutreachRefresh";
+
+class EstimatesOutreachRefreshRetry extends Error {}
 import { planEstimatesIdentities, type EstimatesIdentityPlanningDeps } from "./estimatesIdentityPlanning";
 import { GranotRunConflict } from "./errors";
 import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot } from "./estimatesCron";
@@ -441,6 +444,7 @@ export async function runGranotWorker(deps: {
   applyAction?: typeof applyAutomationPlanAction;
   loadReplayStates?: typeof loadAutomationReplayStates;
   planRun?: typeof planRun;
+  refreshOutreach?: typeof refreshExistingEstimatesOutreach;
 } = {}): Promise<{
   claimed: boolean;
   run_id?: string;
@@ -482,7 +486,7 @@ export async function runGranotWorker(deps: {
     }
     return { claimed: true, run_id: runId, status: plannedStatus };
   } catch (error) {
-    if (runId) await failRun(runId, lease, error);
+    if (runId && !(error instanceof EstimatesOutreachRefreshRetry)) await failRun(runId, lease, error);
     throw error;
   } finally {
     await leaseStore.release({ token: lease, now: new Date() });
@@ -862,6 +866,7 @@ async function planCallWorkflow(
 async function applyRun(runId: string, lease: LeaseToken, deps: {
   applyAction?: typeof applyAutomationPlanAction;
   loadReplayStates?: typeof loadAutomationReplayStates;
+  refreshOutreach?: typeof refreshExistingEstimatesOutreach;
 } = {}): Promise<string> {
   const applyAction = deps.applyAction ?? applyAutomationPlanAction;
   const run = await GranotAutomationRun.findOne({
@@ -908,11 +913,30 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   let pendingReplays = 0;
   let processedActions = 0;
   const applyDeadline = Date.now() + 120_000;
+  const refreshReceipt = async (receipt: GranotAutomationActionReceipt) => {
+    if (run.operation !== "estimates_in_process" || receipt.outreach_refresh_completed || !isTerminalAutomationActionOutcome(receipt.outcome)) return;
+    try {
+      await (deps.refreshOutreach ?? refreshExistingEstimatesOutreach)(receipt);
+      receipt.outreach_refresh_completed = true;
+      await upsertActionReceipt(runId, lease, receipt, completed);
+    } catch (error) {
+      // Preserve applying state so the stored terminal receipt retries its
+      // idempotent nomination after a crash or transient job-store failure.
+      await yieldApplyingRun(runId, lease, completed, true);
+      throw new EstimatesOutreachRefreshRetry(error instanceof Error ? error.message : "Estimates outreach refresh could not be nominated.");
+    }
+  };
 
   for (const action of plan.actions) {
     if (!selectedSet.has(action.action_id)) continue;
     const existing = receiptsByAction.get(action.action_id);
     if (existing && isTerminalAutomationActionOutcome(existing.outcome)) {
+      if (run.operation === "estimates_in_process" && !existing.outreach_refresh_completed) {
+        if (processedActions >= 25 || Date.now() >= applyDeadline) break;
+        processedActions += 1;
+        await renewRunLease(runId, lease, "applying");
+        await refreshReceipt(existing);
+      }
       continue;
     }
     const replay = existing ? replayStates.get(existing.lifecycle_receipt_id) : undefined;
@@ -961,17 +985,22 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
       completed += 1;
     }
     await upsertActionReceipt(runId, lease, receipt, terminal ? completed : undefined);
+    await refreshReceipt(receipt);
     receiptsByAction.set(action.action_id, receipt);
     // A pending match owns only this action. Independent reviewed actions must
     // still reach their canonical decisions before the run waits for retries.
   }
 
-  const status = automationRunCompletionStatus(
+  const refreshPending = run.operation === "estimates_in_process" && selected.some((id) => {
+    const receipt = receiptsByAction.get(id);
+    return receipt && isTerminalAutomationActionOutcome(receipt.outcome) && !receipt.outreach_refresh_completed;
+  });
+  const status = refreshPending ? "applying" : automationRunCompletionStatus(
     [...receiptsByAction.values()],
     selected,
   );
   if (status === "applying") {
-    await yieldApplyingRun(runId, lease, completed, selected.some((id) => !receiptsByAction.has(id)));
+    await yieldApplyingRun(runId, lease, completed, refreshPending || selected.some((id) => !receiptsByAction.has(id)));
     return status;
   }
   const finished = await GranotAutomationRun.updateOne(

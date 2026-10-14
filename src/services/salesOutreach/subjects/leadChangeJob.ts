@@ -7,6 +7,8 @@ import { OutreachError } from "../errors";
 import type { DeskLeadRef } from "./leadFacts";
 import { mongoDeskSubjectStore, type DeskSubjectStore } from "./store";
 import { expansionAdmissionOf, expansionNeedsCreationSettled, hasAmbiguousIdentity, intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
+import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { evaluationJob } from "../evaluation/evaluateJob";
 
 /**
  * The job's stored result (`sales_intelligence_jobs.result`, kept 14 days), read by
@@ -28,10 +30,10 @@ export type LeadRefreshResult = Readonly<{
  * tail's `…:admission:r<rev>` nomination (expansion only, never intake), `default` otherwise (the intake
  * gate on a creation, a plain refresh for a subject).
  */
-export type LeadChangeTrigger = "default" | "admission";
+export type LeadChangeTrigger = "default" | "admission" | "estimates_refresh";
 
 /** The trigger of a claimed `outreach_lead_change` row, from its own `dedupe_key`. */
-export const triggerOfJob = (dedupeKey: string): LeadChangeTrigger => (dedupeKey.includes(":admission:") ? "admission" : "default");
+export const triggerOfJob = (dedupeKey: string): LeadChangeTrigger => dedupeKey.includes(":estimates-refresh:") ? "estimates_refresh" : dedupeKey.includes(":admission:") ? "admission" : "default";
 
 /**
  * The work of one `outreach_lead_change` job, inside its transaction: refresh the Lead's subject from
@@ -53,6 +55,9 @@ export async function refreshLeadForOutreach(
 ): Promise<LeadRefreshResult> {
   const [facts] = await store.loadLeads([lead], session);
   const [subject] = await store.findSubjects([lead], session);
+  if (trigger === "estimates_refresh" && (!subject || subject.status === "closed")) {
+    return { outcome: "not_admitted", subject_id: subject?.id ?? null, reason: "estimates_refresh_existing_open_only", status: subject?.status ?? null, admission: null };
+  }
   if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found", status: subject?.status ?? null, admission: null };
   const context = await loadSubjectPageContext(store, [facts], asOf, session);
   if (subject) {
@@ -82,6 +87,7 @@ export type LeadChangeJobDeps = {
   claim?: typeof claimCsiJob;
   complete?: typeof completeCsiJob;
   fail?: typeof failCsiJob;
+  enqueue?: (job: JobInput, session: ClientSession) => Promise<unknown>;
 };
 
 export type LeadChangeJobStatus = "configuration_unavailable" | "not_claimable" | "completed" | "lease_lost" | "retry";
@@ -109,7 +115,12 @@ export async function runOutreachLeadChangeJob(jobId?: string, deps: LeadChangeJ
         if (current.revision !== admitted.revision || current.version !== admitted.version)
           throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "configuration", code: "revision_changed" }]);
         const now = (deps.now ?? (() => new Date()))();
-        return refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, triggerOfJob(String(row.dedupe_key ?? "")));
+        const trigger = triggerOfJob(String(row.dedupe_key ?? ""));
+        const refreshed = await refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, trigger);
+        if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted") {
+          await (deps.enqueue ?? enqueueCsiJob)(evaluationJob(refreshed.subject_id, `estimates-refresh:${String(row.dedupe_key)}`), session);
+        }
+        return refreshed;
       },
       { resultFrom: (value) => value },
     );

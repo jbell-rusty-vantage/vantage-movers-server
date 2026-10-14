@@ -5,6 +5,8 @@ import { ownerApi } from "./api-client";
 import { normalizeJobNo } from "../../src/services/bookings/bookingIdentity";
 
 type LeadFact = { id: string; model: string; job: string | null; priority: string | null; receiver: string | null; receiver_source: string | null; quoted: boolean; cubic_feet: number | null; closed: boolean; revision: number; accepted_at: string | null };
+type DeskRow = { subject_id: string; job_no: string | null; assigned_agent_id: string | null; priority_raw: string | null; workflow: string | null };
+type DeskPage = { rows: DeskRow[]; next_cursor: string | null; has_more: boolean };
 const identity = (value: unknown): string | null => typeof value === "string" ? value : value && typeof value === "object" ? String((value as Record<string, unknown>)._id ?? (value as Record<string, unknown>).id ?? "") || null : null;
 
 async function main() {
@@ -34,11 +36,11 @@ async function main() {
   const deskAgents = new Set(team.daily_call_goals.map((row) => row.agent_id));
   const byJob = new Map<string, LeadFact[]>();
   for (const lead of leads) if (lead.job) { const group = byJob.get(lead.job) ?? []; group.push(lead); byJob.set(lead.job, group); }
-  const queue: Array<{ subject_id: string; job_no: string | null; assigned_agent_id: string | null; priority_raw: string | null; workflow: string | null }> = [];
+  const queue: DeskRow[] = [];
   let cursor: string | null = null;
   const subjects = new Set<string>();
   for (let page = 0; page < 100; page++) {
-    const data = await ownerApi<{ rows: typeof queue; next_cursor: string | null; has_more: boolean }>("GET", "/api/v1/admin/sales-outreach/queue", undefined, { state: "all_active", sort: "lead_received", direction: "asc", limit: "100", ...(cursor ? { cursor } : {}) });
+    const data: DeskPage = await ownerApi<DeskPage>("GET", "/api/v1/admin/sales-outreach/queue", undefined, { state: "all_active", sort: "lead_received", direction: "asc", limit: "100", ...(cursor ? { cursor } : {}) });
     for (const row of data.rows) { if (subjects.has(row.subject_id)) throw new Error("Desk traversal repeated an identity."); subjects.add(row.subject_id); queue.push(row); }
     if (!data.has_more) break;
     if (!data.next_cursor || data.next_cursor === cursor) throw new Error("Desk cursor did not advance.");
@@ -49,7 +51,9 @@ async function main() {
   const assignmentMismatches: string[] = [], priorityMismatches: string[] = [], workflowMismatches: string[] = [];
   for (const row of queue) {
     if (!row.job_no) { noJob++; continue; }
-    const candidates = byJob.get(normalizeJobNo(row.job_no)) ?? [];
+    const job = normalizeJobNo(row.job_no);
+    if (!job) { noJob++; continue; }
+    const candidates = byJob.get(job) ?? [];
     if (candidates.length !== 1) { ambiguous++; continue; }
     const lead = candidates[0]!; comparable++;
     if (lead.receiver && deskAgents.has(lead.receiver) && row.assigned_agent_id !== lead.receiver) assignmentMismatches.push(row.subject_id);

@@ -20,6 +20,7 @@ test("replica: pending match does not block later actions or another approved ru
   const fresh = new mongoose.Types.ObjectId();
   const bounded = new mongoose.Types.ObjectId();
   const legacy = new mongoose.Types.ObjectId();
+  const refreshRetry = new mongoose.Types.ObjectId();
   const actor = { actor_type: "owner", actor_id: "pending-apply-test", actor_role: "owner", origin: "vantage_admin" };
   async function seed(id: mongoose.Types.ObjectId, actions: string[], last: Date) {
     const plan = { kind: "estimates_in_process", schema_version: 2, actions: actions.map((action_id) => ({ action_id, classification: "update", collection_captured_at: "2026-10-13T12:00:00.000Z", lifecycle_apply: { operation_id: `${id}:${action_id}`, operation_kind: "lead_snapshot_apply", granot_statement: { priority: "0", job_no: "SYNTHETIC-100" } } })), counters: { update: actions.length } };
@@ -102,7 +103,19 @@ test("replica: pending match does not block later actions or another approved ru
     assert.equal(legacyDone?.receipts.find((receipt) => receipt.action_id === "legacy-receipt")?.outcome, "applied");
     assert.equal(legacyDone?.receipts.find((receipt) => receipt.action_id === "legacy-fresh")?.error_code, "RUN_REPLAN_REQUIRED");
     assert.equal(calls.includes("legacy-fresh"), false, "legacy fresh evidence is never captured at apply time");
+    await seed(refreshRetry, ["refresh-retry"], new Date("2000-01-01"));
+    let refreshCalls = 0;
+    const refreshDeps = { ...deps, refreshOutreach: async () => { refreshCalls += 1; if (refreshCalls === 1) throw new Error("synthetic transient enqueue failure"); return "enqueued" as const; } };
+    await assert.rejects(runGranotWorker(refreshDeps), /synthetic transient enqueue failure/);
+    const crashed = await GranotAutomationRun.findById(refreshRetry).lean();
+    assert.equal(crashed?.status, "applying", "saved terminal receipt retains recoverable apply status until refresh nomination commits");
+    assert.equal(crashed?.receipts.length, 1);
+    assert.equal(crashed?.receipts[0]?.outreach_refresh_completed, undefined);
+    assert.equal((await runGranotWorker(refreshDeps)).run_id, String(refreshRetry));
+    assert.equal(calls.filter((id) => id === "refresh-retry").length, 1, "terminal canonical action never reapplies after nomination failure");
+    assert.equal(refreshCalls, 2);
+    assert.equal((await GranotAutomationRun.findById(refreshRetry))?.status, "completed");
   } finally {
-    await GranotAutomationRun.deleteMany({ _id: { $in: [first, second, requeued, fresh, bounded, legacy] } });
+    await GranotAutomationRun.deleteMany({ _id: { $in: [first, second, requeued, fresh, bounded, legacy, refreshRetry] } });
   }
 });
