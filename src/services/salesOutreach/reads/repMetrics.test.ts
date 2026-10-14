@@ -5,7 +5,7 @@ import { completeConfigurationInput } from "../evaluation/testing";
 import { toDeskLeadFacts, type DeskLeadFacts } from "../subjects/leadFacts";
 import { salesOutreachRepMetricsDtoSchema, salesOutreachRepMetricsQuerySchema } from "../../../validation/v1/salesOutreachReads";
 import { activeInspection, fixedConfigurationLoader } from "./testing";
-import { applyPotentialCancellations, composeAssignedPotential, composeOfficialBinder, readRepMetrics, repBinderWindows, toRepMetricBooking, type RepMetricBooking, type RepMetricsStore } from "./repMetrics";
+import { applyPotentialCancellations, composeAssignedPotential, composeOfficialBinder, isOfficialMetricBooking, readRepMetrics, repBinderWindows, toRepMetricBooking, type RepMetricBooking, type RepMetricsStore } from "./repMetrics";
 const A = "aaaaaaaaaaaaaaaaaaaaaaaa", B = "bbbbbbbbbbbbbbbbbbbbbbbb";
 const NOW = new Date("2026-10-13T15:00:00Z");
 const key = (n: number) => n.toString(16).padStart(24, "0");
@@ -13,7 +13,8 @@ function lead(n: number, patch: Record<string, unknown> = {}, model: "FormLead" 
   return toDeskLeadFacts(model, { _id: key(n), receiver_agent: A, ...patch });
 }
 function booking(n: number, patch: Partial<RepMetricBooking> = {}): RepMetricBooking {
-  return { id: key(n), book_date: "2026-10-13", allocations: [{ agent_id: A, amount: 50.01 }, { agent_id: B, amount: 50 }], total: 100.01, cancelled: false, lead: { model: "FormLead", id: key(n) }, referral: false, leadless: false, origin: null, ...patch };
+  const lead = patch.lead === undefined ? { model: "FormLead" as const, id: key(n) } : patch.lead;
+  return { raw_lead_ref: lead?.id, raw_lead_model: lead?.model, id: key(n), book_date: "2026-10-13", allocations: [{ agent_id: A, amount: 50.01 }, { agent_id: B, amount: 50 }], total: 100.01, cancelled: false, lead: { model: "FormLead", id: key(n) }, referral: false, leadless: false, origin: null, ...patch };
 }
 
 test("NY calendar windows are entire previous week/month across January, midnight and DST", () => {
@@ -117,4 +118,32 @@ test("canonical cancellation records exclude missing Lead/Booking cancellation m
     { _id: key(99), lead_model: "FormLead", lead_ref: key(1) }, { _id: key(98), booked_lead: key(2) },
   ]);
   assert.equal(composeAssignedPotential(A, leads, [booking(1), booking(2), booking(3)]).known_binder_total, 100.01);
+});
+
+
+test("official leadless credit rejects residual raw Lead pointers after adapter normalization", () => {
+  const base = {
+    book_date: new Date("2026-10-13T00:00:00Z"), is_leadless_booking: true,
+    agent_allocations: [{ agent: A, binder_amount: 100.01 }], total_binder_amount: 100.01,
+  };
+  const partialLinks = [
+    { lead_ref: key(1) },
+    { lead_model: "FormLead" },
+    { lead_model: "CallLead" },
+    { lead_ref: key(1), lead_model: "LegacyLead" },
+    { lead_ref: key(1), lead_model: null },
+    { lead_ref: null, lead_model: "FormLead" },
+  ];
+  const malformed = partialLinks.map((link, index) => toRepMetricBooking({ ...base, _id: key(index + 1), ...link }));
+  for (const booking of malformed) {
+    assert.equal(booking.lead, null, "a partial pointer has no canonical attached Lead");
+    assert.equal(isOfficialMetricBooking(booking), false, "partial identity must not fall through to official leadless");
+  }
+  const officialLeadless = toRepMetricBooking({ ...base, _id: key(20) });
+  const explicitNullLeadless = toRepMetricBooking({ ...base, _id: key(21), lead_ref: null, lead_model: null });
+  const attached = toRepMetricBooking({ ...base, _id: key(22), is_leadless_booking: false, lead_ref: key(22), lead_model: "CallLead" });
+  for (const booking of [officialLeadless, explicitNullLeadless, attached]) assert.equal(isOfficialMetricBooking(booking), true);
+  const total = composeOfficialBinder(A, NOW, [...malformed, officialLeadless, explicitNullLeadless, attached]);
+  assert.equal(total.all_time, 300.03);
+  assert.equal(total.booking_count, 3);
 });

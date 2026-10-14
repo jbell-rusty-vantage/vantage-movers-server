@@ -21,6 +21,9 @@ export type RepMetricBooking = Readonly<{
   total: number | null;
   cancelled: boolean;
   lead: Readonly<{ model: "FormLead" | "CallLead"; id: string }> | null;
+  /** Preserve incomplete storage pointers for the canonical official-leadless gate. */
+  raw_lead_ref: unknown;
+  raw_lead_model: unknown;
   referral: boolean;
   leadless: boolean;
   origin: string | null;
@@ -44,6 +47,8 @@ export function toRepMetricBooking(raw: Record<string, unknown>): RepMetricBooki
     total: amount(raw.total_binder_amount),
     cancelled: Boolean(raw.cancelled),
     lead: raw.lead_ref && (raw.lead_model === "FormLead" || raw.lead_model === "CallLead") ? { model: raw.lead_model, id: String(raw.lead_ref) } : null,
+    raw_lead_ref: raw.lead_ref,
+    raw_lead_model: raw.lead_model,
     referral: raw.is_referral_booking === true,
     leadless: raw.is_leadless_booking === true,
     origin: typeof raw.booking_origin === "string" ? raw.booking_origin : null,
@@ -96,6 +101,7 @@ export function applyPotentialCancellations(leads: readonly DeskLeadFacts[], can
 export function isOfficialMetricBooking(booking: RepMetricBooking): boolean {
   return booking.lead !== null || booking.referral || isGranotOfficialLeadlessBooking({
     is_leadless_booking: booking.leadless, is_referral_booking: booking.referral, booking_origin: booking.origin,
+    lead_ref: booking.raw_lead_ref, lead_model: booking.raw_lead_model,
   });
 }
 

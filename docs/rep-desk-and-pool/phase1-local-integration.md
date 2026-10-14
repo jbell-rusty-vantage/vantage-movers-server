@@ -25,7 +25,11 @@ The assigned metric is the known **attached Booking total** under current receiv
 
 ## Actual replica change stream: passed
 
-`ops/local-integration/phase1-live-proof.ts` watches the real combined database change stream, including Mongo's `$map`/allowlist projection. It proves committed binder updates, old/new allocation arrays plus current assignee, reassignment before/after, cancellation broadcasts confined to each Rep's own scope, and foreign Rep isolation. An aborted transaction inserting an EntityChange emits no metric hint. Hints contain the topic and scoped ids only, without money/customer/entity values. The script restores the fixture's binder total and allocations on success and in cleanup.
+`ops/local-integration/phase1-live-proof.ts` watches the real combined database change stream, including Mongo's `$map`/allowlist projection. The final rerun installed and verified all four declared EntityChange indexes, including unique `{ entity.model, entity.id, revision_after }`; a duplicate revision receipt was rejected with Mongo error `11000`. It proves committed binder updates, old/new allocation arrays plus a distinct current assignee, actual reassignment before/after, actual cancellation mutations confined to each Rep's own scope, and foreign Rep isolation. An aborted aggregate-plus-receipt transaction emits no metric hint and changes neither stored revision nor receipt count. Hints contain the topic and scoped ids only, without money/customer/entity values.
+
+The final helpers read the aggregate inside the transaction, guard its actual `domain_revision` with CAS, advance it by one, stamp change metadata, and insert a schema-validated immutable EntityChange with matching adjacent revisions, complete provenance, and sorted matching fields. No fixed `1 → 2` receipts remain in the final proof. The live helper restores booking money/allocations, source assignment, and cancellation pointers through the same revisioned transaction seam; an already-restored fixture is a no-op.
+
+Before index installation, explicit guarded cleanup removed **16 legacy synthetic proof receipts** from `testvantagemovers_phase1` only. Cleanup requires that exact disposable database on loopback, one of the two local proof command names, and missing provenance actor or initiator; corrected receipts are preserved. A repeat cleanup deleted **0**, retaining all 15 corrected receipts. Two consecutive bump/restore cycles advanced Booking revisions `3 → 4 → 5 → 6 → 7`, and a fifth restore was a no-op. After browser verification, the audit found 11 contiguous Booking receipts ending at aggregate revision 11, two Form receipts ending at revision 3, and two Cancellation receipts ending at revision 2; `last_change_id` matched each final receipt. Booking `$100.01`, allocations `$50.01/$50.00`, and displayed money were restored. Machine-readable indexed evidence is [phase1-indexed-proof.json](phase1-indexed-proof.json).
 
 ## Reproduction
 
@@ -33,6 +37,7 @@ Use the existing loopback replica; do not start a competing container. Run the s
 
 ```sh
 node --import tsx ops/local-integration/phase1-metrics-proof.ts --database=testvantagemovers_phase1
+node --import tsx ops/local-integration/phase1-entity-change-indexes.ts --database=testvantagemovers_phase1
 node --import tsx ops/local-integration/phase1-live-proof.ts --database=testvantagemovers_phase1
 node --import tsx ops/local-integration/phase1-queue-fixtures.ts --database=testvantagemovers_phase1
 ```
@@ -41,9 +46,9 @@ The queue fixture explicitly seeds synthetic projection interaction ages and tod
 
 Admin: real API `http://127.0.0.1:3107`, no mock mode, UI `http://localhost:3100`. The guarded Admin launcher is `node scripts/phase1-local-admin.mjs`; it refuses checkout `.env` files and strips provider credentials. A linked node_modules root initially caused a Turbopack filesystem panic and webpack hydration failures. Copying the same already-installed packages into the worktree with hardlinks resolved the filesystem layout issue; package versions and application source stayed unchanged. System Chromium `/usr/bin/chromium` is selected by the tracked `tests/e2e/phase1-local.config.ts` (override `E2E_CHROMIUM_PATH` for another existing executable); no browser download or DTO/browser response mock was needed.
 
-## Real browser walk: 3/3 passed (2.1 minutes)
+## Real indexed browser walk: 3/3 passed (51 seconds)
 
-The final walk used the real login, BFF, server read adapters, local replica and SSE. The first test verifies the exact money DTO, Rep foreign-Agent 403, all four labels, partial coverage, Today/Past/Unknown presentation, latest interaction/no interaction wording, Future's today inclusion, URL persistence across reload, complete two-row server cursor traversal, and search + priority + workflow + date composition. The second verifies Owner and Manager viewing Avery, their Team move-date filtering, and generic Admin 403. The third verifies a committed binder/allocation event refreshes the card, then closes the stream through the app's hidden-page lifecycle, commits a change while closed, and verifies reopening/refetch recovers the missed amount. Its fixture is restored in `finally`.
+The final walk used the real login, BFF, server read adapters, local replica with all declared EntityChange indexes, and SSE. The first test verifies the exact money DTO, Rep foreign-Agent 403, all four labels, partial coverage, Today/Past/Unknown presentation, latest interaction/no interaction wording, Future's today inclusion, URL persistence across reload, complete two-row server cursor traversal, and search + priority + workflow + date composition. The second verifies Owner and Manager viewing Avery, their Team move-date filtering, and generic Admin 403. The third verifies a committed revisioned binder/allocation event refreshes the card, then closes the stream through the app's hidden-page lifecycle, commits a change while closed, and verifies reopening/refetch recovers the missed amount. Its fixture is restored in `finally`. Scoped ESLint passed on all Phase 1 helper TypeScript files with the repository's existing correctness rules (the normal lint glob omits these ops scripts).
 
 Playwright's `setOffline` did not tear down an already-established SSE in this Chromium. The recovery proof therefore uses the actual app stream close/reopen lifecycle; document visibility is controlled in the browser, while all responses, mutations and stream traffic remain real. A separate simulated transport-offline caption is not claimed as proven.
 
