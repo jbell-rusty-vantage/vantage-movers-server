@@ -100,7 +100,7 @@ export function normalizeQueueQuery(actor: OutreachActor, query: SalesOutreachQu
     state: query.state ?? "needs_contact",
     priority: priority === "all" ? { kind: "all" } : priority === "unknown" ? { kind: "unknown" } : { kind: "code", code: priority },
     workflow: workflow === "all" ? null : workflow,
-    exclude_pool_priority: poolEnabled,
+    ...(workflow === "other" ? { exclude_pool_priority: poolEnabled } : {}),
     move_date: hasRange || unknown !== "include" ? { from: query.move_date_from ?? null, to: query.move_date_to ?? null, unknown } : null,
     search: queueSearchOf(search ?? undefined),
   };
