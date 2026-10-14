@@ -128,3 +128,16 @@ test("assembly keeps Bad exact Form authority priority-only and holds conflictin
   assert.equal("classification" in held.actions[0]! && held.actions[0].classification, "conflict");
   assert.equal(formAction(held).reason, "source_scope_conflict");
 });
+
+test("fresh report holds all competing new Jobs for one Form target, permits aliases and priority-only authority", async () => {
+  const forms = [{ id: leadId, duplicate: false, ref_no: "exact", lead_source_company: company, source_granularity_id: granularity }];
+  const deps = stores("FormLead", { forms });
+  const conflict = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact", job_no: "123" }, { ref_no: "exact", job_no: "124" }])], { runId, canonical: deps.canonical });
+  assert.ok(conflict.actions.every((action) => "classification" in action && action.classification === "conflict" && action.reason === "competing_target_job_attachments"));
+  const aliases = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact", job_no: "P123" }, { ref_no: "exact", job_no: "123" }])], { runId, canonical: deps.canonical });
+  assert.ok(aliases.actions.every((action) => "classification" in action && action.classification === "update"));
+  assert.equal(formAction(aliases).report_identity?.job_equivalence_sha256, formAction(aliases, 1).report_identity?.job_equivalence_sha256);
+  const bad = stores("FormLead", { forms: [{ ...forms[0]!, bad_lead: "spam" }] });
+  const priorityOnly = await assembleEstimatesPlan([source("Synthetic", [{ ref_no: "exact", job_no: "123" }, { ref_no: "exact", job_no: "124" }])], { runId, canonical: bad.canonical });
+  assert.ok(priorityOnly.actions.every((action) => "classification" in action && action.classification === "update" && action.desired_state_summary?.changed_paths.every((field) => field === "granot_priority")));
+});

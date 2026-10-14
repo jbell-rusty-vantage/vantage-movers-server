@@ -45,6 +45,7 @@ export type GranotFormPlanAction = {
   report_identity?: {
     version: 1;
     normalized_job_sha256?: string;
+    job_equivalence_sha256?: string;
     lead_model?: "FormLead" | "CallLead";
     match_method?: SynchronizationMatchMethod;
   };

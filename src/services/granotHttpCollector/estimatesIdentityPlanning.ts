@@ -6,6 +6,7 @@ import { planLeadDesiredState } from "../granotLifecycle/leadDesiredState";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import { Types } from "mongoose";
 import { createHash } from "node:crypto";
+import { jobNumberDigitCore, jobNumbersEquivalent } from "../bookings/bookingIdentity";
 import { normalizeGranotCrmUsername } from "../operationsRegistry";
 import type { GranotFormPlanAction } from "./formWorkflow";
 import type { GranotSourceCollection } from "./index";
@@ -88,7 +89,8 @@ export async function planEstimatesIdentities(
       table_section: "followUpEstimates" as const, lifecycle_apply: lifecycle,
       ...(row.collectedAt ? { collection_captured_at: row.collectedAt } : {}),
       report_identity: { version: 1 as const, ...(normalized.identity.normalized_job_no
-        ? { normalized_job_sha256: createHash("sha256").update(normalized.identity.normalized_job_no).digest("hex") } : {}) },
+        ? { normalized_job_sha256: createHash("sha256").update(normalized.identity.normalized_job_no).digest("hex"),
+          job_equivalence_sha256: createHash("sha256").update(jobNumberDigitCore(normalized.identity.normalized_job_no) ?? normalized.identity.normalized_job_no).digest("hex") } : {}) },
     };
     let resolvedModel: "FormLead" | "CallLead" | undefined;
     const hold = (reason: string, classification: "invalid" | "conflict" | "no_match" = "no_match", warnings: string[] = []) => {
@@ -142,6 +144,34 @@ export async function planEstimatesIdentities(
     const plannedOutcome = `planned_${desired.outcome}`;
     counters[plannedOutcome] = (counters[plannedOutcome] ?? 0) + 1;
     for (const warning of warnings) counters[`warning_${warning}`] = (counters[`warning_${warning}`] ?? 0) + 1;
+  }
+  // The whole declared report must support a unique Job attachment to a jobless
+  // Lead. Per-row uniqueness alone otherwise lets report order choose the Job.
+  const jobsByAction = new Map(prepared.map((entry) => [entry.actionId, entry.normalized.identity.normalized_job_no]));
+  const attachments = new Map<string, GranotFormPlanAction[]>();
+  for (const action of actions) {
+    const target = action.lifecycle_apply?.expected_target;
+    if (action.classification !== "update" || !target || !action.desired_state_summary?.changed_paths.some((field) => field === "job_no" || field === "normalized_job_no")) continue;
+    const key = `${target.model}:${target.id}`, group = attachments.get(key) ?? [];
+    group.push(action); attachments.set(key, group);
+  }
+  for (const group of attachments.values()) {
+    const first = jobsByAction.get(group[0]!.action_id);
+    if (group.every((action) => jobNumbersEquivalent(first, jobsByAction.get(action.action_id)))) continue;
+    for (const action of group) {
+      action.classification = "conflict";
+      action.reason = "competing_target_job_attachments";
+      if (action.desired_state_summary) {
+        const previous = `planned_${action.desired_state_summary.outcome}`;
+        counters[previous] = Math.max(0, (counters[previous] ?? 0) - 1);
+        action.desired_state_summary.outcome = "conflict";
+        action.desired_state_summary.reason_code = "job_number_conflict";
+      }
+      counters.update = Math.max(0, (counters.update ?? 0) - 1);
+      counters.conflict = (counters.conflict ?? 0) + 1;
+      counters.planned_conflict = (counters.planned_conflict ?? 0) + 1;
+      counters.competing_target_job_attachments = (counters.competing_target_job_attachments ?? 0) + 1;
+    }
   }
   return { kind: "estimates_in_process", schema_version: 2, actions, counters };
 }

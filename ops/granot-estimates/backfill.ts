@@ -5,11 +5,36 @@ import { dirname, resolve, relative, isAbsolute } from "node:path";
 import { ownerApi, RUNS_PATH } from "./api-client";
 
 type Window = { from: string; to: string };
-type Action = { action_id: string; source_label?: string; classification?: string; syncable?: boolean; reason?: string; warnings?: string[]; patch?: Record<string, unknown>; report_identity?: { version: 1; normalized_job_sha256?: string; lead_model?: string; match_method?: string }; desired_state_summary?: { changed_paths: string[]; outcome: string; target_revision?: number }; lifecycle_apply?: { expected_target?: { model: string; id: string } } };
+type Action = { action_id: string; source_label?: string; classification?: string; syncable?: boolean; reason?: string; warnings?: string[]; patch?: Record<string, unknown>; report_identity?: { version: 1; normalized_job_sha256?: string; job_equivalence_sha256?: string; lead_model?: string; match_method?: string }; desired_state_summary?: { changed_paths: string[]; outcome: string; target_revision?: number }; lifecycle_apply?: { expected_target?: { model: string; id: string } } };
 type Run = { id: string; status: string; workflow?: "preview" | "apply"; plan_checksum?: string; expires_at?: string; counters?: Record<string, number>; collection?: { coverage?: { complete?: boolean; rows?: number; captured_at?: string }; held_rows?: number }; plan?: { actions: Action[] }; receipts?: Array<{ outcome: string }> };
 type Entry = { window: Window; run_id?: string; status?: string; checksum?: string; selected_action_ids?: string[]; counters?: Record<string, number>; target_models?: Record<string, number>; field_groups?: string[]; warning_counts?: Record<string, number>; report_summary?: ReturnType<typeof reportSummary>; outcomes?: Record<string, number>; approved?: boolean };
-type Manifest = { version: 1; from: string; to: string; created_at: string; entries: Entry[]; review_checksum?: string; report_summary?: ReturnType<typeof reportSummary> };
+type Manifest = { version: 1; from: string; to: string; created_at: string; entries: Entry[]; review_checksum?: string; report_summary?: ReturnType<typeof reportSummary>; target_attachment_guard_version?: 1; target_attachment_review?: ReturnType<typeof crossWindowAttachmentReview>["groups"] };
 const argument = (name: string) => process.argv.find((v) => v.startsWith(`--${name}=`))?.slice(name.length + 3);
+
+type ReportAction = Action & { run_id: string; action_index: number };
+/** Only fresh previews participate. Existing approvals and sealed plans are never rewritten. */
+export function crossWindowAttachmentReview(actions: ReportAction[]) {
+  const byTarget = new Map<string, ReportAction[]>();
+  for (const action of actions) {
+    const target = action.lifecycle_apply?.expected_target;
+    if (!target || !action.desired_state_summary?.changed_paths.some((field) => field === "job_no" || field === "normalized_job_no")) continue;
+    if (!action.report_identity?.job_equivalence_sha256) throw new Error("Preview incomplete: deployed collector lacks Job-equivalence evidence.");
+    const key = `${target.model}:${target.id}`, group = byTarget.get(key) ?? [];
+    group.push(action); byTarget.set(key, group);
+  }
+  const excluded = new Map<string, Set<string>>();
+  const groups: Array<{ target: { model: string; id: string }; equivalent_job_groups: number; actions: Array<{ run_id: string; action_index: number; action_id_sha256: string }> }> = [];
+  for (const group of byTarget.values()) {
+    const jobs = new Set(group.map((action) => action.report_identity!.job_equivalence_sha256!));
+    if (jobs.size < 2) continue;
+    groups.push({ target: group[0]!.lifecycle_apply!.expected_target!, equivalent_job_groups: jobs.size,
+      actions: group.map((action) => ({ run_id: action.run_id, action_index: action.action_index, action_id_sha256: createHash("sha256").update(action.action_id).digest("hex") })) });
+    for (const action of group) {
+      const ids = excluded.get(action.run_id) ?? new Set<string>(); ids.add(action.action_id); excluded.set(action.run_id, ids);
+    }
+  }
+  return { groups, excluded };
+}
 
 /** Aggregate minimized preview evidence; unavailable legacy metadata is never reported as zero Jobs. */
 export function reportSummary(actions: Action[]) {
@@ -101,12 +126,13 @@ async function main() {
     const from = argument("from"), to = argument("to");
     if (mode !== "preview" || !from || !to) throw new Error("Create a preview with --from and --to first.");
     const days = argument("days");
-    manifest = { version: 1, from, to, created_at: new Date().toISOString(), entries: windows(from, to, days === undefined ? 7 : Number(days)).map((window) => ({ window })) };
+    manifest = { version: 1, from, to, created_at: new Date().toISOString(), target_attachment_guard_version: 1, entries: windows(from, to, days === undefined ? 7 : Number(days)).map((window) => ({ window })) };
   }
   if (manifest.version !== 1 || !Array.isArray(manifest.entries)) throw new Error("Invalid manifest format.");
   const save = () => writeFile(path, JSON.stringify(manifest, null, 2), { mode: 0o600 });
   if (mode === "preview") {
-    const reportActions: Action[] = [];
+    if (manifest.entries.some((entry) => entry.approved)) throw new Error("Manifest already approved; use a new manifest path for a fresh preview.");
+    const reportActions: ReportAction[] = [];
     for (const entry of manifest.entries) {
       if (!entry.run_id) {
         const created = await ownerApi<{ run_id: string }>("POST", RUNS_PATH, { operation: "estimates_in_process", workflow: "preview", ...entry.window });
@@ -128,15 +154,30 @@ async function main() {
       entry.field_groups = [...new Set(selected.flatMap((a) => a.desired_state_summary?.changed_paths ?? Object.keys(a.patch ?? {})))].sort();
       entry.warning_counts = run.plan.actions.reduce<Record<string, number>>((out, a) => { for (const code of a.warnings ?? []) out[code] = (out[code] ?? 0) + 1; return out; }, {});
       entry.report_summary = reportSummary(run.plan.actions);
-      reportActions.push(...run.plan.actions.map(({ action_id, source_label, classification, syncable, reason, report_identity }) => ({ action_id, source_label, classification, syncable, reason, report_identity })));
+      reportActions.push(...run.plan.actions.map((action, action_index) => ({ ...action, run_id: entry.run_id!, action_index })));
       await save(); console.log(JSON.stringify({ kind: "preview", window: entry.window, run_id: entry.run_id, selected: selected.length, counters: entry.counters, target_models: entry.target_models, field_groups: entry.field_groups, warnings: entry.warning_counts, report: entry.report_summary }));
+    }
+    if (manifest.target_attachment_guard_version === 1) {
+      const review = crossWindowAttachmentReview(reportActions);
+      manifest.target_attachment_review = review.groups;
+      for (const entry of manifest.entries) {
+        const excluded = review.excluded.get(entry.run_id ?? "");
+        if (excluded) entry.selected_action_ids = entry.selected_action_ids?.filter((id) => !excluded.has(id));
+        const scoped = reportActions.filter((action) => action.run_id === entry.run_id);
+        for (const action of scoped) if (excluded?.has(action.action_id)) { action.classification = "conflict"; action.syncable = false; action.reason = "competing_target_job_attachments"; }
+        const selected = scoped.filter((action) => entry.selected_action_ids?.includes(action.action_id));
+        entry.target_models = selected.reduce<Record<string, number>>((out, action) => { const model = action.lifecycle_apply?.expected_target?.model ?? "unknown"; out[model] = (out[model] ?? 0) + 1; return out; }, {});
+        entry.field_groups = [...new Set(selected.flatMap((action) => action.desired_state_summary?.changed_paths ?? []))].sort();
+        entry.report_summary = reportSummary(scoped);
+      }
     }
     manifest.report_summary = reportSummary(reportActions);
     manifest.review_checksum = reviewChecksum(manifest); await save();
-    console.log(JSON.stringify({ kind: "review_manifest", checksum: manifest.review_checksum, windows: manifest.entries.length, selected: manifest.entries.reduce((n, e) => n + (e.selected_action_ids?.length ?? 0), 0), report: manifest.report_summary }));
+    console.log(JSON.stringify({ kind: "review_manifest", checksum: manifest.review_checksum, windows: manifest.entries.length, selected: manifest.entries.reduce((n, e) => n + (e.selected_action_ids?.length ?? 0), 0), report: manifest.report_summary, target_attachment_review: manifest.target_attachment_review }));
     return;
   }
   if (mode === "apply") {
+    if (manifest.target_attachment_guard_version === 1 && !manifest.target_attachment_review) throw new Error("Preview incomplete: cross-window Job attachment review is missing.");
     if (!manifest.review_checksum || argument("review-checksum") !== manifest.review_checksum || reviewChecksum(manifest) !== manifest.review_checksum) throw new Error("Exact reviewed manifest checksum is required.");
     for (const entry of manifest.entries) {
       if (!entry.run_id || !entry.checksum || !entry.selected_action_ids) throw new Error("Manifest lacks a completed preview.");

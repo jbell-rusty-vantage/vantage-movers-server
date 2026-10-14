@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { windows, reviewChecksum, reportSummary, shouldRefreshManifest } from "./backfill";
+import { windows, reviewChecksum, reportSummary, shouldRefreshManifest, crossWindowAttachmentReview } from "./backfill";
 import { ownerApi } from "./api-client";
 
 test("backfill windows cover inclusive dates across leap year and month boundaries without overlap", () => {
@@ -47,4 +47,24 @@ test("apply reads authoritative receipts initially, every ten batches and at its
   assert.equal(shouldRefreshManifest(0, "verify"), true);
   assert.equal(shouldRefreshManifest(800, "apply"), true);
   assert.equal(shouldRefreshManifest(799, "apply"), false);
+});
+
+test("fresh cross-window review excludes competing attachments, permits aliases/priority-only and does not mutate plans", () => {
+  const make = (run: string, action: string, equivalentJob: string, fields = ["job_no", "normalized_job_no"]) => ({
+    run_id: run, action_index: 0, action_id: action, classification: "update",
+    lifecycle_apply: { expected_target: { model: "FormLead", id: "a".repeat(24) } },
+    report_identity: { version: 1 as const, job_equivalence_sha256: equivalentJob },
+    desired_state_summary: { changed_paths: fields, outcome: "applied" },
+  });
+  const actions = [make("run1", "job-sensitive-1", "a"), make("run2", "job-sensitive-2", "b")];
+  const before = structuredClone(actions), review = crossWindowAttachmentReview(actions);
+  assert.equal(review.groups.length, 1);
+  assert.equal(review.excluded.get("run1")?.has("job-sensitive-1"), true);
+  assert.equal(review.excluded.get("run2")?.has("job-sensitive-2"), true);
+  assert.deepEqual(actions, before);
+  assert.equal(JSON.stringify(review.groups).includes("job-sensitive"), false);
+  assert.equal(crossWindowAttachmentReview([make("run1", "alias1", "same"), make("run2", "alias2", "same")]).groups.length, 0);
+  assert.equal(crossWindowAttachmentReview([make("run1", "old1", "a", ["granot_priority"]), make("run2", "old2", "b", ["granot_priority"])]).groups.length, 0);
+  const missing = make("run1", "missing", "");
+  assert.throws(() => crossWindowAttachmentReview([missing]), /Job-equivalence evidence/);
 });
