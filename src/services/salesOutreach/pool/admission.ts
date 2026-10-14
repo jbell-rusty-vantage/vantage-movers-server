@@ -15,7 +15,7 @@ import { loadSubjectPageContext, syncSubject, hasAmbiguousIdentity } from "../su
 import { poolEnabled } from "./policy";
 import { recomputePoolDuty } from "./duties";
 import { newYorkBusinessDay } from "../reads/businessDay";
-import { jobNumbersEquivalent, equivalentNormalizedJobFilter } from "../../bookings/bookingIdentity";
+import { jobNumbersEquivalent, equivalentNormalizedJobFilter, normalizeJobNo } from "../../bookings/bookingIdentity";
 import { getGranotObservationModel } from "../../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../../models/GranotObservationReceipt";
 import { getSynchronizationDecisionModel } from "../../../models/SynchronizationDecision";
@@ -27,8 +27,16 @@ export type PoolCandidateAnchor = {
   source_granularity_id: string; observation_id: string; domain_revision: number;
 };
 export type PoolCandidate = { eligible: boolean; reason: string | null; facts: DeskLeadFacts | null; subject: DeskSubjectRow | null; anchor: PoolCandidateAnchor | null };
+type RawPoolBooking = { lead_ref?: unknown; normalized_job_no?: unknown; job_no?: unknown };
 
-/** Batched fresh authorization: a fixed set of indexed reads per <=1,000 work records, never N+1. */
+/** A partial or contradictory Booking pointer is a hold, never evidence that a Lead is free. */
+export function poolBookingBlocks(booking: RawPoolBooking, ref: DeskLeadRef, job: string): boolean {
+  return String(booking.lead_ref ?? "").toLowerCase() === ref.id
+    || (typeof booking.normalized_job_no === "string" && jobNumbersEquivalent(booking.normalized_job_no, job))
+    || (typeof booking.job_no === "string" && jobNumbersEquivalent(normalizeJobNo(booking.job_no), job));
+}
+
+/** Batched fresh authorization: a fixed set of reads per <=1,000 work records, never N+1. */
 export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], session: ClientSession | null = null): Promise<PoolCandidate[]> {
   if (!refs.length) return [];
   const rawByKey = new Map<string, Record<string, unknown> & { _id: unknown }>();
@@ -50,9 +58,12 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   const jobs = [...new Set([...factsByKey.values()].flatMap((f) => f.normalized_job_no ? [f.normalized_job_no] : []))];
   const jobQueries = jobs.map(equivalentNormalizedJobFilter);
   const links = await getGranotRecordLinkModel().find({ provider: "granot", state: "active", $or: [...refs.map((r) => ({ "lead_ref.model": r.model, "lead_ref.id": oid(r.id) })), ...jobQueries] }).session(session).lean();
-  const bookings = await getFormLeadModel().db.collection(BookedLead.collection.collectionName).find({ $or: [
-    ...refs.map((r) => ({ lead_model: r.model, lead_ref: oid(r.id) })), ...jobQueries,
-  ] }, { session: session ?? undefined, projection: { lead_model: 1, lead_ref: 1, normalized_job_no: 1 } }).toArray();
+  const bookings = await getFormLeadModel().db.collection<RawPoolBooking>(BookedLead.collection.collectionName).find({ $or: [
+    ...refs.map((r) => ({ lead_ref: { $in: [oid(r.id), r.id, r.id.toUpperCase()] } })), ...jobQueries,
+    // Legacy raw Jobs may lack or contradict the normalized key. Project once per batch and use
+    // the canonical NFKC/case/punctuation normalizer below; field-only regexes cannot reproduce it.
+    { job_no: { $type: "string" } },
+  ] }, { session: session ?? undefined, projection: { lead_model: 1, lead_ref: 1, normalized_job_no: 1, job_no: 1 } }).toArray();
   const identities: { normalized_job_no: string }[] = [];
   if (jobQueries.length) for (const model of [getFormLeadModel(), getCallLeadModel()]) {
     const rows = await (model as unknown as mongoose.Model<Record<string, unknown>>).find({ duplicate: { $ne: true }, $or: jobQueries }, { normalized_job_no: 1 }).session(session).lean();
@@ -84,7 +95,7 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     if (!link || matches.some((l) => l.disputed || l.booking_ref || l.lead_ref?.model !== ref.model || String(l.lead_ref.id) !== ref.id
       || !jobNumbersEquivalent(l.normalized_job_no, facts.normalized_job_no) || String(l.source_scope?.lead_source_company) !== companyId
       || String(l.source_scope?.source_granularity_id) !== granularityId)) return refuse("record_link_conflict");
-    if (bookings.some((b) => (b.lead_model === ref.model && String(b.lead_ref) === ref.id) || jobNumbersEquivalent(String(b.normalized_job_no ?? ""), facts.normalized_job_no))) return refuse("official_booking");
+    if (bookings.some((b) => poolBookingBlocks(b, ref, facts.normalized_job_no!))) return refuse("official_booking");
     if (identities.filter((i) => jobNumbersEquivalent(i.normalized_job_no, facts.normalized_job_no)).length !== 1) return refuse("ambiguous_identity");
     if (!observation || !["valid", "valid_with_issues"].includes(observation.normalization_result) || !observation.priority.valid || observation.priority.canonical !== "9"
       || +observation.captured_at !== +facts.accepted_observation.captured_at || !jobNumbersEquivalent(observation.identity.normalized_job_no, facts.normalized_job_no)) return refuse("accepted_observation_conflict");

@@ -46,7 +46,7 @@ export async function inspectPilot(refs: readonly LeadRef[], database: string, n
     const jobQuery = { $or: [{ normalized_job_no: job }, { job_no: job }] };
     const sameJob = job ? await db.collection("form_leads").countDocuments(jobQuery, options) + await db.collection("call_leads").countDocuments(jobQuery, options) : 0;
     const booking = await db.collection("booked_leads").findOne({ $or: [
-      { lead_model: ref.model, lead_ref: oid(ref.id) }, { lead_model: ref.model, lead_ref: ref.id },
+      { lead_ref: { $in: [oid(ref.id), ref.id, ref.id.toUpperCase()] } },
       ...(job ? [{ normalized_job_no: job }, { job_no: job }] : []),
     ] }, options);
     const source = observation?.source_label_raw ? await resolveSourcePolicy({ source_label: observation.source_label_raw,

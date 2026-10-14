@@ -205,6 +205,32 @@ async function main() {
   await db.collection("granot_record_links").insertOne({ _id: link, provider: "granot", state: "active", normalized_job_no: "POOLTEST100", lead_ref: { model: "FormLead", id: lead },
     source_scope: { lead_source_company: company, source_granularity_id: feed }, disputed: false, domain_revision: 1 });
   assert.equal((await inspectPoolCandidate({ model: "FormLead", id: String(lead) })).eligible, true);
+  // Legacy Booking storage must outrank missing Lead.booked / Record Link booking mirrors.
+  // Raw-driver fixtures preserve string pointers and incomplete anchors that Mongoose would cast.
+  const bookingAnchorCases = [
+    { name: "string_lead_ref_without_normalized_job", values: { lead_model: "FormLead", lead_ref: String(lead), job_no: "OTHER901" }, blocked: true },
+    { name: "missing_lead_model_objectid_pointer", values: { lead_ref: lead, job_no: "OTHER902" }, blocked: true },
+    { name: "mismatched_lead_model_string_pointer", values: { lead_model: "CallLead", lead_ref: String(lead), job_no: "OTHER903" }, blocked: true },
+    { name: "uppercase_string_pointer_without_model_or_job", values: { lead_ref: String(lead).toUpperCase() }, blocked: true },
+    { name: "raw_numeric_job_alias_without_pointer", values: { job_no: "100" }, blocked: true },
+    { name: "raw_prefixed_job_alias_partial_dangling_pointer", values: { lead_ref: oid(), job_no: "p100" }, blocked: true },
+    { name: "raw_NFKC_job_alias_outranks_conflicting_normalized_key", values: { job_no: " Ｐ１００ ", normalized_job_no: "OTHER904" }, blocked: true },
+    { name: "unrelated_booking_ignored", values: { lead_model: "CallLead", lead_ref: oid(), job_no: "OTHER999", normalized_job_no: "OTHER999" }, blocked: false },
+  ];
+  const leadBeforeBookingReads = await getFormLeadModel().collection.findOne({ _id: lead });
+  const sheetJobsBeforeBookingReads = await db.collection("sheet_sync_jobs").countDocuments({});
+  for (const scenario of bookingAnchorCases) {
+    const bookingId = oid();
+    await db.collection("booked_leads").insertOne({ _id: bookingId, ...scenario.values, cancelled: false });
+    try {
+      const inspected = await inspectPoolCandidate({ model: "FormLead", id: String(lead) });
+      assert.equal(inspected.eligible, !scenario.blocked, `${scenario.name}: canonical Pool admission must respect the raw Booking anchor`);
+      if (scenario.blocked) assert.equal(inspected.reason, "official_booking", scenario.name);
+      assert.deepEqual(await getFormLeadModel().collection.findOne({ _id: lead }), leadBeforeBookingReads, "eligibility inspection never repairs Lead/Sheet fields");
+      assert.equal(await db.collection("sheet_sync_jobs").countDocuments({}), sheetJobsBeforeBookingReads, "eligibility inspection never requests Sheet Sync");
+    } finally { await db.collection("booked_leads").deleteOne({ _id: bookingId }); }
+    assert.equal((await inspectPoolCandidate({ model: "FormLead", id: String(lead) })).eligible, true, "removing only the synthetic anchor restores base eligibility");
+  }
   const { evaluateAndProject, evaluationAdmissionOf } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
   const { mongoEvaluationStore } = await import("../../src/services/salesOutreach/evaluation/store.js");
   const admission = evaluationAdmissionOf(config); assert.equal(admission.ok, true); if (!admission.ok) throw new Error("fixture cadence unavailable");
@@ -294,6 +320,8 @@ async function main() {
     }
     for (const [collection, rows] of [["form_leads", bulk.leads], ["sales_outreach_subjects", bulk.subjects], ["sales_outreach_pool_work", bulk.works], ["sales_outreach_projections", bulk.projections],
       ["granot_observations", bulk.observations], ["granot_webhook_receipts", bulk.receipts], ["synchronization_decisions", bulk.decisions], ["granot_record_links", bulk.links]] as const) await db.collection(collection).insertMany(rows);
+    await db.collection("booked_leads").insertMany(Array.from({ length: 911 }, (_, i) => ({ _id: oid(), job_no: `unrelatedlegacy${90000 + i}`,
+      ...(i % 2 ? { normalized_job_no: `UNRELATEDLEGACY${90000 + i}`, lead_ref: oid(), lead_model: "CallLead" } : { lead_ref: String(oid()) }), cancelled: false })));
     let queryCount = 0; mongoose.set("debug", () => { queryCount++; });
     const benchmarkStarted = performance.now();
     const benchmarkQueue = await get("rep", "/queue?queue_scope=pool&state=all_active&limit=50");
@@ -304,7 +332,7 @@ async function main() {
     const searched = await get("rep", "/queue?queue_scope=pool&state=all_active&search=POOLBENCH10000");
     assert.equal(searched.status, 200); assert.equal(searched.body.data.rows.length, 1);
     assert.equal(searched.body.data.counts.projection_pending, 0, "search does not turn filtered-out shared rows into pending projections");
-    benchmark = { shared_records: 601, rendered_rows: 50, mongoose_queries: queryCount, elapsed_ms: Math.round(elapsedMs), environment: "local_loopback_replica_synthetic_data", limit: "Not an Atlas latency guarantee; raw-driver Booking lookup is additional to Mongoose debug count" };
+    benchmark = { shared_records: 601, rendered_rows: 50, unrelated_raw_bookings: 911, mongoose_queries: queryCount, elapsed_ms: Math.round(elapsedMs), environment: "local_loopback_replica_synthetic_data", limit: "Not an Atlas latency guarantee; raw-driver Booking lookup is additional to Mongoose debug count" };
     const originalWork = (await Work.findOne({ subject_id: subject }).lean())!;
     for (const size of [100, 20]) {
       await Work.collection.updateMany({}, { $set: { active: false } });
@@ -321,8 +349,10 @@ async function main() {
   assert.equal((await inspectPoolCandidate({ model: "FormLead", id: String(lead) })).reason, "closed_subject_reopening_required");
   const summary = { captured_at: new Date().toISOString(), target: "fixed_loopback_csi01_unique_test_database", production_writes: 0, provider_requests: 0, customer_contact: false,
     benchmark, smaller_benchmarks: smallerBenchmarks,
+    legacy_booking_anchor_cases: bookingAnchorCases.map(scenario => ({ name: scenario.name, expected_hold: scenario.blocked, lead_and_sheet_unchanged: true })),
     passed: ["strict_models_and_unique_indexes", "concurrent_distinct_calls_one_duty", "distinct_caller_credit_preserved", "assigned_receiver_preserved", "same_event_three_worker_replay", "retry_after_commit_no_completion_rewrite", "late_earlier_winner_correction", "provider_revocation_recounts_original_date", "same_event_timestamp_correction", "Owner_off_caller_denied_and_snapshot_preserved", "answered_inbound_zero_outbound_credit", "Pool_excluded_eligible_new_quoted", "unassigned_Pool_call_does_not_assign", "ordinary_same_date_coverage_transfer_preserves_original_event", "first_subject_same_date_pre_activation_transfer", "disable_closes_episodes", "disabled_historical_correction_remains_active", "disabled_no_new_duties", "same_date_reenable_rejects_delayed_gap_call", "next_date_fresh_no_catchup", "same_date_reentry_retains_completion", "19_30_cutoff", "Sunday", "Owner_closed_day", "NY_DST_fallback", "no_retroactive_debt", "closed_subject_refused", "actual_router_shared_and_private_scopes", "actual_router_owner_manager_rep_admin_unsigned_inactive_matrix", "actual_router_detail_revocation_and_assigned_retention", "actual_Mongo_SSE_shared_hint_two_readers", "SSE_connect_resnapshot", "completion_before_evaluator_filters_fresh_state", "NY_rollover_before_evaluator_filters_fresh_state", "search_does_not_inflate_projection_pending", "601_record_actual_queue_batched_read_benchmark"],
     limits: ["Synthetic provider source rows; no external RingCentral delivery", "Browser cache eviction requires separate acceptance", "Provider capture merge/dedupe remains covered by retained capture tests"] };
+  Object.assign(summary, { total_passed_scenarios: summary.passed.length + summary.legacy_booking_anchor_cases.length });
   writeFileSync("docs/rep-desk-and-pool/evidence/release/shared-duty-replica.json", JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
   await db.dropDatabase();
