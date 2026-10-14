@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pool · Local prototype</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f4fa;color:#242b48;font:15px system-ui,sans-serif}main{max-width:1150px;margin:35px auto;padding:20px}h1{font-size:34px;margin:0}h2{font-size:20px}p{line-height:1.6;color:#626b87}.tag{font-size:11px;letter-spacing:1px;font-weight:800;color:#7564c7}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.box{background:white;border:1px solid #e1e5f1;border-radius:24px;padding:22px;margin:18px 0;box-shadow:0 8px 26px #29314c06}.tabs{display:flex;gap:8px;margin:25px 0}button,select{font:inherit;border:1px solid #dce1ef;border-radius:14px;background:white;color:inherit;padding:10px 16px;cursor:pointer}button.active{background:#ded9ff;border-color:#b8abf0;color:#45328d}button:hover{background:#eeeaff}button:disabled{opacity:.4;cursor:default}.badge{border-radius:20px;background:#e7f5ec;color:#2c7652;padding:5px 12px;font-size:12px}.due{background:#fff0d7;color:#986110}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:15px 8px;border-bottom:1px solid #edf0f7}th{font-size:12px;color:#77809a}pre{font-size:12px;white-space:pre-wrap;max-height:320px;overflow:auto;background:#f6f7fc;padding:14px;border-radius:14px}small{color:#737c97}.grow{flex:1}@media(max-width:750px){.grid{grid-template-columns:1fr}main{margin:10px auto}table{font-size:12px}button{padding:8px}}
+</style>
+<main><div class="row"><div class="grow"><span class="tag">LOCAL · SYNTHETIC · PROPOSED POLICY</span><h1>Outreach Desk</h1></div><label>View as <select id="actor"><option>A</option><option>B</option><option>Owner</option><option>Manager</option><option>Inactive</option><option>Admin</option></select></label></div>
+<p>One shared call per Pool Lead per New York working day. Assigned Rep stays assigned. This prototype uses confirmed synthetic events and no production connection.</p>
+<div class="row"><strong id="date"></strong><span class="badge">08:00–20:00 · Mon–Sun · NY</span><small>Rep B has today off their personal goal schedule.</small></div>
+<nav class="tabs" aria-label="Lead workflow"><button data-filter="New">New</button><button data-filter="Quoted">Quoted</button><button data-filter="Other">Other</button><button data-filter="Pool" class="active">Pool</button></nav>
+<section class="box"><div class="row"><h2 class="grow" id="heading">Shared Pool</h2><small id="count"></small></div><table><thead><tr><th>Lead</th><th>Assigned Rep</th><th>Today</th><th>Actual caller</th><th>Coordination</th></tr></thead><tbody id="leads"></tbody></table><p id="empty"></p></section>
+<div class="grid"><section class="box"><h2>Assigned workload & actual calls</h2><div id="metrics"></div><p>Helping completes the assigned Rep’s workload. Actual outbound goal credit belongs to the caller. Answered inbound can complete cadence with zero outbound credit.</p></section>
+<section class="box"><h2>Drive the edge cases</h2><div class="row" id="actions"><button data-action="claim">Claim P1 as viewer</button><button data-action="call">A calls P1</button><button data-action="replay">Replay same call</button><button data-action="both">A + B simultaneous</button><button data-action="inbound">B answers P2</button><button data-action="next">Next NY day</button><button data-action="exit">Exit P1</button><button data-action="enter">Reenter P1</button><button data-action="booked">Book P1</button><button data-action="cancelled">Cancel P1</button><button data-action="late">Late entry P2</button><button data-action="close">Close calendar day</button><button data-action="reset">Reset</button></div><p>Claims are advisory, expire after two minutes, and do not block verified calls by another Rep. Simultaneous arrivals are serialized here; production must use a unique slot and transactional event dedupe.</p></section></div>
+<details class="box"><summary>Full relevant state & event attribution</summary><pre id="state"></pre></details>
+<section class="box"><h2>Owner decisions to approve</h2><p>Recommended: current shared calendar including weekends; entry through 19:30 owes one call, later entry begins next working date; confirmed outbound attempts and answered inbound fulfill the daily requirement; preserve both existing outbound goal scopes and show Pool workload separately; retain ordinary sheet sync for existing Leads. No unmatched Pool Lead creation in the initial release.</p></section></main>
+<script type="module">
+import {initial,dispatch,visible,duty,metrics,ny} from './shared-state.mjs';
+let s=initial(),filter='Pool',actor='A';
+const $=id=>document.getElementById(id),call={type:'call',lead:'P1',caller:'A',id:'provider-account:session-001:external'};
+function render(){
+ $('date').textContent=ny(s.at).day+' · '+ny(s.at).minute/60+':00 New York';
+ document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b.dataset.filter===filter));
+ const rows=visible(s,actor,filter);$('heading').textContent=filter==='Pool'?'Shared Pool':filter+' · assigned scope';$('count').textContent=rows.length+' Leads';
+ $('leads').replaceChildren();
+ for(const l of rows){const d=filter==='Pool'?duty(s,l):{state:'ordinary cadence',actualCaller:null};const tr=document.createElement('tr');
+  for(const text of [l.id+' · '+l.name,l.receiver??'Unassigned',d.state,d.actualCaller??'—',s.claims[l.id]?.expires>s.at?'Working: '+s.claims[l.id].actor:'Available']){const td=document.createElement('td');td.textContent=text;tr.append(td);}
+  $('leads').append(tr);
+ }
+ $('empty').textContent=rows.length?'':s.actors[actor].eligible?'No Leads in this view.':'Access denied: trusted active Desk eligibility required.';
+ $('metrics').replaceChildren();for(const rep of ['A','B']){const m=metrics(s,rep),p=document.createElement('p');p.textContent=`Rep ${rep}: ${m.assignedCompleted}/${m.assignedPool} assigned Pool fulfilled · ${m.actualOutbound} actual outbound · personal goal ${m.individualGoalOn?'on':'off'}`;$('metrics').append(p);}
+ if(!s.actors[actor].eligible){$('metrics').textContent='Access denied';$('state').textContent='Access denied';return;}
+ $('state').textContent=JSON.stringify({at:s.at,slots:s.leads.filter(l=>l.priority==='9').map(l=>duty(s,l)),actors:s.actors,events:s.events,claims:s.claims,log:s.log},null,2);
+}
+document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render();});$('actor').onchange=()=>{actor=$('actor').value;render();};
+document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>{
+ const actions={claim:[{type:'claim',lead:'P1',actor}],call:[call],replay:[call],both:[call,{...call,caller:'B',id:'provider-account:session-002:external'}],inbound:[{type:'call',lead:'P2',caller:'B',id:'provider-account:inbound-001',direction:'answered_inbound'}],next:[{type:'clock',at:new Date(+new Date(s.at)+86400000).toISOString()}],exit:[{type:'transition',lead:'P1',priority:'1'}],enter:[{type:'transition',lead:'P1',priority:'9'}],booked:[{type:'transition',lead:'P1',priority:'9',status:'booked'}],cancelled:[{type:'transition',lead:'P1',priority:'9',status:'cancelled'}],late:[{type:'clock',at:'2026-10-14T23:45:00Z'}],close:[{type:'closedDate'}]};
+ if(b.dataset.action==='reset')s=initial();else if(b.dataset.action==='late'){s=dispatch(s,actions.late[0]);s.leads.find(l=>l.id==='P2').entered=s.at;}else for(const a of actions[b.dataset.action]??[])s=dispatch(s,a);render();
+});render();
+</script></html>

@@ -24,6 +24,7 @@ import {
 import { keysetOf, queueDirectionOf, queueSearchOf, queueSortSpec, type QueueAssignment, type QueueMatch } from "./queueQuery";
 import { commonRead, readFreshness, requireDeskConfiguration, type DeskReadDeps } from "./common";
 import { mongoSalesOutreachReadStore } from "./store";
+import { authorizedPoolWorks, readPoolStates, readPoolSummary, poolQueueOverrides } from "../pool/reads";
 
 /**
  * `GET /queue` (SRV-8; CONTRACTS "GET /queue", SPECIFICATION §7).
@@ -84,8 +85,9 @@ export type NormalizedQueueQuery = Readonly<{
   filters: SalesOutreachQueueDto["filters"];
 }>;
 
-export function normalizeQueueQuery(actor: OutreachActor, query: SalesOutreachQueueQuery): NormalizedQueueQuery {
-  const assignment = queueAssignmentOf(actor, query);
+export function normalizeQueueQuery(actor: OutreachActor, query: SalesOutreachQueueQuery, poolEnabled = false): NormalizedQueueQuery {
+  const ordinaryAssignment = queueAssignmentOf(actor, query);
+  const assignment: QueueAssignment = query.queue_scope === "pool" ? { kind: "all" } : ordinaryAssignment;
   const sort = query.sort ?? "urgency";
   const direction = queueDirectionOf(sort, query.direction);
   const hasRange = Boolean(query.move_date_from || query.move_date_to);
@@ -98,6 +100,7 @@ export function normalizeQueueQuery(actor: OutreachActor, query: SalesOutreachQu
     state: query.state ?? "needs_contact",
     priority: priority === "all" ? { kind: "all" } : priority === "unknown" ? { kind: "unknown" } : { kind: "code", code: priority },
     workflow: workflow === "all" ? null : workflow,
+    ...(workflow === "other" ? { exclude_pool_priority: poolEnabled } : {}),
     move_date: hasRange || unknown !== "include" ? { from: query.move_date_from ?? null, to: query.move_date_to ?? null, unknown } : null,
     search: queueSearchOf(search ?? undefined),
   };
@@ -107,14 +110,15 @@ export function normalizeQueueQuery(actor: OutreachActor, query: SalesOutreachQu
     direction,
     limit: query.limit ?? SALES_OUTREACH_QUEUE_DEFAULT_LIMIT,
     filters: {
+      ...(query.queue_scope ? { queue_scope: query.queue_scope } : {}),
       search,
       priority,
       workflow,
       move_date_from: query.move_date_from ?? null,
       move_date_to: query.move_date_to ?? null,
       move_date_unknown: unknown,
-      agent_id: assignment.kind === "agent" ? assignment.agent_id : null,
-      unassigned: assignment.kind === "unassigned",
+      agent_id: ordinaryAssignment.kind === "agent" ? ordinaryAssignment.agent_id : null,
+      unassigned: ordinaryAssignment.kind === "unassigned",
       state: match.state,
     },
   };
@@ -127,22 +131,28 @@ function cursorSecretOf(deps: DeskQueueDeps): string {
 }
 
 /** Drops rows whose Lead is no longer assigned to the Rep (authoritative `receiver_agent`, IMPL-01). */
-async function authorizedRows(actor: OutreachActor, rows: StoredQueueRow[], store: DeskQueueStore): Promise<StoredQueueRow[]> {
+async function authorizedRows(actor: OutreachActor, rows: StoredQueueRow[], store: DeskQueueStore, poolIds?: ReadonlySet<string>): Promise<StoredQueueRow[]> {
   if (actor.role !== "rep" || !rows.length) return rows;
   const assignees = await store.leadAssignees(rows.map((row) => row.subject_id));
-  return rows.filter((row) => assignees.get(row.subject_id) === actor.agent_id);
+  return rows.filter((row) => poolIds ? poolIds.has(row.subject_id) : assignees.get(row.subject_id) === actor.agent_id);
 }
 
 export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQuery, deps: DeskQueueDeps): Promise<SalesOutreachQueueDto> {
-  const normalized = normalizeQueueQuery(actor, query);
+  let normalized = normalizeQueueQuery(actor, query);
   const store = deps.queueStore ?? mongoDeskQueueStore;
   const readStore = deps.store ?? mongoSalesOutreachReadStore;
   const configuration = await requireDeskConfiguration(deps.loader);
+  normalized = normalizeQueueQuery(actor, query, configuration.value.pool?.enabled === true);
+  const poolWorks = await authorizedPoolWorks(configuration);
+  const freshnessRead = await readFreshness(readStore, configuration, deps.now);
+  const poolStates = await readPoolStates(poolWorks, configuration, deps.now, freshnessRead.coverage.cadence.call);
+  if (poolWorks.length) normalized = { ...normalized, match: { ...normalized.match, pool_overrides: poolQueueOverrides(poolWorks, poolStates, deps.now) } };
+  if (query.queue_scope === "pool") normalized = { ...normalized, match: { ...normalized.match, pool_subject_ids: poolWorks.map((p) => String(p.work.subject_id)) } };
   const cadence = requireDeskCadence(configuration);
   const secret = cursorSecretOf(deps);
   const sortSpec = queueSortSpec(normalized.sort, normalized.direction);
   const binding: CursorBinding = {
-    q: queueQueryHash({ match: normalized.match, sort: normalized.sort, direction: normalized.direction }),
+    q: queueQueryHash(JSON.parse(JSON.stringify({ match: normalized.match, sort: normalized.sort, direction: normalized.direction, ...(query.queue_scope ? { queue_scope: query.queue_scope, entitlement_version: 1 } : {}) }))),
     r: actor.role,
     a: actor.agent_id,
     g: await store.assignmentGeneration(normalized.match.assignment),
@@ -167,13 +177,12 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
   const fetched = await store.findQueuePage({ match: normalized.match, sort: sortSpec, after, limit: normalized.limit + 1 });
   const has_more = fetched.length > normalized.limit;
   const page = fetched.slice(0, normalized.limit);
-  const visible = await authorizedRows(actor, page, store);
+  const visible = await authorizedRows(actor, page, store, query.queue_scope === "pool" ? new Set(poolWorks.map((w) => String(w.work.subject_id))) : undefined);
 
   const firstPage = !query.cursor;
-  const [freshnessRead, names, scopeCounts, excludedUnknown] = await Promise.all([
-    readFreshness(readStore, configuration, deps.now),
+  const [names, scopeCounts, excludedUnknown] = await Promise.all([
     readStore.findReviewedRepNames([...new Set(visible.map((row) => row.assigned_agent_id).filter((id): id is string => id !== null))], deps.now),
-    firstPage ? store.countScope(normalized.match.assignment) : Promise.resolve(null),
+    firstPage ? query.queue_scope === "pool" ? store.countQueue({ ...normalized.match, state: "all_active", search: null, priority: { kind: "all" }, workflow: null, move_date: null }).then((projections) => ({ subjects: poolWorks.length, projections })) : store.countScope(normalized.match.assignment) : Promise.resolve(null),
     firstPage && normalized.match.move_date?.unknown === "exclude" && (normalized.filters.move_date_from || normalized.filters.move_date_to)
       ? store.countQueue({ ...normalized.match, move_date: { from: null, to: null, unknown: "only" } })
       : Promise.resolve(null),
@@ -187,6 +196,20 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
   const today = newYorkBusinessDay(asOf);
   const projection_revision = visible.reduce<number | null>((max, row) => Math.max(max ?? 0, row.publication_revision), null);
   const scopedAgent = normalized.match.assignment.kind === "agent" ? normalized.match.assignment.agent_id : null;
+  const callerIds = [...new Set([...poolStates.values()].flatMap((s) => s.completed_by_agent_id ? [s.completed_by_agent_id] : []))];
+  const callerNames = callerIds.length ? await readStore.findAgentNames(callerIds) : new Map<string, string>();
+  const displayNames = new Map(names);
+  const missingAssignedNames = [...new Set(visible.flatMap((row) => row.assigned_agent_id && !displayNames.has(row.assigned_agent_id) ? [row.assigned_agent_id] : []))];
+  if (missingAssignedNames.length) for (const [id, name] of await readStore.findAgentNames(missingAssignedNames)) displayNames.set(id, name);
+  for (const state of poolStates.values()) if (state.completed_by_agent_id) state.completed_by_agent_name = callerNames.get(state.completed_by_agent_id) ?? state.completed_by_agent_name;
+  const rows = await Promise.all(visible.map(async (row) => {
+    const presented = presentQueueRow(row, { as_of: asOf, today, names: displayNames, exposure: cadence.exposure, coverage: freshnessRead.coverage });
+    const access = poolWorks.find((w) => String(w.work.subject_id) === row.subject_id);
+    if (!access) return presented;
+    const pool = poolStates.get(row.subject_id)!;
+    return { ...presented, pool };
+  }));
+  const pool_summary = configuration.value.pool?.enabled ? await readPoolSummary(poolWorks, configuration, deps.now, freshnessRead.coverage.cadence.call, actor, query.agent_id ?? null, poolStates) : undefined;
   return {
     ...commonRead(actor, asOf, scopedAgent, configuration, projection_revision, freshnessRead.freshness),
     filters: normalized.filters,
@@ -195,7 +218,8 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
     limit: normalized.limit,
     cadence_exposure: cadence.exposure,
     enforcement_labels: cadence.exposure === "enforcement",
-    rows: visible.map((row) => presentQueueRow(row, { as_of: asOf, today, names, exposure: cadence.exposure, coverage: freshnessRead.coverage })),
+    rows,
+    ...(pool_summary ? { pool_summary } : {}),
     next_cursor,
     has_more,
     counts: {

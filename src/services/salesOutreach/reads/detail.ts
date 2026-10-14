@@ -16,9 +16,11 @@ import {
   presentRequirements,
   type StoredProjectionDetail,
   type StoredStatusFlags,
+  type StoredChannel,
 } from "./present";
 import { deskCadenceOf } from "./queue";
 import { mongoSalesOutreachReadStore } from "./store";
+import { getPoolAccess, readPoolState, poolQueueOverrides } from "../pool/reads";
 
 /**
  * `GET /outreach/:id` (SRV-8; CONTRACTS "GET /outreach/:id"): one subject's independent Call/SMS
@@ -169,9 +171,11 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
   const subject = await store.loadSubject(subjectId, null);
   if (!subject) throw new OutreachError("NOT_FOUND");
   const receiver = await store.leadAssignee(subject.lead);
-  if (actor.role === "rep" && (!actor.agent_id || receiver !== actor.agent_id)) throw new OutreachError("NOT_FOUND");
+  const poolAccess = await getPoolAccess(subjectId, configuration);
+  const sharedOnly = actor.role === "rep" && receiver !== actor.agent_id;
+  if (actor.role === "rep" && (!actor.agent_id || (receiver !== actor.agent_id && !poolAccess))) throw new OutreachError("NOT_FOUND");
 
-  const [projection, periods, plans, restrictionsRaw, changes, events, freshnessRead] = await Promise.all([
+  const [projection, periods, plansRaw, restrictionsRaw, changesRaw, eventsRaw, freshnessRead] = await Promise.all([
     store.loadProjectionDetail(subject.id),
     store.loadPeriods(subject.id, null),
     store.loadPlans(subject.id, null),
@@ -180,6 +184,10 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
     store.loadContactEvents(subject.id, null),
     readFreshness(readStore, configuration, deps.now),
   ]);
+  const currentEntry = poolAccess?.work.episodes.at(-1)?.started_at;
+  const plans = sharedOnly ? [] : plansRaw;
+  const changes = sharedOnly ? [] : changesRaw;
+  const events = sharedOnly ? eventsRaw.filter((e) => currentEntry && +e.event_at >= +currentEntry) : eventsRaw;
 
   const cadence = deskCadenceOf(configuration);
   const view: CadenceView =
@@ -217,6 +225,9 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
   const changeAgents = new Set(sortedChanges.flatMap((c) => [c.before, c.after]).filter((id): id is string => id !== null));
   for (const id of changeAgents) agentIds.add(id);
   const names = await readStore.findReviewedRepNames([...agentIds], deps.now);
+  const pool = poolAccess ? await readPoolState(poolAccess, configuration, deps.now, freshnessRead.coverage.cadence.call, names) : null;
+  if (pool?.completed_by_agent_id && !pool.completed_by_agent_name) pool.completed_by_agent_name = (await readStore.findAgentNames([pool.completed_by_agent_id])).get(pool.completed_by_agent_id) ?? null;
+  const sharedFields = pool && poolAccess ? poolQueueOverrides([poolAccess], new Map([[subjectId, pool]]), deps.now)[0]!.fields : null;
   // History names fall back to the Agent record (a former rep may no longer hold a reviewed link).
   const agentNames = await readStore.findAgentNames([...changeAgents].filter((id) => !names.has(id)));
   const changeName = (id: string | null) => (id ? (names.get(id) ?? agentNames.get(id) ?? null) : null);
@@ -240,6 +251,7 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
   };
 
   return {
+    ...(pool ? { pool } : {}),
     ...commonRead(actor, deps.now, actor.role === "rep" ? actor.agent_id : null, configuration, shown?.publication_revision ?? null, freshnessRead.freshness),
     subject: {
       subject_id: subject.id,
@@ -269,9 +281,10 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
       uncertain: subject.priority.uncertain,
     },
     assignment: {
-      assigned_agent_id: subject.assigned_agent_id,
-      assigned_agent_name: subject.assigned_agent_id ? (names.get(subject.assigned_agent_id) ?? null) : null,
-      unassigned: subject.assigned_agent_id === null,
+      assigned_agent_id: pool ? receiver ?? null : subject.assigned_agent_id,
+      assigned_agent_name: pool ? (receiver ? (names.get(receiver) ?? (await readStore.findAgentNames([receiver])).get(receiver) ?? null) : null)
+        : subject.assigned_agent_id ? (names.get(subject.assigned_agent_id) ?? null) : null,
+      unassigned: pool ? !receiver : subject.assigned_agent_id === null,
       assignment_revision: subject.assignment_revision,
       lead_receiver_agent_id: receiver ?? null,
       // The desk copy holds the receiver only when it has a reviewed sales_rep link (else Unassigned).
@@ -291,10 +304,10 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
       policy_version: typeof detail?.policy_version === "string" ? detail.policy_version : null,
       configuration_version: shown?.configuration_version ?? null,
       schedule_day: typeof detail?.schedule_day === "number" ? detail.schedule_day : null,
-      period: period
+      period: period && !sharedOnly
         ? { period_id: period.id, workflow: period.workflow, start_kind: period.start_kind, priority: period.priority, started_at: period.started_at.toISOString() }
         : null,
-      quoted: quoted
+      quoted: quoted && !sharedOnly
         ? {
             selected_date: (quoted.selected_date as string | null) ?? null,
             first_required_date: (quoted.first_required_date as string | null) ?? null,
@@ -303,7 +316,7 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
           }
         : null,
       callback:
-        callback && isoString(callback.appointment_at) && isoString(callback.due_at)
+        callback && !sharedOnly && isoString(callback.appointment_at) && isoString(callback.due_at)
           ? {
               plan_id: String(callback.plan_id),
               appointment_at: isoString(callback.appointment_at)!,
@@ -312,29 +325,29 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
               fulfilled_by_event_id: (callback.fulfilled_by_event_id as string | null) ?? null,
             }
           : null,
-      initial_response: initial
+      initial_response: initial && !sharedOnly
         ? { due_at: isoString(initial.due_at), outcome: String(initial.outcome), fulfilled_at: isoString(initial.fulfilled_at) }
         : null,
       advisory_cooldown: {
         warning: cooldown?.warning === true,
         unsuccessful_attempts: Array.isArray(cooldown?.unsuccessful_attempts) ? cooldown.unsuccessful_attempts.length : 0,
       },
-      catch_up: catchUp ? { call: catchUpDto(catchUp.call), sms: catchUpDto(catchUp.sms) } : null,
+      catch_up: catchUp && !sharedOnly ? { call: catchUpDto(catchUp.call), sms: catchUpDto(catchUp.sms) } : null,
       blocked_until: { call: isoString(blockedUntil?.call), sms: isoString(blockedUntil?.sms) },
       explanation: explanationOf({ subject, projection: shown, view, flags, restrictions }),
     },
     requirements: {
-      call: channelDto(presented?.call ?? PENDING_CHANNEL, live.call),
-      sms: channelDto(presented?.sms ?? PENDING_CHANNEL, live.sms),
+      call: channelDto(sharedFields ? sharedFields.call as StoredChannel : presented?.call ?? PENDING_CHANNEL, live.call),
+      sms: channelDto(sharedFields ? sharedFields.sms as StoredChannel : presented?.sms ?? PENDING_CHANNEL, live.sms),
     },
-    status_flags: flags,
+    status_flags: sharedFields ? sharedFields.status_flags as StoredStatusFlags : flags,
     oldest_actionable_due_at: iso(presented?.oldest_actionable_due_at ?? null),
     next_action_due_at: iso(shown?.next_action_due_at ?? null),
     last_interaction_at: iso(shown?.last_interaction_at ?? null),
     shadow_labels: ownerShadow && presented ? presented.unmasked : null,
     history: {
-      window_history: history.entries,
-      window_summary: history.summary,
+      window_history: sharedOnly ? [] : history.entries,
+      window_summary: sharedOnly ? null : history.summary,
       missed_labels_hidden: hideMissed,
       contact_events: sortedEvents.slice(0, CONTACT_EVENTS_SHOWN).map((e) => contactEventDto(e, names)),
       contact_events_truncated: sortedEvents.length > CONTACT_EVENTS_SHOWN,

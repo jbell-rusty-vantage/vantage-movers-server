@@ -59,7 +59,7 @@ export class MemoryDeskCommandStore implements DeskCommandStore {
   }
   async loadLeadAssignment(lead: DeskLeadRef) {
     const row = this.leads.get(deskLeadKey(lead));
-    return row ? { receiver_agent_id: row.receiver_agent_id, receiver_agent_source: row.receiver_agent_source, domain_revision: row.domain_revision } : null;
+    return row ? { receiver_agent_id: row.receiver_agent_id, receiver_agent_source: row.receiver_agent_source, domain_revision: row.domain_revision, granot_priority: row.granot_priority } : null;
   }
   async reviewedRepName(agentId: string) {
     return this.repNames.get(agentId) ?? null;

@@ -281,9 +281,23 @@ export const salesOutreachStatusFlagsSchema = z
 /** P05g review label, derived at `as_of` from the canonical move date. */
 export const SALES_OUTREACH_MOVE_DATE_REVIEWS = ["passed", "unknown"] as const;
 
+export const salesOutreachPoolSchema = z.object({
+  business_date: salesOutreachBusinessDateSchema,
+  state: z.enum(["due", "completed", "coverage_pending", "blocked", "waived", "scheduled"]),
+  due_at: nullableInstant, completed_at: nullableInstant,
+  completed_by_agent_id: salesOutreachAgentIdSchema.nullable(), completed_by_agent_name: z.string().nullable(),
+  completion_event_id: subjectIdSchema.nullable(),
+}).strict();
+export type SalesOutreachPoolDto = z.infer<typeof salesOutreachPoolSchema>;
+export const salesOutreachPoolSummarySchema = z.object({
+  team_due: z.number().int().min(0), team_completed: z.number().int().min(0),
+  assigned_due: z.number().int().min(0), assigned_completed: z.number().int().min(0), actual_outbound: z.number().int().min(0),
+}).strict();
+
 /** One queue row: the subject's display facts, independent Call/SMS facts and the sort keys' sources. */
 export const salesOutreachQueueRowSchema = z
   .object({
+    pool: salesOutreachPoolSchema.nullable().optional(),
     subject_id: subjectIdSchema,
     job_no: z.string().nullable(),
     /** "Job number pending": copying is disabled, the row is never hidden and no number is fabricated. */
@@ -663,13 +677,14 @@ export const salesOutreachErrorEnvelopeSchema = z
 // ---------------------------------------------------------------------------
 
 /** Workflows a queue filter may name (closed subjects never appear in the queue). */
-export const SALES_OUTREACH_QUEUE_WORKFLOWS = ["new", "quoted", "daily", "discretion", "none"] as const;
+export const SALES_OUTREACH_QUEUE_WORKFLOWS = ["new", "quoted", "daily", "discretion", "none", "other"] as const;
 export const SALES_OUTREACH_MOVE_DATE_UNKNOWN_MODES = ["include", "exclude", "only"] as const;
 export const SALES_OUTREACH_QUEUE_DEFAULT_LIMIT = 25;
 export const SALES_OUTREACH_QUEUE_MAX_LIMIT = 100;
 
 export const salesOutreachQueueQuerySchema = z
   .object({
+    queue_scope: z.enum(["assigned", "pool"]).optional(),
     scope: z.literal("production").optional(),
     /** Trimmed, at most 100 characters, matched as a literal (Job Number prefix, phone digits of 4 or more, name substring). */
     search: z
@@ -708,9 +723,11 @@ export type SalesOutreachQueueQuery = z.infer<typeof salesOutreachQueueQuerySche
 
 export const salesOutreachQueueSchema = commonReadSchema
   .extend({
+    pool_summary: salesOutreachPoolSummarySchema.optional(),
     /** The filters as applied (defaults resolved; a Rep's assignment is its own agent). */
     filters: z
       .object({
+        queue_scope: z.enum(["assigned", "pool"]).optional(),
         search: z.string().nullable(),
         priority: z.string(),
         workflow: z.enum([...SALES_OUTREACH_QUEUE_WORKFLOWS, "all"]),
@@ -788,6 +805,7 @@ export const SALES_OUTREACH_PROJECTION_STATES = ["current", "stale_policy", "pen
 
 export const salesOutreachDetailSchema = commonReadSchema
   .extend({
+    pool: salesOutreachPoolSchema.nullable().optional(),
     subject: z
       .object({
         subject_id: subjectIdSchema,

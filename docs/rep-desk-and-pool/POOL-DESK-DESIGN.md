@@ -1,5 +1,7 @@
 # Pool desk, shared call coverage and authorization design
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 **Status: proposed for Owner approval; design only.** October 14, 2026. The coordinator opened Phase 2 after both Phase 1 merges and deployed-read verification at 03:07:37 UTC. This design was inspected against server `beadfd11872acad0eede2774148fa11db651178c` and the shipped Admin desk. It grants no production mutation, reconciliation, enrollment, configuration change or feature implementation.
 
 Authority: [overnight Owner brief](../knowledge/overnight-rep-desk-and-pool.md), current [desk contracts](../sales-outreach-desk/CONTRACTS.md) and [lifecycle](../knowledge/sales-outreach-lifecycle.md). The lifecycle and capture packet contain historical deployment statements; current source and the October 13/14 amendments govern the shipped baseline. The companion [Pool model](POOL-MODEL.md) owns canonical membership, provenance and matching; [collection and Sheets design](POOL-COLLECTION-AND-SHEETS.md) specifies durable sheet exclusion and collection freshness. Discovery findings must establish actual Pool identity/membership before any proposed permission or obligation can be enabled.

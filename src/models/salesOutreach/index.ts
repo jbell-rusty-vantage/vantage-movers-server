@@ -7,3 +7,4 @@ export * from "./projections";
 export * from "./registry";
 export * from "./subjects";
 export * from "./liveEvents";
+export * from "./pool";

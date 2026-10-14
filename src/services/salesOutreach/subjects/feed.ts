@@ -142,6 +142,8 @@ export const ADMISSION_DECISION_PATHS = [
   "normalized_job_no",
   "move_date",
   "ingestion_origin",
+  "lead_source_company",
+  "source_granularity_id",
 ] as const;
 
 /** The change wrote at least one `ADMISSION_DECISION_PATHS` path (exact, or a sub-path of one). */
@@ -201,6 +203,7 @@ export function nominateLeadChanges(
   subjectLeadKeys: ReadonlySet<string>,
   intakeOpen: boolean,
   admissionOpen = false,
+  poolAdmissionOpen = false,
 ): LeadChangeNomination[] {
   const seen = new Set<string>();
   const nominations: LeadChangeNomination[] = [];
@@ -211,7 +214,7 @@ export function nominateLeadChanges(
     const creation = change.revision_before === 0 && (change.command_name === undefined
       || change.command_name === "createFormLead" || change.command_name === "createCallLead"
       || change.command_name === "createLeadFromGranot");
-    const kind = subjectLeadKeys.has(key) || (intakeOpen && creation)
+    const kind = subjectLeadKeys.has(key) || (intakeOpen && creation) || (poolAdmissionOpen && touchesAdmissionDecision(change.changed_paths))
       ? "change"
       : admissionOpen && !creation && touchesAdmissionDecision(change.changed_paths)
         ? "admission"
@@ -421,10 +424,11 @@ export async function scanOutreachLeadChanges(now = new Date(), deps: OutreachFe
 }
 
 /** Which creation/admission nominations the tail makes this run (from the configuration it inspected). */
-type TailGates = Readonly<{ intake: boolean; admission: boolean }>;
+type TailGates = Readonly<{ intake: boolean; admission: boolean; pool: boolean }>;
 const tailGatesOf = (value: SalesOutreachConfigurationValue): TailGates => ({
   intake: value.transition.intake_admission_enabled,
   admission: expansionAdmissionOpenOf(value),
+  pool: value.pool?.enabled === true && value.pool.admission_enabled === true,
 });
 
 async function runTailPass(now: Date, deps: OutreachFeedDeps, gates: TailGates, scanOverlap: boolean): Promise<TailPassResult> {
@@ -438,7 +442,7 @@ async function runTailPass(now: Date, deps: OutreachFeedDeps, gates: TailGates, 
     const subjects = await store.subjectLeadKeys(uniqueLeads(changes.map((c) => c.lead)), session);
     let nominated = 0;
     let conflicts = 0;
-    for (const nomination of nominateLeadChanges(changes, subjects, gates.intake, gates.admission)) {
+    for (const nomination of nominateLeadChanges(changes, subjects, gates.intake, gates.admission, gates.pool)) {
       const job = nomination.kind === "admission" ? admissionJobInput(nomination.lead, nomination.revision) : leadChangeJobInput(nomination.lead, nomination.revision);
       if ((await store.enqueue(job, session)) === "conflict") conflicts++;
       else nominated++;

@@ -148,7 +148,9 @@ async function planContext(actor: OutreachActor, subjectId: string, expectedRevi
   const store = commandStore(deps);
   const configuration = await requireCommandConfiguration(commandLoader(deps), session, { desk: true });
   const { policy, calendar } = requireCommandPolicy(configuration);
-  const { subject } = await authorizedSubject(actor, subjectId, store, session);
+  const { subject, lead } = await authorizedSubject(actor, subjectId, store, session);
+  if ((lead?.granot_priority ?? subject.priority.raw) === "9")
+    throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "pool_shared_schedule" }]);
   if (subject.status !== "active") throw new OutreachError("INVALID_INPUT", [{ path: "subject", code: "subject_not_open" }]);
   // Sequential: a session runs one operation at a time inside a transaction.
   const periods = await store.loadPeriods(subject.id, session);

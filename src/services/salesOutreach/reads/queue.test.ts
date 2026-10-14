@@ -9,9 +9,9 @@ import { capturedCoverage, completeConfigurationInput, periodRow, runInFakeTrans
 import { objectId } from "../subjects/testing";
 import { salesOutreachQueueQuerySchema, salesOutreachQueueSchema, type SalesOutreachQueueQuery } from "../../../validation/v1/salesOutreachReads";
 import { MemoryDeskReadStore } from "./deskTesting";
-import { readQueue } from "./queue";
+import { normalizeQueueQuery, readQueue } from "./queue";
 import { decodeQueueCursor, encodeQueueCursor } from "./queueCursor";
-import { mongoQueuePageQueries, mongoQueueQuery, queueSortSpec, type QueuePagePlan } from "./queueQuery";
+import { matchesQueue, mongoQueueFilter, mongoQueuePageQueries, mongoQueueQuery, queueSortSpec, type QueuePagePlan } from "./queueQuery";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore } from "./testing";
 
 /**
@@ -158,6 +158,20 @@ function deps(store: MemoryDeskReadStore, inspection: ConfigurationInspection = 
 }
 
 const q = (query: Record<string, string>): SalesOutreachQueueQuery => salesOutreachQueueQuerySchema.parse(query);
+
+test("Other restores ordinary priority 9 when Pool is disabled; enabled Pool excludes it in both stores", async () => {
+  const store = new MemoryDeskReadStore();
+  const id = seed(store, { workflow: "none", priority: "9", needs: false });
+  alignSnapshot(store, config());
+  const query = q({ workflow: "other", state: "all_active" });
+  assert.deepEqual((await readQueue(repA, query, deps(store))).rows.map((row) => row.subject_id), [id]);
+  const row = (await store.findQueuePage({ match: normalizeQueueQuery(repA, query).match, sort: queueSortSpec("urgency", "asc"), after: null, limit: 10 }))[0]!;
+  for (const enabled of [false, true]) {
+    const match = normalizeQueueQuery(repA, query, enabled).match;
+    assert.equal(matchesQueue(match, row), !enabled);
+    assert.equal(JSON.stringify(mongoQueueFilter(match)).includes('"priority_raw":{"$ne":"9"}'), enabled);
+  }
+});
 
 async function allPages(actor: OutreachActor, query: Record<string, string>, store: MemoryDeskReadStore, inspection = config()) {
   const ids: string[] = [];

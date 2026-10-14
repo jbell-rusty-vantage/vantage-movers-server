@@ -5,6 +5,8 @@ import { getSalesOutreachSubjectModel } from "../../models/salesOutreach";
 import { enqueueCsiJob, type JobInput } from "../salesIntelligence/jobs";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import type { DeskLeadRef } from "../salesOutreach/subjects/leadFacts";
+import { salesOutreachConfigurationLoader } from '../salesOutreach/config/load';
+import { refreshPoolLead } from '../salesOutreach/pool/admission';
 
 type RefreshDecision = { execution_mode: string; outcome: string; target?: { model: string; id: string } };
 export type EstimatesOutreachRefreshDeps = {
@@ -12,6 +14,7 @@ export type EstimatesOutreachRefreshDeps = {
   decision: (id: string, session: ClientSession) => Promise<RefreshDecision | null>;
   openSubject: (lead: DeskLeadRef, session: ClientSession) => Promise<boolean>;
   enqueue: (job: JobInput, session: ClientSession) => Promise<unknown>;
+  refreshPool?: (lead: DeskLeadRef, session: ClientSession) => Promise<void>;
 };
 
 const defaults: EstimatesOutreachRefreshDeps = {
@@ -19,6 +22,10 @@ const defaults: EstimatesOutreachRefreshDeps = {
   decision: async (id, session) => getSynchronizationDecisionModel().findById(id).select({ execution_mode: 1, outcome: 1, target: 1 }).session(session).lean().exec(),
   openSubject: async (lead, session) => Boolean(await getSalesOutreachSubjectModel().exists({ lead_model: lead.model, lead_id: new Types.ObjectId(lead.id), status: { $in: ["active", "review"] } }).session(session)),
   enqueue: enqueueCsiJob,
+  refreshPool: async (lead, session) => {
+    const configuration = await salesOutreachConfigurationLoader.load(session);
+    if(configuration.state === 'active')await refreshPoolLead(lead, configuration, new Date(), session);
+  },
 };
 const successful = (outcome: string) => ["applied", "linked", "already_current"].includes(outcome);
 
@@ -34,6 +41,8 @@ export async function refreshExistingEstimatesOutreach(
     const target = decision.target;
     if (!target || (target.model !== "FormLead" && target.model !== "CallLead") || !/^[a-f\d]{24}$/i.test(target.id)) return "skipped";
     const lead: DeskLeadRef = { model: target.model, id: target.id };
+    // Pool refresh may activate an explicitly allowed no-subject Lead; never require an ordinary subject first.
+    await deps.refreshPool?.(lead, session);
     if (!await deps.openSubject(lead, session)) return "skipped";
     await deps.enqueue({
       stage: "outreach_lead_change",

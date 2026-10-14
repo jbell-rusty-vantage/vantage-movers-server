@@ -6,8 +6,12 @@ import {
   type Response,
 } from "express";
 import { estimatesCronDecision } from "../services/granotHttpCollector/estimatesCron";
+import { poolCronDecision, poolDiscoveryDateChunks } from '../services/granotHttpCollector/poolCron';
+import { salesOutreachConfigurationLoader } from '../services/salesOutreach/config/load';
+import { poolEnabled } from '../services/salesOutreach/pool/policy';
 import {
-  createGranotRun,
+  createEstimatesSchedule,
+  dispatchEstimatesSchedule,
   recoverGranotRuns,
   runGranotWorker,
   estimatesScheduledWindows,
@@ -43,29 +47,31 @@ router.all(
   "/api/cron/granot-estimates-in-process",
   requireCronAuth,
   async (_req: Request, res: Response) => {
-    const decision = estimatesCronDecision(new Date());
-    if (!decision.run) {
+    const now = new Date();
+    const decision = estimatesCronDecision(now), pool = poolCronDecision(now);
+    if (!decision.run && !pool.run) {
       return res.json({ ok: true, skipped: true, reason: decision.reason });
     }
     try {
-      const windows = await estimatesScheduledWindows(new Date());
+      const windows = decision.run || (pool.run && pool.lane === 'pool_refresh') ? await estimatesScheduledWindows(now) : [];
+      const configuration = await salesOutreachConfigurationLoader.inspect();
+      const poolActive = configuration.state === 'active' && poolEnabled(configuration.value);
       const runs = [];
-      for (const dateWindow of windows) {
-        runs.push(await createGranotRun({
-          operation: "estimates_in_process",
-          workflow: "apply",
-          dateWindow,
-          sourceLabels: [],
-          autoApply: true,
-          scheduledSlotKey: `${decision.slotKey}:${dateWindow.from}:${dateWindow.to}`,
-          scheduledCoverage: {
-            slotKey: decision.slotKey,
-            dateWindow: decision.dateWindow,
-            totalWindows: windows.length,
-          },
-          initiator: estimatesCronActor(),
-        }));
+      const slotsToDispatch:string[]=[];
+      let allScope: { totalWindows: number; windows:Array<{from:string;to:string}> } | null = null;
+      if(decision.run) {
+        const manifest = await createEstimatesSchedule({slotKey:decision.slotKey,lane:'all',dateWindow:decision.dateWindow,windows,initiator:estimatesCronActor(),alsoPoolRefresh:poolActive});
+        allScope = {totalWindows:manifest.windows.length,windows:manifest.windows.map((w:{from:string;to:string})=>({from:w.from,to:w.to}))};
+        slotsToDispatch.push(decision.slotKey);
       }
+      if(pool.run && poolActive) {
+        const poolWindows = pool.lane === 'pool_discovery' ? poolDiscoveryDateChunks(pool.dateWindow) : allScope?.windows ?? windows;
+        await createEstimatesSchedule({slotKey:pool.slotKey,lane:pool.lane,dateWindow:pool.dateWindow,windows:poolWindows,initiator:estimatesCronActor(),
+          ...(decision.run && allScope ? {afterAllCoverage:{slotKey:decision.slotKey,totalWindows:allScope.totalWindows}} : {})});
+        slotsToDispatch.push(pool.slotKey);
+      }
+      for(const slotKey of slotsToDispatch)runs.push(...await dispatchEstimatesSchedule(slotKey));
+      if(!runs.length)return res.json({ok:true,skipped:true,reason:'pool_not_enabled'});
       const created = runs[0]!;
       if (!runs.some((run) => run.queue_published)) {
         const worker = await runGranotWorker();
@@ -74,7 +80,8 @@ router.all(
           skipped: false,
           run_id: created.run_id,
           run_ids: runs.map((run) => run.run_id),
-          date_window: decision.dateWindow,
+          date_window: decision.run ? decision.dateWindow : pool.run ? pool.dateWindow : null,
+          pool_enabled: poolActive,
           local_worker: worker,
         });
       }
@@ -83,7 +90,8 @@ router.all(
         skipped: false,
         run_id: created.run_id,
         run_ids: runs.map((run) => run.run_id),
-        date_window: decision.dateWindow,
+        date_window: decision.run ? decision.dateWindow : pool.run ? pool.dateWindow : null,
+        pool_enabled: poolActive,
         queue_published: true,
       });
     } catch {

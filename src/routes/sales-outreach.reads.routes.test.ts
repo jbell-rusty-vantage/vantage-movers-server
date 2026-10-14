@@ -172,7 +172,7 @@ test("capabilities: role-shaped views/filters/commands and safe controls only", 
   assert.deepEqual(owner.permitted_filters.rep_days, ["business_day", "agent_id"]);
   assert.deepEqual(owner.permitted_filters.team, ["business_day"]);
   assert.ok(owner.permitted_filters.queue.includes("agent_id") && owner.permitted_filters.queue.includes("unassigned"));
-  assert.deepEqual(owner.live_topics, ["outreach_desk", "outreach_goal", "outreach_configuration", "outreach_rep_metrics"]);
+  assert.deepEqual(owner.live_topics, ["outreach_desk", "outreach_goal", "outreach_configuration", "outreach_rep_metrics", "outreach_pool"]);
   assert.deepEqual(owner.deployed_reads, ["capabilities", "rep_days", "team", "queue", "outreach_detail", "live", "rep_metrics"]);
   assert.deepEqual([owner.configuration_state, owner.configuration_version, owner.configuration_revision, owner.desk_available], ["active", "v-test", 3, true]);
   assert.ok(owner.role_capabilities.includes("activation"));

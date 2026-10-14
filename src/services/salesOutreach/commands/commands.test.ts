@@ -115,6 +115,19 @@ const quoted = (h: Harness, actor = repA, overrides: Partial<Parameters<typeof s
     h.deps,
   );
 
+test("Pool rejects own-assigned and coordinator callback/Quoted edits; ordinary commands resume after exit", async () => {
+  for (const actor of [repA, owner, manager]) {
+    const h = harness();
+    h.store.leads.get(deskLeadKey(h.subject.lead))!.granot_priority = "9";
+    await rejectsWith(quoted(h, actor), "INVALID_INPUT", "pool_shared_schedule");
+    await rejectsWith(commandCallback({ actor, subject_id: h.subject.id, idempotency_key: "pool-callback", expected_revision: 0,
+      operation: "set", appointment_at: "2026-10-06T19:00:00.000Z", replace_active_plan: false }, h.deps), "INVALID_INPUT", "pool_shared_schedule");
+    assert.equal(h.store.plans.length, 0);
+    h.store.leads.get(deskLeadKey(h.subject.lead))!.granot_priority = "1";
+    assert.equal((await quoted(h, actor)).plan?.kind, "quoted_date");
+  }
+});
+
 async function rejectsWith(promise: Promise<unknown>, code: string, issue?: string) {
   await assert.rejects(promise, (error: unknown) => {
     const actual = error instanceof OutreachError || error instanceof CsiError ? error.code : String(error);

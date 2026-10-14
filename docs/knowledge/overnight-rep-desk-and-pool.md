@@ -26,6 +26,8 @@ sources:
 
 # Overnight execution brief
 
+> **October 14 continuation:** [live Pool findings](../rep-desk-and-pool/POOL-FINDINGS-2026-10-14.md) and [approval-ready proposal](../rep-desk-and-pool/POOL-APPROVAL-2026-10-14.md) supersede the historical Pool access/date-window/parser assumptions below. Priority9 is Pool; production shared workflow remains unimplemented and approval-gated.
+
 This is the Owner's latest task, recorded October 13, 2026 America/New_York (October 14 UTC). Execute in **two ordered phases**. Phase 1 is authorized implementation, verification and merge to `main` in both repositories where needed. Phase 2 is authorized discovery/prototyping and an approval-ready Pool design, ending **before production Pool mutations or feature implementation**. Do not stop after writing a plan for Phase 1. Do not claim completion with unmerged changes.
 
 ## Start and precedence

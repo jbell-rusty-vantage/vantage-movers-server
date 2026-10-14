@@ -1,0 +1,32 @@
+{
+  "contract": "pool-expansion-review-v1",
+  "database": "vantagemovers",
+  "started_at": "2026-10-14T20:50:02.332Z",
+  "completed_at": "2026-10-14T20:55:39.907Z",
+  "configuration_pins": [
+    "26:7be7515d44a33d861b11d237b0d965fe9367d511536c5e75d766008c13d27701"
+  ],
+  "snapshot": "sequential_read_only_batches_not_atomic",
+  "canonical_priority9_count": 602,
+  "assigned_ready_for_selected_manifest": 453,
+  "unassigned_coherent_requires_routing_review": 92,
+  "held": 1,
+  "hold_reasons": {
+    "canonical_membership_eligible": 1,
+    "subject_not_closed_or_review": 1
+  },
+  "writes": 0,
+  "provider_requests": 0,
+  "admission_authority": false,
+  "assigned_selection_hash": "7f4caddcfd55048a8df87d6a22dce2ec5c8cb457105d002d3bcaff96fe2d4952",
+  "unassigned_selection_hash": "2f7ac5d3e2858c674b252ac45540ab3fa8d558a8223a9427ef4180c764ef0a69",
+  "held_selection_hash": "d95a850068dd91f00f10547b9bf5b87881d39ecc891db556bc34a5af83722543",
+  "scope": "All existing stored priority9 Leads; not provider inventory; unmatched provider rows remain outside this report",
+  "expansion_gate": "Deliberate reviewed exact-ID expansion after pilot observation; unassigned cohort requires separate routing review",
+  "canonical_lead_eligible": 601,
+  "assigned_to_other_receiver_requires_assignment_review": 56,
+  "assignment_review_rule": "Receiver retained; receiver eligibility is a pilot criterion and does not suppress otherwise coherent shared team Pool work",
+  "assigned_other_selection_hash": "21f93b6757cf15c412d4c8c16fa7bfc45b670307df5b039f22ece513e0b91643",
+  "canonical_eligible_selection_hash": "d2d2cd992f5483254bcd66973dd4a0226fefa37515997c9a60ae193265137b2d",
+  "private_review_hash": "e38624631be09d86363bb097eafd7a348a7d64d8caf9488834146cf50cfdcc37"
+}

@@ -12,6 +12,7 @@ import {
 } from "./projections";
 import { getSalesOutreachSubjectModel, SALES_OUTREACH_SUBJECT_INDEXES } from "./subjects";
 import { getRingCentralRepSmsEvidenceModel, RINGCENTRAL_REP_SMS_EVIDENCE_INDEXES } from "./repSmsEvidence";
+import { getSalesOutreachPoolWorkModel, getSalesOutreachPoolDutyModel, SALES_OUTREACH_POOL_WORK_INDEXES, SALES_OUTREACH_POOL_DUTY_INDEXES } from "./pool";
 
 /**
  * Every collection the Sales Outreach Desk owns, with its declared indexes. The index build script
@@ -21,6 +22,8 @@ import { getRingCentralRepSmsEvidenceModel, RINGCENTRAL_REP_SMS_EVIDENCE_INDEXES
  * Lane S3 appends `ringcentral_rep_sms_evidence` here in a `shared(registry):` commit.
  */
 export const SALES_OUTREACH_MODEL_REGISTRY = [
+  { name: "SalesOutreachPoolWork", model: getSalesOutreachPoolWorkModel, indexes: SALES_OUTREACH_POOL_WORK_INDEXES },
+  { name: "SalesOutreachPoolDuty", model: getSalesOutreachPoolDutyModel, indexes: SALES_OUTREACH_POOL_DUTY_INDEXES },
   { name: "SalesOutreachConfiguration", model: getSalesOutreachConfigurationModel, indexes: SALES_OUTREACH_CONFIGURATION_INDEXES },
   { name: "SalesOutreachSubject", model: getSalesOutreachSubjectModel, indexes: SALES_OUTREACH_SUBJECT_INDEXES },
   { name: "SalesOutreachPolicyPeriod", model: getSalesOutreachPolicyPeriodModel, indexes: SALES_OUTREACH_POLICY_PERIOD_INDEXES },

@@ -20,6 +20,8 @@ import { ringCentralRepCallContext, writeReceiverAgent } from "../../leads/recei
 import type { ContactEventStore, StoredContactEvent } from "./apply";
 import type { CallSourceRow, DeskLeadKey, RestrictionInterval, SmsSourceRow, SubjectFacts } from "./derive";
 import type { ReceiverFillCandidate } from "./receiverFill";
+import { recomputePoolDuty } from "../pool/duties";
+import { getSalesOutreachPoolWorkModel } from "../../../models/salesOutreach/pool";
 
 /**
  * Mongo side of the contact-event derivation. Every read is bounded by the page of sources and uses an
@@ -148,6 +150,7 @@ const LEAD_MODELS = ["FormLead", "CallLead"] as const;
  */
 export async function writeRepCallReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number> {
   if (!candidates.length) return 0;
+  const poolWork = await getSalesOutreachPoolWorkModel().find({ subject_id: { $in: candidates.map((c) => oid(c.subject_id)) } }).session(session).lean();
   const subjects = (await getSalesOutreachSubjectModel()
     .find({ _id: { $in: candidates.map((c) => oid(c.subject_id)) }, assigned_agent_id: null }, { lead_model: 1, lead_id: 1 })
     .session(session)
@@ -159,6 +162,9 @@ export async function writeRepCallReceivers(candidates: readonly ReceiverFillCan
   const nameOf = new Map(agents.map((row) => [String(row._id), row.name ?? ""]));
   let filled = 0;
   for (const candidate of candidates) {
+    // Working shared Pool never changes the assigned Rep, including the Unassigned cohort.
+    const pool = poolWork.find((w) => String(w.subject_id) === candidate.subject_id);
+    if (pool && (pool.active || pool.episodes.some((e) => +e.started_at <= +candidate.event_at && (!e.ended_at || +e.ended_at > +candidate.event_at)))) continue;
     const lead = leadOf.get(candidate.subject_id);
     const name = nameOf.get(candidate.agent_id);
     if (!lead || name === undefined) continue;
@@ -180,6 +186,9 @@ export async function writeRepCallReceivers(candidates: readonly ReceiverFillCan
 }
 
 export const mongoContactEventStore: ContactEventStore = {
+  async recomputePoolDuties(keys, configuration, now, session) {
+    for (const key of keys) await recomputePoolDuty(key.subject_id, key.business_date, configuration, now, session);
+  },
   async loadCalls(ids, session) {
     const rows = await getCallInteractionModel().find({ _id: { $in: ids.map(oid) } }, CALL_SOURCE_PROJECTION).session(session).lean();
     return (rows as unknown as CallLean[]).map(toCallSourceRow);
@@ -274,7 +283,7 @@ export const mongoContactEventStore: ContactEventStore = {
           return ids.length ? [{ lead_model: model, lead_id: { $in: ids } }] : [];
         });
         const subjectRows = (await getSalesOutreachSubjectModel()
-          .find({ $or: or }, { lead_model: 1, lead_id: 1, revision: 1, "enrollment.activation_at": 1 })
+        .find({ $or: or }, { lead_model: 1, lead_id: 1, revision: 1, "enrollment.activation_at": 1 })
           .session(session)
           .lean()) as unknown as Array<{ _id: unknown; lead_model: string; lead_id: unknown; revision: number; enrollment: { activation_at: Date } }>;
         const periods = subjectRows.length

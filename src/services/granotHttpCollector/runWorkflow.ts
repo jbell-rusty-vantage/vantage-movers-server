@@ -5,6 +5,9 @@ import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
 import { GranotEstimatesOpenDate } from "../../models/GranotEstimatesOpenDate";
+import { GranotEstimatesScheduleSlot } from '../../models/GranotEstimatesScheduleSlot';
+import { salesOutreachConfigurationLoader, type ConfigurationLoader } from '../salesOutreach/config/load';
+import { poolEnabled } from '../salesOutreach/pool/policy';
 import { BookedLead } from "../../models/BookedLead";
 import { getCallLeadModel } from "../../models/CallLead";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
@@ -47,6 +50,7 @@ class EstimatesOutreachRefreshRetry extends Error {}
 import { planEstimatesIdentities, type EstimatesIdentityPlanningDeps } from "./estimatesIdentityPlanning";
 import { GranotRunConflict } from "./errors";
 import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot } from "./estimatesCron";
+import { poolLatestSlot, POOL_DISCOVERY_FLOOR, type EstimatesLane } from './poolCron';
 import {
   planGranotFormWorkflow,
   type GranotFormPlan,
@@ -79,6 +83,7 @@ const PLAN_TTL_MS = 24 * 60 * 60_000;
 export type GranotLeadOperation = "form_leads" | "call_leads";
 export type GranotOperation = GranotLeadOperation | "estimates_in_process";
 export type GranotWorkflow = "preview" | "apply";
+type EstimatesRunSelection = { estimatesSelection?: 'all' | 'pool'; estimatesLane?: EstimatesLane };
 export type GranotRunRequest = Omit<GranotCollectionRequest, "credentials"> & {
   operation: GranotOperation;
   workflow: GranotWorkflow;
@@ -92,8 +97,9 @@ export type GranotRunRequest = Omit<GranotCollectionRequest, "credentials"> & {
   autoApply?: boolean;
   /** Cron retry identity, scoped to an Estimates date and New York hour. */
   scheduledSlotKey?: string;
-  scheduledCoverage?: { slotKey: string; dateWindow: { from: string; to: string }; totalWindows: number };
-};
+  scheduledCoverage?: { slotKey: string; dateWindow: { from: string; to: string }; totalWindows: number; lane?: EstimatesLane };
+  afterAllCoverage?: { slotKey: string; totalWindows: number };
+} & EstimatesRunSelection;
 export type GranotRunGroupRequest = {
   operations: GranotLeadOperation[];
   workflow: GranotWorkflow;
@@ -155,6 +161,7 @@ export async function createGranotRun(
   request: GranotRunRequest,
 ): Promise<{ run_id: string; status: "queued"; queue_published: boolean }> {
   await connectMongo();
+  validateEstimatesRunSelection(request);
   let sourceLabels = request.sourceLabels;
   let sourceIds = request.sourceIds ?? [];
   if (request.operation === "estimates_in_process") {
@@ -187,19 +194,21 @@ export async function createGranotRun(
     filters: request.filters,
     initiator: request.initiator,
     autoApply: request.autoApply,
+    estimatesSelection: request.estimatesSelection,
+    estimatesLane: request.estimatesLane,
   });
   let run;
   if (request.scheduledSlotKey) {
     if (request.operation !== "estimates_in_process" || !request.autoApply) {
       throw new GranotRunConflict("INVALID_SCHEDULED_RUN", "Only Estimates auto-apply may use a scheduled slot.");
     }
-    const id = scheduledEstimatesRunId(request.scheduledSlotKey);
+    const id = scheduledEstimatesRunId(request.scheduledSlotKey, request.estimatesSelection);
     // _id is already unique in Mongo: no new production index is required.
     // Both a retry and concurrent requests retain the first run and its plan.
     try {
       await GranotAutomationRun.updateOne(
         { _id: id },
-        { $setOnInsert: { ...document, run_group_id: request.scheduledCoverage?.slotKey ?? null, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey, scheduled_coverage: request.scheduledCoverage } } },
+        { $setOnInsert: { ...document, run_group_id: request.scheduledCoverage?.slotKey ?? null, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey, scheduled_coverage: request.scheduledCoverage, ...(request.afterAllCoverage ? { after_all_coverage:request.afterAllCoverage, waiting_for_all:true } : {}) } } },
         { upsert: true },
       ).exec();
     } catch (error) {
@@ -217,8 +226,79 @@ export async function createGranotRun(
   };
 }
 
-export function scheduledEstimatesRunId(slotKey: string): Types.ObjectId {
-  return new Types.ObjectId(createHash("sha256").update(`granot-estimates-slot-v1:${slotKey}`).digest("hex").slice(0, 24));
+export function scheduledEstimatesRunId(slotKey: string, selection: 'all' | 'pool' = 'all'): Types.ObjectId {
+  const identity = selection === 'all' ? `granot-estimates-slot-v1:${slotKey}` : `granot-estimates-pool-slot-v1:${slotKey}`;
+  return new Types.ObjectId(createHash("sha256").update(identity).digest("hex").slice(0, 24));
+}
+
+export function validateEstimatesRunSelection(request: Pick<GranotRunRequest,'operation'|'estimatesSelection'|'estimatesLane'>): void {
+  const selection = request.estimatesSelection ?? 'all';
+  if (!['all','pool'].includes(selection) || (request.estimatesLane && !['all','pool_refresh','pool_discovery'].includes(request.estimatesLane)) ||
+      (request.operation !== 'estimates_in_process' && (request.estimatesSelection || request.estimatesLane)) ||
+      (request.estimatesLane && (request.estimatesLane === 'all') !== (selection === 'all'))) {
+    throw new GranotRunConflict('INVALID_ESTIMATES_SELECTION','Estimates selection and schedule lane must agree.');
+  }
+}
+
+type EstimatesScheduleInput = {
+  slotKey:string; lane:EstimatesLane; dateWindow:{from:string;to:string}; windows:Array<{from:string;to:string}>;
+  initiator:DurableActor; afterAllCoverage?:{slotKey:string;totalWindows:number};
+  alsoPoolRefresh?:boolean;
+};
+
+/** First insert freezes the complete declared scope even when the provider date directory changes mid-slot. */
+export async function createEstimatesSchedule(input:EstimatesScheduleInput) {
+  await connectMongo();
+  if(!input.windows.length || input.windows.length>1000 || input.windows.some(w=>getGranotDateWindowProblem(w)))throw new GranotRunConflict('INVALID_SCHEDULE_SCOPE','Invalid Estimates schedule scope');
+  try {
+    await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$setOnInsert:{
+      lane:input.lane,date_window:input.dateWindow,windows:input.windows,
+      after_all_slot:input.afterAllCoverage?.slotKey ?? null,after_all_windows:input.afterAllCoverage?.totalWindows ?? null,
+      initiator:input.initiator,dispatched:false,also_pool_refresh:input.alsoPoolRefresh===true,pool_manifest_created:false,purge_at:new Date(Date.now()+8*86400000),
+    }},{upsert:true});
+  }catch(error){if((error as {code?:number}).code!==11000)throw error;}
+  if(input.alsoPoolRefresh)await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$set:{also_pool_refresh:true}});
+  const slot=await GranotEstimatesScheduleSlot.findById(input.slotKey).lean().orFail();
+  if(slot.lane==='all' && slot.also_pool_refresh && !slot.pool_manifest_created){
+    await createEstimatesSchedule({slotKey:`${input.slotKey}:pool_refresh`,lane:'pool_refresh',
+      dateWindow:{from:slot.date_window.from,to:slot.date_window.to},windows:slot.windows.map((w:{from:string;to:string})=>({from:w.from,to:w.to})),
+      initiator:slot.initiator as DurableActor,afterAllCoverage:{slotKey:input.slotKey,totalWindows:slot.windows.length}});
+    await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$set:{pool_manifest_created:true}});
+  }
+  return slot;
+}
+
+/** Idempotently regenerates absent children, including after cron interruption and outside its NY hour. */
+export async function dispatchEstimatesSchedule(slotKey:string, create:typeof createGranotRun=createGranotRun):Promise<Array<Awaited<ReturnType<typeof createGranotRun>>>> {
+  const slot=await GranotEstimatesScheduleSlot.findById(slotKey).lean().orFail();
+  const lane=slot.lane as EstimatesLane,selection=lane==='all'?'all':'pool';
+  const runs=[];
+  for(const window of slot.windows){
+    const dateWindow={from:window.from,to:window.to};
+    runs.push(await create({operation:'estimates_in_process',workflow:'apply',sourceLabels:[],dateWindow,autoApply:true,
+      estimatesSelection:selection,estimatesLane:lane,initiator:slot.initiator as DurableActor,
+      scheduledSlotKey:`${slotKey}:${dateWindow.from}:${dateWindow.to}`,
+      scheduledCoverage:{slotKey,dateWindow:{from:slot.date_window.from,to:slot.date_window.to},totalWindows:slot.windows.length,lane},
+      ...(slot.after_all_slot ? {afterAllCoverage:{slotKey:slot.after_all_slot,totalWindows:slot.after_all_windows!}} : {}),
+    }));
+  }
+  await GranotEstimatesScheduleSlot.updateOne({_id:slotKey},{$set:{dispatched:true}});
+  return runs;
+}
+
+export async function resumeEstimatesSchedules(loader:Pick<ConfigurationLoader,'inspect'>=salesOutreachConfigurationLoader):Promise<void> {
+  const configuration=await loader.inspect();
+  const sharing=configuration.state==='active'&&poolEnabled(configuration.value);
+  const slots=await GranotEstimatesScheduleSlot.find({
+    ...(sharing?{}:{lane:'all'}),
+    $or:[{dispatched:false},...(sharing?[{also_pool_refresh:true,pool_manifest_created:false}]:[])],
+    purge_at:{$gt:new Date()},
+  }).sort({createdAt:1}).limit(10).lean();
+  for(const slot of slots){
+    if(slot.lane==='all' && slot.also_pool_refresh && !slot.pool_manifest_created && sharing)
+      await createEstimatesSchedule({slotKey:slot._id,lane:'all',dateWindow:{from:slot.date_window.from,to:slot.date_window.to},windows:slot.windows.map((w:{from:string;to:string})=>({from:w.from,to:w.to})),initiator:slot.initiator as DurableActor,alsoPoolRefresh:true});
+    if(!slot.dispatched)await dispatchEstimatesSchedule(slot._id);
+  }
 }
 
 export async function createGranotRunGroup(
@@ -311,7 +391,7 @@ function buildQueuedRun(input: {
   initiator: DurableActor;
   runGroupId?: string;
   autoApply?: boolean;
-}) {
+} & EstimatesRunSelection) {
   const now = new Date();
   return {
     operation: input.operation,
@@ -324,6 +404,7 @@ function buildQueuedRun(input: {
       sourceLabels: input.sourceLabels,
       filters: input.filters ?? {},
       ...(input.autoApply ? { auto_apply: true } : {}),
+      ...(input.operation === 'estimates_in_process' ? { estimatesSelection:input.estimatesSelection ?? 'all', estimatesLane:input.estimatesLane ?? (input.estimatesSelection === 'pool' ? 'pool_refresh' : 'all') } : {}),
     },
     initiator: input.initiator,
     expires_at: new Date(now.getTime() + PLAN_TTL_MS),
@@ -452,6 +533,7 @@ export async function runGranotWorker(deps: {
 }> {
   await connectMongo();
   const now = new Date();
+  await releasePoolCollectionDependencies();
   const owner = `granot-worker:${randomUUID()}`;
   const leaseStore = new MongoLeaseStore(SheetSyncLease);
   const lease = await leaseStore.acquire({
@@ -510,7 +592,7 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
   const request = run.request_snapshot as unknown as Omit<
     GranotCollectionRequest,
     "credentials"
-  > & { auto_apply?: boolean };
+  > & EstimatesRunSelection & { auto_apply?: boolean };
   let sourceIndex = 0;
   let plannedRows = 0;
   const planningDeadline = run.operation === "estimates_in_process" ? Date.now() + 120_000 : Infinity;
@@ -577,7 +659,7 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
 
 async function planOperation(
   operation: string,
-  request: Omit<GranotCollectionRequest, "credentials">,
+  request: Omit<GranotCollectionRequest, "credentials"> & EstimatesRunSelection,
   runId: string,
   lease: LeaseToken,
   beforeRow: () => Promise<void>,
@@ -587,6 +669,9 @@ async function planOperation(
     let coverage: EstimatesCollectionCoverage | undefined;
     const sources = await collectEstimatesInProcess({
       dateWindow: request.dateWindow,
+      selection: request.estimatesSelection ?? 'all',
+      chunkDays: request.estimatesLane === 'pool_discovery' ? 31 : 7,
+      maxRequests: request.estimatesSelection === 'pool' ? 192 : 128,
       credentials: readCredentials(),
       beforeRequest: async () => {
         if (Date.now() >= planningDeadline) throw new GranotRunConflict("COLLECTION_BUDGET_EXCEEDED", "Granot collection exceeded 120 seconds; recollect using smaller date windows.");
@@ -1233,10 +1318,10 @@ export async function estimatesScheduledWindows(now: Date): Promise<Array<{ from
 }
 
 /** Complete collection and completed synchronization are deliberately separate. */
-export async function getEstimatesFreshness(now = new Date()): Promise<Record<string, unknown>> {
+async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane): Promise<Record<string, unknown>> {
   await connectMongo();
   const slots = await GranotAutomationRun.aggregate([
-    { $match: { operation: "estimates_in_process", "request_snapshot.scheduled_coverage.slotKey": { $type: "string" } } },
+    { $match: { operation: "estimates_in_process", "request_snapshot.scheduled_coverage.slotKey": { $type: "string" }, ...(lane === "all" ? { "request_snapshot.estimatesSelection": { $ne:"pool" } } : { "request_snapshot.estimatesLane":lane }) } },
     { $group: {
       _id: "$request_snapshot.scheduled_coverage.slotKey",
       expected_windows: { $max: "$request_snapshot.scheduled_coverage.totalWindows" },
@@ -1251,10 +1336,25 @@ export async function getEstimatesFreshness(now = new Date()): Promise<Record<st
     { $sort: { created_at: -1 } },
     { $limit: 100 },
   ]);
+  const manifests=await GranotEstimatesScheduleSlot.find({lane}).sort({createdAt:-1}).limit(100).lean();
+  for(const manifest of manifests){
+    const existing=slots.find(s=>s._id===manifest._id);
+    if(existing){existing.expected_windows=manifest.windows.length;existing.created_at=manifest.createdAt;}
+    else slots.push({_id:manifest._id,expected_windows:manifest.windows.length,discovered_windows:0,collected_windows:0,completed_windows:0,failed_windows:0,held_rows:0,latest_collection_at:null,created_at:manifest.createdAt});
+  }
+  slots.sort((a,b)=>+new Date(b.created_at)-+new Date(a.created_at));
   const complete = slots.find((slot) => slot.expected_windows > 0 && slot.collected_windows === slot.expected_windows);
   const current = slots[0];
   const lastCollected = complete?.latest_collection_at;
-  const expected = estimatesLatestSlot(now);
+  const expected = lane === "all" ? estimatesLatestSlot(now) : poolLatestSlot(now,lane);
+  const uncovered = current ? await GranotAutomationRun.find({"request_snapshot.scheduled_coverage.slotKey":current._id,"collection_summary.coverage.complete":{$ne:true}}).select({"request_snapshot.dateWindow":1}).lean() : [];
+  const ranges = uncovered.flatMap(run=>{const window=(run.request_snapshot as {dateWindow?:{from:string;to:string}}).dateWindow;return window?[window]:[];}).sort((a,b)=>granotCalendarEpoch(a.from)-granotCalendarEpoch(b.from));
+  const manifest=manifests.find(m=>m._id===current?._id);
+  if(manifest){
+    const collected=await GranotAutomationRun.find({'request_snapshot.scheduled_coverage.slotKey':manifest._id,'collection_summary.coverage.complete':true}).select({request_snapshot:1}).lean();
+    const covered=new Set(collected.map(run=>{const w=(run.request_snapshot as {dateWindow:{from:string;to:string}}).dateWindow;return `${w.from}:${w.to}`;}));
+    ranges.splice(0,ranges.length,...manifest.windows.filter((w:{from:string;to:string})=>!covered.has(`${w.from}:${w.to}`)).map((w:{from:string;to:string})=>({from:w.from,to:w.to})).sort((a:{from:string},b:{from:string})=>granotCalendarEpoch(a.from)-granotCalendarEpoch(b.from)));
+  }
   return {
     observed_at: now.toISOString(),
     last_complete_coverage_at: lastCollected ?? null,
@@ -1268,9 +1368,33 @@ export async function getEstimatesFreshness(now = new Date()): Promise<Record<st
       ...(current && current.completed_windows < current.expected_windows ? ["synchronization_pending"] : []),
       ...(+now - +expected.at > 90 * 60_000 && (complete?._id !== expected.slotKey) ? ["late_slot"] : []),
     ],
-    older_scope: "all_observed_provider_open_date_months",
+    oldest_uncovered_range: ranges[0] ?? null,
+    held_rows: current?.held_rows ?? 0,
+    lag_ms: lastCollected ? Math.max(0,+now-+new Date(lastCollected)) : null,
+    older_scope: lane === "pool_discovery" ? `declared_history_from_${POOL_DISCOVERY_FLOOR}` : "all_observed_provider_open_date_months",
     coverage_limit: "Older Leads without verified provider Open Date evidence require discovery backfill; coverage is not all-time assurance.",
   };
+}
+
+export async function getEstimatesFreshness(now = new Date()): Promise<Record<string, unknown>> {
+  const [all,refresh,discovery] = await Promise.all([getEstimatesLaneFreshness(now,"all"),getEstimatesLaneFreshness(now,"pool_refresh"),getEstimatesLaneFreshness(now,"pool_discovery")]);
+  return {...all,pool_lanes:{refresh,discovery}};
+}
+
+/** A Pool refresh starts only after every ALL partition in its slot was collected completely. */
+export async function releasePoolCollectionDependencies(): Promise<void> {
+  // Group dependencies before scanning: a blocked prefix of children must never starve another slot.
+  const dependencies=await GranotAutomationRun.aggregate([
+    {$match:{status:'queued','request_snapshot.waiting_for_all':true,'request_snapshot.after_all_coverage.slotKey':{$type:'string'}}},
+    {$group:{_id:'$request_snapshot.after_all_coverage.slotKey',total:{$max:'$request_snapshot.after_all_coverage.totalWindows'}}},
+  ]);
+  const slots=new Map<string,number>(dependencies.filter(d=>d.total>0).map(d=>[d._id,d.total]));
+  for(const [slot,total] of slots) {
+    const manifest=await GranotEstimatesScheduleSlot.findById(slot).lean();
+    const ids=manifest?.lane==='all' ? manifest.windows.map((w:{from:string;to:string})=>scheduledEstimatesRunId(`${slot}:${w.from}:${w.to}`,'all')) : null;
+    const complete = await GranotAutomationRun.countDocuments({operation:'estimates_in_process',...(ids?{_id:{$in:ids}}:{'request_snapshot.scheduled_coverage.slotKey':slot}),'request_snapshot.estimatesSelection':{$ne:'pool'},'collection_summary.coverage.complete':true});
+    if(complete === (ids?.length ?? total))await GranotAutomationRun.updateMany({status:'queued','request_snapshot.waiting_for_all':true,'request_snapshot.after_all_coverage.slotKey':slot},{$set:{'request_snapshot.waiting_for_all':false}});
+  }
 }
 
 export async function recoverGranotRuns(): Promise<{
@@ -1278,6 +1402,8 @@ export async function recoverGranotRuns(): Promise<{
   queue_published: boolean;
 }> {
   await connectMongo();
+  await resumeEstimatesSchedules();
+  await releasePoolCollectionDependencies();
   const exists = await GranotAutomationRun.exists(granotRecoverableFilter(new Date()));
   return {
     recoverable: Boolean(exists),
@@ -1300,7 +1426,7 @@ export function granotRecoverableFilter(now: Date): Record<string, unknown> {
     { leased_until: null },
     { leased_until: { $exists: false } },
   ] };
-  return { $or: [
+  return { 'request_snapshot.waiting_for_all': { $ne:true }, $or: [
     { status: "queued" },
     { status: "planning", ...leaseAvailable },
     { status: "applying", $and: [leaseAvailable, granotApplyReadyFilter(now)] },
@@ -1312,6 +1438,8 @@ export async function continueGranotRuns(completedRunId: string): Promise<{
   queue_published: boolean;
 }> {
   await connectMongo();
+  await resumeEstimatesSchedules();
+  await releasePoolCollectionDependencies();
   const exists = await GranotAutomationRun.exists(granotRecoverableFilter(new Date()));
   return {
     recoverable: Boolean(exists),

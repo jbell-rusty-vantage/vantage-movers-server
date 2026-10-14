@@ -1,5 +1,7 @@
 # Pool policy and implementation approval draft
 
+> **October 14 local continuation:** live Pool discovery and the shared-duty prototype are now complete. Use [current findings](POOL-FINDINGS-2026-10-14.md) and [current approval proposal](POOL-APPROVAL-2026-10-14.md). They supersede the historical access blockers, collection scope and unresolved code9 meaning below. Production Pool implementation remains gated.
+
 **Status: DRAFT — policy proposal reviewable; live Pool discovery and final
 admission recommendation incomplete. Pool implementation is not approved.**
 October 14, 2026 UTC / October 13 New York. Branch:

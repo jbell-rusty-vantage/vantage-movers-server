@@ -12,7 +12,7 @@ function cellTexts($:cheerio.CheerioAPI,row:Element,headers=false){return $(row)
   const clone=$(cell).clone();clone.find('table').remove();return clean(clone.text());
 });}
 function date(value:string):string|null{
-  const match=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);if(!match)return null;
+  const match=/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?)?$/i.exec(value);if(!match)return null;
   const [,month,day,year]=match;const candidate=`${year}-${month!.padStart(2,'0')}-${day!.padStart(2,'0')}`;
   const parsed=new Date(`${candidate}T00:00:00Z`);return Number.isFinite(+parsed)&&parsed.toISOString().slice(0,10)===candidate?candidate:null;
 }
@@ -30,7 +30,10 @@ export function inspectPoolForm(html:string){
   for(const field of ['DATE1','DATE2','USER','DEPT','TYPE','SORT'])if(!$(`[name="${field}"]`).length)diagnostics.push(`required_control_missing:${field}`);
   for(const [field,value] of [['DEPT','ALL'],['TYPE','V1'],['SORT','V6'],['USER','']])if(!$(`select[name="${field}"] option[value="${value}"],input[name="${field}"][value="${value}"]`).length)diagnostics.push(`requested_control_value_not_verified:${field}`);
   const form=select.closest('form');
-  if(form.length!==1||!/~estprocessret~/i.test(form.attr('action')??'')||(form.attr('method')??'get').toLowerCase()!=='post')diagnostics.push('estprocessret_post_form_not_verified');
+  const action=form.attr('action');
+  const scripted=[...html.matchAll(/document\.theForm\.action\s*=\s*["'](\/wc\.dll\?mv~estprocessret~[A-Za-z0-9-]+)["']/g)];
+  const safeAction=action?/^\/wc\.dll\?mv~estprocessret~[A-Za-z0-9-]+$/.test(action):form.attr('name')==='theForm'&&scripted.length===1;
+  if(form.length!==1||!safeAction||(form.attr('method')??'get').toLowerCase()!=='post')diagnostics.push('estprocessret_post_form_not_verified');
   return {verified:diagnostics.length===0,priority_options:options,diagnostics};
 }
 
@@ -46,7 +49,7 @@ export function parsePoolPage(html:string):ParsedPoolPage{
   const $=cheerio.load(html);$('script,style').remove();const text=clean($('body').text()),diagnostics:string[]=[];
   const result:ParsedPoolPage={schema:'missing',rows:[],reported_total:null,page_number:null,page_count:null,pagination_controls:false,unsupported_pagination:false,diagnostics,headers:[]};
   if(/security alert|network login|user login/i.test(text)){diagnostics.push('invalid_session_page');return result;}
-  const totals=[...text.matchAll(/Total\s+of:\s*(\d+)\s+Transactions/gi)].map(m=>Number(m[1]));
+  const totals=[...text.matchAll(/Total\s+of:\s*([\d,]+)\s+Transactions/gi)].map(m=>Number(m[1]!.replaceAll(',','')));
   if(new Set(totals).size>1){result.schema='invalid';diagnostics.push('contradictory_transaction_totals');return result;}
   result.reported_total=totals[0]??null;
   const pageMatches=[...text.matchAll(/\bPage\s+(\d+)\s+(?:of|\/)\s*(\d+)\b/gi)];
@@ -78,10 +81,14 @@ export function parsePoolPage(html:string):ParsedPoolPage{
     if(!cells.some(Boolean))continue;
     if(!raw.job_no&&(/\btotals?\b/i.test(raw.customer??'')||cells.every((cell,i)=>!cell||!['job_no','customer','source','open_date','follow_up','user'].includes(selected.headers[i]??''))))continue;
     if(cells.length!==selected.headers.length){result.schema='invalid';diagnostics.push('data_row_cell_count_mismatch');return result;}
+    // Same primary-line rule as the corrected Estimates collector: labels after br are evidence, never Job identity.
+    const jobCell=$(row).children('th,td').get(selected.headers.indexOf('job_no'));
+    if(jobCell){const clone=$(jobCell).clone();clone.find('table').remove();clone.find('br').replaceWith('\u241e');raw.job_no=clean(clone.text().split('\u241e')[0]??'');}
     const parsedDate=raw.open_date?date(raw.open_date):null;
     if(raw.open_date&&!parsedDate)diagnostics.push('invalid_open_date');
-    const digits=[...(raw.follow_up??'').matchAll(/\bprior:\s*(\d{1,12})(?!\d)/gi)].map(m=>m[1]!);
-    const rowData:PoolRow={job_no:optional(raw.job_no),open_date:parsedDate,priority:new Set(digits).size===1?digits[0]!:null,source:optional(raw.source),user:optional(raw.user),ref_no:optional(raw.ref_no)};
+    const digits=[...(raw.follow_up??'').matchAll(/\bprior:\s*(\d{1,12}|Pool)(?=\s|$)/gi)].map(m=>/^pool$/i.test(m[1]!)?'9':m[1]!);
+    const markers=(raw.follow_up??'').match(/\bprior:/gi)??[];
+    const rowData:PoolRow={job_no:optional(raw.job_no),open_date:parsedDate,priority:markers.length===digits.length&&new Set(digits).size===1&&/^[0-9]$/.test(digits[0]!)?digits[0]!:null,source:optional(raw.source),user:optional(raw.user),ref_no:optional(raw.ref_no)};
     if(rowData.priority===null)diagnostics.push('row_priority_missing_or_ambiguous');
     else if(rowData.priority!=='9')diagnostics.push('non_pool_priority_returned');
     if(!rowData.job_no)diagnostics.push('row_job_identity_missing');

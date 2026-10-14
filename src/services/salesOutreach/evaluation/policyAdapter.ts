@@ -151,7 +151,7 @@ export function cadenceExposureOf(controls: SalesOutreachConfigurationValue["con
  * and the call settlement allowance (`deskTimingOf`). Deploying a new engine or changing the allowance
  * therefore re-evaluates every projection once through the evaluation reconcile (no backfill script).
  */
-export type PolicyFingerprintExtras = Readonly<{ engine_version: string; call_settlement_allowance_ms: number }>;
+export type PolicyFingerprintExtras = Readonly<{ engine_version: string; call_settlement_allowance_ms: number; pool?: SalesOutreachConfigurationValue["pool"] }>;
 
 /** Hash of the resolved policy, exposure and extras: a change re-evaluates every projection (evaluation reconcile). */
 export function policyFingerprint(policy: EnginePolicy, exposure: SalesOutreachCadenceExposure, extras: PolicyFingerprintExtras): string {
@@ -163,5 +163,6 @@ export function deskPolicyFingerprint(value: SalesOutreachConfigurationValue, po
   return policyFingerprint(policy, exposure, {
     engine_version: OUTREACH_ENGINE_VERSION,
     call_settlement_allowance_ms: deskTimingOf(value).call_settlement_allowance_ms,
+    ...(value.pool ? { pool: value.pool } : {}),
   });
 }

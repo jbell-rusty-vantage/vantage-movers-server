@@ -15,6 +15,7 @@ import { buildEngineInput, engineCoverageOf } from "./inputs";
 import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint } from "./policyAdapter";
 import { toProjectionWrite } from "./projection";
 import { mongoEvaluationStore, type EvaluationStore } from "./store";
+import { projectPoolResult } from "../pool/projection";
 
 /**
  * The `outreach_evaluate` stage (IMPLEMENTATION-PLAN §6.1/§6.2): load one subject's inputs, run the
@@ -100,14 +101,18 @@ export async function evaluateAndProject(
     },
     timing,
   );
-  const result = evaluateSubject(input, context.policy, asOf.toISOString());
-  const doc = toProjectionWrite(subject, result, {
+  const ordinary = evaluateSubject(input, context.policy, asOf.toISOString());
+  const result = store === mongoEvaluationStore && context.configuration.value.pool?.enabled
+    ? await projectPoolResult(ordinary, context.configuration, asOf, restrictions, engineCoverageOf(coverage, timing).call, session, subject.review_reasons.includes("no_contact_number"))
+    : ordinary;
+  const mapped = toProjectionWrite(subject, result, {
     exposure: context.exposure,
     configuration_version: context.configuration.version,
     policy_fingerprint: context.policy_fingerprint,
     coverage,
     timing,
   });
+  const doc = result !== ordinary && result.state === "active" ? { ...mapped, subject_status: "active" } : mapped;
   const head = await store.readProjection(subject.id, session);
   if (head && head.result_fingerprint === doc.result_fingerprint)
     return { outcome: "unchanged", subject_id: subject.id, publication_revision: head.publication_revision, next_evaluation_at: result.next_evaluation_at };

@@ -1,6 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { estimatesCronDecision, estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, newYorkHour, estimatesLatestSlot } from "./estimatesCron";
+import { poolCronDecision, poolDiscoveryDateChunks, poolLatestSlot } from "./poolCron";
+
+test("Pool has its own deterministic NY refresh and daily historical discovery slots", () => {
+  const discovery = poolCronDecision(new Date('2026-10-14T10:00:00Z'));
+  assert.ok(discovery.run);
+  assert.equal(discovery.lane, 'pool_discovery');
+  assert.deepEqual(discovery.dateWindow, { from:'01/01/2020', to:'10/14/2026' });
+  const refresh = poolCronDecision(new Date('2026-10-14T12:00:00Z'));
+  assert.ok(refresh.run);
+  assert.equal(refresh.lane, 'pool_refresh');
+  assert.deepEqual(refresh.dateWindow, estimatesDateWindow(new Date('2026-10-14T12:00:00Z')));
+  const all = estimatesCronDecision(new Date('2026-10-14T12:00:00Z'));
+  assert.ok(all.run);
+  assert.notEqual(all.slotKey, refresh.slotKey);
+  assert.equal(poolCronDecision(new Date('2026-10-14T11:00:00Z')).run, false);
+  assert.equal(poolLatestSlot(new Date('2026-03-08T10:00:00Z'), 'pool_discovery').slotKey, '03/08/2026:6:pool_discovery');
+  const chunks = poolDiscoveryDateChunks(discovery.dateWindow);
+  assert.equal(chunks.length, 80);
+  assert.equal(chunks[0]!.from, '01/01/2020');
+  assert.equal(chunks.at(-1)!.to, '10/14/2026');
+  for (let i=1;i<chunks.length;i++) assert.equal(granotCalendarEpoch(chunks[i]!.from)-granotCalendarEpoch(chunks[i-1]!.to),86400000);
+});
 
 test("the estimates cron runs at 08:00, 13:00, and 18:00 New York, including across daylight saving", () => {
   assert.equal(newYorkHour(new Date("2026-07-13T12:00:00.000Z")), 8);

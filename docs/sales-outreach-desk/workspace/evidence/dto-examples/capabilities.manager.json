@@ -36,6 +36,7 @@
         "business_day"
       ],
       "queue": [
+        "queue_scope",
         "search",
         "priority",
         "workflow",
@@ -55,7 +56,8 @@
       "outreach_desk",
       "outreach_goal",
       "outreach_configuration",
-      "outreach_rep_metrics"
+      "outreach_rep_metrics",
+      "outreach_pool"
     ],
     "permitted_commands": [
       "quoted_followup",

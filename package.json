@@ -5,6 +5,9 @@
   "main": "api/index.ts",
   "scripts": {
     "dev": "pnpm run dev:local",
+    "prototype:pool": "node ops/pool-prototype/desk-demo.mjs",
+    "prototype:pool:ui": "node ops/pool-prototype/desk-demo.mjs --serve",
+    "prototype:pool:replay": "node ops/pool-prototype/desk-demo.mjs --replay",
     "dev:local": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs ops/dev-server.ts",
     "dev:granot": "node --env-file-if-exists=../agent_granot_credentials/.env --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs ops/dev-server.ts",
     "dev:vercel": "vercel dev",

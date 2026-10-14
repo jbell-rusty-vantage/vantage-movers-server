@@ -18,6 +18,7 @@ export type LeadAssignment = Readonly<{
   receiver_agent_id: string | null;
   receiver_agent_source: string | null;
   domain_revision: number;
+  granot_priority?: string | null;
 }>;
 
 export type NewPlan = Readonly<{
@@ -97,13 +98,14 @@ export const mongoDeskCommandStore: DeskCommandStore = {
   async loadLeadAssignment(lead, session) {
     const row = await leadModel(lead.model).collection.findOne(
       { _id: oid(lead.id) },
-      { projection: { receiver_agent: 1, receiver_agent_source: 1, domain_revision: 1 }, session },
+      { projection: { receiver_agent: 1, receiver_agent_source: 1, domain_revision: 1, granot_priority: 1 }, session },
     );
     if (!row) return null;
     return {
       receiver_agent_id: row.receiver_agent ? String(row.receiver_agent) : null,
       receiver_agent_source: (row.receiver_agent_source as string | undefined) ?? null,
       domain_revision: Number(row.domain_revision ?? 0),
+      granot_priority: typeof row.granot_priority === "string" ? row.granot_priority : null,
     };
   },
 

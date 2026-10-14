@@ -9,6 +9,7 @@ import { mongoDeskSubjectStore, type DeskSubjectStore } from "./store";
 import { expansionAdmissionOf, expansionNeedsCreationSettled, hasAmbiguousIdentity, intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
 import { evaluationJob } from "../evaluation/evaluateJob";
+import { refreshPoolLead } from "../pool/admission";
 
 /**
  * The job's stored result (`sales_intelligence_jobs.result`, kept 14 days), read by
@@ -116,6 +117,7 @@ export async function runOutreachLeadChangeJob(jobId?: string, deps: LeadChangeJ
           throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "configuration", code: "revision_changed" }]);
         const now = (deps.now ?? (() => new Date()))();
         const trigger = triggerOfJob(String(row.dedupe_key ?? ""));
+        if (!deps.store) await refreshPoolLead({ model, id }, current, now, session);
         const refreshed = await refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, trigger);
         if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted") {
           await (deps.enqueue ?? enqueueCsiJob)(evaluationJob(refreshed.subject_id, `estimates-refresh:${String(row.dedupe_key)}`), session);
