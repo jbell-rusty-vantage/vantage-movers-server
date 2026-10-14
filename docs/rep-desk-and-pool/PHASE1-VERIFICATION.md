@@ -2,7 +2,7 @@
 
 Authority: [`../knowledge/overnight-rep-desk-and-pool.md`](../knowledge/overnight-rep-desk-and-pool.md), Owner request of October 13, 2026 America/New_York.
 
-Status: implementation and independent application review complete; final checks, browser proof, PRs and deployments are still pending. No Phase 1 merge or deployment is claimed here. Pool discovery remains gated on Phase 1 completion and merges.
+Status: implementation, independent review and local acceptance complete; PRs are open and final evidence commits/deployments are pending. No Phase 1 merge or production deployment is claimed here. Pool discovery remains gated on Phase 1 completion and merges.
 
 ## Baselines and safe execution
 
@@ -31,12 +31,19 @@ Passed so far:
 - Move sort: 360 queue plans, ties/nulls across pages of sizes 1–4, combined search/date/priority/workflow filters; assigned/team indexed query explains with no blocking sort; correct order/paging with both new indexes absent: [`MOVE-DATE-VERIFICATION.md`](MOVE-DATE-VERIFICATION.md).
 - Independent review found and resolved linkage, cancellation, mock-read and table placeholder issues: [`REVIEW.md`](REVIEW.md).
 - Admin full offline suite: 1,191 tests, 1,176 passed, 15 skipped, zero failed (157.5 seconds). Latest admin typecheck and changed-file lint passed. Full admin lint reproduces six `react-hooks/set-state-in-effect` errors and five warnings in untouched current-main files; it is not a Phase 1 regression. Diagnostics are retained in the Admin presentation evidence.
-- Server full lint passed; quality-tool suite passed all 33 tests. Final server typecheck/offline suite remain running.
+- Server local final typecheck passed (`tsc --noEmit --incremental` with its build cache outside the checkout); full lint passed; quality-tool suite passed all 33 tests. Exact pushed server head `dff1cb8ce845a0e0af4466b3242988504d1b718c` passed CI typecheck, lint, all 3,686 tests (3,545 passed, 141 opt-in/skipped), 33 quality tests, Vercel preview build and deploy. The redundant local full run was stopped after the exact-head CI passed; it is not claimed as a completed local full run.
+- Real browser acceptance passed **3/3** tests against the actual local login, BFF, API, Mongo and SSE, including Owner/Manager/Rep/Admin, composed filtering, reload persistence, cursor traversal, relative presentation, committed-money refresh and missed-change recovery after stream close/reopen. Seven synthetic screenshots are recorded in the Admin evidence. Chromium's transport-offline simulation did not close an existing SSE, so a separate offline-caption browser assertion is not claimed.
 - Canonical packet validators pass in both repositories: 104 release files; all 105 files including manifest match bytes; all 34 generated DTO examples match Admin test fixtures. Policy decision revision and the prior Daily amendment are unchanged.
 
 Local test-run setup corrections: an initial isolated database suffix contained an extra underscore and was rejected by the database guard before connection. The offline suite was then run with injected provider/Mongo configuration removed, rather than enabling optional replica checks implicitly. The Admin invite tests initially inherited `ADMIN_PUBLIC_BASE_URL`; the clean offline run above passed without changing that untouched service/test.
 
-Pending: final server full checks, real UI/browser filter/relative/live/reconnect proof; PRs/merges; normal deployment workflows and deployed reads/UI. No incomplete item above is claimed as shipped.
+## PR and preview evidence
+
+- Server [PR #218](https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/218). Initial head `dff1cb8c`: Quality run `38498875431` and Preview run `38498875476` completed successfully; preview `https://vantage-movers-main-server-l3od69inj-vantage-4d3db9ef.vercel.app`.
+- Admin [PR #7](https://github.com/jbell-rusty-vantage/vantage-admin/pull/7). Initial head `7b51cbc`: Preview run `38498881353` completed successfully with typecheck, 1,191 tests (1,176 passed/15 skipped), build and deploy; preview `https://vantage-admin-mjuvc818v-vantage-4d3db9ef.vercel.app`. An older branch-push run was cancelled by workflow concurrency, not an application failure.
+- Final evidence commits include the complete browser reproduction/config/screenshots and the synthetic mutation helper's allocation-total preservation. Their final checks, merges, normal production deployments and deployed reads remain pending here.
+
+No incomplete item above is claimed as shipped. After merges, record both merge SHAs and production alias/commit/read evidence before opening the Phase 2 gate.
 
 ## Production operations
 

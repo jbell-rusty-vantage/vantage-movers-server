@@ -39,6 +39,22 @@ node --import tsx ops/local-integration/phase1-queue-fixtures.ts --database=test
 
 The queue fixture explicitly seeds synthetic projection interaction ages and today/yesterday/unknown move dates after evaluation. It does not claim that RingCentral captured those interactions. Browser fixtures use October 13, 2026 New York and should be rebuilt/adjusted for another day. `phase1-browser-mutation.ts` changes only the synthetic `PHASE1-today` Booking and commits an EntityChange for live rendering checks; `--restore` resets `$100.01`.
 
-Admin: real API `http://127.0.0.1:3107`, no mock mode, UI `http://localhost:3100`. This linked-dependency worktree required `next dev --webpack` because Turbopack refused a node_modules symlink outside its project root. System Chromium `/usr/bin/chromium` was selected in a scratch Playwright config; no browser download or browser mock was needed. The tracked test is Admin `tests/e2e/phase1.integration.spec.ts`, enabled by `E2E_PHASE1=1`.
+Admin: real API `http://127.0.0.1:3107`, no mock mode, UI `http://localhost:3100`. The guarded Admin launcher is `node scripts/phase1-local-admin.mjs`; it refuses checkout `.env` files and strips provider credentials. A linked node_modules root initially caused a Turbopack filesystem panic and webpack hydration failures. Copying the same already-installed packages into the worktree with hardlinks resolved the filesystem layout issue; package versions and application source stayed unchanged. System Chromium `/usr/bin/chromium` is selected by the tracked `tests/e2e/phase1-local.config.ts` (override `E2E_CHROMIUM_PATH` for another existing executable); no browser download or DTO/browser response mock was needed.
+
+## Real browser walk: 3/3 passed (2.1 minutes)
+
+The final walk used the real login, BFF, server read adapters, local replica and SSE. The first test verifies the exact money DTO, Rep foreign-Agent 403, all four labels, partial coverage, Today/Past/Unknown presentation, latest interaction/no interaction wording, Future's today inclusion, URL persistence across reload, complete two-row server cursor traversal, and search + priority + workflow + date composition. The second verifies Owner and Manager viewing Avery, their Team move-date filtering, and generic Admin 403. The third verifies a committed binder/allocation event refreshes the card, then closes the stream through the app's hidden-page lifecycle, commits a change while closed, and verifies reopening/refetch recovers the missed amount. Its fixture is restored in `finally`.
+
+Playwright's `setOffline` did not tear down an already-established SSE in this Chromium. The recovery proof therefore uses the actual app stream close/reopen lifecycle; document visibility is controlled in the browser, while all responses, mutations and stream traffic remain real. A separate simulated transport-offline caption is not claimed as proven.
+
+```sh
+E2E_PHASE1=1 E2E_BASE_URL=http://localhost:3100 \
+E2E_ADMIN_AUTH_DB_NAME=testvantage_admin_phase1_e2e \
+E2E_REP_AGENT_ID=d9e98cc15237c848c5c8732b \
+E2E_REP2_AGENT_ID=360f2f6456d420c391c73535 \
+node node_modules/@playwright/test/cli.js test --config=tests/e2e/phase1-local.config.ts
+```
+
+Seven screenshots and their browser evidence README are tracked in the Admin repository under `docs/rep-desk-and-pool/phase1-local-evidence/`. The money card and queue screenshots were visually inspected; all dates/interaction ages come from the synthetic local fixtures. Rep call goals/freshness remain Pending/Unknown/Not connected because no provider capture was run.
 
 These helper files create no deployment configuration or migration. Rollback is stopping the two local dev processes and dropping only the named disposable test databases through guarded local cleanup. Production index deployment and merge evidence are recorded separately by the Phase 1 owner.
