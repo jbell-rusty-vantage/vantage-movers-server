@@ -95,7 +95,7 @@ test("coverage distinguishes zero, missing link, dangling, missing amount and cr
 });
 
 test("rep isolation is enforced before money reads; Owner/Manager can explicitly view Rep and DTO validates", async () => {
-  const rep: OutreachActor = { role: "rep", agent_id: A, actor: { kind: "rep", id: "rep", request_id: "r", agent_id: A } };
+  const rep: OutreachActor = { role: "rep", agent_id: A, actor: { kind: "rep", id: "rep", request_id: "r", run_id: null, agent_id: A } };
   const calls: string[] = [];
   const store: RepMetricsStore = { ownBookings: async (agent) => { calls.push(agent); return [booking(1)]; }, assignedLeads: async (agent) => { calls.push(agent); return [lead(1, { booked: key(1) })]; }, attachedBookings: async () => [booking(1)] };
   const deps = { now: NOW, loader: fixedConfigurationLoader(activeInspection(completeConfigurationInput({ desk_enabled: true }))), metricsStore: store };
@@ -104,7 +104,7 @@ test("rep isolation is enforced before money reads; Owner/Manager can explicitly
   const dto = salesOutreachRepMetricsDtoSchema.parse(await readRepMetrics(rep, {}, deps));
   assert.equal(dto.agent_id, A);
   for (const role of ["owner", "manager"] as const) {
-    const actor: OutreachActor = { role, agent_id: null, actor: { kind: role, id: "owner", request_id: "r" } };
+    const actor: OutreachActor = { role, agent_id: null, actor: { kind: role, id: "owner", request_id: "r", run_id: null } };
     assert.equal((await readRepMetrics(actor, { agent_id: A }, deps)).agent_id, A);
     await assert.rejects(readRepMetrics(actor, {}, deps), /INVALID_INPUT/);
   }
