@@ -1,0 +1,101 @@
+{
+  "provenance": "canonical_priority9_read_api_inventory_not_live_granot_pool",
+  "started_at": "2026-10-14T03:26:37.716080+00:00",
+  "completed_at": "2026-10-14T03:27:04.387627+00:00",
+  "production_mutations": 0,
+  "inventory": {
+    "FormLead:duplicate=False": {
+      "pages": 29,
+      "reported_totals": [
+        7057
+      ],
+      "rows_received": 7057,
+      "unique_ids": 7057,
+      "observed_complete": true,
+      "point_in_time_snapshot": false,
+      "scope": "all_canonical_leads"
+    },
+    "FormLead:duplicate=True": {
+      "pages": 1,
+      "reported_totals": [
+        166
+      ],
+      "rows_received": 166,
+      "unique_ids": 166,
+      "observed_complete": true,
+      "point_in_time_snapshot": false,
+      "scope": "all_canonical_leads"
+    },
+    "CallLead:duplicate=False": {
+      "pages": 7,
+      "reported_totals": [
+        1556
+      ],
+      "rows_received": 1556,
+      "unique_ids": 1556,
+      "observed_complete": true,
+      "point_in_time_snapshot": false,
+      "scope": "all_canonical_leads"
+    },
+    "CallLead:duplicate=True": {
+      "pages": 2,
+      "reported_totals": [
+        290
+      ],
+      "rows_received": 290,
+      "unique_ids": 290,
+      "observed_complete": true,
+      "point_in_time_snapshot": false,
+      "scope": "all_canonical_leads"
+    },
+    "BookedLead:duplicate=None": {
+      "pages": 4,
+      "reported_totals": [
+        896
+      ],
+      "rows_received": 896,
+      "unique_ids": 896,
+      "observed_complete": true,
+      "point_in_time_snapshot": false,
+      "scope": "cancelled field missing/null only; legacy false is excluded by current API presence filter"
+    }
+  },
+  "canonical_lead_count": 9069,
+  "booking_count": 902,
+  "booking_coverage": "incomplete: 896 missing/null-cancelled browse rows plus6 additional Lead-attached anchors; legacytrue/false cancellation values and other unlinked cancelled anchors may be missing",
+  "canonical_priority9_leads": {
+    "FormLead": 326,
+    "CallLead": 14
+  },
+  "canonical_priority9_leads_missing_job": 0,
+  "candidate_job_keys": 340,
+  "collision_job_counts": {
+    "unique_exact_lead": 340
+  },
+  "redacted_examples": [],
+  "examples_total": 0,
+  "normalization": "canonical NFKC, Unicode L/N punctuation-to-space, uppercase; ASCII digit-core equivalent aliases reported separately",
+  "unusual_unicode_lead_jobs": 0,
+  "normalization_disagreements_all_leads": 0,
+  "limitations": [
+    "No live Granot Pool selector/form/report rows were fetched",
+    "Full Booking browse failed500 due legacy Boolean true cancellation reference. cancelled=false browse includes missing/null only and excludes legacyfalse; unlinked cancelled/job-only anchors may be missing",
+    "Canonical priority9 is not proof of current-month Granot Pool membership",
+    "Offset pagination/single-field sort is not a point-in-time snapshot",
+    "API population can hide dangling attached pointers; missing links are not proven absent",
+    "No prior Sheet write inferred from no_sync false",
+    "Examples capped25; summary counts use complete observed inventory"
+  ],
+  "canonical_priority9_flags": {
+    "duplicate": 0,
+    "bad": 0,
+    "cancelled": 0,
+    "unmatched": 0,
+    "assigned": 339,
+    "manual_receiver": 0,
+    "no_sync": 0,
+    "booked": 0,
+    "normalization_disagreement": 0
+  },
+  "canonical_priority9_prior_sheet_written": "unknown; no_sync is not write evidence"
+}

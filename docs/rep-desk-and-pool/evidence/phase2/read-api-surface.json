@@ -1,0 +1,87 @@
+{
+  "form-leads:duplicate=False": {
+    "total": 7057,
+    "page": 1,
+    "limit": 1,
+    "has_next_page": true,
+    "priority_field_present_in_sample": false
+  },
+  "form-leads:duplicate=True": {
+    "total": 166,
+    "page": 1,
+    "limit": 1,
+    "has_next_page": true,
+    "priority_field_present_in_sample": false
+  },
+  "call-leads:duplicate=False": {
+    "total": 1556,
+    "page": 1,
+    "limit": 1,
+    "has_next_page": true,
+    "priority_field_present_in_sample": true
+  },
+  "call-leads:duplicate=True": {
+    "total": 290,
+    "page": 1,
+    "limit": 1,
+    "has_next_page": true,
+    "priority_field_present_in_sample": false
+  },
+  "recent_run_states": [
+    {
+      "operation": "estimates_in_process",
+      "workflow": "apply",
+      "status": "completed",
+      "count": 6
+    },
+    {
+      "operation": "estimates_in_process",
+      "workflow": "apply",
+      "status": "applying",
+      "count": 8
+    },
+    {
+      "operation": "estimates_in_process",
+      "workflow": "preview",
+      "status": "completed",
+      "count": 1
+    },
+    {
+      "operation": "estimates_in_process",
+      "workflow": "preview",
+      "status": "failed",
+      "count": 9
+    }
+  ],
+  "active_applying": 8,
+  "completed_estimates_response": {
+    "fields": [
+      "checkpoint",
+      "collection",
+      "counters",
+      "created_at",
+      "expires_at",
+      "id",
+      "operation",
+      "plan",
+      "plan_checksum",
+      "receipt_count",
+      "receipts",
+      "run_group_id",
+      "status",
+      "updated_at",
+      "workflow"
+    ],
+    "workflow": "apply",
+    "status": "completed",
+    "date_window": null,
+    "plan_fields": [
+      "actions",
+      "counters",
+      "kind",
+      "schema_version"
+    ]
+  },
+  "verified_at": "2026-10-14T03:17:29.123112+00:00",
+  "production_mutations": 0
+}
