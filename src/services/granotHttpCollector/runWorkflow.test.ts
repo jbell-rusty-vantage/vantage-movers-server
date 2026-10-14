@@ -9,6 +9,8 @@ import {
   createGranotRunGroup,
   toDurableGranotValue,
   type GranotRunGroupRuntime,
+  estimatesActionCaptureTime,
+  granotRecoverableFilter,
 } from "./runWorkflow";
 import {
   GranotAutomationSourceValidationError,
@@ -190,4 +192,19 @@ test("[AC-02] applyRun has no runtime path to legacy Form/Call/Booked mutation s
   assert.equal(source.includes("syncBookedCallLeadReconciliation"), false);
   assert.match(source, /applyAutomationPlanAction/);
   assert.match(source, /claimAndProcessOrPoll|applyAutomationPlanAction/);
+});
+
+test("Estimates observation time is immutable provider capture, never apply time", () => {
+  const collection_captured_at = "2026-10-13T12:04:05.000Z";
+  assert.equal(estimatesActionCaptureTime({ collection_captured_at }).toISOString(), collection_captured_at);
+  assert.throws(() => estimatesActionCaptureTime({}), (error: unknown) => error instanceof Error && /recollect/.test(error.message));
+  assert.throws(() => estimatesActionCaptureTime({ collection_captured_at: "not-a-date" }));
+});
+
+test("worker eligibility shares one queue for fresh collection, approved actions, and due waiting matches", () => {
+  const filter = granotRecoverableFilter(new Date("2026-10-14T12:00:00Z"));
+  const alternatives = filter.$or as Array<Record<string, unknown>>;
+  assert.deepEqual(alternatives.map((item) => item.status), ["queued", "planning", "applying"]);
+  const ready = (alternatives[2]!.$and as Array<Record<string, unknown>>)[1]!;
+  assert.deepEqual((ready.$or as Array<Record<string, unknown>>)[1], { last_attempt_at: { $lte: new Date("2026-10-14T11:59:00Z") } });
 });

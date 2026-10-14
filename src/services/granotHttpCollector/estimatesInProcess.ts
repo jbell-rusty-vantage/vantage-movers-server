@@ -21,11 +21,16 @@ import {
   type GranotSourceCollection,
 } from "./index";
 
-const PRIOR_DIGIT = /prior:\s*(\d{1,12})(?!\d)/i;
+import { collectVerifiedEstimates, type EstimatesCollectionControls } from "./estimatesCollection";
+
+export type { EstimatesCollectionCoverage } from "./estimatesCollection";
+
+const REQUIRED_HEADERS = ["job_no", "open_date", "follow_up", "user", "customer", "source", "ref_no", "email", "phone1", "phone2", "from_city", "from_state", "from_zip", "to_city", "to_state", "to_zip", "move_date", "cf"];
 
 export type EstimatesRoute = "form_leads" | "call_leads" | "unresolved";
 
-export type EstimatesCollectionRequest = {
+export type EstimatesCollectionRequest = EstimatesCollectionControls & {
+  additionalDateWindows?: Array<{ from: string; to: string }>;
   dateWindow: { from: string; to: string };
   credentials: GranotCollectorCredentials;
 };
@@ -76,104 +81,87 @@ async function collectEstimatesInProcessOnce(
   input: EstimatesCollectionRequest,
   dependencies: GranotCollectorDependencies,
 ): Promise<GranotSourceCollection[]> {
+  const transport = dependencies.fetch ?? globalThis.fetch;
+  const guardedDependencies = input.beforeRequest ? {
+    ...dependencies,
+    fetch: (async (url, init) => {
+      await input.beforeRequest?.();
+      const response = await transport(url, init);
+      await input.beforeRequest?.();
+      return response;
+    }) as typeof fetch,
+  } : dependencies;
   const session = await openGranotAuthenticatedSession(
     input.credentials,
-    dependencies,
+    guardedDependencies,
   );
-  const formPage = await session.request(
-    `/wc.dll?mv~estprocesswc~${session.sessionToken}`,
-  );
-  if (pageLooksLoggedOut(formPage)) {
-    throw new GranotCollectorError(
-      "invalid_session",
-      "Granot session became invalid before Estimates in Process",
-    );
+  for (const window of input.additionalDateWindows ?? []) {
+    const problem = getGranotDateWindowProblem(window);
+    if (problem) throw new GranotCollectorError("invalid_request", problem);
   }
-
-  const body = new URLSearchParams();
-  body.set("STATUS", "V9");
-  body.set("TYPEDTE", "OPEN");
-  body.set("DATE1", input.dateWindow.from);
-  body.set("DATE2", input.dateWindow.to);
-  body.set("FUSTATUS", "10");
-  body.set("USER", "");
-  body.set("DEPT", "ALL");
-  body.set("TYPE", "V1");
-  body.set("SORT", "V6");
-  const resultsPage = await session.request(
-    `/wc.dll?mv~estprocessret~${session.sessionToken}`,
-    { method: "POST", body },
-  );
-  if (pageLooksLoggedOut(resultsPage)) {
-    throw new GranotCollectorError(
-      "invalid_session",
-      "Granot session became invalid before Follow-Up Estimates",
-    );
-  }
-  const parsed = parseEstimatesInProcessHtml(resultsPage);
-  if (!parsed.recognized) {
-    throw new GranotCollectorError(
-      "schema_drift",
-      "Granot Estimates in Process did not return a Follow-Up Estimates table",
-    );
-  }
-  return parsed.sources;
+  return collectVerifiedEstimates(session, input.dateWindow, { ...input, beforeRequest: undefined });
 }
 
 export function parseEstimatesInProcessHtml(html: string): {
   recognized: boolean;
   sources: GranotSourceCollection[];
+  diagnostics: string[];
+  reportedTotal: number | null;
+  pageNumber: number | null;
+  pageCount: number | null;
+  rowCount: number;
 } {
   const $ = cheerio.load(html);
-  let table: Element | undefined;
-  let headerRow: Element | undefined;
+  $("script,style").remove();
+  $("p,div,h1,h2,h3").prepend(" ").append(" ");
+  const text = $("body").text().replace(/\s+/g, " ");
+  const diagnostics: string[] = [];
+  const totals = [...text.matchAll(/Total\s+of:\s*([\d,]+)\s+Transactions/gi)].map(m => Number(m[1]!.replaceAll(',', '')));
+  if (new Set(totals).size > 1) diagnostics.push("conflicting_transaction_totals");
+  const summaries = [...text.matchAll(/\bPage\s+(\d+)\s+(?:of|\/)\s*(\d+)\b/gi)];
+  const pageNumber = summaries.length ? Number(summaries[0]![1]) : null;
+  const pageCount = summaries.length ? Number(summaries[0]![2]) : null;
+  if (summaries.some(m => Number(m[1]) !== pageNumber || Number(m[2]) !== pageCount) || (pageNumber !== null && (pageNumber < 1 || pageNumber > pageCount!))) diagnostics.push("invalid_page_summary");
+  const pager = $('a,button,input,select').toArray().some(el => /^(next|previous|prev|first|last|[<>]{1,2})$/i.test($(el).text().trim() || $(el).attr('value') || '') || /next|prev/i.test($(el).attr('rel') ?? '') || /^(page|pageno|page_no|offset)$/i.test($(el).attr('name') ?? ''));
+  if (pager && pageCount === null) diagnostics.push("unsupported_pagination");
+  const result = { recognized: false, sources: [] as GranotSourceCollection[], diagnostics, reportedTotal: totals[0] ?? null, pageNumber, pageCount, rowCount: 0 };
+  const candidates: Array<{ table: Element; headerRow: Element }> = [];
   $("table").each((_index, element) => {
-    if (table) return;
     for (const row of ownRows($, element)) {
       const headers = headerNames($, row);
-      if (headers.includes("job_no") && headers.includes("customer")) {
-        table = element;
-        headerRow = row;
-        return;
-      }
+      if (headers.includes("job_no") && headers.includes("customer")) { candidates.push({ table: element, headerRow: row }); break; }
     }
   });
-  if (!table || !headerRow) return { recognized: false, sources: [] };
-
+  if (!candidates.length && /Follow[- ]Up Estimates/i.test(text) && result.reportedTotal === 0) return { ...result, recognized: diagnostics.length === 0 };
+  if (candidates.length !== 1) { diagnostics.push(candidates.length ? "multiple_results_tables" : "expected_results_table_missing"); return result; }
+  const { table, headerRow } = candidates[0]!;
   const headers = headerNames($, headerRow);
-  const rows = ownRows($, table);
-  const headerIndex = rows.indexOf(headerRow);
-  const adapted: Array<{ source: string; row: GranotReportRow }> = [];
-  rows.slice(headerIndex + 1).forEach((row, offset) => {
-    const cells = directCellTexts($, row);
-    const raw: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      if (!header) return;
-      raw[header] = cells[index] ?? "";
-    });
-    if (!raw.job_no?.trim()) return;
-    const values = adaptEstimatesRow(raw);
-    const rowIndex = headerIndex + 1 + offset;
-    adapted.push({
-      source: values.source ?? "",
-      row: {
-        id: `estimates:${rowIndex}:${values.job_no}`,
-        rowIndex,
-        values,
-      },
-    });
-  });
-
-  const grouped = new Map<string, GranotReportRow[]>();
-  for (const entry of adapted) {
-    const list = grouped.get(entry.source) ?? [];
-    list.push(entry.row);
-    grouped.set(entry.source, list);
+  if (REQUIRED_HEADERS.some(header => !headers.includes(header)) || headers.filter(Boolean).length !== new Set(headers.filter(Boolean)).size || headers.includes("no")) {
+    diagnostics.push("required_headers_missing_or_ambiguous"); return result;
   }
-  const sources = [...grouped.entries()].map(([sourceLabel, sectionRows]) =>
-    collectionFor(sourceLabel, sectionRows),
-  );
-  return { recognized: true, sources };
+  const rows = ownRows($, table), headerIndex = rows.indexOf(headerRow);
+  const grouped = new Map<string, GranotReportRow[]>();
+  for (const [offset, row] of rows.slice(headerIndex + 1).entries()) {
+    const cells = directCellTexts($, row);
+    if (!cells.some(Boolean)) continue;
+    const raw: Record<string, string> = {};
+    headers.forEach((header, index) => { if (header) raw[header] = cells[index] ?? ""; });
+    if (!raw.job_no?.trim() && (/^totals?$/i.test(raw.customer ?? '') || cells.every((cell,index) => !cell || ['cf','miles','lbs','rate','estimate'].includes(headers[index] ?? '')))) continue;
+    if (cells.length !== headers.length) { diagnostics.push("data_row_cell_count_mismatch"); continue; }
+    const values = adaptEstimatesRow(raw);
+    if (!values.job_no) values.estimates_hold_reason = "missing_job_number";
+    else if (!values.source) values.estimates_hold_reason = "missing_source";
+    else if (!values.open_date || getGranotDateWindowProblem({ from:values.open_date, to:values.open_date })) values.estimates_hold_reason = "invalid_open_date";
+    const rowIndex = headerIndex + 1 + offset;
+    const source = values.source ?? "", list = grouped.get(source) ?? [];
+    list.push({ id: `estimates:${rowIndex}:${values.job_no ?? 'missing'}`, rowIndex, values });
+    grouped.set(source, list);
+    result.rowCount++;
+  }
+  if (!result.rowCount && result.reportedTotal !== 0) diagnostics.push("empty_without_explicit_zero_total");
+  result.sources = [...grouped.entries()].map(([source, rows]) => collectionFor(source, rows));
+  result.recognized = diagnostics.length === 0;
+  return result;
 }
 
 /** Registry route for one source label. Both routes, or neither, stay unresolved. */
@@ -250,10 +238,18 @@ function adaptEstimatesRow(raw: Record<string, string>): Record<string, string> 
   };
   put("job_no", raw.job_no);
   put("phone", raw.phone1);
+  put("phone2", raw.phone2);
+  put("open_date_evidence", raw.open_date);
+  const opened = raw.open_date?.match(/^(\d{1,2}\/\d{1,2}\/\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?)?$/i)?.[1];
+  if (opened) {
+    const [month, day, year] = opened.split('/');
+    put("open_date", `${month!.padStart(2,'0')}/${day!.padStart(2,'0')}/${year}`);
+  }
   put("email", raw.email);
   put("customer", raw.customer);
   put("user", raw.user);
   put("source", raw.source);
+  for (const key of ["from_city", "from_state", "to_city", "to_state"]) put(key, raw[key]);
   put("from", joinCityState(raw.from_city, raw.from_state));
   put("from_zip", raw.from_zip);
   put("to", joinCityState(raw.to_city, raw.to_state));
@@ -264,16 +260,20 @@ function adaptEstimatesRow(raw: Record<string, string>): Record<string, string> 
   put("type", raw.type);
   put("estimate", raw.estimate);
   const priority = priorityDigit(raw.follow_up);
-  if (priority) {
+  if (priority !== undefined) {
     values.prior = priority;
     values.priority = priority;
+  } else {
+    values.estimates_hold_reason = "missing_or_ambiguous_priority";
+    put("follow_up", raw.follow_up);
   }
   return values;
 }
 
 function priorityDigit(followUp: string | undefined): string | undefined {
-  const match = followUp?.match(PRIOR_DIGIT);
-  return match?.[1];
+  const matches = [...(followUp ?? "").matchAll(/\bprior:\s*(\d{1,12}|Pool)(?=\s|$)/gi)].map(match => /^pool$/i.test(match[1]!) ? "9" : match[1]!);
+  const markers = (followUp ?? "").match(/\bprior:/gi) ?? [];
+  return markers.length === matches.length && new Set(matches).size === 1 && /^[0-9]$/.test(matches[0]!) ? matches[0] : undefined;
 }
 
 function joinCityState(city: string | undefined, state: string | undefined): string | undefined {
@@ -302,16 +302,6 @@ function collectionFor(
     },
     sections,
   };
-}
-
-function pageLooksLoggedOut(html: string): boolean {
-  const text = cheerio.load(html)("body").text().replace(/\s+/g, " ").toLowerCase();
-  return (
-    text.includes("security alert") ||
-    text.includes("close window") ||
-    text.includes("user login") ||
-    text.includes("network login")
-  );
 }
 
 function ownRows($: cheerio.CheerioAPI, table: Element): Element[] {

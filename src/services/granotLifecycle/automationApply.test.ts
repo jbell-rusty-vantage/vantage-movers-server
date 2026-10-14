@@ -122,14 +122,7 @@ test("[AC-02] accepted_for_processing yields a nonterminal receipt for the same 
       },
     },
     {
-      capture: async (input) => {
-        assert.equal(input.channel_operation_id, lifecycle_apply.operation_id);
-        return {
-          status: "replayed",
-          receipt_id: "lifecycle-receipt-1",
-          payload_sha256: "a".repeat(64),
-        };
-      },
+      capture: async () => { throw new Error("An existing canonical receipt must not be recaptured with a fabricated time."); },
       claimAndProcess: async () => ({
         status: "accepted_for_processing",
         receipt_id: "lifecycle-receipt-1",

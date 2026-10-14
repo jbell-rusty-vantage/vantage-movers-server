@@ -887,7 +887,16 @@ function classifyCallLeads(
   if (leads.length === 0) {
     return { stop: false, result: unmatchedPending() };
   }
-  const unique = dedupeCallLeads(leads);
+  // A phone is weaker than an established Job or Record Link. Duplicate siblings
+  // are historical Call evidence, not competing targets for attaching a new Job.
+  // Keep them readable through the exact identity rungs above.
+  const eligible = method === "source_scoped_contact"
+    ? leads.filter((lead) => !lead.duplicate)
+    : leads;
+  const unique = dedupeCallLeads(eligible);
+  if (unique.length === 0) {
+    return { stop: false, result: unmatchedPending() };
+  }
   const conflicts = unique
     .map((lead) => {
       const ref = callRef(lead.id);

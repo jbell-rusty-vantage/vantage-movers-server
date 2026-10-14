@@ -225,3 +225,12 @@ test("pending lifecycle outcomes keep the run applying", () => {
     "completed_with_errors",
   );
 });
+
+test("sealed actions carry their provider response time independently of plan lock or apply", () => {
+  const sources = [source(collected)];
+  sources[0]!.sections.followUpEstimates[0]!.collectedAt = "2026-10-13T12:00:00.000Z";
+  const plan: SealableAutomationPlan = { kind: "form_leads", schema_version: 1, counters: {}, actions: [{ action_id: "Synthetic Forms:row-1", source_label: "Synthetic Forms", row_id: "row-1", classification: "update" }] };
+  const sealed = sealAutomationPlan(plan, runId, sources);
+  assert.equal(sealed.actions[0]!.collection_captured_at, "2026-10-13T12:00:00.000Z");
+  assert.equal(sealed.actions[0]!.lifecycle_apply!.operation_id, `${runId}:Synthetic Forms:row-1`);
+});

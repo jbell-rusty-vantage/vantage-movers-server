@@ -10,6 +10,7 @@ import {
   createGranotRun,
   recoverGranotRuns,
   runGranotWorker,
+  estimatesScheduledWindows,
 } from "../services/granotHttpCollector/runWorkflow";
 import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../services/domainCommands/types";
 import type { DurableActor } from "../services/durableWork/types";
@@ -47,21 +48,32 @@ router.all(
       return res.json({ ok: true, skipped: true, reason: decision.reason });
     }
     try {
-      const created = await createGranotRun({
-        operation: "estimates_in_process",
-        workflow: "apply",
-        dateWindow: decision.dateWindow,
-        sourceLabels: [],
-        autoApply: true,
-        scheduledSlotKey: decision.slotKey,
-        initiator: estimatesCronActor(),
-      });
-      if (!created.queue_published) {
+      const windows = await estimatesScheduledWindows(new Date());
+      const runs = [];
+      for (const dateWindow of windows) {
+        runs.push(await createGranotRun({
+          operation: "estimates_in_process",
+          workflow: "apply",
+          dateWindow,
+          sourceLabels: [],
+          autoApply: true,
+          scheduledSlotKey: `${decision.slotKey}:${dateWindow.from}:${dateWindow.to}`,
+          scheduledCoverage: {
+            slotKey: decision.slotKey,
+            dateWindow: decision.dateWindow,
+            totalWindows: windows.length,
+          },
+          initiator: estimatesCronActor(),
+        }));
+      }
+      const created = runs[0]!;
+      if (!runs.some((run) => run.queue_published)) {
         const worker = await runGranotWorker();
         return res.json({
           ok: true,
           skipped: false,
           run_id: created.run_id,
+          run_ids: runs.map((run) => run.run_id),
           date_window: decision.dateWindow,
           local_worker: worker,
         });
@@ -70,6 +82,7 @@ router.all(
         ok: true,
         skipped: false,
         run_id: created.run_id,
+        run_ids: runs.map((run) => run.run_id),
         date_window: decision.dateWindow,
         queue_published: true,
       });

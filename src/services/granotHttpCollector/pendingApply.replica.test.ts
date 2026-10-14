@@ -13,13 +13,16 @@ test("replica: pending match does not block later actions or another approved ru
   assert.equal(process.env.TEST_MODE, "true");
   assert.match(process.env.MONGO_URI ?? "", /^mongodb:\/\/127\.0\.0\.1:/);
   await connectMongo();
-  assert.equal(mongoose.connection.db?.databaseName, "testvantagemovers");
+  assert.equal(mongoose.connection.db?.databaseName, process.env.TEST_MONGO_DATABASE_NAME ?? "testvantagemovers");
   const first = new mongoose.Types.ObjectId();
   const second = new mongoose.Types.ObjectId();
   const requeued = new mongoose.Types.ObjectId();
+  const fresh = new mongoose.Types.ObjectId();
+  const bounded = new mongoose.Types.ObjectId();
+  const legacy = new mongoose.Types.ObjectId();
   const actor = { actor_type: "owner", actor_id: "pending-apply-test", actor_role: "owner", origin: "vantage_admin" };
   async function seed(id: mongoose.Types.ObjectId, actions: string[], last: Date) {
-    const plan = { kind: "estimates_in_process", schema_version: 2, actions: actions.map((action_id) => ({ action_id, classification: "update", lifecycle_apply: { operation_id: `${id}:${action_id}`, operation_kind: "lead_snapshot_apply", granot_statement: { priority: "0", job_no: "SYNTHETIC-100" } } })), counters: { update: actions.length } };
+    const plan = { kind: "estimates_in_process", schema_version: 2, actions: actions.map((action_id) => ({ action_id, classification: "update", collection_captured_at: "2026-10-13T12:00:00.000Z", lifecycle_apply: { operation_id: `${id}:${action_id}`, operation_kind: "lead_snapshot_apply", granot_statement: { priority: "0", job_no: "SYNTHETIC-100" } } })), counters: { update: actions.length } };
     const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: plan });
     await GranotAutomationRun.create({ _id: id, operation: "estimates_in_process", workflow: "apply", status: "applying", request_snapshot: { auto_apply: true }, initiator: actor, plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date(), approval: { selected_action_ids: actions, plan_checksum: checksum, approved_by: actor }, expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000), last_attempt_at: last });
   }
@@ -36,7 +39,8 @@ test("replica: pending match does not block later actions or another approved ru
         ready: !(deferFirst && r.action_id === "pending-one"),
       }] as const)]);
     },
-    applyAction: async (input: { action_id: string }) => {
+    applyAction: async (input: { action_id: string; captured_at?: Date; existing_receipt?: unknown }) => {
+    if (!input.existing_receipt) assert.equal(input.captured_at?.toISOString(), "2026-10-13T12:00:00.000Z");
     calls.push(input.action_id);
     return { action_id: input.action_id, lifecycle_receipt_id: String(new mongoose.Types.ObjectId()), outcome: input.action_id.startsWith("pending") && !(settledSecond && input.action_id === "pending-two") ? "accepted_for_processing" as const : "applied" as const, applied_at: new Date() };
   } };
@@ -70,7 +74,35 @@ test("replica: pending match does not block later actions or another approved ru
     assert.equal((await runGranotWorker(deps)).run_id, String(requeued));
     assert.equal(calls.filter((id) => id.startsWith("dead-race")).length, 3, "the canonical claim rechecks the live receipt after an Owner requeue");
     assert.equal((await GranotAutomationRun.findById(requeued))?.status, "completed", "no failure fabricated from a dead-letter snapshot");
+    await GranotAutomationRun.updateOne({ _id: first }, { $set: { last_attempt_at: new Date(Date.now() - 61000) } });
+    await GranotAutomationRun.create({ _id: fresh, operation: "estimates_in_process", workflow: "preview", status: "queued", request_snapshot: {}, initiator: actor, expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000) });
+    const freshResult = await runGranotWorker({ ...deps, planRun: async (runId) => {
+      assert.equal(runId, String(fresh));
+      await GranotAutomationRun.updateOne({ _id: fresh }, { $set: { status: "completed", leased_until: null, lease_owner: null } });
+      return "completed";
+    } });
+    assert.equal(freshResult.run_id, String(fresh), "fresh collection gets a bounded turn before an old eligible waiting-match retry");
+    await GranotAutomationRun.updateOne({ _id: first }, { $set: { status: "completed" } });
+    await seed(bounded, Array.from({ length: 26 }, (_, i) => `batch-${i}`), new Date("2000-01-01"));
+    assert.equal((await runGranotWorker(deps)).run_id, String(bounded));
+    const batch = await GranotAutomationRun.findById(bounded).lean();
+    assert.equal(batch?.receipts.length, 25);
+    assert.equal(batch?.checkpoint?.phase, "apply", "remaining fresh actions resume immediately without the waiting-match cooldown");
+    assert.equal((await runGranotWorker(deps)).run_id, String(bounded));
+    assert.equal((await GranotAutomationRun.findById(bounded))?.status, "completed");
+    await seed(legacy, ["legacy-receipt", "legacy-fresh"], new Date("2000-01-01"));
+    const stored = await GranotAutomationRun.findById(legacy).lean();
+    const legacyPlan = stored!.plan_snapshot as { actions: Array<{ collection_captured_at?: string }> };
+    for (const action of legacyPlan.actions) delete action.collection_captured_at;
+    const legacyChecksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: legacyPlan });
+    await GranotAutomationRun.updateOne({ _id: legacy }, { $set: { plan_snapshot: legacyPlan, plan_checksum: legacyChecksum, "approval.plan_checksum": legacyChecksum, receipts: [{ action_id: "legacy-receipt", lifecycle_receipt_id: String(new mongoose.Types.ObjectId()), outcome: "accepted_for_processing", applied_at: new Date() }] } });
+    assert.equal((await runGranotWorker(deps)).run_id, String(legacy));
+    const legacyDone = await GranotAutomationRun.findById(legacy).lean();
+    assert.equal(legacyDone?.status, "completed_with_errors");
+    assert.equal(legacyDone?.receipts.find((receipt) => receipt.action_id === "legacy-receipt")?.outcome, "applied");
+    assert.equal(legacyDone?.receipts.find((receipt) => receipt.action_id === "legacy-fresh")?.error_code, "RUN_REPLAN_REQUIRED");
+    assert.equal(calls.includes("legacy-fresh"), false, "legacy fresh evidence is never captured at apply time");
   } finally {
-    await GranotAutomationRun.deleteMany({ _id: { $in: [first, second, requeued] } });
+    await GranotAutomationRun.deleteMany({ _id: { $in: [first, second, requeued, fresh, bounded, legacy] } });
   }
 });

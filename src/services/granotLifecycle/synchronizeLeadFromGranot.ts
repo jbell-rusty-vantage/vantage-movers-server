@@ -174,6 +174,12 @@ async function applySynchronizeLeadOperation(
   if (lead.model === "FormLead" && lead.duplicate === true) {
     throw new SynchronizeLeadRaceError("eligibility");
   }
+  if (
+    lead.model === "CallLead" && lead.duplicate === true &&
+    input.execution.identity.match_method === "source_scoped_contact"
+  ) {
+    throw new SynchronizeLeadRaceError("eligibility");
+  }
 
   const temporal = compareGranotTemporal(
     input.desired_state.temporal_winner,

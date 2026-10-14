@@ -25,6 +25,8 @@ export type SealableAutomationAction = {
   row?: Record<string, unknown>;
   target_binding?: { call_lead_id?: string | null };
   lifecycle_apply?: GranotAutomationLifecycleApply;
+  /** Provider response time, sealed with the statement and preserved on retry. */
+  collection_captured_at?: string;
 };
 
 export type SealableAutomationPlan = {
@@ -175,6 +177,7 @@ export function sealAutomationPlan<T extends SealableAutomationPlan>(
     return {
       ...action,
       table_section: collected.section,
+      ...(collected.row.collectedAt ? { collection_captured_at: collected.row.collectedAt } : {}),
       lifecycle_apply: buildLifecycleApply({
         runId,
         actionId: action.action_id,

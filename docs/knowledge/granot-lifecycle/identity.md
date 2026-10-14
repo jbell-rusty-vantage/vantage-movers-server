@@ -62,7 +62,7 @@ Same Lead found through current and immutable contact values is one candidate. Z
 
 1. Active Record Link by normalized Job Number. A unique link target returns here and skips the phone rung.
 2. Prefix-equivalent `CallLead.normalized_job_no` inside the resolved Source Granularity. A unique Job target returns here and skips the phone rung.
-3. Source Granularity plus normalized phone across current phone and immutable ingested/original caller phone — only when no unique Job/link target exists.
+3. Source Granularity plus normalized phone across current phone and immutable ingested phone — only when no unique Job/link target exists, and only non-duplicate Call Leads are eligible. Duplicate siblings cannot compete with the eligible Lead or receive a new Job through phone matching. The canonical synchronization command rechecks this eligibility inside its transaction.
 4. Otherwise pending/ambiguous/conflict/unmatched.
 
 Match methods: `granot_record_link`, `form_ref_no_exact`, `form_mongo_id_compatibility`, `call_job_no_exact`, `booking_job_no_exact`, `source_scoped_contact`. Linked success reason is `record_link_confirmed`.

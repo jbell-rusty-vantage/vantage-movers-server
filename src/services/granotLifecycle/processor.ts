@@ -474,7 +474,7 @@ export async function processGranotObservation(
 
   if (!persisted) {
     const lead = cas
-      ? await (deps.loadLeadProjection ?? defaultLoadLeadProjection)(cas.target)
+      ? await (deps.loadLeadProjection ?? loadGranotLeadProjection)(cas.target)
       : null;
     prepared = await prepareDecision({
       observation,
@@ -1038,7 +1038,7 @@ async function maybeSynchronizeMatchedLead(input: {
     });
     assertAuthorizedLeadDesiredState(desired, target.model);
     const expectedRevision = Number(
-      (await (deps.loadLeadProjection ?? defaultLoadLeadProjection)(target))?.domain_revision ?? 0,
+      (await (deps.loadLeadProjection ?? loadGranotLeadProjection)(target))?.domain_revision ?? 0,
     );
     const decisionId = new mongoose.Types.ObjectId();
     const execution: SynchronizeLeadExecution = {
@@ -1095,7 +1095,7 @@ async function maybeSynchronizeMatchedLead(input: {
       if (!isSynchronizeRace(error)) {
         throw error;
       }
-      const lead = await (deps.loadLeadProjection ?? defaultLoadLeadProjection)(target);
+      const lead = await (deps.loadLeadProjection ?? loadGranotLeadProjection)(target);
       prepared = await prepareDecision({
         observation,
         attempt: input.attempt,
@@ -1340,7 +1340,7 @@ async function prepareDecision(input: {
     input.leadOverride !== undefined
       ? input.leadOverride
       : identity.target && isLeadRef(identity.target)
-        ? await (input.loadLeadProjection ?? defaultLoadLeadProjection)(identity.target)
+        ? await (input.loadLeadProjection ?? loadGranotLeadProjection)(identity.target)
         : null;
   const temporal_order = compareGranotTemporal(
     {
@@ -2016,7 +2016,7 @@ function absent<T>(value: T | null | undefined): T | undefined {
   return value ?? undefined;
 }
 
-async function defaultLoadLeadProjection(
+export async function loadGranotLeadProjection(
   target: EntityRef,
 ): Promise<LeadDesiredStateProjection | null> {
   if (target.model === "FormLead") {

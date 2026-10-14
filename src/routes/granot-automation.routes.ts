@@ -21,6 +21,7 @@ import {
   getGranotRun,
   GranotRunConflict,
   listGranotRuns,
+  getEstimatesFreshness,
   recoverGranotRuns,
   runGranotWorker,
 } from "../services/granotHttpCollector/runWorkflow";
@@ -243,6 +244,15 @@ router.get(base, async (req, res) => {
     ownerActor(req);
     const limit = z.coerce.number().int().min(1).max(100).default(25).parse(req.query.limit);
     return res.json({ ok: true, data: await listGranotRuns(limit) });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.get(`${base}/freshness`, async (req, res) => {
+  try {
+    ownerActor(req);
+    return res.json({ ok: true, data: await getEstimatesFreshness() });
   } catch (error) {
     return sendError(res, error);
   }

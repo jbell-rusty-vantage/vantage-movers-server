@@ -70,6 +70,12 @@ export async function applyAutomationPlanAction(
   const capture = deps.capture ?? captureChannelOperationReceipt;
   const claimAndProcess = deps.claimAndProcess ?? ((id: string) =>
     claimAndProcessOrPoll(id, { syncPollDeadlineMs: input.existing_receipt ? 0 : undefined }));
+  if (input.existing_receipt) {
+    // The durable receipt already owns its original captured_at and operation.
+    // Poll it directly; legacy plans need no reconstructed observation time.
+    const claimed = await claimAndProcess(input.existing_receipt.lifecycle_receipt_id);
+    return translateClaimResult(input.action_id, input.existing_receipt.lifecycle_receipt_id, claimed);
+  }
   const item = input.lifecycle_apply;
   const captured = await capture({
     observation_channel: "granot_http_automation",

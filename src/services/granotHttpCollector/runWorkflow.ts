@@ -4,6 +4,7 @@ import { Types } from "mongoose";
 import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
+import { GranotEstimatesOpenDate } from "../../models/GranotEstimatesOpenDate";
 import { BookedLead } from "../../models/BookedLead";
 import { getCallLeadModel } from "../../models/CallLead";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
@@ -27,6 +28,7 @@ import type { GranotAutomationActionReceipt } from "../granotLifecycle/automatio
 import {
   buildGranotOperationPayloads,
   collectGranotReport,
+  getGranotDateWindowProblem,
   GranotCollectorError,
   type GranotCollectionRequest,
   type GranotSourceCollection,
@@ -38,8 +40,10 @@ import {
   type EstimatesLabelLookup,
   type EstimatesPartition,
 } from "./estimatesInProcess";
+import type { EstimatesCollectionCoverage } from "./estimatesCollection";
+import { planEstimatesIdentities, type EstimatesIdentityPlanningDeps } from "./estimatesIdentityPlanning";
 import { GranotRunConflict } from "./errors";
-import { estimatesDateWindow } from "./estimatesCron";
+import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot } from "./estimatesCron";
 import {
   planGranotFormWorkflow,
   type GranotFormPlan,
@@ -85,6 +89,7 @@ export type GranotRunRequest = Omit<GranotCollectionRequest, "credentials"> & {
   autoApply?: boolean;
   /** Cron retry identity, scoped to an Estimates date and New York hour. */
   scheduledSlotKey?: string;
+  scheduledCoverage?: { slotKey: string; dateWindow: { from: string; to: string }; totalWindows: number };
 };
 export type GranotRunGroupRequest = {
   operations: GranotLeadOperation[];
@@ -113,6 +118,7 @@ type CallPlanAction = {
   syncable: boolean;
   target_binding: CallTargetBinding;
   lifecycle_apply?: GranotAutomationLifecycleApply;
+  collection_captured_at?: string;
 };
 
 type CallTargetBinding = {
@@ -190,7 +196,7 @@ export async function createGranotRun(
     try {
       await GranotAutomationRun.updateOne(
         { _id: id },
-        { $setOnInsert: { ...document, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey } } },
+        { $setOnInsert: { ...document, run_group_id: request.scheduledCoverage?.slotKey ?? null, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey, scheduled_coverage: request.scheduledCoverage } } },
         { upsert: true },
       ).exec();
     } catch (error) {
@@ -381,6 +387,9 @@ async function approveSealedRun(input: GranotApprovalInput, reviewedEstimates: b
   if (selected.length === 0 || selected.some((id) => !validIds.has(id))) {
     throw new GranotRunConflict("UNKNOWN_ACTION", "One or more selected actions are not in the immutable plan.");
   }
+  if (run.operation === "estimates_in_process") {
+    for (const action of plan.actions) if (selected.includes(action.action_id)) estimatesActionCaptureTime(action);
+  }
   const approved = await GranotAutomationRun.updateOne(
     {
       _id: input.run_id,
@@ -431,6 +440,7 @@ export function assertReviewedEstimatesWindow(value: unknown, now: Date): void {
 export async function runGranotWorker(deps: {
   applyAction?: typeof applyAutomationPlanAction;
   loadReplayStates?: typeof loadAutomationReplayStates;
+  planRun?: typeof planRun;
 } = {}): Promise<{
   claimed: boolean;
   run_id?: string;
@@ -456,34 +466,16 @@ export async function runGranotWorker(deps: {
       },
       { $set: { status: "expired", completed_at: now } },
     ).exec();
-    // Approved work takes precedence over new planning so an owner does not
-    // wait behind a large sibling plan after explicitly approving a checksum.
-    const run =
-      (await claimGranotRun({ status: "applying", ...granotApplyReadyFilter(now) }, lease, now)) ??
-      (await claimGranotRun(
-        {
-          $or: [
-            { status: "queued" },
-            {
-              status: "planning",
-              $or: [
-                { leased_until: { $lte: now } },
-                { leased_until: null },
-                { leased_until: { $exists: false } },
-              ],
-            },
-          ],
-        },
-        lease,
-        now,
-      ));
+    // One age-ordered queue: untouched collection/approved actions progress
+    // alongside due retries. A waiting match cannot monopolize every wakeup.
+    const run = await claimGranotRun(granotRecoverableFilter(now), lease, now);
     if (!run) return { claimed: false };
     runId = String(run._id);
     if (run.status === "applying") {
       const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
     }
-    const plannedStatus = await planRun(runId, lease);
+    const plannedStatus = await (deps.planRun ?? planRun)(runId, lease);
     if (plannedStatus === "applying") {
       const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
@@ -517,7 +509,9 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
   > & { auto_apply?: boolean };
   let sourceIndex = 0;
   let plannedRows = 0;
+  const planningDeadline = run.operation === "estimates_in_process" ? Date.now() + 120_000 : Infinity;
   const beforeRow = async () => {
+    if (Date.now() >= planningDeadline) throw new GranotRunConflict("PLANNING_BUDGET_EXCEEDED", "Granot planning exceeded 120 seconds; recollect using smaller date windows.");
     await renewRunLease(runId, lease, "planning");
     plannedRows += 1;
     await GranotAutomationRun.updateOne(
@@ -525,7 +519,7 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
       { $set: { checkpoint: checkpoint("plan", plannedRows) } },
     ).exec();
   };
-  const planned = await planOperation(run.operation, request, runId, lease, beforeRow);
+  const planned = await planOperation(run.operation, request, runId, lease, beforeRow, planningDeadline);
   const plan = planned.plan;
   assertUniqueActionIds(plan);
   const checksum = planChecksum(plan);
@@ -583,16 +577,25 @@ async function planOperation(
   runId: string,
   lease: LeaseToken,
   beforeRow: () => Promise<void>,
-): Promise<{ plan: GranotPlan; collection_summary: ReturnType<typeof summarizeCollection> }> {
+  planningDeadline: number,
+): Promise<{ plan: GranotPlan; collection_summary: ReturnType<typeof summarizeCollection> & { coverage?: EstimatesCollectionCoverage; held_rows?: number; approvable_rows?: number } }> {
   if (operation === "estimates_in_process") {
+    let coverage: EstimatesCollectionCoverage | undefined;
     const sources = await collectEstimatesInProcess({
       dateWindow: request.dateWindow,
       credentials: readCredentials(),
+      beforeRequest: async () => {
+        if (Date.now() >= planningDeadline) throw new GranotRunConflict("COLLECTION_BUDGET_EXCEEDED", "Granot collection exceeded 120 seconds; recollect using smaller date windows.");
+        await renewRunLease(runId, lease, "planning");
+      },
+      onCoverage: (value) => { coverage = value; },
     });
+    if (!coverage?.complete) throw new GranotRunConflict("INCOMPLETE_COLLECTION", "Estimates coverage was not verified.");
+    await rememberEstimatesOpenDates(sources);
     const plan = await assembleEstimatesPlan(sources, { runId, beforeRow });
     return {
       plan,
-      collection_summary: summarizeEstimateSources(request.dateWindow, sources),
+      collection_summary: { ...summarizeEstimateSources(request.dateWindow, sources), coverage, held_rows: plan.actions.filter((action) => !isApprovableAction(action)).length, approvable_rows: plan.actions.filter(isApprovableAction).length },
     };
   }
   let sourceIndex = 0;
@@ -634,13 +637,32 @@ export async function assembleEstimatesPlan(
     lookup?: EstimatesLabelLookup;
     planForm?: typeof planGranotFormWorkflow;
     planCall?: typeof planCallWorkflow;
+    canonical?: EstimatesIdentityPlanningDeps;
   },
 ): Promise<EstimatesPlan> {
+  // Production preview uses canonical identities. Explicit legacy planner adapters
+  // remain available to the old partition/sealing unit proofs only.
+  if (!input.planForm && !input.planCall) {
+    return planEstimatesIdentities(sources, { runId: input.runId, beforeRow: input.beforeRow, ...input.canonical });
+  }
   const beforeRow = input.beforeRow ?? (async () => undefined);
+  const validSources = sources.map((source) => ({
+    ...source,
+    sections: { ...source.sections, followUpEstimates: source.sections.followUpEstimates.filter((row) => !row.values.estimates_hold_reason) },
+  }));
   const partition = await partitionEstimatesSources(
-    sources,
+    validSources,
     input.lookup ?? estimatesRegistryLookup(),
   );
+  for (const source of sources) {
+    const reasons = new Set(source.sections.followUpEstimates.map((row) => row.values.estimates_hold_reason).filter(Boolean));
+    for (const reason of reasons) {
+      partition.unresolved.push({
+        reason: String(reason),
+        source: { ...source, sections: { bookedJobs: [], followUpEstimates: source.sections.followUpEstimates.filter((row) => row.values.estimates_hold_reason === reason) } },
+      });
+    }
+  }
   const planForm = input.planForm ?? planGranotFormWorkflow;
   const planCall = input.planCall ?? planCallWorkflow;
   const formPlan = await planForm(partition.form, { beforeRow });
@@ -692,6 +714,15 @@ export async function assembleEstimatesPlan(
 
 function hasEstimatesPriority(action: { lifecycle_apply?: GranotAutomationLifecycleApply }): boolean {
   return /^[0-9]$/.test(String(action.lifecycle_apply?.granot_statement.priority ?? ""));
+}
+
+/** Old snapshots must be recollected, never presented as fresh apply-time evidence. */
+export function estimatesActionCaptureTime(action: { collection_captured_at?: string }): Date {
+  const value = action.collection_captured_at;
+  if (!value || !Number.isFinite(Date.parse(value))) {
+    throw new GranotRunConflict("RUN_REPLAN_REQUIRED", "Estimates snapshot has no verified collection time; recollect before applying.");
+  }
+  return new Date(value);
 }
 
 function unresolvedEstimatesPlan(
@@ -875,6 +906,8 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     new Date(),
   );
   let pendingReplays = 0;
+  let processedActions = 0;
+  const applyDeadline = Date.now() + 120_000;
 
   for (const action of plan.actions) {
     if (!selectedSet.has(action.action_id)) continue;
@@ -895,6 +928,8 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
         "Selected action is missing the immutable lifecycle apply block.",
       );
     }
+    if (processedActions >= 25 || Date.now() >= applyDeadline) break;
+    processedActions += 1;
     await renewRunLease(runId, lease, "applying");
     let receipt: GranotAutomationActionReceipt;
     try {
@@ -904,9 +939,12 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
         initiator: approval.approved_by,
         existing_receipt: existing,
         request_id: runId,
+        captured_at: run.operation === "estimates_in_process" && !existing
+          ? estimatesActionCaptureTime(action)
+          : undefined,
       });
     } catch (error) {
-      if (error instanceof OperationIdempotencyConflictError) {
+      if (error instanceof OperationIdempotencyConflictError || (error instanceof GranotRunConflict && error.code === "RUN_REPLAN_REQUIRED")) {
         receipt = {
           action_id: action.action_id,
           lifecycle_receipt_id: existing?.lifecycle_receipt_id ?? "",
@@ -933,7 +971,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     selected,
   );
   if (status === "applying") {
-    await yieldApplyingRun(runId, lease, completed);
+    await yieldApplyingRun(runId, lease, completed, selected.some((id) => !receiptsByAction.has(id)));
     return status;
   }
   const finished = await GranotAutomationRun.updateOne(
@@ -983,7 +1021,7 @@ async function upsertActionReceipt(
   if (saved.modifiedCount !== 1) throw new Error("Granot apply checkpoint lost its fenced lease.");
 }
 
-async function yieldApplyingRun(runId: string, lease: LeaseToken, completed: number): Promise<void> {
+async function yieldApplyingRun(runId: string, lease: LeaseToken, completed: number, freshActionsRemain = false): Promise<void> {
   const yielded = await GranotAutomationRun.updateOne(
     fenced(runId, lease, ["applying"]),
     {
@@ -991,7 +1029,7 @@ async function yieldApplyingRun(runId: string, lease: LeaseToken, completed: num
         lease_owner: null,
         leased_until: null,
         last_attempt_at: new Date(),
-        checkpoint: checkpoint("waiting_match", completed),
+        checkpoint: checkpoint(freshActionsRemain ? "apply" : "waiting_match", completed),
       },
     },
   ).exec();
@@ -1128,6 +1166,84 @@ export async function listGranotRuns(limit = 25): Promise<Record<string, unknown
   return runs.map((run) => safeRun(run as unknown as Record<string, unknown>, false));
 }
 
+async function rememberEstimatesOpenDates(sources: GranotSourceCollection[]): Promise<void> {
+  const dates = new Map<string, Date>();
+  for (const source of sources) for (const row of source.sections.followUpEstimates) {
+    if (!row.collectedAt || row.values.estimates_hold_reason) continue;
+    const date = row.values.open_date;
+    if (!date || getGranotDateWindowProblem({ from: date, to: date })) continue;
+    dates.set(date, new Date(row.collectedAt));
+  }
+  if (dates.size) await GranotEstimatesOpenDate.bulkWrite([...dates].map(([date, capturedAt]) => ({
+    updateOne: { filter: { _id: date }, update: { $setOnInsert: { first_observed_at: capturedAt }, $max: { last_observed_at: capturedAt } }, upsert: true },
+  })));
+}
+
+/** Historical verified dates are a conservative superset, not guessed ingestion dates. */
+export async function estimatesScheduledWindows(now: Date): Promise<Array<{ from: string; to: string }>> {
+  await connectMongo();
+  const floor = estimatesDateWindow(now);
+  const floorEpoch = granotCalendarEpoch(floor.from);
+  const dates = await GranotEstimatesOpenDate.find().select({ _id: 1 }).lean().exec();
+  const olderMonths = new Set<string>();
+  for (const entry of dates) {
+    const value = String(entry._id);
+    if (getGranotDateWindowProblem({ from: value, to: value }) || granotCalendarEpoch(value) >= floorEpoch) continue;
+    const [month, , year] = value.split("/");
+    olderMonths.add(`${year}-${month}`);
+  }
+  const windows = estimatesDateChunks(floor);
+  for (const month of [...olderMonths].sort()) {
+    const [year, number] = month.split("-").map(Number);
+    const last = new Date(Date.UTC(year!, number!, 0));
+    const endEpoch = Math.min(+last, floorEpoch - 86_400_000);
+    const end = new Date(endEpoch);
+    windows.push(...estimatesDateChunks({ from: `${String(number).padStart(2, "0")}/01/${year}`, to: `${String(end.getUTCMonth() + 1).padStart(2, "0")}/${String(end.getUTCDate()).padStart(2, "0")}/${end.getUTCFullYear()}` }));
+  }
+  return windows;
+}
+
+/** Complete collection and completed synchronization are deliberately separate. */
+export async function getEstimatesFreshness(now = new Date()): Promise<Record<string, unknown>> {
+  await connectMongo();
+  const slots = await GranotAutomationRun.aggregate([
+    { $match: { operation: "estimates_in_process", "request_snapshot.scheduled_coverage.slotKey": { $type: "string" } } },
+    { $group: {
+      _id: "$request_snapshot.scheduled_coverage.slotKey",
+      expected_windows: { $max: "$request_snapshot.scheduled_coverage.totalWindows" },
+      discovered_windows: { $sum: 1 },
+      collected_windows: { $sum: { $cond: [{ $eq: ["$collection_summary.coverage.complete", true] }, 1, 0] } },
+      completed_windows: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+      failed_windows: { $sum: { $cond: [{ $in: ["$status", ["failed", "completed_with_errors", "expired"]] }, 1, 0] } },
+      held_rows: { $sum: "$collection_summary.held_rows" },
+      latest_collection_at: { $max: "$collection_summary.coverage.captured_at" },
+      created_at: { $min: "$createdAt" },
+    } },
+    { $sort: { created_at: -1 } },
+    { $limit: 100 },
+  ]);
+  const complete = slots.find((slot) => slot.expected_windows > 0 && slot.collected_windows === slot.expected_windows);
+  const current = slots[0];
+  const lastCollected = complete?.latest_collection_at;
+  const expected = estimatesLatestSlot(now);
+  return {
+    observed_at: now.toISOString(),
+    last_complete_coverage_at: lastCollected ?? null,
+    latest_expected_slot: expected.slotKey,
+    latest_slot: current ?? null,
+    warnings: [
+      ...(!complete ? ["no_complete_scheduled_coverage"] : []),
+      ...(current && current.collected_windows < current.expected_windows ? ["partial_scan"] : []),
+      ...(current?.failed_windows > 0 ? ["failed_windows"] : []),
+      ...(current?.held_rows > 0 ? ["held_rows"] : []),
+      ...(current && current.completed_windows < current.expected_windows ? ["synchronization_pending"] : []),
+      ...(+now - +expected.at > 90 * 60_000 && (complete?._id !== expected.slotKey) ? ["late_slot"] : []),
+    ],
+    older_scope: "all_observed_provider_open_date_months",
+    coverage_limit: "Older Leads without verified provider Open Date evidence require discovery backfill; coverage is not all-time assurance.",
+  };
+}
+
 export async function recoverGranotRuns(): Promise<{
   recoverable: boolean;
   queue_published: boolean;
@@ -1149,7 +1265,7 @@ export function granotApplyReadyFilter(now: Date): Record<string, unknown> {
   ] };
 }
 
-function granotRecoverableFilter(now: Date): Record<string, unknown> {
+export function granotRecoverableFilter(now: Date): Record<string, unknown> {
   const leaseAvailable = { $or: [
     { leased_until: { $lte: now } },
     { leased_until: null },
@@ -1191,7 +1307,7 @@ export async function publishGranotWakeup(
       reason === "recovery"
         ? `granot:${reason}:${runId}:${Math.floor(Date.now() / (5 * 60_000))}`
         : reason === "continuation"
-          ? `granot:${reason}:${predecessorRunId ?? "unknown"}:${runId}`
+          ? `granot:${reason}:${predecessorRunId ?? "unknown"}:${runId}:${randomUUID()}`
           : `granot:${reason}:${runId}`;
     await send(
       GRANOT_AUTOMATION_TOPIC,

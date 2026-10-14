@@ -3,7 +3,7 @@ import { after, test } from "node:test";
 import mongoose from "mongoose";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
-import { connectMongo } from "../../db";
+import { connectMongo, withTransaction } from "../../db";
 import { Agent } from "../../models/Agent";
 import { getCallLeadModel } from "../../models/CallLead";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
@@ -16,7 +16,14 @@ import { SheetSyncJob } from "../../models/SheetSyncJob";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import { projectRoleSafeLeadContacts } from "./leadContactProjection";
-import type { LeadIdentityResult } from "./identity";
+import { resolveLeadIdentity, type LeadIdentityResult } from "./identity";
+import { refreshLeadForOutreach } from "../salesOutreach/subjects/leadChangeJob";
+import { mongoDeskSubjectStore } from "../salesOutreach/subjects/store";
+import { deskConfiguration } from "../salesOutreach/subjects/testing";
+import { getSalesOutreachSubjectModel, getSalesOutreachPolicyPeriodModel } from "../../models/salesOutreach";
+import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
+import { assembleEstimatesPlan } from "../granotHttpCollector/runWorkflow";
+import { normalizeGranotReceipt } from "./normalization";
 import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
 import type { SourcePolicyStore } from "./sourcePolicy";
 
@@ -172,8 +179,9 @@ async function seedReceipt(
     source_system: "granot",
     observation_channel: channel,
     captured_at: observation.captured_at,
-    route_event_class: "lead_created",
-    authentication_method: "header_secret",
+    ...(channel === "granot_webhook"
+      ? { route_event_class: "lead_created", authentication_method: "header_secret" }
+      : { channel_operation_kind: "lead_snapshot_apply", channel_operation_id: `estimates:${String(observation._id)}`, authentication_method: "automation_owner_approval" }),
     evidence_version: 2,
     payload_kind: "object",
     headers: { "content-type": "application/json" },
@@ -206,6 +214,9 @@ function liveDeps(input: {
     loadReceipt: async () => ({
       _id: input.observation.receipt_id,
       observation_channel: input.channel ?? "granot_webhook",
+      ...(input.channel === "granot_http_automation" ? {
+        initiator: { actor_type: "owner" as const, actor_id: "estimates-replica-owner", actor_label: "replica@example.invalid", actor_role: "owner" as const, request_id: "estimates-replica", origin: "vantage_admin" as const },
+      } : {}),
       captured_at: input.observation.captured_at,
       processing: { match_attempt: 0 },
     }),
@@ -746,6 +757,115 @@ test("[AC-32] replica equal-time Observation tie-break admits only the greater O
     assert.equal(after?.domain_revision, afterFirst?.domain_revision);
   } finally {
     await FormLead.deleteMany({ _id: leadId });
+    await deleteLinks([job.normalized]);
+  }
+});
+
+test("Estimates sparse Call enrichment converges Granot assignment and desk priority periods", async (t) => {
+  if (!(await replicaReady(t))) return;
+  const CallLead = getCallLeadModel();
+  const leadId = objectId(), siblingId = objectId(), repA = objectId(), repB = objectId();
+  const job = jobPair(String(leadId));
+  const phone = `555${String(leadId).slice(-7).replace(/[a-f]/g, "7")}`;
+  const usernameA = `estimatesa${String(repA)}`, usernameB = `estimatesb${String(repB)}`;
+  const ref = { model: "CallLead" as const, id: String(leadId) };
+  const previousLatestWins = process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS;
+  process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = "true";
+  const configuration = deskConfiguration({
+    transition: { intake_admission_enabled: true, intake_admission_at: "2026-08-18T00:00:00.000Z", backfill_lookback_days: 90, backfill_include_upcoming_moves: true },
+    migration: { paused: false },
+  });
+  const policyStore = reviewedStore();
+  const callPolicyStore: SourcePolicyStore = {
+    ...policyStore,
+    async findByNormalizedLabel(label) {
+      return (await policyStore.findByNormalizedLabel(label)).map((row) => ({ ...row, lifecycle_routes: [
+        { route_key: "call_any", lead_model: "CallLead" as const, move_type: "any" as const, source_granularity_id: REVIEWED_GRANULARITY_ID },
+      ] }));
+    },
+    async findGranularity(id) { return { id, source_company_id: REVIEWED_COMPANY_ID, active: true, channel: "call" }; },
+  };
+  const refresh = (at: Date) => withTransaction((session) => refreshLeadForOutreach(ref, configuration, at, mongoDeskSubjectStore, session));
+  try {
+    await getSalesOutreachSubjectModel().createCollection();
+    await getSalesOutreachSubjectModel().syncIndexes();
+    await getSalesOutreachPolicyPeriodModel().createCollection();
+    await getSalesOutreachPolicyPeriodModel().syncIndexes();
+    await getSalesIntelligenceJobModel().createCollection();
+    await getSalesIntelligenceJobModel().createIndexes();
+    await Agent.create([
+      { _id: repA, name: "Estimates Rep A", normalized_name: "estimates rep a", active: true, granot_crm_username: usernameA },
+      { _id: repB, name: "Estimates Rep B", normalized_name: "estimates rep b", active: true, granot_crm_username: usernameB },
+    ]);
+    await CallLead.collection.insertMany([
+      { _id: leadId, source_company: "synthetic", source_granularity_id: new mongoose.Types.ObjectId(REVIEWED_GRANULARITY_ID),
+        phone_number: phone, normalized_phone_number: phone, ingestion_origin: "ringcentral", duplicate: false,
+        ringcentral: { duration_seconds: 180, qualification_reason: "inbound_target_answered_over_120s" },
+        timestamp: new Date("2026-08-18T11:00:00.000Z"), createdAt: new Date("2026-08-18T15:00:00.000Z"),
+        domain_revision: 1, quoted: false },
+      { _id: siblingId, source_company: "synthetic", source_granularity_id: new mongoose.Types.ObjectId(REVIEWED_GRANULARITY_ID),
+        normalized_phone_number: phone, duplicate: true, normalized_job_no: "OTHER JOB", domain_revision: 1 },
+    ]);
+    let lastIncoming: GranotObservationDocument;
+    const apply = async (priority: string, username: string, at: Date) => {
+      const incoming = observation({ job, priority, captured_at: at, agent: { user_raw: username },
+        contact: { phone_raw: phone, normalized_phone: phone, display_name: "Granot Contact" },
+        move: { estimated_cubic_feet: 500 } });
+      const plan = await assembleEstimatesPlan([{
+        sourceLabel: "Synthetic Forms", contentHash: "synthetic", sectionSchemas: { bookedJobs: "missing", followUpEstimates: "table" },
+        sections: { bookedJobs: [], followUpEstimates: [{ id: `estimates:${priority}`, rowIndex: 1, collectedAt: at.toISOString(),
+          values: { source: "Synthetic Forms", job_no: job.raw, prior: priority, user: username, phone, customer: "Granot Contact", est_cf: "500" } }] },
+      }], { runId: String(incoming.receipt_id), canonical: { sourcePolicyStore: callPolicyStore } });
+      const action = plan.actions[0]!;
+      assert.equal("classification" in action && action.classification, "update");
+      assert.deepEqual(action.lifecycle_apply?.expected_target, ref);
+      Object.assign(incoming, normalizeGranotReceipt({ observation_channel: "granot_http_automation", captured_at: at,
+        channel_operation_kind: "lead_snapshot_apply", channel_operation_id: action.lifecycle_apply!.operation_id,
+        payload: { operation_id: action.lifecycle_apply!.operation_id, operation_kind: "lead_snapshot_apply", granot_statement: action.lifecycle_apply!.granot_statement } }));
+      lastIncoming = incoming;
+      return processLive({ observation: incoming, identity: identityFor(String(leadId), "CallLead"), channel: "granot_http_automation",
+        extra: { now: () => new Date(+at + 5000), sourcePolicyStore: callPolicyStore, resolveIdentity: resolveLeadIdentity } });
+    };
+    assert.equal((await apply("0", usernameA, capturedAt)).outcome, "applied");
+    let lead = await CallLead.findById(leadId).lean();
+    assert.equal(lead?.normalized_job_no, job.normalized);
+    assert.equal(String(lead?.receiver_agent), String(repA));
+    assert.equal(lead?.quoted, false);
+    assert.equal(lead?.cubic_feet, undefined, "priority 0 does not broaden move authority");
+    const firstDesk = await refresh(new Date(+capturedAt + 10_000));
+    assert.equal(firstDesk.status, "active");
+    const later = new Date(+capturedAt + 60_000);
+    const second = await apply("1", usernameB, later);
+    assert.equal(second.outcome, "applied");
+    await refresh(new Date(+later + 10_000));
+    lead = await CallLead.findById(leadId).lean();
+    assert.equal(String(lead?.receiver_agent), String(repB));
+    assert.equal(lead?.receiver_agent_source, "granot_username_match");
+    assert.equal(lead?.quoted, true);
+    assert.equal(lead?.cubic_feet, 500);
+    assert.equal(lead?.phone_number, phone, "live contact remains protected");
+    const subject = await getSalesOutreachSubjectModel().findById(firstDesk.subject_id).lean();
+    assert.equal(String(subject?.assigned_agent_id), String(repB));
+    const periods = await getSalesOutreachPolicyPeriodModel().find({ subject_id: firstDesk.subject_id }).sort({ started_at: 1 }).lean();
+    assert.deepEqual(periods.map((period) => [period.workflow, period.ended_at == null]), [["new", false], ["quoted", true]]);
+    const replay = await processLive({ observation: lastIncoming!, identity: identityFor(String(leadId), "CallLead"), channel: "granot_http_automation",
+      extra: { sourcePolicyStore: callPolicyStore, resolveIdentity: resolveLeadIdentity } });
+    assert.equal(replay.decision_id, second.decision_id, "receipt replay retains its accepted decision");
+    assert.equal((await CallLead.findById(leadId).lean())?.domain_revision, lead?.domain_revision, "receipt replay does not rewrite the Lead");
+    await refresh(new Date(+later + 20_000));
+    assert.equal(await getSalesOutreachPolicyPeriodModel().countDocuments({ subject_id: firstDesk.subject_id }), 2, "replay adds no period");
+    assert.equal((await CallLead.findById(siblingId).lean())?.normalized_job_no, "OTHER JOB");
+    const changes = await getEntityChangeModel().find({ "entity.id": String(leadId) }).lean();
+    assert.equal(changes.length, 2);
+    assert.ok(changes.every((change) => change.fields.some((field) => field.path === "receiver_agent")));
+  } finally {
+    if (previousLatestWins === undefined) delete process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS;
+    else process.env.SALES_INTELLIGENCE_RECEIVER_LATEST_WINS = previousLatestWins;
+    const subjects = await getSalesOutreachSubjectModel().find({ lead_id: leadId }).select("_id").lean();
+    await getSalesOutreachPolicyPeriodModel().deleteMany({ subject_id: { $in: subjects.map((row) => row._id) } });
+    await getSalesOutreachSubjectModel().deleteMany({ lead_id: leadId });
+    await CallLead.deleteMany({ _id: { $in: [leadId, siblingId] } });
+    await Agent.deleteMany({ _id: { $in: [repA, repB] } });
     await deleteLinks([job.normalized]);
   }
 });

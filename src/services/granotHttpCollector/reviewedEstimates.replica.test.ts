@@ -14,7 +14,7 @@ test("replica: cron concurrency reuses one run; reviewed selection preserves the
   assert.equal(process.env.TEST_MODE, "true");
   assert.match(process.env.MONGO_URI ?? "", /^mongodb:\/\/127\.0\.0\.1:/);
   await connectMongo();
-  assert.equal(mongoose.connection.db?.databaseName, "testvantagemovers");
+  assert.equal(mongoose.connection.db?.databaseName, process.env.TEST_MONGO_DATABASE_NAME ?? "testvantagemovers");
   const slot = `synthetic:${new mongoose.Types.ObjectId()}`;
   const request = { operation: "estimates_in_process" as const, workflow: "apply" as const, dateWindow: { from: "07/16/2026", to: "10/13/2026" }, sourceLabels: [], initiator: actor, autoApply: true, scheduledSlotKey: slot };
   const id = scheduledEstimatesRunId(slot);
@@ -26,7 +26,7 @@ test("replica: cron concurrency reuses one run; reviewed selection preserves the
   assert.equal((await GranotAutomationRun.findById(id))?.status, "completed");
 
   const previewId = new mongoose.Types.ObjectId();
-  const action = (action_id: string, classification: string) => ({ action_id, classification, lifecycle_apply: { operation_id: `${previewId}:${action_id}`, operation_kind: "lead_snapshot_apply", granot_statement: { job_no: "SYNTHETIC-100", priority: "0" } } });
+  const action = (action_id: string, classification: string) => ({ action_id, classification, collection_captured_at: "2026-10-13T12:00:00.000Z", lifecycle_apply: { operation_id: `${previewId}:${action_id}`, operation_kind: "lead_snapshot_apply", granot_statement: { job_no: "SYNTHETIC-100", priority: "0" } } });
   const plan = { kind: "estimates_in_process", schema_version: 2, actions: [action("selected", "update"), action("unselected", "update"), action("conflict", "conflict")], counters: { update: 2, conflict: 1 } };
   const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: plan });
   await GranotAutomationRun.create({ _id: previewId, operation: "estimates_in_process", workflow: "preview", status: "completed", request_snapshot: { dateWindow: request.dateWindow }, initiator: actor, plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date(), expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000) });

@@ -9,6 +9,7 @@ import type {
 export type GranotSectionKey = "bookedJobs" | "followUpEstimates";
 
 export type GranotReportRow = {
+  collectedAt?: string;
   id: string;
   rowIndex: number;
   values: Record<string, string>;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { estimatesCronDecision, estimatesDateWindow, newYorkHour } from "./estimatesCron";
+import { estimatesCronDecision, estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, newYorkHour, estimatesLatestSlot } from "./estimatesCron";
 
 test("the estimates cron runs at 08:00, 13:00, and 18:00 New York, including across daylight saving", () => {
   assert.equal(newYorkHour(new Date("2026-07-13T12:00:00.000Z")), 8);
@@ -20,21 +20,21 @@ test("the estimates cron runs at 08:00, 13:00, and 18:00 New York, including acr
   assert.equal(estimatesCronDecision(new Date("2026-01-13T23:00:00.000Z")).run, true);
 });
 
-test("every estimates run uses Open Date yesterday through today in New York", () => {
+test("every estimates run uses the trailing 90 Open Dates in New York", () => {
   assert.deepEqual(estimatesDateWindow(new Date("2026-07-13T12:00:00.000Z")), {
-    from: "07/12/2026",
+    from: "04/15/2026",
     to: "07/13/2026",
   });
   assert.deepEqual(estimatesDateWindow(new Date("2026-07-13T22:00:00.000Z")), {
-    from: "07/12/2026",
+    from: "04/15/2026",
     to: "07/13/2026",
   });
   assert.deepEqual(estimatesDateWindow(new Date("2026-01-13T13:00:00.000Z")), {
-    from: "01/12/2026",
+    from: "10/16/2025",
     to: "01/13/2026",
   });
   const yearBoundary = estimatesDateWindow(new Date("2026-01-01T13:00:00.000Z"));
-  assert.deepEqual(yearBoundary, { from: "12/31/2025", to: "01/01/2026" });
+  assert.deepEqual(yearBoundary, { from: "10/04/2025", to: "01/01/2026" });
 });
 
 
@@ -45,4 +45,30 @@ test("cron retries share a slot identity, while the next scheduled hour gets a n
   assert.ok(first.run && retry.run && next.run);
   assert.equal(first.slotKey, retry.slotKey);
   assert.notEqual(first.slotKey, next.slotKey);
+});
+
+test("scheduled chunks cover every day exactly once across month/year and DST boundaries", () => {
+  for (const now of ["2026-01-01T13:00:00Z", "2026-03-09T12:00:00Z", "2026-11-02T13:00:00Z"]) {
+    const window = estimatesDateWindow(new Date(now));
+    const chunks = estimatesDateChunks(window);
+    assert.equal(chunks.length, 13);
+    assert.equal(chunks[0]!.from, window.from);
+    assert.equal(chunks.at(-1)!.to, window.to);
+    let days = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]!;
+      const count = (granotCalendarEpoch(chunk.to) - granotCalendarEpoch(chunk.from)) / 86_400_000 + 1;
+      assert.ok(count >= 1 && count <= 7);
+      days += count;
+      if (i) assert.equal(granotCalendarEpoch(chunk.from) - granotCalendarEpoch(chunks[i - 1]!.to), 86_400_000);
+    }
+    assert.equal(days, 90);
+  }
+  assert.throws(() => estimatesDateChunks({ from: "02/30/2026", to: "03/01/2026" }));
+});
+
+test("freshness uses the latest actual New York slot through overnight and DST transitions", () => {
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T11:59:00Z")), { slotKey: "03/07/2026:18", at: new Date("2026-03-07T23:00:00Z") });
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T12:00:00Z")), { slotKey: "03/08/2026:8", at: new Date("2026-03-08T12:00:00Z") });
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-11-01T06:30:00Z")), { slotKey: "10/31/2026:18", at: new Date("2026-10-31T22:00:00Z") });
 });

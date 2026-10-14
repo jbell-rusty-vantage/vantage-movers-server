@@ -40,6 +40,15 @@ export type GranotFormPlanAction = {
   reason?: string;
   warnings?: string[];
   lifecycle_apply?: GranotAutomationLifecycleApply;
+  collection_captured_at?: string;
+  desired_state_summary?: {
+    outcome: string;
+    reason_code: string;
+    changed_paths: string[];
+    agent_changed_paths: string[];
+    target_revision: number;
+    conditional_on_apply: true;
+  };
 };
 
 export type GranotFormPlan = {

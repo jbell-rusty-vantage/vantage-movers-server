@@ -19,11 +19,43 @@ export function estimatesCronDecision(now: Date): EstimatesCronDecision {
   return { run: true, dateWindow, slotKey: `${dateWindow.to}:${newYorkHour(now)}` };
 }
 
-/** Open Date yesterday through today in America/New_York, `MM/DD/YYYY`. */
+/** Last actual scheduled instant, including the overnight and DST gaps. */
+export function estimatesLatestSlot(now: Date): { slotKey: string; at: Date } {
+  let at = new Date(Math.floor(+now / 3_600_000) * 3_600_000);
+  for (let offset = 0; offset < 25; offset++) {
+    const decision = estimatesCronDecision(at);
+    if (decision.run) return { slotKey: decision.slotKey, at };
+    at = new Date(+at - 3_600_000);
+  }
+  throw new Error("Estimates schedule did not contain a recent slot.");
+}
+
+/** Inclusive trailing 90 Open Dates in America/New_York, `MM/DD/YYYY`. */
 export function estimatesDateWindow(now: Date): { from: string; to: string } {
   const today = newYorkCalendarDate(now);
-  const yesterday = addCalendarDays(today, -1);
-  return { from: formatGranotDate(yesterday), to: formatGranotDate(today) };
+  const first = addCalendarDays(today, -89);
+  return { from: formatGranotDate(first), to: formatGranotDate(today) };
+}
+
+/** Small durable runs bound planning and allow each window to resume separately. */
+export function estimatesDateChunks(window: { from: string; to: string }, days = 7): Array<{ from: string; to: string }> {
+  if (!Number.isInteger(days) || days < 1 || days > 7) throw new Error("Estimates windows must contain 1–7 days.");
+  const first = granotCalendarEpoch(window.from);
+  const last = granotCalendarEpoch(window.to);
+  if (last < first) throw new Error("Invalid Estimates date window.");
+  const format = (value: number) => { const date = new Date(value); return formatGranotDate({ year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() }); };
+  const result = [];
+  for (let start = first; start <= last; start += days * 86_400_000) {
+    result.push({ from: format(start), to: format(Math.min(last, start + (days - 1) * 86_400_000)) });
+  }
+  return result;
+}
+
+export function granotCalendarEpoch(value: string): number {
+  const [month, day, year] = value.split("/").map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day!));
+  if (formatGranotDate({ year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() }) !== value) throw new Error("Invalid Estimates date window.");
+  return +date;
 }
 
 export function newYorkHour(now: Date): number {

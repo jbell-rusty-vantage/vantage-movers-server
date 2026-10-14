@@ -802,6 +802,51 @@ test("Call with no Job on the Lead still binds by operational phone", async () =
   assert.ok(store.queries.some((query) => query.kind === "call_scoped_phone"));
 });
 
+test("sparse Call phone matching ignores duplicate siblings, including a sibling's different Job", async () => {
+  const result = await resolveLeadIdentity(
+    {
+      observation: observation({
+        identity: { normalized_job_no: "SYNTH JOB 14A" },
+        contact: { normalized_phone: "5550001111" },
+      }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({ callLeads: [
+      callLead({ ingested_contact_snapshot: { normalized_phone_number: "5550001111" } }),
+      callLead({ id: CALL_ID_B, duplicate: true, normalized_phone_number: "5550001111", normalized_job_no: "OTHER JOB" }),
+    ] }),
+  );
+  assert.equal(result.outcome, "linked");
+  assert.equal(result.match_method, "source_scoped_contact");
+  assert.equal(result.target?.id, CALL_ID);
+  assert.equal(result.candidates.length, 1);
+});
+
+test("a duplicate-only Call phone hit cannot receive a new Job", async () => {
+  const result = await resolveLeadIdentity(
+    {
+      observation: observation({ identity: { normalized_job_no: "SYNTH JOB 14A" }, contact: { normalized_phone: "5550001111" } }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({ callLeads: [callLead({ duplicate: true, normalized_phone_number: "5550001111" })] }),
+  );
+  assert.equal(result.outcome, "pending_match");
+  assert.equal(result.target, undefined);
+});
+
+test("an eligible phone hit with a different established Job remains held", async () => {
+  const result = await resolveLeadIdentity(
+    {
+      observation: observation({ identity: { normalized_job_no: "SYNTH JOB 14A" }, contact: { normalized_phone: "5550001111" } }),
+      policy: callPolicy(),
+    },
+    createRecordingStore({ callLeads: [callLead({ normalized_job_no: "OTHER JOB", normalized_phone_number: "5550001111" })] }),
+  );
+  assert.equal(result.outcome, "conflict");
+  assert.equal(result.reason_code, "job_number_conflict");
+  assert.equal(result.target, undefined);
+});
+
 test("two eligible Call Jobs are a conflict", async () => {
   const result = await resolveLeadIdentity(
     {
