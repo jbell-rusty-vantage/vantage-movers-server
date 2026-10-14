@@ -8,6 +8,8 @@ import type { DeskRestrictionRow } from "../evaluation/store";
 import { nominateLeadChanges } from "../subjects/feed";
 import { normalizeQueueQuery } from "../reads/queue";
 import { outreachLiveHint } from "../live/stream";
+import { poolBookingBlocks } from "./admission";
+import { Types } from "mongoose";
 
 const date = "2026-10-14", tz = "America/New_York";
 const at = (minute: number, day = date) => new Date(localInstant(day, minute, tz));
@@ -15,6 +17,14 @@ const value = () => salesOutreachConfigurationValueSchema.parse({ ...completeCon
   pool: { enabled: true, admission_enabled: false, policy_version: "pool-v1", approval_ref: "Owner20261014" } });
 const event = (id: string, minute: number, extra: Partial<PoolEvent> = {}): PoolEvent => ({ id, event_at: at(minute), channel: "call", kind: "outbound_attempt",
   verification: "confirmed", actor_agent_id: "a".repeat(24), restricted_at_contact: false, association: "unique", ...extra });
+
+test("Raw Booking anchors hold Pool despite legacy pointer type/model or absent/conflicting normalized Job", () => {
+  const ref = { model: "FormLead" as const, id: "a".repeat(24) };
+  for (const booking of [{ lead_ref: ref.id }, { lead_ref: new Types.ObjectId(ref.id) }, { lead_ref: ref.id.toUpperCase() },
+    { job_no: "p123456" }, { job_no: "１２３４５６" }, { normalized_job_no: "OTHER", job_no: "  123456  " }, { normalized_job_no: "Q123456" }])
+    assert.equal(poolBookingBlocks(booking, ref, "P123456"), true);
+  assert.equal(poolBookingBlocks({ lead_ref: "b".repeat(24), normalized_job_no: "Q999999", job_no: "unrelated" }, ref, "P123456"), false);
+});
 
 test("Pool has one prospective daily window independent of episodes/receiver/Rep goals, cutoff inclusive and no prepayment", () => {
   const v = value();

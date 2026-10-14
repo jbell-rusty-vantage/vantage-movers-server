@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-14T21:16:33.191Z",
+  "captured_at": "2026-10-14T22:11:56.716Z",
   "target": "fixed_loopback_csi01_unique_test_database",
   "production_writes": 0,
   "provider_requests": 0,
@@ -7,8 +7,9 @@
   "benchmark": {
     "shared_records": 601,
     "rendered_rows": 50,
-    "mongoose_queries": 56,
-    "elapsed_ms": 1436,
+    "unrelated_raw_bookings": 911,
+    "mongoose_queries": 54,
+    "elapsed_ms": 2597,
     "environment": "local_loopback_replica_synthetic_data",
     "limit": "Not an Atlas latency guarantee; raw-driver Booking lookup is additional to Mongoose debug count"
   },
@@ -17,13 +18,55 @@
       "shared_records": 100,
       "rendered_rows": 50,
       "mongoose_queries": 28,
-      "elapsed_ms": 306
+      "elapsed_ms": 536
     },
     {
       "shared_records": 20,
       "rendered_rows": 20,
       "mongoose_queries": 28,
-      "elapsed_ms": 170
+      "elapsed_ms": 263
+    }
+  ],
+  "legacy_booking_anchor_cases": [
+    {
+      "name": "string_lead_ref_without_normalized_job",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "missing_lead_model_objectid_pointer",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "mismatched_lead_model_string_pointer",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "uppercase_string_pointer_without_model_or_job",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "raw_numeric_job_alias_without_pointer",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "raw_prefixed_job_alias_partial_dangling_pointer",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "raw_NFKC_job_alias_outranks_conflicting_normalized_key",
+      "expected_hold": true,
+      "lead_and_sheet_unchanged": true
+    },
+    {
+      "name": "unrelated_booking_ignored",
+      "expected_hold": false,
+      "lead_and_sheet_unchanged": true
     }
   ],
   "passed": [
@@ -68,5 +111,6 @@
     "Synthetic provider source rows; no external RingCentral delivery",
     "Browser cache eviction requires separate acceptance",
     "Provider capture merge/dedupe remains covered by retained capture tests"
-  ]
+  ],
+  "total_passed_scenarios": 44
 }

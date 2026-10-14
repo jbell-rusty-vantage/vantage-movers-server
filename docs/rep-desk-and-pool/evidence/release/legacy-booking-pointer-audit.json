@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-10-14T22:07:36.190Z",
+  "database": "vantagemovers",
+  "reviewed_leads": 602,
+  "reviewed_coherent_leads": 601,
+  "raw_bookings_with_matching_pointer": 0,
+  "matched_coherent_leads": 0,
+  "missing_model": 0,
+  "mismatched_model": 0,
+  "string_pointer_missing_normalized_job": 0,
+  "partial_pointer_missing_both_jobs": 0,
+  "mutations": 0
+}
