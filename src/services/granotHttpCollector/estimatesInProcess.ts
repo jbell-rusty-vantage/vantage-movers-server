@@ -148,6 +148,17 @@ export function parseEstimatesInProcessHtml(html: string): {
     headers.forEach((header, index) => { if (header) raw[header] = cells[index] ?? ""; });
     if (!raw.job_no?.trim() && (/^totals?$/i.test(raw.customer ?? '') || cells.every((cell,index) => !cell || ['cf','miles','lbs','rate','estimate'].includes(headers[index] ?? '')))) continue;
     if (cells.length !== headers.length) { diagnostics.push("data_row_cell_count_mismatch"); continue; }
+    for (const field of ["job_no", "email", "move_date"]) {
+      const cell = $(row).children("th,td").get(headers.indexOf(field));
+      if (!cell) continue;
+      const clone = $(cell).clone();
+      clone.find("table").remove();
+      clone.find("br").replaceWith("\u241e");
+      const lines = clone.text().replace(/\u00a0/g, " ").split("\u241e").map(line => line.replace(/\s+/g, " ").trim());
+      raw[`${field}_evidence`] = cells[headers.indexOf(field)] ?? "";
+      raw[field] = lines[0] ?? "";
+      raw[field === "move_date" ? "move_date_end_evidence" : `${field}_annotation_evidence`] = lines.slice(1).filter(Boolean).join(" ");
+    }
     const values = adaptEstimatesRow(raw);
     if (!values.job_no) values.estimates_hold_reason = "missing_job_number";
     else if (!values.source) values.estimates_hold_reason = "missing_source";
@@ -237,6 +248,7 @@ function adaptEstimatesRow(raw: Record<string, string>): Record<string, string> 
     if (trimmed) values[key] = trimmed;
   };
   put("job_no", raw.job_no);
+  for (const field of ["job_no_evidence", "job_no_annotation_evidence", "email_evidence", "email_annotation_evidence"]) put(field, raw[field]);
   put("phone", raw.phone1);
   put("phone2", raw.phone2);
   put("open_date_evidence", raw.open_date);
@@ -255,7 +267,15 @@ function adaptEstimatesRow(raw: Record<string, string>): Record<string, string> 
   put("to", joinCityState(raw.to_city, raw.to_state));
   put("to_zip", raw.to_zip);
   put("est_cf", raw.cf);
-  put("move_date", raw.move_date);
+  put("move_date_evidence", raw.move_date_evidence);
+  put("move_date_end_evidence", raw.move_date_end_evidence);
+  const moveDate = raw.move_date?.trim() ?? "";
+  if (moveDate && !/^\s*\/\s*\/\s*$/.test(moveDate)) {
+    const parts = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(moveDate);
+    const canonical = parts ? `${parts[1]!.padStart(2,"0")}/${parts[2]!.padStart(2,"0")}/${parts[3]}` : moveDate;
+    put("move_date", canonical);
+    if (getGranotDateWindowProblem({ from:canonical, to:canonical })) values.estimates_hold_reason = "invalid_move_date";
+  }
   put("ref_no", raw.ref_no);
   put("type", raw.type);
   put("estimate", raw.estimate);

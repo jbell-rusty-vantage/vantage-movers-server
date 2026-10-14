@@ -8,6 +8,8 @@ import * as cheerio from "cheerio";
 import { MongoLeaseStore } from "../../src/services/durableWork/leases";
 import { SheetSyncLease } from "../../src/models/SheetSyncLease";
 import { openGranotAuthenticatedSession } from "../../src/services/granotHttpCollector";
+import { normalizeGranotReceipt } from "../../src/services/granotLifecycle/normalization";
+import { buildGranotStatementFromCollectedRow } from "../../src/services/granotHttpCollector/lifecycleStatement";
 import { collectEstimatesInProcess } from "../../src/services/granotHttpCollector/estimatesInProcess";
 
 async function main() {
@@ -48,8 +50,24 @@ async function main() {
       const sources = await collectEstimatesInProcess({ dateWindow: { from, to }, credentials, onCoverage: (value) => { coverage = value; } }, { fetch: fencedFetch });
       const rows = sources.flatMap((source) => source.sections.followUpEstimates);
       const holds = rows.reduce<Record<string, number>>((out, row) => { const reason = row.values.estimates_hold_reason; if (reason) out[reason] = (out[reason] ?? 0) + 1; return out; }, {});
+      const canonicalNormalization = { results: {} as Record<string, number>, issues: {} as Record<string, number>, errors: {} as Record<string, number> };
+      let observationIndex = 0;
+      for (const source of sources) for (const row of source.sections.followUpEstimates) {
+        const candidate = normalizeGranotReceipt({
+          observation_channel: "granot_http_automation",
+          captured_at: new Date(row.collectedAt!),
+          channel_operation_kind: "lead_snapshot_apply",
+          channel_operation_id: `read-only-canonical-proof:${++observationIndex}`,
+          payload: buildGranotStatementFromCollectedRow({ row, sourceLabel: source.sourceLabel, section: "followUpEstimates" }),
+        });
+        canonicalNormalization.results[candidate.normalization_result] = (canonicalNormalization.results[candidate.normalization_result] ?? 0) + 1;
+        for (const issue of candidate.issues) {
+          canonicalNormalization.issues[issue.code] = (canonicalNormalization.issues[issue.code] ?? 0) + 1;
+          if (issue.severity === "error") canonicalNormalization.errors[issue.code] = (canonicalNormalization.errors[issue.code] ?? 0) + 1;
+        }
+      }
       const priorities = rows.reduce<Record<string, number>>((out, row) => { const p = row.values.priority ?? "missing"; out[p] = (out[p] ?? 0) + 1; return out; }, {});
-      console.log(JSON.stringify({ at: new Date().toISOString(), from, to, requests, elapsed_ms: Date.now() - started, coverage, sources: sources.map((s) => ({ label: s.sourceLabel, rows: s.sections.followUpEstimates.length })), rows: rows.length, held: holds, priorities, field_presence: Object.fromEntries(["ref_no", "job_no", "phone", "email", "customer", "source", "priority", "user", "from", "from_zip", "to", "to_zip", "move_date", "est_cf", "open_date"].map((key) => [key, rows.filter((r) => !!r.values[key]).length])), database_scope: "shared_account_lease_only", domain_mutations: 0 }));
+      console.log(JSON.stringify({ at: new Date().toISOString(), from, to, requests, elapsed_ms: Date.now() - started, coverage, canonical_normalization: canonicalNormalization, sources: sources.map((s) => ({ label: s.sourceLabel, rows: s.sections.followUpEstimates.length })), rows: rows.length, held: holds, priorities, field_presence: Object.fromEntries(["ref_no", "job_no", "phone", "email", "customer", "source", "priority", "user", "from", "from_zip", "to", "to_zip", "move_date", "est_cf", "open_date"].map((key) => [key, rows.filter((r) => !!r.values[key]).length])), database_scope: "shared_account_lease_only", domain_mutations: 0 }));
       return;
     }
     const session = await openGranotAuthenticatedSession(credentials, { fetch: fencedFetch });

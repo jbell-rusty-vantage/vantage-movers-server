@@ -8,6 +8,7 @@ import {
   type GranotFormLeadMatchMethod,
 } from "./granotFormLeadMatcher";
 import type { GranotAutomationLifecycleApply, GranotTableSection } from "./lifecycleStatement";
+import type { SynchronizationMatchMethod } from "../granotLifecycle/identity";
 
 export { selectGranotFormFallback } from "./granotFormLeadMatcher";
 
@@ -41,6 +42,12 @@ export type GranotFormPlanAction = {
   warnings?: string[];
   lifecycle_apply?: GranotAutomationLifecycleApply;
   collection_captured_at?: string;
+  report_identity?: {
+    version: 1;
+    normalized_job_sha256?: string;
+    lead_model?: "FormLead" | "CallLead";
+    match_method?: SynchronizationMatchMethod;
+  };
   desired_state_summary?: {
     outcome: string;
     reason_code: string;

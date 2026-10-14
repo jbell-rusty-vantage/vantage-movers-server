@@ -36,6 +36,8 @@ The existing production `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS` binding is set
 
 Run from the server checkout. Credentials stay in the process; manifests contain IDs, checksums, counts and field names, never contacts or monetary values. Put manifests outside every Git checkout.
 
+Versioned canonical preview identity metadata records the chosen match method and a hash of the exact normalized Job Number. The CLI uses hashes in memory to count unique normalized Jobs across windows; manifests retain only counts, match-method totals, and held reasons by source and Lead model. Older sealed plans without this metadata report the unique count as unavailable, rather than zero. Adding report metadata does not alter matching or authorize writes.
+
 ```powershell
 # Read/parse rehearsal: touches only the shared account lease and provider report reads.
 node --env-file-if-exists=../agent_granot_credentials/.env --env-file=.env --import tsx ops/granot-estimates/provider-read.ts --run --verified --from=04/23/2026 --to=10/14/2026
@@ -60,3 +62,9 @@ An interrupted HTTP response is not evidence that a mutation failed. Resume from
 Focused parser, canonical preview, identity, temporal ordering, scheduling/fairness, API/client and Admin freshness tests cover the changed behavior. Real isolated Mongo replica proofs cover sparse Call job attachment, automatic reassignment, quoted/cubic-feet enrichment, canonical EntityChange, real desk subject/period evolution, receipt replay and batched worker continuation. The release record must distinguish these local proofs from production verification.
 
 Rollback stops new schedules/approvals and restores the previous deployed application/configuration as needed. Preserve accepted receipts, date evidence and historical desk periods. Do not restore a whole database or reverse manually reviewed assignments wholesale; erroneous accepted facts require exact reviewed compensating canonical changes. Keep the older Leads & Advertising path available for Booked Jobs and fallback coverage.
+
+## Production acceptance discoveries
+
+The first deployed 13:00 slot reconciled all 13 windows and 5,414 rows, but held every row at canonical normalization before any apply. Live Granot renders start and end move dates in one table cell separated by `<br>`; flattening that cell produced an invalid combined date. Some email cells likewise append a provider annotation on a second rendered line. The adapter now extracts the primary rendered line, retains the additional evidence, and preserves strict canonical validation. The actual 96-row capture is tested through collected-row statement construction and canonical normalization, beyond column/count parsing. That initial all-held slot is collection evidence only; corrected complete snapshots must be recollected for the backfill.
+
+Corrected whole-year provider rehearsal at approximately 18:03Z: 8,098 rows across 42 reconciled partitions, 48 HTTP requests including authentication, 26.4 seconds. Canonical normalization: 8,017 valid and 81 valid-with-issues; 77 email and six phone warnings, zero invalid move dates, zero collector holds. This remains a provider read/normalization proof with shared account lease operations only, not a production apply claim.

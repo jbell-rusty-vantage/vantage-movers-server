@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { collectVerifiedEstimates, verifyEstimatesForm } from "./estimatesCollection";
+import { normalizeGranotReceipt } from "../granotLifecycle/normalization";
 import type { GranotAutomationCompatibilitySource } from "../granotLifecycle/automationCompatibility";
 import { buildGranotStatementFromCollectedRow } from "./lifecycleStatement";
 import {
@@ -398,4 +399,56 @@ test("verified Granot Pool label is canonical priority 9 without importing membe
   assert.equal(row.values.prior,'9');
   assert.equal(row.values.estimates_hold_reason,undefined);
   assert.equal(verifyEstimatesForm(ESTIMATES_FORM.replace('value="9">Pool','value="9">Other')),false);
+});
+
+
+test("provider multiline move date extracts canonical start and preserves end evidence", () => {
+  for (const [cell, expected, end] of [
+    ['<b>10/20/2026<br> / / </b>','10/20/2026','/ /'],
+    ['<b>10/20/2026<br>10/22/2026</b>','10/20/2026','10/22/2026'],
+    ['<b>1/2/2027<br> / / </b>','01/02/2027','/ /'],
+    ['<b> / / <br> / / </b>',undefined,'/ /'],
+    ['',undefined,undefined],
+  ] as const) {
+    const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>10/20/2026</td>', `<td>${cell}</td>`));
+    const row = parsed.sources[0]!.sections.followUpEstimates[0]!;
+    assert.equal(row.values.move_date, expected);
+    assert.equal(row.values.move_date_end_evidence, end);
+    const statement = buildGranotStatementFromCollectedRow({ row, sourceLabel: 'Top10 Inbounds', section: 'followUpEstimates' });
+    // Use a complete synthetic contact so the assertion checks actual canonical receipt compatibility.
+    statement.phone = '3055550123';
+    const normalized = normalizeGranotReceipt({ observation_channel:'granot_http_automation', captured_at:new Date('2026-10-14T12:00:00Z'), channel_operation_kind:'lead_snapshot_apply', channel_operation_id:'synthetic:move-date', payload:statement });
+    assert.equal(normalized.issues.some(issue => issue.code === 'invalid_move_date'),false);
+    assert.equal(normalized.normalization_result,'valid');
+  }
+});
+
+test("invalid provider move date stays held rather than becoming a guessed valid date", () => {
+  for (const cell of ['02/30/2026<br> / /', 'nonsense<br>10/22/2026', '10/20/2026junk<br> / /']) {
+    const parsed = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>10/20/2026</td>', `<td>${cell}</td>`));
+    const row = parsed.sources[0]!.sections.followUpEstimates[0]!;
+    assert.equal(row.values.estimates_hold_reason,'invalid_move_date');
+  }
+});
+
+
+test("provider job links and email annotations keep primary identity and contact separate", () => {
+  const html = ESTIMATES_HTML.replace('<td>P5562366</td>','<td>\n  <a href="/synthetic-job">P5562366</a>\n  <br><br><b>FLAG</b>\n</td>').replace('<td>sample@example.test</td>', '<td>\n  sample@example.test\n  <br><b>LABEL</b>\n</td>');
+  const row = parseEstimatesInProcessHtml(html).sources[0]!.sections.followUpEstimates[0]!;
+  assert.equal(row.values.job_no,'P5562366');
+  assert.equal(row.values.job_no_annotation_evidence,'FLAG');
+  assert.equal(row.values.email,'sample@example.test');
+  assert.equal(row.values.email_annotation_evidence,'LABEL');
+  const statement = buildGranotStatementFromCollectedRow({ row, sourceLabel:'Top10 Inbounds', section:'followUpEstimates' });
+  statement.phone = '3055550123';
+  const normalized = normalizeGranotReceipt({ observation_channel:'granot_http_automation', captured_at:new Date('2026-10-14T12:00:00Z'), channel_operation_kind:'lead_snapshot_apply', channel_operation_id:'synthetic:annotations', payload:statement });
+  assert.equal(normalized.normalization_result,'valid');
+  assert.equal(normalized.identity.normalized_job_no,'P5562366');
+  assert.equal(normalized.issues.some(issue => issue.code === 'invalid_email'),false);
+});
+
+test("blank primary email is not replaced by a provider annotation", () => {
+  const row = parseEstimatesInProcessHtml(ESTIMATES_HTML.replace('<td>sample@example.test</td>', '<td><br><b>LABEL</b></td>')).sources[0]!.sections.followUpEstimates[0]!;
+  assert.equal(row.values.email,undefined);
+  assert.equal(row.values.email_annotation_evidence,'LABEL');
 });

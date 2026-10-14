@@ -5,6 +5,7 @@ import { loadGranotLeadProjection } from "../granotLifecycle/processor";
 import { planLeadDesiredState } from "../granotLifecycle/leadDesiredState";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
 import { Types } from "mongoose";
+import { createHash } from "node:crypto";
 import { normalizeGranotCrmUsername } from "../operationsRegistry";
 import type { GranotFormPlanAction } from "./formWorkflow";
 import type { GranotSourceCollection } from "./index";
@@ -86,9 +87,12 @@ export async function planEstimatesIdentities(
       action_id: actionId, row_id: row.id, source_label: source.sourceLabel,
       table_section: "followUpEstimates" as const, lifecycle_apply: lifecycle,
       ...(row.collectedAt ? { collection_captured_at: row.collectedAt } : {}),
+      report_identity: { version: 1 as const, ...(normalized.identity.normalized_job_no
+        ? { normalized_job_sha256: createHash("sha256").update(normalized.identity.normalized_job_no).digest("hex") } : {}) },
     };
+    let resolvedModel: "FormLead" | "CallLead" | undefined;
     const hold = (reason: string, classification: "invalid" | "conflict" | "no_match" = "no_match", warnings: string[] = []) => {
-      actions.push({ ...base, classification, reason, warnings });
+      actions.push({ ...base, classification, reason, warnings, report_identity: { ...base.report_identity, ...(resolvedModel ? { lead_model: resolvedModel } : {}) } });
       counters[reason] = (counters[reason] ?? 0) + 1;
       counters[classification] = (counters[classification] ?? 0) + 1;
     };
@@ -102,6 +106,7 @@ export async function planEstimatesIdentities(
       source_label: normalized.source_label_raw ?? "", origin_state: normalized.move.origin?.state,
       destination_state: normalized.move.destination?.state, provider_type: normalized.provider_context.type_raw,
     }, policyStore);
+    resolvedModel = policy.ok ? policy.snapshot.selected_lead_model : policy.snapshot?.selected_lead_model;
     if (!policy.ok) { hold(policy.reason, policy.outcome === "conflict" || policy.outcome === "ambiguous" ? "conflict" : "no_match"); continue; }
     const identity = await resolveLeadIdentity({ observation: normalized, policy: policy.snapshot }, identityStore);
     const warnings = normalized.issues.map((issue) => String(issue.code));
@@ -128,6 +133,7 @@ export async function planEstimatesIdentities(
     actions.push({ ...base, classification: "update", lead_id: identity.target.id,
       reason: "canonical_lifecycle_snapshot_check", warnings,
       lifecycle_apply: { ...lifecycle, expected_target: target },
+      report_identity: { ...base.report_identity, lead_model: target.model, match_method: identity.match_method },
       desired_state_summary: { outcome: desired.outcome, reason_code: desired.reason_code,
         changed_paths: desired.changed_paths, agent_changed_paths: desired.agent_changed_paths,
         target_revision: lead.domain_revision ?? 0, conditional_on_apply: true },

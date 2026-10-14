@@ -55,6 +55,8 @@ test("assembly admits a canonical Form Record Link without ref/contact and cache
   assert.equal(plan.actions[0]!.collection_captured_at, "2026-10-14T15:00:00.000Z");
   assert.deepEqual("desired_state_summary" in plan.actions[0]! && plan.actions[0].desired_state_summary?.changed_paths, ["granot_priority"]);
   assert.equal(deps.reads().labelReads, 1);
+  assert.equal(formAction(plan).report_identity?.match_method, "granot_record_link");
+  assert.match(formAction(plan).report_identity?.normalized_job_sha256 ?? "", /^[a-f\d]{64}$/);
 });
 
 test("assembly admits prefix-equivalent Call Job without phone", async () => {
@@ -62,6 +64,7 @@ test("assembly admits prefix-equivalent Call Job without phone", async () => {
   const plan = await assembleEstimatesPlan([source("Synthetic", [{}])], { runId, canonical: deps.canonical });
   assert.equal("classification" in plan.actions[0]! && plan.actions[0].classification, "update");
   assert.deepEqual(plan.actions[0]!.lifecycle_apply?.expected_target, { model: "CallLead", id: leadId });
+  assert.equal(formAction(plan).report_identity?.match_method, "call_job_no_exact");
 });
 
 test("assembly attaches sparse Call phone despite duplicate sibling; genuine competing eligible matches stay held", async () => {

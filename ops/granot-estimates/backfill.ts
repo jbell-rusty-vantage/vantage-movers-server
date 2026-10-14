@@ -5,11 +5,38 @@ import { dirname, resolve, relative, isAbsolute } from "node:path";
 import { ownerApi, RUNS_PATH } from "./api-client";
 
 type Window = { from: string; to: string };
-type Action = { action_id: string; classification?: string; syncable?: boolean; reason?: string; warnings?: string[]; patch?: Record<string, unknown>; desired_state_summary?: { changed_paths: string[]; outcome: string; target_revision?: number }; lifecycle_apply?: { expected_target?: { model: string; id: string } } };
+type Action = { action_id: string; source_label?: string; classification?: string; syncable?: boolean; reason?: string; warnings?: string[]; patch?: Record<string, unknown>; report_identity?: { version: 1; normalized_job_sha256?: string; lead_model?: string; match_method?: string }; desired_state_summary?: { changed_paths: string[]; outcome: string; target_revision?: number }; lifecycle_apply?: { expected_target?: { model: string; id: string } } };
 type Run = { id: string; status: string; workflow?: "preview" | "apply"; plan_checksum?: string; expires_at?: string; counters?: Record<string, number>; collection?: { coverage?: { complete?: boolean; rows?: number; captured_at?: string }; held_rows?: number }; plan?: { actions: Action[] }; receipts?: Array<{ outcome: string }> };
-type Entry = { window: Window; run_id?: string; status?: string; checksum?: string; selected_action_ids?: string[]; counters?: Record<string, number>; target_models?: Record<string, number>; field_groups?: string[]; warning_counts?: Record<string, number>; outcomes?: Record<string, number>; approved?: boolean };
-type Manifest = { version: 1; from: string; to: string; created_at: string; entries: Entry[]; review_checksum?: string };
+type Entry = { window: Window; run_id?: string; status?: string; checksum?: string; selected_action_ids?: string[]; counters?: Record<string, number>; target_models?: Record<string, number>; field_groups?: string[]; warning_counts?: Record<string, number>; report_summary?: ReturnType<typeof reportSummary>; outcomes?: Record<string, number>; approved?: boolean };
+type Manifest = { version: 1; from: string; to: string; created_at: string; entries: Entry[]; review_checksum?: string; report_summary?: ReturnType<typeof reportSummary> };
 const argument = (name: string) => process.argv.find((v) => v.startsWith(`--${name}=`))?.slice(name.length + 3);
+
+/** Aggregate minimized preview evidence; unavailable legacy metadata is never reported as zero Jobs. */
+export function reportSummary(actions: Action[]) {
+  const jobs = new Set<string>();
+  const methods: Record<string, number> = {}, sources: Record<string, Record<string, number>> = {}, models: Record<string, Record<string, number>> = {};
+  let jobRows = 0;
+  const complete = actions.every((action) => action.report_identity?.version === 1);
+  const addHold = (groups: Record<string, Record<string, number>>, key: string, reason: string) => {
+    const counts = groups[key] ?? {}; counts[reason] = (counts[reason] ?? 0) + 1; groups[key] = counts;
+  };
+  for (const action of actions) {
+    const evidence = action.report_identity;
+    if (evidence?.normalized_job_sha256) { jobs.add(evidence.normalized_job_sha256); jobRows++; }
+    const method = evidence?.match_method ?? (evidence ? "not_matched" : "unavailable"); methods[method] = (methods[method] ?? 0) + 1;
+    if (action.classification !== "update" && action.syncable !== true) {
+      const reason = action.reason ?? "unspecified_hold";
+      addHold(sources, action.source_label ?? "unknown", reason);
+      addHold(models, evidence?.lead_model ?? action.lifecycle_apply?.expected_target?.model ?? "unknown", reason);
+    }
+  }
+  return { row_count: actions.length, unique_normalized_job_count: complete ? jobs.size : null, normalized_job_rows: jobRows,
+    identity_metadata_complete: complete, match_method_counts: methods, held_reasons_by_source: sources, held_reasons_by_model: models };
+}
+
+export function shouldRefreshManifest(pass: number, mode: "apply" | "verify", budget = 800): boolean {
+  return mode === "verify" || pass % 10 === 0 || pass === budget;
+}
 
 export function windows(from: string, to: string, days = 7): Window[] {
   if (!Number.isInteger(days) || days < 1 || days > 7) throw new Error("Invalid backfill chunk size.");
@@ -73,11 +100,13 @@ async function main() {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const from = argument("from"), to = argument("to");
     if (mode !== "preview" || !from || !to) throw new Error("Create a preview with --from and --to first.");
-    manifest = { version: 1, from, to, created_at: new Date().toISOString(), entries: windows(from, to).map((window) => ({ window })) };
+    const days = argument("days");
+    manifest = { version: 1, from, to, created_at: new Date().toISOString(), entries: windows(from, to, days === undefined ? 7 : Number(days)).map((window) => ({ window })) };
   }
   if (manifest.version !== 1 || !Array.isArray(manifest.entries)) throw new Error("Invalid manifest format.");
   const save = () => writeFile(path, JSON.stringify(manifest, null, 2), { mode: 0o600 });
   if (mode === "preview") {
+    const reportActions: Action[] = [];
     for (const entry of manifest.entries) {
       if (!entry.run_id) {
         const created = await ownerApi<{ run_id: string }>("POST", RUNS_PATH, { operation: "estimates_in_process", workflow: "preview", ...entry.window });
@@ -98,10 +127,13 @@ async function main() {
       entry.target_models = selected.reduce<Record<string, number>>((out, a) => { const m = a.lifecycle_apply?.expected_target?.model ?? "unknown"; out[m] = (out[m] ?? 0) + 1; return out; }, {});
       entry.field_groups = [...new Set(selected.flatMap((a) => a.desired_state_summary?.changed_paths ?? Object.keys(a.patch ?? {})))].sort();
       entry.warning_counts = run.plan.actions.reduce<Record<string, number>>((out, a) => { for (const code of a.warnings ?? []) out[code] = (out[code] ?? 0) + 1; return out; }, {});
-      await save(); console.log(JSON.stringify({ kind: "preview", window: entry.window, run_id: entry.run_id, selected: selected.length, counters: entry.counters, target_models: entry.target_models, field_groups: entry.field_groups, warnings: entry.warning_counts }));
+      entry.report_summary = reportSummary(run.plan.actions);
+      reportActions.push(...run.plan.actions.map(({ action_id, source_label, classification, syncable, reason, report_identity }) => ({ action_id, source_label, classification, syncable, reason, report_identity })));
+      await save(); console.log(JSON.stringify({ kind: "preview", window: entry.window, run_id: entry.run_id, selected: selected.length, counters: entry.counters, target_models: entry.target_models, field_groups: entry.field_groups, warnings: entry.warning_counts, report: entry.report_summary }));
     }
+    manifest.report_summary = reportSummary(reportActions);
     manifest.review_checksum = reviewChecksum(manifest); await save();
-    console.log(JSON.stringify({ kind: "review_manifest", checksum: manifest.review_checksum, windows: manifest.entries.length, selected: manifest.entries.reduce((n, e) => n + (e.selected_action_ids?.length ?? 0), 0) }));
+    console.log(JSON.stringify({ kind: "review_manifest", checksum: manifest.review_checksum, windows: manifest.entries.length, selected: manifest.entries.reduce((n, e) => n + (e.selected_action_ids?.length ?? 0), 0), report: manifest.report_summary }));
     return;
   }
   if (mode === "apply") {
@@ -117,7 +149,12 @@ async function main() {
       }
     }
   }
-  for (let pass = 0; pass < (mode === "apply" ? 800 : 1); pass++) {
+  for (let pass = 0; pass <= (mode === "apply" ? 800 : 0); pass++) {
+    if (!shouldRefreshManifest(pass, mode as "apply" | "verify")) {
+      const worker = await ownerApi<{ claimed?: boolean }>("POST", `${RUNS_PATH}/worker`, { action: "execute" });
+      if (!worker.claimed) await new Promise((done) => setTimeout(done, 2000));
+      continue;
+    }
     let pending = 0;
     for (const entry of manifest.entries) {
       if (!entry.run_id) continue;
@@ -130,6 +167,7 @@ async function main() {
     await save();
     console.log(JSON.stringify({ kind: "backfill_status", at: new Date().toISOString(), pending_runs: pending, outcomes: manifest.entries.reduce<Record<string, number>>((out, e) => { for (const [key, count] of Object.entries(e.outcomes ?? {})) out[key] = (out[key] ?? 0) + count; return out; }, {}), ...(!pending || mode === "verify" ? { statuses: manifest.entries.map((e) => ({ window: e.window, run_id: e.run_id, status: e.status, outcomes: e.outcomes })) } : {}) }));
     if (!pending || mode === "verify") return;
+    if (pass === 800) break;
     const worker = await ownerApi<{ claimed?: boolean }>("POST", `${RUNS_PATH}/worker`, { action: "execute" });
     if (!worker.claimed) await new Promise((done) => setTimeout(done, 2000));
   }
