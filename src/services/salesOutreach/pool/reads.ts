@@ -41,11 +41,14 @@ export async function readPoolStates(accesses: readonly PoolAccess[], configurat
   const result = new Map<string, SalesOutreachPoolDto>();
   if (!accesses.length) return result;
   const date = newYorkBusinessDay(now);
-  const duties = await getSalesOutreachPoolDutyModel().find({ subject_id: { $in: accesses.map((a) => a.work.subject_id) }, business_date: date }).lean();
   const numberIds = [...new Set(accesses.flatMap((a) => a.candidate.subject?.contact_number_ids ?? []))];
-  const restrictions = await mongoEvaluationStore.loadRestrictions(numberIds, null);
+  const [duties, restrictions] = await Promise.all([
+    getSalesOutreachPoolDutyModel().find({ subject_id: { $in: accesses.map((a) => a.work.subject_id) }, business_date: date }).lean(),
+    mongoEvaluationStore.loadRestrictions(numberIds, null),
+  ]);
+  const dutyBySubject = new Map(duties.map((duty) => [String(duty.subject_id), duty]));
   for (const access of accesses) {
-    const duty = duties.find((d) => String(d.subject_id) === String(access.work.subject_id));
+    const duty = dutyBySubject.get(String(access.work.subject_id));
     const ownRestrictions = restrictions.filter((r) => (access.candidate.subject?.contact_number_ids ?? []).includes(r.contact_number_id));
     const window = poolDutyWindow(access.work.episodes, date, poolValueForDay(configuration.value, date, duty?.calendar_snapshot), ownRestrictions);
     const blocked = ownRestrictions.some((r) => r.state === "active" && r.channels.includes("call") && (!r.until || +r.until > +now));

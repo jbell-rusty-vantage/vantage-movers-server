@@ -143,8 +143,11 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
   const readStore = deps.store ?? mongoSalesOutreachReadStore;
   const configuration = await requireDeskConfiguration(deps.loader);
   normalized = normalizeQueueQuery(actor, query, configuration.value.pool?.enabled === true);
-  const poolWorks = await authorizedPoolWorks(configuration);
-  const freshnessRead = await readFreshness(readStore, configuration, deps.now);
+  const [poolWorks, freshnessRead, generation] = await Promise.all([
+    authorizedPoolWorks(configuration),
+    readFreshness(readStore, configuration, deps.now),
+    store.assignmentGeneration(normalized.match.assignment),
+  ]);
   const poolStates = await readPoolStates(poolWorks, configuration, deps.now, freshnessRead.coverage.cadence.call);
   if (poolWorks.length) normalized = { ...normalized, match: { ...normalized.match, pool_overrides: poolQueueOverrides(poolWorks, poolStates, deps.now) } };
   if (query.queue_scope === "pool") normalized = { ...normalized, match: { ...normalized.match, pool_subject_ids: poolWorks.map((p) => String(p.work.subject_id)) } };
@@ -155,7 +158,7 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
     q: queueQueryHash(JSON.parse(JSON.stringify({ match: normalized.match, sort: normalized.sort, direction: normalized.direction, ...(query.queue_scope ? { queue_scope: query.queue_scope, entitlement_version: 1 } : {}) }))),
     r: actor.role,
     a: actor.agent_id,
-    g: await store.assignmentGeneration(normalized.match.assignment),
+    g: generation,
     c: configuration.version,
     p: cadence.snapshot,
   };
@@ -174,7 +177,12 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
     after = claims.k;
   }
 
-  const fetched = await store.findQueuePage({ match: normalized.match, sort: sortSpec, after, limit: normalized.limit + 1 });
+  const [fetched, pool_summary] = await Promise.all([
+    store.findQueuePage({ match: normalized.match, sort: sortSpec, after, limit: normalized.limit + 1 }),
+    configuration.value.pool?.enabled
+      ? readPoolSummary(poolWorks, configuration, deps.now, freshnessRead.coverage.cadence.call, actor, query.agent_id ?? null, poolStates)
+      : Promise.resolve(undefined),
+  ]);
   const has_more = fetched.length > normalized.limit;
   const page = fetched.slice(0, normalized.limit);
   const visible = await authorizedRows(actor, page, store, query.queue_scope === "pool" ? new Set(poolWorks.map((w) => String(w.work.subject_id))) : undefined);
@@ -209,7 +217,6 @@ export async function readQueue(actor: OutreachActor, query: SalesOutreachQueueQ
     const pool = poolStates.get(row.subject_id)!;
     return { ...presented, pool };
   }));
-  const pool_summary = configuration.value.pool?.enabled ? await readPoolSummary(poolWorks, configuration, deps.now, freshnessRead.coverage.cadence.call, actor, query.agent_id ?? null, poolStates) : undefined;
   return {
     ...commonRead(actor, asOf, scopedAgent, configuration, projection_revision, freshnessRead.freshness),
     filters: normalized.filters,

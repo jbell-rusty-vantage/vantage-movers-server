@@ -185,6 +185,15 @@ export function poolOverlayPipeline(match: QueueMatch): mongoose.PipelineStage[]
   } }] } }];
 }
 
+/** Restrict the indexed input before replacing fields, then recheck the complete effective row. */
+export function poolQueuePipeline(match: QueueMatch, filter: Filter): mongoose.PipelineStage[] {
+  const ids = (match.pool_subject_ids ?? match.pool_overrides?.map((override) => override.subject_id) ?? []).map(oid);
+  // An override may change assignment, workflow or due state. Include its id even when the stored
+  // row fails the filter, so fresh completion/receiver changes still precede filtering and keysets.
+  const candidates = match.pool_subject_ids ? { subject_id: { $in: ids } } : { $or: [filter, { subject_id: { $in: ids } }] };
+  return [{ $match: candidates }, ...poolOverlayPipeline(match), { $match: filter }];
+}
+
 export const mongoDeskQueueStore: DeskQueueStore = {
   loadSubject: mongoEvaluationStore.loadSubject,
   loadPeriods: mongoEvaluationStore.loadPeriods,
@@ -199,7 +208,7 @@ export const mongoDeskQueueStore: DeskQueueStore = {
       const remaining = plan.limit - page.length;
       if (remaining <= 0) break;
       const rows = plan.match.pool_overrides?.length
-        ? await getSalesOutreachProjectionModel().aggregate([...poolOverlayPipeline(plan.match), { $match: filter }, { $sort: sort }, { $limit: remaining }, { $project: QUEUE_PROJECTION }]).allowDiskUse(true)
+        ? await getSalesOutreachProjectionModel().aggregate([...poolQueuePipeline(plan.match, filter), { $sort: sort }, { $limit: remaining }, { $project: QUEUE_PROJECTION }]).allowDiskUse(true)
         : await getSalesOutreachProjectionModel().find(filter, QUEUE_PROJECTION).sort(sort).limit(remaining).allowDiskUse(true).lean();
       page.push(...rows.map((row) => toStoredProjection(String(row.subject_id), row as unknown as Record<string, unknown>)));
     }
@@ -208,7 +217,7 @@ export const mongoDeskQueueStore: DeskQueueStore = {
 
   async countQueue(match) {
     if (!match.pool_overrides?.length) return getSalesOutreachProjectionModel().countDocuments(mongoQueueFilter(match));
-    const [row] = await getSalesOutreachProjectionModel().aggregate<{ n: number }>([...poolOverlayPipeline(match), { $match: mongoQueueFilter(match) }, { $count: "n" }]);
+    const [row] = await getSalesOutreachProjectionModel().aggregate<{ n: number }>([...poolQueuePipeline(match, mongoQueueFilter(match)), { $count: "n" }]);
     return row?.n ?? 0;
   },
 

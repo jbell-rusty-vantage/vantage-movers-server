@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-14T22:11:56.716Z",
+  "captured_at": "2026-10-15T13:57:36.337Z",
   "target": "fixed_loopback_csi01_unique_test_database",
   "production_writes": 0,
   "provider_requests": 0,
@@ -8,8 +8,8 @@
     "shared_records": 601,
     "rendered_rows": 50,
     "unrelated_raw_bookings": 911,
-    "mongoose_queries": 54,
-    "elapsed_ms": 2597,
+    "mongoose_queries": 48,
+    "elapsed_ms": 900,
     "environment": "local_loopback_replica_synthetic_data",
     "limit": "Not an Atlas latency guarantee; raw-driver Booking lookup is additional to Mongoose debug count"
   },
@@ -18,13 +18,13 @@
       "shared_records": 100,
       "rendered_rows": 50,
       "mongoose_queries": 28,
-      "elapsed_ms": 536
+      "elapsed_ms": 165
     },
     {
       "shared_records": 20,
       "rendered_rows": 20,
       "mongoose_queries": 28,
-      "elapsed_ms": 263
+      "elapsed_ms": 130
     }
   ],
   "legacy_booking_anchor_cases": [

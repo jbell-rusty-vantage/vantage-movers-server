@@ -31,6 +31,16 @@ Tags such as "olr B6", "olr C2c" or "outreach lifecycle repair A2" name the Outr
 
 ## Known limits and decisions
 
+### Queue loading performance — October 15, 2026
+
+Pool authorization uses a batched Job Number alias filter (`$in` plus one digit-core regex) and batched Lead pointers instead of one nested `$or` per candidate. Narrow projections and keyed lookups reduce transfer and repeated scans; independent reads overlap outside transactions, while session-bound reads remain sequential. Fresh canonical entitlement, raw Booking anchors (including legacy Job Numbers), identity ambiguity and source-policy checks still run on each read.
+
+Queue pages/counts apply an indexed candidate match before the Pool overlay, then repeat the complete effective filter after it. Candidate rows include both ordinary matches and overridden subject IDs, so a fresh receiver/workflow/duty change can enter or leave the result before sorting, counting and keyset paging. Dedicated Pool input is limited to authorized subject IDs using the existing `sod_projection_subject_unique` index. No index migration, data backfill, configuration or environment changes are required.
+
+The read-only timing probe is `node --env-file=.env --import tsx ops/sales-outreach/queue-performance.ts --assert-fast` (3-second per-tab regression budget; timings/counts only). On the same local-to-production-Mongo connection, service reads changed from New 14,823 ms / Quoted 13,600 ms / Other 14,767 ms / Pool 13,221 ms to 2,728 / 2,142 / 1,930 / 1,941 ms. These measure server service reads, not browser end-to-end latency. The deterministic loopback proof `node --import tsx ops/sales-outreach/queue-performance.replica.ts` compares 160 optimized plans/counts with the full-overlay implementation, proves 3/2,000 input documents examined through an index, and compares batched aliases with the original Mongo filters. The full shared-duty proof also passes 44 scenarios, including legacy Booking holds and immediate completion/rollover before evaluator delivery; refreshed evidence is [shared-duty-replica.json](../../rep-desk-and-pool/evidence/release/shared-duty-replica.json).
+
+Rollback is a code revert and redeploy; there is no data or policy migration to unwind. Admin same-view filter/selection navigation uses the Next.js native History integration, retaining server navigation between desk views and backend authorization for every data read.
+
 ### Priority Pool amendment — October 14, 2026
 
 Pool admission and shared-read eligibility inspect raw Booking anchors without population or cancellation filters. A matching `lead_ref` holds the Lead whether stored as ObjectId or string and even when `lead_model` is missing or contradictory. Both `normalized_job_no` and canonically normalized raw `job_no` participate in equivalent Job checks; a missing or stale normalized key cannot erase a legacy/partial Booking anchor. Raw Job identities are projected once per batch because NFKC/case/punctuation normalization cannot be replaced by a stored-key lookup. Unrelated Bookings do not exclude a Lead. This guard reads only and does not repair Booking/Lead pointers, receiver, source or Sheet lineage.
