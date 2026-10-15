@@ -380,6 +380,12 @@ function planMatchedLead(input: LeadDesiredStateInput): LeadDesiredStatePlan {
     planQualifiedMove(desired, input.observation, lead);
   }
 
+  // A dated Call Lead needs its accepted move date even before it reaches Quoted. This does not
+  // broaden contact/quote enrichment or grant move edits to a priority-only identity match.
+  if (lead.model === "CallLead" && !priorityOnly && !skipPriority && input.observation.priority?.valid && input.observation.move?.move_date) {
+    maybeSet(desired, "move_date", input.observation.move.move_date);
+  }
+
   const changed = diffDesired(lead, desired);
   const agent_changed_paths = sortUnique(agentPaths.filter((path) => changed.changed_paths.includes(path)));
 

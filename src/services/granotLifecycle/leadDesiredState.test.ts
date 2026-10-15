@@ -13,6 +13,19 @@ import type { SourcePolicySnapshot } from "./sourcePolicy";
 const capturedAt = new Date("2026-08-17T15:00:00.000Z");
 const now = new Date("2026-08-17T15:00:05.000Z");
 
+test("Call Lead accepted move dates persist independently of broad contact enrichment", () => {
+  const lead: LeadDesiredStateProjection = { model: "CallLead", id: String(objectId()), job_no: "synthetic-job-100", normalized_job_no: "SYNTHETIC JOB 100", ingestion_origin: "ringcentral" };
+  const identity = { ...matchedIdentity(lead.id), target: { model: "CallLead" as const, id: lead.id } };
+  for (const canonical of ["0", "1", "2", "3", "9"]) {
+    const result = plan({ lead, identity, observation: observation({ priority: { valid: true, canonical } }) });
+    assert.deepEqual(result.desired_values.move_date, new Date("2026-09-01T00:00:00.000Z"));
+    if (canonical !== "1") assert.equal(result.changed_paths.includes("granot_contact_snapshot"), false);
+  }
+  assert.equal(plan({ lead, identity: { ...identity, target_eligibility: "priority_only" } }).desired_values.move_date, undefined);
+  const dated = { ...lead, move_date: new Date("2026-09-01T00:00:00.000Z") };
+  assert.equal(plan({ lead: dated, identity, observation: observation({ move: {} }) }).desired_values.move_date, undefined, "missing date never clears a known date");
+});
+
 function objectId(): mongoose.Types.ObjectId {
   return new mongoose.Types.ObjectId();
 }

@@ -47,7 +47,7 @@ describe("subject builder: received time, display, assignment, numbers", () => {
     assert.equal(receivedFactsOf({ timestamp: at("1999-01-01T00:00:00Z"), created_at: null, ingestion_origin: "granot_lead_created" }, at("2026-10-02T00:00:00Z")).received_quality, "unreliable");
   });
 
-  test("Lead documents convert to facts (both models; Call Leads have no move date)", () => {
+  test("Lead documents convert to facts with a recorded move date for either model", () => {
     const form = toDeskLeadFacts("FormLead", {
       _id: "f".repeat(24), timestamp: at("2026-10-01T10:00:00Z"), move_date: at("2026-10-20T00:00:00Z"), first_name: "Ada", last_name: "Lovelace",
       last_accepted_granot_observation: { observation_id: "a".repeat(24), captured_at: at("2026-10-01T14:00:00Z") }, granot_priority: "1", receiver_agent: "c".repeat(24),
@@ -57,7 +57,7 @@ describe("subject builder: received time, display, assignment, numbers", () => {
     assert.equal(form.accepted_observation?.observation_id, "a".repeat(24));
     assert.equal(form.receiver_agent_id, "c".repeat(24));
     const call = toDeskLeadFacts("CallLead", { _id: "e".repeat(24), move_date: at("2026-10-20T00:00:00Z"), created_on_unmatched: true });
-    assert.equal(call.move_date, null);
+    assert.equal(call.move_date, "2026-10-20");
     assert.equal(call.created_on_unmatched, true);
   });
 

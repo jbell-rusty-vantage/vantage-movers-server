@@ -127,6 +127,7 @@ const CallLeadSchema = new Schema(
     delivery_zip: { type: String, trim: true },
     pickup_state: { type: String, trim: true, uppercase: true },
     delivery_state: { type: String, trim: true, uppercase: true },
+    move_date: { type: Date },
     cubic_feet: { type: Number },
     cpl: { type: Number, required: true, default: 0 },
     cpl_rate_period: {

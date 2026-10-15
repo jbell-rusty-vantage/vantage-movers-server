@@ -33,6 +33,8 @@ generated:
 
 # Call Lead Service
 
+**Owner amendment, October 15, 2026:** optional `CallLead.move_date` now persists the date supplied by Granot creation and full accepted synchronization, and the Outreach Desk displays/sorts it. A valid full Call Lead match may update this one date at any valid priority; broad contact/quote enrichment still follows its existing 1/5 policy. Priority-only identities and stale/invalid observations do not gain move-write authority. Missing dates retain any stored date. Legacy CSV Follow Up enrichment is unchanged. Historical missing dates on open desk Call Leads are recovered only from their own stamped accepted Granot observations through the audited [Outreach date repair](sales-outreach-desk.md#queue-loading-performance--october-15-2026); this adds no manual API field, Sheet column, provider call, receiver/source/money change or new index.
+
 **System of Record:** MongoDB `call_leads`. Owner reporting via **Sheet Sync** → **Master Sheets**.
 
 **Three ingest origins** — same collection, different Duplicate Lead rules. Story names are the real implementations; old `create*` / `update*` / `delete*` exports are aliases.

@@ -44,7 +44,7 @@ export type DeskLeadFacts = Readonly<{
   /** The phone Granot last reported (`granot_contact_snapshot`); olr CW1, the mint's phone rule. */
   granot_phone?: string | null;
   name: string | null;
-  /** Canonical move date `YYYY-MM-DD` (Form Lead `move_date`, stored as UTC midnight); null when unknown. */
+  /** Canonical move date `YYYY-MM-DD` (Lead `move_date`, stored as UTC midnight); null when unknown. */
   move_date: string | null;
 }>;
 
@@ -121,6 +121,6 @@ export function toDeskLeadFacts(model: SalesOutreachLeadModel, raw: RawLead): De
     ingested_phone: str((raw.ingested_contact_snapshot as { normalized_phone_number?: unknown } | null | undefined)?.normalized_phone_number),
     granot_phone: str((raw.granot_contact_snapshot as { normalized_phone_number?: unknown } | null | undefined)?.normalized_phone_number),
     name,
-    move_date: model === "FormLead" ? moveDateOf(raw.move_date) : null,
+    move_date: moveDateOf(raw.move_date),
   };
 }

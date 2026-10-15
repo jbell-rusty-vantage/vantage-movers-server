@@ -15,6 +15,13 @@ function callLeadAttrs(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test("CallLead retains an optional Granot move date without inventing one for undated calls", () => {
+  const move = new Date("2026-11-01T00:00:00.000Z");
+  const dated = new CallLead(callLeadAttrs({ move_date: move }));
+  assert.deepEqual(dated.get("move_date"), move);
+  assert.equal(new CallLead(callLeadAttrs()).get("move_date"), undefined);
+});
+
 function indexKeys(): Array<Record<string, number>> {
   return (CallLead.schema.indexes() as Array<[Record<string, number>]>).map(
     ([key]) => key,

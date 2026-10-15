@@ -832,6 +832,7 @@ async function createLead(input: {
     delivery_city: move.destination?.city,
     delivery_zip: deliveryZip,
     delivery_state: deliveryState,
+    move_date: move.move_date,
     cubic_feet: move.estimated_cubic_feet,
     quoted: observation.priority?.valid
       ? observation.priority.canonical === "1" ||
