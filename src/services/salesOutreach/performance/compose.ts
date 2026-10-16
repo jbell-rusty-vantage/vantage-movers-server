@@ -71,6 +71,7 @@ export function composeTeamPerformance(input: PerformanceInput): SalesOutreachPe
   for (const row of input.volumes) if (inWeek(row.business_date) && row.agent_id) ids.add(row.agent_id);
   const requirements = input.requirements.filter((d) => inWeek(d.business_date));
   const gapDates = new Set(requirements.filter((d) => d.input_complete === false).map((d) => d.business_date));
+  const pendingSenders = input.volumes.some((v) => inWeek(v.business_date) && v.agent_id === null && v.pending > 0);
   let unassigned = 0;
   for (const day of requirements) for (const ob of day.obligations) {
     if (requirementDisposition(ob) === "exempt") continue;
@@ -140,7 +141,7 @@ export function composeTeamPerformance(input: PerformanceInput): SalesOutreachPe
     const due = smsEligible.reduce((n, d) => n + d.texts.resolved_due_required, 0);
     const pending = closedDays.reduce((n, d) => n + d.texts.pending, 0);
     const callsProvisional = pendingDays > 0 || days.some((d) => !d.future && d.calls.coverage !== "complete");
-    const textsProvisional = closedDays.some((d) => d.texts.coverage !== "complete") || days.some((d) => !d.future && (d.texts.sent === null || !atLeast(input.sms_freshness, d.business_date === today ? Math.max(newYorkDayBounds(today).start.getTime(), input.now.getTime() - (input.today_tolerance_ms ?? 0)) : newYorkDayBounds(d.business_date).end.getTime()) || (volumes.get(`${agent_id}:${d.business_date}`)?.pending ?? 0) > 0));
+    const textsProvisional = pendingSenders || closedDays.some((d) => d.texts.coverage !== "complete") || days.some((d) => !d.future && (d.texts.sent === null || !atLeast(input.sms_freshness, d.business_date === today ? Math.max(newYorkDayBounds(today).start.getTime(), input.now.getTime() - (input.today_tolerance_ms ?? 0)) : newYorkDayBounds(d.business_date).end.getTime()) || (volumes.get(`${agent_id}:${d.business_date}`)?.pending ?? 0) > 0));
     return {
       agent_id, name: input.names.get(agent_id) ?? null,
       historical_membership_state: input.active_agent_ids.has(agent_id) ? "active" : "historical",

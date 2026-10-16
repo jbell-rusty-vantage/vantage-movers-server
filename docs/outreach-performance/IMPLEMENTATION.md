@@ -25,6 +25,8 @@ SMS reliable dates begin when reporting capture is established. First-time recon
 
 The ordinary local typecheck also sees an unrelated ignored `ops/output/pool-active-canonical-audit.ts` scratch file with pre-existing errors. Tracked-source typechecking excludes that output directory; no unrelated scratch file was edited. The full unit suite must run with opt-in Granot replica tests disabled; those separate tests require their own isolated launcher and refuse production settings.
 
+Release check results: server full suite 3,610 passed / 145 skipped / 0 failed; Admin full suite 1,195 passed / 15 skipped / 0 failed. The final focused server route/scoring set passes 23/23, and the actual Mongo proof passes ten persistence scenarios. Admin build/typecheck and the desktop/narrow Manager browser test pass. Reliable call history starts no earlier than the first frozen goal date; unresolved text senders keep the volume tie-breaker provisional.
+
 ## Release and initialization
 
 Both repositories use `main` at the Owner's explicit request. Preserve unrelated `.quality.config.json` edits and the pre-existing deleted server `SALES-OUTREACH-DESK.md`.

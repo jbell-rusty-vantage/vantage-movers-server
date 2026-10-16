@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { getSalesOutreachPerformanceStateModel, getSalesOutreachSmsRequirementDayModel, getSalesOutreachSmsVolumeContributionModel } from "../../../models/salesOutreach/performance";
+import { getSalesOutreachRepDayProjectionModel } from "../../../models/salesOutreach/projections";
 import { salesOutreachPerformanceSchema, type salesOutreachPerformanceQuerySchema, type SalesOutreachPerformanceDto } from "../../../validation/v1/salesOutreachPerformance";
 import type { OutreachActor } from "../auth";
 import { deskTimingOf } from "../config/timing";
@@ -16,6 +17,7 @@ import { composeTeamPerformance, performanceWeek, type PerformanceCallDay, type 
 
 export type PerformanceEvidence = {
   requirements: PerformanceRequirementDay[]; volumes: PerformanceVolume[];
+  call_reliable_from?: string | null;
   state: { volume_reliable_from: string | null; requirements_reliable_from: string | null; full_inventory_completed: boolean; volume_derived_through?: Date | null; volume_certified_through?: Date | null } | null;
 };
 export type PerformanceStore = { readWeek(start: string, end: string): Promise<PerformanceEvidence> };
@@ -23,7 +25,7 @@ export type PerformanceStore = { readWeek(start: string, end: string): Promise<P
 export const mongoPerformanceStore: PerformanceStore = {
   async readWeek(start, end) {
     const range = { $gte: start, $lt: end };
-    const [requirements, volumes, state] = await Promise.all([
+    const [requirements, volumes, state, firstFrozenCallDay] = await Promise.all([
       getSalesOutreachSmsRequirementDayModel().find({ business_date: range }, { business_date: 1, obligations: 1, coverage_through: 1, input_complete: 1 }).limit(100001).lean(),
       getSalesOutreachSmsVolumeContributionModel().aggregate<PerformanceVolume>([
         { $match: { business_date: range, disposition: { $in: ["confirmed", "pending"] } } },
@@ -32,11 +34,13 @@ export const mongoPerformanceStore: PerformanceStore = {
         { $limit: 7001 },
       ]),
       getSalesOutreachPerformanceStateModel().findOne({ key: "team" }).lean(),
+      getSalesOutreachRepDayProjectionModel().findOne({ "goal_snapshot.configuration_version": { $type: "string" } }, { business_day: 1 }).sort({ business_day: 1 }).lean(),
     ]);
     if (requirements.length > 100000 || volumes.length > 7000)
       throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "performance", code: "report_input_limit" }]);
     return {
       requirements: requirements.map((r) => ({ business_date: r.business_date, obligations: r.obligations as PerformanceRequirementDay["obligations"], coverage_through: r.coverage_through?.toISOString() ?? null, input_complete: r.input_complete })),
+      call_reliable_from: firstFrozenCallDay?.business_day ?? null,
       volumes, state: state ? { volume_reliable_from: state.volume_reliable_from ?? null, requirements_reliable_from: state.requirements_reliable_from ?? null, full_inventory_completed: state.full_inventory_completed, volume_derived_through: state.volume_derived_through ?? null, volume_certified_through: state.volume_certified_through ?? null } : null,
     };
   },
@@ -95,10 +99,12 @@ export async function readTeamPerformance(
   const liveSmsThrough = capturedSms && derivedSms ? Math.min(capturedSms.getTime(), derivedSms.getTime()) : 0;
   const retainedSmsThrough = evidence.state?.volume_certified_through?.getTime() ?? 0;
   const smsThrough = Math.max(liveSmsThrough, retainedSmsThrough) ? new Date(Math.max(liveSmsThrough, retainedSmsThrough)).toISOString() : null;
+  const firstCallCoverageDate = freshness.watermarks.coverage_from ? newYorkBusinessDay(freshness.watermarks.coverage_from) : null;
+  const reliableCallDate = firstCallCoverageDate && evidence.call_reliable_from ? (firstCallCoverageDate > evidence.call_reliable_from ? firstCallCoverageDate : evidence.call_reliable_from) : null;
   return salesOutreachPerformanceSchema.parse(composeTeamPerformance({
     now: deps.now, week_start: week.start, closing_minute: closingMinute, names, active_agent_ids: activeIds, calls,
     requirements: evidence.requirements, volumes: evidence.volumes,
-    earliest: { calls: freshness.watermarks.coverage_from ? newYorkBusinessDay(freshness.watermarks.coverage_from) : null,
+    earliest: { calls: reliableCallDate,
       text_volume: evidence.state?.volume_reliable_from ?? null, text_requirements: evidence.state?.requirements_reliable_from ?? null },
     call_freshness: watermark?.toISOString() ?? null,
     sms_freshness: smsThrough,

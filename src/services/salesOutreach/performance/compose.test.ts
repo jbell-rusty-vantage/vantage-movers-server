@@ -93,6 +93,12 @@ test("a capped subject input creates Pending data, never a false no-texts-due da
   assert.equal(r.texts.completion_rate, null);
 });
 
+test("unresolved text sender identity keeps the volume tie-breaker provisional", () => {
+  const r = composeTeamPerformance(input({ volumes: [{ agent_id: null, business_date: date, confirmed: 0, pending: 1 }] }));
+  assert.equal(r.provisional.texts, true);
+  assert.equal(r.rows[0]!.texts.provisional, true);
+});
+
 test("New York Monday rollover, past-week bounds, date validation and DST use calendar dates", () => {
   assert.equal(performanceWeek(undefined, new Date("2026-10-19T03:59:00Z")).start, "2026-10-12");
   assert.equal(performanceWeek(undefined, new Date("2026-10-19T04:00:00Z")).start, "2026-10-19");
