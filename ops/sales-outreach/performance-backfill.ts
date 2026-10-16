@@ -27,7 +27,9 @@ async function eachBounded<T>(
   let cursor = 0;
   let stopped = false;
   const results = await Promise.allSettled(
-    Array.from({ length: Math.min(12, rows.length) }, async () => {
+    // The shared pool has five sockets. Index-fence checks need a spare socket
+    // outside each pinned transaction, so never occupy all five with workers.
+    Array.from({ length: Math.min(4, rows.length) }, async () => {
       while (!stopped && cursor < rows.length) {
         const row = rows[cursor++]!;
         try {
