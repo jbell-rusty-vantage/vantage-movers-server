@@ -58,7 +58,11 @@ const BOOKING_PROJECTION = { book_date: 1, agent_allocations: 1, total_binder_am
 export const mongoRepMetricsStore: RepMetricsStore = {
   async ownBookings(agentId) {
     const rows = await BookedLead.find({ "agent_allocations.agent": oid(agentId) }, BOOKING_PROJECTION).lean();
-    return rows.map(toRepMetricBooking);
+    if (!rows.length) return [];
+    // The Cancellation is authoritative even if the Booking's mirror is missing.
+    const cancellations = await CancelledLead.find({ booked_lead: { $in: rows.map((row) => row._id) } }, { booked_lead: 1 }).lean();
+    const cancelledIds = new Set(cancellations.map((row) => String(row.booked_lead)));
+    return rows.map((row) => ({ ...toRepMetricBooking(row), cancelled: Boolean(row.cancelled) || cancelledIds.has(String(row._id)) }));
   },
   async assignedLeads(agentId) {
     const filter = { receiver_agent: oid(agentId) };
@@ -112,6 +116,7 @@ export function repBinderWindows(now: Date) {
   const previousMonthEnd = addDays(monthStart, -1);
   return {
     today: { from: today, to: today },
+    week_to_date: { from: monday, to: today },
     last_week: { from: addDays(monday, -7), to: addDays(monday, -1) },
     last_month: { from: `${previousMonthEnd.slice(0, 7)}-01`, to: previousMonthEnd },
   };
@@ -119,11 +124,11 @@ export function repBinderWindows(now: Date) {
 
 export function composeOfficialBinder(agentId: string, now: Date, bookings: readonly RepMetricBooking[]): SalesOutreachRepMetricsDto["official_binder"] {
   const windows = repBinderWindows(now);
-  const sum = { today: 0, last_week: 0, last_month: 0, all_time: 0 };
+  const sum = { today: 0, week_to_date: 0, last_week: 0, last_month: 0, all_time: 0 };
   let booking_count = 0, missing_amount_count = 0, missing_book_date_count = 0;
   const seen = new Set<string>();
   for (const booking of bookings) {
-    if (seen.has(booking.id) || !isOfficialMetricBooking(booking)) continue;
+    if (seen.has(booking.id) || booking.cancelled || !isOfficialMetricBooking(booking)) continue;
     seen.add(booking.id);
     const own = booking.allocations.filter((allocation) => allocation.agent_id === agentId);
     if (!own.length) continue;
@@ -133,7 +138,7 @@ export function composeOfficialBinder(agentId: string, now: Date, bookings: read
     const ownCents = own.reduce((total, allocation) => total + (allocation.amount === null ? 0 : cents(allocation.amount)), 0);
     sum.all_time += ownCents;
     if (!booking.book_date) continue;
-    for (const key of ["today", "last_week", "last_month"] as const) {
+    for (const key of ["today", "week_to_date", "last_week", "last_month"] as const) {
       if (booking.book_date >= windows[key].from && booking.book_date <= windows[key].to) sum[key] += ownCents;
     }
   }

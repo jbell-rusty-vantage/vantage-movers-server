@@ -27,8 +27,13 @@
         "last_month": {
           "from": "2026-09-01",
           "to": "2026-09-30"
+        },
+        "week_to_date": {
+          "from": "2026-10-05",
+          "to": "2026-10-05"
         }
-      }
+      },
+      "week_to_date": 50.01
     },
     "assigned_potential": {
       "basis": "current_assignment_attached_booking_total",

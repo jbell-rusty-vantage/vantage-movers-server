@@ -263,7 +263,7 @@ Money is nonnegative finite dollars accumulated in integer cents, not commission
 
 | DTO block | Fields and meaning |
 | --- | --- |
-| `official_binder` | `basis: 'gross_own_allocation'`; `today`, `last_week`, `last_month`, `all_time`; `booking_count`, `missing_amount_count`, `missing_book_date_count`; `windows: {today, last_week, last_month}`, each `{from,to}` inclusive date-only bounds |
+| `official_binder` | `basis: 'gross_own_allocation'`; `today`, `week_to_date`; compatibility fields `last_week`, `last_month`, `all_time`; `booking_count`, `missing_amount_count`, `missing_book_date_count`; `windows: {today, week_to_date, last_week, last_month}`, each `{from,to}` inclusive date-only bounds |
 | `assigned_potential` | `basis: 'current_assignment_attached_booking_total'`; `known_binder_total`, `eligible_lead_count`, `linked_booking_count`, `missing_link_count`, `dangling_link_count`, `missing_amount_count`, `mismatched_link_count`, `deduplicated_lead_count`, `ambiguous_identity_count`; `coverage: 'complete' | 'partial'` |
 
 Official credit sums only the selected Agent's
@@ -271,10 +271,10 @@ Official credit sums only the selected Agent's
 per official Booking. An attached canonical Lead, explicit Referral or existing
 authorized official leadless Booking establishes official status; an unlinked
 pending intake, priority 5 or scraped estimate alone does not. Cancelled official
-Bookings remain in gross credit. No refund/net deduction is inferred. Today is
-the current New York date; Last Week is the complete previous Monday–Sunday;
-Last Month is the complete previous calendar month; All Time has no date or
-ranking/page cap. Stored UTC-midnight `book_date` encodes a calendar date and is
+Bookings are excluded in full by Booking mirror or attached `CancelledLead`. No
+refund/net deduction is inferred. Today is the current New York date; This week
+is Monday through today, Sunday inclusive, resetting each Monday. The previous
+week/month and All Time fields remain undisplayed API compatibility fields. Stored UTC-midnight `book_date` encodes a calendar date and is
 compared as that date without a New York timezone shift. Unknown allocation
 amounts are omitted from known sums and counted; unknown dates still contribute
 known allocations to All Time but not dated windows. The UI identifies these
@@ -348,3 +348,7 @@ time. The unchanged `last_interaction_at` qualification is confirmed
 `outbound_attempt`, `inbound_answered`, `inbound_missed`, `sms_sent`, `sms_inbound`;
 failed/unconfirmed/automation SMS, Granot notes and dashboard clicks add no
 interaction or contact credit. Existing Last interaction ordering remains.
+
+### October 16 Owner amendment — Booked binder
+
+The rep card displays only **Today** and **This week**. `week_to_date` runs from the most recent Monday through the current New York date, including Sunday until Monday resets it. Both displayed totals exclude the full own allocation of any Booking with a cancellation mirror or an attached `CancelledLead` by `booked_lead`, regardless of refund amount. Older period fields remain in the API for compatibility only; the UI does not display them.

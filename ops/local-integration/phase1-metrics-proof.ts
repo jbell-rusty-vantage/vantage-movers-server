@@ -53,10 +53,11 @@ async function main() {
     await db.collection('call_leads').insertOne({_id:oid('crossmodel'),first_name:'Phase1',last_name:'crossmodel duplicate',receiver_agent:agent,granot_priority:'0',job_no:'PHASE1-today',normalized_job_no:'PHASE1TODAY',booked:oid('booking:today'),duplicate:false,no_sync:true,created_on_unmatched:false});
   }
   const result=await read();
-  assert.equal(result.official_binder.today,85.01);
+  assert.equal(result.official_binder.today,60.01);
+  assert.equal(result.official_binder.week_to_date,60.01);
   assert.equal(result.official_binder.last_week,75);
   assert.equal(result.official_binder.last_month,125);
-  assert.equal(result.official_binder.all_time,495.01);
+  assert.equal(result.official_binder.all_time,470.01);
   assert.equal(result.assigned_potential.known_binder_total,1000.01);
   assert.equal(result.assigned_potential.linked_booking_count,6);
   assert.equal(result.assigned_potential.dangling_link_count,1);

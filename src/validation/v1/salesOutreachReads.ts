@@ -1053,10 +1053,10 @@ export const salesOutreachRepMetricsDtoSchema = z.object({
   timezone: z.literal(SALES_OUTREACH_TIMEZONE), agent_id: salesOutreachAgentIdSchema,
   business_day: salesOutreachBusinessDateSchema,
   official_binder: z.object({
-    basis: z.literal("gross_own_allocation"), today: repMetricMoney, last_week: repMetricMoney,
+    basis: z.literal("gross_own_allocation"), today: repMetricMoney, week_to_date: repMetricMoney, last_week: repMetricMoney,
     last_month: repMetricMoney, all_time: repMetricMoney, booking_count: repMetricCount,
     missing_amount_count: repMetricCount, missing_book_date_count: repMetricCount,
-    windows: z.object({ today: repMetricWindow, last_week: repMetricWindow, last_month: repMetricWindow }).strict(),
+    windows: z.object({ today: repMetricWindow, week_to_date: repMetricWindow, last_week: repMetricWindow, last_month: repMetricWindow }).strict(),
   }).strict(),
   assigned_potential: z.object({
     basis: z.literal("current_assignment_attached_booking_total"), known_binder_total: repMetricMoney,
