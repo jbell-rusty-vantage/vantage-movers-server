@@ -213,6 +213,36 @@ async function main() {
       await Req.exists({ subject_id: subject.id, input_complete: true }),
       null,
     );
+    const Policy = getSalesOutreachPerformancePolicyModel();
+    const sharedPolicyBefore = await Policy.findOne({
+      policy_fingerprint: admission.context.policy_fingerprint,
+    }).lean();
+    assert.ok(sharedPolicyBefore);
+    const policyBytesBefore = JSON.stringify(sharedPolicyBefore);
+    const concurrentSubjects = Array.from({ length: 4 }, () => subjectRow());
+    for (const independentSubject of concurrentSubjects) {
+      memory.subjects.set(independentSubject.id, independentSubject);
+      memory.periods.push(periodRow(independentSubject.id));
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      const results = await Promise.allSettled(concurrentSubjects.map((independentSubject) =>
+        withTransaction((session) => evaluateAndProject(
+          independentSubject.id, admission.context, at, mongoEvaluationStore, session,
+        )),
+      ));
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+        assert.equal(result.value.outcome, pass === 0 ? "created" : "unchanged");
+      }
+    }
+    for (const independentSubject of concurrentSubjects)
+      assert.ok(await Req.exists({ subject_id: independentSubject.id, input_complete: true }));
+    const sharedPolicyAfter = await Policy.findOne({
+      policy_fingerprint: admission.context.policy_fingerprint,
+    }).lean();
+    assert.ok(sharedPolicyAfter);
+    assert.equal(sharedPolicyAfter.updatedAt.toISOString(), sharedPolicyBefore.updatedAt.toISOString());
+    assert.equal(JSON.stringify(sharedPolicyAfter), policyBytesBefore);
   } finally {
     Object.assign(mongoEvaluationStore, originalMethods);
   }
@@ -230,6 +260,7 @@ async function main() {
         "reassociation revokes old fulfillment",
         "evaluator no-op materialization",
         "capped input gap",
+        "four concurrent subjects share immutable policy across replay",
       ],
     }),
   );

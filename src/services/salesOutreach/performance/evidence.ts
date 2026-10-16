@@ -88,6 +88,17 @@ export async function retainSmsVolume(
   }
 }
 
+/** Existing policy versions are immutable; even a timestamp-only upsert would serialize unrelated subjects. */
+async function retainPolicy(policy: EnginePolicy, policyFingerprint: string, session: ClientSession): Promise<void> {
+  const Model = getSalesOutreachPerformancePolicyModel();
+  if (await Model.exists({ policy_fingerprint: policyFingerprint }).session(session)) return;
+  await Model.updateOne(
+    { policy_fingerprint: policyFingerprint },
+    { $setOnInsert: { policy_snapshot: policy } },
+    { upsert: true, session },
+  );
+}
+
 /** Old dates are evaluated under their frozen policy; disappeared slots replace only proven dates. */
 export async function retainSmsRequirements(
   input: EvaluateSubjectInput,
@@ -97,11 +108,7 @@ export async function retainSmsRequirements(
   session: ClientSession,
 ): Promise<void> {
   const Model = getSalesOutreachSmsRequirementDayModel();
-  await getSalesOutreachPerformancePolicyModel().updateOne(
-    { policy_fingerprint: policyFingerprint },
-    { $setOnInsert: { policy_snapshot: policy } },
-    { upsert: true, session },
-  );
+  await retainPolicy(policy, policyFingerprint, session);
   const previous = await Model.find({ subject_id: result.subject_id })
     .session(session)
     .lean();
@@ -272,11 +279,7 @@ export async function retainSmsRequirementGap(
   policyFingerprint: string,
   session: ClientSession,
 ): Promise<void> {
-  await getSalesOutreachPerformancePolicyModel().updateOne(
-    { policy_fingerprint: policyFingerprint },
-    { $setOnInsert: { policy_snapshot: policy } },
-    { upsert: true, session },
-  );
+  await retainPolicy(policy, policyFingerprint, session);
   const Model = getSalesOutreachSmsRequirementDayModel();
   await Model.updateMany(
     { subject_id: subjectId },
