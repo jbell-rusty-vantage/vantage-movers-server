@@ -225,7 +225,7 @@ async function main() {
       memory.periods.push(periodRow(independentSubject.id));
     }
     for (let pass = 0; pass < 2; pass++) {
-      const results = await Promise.allSettled(concurrentSubjects.map((independentSubject) =>
+      const results: PromiseSettledResult<Awaited<ReturnType<typeof evaluateAndProject>>>[] = await Promise.allSettled(concurrentSubjects.map((independentSubject) =>
         withTransaction((session) => evaluateAndProject(
           independentSubject.id, admission.context, at, mongoEvaluationStore, session,
         )),
