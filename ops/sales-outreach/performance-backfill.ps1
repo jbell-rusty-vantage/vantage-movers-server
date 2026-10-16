@@ -3,12 +3,14 @@ param(
   [ValidateSet('report','apply','verify')][string]$Mode='report',
   [ValidateRange(1,500)][int]$PageSize=500,
   [ValidateRange(1,200)][int]$MaxPages=20,
-  [string]$SmsAfter='', [string]$SubjectAfter=''
+  [string]$SmsAfter='', [string]$SubjectAfter='',
+  [switch]$AllowSchemaDrift
 )
 # Every invocation and page is bounded; returned cursors are safe restart checkpoints.
 for ($page=0; $page -lt $MaxPages; $page++) {
   $taskArgs=@('--env-file=.env','--import','tsx','ops/sales-outreach/performance-backfill.ts',"--target=$Target","--limit=$PageSize")
   if ($Mode -ne 'report') { $taskArgs += "--$Mode" }
+  if ($AllowSchemaDrift) { $taskArgs += '--allow-schema-drift' }
   if ($SmsAfter) { $taskArgs += "--sms-after=$SmsAfter" }
   if ($SubjectAfter) { $taskArgs += "--subject-after=$SubjectAfter" }
   $result=& node @taskArgs

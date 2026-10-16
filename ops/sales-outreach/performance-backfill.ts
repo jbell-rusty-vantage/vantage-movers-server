@@ -27,7 +27,7 @@ async function eachBounded<T>(
   let cursor = 0;
   let stopped = false;
   const results = await Promise.allSettled(
-    Array.from({ length: Math.min(4, rows.length) }, async () => {
+    Array.from({ length: Math.min(12, rows.length) }, async () => {
       while (!stopped && cursor < rows.length) {
         const row = rows[cursor++]!;
         try {
@@ -51,7 +51,7 @@ async function main() {
   if (
     args.some(
       (arg) =>
-        !["--apply", "--verify"].includes(arg) &&
+        !["--apply", "--verify", "--allow-schema-drift"].includes(arg) &&
         !/^--(target|limit|sms-after|subject-after)=/.test(arg),
     )
   )
@@ -115,23 +115,20 @@ async function main() {
   const now = new Date();
   const apply = args.includes("--apply");
   const verify = args.includes("--verify");
-  let missingSms = 0;
-  let missingSubjects = 0;
-  for (const row of sms)
-    if (
-      !(await getSalesOutreachSmsVolumeContributionModel().exists({
-        canonical_logical_id: row.canonical_logical_id,
-      }))
-    )
-      missingSms++;
-  for (const row of subjects)
-    if (
-      !(await getSalesOutreachSmsRequirementDayModel().exists({
-        subject_id: String(row._id),
-        input_complete: true,
-      }))
-    )
-      missingSubjects++;
+  // Two indexed page lookups avoid one remote round trip per source and subject.
+  const [knownSms, knownSubjects] = await Promise.all([
+    getSalesOutreachSmsVolumeContributionModel().distinct("canonical_logical_id", {
+      canonical_logical_id: { $in: sms.map((row) => row.canonical_logical_id) },
+    }),
+    getSalesOutreachSmsRequirementDayModel().distinct("subject_id", {
+      subject_id: { $in: subjects.map((row) => String(row._id)) },
+      input_complete: true,
+    }),
+  ]);
+  const smsPresent = new Set(knownSms);
+  const subjectsPresent = new Set(knownSubjects);
+  const missingSms = sms.filter((row) => !smsPresent.has(row.canonical_logical_id)).length;
+  const missingSubjects = subjects.filter((row) => !subjectsPresent.has(String(row._id))).length;
   if (apply) {
     await assertProductionWriterMatchesDeployment();
     const checkpoint = await getSalesOutreachPerformanceStateModel()
