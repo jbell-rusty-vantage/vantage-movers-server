@@ -1,3 +1,4 @@
+import { retainSmsVolume } from "../performance/evidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { Agent } from "../../../models/Agent";
 import { getCallInteractionModel } from "../../../models/CallInteraction";
@@ -194,6 +195,7 @@ export const mongoContactEventStore: ContactEventStore = {
     return (rows as unknown as CallLean[]).map(toCallSourceRow);
   },
 
+  retainSmsVolume,
   async loadSms(ids, session) {
     const Model = getRingCentralRepSmsEvidenceModel();
     const rows = (await Model.find({ _id: { $in: ids.map(oid) } }, SMS_PROJECTION).session(session).lean()) as unknown as SmsLean[];

@@ -1,3 +1,4 @@
+import { retainSmsRequirementGap, retainSmsRequirements } from "../performance/evidence";
 import { randomUUID } from "node:crypto";
 import type { ClientSession } from "mongoose";
 import type { SalesOutreachCadenceExposure } from "../../../config/domain/salesOutreach";
@@ -14,7 +15,7 @@ import type { ReadSession } from "../subjects/store";
 import { buildEngineInput, engineCoverageOf } from "./inputs";
 import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint } from "./policyAdapter";
 import { toProjectionWrite } from "./projection";
-import { mongoEvaluationStore, type EvaluationStore } from "./store";
+import { mongoEvaluationStore, EVALUATION_LIMITS, type EvaluationStore } from "./store";
 import { projectPoolResult } from "../pool/projection";
 
 /**
@@ -105,6 +106,11 @@ export async function evaluateAndProject(
   const result = store === mongoEvaluationStore && context.configuration.value.pool?.enabled
     ? await projectPoolResult(ordinary, context.configuration, asOf, restrictions, engineCoverageOf(coverage, timing).call, session, subject.review_reasons.includes("no_contact_number"))
     : ordinary;
+  if (store === mongoEvaluationStore) {
+    const capped = periods.length >= EVALUATION_LIMITS.periods || plans.length >= EVALUATION_LIMITS.plans || restrictions.length >= EVALUATION_LIMITS.restrictions || changes.length >= EVALUATION_LIMITS.assignment_changes || events.length >= EVALUATION_LIMITS.contact_events || links.length >= 1000;
+    if (capped) await retainSmsRequirementGap(subjectId, ordinary.business_date, context.policy, context.policy_fingerprint, session);
+    if (!capped) await retainSmsRequirements(input, ordinary, context.policy, context.policy_fingerprint, session);
+  }
   const mapped = toProjectionWrite(subject, result, {
     exposure: context.exposure,
     configuration_version: context.configuration.version,

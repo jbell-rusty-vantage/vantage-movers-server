@@ -30,6 +30,8 @@ import {
 import { readOutreachDetail } from "../services/salesOutreach/reads/detail";
 import type { DeskQueueStore } from "../services/salesOutreach/reads/deskStore";
 import { readRepMetrics, type RepMetricsStore } from "../services/salesOutreach/reads/repMetrics";
+import { readTeamPerformance, type PerformanceStore } from "../services/salesOutreach/performance/read";
+import { salesOutreachPerformanceQuerySchema } from "../validation/v1/salesOutreachPerformance";
 import { readQueue } from "../services/salesOutreach/reads/queue";
 import { readDeskCapabilities, readRepDays, readTeam, requireDeskConfiguration } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
@@ -73,6 +75,7 @@ export type SalesOutreachRouteDeps = {
   /** Desk read store (tests inject an in-memory one). */
   readStore?: SalesOutreachReadStore;
   metricsStore?: RepMetricsStore;
+  performanceStore?: PerformanceStore;
   /** Queue / outreach-view / team-cadence store (tests inject an in-memory one). */
   queueStore?: DeskQueueStore;
   /** Queue cursor HMAC secret override (tests); production derives it from the admin proxy signing secret. */
@@ -136,6 +139,14 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
     } catch (error) {
       fail(req, res, error);
     }
+  });
+
+  router.get(`${SALES_OUTREACH_API_PREFIX}/performance`, guard("team_reads"), async (req, res) => {
+    try {
+      const query = salesOutreachPerformanceQuerySchema.parse(req.query);
+      await connect();
+      return res.json({ ok: true, data: await readTeamPerformance(outreachActorOf(res), query, { ...readDeps(), performanceStore: deps.performanceStore }) });
+    } catch (error) { return fail(req, res, error); }
   });
 
   // M1 reads (FAST-TRACK M1). Configuration and capabilities stay open while the desk is disabled.

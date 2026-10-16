@@ -1,3 +1,4 @@
+import { publishOutreachLive } from "../live/publish";
 import { randomUUID } from "node:crypto";
 import { CsiError } from "../../salesIntelligence/auth";
 import { claimCsiJob, completeCsiJob, failCsiJob, type JobLease } from "../../salesIntelligence/jobs";
@@ -96,6 +97,7 @@ export async function runOutreachContactChangeJob(jobId?: string, deps: ContactJ
       },
       { resultFrom: (value) => ({ derived: value.derived, changed: value.changed, missing: value.missing, evaluations: value.evaluations, rep_days: value.rep_days.length }) },
     );
+    if (source.source_kind === "sms" && !deps.store) await publishOutreachLive({ topic: "outreach_goal", cause: "rep_day" });
     if (result.created_job_ids.length)
       await (deps.publish ?? ((ids: readonly string[]) => publishRunnableWakeups(ids)))(result.created_job_ids).catch(() => undefined);
     return { status: "completed", result };

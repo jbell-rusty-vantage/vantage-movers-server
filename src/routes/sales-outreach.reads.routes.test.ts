@@ -12,6 +12,8 @@ import { MemoryDeskReadStore } from "../services/salesOutreach/reads/deskTesting
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow } from "../services/salesOutreach/reads/testing";
 import type { SalesOutreachConfigurationInput } from "../validation/v1/salesOutreach";
 import { salesOutreachAdmissionsSchema } from "../validation/v1/salesOutreachEnrollment";
+import { salesOutreachPerformanceSchema } from "../validation/v1/salesOutreachPerformance";
+import type { PerformanceEvidence } from "../services/salesOutreach/performance/read";
 import {
   salesOutreachCapabilitiesSchema,
   salesOutreachDetailSchema,
@@ -43,6 +45,7 @@ const errorEnvelope = salesOutreachErrorEnvelopeSchema;
 
 const desk: SalesOutreachConfigurationInput = {
   controls: { desk_enabled: true, goal_metrics_enabled: true },
+  cadence: { working_days: [{ iso_weekday: 1, open_minute: 480, close_minute: 1200 }] },
   goals: {
     roster_version: "roster-1",
     default_scheduled_goal: 100,
@@ -57,6 +60,7 @@ const desk: SalesOutreachConfigurationInput = {
 
 let inspection: ConfigurationInspection = activeInspection(desk);
 const store = new MemoryReadStore();
+let performanceEvidence: PerformanceEvidence = { requirements: [], volumes: [], state: null };
 const app = express();
 app.use(express.json());
 app.use(
@@ -69,6 +73,7 @@ app.use(
     },
     readStore: store,
     metricsStore: { ownBookings: async () => [], assignedLeads: async () => [], attachedBookings: async () => [] },
+    performanceStore: { readWeek: async () => performanceEvidence },
     queueStore: new MemoryDeskReadStore(),
     auth: { hasReviewedSalesRepLink: async (agent) => agent === REP_A || agent === REP_B },
     now: () => NOW,
@@ -93,6 +98,7 @@ after(async () => {
 });
 beforeEach(() => {
   inspection = activeInspection(desk);
+  performanceEvidence = { requirements: [], volumes: [], state: null };
   store.rows = [
     repDayRow({ agent_id: REP_A, business_day: "2026-10-05", actual_confirmed: 108, actual_awaiting_confirmation: 3, publication_revision: 7 }),
     repDayRow({ agent_id: REP_B, business_day: "2026-10-05", actual_confirmed: 20, publication_revision: 4 }),
@@ -153,6 +159,7 @@ test("route matrix: who may read capabilities, rep-days and team", async () => {
     "/capabilities": { owner: 200, manager: 200, "rep-a": 200, admin: "FORBIDDEN", unsigned: "FORBIDDEN", "rep-unlinked": "REP_NOT_LINKED" },
     "/rep-days": { owner: 200, manager: 200, "rep-a": 200, admin: "FORBIDDEN", unsigned: "FORBIDDEN", "rep-unlinked": "REP_NOT_LINKED" },
     "/team": { owner: 200, manager: 200, "rep-a": "FORBIDDEN", admin: "FORBIDDEN", unsigned: "FORBIDDEN", "rep-unlinked": "REP_NOT_LINKED" },
+    "/performance": { owner: 200, manager: 200, "rep-a": "FORBIDDEN", admin: "FORBIDDEN", unsigned: "FORBIDDEN", "rep-unlinked": "REP_NOT_LINKED" },
   };
   for (const [route, byCaller] of Object.entries(expected)) {
     for (const [caller, outcome] of Object.entries(byCaller) as Array<[Caller, number | string]>) {
@@ -163,6 +170,61 @@ test("route matrix: who may read capabilities, rep-days and team", async () => {
   }
   const noSecret = await fetch(`${baseUrl}${BASE}/team`, { headers: { ...headers("owner", `${BASE}/team`), "x-api-secret": "wrong" } });
   assert.equal(noSecret.status, 401);
+});
+
+test("performance read validates the week and returns server-scored counts without inventing old goals", async () => {
+  const result = await get("manager", "/performance?week_start=2026-10-05");
+  assert.equal(result.status, 200);
+  const data = salesOutreachPerformanceSchema.parse(result.body.data);
+  assert.equal(data.rows.length, 2);
+  assert.equal(data.rows.find((r) => r.agent_id === REP_B)!.days[0]!.calls.goal, 50);
+  assert.equal(data.rows[0]!.calls.eligible_days, 0, "today is unfinished");
+  assert.equal(data.rows[0]!.texts.weekly_volume, null, "SMS history is unproven");
+  for (const query of ["week_start=2026-10-06", "week_start=2026-10-12", "week_start=2026-02-30", "agent_id=" + REP_A]) {
+    const invalid = await get("owner", `/performance?${query}`);
+    assert.equal(invalid.status, 400, query);
+  }
+  const historical = salesOutreachPerformanceSchema.parse((await get("owner", "/performance?week_start=2026-09-28")).body.data);
+  assert.equal(historical.rows[0]!.calls.eligible_days, 0);
+  assert.equal(historical.rows[0]!.calls.weekly_volume, null);
+  assert.equal(historical.rows[0]!.days[0]!.calls.state, "pending_data");
+});
+
+test("performance keeps frozen historical goals after current goal metrics are disabled", async () => {
+  inspection = activeInspection({ ...desk, controls: { desk_enabled: true, goal_metrics_enabled: false } });
+  store.rows = [repDayRow({ agent_id: REP_A, business_day: "2026-09-28", actual_confirmed: 110,
+    goal_snapshot: { roster_version: "past-roster", configuration_version: "past-config", goal: 100, scheduled: true, override: null },
+    coverage: { state: "complete" },
+  })];
+  const result = await get("owner", "/performance?week_start=2026-09-28");
+  assert.equal(result.status, 200);
+  const data = salesOutreachPerformanceSchema.parse(result.body.data);
+  const row = data.rows.find((r) => r.agent_id === REP_A)!;
+  assert.equal(row.days[0]!.calls.goal, 100);
+  assert.equal(row.days[0]!.calls.state, "met");
+  assert.equal(row.calls.completion_rate, 1);
+  assert.equal(row.calls.eligible_days, 1);
+});
+
+test("past text misses and verified zero volume survive disabling present-day SMS capture", async () => {
+  inspection = activeInspection({ ...desk, controls: { desk_enabled: true, goal_metrics_enabled: true, rep_sms_capture_enabled: false } });
+  performanceEvidence = {
+    state: { volume_reliable_from: "2026-09-28", requirements_reliable_from: "2026-09-28", full_inventory_completed: true,
+      volume_certified_through: new Date("2026-10-05T14:00:00Z") },
+    volumes: [],
+    requirements: [{ business_date: "2026-09-28", input_complete: true, coverage_through: "2026-09-29T04:00:00Z", obligations: [{
+      obligation_id: "sms-1", period_id: "p1", channel: "sms", kind: "ordinary", business_date: "2026-09-28", slot_index: 0,
+      opens_at: "2026-09-28T12:00:00Z", due_at: "2026-09-29T00:00:00Z", closes_at: "2026-09-29T00:00:00Z",
+      outcome: "missed", fulfilled_by_event_id: null, fulfilled_at: null, deadline_missed: true,
+      responsible_agent_id: REP_A, inherited: false, plan_id: null,
+    }] }],
+  };
+  const data = salesOutreachPerformanceSchema.parse((await get("owner", "/performance?week_start=2026-09-28")).body.data);
+  const row = data.rows.find((r) => r.agent_id === REP_A)!;
+  assert.equal(row.texts.resolved_due_required, 1);
+  assert.equal(row.texts.completion_rate, 0);
+  assert.equal(row.texts.weekly_volume, 0);
+  assert.equal(row.days[0]!.texts.state, "not_met");
 });
 
 test("capabilities: role-shaped views/filters/commands and safe controls only", async () => {

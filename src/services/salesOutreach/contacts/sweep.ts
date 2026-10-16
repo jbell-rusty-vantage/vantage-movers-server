@@ -1,3 +1,6 @@
+import { mongoEvaluationStore } from "../evaluation/store";
+import { publishOutreachLive } from "../live/publish";
+import { getSalesOutreachPerformanceStateModel } from "../../../models/salesOutreach/performance";
 import { randomUUID } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { OUTREACH_CONTACT_CALLS_SCOPE, OUTREACH_CONTACT_SMS_SCOPE } from "../../../config/domain/salesOutreachContacts";
@@ -252,6 +255,11 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
           },
           session,
         );
+        if (short && kind === "sms" && !deps.store && !deps.events) {
+          const coverage = await mongoEvaluationStore.loadCoverage(current.value.controls.rep_sms_capture_enabled, session, now);
+          const through = coverage.sms_known_complete_through;
+          await getSalesOutreachPerformanceStateModel().updateOne({ key: "team" }, { $set: { volume_derived_through: now }, ...(through ? { $max: { volume_certified_through: new Date(Math.min(+through, +now)) } } : {}), $setOnInsert: { captured_at: now } }, { upsert: true, session });
+        }
         return { result, short };
       });
       pages++;
@@ -263,6 +271,7 @@ export async function sweepContactSources(kind: SweepKind, now = new Date(), dep
   } finally {
     await lease.release();
   }
+  if (kind === "sms" && caughtUp && !deps.store && !deps.events) await publishOutreachLive({ topic: "outreach_goal", cause: "rep_day" });
   const recount = await recountRepDays([...dirty.values()], loader, now, deps.repDays ?? mongoRepDayStore, transaction, deps.publishGoal);
   return {
     skipped: false,

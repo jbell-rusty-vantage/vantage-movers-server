@@ -1,3 +1,5 @@
+import { getSalesOutreachPerformancePolicyModel, PERFORMANCE_POLICY_INDEXES } from "./performance";
+import { getSalesOutreachSmsVolumeContributionModel, SMS_VOLUME_CONTRIBUTION_INDEXES, getSalesOutreachSmsRequirementDayModel, SMS_REQUIREMENT_DAY_INDEXES, getSalesOutreachPerformanceStateModel, PERFORMANCE_STATE_INDEXES } from "./performance";
 import { getSalesOutreachConfigurationModel, SALES_OUTREACH_CONFIGURATION_INDEXES } from "./configuration";
 import { getSalesOutreachContactEventModel, SALES_OUTREACH_CONTACT_EVENT_INDEXES } from "./contactEvents";
 import { getSalesOutreachEnrollmentRunModel, SALES_OUTREACH_ENROLLMENT_RUN_INDEXES } from "./enrollmentRuns";
@@ -22,6 +24,10 @@ import { getSalesOutreachPoolWorkModel, getSalesOutreachPoolDutyModel, SALES_OUT
  * Lane S3 appends `ringcentral_rep_sms_evidence` here in a `shared(registry):` commit.
  */
 export const SALES_OUTREACH_MODEL_REGISTRY = [
+  { name: "SalesOutreachPerformancePolicy", model: getSalesOutreachPerformancePolicyModel, indexes: PERFORMANCE_POLICY_INDEXES },
+  { name: "SalesOutreachSmsVolumeContribution", model: getSalesOutreachSmsVolumeContributionModel, indexes: SMS_VOLUME_CONTRIBUTION_INDEXES },
+  { name: "SalesOutreachSmsRequirementDay", model: getSalesOutreachSmsRequirementDayModel, indexes: SMS_REQUIREMENT_DAY_INDEXES },
+  { name: "SalesOutreachPerformanceState", model: getSalesOutreachPerformanceStateModel, indexes: PERFORMANCE_STATE_INDEXES },
   { name: "SalesOutreachPoolWork", model: getSalesOutreachPoolWorkModel, indexes: SALES_OUTREACH_POOL_WORK_INDEXES },
   { name: "SalesOutreachPoolDuty", model: getSalesOutreachPoolDutyModel, indexes: SALES_OUTREACH_POOL_DUTY_INDEXES },
   { name: "SalesOutreachConfiguration", model: getSalesOutreachConfigurationModel, indexes: SALES_OUTREACH_CONFIGURATION_INDEXES },

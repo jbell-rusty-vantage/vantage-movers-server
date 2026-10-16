@@ -15,6 +15,10 @@ afterEach(() => {
 });
 
 const EXPECTED_COLLECTIONS = [
+  "sales_outreach_performance_policies",
+  "sales_outreach_sms_volume_contributions",
+  "sales_outreach_sms_requirement_days",
+  "sales_outreach_performance_state",
   "sales_outreach_pool_work",
   "sales_outreach_pool_duties",
   "sales_outreach_configuration",
@@ -29,7 +33,7 @@ const EXPECTED_COLLECTIONS = [
   "ringcentral_rep_sms_evidence",
 ];
 
-test("the desk registry holds exactly the IMPLEMENTATION-PLAN §4.1–§4.6/§4.8 collections, isolated and never auto-indexed", () => {
+test("the desk registry includes cadence and performance collections, isolated and never auto-indexed", () => {
   process.env.TEST_MODE = "true";
   process.env.TEST_MONGO_DATABASE_NAME = "testvantagemovers_sodunit";
   assert.deepEqual(SALES_OUTREACH_MODEL_REGISTRY.map((e) => e.model().collection.collectionName), EXPECTED_COLLECTIONS);

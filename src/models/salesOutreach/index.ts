@@ -8,3 +8,4 @@ export * from "./registry";
 export * from "./subjects";
 export * from "./liveEvents";
 export * from "./pool";
+export * from "./performance";

@@ -6,6 +6,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
+Outreach Desk rep performance (October 16, 2026): [packet](outreach-performance/README.md) — Owner/Manager weekly call/text reporting, ranked completion rates, retained SMS reporting facts and release checks. Runtime integration is documented in the Desk Service below.
+
 Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`, `--stale`). The `docs/knowledge/` rows are current on disk. Many long-form specification and delivery-pack links below point to folders that were dropped from the tracked tree (`259b8b72`, 2026-09-10, and `b67f740f`, 2026-10-03) and now resolve only in git history or in checkouts that keep them locally.
 
 Glossary stays in workspace-root [`CONTEXT.md`](../CONTEXT.md) (absent in this standalone checkout). Do not redefine terms here.

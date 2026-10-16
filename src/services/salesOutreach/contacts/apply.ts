@@ -61,6 +61,7 @@ export type ContactEventStore = {
   enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean }>;
   /** Writes `ringcentral_rep_call` receivers on unassigned subjects whose Lead has none; returns how many. */
   fillEmptyReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number>;
+  retainSmsVolume?(rows: readonly SmsSourceRow[], session: ClientSession): Promise<void>;
   recomputePoolDuties?(keys: ReadonlyArray<{ subject_id: string; business_date: string }>, configuration: ActiveConfiguration, now: Date, session: ClientSession): Promise<void>;
 };
 
@@ -153,6 +154,7 @@ export async function applyContactSources(
   // Sequential on purpose: a session cannot run two operations at once inside a transaction.
   const calls = callIds.length ? await store.loadCalls(callIds, session) : [];
   const sms = smsIds.length ? await store.loadSms(smsIds, session) : [];
+  if (store.retainSmsVolume && sms.length) await store.retainSmsVolume(sms, session);
   const loaded = await store.loadContext(contextRequest(calls, sms, options.association_rule), session);
   const context: DerivationContext = options.association_rule ? { ...loaded, association_rule: options.association_rule } : loaded;
   const drafts = [...calls.map((row) => deriveCallContactEvent(row, context)), ...sms.map((row) => deriveSmsContactEvent(row, context))];
