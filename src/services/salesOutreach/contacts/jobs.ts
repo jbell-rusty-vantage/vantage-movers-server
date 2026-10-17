@@ -126,7 +126,10 @@ export async function runOutreachRepDayJob(jobId?: string, deps: ContactJobDeps 
       { resultFrom: (value) => ({ outcome: value.outcome, publication_revision: value.publication_revision }) },
     );
     if (result.outcome === "written" && result.publication_revision !== null)
-      await publishGoalChangesSafely([{ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision }], deps.publishGoal);
+      await publishGoalChangesSafely(
+        [{ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision, goal_crossed: result.goal_crossed === true }],
+        deps.publishGoal,
+      );
     return { status: "completed", result };
   } catch (error) {
     if (error instanceof CsiError && error.code === "LEASE_LOST") return { status: "lease_lost" };

@@ -26,6 +26,9 @@ export type StoredRepDay = Readonly<{
   both_counts: boolean;
   /** olr C8: the row stores the "Other outbound" breakdown; a row without it is rewritten once, likewise. */
   breakdown: boolean;
+  /** The headline count and goal state the row was written with (optional for older test stores): the goal-crossing check. */
+  actual_confirmed?: number | null;
+  goal_state?: RepDayRowFields["goal_state"] | null;
 }>;
 
 export type RepDayRefreshRow = Readonly<{
@@ -71,7 +74,7 @@ export const mongoRepDayStore: RepDayStore = {
 
   async readRow(key, session) {
     const row = (await getSalesOutreachRepDayProjectionModel()
-      .findOne({ agent_id: oid(key.agent_id), business_day: key.business_day }, { goal_snapshot: 1, input_fingerprint: 1, publication_revision: 1, revision: 1, coverage: 1, count_scope: 1, actual_confirmed_all: 1, other_outbound: 1 })
+      .findOne({ agent_id: oid(key.agent_id), business_day: key.business_day }, { goal_snapshot: 1, input_fingerprint: 1, publication_revision: 1, revision: 1, coverage: 1, count_scope: 1, actual_confirmed_all: 1, other_outbound: 1, actual_confirmed: 1, goal_state: 1 })
       .session(session)
       .lean()) as unknown as {
       goal_snapshot?: GoalSnapshot | null;
@@ -82,6 +85,8 @@ export const mongoRepDayStore: RepDayStore = {
       count_scope?: SalesOutreachGoalCountScope | null;
       actual_confirmed_all?: number | null;
       other_outbound?: unknown;
+      actual_confirmed?: number | null;
+      goal_state?: RepDayRowFields["goal_state"] | null;
     } | null;
     if (!row) return null;
     return {
@@ -93,6 +98,8 @@ export const mongoRepDayStore: RepDayStore = {
       count_scope: row.count_scope ?? null,
       both_counts: typeof row.actual_confirmed_all === "number",
       breakdown: row.other_outbound != null,
+      actual_confirmed: row.actual_confirmed ?? null,
+      goal_state: row.goal_state ?? null,
     };
   },
 
@@ -182,7 +189,15 @@ export type RepDayRecount = Readonly<{
   outcome: "written" | "unchanged" | "no_activity";
   publication_revision: number | null;
   fields: RepDayRowFields;
+  /** This write took today's row from below its goal to at or above it (the goal milestone, doc 16). */
+  goal_crossed?: boolean;
 }>;
+
+/** The row counts a met goal: a positive goal and the headline count at or above it. */
+export function repDayGoalMet(row: Readonly<{ goal_state?: string | null; actual_confirmed?: number | null; goal_snapshot?: GoalSnapshot | null }> | null): boolean {
+  const goal = row?.goal_snapshot?.goal ?? null;
+  return row?.goal_state === "goal" && goal !== null && goal > 0 && typeof row.actual_confirmed === "number" && row.actual_confirmed >= goal;
+}
 
 export type RepDayRecountOptions = Readonly<{
   /**
@@ -254,5 +269,6 @@ export async function recountRepDay(
   )
     return { outcome: "no_activity", publication_revision: null, fields };
   const publication = await store.writeRow(fields, previous, now, session);
-  return { outcome: "written", publication_revision: publication, fields };
+  const goal_crossed = key.business_day === today && repDayGoalMet(fields) && !repDayGoalMet(previous);
+  return { outcome: "written", publication_revision: publication, fields, goal_crossed };
 }

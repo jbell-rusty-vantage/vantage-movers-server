@@ -7,6 +7,7 @@ export const DAILY_OPERATIONS_LANES = [
   "cancellation",
   "sheet_sync",
   "exception",
+  "outreach",
 ] as const;
 
 export type DailyOperationsLane = (typeof DAILY_OPERATIONS_LANES)[number];
@@ -41,6 +42,8 @@ export const DAILY_OPERATIONS_KINDS = [
   "exception.crm_failed",
   "exception.dead_letter",
   "exception.adoption_conflict",
+  "outreach.rep_goal_met",
+  "outreach.team_goal_met",
 ] as const;
 
 export type DailyOperationsKind = (typeof DAILY_OPERATIONS_KINDS)[number];
@@ -210,6 +213,16 @@ export const DAILY_OPERATIONS_KIND_CATALOG = {
     lane: "exception",
     title: "RingCentral adoption conflict",
     metricTouches: ["exceptions.adoption_conflict"],
+  },
+  "outreach.rep_goal_met": {
+    lane: "outreach",
+    title: "Rep reached the daily call goal",
+    metricTouches: [],
+  },
+  "outreach.team_goal_met": {
+    lane: "outreach",
+    title: "Team reached the daily call goal",
+    metricTouches: [],
   },
 } as const satisfies Record<DailyOperationsKind, DailyOperationsKindDefinition>;
 

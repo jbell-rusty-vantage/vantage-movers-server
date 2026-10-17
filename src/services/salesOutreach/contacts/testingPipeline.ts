@@ -41,6 +41,8 @@ export class MemoryRepDayStore implements RepDayStore {
           count_scope: row.count_scope,
           both_counts: typeof (row as Partial<RepDayRowFields>).actual_confirmed_all === "number",
           breakdown: (row as Partial<RepDayRowFields>).other_outbound != null,
+          actual_confirmed: row.actual_confirmed,
+          goal_state: row.goal_state,
         }
       : null;
   }

@@ -1,4 +1,5 @@
 import { publishOutreachLive } from "../live/publish";
+import { recordGoalMilestones } from "./goalMilestones";
 
 /**
  * Live notification for rep-day changes (IMPLEMENTATION-PLAN §5 `GET /live`, topic `outreach_goal`).
@@ -7,7 +8,13 @@ import { publishOutreachLive } from "../live/publish";
  * its own rep-days (Owner/Manager receive all). A failure never fails the recount (clients refetch on
  * reconnect and on their 30-second fallback).
  */
-export type OutreachGoalChange = Readonly<{ agent_id: string; business_day: string; publication_revision: number }>;
+export type OutreachGoalChange = Readonly<{
+  agent_id: string;
+  business_day: string;
+  publication_revision: number;
+  /** The write crossed today's goal (`RepDayRecount.goal_crossed`): a rep milestone candidate. */
+  goal_crossed?: boolean;
+}>;
 
 export type OutreachGoalPublisher = (changes: readonly OutreachGoalChange[]) => Promise<void>;
 
@@ -22,8 +29,16 @@ export const publishOutreachGoalChanges: OutreachGoalPublisher = (changes) =>
     })),
   );
 
-/** Publishes after commit and swallows failures (the next read or reconnect resnapshot repairs it). */
-export async function publishGoalChangesSafely(changes: readonly OutreachGoalChange[], publish: OutreachGoalPublisher = publishOutreachGoalChanges): Promise<void> {
+/**
+ * Publishes after commit and swallows failures (the next read or reconnect resnapshot repairs it), then records
+ * any goal milestones on Daily Operations (`goalMilestones.ts`; it never throws and is idempotent per day).
+ */
+export async function publishGoalChangesSafely(
+  changes: readonly OutreachGoalChange[],
+  publish: OutreachGoalPublisher = publishOutreachGoalChanges,
+  milestones: (changes: readonly OutreachGoalChange[]) => Promise<void> = recordGoalMilestones,
+): Promise<void> {
   if (!changes.length) return;
   await publish(changes).catch(() => undefined);
+  await milestones(changes).catch(() => undefined);
 }

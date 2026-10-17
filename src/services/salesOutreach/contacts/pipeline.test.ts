@@ -491,7 +491,7 @@ describe("queued consumers", () => {
     });
     assert.equal(repDay.status, "completed");
     assert.equal(w.repDays.row(ALICE, TODAY)!.actual_confirmed, 1);
-    assert.deepEqual(goals, [{ agent_id: ALICE, business_day: TODAY, publication_revision: 1 }], "outreach_goal hint after commit (S1 4b seam)");
+    assert.deepEqual(goals, [{ agent_id: ALICE, business_day: TODAY, publication_revision: 1, goal_crossed: false }], "outreach_goal hint after commit (S1 4b seam)");
   });
 
   test("a malformed subject key fails as schema_invalid; a moved configuration pointer retries", async () => {

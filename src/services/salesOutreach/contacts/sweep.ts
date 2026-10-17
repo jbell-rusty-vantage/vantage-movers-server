@@ -195,7 +195,7 @@ export async function recountRepDays(
         return recountRepDay(key, configuration, now, store, session, { materialize: key.materialize === true });
       });
       if (result.outcome === "written" && result.publication_revision !== null)
-        published.push({ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision });
+        published.push({ agent_id: key.agent_id, business_day: key.business_day, publication_revision: result.publication_revision, goal_crossed: result.goal_crossed === true });
       recounted++;
       observe?.(key, result);
     } catch (error) {

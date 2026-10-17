@@ -46,6 +46,17 @@ export type DailyOperationsCard = {
     attempts?: number;
     error?: string | null;
   };
+  /** Goal milestones (`outreach.rep_goal_met` / `outreach.team_goal_met`, doc 16). */
+  agent_id?: string | null;
+  agent_name?: string | null;
+  actual?: number | null;
+  goal?: number | null;
+  rank?: number | null;
+  reached_at?: string | null;
+  team_actual?: number | null;
+  team_goal?: number | null;
+  reps_at_goal?: number | null;
+  reps_on_roster?: number | null;
 };
 
 export type DailyOperationsLinks = {
