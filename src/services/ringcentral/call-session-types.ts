@@ -59,10 +59,9 @@ export type RingCentralCallSessionDocument = {
   wouldCreateCallLead: boolean;
 
   /**
-   * True only when the session both qualifies and has reached a terminal
-   * status, i.e. the call is over and its answered duration is final. The
-   * webhook path only ingests leads when this is true so durations are
-   * accurate; the cron path independently catches anything missed.
+   * Diagnostic preview: observed parties ended and elapsed threshold is met.
+   * This never authorizes creation. Webhook and cron must independently vet
+   * the explicitly finished caller-side Call Log record before shared ingest.
    */
   ingestEligible: boolean;
 

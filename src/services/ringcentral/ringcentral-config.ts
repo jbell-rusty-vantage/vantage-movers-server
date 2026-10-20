@@ -140,9 +140,8 @@ export function isRingCentralGranotAdoptionEnabled(): boolean {
 }
 
 /**
- * When true, the webhook path confirms a qualified session against the
- * authoritative Call Log before acting on it, reducing false positives from
- * best-effort webhook duration math.
+ * Legacy diagnostic flag. Finished Call Log confirmation is mandatory on the
+ * webhook path regardless of this value (Owner policy, 2026-10-20).
  */
 export function shouldWebhookCallLogValidate(): boolean {
   return envFlag("RINGCENTRAL_WEBHOOK_CALL_LOG_VALIDATE", false);

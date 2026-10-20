@@ -1,10 +1,10 @@
 ---
 type: Service
 title: RingCentral Call Lead Qualification
-description: Qualify inbound RingCentral calls (120s answered) and promote them through shared ingest.
+description: Qualify completed inbound RingCentral calls (120s total elapsed; answer optional) and promote them through shared ingest.
 tags: [ringcentral, call-lead, qualification]
 status: draft
-stale_after: 2026-09-20
+stale_after: 2027-01-20
 resource: src/services/ringcentral/
 applies_to:
   - src/services/ringcentral/
@@ -28,95 +28,38 @@ generated:
 
 **Role:** **Call Qualification** rules decide which Ring Central inbound calls become Call Leads, then promote them through one shared ingest path. `ingestRingCentralQualifiedCall` is the only RingCentral promotion gate: it may adopt one exact pending Granot-created Call Lead or create/shadow/dry-run a RingCentral-origin Call Lead. Routes, webhooks, cron, and scripts do neither directly.
 
-**Hybrid strategy:** Real-time **webhook** session tracking (best-effort duration) + scheduled **Call Log sync** (polling safety net). Both paths build a `RingCentralQualifiedCall` and hand it to ingest so **Call Qualification**, idempotency, Duplicate Lead classification, and write mode stay identical.
+**Hybrid strategy:** Webhooks track one telephony session and wake a Detailed Call Log check; the scheduled Call Log scan recovers late/finalized records. Both use `vetRingCentralCallLogRecord` and `qualifiedCallFromCallLog` before the same ingest gate. Per-party/session previews never authorize creation.
 
-**System of Record:** MongoDB `call_leads`, canonical Command/Change evidence, Sheet Sync outbox, and `ringcentral_processed_calls` are authoritative for materialized outcomes. Ring Central Call Log is authoritative for cron qualification timing; webhook candidates are operational state until terminal + ingest.
+**System of Record:** MongoDB `call_leads`, canonical Command/Change evidence, Sheet Sync outbox, and `ringcentral_processed_calls` are authoritative for materialized outcomes. The finished caller-side account Call Log record is the duration/completion authority for both transports.
 
-## Core **Call Qualification** rule
+## Core **Call Qualification** rule — Owner amendment, 2026-10-20
 
-Shared constant: `CALL_LEAD_MINIMUM_ANSWERED_SECONDS = 120` (`call-candidate-evaluator.ts`).
+One inbound call session qualifies when all are true:
 
-A call qualifies when **all** are true:
+| Criterion | Both webhook and cron |
+| --- | --- |
+| Direction | Parent record is `Inbound` |
+| Target route | Effective-dated inbound route resolves at the parent call start. Leg fallback requires the same inbound caller and no conflicting telephony session. |
+| Completion | Parent record explicitly has `finished === true`. Missing/false/invalid completion is unconfirmed and deferred. |
+| Duration | Parent `durationMs >= 120000`, inclusive. Ringing, queue, conversation, hold and voicemail count. Answering is optional. |
+| Caller | Normalized parent `from.phoneNumber` is present; no caller substitution from device/transfer legs. |
+| Identity | Valid parent start and a Call Log id or telephony session id. |
 
-| Criterion | Webhook (`call-candidate-evaluator`) | Cron (`call-log-vetting.ts`) |
-|-----------|--------------------------------------|------------------------------|
-| Direction | `Inbound` | `Inbound` |
-| Target route | `to.phoneNumber` resolves in the cached Operations Registry snapshot at call start | Same — scan record + legs against one run snapshot |
-| Answered | Party/session `answered` with `answeredAt` | `result` in answered set (`Accepted`, `Completed`, `Connected`, …) |
-| Duration | `answeredAt` → `terminalAt` (or `now` if still live) ≥ 120s | `duration` / `durationMs` / leg max ≥ 120s |
-| Caller phone | Normalized `from` present | Caller from inbound leg / record `from` |
+Use precise parent milliseconds whenever supplied, even when rounded seconds disagree. Invalid supplied milliseconds fail closed. When milliseconds are absent, parent seconds are usable except exactly 120: that rounded boundary cannot prove 120 elapsed seconds and stays unqualified pending better evidence. Never sum calls by phone, sum parallel legs, borrow a leg's duration, or select the longest leg. The root remains the one caller's full elapsed interval. `qualifiedCallFromCallLog` derives end = start + elapsed and leaves `answeredAt` null; Call Log start is not an answer timestamp.
 
-**Inbound mapping:** `ringcentral_inbound_routes` plus effective-dated `ringcentral_inbound_route_assignments`. The webhook uses the shared cached snapshot; each Call Log run loads one immutable snapshot. `call-lead-sources.ts` is M5 migration/test seed data only.
+**Completion limitation:** Call Log can expose a running queue call and rewrite it later. `Accepted`, a recording, a party disconnect, or repeated unchanged reads do not prove caller completion. The optional provider `finished` marker is used conservatively: absence is unknown, never true. Such records leave no processed-call entry and are re-vetted in the existing rolling scan. Persistent missing completion evidence is omitted from billing rather than guessed. No environment flag bypasses final Call Log confirmation.
 
-**Party semantics:** On inbound candidate events, `from` = customer caller, `to` = RingCentral number/queue. Telephony sessions have multiple parties — qualify on **party direction** and aggregate at session level for webhooks.
+**Inbound mapping:** `ringcentral_inbound_routes` plus effective-dated `ringcentral_inbound_route_assignments`. Each cron run loads one immutable snapshot. `call-lead-sources.ts` remains migration/test seed data only.
 
-## Pipeline overview
+## 1. Webhook previews (diagnostic only)
 
-```
-                    ┌─────────────────────────────────────┐
-                    │  ingestRingCentralQualifiedCall      │
-                    │  (idempotency → adopt → duplicate    │
-                    │   → create/shadow/dry-run)            │
-                    └────────────────▲────────────────────┘
-                                     │
-          ┌──────────────────────────┴──────────────────────────┐
-          │                                                     │
-   Webhook path                                          Call Log cron
-          │                                                     │
- normalize party event                              fetch Detailed Inbound
-          │                                                     │
- upsert per-party candidate                          vetRingCentralCallLogRecord
-          │                                                     │
- evaluateRingCentralCallCandidate (per party)                  │
-          │                                                     │
- aggregateRingCentralCallSession (all parties)                  │
-          │                                                     │
-   ingest when qualified + terminal                    ingest oldest-first in one run
-```
+`evaluateRingCentralCallCandidate` estimates elapsed time from `callStartedAt` (fallback first observation), not answer time. An unanswered call can reach the threshold. Terminal timing must exist for a terminal preview. `Voicemail` and `Gone` are not terminal caller evidence. Session aggregation refuses mixed telephony sessions and waits for all observed parties before marking its diagnostic terminal preview; a queue/former agent ending cannot end a live transferred party. The preview's `ingestEligible` is not a creation authorization.
 
-## 1. Qualification evaluator (`call-candidate-evaluator.ts`)
+## 2. Webhook wake → final Call Log → shared ingest
 
-Pure function `evaluateRingCentralCallCandidate(candidate, now)` — no I/O, no lead creation.
+`POST /api/webhooks/ringcentral` retains capture and per-party/session state. A mapped session touched by a disconnect, transfer, voicemail or similar ending transition wakes `qualifyWebhookCallFromCallLog`. This service queries account Detailed Call Log by exact `telephonySessionId`, ignores other sessions, and requires exactly one qualified parent record under the shared vetter. Empty, unfinished, incomplete-page or ambiguous results return `awaiting_final_call_log` without Lead/ledger mutation. The next webhook or 30-minute cron can recover it. Provider errors are logged by the existing route and the scheduled path remains the recovery lane.
 
-### Decision statuses
-
-| `decisionStatus` | `wouldCreateCallLead` | Typical `decisionReason` |
-|------------------|----------------------|---------------------------|
-| `rejected` | false | `not_inbound`, `target_number_not_matched`, `not_answered`, `under_120_seconds` |
-| `candidate` | false | `inbound_target_waiting_for_answer` — still ringing |
-| `pending_buffer` | false | `answered_but_under_120_seconds` — live call, not terminal yet |
-| `needs_review` | false | `missing_caller_phone_number`, `answered_missing_answered_at` |
-| `qualified` | true | `inbound_target_answered_over_120s` (+ `_webhook_elapsed_best_effort` when no `terminalAt`) |
-
-**Webhook nuance:** Under 120s while call is still active → `pending_buffer` (wait for more events). Under 120s after terminal → `rejected` (`under_120_seconds`).
-
-**Duration math:** `estimateAnsweredDurationSeconds(answeredAt, terminalAt, now)` — uses `terminalAt ?? now` for in-flight calls.
-
-**Terminal statuses:** `isLikelyTerminalRingCentralStatus` — `Disconnected`, `Gone`, `Finished`, `Voicemail`, `Missed`, `NoCall`.
-
-Qualified output includes `leadPreview` (source, phones, session ids, duration, `qualificationReason: "inbound_target_answered_over_120s"`).
-
-## 2. Webhook path (session aggregation → ingest)
-
-**Route:** `POST /api/webhooks/ringcentral` (`ringcentral-webhook.routes.ts`).
-
-Per webhook batch:
-
-1. Capture raw event (always, even when processing disabled).
-2. If `RINGCENTRAL_WEBHOOK_ENABLED` — normalize party events, upsert candidates (`call-candidate-store`), evaluate each party.
-3. For each touched `telephonySessionId` — `processRingCentralCallSession` → `aggregateRingCentralCallSession` (`call-session-aggregator.ts`).
-
-### Session aggregation (`call-session-aggregator.ts`)
-
-Collapses multi-party sessions into one synthetic candidate, then runs the shared evaluator.
-
-**Canonical party priority (best first):** inbound + target-matched → `queueCall` → answered → longest duration → most recently updated.
-
-**Lifecycle timing:** Answered parties drive `answeredAt`; terminal when lifecycle party is terminal or all parties terminal. `ingestEligible = wouldCreateCallLead && terminal` — webhooks **do not ingest live calls** still in `pending_buffer`.
-
-**Ingest trigger:** `ingestSessionLead` builds `RingCentralQualifiedCall` with `ingestionSource: "webhook"`, `callLogId: null`.
-
-Optional future hardening: `RINGCENTRAL_WEBHOOK_CALL_LOG_VALIDATE` — confirm qualified webhook sessions against Call Log before ingest (config flag exists; off by default).
+The descriptor uses `ingestionSource: "webhook"` and the real Call Log id. Cron uses `call_log_sync`; both stamp `call_log_inbound_target_elapsed_at_least_120s`. Original caller and source come from the qualified parent; ingestion idempotency and business Duplicate Lead classification are unchanged. `RINGCENTRAL_WEBHOOK_CALL_LOG_VALIDATE` remains a legacy diagnostic setting and cannot disable confirmation.
 
 ## 3. Call Log cron (`call-log-sync.service.ts`)
 
@@ -128,8 +71,8 @@ Each run:
 2. **Window:** `resolveWindowStart` — `windowTo` is the winner's claim instant; `windowFrom` is the earlier of the cursor overlap (`lastSyncTo - overlap`, default 15m) and the rolling lookback floor (default 12h), so the floor always wins for a recent cursor. First run uses the initial lookback (default 30m) under the same floor. The 12-hour floor is locked and does **not** shrink with the cron cadence; it guards long calls and RingCentral finalization lag.
 3. **Fetch:** Detailed inbound voice Call Log, one page at a time (250/page, max 20 pages). A `429` is counted into `last_throttled_count` and rethrown — provider retry policy is unchanged. The run collects every page before ingest.
 4. **Order:** Sort collected records by Call Log `startTime` oldest-first (missing `startTime` last). RingCentral pages newest-first; Duplicate Lead classification is earlier-only, so the same cron run must persist the earlier call before the later callback. A later page-fetch failure now happens before any ingest from that run.
-5. **Vet:** `vetRingCentralCallLogRecord` per record — same business rule as evaluator; exposes `rejectionReasons[]`.
-6. **Ingest:** Qualified rows → `RingCentralQualifiedCall` with `ingestionSource: "call_log_sync"`, `qualificationReason: "call_log_inbound_target_answered_over_120s"`, `answeredAt = startTime`, `terminalAt = start + duration`.
+5. **Vet:** `vetRingCentralCallLogRecord` per record — shared final elapsed/completion rule; exposes `rejectionReasons[]`.
+6. **Ingest:** Qualified rows → `RingCentralQualifiedCall` with `ingestionSource: "call_log_sync"`, `qualificationReason: "call_log_inbound_target_elapsed_at_least_120s"`, `answeredAt = null`, `terminalAt = start + precise elapsed`.
 7. **Renew:** The lease is renewed to `now + 5m` before the long pagination/ingest phase and while work remains. Every renewal and terminal write is fenced by `{ key, lease_owner, leased_until: { $gt: now } }`. A zero-document renewal means the lease was lost: the run stops starting new pages/records and writes no success, error, counter, or cursor as the former owner. Already committed effects stay valid and are idempotent on the next rescan.
 8. **Cursor:** `lastSyncFrom`/`lastSyncTo` advance **only** in the fenced full-success update after every page and qualified record completes. Pagination failure, unrecovered throttling, vetting/route failure, adoption/conflict/ledger failure, normal-ingest failure, lease loss, or terminal-write fence loss all leave the cursor untouched, so the next run retries the same range. Re-scans are safe — ingest idempotency skips already-processed sessions/logs.
 
@@ -268,8 +211,8 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 
 - Never create Ring Central Call Leads outside `ingestRingCentralQualifiedCall` (**Call Lead Ingestion** gate).
 - Never select adoption candidates in routes, session aggregation, Call Log sync, clients, or the duplicate guard; `callLeadConvergence.service.ts` owns the exact candidate and canonical adoption/conflict operations.
-- Never bypass `evaluateRingCentralCallCandidate` / `vetRingCentralCallLogRecord` for the 120s **Call Qualification** rule.
-- Webhook ingest requires **qualified + terminal** session; cron ingest uses finalized Call Log duration.
+- Both transports must use `vetRingCentralCallLogRecord` for final **Call Qualification**. Candidate previews cannot authorize creation.
+- Both transports require a finished caller-side Call Log record and 120 seconds total elapsed. Answering is optional; calls and overlapping legs never add duration together.
 - Target-number gating always uses `resolveRingCentralInboundRoute(snapshot, phone, callStartedAt)`. There is no static fallback.
 - **Analytics** reconcile (`analytics-reconcile.service.ts`) is count-level comparison only — **must not** create Call Leads.
 - RingCentral Mongo collections use `_test` suffix unless `RINGCENTRAL_COLLECTION_MODE=production`. // pragma: allowlist secret
@@ -307,7 +250,8 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 ## Tests
 
 - `call-candidate.test.ts` — evaluator, source resolution, webhook normalization
-- `call-session-aggregator.test.ts` — multi-party session decisions
+- `webhook-call-log-qualification.test.ts` — final-record confirmation, optional answering, exact-session scope, precision, ambiguity, and pending recovery
+- `call-session-aggregator.test.ts` — multi-party session decisions, unanswered elapsed time and refusal to combine separate calls
 - `callLeadConvergence.test.ts` / `.replica.test.ts` — exact selection, canonical adoption/conflict, atomicity, rollback, and races
 - `ringcentral-call-lead-ingest.service.test.ts` — adoption-before-duplicate and continued non-adoption behavior
 - `ringcentral-duplicate-guard.test.ts` — adopted-ID, unresolved-candidate, scope, and prior-window exclusions

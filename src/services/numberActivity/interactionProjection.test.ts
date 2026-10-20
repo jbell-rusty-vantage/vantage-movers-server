@@ -45,8 +45,10 @@ const webhook = (existing: InteractionProjection | null, payload: unknown, recei
 const callLog = (existing: InteractionProjection | null, record: Record<string, unknown>, when = now) =>
   fromCallLogRecord(existing, record, directory, SYNTHETIC_ACCOUNT_ID, { now: when });
 
-test("terminal party statuses stay in parity with the qualification evaluator", () => {
-  for (const status of TERMINAL_PARTY_STATUSES) assert.equal(isLikelyTerminalRingCentralStatus(status), true);
+test("party routing transitions do not prove caller completion for Call Qualification", () => {
+  for (const status of TERMINAL_PARTY_STATUSES) {
+    assert.equal(isLikelyTerminalRingCentralStatus(status), !["Gone", "Voicemail"].includes(status));
+  }
   for (const status of ["Setup", "Proceeding", "Answered", "Hold", "Ringing"]) {
     assert.equal(isLikelyTerminalRingCentralStatus(status), false);
     assert.equal((TERMINAL_PARTY_STATUSES as readonly string[]).includes(status), false);

@@ -28,7 +28,7 @@ Canonical bodies live under `docs/knowledge/`.
 
 | Path | Description |
 | --- | --- |
-| [ringcentral-call-lead-qualification.md](knowledge/services/ringcentral-call-lead-qualification.md) | Qualify inbound RingCentral calls (120s) and promote them through shared ingest. |
+| [ringcentral-call-lead-qualification.md](knowledge/services/ringcentral-call-lead-qualification.md) | Qualify one completed inbound RingCentral call (120s total elapsed, answer optional) through shared ingest. |
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
 | [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |

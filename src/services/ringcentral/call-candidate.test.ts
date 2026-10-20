@@ -186,7 +186,7 @@ test("sample answered inbound event is pending immediately and qualifies after e
   );
   assert.equal(immediateDecision.wouldCreateCallLead, false);
   assert.equal(immediateDecision.decisionStatus, "pending_buffer");
-  assert.equal(immediateDecision.decisionReason, "answered_but_under_120_seconds");
+  assert.equal(immediateDecision.decisionReason, "elapsed_under_120_seconds");
 
   const qualifiedDecision = evaluateRingCentralCallCandidate(
     candidate,
@@ -196,7 +196,7 @@ test("sample answered inbound event is pending immediately and qualifies after e
   assert.equal(qualifiedDecision.decisionStatus, "qualified");
   assert.equal(
     qualifiedDecision.decisionReason,
-    "inbound_target_answered_over_120s_webhook_elapsed_best_effort",
+    "inbound_target_elapsed_at_least_120s_webhook_elapsed_best_effort",
   );
 });
 
@@ -222,15 +222,16 @@ test("evaluator rejects inbound calls to unknown numbers", () => {
   assert.equal(decision.decisionReason, "target_number_not_matched");
 });
 
-test("evaluator keeps live inbound target calls candidate until answered", () => {
+test("unanswered live inbound calls accumulate elapsed time", () => {
   const decision = evaluateRingCentralCallCandidate(
     buildCandidate({ answered: false, answeredAt: null }),
+    new Date("2026-06-02T19:59:13.532Z"),
   );
-  assert.equal(decision.decisionStatus, "candidate");
-  assert.equal(decision.decisionReason, "inbound_target_waiting_for_answer");
+  assert.equal(decision.decisionStatus, "pending_buffer");
+  assert.equal(decision.decisionReason, "elapsed_under_120_seconds");
 });
 
-test("evaluator rejects terminal inbound target calls that were not answered", () => {
+test("terminal timing must be present even for missed calls", () => {
   const decision = evaluateRingCentralCallCandidate(
     buildCandidate({
       answered: false,
@@ -240,8 +241,8 @@ test("evaluator rejects terminal inbound target calls that were not answered", (
       missedCall: true,
     }),
   );
-  assert.equal(decision.decisionStatus, "rejected");
-  assert.equal(decision.decisionReason, "not_answered");
+  assert.equal(decision.decisionStatus, "needs_review");
+  assert.equal(decision.decisionReason, "terminal_missing_terminal_at");
 });
 
 test("evaluator distinguishes live and terminal answered calls under 120 seconds", () => {
@@ -282,12 +283,12 @@ test("evaluator qualifies inbound target calls answered over 120 seconds", () =>
   assert.equal(decision.leadPreview?.estimatedDurationSeconds, 121);
 });
 
-test("evaluator rejects missed calls without answered evidence", () => {
+test("missed calls over the elapsed threshold can qualify without answering", () => {
   const decision = evaluateRingCentralCallCandidate(
-    buildCandidate({ answered: false, answeredAt: null, missedCall: true }),
+    buildCandidate({ answered: false, answeredAt: null, missedCall: true, terminal: true, terminalAt: new Date("2026-06-02T20:00:43.532Z") }),
   );
-  assert.equal(decision.decisionStatus, "rejected");
-  assert.equal(decision.decisionReason, "not_answered");
+  assert.equal(decision.decisionStatus, "qualified");
+  assert.equal(decision.leadPreview?.answeredAt, null);
 });
 
 function buildCandidate(
@@ -299,7 +300,7 @@ function buildCandidate(
     telephonySessionId: "s-a785c4a03ca73z19e89ea934az3e86a110000",
     sessionId: "2206229126023",
     partyId: "p-a785c4a03ca73z19e89ea934az3e86a110000-3",
-    firstSeenAt: now,
+    firstSeenAt: overrides.answeredAt ?? now,
     lastSeenAt: now,
     lastEventTime: now,
     lastSequence: 13,

@@ -107,7 +107,7 @@ The network POST lands on `mp~netlogonret`. The user POST lands on `mp~loginret`
 | `RINGCENTRAL_CREATE_CALL_LEADS` | `false` | no | Insert real `call_leads`. |
 | `RINGCENTRAL_SHADOW_CALL_LEADS` | `false` | no | Write the shadow collection instead. |
 | `RINGCENTRAL_GRANOT_ADOPTION_ENABLED` | `false` | no | Adopt qualified calls onto Granot-created Call Leads. |
-| `RINGCENTRAL_WEBHOOK_CALL_LOG_VALIDATE` | `false` | no | Confirm webhook sessions against the Call Log. |
+| `RINGCENTRAL_WEBHOOK_CALL_LOG_VALIDATE` | `false` | no | Legacy diagnostic flag; finished Call Log confirmation is mandatory regardless of its value. |
 | `RINGCENTRAL_COLLECTION_MODE` | `test` | no | `production` or test-suffixed collections. |
 | `RINGCENTRAL_WEBHOOK_FILTER_MODE` | `account` | no | `per-number` or `account`. |
 | `RINGCENTRAL_DUPLICATE_WINDOW_HOURS` | `24` | no | Duplicate Lead window. |

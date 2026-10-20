@@ -19,10 +19,8 @@ import {
   getRingCentralRuntimeConfig,
   isRingCentralWebhookEnabled,
 } from "../services/ringcentral/ringcentral-config";
-import {
-  ingestRingCentralQualifiedCall,
-  type RingCentralQualifiedCall,
-} from "../services/ringcentral/ringcentral-call-lead-ingest.service";
+import { qualifyWebhookCallFromCallLog } from "../services/ringcentral/webhook-call-log-qualification";
+import { CALL_LEAD_MINIMUM_ELAPSED_SECONDS } from "../services/ringcentral/call-qualification";
 import type { NormalizedRingCentralPartyEvent } from "../services/ringcentral/call-candidate-types";
 import {
   loadRingCentralRouteSnapshot,
@@ -392,7 +390,7 @@ type SessionUpdateResponse = {
 /**
  * For every telephony session touched by this webhook, rebuild the
  * session-level aggregate, persist decision transitions, and — when the
- * session is qualified AND terminal — hand it to the shared ingest service.
+ * a mapped call has an ending transition — confirm its final Call Log record.
  * The ingest service enforces idempotency + duplicate rules and respects the
  * create/shadow/dry-run env posture, so this is safe to call repeatedly.
  */
@@ -416,7 +414,10 @@ async function processSessionsAndIngest(
     }
 
     let ingestAction: string | null = null;
-    if (result.document.ingestEligible) {
+    const callAgeMs = Date.now() - (result.document.callStartedAt ?? result.document.firstSeenAt).getTime();
+    if (result.document.targetMatched && callAgeMs >= CALL_LEAD_MINIMUM_ELAPSED_SECONDS * 1000 && normalizedPartyEvents.some((event) =>
+      event.telephonySessionId === telephonySessionId &&
+      ["Disconnected", "Gone", "Finished", "Voicemail", "Missed", "NoCall"].includes(event.statusCode ?? ""))) {
       ingestAction = await ingestSessionLead(result.document, log);
     }
 
@@ -476,42 +477,16 @@ async function ingestSessionLead(
   document: RingCentralCallSessionDocument,
   log: Logger,
 ): Promise<string | null> {
-  const preview = document.leadPreview;
-  if (!preview) {
-    return null;
-  }
-
-  const qualifiedCall: RingCentralQualifiedCall = {
-    ingestionSource: "webhook",
-    telephonySessionId: preview.telephonySessionId,
-    sessionId: preview.sessionId,
-    partyId: preview.partyId,
-    callLogId: null,
-    sourceCompany: preview.sourceCompany,
-    sourceLabel: preview.sourceLabel,
-    routeResolution: preview.routeResolution,
-    callerPhoneNumber: preview.callerPhoneNumber,
-    callerName: preview.callerName,
-    targetPhoneNumber: preview.targetPhoneNumber,
-    targetName: preview.targetName,
-    answeredAt: preview.answeredAt,
-    terminalAt: preview.terminalAt,
-    startTime: document.callStartedAt ?? preview.answeredAt,
-    durationSeconds: preview.estimatedDurationSeconds,
-    qualificationReason: preview.qualificationReason,
-  };
-
   try {
-    const result = await ingestRingCentralQualifiedCall(qualifiedCall);
-    return result.action;
+    return await qualifyWebhookCallFromCallLog(document.telephonySessionId);
   } catch (error) {
     log.error({
       err: error,
       msg: "ringcentral.webhook.ingest_failed",
       workflow: "ringcentral_webhook_ingest",
       telephonySessionId: document.telephonySessionId,
-      sourceCompany: preview.sourceCompany,
-      durationSeconds: preview.estimatedDurationSeconds,
+      sourceCompany: document.sourceCompany,
+      durationSeconds: document.estimatedDurationSeconds,
     });
     return "ingest_failed";
   }

@@ -139,10 +139,10 @@ export type CandidateDecision = {
     telephonySessionId: string;
     sessionId: string | null;
     partyId: string;
-    answeredAt: Date;
+    answeredAt: Date | null;
     terminalAt: Date | null;
     estimatedDurationSeconds: number;
-    qualificationReason: "inbound_target_answered_over_120s";
+    qualificationReason: "inbound_target_elapsed_at_least_120s";
   };
 };
 

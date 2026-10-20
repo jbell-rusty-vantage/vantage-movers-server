@@ -37,6 +37,8 @@ const vetRingCentralCallLogRecord = (record: unknown) =>
   vetWithSnapshot(
     {
       startTime: "2026-06-29T18:00:00.000Z",
+      finished: true,
+      type: "Voice",
       ...(record as Record<string, unknown>),
     },
     snapshot,
@@ -128,7 +130,7 @@ test("rejects a call to an unmapped number", () => {
   assert.ok(vet.rejectionReasons.includes("target_number_not_matched"));
 });
 
-test("rejects a missed (unanswered) call", () => {
+test("rejects a zero-duration missed call", () => {
   const vet = vetRingCentralCallLogRecord({
     id: "cl-5",
     direction: "Inbound",
@@ -139,7 +141,74 @@ test("rejects a missed (unanswered) call", () => {
   });
 
   assert.equal(vet.qualifies, false);
-  assert.ok(vet.rejectionReasons.includes("not_answered"));
+  assert.ok(vet.rejectionReasons.includes("under_120_seconds"));
+});
+
+const inbound = {
+  id: "one-call", telephonySessionId: "one-session", direction: "Inbound",
+  result: "Missed", to: { phoneNumber: "+18883083612" },
+  from: { phoneNumber: "+13055554444" },
+};
+
+test("120 seconds qualifies without any answer; precise milliseconds win over rounding", () => {
+  for (const result of ["Missed", "Voicemail", "Accepted"]) {
+    assert.equal(vetRingCentralCallLogRecord({ ...inbound, result, durationMs: 120000 }).qualifies, true);
+  }
+  const short = vetRingCentralCallLogRecord({ ...inbound, duration: 120, durationMs: 119999 });
+  assert.equal(short.qualifies, false);
+  assert.equal(short.durationSeconds, 119.999);
+});
+
+test("never borrows duration from parallel legs or a different session", () => {
+  const vet = vetRingCentralCallLogRecord({ ...inbound, durationMs: 60000, legs: [
+    { duration: 600, result: "Call connected", telephonySessionId: "other-call" },
+    { duration: 60, result: "Accepted" },
+  ] });
+  assert.equal(vet.qualifies, false);
+  assert.equal(vet.durationSeconds, 60);
+});
+
+test("same caller's separate short calls never combine to qualify", () => {
+  for (const id of ["first-call", "second-call"]) {
+    assert.equal(vetRingCentralCallLogRecord({ ...inbound, id, durationMs: 70000 }).qualifies, false);
+  }
+});
+
+test("pending and missing completion evidence defer even an Accepted call over two minutes", () => {
+  for (const finished of [false, undefined, "true"]) {
+    const vet = vetRingCentralCallLogRecord({ ...inbound, result: "Accepted", finished, durationMs: 300000 });
+    assert.equal(vet.qualifies, false);
+    assert.ok(vet.rejectionReasons.includes("call_completion_unconfirmed"));
+  }
+});
+
+test("final provider rewrite can qualify the same previously pending record", () => {
+  assert.equal(vetRingCentralCallLogRecord({ ...inbound, finished: false, durationMs: 20000 }).qualifies, false);
+  assert.equal(vetRingCentralCallLogRecord({ ...inbound, finished: true, durationMs: 150000 }).qualifies, true);
+});
+
+test("rounded 120 seconds without precision stays unproven; larger durations may qualify", () => {
+  assert.equal(vetRingCentralCallLogRecord({ ...inbound, duration: 120 }).qualifies, false);
+  assert.equal(vetRingCentralCallLogRecord({ ...inbound, duration: 121 }).qualifies, true);
+});
+
+test("does not borrow a route or caller from another call's legs", () => {
+  const vet = vetRingCentralCallLogRecord({ ...inbound, durationMs: 180000,
+    to: { phoneNumber: "+19998887777" }, legs: [
+      { direction: "Inbound", from: { phoneNumber: "+13055559999" },
+        to: inbound.to, telephonySessionId: "different-session" },
+    ] });
+  assert.equal(vet.qualifies, false);
+  assert.ok(vet.rejectionReasons.includes("target_number_not_matched"));
+});
+
+test("missing parent duration, start, identity, or non-finite duration cannot qualify", () => {
+  for (const overrides of [
+    { duration: undefined, legs: [{ duration: 300 }] },
+    { startTime: undefined, durationMs: 300000 },
+    { id: undefined, telephonySessionId: undefined, durationMs: 300000 },
+    { durationMs: Infinity, duration: 300 },
+  ]) assert.equal(vetRingCentralCallLogRecord({ ...inbound, ...overrides }).qualifies, false);
 });
 
 test("matches target number across call legs and picks the inbound caller", () => {

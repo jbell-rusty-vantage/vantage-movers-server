@@ -1,5 +1,5 @@
 import {
-  estimateAnsweredDurationSeconds,
+  estimateCallElapsedSeconds,
   evaluateRingCentralCallCandidate,
 } from "./call-candidate-evaluator";
 import type { RingCentralCallCandidateDocument } from "./call-candidate-types";
@@ -20,9 +20,8 @@ import type {
  *   4. longest estimated answered duration
  *   5. most recently updated
  *
- * Source/target identity and call lifecycle timing are intentionally selected
- * separately. Queue legs can disconnect as soon as an agent answers, so timing
- * prefers the answered party and only falls back to every-party terminal state.
+ * Source identity and elapsed timing are separate. These are diagnostic
+ * previews only; the finished caller-side Call Log authorizes actual ingestion.
  */
 export function aggregateRingCentralCallSession(
   parties: RingCentralCallCandidateDocument[],
@@ -33,6 +32,9 @@ export function aggregateRingCentralCallSession(
   }
 
   const telephonySessionId = parties[0]!.telephonySessionId;
+  if (parties.some((party) => party.telephonySessionId !== telephonySessionId)) {
+    throw new Error("Cannot aggregate different RingCentral call sessions");
+  }
   const canonical = selectCanonicalParty(parties);
 
   const answeredParties = parties.filter((party) => party.answered);
@@ -45,13 +47,11 @@ export function aggregateRingCentralCallSession(
   );
 
   const terminalParties = parties.filter((party) => party.terminal);
-  // A session is "over" when the answered lifecycle party is terminal, or when
-  // every observed party has reached a terminal status.
-  const terminal =
-    lifecycleParty?.terminal === true || parties.every((party) => party.terminal);
+  // A former queue/answering party ending must not end a transferred live party.
+  // Even all observed parties ending requires final Call Log confirmation.
+  const terminal = parties.every((party) => party.terminal);
   const terminalAt = terminal
-    ? lifecycleParty?.terminalAt ??
-      latestDate(
+    ? latestDate(
         terminalParties
           .map((party) => party.terminalAt)
           .filter((value): value is Date => value instanceof Date),
@@ -67,14 +67,14 @@ export function aggregateRingCentralCallSession(
     parties.find((party) => party.targetMatched && party.sourceCompany) ?? canonical;
   const targetMatched = parties.some((party) => party.targetMatched);
 
-  const estimatedDurationSeconds = estimateAnsweredDurationSeconds(
-    answeredAt,
+  const estimatedDurationSeconds = estimateCallElapsedSeconds(
+    earliestDate(parties.map((party) => party.callStartedAt ?? party.firstSeenAt)),
     terminalAt,
     now,
   );
 
-  // Synthetic candidate fed to the shared evaluator so webhook + cron + tests
-  // all share the same 120s/answered/inbound/target rules.
+  // Synthetic candidate previews the same elapsed threshold. The route must
+  // still confirm the finished caller record before invoking shared ingest.
   const syntheticCandidate: RingCentralCallCandidateDocument = {
     provider: "ringcentral",
     telephonySessionId,
@@ -83,11 +83,7 @@ export function aggregateRingCentralCallSession(
     firstSeenAt: canonical.firstSeenAt,
     lastSeenAt: canonical.lastSeenAt,
     lastEventTime: canonical.lastEventTime,
-    callStartedAt: earliestDate(
-      parties
-        .map((party) => party.callStartedAt ?? null)
-        .filter((value): value is Date => value instanceof Date),
-    ),
+    callStartedAt: earliestDate(parties.map((party) => party.callStartedAt ?? party.firstSeenAt)),
     lastSequence: canonical.lastSequence,
     direction: canonical.direction,
     statusCode: canonical.statusCode,

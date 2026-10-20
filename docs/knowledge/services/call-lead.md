@@ -47,6 +47,8 @@ generated:
 | `beginRingCentralCallLeadIngestion` | Default RingCentral ingest write + replica tests | passed in by ingest | same snapshot as the injectable adapter |
 | `createLeadFromGranot` | Granot lifecycle processor only, after live `create_if_missing` authorization and no eligible match ([`processor.md`](../granot-lifecycle/processor.md)). Call may mint on `lead_created` only. Not this file. | `false`; sparse Job-only creation is allowed | exact active Source Granularity rate snapshot |
 
+**Owner amendment, October 20, 2026:** RingCentral qualification counts one completed caller session from initial arrival to end (at least 120 seconds), whether answered or not. Webhook and cron both require the final caller-side Detailed Call Log; ringing/queue/hold/voicemail count, and parallel legs or separate calls never add together. Duplicate classification and Granot contact preservation are unchanged.
+
 **Call Qualification** + ingest: [`ringcentral-call-lead-qualification.md`](./ringcentral-call-lead-qualification.md). Duplicate classification: `ringcentral-duplicate-guard.ts`; promotion gate: `ringcentral-call-lead-ingest.service.ts`.
 
 ## Inbound Granot create and fences

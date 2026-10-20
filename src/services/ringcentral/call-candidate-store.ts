@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { getMongoDatabaseName } from "../../config/domain";
 import { connectMongo } from "../../db";
 import {
-  estimateAnsweredDurationSeconds,
+  estimateCallElapsedSeconds,
   evaluateRingCentralCallCandidate,
   isLikelyTerminalRingCentralStatus,
 } from "./call-candidate-evaluator";
@@ -42,8 +42,8 @@ export async function upsertRingCentralCallCandidateFromEvent(
   const decision = evaluateRingCentralCallCandidate(candidate, now);
   const candidateWithDecision: RingCentralCallCandidateDocument = {
     ...candidate,
-    estimatedDurationSeconds: estimateAnsweredDurationSeconds(
-      candidate.answeredAt,
+    estimatedDurationSeconds: estimateCallElapsedSeconds(
+      candidate.callStartedAt ?? candidate.firstSeenAt,
       candidate.terminalAt,
       now,
     ),

@@ -1,11 +1,12 @@
 import type { RingCentralRouteResolution } from "../operationsRegistry";
 
-export const CALL_LEAD_MINIMUM_ANSWERED_SECONDS = 120;
+export const CALL_LEAD_MINIMUM_ELAPSED_SECONDS = 120;
+/** Compatibility for existing analytics/probe imports; qualification counts total elapsed time. */
+export const CALL_LEAD_MINIMUM_ANSWERED_SECONDS = CALL_LEAD_MINIMUM_ELAPSED_SECONDS;
 
 export type RingCentralQualificationFacts = {
   direction: string | null;
   routeResolution: RingCentralRouteResolution | null;
-  answered: boolean;
   durationSeconds: number | null;
   callerPhoneNumber: string | null;
 };
@@ -21,10 +22,10 @@ export function qualifyRingCentralCall(
   const rejectionReasons: string[] = [];
   if (facts.direction !== "Inbound") rejectionReasons.push("not_inbound");
   if (!facts.routeResolution) rejectionReasons.push("target_number_not_matched");
-  if (!facts.answered) rejectionReasons.push("not_answered");
   if (
     facts.durationSeconds === null ||
-    facts.durationSeconds < CALL_LEAD_MINIMUM_ANSWERED_SECONDS
+    !Number.isFinite(facts.durationSeconds) ||
+    facts.durationSeconds < CALL_LEAD_MINIMUM_ELAPSED_SECONDS
   ) {
     rejectionReasons.push("under_120_seconds");
   }

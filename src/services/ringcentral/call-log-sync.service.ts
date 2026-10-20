@@ -1,6 +1,6 @@
 import { logger } from "../../logger";
 import { ringCentralRequest, RingCentralApiError } from "./client";
-import { vetRingCentralCallLogRecord } from "./call-log-vetting";
+import { qualifiedCallFromCallLog, vetRingCentralCallLogRecord } from "./call-log-vetting";
 import {
   loadRingCentralRouteSnapshot,
   recordRingCentralRouteObservation,
@@ -480,28 +480,7 @@ async function processRecord(
   }
   summary.qualifiedRecords += 1;
 
-  const qualifiedCall: RingCentralQualifiedCall = {
-    ingestionSource: "call_log_sync",
-    telephonySessionId: vet.telephonySessionId,
-    sessionId: vet.sessionId,
-    partyId: null,
-    callLogId: vet.callLogId,
-    sourceCompany: vet.sourceCompany,
-    sourceLabel: vet.sourceLabel,
-    routeResolution: vet.routeResolution,
-    callerPhoneNumber: vet.callerPhoneNumber,
-    callerName: vet.callerName,
-    targetPhoneNumber: vet.targetPhoneNumber ?? "",
-    targetName: vet.targetName,
-    answeredAt: vet.startTime,
-    terminalAt:
-      vet.startTime && vet.durationSeconds !== null
-        ? new Date(vet.startTime.getTime() + vet.durationSeconds * 1000)
-        : null,
-    startTime: vet.startTime,
-    durationSeconds: vet.durationSeconds ?? 0,
-    qualificationReason: "call_log_inbound_target_answered_over_120s",
-  };
+  const qualifiedCall = qualifiedCallFromCallLog(vet, "call_log_sync");
 
   const result = await deps.ingestCall(qualifiedCall, now);
   summary.ingestActions[result.action] += 1;

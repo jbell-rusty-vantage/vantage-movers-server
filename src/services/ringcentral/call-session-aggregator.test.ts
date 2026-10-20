@@ -183,3 +183,29 @@ test("an outbound-only session is not a lead", () => {
   assert.equal(document.decisionStatus, "rejected");
   assert.equal(document.decisionReason, "not_inbound");
 });
+
+test("a queue or former answering party ending does not end a still-live session", () => {
+  const now = new Date(ANSWERED_AT.getTime() + 150000);
+  const { document } = aggregateRingCentralCallSession([
+    party({ partyId: "queue", queueCall: true, terminal: true,
+      terminalAt: new Date(ANSWERED_AT.getTime() + 130000) }),
+    party({ partyId: "transferred-agent", targetMatched: false, terminal: false }),
+  ], now);
+  assert.equal(document.terminal, false);
+  assert.equal(document.ingestEligible, false);
+});
+
+test("unanswered session counts initial ringing and completes at exactly 120 seconds", () => {
+  const { document } = aggregateRingCentralCallSession([
+    party({ answered: false, answeredAt: null, missedCall: true, terminal: true,
+      terminalStatusCode: "Disconnected", terminalAt: new Date(ANSWERED_AT.getTime() + 120000) }),
+  ]);
+  assert.equal(document.estimatedDurationSeconds, 120);
+  assert.equal(document.wouldCreateCallLead, true);
+});
+
+test("session aggregation refuses to combine two calls from the same caller", () => {
+  assert.throws(() => aggregateRingCentralCallSession([
+    party(), party({ telephonySessionId: "different-call" }),
+  ]), /different RingCentral call sessions/);
+});

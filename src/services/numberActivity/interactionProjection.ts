@@ -43,7 +43,7 @@ import type {
  *   `provisional`; webhook projection never sets the state.
  */
 
-/** Parity set with the qualification evaluator; kept local because `call-candidate-*` is a forbidden import. */
+/** Activity party transitions, not billing qualification. Call Qualification requires a finished caller Call Log. */
 export const TERMINAL_PARTY_STATUSES = Object.freeze([
   "Disconnected",
   "Gone",

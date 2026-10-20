@@ -3,7 +3,7 @@ import type {
   RingCentralCallCandidateDocument,
 } from "./call-candidate-types";
 import {
-  CALL_LEAD_MINIMUM_ANSWERED_SECONDS,
+  CALL_LEAD_MINIMUM_ELAPSED_SECONDS,
   qualifyRingCentralCall,
 } from "./call-qualification";
 
@@ -16,9 +16,7 @@ export function isLikelyTerminalRingCentralStatus(
 ): boolean {
   return [
     "Disconnected",
-    "Gone",
     "Finished",
-    "Voicemail",
     "Missed",
     "NoCall",
   ].includes(statusCode ?? "");
@@ -28,8 +26,8 @@ export function evaluateRingCentralCallCandidate(
   candidate: RingCentralCallCandidateDocument,
   now = new Date(),
 ): CandidateDecision {
-  const estimatedDurationSeconds = estimateAnsweredDurationSeconds(
-    candidate.answeredAt,
+  const estimatedDurationSeconds = estimateCallElapsedSeconds(
+    candidate.callStartedAt ?? candidate.firstSeenAt,
     candidate.terminalAt,
     now,
   );
@@ -56,39 +54,23 @@ export function evaluateRingCentralCallCandidate(
     };
   }
 
-  if (!candidate.answered) {
-    if (candidate.terminal || candidate.missedCall === true) {
-      return reject("not_answered");
-    }
-    return {
-      wouldCreateCallLead: false,
-      decisionStatus: "candidate",
-      decisionReason: "inbound_target_waiting_for_answer",
-      leadPreview: null,
-    };
-  }
-
-  if (candidate.missedCall === true && !candidate.answeredAt) {
-    return reject("not_answered");
-  }
-
-  if (!candidate.answeredAt) {
+  if (candidate.terminal && !candidate.terminalAt) {
     return {
       wouldCreateCallLead: false,
       decisionStatus: "needs_review",
-      decisionReason: "answered_missing_answered_at",
+      decisionReason: "terminal_missing_terminal_at",
       leadPreview: null,
     };
   }
 
-  if (estimatedDurationSeconds < CALL_LEAD_MINIMUM_ANSWERED_SECONDS) {
+  if (estimatedDurationSeconds < CALL_LEAD_MINIMUM_ELAPSED_SECONDS) {
     if (candidate.terminal) {
       return reject("under_120_seconds");
     }
     return {
       wouldCreateCallLead: false,
       decisionStatus: "pending_buffer",
-      decisionReason: "answered_but_under_120_seconds",
+      decisionReason: "elapsed_under_120_seconds",
       leadPreview: null,
     };
   }
@@ -96,7 +78,6 @@ export function evaluateRingCentralCallCandidate(
   const sharedQualification = qualifyRingCentralCall({
     direction: candidate.direction,
     routeResolution: candidate.routeResolution,
-    answered: candidate.answered,
     durationSeconds: estimatedDurationSeconds,
     callerPhoneNumber: candidate.normalizedFromPhoneNumber,
   });
@@ -108,8 +89,8 @@ export function evaluateRingCentralCallCandidate(
     wouldCreateCallLead: true,
     decisionStatus: "qualified",
     decisionReason: candidate.terminalAt
-      ? "inbound_target_answered_over_120s"
-      : "inbound_target_answered_over_120s_webhook_elapsed_best_effort",
+      ? "inbound_target_elapsed_at_least_120s"
+      : "inbound_target_elapsed_at_least_120s_webhook_elapsed_best_effort",
     leadPreview: {
       provider: "ringcentral",
       sourceCompany: candidate.sourceCompany,
@@ -126,23 +107,26 @@ export function evaluateRingCentralCallCandidate(
       answeredAt: candidate.answeredAt,
       terminalAt: candidate.terminalAt,
       estimatedDurationSeconds,
-      qualificationReason: "inbound_target_answered_over_120s",
+      qualificationReason: "inbound_target_elapsed_at_least_120s",
     },
   };
 }
 
-export function estimateAnsweredDurationSeconds(
-  answeredAt: Date | null,
+export function estimateCallElapsedSeconds(
+  startedAt: Date | null,
   terminalAt: Date | null,
   now: Date,
 ): number {
-  if (!answeredAt) {
+  if (!startedAt) {
     return 0;
   }
 
   const end = terminalAt ?? now;
-  return Math.max(0, Math.floor((end.getTime() - answeredAt.getTime()) / 1000));
+  return Math.max(0, Math.floor((end.getTime() - startedAt.getTime()) / 1000));
 }
+
+/** Compatibility for local diagnostic scripts. */
+export const estimateAnsweredDurationSeconds = estimateCallElapsedSeconds;
 
 function reject(decisionReason: string): CandidateDecision {
   return {

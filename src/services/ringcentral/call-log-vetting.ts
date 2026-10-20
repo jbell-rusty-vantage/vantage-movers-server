@@ -4,8 +4,9 @@ import {
   type RingCentralRouteSnapshot,
 } from "../operationsRegistry";
 import { normalizePhoneNumberToE164Like } from "./phone-normalization";
+import type { RingCentralQualifiedCall } from "./ringcentral-call-lead-ingest.service";
 import {
-  CALL_LEAD_MINIMUM_ANSWERED_SECONDS,
+  CALL_LEAD_MINIMUM_ELAPSED_SECONDS,
   qualifyRingCentralCall,
 } from "./call-qualification";
 
@@ -16,8 +17,8 @@ import {
  * strategies agree on what a lead is:
  *   - Inbound
  *   - `to.phoneNumber` (on the record or any leg) matches a mapped toll-free
- *   - Answered (a connected/completed result on the record or a leg)
- *   - Answered duration >= 120s
+ *   - Explicitly finished caller-side record (never a partial queue snapshot)
+ *   - Parent call elapsed duration >= 120s; answering is not required
  *   - Caller phone present
  *
  * RingCentral exposes no webhook for Call Log, so this is consumed by the
@@ -65,27 +66,42 @@ export function vetRingCentralCallLogRecord(
   );
 
   const startTime = valueToDate(root?.startTime);
-  const target = findTarget(allParts, snapshot, startTime);
+  const from = asRecord(root?.from);
+  const caller = {
+    phoneNumber: normalizePhoneNumberToE164Like(valueToString(from?.phoneNumber)),
+    name: valueToString(from?.name),
+  };
+  const target = findTarget(allParts.filter((part) =>
+    part === root || (
+      valueToString(part.direction) === "Inbound" &&
+      normalizePhoneNumberToE164Like(valueToString(asRecord(part.from)?.phoneNumber)) === caller.phoneNumber &&
+      (!part.telephonySessionId || part.telephonySessionId === root?.telephonySessionId)
+    )), snapshot, startTime);
   const targetPhoneNumber = target.phoneNumber;
   const resolution = target.resolution;
   const direction = valueToString(root?.direction);
-  const durationSeconds = maxNumber(
-    valueToNumber(root?.duration),
-    Math.floor((valueToNumber(root?.durationMs) ?? 0) / 1000) || null,
-    ...legs.map((leg) => valueToNumber(leg?.duration)),
-  );
+  // A parent record spans one caller's call. Parallel/transfer legs must never
+  // supply its duration. Prefer precise milliseconds over rounded seconds.
+  const durationSeconds = readParentElapsedSeconds(root);
   const answered = isAnswered(root) || legs.some(isAnswered);
-  const caller = findCaller(root, legs);
   const overMinimumDuration =
-    durationSeconds !== null && durationSeconds >= CALL_LEAD_MINIMUM_ANSWERED_SECONDS;
+    durationSeconds !== null && durationSeconds >= CALL_LEAD_MINIMUM_ELAPSED_SECONDS;
 
   const { rejectionReasons } = qualifyRingCentralCall({
     direction,
     routeResolution: resolution,
-    answered,
     durationSeconds,
     callerPhoneNumber: caller.phoneNumber,
   });
+  // Call Log may expose and later rewrite a still-running queue call. Absence
+  // of the optional finished marker is unknown, not proof of completion. No
+  // processed-call ledger is written until qualification succeeds; cron retries.
+  if (root?.finished !== true) rejectionReasons.push("call_completion_unconfirmed");
+  if (root?.type !== "Voice") rejectionReasons.push("not_voice");
+  if (!startTime) rejectionReasons.push("missing_call_start_time");
+  if (!valueToString(root?.id) && !valueToString(root?.telephonySessionId)) {
+    rejectionReasons.push("missing_call_identity");
+  }
 
   return {
     callLogId: valueToString(root?.id),
@@ -110,12 +126,52 @@ export function vetRingCentralCallLogRecord(
   };
 }
 
+function readParentElapsedSeconds(root: Record<string, unknown> | null): number | null {
+  if (root?.durationMs != null) {
+    const milliseconds = valueToNumber(root.durationMs);
+    return milliseconds === null ? null : milliseconds / 1000;
+  }
+  const seconds = valueToNumber(root?.duration);
+  // Rounded 120 may really be 119.5 seconds. Wait for precise timing evidence.
+  return seconds === CALL_LEAD_MINIMUM_ELAPSED_SECONDS ? null : seconds;
+}
+
 const EMPTY_ROUTE_SNAPSHOT: RingCentralRouteSnapshot = Object.freeze({
   version: 1,
   built_at: new Date(0),
   max_age_ms: 1,
   entries_by_phone: new Map(),
 });
+
+/** Both transports hand precisely the same final caller facts to shared ingest. */
+export function qualifiedCallFromCallLog(
+  vet: RingCentralCallLogVetResult,
+  ingestionSource: RingCentralQualifiedCall["ingestionSource"],
+): RingCentralQualifiedCall {
+  if (!vet.qualifies || !vet.startTime || vet.durationSeconds === null ||
+      !vet.routeResolution || !vet.sourceCompany || !vet.callerPhoneNumber) {
+    throw new Error("Cannot ingest an unqualified RingCentral call");
+  }
+  return {
+    ingestionSource,
+    telephonySessionId: vet.telephonySessionId,
+    sessionId: vet.sessionId,
+    partyId: null,
+    callLogId: vet.callLogId,
+    sourceCompany: vet.sourceCompany,
+    sourceLabel: vet.sourceLabel,
+    routeResolution: vet.routeResolution,
+    callerPhoneNumber: vet.callerPhoneNumber,
+    callerName: vet.callerName,
+    targetPhoneNumber: vet.targetPhoneNumber ?? "",
+    targetName: vet.targetName,
+    answeredAt: null, // Call Log startTime is not an answer timestamp.
+    terminalAt: new Date(vet.startTime.getTime() + vet.durationSeconds * 1000),
+    startTime: vet.startTime,
+    durationSeconds: vet.durationSeconds,
+    qualificationReason: "call_log_inbound_target_elapsed_at_least_120s",
+  };
+}
 
 function findTarget(
   parts: Record<string, unknown>[],
@@ -154,31 +210,6 @@ function findTargetName(
     }
   }
   return null;
-}
-
-function findCaller(
-  record: Record<string, unknown> | null,
-  legs: Record<string, unknown>[],
-): { phoneNumber: string | null; name: string | null } {
-  const parts = [record, ...legs].filter(
-    (part): part is Record<string, unknown> => part !== null,
-  );
-  const inboundParts = parts.filter(
-    (part) => valueToString(part.direction) === "Inbound",
-  );
-  for (const part of inboundParts) {
-    const from = asRecord(part.from);
-    const phoneNumber = normalizePhoneNumberToE164Like(valueToString(from?.phoneNumber));
-    if (phoneNumber) {
-      return { phoneNumber, name: valueToString(from?.name) };
-    }
-  }
-
-  const recordFrom = asRecord(record?.from);
-  return {
-    phoneNumber: normalizePhoneNumberToE164Like(valueToString(recordFrom?.phoneNumber)),
-    name: valueToString(recordFrom?.name),
-  };
 }
 
 function isAnswered(recordOrLeg: Record<string, unknown> | null): boolean {
@@ -231,12 +262,4 @@ function valueToDate(value: unknown): Date | null {
   }
   const date = new Date(stringValue);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function maxNumber(...values: Array<number | null>): number | null {
-  const numbers = values.filter((value): value is number => value !== null);
-  if (numbers.length === 0) {
-    return null;
-  }
-  return Math.max(...numbers);
 }
