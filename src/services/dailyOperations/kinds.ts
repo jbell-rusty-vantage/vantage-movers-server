@@ -111,27 +111,27 @@ export const DAILY_OPERATIONS_KIND_CATALOG = {
   "granot.minted": {
     lane: "granot",
     title: "Created a Lead from Granot",
-    metricTouches: ["decisions.minted"],
+    metricTouches: [],
   },
   "granot.linked": {
     lane: "granot",
     title: "Linked to existing Lead",
-    metricTouches: ["decisions.linked"],
+    metricTouches: [],
   },
   "granot.observed": {
     lane: "granot",
     title: "Observing only",
-    metricTouches: ["decisions.observed"],
+    metricTouches: [],
   },
   "granot.pending_match": {
     lane: "granot",
     title: "Waiting to match",
-    metricTouches: ["decisions.pending_match"],
+    metricTouches: [],
   },
   "granot.unmatched": {
     lane: "granot",
     title: "No matching Lead",
-    metricTouches: ["decisions.unmatched"],
+    metricTouches: [],
   },
   "intake.opened": {
     lane: "intake",

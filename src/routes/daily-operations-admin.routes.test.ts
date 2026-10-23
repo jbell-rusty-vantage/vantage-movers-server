@@ -7,6 +7,7 @@ import { computeAdminActorSignature, signAdminActorPayload } from "../services/o
 import { buildCanonicalRepActorPayload } from "../services/operationsRegistry/trustedActorCanonical";
 import { SOURCE_COMPANIES } from "../config/domain/sources";
 import { createDailyOperationsAdminRouter } from "./daily-operations-admin.routes";
+import { DailyOperationsReadViewUnavailable } from "../services/dailyOperations/readViewCache";
 import { createDailyOperationsCronRouter } from "./daily-operations-cron.routes";
 
 const API_SECRET = "synthetic-daily-ops-api-secret";
@@ -83,6 +84,8 @@ const SNAPSHOT_FIXTURE = {
 };
 
 let lastEventsQuery: Record<string, unknown> | null = null;
+let boardCalls = 0;
+let boardUnavailable = false;
 let rebuildCalls = 0;
 let closeCalls = 0;
 let liveNow = Date.parse("2026-09-06T18:14:00.000Z");
@@ -103,6 +106,15 @@ app.use(
   createDailyOperationsAdminRouter({
     connect: async () => undefined,
     getSnapshot: async () => SNAPSHOT_FIXTURE,
+    getLeadSpend: async () => ({ marker: "cached-spend-fixture" }) as never,
+    getGoalSummary: async () => ({ marker: "cached-goal-fixture" }) as never,
+    getBoard: async () => {
+      boardCalls += 1;
+      if (boardUnavailable) throw new DailyOperationsReadViewUnavailable();
+      return { schema_version: 2, day: SNAPSHOT_FIXTURE.today, timezone: SNAPSHOT_FIXTURE.timezone, revision: 1,
+        generated_at: SNAPSHOT_FIXTURE.generated_at, freshness: "fresh", poll_after_ms: 60000,
+        snapshot: SNAPSHOT_FIXTURE, events: [], milestones: [], truncation: { events: false, milestones: false } };
+    },
     listEvents: async (query) => {
       lastEventsQuery = query as Record<string, unknown>;
       return {
@@ -217,6 +229,8 @@ after(async () => {
 
 afterEach(() => {
   lastEventsQuery = null;
+  boardCalls = 0;
+  boardUnavailable = false;
   rebuildCalls = 0;
   closeCalls = 0;
   process.env.VANTAGE_API_SECRET = API_SECRET;
@@ -330,39 +344,44 @@ test("events page is newest-first and forwards cursor, lane, and limit", async (
   });
 });
 
-test("Owner live SSE emits snapshot then Redis event; lane query is ignored", async () => {
-  const path = "/api/v1/admin/daily-operations/live?lane=lead";
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: signedHeaders("owner", "/api/v1/admin/daily-operations/live"),
-  });
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
-  assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
-  assert.equal(response.headers.get("connection"), "keep-alive");
-  assert.equal(response.headers.get("x-accel-buffering"), "no");
-  const body = await response.text();
-  assert.match(body, /event: snapshot/);
-  assert.match(body, /"yesterday_by_now":31/);
-  assert.match(body, /event: event/);
-  assert.match(body, /granot.priority_updated/);
-  assert.match(body, /event: metrics/);
-  assert.equal(body.includes("UPSTASH"), false);
-  assert.equal(body.includes("KV_REST"), false);
-  assert.equal(body.includes("x-api-secret"), false);
+test("retired live endpoint returns204 with no source read, including Last-Event-ID", async () => {
+  const path = "/api/v1/admin/daily-operations/live";
+  for (const role of ["owner", "manager"] as const) {
+    const response = await fetch(`${baseUrl}${path}?lane=lead`, { headers: {
+      ...signedHeaders(role, path), "last-event-id": "2026-09-06T18:14:00.000Z:68bcf1a0c4d5e6f708901234",
+    } });
+    assert.equal(response.status, 204);
+    assert.equal(await response.text(), "");
+    assert.equal(response.headers.get("content-type"), null);
+  }
+  assert.equal(boardCalls, 0);
 });
 
-test("Owner live SSE with Last-Event-ID skips snapshot", async () => {
-  const path = "/api/v1/admin/daily-operations/live";
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      ...signedHeaders("owner", path),
-      "last-event-id": "2026-09-06T18:14:00.000Z:68bcf1a0c4d5e6f708901234",
-    },
-  });
-  assert.equal(response.status, 200);
-  const body = await response.text();
-  assert.equal(body.includes("event: snapshot"), false);
-  assert.match(body, /granot.priority_updated/);
+test("board is Owner/Manager only and does not build for denied callers", async () => {
+  const path = "/api/v1/admin/daily-operations/board";
+  for (const role of ["owner", "manager"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders(role, path) });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.equal((await response.json()).schema_version, 2);
+  }
+  assert.equal(boardCalls, 2);
+  for (const headers of [signedHeaders("admin", path), signedRepHeaders(path), { "x-api-secret": API_SECRET }, { ...signedHeaders("manager", path), "x-vantage-admin-signature": "forged" }, signedHeaders("manager", "/api/v1/admin/daily-operations/events")]) {
+    assert.equal((await fetch(`${baseUrl}${path}`, { headers })).status, 403);
+  }
+  assert.equal(boardCalls, 2);
+});
+
+test("cold unavailable board returns bounded retry with no fabricated snapshot", async () => {
+  boardUnavailable = true;
+  const path = "/api/v1/admin/daily-operations/board";
+  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path) });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "60");
+  const body = await response.json();
+  assert.equal(body.code, "DAILY_OPERATIONS_VIEW_UNAVAILABLE");
+  assert.equal(body.poll_after_ms, 60000);
+  assert.equal(body.snapshot, undefined);
 });
 
 test("Owner rebuild returns counters-replaced, events not deleted", async () => {
@@ -451,8 +470,8 @@ test("SRV-1 (P09b): a signed Manager reads the snapshot, events and live stream;
   assert.equal((await fetch(`${baseUrl}${eventsPath}`, { headers: signedHeaders("manager", eventsPath) })).status, 200);
   const livePath = "/api/v1/admin/daily-operations/live";
   const live = await fetch(`${baseUrl}${livePath}`, { headers: signedHeaders("manager", livePath) });
-  assert.equal(live.status, 200);
-  assert.match(live.headers.get("content-type") ?? "", /text\/event-stream/);
+  assert.equal(live.status, 204);
+  assert.equal(live.headers.get("content-type"), null);
   await live.text();
   const rebuildPath = "/api/v1/admin/daily-operations/rebuild";
   const rebuild = await fetch(`${baseUrl}${rebuildPath}`, { method: "POST", headers: signedHeaders("manager", rebuildPath, "POST") });
@@ -472,4 +491,23 @@ test("SRV-1: Rep, forged Manager and unsigned callers stay denied on Daily Opera
   const relabelled = { ...signedHeaders("owner", getPath), "x-vantage-admin-role": "manager" };
   assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: relabelled })).status, 403);
   assert.equal((await fetch(`${baseUrl}${getPath}`, { headers: { "x-api-secret": API_SECRET } })).status, 403);
+});
+
+
+test("cached lead spend preserves the existing envelope and Owner-only access", async () => {
+  const path = "/api/v1/admin/daily-operations/lead-spend-summary";
+  const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders("owner", path) });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, data: { marker: "cached-spend-fixture" } });
+  assert.equal((await fetch(`${baseUrl}${path}`, { headers: signedHeaders("manager", path) })).status, 403);
+});
+
+test("goal summary is a raw shared Owner/Manager projection", async () => {
+  const path = "/api/v1/admin/daily-operations/goal-summary";
+  for (const role of ["owner", "manager"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { headers: signedHeaders(role, path) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { marker: "cached-goal-fixture" });
+  }
+  assert.equal((await fetch(`${baseUrl}${path}`, { headers: signedRepHeaders(path) })).status, 403);
 });

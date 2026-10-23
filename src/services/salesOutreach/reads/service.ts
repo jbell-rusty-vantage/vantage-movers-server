@@ -264,3 +264,40 @@ export async function readTeam(actor: OutreachActor, query: SalesOutreachTeamQue
         : null,
   };
 }
+
+
+/** Low-priority Daily Operations goals: reuse goal/coverage policy without queue or cadence fan-out. */
+export async function readDailyOperationsGoalSummary(deps: DeskReadDeps) {
+  const store = deps.store ?? mongoSalesOutreachReadStore;
+  const configuration = await requireDeskConfiguration(deps.loader);
+  const generated_at = deps.now.toISOString();
+  if (!configuration.value.controls.goal_metrics_enabled) {
+    return { generated_at, goal_metrics_enabled: false, goals: null, daily_call_goals: null };
+  }
+  const { business_day, today } = resolveBusinessDay(undefined, deps.now);
+  const [calls, derivation, effective, rows] = await Promise.all([
+    store.readCallsCapture(), store.readContactDerivation(),
+    readEffectiveRoster({ store, configuration, business_day, today, now: deps.now }),
+    store.findRepDayRows(business_day, null),
+  ]);
+  const { roster } = effective;
+  const rosterIds = roster.members.map((member) => member.agent_id);
+  const offRoster = rows.filter((row) => !onRoster(roster, row.agent_id));
+  const agents = roster.rule === "desk_reps" ? rosterIds : [...rosterIds, ...offRoster.map((row) => row.agent_id).sort()];
+  const reviewed = agents.length ? await store.findReviewedRepNames(agents, deps.now) : new Map<string, string>();
+  const missingNames = agents.filter((id) => !reviewed.has(id) && !effective.names.has(id));
+  const names = missingNames.length ? await store.findAgentNames(missingNames) : new Map<string, string>();
+  const byAgent = new Map(rows.map((row) => [row.agent_id, row]));
+  const coverage = repDayCoverage(business_day, today, deps.now, readCallWatermarks(calls, derivation), deskTimingOf(configuration.value));
+  const fallback = fallbackCountScope(configuration.value.goals, business_day);
+  const reps = agents.map((agent_id) => {
+    const row = byAgent.get(agent_id) ?? null;
+    return composeRepDay({
+      agent_id, agent_name: reviewed.get(agent_id) ?? effective.names.get(agent_id) ?? names.get(agent_id) ?? null,
+      reviewed_link: reviewed.has(agent_id),
+      goal: resolveRepDayGoal({ goals: configuration.value.goals, configuration_version: configuration.version, agent_id, business_day, today, row, roster }),
+      row, fallback_scope: fallback, capture_coverage: coverage,
+    });
+  });
+  return { generated_at, goal_metrics_enabled: true, goals: composeTeamGoals(reps, dayCountScope(rows)), daily_call_goals: reps };
+}

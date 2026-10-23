@@ -10,7 +10,6 @@ import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getLeadMessageModel } from "../../models/LeadMessage";
-import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { normalizeSourceCompany } from "../../config/domain/sources";
 import type { GranotRouteEventClass } from "../granotLifecycle/types";
 import { classifyGranotBookingActionFromPayload } from "./recordGranotFacts";
@@ -44,7 +43,6 @@ export type DailyOperationsRebuildCounters = Pick<
   | "origins"
   | "companies"
   | "webhooks"
-  | "decisions"
   | "messages"
   | "bookings"
   | "cancellations"
@@ -78,6 +76,7 @@ export type DailyOperationsRebuildDeps = {
     day: string;
     counters: DailyOperationsRebuildCounters;
     previousRevision: number;
+    expectedExists: boolean;
   }) => Promise<number>;
   deleteEvents?: (day: string) => Promise<number>;
 };
@@ -88,44 +87,23 @@ export async function rebuildOpenDailyOperationsDay(
   const now = deps.now?.() ?? new Date();
   const day = easternDayKey(now);
   const loadDay = deps.loadDay ?? defaultLoadDay;
-  const existing = await loadDay(day);
-  if (existing?.status === "closed") {
-    throw new DailyOperationsRebuildError(
-      "Closed days are not rebuilt",
-      409,
-      "DAY_CLOSED",
-    );
+  if (deps.deleteEvents) throw new DailyOperationsRebuildError("Rebuild must not delete Daily Operations Events", 400, "EVENTS_APPEND_ONLY");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = await loadDay(day);
+    if (existing?.status === "closed") throw new DailyOperationsRebuildError("Closed days are not rebuilt", 409, "DAY_CLOSED");
+    const counters = await (deps.aggregateOpenDay ?? defaultAggregateOpenDay)({
+      day, floridaTimestampRange: floridaTimestampBounds(day), instantRange: easternInstantBounds(day),
+    });
+    try {
+      const revision = await (deps.replaceCounters ?? defaultReplaceCounters)({
+        day, counters, previousRevision: existing?.revision ?? 0, expectedExists: existing != null,
+      });
+      return { day, status: "open", rebuilt: true, events_deleted: false, revision };
+    } catch (error) {
+      if (!(error instanceof DailyOperationsRebuildError) || error.code !== "DAY_CHANGED" || attempt === 2) throw error;
+    }
   }
-
-  const counters = await (deps.aggregateOpenDay ?? defaultAggregateOpenDay)({
-    day,
-    floridaTimestampRange: floridaTimestampBounds(day),
-    instantRange: easternInstantBounds(day),
-  });
-
-  if (deps.deleteEvents) {
-    throw new DailyOperationsRebuildError(
-      "Rebuild must not delete Daily Operations Events",
-      400,
-      "EVENTS_APPEND_ONLY",
-    );
-  }
-
-  const previousRevision = existing?.revision ?? 0;
-  const replaceCounters = deps.replaceCounters ?? defaultReplaceCounters;
-  const revision = await replaceCounters({
-    day,
-    counters,
-    previousRevision,
-  });
-
-  return {
-    day,
-    status: "open",
-    rebuilt: true,
-    events_deleted: false,
-    revision,
-  };
+  throw new DailyOperationsRebuildError("Day changed while rebuilding", 409, "DAY_CHANGED");
 }
 
 async function defaultLoadDay(
@@ -134,32 +112,27 @@ async function defaultLoadDay(
   return getDailyOperationsDayModel().findOne({ day }).lean().exec();
 }
 
-async function defaultReplaceCounters(input: {
+export async function defaultReplaceCounters(input: {
   day: string;
   counters: DailyOperationsRebuildCounters;
   previousRevision: number;
+  expectedExists: boolean;
 }): Promise<number> {
   const revision = input.previousRevision + 1;
-  const seed = buildDaySeed(input.day);
   const Day = getDailyOperationsDayModel();
-  const updated = await Day.updateOne(
-    { day: input.day, status: "open" },
-    { $set: { ...input.counters, revision } },
-  );
-  if (updated.matchedCount === 0) {
-    await Day.updateOne(
-      { day: input.day },
-      {
-        $setOnInsert: {
-          ...seed,
-          ...input.counters,
-          revision,
-        },
-      },
-      { upsert: true },
+  if (!input.expectedExists) {
+    try { await Day.create({ ...buildDaySeed(input.day), ...input.counters, revision }); return revision; }
+    catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === 11000)) throw error;
+    }
+  } else {
+    const updated = await Day.updateOne(
+      { day: input.day, status: "open", revision: input.previousRevision },
+      { $set: { ...input.counters, revision } },
     );
+    if (updated.matchedCount === 1) return revision;
   }
-  return revision;
+  throw new DailyOperationsRebuildError("Day changed while rebuilding", 409, "DAY_CHANGED");
 }
 
 /** The Lead Message fields a rebuild reads. */
@@ -329,28 +302,7 @@ async function defaultAggregateOpenDay(
     hourly[hour]!.webhooks += 1;
   }
 
-  const decisions = await getSynchronizationDecisionModel()
-    .find({
-      decided_at: {
-        $gte: input.instantRange.start,
-        $lt: input.instantRange.end,
-      },
-    })
-    .select("outcome")
-    .lean()
-    .exec();
-  for (const decision of decisions) {
-    if (decision.outcome === "created") seed.decisions.minted += 1;
-    else if (decision.outcome === "linked" || decision.outcome === "applied") {
-      seed.decisions.linked += 1;
-    } else if (decision.outcome === "pending_match") {
-      seed.decisions.pending_match += 1;
-    } else if (decision.outcome === "unmatched") {
-      seed.decisions.unmatched += 1;
-    } else {
-      seed.decisions.observed += 1;
-    }
-  }
+  // Unused decision counters are retired; canonical decision/audit evidence is unchanged.
 
   // SRV-9: a message counts on the day each of its events happened (the live rule), so select every
   // message with an event instant on the day, not only those created on it.
@@ -417,7 +369,6 @@ async function defaultAggregateOpenDay(
     origins: seed.origins,
     companies: seed.companies,
     webhooks: seed.webhooks,
-    decisions: seed.decisions,
     messages: seed.messages,
     bookings: seed.bookings,
     cancellations: seed.cancellations,

@@ -2152,7 +2152,7 @@ test("pending_match records granot.pending_match with parent_receipt_id", async 
     facts[0]?.input.dedupe_key,
     `decision:${result.decision_id}:granot.pending_match`,
   );
-  assert.deepEqual(facts[0]?.input.metric_touches, ["decisions.pending_match"]);
+  assert.deepEqual(facts[0]?.input.metric_touches, [], "Decision audit is canonical; unused display counters are retired.");
   assert.equal(getCapturedDailyOperationsFacts().some((fact) => fact.input.kind === "granot.minted"), false);
 });
 

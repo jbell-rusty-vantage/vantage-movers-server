@@ -13,17 +13,10 @@ import {
   DailyOperationsEventsQueryError,
   listDailyOperationsEvents,
 } from "../services/dailyOperations/eventsPage";
-import {
-  createDailyOperationsLiveRedisReader,
-  defaultFindDailyOperationsEventById,
-  defaultListDailyOperationsEventsAfter,
-  defaultListNewestDailyOperationsEvent,
-  LIVE_DAILY_OPERATIONS_HEARTBEAT_MS,
-  LIVE_DAILY_OPERATIONS_MAX_MS,
-  LIVE_DAILY_OPERATIONS_POLL_MS,
-  runDailyOperationsLiveSse,
-  type DailyOperationsLiveSseDeps,
-} from "../services/dailyOperations/liveStream";
+import type { DailyOperationsLiveSseDeps } from "../services/dailyOperations/liveStream";
+import { getDailyOperationsBoard } from "../services/dailyOperations/readView";
+import { DailyOperationsReadViewUnavailable } from "../services/dailyOperations/readViewCache";
+import { getDailyOperationsGoalSummary, getDailyOperationsLeadSpend } from "../services/dailyOperations/auxiliaryReadViews";
 import {
   DailyOperationsRebuildError,
   rebuildOpenDailyOperationsDay,
@@ -33,6 +26,9 @@ import { getDailyOperationsSnapshot } from "../services/dailyOperations/snapshot
 export type DailyOperationsAdminRouteDeps = {
   connect?: typeof connectMongo;
   getSnapshot?: typeof getDailyOperationsSnapshot;
+  getBoard?: typeof getDailyOperationsBoard;
+  getGoalSummary?: typeof getDailyOperationsGoalSummary;
+  getLeadSpend?: typeof getDailyOperationsLeadSpend;
   listEvents?: typeof listDailyOperationsEvents;
   rebuild?: typeof rebuildOpenDailyOperationsDay;
   findLiveEventById?: DailyOperationsLiveSseDeps["findEventById"];
@@ -66,57 +62,45 @@ export function createDailyOperationsAdminRouter(
     }
   });
 
-  // One socket serves every Daily Operations Panel. `?lane=` is ignored.
-  router.get("/api/v1/admin/daily-operations/live", async (req, res) => {
+  router.get("/api/v1/admin/daily-operations/board", async (req, res) => {
     try {
-      await connect();
       requireDailyOperationsReader(req);
+      await connect();
+      const board = await (deps.getBoard ?? getDailyOperationsBoard)();
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("ETag", `"dailyops:${board.day}:${board.revision}"`);
+      // Always return freshness metadata; a content-only 304 could hide a stale refresh.
+      return res.status(200).json(board);
     } catch (error) {
-      return sendError(res, error, requestId(req));
+      return sendReadViewError(res, error, requestId(req));
     }
+  });
 
-    res.status(200);
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-
-    const abort = new AbortController();
-    req.on("close", () => abort.abort());
+  router.get("/api/v1/admin/daily-operations/goal-summary", async (req, res) => {
     try {
-      await runDailyOperationsLiveSse(
-        {
-          write: (chunk) => {
-            res.write(chunk);
-          },
-        },
-        {
-          getSnapshot: async () => getSnapshot(),
-          findEventById: deps.findLiveEventById ?? defaultFindDailyOperationsEventById,
-          listAfter: deps.listLiveAfter ?? defaultListDailyOperationsEventsAfter,
-          listNewest: deps.listLiveNewest ?? defaultListNewestDailyOperationsEvent,
-          getRedis: deps.getLiveRedis ?? createDailyOperationsLiveRedisReader,
-          sleep:
-            deps.liveStreamSleep ??
-            ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
-          now: deps.liveStreamNow ?? Date.now,
-          pollMs: deps.liveStreamPollMs ?? LIVE_DAILY_OPERATIONS_POLL_MS,
-          heartbeatMs: deps.liveStreamHeartbeatMs ?? LIVE_DAILY_OPERATIONS_HEARTBEAT_MS,
-          maxMs: deps.liveStreamMaxMs ?? LIVE_DAILY_OPERATIONS_MAX_MS,
-          signal: abort.signal,
-        },
-        req.header("last-event-id"),
-      );
-    } catch (error) {
-      if (!res.writableEnded) {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: "Live stream failed" })}\n\n`);
-      }
-      void error;
-    }
-    if (!res.writableEnded) {
-      res.end();
-    }
+      requireDailyOperationsReader(req);
+      await connect();
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.status(200).json(await (deps.getGoalSummary ?? getDailyOperationsGoalSummary)());
+    } catch (error) { return sendReadViewError(res, error, requestId(req)); }
+  });
+
+  router.get("/api/v1/admin/daily-operations/lead-spend-summary", async (req, res) => {
+    try {
+      requireRegistryOwnerActor(req, auth(req));
+      await connect();
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.status(200).json({ ok: true, data: await (deps.getLeadSpend ?? getDailyOperationsLeadSpend)() });
+    } catch (error) { return sendReadViewError(res, error, requestId(req)); }
+  });
+
+  // Retired endpoint: native EventSource stops reconnecting on HTTP 204.
+  // It never constructs Redis or enters a Mongo tail loop, even for old tabs.
+  router.get("/api/v1/admin/daily-operations/live", (req, res) => {
+    try {
+      requireDailyOperationsReader(req);
+      return res.status(204).end();
+    } catch (error) { return sendError(res, error, requestId(req)); }
   });
 
   router.get("/api/v1/admin/daily-operations/events", async (req, res) => {
@@ -183,6 +167,14 @@ function asLimit(value: unknown): number | undefined {
   if (value == null || value === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function sendReadViewError(res: Response, error: unknown, requestIdValue?: string) {
+  if (isRegistryError(error)) return sendError(res, error, requestIdValue);
+  const unavailable = error instanceof DailyOperationsReadViewUnavailable ? error : new DailyOperationsReadViewUnavailable();
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Retry-After", "60");
+  return res.status(503).json({ ok: false, code: unavailable.code, error: unavailable.message, poll_after_ms: unavailable.poll_after_ms, request_id: requestIdValue ?? null });
 }
 
 function sendError(res: Response, error: unknown, requestIdValue?: string) {

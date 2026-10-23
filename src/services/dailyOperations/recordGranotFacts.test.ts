@@ -155,7 +155,7 @@ test("unclassified booking_status_changed increments class only", async () => {
   );
 });
 
-test("granot.minted touches decisions.minted only and does not increment leads.*", async () => {
+test("granot.minted retains a display card without retired decision counters", async () => {
   await recordGranotMintedDailyOperationsFact({
     source_receipt_id: "receipt-mint-1",
     decision_id: "decision-mint-1",
@@ -176,11 +176,8 @@ test("granot.minted touches decisions.minted only and does not increment leads.*
   });
   const minted = capturedOf("granot.minted");
   assert.equal(minted.length, 1);
-  assert.deepEqual(minted[0]?.input.metric_touches, ["decisions.minted"]);
-  assert.equal(
-    minted[0]?.input.metric_touches.some((touch) => touch.startsWith("leads.")),
-    false,
-  );
+  assert.deepEqual(minted[0]?.input.metric_touches, []);
+
   assert.equal(minted[0]?.input.parent_receipt_id, "receipt-mint-1");
   assert.equal(
     minted[0]?.input.dedupe_key,
@@ -214,7 +211,7 @@ test("outcome card parent_receipt_id pairs to the receipt card", async () => {
   assert.equal(minted?.input.parent_receipt_id, "pair-receipt");
 });
 
-test("linked outcome uses parent_receipt_id and decisions.linked", async () => {
+test("linked outcome retains its parent receipt without a counter write", async () => {
   await recordGranotLinkedDailyOperationsFact({
     outcome: "linked",
     source_receipt_id: "link-receipt",
@@ -226,7 +223,7 @@ test("linked outcome uses parent_receipt_id and decisions.linked", async () => {
   });
   const facts = capturedOf("granot.linked");
   assert.equal(facts.length, 1);
-  assert.deepEqual(facts[0]?.input.metric_touches, ["decisions.linked"]);
+  assert.deepEqual(facts[0]?.input.metric_touches, []);
   assert.equal(facts[0]?.input.parent_receipt_id, "link-receipt");
   assert.equal(facts[0]?.input.dedupe_key, "decision:link-decision:granot.linked");
 });
@@ -248,14 +245,14 @@ test("processor maps observe / pending_match / unmatched and skips mint/link", a
   assert.equal(granotProcessorOutcomeKind("linked"), null);
   assert.equal(granotProcessorOutcomeKind("pending_match"), "granot.pending_match");
   assert.equal(granotProcessorOutcomeKind("unmatched"), "granot.unmatched");
-  assert.equal(granotProcessorOutcomeKind("already_current"), "granot.observed");
-  assert.equal(granotProcessorOutcomeKind("stale"), "granot.observed");
+  assert.equal(granotProcessorOutcomeKind("already_current"), null);
+  assert.equal(granotProcessorOutcomeKind("stale"), null);
   assert.equal(granotProcessorOutcomeKind("policy_blocked"), "granot.observed");
 
   await recordGranotProcessorOutcomeDailyOperationsFact({
     receipt_id: "obs-receipt",
     decision_id: "obs-decision",
-    outcome: "already_current",
+    outcome: "policy_blocked",
     job_no: "JOB-1",
   });
   await recordGranotProcessorOutcomeDailyOperationsFact({
@@ -270,7 +267,7 @@ test("processor maps observe / pending_match / unmatched and skips mint/link", a
     observed[0]?.input.dedupe_key,
     "decision:obs-decision:granot.observed",
   );
-  assert.deepEqual(observed[0]?.input.metric_touches, ["decisions.observed"]);
+  assert.deepEqual(observed[0]?.input.metric_touches, []);
   assert.equal(capturedOf("granot.minted").length, 0);
 });
 
@@ -475,4 +472,15 @@ test("webhook capture hooks after persist and before return", async () => {
   const hook = body.indexOf("recordGranotReceiptDailyOperationsFact");
   const ret = body.lastIndexOf("return { receipt_id:");
   assert.ok(persist >= 0 && hook > persist && ret > hook);
+});
+
+test("already-current/stale hooks suppress only redundant display facts", async () => {
+  for (const outcome of ["already_current", "stale"] as const) {
+    await recordGranotProcessorOutcomeDailyOperationsFact({ receipt_id: "synthetic-receipt", decision_id: `synthetic-${outcome}`, outcome });
+  }
+  assert.equal(getCapturedDailyOperationsFacts().length, 0);
+  for (const outcome of ["policy_blocked", "conflict", "unsupported", "insufficient_creation_data"] as const) {
+    await recordGranotProcessorOutcomeDailyOperationsFact({ receipt_id: "synthetic-receipt", decision_id: `synthetic-${outcome}`, outcome });
+  }
+  assert.deepEqual(capturedOf("granot.observed").map((row) => row.input.card?.granot?.decision), ["policy_blocked", "conflict", "unsupported", "insufficient_creation_data"]);
 });

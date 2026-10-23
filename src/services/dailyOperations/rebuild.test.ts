@@ -14,13 +14,13 @@ function counters(overrides: Partial<DailyOperationsRebuildCounters> = {}) {
     origins: seed.origins,
     companies: seed.companies,
     webhooks: seed.webhooks,
-    decisions: seed.decisions,
     messages: seed.messages,
     bookings: seed.bookings,
     cancellations: seed.cancellations,
     intakes: seed.intakes,
     exceptions: seed.exceptions,
     hourly: seed.hourly,
+    sheet_sync: seed.sheet_sync,
     ...overrides,
   } satisfies DailyOperationsRebuildCounters;
 }
@@ -131,4 +131,29 @@ test("rebuild rejects a deleteEvents hook so events stay append-only", async () 
       return true;
     },
   );
+});
+
+test("rebuild retries a changed revision and recomputes rather than overwriting", async () => {
+  let aggregates = 0; let writes = 0;
+  const result = await rebuildOpenDailyOperationsDay({
+    now: () => new Date("2026-09-06T18:14:00Z"),
+    loadDay: async () => ({ ...buildDaySeed("2026-09-06"), revision: writes } as never),
+    aggregateOpenDay: async () => { aggregates += 1; return counters(); },
+    replaceCounters: async ({ previousRevision, expectedExists }) => {
+      assert.equal(expectedExists, true); writes += 1;
+      if (writes === 1) throw new DailyOperationsRebuildError("race", 409, "DAY_CHANGED");
+      return previousRevision + 1;
+    },
+  });
+  assert.equal(aggregates, 2); assert.equal(result.revision, 2);
+});
+
+test("rebuild returns a bounded conflict after three concurrent changes", async () => {
+  let attempts = 0;
+  await assert.rejects(() => rebuildOpenDailyOperationsDay({
+    now: () => new Date("2026-09-06T18:14:00Z"), loadDay: async () => null,
+    aggregateOpenDay: async () => counters(),
+    replaceCounters: async () => { attempts += 1; throw new DailyOperationsRebuildError("race", 409, "DAY_CHANGED"); },
+  }), (error: unknown) => error instanceof DailyOperationsRebuildError && error.code === "DAY_CHANGED");
+  assert.equal(attempts, 3);
 });

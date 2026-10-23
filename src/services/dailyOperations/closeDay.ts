@@ -44,10 +44,13 @@ async function defaultCloseOpenDaysBefore(
     .lean()
     .exec();
   if (open.length === 0) return [];
-  const days = open.map((row) => row.day);
-  await Day.updateMany(
-    { day: { $in: days }, status: "open" },
-    { $set: { status: "closed", closed_at: closedAt } },
-  );
-  return days;
+  const closed: string[] = [];
+  for (const { day } of open) {
+    const updated = await Day.updateOne(
+      { day, status: "open" },
+      { $set: { status: "closed", closed_at: closedAt }, $inc: { revision: 1 } },
+    );
+    if (updated.modifiedCount === 1) closed.push(day);
+  }
+  return closed;
 }

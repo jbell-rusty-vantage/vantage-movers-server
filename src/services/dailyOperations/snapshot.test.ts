@@ -389,3 +389,15 @@ test("test runner reports redis.configured false without constructing a client",
   assert.equal(snapshot.redis.configured, false);
   assert.equal(snapshot.redis.mode, "stream");
 });
+
+test("snapshot batches the three day documents in one loader call", async () => {
+  let batches = 0;
+  const snapshot = await getDailyOperationsSnapshot({
+    now: () => new Date("2026-10-23T18:00:00Z"),
+    loadDays: async (days) => { batches++; assert.deepEqual(days, ["2026-10-23", "2026-10-22", "2026-10-21"]); return days.map(() => null); },
+    loadDay: async () => { throw new Error("per-day reads must not run when batched loader is supplied"); },
+    countHeldMessages: async () => 0,
+    countOpenIntakes: async () => 0,
+  });
+  assert.equal(batches, 1); assert.equal(snapshot.today, "2026-10-23");
+});

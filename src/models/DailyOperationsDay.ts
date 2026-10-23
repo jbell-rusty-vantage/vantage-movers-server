@@ -133,6 +133,7 @@ const DailyOperationsDaySchema = new Schema<DailyOperationsDayDocument>(
       booked: { type: Number, default: 0 },
       release: { type: Number, default: 0 },
     },
+    // Retired display counters: preserve historical fields without new writes.
     decisions: {
       minted: { type: Number, default: 0 },
       linked: { type: Number, default: 0 },

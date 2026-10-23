@@ -210,6 +210,7 @@ export function buildDayIncrements(
 ): Record<string, number> {
   const increments: Record<string, number> = { revision: 1 };
   for (const touch of metricTouches) {
+    if (touch.startsWith("decisions.")) continue;
     const path =
       touch.startsWith("hourly.") && !ALREADY_EXPANDED_HOURLY.test(touch)
         ? `hourly.${nyHour}.${touch.slice("hourly.".length)}`

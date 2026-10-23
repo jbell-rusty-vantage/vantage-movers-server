@@ -1,4 +1,4 @@
-import { Redis } from "@upstash/redis";
+import type { Redis } from "@upstash/redis";
 import { isTestMode, isVantageTestRunner } from "./runtime";
 
 /**
@@ -8,7 +8,7 @@ import { isTestMode, isVantageTestRunner } from "./runtime";
  * Do not use `KV_REST_API_READ_ONLY_TOKEN`, `KV_URL`, or `REDIS_URL`.
  */
 
-export type DailyOperationsCollectionKey = "events" | "days";
+export type DailyOperationsCollectionKey = "events" | "days" | "read_views";
 
 export type DailyOperationsCollectionNames = Record<
   DailyOperationsCollectionKey,
@@ -18,48 +18,24 @@ export type DailyOperationsCollectionNames = Record<
 export const DAILY_OPERATIONS_PRODUCTION_COLLECTIONS = {
   events: "daily_operations_events",
   days: "daily_operations_days",
+  read_views: "daily_operations_read_views",
 } as const satisfies DailyOperationsCollectionNames;
 
 export const DAILY_OPERATIONS_TEST_COLLECTIONS = {
   events: "test_daily_operations_events",
   days: "test_daily_operations_days",
+  read_views: "test_daily_operations_read_views",
 } as const satisfies DailyOperationsCollectionNames;
 
 export type DailyOperationsRedisEnv = "production" | "preview" | "local";
 
+/** Retired transport: credentials may remain configured, but no client is constructed. */
 export function getDailyOperationsRedis(): Redis | null {
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL?.trim() ||
-    process.env.KV_REST_API_URL?.trim() ||
-    "";
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
-    process.env.KV_REST_API_TOKEN?.trim() ||
-    "";
-  if (!url || !token) return null;
-  return new Redis({ url, token });
+  return null;
 }
 
-/**
- * Whether the writer may construct a Redis client and XADD.
- *
- * Test runner and TEST_MODE never publish (and the writer must not construct
- * a client). Missing URL/token is Mongo-only. Local `pnpm dev:local` publishes
- * when credentials are present — this is not the Granot queue prod-only gate.
- */
 export function shouldPublishDailyOperationsRedis(): boolean {
-  if (isVantageTestRunner() || isTestMode()) {
-    return false;
-  }
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL?.trim() ||
-    process.env.KV_REST_API_URL?.trim() ||
-    "";
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
-    process.env.KV_REST_API_TOKEN?.trim() ||
-    "";
-  return Boolean(url && token);
+  return false;
 }
 
 export function getDailyOperationsRedisEnv(): DailyOperationsRedisEnv {

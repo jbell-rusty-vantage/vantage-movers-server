@@ -56,20 +56,14 @@ test("missing Redis URL or token returns a null client", () => {
   assert.equal(getDailyOperationsRedis(), null);
 });
 
-test("UPSTASH_* names construct a client and KV_* aliases do too", () => {
+test("retired transport never constructs Redis even with configured quota-exhausted credentials", () => {
   clearRedisEnv();
   process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
   process.env.UPSTASH_REDIS_REST_TOKEN = "dummy-upstash-token";
-  const upstashClient = getDailyOperationsRedis();
-  assert.ok(upstashClient);
-  assert.equal(typeof upstashClient.xadd, "function");
-
-  clearRedisEnv();
   process.env.KV_REST_API_URL = "https://example.upstash.io";
   process.env.KV_REST_API_TOKEN = "dummy-kv-token";
-  const kvClient = getDailyOperationsRedis();
-  assert.ok(kvClient);
-  assert.equal(typeof kvClient.xadd, "function");
+  assert.equal(getDailyOperationsRedis(), null);
+  assert.equal(shouldPublishDailyOperationsRedis(), false);
 });
 
 test("read-only token, KV_URL, and REDIS_URL are not used for the client", () => {
@@ -134,6 +128,7 @@ test("collection names use the test prefix in the test runner", () => {
   assert.deepEqual(getDailyOperationsCollectionNames(), {
     events: "test_daily_operations_events",
     days: "test_daily_operations_days",
+    read_views: "test_daily_operations_read_views",
   });
   assert.equal(
     getDailyOperationsCollectionName("events"),

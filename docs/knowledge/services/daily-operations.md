@@ -42,6 +42,12 @@ generated:
 
 # Daily Operations
 
+**Efficiency release (2026-10-23):** [Implementation specification](../../daily-operations-efficiency/PROPOSAL.md), [release and recovery runbook](../../daily-operations-efficiency/RELEASE.md). This release supersedes the old Redis/SSE and one-second polling instructions below. `GET /api/v1/admin/daily-operations/board` serves one shared, fenced Mongo view; Admin has one visible-tab poll per minute shared by the board and milestone toast. The retired `/live` returns authenticated HTTP 204 without Redis or a Mongo tail. No Redis credentials or transport-enable flag are read.
+
+Core values normally lag 60-120 seconds. Daily Operations-only goals/spend summaries use separate five-minute views; the original spend endpoint and core Outreach Desk keep their existing behavior. Failed refreshes retain last-good values and their age, with explicit unavailable/stale responses. Owner/Manager reads and Owner-only financial access keep their existing signed-actor checks.
+
+Only redundant `already_current` and `stale` Granot display facts are suppressed. Immutable Synchronization Decisions and Observation Receipts remain canonical. Sheet Sync completion/failure facts and existing event retention remain intact. Retained counter facts now commit atomically with day increments; no-touch cards insert once without day reads. Unused `decisions.*` display counters are retired. Close advances revision, and rebuild uses revision CAS so concurrent increments cannot be overwritten.
+
 This file is a **Service pointer** only. It does not copy contract rules, hook tables, or wire shapes.
 
 **Retention (disk trim, 2026-10-07):** `daily_operations_events` rows expire 400 days after `createdAt` (`daily_operations_event_created_ttl`, declared on `DailyOperationsEvent.ts` and created in production by `ops/disk-trim/trim.ts`). The live board reads today, yesterday and the day before; 400 days is the bound already chosen for this log. The board key `day` is a string and cannot carry the TTL.

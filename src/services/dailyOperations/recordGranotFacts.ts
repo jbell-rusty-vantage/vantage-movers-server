@@ -229,6 +229,8 @@ export async function recordGranotLinkedDailyOperationsFact(
 export function granotProcessorOutcomeKind(
   outcome: SynchronizationOutcome,
 ): DailyOperationsKind | null {
+  // Canonical decisions retain no-change evidence without a second display-history write.
+  if (outcome === "already_current" || outcome === "stale") return null;
   if (outcome === "created" || outcome === "applied" || outcome === "linked") {
     return null;
   }

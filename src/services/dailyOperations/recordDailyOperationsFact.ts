@@ -1,9 +1,5 @@
-import {
-  getDailyOperationsRedis,
-  getDailyOperationsStreamKey,
-  shouldPublishDailyOperationsRedis,
-} from "../../config/domain/dailyOperations";
-import { connectMongo } from "../../db";
+import { Types, type ClientSession } from "mongoose";
+import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { getDailyOperationsDayModel } from "../../models/DailyOperationsDay";
 import {
@@ -32,7 +28,7 @@ import {
 
 /**
  * After-commit Daily Operations writer. Never throws. Never changes the
- * domain write. Redis is a doorbell (`XADD` only — never `INCR`).
+ * domain write. Retained event/counter projection is atomic; Redis is not used.
  */
 
 export type RecordDailyOperationsFactInput = {
@@ -80,153 +76,105 @@ export type DailyOperationsEventInsert = {
 };
 
 export type DailyOperationsFactStores = {
-  insertEvent: (
-    doc: DailyOperationsEventInsert,
-  ) => Promise<{ id: string } | { duplicate: true }>;
-  setEventMetricTouches: (id: string, touches: string[]) => Promise<void>;
-  setEventRedisStreamId: (id: string, streamId: string) => Promise<void>;
-  findDayStatus: (day: string) => Promise<"open" | "closed" | null>;
-  incrementOpenDay: (args: {
-    day: string;
-    increments: Record<string, number>;
+  recordEvent: (input: {
+    event: DailyOperationsEventInsert;
+    increments: Record<string, number> | null;
     seed: DailyOperationsDaySeed;
-  }) => Promise<void>;
-};
-
-export type DailyOperationsRedisPublisher = {
-  xadd: (
-    key: string,
-    id: "*",
-    fields: Record<string, string>,
-    options: {
-      trim: {
-        type: "MAXLEN";
-        threshold: number;
-        comparison: "~";
-      };
-    },
-  ) => Promise<string | null | undefined>;
+    writtenAt: Date;
+  }) => Promise<{ id: string; outcome: "recorded" | "closed_day" } | { duplicate: true }>;
 };
 
 export type RecordDailyOperationsFactDeps = {
   stores?: DailyOperationsFactStores;
-  getRedis?: () => DailyOperationsRedisPublisher | null;
-  shouldPublish?: () => boolean;
   now?: () => Date;
 };
 
-const REDIS_STREAM_MAXLEN = 2000;
-
 function isDuplicateKey(error: unknown): boolean {
-  return Boolean(
-    error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: unknown }).code === 11000,
-  );
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === 11000);
+}
+
+/** Initialize missing fields and increment an open day without status/existence reads. */
+export function dailyOperationsDayUpdatePipeline(
+  seed: DailyOperationsDaySeed,
+  increments: Record<string, number>,
+  writtenAt: Date,
+): Record<string, unknown>[] {
+  const initialize: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries({ ...seed, revision: 0, createdAt: writtenAt, updatedAt: writtenAt })) {
+    initialize[key] = { $ifNull: [`$${key}`, { $literal: value }] };
+  }
+  const open = { $eq: ["$status", "open"] };
+  const update: Record<string, unknown> = {
+    updatedAt: { $cond: [open, { $literal: writtenAt }, "$updatedAt"] },
+  };
+  const hourly = new Map<number, Record<string, unknown>>();
+  for (const [key, amount] of Object.entries(increments)) {
+    const hour = /^hourly\.(\d+)\.(\w+)$/.exec(key);
+    if (hour) {
+      const fields = hourly.get(Number(hour[1])) ?? {};
+      fields[hour[2]!] = { $add: [{ $ifNull: [`$$bucket.${hour[2]}`, 0] }, amount] };
+      hourly.set(Number(hour[1]), fields);
+    } else {
+      update[key] = { $cond: [open, { $add: [{ $ifNull: [`$${key}`, 0] }, amount] }, `$${key}`] };
+    }
+  }
+  if (hourly.size) update.hourly = {
+    $map: {
+      input: "$hourly", as: "bucket",
+      in: { $switch: {
+        branches: [...hourly].map(([hour, fields]) => ({
+          case: { $and: [open, { $eq: ["$$bucket.hour", hour] }] },
+          then: { $mergeObjects: ["$$bucket", fields] },
+        })),
+        default: "$$bucket",
+      } },
+    },
+  };
+  return [{ $set: initialize }, { $set: update }];
 }
 
 export function createMongoDailyOperationsStores(): DailyOperationsFactStores {
   return {
-    async insertEvent(doc) {
+    async recordEvent({ event, increments, seed, writtenAt }) {
       await connectMongo();
       const Event = getDailyOperationsEventModel();
-      try {
-        const created = await Event.create(doc);
-        return { id: created._id.toString() };
-      } catch (error) {
-        if (isDuplicateKey(error)) {
-          return { duplicate: true };
-        }
-        throw error;
+      const eventId = new Types.ObjectId();
+      const insert = async (session?: ClientSession, closed = false) => {
+        await Event.create([{
+          ...event, _id: eventId, metric_touches: closed ? [] : event.metric_touches,
+          createdAt: writtenAt, updatedAt: writtenAt,
+        }], session ? { session } : {});
+        return { id: eventId.toString(), outcome: closed ? "closed_day" as const : "recorded" as const };
+      };
+      if (!increments) {
+        try { return await insert(); }
+        catch (error) { if (isDuplicateKey(error)) return { duplicate: true }; throw error; }
       }
-    },
-    async setEventMetricTouches(id, touches) {
-      await connectMongo();
-      const Event = getDailyOperationsEventModel();
-      await Event.updateOne({ _id: id }, { $set: { metric_touches: touches } });
-    },
-    async setEventRedisStreamId(id, streamId) {
-      await connectMongo();
-      const Event = getDailyOperationsEventModel();
-      await Event.updateOne({ _id: id }, { $set: { redis_stream_id: streamId } });
-    },
-    async findDayStatus(day) {
-      await connectMongo();
-      const Day = getDailyOperationsDayModel();
-      const found = await Day.findOne({ day }).select("status").lean();
-      return found?.status ?? null;
-    },
-    async incrementOpenDay({ day, increments, seed }) {
-      await connectMongo();
-      const Day = getDailyOperationsDayModel();
-      const existing = await Day.findOne({ day }).select("_id").lean();
-      if (!existing) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          await Day.create(seed);
+          return await withTransaction(async (session) => {
+            const day = await getDailyOperationsDayModel().collection.findOneAndUpdate(
+              { day: event.day }, dailyOperationsDayUpdatePipeline(seed, increments, writtenAt),
+              { session, upsert: true, returnDocument: "after", includeResultMetadata: false },
+            );
+            if (!day) throw new Error("Daily Operations day update returned no document");
+            return insert(session, day.status === "closed");
+          });
         } catch (error) {
-          if (!isDuplicateKey(error)) {
+          if (!isDuplicateKey(error)) throw error;
+          const key = error as { keyPattern?: Record<string, unknown>; message?: string };
+          // A concurrent first-day upsert can lose unique(day); retry the complete transaction.
+          if (key.keyPattern?.day || /day_1/.test(key.message ?? "")) {
+            if (attempt < 2) continue;
             throw error;
           }
+          // The deduped event lost its race. Its transactional day change has rolled back.
+          return { duplicate: true };
         }
       }
-      await Day.updateOne({ day, status: "open" }, { $inc: increments });
+      throw new Error("Daily Operations day initialization retries exhausted");
     },
   };
-}
-
-async function publishRedisDoorbell(args: {
-  deps: RecordDailyOperationsFactDeps;
-  eventId: string;
-  day: string;
-  kind: DailyOperationsKind;
-  lane: DailyOperationsLane;
-  occurredAt: Date;
-  dedupeKey: string;
-  stores: DailyOperationsFactStores;
-}): Promise<void> {
-  const shouldPublish = args.deps.shouldPublish ?? shouldPublishDailyOperationsRedis;
-  if (!shouldPublish()) {
-    return;
-  }
-
-  const getRedis = args.deps.getRedis ?? getDailyOperationsRedis;
-  const redis = getRedis();
-  if (!redis) {
-    return;
-  }
-
-  try {
-    const streamId = await redis.xadd(
-      getDailyOperationsStreamKey(args.day),
-      "*",
-      {
-        event_id: args.eventId,
-        day: args.day,
-        kind: args.kind,
-        lane: args.lane,
-        occurred_at: args.occurredAt.toISOString(),
-        dedupe_key: args.dedupeKey,
-      },
-      {
-        trim: {
-          type: "MAXLEN",
-          threshold: REDIS_STREAM_MAXLEN,
-          comparison: "~",
-        },
-      },
-    );
-    if (streamId) {
-      await args.stores.setEventRedisStreamId(args.eventId, streamId);
-    }
-  } catch (error) {
-    logger.warn({
-      msg: "daily_operations.redis.xadd_failed",
-      kind: args.kind,
-      day: args.day,
-      err: error,
-    });
-  }
 }
 
 export async function recordDailyOperationsFact(
@@ -249,7 +197,7 @@ export async function recordDailyOperationsFact(
     const nyHour = easternHour(occurredAt);
     const lane = input.lane ?? laneForKind(input.kind);
     const title = input.title ?? titleForKind(input.kind);
-    const metricTouches = [...input.metric_touches];
+    const metricTouches = input.metric_touches.filter((touch) => !touch.startsWith("decisions."));
 
     if (isTestDailyOperationsSinkActive() && !deps.stores) {
       captureDailyOperationsFactForTest(input);
@@ -258,7 +206,9 @@ export async function recordDailyOperationsFact(
 
     const stores = deps.stores ?? createMongoDailyOperationsStores();
 
-    const inserted = await stores.insertEvent({
+    const writtenAt = deps.now?.() ?? new Date();
+    const inserted = await stores.recordEvent({
+      event: {
       day,
       occurred_at: occurredAt,
       lane,
@@ -276,46 +226,13 @@ export async function recordDailyOperationsFact(
       metric_touches: metricTouches,
       dedupe_key: dedupeKey,
       redis_stream_id: null,
-    });
-
-    if ("duplicate" in inserted) {
-      return { event_id: "", day, outcome: "duplicate" };
-    }
-
-    const dayStatus = await stores.findDayStatus(day);
-    if (dayStatus === "closed") {
-      await stores.setEventMetricTouches(inserted.id, []);
-      await publishRedisDoorbell({
-        deps,
-        eventId: inserted.id,
-        day,
-        kind: input.kind,
-        lane,
-        occurredAt,
-        dedupeKey,
-        stores,
-      });
-      return { event_id: inserted.id, day, outcome: "closed_day" };
-    }
-
-    await stores.incrementOpenDay({
-      day,
-      increments: buildDayIncrements(metricTouches, nyHour),
+      },
+      increments: metricTouches.length ? buildDayIncrements(metricTouches, nyHour) : null,
       seed: buildDaySeed(day),
+      writtenAt,
     });
-
-    await publishRedisDoorbell({
-      deps,
-      eventId: inserted.id,
-      day,
-      kind: input.kind,
-      lane,
-      occurredAt,
-      dedupeKey,
-      stores,
-    });
-
-    return { event_id: inserted.id, day, outcome: "recorded" };
+    if ("duplicate" in inserted) return { event_id: "", day, outcome: "duplicate" };
+    return { event_id: inserted.id, day, outcome: inserted.outcome };
   } catch (error) {
     logger.error({
       msg: "daily_operations.record_fact_failed",

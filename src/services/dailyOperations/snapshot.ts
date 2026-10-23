@@ -104,6 +104,7 @@ export type DailyOperationsDayLoader = (
 export type DailyOperationsSnapshotDeps = {
   now?: () => Date;
   loadDay?: DailyOperationsDayLoader;
+  loadDays?: (days: string[]) => Promise<(DailyOperationsDayDocument | null)[]>;
   countOpenIntakes?: () => Promise<number>;
   countHeldMessages?: () => Promise<number>;
   redisConfigured?: () => boolean;
@@ -117,20 +118,20 @@ export async function getDailyOperationsSnapshot(
   const yesterdayKey = previousEasternDayKey(todayKey);
   const dayBeforeKey = previousEasternDayKey(yesterdayKey);
   const currentNyHour = easternHour(now);
-  const loadDay = deps.loadDay ?? defaultLoadDay;
+  const loadDays = deps.loadDays ?? (deps.loadDay
+    ? (days: string[]) => Promise.all(days.map(deps.loadDay!))
+    : defaultLoadDays);
   const countOpenIntakes = deps.countOpenIntakes ?? defaultCountOpenIntakes;
   const countHeldMessages = deps.countHeldMessages ?? defaultCountHeldMessages;
   const redisConfigured =
     deps.redisConfigured ?? shouldPublishDailyOperationsRedis;
 
-  const [todayDoc, yesterdayDoc, dayBeforeDoc, stillOpen, heldNow] =
-    await Promise.all([
-      loadDay(todayKey),
-      loadDay(yesterdayKey),
-      loadDay(dayBeforeKey),
-      countOpenIntakes(),
-      countHeldMessages(),
-    ]);
+  const [dayDocs, stillOpen, heldNow] = await Promise.all([
+    loadDays([todayKey, yesterdayKey, dayBeforeKey]),
+    countOpenIntakes(),
+    countHeldMessages(),
+  ]);
+  const [todayDoc, yesterdayDoc, dayBeforeDoc] = dayDocs;
 
   const today = todayDoc ?? (buildDaySeed(todayKey) as DailyOperationsDayDocument);
   const yesterdayPresent = Boolean(yesterdayDoc);
@@ -285,21 +286,21 @@ function normalizeHourly(
   });
 }
 
-async function defaultLoadDay(
-  day: string,
-): Promise<DailyOperationsDayDocument | null> {
-  return getDailyOperationsDayModel().findOne({ day }).lean().exec();
+async function defaultLoadDays(days: string[]): Promise<(DailyOperationsDayDocument | null)[]> {
+  const rows = await getDailyOperationsDayModel().find({ day: { $in: days } }).maxTimeMS(3000).lean().exec();
+  const byDay = new Map(rows.map((row) => [row.day, row]));
+  return days.map((day) => byDay.get(day) ?? null);
 }
 
 async function defaultCountOpenIntakes(): Promise<number> {
   return getGranotBookingReconciliationCaseModel().countDocuments({
     state: "open",
-  });
+  }).maxTimeMS(3000);
 }
 
 async function defaultCountHeldMessages(): Promise<number> {
   return getLeadMessageModel().countDocuments({
     provider_status: "scheduled",
     status: "accepted",
-  });
+  }).maxTimeMS(3000);
 }

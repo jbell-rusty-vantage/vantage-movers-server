@@ -139,6 +139,7 @@ const DailyOperationsEventSchema = new Schema<DailyOperationsEventDocument>(
 DailyOperationsEventSchema.index({ dedupe_key: 1 }, { unique: true });
 DailyOperationsEventSchema.index({ day: 1, occurred_at: -1, _id: -1 });
 DailyOperationsEventSchema.index({ day: 1, lane: 1, occurred_at: -1 });
+DailyOperationsEventSchema.index({ day: 1, kind: 1, occurred_at: -1, _id: -1 }, { name: "dailyops_day_kind_order" });
 DailyOperationsEventSchema.index({ parent_receipt_id: 1, occurred_at: 1 });
 DailyOperationsEventSchema.index({ entity_type: 1, entity_id: 1 });
 /**
