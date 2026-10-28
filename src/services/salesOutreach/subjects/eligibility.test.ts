@@ -110,3 +110,59 @@ describe("P05h new-desk eligibility seam (fixture p05h-lead-eligibility.json)", 
     assert.deepEqual(store.subjects.map((s) => s.contact_number_ids), [[], []]);
   });
 });
+
+describe("Owner 2026-10-28: a Call Lead needs a Job Number for a cadence; a Form Lead does not", () => {
+  const config = deskConfiguration({
+    transition: { intake_admission_enabled: true, intake_admission_at: "2026-10-01T00:00:00.000Z", backfill_lookback_days: 90, backfill_include_upcoming_moves: true, expansion_admission_enabled: true },
+    migration: { paused: false },
+  });
+  const noJob = { job_no: null, normalized_job_no: null };
+
+  test("a Call Lead without a Job Number is excluded (job_number_pending); closures still come first", () => {
+    assert.deepEqual(evaluateDeskEligibility({ kind: "lead", facts: leadFacts({ model: "CallLead", ...noJob }) }), { outcome: "excluded", reason: "job_number_pending" });
+    assert.deepEqual(evaluateDeskEligibility({ kind: "lead", facts: leadFacts({ model: "CallLead", ...noJob, booked_id: "b1" }) }), { outcome: "closed", reason: "official_booking" });
+    assert.deepEqual(evaluateDeskEligibility({ kind: "lead", facts: leadFacts({ model: "CallLead", job_no: "P123", normalized_job_no: null }) }), { outcome: "eligible" });
+  });
+
+  test("a Form Lead without a Job Number stays eligible and intake admits it with its cadence", async () => {
+    assert.deepEqual(evaluateDeskEligibility({ kind: "lead", facts: leadFacts({ ...noJob }) }), { outcome: "eligible" });
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ ...noJob }));
+    const result = await refreshLeadForOutreach(lead.ref, config, new Date("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.equal(result.admission, "intake");
+    assert.equal(store.subjects[0]!.status, "active");
+  });
+
+  test("intake refuses a new Call Lead without a job; the B6 admission enrolls it once Granot writes the job, starting then", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ model: "CallLead", ...noJob }));
+    const refused = await refreshLeadForOutreach(lead.ref, config, new Date("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.equal(refused.outcome, "not_admitted");
+    assert.equal(refused.reason, "excluded:job_number_pending");
+    assert.equal(store.subjects.length, 0);
+
+    store.addLead({ ...lead, job_no: "P5560001", normalized_job_no: "P5560001", domain_revision: 2, last_changed_at: new Date("2026-10-02T16:00:00Z") });
+    const asOf = new Date("2026-10-02T16:00:30Z");
+    const admitted = await refreshLeadForOutreach(lead.ref, config, asOf, store, fakeSession, "admission");
+    assert.equal(admitted.admission, "expansion", JSON.stringify(admitted));
+    assert.equal(store.subjects[0]!.status, "active");
+    assert.equal(+store.periods[0]!.started_at, +asOf, "nothing owed before the job arrived");
+  });
+
+  test("an existing Call Lead subject without a job moves to review (owes nothing) and returns to active when the job arrives", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const lead = store.addLead(leadFacts({ model: "CallLead" }));
+    await refreshLeadForOutreach(lead.ref, config, new Date("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.equal(store.subjects[0]!.status, "active");
+
+    store.addLead({ ...lead, ...noJob, domain_revision: 2 });
+    await refreshLeadForOutreach(lead.ref, config, new Date("2026-10-02T15:00:00Z"), store, fakeSession);
+    assert.equal(store.subjects[0]!.status, "review");
+    assert.deepEqual(store.subjects[0]!.review_reasons, ["job_number_pending"]);
+
+    store.addLead({ ...lead, job_no: "P5560002", normalized_job_no: "P5560002", domain_revision: 3 });
+    await refreshLeadForOutreach(lead.ref, config, new Date("2026-10-03T15:00:00Z"), store, fakeSession);
+    assert.equal(store.subjects[0]!.status, "active");
+    assert.deepEqual(store.subjects[0]!.review_reasons, []);
+  });
+});

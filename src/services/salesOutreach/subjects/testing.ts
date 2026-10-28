@@ -195,8 +195,9 @@ export function leadFacts(overrides: Partial<Omit<DeskLeadFacts, "ref">> & { mod
     created_on_unmatched: false,
     form_fill: false,
     receiver_agent_id: null,
-    job_no: null,
-    normalized_job_no: null,
+    // A Call Lead without a Job Number is excluded (`job_number_pending`), so a synthetic Call Lead holds its own job.
+    job_no: model === "CallLead" ? `C-${id}` : null,
+    normalized_job_no: model === "CallLead" ? `C${id}` : null,
     phone: "(555) 010-0000",
     normalized_phone: "5550100000",
     name: "Synthetic Customer",

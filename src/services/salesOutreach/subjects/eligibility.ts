@@ -9,6 +9,10 @@ import type { DeskLeadFacts } from "./leadFacts";
  * - A Duplicate Lead gets no separate cadence: its contact belongs to the original opportunity only
  *   through a verified number association (lane S3), never through a desk subject of its own.
  * - An unmatched Call Lead created only to anchor a Booking has no automatic cadence.
+ * - A Call Lead without a Job Number has no cadence (Owner, 2026-10-28: outreach works Granot jobs). It is
+ *   excluded until Granot gives it a job; the B6 admission then enrolls it (`normalized_job_no` is an
+ *   admission decision path). A Form Lead without a job keeps its cadence: a submitted form always reaches
+ *   Granot, so its job is only arriving ("Job number arriving soon" on the desk).
  * - No-Sync is reporting scope, not a desk closure: a viable No-Sync Lead stays eligible.
  * - Form Fill alone neither excludes a Call Lead nor merges it with another Lead (it is not read).
  * - A Lead already closed by a legacy record needs review and an authorized reopening; the desk never
@@ -20,7 +24,7 @@ import type { DeskLeadFacts } from "./leadFacts";
 export type DeskEligibility =
   | Readonly<{ outcome: "eligible" }>
   | Readonly<{ outcome: "closed"; reason: DeskClosureReason }>
-  | Readonly<{ outcome: "excluded"; reason: "duplicate" | "unmatched_booking_anchor" }>
+  | Readonly<{ outcome: "excluded"; reason: "duplicate" | "unmatched_booking_anchor" | "job_number_pending" }>
   | Readonly<{ outcome: "review"; reason: "legacy_closed_reopening_required" | "number_only_unassociated" }>;
 
 export type DeskClosureReason = "official_booking" | "official_cancellation" | "bad_lead";
@@ -38,7 +42,10 @@ export function evaluateDeskEligibility(record: DeskEligibilityRecord): DeskElig
   if (facts.bad_lead) return { outcome: "closed", reason: "bad_lead" };
   if (facts.duplicate) return { outcome: "excluded", reason: "duplicate" };
   if (facts.ref.model === "CallLead" && facts.created_on_unmatched) return { outcome: "excluded", reason: "unmatched_booking_anchor" };
+  if (facts.ref.model === "CallLead" && !hasJobNumber(facts)) return { outcome: "excluded", reason: "job_number_pending" };
   if (record.legacy_closed) return { outcome: "review", reason: "legacy_closed_reopening_required" };
   // `no_sync` and `form_fill` are deliberately not read.
   return { outcome: "eligible" };
 }
+
+const hasJobNumber = (facts: DeskLeadFacts) => Boolean(facts.normalized_job_no ?? facts.job_no);
