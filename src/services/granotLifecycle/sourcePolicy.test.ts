@@ -211,6 +211,38 @@ test("[AC-09] Best Relocation Form same valid states select local; different sel
   }
 });
 
+test("a Form source with a single `any` route selects it with blank or non-USPS states", async () => {
+  const tbmForms = formSource({
+    normalized_granot_label: "tbm forms",
+    lifecycle_routes: [{ route_key: "form_any", lead_model: "FormLead", move_type: "any", source_granularity_id: localGranularityId }],
+  });
+  for (const facts of [
+    {},
+    { origin_state: "GA" },
+    { destination_state: "NY" },
+    { origin_state: "PA", destination_state: "PR" },
+    { origin_state: "NY", destination_state: "NY" },
+  ]) {
+    const result = await resolveSourcePolicy({ source_label: "TBM Forms", ...facts }, store([tbmForms]));
+    assert.equal(result.ok, true, JSON.stringify(facts));
+    if (result.ok) {
+      assert.equal(result.snapshot.selected_route_key, "form_any");
+      assert.equal(result.snapshot.selected_move_type, "any");
+      assert.equal(result.snapshot.source_granularity_id, localGranularityId);
+    }
+  }
+  // Typed routes keep the exact AC-09 rule even when an `any` sibling exists.
+  const mixed = formSource({
+    lifecycle_routes: [
+      ...formSource().lifecycle_routes,
+      { route_key: "form_any", lead_model: "FormLead", move_type: "any", source_granularity_id: localGranularityId },
+    ],
+  });
+  const missing = await resolveSourcePolicy({ source_label: "BestRelocation Forms", origin_state: "NY" }, store([mixed]));
+  assert.equal(missing.ok, false);
+  if (!missing.ok) assert.equal(missing.reason, "missing_creation_route_data");
+});
+
 test("[AC-29] deferred Paid Overflow and Auto authorize no effect; payload type is not classification input", async () => {
   const paidOverflow = await resolveSourcePolicy(
     { source_label: "Paid Overflow", provider_type: "AUTO" },

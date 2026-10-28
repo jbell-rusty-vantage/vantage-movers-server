@@ -312,7 +312,10 @@ async function selectRoute(
   }
 
   let candidates = row.lifecycle_routes;
-  if (formRoutes.length > 0) {
+  // Move type only chooses between local / long-distance routes. A source whose Form routes are all
+  // `any` (TBM Forms, Top10 Forms, Main Site Forms…) needs no states: blank or non-USPS states (PR)
+  // must not stop an existing Lead from matching.
+  if (formRoutes.length > 0 && formRoutes.some((route) => route.move_type !== "any")) {
     const moveType = selectFormMoveType({
       origin_state: facts.origin_state,
       destination_state: facts.destination_state,

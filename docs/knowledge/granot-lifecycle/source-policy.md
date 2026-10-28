@@ -49,6 +49,7 @@ generated:
 - Missing/inactive Source Company → `target_source_company_inactive`.
 - Missing/inactive/wrong-company/wrong-channel/ambiguous route → fail closed; never choose a fallback.
 - Best Relocation Form routing is exact: same two valid USPS states → local; different valid states → long-distance; missing/invalid → `missing_creation_route_data` and cannot authorize creation.
+- Move type is computed only when a source has typed (`local` / `long_distance`) Form routes. A source whose Form routes are all `any` (TBM Forms, Top10 Forms, Main Site Forms, TBM Forms Prime, Paid Overflow) selects that route with blank or non-USPS states (e.g. PR). Before 2026-10-28 these rows failed `missing_creation_route_data` before the identity ladder ran, so existing Form Leads with a matching `ref_no` never received their job number.
 
 ## Layered gates
 
