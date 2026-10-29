@@ -28,6 +28,8 @@ import { equivalentNormalizedJobFilter, jobNumbersEquivalent } from "../bookings
 import { persistEntityChangeMutations } from "../domainCommands/entityChange";
 import { executeCanonicalCommandWithPostCommit } from "../domainCommands/idempotency";
 import type { CanonicalCommandContext } from "../domainCommands/types";
+import type { DurableActor } from "../durableWork";
+import type { ObservationChannel } from "./types";
 import { finalizeSheetSync } from "../sheetSync/sheetSyncCoordinator";
 import { enqueueSheetSyncJob } from "../sheetSync/sheetSyncOutbox.service";
 
@@ -187,11 +189,35 @@ export function hasSyncedCallsRow(call: SiblingCallLead): boolean {
 export type SiblingResult = Readonly<{ outcome: "updated" | SiblingSkipReason; call_id: string | null; basis: string | null; paths: string[]; sheet: boolean }>;
 
 /**
- * Applies the Form sibling update for one Form Lead in its own audited transaction (re-planned inside it;
- * the Call Lead write is a compare-and-swap on `domain_revision`). Idempotent per Form Lead, Call Lead and
- * written values. `run_id` names the caller (`granot-processor`, a backfill run). Returns what it did.
+ * Who runs the update, as the command context validator requires (`domainCommands/commandContext.ts`):
+ * - `granot_lifecycle`: the processor, after a Form Lead result, with its own fixed processor actor, the
+ *   receipt's initiator and the receipt / Observation / Decision / channel of that result;
+ * - `owner_backfill`: an Owner-approved operator run (`vantage_admin`, like the Call move-date repair).
  */
-export async function mirrorFormLeadToCallSibling(formLeadId: string, input: Readonly<{ run_id: string; observation_id?: string | null }>): Promise<SiblingResult> {
+export type SiblingCommandOrigin =
+  | Readonly<{ kind: "granot_lifecycle"; actor: DurableActor; initiator: DurableActor; receipt_id: string; observation_id: string;
+    decision_id: string; observation_channel: ObservationChannel }>
+  | Readonly<{ kind: "owner_backfill"; run_id: string }>;
+
+export function siblingContext(origin: SiblingCommandOrigin, key: string, checksum: string): CanonicalCommandContext {
+  const base = { command_id: randomUUID(), idempotency_key: key, payload_checksum: checksum };
+  if (origin.kind === "granot_lifecycle") {
+    return { ...base, actor: origin.actor, initiator: origin.initiator,
+      provenance: { origin: "granot_lifecycle", run_id: null, source_receipt_id: origin.receipt_id, source_connection_key: null,
+        observation_id: origin.observation_id, decision_id: origin.decision_id, observation_channel: origin.observation_channel } };
+  }
+  const actor = { actor_type: "owner" as const, actor_id: "owner-approved-form-sibling-backfill", actor_role: "owner" as const,
+    actor_label: "Owner-approved Form/Call sibling backfill", origin: "vantage_admin" as const, request_id: randomUUID() };
+  return { ...base, actor, initiator: actor,
+    provenance: { origin: "vantage_admin", run_id: origin.run_id, source_receipt_id: null, source_connection_key: null } };
+}
+
+/**
+ * Applies the Form sibling update for one Form Lead in its own audited transaction (re-planned inside it;
+ * the Call Lead write is a compare-and-swap on `domain_revision`). Idempotent per Form Lead, Call Lead
+ * revision and written values. Returns what it did.
+ */
+export async function mirrorFormLeadToCallSibling(formLeadId: string, origin: SiblingCommandOrigin): Promise<SiblingResult> {
   const preview = await loadFormSiblingCandidates(formLeadId);
   if (!preview.form) return { outcome: "form_ineligible", call_id: null, basis: null, paths: [], sheet: false };
   const planned = planFormSiblingUpdate(preview.form, preview.jobMatches, preview.phoneMatches, new Date(0));
@@ -202,12 +228,7 @@ export async function mirrorFormLeadToCallSibling(formLeadId: string, input: Rea
   // changed the Call Lead are a new command, never a replay of the first one.
   const callRevision = Number([...preview.jobMatches, ...preview.phoneMatches].find((lead) => String(lead._id) === planned.call_id)?.domain_revision ?? 0);
   const key = `granot-form-sibling:${formLeadId}:${planned.call_id}:r${callRevision}:${createHash("sha256").update(valueKey).digest("hex").slice(0, 32)}`;
-  const actor = { actor_type: "system" as const, actor_id: "granot-form-sibling", actor_label: "Granot Form sibling update",
-    actor_role: "system" as const, origin: "granot_lifecycle" as const, request_id: randomUUID() };
-  const context: CanonicalCommandContext = { command_id: randomUUID(), idempotency_key: key,
-    payload_checksum: createHash("sha256").update(`${key}:${valueKey}`).digest("hex"), actor, initiator: actor,
-    provenance: { origin: "granot_lifecycle", run_id: input.run_id, source_receipt_id: null, source_connection_key: null,
-      ...(input.observation_id ? { observation_id: input.observation_id } : {}) } };
+  const context = siblingContext(origin, key, createHash("sha256").update(`${key}:${valueKey}`).digest("hex"));
   type Sheet = { resource: "source_lead"; operation: "call_lead.update"; leadModel: "CallLead"; leadId: string };
   let result: SiblingResult = { outcome: "already_current", call_id: planned.call_id, basis: planned.basis, paths: [], sheet: false };
   await executeCanonicalCommandWithPostCommit<Sheet | null>({ command_name: "mirrorFormLeadToCallSibling", context,

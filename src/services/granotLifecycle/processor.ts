@@ -29,7 +29,7 @@ import {
 } from "../domainCommands/types";
 import { createGranotWebhookInitiator } from "../durableWork/actors";
 import { wakeLeadLinksAfterChange } from "../numberActivity/leadLinkJobs";
-import { mirrorFormLeadToCallSibling } from "./callLeadFormSibling";
+import { mirrorFormLeadToCallSibling, type SiblingCommandOrigin } from "./callLeadFormSibling";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
   createLeadFromGranot,
@@ -199,7 +199,7 @@ export type GranotLifecycleProcessorDeps = {
   /** Seam: post-commit All Numbers lead-link wake-up after a Lead EntityChange (default `wakeLeadLinksAfterChange`). */
   wakeLeadLinks?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
   /** Seam: the Granot Form sibling update after a Form Lead result (default `mirrorFormLeadToCallSibling`). */
-  mirrorFormSibling?: (formLeadId: string, input: { run_id: string; observation_id: string }) => Promise<unknown>;
+  mirrorFormSibling?: (formLeadId: string, origin: SiblingCommandOrigin) => Promise<unknown>;
   /** Seam: how long receipt processing waits for the wake-up (default `LEAD_LINK_WAKE_TIMEOUT_MS`). */
   wakeLeadLinksTimeoutMs?: number;
   bookingReconciliationStore?: BookingReconciliationPersistenceStore;
@@ -242,9 +242,18 @@ export function createGranotObservationProcessor(
       const target = result.target;
       const flags = deps.flags ?? getGranotLifecycleFlags();
       if (target?.model === "FormLead" && FORM_SIBLING_OUTCOMES.has(result.outcome) && flags.lead_writes_enabled && !flags.shadow_mode) {
-        await boundedLeadLinkWake(() => (deps.mirrorFormSibling ?? mirrorFormLeadToCallSibling)(target.id,
-          { run_id: "granot-processor", observation_id: result.observation_id }), result.observation_id,
-        deps.wakeLeadLinksTimeoutMs ?? LEAD_LINK_WAKE_TIMEOUT_MS, "form_sibling_update");
+        await boundedLeadLinkWake(async () => {
+          // The command runs under this result's own lifecycle provenance (`commandContext.ts` rules).
+          const receipt = await (deps.loadReceipt ?? defaultLoadReceipt)(input.receipt_id);
+          if (!receipt) return;
+          const receiptId = String(receipt._id);
+          const initiator = input.initiator ?? receipt.initiator
+            ?? (receipt.observation_channel === "granot_webhook" ? createGranotWebhookInitiator(receiptId) : undefined);
+          if (!initiator) return;
+          await (deps.mirrorFormSibling ?? mirrorFormLeadToCallSibling)(target.id, { kind: "granot_lifecycle",
+            actor: granotLifecycleProcessorActor(receiptId), initiator, receipt_id: receiptId, observation_id: result.observation_id,
+            decision_id: result.decision_id, observation_channel: receipt.observation_channel });
+        }, result.observation_id, deps.wakeLeadLinksTimeoutMs ?? LEAD_LINK_WAKE_TIMEOUT_MS, "form_sibling_update");
       }
       return result;
     },

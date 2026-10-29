@@ -101,3 +101,16 @@ test("hasSyncedCallsRow: only a synced Master Calls entry with a row number coun
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "synced", row_number: 12 }], no_sync: true }), false);
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_duplicate_calls", status: "synced", row_number: 3 }] }), false);
 });
+
+test("both command origins pass the canonical command context validator (processor result and Owner backfill)", async () => {
+  const { assertCommandContext } = await import("../domainCommands/commandContext.js");
+  const { createGranotWebhookInitiator } = await import("../durableWork/actors.js");
+  const { siblingContext } = await import("./callLeadFormSibling.js");
+  const receipt = "650000000000000000000101";
+  const checksum = "a".repeat(64);
+  const processorActor = { actor_type: "system" as const, actor_id: "granot-lifecycle-processor", actor_label: "Granot Lifecycle Processor",
+    actor_role: "system" as const, origin: "granot_lifecycle" as const, request_id: receipt };
+  await assertCommandContext(siblingContext({ kind: "granot_lifecycle", actor: processorActor, initiator: createGranotWebhookInitiator(receipt), receipt_id: receipt,
+    observation_id: "650000000000000000000102", decision_id: "650000000000000000000103", observation_channel: "granot_webhook" }, "granot-form-sibling:k1", checksum));
+  await assertCommandContext(siblingContext({ kind: "owner_backfill", run_id: "call-lead-form-siblings-2026-10-28" }, "granot-form-sibling:k2", checksum));
+});

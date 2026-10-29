@@ -108,11 +108,12 @@ async function main() {
   let sheets = 0;
   for (const id of planned.slice(0, args.limit)) {
     try {
-      const result = await mirrorFormLeadToCallSibling(id, { run_id: `call-lead-form-siblings-${new Date().toISOString().slice(0, 10)}` });
+      const result = await mirrorFormLeadToCallSibling(id, { kind: "owner_backfill", run_id: `call-lead-form-siblings-${new Date().toISOString().slice(0, 10)}` });
       tally(applied, result.outcome);
       if (result.sheet) sheets += 1;
     } catch (error) {
       tally(applied, `error:${error instanceof Error ? error.name : "unknown"}`);
+      if (error instanceof Error) console.error(`form ${id}: ${error.name}: ${error.message}`);
     }
   }
   console.log(JSON.stringify({ mode: "apply", ...summary, applied, calls_row_jobs_enqueued: sheets }, null, 2));
