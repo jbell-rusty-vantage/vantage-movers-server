@@ -1,0 +1,25 @@
+{
+  "reviewedAt": "2026-10-29",
+  "originalRecommendationNames": 394,
+  "activeSecondPassEntries": 338,
+  "uniqueActiveEntries": 338,
+  "correctedOrClarified": 217,
+  "checkedWithoutFurtherCorrection": 121,
+  "documentFindings": 255,
+  "removedRechecked": 56,
+  "activeTargetsPresent": 338,
+  "auditEvidencePaths": "all resolve",
+  "activeAndCurrentNavigationLinks": "all resolve",
+  "linkRepairsDuringIntegration": [],
+  "gitDiffCheck": "passed",
+  "runtimeFilesCompared": 1348,
+  "runtimeTreeDifferencesSinceTurnBaseline": [],
+  "editedBriefsByByteComparison": 220,
+  "runtimeTestsExecuted": false,
+  "errors": [],
+  "checkedBriefsWithIntegrationCosmeticCleanup": [
+    "moving-carriers-granot-carrier-code-seed.md",
+    "moving-carriers-moving-carrier.md",
+    "routes-reporting-cron.md"
+  ]
+}

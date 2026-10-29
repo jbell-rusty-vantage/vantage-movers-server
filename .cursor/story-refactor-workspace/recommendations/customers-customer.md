@@ -1,12 +1,10 @@
 # Write This Customer, Or Wipe Them And Their Bookings — operational story
 
 - Status: recommended
-- Service: `customers` (Wave A, in-progress)
-- Pass: 1 of this service — `customer.service.ts`
-- Remaining in this service: `customerFromLead.service.ts`
+- Service: `customers`
 - Target: `src/services/customers/customer.service.ts`
 - Knowledge: `docs/knowledge/services/customer.md` (HTTP CRUD + delete cascade; booking-time upsert is the sibling file). This checkout’s `CONTEXT.md` does not define Customer — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `routes/v1.routes.ts` (`GET|POST|PATCH|DELETE /api/v1/customers` via leftover `handleFindAll` / `handleCreate` / `handleUpdate` / `handleDelete` — not the Booking canonical executor), `customers/index.ts` → `v1.service.ts`. Admin browse/search/export reads the `customers` collection itself (`adminBrowse.service.ts`) and does **not** import this file. Tests: none for this module (`customerFromLead.service.test.ts` is the sibling; Zod name-only create lives in `v1.validation.test.ts`).
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/customers/index.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: leftover public write vs no command `begin` / `complete`; `cascade=true` query on wipe (route `handleDelete`); `deleteBookedLead` must stay a `v1.service` import so the bookings ↔ customers load-time cycle stays broken
 - Split later (only if the file outgrows one sitting): `writeThisCustomerByHand.ts`, `wipeThisCustomerAndTheirBookings.ts` — never `create.ts` / `update.ts` / `delete.ts`
 
@@ -16,16 +14,16 @@ Knowledge still titles this “HTTP CRUD: create, update, list, cascade delete.�
 
 Four operations, not “a CRUD service,” and not Remember The Customer This Lead Names:
 
-1. **Write this Customer by hand** — Admin (or a script) posts a name, optional phone, optional email. Zod already stripped unknown keys. `Customer.create` stores the body. It does **not** stamp `normalized_name`. Booking-time identity is not this write.
+1. **Write this Customer by hand** — Admin (or a script) posts a name, optional phone, optional email. Transport Zod rejects unknown keys (`strict()`). `Customer.create` stores the body. It does **not** stamp `normalized_name`. Booking-time identity is not this write.
 2. **Correct this Customer by hand** — patch name / phone / email. Missing id → 404. It does **not** recompute `normalized_name` when `full_name` changes.
-3. **List recent Customers** — last 200, newest first. Admin browse is a different **adapter**.
+3. **List recent Customers** — last 200, newest first. The former Admin Customers browse resource is retired.
 4. **Wipe this Customer and the Bookings they own** — find Bookings whose `customer` is this id. Any Booking and `cascade` is false → 409. Otherwise, for each Booking, leftover `deleteBookedLead(bookingId, true)` through `v1.service` (that leftover path tombstones sheets, may erase a linked Cancellation, and takes the Booking off the Lead). Then erase the Customer. There is no customer Sheet Sync row.
 
 Remember the Customer this Lead or Booking contact names is `customerFromLead.service.ts`. Booked-call-lead reconciliation’s `$setOnInsert` by phone is not this folder.
 
 ## Organization
 
-Keep one file. This is the screenplay for “Admin wrote a Customer, or Admin wiped them.” Booking-time upsert, leftover Booking delete, and admin browse already live in deeper **modules**. Do not pull those in. Do not invent a `CustomerService` class. Do not invent a `begin` / `complete` **seam** — public `/customers` never entered the canonical executor.
+Keep one file. This is the screenplay for “Admin wrote a Customer, or Admin wiped them.” Booking-time upsert and leftover Booking delete already live in deeper **modules**; the former Admin Customers browse resource is retired. Do not pull those in. Do not invent a `CustomerService` class. Do not invent a `begin` / `complete` **seam** — public `/customers` never entered the canonical executor.
 
 If it later outgrows one sitting, split by **story** (hand write vs wipe), never CRUD. The hand write stays thin. Do not invent ingestion beats it does not have.
 
@@ -104,7 +102,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 6. **Missing Customer on wipe is not 404.** `correctThisCustomerByHand` throws. `wipeThisCustomerAndTheirBookings` `findByIdAndDelete`s after the Booking loop and returns. A valid ObjectId with no row and no Bookings is HTTP 204. Do not silently add a 404 so wipe “matches correct.”
 
-7. **Testimonials are not dependents.** The Customer model has a `testimonials` virtual. Wipe does not touch them. Admin detail loads related Bookings and Cancellations (limit 25), not testimonials. Do not cascade testimonials so the wipe “feels complete.”
+7. **Testimonials are not dependents.** The Customer model has a `testimonials` virtual. Wipe does not touch them. The former Admin Customer detail resource is retired. Do not cascade testimonials so the wipe “feels complete.”
 
 8. **This file does not sync a Customer sheet.** There is no customer projection. Sheet work happens only inside leftover Booking delete (Booking row, optional Cancellation row, surviving Lead). Do not enqueue a customer job from wipe.
 
@@ -112,7 +110,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 10. **Leave the sibling upsert alone.** `upsertCustomerFromLead` / `upsertCustomerFromBookingContact` stay in `customerFromLead.service.ts` so they never import the booking lifecycle. Do not move them into this file “because it is the Customer service.”
 
-11. **Admin browse is not list.** `GET /api/v1/admin/customers` goes through `adminBrowse.service.ts` (scope, sort, `q` on `normalized_name`). `listRecentCustomers` is the leftover public 200. Do not teach list the admin query.
+11. **The Admin Customers resource is retired.** `findAllCustomers` remains the public newest-200 list; do not recreate Admin browse from this brief.
 
 12. **Do not treat booked-call-lead reconciliation as this story.** That path `findOneAndUpdate`s by phone with `$setOnInsert` only. Knowledge already separates it.
 
@@ -158,3 +156,7 @@ Do not re-test `upsertCustomerFromLead` match keys, leftover `deleteBookedLead` 
 - Pulling `customerFromLead.service.ts`, admin browse, or booked-call-lead reconciliation into this file.
 - Cascading testimonials, or enqueueing a customer Sheet Sync job that does not exist.
 - Writing a whole-folder `customers` recommendation in this pass.
+
+## Source-verified implementation constraints (2026-10-29)
+
+Customer CRUD remains, but its Admin browse/search/export resource was retired. Preserve sequential Booking cascade via v1.service (partial earlier deletions remain on a later failure), missing-Customer delete as successful no-op, 200-row list and manual update without normalized_name rewrite. Do not revive an Admin Customers desk from the old comparison text.

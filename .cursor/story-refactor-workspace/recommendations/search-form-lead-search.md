@@ -1,12 +1,10 @@
 # Name The Form Lead Before Updating Quoted — operational story
 
 - Status: recommended
-- Service: `search` (Wave A, in-progress)
-- Pass: 1 of this service — `formLeadSearch.service.ts`
-- Remaining in this service: `formLeadBrowse.service.ts`, `callLeadSearch.service.ts`, `callLeadBrowse.service.ts`
+- Service: `search`
 - Target: `src/services/search/formLeadSearch.service.ts`
 - Knowledge: `docs/knowledge/services/form-lead-search.md`. Distinct from browse: `docs/knowledge/services/lead-browse.md`. Distinct from Call lookup: `docs/knowledge/services/call-lead-search.md`. Granot fallback after exact ref / Mongo id: `docs/knowledge/services/granot-http-collector.md` (matcher). This checkout’s `CONTEXT.md` does not define Form Lead / Tracking Reference / Duplicate Lead — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `routes/v1.routes.ts` `POST /api/v1/form-leads/search` (legacy barrel `formLeadSearch.service.ts`). `granotCrmCsv/sync.service.ts` `resolveFormLead` (phone + email + name, limit 10; ObjectId `ref_no` **skips this file**). `granotHttpCollector/granotFormLeadMatcher.ts` `resolveGranotFormLead` (fallback only; limit 25, duplicates off; then source-gates `matches`). Barrel: `search/index.ts`. Tests: `formLeadSearch.service.test.ts` (duplicate filter on/off). Zod: `v1.validation.test.ts` (`include_duplicates`, loose email). Best Relocation ingest talks HTTP, not this export.
+- Callers: `routes/v1.routes.ts` `POST /api/v1/form-leads/search` (legacy barrel `formLeadSearch.service.ts`). `granotCrmCsv/sync.service.ts` `resolveFormLead` (phone + email + name, limit 10; ObjectId `ref_no` **skips this file**). `granotHttpCollector/granotFormLeadMatcher.ts` `resolveGranotFormLead` (fallback only; limit 25, duplicates off; then source-gates `matches`). Barrel: `search/index.ts`. Tests: `formLeadSearch.service.test.ts` (duplicate filter on/off). Zod: `v1.validation.test.ts` (`include_duplicates`, loose email). Best Relocation external sheet ingestion is not live.
 - Seams callers need: the three-way verdict (`found` / `not_found` / `ambiguous`) vs the scored `matches` list the Granot matcher re-picks from; Duplicate Lead quarantine on unless asked
 - Split later (only if the file outgrows one sitting): keep one file — naming the Form Lead is one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 
@@ -121,7 +119,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 9. **Leave sibling modules alone.** `browseFormLeads`, `searchCallLeads`, `resolveGranotFormLead`, `selectGranotFormFallback`, and CSV `resolveFormLead` stay where they are. This file orchestrates fold → pull → score → verdict.
 
-10. **Do not treat browse or Call search as this story.** Empty browse lists the newest leads. Call search returns a newest-first summary array with no `ambiguous`. Wave A will recommend those modules next. Do not write a whole-folder search recommendation.
+10. **Do not treat browse or Call search as this story.** Empty browse lists the newest leads. Call search returns a newest-first summary array with no `ambiguous`. Those modules have separate active recommendations. Do not write a whole-folder search recommendation.
 
 ## Testing
 
@@ -158,4 +156,7 @@ Do **not** re-test Granot exact-ref / Mongo-id / source-gate / quoted-prior here
 - Using confidence to break a score tie, or picking newest on `ambiguous`.
 - Merging browse contains-name or Call unanchored-name into this fold.
 - Loosening score-tie `ambiguous` for quoted / extension updates without owner sign-off.
-- Writing a whole-folder recommendation for `search`.
+
+## Current contact scope
+
+This scored identity search intentionally does not use `FORM_LEAD_CONTACT_*_PATHS`. Any-known-contact behavior belongs to browse/typeahead and Call OR search. Preserve the top-level scorer, pre-score candidate cap, duplicate exclusion and tie result while renaming; do not silently copy the snapshot search paths here.

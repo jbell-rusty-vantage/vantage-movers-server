@@ -1,0 +1,2573 @@
+{
+  "reviewedAt": "2026-10-29",
+  "reviewMethod": "Adversarial comparison of recommendation claims with current implementation branches, relative-import resolution, caller/mount/validator boundaries and matching Service documentation. Tests were read as evidence where named; none were executed. Retained guidance is not runtime qualification.",
+  "entries": [
+    {
+      "file": "moving-carriers-granot-carrier-code-seed.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/movingCarriers/granotCarrierCodeSeed.ts",
+        "docs/knowledge/services/tariff.md",
+        "src/services/movingCarriers/granotCarrierCodeSeed.test.ts"
+      ],
+      "verifiedClaims": [
+        "DOT-only seed lookup, last normalized DOT wins, raw seed DOT returned, no writes in planner."
+      ]
+    },
+    {
+      "file": "moving-carriers-moving-carrier.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/movingCarriers/movingCarrier.service.ts",
+        "docs/knowledge/services/tariff.md",
+        "src/services/movingCarriers/movingCarrier.service.test.ts"
+      ],
+      "verifiedClaims": [
+        "CSV DOT+MC identity, per-field unique conflicts, blank-code preservation, non-atomic replace deactivation and list/include-inactive semantics."
+      ]
+    },
+    {
+      "file": "operational-workbooks-registry.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationalWorkbooks/registry.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/operationalWorkbooks/registry.test.ts"
+      ],
+      "verifiedClaims": [
+        "Missing/invalid required production registrations fail closed; normalize spreadsheet IDs/URLs; snapshot folder still asserts configuration; masking is separate."
+      ]
+    },
+    {
+      "file": "operations-registry-catalog-registry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Agent catalog story ends at card/audit/cache and username cannot be cleared.",
+          "correction": "Agent supports null username clearing and outreach_desk; membership-input changes enqueue desk resync inside transaction and publish live subject changes after commit. Merchant does not gain this side effect.",
+          "evidence": [
+            "src/services/operationsRegistry/catalogRegistry.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/catalogRegistry.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/catalogRegistry.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/catalogRegistry.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-cpl-corrections.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered brief omitted the leased worker and reviewed-target application seam.",
+          "correction": "Restored pinned revision, reviewed state/id bounds, cancellation/lease recheck, atomic Lead/progress checkpoint and completion invalidation behavior.",
+          "evidence": [
+            "src/services/operationsRegistry/cplCorrections.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/cplCorrections.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/cplCorrections.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/cplCorrections.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-cpl-schedule.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/migrations/operations-registry-cpl-schedules.lib.ts, scripts/migrations/operations-registry-cpl-schedules.test.ts, scripts/migrations/paid-overflow-source-registry.ts, src/services/operationsRegistry/cplCorrections.test.ts, src/services/operationsRegistry/cplCorrections.ts, src/services/operationsRegistry/cplSchedule.test.ts, src/services/operationsRegistry/index.ts, src/services/operationsRegistry/queries/health.ts, src/services/operationsRegistry/queries/leadSourceProjection.ts, src/services/operationsRegistry/sourceRegistry.ts",
+          "evidence": [
+            "src/services/operationsRegistry/cplSchedule.ts",
+            "scripts/migrations/operations-registry-cpl-schedules.lib.ts",
+            "scripts/migrations/operations-registry-cpl-schedules.test.ts",
+            "scripts/migrations/paid-overflow-source-registry.ts",
+            "src/services/operationsRegistry/cplCorrections.test.ts",
+            "src/services/operationsRegistry/cplCorrections.ts",
+            "src/services/operationsRegistry/cplSchedule.test.ts",
+            "src/services/operationsRegistry/index.ts",
+            "src/services/operationsRegistry/queries/health.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/cplSchedule.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/cplSchedule.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-crm-source-outbound-sms.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Owner SMS command exposes daily_cap; sibling never disables SMS on policy change.",
+          "correction": "Command/view/current HTTP schema omit daily_cap, writer preserves stored cap; sibling atomically disables enabled SMS when leaving create_if_missing. Replaced repeated false advice with precise template/consent/audit/recent-message seams.",
+          "evidence": [
+            "src/services/operationsRegistry/crmSourceOutboundSms.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/crmSourceOutboundSms.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/crmSourceOutboundSms.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/crmSourceOutboundSms.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-granot-automation-sources.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/granotAutomationSources.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/granotAutomationSources.test.ts"
+      ],
+      "verifiedClaims": [
+        "Owner reason gate, pointer existence checks, no-op replay still audits/cache invalidates, transaction rollback and no independent readiness policy."
+      ]
+    },
+    {
+      "file": "operations-registry-granot-crm-source-projections.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/granotCrmSourceProjections.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "verifiedClaims": [
+        "List/detail normalized-label ambiguity scope, nested automation compatibility, safe audit projection, no source-policy mutation."
+      ]
+    },
+    {
+      "file": "operations-registry-granot-crm-sources.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "No HTTP POST create exists and current Service forbids client create_if_missing.",
+          "correction": "POST exists via ownerGranotNames; current update policy permits create_if_missing and only server-owned normalized label is forbidden. Leaving create-if-missing has atomic SMS-off evidence.",
+          "evidence": [
+            "src/services/operationsRegistry/granotCrmSources.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/granotCrmSources.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/granotCrmSources.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/granotCrmSources.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-label-mappings.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/migrations/operations-registry-label-mappings.ts, src/services/operationsRegistry/index.ts, src/services/operationsRegistry/labelMappings.test.ts, src/services/operationsRegistry/sourceResolution.test.ts",
+          "evidence": [
+            "src/services/operationsRegistry/labelMappings.ts",
+            "scripts/migrations/operations-registry-label-mappings.ts",
+            "src/services/operationsRegistry/index.ts",
+            "src/services/operationsRegistry/labelMappings.test.ts",
+            "src/services/operationsRegistry/sourceResolution.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/labelMappings.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/labelMappings.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-lead-source-setup.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/leadSourceSetup.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/leadSourceSetup.test.ts"
+      ],
+      "verifiedClaims": [
+        "Inactive company/Feed/optional Granot create in multi-entity transaction, readiness preview separate from activation/CPL/texting."
+      ]
+    },
+    {
+      "file": "operations-registry-owner-granot-names.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Two distinct Form Feeds are sufficient for form_by_move_type.",
+          "correction": "Current code additionally verifies local and long_distance flags on the corresponding Feed; documented those exact pre-persist refusals.",
+          "evidence": [
+            "src/services/operationsRegistry/ownerGranotNames.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/ownerGranotNames.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/ownerGranotNames.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/ownerGranotNames.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-queries-changes.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/queries/changes.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "verifiedClaims": [
+        "Bounded 1–100 sorted successful Registry Change reads and sanitized before/after/metadata, distinct from failed-operation logger evidence."
+      ]
+    },
+    {
+      "file": "operations-registry-queries-health.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/queries/health.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/queries/health.test.ts"
+      ],
+      "verifiedClaims": [
+        "Current family judges, active CPL periods, unresolved stamps, correction failures, per-instance resolver/compatibility telemetry, no retired event queries."
+      ]
+    },
+    {
+      "file": "operations-registry-queries-lead-source-projection.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/queries/leadSourceProjection.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/queries/leadSourceProjection.test.ts"
+      ],
+      "verifiedClaims": [
+        "Bounded aggregate connections/readiness, empty sections, list/detail counting differences and pure judges without runtime event persistence."
+      ]
+    },
+    {
+      "file": "operations-registry-queries-overview.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/queries/overview.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "verifiedClaims": [
+        "Eleven parallel total/active/all-time Change counts and instance-local telemetry/signing booleans, not fleet-wide event totals."
+      ]
+    },
+    {
+      "file": "operations-registry-registry-audit.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Every mutation has only the single-entity audit wrapper and insert export inventory is complete.",
+          "correction": "Restored withMultiEntityRegistryMutation and session-bound multi-audit setup semantics, sanitizer/default audit insert, request-id conflict and post-commit invalidation.",
+          "evidence": [
+            "src/services/operationsRegistry/registryAudit.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/registryAudit.test.ts"
+          ]
+        },
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: src/services/operationsRegistry/catalogRegistry.ts, src/services/operationsRegistry/cplCorrections.ts, src/services/operationsRegistry/cplSchedule.ts, src/services/operationsRegistry/crmSourceOutboundSms.ts, src/services/operationsRegistry/granotAutomationSources.ts, src/services/operationsRegistry/granotCrmSources.ts, src/services/operationsRegistry/index.ts, src/services/operationsRegistry/labelMappings.ts, src/services/operationsRegistry/leadSourceSetup.ts, src/services/operationsRegistry/ownerGranotNames.ts, src/services/operationsRegistry/registryAudit.test.ts, src/services/operationsRegistry/ringCentralRegistry.ts, src/services/operationsRegistry/sourceRegistry.ts, src/services/systems/locations.ts",
+          "evidence": [
+            "src/services/operationsRegistry/registryAudit.ts",
+            "src/services/operationsRegistry/catalogRegistry.ts",
+            "src/services/operationsRegistry/cplCorrections.ts",
+            "src/services/operationsRegistry/cplSchedule.ts",
+            "src/services/operationsRegistry/crmSourceOutboundSms.ts",
+            "src/services/operationsRegistry/granotAutomationSources.ts",
+            "src/services/operationsRegistry/granotCrmSources.ts",
+            "src/services/operationsRegistry/index.ts",
+            "src/services/operationsRegistry/labelMappings.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/registryAudit.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/registryAudit.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-ring-central-registry.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/ringCentralRegistry.test.ts"
+      ],
+      "verifiedClaims": [
+        "Owner transactional validation/activation/reassignment/deactivation, immutable activated phone, effective assignment history, dependency preview omits can_deactivate."
+      ]
+    },
+    {
+      "file": "operations-registry-ring-central-snapshot.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered snapshot brief did not explain in-flight invalidation generation or diagnostic versus active-number reads.",
+          "correction": "Documented coalesced refreshPromise, cacheGeneration retry, bounded stale serve, half-open call-start assignment and historical/all versus active-at-instant number lists.",
+          "evidence": [
+            "src/services/operationsRegistry/ringCentralSnapshot.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/ringCentralSnapshot.test.ts"
+          ]
+        },
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/call-ingestion-trace.ts, scripts/dev_ops/ringcentral/_owner-prototype-lib.ts, scripts/dev_ops/ringcentral/owner-prototype-number-hygiene.ts, scripts/dev_ops/ringcentral/owner-prototype-qualification-funnel.ts, scripts/verify-short-call-legs.ts, src/services/operationsRegistry/index.ts, src/services/operationsRegistry/ringCentralRegistry.ts, src/services/operationsRegistry/ringCentralSnapshot.test.ts",
+          "evidence": [
+            "src/services/operationsRegistry/ringCentralSnapshot.ts",
+            "scripts/call-ingestion-trace.ts",
+            "scripts/dev_ops/ringcentral/_owner-prototype-lib.ts",
+            "scripts/dev_ops/ringcentral/owner-prototype-number-hygiene.ts",
+            "scripts/dev_ops/ringcentral/owner-prototype-qualification-funnel.ts",
+            "scripts/verify-short-call-legs.ts",
+            "src/services/operationsRegistry/index.ts",
+            "src/services/operationsRegistry/ringCentralRegistry.ts",
+            "src/services/operationsRegistry/ringCentralSnapshot.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/ringCentralSnapshot.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/ringCentralSnapshot.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-ring-central-validation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/migrations/operations-registry-ringcentral.ts, src/services/operationsRegistry/index.ts, src/services/operationsRegistry/ringCentralRegistry.ts, src/services/operationsRegistry/ringCentralValidation.test.ts",
+          "evidence": [
+            "src/services/operationsRegistry/ringCentralValidation.ts",
+            "scripts/migrations/operations-registry-ringcentral.ts",
+            "src/services/operationsRegistry/index.ts",
+            "src/services/operationsRegistry/ringCentralRegistry.ts",
+            "src/services/operationsRegistry/ringCentralValidation.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/ringCentralValidation.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/ringCentralValidation.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-runtime-telemetry.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/operationsRegistry/runtimeTelemetry.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/runtimeTelemetry.test.ts"
+      ],
+      "verifiedClaims": [
+        "Instance-local in-memory counters reset at restart; compatibility logger is cross-instance search source, preserving resolver age/stale/error semantics."
+      ]
+    },
+    {
+      "file": "operations-registry-source-registry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "assertExactIdentifiersAvailable must remain private.",
+          "correction": "It is already exported for atomic setup, alongside derived keys and same-session company/Feed persistence; preserve real setup seams.",
+          "evidence": [
+            "src/services/operationsRegistry/sourceRegistry.ts",
+            "docs/knowledge/services/operations-registry.md"
+          ]
+        },
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/migrations/paid-overflow-source-registry.ts, src/services/analytics/sourceHierarchy.ts, src/services/operationsRegistry/index.ts, src/services/operationsRegistry/leadSourceSetup.ts",
+          "evidence": [
+            "src/services/operationsRegistry/sourceRegistry.ts",
+            "scripts/migrations/paid-overflow-source-registry.ts",
+            "src/services/analytics/sourceHierarchy.ts",
+            "src/services/operationsRegistry/index.ts",
+            "src/services/operationsRegistry/leadSourceSetup.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/sourceRegistry.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "operations-registry-source-resolution.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Label mapping collection is not on disk; all inactive-company feeds are invisible before matching.",
+          "correction": "Label mappings are live and keep a separate fold. Global candidates filter Feed activity/channel before parent company is checked; inactive-parent Feed can cause ambiguity or sole-winner not_found/company.",
+          "evidence": [
+            "src/services/operationsRegistry/sourceResolution.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/sourceResolution.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/sourceResolution.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/sourceResolution.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-trusted-actor.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Extension Owner checks scalar auth.role and uppercase Agent id can miss.",
+          "correction": "Current auth checks hasExtensionRole(auth.roles, owner); Agent PATCH regex is case-insensitive. Preserve separately exported verifySignedDashboardActor for manager/rep with signed Agent constraint.",
+          "evidence": [
+            "src/services/operationsRegistry/trustedActor.ts",
+            "docs/knowledge/services/operations-registry.md",
+            "src/services/operationsRegistry/trustedActor.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/operationsRegistry/trustedActor.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/trustedActor.test.ts"
+      ]
+    },
+    {
+      "file": "reconciliation-booked-call-lead-rows.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reconciliation/bookedCallLeadRows.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md"
+      ],
+      "verifiedClaims": [
+        "Booked-job parser requires job/source, keeps strict booking identity versus enrichment, does not mutate or match a Lead."
+      ]
+    },
+    {
+      "file": "reconciliation-booked-call-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: src/services/bookedCallLeadReconciliation.service.ts, src/services/granotCrmCsv/sync.service.ts, src/services/reconciliation/bookedCallLeadReconciliation.service.test.ts, src/services/reconciliation/index.ts",
+          "evidence": [
+            "src/services/reconciliation/bookedCallLeadReconciliation.service.ts",
+            "src/services/bookedCallLeadReconciliation.service.ts",
+            "src/services/granotCrmCsv/sync.service.ts",
+            "src/services/reconciliation/bookedCallLeadReconciliation.service.test.ts",
+            "src/services/reconciliation/index.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reconciliation/bookedCallLeadReconciliation.service.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        "src/services/reconciliation/bookedCallLeadReconciliation.service.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-canonical-reporting.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/query/canonicalReporting.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Cohort estimate exact/upper-bound distinction, canonical row materialization, source-read-through fingerprint validation and mapped dependencies/cursor checks."
+      ]
+    },
+    {
+      "file": "reporting-cell-serialization.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/google/cellSerialization.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/google/cellSerialization.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-cleanup.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/cleanup.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/cleanup.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-delivery-engine.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/deliveryEngine.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "RAW bounded write with exact-range verification/replay, staging checksum/capacity checks, marker-proved artifact resume and no silent truncation."
+      ]
+    },
+    {
+      "file": "reporting-delivery-repository.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/reportingDeliveryRepository.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/reportingDeliveryRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-destination-contract.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/destinationContract.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Full volatile snapshot checksum versus stable confirmation identity; health refresh excluded from stable identity, structural/safety validation retained."
+      ]
+    },
+    {
+      "file": "reporting-destination-identity.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/destinationIdentity.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/destinationIdentity.test.ts"
+      ],
+      "verifiedClaims": [
+        "Normalized configured owner identity hash and masked email, independent Picker nonce/reference hashes and display URLs."
+      ]
+    },
+    {
+      "file": "reporting-destination-lineage.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/destinationLineage.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Immutable revision keeps original snapshot; live managed tab accepts same sheet or recorded predecessor advancement, same workbook/folder/strategy."
+      ]
+    },
+    {
+      "file": "reporting-destination-repository.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/reportingDestinationRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Versioned active destination updates/archival, verification timestamps and narrow managed-tab CAS; worker completion uses stronger transactional CAS."
+      ]
+    },
+    {
+      "file": "reporting-destination.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/reportingDestination.service.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "OAuth-owned folder/workbook and denylist validation, unverified insert before managed-tab create, capacity calculation and versioned verify/archive."
+      ]
+    },
+    {
+      "file": "reporting-drive-app-properties.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/google/driveAppProperties.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/google/driveAppProperties.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-execution-stream.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/executionStream.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/executionStream.test.ts"
+      ],
+      "verifiedClaims": [
+        "Persist manifest once, validate resume before/after reopening, validate page dependency records before/after query, exact cursor-map and advance checks."
+      ]
+    },
+    {
+      "file": "reporting-janitor-completion.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/janitorCompletion.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/janitorCompletion.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/live/janitorCompletion.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-live-google-orchestration.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveGoogleOrchestration.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveGoogleOrchestration.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-live-picker-contract-runner.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/livePickerContractRunner.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/livePickerContractRunner.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-live-test-cleanup.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveTestCleanup.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveTestCleanup.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-live-test-denylist-proof.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveTestDenylistProof.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveTestDenylistProof.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-live-test-harness-run-registry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveTestHarnessRunRegistry.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveTestHarnessRunRegistry.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-live-test-oauth-adapters.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveTestOAuthAdapters.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveTestOAuthAdapters.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/live/liveTestOAuthAdapters.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-live-test-run-factory.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveTestRunFactory.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveTestRunFactory.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-live-test-security.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/liveTestSecurity.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/liveTestSecurity.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/live/liveTestSecurity.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-manifest-page-adapter.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/manifestPageAdapter.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/manifestPageAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-manifest-repository.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/reportingManifestRepository.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/reportingManifestRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-ownership-marker.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/ownershipMarker.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/ownershipMarker.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-pii-safe-evidence.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/piiSafeEvidence.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/piiSafeEvidence.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-promotion-reservation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/promotionReservation.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/promotionReservation.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/promotionReservation.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-promotion.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/promotion.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/promotion.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-provider-failures.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Canned authentication/unclassified summaries contain name and throw; every summary appends HTTP status.",
+          "correction": "Neither canned sentence matches name; fixed numbered advice, pseudocode and final checklist. Only rate-limit/transient/invalid-request summaries append status. Kept limited string-only payload assertion and actual double-sanitize seam.",
+          "evidence": [
+            "src/services/reporting/google/providerFailures.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        },
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/google/providerFailures.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/google/providerFailures.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-queue.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: src/routes/reporting-cron.routes.ts, src/routes/reporting.routes.ts, src/services/reporting/reporting.service.ts",
+          "evidence": [
+            "src/services/reporting/queue.ts",
+            "src/routes/reporting-cron.routes.ts",
+            "src/routes/reporting.routes.ts",
+            "src/services/reporting/reporting.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/queue.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-registry-filters.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/registryFilters.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/registryFilters.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-reporting-drive-adapter.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/google/reportingDriveAdapter.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/google/reportingDriveAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-reporting-observability.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Title implies notifying Owner through retired alerts pipeline and no success-level signals exist.",
+          "correction": "Renamed around bounded logging; emitters return void, no event persistence/email. Successful live-test janitor logs info, while routine delivery success is omitted.",
+          "evidence": [
+            "src/services/reporting/reportingObservability.ts",
+            "docs/knowledge/services/reporting.md",
+            "src/services/reporting/reportingObservability.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/reportingObservability.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/reportingObservability.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-reporting-sheets-adapter.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/google/reportingSheetsAdapter.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/google/reportingSheetsAdapter.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/google/reportingSheetsAdapter.test.ts"
+      ]
+    },
+    {
+      "file": "reporting-reporting-worker.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/reportingWorker.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Claim and lease/fence epochs, source-read-through capture, phase-aware resume, verify before promotion, stale/retryable abandon without terminal-failing."
+      ]
+    },
+    {
+      "file": "reporting-reporting.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/reporting.service.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Preview checksum binds revision; estimate/confirm bind stable identity and idempotency; queue publish occurs after persistence, replay does not re-publish."
+      ]
+    },
+    {
+      "file": "reporting-run-marker.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/google/runMarker.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/google/runMarker.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-run-repository.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "There are fourteen safe failure codes.",
+          "correction": "Current closed catalog has fifteen including QUERY_BUDGET_EXCEEDED; retained leases, terminal graph and checkpoint details.",
+          "evidence": [
+            "src/services/reporting/reportingRunRepository.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        },
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/reportingRunRepository.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/reportingRunRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-snapshot-adapter.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/snapshotAdapter.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/snapshotAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-synthetic-live-test-manifest.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/syntheticLiveTestManifest.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/syntheticLiveTestManifest.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-synthetic-manifest-page-adapter.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/syntheticManifestPageAdapter.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/syntheticManifestPageAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "reporting-test-artifact-janitor.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/live/testArtifactJanitor.ts",
+        "docs/knowledge/services/reporting.md",
+        "src/services/reporting/live/testArtifactJanitor.test.ts"
+      ],
+      "verifiedClaims": [
+        "Dedicated root+aged positive harness-folder markers+janitor-eligible registry binding, dry-run classification and completion evaluation, no spreadsheet trash."
+      ]
+    },
+    {
+      "file": "reporting-timezone.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/reporting/timezone.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "IANA timezone validation, local boundary conversion and half-open reporting date predicate, independent of stored Eastern Lead timestamps."
+      ]
+    },
+    {
+      "file": "reporting-transient-retry-wrapper.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "September traversal prose labels current sibling modules unvisited or prohibits reading them while a frozen checklist remains.",
+          "correction": "Removed traversal-only restrictions and stale visit labels while preserving concrete dependency and ownership seams.",
+          "evidence": [
+            "src/services/reporting/live/transientRetryWrapper.ts",
+            ".cursor/story-refactor-workspace/DIRECTIVE.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/reporting/live/transientRetryWrapper.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "ringcentral-analytics-reconcile.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/analytics-reconcile.service.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/analytics-reconcile.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-auth.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/dev_ops/ringcentral/ringcentral-reauth-ringsense-check.ts, src/services/ringcentral/client.ts, src/services/salesIntelligence/nudges/adapters.ts",
+          "evidence": [
+            "src/services/ringcentral/auth.ts",
+            "scripts/dev_ops/ringcentral/ringcentral-reauth-ringsense-check.ts",
+            "src/services/ringcentral/client.ts",
+            "src/services/salesIntelligence/nudges/adapters.ts"
+          ]
+        },
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/auth.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/auth.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-call-candidate-evaluator.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-candidate-evaluator.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-candidate-evaluator.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-call-candidate-store.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-candidate-store.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-candidate-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-call-lead-convergence.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/callLeadConvergence.service.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/callLeadConvergence.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-call-lead-ingest.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: src/services/dailyOperations/recordDomainFacts.test.ts, src/services/ringcentral/call-log-sync.service.test.ts, src/services/ringcentral/call-log-sync.service.ts, src/services/ringcentral/call-log-vetting.ts, src/services/ringcentral/callLeadConvergence.replica.test.ts, src/services/ringcentral/callLeadConvergence.service.ts, src/services/ringcentral/callLeadConvergence.test.ts, src/services/ringcentral/ringcentral-call-lead-ingest.service.test.ts, src/services/ringcentral/webhook-call-log-qualification.test.ts, src/services/ringcentral/webhook-call-log-qualification.ts",
+          "evidence": [
+            "src/services/ringcentral/ringcentral-call-lead-ingest.service.ts",
+            "src/services/dailyOperations/recordDomainFacts.test.ts",
+            "src/services/ringcentral/call-log-sync.service.test.ts",
+            "src/services/ringcentral/call-log-sync.service.ts",
+            "src/services/ringcentral/call-log-vetting.ts",
+            "src/services/ringcentral/callLeadConvergence.replica.test.ts",
+            "src/services/ringcentral/callLeadConvergence.service.ts",
+            "src/services/ringcentral/callLeadConvergence.test.ts",
+            "src/services/ringcentral/ringcentral-call-lead-ingest.service.test.ts"
+          ]
+        },
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/ringcentral-call-lead-ingest.service.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+            "src/services/ringcentral/ringcentral-call-lead-ingest.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/ringcentral-call-lead-ingest.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/ringcentral-call-lead-ingest.service.test.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-log-sync-state-store.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-log-sync-state.store.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+            "src/services/ringcentral/call-log-sync-state.store.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-log-sync-state.store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/call-log-sync-state.store.test.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-log-sync.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-log-sync.service.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+            "src/services/ringcentral/call-log-sync.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-log-sync.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/call-log-sync.service.test.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-log-vetting.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Direct import inventory used basename matches and omitted or invented callers.",
+          "correction": "Resolved actual relative module paths: scripts/call-ingestion-trace.ts, scripts/dev_ops/ringcentral/owner-prototype-qualification-funnel.ts, scripts/dev_ops/ringcentral/owner-three-lead-origin.ts, scripts/dev_ops/ringcentral/probe-inbound-threshold.ts, scripts/dev_ops/ringcentral/probe-ring-to-terminal.ts, scripts/dev_ops/ringcentral/ringcentral-call-lead-api-probe.ts, scripts/dev_ops/ringcentral/ringcentral-workflow-test.ts, scripts/dev_ops/ringcentral/sales-intelligence-validate.ts, scripts/verify-short-call-legs.ts, src/services/ringcentral/call-log-sync.service.test.ts, src/services/ringcentral/call-log-sync.service.ts, src/services/ringcentral/call-log-vetting.test.ts, src/services/ringcentral/webhook-call-log-qualification.ts",
+          "evidence": [
+            "src/services/ringcentral/call-log-vetting.ts",
+            "scripts/call-ingestion-trace.ts",
+            "scripts/dev_ops/ringcentral/owner-prototype-qualification-funnel.ts",
+            "scripts/dev_ops/ringcentral/owner-three-lead-origin.ts",
+            "scripts/dev_ops/ringcentral/probe-inbound-threshold.ts",
+            "scripts/dev_ops/ringcentral/probe-ring-to-terminal.ts",
+            "scripts/dev_ops/ringcentral/ringcentral-call-lead-api-probe.ts",
+            "scripts/dev_ops/ringcentral/ringcentral-workflow-test.ts",
+            "scripts/dev_ops/ringcentral/sales-intelligence-validate.ts"
+          ]
+        },
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-log-vetting.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+            "src/services/ringcentral/call-log-vetting.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-log-vetting.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/call-log-vetting.test.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-session-aggregator.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-session-aggregator.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+            "src/services/ringcentral/call-session-aggregator.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-session-aggregator.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/call-session-aggregator.test.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-session-store.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/call-session-store.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/call-session-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-duplicate-guard.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/ringcentral-duplicate-guard.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+            "src/services/ringcentral/ringcentral-duplicate-guard.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/ringcentral-duplicate-guard.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/ringcentral-duplicate-guard.test.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-processed-calls-store.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/ringcentral/processed-calls-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md",
+        "src/services/ringcentral/processed-calls-store.test.ts"
+      ],
+      "verifiedClaims": [
+        "Lookup OR identities, telephony-first/call-log write key, dry_run non-terminal, sparse omission and production predeployed unique identity fences."
+      ]
+    },
+    {
+      "file": "ringcentral-shadow-call-leads-store.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/shadow-call-leads-store.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/shadow-call-leads-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-webhook-capture.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/webhook-capture.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/webhook-capture.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "ringcentral-webhook-subscriptions.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Generic repeated qualification banners substitute for this module's actual operation.",
+          "correction": "Replaced duplication with source-specific authorization/diagnostic/storage/qualification/lease/convergence/duplicate behavior, preserved exact stored strings and identified source-only test evidence without execution claims.",
+          "evidence": [
+            "src/services/ringcentral/webhook-subscriptions.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/ringcentral/webhook-subscriptions.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "routes-booking-reconciliation-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "ALL `/api/cron/booking-reconciliation-rematch` is mounted by app before v1. Bearer CRON_SECRET or x-cron-secret is accepted; missing secret is 500 “CRON_SECRET is not set”, wrong credential 401. It parses the full config before checking autoRematchEnabled, then returns 200 skipped with “auto rematch disabled”, or calls runDueBookingLeadRematches({ actor: \"cron\" }) and returns summary. There is no route catch around config/drain errors. Keep default-on behavior and the separation from Owner reconciliation commands.",
+          "evidence": [
+            "src/routes/booking-reconciliation-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/booking-reconciliation-cron.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/booking-reconciliation-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/booking-reconciliation-cron.routes.test.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "routes-cpl-correction-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "ALL `/api/cron/cpl-corrections-drain` uses Bearer or x-cron-secret before Mongo. Missing secret is 500 “CRON_SECRET is not configured”; wrong credentials are 401. Connect Mongo, build default correction dependencies, run at most five due jobs and return 200 with claimed = results.length and results. Any processing failure logs cpl_correction.cron.failed and returns fixed 500 CPL_CORRECTION_DRAIN_FAILED / “CPL correction drain failed”. The route does not preview/apply a schedule or run live Insights pricing.",
+          "evidence": [
+            "src/routes/cpl-correction-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/cpl-correction-cron.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/cpl-correction-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/cpl-correction-cron.routes.test.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "routes-extension-auth.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Parent v1 error handling still emits optional 5xx Operational Events.",
+          "correction": "Updated comparison to structured logging; retained unguarded login/refresh/me/logout and exact response/refusal contracts.",
+          "evidence": [
+            "src/routes/extension-auth.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/extension-auth.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/extension-users.md"
+      ]
+    },
+    {
+      "file": "routes-extension-granot-apply.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/extension-granot-apply.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts"
+      ],
+      "verifiedClaims": [
+        "Extension roles[] Owner gate distinct from HMAC, target/kind fences, sequential partial batch behavior and 200 accepted-processing response."
+      ]
+    },
+    {
+      "file": "routes-extension-users-admin.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "PATCH must contain email/password/roles; old tour compares retired conversation routes.",
+          "correction": "PATCH agent_id association/null is valid too; clarified Owner-only CRUD status/envelopes, parent guard and service-owned session invalidation without retired route references.",
+          "evidence": [
+            "src/routes/extension-users-admin.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/extension-users-admin.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/extension-users-admin.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/extension-users-admin.routes.test.ts",
+        "docs/knowledge/services/extension-users.md"
+      ]
+    },
+    {
+      "file": "routes-google-drive-oauth.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/google-drive-oauth.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Callback before v1 guard, own guarded Owner paths, redirect303/HTML callback errors, sanitized API envelopes, no Picker consume route."
+      ]
+    },
+    {
+      "file": "routes-granot-automation-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "This file has two endpoints, not only the recovery heartbeat. ALL `/api/cron/granot-automation-heartbeat` calls recoverGranotRuns and returns 503 only when recoverable && !queue_published; it does not drain. ALL `/api/cron/granot-estimates-in-process` evaluates estimates and Pool schedule decisions, inspects active Outreach configuration/Pool enablement, creates all/pool_refresh/pool_discovery schedule manifests, dispatches slots and invokes runGranotWorker locally when created runs have no published wakeup. Disabled/not-due paths return 200 skipped; a disabled Pool can return pool_not_enabled. The estimates branch has fixed 500 “Estimates in Process cron failed.” Both use CRON_SECRET Bearer/header and remain separate from Owner-approved automation HTTP. Historical statements that “this tick never drains” apply only to the recovery endpoint, not the entire router.",
+          "evidence": [
+            "src/routes/granot-automation-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/granot-automation-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "routes-granot-automation.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/granot-automation.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/granot-automation.routes.test.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ],
+      "verifiedClaims": [
+        "Owner-gated source/run/group/read/approval/reviewed-estimates commands, separate registry compatibility and canonical lifecycle apply, local worker fallback."
+      ]
+    },
+    {
+      "file": "routes-granot-lifecycle-admin.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/granot-lifecycle-admin.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/granot-lifecycle-admin.routes.test.ts"
+      ],
+      "verifiedClaims": [
+        "Read/Owner boundaries, booking/discrepancy command idempotency/statuses, historical Release compatibility, retired receipt reads absent and requeue retained."
+      ]
+    },
+    {
+      "file": "routes-granot-lifecycle-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "ALL `/api/cron/granot-lifecycle-drain` is the injected connect/drain adapter mounted before v1. CRON_SECRET Bearer or x-cron-secret uses timing-safe comparison; missing is 500, wrong 401. It connects before the service's processing-disabled decision, returns bounded counters and calls emitDrainRunEvent. Catch logs safeLifecycleFailureLog, emits a failed zero-counter summary and returns fixed 500 “Granot lifecycle drain failed”. These events are current structured lifecycle logging, not retired Operational Events persistence. Preserve the factory and receipt-owned lease coordination.",
+          "evidence": [
+            "src/routes/granot-lifecycle-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/granot-lifecycle-cron.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/granot-lifecycle-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/granot-lifecycle-cron.routes.test.ts"
+      ]
+    },
+    {
+      "file": "routes-granot-webhook.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/granot-webhook.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/granot-webhook.routes.test.ts"
+      ],
+      "verifiedClaims": [
+        "Granot secret before durable capture; capture failure503, accepted202 after commit, best-effort wakeup cannot undo durable receipt."
+      ]
+    },
+    {
+      "file": "routes-job-number-timeline-admin.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/job-number-timeline-admin.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/job-number-timeline-admin.routes.test.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "verifiedClaims": [
+        "Owner-only sample and typed read, bounded sample separate from module.read, Zod400 versus assembler invalid200, fixed safe unexpected500."
+      ]
+    },
+    {
+      "file": "routes-lead-messaging-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "ALL `/api/cron/lead-messaging-drain` accepts CRON_SECRET Bearer or x-cron-secret (missing 500 “CRON_SECRET is not set”, wrong 401), connects Mongo and calls runLeadMessagingDrain(\"cron\"). Success returns 200 { ok, summary }; failure logs then currently echoes Error.message or “Lead messaging drain failed” at 500. Keep that actual envelope distinct from the fixed CPL/Granot error responses. Sending policy and claim ordering remain in the service.",
+          "evidence": [
+            "src/routes/lead-messaging-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/lead-messaging-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "routes-reporting-cron.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/reporting-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "verifiedClaims": [
+        "Bearer-only cron gate with missing503, heartbeat cancellation-only when delivery off, unpublished hosted503/local200, separate health/cleanup/test janitors."
+      ]
+    },
+    {
+      "file": "routes-reporting.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Destination AppErrors always become 500 and only DELETE archive exists.",
+          "correction": "Current serializer preserves safe sub-500 AppError status/code/message, hides 5xx; POST archive and DELETE both exist with expected_version. Rebuilt concrete route brief preserving actor, flag, confirmation, cancellation and read-safety seams.",
+          "evidence": [
+            "src/routes/reporting.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/reporting.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "routes-ringcentral-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "The injected router owns ALL `/api/cron/ringcentral-call-log-sync` and `/api/cron/ringcentral-analytics-reconcile`, mounted before v1. Both require CRON_SECRET Bearer or x-cron-secret (missing 500, wrong 401) and flag-off returns 200 skipped before service work. Call Log lease_held is a normal 200 skip; thrown sync failure returns fixed 500 “Call log sync failed” and logs errorName only. Analytics error currently echoes Error.message. Preserve these distinct envelopes and keep the account lease and cursor inside the sync service.",
+          "evidence": [
+            "src/routes/ringcentral-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/ringcentral-cron.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/ringcentral-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/ringcentral-cron.routes.test.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "routes-ringcentral-registry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "The retained route list must also include POST `/api/v1/admin/ringcentral/inbound-routes/:id/deactivate`: connect, requireRegistryOwnerActor, parse optional reason, delegate deactivateRingCentralRoute, return 200. It closes assignment history through the service; dependency preview is not an authorization to archive. Routes are mounted after v1's credential guard and retain their separate Registry actor gate.",
+          "evidence": [
+            "src/routes/ringcentral-registry.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/ringcentral-registry.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "routes-ringcentral-webhook-local.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/ringcentral-webhook-local.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "verifiedClaims": [
+        "Local capture/file diagnostics separate from production candidate/session/qualification; validation echo and acknowledged persistence-failure behavior."
+      ]
+    },
+    {
+      "file": "routes-ringcentral-webhook.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "ingestEligible directly authorizes shared ingest; final Call Log verification is future optional hardening.",
+          "correction": "Mapped session age plus ending transition only wakes exact-session final Call Log validation. Verification-token 403 precedes capture/fan-out; diagnostic previews never authorize minting. Rebuilt full current adapter brief.",
+          "evidence": [
+            "src/routes/ringcentral-webhook.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/services/ringcentral/webhook-call-log-qualification.ts",
+            "src/services/ringcentral/webhook-verification.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/ringcentral-webhook.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/services/ringcentral/webhook-call-log-qualification.ts",
+        "src/services/ringcentral/webhook-verification.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "routes-sheet-sync-cron.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Recovered numbered fragments omit the full current endpoint/mount/auth/outcome boundary.",
+          "correction": "ALL `/api/cron/sheet-sync-drain` uses CRON_SECRET Bearer or x-cron-secret (missing 500, wrong 401). Mode is read before drain: anything except queued returns 200 skipped with the resolved mode in reason. Queued invokes runSheetSyncDrain(\"cron\"), returning 200 skipped false with summary, or 500 with current Error.message/fallback. This route never equates HTTP success with a finished Sheet projection; job outcomes and durable intent remain authoritative.",
+          "evidence": [
+            "src/routes/sheet-sync-cron.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/sheet-sync-cron.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/sheet-sync-cron.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/sheet-sync-cron.routes.test.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "routes-tariff-adjustments.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Tariff HTTP requires exactly two rows, Linehaul and Additional Services.",
+          "correction": "Current schema allows 1–20, requires at least Linehaul, validates catalog pairs/shared fields and forbidden/unknown keys. Retained validation-before-connect and HTTP spreadsheet-id omission.",
+          "evidence": [
+            "src/routes/tariff-adjustments.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.ts",
+            "src/routes/tariff-adjustments.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/tariff-adjustments.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "src/routes/tariff-adjustments.routes.test.ts",
+        "docs/knowledge/services/tariff.md"
+      ]
+    },
+    {
+      "file": "routes-twilio-message-status.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/twilio-message-status.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "verifiedClaims": [
+        "Signed callback, config500/forgery403, missing message fields400, unknown SID404 for persist race and known SID204 even without status advancement."
+      ]
+    },
+    {
+      "file": "routes-twilio-voice.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/routes/twilio-voice.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "verifiedClaims": [
+        "Separate signed inbound/progress/completed URLs, destination fence only inbound, progress204 and completed Hangup XML200, no Call Lead mint."
+      ]
+    },
+    {
+      "file": "routes-v1.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Inline live route inventory includes retired observability.",
+          "correction": "Removed that stale product entry and labeled compatibility Analytics; preserved guards, special Form adapter and command/non-command distinction.",
+          "evidence": [
+            "src/routes/v1.routes.ts",
+            "docs/index.md",
+            "src/app.ts",
+            "src/routes/v1.routes.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/routes/v1.routes.ts",
+        "docs/index.md",
+        "src/app.ts",
+        "src/routes/v1.routes.test.ts"
+      ]
+    },
+    {
+      "file": "search-call-lead-browse.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Admin browse still has historical/combined scope and Call model has required quoted; contact query scope is only current fields.",
+          "correction": "Historical scope is retired, Call quoted is gone, and shared any-known-contact paths include ingested/Granot snapshots. Retained AND browse, substring matching, count and live-card display.",
+          "evidence": [
+            "src/services/search/callLeadBrowse.service.ts",
+            "docs/knowledge/services/call-lead-search.md",
+            "src/services/search/callLeadBrowse.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/search/callLeadBrowse.service.ts",
+        "docs/knowledge/services/call-lead-search.md",
+        "src/services/search/callLeadBrowse.service.test.ts"
+      ]
+    },
+    {
+      "file": "search-call-lead-search.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Lookup descriptions omit snapshot contacts.",
+          "correction": "Current Call OR lookup uses shared top-level/ingested/Granot phone/email/name aliases while summaries show live fields; kept OR, exact job and empty impossible-id semantics.",
+          "evidence": [
+            "src/services/search/callLeadSearch.service.ts",
+            "docs/knowledge/services/call-lead-search.md",
+            "src/services/search/callLeadSearch.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/search/callLeadSearch.service.ts",
+        "docs/knowledge/services/call-lead-search.md",
+        "src/services/search/callLeadSearch.service.test.ts"
+      ]
+    },
+    {
+      "file": "search-form-lead-browse.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Admin browse still has historical/combined scope; contact search descriptions omit snapshots.",
+          "correction": "Corrected production-only scope and documented shared snapshot paths without widening scored Form identity matching.",
+          "evidence": [
+            "src/services/search/formLeadBrowse.service.ts",
+            "docs/knowledge/services/form-lead-search.md",
+            "src/services/search/formLeadBrowse.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/search/formLeadBrowse.service.ts",
+        "docs/knowledge/services/form-lead-search.md",
+        "src/services/search/formLeadBrowse.service.test.ts"
+      ]
+    },
+    {
+      "file": "search-form-lead-search.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Old tour leaves scored search versus snapshot search boundary implicit.",
+          "correction": "Explicitly preserved top-level scorer, pre-score limit, duplicate exclusion and tie result; any-known-contact reads remain separate.",
+          "evidence": [
+            "src/services/search/formLeadSearch.service.ts",
+            "docs/knowledge/services/form-lead-search.md",
+            "src/services/search/formLeadSearch.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/search/formLeadSearch.service.ts",
+        "docs/knowledge/services/form-lead-search.md",
+        "src/services/search/formLeadSearch.service.test.ts"
+      ]
+    },
+    {
+      "file": "sheet-sync-batch-writer.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/drainer/batchWriter.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "verifiedClaims": [
+        "Per-tab row map, safe remembered-row validation, USER_ENTERED update/append, descending deletes, quota-deferred versus failed outcomes and partial chunk continuation."
+      ]
+    },
+    {
+      "file": "sheet-sync-coordinator.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/sheetSyncCoordinator.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "verifiedClaims": [
+        "Queued intent in transaction/finalize after commit, legacy waitUntil path, disabled no-op intent, unmigrated enqueue+publish outside domain transaction."
+      ]
+    },
+    {
+      "file": "sheet-sync-job-planner.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Planner parity section omits No-Sync behavior.",
+          "correction": "Documented ordinary Forms/Calls removal before unmatched skip, Duplicate/Bad exceptions and Booking Chain Booked Deals retention.",
+          "evidence": [
+            "src/services/sheetSync/drainer/jobPlanner.ts",
+            "docs/knowledge/services/sheet-sync.md",
+            "src/services/sheetSync/drainer/jobPlanner.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/sheetSync/drainer/jobPlanner.ts",
+        "docs/knowledge/services/sheet-sync.md",
+        "src/services/sheetSync/drainer/jobPlanner.test.ts"
+      ]
+    },
+    {
+      "file": "sheet-sync-outbox.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/sheetSyncOutbox.service.ts",
+        "docs/knowledge/services/sheet-sync.md",
+        "src/services/sheetSync/sheetSyncOutbox.service.test.ts"
+      ],
+      "verifiedClaims": [
+        "Pending/retrying coalescing only, due pulled earlier/priority higher, processing creates new work; precise tombstone supersession keys."
+      ]
+    },
+    {
+      "file": "sheet-sync-persistence.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/sheetSyncPersistence.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "verifiedClaims": [
+        "Legacy sync result removes deleted metadata then merges and saves, warns on partial failure; queued drain metadata update remains separate."
+      ]
+    },
+    {
+      "file": "sheet-sync-queue.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/sheetSyncQueue.service.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "verifiedClaims": [
+        "Hosted approved non-test publish gate, Mongo outbox owns work, queue only wakeup and failed publish swallowed."
+      ]
+    },
+    {
+      "file": "sheet-sync-quota-limiter.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/drainer/quotaLimiter.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "verifiedClaims": [
+        "Mongo per-minute increment/grant or rollback/deny, no sleeping; caller handles quota defer without attempt consumption."
+      ]
+    },
+    {
+      "file": "sheet-sync-run-sheet-sync-drain.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Failure effects are only generic logs; retry target hints/outcome ownership unclear.",
+          "correction": "Restored outcome-based attempt versus quota deferral, retry hints, metadata failure and live Daily Operations terminal failure fact separate from retired Operational Events.",
+          "evidence": [
+            "src/services/sheetSync/drainer/runSheetSyncDrain.ts",
+            "docs/knowledge/services/sheet-sync.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/sheetSync/drainer/runSheetSyncDrain.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "sheet-sync-source-lookup.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "No file test exists and lookup story omits No-Sync deletion.",
+          "correction": "File now has source-text assertions, not runtime deletion proof. Documented predicate-before-unmatched and ordinary-tab delete behavior shared with queued planner.",
+          "evidence": [
+            "src/services/sheetSync/sheetSyncSourceLookup.ts",
+            "docs/knowledge/services/sheet-sync.md",
+            "src/services/sheetSync/sheetSyncSourceLookup.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/sheetSync/sheetSyncSourceLookup.ts",
+        "docs/knowledge/services/sheet-sync.md",
+        "src/services/sheetSync/sheetSyncSourceLookup.test.ts"
+      ]
+    },
+    {
+      "file": "sheet-sync-tab-row-map.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/sheetSync/drainer/tabRowMap.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "verifiedClaims": [
+        "One tab read, trusted Mongo ID column then hex-cell fallback, configured-column overwrite versus fallback-first semantics."
+      ]
+    },
+    {
+      "file": "tariff-append.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "HTTP requires two-row pair and two-value service list owns current validator.",
+          "correction": "Current HTTP catalog supports 1–20 with Linehaul; compatibility TARIFF_SERVICES is not runtime pair authority. Clarified separate operations-server transportation-pricing domain.",
+          "evidence": [
+            "src/services/tariff/append.ts",
+            "docs/knowledge/services/tariff.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/tariff/append.ts",
+        "docs/knowledge/services/tariff.md"
+      ]
+    },
+    {
+      "file": "tariff-resolve-carrier.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/tariff/resolveCarrier.ts",
+        "docs/knowledge/services/tariff.md"
+      ],
+      "verifiedClaims": [
+        "Normalize code, exact MovingCarrier lookup without active filter, required/unknown400 and legal name+DOT output; no seed fallback."
+      ]
+    },
+    {
+      "file": "testimonials-testimonial-helpers.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "removal matches REMOVE and padded date fails regex; timestamp example calls 20:00 a 4pm value.",
+          "correction": "Corrected prefix example, trim-before-shape/date validation and original-input error echo; retained JS calendar rollover and fingerprint bytes. Corrected late-evening example.",
+          "evidence": [
+            "src/services/testimonials/testimonial.helpers.ts",
+            "docs/knowledge/services/testimonial.md",
+            "src/services/testimonials/testimonial.helpers.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/testimonials/testimonial.helpers.ts",
+        "docs/knowledge/services/testimonial.md",
+        "src/services/testimonials/testimonial.helpers.test.ts"
+      ]
+    },
+    {
+      "file": "testimonials-testimonial.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Fingerprint and normalized reviewer name are Admin-visible.",
+          "correction": "Both DTOs omit those storage keys; only company/customer/timestamps are Admin additions. Retained read-only behavior and unchanged public published filtering.",
+          "evidence": [
+            "src/services/testimonials/testimonial.service.ts",
+            "docs/knowledge/services/testimonial.md",
+            "src/services/testimonials/testimonial.service.test.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/testimonials/testimonial.service.ts",
+        "docs/knowledge/services/testimonial.md",
+        "src/services/testimonials/testimonial.service.test.ts"
+      ]
+    }
+  ],
+  "importCorrections": [
+    {
+      "file": "operations-registry-cpl-schedule.md",
+      "old": [
+        "src/services/operationsRegistry/cplCorrections.test.ts",
+        "src/services/operationsRegistry/cplCorrections.ts",
+        "src/services/operationsRegistry/cplSchedule.test.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/sourceRegistry.ts",
+        "src/services/operationsRegistry/queries/health.ts",
+        "src/services/operationsRegistry/queries/leadSourceProjection.ts",
+        "scripts/migrations/operations-registry-cpl-schedules.lib.ts"
+      ],
+      "actual": [
+        "scripts/migrations/operations-registry-cpl-schedules.lib.ts",
+        "scripts/migrations/operations-registry-cpl-schedules.test.ts",
+        "scripts/migrations/paid-overflow-source-registry.ts",
+        "src/services/operationsRegistry/cplCorrections.test.ts",
+        "src/services/operationsRegistry/cplCorrections.ts",
+        "src/services/operationsRegistry/cplSchedule.test.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/queries/health.ts",
+        "src/services/operationsRegistry/queries/leadSourceProjection.ts",
+        "src/services/operationsRegistry/sourceRegistry.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-label-mappings.md",
+      "old": [
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/labelMappings.test.ts",
+        "src/services/operationsRegistry/sourceResolution.test.ts"
+      ],
+      "actual": [
+        "scripts/migrations/operations-registry-label-mappings.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/labelMappings.test.ts",
+        "src/services/operationsRegistry/sourceResolution.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-registry-audit.md",
+      "old": [
+        "src/services/operationsRegistry/catalogRegistry.ts",
+        "src/services/operationsRegistry/cplCorrections.ts",
+        "src/services/operationsRegistry/cplSchedule.ts",
+        "src/services/operationsRegistry/crmSourceOutboundSms.ts",
+        "src/services/operationsRegistry/granotAutomationSources.ts",
+        "src/services/operationsRegistry/granotCrmSources.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/labelMappings.ts"
+      ],
+      "actual": [
+        "src/services/operationsRegistry/catalogRegistry.ts",
+        "src/services/operationsRegistry/cplCorrections.ts",
+        "src/services/operationsRegistry/cplSchedule.ts",
+        "src/services/operationsRegistry/crmSourceOutboundSms.ts",
+        "src/services/operationsRegistry/granotAutomationSources.ts",
+        "src/services/operationsRegistry/granotCrmSources.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/labelMappings.ts",
+        "src/services/operationsRegistry/leadSourceSetup.ts",
+        "src/services/operationsRegistry/ownerGranotNames.ts",
+        "src/services/operationsRegistry/registryAudit.test.ts",
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "src/services/operationsRegistry/sourceRegistry.ts",
+        "src/services/systems/locations.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-ring-central-snapshot.md",
+      "old": [
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "src/services/operationsRegistry/ringCentralSnapshot.test.ts",
+        "scripts/call-ingestion-trace.ts",
+        "scripts/verify-short-call-legs.ts"
+      ],
+      "actual": [
+        "scripts/call-ingestion-trace.ts",
+        "scripts/dev_ops/ringcentral/_owner-prototype-lib.ts",
+        "scripts/dev_ops/ringcentral/owner-prototype-number-hygiene.ts",
+        "scripts/dev_ops/ringcentral/owner-prototype-qualification-funnel.ts",
+        "scripts/verify-short-call-legs.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "src/services/operationsRegistry/ringCentralSnapshot.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-ring-central-validation.md",
+      "old": [
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "src/services/operationsRegistry/ringCentralValidation.test.ts"
+      ],
+      "actual": [
+        "scripts/migrations/operations-registry-ringcentral.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "src/services/operationsRegistry/ringCentralValidation.test.ts"
+      ]
+    },
+    {
+      "file": "operations-registry-source-registry.md",
+      "old": [
+        "src/services/analytics/sourceHierarchy.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/leadSourceSetup.ts"
+      ],
+      "actual": [
+        "scripts/migrations/paid-overflow-source-registry.ts",
+        "src/services/analytics/sourceHierarchy.ts",
+        "src/services/operationsRegistry/index.ts",
+        "src/services/operationsRegistry/leadSourceSetup.ts"
+      ]
+    },
+    {
+      "file": "reconciliation-booked-call-lead.md",
+      "old": [
+        "src/routes/extension-granot-apply.test.ts",
+        "src/routes/v1.routes.ts",
+        "src/services/bookedCallLeadReconciliation.service.ts",
+        "src/services/granotCrmCsv/sync.service.ts",
+        "src/services/reconciliation/bookedCallLeadReconciliation.service.test.ts",
+        "src/services/reconciliation/index.ts"
+      ],
+      "actual": [
+        "src/services/bookedCallLeadReconciliation.service.ts",
+        "src/services/granotCrmCsv/sync.service.ts",
+        "src/services/reconciliation/bookedCallLeadReconciliation.service.test.ts",
+        "src/services/reconciliation/index.ts"
+      ]
+    },
+    {
+      "file": "reporting-queue.md",
+      "old": [
+        "src/routes/reporting-cron.routes.ts",
+        "src/routes/reporting.routes.ts",
+        "src/routes/sales-outreach.routes.ts",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotLifecycle/queuePublisher.ts",
+        "src/services/ingestion/index.ts",
+        "src/services/ingestion/queue.ts",
+        "src/services/ingestion/worker.ts"
+      ],
+      "actual": [
+        "src/routes/reporting-cron.routes.ts",
+        "src/routes/reporting.routes.ts",
+        "src/services/reporting/reporting.service.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-auth.md",
+      "old": [
+        "src/routes/sales-intelligence-admin.routes.ts",
+        "src/routes/sales-intelligence-all-numbers.routes.test.ts",
+        "src/routes/sales-intelligence-boundary.routes.ts",
+        "src/routes/sales-intelligence-history.routes.test.ts",
+        "src/routes/sales-intelligence-history.routes.ts",
+        "src/routes/sales-intelligence-rep-access.test.ts",
+        "src/routes/sales-outreach.commands.routes.test.ts",
+        "src/routes/sales-outreach.routes.ts"
+      ],
+      "actual": [
+        "scripts/dev_ops/ringcentral/ringcentral-reauth-ringsense-check.ts",
+        "src/services/ringcentral/client.ts",
+        "src/services/salesIntelligence/nudges/adapters.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-lead-ingest.md",
+      "old": [
+        "src/services/dailyOperations/recordDomainFacts.test.ts",
+        "src/services/ringcentral/call-log-sync.service.test.ts",
+        "src/services/ringcentral/call-log-sync.service.ts",
+        "src/services/ringcentral/call-log-vetting.ts",
+        "src/services/ringcentral/callLeadConvergence.replica.test.ts",
+        "src/services/ringcentral/callLeadConvergence.service.ts",
+        "src/services/ringcentral/callLeadConvergence.test.ts",
+        "src/services/ringcentral/ringcentral-call-lead-ingest.service.test.ts"
+      ],
+      "actual": [
+        "src/services/dailyOperations/recordDomainFacts.test.ts",
+        "src/services/ringcentral/call-log-sync.service.test.ts",
+        "src/services/ringcentral/call-log-sync.service.ts",
+        "src/services/ringcentral/call-log-vetting.ts",
+        "src/services/ringcentral/callLeadConvergence.replica.test.ts",
+        "src/services/ringcentral/callLeadConvergence.service.ts",
+        "src/services/ringcentral/callLeadConvergence.test.ts",
+        "src/services/ringcentral/ringcentral-call-lead-ingest.service.test.ts",
+        "src/services/ringcentral/webhook-call-log-qualification.test.ts",
+        "src/services/ringcentral/webhook-call-log-qualification.ts"
+      ]
+    },
+    {
+      "file": "ringcentral-call-log-vetting.md",
+      "old": [
+        "src/services/ringcentral/call-log-sync.service.test.ts",
+        "src/services/ringcentral/call-log-sync.service.ts",
+        "src/services/ringcentral/call-log-vetting.test.ts",
+        "src/services/ringcentral/webhook-call-log-qualification.ts",
+        "scripts/call-ingestion-trace.ts",
+        "scripts/verify-short-call-legs.ts",
+        "scripts/dev_ops/ringcentral/owner-three-lead-origin.ts",
+        "scripts/dev_ops/ringcentral/probe-inbound-threshold.ts"
+      ],
+      "actual": [
+        "scripts/call-ingestion-trace.ts",
+        "scripts/dev_ops/ringcentral/owner-prototype-qualification-funnel.ts",
+        "scripts/dev_ops/ringcentral/owner-three-lead-origin.ts",
+        "scripts/dev_ops/ringcentral/probe-inbound-threshold.ts",
+        "scripts/dev_ops/ringcentral/probe-ring-to-terminal.ts",
+        "scripts/dev_ops/ringcentral/ringcentral-call-lead-api-probe.ts",
+        "scripts/dev_ops/ringcentral/ringcentral-workflow-test.ts",
+        "scripts/dev_ops/ringcentral/sales-intelligence-validate.ts",
+        "scripts/verify-short-call-legs.ts",
+        "src/services/ringcentral/call-log-sync.service.test.ts",
+        "src/services/ringcentral/call-log-sync.service.ts",
+        "src/services/ringcentral/call-log-vetting.test.ts",
+        "src/services/ringcentral/webhook-call-log-qualification.ts"
+      ]
+    }
+  ]
+}

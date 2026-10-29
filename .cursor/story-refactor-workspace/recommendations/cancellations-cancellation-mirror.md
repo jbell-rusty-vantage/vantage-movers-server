@@ -1,12 +1,10 @@
 # Keep The Lead And The Cancellation In Agreement — operational story
 
 - Status: recommended
-- Service: `cancellations` (Wave A, visited after this pass)
-- Pass: 3 of this service — `cancellationMirror.service.ts`
-- Remaining in this service: none
+- Service: `cancellations`
 - Target: `src/services/cancellations/cancellationMirror.service.ts`
 - Knowledge: `docs/knowledge/services/cancellation-mirror.md` (this file) and `docs/knowledge/services/cancelled-lead.md` (Lead mirror on create / unwind). Booking-delete take-off is `bookings-booking-mirror.md` (`clearBookingFromLead` also clears `cancelled`). This checkout’s `CONTEXT.md` does not define Cancellation terms — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `cancelledLead.service.ts` (stamp once on public / command create; take-off on leftover queued delete, leftover legacy delete, and command delete). Barrel `cancellations/index.ts` re-exports both; `v1.service.ts` does **not**. Granot Release `cancelAVerifiedBooking` does **not** import this file. Tests: none.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/cancellations/cancelledLead.service.ts`, `src/services/cancellations/index.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: stamp vs take-off (set `cancelled`, keep `booked`); `syncAfterClear` on take-off (queued caller enqueues; default still runs inline `syncSourceLead`); missing `leadId` is a no-op on take-off only
 - Split later (only if the file outgrows one sitting): keep one file — this is already one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 

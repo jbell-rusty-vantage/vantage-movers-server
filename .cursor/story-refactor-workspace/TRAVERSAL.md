@@ -1,5 +1,7 @@
 # Traversal
 
+> Historical September coordination evidence. The traversal is closed. Read [DIRECTIVE.md](DIRECTIVE.md) and [CATALOG-STATUS.md](CATALOG-STATUS.md) for the 2026-10-29 refresh. Counts, open items, next-module pointers and references below are not current implementation instructions.
+
 Stock-taking board for the **entire** `vantage-main-server` `src/` tree. The unit of work is a **service folder**. Large services take many passes. One pass writes one recommendation (or finishes a thin folder).
 
 Do not put `type:` YAML here. Do not copy Service invariants here.

@@ -1,9 +1,7 @@
 # Look At The Two Tabs By Immutable IDs — Say Whether We May Swap, Already Swapped, Or Cannot Tell — Then Name The Hidden Staging Tab And The Recovery Tab — operational story
 
 - Status: recommended
-- Service: `reporting` (Wave A, in-progress)
-- Pass: 19 of this service — `promotion.ts`
-- Remaining in this service: `promotionReservation.ts`, `snapshotAdapter.ts`, `reportingObservability.ts`, `cleanup.ts`, `ownershipMarker.ts`, `registryFilters.ts`, remaining `google/*` adapters, remaining `live/*` harness
+- Service: `reporting`
 - Target: `src/services/reporting/promotion.ts`
 - Knowledge: [`docs/knowledge/services/reporting.md`](../../../docs/knowledge/services/reporting.md) (primary code is `reporting.service.ts`. Role: Owner-designed, checksum-bound reports. Happy path: preview → immutable revision → two-step confirmed run → **worker write**. Knowledge never names this file, `inspectReplaceTabPromotion`, `PromotionInspection`, `ready_to_promote`, `already_promoted`, `staging_still_hidden`, `recoveryTabTitle`, or `stagingTabTitle` — do not add a Reporting Service file in this rename so “the Service sentence wins”). Distinct from already-recommended claim / write / promote: [`reporting-reporting-worker.md`](reporting-reporting-worker.md) (`recoverRenameBatchSubmitted` **asks** inspect and **requires** `already_promoted`; `executeReplaceTabPromotion` **asks** inspect then sibling `planPromotionRecovery` then `recoveryTabTitle` — this file never claims a lease). Distinct from already-recommended RAW write / swap: [`reporting-delivery-engine.md`](reporting-delivery-engine.md) (`createOrResumeDeliveryArtifact` **asks** inspect on a marker miss so already-promoted recovery can resume, and **asks** `stagingTabTitle` when it creates replace-tab staging; `promoteOrRecoverReplaceTab` **asks** inspect before Google, after a failed `promoteStagingTab`, and again as the final prove — this file never calls `promoteStagingTab`). Distinct from next-pass reservation: sibling `promotionReservation.ts` (`planPromotionRecovery` **consumes** `PromotionInspection`; it never `listSheets`). Distinct from leftover Google rename: `google/reportingSheetsAdapter.ts` (`promoteStagingTab` renames old → recovery title and staging → published title + unhide in one batch; `createHiddenStagingTab` refuses a title collision). Distinct from leftover snapshot title: delivery-engine snapshot uses `report_<runId-8>`, not `stagingTabTitle`. Distinct from leftover verify: `verifyStagingContents` re-reads cells after a swap; this file never reads values. Distinct from leftover Wave B `src/routes/reporting.routes.ts` (Owner run GET does not import this file). This is not Admin Analytics and not Sheet Sync. This checkout’s `CONTEXT.md` does not define Reporting / Reporting Sheets — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies (knowledge cites ADR-0001 Mongo SoR).
 - Callers: `deliveryEngine.ts` (**asks** `inspectReplaceTabPromotion` from create-or-resume when replace-tab markers miss after a title change, and three times from `promoteOrRecoverReplaceTab`; **asks** `stagingTabTitle` only on replace-tab create; **asks** `recoveryTabTitle` before `promoteStagingTab`). `reportingWorker.ts` (**asks** inspect from `recoverRenameBatchSubmitted` — must be `already_promoted` or `PROMOTION_AMBIGUOUS`; **asks** inspect then `recoveryTabTitle` from `executeReplaceTabPromotion` when the reservation has no recovery title). Tests: `reportingDelivery.test.ts` **asks** inspect once after deleting staging and asserts `ambiguous` plus the old published title still present — it never **asks** `ready_to_promote`, `already_promoted`, `staging_still_hidden`, `stagingTabTitle`, or `recoveryTabTitle`. `promotionReservation.test.ts` **imports the type only** and builds fixture states; it never lists sheets. `reportingDelivery.regressions.test.ts` / `reporting.test.ts` do **not** import this file. **No runtime caller** for `PromotionInspection` except sibling reservation’s plan input. Confirm / heartbeat / Owner GET do **not** import this file.
@@ -126,15 +124,15 @@ These are the smells I would keep as comments or tickets, not silent behavior ch
 
 5. **Missing-tab `ambiguous` looks like a blank inspection.** Both published flags are false and titles are omitted. Both-published `ambiguous` returns both flags true and the live titles. Callers only switch on `state`. Do not silently throw on a missing ID so “missing is louder.” Engine create-or-resume already needs a non-throwing miss to fall through to run-marker scan.
 
-6. **No test locks the four states or the two titles.** Delivery **asks** inspect only after deleting staging (`ambiguous`). Reservation tests invent `ready` / `applied` / `ambiguous` fixtures and never call this file. `staging_still_hidden`, `already_promoted`, `ready_to_promote`, `stagingTabTitle`, and `recoveryTabTitle` have no assertion here. Do not “fix” that by editing tests in this Cloud pass.
+6. **No test locks the four states or the two titles.** Delivery **asks** inspect only after deleting staging (`ambiguous`). Reservation tests invent `ready` / `applied` / `ambiguous` fixtures and never call this file. `staging_still_hidden`, `already_promoted`, `ready_to_promote`, `stagingTabTitle`, and `recoveryTabTitle` have no assertion here. Do not “fix” that by editing tests during catalog maintenance.
 
-7. **Leave sibling files alone.** Swap stays in `deliveryEngine.ts`. Lease / recover-rename stay in `reportingWorker.ts`. Reservation plan / CAS stay in `promotionReservation.ts`. Google rename stays in `google/reportingSheetsAdapter.ts`. Do not open unvisited `promotionReservation.ts` this pass.
+7. **Leave sibling files alone.** Swap stays in `deliveryEngine.ts`. Lease / recover-rename stay in `reportingWorker.ts`. Reservation plan / CAS stay in `promotionReservation.ts`. Google rename stays in `google/reportingSheetsAdapter.ts`. Do not open `promotionReservation.ts` this pass.
 
 ## Testing
 
 The interface is the story-named exports, not the helpers.
 
-There is one existing assert: deleted staging → `ambiguous`. Add proofs at the new names (later implementer; not this Cloud pass):
+There is one existing assert: deleted staging → `ambiguous`. Add proofs at the new names (later implementer; not this catalog maintenance pass):
 
 - look up both tabs by immutable sheet ID: missing old or missing staging → `ambiguous` with both published flags false and no titles; callers do not throw
 - say we may swap: old title matches published and is visible, staging is hidden → `ready_to_promote` (staging title may be `__vantage_staging_…` or anything else)
@@ -165,5 +163,4 @@ Do not add helper-unit tests for `thisTabHoldsThePublishedName`. Do not boot liv
 - I would not silently add a staging-title check to `ready_to_promote`.
 - I would not fold ownership-marker reads into this inspect.
 - I would not teach snapshot create to **ask** `stagingTabTitle`.
-- I would not open unvisited `promotionReservation.ts` while this checklist still has unchecked modules after this row.
 - I would not silently reorder ADR-known side effects.

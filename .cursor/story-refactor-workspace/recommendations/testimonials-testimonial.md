@@ -1,9 +1,7 @@
 # Show The Main Site The Curated Reviews They Asked For, Show The Owner The Same Reviews With The Customer Attached, Open One Review Or Say It Is Missing, Then Hand The Owner The Sorted Reviewer-Name Catalog — Never Publish A Review, Never Fingerprint Ingest, Never Force `published=true` — operational story
 
 - Status: recommended
-- Service: `testimonials` (Wave A, in-progress)
-- Pass: 1 of this service — `testimonial.service.ts`
-- Remaining in this service: `testimonial.helpers.ts`
+- Service: `testimonials`
 - Target: `src/services/testimonials/testimonial.service.ts`
 - Knowledge: [`docs/knowledge/services/testimonial.md`](../../../docs/knowledge/services/testimonial.md) (read-only public and admin testimonials; ingest stays in helpers and ops scripts). Distinct from leftover Customer wipe: already-recommended [customers-customer.md](customers-customer.md) (Customer `testimonials` virtual is **not** cascaded). Distinct from Admin Dashboard desks: already-recommended [admin-browse.md](admin-browse.md) (`form-leads` / `call-leads` / `booked-leads` / `cancelled-leads` / `customers` / `agents` — **not** testimonials). Distinct from leftover last-200 lists on Form / Call / Customer. Sibling ingest fold / BBB redaction / fingerprint lives in `testimonial.helpers.ts` (next pass). This checkout’s `CONTEXT.md` is a pointer plus four employee-booking terms — knowledge links [Main Site](../../../../CONTEXT.md); do not invent a Testimonial glossary copy. `docs/adr/` is absent here — do not invent ADR copies. Do not add a Testimonial Service file in this rename.
 - Callers: Wave B `src/routes/v1.routes.ts` (`GET /api/v1/testimonials` → `listTestimonials`; `GET /api/v1/admin/testimonials` → `listAdminTestimonials`; `GET /api/v1/admin/testimonials/reviewer-names` → `listAdminTestimonialReviewerNames`; `GET /api/v1/admin/testimonials/:id` → `getAdminTestimonial`). Barrel: `testimonials/index.ts` (re-exports the four reads **and** the two filter builders). Tests: `testimonial.service.test.ts` (Zod coerce on both query schemas; `buildTestimonialFilter` / `buildAdminTestimonialFilter` as the tested surface; stubbed `listTestimonials` page; stubbed `listAdminTestimonials` populate + asc sort; stubbed reviewer-name distinct). `getAdminTestimonial` has **no** test. `v1.service.ts` does **not** re-export this file. `adminBrowse.service.ts` does **not** import this file. Sibling `testimonial.helpers.ts` is **not** imported here. Operator `scripts/api/starter.ts` hits `GET /api/v1/testimonials` over HTTP — not an import. The marketing-site client (`vantage-movers-clients`) is not in this checkout. Not this **interface**: `buildContentFingerprint`, `hasBbbRedaction`, `normalizeReviewerName`, `parseReviewDate`, `browseAdminResource`, `wipeThisCustomerAndTheirBookings`, leftover `findAllFormLeads`.
@@ -147,7 +145,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 2. **Omitted `published` includes unpublished.** `foldOnlyTheFlagsTheSiteSent` starts as `{}`. Knowledge already says the marketing site must send `published=true` if it wants only live copy. Do **not** default `{ published: true }` so “the Main Site cannot leak drafts.” That change is a product path, not this rename.
 
-3. **The public card hides identity keys on purpose.** `content_fingerprint`, `normalized_reviewer_name`, `source_company`, `customer`, and timestamps are stored and admin-visible. They are not on `MainSiteReviewCard`. Do not add them “so the site can de-dupe” or “so the card matches admin.”
+3. **The public card hides identity keys on purpose.** `content_fingerprint` and `normalized_reviewer_name` are stored but omitted from both public and Admin DTOs. `source_company`, `customer` and timestamps are Admin-only. They are not on `MainSiteReviewCard`. Do not add them “so the site can de-dupe” or “so the card matches admin.”
 
 4. **`published` / `featured` on the card are `=== true`.** Missing / false / `"true"` become `false`. Do not treat truthy Mongo values as published so “legacy strings still show.”
 
@@ -169,7 +167,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 13. **Owner sort flips `createdAt` with `review_date`.** `direction === "asc"` is `{ review_date: 1, createdAt: 1 }`. Public list cannot flip. Zod only allows `sort=review_date`. Do not add `createdAt` as a public sort key so “the site can match admin.”
 
-14. **Leave the sibling ingest fold alone.** `normalizeReviewerName`, `parseReviewDate`, `buildContentFingerprint`, `hasBbbRedaction` are not imported here. Knowledge says ingest is normalize → parse → fingerprint → upsert on `(source, content_fingerprint)`. This file never upserts. Wave A will recommend `testimonial.helpers.ts` next. Do not write a whole-folder testimonials recommendation.
+14. **Leave the sibling ingest fold alone.** `normalizeReviewerName`, `parseReviewDate`, `buildContentFingerprint`, `hasBbbRedaction` are not imported here. Knowledge says ingest is normalize → parse → fingerprint → upsert on `(source, content_fingerprint)`. This file never upserts. The helpers have their own active recommendation. Do not write a whole-folder testimonials recommendation.
 
 15. **Do not treat Customer wipe or Admin Dashboard desks as this story.** Already-recommended wipe does not touch testimonials. `browseAdminResource` has no `testimonials` resource. `GET /api/v1/admin/testimonials` is this file, not `GET /api/v1/admin/{resource}`. Do not teach this file `database_scope`.
 
@@ -227,4 +225,3 @@ Do **not** re-test sibling `hasBbbRedaction` / fingerprint / `YYYY-MM-DD` parse 
 - Inventing a before-commit / after-commit **seam**, a publish write, or a Sheet Sync job this read path does not have.
 - Pulling `testimonial.helpers.ts` (fingerprint / BBB redaction / date parse) into this file.
 - Cascading testimonials from Customer wipe, or attaching a Customer from this list.
-- Writing a whole-folder recommendation for `testimonials` while `testimonial.helpers.ts` is still unchecked.

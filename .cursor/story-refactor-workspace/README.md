@@ -1,85 +1,40 @@
 # Story-refactor workspace
 
-Agent coordination only. **Not** knowledge. **Not** an implementation queue until a human says so.
+Recommendations for maintainability work, separate from implementation progress and canonical Service docs.
 
-Cloud runs **traverse** `vantage-main-server` **service by service**. Each run **takes stock**, then writes **one pass** (one recommendation, or a thin-folder skip). They do not reorganize `src/`.
+The owner requested a catalog-wide refresh on **2026-10-29** because the September recommendations no longer matched the live services and models. That maintenance request supersedes the old no-rewrite rule. The recommendation tour remains closed; this refresh does not resume traversal or implement any refactor.
 
-Skill: `.cursor/skills/operational-story/SKILL.md`  
-Board: [TRAVERSAL.md](TRAVERSAL.md)  
-Quality bar: [recommendations/form-lead.md](recommendations/form-lead.md)
+Latest source review: [SECOND-PASS-2026-10-29.md](SECOND-PASS-2026-10-29.md). The second pass corrected important first-pass misses; use its per-file audit alongside the current catalog.
 
-## Authority
+## Start here
+
+1. Read [DIRECTIVE.md](DIRECTIVE.md) for scope and outcome-preservation rules.
+2. Read [CATALOG-STATUS.md](CATALOG-STATUS.md) for the current active inventory, removals and review evidence.
+3. Read the selected recommendation, its current target, matching Service doc and callers before designing an implementation.
+4. Record actual implementation work in `../story-implementation-workspace/`, using the implementation skill when the owner starts that work.
+
+The next implementation story remains [Duplicate Lead](recommendations/leads-duplicate-lead.md), when the owner asks to start. Form Lead and Call Lead story names already exist; their briefs describe remaining review/test work rather than repeating the rename.
+
+## Authority and limits
 
 | Question | Source |
 | --- | --- |
-| What is done / left? | **Stock** block in `TRAVERSAL.md`, then `recommendations/` on disk |
-| What should this run do? | Current `in-progress` service’s next unchecked module, else the next `unvisited` service |
-| Is a pass done? | Recommendation file exists with every heading in the skill’s `RECOMMENDATION.md`, or the module/folder is `skipped` on the checklist |
-| What did a past run say? | `sessions/` (append-only) |
-| Ideas that are not work yet | `IDEAS.md` |
-| Questions / blockers | `MESSAGES.md` |
-| Code vs glossary vs ADR fights | `CONTRADICTIONS.md` |
+| Which recommendations remain useful? | [CATALOG-STATUS.md](CATALOG-STATUS.md) and the refresh audit it links |
+| What is this program allowed to change? | [DIRECTIVE.md](DIRECTIVE.md) |
+| What does the server do now? | Current code and matching `docs/knowledge/services/` documents |
+| Has a refactor actually landed or been qualified? | `../story-implementation-workspace/` and verified Git/test evidence |
+| What did September agents recommend? | [TRAVERSAL.md](TRAVERSAL.md), historical `sessions/`, `MESSAGES.md` and `CONTRADICTIONS.md` |
 
-**Disk wins.** If `NOW.md` says `call-lead` but that file already exists, mark the checklist and take the next unchecked module. Rewrite Stock.
+The refreshed briefs are implementation starting points. They do not certify proposed names, every caller, test coverage or functional parity. Remove obsolete instructions rather than restoring retired services. Keep outcomes, persisted names, authority checks, transaction boundaries and side-effect order unless a separate behavior change is authorized.
 
-Do not put `type:` YAML on any file here. Do not copy Service invariants here.
+`TRAVERSAL.md` is the frozen September map. Its counts, links and next-module pointer are historical; do not resume `IngestionRun.ts`. Older sessions/messages can name recommendations removed in this refresh. [CATALOG-STATUS.md](CATALOG-STATUS.md) takes precedence.
 
-## Resume (every Cloud run)
+## Writing here
 
-```
-- [ ] 1. Read NOW.md
-- [ ] 2. Read open MESSAGES.md
-- [ ] 3. Take stock: TRAVERSAL.md (Stock + current service) + recommendations/ + latest session
-- [ ] 4. Fix Stock / NOW if they disagree with disk
-- [ ] 5. Take or steal the lock
-- [ ] 6. Stay on the in-progress service, or open the next unvisited service (enumerate first)
-- [ ] 7. Write one pass
-- [ ] 8. Update the service checklist + rewrite Stock
-- [ ] 9. Write sessions/<session-id>.md from TEMPLATE.md
-- [ ] 10. Rewrite NOW.md last (release lock)
-```
+- `recommendations/`: active briefs only; removed entries are recorded in the refresh audit.
+- `NOW.md`: current pointer, not an implementation board.
+- `MESSAGES.md`: newest coordination note first; retain older entries as history.
+- Refresh evidence: per-file dispositions and a dated report.
+- `sessions/`, `TRAVERSAL.md`, `IDEAS.md`, `CONTRADICTIONS.md`: historical evidence unless a later owner request explicitly changes their purpose.
 
-Do not open Wave B until every Wave A service is `visited`. Do not jump services while the current checklist has unchecked production modules.
-
-## Lock
-
-Runs can overlap. `NOW.md` holds the lock.
-
-- `lock: none` → take it (`held`, session id, UTC timestamp).
-- `lock: held` and younger than 90 minutes → post `kind: skipped`, do **not** edit recommendation files, do **not** open a second PR.
-- `lock: held` and older than 90 minutes → steal it, note `kind: lock-stolen` in MESSAGES.
-
-Release the lock in `NOW.md` before you stop. Never leave a half-written recommendation or a half-enumerated service.
-
-## What you may write
-
-| File | Edit? |
-| --- | --- |
-| `NOW.md` | Yes. Current pointer only. One screen. |
-| `TRAVERSAL.md` | Yes. Stock block + the current service checklist. Do not reorder Wave A. |
-| `MESSAGES.md` | Yes. Newest open item on top. |
-| `IDEAS.md` | Yes. Park only. |
-| `CONTRADICTIONS.md` | Yes. Do not silently merge sources. |
-| `recommendations/<service>-<module>.md` | Create one per pass. Never rewrite `form-lead.md`. |
-| `sessions/*.md` | Create one per run. Never edit an older session. |
-| `src/**` | **No.** |
-
-`BACKLOG.md` is retired. `TRAVERSAL.md` is the board.
-
-## Message shape
-
-```markdown
-## <utc> | to: next-run | from: <session-id> | kind: next|blocker|question|skipped|lock-stolen
-<body>
-```
-
-## Session id
-
-`story-<service>-<module>-<utc>` e.g. `story-leads-call-lead-2026-08-24T2117Z`.
-
-## Branch / PR
-
-- Branch: `docs/story-refactor`
-- One PR. Update it on later runs. Do not auto-merge. Do not push `main`.
-- Repo on GitHub Cloud is the standalone `vantage-movers-server` checkout of this tree.
-- `CONTEXT.md` / `docs/adr/` may be absent. Do not invent copies.
+Do not add `type:` YAML or duplicate canonical Service documents here. Runtime edits, deployment and production operations are outside a recommendation refresh.

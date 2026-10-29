@@ -1,0 +1,52 @@
+{
+  "reviewedAt": "2026-10-29",
+  "entries": [
+    {
+      "file": "DIRECTIVE.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The complete Call Lead qualification rule lives in qualifyRingCentralCall.",
+          "correction": "The primitive covers direction, route, elapsed seconds and caller. Final vetting additionally checks explicit completion, Voice, valid start/identity and precise parent timing.",
+          "evidence": [
+            "src/services/ringcentral/call-qualification.ts",
+            "src/services/ringcentral/call-log-vetting.ts",
+            "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+          ]
+        },
+        {
+          "claim": "The listed non-RingCentral creation paths were a sufficient current warning for implementation.",
+          "correction": "Added Owner employee-booking reconciliation create_and_attach: it directly constructs and saves a CallLead; this naming maintenance must preserve observed behavior.",
+          "evidence": [
+            "src/services/employeeBookings/bookingLeadAttachment.service.ts",
+            "src/services/employeeBookings/bookingLeadReconciliation.service.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        },
+        {
+          "claim": "Catalog uses drop/not-live/re-read/apply verdict rows.",
+          "correction": "Aligned directive with actual refreshed/retained/removed dispositions and separated first-pass status from second-pass source checking.",
+          "evidence": [
+            ".cursor/story-refactor-workspace/CATALOG-STATUS.md"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "COVERAGE.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The coverage gap is only the named newer service families.",
+          "correction": "Explicitly identified unrepresented newer helpers in already-covered families, plus the difference between missing dedicated Target rows and missing guidance or an authorized refactor.",
+          "evidence": [
+            ".cursor/story-refactor-workspace/coverage-second-pass.json",
+            "src/services/granotLifecycle/callLeadFormSibling.ts",
+            "src/services/ringcentral/webhook-call-log-qualification.ts",
+            "src/services/bookings/ownerBookingAttach.ts"
+          ]
+        }
+      ]
+    }
+  ]
+}

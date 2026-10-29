@@ -1,0 +1,2203 @@
+{
+  "reviewedAt": "2026-10-29",
+  "entries": [
+    {
+      "file": "admin-browse.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep browse, detail and bounded export as three public operations. Factor shared filter construction only if it preserves the same count/list filter: omitted or false `duplicate` excludes duplicate Leads; true selects duplicates. Source Granularity wins over legacy Source Company, matching exact key/snapshot or catalog id; contact filters search live, ingested and Granot paths. Preserve `no_sync=false` matching missing values, attachment-presence filters, the Form-only past-move-date comparison, resource sort/date allowlists and inclusive `to`. Detail distinguishes invalid-id 400 from missing 404. Form lists enrich only `sms_message_sent`; detail additionally returns the latest message. Export walks browse pages of at most 250, stops on an empty page, and slices to 5,000 by default. Prove these through public browse/detail/export calls; a generic create-success test cannot protect the filters.",
+          "evidence": [
+            "src/services/admin/adminBrowse.service.ts",
+            "docs/knowledge/services/admin-search.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/admin/adminBrowse.service.ts",
+        "docs/knowledge/services/admin-search.md"
+      ],
+      "historicalComparison": "Compared original HEAD brief selectively; restored current operation constraints without historical/combined scope or obsolete Release behavior."
+    },
+    {
+      "file": "admin-search.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep `globalAdminSearch` unless a caller-driven rename earns its cost; the proposed sentence does not add a new seam. Four production resources search in parallel. Escape regex input, add an exact ObjectId clause without removing regex alternatives, retain newest-first per-resource limits, omit empty groups and preserve group order. Search includes any-known-contact paths but labels still use operational live fields; it includes duplicate Leads and has no browse facet/date filters. Prove a Granot-snapshot-only match still labels the submitted/Called contact, exact-id and literal-regex queries, and empty-group omission.",
+          "evidence": [
+            "src/services/admin/adminSearch.service.ts",
+            "docs/knowledge/services/admin-search.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/admin/adminSearch.service.ts",
+        "docs/knowledge/services/admin-search.md"
+      ]
+    },
+    {
+      "file": "admin-export.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Editorial punctuation only: curly apostrophe in resource description.",
+          "correction": "Normalized the apostrophe; CSV behavior guidance was retained.",
+          "evidence": [
+            "src/services/admin/adminExport.service.ts",
+            "docs/knowledge/services/admin-search.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/admin/adminExport.service.ts",
+        "docs/knowledge/services/admin-search.md"
+      ]
+    },
+    {
+      "file": "admin-facets.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/admin/adminFacets.service.ts",
+        "docs/knowledge/services/admin-search.md"
+      ]
+    },
+    {
+      "file": "admin-filter-catalog.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/admin/filterCatalog.ts",
+        "docs/knowledge/services/admin-search.md"
+      ]
+    },
+    {
+      "file": "admin-sheet-sync.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/admin/adminSheetSync.service.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "analytics-agent-performance.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep both `getAgentPerformance` and `getTopAgentsByDeposit`; the latter slices the shared 50-row aggregate to the requested limit (default five). A two-agent booking credits the full deposit to each allocation and only each allocation's binder, so totals deliberately differ from Insights split credit. Prove a split booking, null/exact-empty agent fallback (whitespace-only strings remain names), deterministic deposit/bookings/name ordering and the separate top-N wrapper.",
+          "evidence": [
+            "src/services/analytics/agentPerformance.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/agentPerformance.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-analytics-export.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain `rowsForCsv` as the report-shape adapter: summary emits one totals row; geographic lanes tag Form and Call rows; source reports emit each child (including zero rows) or a childless parent, never parent plus children. Cancellation ratio additionally emits its `overall` row. Keep report-specific column order and filenames. Prove the public CSV wrapper forwards the same query and an aggregate with children does not double-count parent totals.",
+          "evidence": [
+            "src/services/analytics/analyticsExport.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/analyticsExport.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-analytics-filters.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep booking, cancellation and lead filter builders distinct. Booking fields match before lookups; cancellation first joins its Booking and falls back to that Booking's Lead. Source derivation prefers employee snapshot, then joined Form/Call fields, then booking source. Granularity overrides Source Company; lead granularity matching includes submitted `source_company` in addition to key/snapshot/catalog id, while booking granularity matches only the derived key. Preserve inclusive `$lte to`, booking `book_date`, cancellation `cancel_date`, Lead `timestamp`, alias-aware exact company regexes, and `is_cancelled` from the Booking pointer. Prove each pipeline and precedence explicitly; do not replace these compatibility date cuts with Insights periods.",
+          "evidence": [
+            "src/services/analytics/analyticsFilters.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted numberValue, rate, roundMoney, sourceGranularityMatch, trendDateExpression.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/analytics/analyticsFilters.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/analyticsFilters.ts",
+        "docs/knowledge/services/analytics.md"
+      ],
+      "historicalComparison": "Compared original HEAD brief selectively; restored current operation constraints without historical/combined scope or obsolete Release behavior."
+    },
+    {
+      "file": "analytics-analytics.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/analytics/analytics.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-cancellation-analytics.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Two outputs have different populations: ratio counts Booking documents whose `cancelled` pointer is present; reasons groups Cancellation documents and joins Booking financial values. Ratio with no matches returns `overall:null`, while a nonempty overall with zero cancellations has a null booked-to-cancelled ratio. Source rows seed the catalog and recompute rates from additive children. Reasons normalize blank/null to unknown, retain unlinked cancellations, sort by count then reason and cap at 50. Prove both operations; do not replace pointer counts with Cancellation collection counts.",
+          "evidence": [
+            "src/services/analytics/cancellationAnalytics.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/cancellationAnalytics.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-geographic-analytics.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain all three operations: local/long-distance aggregates Bookings and their official cancellation pointer; lanes returns separate Form and Call arrays; state performance merges Form/Call counts before deriving rate and ranking. Lead lanes/states use Lead booked/cancelled refs, not booking-dollar joins. Preserve unknown null/blank locations, 50-row lane/state caps and ties (leads then booked); prove a state occurring in both lead types sums before rate calculation and Lead-type filtering excludes the other collection.",
+          "evidence": [
+            "src/services/analytics/geographicAnalytics.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/geographicAnalytics.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-lead-cost.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/analytics/leadCost.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-overview.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve all-time and last-seven-days sections, both always including summary, top-five agents and stamped lead cost; only the latter has source sales rows and a period. `rollingLast7DaysWindow` subtracts seven with local `setDate` and floors the start with local `setHours`, ending at current time: it is neither a fixed 168-hour span nor an Insights New York date range. Its helper/schema tests do not prove `getOverviewReport` assembles the sections; assert assembly separately before refactoring.",
+          "evidence": [
+            "src/services/analytics/overview.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/overview.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-receiver-agent-performance.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve performance, trend and source-breakdown exports, which share aggregation but group differently. Received count includes duplicate/unmatched rows; billable cost and unresolved count exclude duplicate Forms and unmatched Calls. Booking/cancellation presence can also come from joined official documents. Both `average_cpl` and `cost_per_received_lead` divide cost by billable received Leads, not all received Leads; booking rate uses all received Leads. Preserve unassigned grouping, snapshot-first receiver name, trend sorting and catalog labels in source breakdown. Prove all three outputs and a row with received > billable so changing that denominator fails.",
+          "evidence": [
+            "src/services/analytics/receiverAgentPerformance.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/receiverAgentPerformance.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-revenue-trend.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The prefix filters by `book_date`; only afterward `report_date` falls back to `timestamp` for bucketing. Preserve UTC day/month strings, ascending periods, rounded money, cancellation pointer counts and zero-denominator rate. A missing book date may bucket without a date filter but is excluded by a book-date range; prove that distinction instead of silently broadening the filter.",
+          "evidence": [
+            "src/services/analytics/revenueTrend.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/revenueTrend.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-sms-conversion.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep successful-status filtering before joining Leads; date/source/local filters apply to the joined Lead. Deduplicate by Lead id, choosing origin with the existing unsorted `$first`, then group by origin; do not impose earliest/latest message attribution as a cleanup. Official `lead.booked` is the success authority. The helper keeps an all-zero totals row for no cohort. Prove multiple successful messages for one Lead count once, unsuccessful messages do not count, and Lead dates (not message dates) govern inclusion.",
+          "evidence": [
+            "src/services/analytics/smsConversion.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/smsConversion.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-source-hierarchy.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Catalog seeding retains zero-valued feeds in the requested Form/Call channel scope; observed unknown or uncatalogued feeds remain as extras. Normalize keys, fold additive collisions, derive child rates, sum additive parent values, then derive parent rates rather than summing percentages. `nestObservedSourceRows` loads facets itself; pure `nestSourceCompanyRows` accepts supplied labels/catalog. Preserve both entry points, alphabetical child labels and caller-provided parent sort. Prove a zero catalog feed and unknown observed feed remain while normalized duplicates merge.",
+          "evidence": [
+            "src/services/analytics/sourceHierarchy.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted fallbackCompanyLabel, humanizeSourceKey, resolveCompanyLabel, sourceGranularityFromRow.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/analytics/sourceHierarchy.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/sourceHierarchy.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-source-performance.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain all three reports. Company performance and lead-source performance intentionally share Booking aggregation and return `booking_rate:null` because no Lead denominator is loaded. Funnel separately combines Lead pointer-based `sheet_*` counts with official `reconciled_*` Booking counts; rate uses reconciled bookings / total Leads. Preserve zero catalog rows and parent-rate recomputation. Prove a Lead booked pointer without an official Booking affects only sheet counts, and source performance never invents a numeric booking rate.",
+          "evidence": [
+            "src/services/analytics/sourcePerformance.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/sourcePerformance.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "analytics-summary.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Count all matching Form/Call Leads (no blanket duplicate/unmatched exclusion here). Booking totals and cancelled-Booking count come from Booking aggregation; separate Cancellation totals/refunds come from Cancellation aggregation. Preserve max(bookings - cancelled_bookings,0), booking rate bookings / all Leads, cancellation rate cancelled Bookings / bookings, zero-safe rates and rounded money. Prove an unlinked Cancellation changes cancellations/refunds without changing cancelled_bookings; empty collections return a populated zero totals object.",
+          "evidence": [
+            "src/services/analytics/summary.service.ts",
+            "docs/knowledge/services/analytics.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/analytics/summary.service.ts",
+        "docs/knowledge/services/analytics.md"
+      ]
+    },
+    {
+      "file": "bookings-booked-lead-from-source.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep `resolveFromSourceAttach`, transactional persistence and public finalization separate. Form ID selection attaches directly. Owner Call submissions use exact-job matching and live eligibility, with shared-job Form preference; misses create an Owner pending Leadless Booking plus case, never a phone-created stub. The inactive import compatibility branch still uses its resolver and source guard. Preserve source-override assignment/CPL save before booking, display-label precedence, inactive-agent import allowance, receiver attribution and warnings after commit. Prove Owner miss does not call the stub resolver, shared-job anchor and pending-case response, plus rollback in the supplied-session adapter.",
+          "evidence": [
+            "src/services/bookings/bookedLeadFromSource.service.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/bookedLeadFromSource.service.ts",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "bookings-booked-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The module also owns update, list, delete and population; a create-only rename is insufficient guidance. Keep create preparation outside persistence, same-submission no-write duplicate versus different-submission upsert, and after-commit finalization. Public update always saves/mirrors; transactional update can return a semantic no-op with no Change/outbox. Referral/Leadless public update stays 409. List remains newest 200. Delete requires cascade for an attached Cancellation, deletes its Cancellation but never the Lead, clears Lead flags and releases live Granot Booking claims before removing the Booking. Preserve queued tombstone-before-delete versus legacy inline-sheet order and the existing release CAS failure. Prove duplicate/upsert separately, both update modes, cancelled cascade and Record Link/open-case release, including failure rollback.",
+          "evidence": [
+            "src/services/bookings/bookedLead.service.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        },
+        {
+          "claim": "The compact create guidance omitted Form-only local and incoming-allocation warning semantics retained in original HEAD.",
+          "correction": "Also preserve Form-only local requirement (Call may omit it), source display-label precedence rather than source-assignment policy, and update warnings based on the incoming resolved allocations rather than the patch-merged list. Prove an omitted zero-binder existing allocation stays silent under patch mode, and a Call Booking without local remains allowed.",
+          "evidence": [
+            "src/services/bookings/bookedLead.service.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/bookedLead.service.ts",
+        "docs/knowledge/services/bookings.md"
+      ],
+      "historicalComparison": "Compared original HEAD brief selectively; restored current operation constraints without historical/combined scope or obsolete Release behavior."
+    },
+    {
+      "file": "bookings-booking-identity.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "These helpers are pure identity rules, not Booking intake or transaction orchestration. Keep normalization separate from equivalence: NFKC/case/punctuation normalization is not numeric conversion; only an uppercase letter prefix followed entirely by digits permits shared digit-core matching, and leading zeros remain significant. LID preserves internal punctuation, email trims/lowercases, and comparison name folds punctuation/space. Keep all exported filter/remapping seams, including cancellation snapshot remap. Prove prefixed/number-only twins, non-digit suffix, leading zeros, punctuation and missing inputs before any naming change.",
+          "evidence": [
+            "src/services/bookings/bookingIdentity.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/bookingIdentity.ts",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "bookings-booking-mirror.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Four operations have different side effects. Refresh returns `source_lead` for unbooked, missing or mismatched Booking; valid attachment updates customer/local only when needed and still returns `booking_chain`. Mirror writes booking/thresholds/local and normally temporal CPL; `preserveExistingCpl` suppresses repricing only without a source override. Claim is atomic against unbooked, uncancelled, nonduplicate (and non-unmatched Call), returning false on loss without CPL rewrite. Clear removes booked AND cancelled plus threshold flags, with inline sync only when requested. None emits EntityChange itself; callers own that stamp. Prove all four, including claim loss, valid refresh with no save, preserved CPL and clear retaining the Lead.",
+          "evidence": [
+            "src/services/bookings/bookingMirror.service.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/bookingMirror.service.ts",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "bookings-booking-source-resolver.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep `effectiveBookingSourceCompany` separate from Form correction. The former trims and returns an override verbatim or the stored company/default; despite its old JSDoc it does not resolve display-label aliases. `getFormLeadSourceCompanyForBooking` does resolve `input.source`, only for a Form Lead whose company differs. Prove those two helpers independently and preserve unmatched-stub CPL `applicable:false`. Job/phone corrections may overwrite operational phone on the compatibility import path; changing provenance policy here needs a separate behavior decision.",
+          "evidence": [
+            "src/services/bookings/bookingSourceResolver.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/bookingSourceResolver.ts",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "bookings-leadless-booking.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve public preparation and supplied-session persistence. Raw Job Number collision is 409. Resolve active merchant/allocations, infer source channel from inbound/call label and upsert customer; no Lead mirror occurs. Owner creation opens owner_booking pending reconciliation, stamps booking_origin and queues owner_booking.create_pending. Inactive import keeps external_sheet_ingestion pending case, no booking_origin and leadless_booking.create; an inactive ingest is not a reason to remove its guarded compatibility behavior. Prove distinct case origins/jobs and rollback of Booking, case and intent together.",
+          "evidence": [
+            "src/services/bookings/leadlessBooking.service.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/leadlessBooking.service.ts",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "bookings-referral-booking.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Referral persistence sets source=referral and is_referral_booking, has no Lead refs, no Lead mirror, no reconciliation case and no booking_origin. Preserve raw-job collision 409, contact-only customer upsert, resolved allocations/merchant and booked_lead/referral_booking.create intent. The supplied-session export never finalizes Sheets; its finalizer and the public wrapper do so after persistence. Prove no case/Lead writes, duplicate rejection and finalizer ordering rather than importing Form-pair rules into this module.",
+          "evidence": [
+            "src/services/bookings/referralBooking.service.ts",
+            "docs/knowledge/services/bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/bookings/referralBooking.service.ts",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "domain-commands-command-context.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The context brief omitted the live Estimates cron initiator exception.",
+          "correction": "Keep fail-closed context validation before executor connection. Granot context requires the exact processor identity/label, receipt matching processor request, nonblank Observation and Decision, and channel/initiator agreement. In addition to webhook/Owner paths, current code accepts fixed `granot-estimates-in-process-cron` system initiator (origin vantage_admin, nonblank request) only on granot_http_automation. Trusted admin compatibility actors must match id AND request; RingCentral additionally delegates to verified provenance. Prove accepted Estimates cron and mismatched channel rejection; this newer exception is absent from the older Service table.",
+          "evidence": [
+            "src/services/domainCommands/commandContext.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        },
+        {
+          "claim": "`granot-estimates-cron`",
+          "correction": "`granot-estimates-in-process-cron` The Estimates initiator id is the exact exported granot-estimates-in-process-cron constant.",
+          "evidence": [
+            "src/services/domainCommands/commandContext.ts",
+            "src/services/domainCommands/types.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/commandContext.ts",
+        "docs/knowledge/services/domain-commands.md",
+        "src/services/domainCommands/types.ts"
+      ]
+    },
+    {
+      "file": "domain-commands-idempotency.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve executor factory, default executor and post-commit wrapper as distinct seams. Clock and execution id are allocated once before transaction retries. Lookup identity is origin + idempotency key; exact replay returns stored applied result, never re-enters operation or finalizer. Name/checksum mismatch conflicts, including duplicate-key race recovery; absent raced execution rethrows. Mutations, Change and Command persist together. Finalize only non-replay when pending is defined, including falsey defined values; empty-diff adapters omit pending. Prove rollback and retry-stable IDs, exact replay/race, mismatch conflict and no finalizer on replay/no-op; source inspection is not evidence those integration assertions passed.",
+          "evidence": [
+            "src/services/domainCommands/idempotency.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/idempotency.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "historicalComparison": "Compared original HEAD brief selectively; restored current operation constraints without historical/combined scope or obsolete Release behavior."
+    },
+    {
+      "file": "domain-commands-entity-change.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep pure field diff/classification separate from append-and-CAS persistence. Deduplicate field paths last-value-wins, sort them, omit raw before/after for contact/address/deletion/unknown reference_only paths, and never invent hashes. Preserve no_sync and granot_form_sibling diff paths, stored allowlist behavior and exactly +1 revision. Surviving aggregates CAS stamp last-change/revision; already-advanced revisions attach the stamp without another increment; deletes append the deletion Change and skip stamping a deleted aggregate. Prove private data omission, reordered-object equality, revision loss rollback and delete behavior.",
+          "evidence": [
+            "src/services/domainCommands/entityChange.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted buildDeleteChangeFields, changedPathsFromFields, collectDocumentFieldChanges, persistEntityChangeMutations.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/domainCommands/entityChange.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/entityChange.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "domain-commands-existing-write-context.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "This request adapter builds context, not domain policy. Preserve server-generated command id; submission id gives existing:<command>:<submission> while missing/blank id gives request:<command>:<requestId>. Checksum includes command, resource id and canonical payload (sorted keys, ISO dates, omitted undefined; arrays keep order). Owner extension users, trusted owner/admin headers on primary secret, scoped-key fingerprint and bare API secret retain distinct actors; nonowner user fails. Keep credentials out of stored provenance. Prove equivalent key ordering checksums and resource-specific checksum differences, plus each authorization path.",
+          "evidence": [
+            "src/services/domainCommands/existingWriteContext.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/existingWriteContext.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "domain-commands-existing-writes.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain per-operation adapters across Lead create/update/delete, Booking create/from-source/update/delete, Referral/Leadless creation and Cancellation create/update/delete. Do not collapse their mutation lists or finalizers into one generic CRUD handler. Form create reused-submission skips Lead Change/wake; Call create retains its origin-derived create semantics. Update empty diffs omit pending, Change and outbox; Booking same-submission duplicate still runs its existing after-commit response hook on non-replay. All adapters use supplied-session primitives, preallocated Change ids and executor-owned transaction. Prove no-op versus duplicate versus exact replay separately and preserve Lead-link wake/fact hooks only after commit.",
+          "evidence": [
+            "src/services/domainCommands/existingWrites.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted runExistingDeleteBookedLead, runExistingDeleteCallLead, runExistingDeleteCancelledLead, runExistingDeleteFormLead.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/domainCommands/existingWrites.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/existingWrites.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "domain-commands-ringcentral-provenance.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The call-log branch accepts the exact server-generated connection string without looking up a webhook session. The webhook branch requires the matching stored telephony session. Qualification, active-route/scope checks and bounded identity are enforced elsewhere in shared ingest/adoption; this function is not a 120-second qualification check. Prove call-log acceptance does not query the session store and mismatched/missing webhook session rejects.",
+          "evidence": [
+            "src/services/domainCommands/ringcentralProvenance.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/ringcentralProvenance.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-booking-lead-attachment.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep attach, create-and-attach for each origin, and reassign as separate operations. Track before state, optionally apply submission source/temporal CPL, atomically claim, then stamp Booking and mirror with existing CPL preserved. Reassign claims replacement first before clearing old Lead, so failed claim rolls back without detaching old. Create Form handles duplicate detection/Form Fill and no Granot post. Current createAndAttachReconciliationCallLead directly constructs a non-unmatched Call Lead without RingCentral qualification; that is existing behavior, not proof that all non-RingCentral creation is closed. Closing it is a separate policy change. Prove preserved-source CPL, claim loss, two-Lead reassign rollback and create paths' jobs/change recording.",
+          "evidence": [
+            "src/services/employeeBookings/bookingLeadAttachment.service.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/bookingLeadAttachment.service.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-booking-lead-reconciliation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep list/detail/search, candidate refresh, pending correction, resolution and reopen as different public seams. Candidate refresh records cards/attempt/revision without claiming a Lead; pending correction updates Booking/submission and re-evaluates. Resolution checks revision, case action and current Booking before warning overrides and claim, persists case/Booking/Lead/intent atomically, then finalizes after commit. Canonical supplied-session resolution must not emit another recorder Change when its command owns emission. Dismiss leaves a Leadless Booking; reopen is not reassign and emits no Lead change. Prove each mutation through its public operation, revision conflict, exact warnings and failed claim rollback; list/search tests do not establish these writes.",
+          "evidence": [
+            "src/services/employeeBookings/bookingLeadReconciliation.service.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/bookingLeadReconciliation.service.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-lead-candidate-queries.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Heading claimed six lookups, but current code runs seven including Form Job Number.",
+          "correction": "There are seven independent lookups: Form LID, Form job, Call job, Form phone, Call phone, Form email and Form normalized-name (the last requires email plus name). Each fetches 26 to expose overflow, contributes at most 25, and merges by model:id with all match methods. Search uses operational fields, not contact snapshots; snapshots are sanitized display evidence. Preserve null/not_provided phone handling, name post-check, source compatibility and eligibility precedence cancelled before booked before duplicate. Prove overflow in any lookup and merged job+phone evidence without false uniqueness.",
+          "evidence": [
+            "src/services/employeeBookings/leadCandidateQueries.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/leadCandidateQueries.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-lead-match-evaluator.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The shared-job preference runs before conflict and positive-rule selection: exactly one Form job candidate plus one-or-more Call job candidates sets aside those Call candidates, marks call_lead_shares_job and switches preferred model to Form even for Call channel. Two Forms do not collapse. Preserve policy-enabled rules, overflow rejection and remaining source/eligibility/contact conflict checks; contact confidence alone never auto-attaches. Prove shared-job on both channels, two Forms pending, unrelated phone conflict and disabled exact rules. This behavior is newer than the Service's simple preferred-channel table.",
+          "evidence": [
+            "src/services/employeeBookings/leadMatchEvaluator.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/leadMatchEvaluator.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-migration-apply-safety.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep write-request detection separate from authorization: isMigrationApplyRequested recognizes only --apply. Authorization returns immediately only for testMode AND connected testvantagemovers; otherwise it requires --production-apply, exact --confirm-production-db=vantagemovers and connected vantagemovers. It does not connect, infer configured database or itself require --apply. Prove accidental --apply against production rejects, testMode against production still requires explicit production flags, and unknown connected name rejects.",
+          "evidence": [
+            "src/services/employeeBookings/migrationApplySafety.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/migrationApplySafety.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-migration-preflight.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Build the report from already-loaded rows; do not load Mongo or apply indexes. Preserve all diagnostic collision groups and invalid active channels, but only exact normalized Booking job and employee_booking submission collisions block. Nonemployee submission duplicates, Call job/Form LID/phone/name diagnostics do not block. Prefix-equivalent jobs are not merged by this normalizer. Prove all blocker/nonblocker populations rather than treating any collision as fatal.",
+          "evidence": [
+            "src/services/employeeBookings/migrationPreflight.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/migrationPreflight.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-reconciliation-policy.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep trusted Owner derivation, warning override policy, case status policy, live Booking fences and cursor helpers explicit. Bare secret/scoped key/admin role cannot become Owner here. Exact overrides compare deduplicated recognized warning sets; unknown strings are filtered, while lead booked/cancelled remain blocking. Case status permission and live Booking checks both apply. Cursor order uses date then id in the chosen direction; invalid payload is 400. Prove allowed status with forbidden live state, missing/extra recognized warnings, equal-date pagination and malformed cursor.",
+          "evidence": [
+            "src/services/employeeBookings/reconciliationPolicy.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted decodeDateIdCursor.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/employeeBookings/reconciliationPolicy.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/reconciliationPolicy.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-reconciliation-rematch.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve cold Mongo connection before global lease, heartbeat renewal and per-case ownership/expiry revalidation inside forced transactions. Skip cancelled/already-attached/missing Booking; linked evaluation attaches with one Lead recorder Change and outbox; pending updates retry count/reason/delay. Recheck lease before finalization, clear only the owned lease on failure, and release global lease in finally. Prove lease loss cannot attach or finalize, retry exhaustion stops scheduling, and shared-job Form preference remains the evaluator's policy.",
+          "evidence": [
+            "src/services/employeeBookings/reconciliationRematch.service.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/reconciliationRematch.service.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "employee-bookings-submit-employee-booking.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Throttle before preparation/duplicate detection. Recheck submission and normalized job inside the forced transaction; same employee submission returns 200 without new Booking, job collision is 409, linked/pending new outcomes are 201 with last-eight-hex uppercase confirmation. Matcher non409 failures downgrade to matching_unavailable pending, but 409 remains an error. Revalidate and atomically claim before saving linked Booking; claim loss creates pending instead. Linked path emits Lead Change and booking_chain intent; pending saves Leadless Booking plus case and booked_lead intent. Sheets and Daily Operations fact follow commit. Prove all three outcomes, duplicate-key race recovery and claim-race fallback.",
+          "evidence": [
+            "src/services/employeeBookings/submitEmployeeBooking.service.ts",
+            "docs/knowledge/services/employee-bookings.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/employeeBookings/submitEmployeeBooking.service.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "agents-agent-allocation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve the precise binder tolerance: `resolveTotalBinderAmount` rejects absolute difference >= 0.001 (including the boundary), not only greater than 0.001 as its JSDoc says. Derive one-agent and two-agent amounts from rounded integer cents; the primary retains the odd cent. The receiver helper returns an attribution object and does not save a Lead. Prove exact tolerance boundary and returned-object/no-overwrite behavior before renaming.",
+          "evidence": [
+            "src/services/agents/agentAllocation.service.ts",
+            "docs/knowledge/services/agent-allocation.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/agents/index.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/agents/agentAllocation.service.ts",
+            "src/services/agents/index.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/agents/agentAllocation.service.ts",
+        "docs/knowledge/services/agent-allocation.md",
+        "src/services/agents/index.ts"
+      ]
+    },
+    {
+      "file": "agents-receiver-agent-crm-username.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `scripts/migrations/operations-registry-agent-merchant-compatibility.lib.ts`, `scripts/migrations/operations-registry-inventory.lib.ts`, `src/services/enrichment/callLeadEnrichment.service.ts`, `src/services/granotHttpCollector/formWorkflow.ts`, `src/services/granotHttpCollector/runWorkflow.ts`, `src/services/reconciliation/bookedCallLeadReconciliation.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/agents/receiverAgentCrmUsername.ts",
+            "scripts/migrations/operations-registry-agent-merchant-compatibility.lib.ts",
+            "scripts/migrations/operations-registry-inventory.lib.ts",
+            "src/services/enrichment/callLeadEnrichment.service.ts",
+            "src/services/granotHttpCollector/formWorkflow.ts",
+            "src/services/granotHttpCollector/runWorkflow.ts",
+            "src/services/reconciliation/bookedCallLeadReconciliation.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/agents/receiverAgentCrmUsername.ts",
+        "docs/knowledge/services/enrichment.md",
+        "docs/knowledge/services/operations-registry.md",
+        "scripts/migrations/operations-registry-agent-merchant-compatibility.lib.ts",
+        "scripts/migrations/operations-registry-inventory.lib.ts",
+        "src/services/enrichment/callLeadEnrichment.service.ts",
+        "src/services/granotHttpCollector/formWorkflow.ts",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reconciliation/bookedCallLeadReconciliation.service.ts"
+      ]
+    },
+    {
+      "file": "cpl-cpl-rate.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "This compatibility read does perform Mongo writes when seeding missing labels with `$setOnInsert`; it has no Owner-edit export. Preserve cached/inflight loading and retry after failed load, nested-catalog precedence on list, unknown-label skipping, and no replacement of temporal Lead pricing with this fallback.",
+          "evidence": [
+            "src/services/cpl/cplRate.service.ts",
+            "docs/knowledge/services/operations-registry.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/config/domain/cpl.ts`, `src/routes/v1.routes.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/cpl/cplRate.service.ts",
+            "src/config/domain/cpl.ts",
+            "src/routes/v1.routes.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/cpl/cplRate.service.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/config/domain/cpl.ts",
+        "src/routes/v1.routes.ts"
+      ]
+    },
+    {
+      "file": "crm-form-lead-payload.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "`splitNameForCrm` also has a live direct caller in granotLifecycle/leadDesiredState.ts for Granot contact name handling. It is not solely a test/root-facade leak: preserve that export until this lifecycle caller is migrated, and prove same first/last-name semantics on that path. The payload mapper still uses saved ref_no for leadno and never Job Number or Mongo id.",
+          "evidence": [
+            "src/services/crm/formLeadPayload.ts",
+            "docs/knowledge/services/form-lead.md",
+            "src/services/granotLifecycle/leadDesiredState.ts"
+          ]
+        },
+        {
+          "claim": "Prefer they become unexported once the facade drops them.",
+          "correction": "Only consider unexporting after every real caller migrates, including Granot leadDesiredState.ts for splitNameForCrm.",
+          "evidence": [
+            "src/services/crm/formLeadPayload.ts",
+            "docs/knowledge/services/form-lead.md",
+            "src/services/granotLifecycle/leadDesiredState.ts"
+          ]
+        },
+        {
+          "claim": "cases may stay until the root facade drops those exports; after that, fold them into the map cases.",
+          "correction": "cases protect exported seams used by the root facade and (for splitNameForCrm) Granot leadDesiredState.ts; fold them only after all callers migrate.",
+          "evidence": [
+            "src/services/crm/formLeadPayload.ts",
+            "docs/knowledge/services/form-lead.md",
+            "src/services/granotLifecycle/leadDesiredState.ts"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/crm/crm.service.ts`, `src/services/crm/index.ts`, `src/services/granotLifecycle/leadDesiredState.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/crm/formLeadPayload.ts",
+            "src/services/crm/crm.service.ts",
+            "src/services/crm/index.ts",
+            "src/services/granotLifecycle/leadDesiredState.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/crm/formLeadPayload.ts",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/leadDesiredState.ts",
+        "src/services/crm/crm.service.ts",
+        "src/services/crm/index.ts"
+      ]
+    },
+    {
+      "file": "crm-crm-service.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep payload construction/log sanitization outside the request try as currently implemented; do not strengthen the old never-throws JSDoc into a blanket error-swallowing contract. Fetch/response read/HTTP-failure fact errors enter the catch, which records a failure fact before returning status 0; failures of that catch-side fact can still propagate. Preserve URL-encoded POST, raw response in result, HTTP status versus network status 0, sanitized endpoint/payload logs and Daily Operations failure fact. Prove HTTP failure and fetch failure separately with the actual fact helper mocked; avoid catch-all tests that pass on an unintended exception.",
+          "evidence": [
+            "src/services/crm/crm.service.ts",
+            "docs/knowledge/services/form-lead.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/crm/crm.service.ts",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "catalog-catalog.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The old brief described a narrower DTO than current code and omitted Agent desk membership reads. Keep this facade over Registry, preserve actual DTO fields and prove read/write distinctions.",
+          "evidence": [
+            "src/services/catalog/catalog.service.ts",
+            "docs/knowledge/services/catalog.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/catalog/catalog.service.ts",
+        "docs/knowledge/services/catalog.md"
+      ]
+    },
+    {
+      "file": "extension-users-extension-users.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The previous brief omitted Agent linkage, its DTO field and no-sign-out exception, and included retired customer/agent browse resources. Current source and Service support agent_id linking/disconnecting.",
+          "evidence": [
+            "src/services/extensionUsers/extensionUsers.service.ts",
+            "docs/knowledge/services/extension-users.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/extensionUsers/extensionUsers.service.ts",
+        "docs/knowledge/services/extension-users.md"
+      ]
+    },
+    {
+      "file": "customers-customer-from-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/bookings/bookedLead.service.ts`, `src/services/bookings/bookingMirror.service.ts`, `src/services/bookings/leadlessBooking.service.ts`, `src/services/bookings/referralBooking.service.ts`, `src/services/customers/index.ts`, `src/services/employeeBookings/bookingLeadReconciliation.service.ts`, `src/services/employeeBookings/submitEmployeeBooking.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/customers/customerFromLead.service.ts",
+            "src/services/bookings/bookedLead.service.ts",
+            "src/services/bookings/bookingMirror.service.ts",
+            "src/services/bookings/leadlessBooking.service.ts",
+            "src/services/bookings/referralBooking.service.ts",
+            "src/services/customers/index.ts",
+            "src/services/employeeBookings/bookingLeadReconciliation.service.ts",
+            "src/services/employeeBookings/submitEmployeeBooking.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/customers/customerFromLead.service.ts",
+        "docs/knowledge/services/customer.md",
+        "src/services/bookings/bookedLead.service.ts",
+        "src/services/bookings/bookingMirror.service.ts",
+        "src/services/bookings/leadlessBooking.service.ts",
+        "src/services/bookings/referralBooking.service.ts",
+        "src/services/customers/index.ts",
+        "src/services/employeeBookings/bookingLeadReconciliation.service.ts",
+        "src/services/employeeBookings/submitEmployeeBooking.service.ts"
+      ]
+    },
+    {
+      "file": "customers-customer.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Customer CRUD remains, but its Admin browse/search/export resource was retired. Preserve sequential Booking cascade via v1.service (partial earlier deletions remain on a later failure), missing-Customer delete as successful no-op, 200-row list and manual update without normalized_name rewrite. Do not revive an Admin Customers desk from the old comparison text.",
+          "evidence": [
+            "src/services/customers/customer.service.ts",
+            "docs/knowledge/services/customer.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/customers/index.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/customers/customer.service.ts",
+            "src/services/customers/index.ts"
+          ]
+        },
+        {
+          "claim": "Zod already stripped unknown keys.",
+          "correction": "Transport Zod rejects unknown keys (`strict()`). Customer create/update validation is strict, not strip-unknown.",
+          "evidence": [
+            "src/services/customers/customer.service.ts",
+            "src/validation/v1/customers.validation.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/customers/customer.service.ts",
+        "docs/knowledge/services/customer.md",
+        "src/services/customers/index.ts",
+        "src/validation/v1/customers.validation.ts"
+      ]
+    },
+    {
+      "file": "enrichment-call-lead-enrichment-rows.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/enrichment/callLeadEnrichment.service.ts`, `src/services/enrichment/index.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/enrichment/callLeadEnrichmentRows.ts",
+            "src/services/enrichment/callLeadEnrichment.service.ts",
+            "src/services/enrichment/index.ts"
+          ]
+        },
+        {
+          "claim": "Parser brief described its sibling matcher as phone-then-job.",
+          "correction": "Changed sibling descriptions to Job-first then phone fallback; parser itself remains unchanged.",
+          "evidence": [
+            "src/services/enrichment/callLeadEnrichmentRows.ts",
+            "docs/knowledge/services/enrichment.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/enrichment/callLeadEnrichmentRows.ts",
+        "docs/knowledge/services/enrichment.md",
+        "src/services/enrichment/callLeadEnrichment.service.ts",
+        "src/services/enrichment/index.ts"
+      ]
+    },
+    {
+      "file": "enrichment-call-lead-enrichment.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The retained brief repeatedly required phone-first matching and contact diffs as persistable; live code is Job-first and CSV contact is observation-only. Drift options reject actual mismatches, not every supplied option.",
+          "evidence": [
+            "src/services/enrichment/callLeadEnrichment.service.ts",
+            "docs/knowledge/services/enrichment.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/enrichment/callLeadEnrichment.service.ts",
+        "docs/knowledge/services/enrichment.md"
+      ]
+    },
+    {
+      "file": "form-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Current story names are already implemented; this brief should guide remaining proof, not repeat a rename. CRM label comes from assignment snapshot and leadno from persisted ref_no. Preserve server submission reuse versus a newly stored Duplicate Lead, nonduplicate Form Fill marking, temporal CPL, and the real finalizer order even if Sheets failure currently prevents later CRM work. Newly drafted dirty-branch tests have not been executed/reviewed by this catalog task; assertions cited here describe proposed coverage, not passed qualification.",
+          "evidence": [
+            "src/services/leads/formLead.service.ts",
+            "docs/knowledge/services/form-lead.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted beginFormLeadRemoval, createFormLead, createFormLeadInTransaction, deleteFormLead, deleteFormLeadInTransaction, finalizeFormLeadCreateAfterCommit, findAllFormLeads, findFormLead, persistFormLeadUpdateInTransaction, updateFormLead, updateFormLeadInTransaction.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/leads/formLead.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/leads/formLead.service.ts",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "cancellations-cancellation-mirror.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/cancellations/cancelledLead.service.ts`, `src/services/cancellations/index.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/cancellations/cancellationMirror.service.ts",
+            "src/services/cancellations/cancelledLead.service.ts",
+            "src/services/cancellations/index.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/cancellations/cancellationMirror.service.ts",
+        "docs/knowledge/services/cancellation-mirror.md",
+        "docs/knowledge/services/cancelled-lead.md",
+        "src/services/cancellations/cancelledLead.service.ts",
+        "src/services/cancellations/index.ts"
+      ]
+    },
+    {
+      "file": "cancellations-cancellation-resolver.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/cancellations/cancelledLead.service.ts`, `src/services/cancellations/index.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/cancellations/cancellationResolver.ts",
+            "src/services/cancellations/cancelledLead.service.ts",
+            "src/services/cancellations/index.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/cancellations/cancellationResolver.ts",
+        "docs/knowledge/services/cancelled-lead.md",
+        "src/services/cancellations/cancelledLead.service.ts",
+        "src/services/cancellations/index.ts"
+      ]
+    },
+    {
+      "file": "cancellations-cancelled-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Both public and lifecycle-verified creates stamp immutable correlation snapshots from the surviving Booking through cancellationCorrelationSnapshots. Preserve job_no_snapshot, normalized_job_no_snapshot, lead_ref_snapshot and booking_created_at_snapshot; public customer_name remains populated customer.full_name while verified create can fall back to booking.customer_name. The verified primitive is called through officialCancellationWrite.ts, shared by live bookingOwnerCommands.ts and historical compatibility releaseOwnerCommands.ts; it is not evidence that the separate Release workflow is live. Cancellation delete clears cancelled refs but leaves Booking and its Record Link booking_ref in place. Canonical legacy-mode deletion removes Mongo inside the command and runs sheet cleanup in its returned finalizer; standalone legacy deletion runs sheet cleanup before Mongo deletion. Prove those distinct orders and immutable snapshot creation/update behavior.",
+          "evidence": [
+            "src/services/cancellations/cancelledLead.service.ts",
+            "docs/knowledge/services/cancelled-lead.md",
+            "src/services/granotLifecycle/officialCancellationWrite.ts",
+            "src/services/granotLifecycle/bookingOwnerCommands.ts"
+          ]
+        },
+        {
+          "claim": "Granot Release already revalidated the case, the link, and the Booking identity.",
+          "correction": "The lifecycle caller already revalidated the case, the link, and the Booking identity; shared officialCancellationWrite owns Changes/case/outbox.",
+          "evidence": [
+            "src/services/cancellations/cancelledLead.service.ts",
+            "docs/knowledge/services/cancelled-lead.md",
+            "src/services/granotLifecycle/officialCancellationWrite.ts",
+            "src/services/granotLifecycle/bookingOwnerCommands.ts"
+          ]
+        },
+        {
+          "claim": "Granot Release CAS claim; caller owns outbox / case / changes",
+          "correction": "Lifecycle-verified CAS claim via officialCancellationWrite; caller owns outbox / case / changes",
+          "evidence": [
+            "src/services/cancellations/cancelledLead.service.ts",
+            "docs/knowledge/services/cancelled-lead.md",
+            "src/services/granotLifecycle/officialCancellationWrite.ts",
+            "src/services/granotLifecycle/bookingOwnerCommands.ts"
+          ]
+        },
+        {
+          "claim": "`releaseOwnerCommands` maps those plus its own later beats.",
+          "correction": "`officialCancellationWrite` maps those plus its own later beats; Booking Owner commands and compatibility Release delegate there.",
+          "evidence": [
+            "src/services/cancellations/cancelledLead.service.ts",
+            "docs/knowledge/services/cancelled-lead.md",
+            "src/services/granotLifecycle/officialCancellationWrite.ts",
+            "src/services/granotLifecycle/bookingOwnerCommands.ts"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/cancellations/index.ts`, `src/services/domainCommands/existingWrites.ts`, `src/services/granotLifecycle/officialCancellationWrite.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/cancellations/cancelledLead.service.ts",
+            "src/services/cancellations/index.ts",
+            "src/services/domainCommands/existingWrites.ts",
+            "src/services/granotLifecycle/officialCancellationWrite.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/cancellations/cancelledLead.service.ts",
+        "docs/knowledge/services/cancelled-lead.md",
+        "src/services/granotLifecycle/officialCancellationWrite.ts",
+        "src/services/granotLifecycle/bookingOwnerCommands.ts",
+        "src/services/cancellations/index.ts",
+        "src/services/domainCommands/existingWrites.ts"
+      ]
+    },
+    {
+      "file": "durable-work-actors.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep actor factories, audit envelope construction and metadata sanitization distinct. Registry system actors reject conversion; system work uses dedicated fixed identities/origins. Envelope fills absent ids with null and preserves occurred_at. Sanitizer recursively redacts sensitive-key object fields, including object items in arrays, while preserving Dates/nonrecord values; it is key-based and must not be advertised as arbitrary PII detection. Prove fixed identity snapshots, system-conversion rejection and nested raw_row/token redaction.",
+          "evidence": [
+            "src/services/durableWork/actors.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/actors.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "durable-work-capability.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/durableWork/capability.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-checkpoints.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep advance validation, CAS construction and counters separate. Full advance checks positive integer version, nonnegative integer completed_units, nonblank phase and monotonic progress; CAS builder itself only rejects version reversal and builds owner/epoch/unexpired/expected-version filter. It does not inspect cursor ordering or invoke full validation. Preserve missing-current version filter [null,0] and partial counter validation (only supplied keys). Prove validation and constructed filter separately.",
+          "evidence": [
+            "src/services/durableWork/checkpoints.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/checkpoints.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-checksum.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve canonicalJson, envelope hashing and checksum assertion exports; generic bag wording obscures a persisted wire format. Object keys sort, array order remains, Dates become ISO, -0 becomes 0; nonfinite/undefined/function/symbol/bigint/nonplain objects/cycles throw CanonicalSerializationError. assertChecksum trims/lowercases expected digest and compares timing-safely after length check. Prove permutation-invariant object digest, order-sensitive array digest, unsupported value errors and mismatch code without replacing this strict serializer with the command adapter's undefined-omitting serializer.",
+          "evidence": [
+            "src/services/durableWork/checksum.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/checksum.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-leases.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/durableWork/leases.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-provider-retry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep status extraction, failure classification and retry decision independently callable. Preserve direct status/statusCode before nested response, 3-digit status strings, code normalization and classifier precedence. Retry caps include attempt and elapsed time; valid Retry-After takes precedence over jitter but is still capped by max_delay. At or beyond deadline/elapsed retry boundary defer to now + max(delay,defer_delay), rather than sleeping inline. Prove Retry-After=0, equality at deadline, exhausted attempts and nonretryable categories.",
+          "evidence": [
+            "src/services/durableWork/providerRetry.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/providerRetry.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-run-transitions.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain InvalidRunTransitionError as an error class with stable name/code; it is not an operation to rename into a sentence. Mongo store distinguishes missing run, unexpected status, illegal graph hop and stale lease, then CASes status, owner/epoch/expiry, checkpoint version and supplied counter values. Failed CAS reloads to classify missing/status/lease loss. Preserve partial counters and failure undefined-versus-null. Prove competing counter/checkpoint writer cannot overwrite progress and graph violation throws, rather than returning generic lease_lost.",
+          "evidence": [
+            "src/services/durableWork/runTransitions.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/runTransitions.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-schema.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Two schema factories return run-control and fenced-lease field maps. Preserve epoch default 0/minimum 0, nullable owner/expiry, checkpoint subdocument without _id, structured failure class enum and required cursor, plus unique named lease scope. They define schema shape, not lease acquisition or checkpoint validity; runtime stores perform those checks. Prove generated schema defaults/validators/index metadata through representative owning models before changing these exports.",
+          "evidence": [
+            "src/services/durableWork/schema.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/schema.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "durable-work-testing.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain InMemoryRun as a type and both stores as explicit test adapters; avoid turning a structural type into an operation sentence. Lease epochs survive release, expired leases permit acquisition, token copies isolate returned expiry, and run seed/read use structuredClone. Transition performs graph/lease/monotonic checks before applying supplied fields. Preserve the actual fake's limitations: it does not implement Mongo CAS races or input validation equivalently to MongoLeaseStore. Prove stale token, release/reacquire epoch and read isolation; do not claim these tests qualify production atomicity.",
+          "evidence": [
+            "src/services/durableWork/testing.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/durableWork/testing.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "google-auth-service-account.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Actual raw/base64 precedence uses nullish coalescing, not truthiness: a defined raw JSON env that trims to empty suppresses base64 and returns undefined (auth-source may then use allowed non-test local file). Only absent raw env uses base64. Preserve this observed behavior until an explicit separate fallback change. Parse errors rethrow rather than trying the file; incomplete objects warn and still return. Prove absent raw versus empty raw versus invalid raw independently, and test-mode selected credential names/file refusal.",
+          "evidence": [
+            "src/services/googleAuth/serviceAccount.ts",
+            "docs/knowledge/services/google-sheets.md",
+            "docs/knowledge/environment.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `scripts/audit-calls-sheet.ts`, `scripts/dev_ops/google_sheets/explore-tbm-bad-leads.ts`, `scripts/summarize-call-investigation.ts`, `scripts/verify-short-call-legs.ts`, `src/services/googleMaps/geocoding.ts`, `src/services/googleSheets/auth.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleAuth/serviceAccount.ts",
+            "scripts/audit-calls-sheet.ts",
+            "scripts/dev_ops/google_sheets/explore-tbm-bad-leads.ts",
+            "scripts/summarize-call-investigation.ts",
+            "scripts/verify-short-call-legs.ts",
+            "src/services/googleMaps/geocoding.ts",
+            "src/services/googleSheets/auth.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleAuth/serviceAccount.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/environment.md",
+        "scripts/audit-calls-sheet.ts",
+        "scripts/dev_ops/google_sheets/explore-tbm-bad-leads.ts",
+        "scripts/summarize-call-investigation.ts",
+        "scripts/verify-short-call-legs.ts",
+        "src/services/googleMaps/geocoding.ts",
+        "src/services/googleSheets/auth.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-google-drive-oauth.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The retained brief enforced one exact Google email and always the configured login hint; source now accepts the authorized-email allowlist and optional authorized loginHint. Connection/AAD identity stays config.ownerEmail.",
+          "evidence": [
+            "src/services/googleDriveOAuth/googleDriveOAuth.service.ts",
+            "docs/knowledge/services/reporting.md",
+            "docs/knowledge/environment.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/googleDriveOAuth.service.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-owner-auth.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The retained brief compared actor.actorLabel to a single config.ownerEmail; current requireGoogleDriveOwnerActor calls isAuthorizedGoogleDriveOwnerEmail and allows additional configured Owner emails.",
+          "evidence": [
+            "src/services/googleDriveOAuth/ownerAuth.ts",
+            "docs/knowledge/services/reporting.md",
+            "docs/knowledge/environment.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/ownerAuth.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-oauth-scopes.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleDriveOAuth/googleDriveOAuth.service.ts`, `src/services/googleDriveOAuth/index.ts`, `src/services/googleDriveOAuth/oauthSecurity.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/oauthScopes.ts",
+            "src/services/googleDriveOAuth/googleDriveOAuth.service.ts",
+            "src/services/googleDriveOAuth/index.ts",
+            "src/services/googleDriveOAuth/oauthSecurity.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/oauthScopes.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/googleDriveOAuth/googleDriveOAuth.service.ts",
+        "src/services/googleDriveOAuth/index.ts",
+        "src/services/googleDriveOAuth/oauthSecurity.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-oauth-security.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Owner access descriptions must refer to the configured authorized-email allowlist, not exact single-email equality. Error classification here stays type/status/code based: do not parse provider text or remap every 400 into oauth_session_invalid. Callback status remapping remains the route's responsibility.",
+          "evidence": [
+            "src/services/googleDriveOAuth/oauthSecurity.ts",
+            "docs/knowledge/services/reporting.md",
+            "docs/knowledge/environment.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/routes/google-drive-oauth.routes.ts`, `src/services/googleDriveOAuth/index.ts`, `src/services/googleDriveOAuth/ownerAuth.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/oauthSecurity.ts",
+            "src/routes/google-drive-oauth.routes.ts",
+            "src/services/googleDriveOAuth/index.ts",
+            "src/services/googleDriveOAuth/ownerAuth.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/oauthSecurity.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/routes/google-drive-oauth.routes.ts",
+        "src/services/googleDriveOAuth/index.ts",
+        "src/services/googleDriveOAuth/ownerAuth.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-drive-metadata.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleDriveOAuth/index.ts`, `src/services/googleDriveOAuth/picker.service.ts`, `src/services/reporting/live/janitorCompletion.ts`, `src/services/reporting/live/livePickerContractRunner.ts`, `src/services/reporting/live/liveTestDenylistProof.ts`, `src/services/reporting/live/liveTestSecurity.ts`, `src/services/reporting/reportingDestination.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/driveMetadata.service.ts",
+            "src/services/googleDriveOAuth/index.ts",
+            "src/services/googleDriveOAuth/picker.service.ts",
+            "src/services/reporting/live/janitorCompletion.ts",
+            "src/services/reporting/live/livePickerContractRunner.ts",
+            "src/services/reporting/live/liveTestDenylistProof.ts",
+            "src/services/reporting/live/liveTestSecurity.ts",
+            "src/services/reporting/reportingDestination.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/driveMetadata.service.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/googleDriveOAuth/index.ts",
+        "src/services/googleDriveOAuth/picker.service.ts",
+        "src/services/reporting/live/janitorCompletion.ts",
+        "src/services/reporting/live/livePickerContractRunner.ts",
+        "src/services/reporting/live/liveTestDenylistProof.ts",
+        "src/services/reporting/live/liveTestSecurity.ts",
+        "src/services/reporting/reportingDestination.service.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-managed-tab.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/reporting/reportingDestination.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/managedTab.service.ts",
+            "src/services/reporting/reportingDestination.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/managedTab.service.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/reporting/reportingDestination.service.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-picker-nonce-store.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleDriveOAuth/picker.service.ts`, `src/services/googleDriveOAuth/pickerSelectionStore.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/pickerNonceStore.ts",
+            "src/services/googleDriveOAuth/picker.service.ts",
+            "src/services/googleDriveOAuth/pickerSelectionStore.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/pickerNonceStore.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/googleDriveOAuth/picker.service.ts",
+        "src/services/googleDriveOAuth/pickerSelectionStore.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-picker-selection-store.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleDriveOAuth/picker.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/pickerSelectionStore.ts",
+            "src/services/googleDriveOAuth/picker.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/pickerSelectionStore.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/googleDriveOAuth/picker.service.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-picker.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/routes/google-drive-oauth.routes.ts`, `src/services/googleDriveOAuth/index.ts`, `src/services/reporting/live/livePickerContractRunner.ts`, `src/services/reporting/live/liveTestDenylistProof.ts`, `src/services/reporting/reportingDestination.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/picker.service.ts",
+            "src/routes/google-drive-oauth.routes.ts",
+            "src/services/googleDriveOAuth/index.ts",
+            "src/services/reporting/live/livePickerContractRunner.ts",
+            "src/services/reporting/live/liveTestDenylistProof.ts",
+            "src/services/reporting/reportingDestination.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/picker.service.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/routes/google-drive-oauth.routes.ts",
+        "src/services/googleDriveOAuth/index.ts",
+        "src/services/reporting/live/livePickerContractRunner.ts",
+        "src/services/reporting/live/liveTestDenylistProof.ts",
+        "src/services/reporting/reportingDestination.service.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-spreadsheet.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleDriveOAuth/driveMetadata.service.ts`, `src/services/googleDriveOAuth/index.ts`, `src/services/googleDriveOAuth/workbook.service.ts`, `src/services/reporting/reportingDestination.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/spreadsheet.service.ts",
+            "src/services/googleDriveOAuth/driveMetadata.service.ts",
+            "src/services/googleDriveOAuth/index.ts",
+            "src/services/googleDriveOAuth/workbook.service.ts",
+            "src/services/reporting/reportingDestination.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/spreadsheet.service.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/googleDriveOAuth/driveMetadata.service.ts",
+        "src/services/googleDriveOAuth/index.ts",
+        "src/services/googleDriveOAuth/workbook.service.ts",
+        "src/services/reporting/reportingDestination.service.ts"
+      ]
+    },
+    {
+      "file": "google-drive-oauth-token-encryption.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleDriveOAuth/googleDriveOAuth.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleDriveOAuth/tokenEncryption.ts",
+            "src/services/googleDriveOAuth/googleDriveOAuth.service.ts"
+          ]
+        },
+        {
+          "claim": "An obsolete traversal command prohibited opening Wave B.",
+          "correction": "Removed traversal scheduling prohibition while preserving configuration/key-decoder ownership.",
+          "evidence": [
+            "src/services/googleDriveOAuth/tokenEncryption.ts",
+            "docs/knowledge/services/reporting.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleDriveOAuth/tokenEncryption.ts",
+        "docs/knowledge/services/reporting.md",
+        "docs/knowledge/environment.md",
+        "src/services/googleDriveOAuth/googleDriveOAuth.service.ts"
+      ]
+    },
+    {
+      "file": "google-maps-geocoding.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep operational ZIP lookup, detailed health and pure response extraction separate. Invalid ZIP returns undefined without Google; operational HTTP/auth/parse errors log and return undefined, while health reports staged auth/token/geocoding detail and defaults invalid probe ZIP to 10001. Preserve service-account project requirement and X-Goog-User-Project, cached auth invalidation on failure and postal-address state precedence over component fallback. Prove valid/invalid ZIP, no-state reply and staged health failure rather than changing this into a throwing location validator.",
+          "evidence": [
+            "src/services/googleMaps/geocoding.ts",
+            "docs/knowledge/environment.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleMaps/geocoding.ts",
+        "docs/knowledge/environment.md"
+      ]
+    },
+    {
+      "file": "domain-commands-bookings.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep thin create/update/delete compatibility delegates distinct from the exact `updateBooking` aggregate and `attachBookingToLead`. Exact update validates expected revision/uncancelled Booking, active Agent/Merchant ids, even-cent official allocations and normalized Job CAS; no field diff means no Change/outbox/finalizer, while changed data persists one Booking Change plus booking_chain intent. Attachment loads its reconciliation case, uses expected case revision and same supplied session, records Booking/Lead diffs and finalizes jobs after non-replay commit. External-ingestion attachment additionally proves source ownership using prior command execution and connection key. Prove both exact operations, no-op/replay, lost revision and foreign-ingestion denial; Form sibling preference belongs to the matcher, not these wrappers.",
+          "evidence": [
+            "src/services/domainCommands/bookings.ts",
+            "docs/knowledge/services/domain-commands.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/domainCommands/bookings.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "google-sheets-booked-lead-row.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/googleSheets.service.ts`, `src/services/sheetSync/drainer/jobPlanner.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/projections/bookedLeadRow.ts",
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/sheetSync/drainer/jobPlanner.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/projections/bookedLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/googleSheets.service.ts",
+        "src/services/sheetSync/drainer/jobPlanner.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-call-lead-row.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/googleSheets.service.ts`, `src/services/sheetSync/drainer/jobPlanner.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/projections/callLeadRow.ts",
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/sheetSync/drainer/jobPlanner.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/projections/callLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/googleSheets.service.ts",
+        "src/services/sheetSync/drainer/jobPlanner.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-cancelled-lead-row.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/googleSheets.service.ts`, `src/services/sheetSync/drainer/jobPlanner.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/projections/cancelledLeadRow.ts",
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/sheetSync/drainer/jobPlanner.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/projections/cancelledLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/googleSheets.service.ts",
+        "src/services/sheetSync/drainer/jobPlanner.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-form-lead-row.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/googleSheets.service.ts`, `src/services/sheetSync/drainer/jobPlanner.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/projections/formLeadRow.ts",
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/sheetSync/drainer/jobPlanner.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/projections/formLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/googleSheets.service.ts",
+        "src/services/sheetSync/drainer/jobPlanner.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-google-sheets.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep all entity sync/delete entry points and bootstrap. Form sync writes current Forms/Duplicates plus Bad Leads when flagged; clearing bad always attempts legacy Bad Leads removal. Call sync writes Calls/Duplicate Calls then deletes opposite-tab rows even without saved hints; standalone Call delete only names current tab. Direct facade calls do not implement unmatched/no_sync skip policy (caller/drainer does), and Bad Calls is never written. Per-target sync failures become result entries, but later stale-row cleanup may still throw, so do not claim the whole facade never throws. Preserve no-SheetSync metadata persistence in this projection facade and prove current/stale targets and cleanup ordering.",
+          "evidence": [
+            "src/services/googleSheets/googleSheets.service.ts",
+            "docs/knowledge/services/google-sheets.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/googleSheets.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/googleSheets.service.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets.service.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-delete-rows.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The retained brief claimed missing tabs never appear in returned deletedTargets; source's void deleteSheetRow returns on missing sheet id, then the caller unconditionally pushes the target. Missing-tab failure before that can also propagate from row lookup.",
+          "evidence": [
+            "src/services/googleSheets/deleteRows.ts",
+            "docs/knowledge/services/google-sheets.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/deleteRows.ts",
+        "docs/knowledge/services/google-sheets.md"
+      ]
+    },
+    {
+      "file": "google-sheets-retry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/deleteRows.ts`, `src/services/googleSheets/rowLookup.ts`, `src/services/googleSheets/sheetContains.ts`, `src/services/googleSheets/tabs.ts`, `src/services/sheetSync/drainer/batchWriter.ts`, `src/services/sheetSync/drainer/tabRowMap.ts`, `src/services/tariff/append.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/retry.ts",
+            "src/services/googleSheets/deleteRows.ts",
+            "src/services/googleSheets/rowLookup.ts",
+            "src/services/googleSheets/sheetContains.ts",
+            "src/services/googleSheets/tabs.ts",
+            "src/services/sheetSync/drainer/batchWriter.ts",
+            "src/services/sheetSync/drainer/tabRowMap.ts",
+            "src/services/tariff/append.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/retry.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/deleteRows.ts",
+        "src/services/googleSheets/rowLookup.ts",
+        "src/services/googleSheets/sheetContains.ts",
+        "src/services/googleSheets/tabs.ts",
+        "src/services/sheetSync/drainer/batchWriter.ts",
+        "src/services/sheetSync/drainer/tabRowMap.ts",
+        "src/services/tariff/append.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-row-lookup.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/deleteRows.ts`, `src/services/googleSheets/syncRows.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/rowLookup.ts",
+            "src/services/googleSheets/deleteRows.ts",
+            "src/services/googleSheets/syncRows.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/rowLookup.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/deleteRows.ts",
+        "src/services/googleSheets/syncRows.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-sync-rows.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Only the per-target loop catches errors. getSheetsClient and auth diagnostics execute before it; those failures reject rather than yielding one failed entry per target. Preserve that boundary and sequential target order, failed-entry omission of row_number, and caller-owned persistence. Prove an initialization failure separately from a single destination failure followed by successful later destination.",
+          "evidence": [
+            "src/services/googleSheets/syncRows.ts",
+            "docs/knowledge/services/google-sheets.md"
+          ]
+        },
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/googleSheets.service.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/syncRows.ts",
+            "src/services/googleSheets/googleSheets.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/syncRows.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/googleSheets.service.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-tabs.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/deleteRows.ts`, `src/services/googleSheets/googleSheets.service.ts`, `src/services/googleSheets/rowLookup.ts`, `src/services/googleSheets/sheetContains.ts`, `src/services/googleSheets/syncRows.ts`, `src/services/sheetSync/drainer/batchWriter.ts`, `src/services/tariff/append.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/tabs.ts",
+            "src/services/googleSheets/deleteRows.ts",
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/googleSheets/rowLookup.ts",
+            "src/services/googleSheets/sheetContains.ts",
+            "src/services/googleSheets/syncRows.ts",
+            "src/services/sheetSync/drainer/batchWriter.ts",
+            "src/services/tariff/append.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/tabs.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/deleteRows.ts",
+        "src/services/googleSheets/googleSheets.service.ts",
+        "src/services/googleSheets/rowLookup.ts",
+        "src/services/googleSheets/sheetContains.ts",
+        "src/services/googleSheets/syncRows.ts",
+        "src/services/sheetSync/drainer/batchWriter.ts",
+        "src/services/tariff/append.ts"
+      ]
+    },
+    {
+      "file": "google-sheets-targets.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The older caller inventory mixed direct imports with facades or omitted current import sites.",
+          "correction": "Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/googleSheets/deleteRows.ts`, `src/services/googleSheets/googleSheets.service.ts`, `src/services/leads/callLead.service.ts`, `src/services/sheetSync/drainer/jobPlanner.ts`, `src/services/sheetSync/sheetSyncSourceLookup.ts`. Indirect facade/barrel consumers remain callers of those facades.",
+          "evidence": [
+            "src/services/googleSheets/targets.ts",
+            "src/services/googleSheets/deleteRows.ts",
+            "src/services/googleSheets/googleSheets.service.ts",
+            "src/services/leads/callLead.service.ts",
+            "src/services/sheetSync/drainer/jobPlanner.ts",
+            "src/services/sheetSync/sheetSyncSourceLookup.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/googleSheets/targets.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "src/services/googleSheets/deleteRows.ts",
+        "src/services/googleSheets/googleSheets.service.ts",
+        "src/services/leads/callLead.service.ts",
+        "src/services/sheetSync/drainer/jobPlanner.ts",
+        "src/services/sheetSync/sheetSyncSourceLookup.ts"
+      ]
+    },
+    {
+      "file": "granot-crm-csv-parser.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "This CSV parser is separate from HTTP/Estimates. Preserve row acceptance: any nonblank job, else 24-hex ref, else phone AND customer. It is not a generic totals-row keyword filter. Row key is job, Mongo ref, normalized last-ten-digit phone+email, phone, then fallback customer/no; rowIndex is the parsed-record index. Header/cell normalization and counts retain skipped blank/nondata rows; duplicate row keys are not deduplicated here. Prove quoted/multiline CSV, header normalization, totals without identity, provider ref with/without phone and repeated-key rows.",
+          "evidence": [
+            "src/services/granotCrmCsv/parser.ts",
+            "docs/knowledge/services/form-lead-search.md",
+            ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotCrmCsv/parser.ts",
+        "docs/knowledge/services/form-lead-search.md",
+        ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+      ]
+    },
+    {
+      "file": "granot-crm-csv-registry.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve seed, list, upload lookup and ensure as separate operations. Lookup priority is workspace, normalized CSV path, then escaped case-insensitive exact label within normalized origin. Ensure updates an existing source's path and creates unknown upload sources disabled for review. Seeds insert default mapping/enabled only when missing but may update configured csv_paths on existing rows; do not describe them as entirely insert-only. Origin normalization strips URL path, CSV path keeps query, and generated unmapped workspace allows slash. Prove priority collisions, existing-path update and disabled unknown source; this module does not evaluate HTTP automation Registry routes.",
+          "evidence": [
+            "src/services/granotCrmCsv/registry.ts",
+            "docs/knowledge/services/operations-registry.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotCrmCsv/registry.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "granot-crm-csv-sync.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "This compatibility CSV path is not sealed HTTP lifecycle apply. A row is classified Form only when ref_no is a valid Mongo id, which is used as _id rather than exact persisted Tracking Reference. Other rows route by CSV kind to Call preview/sync; do not import HTTP's exact-reference ladder here as a cleanup. Form prior 0 sets quoted=false; 1/5 sets true and optional cubic feet; duplicate Forms never update. Dry-run differing Form rows report unchanged with changes, not updated. Pick latest uploaded ingestion per workspace/kind but fetch mutable s3_latest_key; there is no checksum/history verification in this function. Preserve per-row limit, run/outcome persistence and whole-run failure rethrow. Prove Form/Call routing, prior downgrade, no dry-run Lead mutation and distinct Follow Up/Booked call adapters.",
+          "evidence": [
+            "src/services/granotCrmCsv/sync.service.ts",
+            "docs/knowledge/services/form-lead-search.md",
+            "docs/knowledge/services/enrichment.md",
+            ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotCrmCsv/sync.service.ts",
+        "docs/knowledge/services/form-lead-search.md",
+        "docs/knowledge/services/enrichment.md",
+        ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+      ]
+    },
+    {
+      "file": "granot-crm-csv-upload.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve raw UTF-8 byte hash, not normalized-row hash; source resolution/path update happens before unchanged-content detection. Unchanged still creates skipped_unchanged ingestion and returns keys without S3 uploads or changing last-ingestion pointer. Changed writes history, latest and metadata in order, records uploaded ingestion, then saves source pointer; these S3/Mongo steps are not one atomic transaction, so do not promise rollback of prior objects. Caller-supplied row counts override parsed counts with nullish semantics (zero remains zero). Prove write order and unchanged branch, including failure after earlier object upload.",
+          "evidence": [
+            "src/services/granotCrmCsv/upload.service.ts",
+            "docs/knowledge/services/operations-registry.md",
+            ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotCrmCsv/upload.service.ts",
+        "docs/knowledge/services/operations-registry.md",
+        ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+      ]
+    },
+    {
+      "file": "granot-http-collector-automation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "This standalone helper defaults collect, builds payloads even when includeRows=false and only invokes Call enrichment/Booked reconciliation preview for mode=preview, in sequential batches of 100. includeRows controls returned payload/details, not whether preview runs. It writes no run/receipt/Lead and does not run the Form workflow or Estimates collector. Preserve summarized status counts and not-observed labels. Prove collect omits operations, preview without includeRows still computes counts, and >100 rows batch in order.",
+          "evidence": [
+            "src/services/granotHttpCollector/automation.ts",
+            "docs/knowledge/services/granot-http-collector.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/automation.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-http-collector-form-lead-matcher.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep exact ref lookup before 24-hex Mongo id before contact fallback. Both exact paths exclude duplicates; exact source mismatch warns but does not reject. Contact fallback requires phone or email (name-only insufficient), scored search max 25/nonduplicate, then same mapped Source Company, top score and optional quoted tie-break for priorities 0/1/5. A remaining tie conflicts; do not select newest as an identity decision. Unknown source gates fallback but not exact identity. Prove all three paths, two exact refs, exact mismatch warning, name-only rejection, quoted tie and unknown-source behavior; Estimates canonical identity remains a different planner.",
+          "evidence": [
+            "src/services/granotHttpCollector/granotFormLeadMatcher.ts",
+            "docs/knowledge/services/granot-http-collector.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/granotFormLeadMatcher.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-http-collector-form-workflow.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Heading incorrectly said only missing fields; quoted and cubic-feet may change existing values.",
+          "correction": "Preserve plan and patch seams: booked rows precede Follow Up rows per source and beforeRow runs for each. Planner emits schema v1 only; sealing occurs later. Quote/cubic-feet are not fill-only: priorities 1/5 propose quoted=true and any parseable cubic feet even if existing values differ; priority 0 does not unquote here (CSV sync differs). Locations use missing checks plus state/zip consistency, receiver proposes five fields only when absent. Existing all-zero ZIP passes isMissingZip but fillMissing still does not replace nonempty '00000'; preserve this actual limitation until separate fix. Same-value filtering creates patch plus expected values only for changes; current planRow never emits invalid. Prove present cubic-feet replacement, priority0, coherent/incoherent location fill, all-zero ZIP and unchanged plan.",
+          "evidence": [
+            "src/services/granotHttpCollector/formWorkflow.ts",
+            "docs/knowledge/services/granot-http-collector.md"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/formWorkflow.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-http-collector-index.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Retain collector, authenticated session seam, date validation, source parser and payload builder. Network then user login shares cookies/token and removes SAVEPASS; retry entire session once only for invalid_session. Requests stay same-origin, manual redirects preserve POST only on 307/308, use 20-second timeout and 10,000,000-byte declared/stream limits. Sources match requested exact labels; unobserved labels report separately. A recognized table needs job_no/customer headers; data also needs numeric no and job or customer. Section empty/missing is tolerated only with at least one recognized table and no invalid-header section. Payloads retain source-prefixed row identity, separate user/rep fallback, cities and Booked section/priority/date. Prove two-page session/cookies, redirect refusal, invalid schema/window and mapping without invoking persistence. Estimates shares login only and uses its own parser/query.",
+          "evidence": [
+            "src/services/granotHttpCollector/index.ts",
+            "docs/knowledge/services/granot-http-collector.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted GranotCollectorError, buildGranotOperationPayloads, collectGranotReport, getGranotDateWindowProblem, openGranotAuthenticatedSession, parseGranotSourceReport.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/granotHttpCollector/index.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/index.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-http-collector-lifecycle-statement.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Keep operation-id construction/validation, safe statement mapping, plan sealing/assertion and completion classification separate. Preserve user and rep independently, priority/customer/location aliases, Booked event_type and table-based operation kind; delete synthetic granot_crm_username. Reject/drop credential-like or unsafe/control/bidi keys/values with current bounds, retain finite numbers/null, and normalize whitespace. Seal v1 plans from original collected row, bind expected target and provider collectedAt when available, emit v2; never reconstruct approval from mutable CSV/latest data. Pending means accepted_for_processing or pending_match; only technical_failure makes completed_with_errors. Prove missing collected row fail, operation identity, safe fields and pending/terminal mix; existing Estimates plans are already sealed by their canonical assembler.",
+          "evidence": [
+            "src/services/granotHttpCollector/lifecycleStatement.ts",
+            "docs/knowledge/services/granot-http-collector.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted assertSealedAutomationPlan, automationRunCompletionStatus, isPendingAutomationActionOutcome, isSealedAutomationPlan, isTerminalAutomationActionOutcome.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/granotHttpCollector/lifecycleStatement.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/lifecycleStatement.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-http-collector-run-workflow.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "The file also owns group validation/partitioning, planning, approval, reviewed Estimates apply, worker/recovery/continuation, schedule dispatch and freshness reads: queue-create alone is not its implementation story. Retain each seam and private orchestration by decision. Source IDs/groups resolve Registry compatibility before child inserts; label-only create still bypasses that resolver. Ordinary approval checks apply gate, sealed checksum and unexpired awaiting-approval state; applyReviewedEstimatesRun instead accepts an unexpired completed Estimates preview with no prior approval/receipts and bounded 1–90 inclusive nonfuture dates, sets auto_apply and bypasses the deployment gate. Scheduled Estimates also auto-approve; neither bypasses lifecycle write gates. Preserve distinct ALL/Pool slot identity and selector/lane checks.\n\nWorker account lease/fenced run state, 120-second planning/apply budgets and 25-action apply limit remain. Pending actions do not block fresh independent selected actions; at most one nonterminal pending poll receives that budget per pass. Terminal receipts skip canonical reapply but Estimates may still need idempotent Outreach refresh nomination; transient refresh failure yields recoverably, and durable outreach_refresh_completed prevents premature completion/repeated successful nomination. Fresh Estimates evidence uses sealed collection_captured_at; existing receipt replay preserves original identity/time. Preserve waiting_match versus apply checkpoint and least-recent-attempt work order, provider retry bound and redacted run-detail shapes. Prove reviewed-preview gate exception, fresh+pending fairness, refresh retry, missing capture time, checksum drift and stale lease without restoring direct Lead writers.",
+          "evidence": [
+            "src/services/granotHttpCollector/runWorkflow.ts",
+            "docs/knowledge/services/granot-http-collector.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted applyReviewedEstimatesRun, approveGranotRun, assembleEstimatesPlan, assertReviewedEstimatesWindow, buildFormExpectedFilter, continueGranotRuns, createEstimatesSchedule, createGranotRunGroup, dispatchEstimatesSchedule, estimatesActionCaptureTime, estimatesScheduledWindows, getEstimatesFreshness, getGranotRun, granotApplyEnabled, granotApplyReadyFilter, granotRecoverableFilter, listGranotRuns, publishGranotWakeup, recoverGranotRuns, releasePoolCollectionDependencies, resumeEstimatesSchedules, runGranotWorker, toDurableGranotValue, validateEstimatesRunSelection.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/granotHttpCollector/runWorkflow.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ],
+      "historicalComparison": "Compared original HEAD brief selectively; restored current operation constraints without historical/combined scope or obsolete Release behavior."
+    },
+    {
+      "file": "granot-http-collector-source-catalog.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "The compact brief omitted operation-specific behavior and parity proof.",
+          "correction": "Preserve list/create/seed/resolve and both partition helpers. List filters active stored supported_operations then adds Registry compatibility; stored operations are compatibility inventory, Registry lifecycle routes are semantic apply authority for ID resolution. Canonicalize ids and reject duplicates/missing/inactive/unclassified before resolving referenced Registry row; missing/ambiguous/deferred/disabled/no-route rows fail with per-source issues. For a multioperation group, evaluate only routes actually permitted for a source, then require at least one source in each requested partition. New label starts missing_reference and does not auto-link Registry. Seeds update supported_operations but do not reactivate existing inactive rows. Prove stored-versus-Registry disagreement, mixed Form/Call partitions and new-source classification; keep label-only create's known gap in runWorkflow visible.",
+          "evidence": [
+            "src/services/granotHttpCollector/sourceCatalog.ts",
+            "docs/knowledge/services/granot-http-collector.md",
+            "docs/knowledge/services/operations-registry.md"
+          ]
+        },
+        {
+          "claim": "The declared-export inventory omitted GranotSourceSeedResult, canonicalizeGranotSourceIds, compatibilityOperationsForSource, partitionGranotAutomationSources, resolveGranotAutomationSources, seedGranotAutomationSources.",
+          "correction": "Listed all locally declared exports without treating the inventory as the public caller contract.",
+          "evidence": [
+            "src/services/granotHttpCollector/sourceCatalog.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotHttpCollector/sourceCatalog.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    }
+  ]
+}

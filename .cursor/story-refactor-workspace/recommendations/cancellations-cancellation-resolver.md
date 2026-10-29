@@ -1,12 +1,10 @@
 # Find The Booking This Cancellation Names — operational story
 
 - Status: recommended
-- Service: `cancellations` (Wave A, in-progress)
-- Pass: 2 of this service — `cancellationResolver.ts`
-- Remaining in this service: `cancellationMirror.service.ts`
+- Service: `cancellations`
 - Target: `src/services/cancellations/cancellationResolver.ts`
 - Knowledge: `docs/knowledge/services/cancelled-lead.md` (Resolver table + `getBookedLeadForCancellation` fences). Id-only Lead load is `leads-source-lead-lookup.md`. Public vs gated Release is `cancellations-cancelled-lead.md`. This checkout’s `CONTEXT.md` does not define Cancellation / Referral Booking — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `cancelledLead.service.ts` (`writeTheCancellationAndMirrorTheChain` / today’s `persistCancelledLeadCreateInTransaction` — leftover public and canonical `createCancellation` both enter here), `cancellations/index.ts` barrel (resolver is **not** re-exported by `v1.service.ts`). Tests call `getBookedLeadForCancellation` directly. Granot Release `cancelAVerifiedBooking` does **not** import this file.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/cancellations/cancelledLead.service.ts`, `src/services/cancellations/index.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: named Booking vs Lead-id-only vs both-must-agree; `allowLeadless` is a caller flag, not provenance; customer is populated for the write’s snapshot
 - Split later (only if the file outgrows one sitting): keep one file — this is already one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 

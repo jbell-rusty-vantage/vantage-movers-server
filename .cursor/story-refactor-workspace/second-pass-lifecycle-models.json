@@ -1,0 +1,1441 @@
+{
+  "reviewedAt": "2026-10-29",
+  "entries": [
+    {
+      "file": "granot-lifecycle-aggregate-revision.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/aggregateRevision.ts",
+        "docs/knowledge/granot-lifecycle/revisions.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-alerts.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unknown measurements retain unknown semantics",
+          "correction": "Capture unavailable, claim recovery, p95 and missing source rates use insufficient_data; a null oldest-due age or held-lease age instead yields ok under current evaluators.",
+          "evidence": [
+            "src/services/granotLifecycle/alerts.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/alerts.ts",
+        "docs/knowledge/granot-lifecycle/observability.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-authorized-desired-state.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unknown path fails",
+          "correction": "Direct assertion rejects unallowlisted set paths; conversion from a plan skips unknown or forbidden changed paths before asserting.",
+          "evidence": [
+            "src/services/granotLifecycle/authorizedDesiredState.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/authorizedDesiredState.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-automation-apply.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/automationApply.ts",
+        "src/services/granotHttpCollector/lifecycleStatement.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-automation-compatibility.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/automationCompatibility.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-booking-confirmation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "resolveConfirmAttachment can choose unique high-confidence identity",
+          "correction": "The helper consumes one suggested Lead and auto-attaches only when confidence is high and match_method is allowlisted; uniqueness is established upstream, not checked by this helper. Owner selection wins.",
+          "evidence": [
+            "src/services/granotLifecycle/bookingConfirmation.ts",
+            "src/services/granotLifecycle/confirmAttachment.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/bookingConfirmation.ts",
+        "src/services/granotLifecycle/confirmAttachment.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-booking-owner-commands.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/bookingOwnerCommands.ts",
+        "src/services/granotLifecycle/bookingIntakeLatestAction.ts",
+        "src/services/granotLifecycle/officialCancellationWrite.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-booking-priority-pairing.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Priority 5 before Booked",
+          "correction": "The priority_5_then_booked class requires Booked itself to carry canonical valid priority 5 as well as a preceding priority-5 Observation; otherwise the class is booked_without_priority_5 even if preceding evidence exists.",
+          "evidence": [
+            "src/services/granotLifecycle/bookingPriorityPairing.ts",
+            "src/services/granotLifecycle/granotTemporal.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/bookingPriorityPairing.ts",
+        "src/services/granotLifecycle/granotTemporal.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-booking-reconciliation.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/bookingReconciliation.ts",
+        "src/services/granotLifecycle/identity.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-capture.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/capture.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-create-lead-from-granot.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/createLeadFromGranot.ts",
+        "src/services/granotLifecycle/trustedLeadCreateValidation.ts",
+        "src/services/ringcentral/callLeadConvergence.service.ts",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-creating-observation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Loaders return safe evidence snapshots",
+          "correction": "Projection includes Observation contact and identity, and returns the receipt statement after credential-key redaction; it is not a generally contact-masked projection or official write input.",
+          "evidence": [
+            "src/services/granotLifecycle/creatingObservation.ts",
+            "src/services/granotLifecycle/receiptEvidence.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/creatingObservation.ts",
+        "src/services/granotLifecycle/receiptEvidence.ts",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-discrepancies.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/discrepancies.ts",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-discrepancy-owner-commands.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/discrepancyOwnerCommands.ts",
+        "src/services/granotLifecycle/bookingReconciliation.ts",
+        "src/services/granotLifecycle/discrepancies.ts",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-discrepancy-projections.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/discrepancyProjections.ts",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-drainer.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/drainer.ts",
+        "docs/knowledge/granot-lifecycle/drainer.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-extension-apply.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/extensionApply.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/granot-lifecycle/normalization.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-granot-temporal.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Order uses canonical lowercase 24-hex id",
+          "correction": "Comparator trims and lowercases IDs and compares them without validating ObjectId shape; the Mongo CAS filter specifically requires 24-character hex.",
+          "evidence": [
+            "src/services/granotLifecycle/granotTemporal.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/granotTemporal.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-identity.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/identity.ts",
+        "src/services/granotLifecycle/bookingReconciliation.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-lead-contact-projection.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Projection keeps immutable ingress evidence distinct",
+          "correction": "submitted_contact comes from current top-level Lead contact, not ingested_contact_snapshot. Phone/email are masked but names are returned as stored; Granot snapshot is separate.",
+          "evidence": [
+            "src/services/granotLifecycle/leadContactProjection.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/leadContactProjection.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-lead-desired-state.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/leadDesiredState.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-metrics.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/metrics.ts",
+        "docs/knowledge/granot-lifecycle/observability.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-normalization.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/normalization.ts",
+        "src/services/granotLifecycle/receiptEvidence.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-observability.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/observability.ts",
+        "docs/knowledge/granot-lifecycle/observability.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-operations.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/operations.ts",
+        "src/models/GranotLifecycleActivation.ts",
+        "src/services/domainCommands/idempotency.ts",
+        "docs/knowledge/granot-lifecycle/drainer.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-processor.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Technical failure no Decision; mirror on successful Form results",
+          "correction": "Technical failure finalization makes no new business Decision but previous committed evidence may remain; mirror also requires live flags and provenance.",
+          "evidence": [
+            "src/services/granotLifecycle/processor.ts",
+            "src/services/granotLifecycle/drainer.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/granotLifecycle/processor.ts",
+        "src/services/granotLifecycle/drainer.ts",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-projections.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/projections.ts",
+        "src/services/granotLifecycle/bookingIntakeLatestAction.ts",
+        "src/services/granotLifecycle/confirmAttachment.ts",
+        "src/services/granotLifecycle/connectBookingToLead.ts",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-queue-publisher.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/queuePublisher.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-referral-booking.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/referralBooking.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-source-policy.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/sourcePolicy.ts",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-synchronize-lead-from-granot.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/synchronizeLeadFromGranot.ts",
+        "src/services/granotLifecycle/processor.ts",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-trusted-lead-create-validation.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/granotLifecycle/trustedLeadCreateValidation.ts",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-assemble.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/jobNumberTimeline/assemble.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-attention.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/jobNumberTimeline/attention.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-clocks.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Comparator preserves chronological order",
+          "correction": "It compares occurred_at strings lexically and selects recorded clocks with per-evidence fallbacks.",
+          "evidence": [
+            "src/services/jobNumberTimeline/clocks.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/jobNumberTimeline/clocks.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-evidence.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Safe Form snapshot",
+          "correction": "The Form snapshot masks name, phone, and email but displays available city, state, ZIP, move date and move size; preserve that specific projection rather than assuming all submitted fields are masked.",
+          "evidence": [
+            "src/services/jobNumberTimeline/evidence.ts",
+            "src/services/jobNumberTimeline/masking.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/jobNumberTimeline/evidence.ts",
+        "src/services/jobNumberTimeline/masking.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-mongo-evidence-loader.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/jobNumberTimeline/mongo-evidence-loader.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-outcome.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/jobNumberTimeline/outcome.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-projector.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/jobNumberTimeline/projector.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-recent-official-bookings.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/jobNumberTimeline/recent-official-bookings.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "lead-messaging-granot-created-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Six gate checks include destination and capacity",
+          "correction": "The gate named destination_and_capacity checks only nonblank destination; capacity is handled downstream.",
+          "evidence": [
+            "src/services/leadMessaging/granotCreatedLead.ts",
+            "src/services/leadMessaging/leadMessaging.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/leadMessaging/granotCreatedLead.ts",
+        "src/services/leadMessaging/leadMessaging.service.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "lead-messaging-lead-messaging-queue.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Injected send/topic seam",
+          "correction": "The current publisher imports send and topic configuration directly; it does not expose an injected send/topic dependency.",
+          "evidence": [
+            "src/services/leadMessaging/leadMessagingQueue.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/leadMessaging/leadMessagingQueue.service.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "lead-messaging-lead-messaging.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leadMessaging/leadMessaging.service.ts",
+        "src/services/leadMessaging/quietHours.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "lead-messaging-twilio-adapter.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leadMessaging/twilioAdapter.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "lead-source-companies-lead-source-company.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leadSourceCompanies/leadSourceCompany.service.ts",
+        "src/models/LeadSourceCompany.ts",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "leads-call-lead-source-match.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Typed conflict and no cross-company fallback",
+          "correction": "Conflict is a string and matching company id, granularity key or legacy source company are independent alternatives.",
+          "evidence": [
+            "src/services/leads/callLeadSourceMatch.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/leads/callLeadSourceMatch.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        "docs/knowledge/services/enrichment.md"
+      ]
+    },
+    {
+      "file": "leads-call-lead.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/callLead.service.ts",
+        "src/services/leads/leadIngestionProvenance.ts",
+        "docs/knowledge/services/call-lead.md"
+      ]
+    },
+    {
+      "file": "leads-cpl-resolution.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/leadCplResolution.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "leads-duplicate-lead.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/duplicateLead.service.ts",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/call-lead.md"
+      ]
+    },
+    {
+      "file": "leads-ingestion-provenance.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/leadIngestionProvenance.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "leads-lead-location.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/leadLocation.service.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "leads-lead-name.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/leadName.service.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/customer.md",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "leads-lead-phone-matching.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "timestamp/createdAt recency",
+          "correction": "Ranking uses timestamp, falling back to createdAt and then epoch; createdAt is not a tie-breaker when timestamp exists.",
+          "evidence": [
+            "src/services/leads/leadPhoneMatching.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/leads/leadPhoneMatching.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "leads-lead-source-compatibility.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/leadSourceCompatibility.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "leads-source-company.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Source assignment inputs",
+          "correction": "The adapter accepts inbound_phone_number and requireActive but does not forward them to resolveSourceAttribution; preserve that behavior during a naming-only cleanup.",
+          "evidence": [
+            "src/services/leads/leadSourceCompany.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/services/leads/leadSourceCompany.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "leads-source-lead-lookup.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/services/leads/sourceLeadLookup.service.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/cancellation-mirror.md",
+        "docs/knowledge/services/cancelled-lead.md"
+      ]
+    },
+    {
+      "file": "models-agent.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/Agent.ts",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/catalog.md"
+      ]
+    },
+    {
+      "file": "models-booked-lead.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/BookedLead.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "models-booking-lead-reconciliation-case.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/BookingLeadReconciliationCase.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "models-call-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable provenance/original caller guard",
+          "correction": "Mongoose schema/provenance guards cover specific operations; whole RingCentral replacement explicitly permits a filter asserting original_caller is absent.",
+          "evidence": [
+            "src/models/CallLead.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/CallLead.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "models-cancelled-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable-after-insert snapshots",
+          "correction": "The pre-validation document hook rejects changes on existing documents; it is not a query or raw-write guard.",
+          "evidence": [
+            "src/models/CancelledLead.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/CancelledLead.ts",
+        "docs/knowledge/services/cancellation-mirror.md",
+        "docs/knowledge/services/cancelled-lead.md",
+        "docs/knowledge/services/job-number-timeline.md"
+      ]
+    },
+    {
+      "file": "models-cpl-correction-job.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/CplCorrectionJob.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/CplCorrectionJob.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-cpl-lead-correction.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/CplLeadCorrection.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/CplLeadCorrection.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-cpl-rate-period.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/CplRatePeriod.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/CplRatePeriod.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-cpl-rate.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/CplRate.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-customer.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/Customer.ts",
+        "docs/knowledge/services/customer.md"
+      ]
+    },
+    {
+      "file": "models-domain-command-execution.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/DomainCommandExecution.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "models-entity-change.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/EntityChange.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/EntityChange.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ]
+    },
+    {
+      "file": "models-extension-user.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/ExtensionUser.ts",
+        "docs/knowledge/services/extension-users.md"
+      ]
+    },
+    {
+      "file": "models-form-lead.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable snapshots",
+          "correction": "Provenance immutability is implemented by Mongoose schema guards on specified paths and operations, not a database-level restriction on raw writes.",
+          "evidence": [
+            "src/models/FormLead.ts",
+            "src/models/granotLifecycleSchemas.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/FormLead.ts",
+        "src/models/granotLifecycleSchemas.ts",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    },
+    {
+      "file": "models-google-drive-connection.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GoogleDriveConnection.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "models-google-oauth-state.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GoogleOAuthState.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "models-google-picker-nonce.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GooglePickerNonce.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "models-google-picker-selection.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GooglePickerSelection.ts",
+        "docs/knowledge/services/reporting.md"
+      ]
+    },
+    {
+      "file": "models-granot-automation-run.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Expiry TTL",
+          "correction": "TTL index is on purge_at with expireAfterSeconds=0; expires_at is a separate indexed run expiry clock.",
+          "evidence": [
+            "src/models/GranotAutomationRun.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/GranotAutomationRun.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ]
+    },
+    {
+      "file": "models-granot-automation-source.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GranotAutomationSource.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-granot-booking-discrepancy.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GranotBookingDiscrepancy.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "models-granot-booking-reconciliation-case.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Immutable resolved rows",
+          "correction": "Document validation uses remembered persisted state, and specified query hooks require state=open; these are Mongoose operation guards, not raw-write restrictions.",
+          "evidence": [
+            "src/models/GranotBookingReconciliationCase.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/GranotBookingReconciliationCase.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "models-granot-crm-csv-ingestion.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GranotCrmCsvIngestion.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md"
+      ]
+    },
+    {
+      "file": "models-granot-crm-source-semantics.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/granotCrmSourceSemantics.ts",
+        "docs/knowledge/granot-lifecycle/source-policy.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-granot-crm-source.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Prevalidation delegates semantics with loaded refs",
+          "correction": "The model pre-validation calls validateGranotCrmSourceSemantics without refs; contextual company/feed checks only run when a caller separately supplies loaded references.",
+          "evidence": [
+            "src/models/GranotCrmSource.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/GranotCrmSource.ts",
+        "docs/knowledge/granot-lifecycle/source-policy.md",
+        "docs/knowledge/services/lead-messaging.md",
+        "docs/knowledge/services/operations-registry.md",
+        "src/models/granotCrmSourceSemantics.ts"
+      ]
+    },
+    {
+      "file": "models-granot-crm-sync-run.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GranotCrmSyncRun.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md"
+      ]
+    },
+    {
+      "file": "models-granot-discrepancy-model.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Identity/resolved rows cannot mutate",
+          "correction": "The document pre-validation and listed query hooks guard selected mutations and state filters; they are not database-wide immutability.",
+          "evidence": [
+            "src/models/granotDiscrepancyModel.ts"
+          ]
+        },
+        {
+          "claim": "Delete rejected by shared factory",
+          "correction": "Factory registers validation and updateOne/findOneAndUpdate/replaceOne query hooks, but no delete middleware.",
+          "evidence": [
+            "src/models/granotDiscrepancyModel.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/granotDiscrepancyModel.ts",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ]
+    },
+    {
+      "file": "models-granot-lifecycle-activation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/GranotLifecycleActivation.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/GranotLifecycleActivation.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "models-granot-lifecycle-schemas.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable ingress",
+          "correction": "Lead provenance and aggregate revision checks are document pre-validation hooks; they do not guard direct query or raw writes.",
+          "evidence": [
+            "src/models/granotLifecycleSchemas.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/granotLifecycleSchemas.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/revisions.md"
+      ]
+    },
+    {
+      "file": "models-granot-observation-receipt.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Only processing updates are allowed",
+          "correction": "The Mongoose query allowlist also permits updatedAt and $setOnInsert createdAt; guard scope is the specified model operations, not raw writes.",
+          "evidence": [
+            "src/models/GranotObservationReceipt.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/GranotObservationReceipt.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md"
+      ]
+    },
+    {
+      "file": "models-granot-observation.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable Observation",
+          "correction": "Save and listed query middleware reject mutations; raw Mongo writes are outside those guards.",
+          "evidence": [
+            "src/models/GranotObservation.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/GranotObservation.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "models-granot-record-link.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GranotRecordLink.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md",
+        "docs/knowledge/services/bookings.md"
+      ]
+    },
+    {
+      "file": "models-granot-release-discrepancy.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/GranotReleaseDiscrepancy.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md",
+        "src/models/granotDiscrepancyModel.ts"
+      ]
+    },
+    {
+      "file": "models-lead-message-rate-limit.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Hashed id",
+          "correction": "Destination bucket id uses SHA-256 of the destination; hourly bucket id embeds the UTC hour rather than a hash.",
+          "evidence": [
+            "src/models/LeadMessageRateLimit.ts",
+            "src/services/leadMessaging/leadMessaging.service.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/LeadMessageRateLimit.ts",
+        "src/services/leadMessaging/leadMessaging.service.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "models-lead-message.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/LeadMessage.ts",
+        "src/routes/sales-intelligence-cron.routes.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ]
+    },
+    {
+      "file": "models-lead-source-company.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/LeadSourceCompany.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/LeadSourceCompany.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-lead-source-granularity.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/LeadSourceGranularity.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/LeadSourceGranularity.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-lead-source-label-mapping.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/LeadSourceLabelMapping.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/LeadSourceLabelMapping.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-merchant.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/Merchant.ts",
+        "docs/knowledge/services/catalog.md",
+        "docs/knowledge/services/operations-registry.md"
+      ]
+    },
+    {
+      "file": "models-moving-carrier.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/MovingCarrier.ts",
+        "docs/knowledge/services/tariff.md"
+      ]
+    },
+    {
+      "file": "models-public-submission-throttle-bucket.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/PublicSubmissionThrottleBucket.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ]
+    },
+    {
+      "file": "models-ringcentral-inbound-route-assignment.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/RingCentralInboundRouteAssignment.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/RingCentralInboundRouteAssignment.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "models-ringcentral-inbound-route.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Phone locks after activation",
+          "correction": "Registry activation sets phone_locked=true and Registry updates reject changes thereafter; the schema uses a conditional Mongoose immutable option keyed by phone_locked, not a raw database constraint.",
+          "evidence": [
+            "src/models/RingCentralInboundRoute.ts",
+            "src/services/operationsRegistry/ringCentralRegistry.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/RingCentralInboundRoute.ts",
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ]
+    },
+    {
+      "file": "models-schema-helpers.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/schemaHelpers.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "models-sheet-sync-attempt.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/SheetSyncAttempt.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "models-sheet-sync-job.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/SheetSyncJob.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "models-sheet-sync-lease.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/SheetSyncLease.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "models-sheet-sync-quota-bucket.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/SheetSyncQuotaBucket.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "models-sheet-sync-run.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/SheetSyncRun.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ]
+    },
+    {
+      "file": "models-synchronization-decision.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Unqualified immutable or append-only wording",
+          "correction": "Qualify the Mongoose schema or middleware boundary; raw database writes are not protected by these hooks.",
+          "evidence": [
+            "src/models/SynchronizationDecision.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/SynchronizationDecision.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ]
+    },
+    {
+      "file": "models-testimonial.md",
+      "result": "checked",
+      "findings": [],
+      "evidence": [
+        "src/models/Testimonial.ts",
+        "docs/knowledge/services/testimonial.md"
+      ]
+    },
+    {
+      "file": "models-wordpress-form-submission-receipt.md",
+      "result": "corrected",
+      "findings": [
+        {
+          "claim": "Model enforces write-once non-null link and rejects repoint",
+          "correction": "Document validation rejects clearing a modified reference; conditional service attach refuses repointing. Direct query writes are not guarded by this hook.",
+          "evidence": [
+            "src/models/WordpressFormSubmissionReceipt.ts",
+            "src/services/leads/wordpressFormSubmissionReceipt.ts"
+          ]
+        }
+      ],
+      "evidence": [
+        "src/models/WordpressFormSubmissionReceipt.ts",
+        "src/services/leads/wordpressFormSubmissionReceipt.ts",
+        "docs/knowledge/services/form-lead.md"
+      ]
+    }
+  ]
+}

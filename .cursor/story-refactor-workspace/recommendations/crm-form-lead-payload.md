@@ -1,12 +1,10 @@
 # Map The Already-Saved Form Lead Onto The Granot Wire, Encode It For The Gateway, Then Mask It For Logs — Job Number Must Not Become leadno — operational story
 
 - Status: recommended
-- Service: `crm` (Wave A, visited after this pass)
-- Pass: 2 of this service — `formLeadPayload.ts`
-- Remaining in this service: none (`crm.service.ts` recommended; `crmConfig.ts` / `types.ts` / `index.ts` already skipped)
+- Service: `crm`
 - Target: `src/services/crm/formLeadPayload.ts`
 - Knowledge: none as a dedicated Service file. CRM Posting owner invariants live on [`docs/knowledge/services/form-lead.md`](../../../docs/knowledge/services/form-lead.md) (payload `label` is Operations Registry `crm_label_snapshot`; payload `leadno` is persisted **Tracking Reference** / `FormLead.ref_no`, which Granot exposes as the **Granot Form Reference** in `ref_no`; `notes` may carry `lid`; additive Job Number must not replace `leadno`; a stored-absent move date emits empty `movedte` instead of inventing today). Software / wire notes: [`.cursor/rules/form-lead-granot-crm.mdc`](../../../.cursor/rules/form-lead-granot-crm.mdc) — this file plus `crm/types.ts` own wire names; `crm.service.ts` encodes/sends. Distinct from Form Lead Ingestion decide-and-finalize (skip vs post, Sheet Sync before the post, fake skip result that still calls this map): [recommendations/form-lead.md](form-lead.md). Distinct from post-the-already-saved-Form-Lead (announce / send / never-throw outcome): [recommendations/crm-crm-service.md](crm-crm-service.md). Distinct from credentialed Hello Moving URL + log redact: sibling `crmConfig.ts` (skipped this open). Distinct from stored `first_name` / `last_name` compose: [recommendations/leads-lead-name.md](leads-lead-name.md) — this file later peels `lead.name` and ignores those parts. Distinct from trusted Granot create (never CRM-posts; may persist with no `move_date`): [recommendations/granot-lifecycle-create-lead-from-granot.md](granot-lifecycle-create-lead-from-granot.md). Distinct from webhook capture / drain: [recommendations/granot-lifecycle-capture.md](granot-lifecycle-capture.md) / [recommendations/granot-lifecycle-drainer.md](granot-lifecycle-drainer.md). Distinct from leftover CSV store / apply: [recommendations/granot-crm-csv-upload.md](granot-crm-csv-upload.md) / [recommendations/granot-crm-csv-sync.md](granot-crm-csv-sync.md). Distinct from HTTP automation apply: [recommendations/granot-lifecycle-automation-apply.md](granot-lifecycle-automation-apply.md). Distinct from root compatibility barrel `src/services/crm.service.ts` (Wave A leftover-root, later). This checkout’s `CONTEXT.md` mentions “Granot CRM posting” in the one-line intro and does not define CRM Posting / Tracking Reference / Granot Form Reference — do not invent a glossary copy. `docs/adr/` is absent here — knowledge still links ADR-0002 for “CRM Posting survives downstream failures”; do not invent an ADR copy, and do not silently reorder Sheet Sync vs the post so that link “wins.”
-- Callers: **two runtime import sites plus two barrels and one folder test.** After-commit post: `crm/crm.service.ts` calls `buildCrmFormLeadPayload`, `encodeCrmFormBody`, and `summarizeCrmPayloadForLog`. After-commit skip: `leads/formLead.service.ts` `finalizeFormLeadCreateAfterCommit` builds a fake `CrmSubmitResult` whose `payload` is `buildCrmFormLeadPayload(lead, crmLabel)` and does **not** encode or post. Barrel: `crm/index.ts` re-exports all five names. Root facade: `src/services/crm.service.ts` re-exports `buildCrmFormLeadPayload`, `formatCrmMoveDate`, `splitNameForCrm` — not `encodeCrmFormBody`, not `summarizeCrmPayloadForLog`. Test: `formLeadPayload.test.ts` (name peel, UTC `M/D/YYYY`, blank label default, Tracking Reference as `leadno`, Job Number must not replace `leadno`, `lid` in `notes` only, `"not provided"` → empty `leadno`, wire field map, absent date → empty `movedte`, log mask / fingerprint). Comment-only: `src/logger.ts` names `summarizeCrmPayloadForLog`. Not callers: `updateFormLead` / Form correction, `createLeadFromGranot`, webhook capture, CSV upload/sync, HTTP automation apply, `crmConfig.ts` / `types.ts` (this file imports them). `fingerprintForLog` is private.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/crm/crm.service.ts`, `src/services/crm/index.ts`, `src/services/granotLifecycle/leadDesiredState.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: same wire map for post vs skip (one function, two adapters); caller `companyLabel` (`crm_label_snapshot`) vs default `CRM_FORM_LEAD_LABEL`; `leadno` is Tracking Reference, never Job Number, never `lid`; `notes` may carry `lid` and is never a matching key; empty `movedte` when the stored date is absent; name peel is this adapter, not `leadName.service.ts`; encode is for the poster only; mask is for logs only, not the wire; this file vs trusted Granot create (never posts)
 - Split later (only if the file outgrows one sitting): keep one file — this ~136-line module is one screenplay for “map the already-saved Form Lead onto the Granot wire, encode it for the gateway, then mask it for logs.” If it later splits: `mapTheSavedFormLeadOntoTheGranotWire.ts` / `encodeTheGranotFormLeadAsUrlencoded.ts` / `maskTheGranotPayloadForOperatorLogs.ts` — story files, never `create.ts` / `build.ts` / `encode.ts` / `update.ts` / `delete.ts`, and never merge the post, skip decide, endpoint config, or Form Lead write into this file
 
@@ -42,7 +40,7 @@ Do not move this into `crm.service.ts` so “the poster owns the wire.” Do not
 
 Keep the old names as one-line aliases until `crm.service.ts`, `formLead.service.ts`, `crm/index.ts`, and the root `crm.service.ts` facade migrate. Do not make callers learn `splitNameForCrm` / `formatCrmMoveDate` / `fingerprintForLog` as the domain language.
 
-`splitNameForCrm` and `formatCrmMoveDate` stay exported as aliases because the root facade already re-exports them. They are child decisions, not a second public operation. Prefer they become unexported once the facade drops them.
+`splitNameForCrm` and `formatCrmMoveDate` stay exported as aliases because the root facade already re-exports them. They are child decisions, not a second public operation. Only consider unexporting after every real caller migrates, including Granot leadDesiredState.ts for splitNameForCrm.
 
 **Principle: old exports stay as aliases.** `buildCrmFormLeadPayload` remains the imported name until Form Lead Ingestion skip and the poster point at the story name.
 
@@ -170,7 +168,7 @@ Add tests that name the remaining owner-visible seams. Do not add a test per hel
 - Sheet Sync before the post stays on Form Lead Ingestion. Do not assert order from this folder.
 - Stored `first_name` / `last_name` compose stays on [recommendations/leads-lead-name.md](leads-lead-name.md).
 
-Do **not** add a test per helper (`peelTheCustomerNameForGranot`, `treatNotProvidedTrackingReferenceAsBlank`, `fingerprintIdentifiersForLogs`) once those names exist only so the parent reads. Today’s direct `splitNameForCrm` / `formatCrmMoveDate` cases may stay until the root facade drops those exports; after that, fold them into the map cases. If a helper test has to change when the helper is inlined, it was testing past the **interface**.
+Do **not** add a test per helper (`peelTheCustomerNameForGranot`, `treatNotProvidedTrackingReferenceAsBlank`, `fingerprintIdentifiersForLogs`) once those names exist only so the parent reads. Today’s direct `splitNameForCrm` / `formatCrmMoveDate` cases protect exported seams used by the root facade and (for splitNameForCrm) Granot leadDesiredState.ts; fold them only after all callers migrate. If a helper test has to change when the helper is inlined, it was testing past the **interface**.
 
 There is no `begin` / `complete` export. Canonical commands do not build this payload from this file.
 
@@ -184,9 +182,11 @@ There is no `begin` / `complete` export. Canonical commands do not build this pa
 - Inventing a skip **seam** that has only one **adapter** (Form Lead Ingestion already owns skip and already calls this map).
 - Inventing a call-lead payload **seam** that this folder would never send.
 - Silently “fixing” the known Sheet Sync → CRM order gap while recommending a rename.
-- Jumping to `leadMessaging` while this checklist still had `formLeadPayload.ts` unchecked (it does not, after this pass).
-- Writing a whole-folder recommendation for `crm`.
 - Teaching this file to write `leadno` from Job Number, `lid`, or Mongo `_id`.
 - Teaching this file to invent `movedte` from today when the stored date is absent.
 - Silently merging `splitNameForCrm` into `leadName.service.ts` so “one name module.”
 - Moving `submitFormLeadToCrm` or `CRM_FORM_LEAD_ENDPOINT` into this file so “one CRM module.”
+
+## Source-verified implementation constraints (2026-10-29)
+
+`splitNameForCrm` also has a live direct caller in granotLifecycle/leadDesiredState.ts for Granot contact name handling. It is not solely a test/root-facade leak: preserve that export until this lifecycle caller is migrated, and prove same first/last-name semantics on that path. The payload mapper still uses saved ref_no for leadno and never Job Number or Mongo id.

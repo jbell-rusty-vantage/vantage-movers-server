@@ -1,9 +1,7 @@
 # Show The Search Workspace Form Lead Cards — operational story
 
 - Status: recommended
-- Service: `search` (Wave A, in-progress)
-- Pass: 2 of this service — `formLeadBrowse.service.ts`
-- Remaining in this service: `callLeadSearch.service.ts`, `callLeadBrowse.service.ts`
+- Service: `search`
 - Target: `src/services/search/formLeadBrowse.service.ts`
 - Knowledge: `docs/knowledge/services/lead-browse.md`. Distinct from scored naming: `docs/knowledge/services/form-lead-search.md`. Distinct from Call lookup: `docs/knowledge/services/call-lead-search.md`. Distinct from admin list: `docs/knowledge/services/admin-search.md` + `admin/adminBrowse.service.ts`. Leftover last-200 list still lives on `findAllFormLeads` in `docs/knowledge/services/form-lead.md`. This checkout’s `CONTEXT.md` does not define Form Lead / Duplicate Lead / Admin Dashboard (extension search workspace) — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
 - Callers: `routes/v1.routes.ts` `GET /api/v1/form-leads` (`handleBrowseFormLeads` → Zod `browseFormLeadsQuerySchema` → this export). Barrel: `search/index.ts`. Zod tests: `v1.validation.test.ts` (empty view-all defaults, standalone `source_company`, coerce `booked`/`limit`/`skip`, unknown keys). No `formLeadBrowse.service.test.ts`. `findAllFormLeads`, `findFormLead`, `searchFormLeads`, `browseAdminResource("form-leads")`, and `browseCallLeads` do **not** import this file.
@@ -117,13 +115,13 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 8. **`GET /form-leads` is this file. `findAllFormLeads` is not.** Leftover last-200 (`formLead.service.ts`, still in `v1.service.ts` / `leads/index.ts`, no HTTP caller) has no populate, no filters, no `count`. Knowledge `form-lead.md` still lists it. Do not point the GET at last-200, and do not delete `findAllFormLeads` in this rename.
 
-9. **Admin `browseAdminResource("form-leads")` is not this file.** Historical / combined scope, `past_move_date`, admin `duplicate` filter, export. This Search desk does not take `database_scope`. Do not teach this file that query.
+9. **Admin `browseAdminResource("form-leads")` is not this file.** Production-only reads, `past_move_date`, admin `duplicate` filter and export; historical/combined scope was retired. This Search desk does not take `database_scope`. Do not teach this file that query.
 
 10. **Form cards use `destination_zip` and `quoted` + `ref_no`.** Call cards use `delivery_zip` and `job_no` and omit `quoted`. Do not rename the Form zip “to match Call,” and do not add a `quoted` query filter because the card shows the flag.
 
 11. **Leave sibling modules alone.** `leadBrowseShared.ts` already owns contains / exact / `q` / attachment / chip mapping. `browseCallLeads` stays the next Form-shaped twin. `searchFormLeads` stays naming. This file orchestrates fold → AND → page + count → pin chips.
 
-12. **Do not treat Call browse or scored naming as this story.** Empty Call browse also lists newest, then adds `job_no`. Wave A will recommend those modules next. Do not write a whole-folder search recommendation. Do not move `getReceiverAgentCrmUsername` into `leadBrowseShared.ts` “for DRY” in this pass — the unwrap is copied, not a second **seam**.
+12. **Do not treat Call browse or scored naming as this story.** Empty Call browse also lists newest, then adds `job_no`. Those modules have separate active recommendations. Do not write a whole-folder search recommendation. Do not move `getReceiverAgentCrmUsername` into `leadBrowseShared.ts` “for DRY” in this pass — the unwrap is copied, not a second **seam**.
 
 ## Testing
 
@@ -158,4 +156,7 @@ Do **not** re-test scored `found` / `ambiguous`, Granot exact-ref / source-gate,
 - Pointing `GET /form-leads` at leftover `findAllFormLeads`, or deleting that leftover so the knowledge table “wins.”
 - Merging Form and Call browse into one `kind` switch, or moving receiver-username unwrap into `leadBrowseShared.ts`, in this pass.
 - Adding `quoted`, historical scope, or `include_duplicates` so the card or admin list “looks complete.”
-- Writing a whole-folder recommendation for `search`.
+
+## Current contact scope (2026-10-29)
+
+The shared `leadBrowseShared.ts` name/email/phone lists include top-level, immutable ingested and Granot contact snapshots. Both extension browse services use these lists for q and the dedicated contact filters; Call POST search uses the same Call aliases with its OR semantics (exact normalized phone or digit-flex raw-phone regex, exact folded email, unanchored name regex). Scored Form POST search still uses top-level submitted fields only. Search can find a snapshot contact while the returned summary/card continues showing live top-level fields. Keep that query/display distinction and do not widen processor identity or automatic booking matching from a browse refactor.

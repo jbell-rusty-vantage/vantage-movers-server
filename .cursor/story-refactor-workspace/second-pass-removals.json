@@ -1,0 +1,653 @@
+{
+  "reviewedAt": "2026-10-29",
+  "scope": "All 56 first-pass removals; no recommendation restored. Missing-target cases checked against original HEAD target and present tree; three missing legacy exports also searched in current source. Inactive/retired status follows owner directive and current Service, not file existence.",
+  "entries": [
+    {
+      "file": "admin-agent-browse-metrics.md",
+      "result": "checked",
+      "target": "src/services/admin/agentBrowseMetrics.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md",
+        "src\\services\\admin"
+      ]
+    },
+    {
+      "file": "analytics-agent-sales-report.md",
+      "result": "checked",
+      "target": "src/services/analytics/agentSalesReport.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md",
+        "src\\services\\analytics"
+      ]
+    },
+    {
+      "file": "analytics-analytics-merge.md",
+      "result": "checked",
+      "target": "src/services/analytics/analyticsMerge.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md",
+        "src\\services\\analytics"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-application-plan.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/applicationPlan.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-apply.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/apply.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-bootstrap.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/bootstrap.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-canonical-lead-adoption.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/canonicalLeadAdoption.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-dry-run-reports.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/dryRunReports.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-dry-run.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/dryRun.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-identity.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/identity.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-matching.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/matching.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-parsing.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/parsing.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-plan.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/plan.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-provider.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/provider.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-sheets.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/sheets.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-source-change-policy.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/sourceChangePolicy.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-update-policy.md",
+      "result": "checked",
+      "target": "src/services/bestRelocationSheetIngest/updatePolicy.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "conversations-media.md",
+      "result": "checked",
+      "target": "src/services/conversations/media.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "conversations-reads.md",
+      "result": "checked",
+      "target": "src/services/conversations/reads.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "conversations-redaction.md",
+      "result": "checked",
+      "target": "src/services/conversations/redaction.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "conversations-seed-from-artifacts.md",
+      "result": "checked",
+      "target": "src/services/conversations/seedFromArtifacts.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-release-owner-commands.md",
+      "result": "checked",
+      "target": "src/services/granotLifecycle/releaseOwnerCommands.ts",
+      "targetExists": true,
+      "category": "retired workflow with historical compatibility code retained",
+      "reason": "Standalone Release-case workflow is retired. Runtime model/commands remain for historical compatibility/audit only; new Release evidence enters booking intake. No runtime code or historical data is removed.",
+      "evidence": [
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/release-into-booking-intake.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-release-reconciliation.md",
+      "result": "checked",
+      "target": "src/services/granotLifecycle/releaseReconciliation.ts",
+      "targetExists": true,
+      "category": "retired workflow with historical compatibility code retained",
+      "reason": "Standalone Release-case workflow is retired. Runtime model/commands remain for historical compatibility/audit only; new Release evidence enters booking intake. No runtime code or historical data is removed.",
+      "evidence": [
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/release-into-booking-intake.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-apply.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/apply.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-classification.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/classification.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-date-parsing.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/dateParsing.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-manifest.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/manifest.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-migration-context.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/migrationContext.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-mongo-values.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/mongoValues.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-normalization.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/normalization.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-operational-lock.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/operationalLock.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-planner.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/planner.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-rollback.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/rollback.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-schema-validation.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/schemaValidation.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-stable-json.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/stableJson.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-target-guard.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/targetGuard.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-verify.md",
+      "result": "checked",
+      "target": "src/services/historicalConsolidation/verify.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "ingestion-apply-plan.md",
+      "result": "checked",
+      "target": "src/services/ingestion/applyPlan.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "ingestion-health.md",
+      "result": "checked",
+      "target": "src/services/ingestion/health.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "ingestion-queue.md",
+      "result": "checked",
+      "target": "src/services/ingestion/queue.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "ingestion-repository.md",
+      "result": "checked",
+      "target": "src/services/ingestion/repository.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "ingestion-worker.md",
+      "result": "checked",
+      "target": "src/services/ingestion/worker.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "models-external-data-connection.md",
+      "result": "checked",
+      "target": "src/models/ExternalDataConnection.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live; the leftover connection model does not justify an active recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "models-granot-release-reconciliation-case.md",
+      "result": "checked",
+      "target": "src/models/GranotReleaseReconciliationCase.ts",
+      "targetExists": true,
+      "category": "retired workflow with historical compatibility code retained",
+      "reason": "Standalone Release-case workflow is retired. Runtime model/commands remain for historical compatibility/audit only; new Release evidence enters booking intake. No runtime code or historical data is removed.",
+      "evidence": [
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/release-into-booking-intake.md"
+      ]
+    },
+    {
+      "file": "models-lead-conversation.md",
+      "result": "checked",
+      "target": "src/models/LeadConversation.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md",
+        "src\\models"
+      ]
+    },
+    {
+      "file": "observability-admin-observability.md",
+      "result": "checked",
+      "target": "src/services/observability/adminObservability.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-email-notification.md",
+      "result": "checked",
+      "target": "src/services/observability/emailNotification.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-notification-digest.md",
+      "result": "checked",
+      "target": "src/services/observability/notificationDigest.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-notification-policy.md",
+      "result": "checked",
+      "target": "src/services/observability/notificationPolicy.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-operational-incident.md",
+      "result": "checked",
+      "target": "src/services/observability/operationalIncident.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-operational-reports.md",
+      "result": "checked",
+      "target": "src/services/observability/operationalReports.service.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-record-operational-event.md",
+      "result": "checked",
+      "target": "src/services/observability/recordOperationalEvent.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Retired Operational Events target is absent. This removal does not concern the live Operations Registry or Granot lifecycle logging.",
+      "evidence": [
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "routes-best-relocation-ingestion-cron.md",
+      "result": "checked",
+      "target": "src/routes/best-relocation-ingestion-cron.routes.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "routes-conversations-admin.md",
+      "result": "checked",
+      "target": "src/routes/conversations-admin.routes.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md",
+        "src\\routes"
+      ]
+    },
+    {
+      "file": "routes-ingestion.md",
+      "result": "checked",
+      "target": "src/routes/ingestion.routes.ts",
+      "targetExists": true,
+      "category": "not-live integration; existing code is not active-product evidence",
+      "reason": "Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "../AGENTS.md"
+      ]
+    },
+    {
+      "file": "routes-notification-cron.md",
+      "result": "checked",
+      "target": "src/routes/notification-cron.routes.ts",
+      "targetExists": false,
+      "category": "target absent",
+      "reason": "Original target is absent from the current tree; the recommendation must not recreate it. See recorded target and retirement/catalog evidence.",
+      "evidence": [
+        "docs/index.md",
+        "src\\routes"
+      ]
+    }
+  ]
+}

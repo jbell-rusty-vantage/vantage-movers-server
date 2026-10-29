@@ -1,12 +1,10 @@
 # Remember The Customer This Lead Or Booking Contact Names — operational story
 
 - Status: recommended
-- Service: `customers` (Wave A, visited)
-- Pass: 2 of this service — `customerFromLead.service.ts`
-- Remaining in this service: none — `index.ts` already skipped
+- Service: `customers`
 - Target: `src/services/customers/customerFromLead.service.ts`
 - Knowledge: `docs/knowledge/services/customer.md` (booking-time upsert + match key; HTTP hand-write is the sibling file). Booking callers are also in `docs/knowledge/services/bookings.md` (step 4 of Book This Lead; Referral / Leadless contact). Recon `$setOnInsert` is `docs/knowledge/services/booked-call-lead-reconciliation.md`. This checkout’s `CONTEXT.md` does not define Customer — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `bookedLead.service.ts` (name override → booking-contact adapter, else Lead adapter, inside the Booking write), `bookingMirror.service.ts` (`refreshAttachedBookingFromLead` re-upserts from the Lead and may retarget `booking.customer`), `referralBooking.service.ts` (leftover + in-transaction), `leadlessBooking.service.ts` (skips the call when name is blank), `employeeBookings/submitEmployeeBooking.service.ts`, `employeeBookings/bookingLeadReconciliation.service.ts` (attach / patch). Barrel: `customers/index.ts`. Tests: `customerFromLead.service.test.ts` (filter stubs only).
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/bookings/bookedLead.service.ts`, `src/services/bookings/bookingMirror.service.ts`, `src/services/bookings/leadlessBooking.service.ts`, `src/services/bookings/referralBooking.service.ts`, `src/services/customers/index.ts`, `src/services/employeeBookings/bookingLeadReconciliation.service.ts`, `src/services/employeeBookings/submitEmployeeBooking.service.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: optional `session` so this write sits inside the Booking transaction; `undefined` when there is no usable name so the Booking can still go through without a Customer; Lead adapter vs Booking-contact adapter of the same match key; this file must not import the booking lifecycle
 - Split later (only if the file outgrows one sitting): keep one file — this is already one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 

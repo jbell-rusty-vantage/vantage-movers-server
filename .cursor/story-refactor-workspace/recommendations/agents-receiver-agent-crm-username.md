@@ -1,12 +1,10 @@
 # Stamp This Lead's Receiver From Granot's CRM Username — operational story
 
 - Status: recommended
-- Service: `agents` (Wave A, visited)
-- Pass: 2 of this service — `receiverAgentCrmUsername.ts`
-- Remaining in this service: none — `agentName.ts` and `index.ts` already skipped
+- Service: `agents`
 - Target: `src/services/agents/receiverAgentCrmUsername.ts`
 - Knowledge: `docs/knowledge/services/enrichment.md` (CSV Follow Up sync calls `applyGranotCrmUsernameReceiverMatch`; preview does not). Recon: `docs/knowledge/services/booked-call-lead-reconciliation.md` (same apply on sync; extra sheet job when the receiver changed). HTTP form planner: `docs/knowledge/services/granot-http-collector.md` (find + propose a patch; approved apply does **not** call this stamp). Lifecycle Agent assertion: `docs/knowledge/granot-lifecycle/identity.md` (**never** call `applyGranotCrmUsernameReceiverMatch`). Lifecycle fill: `docs/knowledge/granot-lifecycle/processor.md` / `desired-state.md` (`granot_username_match`, not this source). Binder stamp is the sibling file (`docs/knowledge/services/agent-allocation.md`). This checkout’s `CONTEXT.md` does not define Agent / receiver — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `enrichment/callLeadEnrichment.service.ts` and `reconciliation/bookedCallLeadReconciliation.service.ts` (`apply` on sync only; persist copies the mutated snapshots onto a re-read Lead). `granotHttpCollector/formWorkflow.ts` (`find` + fold; builds its own five-field patch). `granotHttpCollector/runWorkflow.ts` (`find` + fold for `target_receiver_agent` when the Call Lead has none). Migrations import the fold. Barrel: **not** re-exported from `agents/index.ts`. Tests: `receiverAgentCrmUsername.test.ts`. Lifecycle `identity.ts` folds via Registry, not this file.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `scripts/migrations/operations-registry-agent-merchant-compatibility.lib.ts`, `scripts/migrations/operations-registry-inventory.lib.ts`, `src/services/enrichment/callLeadEnrichment.service.ts`, `src/services/granotHttpCollector/formWorkflow.ts`, `src/services/granotHttpCollector/runWorkflow.ts`, `src/services/reconciliation/bookedCallLeadReconciliation.service.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: in-memory stamp vs the caller’s persist / transaction; `find` (preview / form plan / automation binding) vs `apply` (CSV sync write helper); `includeInactive` on find only; stored source stays `extension_crm_username_match`
 - Split later (only if the file outgrows one sitting): keep one file — this is already one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 

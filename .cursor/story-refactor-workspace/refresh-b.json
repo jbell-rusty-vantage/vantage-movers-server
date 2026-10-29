@@ -1,0 +1,1437 @@
+{
+  "reviewedAt": "2026-10-29",
+  "entries": [
+    {
+      "file": "granot-lifecycle-aggregate-revision.md",
+      "action": "updated",
+      "reason": "Refreshed advance the aggregate only at the expected revision naming/organization guidance and parity checks. Current boundary: The CAS primitive validates explicit id and nonnegative expected revision, uses the caller transaction, and preserves DOMAIN_REVISION_CONFLICT on a lost claim.",
+      "evidence": [
+        "src/services/granotLifecycle/aggregateRevision.ts",
+        "docs/knowledge/granot-lifecycle/revisions.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/aggregateRevision.ts"
+    },
+    {
+      "file": "granot-lifecycle-alerts.md",
+      "action": "updated",
+      "reason": "Refreshed evaluate seven rollout alerts and persist transition wins naming/organization guidance and parity checks. Current boundary: The seven-alert catalog remains.",
+      "evidence": [
+        "src/services/granotLifecycle/alerts.ts",
+        "docs/knowledge/granot-lifecycle/observability.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/alerts.ts"
+    },
+    {
+      "file": "granot-lifecycle-authorized-desired-state.md",
+      "action": "updated",
+      "reason": "Refreshed convert the plan into the only allowed lead patch naming/organization guidance and parity checks. Current boundary: Current allowlists constrain plan conversion.",
+      "evidence": [
+        "src/services/granotLifecycle/authorizedDesiredState.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/authorizedDesiredState.ts"
+    },
+    {
+      "file": "granot-lifecycle-automation-apply.md",
+      "action": "updated",
+      "reason": "Refreshed apply approved automation through the durable receipt naming/organization guidance and parity checks. Current boundary: applyAutomationPlanAction captures run_id:action_id and calls canonical claimAndProcessOrPoll.",
+      "evidence": [
+        "src/services/granotLifecycle/automationApply.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/services/granot-http-collector.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/automationApply.ts"
+    },
+    {
+      "file": "granot-lifecycle-automation-compatibility.md",
+      "action": "updated",
+      "reason": "Refreshed explain automation source readiness naming/organization guidance and parity checks. Current boundary: Read-only compatibility uses linked Registry lifecycle facts and route/operation compatibility.",
+      "evidence": [
+        "src/services/granotLifecycle/automationCompatibility.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/automationCompatibility.ts"
+    },
+    {
+      "file": "granot-lifecycle-booking-confirmation.md",
+      "action": "updated",
+      "reason": "Refreshed confirm a booking with an optional eligible lead naming/organization guidance and parity checks. Current boundary: confirmBooking accepts optional selected_lead.",
+      "evidence": [
+        "src/services/granotLifecycle/bookingConfirmation.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/bookingConfirmation.ts"
+    },
+    {
+      "file": "granot-lifecycle-booking-owner-commands.md",
+      "action": "updated",
+      "reason": "Refreshed update booking, confirm cancellation, or resolve without a fact naming/organization guidance and parity checks. Current boundary: Current exports include updateExistingBooking, noAction AND confirmCancellation.",
+      "evidence": [
+        "src/services/granotLifecycle/bookingOwnerCommands.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/bookingOwnerCommands.ts"
+    },
+    {
+      "file": "granot-lifecycle-booking-priority-pairing.md",
+      "action": "updated",
+      "reason": "Refreshed project priority 5 around actual booked evidence naming/organization guidance and parity checks. Current boundary: Pairing describes evidence order, never triggers cases or official Bookings.",
+      "evidence": [
+        "src/services/granotLifecycle/bookingPriorityPairing.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/bookingPriorityPairing.ts"
+    },
+    {
+      "file": "granot-lifecycle-booking-reconciliation.md",
+      "action": "updated",
+      "reason": "Refreshed open or refresh intake from booked or release naming/organization guidance and parity checks. Current boundary: Actual Booked AND Release enter one booking-case workflow.",
+      "evidence": [
+        "src/services/granotLifecycle/bookingReconciliation.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/bookingReconciliation.ts"
+    },
+    {
+      "file": "granot-lifecycle-capture.md",
+      "action": "updated",
+      "reason": "Refreshed persist redacted delivery or approved-operation evidence naming/organization guidance and parity checks. Current boundary: Webhook receipt commits before acknowledgment; route class and payload event_type remain distinct.",
+      "evidence": [
+        "src/services/granotLifecycle/capture.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/granot-http-collector.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/capture.ts"
+    },
+    {
+      "file": "granot-lifecycle-create-lead-from-granot.md",
+      "action": "updated",
+      "reason": "Refreshed create the lead authorized by immutable granot evidence naming/organization guidance and parity checks. Current boundary: This checkout still permits Form OR Call lead_created with create_if_missing; priority_updated never mints.",
+      "evidence": [
+        "src/services/granotLifecycle/createLeadFromGranot.ts",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/createLeadFromGranot.ts"
+    },
+    {
+      "file": "granot-lifecycle-creating-observation.md",
+      "action": "updated",
+      "reason": "Refreshed show the evidence that opened an intake naming/organization guidance and parity checks. Current boundary: Creating evidence is distinct from latest action.",
+      "evidence": [
+        "src/services/granotLifecycle/creatingObservation.ts",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/creatingObservation.ts"
+    },
+    {
+      "file": "granot-lifecycle-discrepancies.md",
+      "action": "updated",
+      "reason": "Refreshed persist deduplicated identity conflicts naming/organization guidance and parity checks. Current boundary: Kind-specific stores and reason fingerprints open/refresh booking or release discrepancies with causal Decisions.",
+      "evidence": [
+        "src/services/granotLifecycle/discrepancies.ts",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/discrepancies.ts"
+    },
+    {
+      "file": "granot-lifecycle-discrepancy-owner-commands.md",
+      "action": "updated",
+      "reason": "Refreshed re-evaluate, correct a record link, or resolve without a fact naming/organization guidance and parity checks. Current boundary: Owner commands retain causal evidence, exact idempotency and revisions.",
+      "evidence": [
+        "src/services/granotLifecycle/discrepancyOwnerCommands.ts",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/discrepancyOwnerCommands.ts"
+    },
+    {
+      "file": "granot-lifecycle-discrepancy-projections.md",
+      "action": "updated",
+      "reason": "Refreshed list safe conflicts and inspect their evidence naming/organization guidance and parity checks. Current boundary: Read projections combine booking/release discrepancy work with current facts and stable cursors.",
+      "evidence": [
+        "src/services/granotLifecycle/discrepancyProjections.ts",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/discrepancyProjections.ts"
+    },
+    {
+      "file": "granot-lifecycle-drainer.md",
+      "action": "updated",
+      "reason": "Refreshed claim due receipts and finalize under the winning fence naming/organization guidance and parity checks. Current boundary: Queue, cron and synchronous callers share Mongo due-claims and owner/epoch fences.",
+      "evidence": [
+        "src/services/granotLifecycle/drainer.ts",
+        "docs/knowledge/granot-lifecycle/drainer.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/drainer.ts"
+    },
+    {
+      "file": "granot-lifecycle-extension-apply.md",
+      "action": "updated",
+      "reason": "Refreshed apply one approved extension statement through lifecycle naming/organization guidance and parity checks. Current boundary: Extension apply captures a channel operation receipt and calls claimAndProcessOrPoll.",
+      "evidence": [
+        "src/services/granotLifecycle/extensionApply.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/granot-lifecycle/normalization.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/extensionApply.ts"
+    },
+    {
+      "file": "granot-lifecycle-granot-temporal.md",
+      "action": "updated",
+      "reason": "Refreshed compare accepted observation tuples and build the cas naming/organization guidance and parity checks. Current boundary: Order is captured_at then canonical lowercase 24-hex Observation id, across every channel and priority.",
+      "evidence": [
+        "src/services/granotLifecycle/granotTemporal.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/granotTemporal.ts"
+    },
+    {
+      "file": "granot-lifecycle-identity.md",
+      "action": "updated",
+      "reason": "Refreshed resolve one eligible source-scoped form or call lead naming/organization guidance and parity checks. Current boundary: Separate ladders prefer active Record Link, exact Form ref/id or Call job, then scoped contact.",
+      "evidence": [
+        "src/services/granotLifecycle/identity.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/identity.ts"
+    },
+    {
+      "file": "granot-lifecycle-lead-contact-projection.md",
+      "action": "updated",
+      "reason": "Refreshed project ingress and granot contact as separate masked cards naming/organization guidance and parity checks. Current boundary: The safe projection keeps immutable ingress evidence distinct from qualified Granot contact.",
+      "evidence": [
+        "src/services/granotLifecycle/leadContactProjection.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/leadContactProjection.ts"
+    },
+    {
+      "file": "granot-lifecycle-lead-desired-state.md",
+      "action": "updated",
+      "reason": "Refreshed plan authorized lead changes without writing them naming/organization guidance and parity checks. Current boundary: Pure planning uses identity/policy/temporal/eligibility.",
+      "evidence": [
+        "src/services/granotLifecycle/leadDesiredState.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/leadDesiredState.ts"
+    },
+    {
+      "file": "granot-lifecycle-metrics.md",
+      "action": "updated",
+      "reason": "Refreshed measure lifecycle facts with bounded labels naming/organization guidance and parity checks. Current boundary: Section 33 counters and samples are process-local; durable Health facts live separately in healthState/observability and Mongo cardinality gauges refresh in projections.",
+      "evidence": [
+        "src/services/granotLifecycle/metrics.ts",
+        "docs/knowledge/granot-lifecycle/observability.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/metrics.ts"
+    },
+    {
+      "file": "granot-lifecycle-normalization.md",
+      "action": "updated",
+      "reason": "Refreshed normalize immutable receipt meaning once naming/organization guidance and parity checks. Current boundary: Normalization owns bounded scalars, route authority, source/job/contact/move/priority/action and meaning equality.",
+      "evidence": [
+        "src/services/granotLifecycle/normalization.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/normalization.ts"
+    },
+    {
+      "file": "granot-lifecycle-observability.md",
+      "action": "updated",
+      "reason": "Refreshed log safe events and update bounded health facts naming/organization guidance and parity checks. Current boundary: emitGranotLifecycleEvent validates catalog, sanitizes/masks details, logs and updates Health counters/latest-run rows; instrumentation errors are caught.",
+      "evidence": [
+        "src/services/granotLifecycle/observability.ts",
+        "docs/knowledge/granot-lifecycle/observability.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/observability.ts"
+    },
+    {
+      "file": "granot-lifecycle-operations.md",
+      "action": "updated",
+      "reason": "Refreshed activate once or requeue a dead-letter receipt naming/organization guidance and parity checks. Current boundary: Activation fixes historical/live boundary with immutable actor/version evidence.",
+      "evidence": [
+        "src/services/granotLifecycle/operations.ts",
+        "docs/knowledge/granot-lifecycle/drainer.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/operations.ts"
+    },
+    {
+      "file": "granot-lifecycle-processor.md",
+      "action": "updated",
+      "reason": "Refreshed turn one claimed receipt into a decision and authorized effect naming/organization guidance and parity checks. Current boundary: Drainer claims, then processGranotObservation normalizes/replays, resolves policy/identity/temporal plan, routes actual Booked OR Release to booking intake, else creates/synchronizes or persists classification.",
+      "evidence": [
+        "src/services/granotLifecycle/processor.ts",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/processor.ts"
+    },
+    {
+      "file": "granot-lifecycle-projections.md",
+      "action": "updated",
+      "reason": "Refreshed read safe cases, candidates, timelines and health naming/organization guidance and parity checks. Current boundary: Current reads include booking latest-action capabilities, known contacts, Connect candidates, deterministic official facts and Health.",
+      "evidence": [
+        "src/services/granotLifecycle/projections.ts",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/projections.ts"
+    },
+    {
+      "file": "granot-lifecycle-queue-publisher.md",
+      "action": "updated",
+      "reason": "Refreshed publish a receipt-id wake after durable capture naming/organization guidance and parity checks. Current boundary: Queue delivery is best effort; Mongo receipt state and cron recovery are durable.",
+      "evidence": [
+        "src/services/granotLifecycle/queuePublisher.ts",
+        "docs/knowledge/granot-lifecycle/automation-apply.md",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/extension-apply.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/queuePublisher.ts"
+    },
+    {
+      "file": "granot-lifecycle-referral-booking.md",
+      "action": "updated",
+      "reason": "Refreshed create an official referral booking without a lead naming/organization guidance and parity checks. Current boundary: Canonical and case-driven creation keep Owner/reviewed Referral authority, Booked-only minting, official input, atomic Booking/link/case/Change/Command/outbox.",
+      "evidence": [
+        "src/services/granotLifecycle/referralBooking.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/referralBooking.ts"
+    },
+    {
+      "file": "granot-lifecycle-release-owner-commands.md",
+      "action": "removed",
+      "reason": "Standalone Release-case workflow is retired. Runtime model/commands remain for historical compatibility/audit only; new Release evidence enters booking intake. No runtime code or historical data is removed.",
+      "evidence": [
+        "src/services/granotLifecycle/releaseOwnerCommands.ts",
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-release-reconciliation.md",
+      "action": "removed",
+      "reason": "Standalone Release-case workflow is retired. Runtime model/commands remain for historical compatibility/audit only; new Release evidence enters booking intake. No runtime code or historical data is removed.",
+      "evidence": [
+        "src/services/granotLifecycle/releaseReconciliation.ts",
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md"
+      ]
+    },
+    {
+      "file": "granot-lifecycle-source-policy.md",
+      "action": "updated",
+      "reason": "Refreshed resolve reviewed source policy and eight gates naming/organization guidance and parity checks. Current boundary: Exact normalized label lookup fails closed on zero/multiple matches.",
+      "evidence": [
+        "src/services/granotLifecycle/sourcePolicy.ts",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/source-policy.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/sourcePolicy.ts"
+    },
+    {
+      "file": "granot-lifecycle-synchronize-lead-from-granot.md",
+      "action": "updated",
+      "reason": "Refreshed apply authorized observation to matched lead and link naming/organization guidance and parity checks. Current boundary: Command revalidates desired state against live receiver/temporal facts then records Decision/link/Lead Change/Command/outbox atomically.",
+      "evidence": [
+        "src/services/granotLifecycle/synchronizeLeadFromGranot.ts",
+        "docs/knowledge/granot-lifecycle/desired-state.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/synchronizeLeadFromGranot.ts"
+    },
+    {
+      "file": "granot-lifecycle-trusted-lead-create-validation.md",
+      "action": "updated",
+      "reason": "Refreshed validate trusted granot create shapes naming/organization guidance and parity checks. Current boundary: Schemas are internal to authorized lifecycle create, not public admin DTOs.",
+      "evidence": [
+        "src/services/granotLifecycle/trustedLeadCreateValidation.ts",
+        "docs/knowledge/granot-lifecycle/revisions.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/granotLifecycle/trustedLeadCreateValidation.ts"
+    },
+    {
+      "file": "historical-consolidation-apply.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/apply.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-classification.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/classification.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-date-parsing.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/dateParsing.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-manifest.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/manifest.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-migration-context.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/migrationContext.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-mongo-values.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/mongoValues.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-normalization.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/normalization.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-operational-lock.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/operationalLock.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-planner.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/planner.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-rollback.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/rollback.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-schema-validation.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/schemaValidation.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-stable-json.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/stableJson.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-target-guard.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/targetGuard.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "historical-consolidation-verify.md",
+      "action": "removed",
+      "reason": "Historical consolidation was removed with the historical database; target is absent.",
+      "evidence": [
+        "src/services/historicalConsolidation/verify.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "ingestion-apply-plan.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        "src/services/ingestion/applyPlan.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/ingestion.md"
+      ]
+    },
+    {
+      "file": "ingestion-health.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        "src/services/ingestion/health.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/ingestion.md"
+      ]
+    },
+    {
+      "file": "ingestion-queue.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        "src/services/ingestion/queue.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/ingestion.md"
+      ]
+    },
+    {
+      "file": "ingestion-repository.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        "src/services/ingestion/repository.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/ingestion.md"
+      ]
+    },
+    {
+      "file": "ingestion-worker.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live; leftover runtime files are outside the active cleanup catalog.",
+      "evidence": [
+        "src/services/ingestion/worker.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/ingestion.md"
+      ]
+    },
+    {
+      "file": "job-number-timeline-assemble.md",
+      "action": "updated",
+      "reason": "Refreshed assemble the job number chain from durable rows naming/organization guidance and parity checks. Current boundary: Pure assembly correlates the first-hop job, walks linked evidence, and emits deterministic events.",
+      "evidence": [
+        "src/services/jobNumberTimeline/assemble.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/assemble.ts"
+    },
+    {
+      "file": "job-number-timeline-attention.md",
+      "action": "updated",
+      "reason": "Refreshed explain evidence gaps, limitations and freshness naming/organization guidance and parity checks. Current boundary: Evaluators return server-owned attention/limitation/freshness arrays.",
+      "evidence": [
+        "src/services/jobNumberTimeline/attention.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/attention.ts"
+    },
+    {
+      "file": "job-number-timeline-clocks.md",
+      "action": "updated",
+      "reason": "Refreshed choose occurred and recorded clocks for each event naming/organization guidance and parity checks. Current boundary: Events preserve dual clocks and use evidence-specific fallback.",
+      "evidence": [
+        "src/services/jobNumberTimeline/clocks.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/clocks.ts"
+    },
+    {
+      "file": "job-number-timeline-evidence.md",
+      "action": "updated",
+      "reason": "Refreshed project safe evidence, field groups and summaries naming/organization guidance and parity checks. Current boundary: This module maps event kinds and change paths to owner stages, status, summaries, evidence level, correlation and safe refs.",
+      "evidence": [
+        "src/services/jobNumberTimeline/evidence.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/evidence.ts"
+    },
+    {
+      "file": "job-number-timeline-mongo-evidence-loader.md",
+      "action": "updated",
+      "reason": "Refreshed load bounded job-correlated evidence without a scan naming/organization guidance and parity checks. Current boundary: Mongo loader fetches typed rows by job/link/Lead and immutable Cancellation job snapshot.",
+      "evidence": [
+        "src/services/jobNumberTimeline/mongo-evidence-loader.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/mongo-evidence-loader.ts"
+    },
+    {
+      "file": "job-number-timeline-outcome.md",
+      "action": "updated",
+      "reason": "Refreshed decide current official outcome and stage assessments naming/organization guidance and parity checks. Current boundary: Outcome uses domain precedence, not last event wins.",
+      "evidence": [
+        "src/services/jobNumberTimeline/outcome.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/outcome.ts"
+    },
+    {
+      "file": "job-number-timeline-projector.md",
+      "action": "updated",
+      "reason": "Refreshed build the v2 owner timeline page naming/organization guidance and parity checks. Current boundary: projectEnhancedPage wraps assembled v1 evidence into job_timeline.v2, assigns activities/causality, evaluates outcomes/attention/freshness, and applies event-cap truncation with explicit omitted counts.",
+      "evidence": [
+        "src/services/jobNumberTimeline/projector.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/projector.ts"
+    },
+    {
+      "file": "job-number-timeline-recent-official-bookings.md",
+      "action": "updated",
+      "reason": "Refreshed show a bounded sample of official bookings naming/organization guidance and parity checks. Current boundary: Separate Owner-only sample returns at most three latest official booked_leads by book date with safe job/date projection.",
+      "evidence": [
+        "src/services/jobNumberTimeline/recent-official-bookings.ts",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/services/jobNumberTimeline/recent-official-bookings.ts"
+    },
+    {
+      "file": "lead-messaging-granot-created-lead.md",
+      "action": "updated",
+      "reason": "Refreshed send the separately gated granot-created confirmation naming/organization guidance and parity checks. Current boundary: Six gate checks protect post-commit confirmation: messaging mode, explicit Granot flag, create_if_missing policy, source outbound_sms, consent basis and destination.",
+      "evidence": [
+        "src/services/leadMessaging/granotCreatedLead.ts",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/services/leadMessaging/granotCreatedLead.ts"
+    },
+    {
+      "file": "lead-messaging-lead-messaging-queue.md",
+      "action": "updated",
+      "reason": "Refreshed publish a durable-message wake-up naming/organization guidance and parity checks. Current boundary: The queue transports { kind: lead_messaging_wakeup, reason }; optional idempotencyKey is a send option, not a message id in the payload; durable LeadMessage state and drain remain authority.",
+      "evidence": [
+        "src/services/leadMessaging/leadMessagingQueue.service.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/services/leadMessaging/leadMessagingQueue.service.ts"
+    },
+    {
+      "file": "lead-messaging-lead-messaging.md",
+      "action": "updated",
+      "reason": "Refreshed persist, dispatch and reconcile one lead message naming/organization guidance and parity checks. Current boundary: Intent precedes sending.",
+      "evidence": [
+        "src/services/leadMessaging/leadMessaging.service.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/services/leadMessaging/leadMessaging.service.ts"
+    },
+    {
+      "file": "lead-messaging-twilio-adapter.md",
+      "action": "updated",
+      "reason": "Refreshed translate approved delivery intent to twilio naming/organization guidance and parity checks. Current boundary: Adapter builds provider create input, sends with credentials and verifies webhook signatures.",
+      "evidence": [
+        "src/services/leadMessaging/twilioAdapter.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/services/leadMessaging/twilioAdapter.ts"
+    },
+    {
+      "file": "lead-source-companies-lead-source-company.md",
+      "action": "updated",
+      "reason": "Refreshed read legacy source compatibility without replacing the registry naming/organization guidance and parity checks. Current boundary: This facade still seeds/reads embedded source definitions and exposes legacy mutations/resolution/CPL helpers.",
+      "evidence": [
+        "src/services/leadSourceCompanies/leadSourceCompany.service.ts",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/leadSourceCompanies/leadSourceCompany.service.ts"
+    },
+    {
+      "file": "leads-call-lead-source-match.md",
+      "action": "updated",
+      "reason": "Refreshed compare a parsed call source with assigned attribution naming/organization guidance and parity checks. Current boundary: Helpers distinguish unassigned source, compatible source and a typed assigned-source conflict, and provide current display labels.",
+      "evidence": [
+        "src/services/leads/callLeadSourceMatch.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        "docs/knowledge/services/enrichment.md"
+      ],
+      "validatedTarget": "src/services/leads/callLeadSourceMatch.ts"
+    },
+    {
+      "file": "leads-call-lead.md",
+      "action": "updated",
+      "reason": "Refreshed maintain the already-landed call lead story naming/organization guidance and parity checks. Current boundary: ingestCallLead/beginCallLeadIngestion/completeCallLeadIngestion, RingCentral begin/ingest, correctCallLead and removal story names are implemented; old create/update/delete/find exports remain exact aliases.",
+      "evidence": [
+        "src/services/leads/callLead.service.ts",
+        "docs/knowledge/services/call-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/callLead.service.ts"
+    },
+    {
+      "file": "leads-cpl-resolution.md",
+      "action": "updated",
+      "reason": "Refreshed snapshot the temporal cpl result for lead writes naming/organization guidance and parity checks. Current boundary: resolveLeadCplSnapshot calls resolveCpl after storedLeadTimestampToCplInstant.",
+      "evidence": [
+        "src/services/leads/leadCplResolution.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/leads/leadCplResolution.ts"
+    },
+    {
+      "file": "leads-duplicate-lead.md",
+      "action": "updated",
+      "reason": "Refreshed classify duplicate forms separately from marking form fill naming/organization guidance and parity checks. Current boundary: Current duplicate Form query requires exact source_granularity_id, earlier timestamp strictly less than event time, non-duplicate candidates and email/normalized-phone verification.",
+      "evidence": [
+        "src/services/leads/duplicateLead.service.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/duplicateLead.service.ts"
+    },
+    {
+      "file": "leads-ingestion-provenance.md",
+      "action": "updated",
+      "reason": "Refreshed stamp trusted origin and immutable ingress snapshots naming/organization guidance and parity checks. Current boundary: Origin derivation is server-owned and snapshot fields are storage evidence.",
+      "evidence": [
+        "src/services/leads/leadIngestionProvenance.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/leadIngestionProvenance.ts"
+    },
+    {
+      "file": "leads-lead-location.md",
+      "action": "updated",
+      "reason": "Refreshed resolve states and derive move type with current fallbacks naming/organization guidance and parity checks. Current boundary: Required Form location resolves both ZIPs, then caller state, then not_found.",
+      "evidence": [
+        "src/services/leads/leadLocation.service.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/leadLocation.service.ts"
+    },
+    {
+      "file": "leads-lead-name.md",
+      "action": "updated",
+      "reason": "Refreshed normalize full names and partial corrections naming/organization guidance and parity checks. Current boundary: buildLeadNameFromParts, normalizeLeadName and normalizeLeadNameUpdate serve creation and patch semantics.",
+      "evidence": [
+        "src/services/leads/leadName.service.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/customer.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/leadName.service.ts"
+    },
+    {
+      "file": "leads-lead-phone-matching.md",
+      "action": "updated",
+      "reason": "Refreshed choose the best exact caller-phone candidate naming/organization guidance and parity checks. Current boundary: Regex is a Mongo sieve only; normalized phone must match in memory.",
+      "evidence": [
+        "src/services/leads/leadPhoneMatching.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/leadPhoneMatching.ts"
+    },
+    {
+      "file": "leads-lead-source-compatibility.md",
+      "action": "updated",
+      "reason": "Refreshed classify existing source compatibility without resolving it naming/organization guidance and parity checks. Current boundary: Classification returns exact_granularity/same_company/unassigned/conflict using Registry ids where available and legacy slug/key fallback.",
+      "evidence": [
+        "src/services/leads/leadSourceCompatibility.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ],
+      "validatedTarget": "src/services/leads/leadSourceCompatibility.ts"
+    },
+    {
+      "file": "leads-source-company.md",
+      "action": "updated",
+      "reason": "Refreshed resolve source attribution and stamp its snapshots naming/organization guidance and parity checks. Current boundary: The adapter calls operationsRegistry.resolveSourceAttribution, then maps ids/keys/label snapshots.",
+      "evidence": [
+        "src/services/leads/leadSourceCompany.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/leads/leadSourceCompany.ts"
+    },
+    {
+      "file": "leads-source-lead-lookup.md",
+      "action": "updated",
+      "reason": "Refreshed load the linked form or call without guessing identity naming/organization guidance and parity checks. Current boundary: getLinkedLead loads the explicit model/id and returns hydrated selected-database model with optional session.",
+      "evidence": [
+        "src/services/leads/sourceLeadLookup.service.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/cancellation-mirror.md",
+        "docs/knowledge/services/cancelled-lead.md"
+      ],
+      "validatedTarget": "src/services/leads/sourceLeadLookup.service.ts"
+    },
+    {
+      "file": "models-agent.md",
+      "action": "updated",
+      "reason": "Refreshed agent roster and granot identity naming/organization guidance and parity checks. Current boundary: agents keeps unique normalized_name, nested uppercase Granot identity and legacy flat fallback, aliases, optional outreach_desk=auto/on/off and two query-time received-Lead virtuals.",
+      "evidence": [
+        "src/models/Agent.ts",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/catalog.md"
+      ],
+      "validatedTarget": "src/models/Agent.ts"
+    },
+    {
+      "file": "models-booked-lead.md",
+      "action": "updated",
+      "reason": "Refreshed official booking storage naming/organization guidance and parity checks. Current boundary: booked_leads has conditional Lead requirement, Referral/Leadless flags, official allocations/snapshots and revision metadata.",
+      "evidence": [
+        "src/models/BookedLead.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/employee-bookings.md"
+      ],
+      "validatedTarget": "src/models/BookedLead.ts"
+    },
+    {
+      "file": "models-booking-lead-reconciliation-case.md",
+      "action": "updated",
+      "reason": "Refreshed pending booking-to-lead attachment evidence naming/organization guidance and parity checks. Current boundary: One case per Booking stores submission/source, candidates, retry lease, attempts, resolution history and revision.",
+      "evidence": [
+        "src/models/BookingLeadReconciliationCase.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/employee-bookings.md"
+      ],
+      "validatedTarget": "src/models/BookingLeadReconciliationCase.ts"
+    },
+    {
+      "file": "models-call-lead.md",
+      "action": "updated",
+      "reason": "Refreshed call lead identity and original caller evidence naming/organization guidance and parity checks. Current boundary: call_leads stays separate from form_leads, with autoIndex=false/optimisticConcurrency=true.",
+      "evidence": [
+        "src/models/CallLead.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/models/CallLead.ts"
+    },
+    {
+      "file": "models-cancelled-lead.md",
+      "action": "updated",
+      "reason": "Refreshed cancellation and durable correlation snapshots naming/organization guidance and parity checks. Current boundary: cancelled_leads requires Booking/refund/cancel date, optional Lead.",
+      "evidence": [
+        "src/models/CancelledLead.ts",
+        "docs/knowledge/services/cancellation-mirror.md",
+        "docs/knowledge/services/cancelled-lead.md",
+        "docs/knowledge/services/job-number-timeline.md"
+      ],
+      "validatedTarget": "src/models/CancelledLead.ts"
+    },
+    {
+      "file": "models-cpl-correction-job.md",
+      "action": "updated",
+      "reason": "Refreshed stamped-cpl correction request and progress naming/organization guidance and parity checks. Current boundary: Job freezes source/window/models/preview hash/request evidence while lease/status/counters progress.",
+      "evidence": [
+        "src/models/CplCorrectionJob.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/CplCorrectionJob.ts"
+    },
+    {
+      "file": "models-cpl-lead-correction.md",
+      "action": "updated",
+      "reason": "Refreshed immutable per-job lead correction receipt naming/organization guidance and parity checks. Current boundary: Unique job_id+lead_model+lead_id stores immutable before/after and corrected_at.",
+      "evidence": [
+        "src/models/CplLeadCorrection.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/CplLeadCorrection.ts"
+    },
+    {
+      "file": "models-cpl-rate-period.md",
+      "action": "updated",
+      "reason": "Refreshed live temporal cpl period naming/organization guidance and parity checks. Current boundary: cpl_rate_periods is active authority for resolveCpl and Insights.",
+      "evidence": [
+        "src/models/CplRatePeriod.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/CplRatePeriod.ts"
+    },
+    {
+      "file": "models-cpl-rate.md",
+      "action": "updated",
+      "reason": "Refreshed legacy flat cpl compatibility row naming/organization guidance and parity checks. Current boundary: cpl_rates retains unique label and source/type/local identity plus amount.",
+      "evidence": [
+        "src/models/CplRate.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/CplRate.ts"
+    },
+    {
+      "file": "models-customer.md",
+      "action": "updated",
+      "reason": "Refreshed customer contact and query-time relations naming/organization guidance and parity checks. Current boundary: customers requires full_name and has optional indexed normalized_name/phone/email.",
+      "evidence": [
+        "src/models/Customer.ts",
+        "docs/knowledge/services/customer.md"
+      ],
+      "validatedTarget": "src/models/Customer.ts"
+    },
+    {
+      "file": "models-domain-command-execution.md",
+      "action": "updated",
+      "reason": "Refreshed committed canonical command result naming/organization guidance and parity checks. Current boundary: Ledger stores applied command/provenance/refs/result with unique command_id and origin+idempotency_key.",
+      "evidence": [
+        "src/models/DomainCommandExecution.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/models/DomainCommandExecution.ts"
+    },
+    {
+      "file": "models-entity-change.md",
+      "action": "updated",
+      "reason": "Refreshed append-only domain change evidence naming/organization guidance and parity checks. Current boundary: EntityChange validates revision/provenance/field value modes and refuses later mutation/replace/delete.",
+      "evidence": [
+        "src/models/EntityChange.ts",
+        "docs/knowledge/services/domain-commands.md"
+      ],
+      "validatedTarget": "src/models/EntityChange.ts"
+    },
+    {
+      "file": "models-extension-user.md",
+      "action": "updated",
+      "reason": "Refreshed granot extension login and session identity naming/organization guidance and parity checks. Current boundary: roles[] uses CURRENT_EXTENSION_ROLES, legacy role still reads employee; optional agent_id/token_version and explicit snake_case clocks remain.",
+      "evidence": [
+        "src/models/ExtensionUser.ts",
+        "docs/knowledge/services/extension-users.md"
+      ],
+      "validatedTarget": "src/models/ExtensionUser.ts"
+    },
+    {
+      "file": "models-external-data-connection.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live; the leftover connection model does not justify an active recommendation.",
+      "evidence": [
+        "src/models/ExternalDataConnection.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/ingestion.md"
+      ]
+    },
+    {
+      "file": "models-form-lead.md",
+      "action": "updated",
+      "reason": "Refreshed form lead identity on selected mongo naming/organization guidance and parity checks. Current boundary: form_leads requires name/phone/zips, permits absent move size/date/job and keeps not_found sentinel, provenance/revision guards, optimisticConcurrency/autoIndex=false.",
+      "evidence": [
+        "src/models/FormLead.ts",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/models/FormLead.ts"
+    },
+    {
+      "file": "models-google-drive-connection.md",
+      "action": "updated",
+      "reason": "Refreshed owner oauth connection storage naming/organization guidance and parity checks. Current boundary: Connection row has unique owner_email, encrypted token/scopes and created_at/updated_at clocks on default connection.",
+      "evidence": [
+        "src/models/GoogleDriveConnection.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/models/GoogleDriveConnection.ts"
+    },
+    {
+      "file": "models-google-oauth-state.md",
+      "action": "updated",
+      "reason": "Refreshed expiring hashed oauth state naming/organization guidance and parity checks. Current boundary: Unique nonce_hash, created_at without updatedAt and expires_at TTL0.",
+      "evidence": [
+        "src/models/GoogleOAuthState.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/models/GoogleOAuthState.ts"
+    },
+    {
+      "file": "models-google-picker-nonce.md",
+      "action": "updated",
+      "reason": "Refreshed expiring picker nonce evidence naming/organization guidance and parity checks. Current boundary: Nonce stores owner/action context, folder/spreadsheet kind, unique nonce_hash and TTL0 expires_at; only created_at auto clock.",
+      "evidence": [
+        "src/models/GooglePickerNonce.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/models/GooglePickerNonce.ts"
+    },
+    {
+      "file": "models-google-picker-selection.md",
+      "action": "updated",
+      "reason": "Refreshed validated picker selection reference naming/organization guidance and parity checks. Current boundary: Unique reference_hash and owner/resource/kind metadata with expires_at TTL; separate from nonce.",
+      "evidence": [
+        "src/models/GooglePickerSelection.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/models/GooglePickerSelection.ts"
+    },
+    {
+      "file": "models-granot-automation-run.md",
+      "action": "updated",
+      "reason": "Refreshed automation request, sealed plan and progress naming/organization guidance and parity checks. Current boundary: Runs include estimates_in_process/form_leads/call_leads, preview/apply, locked plans/action receipts and waiting-match progress.",
+      "evidence": [
+        "src/models/GranotAutomationRun.ts",
+        "docs/knowledge/services/granot-http-collector.md"
+      ],
+      "validatedTarget": "src/models/GranotAutomationRun.ts"
+    },
+    {
+      "file": "models-granot-automation-source.md",
+      "action": "updated",
+      "reason": "Refreshed exact report label and registry link naming/organization guidance and parity checks. Current boundary: Case-sensitive Granot report label, operations and optional reviewed GranotCrmSource link.",
+      "evidence": [
+        "src/models/GranotAutomationSource.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/GranotAutomationSource.ts"
+    },
+    {
+      "file": "models-granot-booking-discrepancy.md",
+      "action": "updated",
+      "reason": "Refreshed booking-conflict model binding naming/organization guidance and parity checks. Current boundary: Wrapper supplies booking reasons/collection/model/index contract to shared discrepancy factory and default/selected binding.",
+      "evidence": [
+        "src/models/GranotBookingDiscrepancy.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/models/GranotBookingDiscrepancy.ts"
+    },
+    {
+      "file": "models-granot-booking-reconciliation-case.md",
+      "action": "updated",
+      "reason": "Refreshed booking intake evidence and resolution naming/organization guidance and parity checks. Current boundary: One open job/action=booked case contains Booked OR Release plus historical priority_5.",
+      "evidence": [
+        "src/models/GranotBookingReconciliationCase.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/models/GranotBookingReconciliationCase.ts"
+    },
+    {
+      "file": "models-granot-crm-csv-ingestion.md",
+      "action": "updated",
+      "reason": "Refreshed granot csv ingestion receipt naming/organization guidance and parity checks. Current boundary: Source/kind/trigger/status and artifact metadata/summaries use selected database.",
+      "evidence": [
+        "src/models/GranotCrmCsvIngestion.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+      ],
+      "validatedTarget": "src/models/GranotCrmCsvIngestion.ts"
+    },
+    {
+      "file": "models-granot-crm-source-semantics.md",
+      "action": "updated",
+      "reason": "Refreshed pure reviewed source semantics validation naming/organization guidance and parity checks. Current boundary: Validates dispositions, creation policy, model/move routes and loaded company/feed consistency.",
+      "evidence": [
+        "src/models/granotCrmSourceSemantics.ts",
+        "docs/knowledge/granot-lifecycle/source-policy.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/granotCrmSourceSemantics.ts"
+    },
+    {
+      "file": "models-granot-crm-source.md",
+      "action": "updated",
+      "reason": "Refreshed reviewed source configuration naming/organization guidance and parity checks. Current boundary: Stores normalized label, CSV compatibility, lifecycle disposition/routes/policy/version and separate outbound_sms.",
+      "evidence": [
+        "src/models/GranotCrmSource.ts",
+        "docs/knowledge/granot-lifecycle/source-policy.md",
+        "docs/knowledge/services/lead-messaging.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/GranotCrmSource.ts"
+    },
+    {
+      "file": "models-granot-crm-sync-run.md",
+      "action": "updated",
+      "reason": "Refreshed legacy granot csv sync-run evidence naming/organization guidance and parity checks. Current boundary: Mode/status, timing and counts use selected database; distinct from automation run and lifecycle receipt.",
+      "evidence": [
+        "src/models/GranotCrmSyncRun.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        ".cursor/rules/granot-crm-csv-s3-sync.mdc"
+      ],
+      "validatedTarget": "src/models/GranotCrmSyncRun.ts"
+    },
+    {
+      "file": "models-granot-discrepancy-model.md",
+      "action": "updated",
+      "reason": "Refreshed shared append-only discrepancy schema factory naming/organization guidance and parity checks. Current boundary: Factory accepts kind/reasons/collection/index contract for booking/release wrappers.",
+      "evidence": [
+        "src/models/granotDiscrepancyModel.ts",
+        "docs/knowledge/granot-lifecycle/processor.md"
+      ],
+      "validatedTarget": "src/models/granotDiscrepancyModel.ts"
+    },
+    {
+      "file": "models-granot-lifecycle-activation.md",
+      "action": "updated",
+      "reason": "Refreshed immutable lifecycle activation evidence naming/organization guidance and parity checks. Current boundary: Single granot_lifecycle key fixes activated_at/version/Actor.",
+      "evidence": [
+        "src/models/GranotLifecycleActivation.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/models/GranotLifecycleActivation.ts"
+    },
+    {
+      "file": "models-granot-lifecycle-schemas.md",
+      "action": "updated",
+      "reason": "Refreshed lifecycle catalogs, provenance and revision guards naming/organization guidance and parity checks. Current boundary: Current channel/action/outcome catalogs, field definitions and guards remain shared storage contracts.",
+      "evidence": [
+        "src/models/granotLifecycleSchemas.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/revisions.md"
+      ],
+      "validatedTarget": "src/models/granotLifecycleSchemas.ts"
+    },
+    {
+      "file": "models-granot-observation-receipt.md",
+      "action": "updated",
+      "reason": "Refreshed immutable receipt evidence and mutable processing naming/organization guidance and parity checks. Current boundary: granot_webhook_receipts stores all channels with v2 evidence and nested processing.",
+      "evidence": [
+        "src/models/GranotObservationReceipt.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/drainer.md"
+      ],
+      "validatedTarget": "src/models/GranotObservationReceipt.ts"
+    },
+    {
+      "file": "models-granot-observation.md",
+      "action": "updated",
+      "reason": "Refreshed immutable normalized observation evidence naming/organization guidance and parity checks. Current boundary: granot_observations stores schema_version1 identity/contact/move/priority/action/issues and unique receipt.",
+      "evidence": [
+        "src/models/GranotObservation.ts",
+        "docs/knowledge/granot-lifecycle/capture.md",
+        "docs/knowledge/granot-lifecycle/normalization.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/models/GranotObservation.ts"
+    },
+    {
+      "file": "models-granot-record-link.md",
+      "action": "updated",
+      "reason": "Refreshed durable job association and evidence refresh naming/organization guidance and parity checks. Current boundary: Active provider+normalized job has partial unique reservation.",
+      "evidence": [
+        "src/models/GranotRecordLink.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/identity.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md",
+        "docs/knowledge/services/bookings.md"
+      ],
+      "validatedTarget": "src/models/GranotRecordLink.ts"
+    },
+    {
+      "file": "models-granot-release-discrepancy.md",
+      "action": "updated",
+      "reason": "Refreshed live release identity-conflict binding naming/organization guidance and parity checks. Current boundary: Release identity discrepancies remain live, unlike retired standalone Release cases.",
+      "evidence": [
+        "src/models/GranotReleaseDiscrepancy.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/observability.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md"
+      ],
+      "validatedTarget": "src/models/GranotReleaseDiscrepancy.ts"
+    },
+    {
+      "file": "models-granot-release-reconciliation-case.md",
+      "action": "removed",
+      "reason": "Standalone Release-case workflow is retired. Runtime model/commands remain for historical compatibility/audit only; new Release evidence enters booking intake. No runtime code or historical data is removed.",
+      "evidence": [
+        "src/models/GranotReleaseReconciliationCase.ts",
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md"
+      ]
+    },
+    {
+      "file": "models-lead-conversation.md",
+      "action": "removed",
+      "reason": "Lead Conversation and the server AI/media pipeline were retired; target model is absent.",
+      "evidence": [
+        "src/models/LeadConversation.ts",
+        "docs/knowledge/services/lead-conversation.md"
+      ]
+    },
+    {
+      "file": "models-lead-message-rate-limit.md",
+      "action": "updated",
+      "reason": "Refreshed hashed capacity bucket evidence naming/organization guidance and parity checks. Current boundary: String-key destination/hourly buckets store count/reservation and expires_at TTL, not raw destination phone.",
+      "evidence": [
+        "src/models/LeadMessageRateLimit.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/models/LeadMessageRateLimit.ts"
+    },
+    {
+      "file": "models-lead-message.md",
+      "action": "updated",
+      "reason": "Refreshed durable outbound message and provider outcomes naming/organization guidance and parity checks. Current boundary: Stores legacy form_lead/additive lead_ref, intent/body/recipient, statuses/attempts/history, SIDs/scheduling/lease.",
+      "evidence": [
+        "src/models/LeadMessage.ts",
+        "docs/knowledge/services/lead-messaging.md"
+      ],
+      "validatedTarget": "src/models/LeadMessage.ts"
+    },
+    {
+      "file": "models-lead-source-company.md",
+      "action": "updated",
+      "reason": "Refreshed source company and embedded compatibility evidence naming/organization guidance and parity checks. Current boundary: Immutable unique slug, labels/defaults/projection/lifecycle plus embedded granularities remain.",
+      "evidence": [
+        "src/models/LeadSourceCompany.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/LeadSourceCompany.ts"
+    },
+    {
+      "file": "models-lead-source-granularity.md",
+      "action": "updated",
+      "reason": "Refreshed first-class live source granularity naming/organization guidance and parity checks. Current boundary: Immutable company/key, globally unique key, channel/Move Type/attribution, active state and schedule revision.",
+      "evidence": [
+        "src/models/LeadSourceGranularity.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/LeadSourceGranularity.ts"
+    },
+    {
+      "file": "models-lead-source-label-mapping.md",
+      "action": "updated",
+      "reason": "Refreshed immutable label destination and active history naming/organization guidance and parity checks. Current boundary: Namespace/raw label/folded key and company/feed destination are immutable.",
+      "evidence": [
+        "src/models/LeadSourceLabelMapping.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/LeadSourceLabelMapping.ts"
+    },
+    {
+      "file": "models-merchant.md",
+      "action": "updated",
+      "reason": "Refreshed merchant catalog identity and aliases naming/organization guidance and parity checks. Current boundary: Name/normalized_name with active/alias lifecycle; normalized name unique, aliases indexed but nonunique.",
+      "evidence": [
+        "src/models/Merchant.ts",
+        "docs/knowledge/services/catalog.md",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/models/Merchant.ts"
+    },
+    {
+      "file": "models-moving-carrier.md",
+      "action": "updated",
+      "reason": "Refreshed carrier regulatory identity and granot code naming/organization guidance and parity checks. Current boundary: DOT and MC individually unique plus compound identity; nonempty Granot code partial unique.",
+      "evidence": [
+        "src/models/MovingCarrier.ts",
+        "docs/knowledge/services/tariff.md"
+      ],
+      "validatedTarget": "src/models/MovingCarrier.ts"
+    },
+    {
+      "file": "models-public-submission-throttle-bucket.md",
+      "action": "updated",
+      "reason": "Refreshed employee-submit window counters naming/organization guidance and parity checks. Current boundary: Unique key+window, count minimum0, expires_at TTL on default connection.",
+      "evidence": [
+        "src/models/PublicSubmissionThrottleBucket.ts",
+        "docs/knowledge/services/employee-bookings.md"
+      ],
+      "validatedTarget": "src/models/PublicSubmissionThrottleBucket.ts"
+    },
+    {
+      "file": "models-ringcentral-inbound-route-assignment.md",
+      "action": "updated",
+      "reason": "Refreshed temporal inbound number to call-feed interval naming/organization guidance and parity checks. Current boundary: Immutable route/company/feed/from, closure via until and active=false; partial unique open interval per route.",
+      "evidence": [
+        "src/models/RingCentralInboundRouteAssignment.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/models/RingCentralInboundRouteAssignment.ts"
+    },
+    {
+      "file": "models-ringcentral-inbound-route.md",
+      "action": "updated",
+      "reason": "Refreshed inbound-number identity and validation posture naming/organization guidance and parity checks. Current boundary: Unique phone locks after activation; RingCentral provider, inactive/unvalidated defaults and archive metadata.",
+      "evidence": [
+        "src/models/RingCentralInboundRoute.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/models/RingCentralInboundRoute.ts"
+    },
+    {
+      "file": "models-schema-helpers.md",
+      "action": "updated",
+      "reason": "Refreshed shared field contracts and sheet row hints naming/organization guidance and parity checks. Current boundary: Source/local/Lead-model fields and sheet_sync subdocument plus pure remove/merge by target.",
+      "evidence": [
+        "src/models/schemaHelpers.ts",
+        "docs/knowledge/services/call-lead.md",
+        "docs/knowledge/services/form-lead.md",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/models/schemaHelpers.ts"
+    },
+    {
+      "file": "models-sheet-sync-attempt.md",
+      "action": "updated",
+      "reason": "Refreshed per-target sheet attempt with retention naming/organization guidance and parity checks. Current boundary: Run/job refs, action/status and safe provider/quota summary.",
+      "evidence": [
+        "src/models/SheetSyncAttempt.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/models/SheetSyncAttempt.ts"
+    },
+    {
+      "file": "models-sheet-sync-job.md",
+      "action": "updated",
+      "reason": "Refreshed durable coalescible sheet intent naming/organization guidance and parity checks. Current boundary: Resource/entity/operation, due/status/priority/attempts/lease and tombstone snapshot survive document deletion.",
+      "evidence": [
+        "src/models/SheetSyncJob.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/models/SheetSyncJob.ts"
+    },
+    {
+      "file": "models-sheet-sync-lease.md",
+      "action": "updated",
+      "reason": "Refreshed shared owner and epoch scope fences naming/organization guidance and parity checks. Current boundary: Unique scope, owner/until/epoch; live drain/automation/rematch callers share storage.",
+      "evidence": [
+        "src/models/SheetSyncLease.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/models/SheetSyncLease.ts"
+    },
+    {
+      "file": "models-sheet-sync-quota-bucket.md",
+      "action": "updated",
+      "reason": "Refreshed per-minute sheets budget evidence naming/organization guidance and parity checks. Current boundary: Unique scope+read/write+window, spent count and TTL3600 from window_start.",
+      "evidence": [
+        "src/models/SheetSyncQuotaBucket.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/models/SheetSyncQuotaBucket.ts"
+    },
+    {
+      "file": "models-sheet-sync-run.md",
+      "action": "updated",
+      "reason": "Refreshed drain-run history and retention naming/organization guidance and parity checks. Current boundary: Trigger/status/times and claimed/synced/failed/deferred counters plus optional errors/quota.",
+      "evidence": [
+        "src/models/SheetSyncRun.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/models/SheetSyncRun.ts"
+    },
+    {
+      "file": "models-synchronization-decision.md",
+      "action": "updated",
+      "reason": "Refreshed immutable causal decision per observation attempt naming/organization guidance and parity checks. Current boundary: Append-only unique observation_id+attempt, safe outcome/reason/match/gate/effect summaries/refs.",
+      "evidence": [
+        "src/models/SynchronizationDecision.ts",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/drainer.md",
+        "docs/knowledge/granot-lifecycle/processor.md",
+        "docs/knowledge/granot-lifecycle/projections.md"
+      ],
+      "validatedTarget": "src/models/SynchronizationDecision.ts"
+    },
+    {
+      "file": "models-testimonial.md",
+      "action": "updated",
+      "reason": "Refreshed curated review evidence naming/organization guidance and parity checks. Current boundary: Source/fingerprint identity, review/publication metadata and optional Customer/source refs.",
+      "evidence": [
+        "src/models/Testimonial.ts",
+        "docs/knowledge/services/testimonial.md"
+      ],
+      "validatedTarget": "src/models/Testimonial.ts"
+    },
+    {
+      "file": "models-wordpress-form-submission-receipt.md",
+      "action": "updated",
+      "reason": "Refreshed immutable wordpress test-form receipt naming/organization guidance and parity checks. Current boundary: Test-form-only form_path=test with submission/received identity, processing and optional Form Lead ref.",
+      "evidence": [
+        "src/models/WordpressFormSubmissionReceipt.ts",
+        "docs/knowledge/services/form-lead.md"
+      ],
+      "validatedTarget": "src/models/WordpressFormSubmissionReceipt.ts"
+    }
+  ]
+}

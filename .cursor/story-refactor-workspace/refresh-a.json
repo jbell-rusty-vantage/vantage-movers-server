@@ -1,0 +1,1519 @@
+{
+  "reviewedAt": "2026-10-29",
+  "entries": [
+    {
+      "file": "admin-agent-browse-metrics.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "src/services/admin"
+      ]
+    },
+    {
+      "file": "admin-browse.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/admin/adminBrowse.service.ts",
+        "docs/knowledge/services/admin-search.md",
+        "docs/knowledge/services/lead-browse.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "validatedTarget": "src/services/admin/adminBrowse.service.ts"
+    },
+    {
+      "file": "admin-export.md",
+      "action": "updated",
+      "reason": "Removed retired Operational Events references and refreshed the existing live service behavior.",
+      "evidence": [
+        "src/services/admin/adminExport.service.ts",
+        "docs/knowledge/services/admin-search.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "validatedTarget": "src/services/admin/adminExport.service.ts"
+    },
+    {
+      "file": "admin-facets.md",
+      "action": "updated",
+      "reason": "Removed obsolete historical and combined catalog instructions; documented live production catalog and compatibility projection.",
+      "evidence": [
+        "src/services/admin/adminFacets.service.ts",
+        "src/services/admin/filterCatalog.ts",
+        "docs/knowledge/services/admin-search.md",
+        "src/services/admin/adminFacets.service.test.ts"
+      ],
+      "validatedTarget": "src/services/admin/adminFacets.service.ts"
+    },
+    {
+      "file": "admin-filter-catalog.md",
+      "action": "updated",
+      "reason": "Removed obsolete historical and combined catalog instructions; documented live production catalog and compatibility projection.",
+      "evidence": [
+        "src/services/admin/adminFacets.service.ts",
+        "src/services/admin/filterCatalog.ts",
+        "docs/knowledge/services/admin-search.md"
+      ],
+      "validatedTarget": "src/services/admin/filterCatalog.ts"
+    },
+    {
+      "file": "admin-search.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/admin/adminSearch.service.ts",
+        "docs/knowledge/services/admin-search.md",
+        "docs/knowledge/services/form-lead-search.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "validatedTarget": "src/services/admin/adminSearch.service.ts"
+    },
+    {
+      "file": "admin-sheet-sync.md",
+      "action": "updated",
+      "reason": "Removed retired Operational Events references and refreshed the existing live service behavior.",
+      "evidence": [
+        "src/services/admin/adminSheetSync.service.ts",
+        "docs/knowledge/services/sheet-sync.md",
+        "docs/knowledge/services/google-sheets.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "validatedTarget": "src/services/admin/adminSheetSync.service.ts"
+    },
+    {
+      "file": "agents-agent-allocation.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/agents/agentAllocation.service.ts",
+        "docs/knowledge/services/agent-allocation.md",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/agents/agentAllocation.service.ts"
+    },
+    {
+      "file": "agents-receiver-agent-crm-username.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/agents/receiverAgentCrmUsername.ts",
+        "docs/knowledge/services/enrichment.md",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/agents/receiverAgentCrmUsername.ts"
+    },
+    {
+      "file": "analytics-agent-performance.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/agentPerformance.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/agentPerformance.service.ts"
+    },
+    {
+      "file": "analytics-agent-sales-report.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "src/services/analytics"
+      ]
+    },
+    {
+      "file": "analytics-analytics-export.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/analyticsExport.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/analyticsExport.service.ts"
+    },
+    {
+      "file": "analytics-analytics-filters.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/analyticsFilters.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/analyticsFilters.ts"
+    },
+    {
+      "file": "analytics-analytics-merge.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "src/services/analytics"
+      ]
+    },
+    {
+      "file": "analytics-analytics.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/analytics.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/analytics.service.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/analytics.service.ts"
+    },
+    {
+      "file": "analytics-cancellation-analytics.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/cancellationAnalytics.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/cancellationAnalytics.service.ts"
+    },
+    {
+      "file": "analytics-geographic-analytics.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/geographicAnalytics.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/geographicAnalytics.service.ts"
+    },
+    {
+      "file": "analytics-lead-cost.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/leadCost.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/leadCost.service.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/leadCost.service.ts"
+    },
+    {
+      "file": "analytics-overview.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/overview.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/overview.service.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/overview.service.ts"
+    },
+    {
+      "file": "analytics-receiver-agent-performance.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/receiverAgentPerformance.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/receiverAgentPerformance.service.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/receiverAgentPerformance.service.ts"
+    },
+    {
+      "file": "analytics-revenue-trend.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/revenueTrend.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/revenueTrend.service.ts"
+    },
+    {
+      "file": "analytics-sms-conversion.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/smsConversion.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/smsConversion.service.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/smsConversion.service.ts"
+    },
+    {
+      "file": "analytics-source-hierarchy.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/sourceHierarchy.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/sourceHierarchy.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/sourceHierarchy.ts"
+    },
+    {
+      "file": "analytics-source-performance.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/sourcePerformance.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md",
+        "src/services/analytics/sourcePerformance.service.test.ts"
+      ],
+      "validatedTarget": "src/services/analytics/sourcePerformance.service.ts"
+    },
+    {
+      "file": "analytics-summary.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/analytics/summary.service.ts",
+        "docs/knowledge/services/analytics.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/insights.md"
+      ],
+      "validatedTarget": "src/services/analytics/summary.service.ts"
+    },
+    {
+      "file": "best-relocation-sheet-ingest-application-plan.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/applicationPlan.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-apply.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/apply.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-bootstrap.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/bootstrap.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-canonical-lead-adoption.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/canonicalLeadAdoption.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-dry-run-reports.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/dryRunReports.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-dry-run.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/dryRun.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-identity.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/identity.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-matching.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/matching.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-parsing.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/parsing.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-plan.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/plan.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-provider.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/provider.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-sheets.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/sheets.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-source-change-policy.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/sourceChangePolicy.ts"
+      ]
+    },
+    {
+      "file": "best-relocation-sheet-ingest-update-policy.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingest is not live; its remaining files are not evidence of an active product.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/bestRelocationSheetIngest/updatePolicy.ts"
+      ]
+    },
+    {
+      "file": "bookings-booked-lead-from-source.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/bookedLeadFromSource.service.ts",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/bookings/bookedLeadFromSource.service.test.ts"
+      ],
+      "validatedTarget": "src/services/bookings/bookedLeadFromSource.service.ts"
+    },
+    {
+      "file": "bookings-booked-lead.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/bookedLead.service.ts",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/bookings/bookedLead.service.ts"
+    },
+    {
+      "file": "bookings-booking-identity.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/bookingIdentity.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/bookings/bookingIdentity.test.ts"
+      ],
+      "validatedTarget": "src/services/bookings/bookingIdentity.ts"
+    },
+    {
+      "file": "bookings-booking-mirror.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/bookingMirror.service.ts",
+        "docs/knowledge/services/bookings.md",
+        "docs/knowledge/services/cancellation-mirror.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/bookings/bookingMirror.service.ts"
+    },
+    {
+      "file": "bookings-booking-source-resolver.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/bookingSourceResolver.ts",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/bookings/bookingSourceResolver.test.ts"
+      ],
+      "validatedTarget": "src/services/bookings/bookingSourceResolver.ts"
+    },
+    {
+      "file": "bookings-leadless-booking.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/leadlessBooking.service.ts",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/bookings/leadlessBooking.service.test.ts"
+      ],
+      "validatedTarget": "src/services/bookings/leadlessBooking.service.ts"
+    },
+    {
+      "file": "bookings-referral-booking.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/bookings/referralBooking.service.ts",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/bookings/referralBooking.service.test.ts"
+      ],
+      "validatedTarget": "src/services/bookings/referralBooking.service.ts"
+    },
+    {
+      "file": "cancellations-cancellation-mirror.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/cancellations/cancellationMirror.service.ts",
+        "docs/knowledge/services/cancellation-mirror.md",
+        "docs/knowledge/services/cancelled-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/cancellations/cancellationMirror.service.ts"
+    },
+    {
+      "file": "cancellations-cancellation-resolver.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/cancellations/cancellationResolver.ts",
+        "docs/knowledge/services/cancelled-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/cancellations/cancellationResolver.ts"
+    },
+    {
+      "file": "cancellations-cancelled-lead.md",
+      "action": "updated",
+      "reason": "Removed retired Operational Events references and refreshed the existing live service behavior.",
+      "evidence": [
+        "src/services/cancellations/cancelledLead.service.ts",
+        "docs/knowledge/services/cancelled-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/cancellations/cancelledLead.service.ts"
+    },
+    {
+      "file": "catalog-catalog.md",
+      "action": "updated",
+      "reason": "Removed obsolete historical facets overlay claim while retaining the catalog story.",
+      "evidence": [
+        "src/services/catalog/catalog.service.ts",
+        "src/services/admin/adminFacets.service.ts",
+        "src/services/admin/filterCatalog.ts",
+        "src/services/catalog/catalog.service.test.ts"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/catalog/catalog.service.ts"
+    },
+    {
+      "file": "conversations-media.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "conversations-reads.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "conversations-redaction.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "conversations-seed-from-artifacts.md",
+      "action": "removed",
+      "reason": "The target module is absent; do not recreate it for this recommendation.",
+      "evidence": [
+        ".cursor/story-refactor-workspace/CATALOG-STATUS.md",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "cpl-cpl-rate.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/cpl/cplRate.service.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "docs/knowledge/services/form-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/cpl/cplRate.service.ts"
+    },
+    {
+      "file": "crm-crm-service.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/crm/crm.service.ts",
+        "docs/knowledge/services/form-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/crm/crm.service.test.ts"
+      ],
+      "validatedTarget": "src/services/crm/crm.service.ts"
+    },
+    {
+      "file": "crm-form-lead-payload.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/crm/formLeadPayload.ts",
+        "docs/knowledge/services/form-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/crm/formLeadPayload.ts"
+    },
+    {
+      "file": "customers-customer-from-lead.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/customers/customerFromLead.service.ts",
+        "docs/knowledge/services/customer.md",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/customers/customerFromLead.service.ts"
+    },
+    {
+      "file": "customers-customer.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/customers/customer.service.ts",
+        "docs/knowledge/services/customer.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/customers/customer.service.ts"
+    },
+    {
+      "file": "domain-commands-bookings.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/bookings.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/bookings.ts"
+    },
+    {
+      "file": "domain-commands-command-context.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/commandContext.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/commandContext.ts"
+    },
+    {
+      "file": "domain-commands-entity-change.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/entityChange.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/domainCommands/entityChange.test.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/entityChange.ts"
+    },
+    {
+      "file": "domain-commands-existing-write-context.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/existingWriteContext.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/domainCommands/existingWriteContext.test.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/existingWriteContext.ts"
+    },
+    {
+      "file": "domain-commands-existing-writes.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/existingWrites.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/existingWrites.ts"
+    },
+    {
+      "file": "domain-commands-idempotency.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/idempotency.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/domainCommands/idempotency.integration.test.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/idempotency.ts"
+    },
+    {
+      "file": "domain-commands-ringcentral-provenance.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/domainCommands/ringcentralProvenance.ts",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/domainCommands/ringcentralProvenance.ts"
+    },
+    {
+      "file": "durable-work-actors.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/actors.ts",
+        "docs/knowledge/services/domain-commands.md",
+        "docs/knowledge/services/ingestion.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/actors.ts"
+    },
+    {
+      "file": "durable-work-capability.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/capability.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/capability.ts"
+    },
+    {
+      "file": "durable-work-checkpoints.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/checkpoints.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/checkpoints.ts"
+    },
+    {
+      "file": "durable-work-checksum.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/checksum.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/checksum.ts"
+    },
+    {
+      "file": "durable-work-leases.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/leases.ts",
+        "docs/knowledge/services/sheet-sync.md",
+        "docs/knowledge/services/ingestion.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/leases.ts"
+    },
+    {
+      "file": "durable-work-provider-retry.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/providerRetry.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/providerRetry.ts"
+    },
+    {
+      "file": "durable-work-run-transitions.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/runTransitions.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/runTransitions.ts"
+    },
+    {
+      "file": "durable-work-schema.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/schema.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/schema.ts"
+    },
+    {
+      "file": "durable-work-testing.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/durableWork/testing.ts",
+        "docs/knowledge/services/ingestion.md",
+        "docs/knowledge/services/sheet-sync.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/reporting/reporting.service.ts"
+      ],
+      "validatedTarget": "src/services/durableWork/testing.ts"
+    },
+    {
+      "file": "employee-bookings-booking-lead-attachment.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/bookingLeadAttachment.service.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/bookingLeadAttachment.service.ts"
+    },
+    {
+      "file": "employee-bookings-booking-lead-reconciliation.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/bookingLeadReconciliation.service.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/bookingLeadReconciliation.service.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/bookingLeadReconciliation.service.ts"
+    },
+    {
+      "file": "employee-bookings-lead-candidate-queries.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/leadCandidateQueries.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/leadCandidateQueries.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/leadCandidateQueries.ts"
+    },
+    {
+      "file": "employee-bookings-lead-match-evaluator.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/leadMatchEvaluator.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/leadMatchEvaluator.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/leadMatchEvaluator.ts"
+    },
+    {
+      "file": "employee-bookings-migration-apply-safety.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/migrationApplySafety.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        "docs/knowledge/services/operations-registry.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/migrationApplySafety.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/migrationApplySafety.ts"
+    },
+    {
+      "file": "employee-bookings-migration-preflight.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/migrationPreflight.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        "docs/knowledge/services/bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/migrationPreflight.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/migrationPreflight.ts"
+    },
+    {
+      "file": "employee-bookings-reconciliation-policy.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/reconciliationPolicy.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/reconciliationPolicy.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/reconciliationPolicy.ts"
+    },
+    {
+      "file": "employee-bookings-reconciliation-rematch.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/reconciliationRematch.service.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts",
+        "src/services/employeeBookings/reconciliationRematch.service.test.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/reconciliationRematch.service.ts"
+    },
+    {
+      "file": "employee-bookings-submit-employee-booking.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/employeeBookings/submitEmployeeBooking.service.ts",
+        "docs/knowledge/services/employee-bookings.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "docs/knowledge/services/form-lead.md",
+        "src/services/granotLifecycle/callLeadFormSibling.ts"
+      ],
+      "validatedTarget": "src/services/employeeBookings/submitEmployeeBooking.service.ts"
+    },
+    {
+      "file": "enrichment-call-lead-enrichment-rows.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/enrichment/callLeadEnrichmentRows.ts",
+        "docs/knowledge/services/enrichment.md",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/enrichment/callLeadEnrichmentRows.ts"
+    },
+    {
+      "file": "enrichment-call-lead-enrichment.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/enrichment/callLeadEnrichment.service.ts",
+        "docs/knowledge/services/enrichment.md",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/enrichment/callLeadEnrichment.service.ts"
+    },
+    {
+      "file": "extension-users-extension-users.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/extensionUsers/extensionUsers.service.ts",
+        "docs/knowledge/services/extension-users.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/extensionUsers/extensionUsers.service.ts"
+    },
+    {
+      "file": "form-lead.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/leads/formLead.service.ts",
+        "docs/knowledge/services/form-lead.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/leads/formLead.service.test.ts"
+      ],
+      "validatedTarget": "src/services/leads/formLead.service.ts"
+    },
+    {
+      "file": "google-auth-service-account.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleAuth/serviceAccount.ts",
+        "docs/knowledge/services/google-sheets.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleAuth/serviceAccount.ts"
+    },
+    {
+      "file": "google-drive-oauth-drive-metadata.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/driveMetadata.service.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/driveMetadata.service.ts"
+    },
+    {
+      "file": "google-drive-oauth-google-drive-oauth.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/googleDriveOAuth.service.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/googleDriveOAuth.service.ts"
+    },
+    {
+      "file": "google-drive-oauth-managed-tab.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/managedTab.service.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/managedTab.service.ts"
+    },
+    {
+      "file": "google-drive-oauth-oauth-scopes.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/oauthScopes.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/oauthScopes.ts"
+    },
+    {
+      "file": "google-drive-oauth-oauth-security.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/oauthSecurity.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/oauthSecurity.ts"
+    },
+    {
+      "file": "google-drive-oauth-owner-auth.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/ownerAuth.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/ownerAuth.ts"
+    },
+    {
+      "file": "google-drive-oauth-picker-nonce-store.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/pickerNonceStore.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/pickerNonceStore.ts"
+    },
+    {
+      "file": "google-drive-oauth-picker-selection-store.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/pickerSelectionStore.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/pickerSelectionStore.ts"
+    },
+    {
+      "file": "google-drive-oauth-picker.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/picker.service.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/picker.service.ts"
+    },
+    {
+      "file": "google-drive-oauth-spreadsheet.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/spreadsheet.service.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/spreadsheet.service.ts"
+    },
+    {
+      "file": "google-drive-oauth-token-encryption.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleDriveOAuth/tokenEncryption.ts",
+        "docs/knowledge/services/reporting.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleDriveOAuth/tokenEncryption.ts"
+    },
+    {
+      "file": "google-maps-geocoding.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/googleMaps/geocoding.ts",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/googleMaps/geocoding.test.ts"
+      ],
+      "validatedTarget": "src/services/googleMaps/geocoding.ts"
+    },
+    {
+      "file": "google-sheets-booked-lead-row.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/projections/bookedLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/projections/bookedLeadRow.ts"
+    },
+    {
+      "file": "google-sheets-call-lead-row.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/projections/callLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/projections/callLeadRow.ts"
+    },
+    {
+      "file": "google-sheets-cancelled-lead-row.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/projections/cancelledLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/projections/cancelledLeadRow.ts"
+    },
+    {
+      "file": "google-sheets-delete-rows.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/deleteRows.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/deleteRows.ts"
+    },
+    {
+      "file": "google-sheets-form-lead-row.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/projections/formLeadRow.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/projections/formLeadRow.ts"
+    },
+    {
+      "file": "google-sheets-google-sheets.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/googleSheets.service.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/googleSheets.service.ts"
+    },
+    {
+      "file": "google-sheets-retry.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/retry.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/sheet-sync.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/retry.ts"
+    },
+    {
+      "file": "google-sheets-row-lookup.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/rowLookup.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/rowLookup.ts"
+    },
+    {
+      "file": "google-sheets-sync-rows.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/syncRows.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/syncRows.ts"
+    },
+    {
+      "file": "google-sheets-tabs.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/tabs.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/tabs.ts"
+    },
+    {
+      "file": "google-sheets-targets.md",
+      "action": "retained",
+      "reason": "Target and current exports reviewed; the existing story remains a useful starting point subject to the directive and live re-read.",
+      "evidence": [
+        "src/services/googleSheets/targets.ts",
+        "docs/knowledge/services/google-sheets.md",
+        "docs/knowledge/services/domain-commands.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/googleSheets/targets.ts"
+    },
+    {
+      "file": "granot-crm-csv-parser.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotCrmCsv/parser.ts",
+        "docs/knowledge/services/form-lead-search.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts",
+        "src/services/granotCrmCsv/parser.test.ts"
+      ],
+      "validatedTarget": "src/services/granotCrmCsv/parser.ts"
+    },
+    {
+      "file": "granot-crm-csv-registry.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotCrmCsv/registry.ts",
+        "docs/knowledge/services/operations-registry.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts"
+      ],
+      "validatedTarget": "src/services/granotCrmCsv/registry.ts"
+    },
+    {
+      "file": "granot-crm-csv-sync.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotCrmCsv/sync.service.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "docs/knowledge/services/form-lead-search.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts"
+      ],
+      "validatedTarget": "src/services/granotCrmCsv/sync.service.ts"
+    },
+    {
+      "file": "granot-crm-csv-upload.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotCrmCsv/upload.service.ts",
+        "docs/knowledge/services/operations-registry.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts"
+      ],
+      "validatedTarget": "src/services/granotCrmCsv/upload.service.ts"
+    },
+    {
+      "file": "granot-http-collector-automation.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/automation.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/automation.ts"
+    },
+    {
+      "file": "granot-http-collector-form-lead-matcher.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/granotFormLeadMatcher.ts",
+        "docs/knowledge/services/form-lead-search.md",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/granotFormLeadMatcher.ts"
+    },
+    {
+      "file": "granot-http-collector-form-workflow.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/formWorkflow.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts",
+        "src/services/granotHttpCollector/formWorkflow.test.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/formWorkflow.ts"
+    },
+    {
+      "file": "granot-http-collector-index.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/index.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/index.ts"
+    },
+    {
+      "file": "granot-http-collector-lifecycle-statement.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/lifecycleStatement.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts",
+        "src/services/granotHttpCollector/lifecycleStatement.test.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/lifecycleStatement.ts"
+    },
+    {
+      "file": "granot-http-collector-run-workflow.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/estimatesCron.ts",
+        "src/services/granotHttpCollector/runWorkflow.test.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/runWorkflow.ts"
+    },
+    {
+      "file": "granot-http-collector-source-catalog.md",
+      "action": "updated",
+      "reason": "Replaced stale historical, retired, or changed-workflow instructions with a current-target starter and parity boundaries.",
+      "evidence": [
+        "src/services/granotHttpCollector/sourceCatalog.ts",
+        "docs/knowledge/services/granot-http-collector.md",
+        "docs/knowledge/services/operations-registry.md",
+        ".cursor/story-refactor-workspace/DIRECTIVE.md",
+        "src/services/granotHttpCollector/runWorkflow.ts",
+        "src/services/granotHttpCollector/estimatesCron.ts",
+        "src/services/granotHttpCollector/sourceCatalog.test.ts"
+      ],
+      "validatedTarget": "src/services/granotHttpCollector/sourceCatalog.ts"
+    }
+  ]
+}

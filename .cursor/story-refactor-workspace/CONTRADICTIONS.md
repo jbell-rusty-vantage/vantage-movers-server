@@ -1,5 +1,7 @@
 # Contradictions
 
+> Historical September coordination evidence. The traversal is closed. Read [DIRECTIVE.md](DIRECTIVE.md) and [CATALOG-STATUS.md](CATALOG-STATUS.md) for the 2026-10-29 refresh. Counts, open items, next-module pointers and references below are not current implementation instructions.
+
 Standing list. Do not silently merge sources. Not knowledge.
 
 ## Open

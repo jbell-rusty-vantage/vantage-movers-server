@@ -1,12 +1,10 @@
 # Cancel This Booking — operational story
 
 - Status: recommended
-- Service: `cancellations` (Wave A, in-progress)
-- Pass: 1 of this service — `cancelledLead.service.ts`
-- Remaining in this service: `cancellationResolver.ts`, `cancellationMirror.service.ts`
+- Service: `cancellations`
 - Target: `src/services/cancellations/cancelledLead.service.ts`
 - Knowledge: `docs/knowledge/services/cancelled-lead.md` (this file is the write; the Service also covers the resolver and the Lead mirror). This checkout’s `CONTEXT.md` does not define Cancellation terms — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `domainCommands/existingWrites.ts` (`createCancellation` begin / Sheet Sync complete, `updateCancelledLead`, `deleteCancelledLead`), `granotLifecycle/releaseOwnerCommands.ts` (`confirmCancellation` → the verified CAS write only), `cancellations/index.ts` → `v1.service.ts` (leftover public exports), `routes/v1.routes.ts` (`findAllCancelledLeads`; mutating `/cancelled-leads` already goes through the command adapters), `domainCommands.test.ts` (greps the `InTransaction` / `persist` names)
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/cancellations/index.ts`, `src/services/domainCommands/existingWrites.ts`, `src/services/granotLifecycle/officialCancellationWrite.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: leftover public `cancel` vs canonical `begin` / `complete`; verified Granot Release CAS is a different write; correction may no-op inside a command; removal returns a `finalize`
 - Split later (only if the file outgrows one sitting): `cancelThisBooking.ts`, `cancelAVerifiedBooking.ts`, `correctThisCancellation.ts`, `removeThisCancellation.ts` — never `create.ts` / `update.ts` / `delete.ts`
 
@@ -16,8 +14,8 @@ Knowledge still titles this “CRUD: create, update, delete, list.” The names 
 
 Five operations, not “a CRUD service”:
 
-1. **Cancel this Booking** — the owner (or Best Relocation import) points at a Booking, or at the Lead that Booking hangs off. Resolve that Booking. Snapshot customer / job / agent / book-date / source so the Cancellation row still works after the Booking is later mutated or deleted. Write the Cancellation, stamp `booking.cancelled`, mirror `cancelled` onto the linked Lead when one exists, dismiss a pending employee `BookingLeadReconciliationCase`, and remember Cancellation Chain Sheet Sync. After commit, project the chain. The leftover public function also tells observability `cancellation.created`; the command path does not.
-2. **Cancel a verified Booking** — Granot Release already revalidated the case, the link, and the Booking identity. This primitive only CAS-claims the Booking (`domain_revision` + `normalized_job_no` + unset `cancelled`), writes the official Cancellation, and optionally CAS-mirrors the Lead. The caller owns policy, Entity Changes, case resolution, and the outbox. Referral may cancel here with no Lead mirror. Checked-in Release flags stay false.
+1. **Cancel this Booking** — the owner (or Best Relocation import) points at a Booking, or at the Lead that Booking hangs off. Resolve that Booking. Snapshot customer / job / agent / book-date / source so the Cancellation row still works after the Booking is later mutated or deleted. Write the Cancellation, stamp `booking.cancelled`, mirror `cancelled` onto the linked Lead when one exists, dismiss a pending employee `BookingLeadReconciliationCase`, and remember Cancellation Chain Sheet Sync. After commit, project the chain. The public wrapper logs `cancellation.created` after Sheet Sync finalization; this is a log, not a retired Operational Event.
+2. **Cancel a verified Booking** — The lifecycle caller already revalidated the case, the link, and the Booking identity; shared officialCancellationWrite owns Changes/case/outbox. This primitive only CAS-claims the Booking (`domain_revision` + `normalized_job_no` + unset `cancelled`), writes the official Cancellation, and optionally CAS-mirrors the Lead. The caller owns policy, Entity Changes, case resolution, and the outbox. Referral may cancel here with no Lead mirror. Checked-in Release flags stay false.
 3. **Correct this Cancellation** — refund, reason, notes, dates, who cancelled. Does not re-snapshot the Booking or touch Lead refs. Canonical correction may no-op when no cancelled fields changed; the leftover public function always writes.
 4. **List recent Cancellations** — last 200, newest first.
 5. **Remove this Cancellation** — unwind `booking.cancelled`, clear the Lead’s `cancelled`, tombstone (queued) or delete the sheet row inline (legacy), erase the Cancellation last on the leftover path so upstream wipes settle even if the final delete fails.
@@ -34,11 +32,11 @@ If it later outgrows one sitting, split by **story**, not CRUD. Cancel this Book
 
 | Keep exporting | Story name | Why the seam exists |
 |---|---|---|
-| `createCancelledLead` | `cancelThisBooking` | leftover public path: run the whole story + owner event |
+| `createCancelledLead` | `cancelThisBooking` | public path: finalize sheets and log |
 | `createCancelledLeadInTransaction` | `beginCancellingThisBooking` | canonical `createCancellation` needs the write before commit |
 | `persistCancelledLeadCreateInTransaction` | `writeTheCancellationAndMirrorTheChain` | shared write: resolve, snapshot, stamp Booking, optional Lead, dismiss employee case, sheet intent |
-| leftover after-commit (today inlined) | `completeCancellingThisBooking` | Cancellation Chain + leftover `cancellation.created` |
-| `createCancellationForVerifiedBookingInTransaction` | `cancelAVerifiedBooking` | Granot Release CAS claim; caller owns outbox / case / changes |
+| leftover after-commit (today inlined) | `completeCancellingThisBooking` | Cancellation Chain finalization and the public wrapper log |
+| `createCancellationForVerifiedBookingInTransaction` | `cancelAVerifiedBooking` | Lifecycle-verified CAS claim via officialCancellationWrite; caller owns outbox / case / changes |
 | `updateCancelledLead` | `correctThisCancellation` | leftover public path (always writes) |
 | `updateCancelledLeadInTransaction` | `correctThisCancellationInTransaction` | same correction inside a command (may no-op) |
 | `findAllCancelledLeads` | `listRecentCancellations` | last 200 |
@@ -147,7 +145,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 4. **Public correction always writes; the command may no-op.** Knowledge already records this. `correctThisCancellationInTransaction` returns early when `CANCELLED_LEAD_CHANGE_PATHS` is empty — no save, no sheet job. `correctThisCancellation` still `findByIdAndUpdate`s and enqueues `cancelled_lead.update` even when nothing material changed. Rename both so the gap is visible. Do **not** silently teach the leftover public function the no-op. Routes already use the command.
 
-5. **Leftover cancel tells the owner; the command does not.** `cancelThisBooking` records `cancellation.created` after Sheet Sync. `createCancellation` → `begin` / `complete` only finalizes sheets. Knowledge’s operational-events table still names the leftover event as “Create.” Rename so the gap is visible. Do not add the event to the command, or drop it from the leftover path, in this rename.
+5. **The public wrapper logs after Sheet Sync.** `createCancelledLead` logs `cancellation.created` after finalization. Preserve the current command and wrapper side-effect ordering; do not recreate retired Operational Events.
 
 6. **Two 409 sentences for the same public fence.** The resolver throws `Standalone booking cancellation is not supported yet` for Referral, unauthorized leadless, or a Booking missing Lead refs. The write then throws `Referral booking cancellation is not supported yet` when the Booking is not leadless and still lacks Lead refs. Do not silently merge the copy. The resolver is the next module.
 
@@ -161,9 +159,9 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 11. **Do not silently drop legacy Sheet Sync on remove.** Queued mode tombstones + `finalizeSheetSyncDelete`. Legacy deletes the Cancelled Deals row first (`deleteCancelledLeadFromSheets`), then Mongo, then inline `syncBookingAndSource` / `syncSourceLeadById`. Both **adapters** still branch. Keep the branch. Leftover remove erases the Cancellation last so sheet wipes settle if the final delete fails — keep that order.
 
-12. **`createCancelledLead` is no longer the HTTP path.** `POST /api/v1/cancelled-leads` is `createCancellation` → `begin` / `complete`. The leftover public function remains because the barrel still exports the whole story (and the owner event). Do not delete it “because the route moved.” Knowledge’s HTTP table still names the leftover function.
+12. **`createCancelledLead` is no longer the HTTP path.** `POST /api/v1/cancelled-leads` is `createCancellation` → `begin` / `complete`. The leftover public function remains because the barrel still exports the whole story (and its wrapper log). Do not delete it “because the route moved.” Knowledge’s HTTP table still names the leftover function.
 
-13. **`test_fail_after` is a Unit 27 seam.** The verified write can throw after the Booking claim, after the Cancellation insert, or after the Lead claim. `releaseOwnerCommands` maps those plus its own later beats. Do not remove the hooks so the story “reads cleaner.”
+13. **`test_fail_after` is a Unit 27 seam.** The verified write can throw after the Booking claim, after the Cancellation insert, or after the Lead claim. `officialCancellationWrite` maps those plus its own later beats; Booking Owner commands and compatibility Release delegate there. Do not remove the hooks so the story “reads cleaner.”
 
 14. **Booking-delete cascade is not this story.** `bookedLead.service.ts` may erase a linked Cancellation when the Booking is removed with `cascade`. That path does not call `removeThisCancellation`. Do not pull it in.
 
@@ -184,7 +182,7 @@ Add tests that name the operation. Do not add a test per helper.
 - Best Relocation `requiredSourceConnectionKey`: lead-attached must be `best_relocation_leads`; leadless must have a matching `createLeadlessBooking` execution or 400.
 - Pending `BookingLeadReconciliationCase` on that Booking is dismissed with `booking_cancelled`.
 - Snapshot: `customer_name` is populated `customer.full_name` only (not `booking.customer_name`). `agent` is `primaryAgentName`. `cancel_date` defaults to `timestamp`.
-- Leftover public path emits `cancellation.created` after sheets. Command path does **not**. Lock that until a separate change.
+- The public wrapper logs `cancellation.created` after sheets; a log is not an Operational Event.
 - Command path: body `ingestion_source` is overwritten from provenance. Leftover path honors the body flag.
 
 **Cancel a verified Booking**
@@ -193,7 +191,7 @@ Add tests that name the operation. Do not add a test per helper.
 - Lead present but `booked` no longer names this Booking → `GRANOT_IDENTITY_CONFLICT`.
 - No Lead (Referral) → Cancellation + Booking only; no Lead write.
 - `cancel_date` is official `YYYY-MM-DD` at UTC midnight. `customer_name` may fall back to `booking.customer_name`.
-- Does **not** persist Sheet Sync, dismiss an employee case, or record `cancellation.created`. The Release command owns those.
+- Does **not** persist Sheet Sync, dismiss an employee case, or perform the public wrapper logging. The Release command owns those.
 - `test_fail_after` still throws after booking / cancellation / lead.
 
 **Correct this Cancellation**
@@ -220,10 +218,14 @@ Do not re-test `resolveBookedLeadForCancellation` match ladders, `mirrorCancella
 - A `CancelledLeadService` class with `create` / `update` / `delete`.
 - Thirty two-line functions that only wrap `save` or `mirrorCancellationToLead`.
 - Moving this into a CRUD folder “for cleanliness.”
-- Breaking the before-commit / after-commit **seam**. Sheets and the leftover owner event must not sit inside the Mongo write.
+- Breaking the before-commit / after-commit **seam**. Sheet finalization and the wrapper log must not sit inside the Mongo write.
 - Teaching leftover `correctThisCancellation` the command no-op, or teaching the command to always write, so the two **adapters** “agree.”
 - Routing the verified write through the public resolver or the Lead-mirror helper so one cancel path “owns everything.”
 - Merging public Referral 409 into gated Release, or enabling a Release flag in this rename.
-- Dropping `test_fail_after`, or dropping the leftover `cancellation.created` event so knowledge “matches the command.”
+- Dropping `test_fail_after`, or changing the public wrapper logging so it “matches the command.”
 - Pulling the resolver, the mirror, Booking-delete cascade, or `confirmCancellation` policy into this file.
 - Writing a whole-folder `cancellations` recommendation in this pass.
+
+## Source-verified implementation constraints (2026-10-29)
+
+Both public and lifecycle-verified creates stamp immutable correlation snapshots from the surviving Booking through cancellationCorrelationSnapshots. Preserve job_no_snapshot, normalized_job_no_snapshot, lead_ref_snapshot and booking_created_at_snapshot; public customer_name remains populated customer.full_name while verified create can fall back to booking.customer_name. The verified primitive is called through officialCancellationWrite.ts, shared by live bookingOwnerCommands.ts and historical compatibility releaseOwnerCommands.ts; it is not evidence that the separate Release workflow is live. Cancellation delete clears cancelled refs but leaves Booking and its Record Link booking_ref in place. Canonical legacy-mode deletion removes Mongo inside the command and runs sheet cleanup in its returned finalizer; standalone legacy deletion runs sheet cleanup before Mongo deletion. Prove those distinct orders and immutable snapshot creation/update behavior.

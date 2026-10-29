@@ -1,9 +1,7 @@
 # Look Up The Newest Call Leads Any Clue Matches — operational story
 
 - Status: recommended
-- Service: `search` (Wave A, in-progress)
-- Pass: 3 of this service — `callLeadSearch.service.ts`
-- Remaining in this service: `callLeadBrowse.service.ts`
+- Service: `search`
 - Target: `src/services/search/callLeadSearch.service.ts`
 - Knowledge: `docs/knowledge/services/call-lead-search.md`. Distinct from scored Form naming: `docs/knowledge/services/form-lead-search.md`. Distinct from the Search desk: `docs/knowledge/services/lead-browse.md`. Distinct from Call writes: `docs/knowledge/services/call-lead.md`. Distinct from Book-This-Lead find: `docs/knowledge/services/bookings.md` (from-source). This checkout’s `CONTEXT.md` does not define Call Lead / Job Number / Duplicate Lead / Caller Match Key — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
 - Callers: `routes/v1.routes.ts` `POST /api/v1/call-leads/search` (legacy barrel `callLeadSearch.service.ts`). `bestRelocationSheetIngest/apply.ts` `findExistingEntity` for `create_call_lead` (HTTP; phone and/or job, limit 25; then exact job or phone+timestamp pick). Barrel: `search/index.ts`. `summarizeCallLead` has no other import site. Tests: none (`callLeadSearch.service.test.ts` missing). Zod: `searchCallLeadsSchema` is **not** covered in `v1.validation.test.ts` (knowledge says it is). Enrichment, booked-from-source, employee candidates, and Call browse do **not** import this file.
@@ -24,7 +22,7 @@ There is no second write operation. There is no `found` / `not_found` / `ambiguo
 
 ## Organization
 
-Keep one file. This is the screenplay for “look up Call Leads by any clue.” Browse filters, Form naming, booked-from-source find, and Best Relocation’s post-HTTP pick already live in deeper **modules**. Do not pull those in. Do not invent a `CallLeadSearchService` class. Do not invent a `begin` / `complete` **seam** — this is a read. Do not invent a Form-shaped verdict **seam** that has only one real adapter.
+Keep one file. This is the screenplay for “look up Call Leads by any clue.” Browse filters, Form naming, booked-from-source find, and historical external-ingest selection already live in deeper **modules**. Do not pull those in. Do not invent a `CallLeadSearchService` class. Do not invent a `begin` / `complete` **seam** — this is a read. Do not invent a Form-shaped verdict **seam** that has only one real adapter.
 
 Do not split this 118-line file by field. Phone, job number, email, and name are beats of one lookup. Do not split “one clause” vs `$or` into two files.
 
@@ -32,11 +30,11 @@ Do not split this 118-line file by field. Phone, job number, email, and name are
 
 | Keep exporting | Story name | Why the seam exists |
 |---|---|---|
-| `searchCallLeads` | `lookUpTheNewestCallLeadsAnyClueMatches` | public POST + Best Relocation HTTP existence check |
+| `searchCallLeads` | `lookUpTheNewestCallLeadsAnyClueMatches` | public POST |
 | `CallLeadSearchSummary` | `LookedUpCallLeadSummary` | route + ingest read the flat card (`job_no`, phones, raw `booked` / `cancelled`) |
 | `summarizeCallLead` | `summarizeTheLookedUpCallLead` | mapper; only this file and leftover barrels import it today |
 
-Keep the old names as one-line aliases until the v1 route (via the leftover barrel), Best Relocation HTTP, and `search/index.ts` migrate. Do not make callers learn `$or` / `$exists: false` / digit-flex as the domain language.
+Keep the old names as one-line aliases until the v1 route (via the leftover barrel), and `search/index.ts` migrate. Do not make callers learn `$or` / `$exists: false` / digit-flex as the domain language.
 
 **No class for the workflow.** The type that *does* earn a name is the flat list callers already consume — not a three-way status:
 
@@ -49,7 +47,7 @@ type LookedUpCallLeadSummary = {
 type LookedUpCallLeadPage = LookedUpCallLeadSummary[]
 ```
 
-That is the handoff from “we ORed the clues” to “here are the newest summaries.” Best Relocation then re-picks by exact `job_no` or phone digits + timestamp. Do **not** collapse that into `status: "found"` so “every search looks like Form search.”
+That is the handoff from “we ORed the clues” to “here are the newest summaries.” The retired Best Relocation external ingest must not be revived by this cleanup. Do **not** collapse that into `status: "found"` so “every search looks like Form search.”
 
 ## The file, as a story
 
@@ -105,7 +103,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 7. **Empty usable clues are an impossible id, not view-all.** `{ _id: { $exists: false } }` is the miss **seam**. Browse empty `{}` lists newest. Schema already requires a field, but first/last-only still reaches this miss. Do not return `find({})` so “empty search lists the desk.”
 
-8. **There is no score and no verdict.** Newest `createdAt` is the only order. Two equal clues on two leads both appear. Best Relocation’s HTTP client then re-picks by exact `job_no` or phone digits + timestamp — and also accepts a Form-shaped `{ matches, lead }` this file never returns. Do not teach this file `found` / `ambiguous` so ingest can drop its picker, and do not make ingest honor a verdict that does not exist.
+8. **There is no score and no verdict.** Newest `createdAt` is the only order. Two equal clues on two leads both appear. The historical external ingest used to re-pick by exact `job_no` or phone digits + timestamp, and accepted a Form-shaped `{ matches, lead }` this file never returns. Do not teach this file `found` / `ambiguous` so ingest can drop its picker, and do not make ingest honor a verdict that does not exist.
 
 9. **Duplicate Call Leads stay in.** No `include_duplicates` flag. Form naming quarantines unless asked. Enrichment `findFormLead` 404s Duplicate Form Leads. Do not add `{ duplicate: { $ne: true } }` so “search matches Form,” and do not add the flag in this rename.
 
@@ -137,7 +135,7 @@ There is no `callLeadSearch.service.test.ts`. Knowledge’s “schema tests live
 
 Do **not** add a test per helper (`foldTheClues`, `matchTheTypedJobNumberExactly`). Those names exist so the parent reads. If a helper test has to change when the helper is inlined, it was testing past the **interface**.
 
-Do **not** re-test Form `found` / `ambiguous`, Call browse `count` / chips, booked-from-source 409, or Best Relocation’s timestamp pick here. Do not add Zod first-name tests in this file — that gap lives on the schema.
+Do **not** re-test Form `found` / `ambiguous`, Call browse `count` / chips, booked-from-source 409, or the retired ingest’s timestamp pick here. Do not add Zod first-name tests in this file — that gap lives on the schema.
 
 ## What I would not do
 
@@ -149,4 +147,7 @@ Do **not** re-test Form `found` / `ambiguous`, Call browse `count` / chips, book
 - Switching `$or` to `$and`, or empty clues to view-all, so “search behaves like browse.”
 - Honoring `first_name` / `last_name`, or accepting 7-digit phones, so Zod or Form’s gate “wins.”
 - Extracting the pasted phone-flex regex into `leadBrowseShared.ts` in this pass.
-- Writing a whole-folder recommendation for `search`.
+
+## Current contact scope (2026-10-29)
+
+The shared `leadBrowseShared.ts` name/email/phone lists include top-level, immutable ingested and Granot contact snapshots. Both extension browse services use these lists for q and the dedicated contact filters; Call POST search uses the same Call aliases with its OR semantics (exact normalized phone or digit-flex raw-phone regex, exact folded email, unanchored name regex). Scored Form POST search still uses top-level submitted fields only. Search can find a snapshot contact while the returned summary/card continues showing live top-level fields. Keep that query/display distinction and do not widen processor identity or automatic booking matching from a browse refactor.

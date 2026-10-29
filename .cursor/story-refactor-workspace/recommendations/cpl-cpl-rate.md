@@ -1,16 +1,14 @@
 # Read The Leftover Fourteen-Slot CPL Book — operational story
 
 - Status: recommended
-- Service: `cpl` (Wave A, visited)
-- Pass: 1 of this service — `cplRate.service.ts`
-- Remaining in this service: none — the folder has one service module
+- Service: `cpl`
 - Target: `src/services/cpl/cplRate.service.ts`
 - Knowledge: `docs/knowledge/services/operations-registry.md` (`cplSchedule.ts` + `resolveCpl` are authority; Lead writes go through `leads/leadCplResolution.ts`). Lead snapshots: `docs/knowledge/services/form-lead.md` / `call-lead.md` (Registry periods, not `cpl.ts` / `getCplForSource`). Compatibility rule: `.cursor/rules/cpl-operations.mdc` (`cpl_rates` and embedded granularity CPL are read-only migration data). No dedicated Service file for this leftover book. This checkout’s `CONTEXT.md` does not define CPL — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `config/domain/cpl.ts` (`getCplRate` is the **second** try inside `getCplForSource`, after leftover nested `getCplForLeadSource` throws). `routes/v1.routes.ts` `handleCplRatesList` (`GET /api/v1/admin/cpl-rates` — v1 secret only; no Registry actor). Tests: `cplRate.service.test.ts` (list + 14-slot seed), `config/domain/cpl.test.ts` (`invalidateCplRateCache` + leftover-then-`cpl_rates` fallback). Inventory still lists a ghost `updateCplRate`. Live Owner snapshot is `GET /api/v1/admin/cpl/snapshot` → Registry periods — not these exports.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/config/domain/cpl.ts`, `src/routes/v1.routes.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: leftover nested Source Company prices vs leftover 14-slot `cpl_rates`; seed-then-cache vs Mongo-down checked-in defaults (do not remember the empty miss); leftover admin list vs Owner schedule snapshot
 - Split later (only if the file outgrows one sitting): keep one file — leftover slot read and leftover admin list are one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 
-`getCplRate` / `listCplRates` / `ensureCplRatesSeeded` are executor mechanics. The owner question is: *the old 14-slot CPL price list still sits in Mongo (`cpl_rates`). If leftover code asks what a company + channel (+ Best Relocation form Move Type) costs, write any missing slot from the checked-in defaults and read that book. If the leftover Source Company book already has nested prices, the leftover admin list shows those instead and never opens `cpl_rates`. This is not pricing a Lead. This is not the Owner schedule. There is no write here — `updateCplRate` is a ghost.*
+`getCplRate` / `listCplRates` / `ensureCplRatesSeeded` are executor mechanics. The owner question is: *the old 14-slot CPL price list still sits in Mongo (`cpl_rates`). If leftover code asks what a company + channel (+ Best Relocation form Move Type) costs, write any missing slot from the checked-in defaults and read that book. If the leftover Source Company book already has nested prices, the leftover admin list shows those instead and never opens `cpl_rates`. This is not pricing a Lead. This is not the Owner schedule. There is no Owner-edit operation here; missing default slots are still seeded into Mongo. `updateCplRate` is absent.*
 
 Lead pricing is `leads/leadCplResolution.ts`. Owner periods are `operationsRegistry/cplSchedule.ts`. Owner rewrite of prior Leads is `cplCorrections.ts`. Leftover nested match is `leadSourceCompanies/leadSourceCompany.service.ts`. Do not pull those in.
 
@@ -165,3 +163,7 @@ Do **not** add `updateCplRate` tests. Do not re-test `priceTheLead`, Registry sn
 - Turning seed into an upsert-merge, or caching the Mongo-down empty map.
 - Silently dropping `getCplForSource`’s leftover first try, or calling leftover CPL from Form/Call ingest.
 - Pulling `cplRateDefinitions.ts` or `getCplForSource` into this Wave A file.
+
+## Source-verified implementation constraints (2026-10-29)
+
+This compatibility read does perform Mongo writes when seeding missing labels with `$setOnInsert`; it has no Owner-edit export. Preserve cached/inflight loading and retry after failed load, nested-catalog precedence on list, unknown-label skipping, and no replacement of temporal Lead pricing with this fallback.

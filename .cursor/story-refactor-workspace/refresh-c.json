@@ -1,0 +1,1498 @@
+{
+  "reviewedAt": "2026-10-29",
+  "entries": [
+    {
+      "file": "moving-carriers-granot-carrier-code-seed.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/movingCarriers/granotCarrierCodeSeed.ts",
+        "docs/knowledge/services/tariff.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "historical-consolidation-planner.md"
+      ],
+      "validatedTarget": "src/services/movingCarriers/granotCarrierCodeSeed.ts"
+    },
+    {
+      "file": "moving-carriers-moving-carrier.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/movingCarriers/movingCarrier.service.ts",
+        "docs/knowledge/services/tariff.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/movingCarriers/movingCarrier.service.ts"
+    },
+    {
+      "file": "observability-admin-observability.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/adminObservability.service.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-email-notification.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/emailNotification.service.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-notification-digest.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/notificationDigest.service.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-notification-policy.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/notificationPolicy.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-operational-incident.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/operationalIncident.service.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-operational-reports.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/operationalReports.service.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "observability-record-operational-event.md",
+      "action": "removed",
+      "reason": "Retired target absent or Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/services/observability/recordOperationalEvent.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "operational-workbooks-registry.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/services/operationalWorkbooks/registry.ts",
+        "docs/index.md",
+        "src/services/operationalWorkbooks/registrations.ts"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationalWorkbooks/registry.ts"
+    },
+    {
+      "file": "operations-registry-catalog-registry.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/catalogRegistry.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "../../../docs/knowledge/services/agents-receiver-agent-crm-username.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/catalogRegistry.ts"
+    },
+    {
+      "file": "operations-registry-cpl-corrections.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/cplCorrections.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/cplCorrections.ts"
+    },
+    {
+      "file": "operations-registry-cpl-schedule.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/cplSchedule.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/cplSchedule.ts"
+    },
+    {
+      "file": "operations-registry-crm-source-outbound-sms.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/crmSourceOutboundSms.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "../../../docs/operations-registry-source-connections-owner-ui-specification.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/crmSourceOutboundSms.ts"
+    },
+    {
+      "file": "operations-registry-granot-automation-sources.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/granotAutomationSources.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationsRegistry/granotAutomationSources.ts"
+    },
+    {
+      "file": "operations-registry-granot-crm-source-projections.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/granotCrmSourceProjections.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "../../../docs/owner-daily-operations-and-intakes-reduced/issues/ODR-39.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/granotCrmSourceProjections.ts"
+    },
+    {
+      "file": "operations-registry-granot-crm-sources.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/granotCrmSources.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationsRegistry/granotCrmSources.ts"
+    },
+    {
+      "file": "operations-registry-label-mappings.md",
+      "action": "updated",
+      "reason": "Verified Registry telemetry and health behavior against current source; removed retired event aggregation claims.",
+      "evidence": [
+        "src/services/operationsRegistry/labelMappings.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/runtimeTelemetry.ts",
+        "src/services/operationsRegistry/queries/health.ts",
+        "src/services/operationsRegistry/queries/overview.ts"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/labelMappings.ts"
+    },
+    {
+      "file": "operations-registry-lead-source-setup.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/leadSourceSetup.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationsRegistry/leadSourceSetup.ts"
+    },
+    {
+      "file": "operations-registry-owner-granot-names.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/operationsRegistry/ownerGranotNames.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationsRegistry/ownerGranotNames.ts"
+    },
+    {
+      "file": "operations-registry-queries-changes.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/queries/changes.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/queries/changes.ts"
+    },
+    {
+      "file": "operations-registry-queries-health.md",
+      "action": "updated",
+      "reason": "Verified Registry telemetry and health behavior against current source; removed retired event aggregation claims.",
+      "evidence": [
+        "src/services/operationsRegistry/queries/health.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/runtimeTelemetry.ts",
+        "src/services/operationsRegistry/queries/overview.ts"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/queries/health.ts"
+    },
+    {
+      "file": "operations-registry-queries-lead-source-projection.md",
+      "action": "updated",
+      "reason": "Removed reference to the retired event-derived health finding.",
+      "evidence": [
+        "src/services/operationsRegistry/queries/leadSourceProjection.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationsRegistry/queries/leadSourceProjection.ts"
+    },
+    {
+      "file": "operations-registry-queries-overview.md",
+      "action": "updated",
+      "reason": "Verified Registry telemetry and health behavior against current source; removed retired event aggregation claims.",
+      "evidence": [
+        "src/services/operationsRegistry/queries/overview.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/runtimeTelemetry.ts",
+        "src/services/operationsRegistry/queries/health.ts"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/queries/overview.ts"
+    },
+    {
+      "file": "operations-registry-registry-audit.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/registryAudit.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/registryAudit.ts"
+    },
+    {
+      "file": "operations-registry-ring-central-registry.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/ringCentralRegistry.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/ringCentralRegistry.ts"
+    },
+    {
+      "file": "operations-registry-ring-central-snapshot.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/ringCentralSnapshot.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/ringCentralSnapshot.ts"
+    },
+    {
+      "file": "operations-registry-ring-central-validation.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/ringCentralValidation.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/ringCentralValidation.ts"
+    },
+    {
+      "file": "operations-registry-runtime-telemetry.md",
+      "action": "updated",
+      "reason": "Verified Registry telemetry and health behavior against current source; removed retired event aggregation claims.",
+      "evidence": [
+        "src/services/operationsRegistry/runtimeTelemetry.ts",
+        "docs/knowledge/services/operations-registry.md",
+        "src/services/operationsRegistry/queries/health.ts",
+        "src/services/operationsRegistry/queries/overview.ts"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/runtimeTelemetry.ts"
+    },
+    {
+      "file": "operations-registry-source-registry.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/sourceRegistry.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/sourceRegistry.ts"
+    },
+    {
+      "file": "operations-registry-source-resolution.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/operationsRegistry/sourceResolution.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "validatedTarget": "src/services/operationsRegistry/sourceResolution.ts"
+    },
+    {
+      "file": "operations-registry-trusted-actor.md",
+      "action": "updated",
+      "reason": "Removed retired event notifications or retired caller claims after checking the current target.",
+      "evidence": [
+        "src/services/operationsRegistry/trustedActor.ts",
+        "docs/knowledge/services/operations-registry.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/operationsRegistry/trustedActor.ts"
+    },
+    {
+      "file": "reconciliation-booked-call-lead-rows.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reconciliation/bookedCallLeadRows.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reconciliation/bookedCallLeadRows.ts"
+    },
+    {
+      "file": "reconciliation-booked-call-lead.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/reconciliation/bookedCallLeadReconciliation.service.ts",
+        "docs/knowledge/services/booked-call-lead-reconciliation.md"
+      ],
+      "validatedTarget": "src/services/reconciliation/bookedCallLeadReconciliation.service.ts"
+    },
+    {
+      "file": "reporting-canonical-reporting.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/query/canonicalReporting.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/query/canonicalReporting.ts"
+    },
+    {
+      "file": "reporting-cell-serialization.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/google/cellSerialization.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/google/cellSerialization.ts"
+    },
+    {
+      "file": "reporting-cleanup.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/cleanup.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/cleanup.ts"
+    },
+    {
+      "file": "reporting-delivery-engine.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/deliveryEngine.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/deliveryEngine.ts"
+    },
+    {
+      "file": "reporting-delivery-repository.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reportingDeliveryRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reportingDeliveryRepository.ts"
+    },
+    {
+      "file": "reporting-destination-contract.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/destinationContract.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/destinationContract.ts"
+    },
+    {
+      "file": "reporting-destination-identity.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/destinationIdentity.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/destinationIdentity.ts"
+    },
+    {
+      "file": "reporting-destination-lineage.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/destinationLineage.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/destinationLineage.ts"
+    },
+    {
+      "file": "reporting-destination-repository.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reportingDestinationRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reportingDestinationRepository.ts"
+    },
+    {
+      "file": "reporting-destination.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reportingDestination.service.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reportingDestination.service.ts"
+    },
+    {
+      "file": "reporting-drive-app-properties.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/google/driveAppProperties.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/google/driveAppProperties.ts"
+    },
+    {
+      "file": "reporting-execution-stream.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/executionStream.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/executionStream.ts"
+    },
+    {
+      "file": "reporting-janitor-completion.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/janitorCompletion.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/janitorCompletion.ts"
+    },
+    {
+      "file": "reporting-live-google-orchestration.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveGoogleOrchestration.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveGoogleOrchestration.ts"
+    },
+    {
+      "file": "reporting-live-picker-contract-runner.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/livePickerContractRunner.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/livePickerContractRunner.ts"
+    },
+    {
+      "file": "reporting-live-test-cleanup.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveTestCleanup.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveTestCleanup.ts"
+    },
+    {
+      "file": "reporting-live-test-denylist-proof.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveTestDenylistProof.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveTestDenylistProof.ts"
+    },
+    {
+      "file": "reporting-live-test-harness-run-registry.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveTestHarnessRunRegistry.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveTestHarnessRunRegistry.ts"
+    },
+    {
+      "file": "reporting-live-test-oauth-adapters.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveTestOAuthAdapters.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveTestOAuthAdapters.ts"
+    },
+    {
+      "file": "reporting-live-test-run-factory.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveTestRunFactory.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveTestRunFactory.ts"
+    },
+    {
+      "file": "reporting-live-test-security.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/liveTestSecurity.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/liveTestSecurity.ts"
+    },
+    {
+      "file": "reporting-manifest-page-adapter.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/manifestPageAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/manifestPageAdapter.ts"
+    },
+    {
+      "file": "reporting-manifest-repository.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reportingManifestRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reportingManifestRepository.ts"
+    },
+    {
+      "file": "reporting-ownership-marker.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/ownershipMarker.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/ownershipMarker.ts"
+    },
+    {
+      "file": "reporting-pii-safe-evidence.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/piiSafeEvidence.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/piiSafeEvidence.ts"
+    },
+    {
+      "file": "reporting-promotion-reservation.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/promotionReservation.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/promotionReservation.ts"
+    },
+    {
+      "file": "reporting-promotion.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/promotion.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/promotion.ts"
+    },
+    {
+      "file": "reporting-provider-failures.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/google/providerFailures.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/google/providerFailures.ts"
+    },
+    {
+      "file": "reporting-queue.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/reporting/queue.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/services/reporting/queue.ts"
+    },
+    {
+      "file": "reporting-registry-filters.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/registryFilters.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/registryFilters.ts"
+    },
+    {
+      "file": "reporting-reporting-drive-adapter.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/google/reportingDriveAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/google/reportingDriveAdapter.ts"
+    },
+    {
+      "file": "reporting-reporting-observability.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/reporting/reportingObservability.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/services/reporting/reportingObservability.ts"
+    },
+    {
+      "file": "reporting-reporting-sheets-adapter.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/google/reportingSheetsAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/google/reportingSheetsAdapter.ts"
+    },
+    {
+      "file": "reporting-reporting-worker.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reportingWorker.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reportingWorker.ts"
+    },
+    {
+      "file": "reporting-reporting.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reporting.service.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reporting.service.ts"
+    },
+    {
+      "file": "reporting-run-marker.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/google/runMarker.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/google/runMarker.ts"
+    },
+    {
+      "file": "reporting-run-repository.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/reportingRunRepository.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/reportingRunRepository.ts"
+    },
+    {
+      "file": "reporting-snapshot-adapter.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/snapshotAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/snapshotAdapter.ts"
+    },
+    {
+      "file": "reporting-synthetic-live-test-manifest.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/syntheticLiveTestManifest.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/syntheticLiveTestManifest.ts"
+    },
+    {
+      "file": "reporting-synthetic-manifest-page-adapter.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/syntheticManifestPageAdapter.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/syntheticManifestPageAdapter.ts"
+    },
+    {
+      "file": "reporting-test-artifact-janitor.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/reporting/live/testArtifactJanitor.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "validatedTarget": "src/services/reporting/live/testArtifactJanitor.ts"
+    },
+    {
+      "file": "reporting-timezone.md",
+      "action": "updated",
+      "reason": "Removed retired event notifications or retired caller claims after checking the current target.",
+      "evidence": [
+        "src/services/reporting/timezone.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "observability-notification-digest.md"
+      ],
+      "validatedTarget": "src/services/reporting/timezone.ts"
+    },
+    {
+      "file": "reporting-transient-retry-wrapper.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/reporting/live/transientRetryWrapper.ts",
+        "docs/knowledge/services/reporting.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/reporting/live/transientRetryWrapper.ts"
+    },
+    {
+      "file": "ringcentral-analytics-reconcile.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/analytics-reconcile.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/analytics-reconcile.service.ts"
+    },
+    {
+      "file": "ringcentral-auth.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/auth.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/auth.ts"
+    },
+    {
+      "file": "ringcentral-call-candidate-evaluator.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-candidate-evaluator.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-candidate-evaluator.ts"
+    },
+    {
+      "file": "ringcentral-call-candidate-store.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-candidate-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-candidate-store.ts"
+    },
+    {
+      "file": "ringcentral-call-lead-convergence.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/callLeadConvergence.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/callLeadConvergence.service.ts"
+    },
+    {
+      "file": "ringcentral-call-lead-ingest.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/ringcentral-call-lead-ingest.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/ringcentral-call-lead-ingest.service.ts"
+    },
+    {
+      "file": "ringcentral-call-log-sync-state-store.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-log-sync-state.store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-log-sync-state.store.ts"
+    },
+    {
+      "file": "ringcentral-call-log-sync.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-log-sync.service.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-log-sync.service.ts"
+    },
+    {
+      "file": "ringcentral-call-log-vetting.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-log-vetting.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-log-vetting.ts"
+    },
+    {
+      "file": "ringcentral-call-session-aggregator.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-session-aggregator.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-session-aggregator.ts"
+    },
+    {
+      "file": "ringcentral-call-session-store.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/call-session-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/call-session-store.ts"
+    },
+    {
+      "file": "ringcentral-duplicate-guard.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/ringcentral-duplicate-guard.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/ringcentral-duplicate-guard.ts"
+    },
+    {
+      "file": "ringcentral-processed-calls-store.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/processed-calls-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/processed-calls-store.ts"
+    },
+    {
+      "file": "ringcentral-shadow-call-leads-store.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/shadow-call-leads-store.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/shadow-call-leads-store.ts"
+    },
+    {
+      "file": "ringcentral-webhook-capture.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/webhook-capture.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/webhook-capture.ts"
+    },
+    {
+      "file": "ringcentral-webhook-subscriptions.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/ringcentral/webhook-subscriptions.ts",
+        "docs/knowledge/services/ringcentral-call-lead-qualification.md"
+      ],
+      "validatedTarget": "src/services/ringcentral/webhook-subscriptions.ts"
+    },
+    {
+      "file": "routes-best-relocation-ingestion-cron.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/routes/best-relocation-ingestion-cron.routes.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "routes-booking-reconciliation-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/booking-reconciliation-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/booking-reconciliation-cron.routes.ts"
+    },
+    {
+      "file": "routes-conversations-admin.md",
+      "action": "removed",
+      "reason": "Retired route is absent.",
+      "evidence": [
+        "src/routes/conversations-admin.routes.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "routes-cpl-correction-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/cpl-correction-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/cpl-correction-cron.routes.ts"
+    },
+    {
+      "file": "routes-extension-auth.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/extension-auth.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/routes/extension-auth.routes.ts"
+    },
+    {
+      "file": "routes-extension-granot-apply.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/extension-granot-apply.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/routes/extension-granot-apply.routes.ts"
+    },
+    {
+      "file": "routes-extension-users-admin.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/extension-users-admin.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "routes-conversations-admin.md",
+        "routes-conversations-admin.md"
+      ],
+      "validatedTarget": "src/routes/extension-users-admin.routes.ts"
+    },
+    {
+      "file": "routes-google-drive-oauth.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/google-drive-oauth.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/routes/google-drive-oauth.routes.ts"
+    },
+    {
+      "file": "routes-granot-automation-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/granot-automation-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/granot-automation-cron.routes.ts"
+    },
+    {
+      "file": "routes-granot-automation.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/granot-automation.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/granot-automation.routes.ts"
+    },
+    {
+      "file": "routes-granot-lifecycle-admin.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/granot-lifecycle-admin.routes.ts",
+        "src/routes/v1.routes.ts",
+        "docs/knowledge/granot-lifecycle/projections.md",
+        "docs/knowledge/granot-lifecycle/booking-reconciliation.md",
+        "docs/knowledge/granot-lifecycle/release-reconciliation.md",
+        ".cursor/rules/project-organization.mdc"
+      ],
+      "validatedTarget": "src/routes/granot-lifecycle-admin.routes.ts"
+    },
+    {
+      "file": "routes-granot-lifecycle-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/granot-lifecycle-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/granot-lifecycle-cron.routes.ts"
+    },
+    {
+      "file": "routes-granot-webhook.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/granot-webhook.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/routes/granot-webhook.routes.ts"
+    },
+    {
+      "file": "routes-ingestion.md",
+      "action": "removed",
+      "reason": "Best Relocation external sheet ingestion is not live.",
+      "evidence": [
+        "src/routes/ingestion.routes.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "routes-job-number-timeline-admin.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/job-number-timeline-admin.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/routes/job-number-timeline-admin.routes.ts"
+    },
+    {
+      "file": "routes-lead-messaging-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/lead-messaging-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/lead-messaging-cron.routes.ts"
+    },
+    {
+      "file": "routes-notification-cron.md",
+      "action": "removed",
+      "reason": "Retired route is absent.",
+      "evidence": [
+        "src/routes/notification-cron.routes.ts",
+        "docs/index.md"
+      ]
+    },
+    {
+      "file": "routes-reporting-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/reporting-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/reporting-cron.routes.ts"
+    },
+    {
+      "file": "routes-reporting.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/routes/reporting.routes.ts",
+        "docs/index.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/routes/reporting.routes.ts"
+    },
+    {
+      "file": "routes-ringcentral-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/ringcentral-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/ringcentral-cron.routes.ts"
+    },
+    {
+      "file": "routes-ringcentral-registry.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/ringcentral-registry.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/ringcentral-registry.routes.ts"
+    },
+    {
+      "file": "routes-ringcentral-webhook-local.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/ringcentral-webhook-local.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/ringcentral-webhook-local.routes.ts"
+    },
+    {
+      "file": "routes-ringcentral-webhook.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/ringcentral-webhook.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/ringcentral-webhook.routes.ts"
+    },
+    {
+      "file": "routes-sheet-sync-cron.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/sheet-sync-cron.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/sheet-sync-cron.routes.ts"
+    },
+    {
+      "file": "routes-tariff-adjustments.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/tariff-adjustments.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/tariff-adjustments.routes.ts"
+    },
+    {
+      "file": "routes-twilio-message-status.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/twilio-message-status.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/twilio-message-status.routes.ts"
+    },
+    {
+      "file": "routes-twilio-voice.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/twilio-voice.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/twilio-voice.routes.ts"
+    },
+    {
+      "file": "routes-v1.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/routes/v1.routes.ts",
+        "docs/index.md"
+      ],
+      "validatedTarget": "src/routes/v1.routes.ts"
+    },
+    {
+      "file": "search-call-lead-browse.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/search/callLeadBrowse.service.ts",
+        "docs/knowledge/services/lead-browse.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/search/callLeadBrowse.service.ts"
+    },
+    {
+      "file": "search-call-lead-search.md",
+      "action": "updated",
+      "reason": "Removed retired event notifications or retired caller claims after checking the current target.",
+      "evidence": [
+        "src/services/search/callLeadSearch.service.ts",
+        "docs/knowledge/services/lead-browse.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/search/callLeadSearch.service.ts"
+    },
+    {
+      "file": "search-form-lead-browse.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/search/formLeadBrowse.service.ts",
+        "docs/knowledge/services/lead-browse.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/search/formLeadBrowse.service.ts"
+    },
+    {
+      "file": "search-form-lead-search.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/services/search/formLeadSearch.service.ts",
+        "docs/knowledge/services/lead-browse.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/search/formLeadSearch.service.ts"
+    },
+    {
+      "file": "sheet-sync-batch-writer.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/drainer/batchWriter.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/drainer/batchWriter.ts"
+    },
+    {
+      "file": "sheet-sync-coordinator.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/sheetSyncCoordinator.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/sheetSyncCoordinator.ts"
+    },
+    {
+      "file": "sheet-sync-job-planner.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/drainer/jobPlanner.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/drainer/jobPlanner.ts"
+    },
+    {
+      "file": "sheet-sync-outbox.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/sheetSyncOutbox.service.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/sheetSyncOutbox.service.ts"
+    },
+    {
+      "file": "sheet-sync-persistence.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/sheetSyncPersistence.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/sheetSyncPersistence.ts"
+    },
+    {
+      "file": "sheet-sync-queue.md",
+      "action": "updated",
+      "reason": "Refreshed live target and retired-event or RingCentral drift; retained applicable specific checks.",
+      "evidence": [
+        "src/services/sheetSync/sheetSyncQueue.service.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "validatedTarget": "src/services/sheetSync/sheetSyncQueue.service.ts"
+    },
+    {
+      "file": "sheet-sync-quota-limiter.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/drainer/quotaLimiter.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/drainer/quotaLimiter.ts"
+    },
+    {
+      "file": "sheet-sync-run-sheet-sync-drain.md",
+      "action": "updated",
+      "reason": "Removed retired event notifications or retired caller claims after checking the current target.",
+      "evidence": [
+        "src/services/sheetSync/drainer/runSheetSyncDrain.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/drainer/runSheetSyncDrain.ts"
+    },
+    {
+      "file": "sheet-sync-source-lookup.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/sheetSyncSourceLookup.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/sheetSyncSourceLookup.ts"
+    },
+    {
+      "file": "sheet-sync-tab-row-map.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/sheetSync/drainer/tabRowMap.ts",
+        "docs/knowledge/services/sheet-sync.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/sheetSync/drainer/tabRowMap.ts"
+    },
+    {
+      "file": "tariff-append.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/tariff/append.ts",
+        "docs/knowledge/services/tariff.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/tariff/append.ts"
+    },
+    {
+      "file": "tariff-resolve-carrier.md",
+      "action": "updated",
+      "reason": "Corrected retired receipt endpoints, obsolete routes or stale Daily Operations and ingest claims against current code.",
+      "evidence": [
+        "src/services/tariff/resolveCarrier.ts",
+        "docs/knowledge/services/tariff.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/tariff/resolveCarrier.ts"
+    },
+    {
+      "file": "testimonials-testimonial-helpers.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/testimonials/testimonial.helpers.ts",
+        "docs/knowledge/services/testimonial.md"
+      ],
+      "navigationNormalized": true,
+      "linkRepairs": [
+        "historical-consolidation-date-parsing.md",
+        "historical-consolidation-stable-json.md"
+      ],
+      "validatedTarget": "src/services/testimonials/testimonial.helpers.ts"
+    },
+    {
+      "file": "testimonials-testimonial.md",
+      "action": "retained",
+      "reason": "Existing target and current exports reviewed against the domain context.",
+      "evidence": [
+        "src/services/testimonials/testimonial.service.ts",
+        "docs/knowledge/services/testimonial.md"
+      ],
+      "navigationNormalized": true,
+      "validatedTarget": "src/services/testimonials/testimonial.service.ts"
+    }
+  ]
+}

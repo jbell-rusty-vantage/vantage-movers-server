@@ -1,9 +1,7 @@
 # Read The Booked Jobs Row So We Can Match It — operational story
 
 - Status: recommended
-- Service: `reconciliation` (Wave A, visited)
-- Pass: 2 of this service — `bookedCallLeadRows.ts`
-- Remaining in this service: none — checklist complete
+- Service: `reconciliation`
 - Target: `src/services/reconciliation/bookedCallLeadRows.ts`
 - Knowledge: `docs/knowledge/services/booked-call-lead-reconciliation.md` (parse is step 1; `job_no` required; source required and must resolve; `section === "bookedJobs"` or `prior === "5"`; `book_date` is `MM/DD/YYYY` through `parseFloridaCalendarDate`). Distinct from the sibling screenplay: `recommendations/reconciliation-booked-call-lead.md`. Distinct from Follow Up row parse: `docs/knowledge/services/enrichment.md` + `recommendations/enrichment-call-lead-enrichment-rows.md`. Distinct from Call locate: `recommendations/leads-lead-location.md` (`deriveLocal` only). Distinct from Source Assignment: `recommendations/leads-source-company.md` (this file catches `ValidationError` and warns, then refuses if leftover label lookup also misses). CSV `job_no` required: `.cursor/rules/granot-crm-csv-s3-sync.mdc`. This checkout’s `CONTEXT.md` does not define Call Lead / Booking Chain / Job Number — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
 - Callers: `bookedCallLeadReconciliation.service.ts` (`parseBookedCallLeadRow` then `validateParsedRow`; `cleanValue` again on stored `job_no`). Barrel: `reconciliation/index.ts` re-exports the two parsed types only — not the functions. Direct HTTP / CSV / automation do **not** import this file; they hand `BookedCallLeadReconciliationRowInput` to the sibling. `granotCrmCsv/sync.service.ts` `toBookedPayload` spreads Follow Up cells plus `section: "bookedJobs"`, `prior`, and `book_date`; it omits `from`, `to`, and `granot_crm_username`. `granotHttpCollector` `mapBookedRow` sends those three. Zod lives in `validation/v1/operations.validation.ts`.
@@ -206,4 +204,3 @@ Do **not** re-test booking-then-open-call pick, source-fit, CSV write, Follow Up
 - Adding `from` / `to` / `granot_crm_username` to CSV `toBookedPayload`, or dropping those parses because CSV omits them.
 - Populating `source_cpl`, calling `cleanZip`, or accepting ISO `book_date` so “the Florida helper wins.”
 - Treating Follow Up parse or Owner receipt apply as this story.
-- Writing a whole-folder recommendation for `reconciliation`.

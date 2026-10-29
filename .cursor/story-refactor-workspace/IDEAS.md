@@ -1,5 +1,7 @@
 # Ideas
 
+> Historical September coordination evidence. The traversal is closed. Read [DIRECTIVE.md](DIRECTIVE.md) and [CATALOG-STATUS.md](CATALOG-STATUS.md) for the 2026-10-29 refresh. Counts, open items, next-module pointers and references below are not current implementation instructions.
+
 Park only. Never execute mid-run unless `NOW.md` says to.
 
 - Do not copy Sheet Sync’s queued-only route fence onto `lead-messaging-cron.routes.ts`. Leftover inline `pending` and `retry_scheduled` still must drain. Disabled is Wave A `{ claimed: 0, outcomes: { disabled: 1 } }`, not HTTP `{ skipped: true }`.

@@ -1,16 +1,12 @@
 # NOW
 
-- Date (UTC): 2026-09-14
-- Wave: B (`src/models/`)
-- Current service: `models` (in-progress)
-- Next module: `IngestionRun.ts`
-- Stock: visited 43 / in-progress 1 / unvisited 4
-- Recommendations on disk: 394 (`form-lead.md` through `models-external-data-connection.md`)
-- Lock: none
-- Lock holder:
-- Lock at:
-- Branch: `docs/story-refactor`
-- PR: https://github.com/jbell-rusty-vantage/vantage-movers-server/pull/206
-- Last session: story-models-external-data-connection-2026-09-14T2215Z
-
-Do not add narrative here. Stock detail lives in `TRAVERSAL.md`.
+- Date: 2026-10-29
+- Mode: second-pass source review complete; implementation has not started.
+- Latest evidence: [SECOND-PASS-2026-10-29.md](SECOND-PASS-2026-10-29.md).
+- Read first: [DIRECTIVE.md](DIRECTIVE.md), then [CATALOG-STATUS.md](CATALOG-STATUS.md).
+- Next implementation story, when requested: [Duplicate Lead](recommendations/leads-duplicate-lead.md).
+- Form Lead and Call Lead story names already exist. Review their current briefs rather than repeating the rename.
+- Do not resume `IngestionRun.ts`, retired Operational Events, Lead Conversations, historical consolidation or not-live Best Relocation ingest.
+- `TRAVERSAL.md` is historical, not the work queue. Its September count is not the active count.
+- Cleanup branch: existing `refactor/form-lead-tests`, as authorized; unrelated work was preserved.
+- Implementation progress and its parked test work remain in `../story-implementation-workspace/`.

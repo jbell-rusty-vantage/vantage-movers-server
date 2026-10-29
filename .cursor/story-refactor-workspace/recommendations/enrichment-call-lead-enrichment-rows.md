@@ -1,18 +1,16 @@
 # Read The Follow Up Row So We Can Match It — operational story
 
 - Status: recommended
-- Service: `enrichment` (Wave A, visited)
-- Pass: 2 of this service — `callLeadEnrichmentRows.ts`
-- Remaining in this service: none — checklist complete
+- Service: `enrichment`
 - Target: `src/services/enrichment/callLeadEnrichmentRows.ts`
 - Knowledge: `docs/knowledge/services/enrichment.md` (parse is step 1 of preview/match; unknown CRM source labels warn unless `VANTAGE_TEST_RUNNER=true`). Distinct from the sibling screenplay: `recommendations/enrichment-call-lead-enrichment.md`. Distinct from booked-jobs row parse: `docs/knowledge/services/booked-call-lead-reconciliation.md` + `src/services/reconciliation/bookedCallLeadRows.ts` (next service). Distinct from Call locate: `recommendations/leads-lead-location.md` (`deriveLocal` only). Distinct from Source Assignment: `recommendations/leads-source-company.md` (this file catches `ValidationError` and warns). CSV column gaps: `.cursor/rules/granot-crm-csv-s3-sync.mdc`. This checkout’s `CONTEXT.md` does not define Call Lead Enrichment / Call Lead / Job Number — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `callLeadEnrichment.service.ts` (`parseEnrichmentRow` then `validateParsedRow`; `cleanValue` again on stored `job_no`). Barrel: `enrichment/index.ts` re-exports the two parsed types only — not the functions. Direct HTTP / CSV / automation do **not** import this file; they hand `CallLeadEnrichmentRowInput` to the sibling. `granotCrmCsv/sync.service.ts` `toEnrichmentPayload` omits `from`, `to`, and `granot_crm_username`. `granotHttpCollector` `mapEnrichmentRow` sends those three. Zod lives in `validation/v1/operations.validation.ts`.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/enrichment/callLeadEnrichment.service.ts`, `src/services/enrichment/index.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: the cleaned row the sibling can match vs the invalid-reasons list when neither a normalized phone nor a Job Number remains; the same placeholder fold on a stored `job_no` so a CRM `n/a` and a stored `n/a` compare as empty
 - Split later (only if the file outgrows one sitting): keep one file — reading the row and refusing a blank identity are one sitting. Never `parse.ts` / `validate.ts`, and never `create.ts` / `update.ts` / `delete.ts`
 
 `parseEnrichmentRow` / `validateParsedRow` / `cleanValue` are executor mechanics. The owner question is: *someone pasted a Granot Follow Up row. After we fold placeholders, keep cities, look up states, try the catalog source, and normalize the phone — is there still a phone or a Job Number we can match with? This file never finds a Call Lead and never writes one.*
 
-Phone-then-job pick, source-fit, field diff, CSV write, Sheet Sync, booked-jobs row parse, Call locate, and Registry assignment already live in other **modules**. Do not pull those in.
+Job-first then phone fallback, source-fit, field diff, CSV write, Sheet Sync, booked-jobs row parse, Call locate, and Registry assignment already live in other **modules**. Do not pull those in.
 
 ## What this file actually does
 
@@ -147,7 +145,7 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 12. **Zip-book miss is a warning, not `not_found`.** Form locate writes `not_found`. This read leaves the state undefined and still classifies only when both states exist. Do not write `not_found` onto a Follow Up row so “Call and Form look the same.”
 
-13. **Leave sibling modules alone.** Phone-then-job pick, source-fit, job-number leave-as-is, CSV write, and Sheet Sync stay in `callLeadEnrichment.service.ts`. `parseGranotCityState` / `parseGranotZip` stay in `utils/location/granotLocation.ts`. `getStateCodeForZip` stays in the zip book. `deriveLocal` stays in `leadLocation`. `resolveLeadSourceAssignment` stays in `leadSourceCompany.ts`. `normalizePhoneNumberForMatch` stays in `utils/phone`.
+13. **Leave sibling modules alone.** Job-first then phone fallback, source-fit, job-number leave-as-is, CSV write, and Sheet Sync stay in `callLeadEnrichment.service.ts`. `parseGranotCityState` / `parseGranotZip` stay in `utils/location/granotLocation.ts`. `getStateCodeForZip` stays in the zip book. `deriveLocal` stays in `leadLocation`. `resolveLeadSourceAssignment` stays in `leadSourceCompany.ts`. `normalizePhoneNumberForMatch` stays in `utils/phone`.
 
 14. **Do not treat booked-jobs parse or `/enrichment/sync` as this story.** `bookedCallLeadRows.ts` is the next service’s first module. `applyExtensionGranotItem` is Wave A later. Do not write a whole-folder enrichment recommendation.
 
@@ -176,7 +174,7 @@ Replace the one-off with tests that name the operation. Inject Source Assignment
 
 Do **not** add a test per helper (`keepTheCityFromCityCommaState`, `keepAFiniteCubicFeetOrWarn`). Those names exist so the parent reads. If a helper test has to change when the helper is inlined, it was testing past the **interface**.
 
-Do **not** re-test phone-then-job pick, source-fit, CSV write, booked-jobs parse, `locateTheCallMove`, or `applyExtensionGranotItem` here. Do not add a test that CSV sends `from` / `to` / `granot_crm_username` — it must not, today.
+Do **not** re-test Job-first then phone fallback, source-fit, CSV write, booked-jobs parse, `locateTheCallMove`, or `applyExtensionGranotItem` here. Do not add a test that CSV sends `from` / `to` / `granot_crm_username` — it must not, today.
 
 ## What I would not do
 
@@ -189,4 +187,3 @@ Do **not** re-test phone-then-job pick, source-fit, CSV write, booked-jobs parse
 - Adding `from` / `to` / `granot_crm_username` to CSV `toEnrichmentPayload`, or dropping those parses because CSV omits them.
 - Populating `source_cpl`, calling `cleanZip`, or promoting unknown source to `invalid`.
 - Treating booked-jobs parse or Owner receipt apply as this story.
-- Writing a whole-folder recommendation for `enrichment`.

@@ -1,9 +1,7 @@
 # Show The Search Workspace Call Lead Cards — operational story
 
 - Status: recommended
-- Service: `search` (Wave A, visited)
-- Pass: 4 of this service — `callLeadBrowse.service.ts`
-- Remaining in this service: none
+- Service: `search`
 - Target: `src/services/search/callLeadBrowse.service.ts`
 - Knowledge: `docs/knowledge/services/lead-browse.md` (Form + Call share the same Service file). Distinct from any-clue Call lookup: `docs/knowledge/services/call-lead-search.md`. Distinct from scored Form naming: `docs/knowledge/services/form-lead-search.md`. Distinct from Call writes: `docs/knowledge/services/call-lead.md`. Distinct from admin list: `docs/knowledge/services/admin-search.md` + `admin/adminBrowse.service.ts`. Leftover last-200 list still lives on `findAllCallLeads` in `docs/knowledge/services/call-lead.md`. This checkout’s `CONTEXT.md` does not define Call Lead / Job Number / Duplicate Lead / Admin Dashboard (extension search workspace) — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
 - Callers: `routes/v1.routes.ts` `GET /api/v1/call-leads` (`handleBrowseCallLeads` → Zod `browseCallLeadsQuerySchema` → this export). Barrel: `search/index.ts`. Leftover `src/services/callLeadSearch.service.ts` re-exports lookup only — it does **not** re-export this file. Zod tests: `v1.validation.test.ts` (`q` + `job_no` only). No `callLeadBrowse.service.test.ts`. `findAllCallLeads`, `searchCallLeads`, `browseFormLeads`, `browseAdminResource("call-leads")`, and booked-from-source Job find do **not** import this file.
@@ -123,9 +121,9 @@ These are real smells the story names make obvious. Do not “just rename.”
 
 10. **`GET /call-leads` is this file. `findAllCallLeads` is not.** Leftover last-200 (`callLead.service.ts`, still in `v1.service.ts` / `leads/index.ts`, no HTTP caller) has no populate, no filters, no `count`. Knowledge `call-lead.md` still lists it. Do not point the GET at last-200, and do not delete `findAllCallLeads` in this rename.
 
-11. **Admin `browseAdminResource("call-leads")` is not this file.** Historical / combined scope, `past_move_date`, admin `duplicate` filter, export. This Search desk does not take `database_scope`. Do not teach this file that query.
+11. **Admin `browseAdminResource("call-leads")` is not this file.** Production-only reads, `past_move_date`, admin `duplicate` filter and export; historical/combined scope was retired. This Search desk does not take `database_scope`. Do not teach this file that query.
 
-12. **Call cards use `delivery_zip` and `job_no`.** Form cards use `destination_zip` and `quoted` + `ref_no`. The Call model still has required `quoted` (default false), plus `form_fill`, `created_on_unmatched`, `local`, and `normalized_phone_number`. This card omits all of those. Do not add `quoted` / `form_fill` so “the card looks complete,” and do not rename the Call zip “to match Form.”
+12. **Call cards use `delivery_zip` and `job_no`.** Form cards use `destination_zip` and `quoted` + `ref_no`. The Call model no longer has `quoted`; it retains `form_fill`, `created_on_unmatched`, `local` and `normalized_phone_number`. This card omits all of those. Do not add `quoted` / `form_fill` so “the card looks complete,” and do not rename the Call zip “to match Form.”
 
 13. **Zod Call browse tests are thinner than Form.** Form schema tests lock empty view-all defaults, standalone `source_company`, coerce `booked`/`limit`/`skip`, and unknown keys. Call schema tests only lock `q` + `job_no`. Knowledge `lead-browse.md` says schema coverage is `v1.validation.test.ts`. Do not add the missing Call Zod cases as a silent docs fix in this rename — that gap lives on the schema file.
 
@@ -169,4 +167,7 @@ Do **not** re-test Call-search `$or` / impossible-id empty / 8-digit phone drop,
 - Merging Form and Call browse into one `kind` switch, or moving receiver-username unwrap into `leadBrowseShared.ts`, in this pass.
 - Adding `quoted`, `form_fill`, `normalized_job_no`, historical scope, or `include_duplicates` so the card or admin list “looks complete.”
 - Switching contains Job to exact, or empty filters to no rows, so “browse behaves like search.”
-- Writing a whole-folder recommendation for `search`.
+
+## Current contact scope (2026-10-29)
+
+The shared `leadBrowseShared.ts` name/email/phone lists include top-level, immutable ingested and Granot contact snapshots. Both extension browse services use these lists for q and the dedicated contact filters; Call POST search uses the same Call aliases with its OR semantics (exact normalized phone or digit-flex raw-phone regex, exact folded email, unanchored name regex). Scored Form POST search still uses top-level submitted fields only. Search can find a snapshot contact while the returned summary/card continues showing live top-level fields. Keep that query/display distinction and do not widen processor identity or automatic booking matching from a browse refactor.

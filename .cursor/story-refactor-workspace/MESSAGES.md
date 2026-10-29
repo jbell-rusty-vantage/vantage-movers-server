@@ -1,10 +1,33 @@
 # Messages
 
+## 2026-10-29 | to: next-run | from: second-source-pass | kind: next
+
+Second owner-requested review complete. All **338 active briefs** received a second source review: **217 corrected or clarified**, **121 checked without further correction**. All **56 prior removals** were rechecked and retained. Read SECOND-PASS-2026-10-29.md, CATALOG-STATUS.md and the per-file second-pass audits. First-pass labels are historical triage. Source checks did not execute parity tests. No runtime edits or implementation started; do not revive old traversal or removed workflows. Current coverage gaps are documented separately.
+
+
+## 2026-10-29 | to: next-run | from: catalog-refresh | kind: next
+
+Owner-requested maintenance complete. 394 original briefs: **56 removed**, **242 substantively refreshed**, **96 retained as guidance**. **338 active briefs remain**. Read DIRECTIVE.md, CATALOG-STATUS.md and REFRESH-2026-10-29.md. Evidence is in refresh-a/b/c.json. This was not implementation or runtime qualification. Do not resume traversal or revive removed workflows. Duplicate Lead remains next when requested; unrelated Form Lead test work was preserved.
+
+
 Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-10-29T2115Z | to: next-run | from: clean-code-directive | kind: next
+
+The September traversal is closed. Read `DIRECTIVE.md` and `CATALOG-STATUS.md` before any recommendation.
+
+1. Do not write another recommendation. Do not open `IngestionRun.ts`.
+2. Drop Operational Events, Lead Conversations, and historical consolidation. The Operations Registry stays.
+3. Best Relocation external sheet ingest is not live. Do not implement it or enable it.
+4. Next implementation story, when the owner says start: `leads-duplicate-lead`.
+5. Form Lead and Call Lead story names are already on `origin/main`. Do not rename them again.
+6. No outcome change without owner approval. Re-read the live file first.
+
 ## 2026-09-14T2215Z | to: next-run | from: story-models-external-data-connection-2026-09-14T2215Z | kind: next
+
+Superseded by the 2026-10-29 directive. Do not follow the `IngestionRun.ts` instruction below.
 
 `models` is **in-progress**. `ExternalDataConnection.ts` is recommended. Next module: **`IngestionRun.ts`**. Stay on `models`. Do not open `validation/` / `config/domain/` / `middleware/` / `auth/`.
 

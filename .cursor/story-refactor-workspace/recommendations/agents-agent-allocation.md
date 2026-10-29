@@ -1,12 +1,10 @@
 # Name Who Shares This Booking's Binder — operational story
 
 - Status: recommended
-- Service: `agents` (Wave A, in-progress)
-- Pass: 1 of this service — `agentAllocation.service.ts`
-- Remaining in this service: `receiverAgentCrmUsername.ts`
+- Service: `agents`
 - Target: `src/services/agents/agentAllocation.service.ts`
 - Knowledge: `docs/knowledge/services/agent-allocation.md` (name resolve, even-cent Binder split, snapshot on the Booking). Booking callers are also in `docs/knowledge/services/bookings.md`. Owner-id split: `docs/granot-lead-lifecycle/owner-booking-intake-and-lead-attachment-specification.md` §5. Cancellation snapshot: `docs/knowledge/services/cancelled-lead.md`. Catalog lookup: `docs/knowledge/services/catalog.md`. This checkout’s `CONTEXT.md` does not define Agent / Binder / Agent Allocation — do not invent a glossary copy. `docs/adr/` is absent here — do not invent ADR copies.
-- Callers: `bookedLead.service.ts` (`resolve` / `patch` / `agree total` / Best Relocation receiver stamp), `bookedLeadFromSource.service.ts` (form-name derive only), `referralBooking.service.ts` / `leadlessBooking.service.ts` / `employeeBookings/employeeBookingPreparation.ts` (derive then resolve), `cancelledLead.service.ts` (`primaryAgentName`), `granotLifecycle/{bookingConfirmation,bookingOwnerCommands,referralBooking,releaseOwnerCommands}.ts` and `domainCommands/bookings.ts` (Owner ids). Barrel: `agents/index.ts`. Tests: `agentAllocation.service.test.ts`.
+- Callers: Resolved direct relative import/re-export sites in `src/`, `api/` and `scripts/` (includes type-only imports; tests excluded): `src/services/agents/index.ts`. Indirect facade/barrel consumers remain callers of those facades.
 - Seams callers need: form-name derive vs Owner-id official; catalog remember stays **outside** the Booking transaction; `includeInactive` is Best Relocation only; `officialBookingAgentIds` so Owner commands can load active catalog rows **inside** their own transaction; patch vs replace (replace lives in Book This Lead)
 - Split later (only if the file outgrows one sitting): keep one file — this is already one sitting. Never `create.ts` / `update.ts` / `delete.ts`
 
@@ -224,3 +222,7 @@ Do not re-test Book This Lead ignore / rebook / insert, Owner Record Link CAS, R
 - Pulling `receiverAgentCrmUsername.ts`, catalog Registry writes, Book This Lead, or Best Relocation sheet parsing into this file.
 - Writing a whole-folder `agents` recommendation in this pass.
 - Silently merging form-name and Owner-id adapters, or moving replace / warning build out of Book This Lead.
+
+## Source-verified implementation constraints (2026-10-29)
+
+Preserve the precise binder tolerance: `resolveTotalBinderAmount` rejects absolute difference >= 0.001 (including the boundary), not only greater than 0.001 as its JSDoc says. Derive one-agent and two-agent amounts from rounded integer cents; the primary retains the odd cent. The receiver helper returns an attribution object and does not save a Lead. Prove exact tolerance boundary and returned-object/no-overwrite behavior before renaming.
