@@ -32,6 +32,8 @@ export type DeskLeadFacts = Readonly<{
   created_on_unmatched: boolean;
   /** Call Lead Form Fill flag: neither excludes nor merges (P05h). */
   form_fill: boolean;
+  /** Call Leads only: the Form Lead whose Granot job this Call Lead mirrors (`granot_form_sibling`); absent = none. */
+  form_sibling_lead_id?: string | null;
   receiver_agent_id: string | null;
   job_no: string | null;
   normalized_job_no: string | null;
@@ -65,6 +67,7 @@ export const DESK_LEAD_PROJECTION = {
   no_sync: 1,
   created_on_unmatched: 1,
   form_fill: 1,
+  "granot_form_sibling.form_lead_id": 1,
   receiver_agent: 1,
   job_no: 1,
   normalized_job_no: 1,
@@ -112,6 +115,7 @@ export function toDeskLeadFacts(model: SalesOutreachLeadModel, raw: RawLead): De
     no_sync: raw.no_sync === true,
     created_on_unmatched: raw.created_on_unmatched === true,
     form_fill: raw.form_fill === true,
+    form_sibling_lead_id: model === "CallLead" ? id((raw.granot_form_sibling as { form_lead_id?: unknown } | null | undefined)?.form_lead_id) : null,
     receiver_agent_id: id(raw.receiver_agent),
     job_no: str(raw.job_no),
     normalized_job_no: str(raw.normalized_job_no),

@@ -166,3 +166,25 @@ describe("Owner 2026-10-28: a Call Lead needs a Job Number for a cadence; a Form
     assert.deepEqual(store.subjects[0]!.review_reasons, []);
   });
 });
+
+describe("Owner 2026-10-28: a Call Lead mirroring its Form Lead's job is the same customer", () => {
+  test("it is excluded (form_lead_holds_job); closures still come first", () => {
+    const facts = leadFacts({ model: "CallLead", form_sibling_lead_id: "650000000000000000000010" });
+    assert.deepEqual(evaluateDeskEligibility({ kind: "lead", facts }), { outcome: "excluded", reason: "form_lead_holds_job" });
+    assert.deepEqual(evaluateDeskEligibility({ kind: "lead", facts: { ...facts, booked_id: "b1" } }), { outcome: "closed", reason: "official_booking" });
+  });
+
+  test("the Form Lead is not held as ambiguous because its Call sibling carries the same job", async () => {
+    const store = new MemoryDeskSubjectStore();
+    const config = deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: "2026-10-01T00:00:00.000Z" } });
+    const job = { job_no: "P5562894", normalized_job_no: "P5562894" };
+    const form = store.addLead(leadFacts({ ...job }));
+    const call = store.addLead(leadFacts({ model: "CallLead", ...job, form_sibling_lead_id: form.ref.id }));
+    await refreshLeadForOutreach(form.ref, config, new Date("2026-10-01T15:00:00Z"), store, fakeSession);
+    const refused = await refreshLeadForOutreach(call.ref, config, new Date("2026-10-01T15:00:00Z"), store, fakeSession);
+    assert.equal(refused.reason, "excluded:form_lead_holds_job");
+    assert.equal(store.subjects.length, 1);
+    assert.equal(store.subjects[0]!.status, "active");
+    assert.deepEqual(store.subjects[0]!.review_reasons, []);
+  });
+});

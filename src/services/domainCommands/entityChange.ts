@@ -142,6 +142,7 @@ export const FORM_LEAD_CHANGE_PATHS = [
 ] as const;
 
 export const CALL_LEAD_CHANGE_PATHS = [
+  "granot_form_sibling",
   "quoted",
   "cubic_feet",
   "name",

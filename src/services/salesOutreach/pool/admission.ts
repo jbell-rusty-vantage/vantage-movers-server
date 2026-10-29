@@ -92,7 +92,8 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
       { job_no: { $type: "string" } },
     ] }, { session: session ?? undefined, projection: { lead_ref: 1, normalized_job_no: 1, job_no: 1 } }).toArray(),
     () => getFormLeadModel().find({ duplicate: { $ne: true }, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
-    () => getCallLeadModel().find({ duplicate: { $ne: true }, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
+    // A Call Lead mirroring its Form Lead's job (`granot_form_sibling`) is the same customer, not a second holder.
+    () => getCallLeadModel().find({ duplicate: { $ne: true }, granot_form_sibling: null, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
     () => getGranotObservationModel().find({ _id: { $in: observationIds } }, { receipt_id: 1, captured_at: 1, identity: 1, priority: 1, normalization_result: 1 }).session(session).lean(),
     () => getSynchronizationDecisionModel().find({ observation_id: { $in: observationIds } }, { observation_id: 1, execution_mode: 1, outcome: 1, target: 1, source_scope: 1 }).sort({ attempt: -1 }).session(session).lean(),
   ], session);

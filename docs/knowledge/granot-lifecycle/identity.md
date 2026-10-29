@@ -44,6 +44,10 @@ Successful `source_scoped_lead` policy with Source Company, Source Granularity, 
 
 `referral_booking` returns `outcome: "unmatched"`, `reason_code: "creation_policy_observation_only"`, `referral_leadless=true`, no Lead ladder, and no Lead search.
 
+## Form sibling update (after the ladder, 2026-10-28)
+
+The ladders stay per lane: a Form-source row searches only Form Leads, a Call-source row only Call Leads. After a Form Lead result (`applied`, `linked`, `created` or `already_current`, live writes only), `processor.ts` runs `callLeadFormSibling.ts` `mirrorFormLeadToCallSibling`. It mirrors the job, priority and receiver onto the same customer's qualified Call Lead and stamps `granot_form_sibling`. The Call Lead is found by an equivalent job, or by phone within the same Lead Source Company and 45 days; there must be exactly one non-duplicate Call Lead that is not a booking anchor. It is a separate canonical command: it writes no Decision, no Record Link, no Form Lead and no `last_accepted_granot_observation`, and it creates no Lead. The Calls row updates in place only when one exists. Booking intake prefers the Form Lead for a shared job (`employeeBookings/leadMatchEvaluator.ts` `preferFormLeadForSharedJob`). Status and open work: workspace `job-number-pending-investigation/FORM-SIBLING-UPDATE.md`.
+
 ## Form Lead ladder
 
 1. Active `GranotRecordLink` by normalized Job Number.

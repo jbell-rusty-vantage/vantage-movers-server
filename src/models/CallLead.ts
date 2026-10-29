@@ -159,6 +159,20 @@ const CallLeadSchema = new Schema(
     receiver_agent_source_value: { type: String, trim: true },
     receiver_agent_set_at: { type: Date },
     sheet_sync: { type: [sheetSyncSchema], default: [] },
+    // The Form Lead of the same customer whose Granot job this Call Lead mirrors (Owner 2026-10-28;
+    // `granotLifecycle/callLeadFormSibling.ts`). Set only by that update: the Form Lead stays the job's
+    // Record Link owner and the preferred booking anchor, and the desk works the pair through it.
+    granot_form_sibling: {
+      type: new Schema(
+        {
+          form_lead_id: { type: Schema.Types.ObjectId, ref: "FormLead", required: true },
+          normalized_job_no: { type: String, required: true, trim: true },
+          basis: { type: String, required: true, enum: ["job_no", "phone_source_company"] },
+          linked_at: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+    },
     ...callLeadProvenanceSchemaFields,
     ...aggregateRevisionSchemaFields,
   },

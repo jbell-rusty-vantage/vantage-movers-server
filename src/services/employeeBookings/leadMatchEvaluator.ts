@@ -11,12 +11,14 @@ import type {
 
 export async function evaluateEmployeeBookingMatch(
   submission: PreparedEmployeeBookingSubmission,
-  candidates: EvaluatedLeadCandidate[],
+  allCandidates: EvaluatedLeadCandidate[],
   hasCandidateOverflow = false,
 ): Promise<EmployeeBookingMatchOutcome> {
   const config = getEmployeeBookingMatchingConfig();
+  const shared = preferFormLeadForSharedJob(allCandidates);
+  const candidates = shared ?? allCandidates;
   const preferredModel =
-    submission.sourceAssignment.channel === "form" ? "FormLead" : "CallLead";
+    shared || submission.sourceAssignment.channel === "form" ? "FormLead" : "CallLead";
 
   const identityConflict = detectIdentityConflict(submission, candidates);
   if (identityConflict) {
@@ -285,4 +287,27 @@ function pending(
     reason,
     candidates,
   };
+}
+
+/**
+ * Owner rule 2026-10-28: a Form Lead and a qualified Call Lead may hold the same Job (one customer, two
+ * origins; the Granot Form sibling update copies the job onto the Call Lead). When exactly one Form Lead
+ * matched the submission's job, every Call Lead that also matched by job is set aside and the Form Lead
+ * is the preferred anchor; the Form candidate carries `call_lead_shares_job` so the case shows why.
+ * Returns null when the job is not shared that way (two Form Leads on one job stay `multiple_matches`).
+ */
+export function preferFormLeadForSharedJob(
+  candidates: readonly EvaluatedLeadCandidate[],
+): EvaluatedLeadCandidate[] | null {
+  const byJob = (model: EvaluatedLeadCandidate["leadModel"]) =>
+    candidates.filter((candidate) => candidate.leadModel === model && candidate.matchMethods.includes("job_no"));
+  const forms = byJob("FormLead");
+  const calls = byJob("CallLead");
+  if (forms.length !== 1 || calls.length === 0) return null;
+  const set = new Set(calls);
+  return candidates
+    .filter((candidate) => !set.has(candidate))
+    .map((candidate) =>
+      candidate === forms[0] ? { ...candidate, warnings: [...candidate.warnings, "call_lead_shares_job"] } : candidate,
+    );
 }

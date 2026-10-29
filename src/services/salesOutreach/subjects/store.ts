@@ -277,7 +277,8 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
     if (!unique.length) return counts;
     for (const model of ["FormLead", "CallLead"] as const) {
       const rows = await (leadModel(model) as mongoose.Model<unknown>)
-        .find({ normalized_job_no: { $in: unique }, duplicate: { $ne: true } }, { normalized_job_no: 1 })
+        // A Call Lead mirroring its Form Lead's job is the same customer, not a second holder.
+        .find({ normalized_job_no: { $in: unique }, duplicate: { $ne: true }, ...(model === "CallLead" ? { granot_form_sibling: null } : {}) }, { normalized_job_no: 1 })
         .session(session)
         .lean();
       for (const row of rows as Array<{ normalized_job_no?: string }>)

@@ -102,6 +102,33 @@ test("evaluateEmployeeBookingMatch auto-links a unique Form Lead Job Number on f
   }
 });
 
+test("evaluateEmployeeBookingMatch prefers the Form Lead when a Form Lead and a Call Lead share the Job Number (either channel)", async () => {
+  const form = candidate({ leadId: "64c0f47e4d8b0e5555555555", leadModel: "FormLead", confidence: "high", matchMethods: ["job_no"] });
+  const call = candidate({ leadId: "64c0f47e4d8b0e6666666666", leadModel: "CallLead", confidence: "high", matchMethods: ["job_no", "phone"] });
+  for (const submission of [formSubmission, callSubmission]) {
+    const result = await evaluateEmployeeBookingMatch(submission, [form, call]);
+    assert.equal(result.kind, "linked");
+    if (result.kind === "linked") {
+      assert.equal(result.leadModel, "FormLead");
+      assert.equal(result.leadId, "64c0f47e4d8b0e5555555555");
+      assert.equal(result.rule, "form_job_no_exact");
+      assert.deepEqual(result.candidates.map((c) => c.leadModel), ["FormLead"]);
+      assert.ok(result.candidates[0]!.warnings.includes("call_lead_shares_job"));
+    }
+  }
+});
+
+test("evaluateEmployeeBookingMatch keeps two Form Leads plus a Call Lead on one Job Number as multiple_matches", async () => {
+  const candidates: EvaluatedLeadCandidate[] = [
+    candidate({ leadId: "64c0f47e4d8b0e7777777777", leadModel: "FormLead", matchMethods: ["job_no"] }),
+    candidate({ leadId: "64c0f47e4d8b0e8888888888", leadModel: "FormLead", matchMethods: ["job_no"] }),
+    candidate({ leadId: "64c0f47e4d8b0e9999999999", leadModel: "CallLead", matchMethods: ["job_no"] }),
+  ];
+  const result = await evaluateEmployeeBookingMatch(formSubmission, candidates);
+  assert.equal(result.kind, "pending");
+  if (result.kind === "pending") assert.equal(result.reason, "multiple_matches");
+});
+
 test("evaluateEmployeeBookingMatch treats two Call Leads with the same Job Number as multiple_matches", async () => {
   const candidates: EvaluatedLeadCandidate[] = [
     candidate({

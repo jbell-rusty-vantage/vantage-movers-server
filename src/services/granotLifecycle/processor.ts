@@ -29,6 +29,7 @@ import {
 } from "../domainCommands/types";
 import { createGranotWebhookInitiator } from "../durableWork/actors";
 import { wakeLeadLinksAfterChange } from "../numberActivity/leadLinkJobs";
+import { mirrorFormLeadToCallSibling } from "./callLeadFormSibling";
 import { DecisionIntegrityError, ProcessingDisabledError } from "./errors";
 import {
   createLeadFromGranot,
@@ -197,6 +198,8 @@ export type GranotLifecycleProcessorDeps = {
   withTransaction?: <T>(fn: (session: ClientSession) => Promise<T>) => Promise<T>;
   /** Seam: post-commit All Numbers lead-link wake-up after a Lead EntityChange (default `wakeLeadLinksAfterChange`). */
   wakeLeadLinks?: (result: { observation_id: string; target?: EntityRef }) => Promise<unknown>;
+  /** Seam: the Granot Form sibling update after a Form Lead result (default `mirrorFormLeadToCallSibling`). */
+  mirrorFormSibling?: (formLeadId: string, input: { run_id: string; observation_id: string }) => Promise<unknown>;
   /** Seam: how long receipt processing waits for the wake-up (default `LEAD_LINK_WAKE_TIMEOUT_MS`). */
   wakeLeadLinksTimeoutMs?: number;
   bookingReconciliationStore?: BookingReconciliationPersistenceStore;
@@ -233,6 +236,16 @@ export function createGranotObservationProcessor(
       // The default wakes the All Numbers lead link of the observation's Lead changes.
       await boundedLeadLinkWake(() => (deps.wakeLeadLinks ?? wakeLeadLinksAfterChange)(result), result.observation_id,
         deps.wakeLeadLinksTimeoutMs ?? LEAD_LINK_WAKE_TIMEOUT_MS);
+      // Owner 2026-10-28: mirror the Form Lead's job, priority and receiver onto the qualified Call Lead of
+      // the same customer (`callLeadFormSibling.ts`). Same bound and never-throw rule as the wake-up; a
+      // missed run heals on the job's next observation or the backfill.
+      const target = result.target;
+      const flags = deps.flags ?? getGranotLifecycleFlags();
+      if (target?.model === "FormLead" && FORM_SIBLING_OUTCOMES.has(result.outcome) && flags.lead_writes_enabled && !flags.shadow_mode) {
+        await boundedLeadLinkWake(() => (deps.mirrorFormSibling ?? mirrorFormLeadToCallSibling)(target.id,
+          { run_id: "granot-processor", observation_id: result.observation_id }), result.observation_id,
+        deps.wakeLeadLinksTimeoutMs ?? LEAD_LINK_WAKE_TIMEOUT_MS, "form_sibling_update");
+      }
       return result;
     },
   };
@@ -247,10 +260,14 @@ export function createGranotObservationProcessor(
  */
 export const LEAD_LINK_WAKE_TIMEOUT_MS = 2_000;
 
+/** Form Lead results after which its Call sibling is brought up to date (fresh and replayed alike). */
+const FORM_SIBLING_OUTCOMES: ReadonlySet<SynchronizationOutcome> = new Set<SynchronizationOutcome>(["applied", "linked", "created", "already_current"]);
+
 /** Waits for `wake` at most `timeoutMs`; never throws and never rejects. Resolves "done" | "timeout" | "failed". */
-export async function boundedLeadLinkWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number): Promise<"done" | "timeout" | "failed"> {
+export async function boundedLeadLinkWake(wake: () => Promise<unknown>, observationId: string, timeoutMs: number,
+  step = "lead_link_wakeup"): Promise<"done" | "timeout" | "failed"> {
   let timer: NodeJS.Timeout | undefined;
-  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.lead_link_wakeup_${outcome}`,
+  const log = (outcome: "timeout" | "failed", error?: unknown) => logger.warn({ msg: `granot_lifecycle.${step}_${outcome}`,
     observationId: maskLifecycleId(observationId), timeoutMs, errorName: error instanceof Error ? error.name : null });
   const running = Promise.resolve().then(wake).then(() => "done" as const, (error: unknown) => { log("failed", error); return "failed" as const; });
   const timeout = new Promise<"timeout">(resolve => { timer = setTimeout(() => resolve("timeout"), Math.max(0, timeoutMs)); timer.unref?.(); });

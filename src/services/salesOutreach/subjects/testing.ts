@@ -78,7 +78,7 @@ export class MemoryDeskSubjectStore implements DeskSubjectStore {
   async jobNumberLeadCounts(jobNumbers: readonly string[]) {
     const counts = new Map<string, number>();
     for (const lead of this.leads.values())
-      if (lead.normalized_job_no && !lead.duplicate && jobNumbers.includes(lead.normalized_job_no))
+      if (lead.normalized_job_no && !lead.duplicate && !lead.form_sibling_lead_id && jobNumbers.includes(lead.normalized_job_no))
         counts.set(lead.normalized_job_no, (counts.get(lead.normalized_job_no) ?? 0) + 1);
     return counts;
   }
