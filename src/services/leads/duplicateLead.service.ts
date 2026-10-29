@@ -30,9 +30,12 @@ export type ExactGranularityMatchScope = LeadSourceMatchScope & {
 const FORM_DUPLICATE_CUTOFF = new Date("2026-04-30T04:00:00.000Z");
 
 /**
- * Resolves whether the supplied phone or email already exists for a
- * non-duplicate form lead within the same source company, returning the match
- * basis and matched lead IDs so callers can record richer operational events.
+ * Classifies a Duplicate Form Lead: an earlier non-duplicate Form Lead with
+ * the same exact Source Granularity, in the cutoff cohort, whose email or
+ * phone matches. Returns the match basis and matched lead IDs.
+ *
+ * Missing contact returns a non-match before any read. Contact without
+ * `sourceGranularityId` throws. This query does not filter on Source Company.
  *
  * Phone matching uses `buildPhoneRegex` as a Mongo-side sieve and then
  * re-verifies in memory via `normalizePhoneNumberForMatch`.
@@ -62,8 +65,8 @@ export async function findDuplicateFormLeadMatch(
     ? { $lt: eventTimestamp }
     : { $gte: FORM_DUPLICATE_CUTOFF, $lt: eventTimestamp };
 
-  // Compose with $and so the source-scope $or (lead_source_company | source_company)
-  // is not overwritten by the email/phone $or.
+  // $and keeps the granularity, duplicate, cohort, and email/phone clauses
+  // from overwriting one another.
   const candidates = await FormLead.find({
     $and: [
       { source_granularity_id: sourceScope.sourceGranularityId },
@@ -108,9 +111,8 @@ export async function findDuplicateFormLeadMatch(
 }
 
 /**
- * Returns `true` when the supplied phone or email already exists for a
- * non-duplicate form lead within the same source company. Compatibility
- * wrapper around `findDuplicateFormLeadMatch`.
+ * Boolean wrapper around `findDuplicateFormLeadMatch`. Same exact Source
+ * Granularity rule. Returns whether that classification matched.
  */
 export async function isDuplicateFormLead(
   sourceCompany: ExactGranularityMatchScope,
@@ -123,9 +125,10 @@ export async function isDuplicateFormLead(
 }
 
 /**
- * Returns `true` when a non-duplicate form lead exists in the same source
- * company that shares the supplied phone number. Used to set `form_fill`
- * on newly created call leads.
+ * Returns true when a non-duplicate Form Lead in the source scope shares the
+ * supplied phone. A string scope matches `source_company`. A scope object
+ * with `leadSourceCompany` matches either `lead_source_company` or
+ * `source_company`. Used to set `form_fill` on a newly created Call Lead.
  */
 export async function hasFormFillForCallLead(
   sourceScope: SourceCompany | LeadSourceMatchScope,
@@ -154,8 +157,10 @@ export async function hasFormFillForCallLead(
 }
 
 /**
- * Flips `form_fill = true` on any matching call leads in the same source
- * company when a new (non-duplicate) form lead arrives.
+ * Flips `form_fill = true` on matching Call Leads in the source scope when a
+ * new (non-duplicate) Form Lead arrives. A string scope matches
+ * `source_company`. A scope object with `leadSourceCompany` matches either
+ * `lead_source_company` or `source_company`.
  *
  * Returns a `source_lead` sheet-sync job for every call lead it touched so the
  * caller can persist/finalize the syncs alongside the form-lead write (inside

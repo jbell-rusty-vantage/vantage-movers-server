@@ -54,7 +54,7 @@ Public `ingestFormLead` always assigns `ingestion_origin: "wordpress_form"` and 
 | 3. **Duplicate Lead** check | `findDuplicateFormLeadMatch` — throws if Source Granularity is missing; same exact `source_granularity_id`; earlier non-duplicate Form Lead; same cohort around `2026-04-30T04:00:00.000Z` (pre-cutoff looks only before the event timestamp; on/after cutoff looks `[cutoff, event)`); normalized phone **or** email |
 | 3b. [WordPress Form Submission Receipt](../../../../CONTEXT.md) | Authorized test path only — see **WordPress Form Submission Receipt** below. Capture runs **before** `FormLead.save`. Unauthorized / missing key / production DB: no receipt write; Lead create continues. |
 | 4. Persist + Sheet Sync intent | Atomic in queued mode via `runSheetSyncWrite`: save Form Lead with `duplicate` flag; `post_to_granot = post_to_granot && !duplicate`. `wordpress_submission_key` is stripped before persist. |
-| 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` — same source + phone Call Leads → `form_fill=true`; enqueues `call_lead.form_fill.update` jobs in same txn |
+| 4b. Form Fill (non-duplicates only) | `markMatchingCallLeadsWithFormFill` reads Call Leads, not Form Leads. Source scope is `source_company`, or `$or` of `lead_source_company` and `source_company` when a Lead Source Company is set. Phone is re-checked after a `normalized_phone_number` or regex sieve. Leads already `form_fill: true` are excluded. Each flip sets `form_fill=true` and returns a `call_lead.form_fill.update` job for the caller to persist in the same txn. One `command_execution_id` covers every flip. |
 | 4c. Enqueue | `source_lead` / `form_lead.create` unless persisted `no_sync === true` |
 | 5. Post-commit | See **Post-save order** below |
 

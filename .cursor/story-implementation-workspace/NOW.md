@@ -1,13 +1,12 @@
 # NOW
 
-- Date (UTC): 2026-09-01
-- Current story: `call-lead` (implemented; local main after commit)
-- Recommendation: `.cursor/story-refactor-workspace/recommendations/leads-call-lead.md`
-- Target: `src/services/leads/callLead.service.ts`
-- Branch: `refactor/call-lead-story`
-- PR:
-- Last session: `impl-call-lead-2026-08-28T2152Z`
-- Next story: remaining `leads` recs after local main picks up `origin/main`
+- Date: 2026-10-29
+- Current story: Duplicate Lead, implemented on `refactor/form-lead-tests`, not committed
+- Read first: `../story-refactor-workspace/DIRECTIVE.md` and `CATALOG-STATUS.md`
+- Pass: `passes/duplicate-lead.md`
+- Next story: none until the owner asks. Do not start another leads brief in this pass.
+- Parked: unreviewed Form Lead test edits in `src/services/leads/formLead.service.test.ts`. Leave them.
+- Merge gate: do not include the unrelated doc deletions, `.quality.config.json`, or `docs/index.md` with this pass.
 
-Do not add narrative here. Rows live in `BOARD.md`.
-Do not edit `.cursor/story-refactor-workspace/`.
+Do not add narrative here. The directive holds the rules.
+Do not edit `.cursor/story-refactor-workspace/` except when the owner asks to update the directive.

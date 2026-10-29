@@ -64,7 +64,7 @@ When `createLeadFromGranot` mints a Call Lead and the Observation has a normaliz
 ## Call Lead Ingestion — Admin / sheet (`ingestCallLead` / `begin` / `complete`)
 
 1. Normalize name, parse **Source Company** (`resolveLeadSourceAssignment`, channel `call`), optional location (`resolveOptionalLocation`).
-2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead exists with same source + normalized phone. Missing/unparseable phone → `false`.
+2. **Form Fill** check — `hasFormFillForCallLead(source, phone)`: true when a non-duplicate Form Lead in the source scope shares the normalized phone. A string scope matches `source_company`. A scope with `leadSourceCompany` matches `$or` of `lead_source_company` and `source_company`. This read does not use the Call Lead `normalized_phone_number` field or the `form_fill` flag. Missing/unparseable phone → `false`.
 3. Save via `callLeadCreationProvenanceFields`: `quoted=false`, trusted `ingestion_origin`, immutable `ingested_contact_snapshot`. Public `ingestCallLead` origin is `vantage_admin`. Canonical `deriveCallLeadIngestionOrigin`: undefined/`vantage_admin` → `vantage_admin`; `ringcentral` → `ringcentral`; sheet ingest → `best_relocation_sheet`; Granot lifecycle → `granot_lead_created`. Unproven origins throw.
 4. Before commit: remember Sheet Sync intent (`call_lead.create`) unless persisted `no_sync === true`. After commit `completeCallLeadIngestion` projects onto sheets, then `lead.cpl.missing_rate` if needed, then `lead.call.created`, then `lead.call.form_fill_detected` when `form_fill`.
 5. No Ring Central metadata; no Call Lead duplicate window logic; no CRM Posting.
@@ -109,8 +109,8 @@ Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) 
 
 | Direction | Behavior |
 |-----------|----------|
-| At Call Lead create | `hasFormFillForCallLead` reads existing non-duplicate Form Leads (same source + phone) |
-| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill` ([`form-lead.md`](./form-lead.md)) |
+| At Call Lead create | `hasFormFillForCallLead` reads existing non-duplicate Form Leads in the source scope (company, or company `$or` Lead Source Company) with the normalized phone |
+| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill`, which reads Call Leads and excludes ones already marked `form_fill` ([`form-lead.md`](./form-lead.md)) |
 
 Form Fill is attribution only; does not set Duplicate Lead on Call Leads.
 

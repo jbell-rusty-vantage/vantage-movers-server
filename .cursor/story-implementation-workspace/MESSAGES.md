@@ -4,7 +4,29 @@ Open items first. Newest on top. Not knowledge.
 
 ## Open
 
+## 2026-10-29T2234Z | to: next-run | from: impl-duplicate-lead-2026-10-29T2234Z | kind: next
+
+Duplicate Lead is implemented on `refactor/form-lead-tests`. Not committed. No rename.
+
+1. Take stock first. Read `NOW.md` and `BOARD.md` in this folder.
+2. Do not write to `.cursor/story-refactor-workspace/`.
+3. Do not stage the parked `formLead.service.test.ts`, the doc-packet deletions, `.quality.config.json`, or `docs/index.md` with this pass.
+4. Do not start the next leads brief until the owner asks.
+5. Full `tsc --noEmit` still fails in `formLead.service.test.ts` and `ops/output/pool-active-canonical-audit.ts`. Those files are outside this pass.
+
+## 2026-10-29T2115Z | to: next-run | from: clean-code-directive | kind: next
+
+Read `../story-refactor-workspace/DIRECTIVE.md` before the next story.
+
+1. Next story is Duplicate Lead, on a new branch from current `origin/main`.
+2. Form Lead and Call Lead renames are already on `origin/main`.
+3. Do not implement drop rows or Best Relocation external sheet ingest. That ingest is not live.
+4. The Operations Registry stays. Operational Events do not.
+5. Parked Form Lead tests on `refactor/form-lead-tests` are unreviewed. Leave them.
+
 ## 2026-09-01T1449Z | to: next-run | from: review-call-lead | kind: next
+
+Superseded for sequencing by the 2026-10-29 directive. The Call Lead note below is historical.
 
 `call-lead` parity review passed. Committed on `refactor/call-lead-story`
 and merged to local `main` only. Do not push.
