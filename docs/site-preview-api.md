@@ -37,7 +37,7 @@ Use the committed preview branch. Run `node ops/site-preview/prepare.mjs` from t
 
 From that directory, link explicitly to the preview project/team, then run `vercel deploy --yes --no-wait --target=preview --scope vantage-4d3db9ef`. Always pass the target: Vercel otherwise treats a new project's first deployment as Production. Project framework must be Other (`null`), Node 24, using the existing serverless function routing rather than auto-detected Express framework output. Never `--prod`, never link this artifact to `vantage-movers-main-server`. Wait for Ready, then assign the stable alias with `vercel alias set <deployment-url> vantage-sites-preview-api.vercel.app --scope vantage-4d3db9ef`. There is no automatic deploy from pushing this server branch.
 
-Seed synthetic data with `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemovers_sitepreview node --env-file=.env ops/site-preview/seed.mjs` (use shell-appropriate environment assignment). The script checks the database name and does not copy production records. Four Source Company/Form granularities and explicitly synthetic testimonial/carrier fixtures support website checks. Synthetic leads remain in this test database; never promote its data to production.
+Seed synthetic data with `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemovers_sitepreview node --env-file=.env ops/site-preview/seed.mjs` (use shell-appropriate environment assignment). The script checks the database name and does not copy production records. Five Source Company/Form granularities and explicitly synthetic testimonial/carrier fixtures support website checks. Synthetic leads remain in this test database; never promote its data to production.
 
 ## Required proof
 

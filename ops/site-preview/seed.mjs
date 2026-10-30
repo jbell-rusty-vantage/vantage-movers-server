@@ -10,7 +10,7 @@ await mongoose.connect(process.env.MONGO_URI, { dbName: database });
 try {
   const db = mongoose.connection.db;
   if (db.databaseName !== database) throw new Error('Unexpected database');
-  for (const slug of ['main_site', 'tbm_leads', 'tbm_prime_leads', 'top10_leads']) {
+  for (const slug of ['main_site', 'tbm_leads', 'tbm_prime_leads', 'top10_leads', 'get_movers_leads']) {
     const companies = db.collection('lead_source_companies');
     const granularities = db.collection('lead_source_granularities');
     let company = await companies.findOne({ company_slug: slug });
@@ -33,5 +33,5 @@ try {
   await db.collection('moving_carriers').updateOne({ dot_number: '0000000' }, { $setOnInsert: {
     name: 'Preview fixture — not a real carrier', normalized_name: 'preview fixture', mc_number: '0000000', active: true, created_from: 'site_preview_seed',
   } }, { upsert: true });
-  console.log(JSON.stringify({ database, seededSourceCompanies: 4, syntheticContent: true }));
+  console.log(JSON.stringify({ database, seededSourceCompanies: 5, syntheticContent: true }));
 } finally { await mongoose.disconnect(); }
