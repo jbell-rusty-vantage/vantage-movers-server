@@ -44,3 +44,13 @@ Seed synthetic data with `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemov
 Check `/db` names the isolated database; protected content reads return fixtures; a synthetic Form Lead with `post_to_granot=true` and consent is saved/read back with CRM skipped and messaging disabled; invalid auth fails; forbidden routes return 404. Record deployment URL, server SHA, test lead ID and outcomes. A Ready deployment alone is not integration qualification.
 
 The clients repository owns the cloud-agent handoff at `docs/cloud-site-variations.md` and its release evidence at `docs/site-preview-status.md`.
+
+## Qualification — October 30, 2026
+
+Deployed runtime commit `67484849`, immutable deployment `https://vantage-sites-preview-nld3k1rla-vantage-4d3db9ef.vercel.app`, Vercel Ready with Preview target; stable alias assigned. Run CLI from the exported directory itself rather than relying on `--cwd` for configuration selection. Earlier failed project-setup attempts are not qualified deployments.
+
+`ops/site-preview/verify.mjs` passed against the stable alias with preview secrets supplied through the environment. It verified database identity, testimonial/carrier reads, unauthorized 401, forbidden analytics/cron 404, Form Lead creation and readback. Evidence: lead `6ae4fb40457367376193a457`, reference `PREVIEW-1793391424104`, CRM `skipped`, messaging `not_requested`. Read-only count of that exact reference: test database 1, production database 0. No production test submission was made.
+
+36 focused CRM/Form Lead tests and two preview boundary tests passed. Standalone typecheck passed excluding the unrelated gitignored `ops/output/pool-active-canonical-audit.ts`; that scratch file is not in the exported deployment. Vercel's function builder emitted additional type diagnostics but produced a Ready artifact; standalone typecheck and the runtime checks above are the qualification evidence, not an assertion that the builder log was warning-free.
+
+For repeat smoke tests, set preview-only `VANTAGE_API_SECRET` and `VANTAGE_API_PROTECTION_BYPASS`, then run `node ops/site-preview/verify.mjs`. It creates a synthetic lead in the test database. Do not use it against production.
