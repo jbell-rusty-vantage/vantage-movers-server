@@ -49,9 +49,9 @@ Apply effects after capture are owned by [`automation-apply.md`](../granot-lifec
 
 ### Outreach job navigation (paused, 2026-10-30)
 
-The Outreach opening endpoint is paused pending account-context qualification. `jobFormLink.ts` remains the historical lookup implementation but is no longer called by the Desk. A verified Job Number did not prove that the browser inherited the rep's account context; reps reported missing user-specific email templates. The disabled Desk performs no Granot login or lookup and displays **Attempting auth fix.** See the Desk Service for the cutoff and test evidence.
+The shared-user Outreach opening endpoint is paused pending account-context qualification. `jobFormLink.ts` remains the historical lookup implementation and its strict page verifier is reused, but the Desk never calls its credential-user lookup. Other desks display **Attempting auth fix.** The separate Josh-only `granot-session-link` pilot uses `sessionJobLink.ts`: company/network authentication only, supplied user-context identity checked against Josh's configured Granot username, then a matching job lookup. It never submits the automation user's login or saves the rep's context. See the Desk Service for authorization, transient handling, browser GET handoff and evidence.
 
-Existing automation continues to use the shared account lease and the existing credential bindings; this pause does not disable enrichment or scheduled collection. `credentials.ts` remains owned by that automation. There are no new settings.
+Existing automation continues its two-stage login through the same shared account lease and credential bindings. `authenticateGranotNetwork` is the shared first stage; `openGranotNetworkSession` stops there, while `openGranotAuthenticatedSession` still completes user login. `readGranotNetworkCredentials` reads only the existing network bindings, never `GRANOT_USERNAME`/`GRANOT_PASSWORD`. There are no new settings or changes to enrichment/scheduled collection.
 
 | Surface | Path |
 |---------|------|

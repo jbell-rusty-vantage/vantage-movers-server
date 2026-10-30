@@ -463,6 +463,36 @@ export async function openGranotAuthenticatedSession(
   credentials: GranotCollectorCredentials,
   dependencies: GranotCollectorDependencies = {},
 ): Promise<GranotAuthenticatedSession> {
+  const { client, userLoginPage } = await authenticateGranotNetwork(credentials, dependencies);
+  const userAction = readFormAction(userLoginPage);
+  if (!userAction) {
+    throw new GranotCollectorError("authentication_failed", "Granot network login did not reach the user login page");
+  }
+  const userForm = readFormValues(userLoginPage);
+  userForm.set("USERNAME", credentials.username);
+  userForm.set("PASSWORD", credentials.password);
+  userForm.set("LOGON", "Login");
+  const mainPage = await client.request(userAction, { method: "POST", body: userForm });
+  const sessionToken = mainPage.match(SESSION_TOKEN_RE)?.[1];
+  if (!sessionToken) {
+    throw new GranotCollectorError("authentication_failed", "Granot user login did not create an authenticated session");
+  }
+  return { sessionToken, request: (path, init) => client.request(path, init) };
+}
+
+/** Company/network authentication only. Never submits a Granot user login or replaces a supplied user's context. */
+export async function openGranotNetworkSession(
+  credentials: Pick<GranotCollectorCredentials, "networkUsername" | "networkPassword">,
+  dependencies: GranotCollectorDependencies = {},
+): Promise<{ request: GranotSessionRequest }> {
+  const { client } = await authenticateGranotNetwork(credentials, dependencies);
+  return { request: (path, init) => client.request(path, init) };
+}
+
+async function authenticateGranotNetwork(
+  credentials: Pick<GranotCollectorCredentials, "networkUsername" | "networkPassword">,
+  dependencies: GranotCollectorDependencies,
+) {
   const client = new GranotHttpClient(dependencies);
   const loginPage = await client.request("/wc.dll?mp~NetLogonWc~VANTAGE");
   const networkAction = readFormAction(loginPage);
@@ -478,34 +508,14 @@ export async function openGranotAuthenticatedSession(
     method: "POST",
     body: networkForm,
   });
-  const userAction = readFormAction(userLoginPage);
-  if (!userAction) {
+  if (!readFormAction(userLoginPage)) {
     throw new GranotCollectorError(
       "authentication_failed",
       "Granot network login did not reach the user login page",
     );
   }
 
-  const userForm = readFormValues(userLoginPage);
-  userForm.set("USERNAME", credentials.username);
-  userForm.set("PASSWORD", credentials.password);
-  userForm.set("LOGON", "Login");
-  const mainPage = await client.request(userAction, {
-    method: "POST",
-    body: userForm,
-  });
-  const sessionToken = mainPage.match(SESSION_TOKEN_RE)?.[1];
-  if (!sessionToken) {
-    throw new GranotCollectorError(
-      "authentication_failed",
-      "Granot user login did not create an authenticated session",
-    );
-  }
-
-  return {
-    sessionToken,
-    request: (path, init) => client.request(path, init),
-  };
+  return { client, userLoginPage };
 }
 
 class GranotHttpClient {

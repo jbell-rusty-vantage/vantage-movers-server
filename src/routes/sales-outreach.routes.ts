@@ -36,6 +36,7 @@ import { readQueue } from "../services/salesOutreach/reads/queue";
 import { readDeskCapabilities, readRepDays, readTeam, requireDeskConfiguration } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
 import { resolveOutreachGranotLink } from "../services/salesOutreach/granotLink";
+import { resolveOutreachGranotSessionLink } from "../services/salesOutreach/granotSessionLink";
 import { z } from "zod";
 import { negotiateLiveVersion, streamOutreachLive, type OutreachLiveDeps } from "../services/salesOutreach/live/stream";
 import {
@@ -220,6 +221,16 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
       const body = z.object({ refresh: z.boolean().optional() }).strict().parse(req.body ?? {});
       await connect();
       return res.json({ ok: true, data: await resolveOutreachGranotLink(outreachActorOf(res), String(req.params.id), body.refresh ?? false, readDeps()) });
+    } catch (error) { return fail(req, res, error); }
+  });
+
+  router.post(`${SALES_OUTREACH_API_PREFIX}/outreach/:id/granot-session-link`, anyDeskRole, async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      salesOutreachScopeQuerySchema.parse(req.query);
+      const body = z.object({ session_context: z.string().regex(/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i) }).strict().parse(req.body ?? {});
+      await connect();
+      return res.json({ ok: true, data: await resolveOutreachGranotSessionLink(outreachActorOf(res), String(req.params.id), body.session_context, readDeps()) });
     } catch (error) { return fail(req, res, error); }
   });
 

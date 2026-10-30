@@ -141,3 +141,17 @@ test("scope other than production is refused before any service runs", async () 
   const noSecret = await fetch(`${baseUrl}${PATH}`, { headers: { ...signed("owner", "GET"), "x-api-secret": "wrong" } });
   assert.equal(noSecret.status, 401);
 });
+
+test("Granot session lookup refuses non-pilot actors and invalid or extra context fields over HTTP", async () => {
+  const path = "/api/v1/admin/sales-outreach/outreach/bbbbbbbbbbbbbbbbbbbbbbbb/granot-session-link";
+  const context = "11111111-2222-3333-4444-555555555555";
+  for (const role of ["owner", "manager", "rep", "admin"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed(role, "POST", path), body: JSON.stringify({ session_context: context }) });
+    assert.equal(response.status, 403);
+  }
+  for (const body of [{ session_context: "not-a-context" }, { session_context: context, username: "JOSH" }, { session_context: context, agent_id: "6a1dc03e419f58fdad44944f" }]) {
+    const response = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed("rep", "POST", path), body: JSON.stringify(body) });
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+  }
+});
