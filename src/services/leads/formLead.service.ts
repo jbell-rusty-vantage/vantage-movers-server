@@ -19,6 +19,7 @@ import type {
 } from "../../validation/v1.validation";
 import {
   buildCrmFormLeadPayload,
+  isFormLeadCrmPostingEnabled,
   submitFormLeadToCrm,
   type CrmSubmitResult,
 } from "../crm";
@@ -409,7 +410,7 @@ function decideWhetherToPostToGranot(
   requested: boolean | undefined,
   duplicate: boolean,
 ): boolean {
-  return Boolean(requested) && !duplicate;
+  return Boolean(requested) && !duplicate && isFormLeadCrmPostingEnabled();
 }
 
 function giveTheLeadAnIdentity(form: FormLeadPersistInput) {

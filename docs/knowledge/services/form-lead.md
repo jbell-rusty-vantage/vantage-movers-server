@@ -138,6 +138,8 @@ Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) 
 
 ## Invariants
 
+Website preview isolation: `CRM_FORM_LEAD_POSTING_ENABLED=false` suppresses CRM Posting even when the caller requests `post_to_granot=true`. Ingestion reports CRM as skipped. The CRM service also checks the flag before any network request. Unset retains existing production behavior; any explicit value other than `true` disables posting. See `docs/site-preview-api.md` for the isolated deployment.
+
 | Rule | Detail |
 |------|--------|
 | Duplicate Form Leads | Always saved + Sheet Sync'd to `Duplicates`; **never CRM-posted** |

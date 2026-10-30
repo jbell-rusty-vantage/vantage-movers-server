@@ -16,6 +16,12 @@ import "dotenv/config";
 export const CRM_API_ID_ENV_VAR = "CRM_API_ID" as const;
 export const CRM_MOVER_REF_ENV_VAR = "CRM_MOVER_REF" as const;
 
+/** Explicitly disable outbound CRM traffic for isolated website previews. */
+export function isFormLeadCrmPostingEnabled(): boolean {
+  const value = process.env.CRM_FORM_LEAD_POSTING_ENABLED?.trim().toLowerCase();
+  return value === undefined || value === "true";
+}
+
 const API_ID = process.env[CRM_API_ID_ENV_VAR];
 const MOVER_REF = process.env[CRM_MOVER_REF_ENV_VAR];
 
