@@ -49,7 +49,7 @@ after(async () => {
     else process.env[key] = value;
 });
 
-function signed(role: "owner" | "manager" | "admin" | "rep", method: "GET" | "PATCH", path = PATH): Record<string, string> {
+function signed(role: "owner" | "manager" | "admin" | "rep", method: "GET" | "POST" | "PATCH", path = PATH): Record<string, string> {
   const timestamp = `${Date.now()}`;
   const requestId = `req-${role}-${timestamp}`;
   const fields = { adminId: `${role}-1`, email: `${role}@example.invalid`, role, timestamp, requestId, method, path };
@@ -117,6 +117,19 @@ test("PATCH /configuration: Owner only, Idempotency-Key required, strict body, C
   const read = await fetch(`${baseUrl}${PATH}`, { headers: signed("owner", "GET") });
   const data = ((await read.json()) as { data: { configuration_state: string; revision: number; value: { controls: { desk_enabled: boolean } } } }).data;
   assert.deepEqual([data.configuration_state, data.revision, data.value.controls.desk_enabled], ["active", 1, true]);
+});
+
+test("Granot navigation is paused over HTTP for every Desk role, including old refresh requests", async () => {
+  const path = "/api/v1/admin/sales-outreach/outreach/bbbbbbbbbbbbbbbbbbbbbbbb/granot-link";
+  for (const role of ["owner", "manager", "rep"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed(role, "POST", path), body: JSON.stringify({ refresh: true }) });
+    assert.equal(response.status, 503);
+    const body = await response.json() as { code: string; issues: Array<{ code: string; message: string }> };
+    assert.equal(body.code, "SERVICE_UNAVAILABLE");
+    assert.deepEqual(body.issues[0], { path: "granot_link", code: "auth_fix_pending", message: "Attempting auth fix." });
+  }
+  const admin = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed("admin", "POST", path), body: "{}" });
+  assert.equal(admin.status, 403);
 });
 
 test("scope other than production is refused before any service runs", async () => {

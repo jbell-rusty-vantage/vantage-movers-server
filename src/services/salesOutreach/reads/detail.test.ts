@@ -105,9 +105,9 @@ async function notFound(promise: Promise<unknown>) {
   await assert.rejects(promise, (e: unknown) => e instanceof OutreachError && e.code === "NOT_FOUND");
 }
 
-test("Granot button is available to reps and coordinators for accessible jobs, hidden for pending jobs", async () => {
+test("Granot navigation is unavailable to every role during the auth fix", async () => {
   const { subject, deps, store } = await seeded();
-  for (const actor of [rep(REP_A), owner, manager]) assert.equal((await readOutreachDetail(actor, subject.id, deps)).granot_link_available, true);
+  for (const actor of [rep(REP_A), owner, manager]) assert.equal((await readOutreachDetail(actor, subject.id, deps)).granot_link_available, false);
   store.evaluation.subjects.set(subject.id, { ...subject, display: { ...subject.display, job_no: null } });
   assert.equal((await readOutreachDetail(rep(REP_A), subject.id, deps)).granot_link_available, false);
 });
