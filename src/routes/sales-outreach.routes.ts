@@ -35,6 +35,8 @@ import { salesOutreachPerformanceQuerySchema } from "../validation/v1/salesOutre
 import { readQueue } from "../services/salesOutreach/reads/queue";
 import { readDeskCapabilities, readRepDays, readTeam, requireDeskConfiguration } from "../services/salesOutreach/reads/service";
 import type { SalesOutreachReadStore } from "../services/salesOutreach/reads/store";
+import { resolveOutreachGranotLink } from "../services/salesOutreach/granotLink";
+import { z } from "zod";
 import { negotiateLiveVersion, streamOutreachLive, type OutreachLiveDeps } from "../services/salesOutreach/live/stream";
 import {
   salesOutreachAgentIdSchema,
@@ -209,6 +211,16 @@ export function createSalesOutreachRouter(deps: SalesOutreachRouteDeps = {}): Ro
     } catch (error) {
       return fail(req, res, error);
     }
+  });
+
+  router.post(`${SALES_OUTREACH_API_PREFIX}/outreach/:id/granot-link`, anyDeskRole, async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      salesOutreachScopeQuerySchema.parse(req.query);
+      const body = z.object({ refresh: z.boolean().optional() }).strict().parse(req.body ?? {});
+      await connect();
+      return res.json({ ok: true, data: await resolveOutreachGranotLink(outreachActorOf(res), String(req.params.id), body.refresh ?? false, readDeps()) });
+    } catch (error) { return fail(req, res, error); }
   });
 
   router.get(`${SALES_OUTREACH_API_PREFIX}/live`, anyDeskRole, async (req, res) => {

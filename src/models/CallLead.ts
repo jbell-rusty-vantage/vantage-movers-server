@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { granotJobFormLinkField } from "./granotJobFormLinkSchema";
 import { getMongoDatabaseName } from "../config/domain";
 import {
   aggregateRevisionSchemaFields,
@@ -73,6 +74,7 @@ const ringCentralCallMetadataSchema = new Schema(
 
 const CallLeadSchema = new Schema(
   {
+    granot_job_form_link: granotJobFormLinkField,
     source_company: sourceCompanyField,
     lead_source_company: {
       type: Schema.Types.ObjectId,

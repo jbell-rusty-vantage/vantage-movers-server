@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { granotJobFormLinkField } from "./granotJobFormLinkSchema";
 import {
   FORM_LEAD_BAD_LEAD_REASONS,
   getMongoDatabaseName,
@@ -29,6 +30,7 @@ export const FORM_LEAD_UNKNOWN_STATE = "not_found";
 
 const FormLeadSchema = new Schema(
   {
+    granot_job_form_link: granotJobFormLinkField,
     source_company: sourceCompanyField,
     lead_source_company: {
       type: Schema.Types.ObjectId,

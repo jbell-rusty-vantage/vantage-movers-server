@@ -805,6 +805,7 @@ export const SALES_OUTREACH_PROJECTION_STATES = ["current", "stale_policy", "pen
 
 export const salesOutreachDetailSchema = commonReadSchema
   .extend({
+    granot_link_available: z.boolean().optional(),
     pool: salesOutreachPoolSchema.nullable().optional(),
     subject: z
       .object({

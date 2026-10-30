@@ -1,4 +1,5 @@
 ---
+
 okf_version: "0.2"
 type: Service
 title: Sales Outreach Desk
@@ -22,6 +23,17 @@ applies_to:
   - ops/sales-outreach/**
 owners: [team:main-server]
 ---
+
+## Josh-only Granot job links (2026-10-30)
+
+The detail DTO adds optional `granot_link_available`. It is true only for the signed Rep linked to Josh's stable Agent `6a1dc03e419f58fdad44944f`, on a non-closed subject with a Job Number whose canonical Lead is currently assigned to Josh. Owner/Manager views and other Reps do not receive the control, including other Reps' shared Pool records. Identity is not accepted from browser inputs or display names.
+
+`POST /api/v1/admin/sales-outreach/outreach/:id/granot-link`, body `{ refresh?: boolean }`, uses the existing signed actor, reviewed Rep link and active Desk configuration guards. The service independently enforces pilot identity and canonical assignment, verifies the returned job and repeats the subject/Lead checks after provider I/O. Reassignment, subject closure/retargeting or a changed Job Number prevents a result. The response is private/no-store. Granot failures have bounded `granot_link` issue codes (`busy`, `not_found`, `unverified`, `unavailable`); no raw provider error is returned.
+
+The optional `granot_job_form_link` cache on Form/Call Lead contains observed `job_no`, `url`, `captured_at`; it is excluded from normal Mongoose selections. It is never Record Link identity or a synchronized business fact. Only this command deliberately reads it. Canonical subject ownership keeps Form/Call pairs on their existing working Lead. Cache writes use a job/receiver compare-and-set and do not alter revisions, timestamps, assignment, cadence, lifecycle receipts, Sheets or communications. Cached links are reused for ten minutes; explicit Refresh bypasses the cache. No bulk backfill is run. The browser's own Granot login is still required.
+
+No migration, index, new environment setting or data prerequisite is required. Rollback deploys the earlier API/Admin and may leave the additive cache safely stored. Evidence: `granotLink.test.ts`, `granotHttpCollector/jobFormLink.test.ts`, the existing detail/route suite, and `ops/granot-job-url-prototype-NOTES.md`. The browser/access qualification remains distinct from verified server retrieval.
+
 
 # Sales Outreach Desk (sod-v1)
 

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readGranotCredentials as readCredentials } from "./credentials";
 import { send } from "@vercel/queue";
 import { Types } from "mongoose";
 import { connectMongo, withTransaction } from "../../db";
@@ -1603,21 +1604,6 @@ function redactReceiptsForDisplay(value: unknown): GranotAutomationActionReceipt
       ...(receipt.error_code ? { error_code: receipt.error_code } : {}),
     };
   });
-}
-
-function readCredentials(): GranotCollectionRequest["credentials"] {
-  return {
-    networkUsername: requireEnv("GRANOT_NETWORK_USERNAME", "MAIN_LOGIN_USERNAME"),
-    networkPassword: requireEnv("GRANOT_NETWORK_PASSWORD", "MAIN_LOGIN_PASSWORD"),
-    username: requireEnv("GRANOT_USERNAME", "SPECIFIC_USERNAME"),
-    password: requireEnv("GRANOT_PASSWORD", "SPECIFIC_PASSWORD"),
-  };
-}
-
-function requireEnv(primary: string, legacy: string): string {
-  const value = process.env[primary]?.trim() || process.env[legacy]?.trim();
-  if (!value) throw new Error(`Missing required environment variable ${primary}`);
-  return value;
 }
 
 async function failRun(runId: string, lease: LeaseToken, error: unknown): Promise<void> {

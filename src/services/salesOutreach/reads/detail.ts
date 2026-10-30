@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { canUseGranotLinkPilot } from "../granotLinkPilot";
 import type { SalesOutreachDetailDto } from "../../../validation/v1/salesOutreachReads";
 import type { OutreachActor } from "../auth";
 import { planRevisionOf } from "../commands/common";
@@ -252,6 +253,7 @@ export async function readOutreachDetail(actor: OutreachActor, subjectId: string
 
   return {
     ...(pool ? { pool } : {}),
+    granot_link_available: canUseGranotLinkPilot(actor, receiver) && subject.status !== "closed" && Boolean(subject.display.job_no),
     ...commonRead(actor, deps.now, actor.role === "rep" ? actor.agent_id : null, configuration, shown?.publication_revision ?? null, freshnessRead.freshness),
     subject: {
       subject_id: subject.id,
