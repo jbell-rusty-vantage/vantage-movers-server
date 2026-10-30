@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02h-v1",
+  "approval_ref": "owner-session-2026-10-02-P02h",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "sms_cutoff_minute": 1200,
+  "arrival_threshold_minute_inclusive": 1170,
+  "configurable": true,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_eligibility_approved": false,
+  "scope": "Active New SMS dates under P03, no holiday override; no provider success rule inferred",
+  "cases": [
+    { "id": "before_opening", "arrival_minute": 465, "arrival_date_required_sms": 1, "due_minute": 1200, "waived_not_missed": false },
+    { "id": "afternoon", "arrival_minute": 840, "arrival_date_required_sms": 1, "due_minute": 1200, "waived_not_missed": false },
+    { "id": "1930", "arrival_minute": 1170, "arrival_date_required_sms": 1, "due_minute": 1200, "waived_not_missed": false },
+    { "id": "1931", "arrival_minute": 1171, "arrival_date_required_sms": 0, "due_minute": null, "waived_not_missed": true },
+    { "id": "1945", "arrival_minute": 1185, "arrival_date_required_sms": 0, "due_minute": null, "waived_not_missed": true },
+    { "id": "2100", "arrival_minute": 1260, "arrival_date_required_sms": 0, "due_minute": null, "waived_not_missed": true }
+  ],
+  "next_day_example": { "schedule_day": 2, "required_sms": 1, "due_minute": 1200, "extra_sms_debt": false },
+  "independence_example": { "calls_remaining": 0, "verified_sms": 0, "sms_remaining": 1 },
+  "fixed_sequence_example": { "schedule_day": 6, "required_sms": 1, "due_minute": 1200, "extra_day_7_shifts_day_9": false }
+}

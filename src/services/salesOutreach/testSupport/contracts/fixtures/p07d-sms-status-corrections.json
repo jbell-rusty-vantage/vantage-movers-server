@@ -1,0 +1,63 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07d-v1",
+  "approval_ref": "owner-session-2026-10-03-P07d",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_status_mapping_proven": false,
+  "sender_origin_eligibility_approved": false,
+  "scope": "otherwise eligible synthetic outbound SMS; statuses conceptual, not RingCentral field claims",
+  "cases": [
+    {
+      "id": "sent_delivery_unknown",
+      "logical_messages": 1,
+      "expected_credit": 1
+    },
+    {
+      "id": "delivered",
+      "logical_messages": 1,
+      "expected_credit": 1
+    },
+    {
+      "id": "sent_then_delivered",
+      "logical_messages": 1,
+      "expected_credit": 1
+    },
+    {
+      "id": "queued",
+      "expected_credit": 0
+    },
+    {
+      "id": "pending",
+      "expected_credit": 0
+    },
+    {
+      "id": "send_failure",
+      "expected_credit": 0
+    },
+    {
+      "id": "api_accepted_only",
+      "expected_credit": 0
+    },
+    {
+      "id": "sent_later_failed",
+      "previous_credit": 1,
+      "expected_credit": 0,
+      "requirement_remaining": 1,
+      "recompute_sms_catchup": true
+    },
+    {
+      "id": "failed_with_successful_replacement",
+      "failed_message_credit": 0,
+      "replacement_credit": 1,
+      "expected_credit": 1,
+      "requirement_remaining": 0
+    }
+  ],
+  "calls_changed": false,
+  "outbound_goal_changed": false,
+  "fixed_sms_sequence_shifted": false,
+  "prior_cancelled_work_revived": false,
+  "status_history_preserved": true
+}

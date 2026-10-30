@@ -28,7 +28,7 @@ import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow 
  * rules of the M1 reads.
  */
 const fixture = JSON.parse(
-  readFileSync(path.resolve(__dirname, "../../../../docs/sales-outreach-desk/contracts/fixtures/p08a-roster-goals.json"), "utf8"),
+  readFileSync(path.resolve(__dirname, "../testSupport/contracts/fixtures/p08a-roster-goals.json"), "utf8"),
 ) as {
   default_scheduled_day_goal: number;
   rows: Array<{ rep: string; goal: number; actual: number; override?: "partial_day" | "absence"; label?: string; goal_achieved?: boolean }>;

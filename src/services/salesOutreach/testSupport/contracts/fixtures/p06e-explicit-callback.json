@@ -1,0 +1,61 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P06e-v1",
+  "approval_ref": "owner-session-2026-10-03-P06e",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "provider_proof": false,
+  "legacy_callback_migration_approved": false,
+  "ai_suggestions_enabled": false,
+  "llm_analysis_in_outreach": false,
+  "mcp_retained": true,
+  "callback_window_elapsed_minutes": 15,
+  "human_authorities": [
+    "owner",
+    "current_assigned_rep"
+  ],
+  "cases": [
+    {
+      "id": "future_callback",
+      "appointment_local": "Thursday 15:00",
+      "routine_calls_suspended": true,
+      "call_catchup_prompts_suspended": true,
+      "sms_suspended": false,
+      "prior_misses_erased": false,
+      "ordinary_calls_on_callback_date": 0,
+      "ordinary_cadence_resumes": "next_working_date"
+    },
+    {
+      "id": "no_answer_in_window",
+      "actual_attempt": true,
+      "answered": false,
+      "callback_fulfilled": true,
+      "goal_credit": 1
+    },
+    {
+      "id": "answered_inbound_in_window",
+      "callback_fulfilled": true,
+      "goal_credit": 0
+    },
+    {
+      "id": "early_call",
+      "callback_fulfilled": false
+    },
+    {
+      "id": "late_call",
+      "outstanding_callback_cleared": true,
+      "genuine_callback_miss_retained": true
+    },
+    {
+      "id": "after_hours_appointment",
+      "explicit_human_appointment": true,
+      "callback_permitted": true,
+      "actual_restrictions_override": true
+    },
+    {
+      "id": "reassignment",
+      "pending_callback_carried": true
+    }
+  ]
+}

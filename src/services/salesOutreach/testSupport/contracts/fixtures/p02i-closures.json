@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02i-v1",
+  "approval_ref": "owner-session-2026-10-02-P02i",
+  "approved_on": "2026-10-02",
+  "automatic_holiday_exclusions": false,
+  "initial_closed_dates": [],
+  "owner_editable_future_closures": true,
+  "prospective_edits_only": true,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "scope": "Hypothetical future Owner closure inputs, not real configured closures or holiday-calendar claims",
+  "cases": [
+    { "id": "closed_day_six_sms", "received_date": "2026-10-02", "closed_date": "2026-10-07", "schedule_day": 6, "routine_calls_required": 0, "routine_sms_required": 0, "waived_not_missed": true, "next_fixed_sms_date": "2026-10-10", "next_fixed_sms_day": 9, "historical_misses_erased": false },
+    { "id": "first_call_skips_monday", "received_at": "2026-10-04T23:45:00Z", "closed_dates": ["2026-10-05"], "first_call_due_at": "2026-10-06T12:15:00Z", "schedule_day_at_due": 3 },
+    { "id": "arrival_on_closed_sunday", "received_at": "2026-10-04T14:00:00Z", "closed_dates": ["2026-10-04"], "routine_calls_required_on_receipt_date": 0, "routine_sms_required_on_receipt_date": 0, "first_call_due_at": "2026-10-05T12:30:00Z", "schedule_day_at_due": 2 },
+    { "id": "unlisted_public_holiday", "explicitly_closed": false, "working_date": true },
+    { "id": "rep_absent_company_open", "rep_absent": true, "company_calendar_closed": false, "roster_policy_approved": false }
+  ],
+  "unresolved": ["Quoted selector on closed dates", "P06 historic catch-up", "P07 credit/provider eligibility", "P08 absent-rep roster"]
+}

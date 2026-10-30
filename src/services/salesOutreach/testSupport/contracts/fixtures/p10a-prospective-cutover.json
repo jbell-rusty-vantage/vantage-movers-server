@@ -1,0 +1,56 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P10a-v1",
+  "approval_ref": "owner-session-2026-10-03-P10a",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "live_migration_authorized": false,
+  "migration_paused": true,
+  "new_pre_activation_misses": 0,
+  "new_pre_activation_catchup": 0,
+  "fixed_cohort_boundary": true,
+  "retry_reprices_boundary": false,
+  "original_age_retained": true,
+  "missing_age_review": true,
+  "old_lead_initial_clock_restarted": false,
+  "ai_plans_migrated": false,
+  "past_due_legacy_callback": "review_without_new_policy_penalty",
+  "active_restrictions_preserved": true,
+  "pending_verified_human_callbacks_preserved": true,
+  "activation_goal_basis": "verified_calls_on_activation_date",
+  "automatic_launch_goal_proration": false,
+  "cases": [
+    {
+      "id": "old_day8_1400",
+      "age_day": 8,
+      "activation_minute": 840,
+      "prior_eligible_call": 0,
+      "remaining_calls": 1,
+      "due_minute": 1200
+    },
+    {
+      "id": "old_day8_already_contacted",
+      "prior_eligible_call": 1,
+      "remaining_calls": 0
+    },
+    {
+      "id": "quoted_active_1930",
+      "activation_minute": 1170,
+      "remaining_calls": 1
+    },
+    {
+      "id": "quoted_active_1931",
+      "activation_minute": 1171,
+      "remaining_calls": 0
+    },
+    {
+      "id": "quoted_no_verified_schedule",
+      "first_date": "next_working_date"
+    },
+    {
+      "id": "quoted_future_human_date",
+      "selected_date_preserved": true
+    }
+  ]
+}

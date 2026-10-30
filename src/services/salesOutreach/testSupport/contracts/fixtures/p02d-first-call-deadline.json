@@ -1,0 +1,25 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02d-v1",
+  "approval_ref": "owner-session-2026-10-02-P02d",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "first_call_working_minutes": 30,
+  "carry_unused_minutes_across_closing": true,
+  "scope": "First New call only; no holiday overrides, assignment exemption or restriction pause assumed",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "daily_quota_timing_approved": false,
+  "sms_deadline_approved": false,
+  "cases": [
+    { "id": "sunday_1000", "received_at": "2026-10-04T14:00:00Z", "first_call_due_at": "2026-10-04T14:30:00Z" },
+    { "id": "sunday_0745", "received_at": "2026-10-04T11:45:00Z", "first_call_due_at": "2026-10-04T12:30:00Z" },
+    { "id": "sunday_1945", "received_at": "2026-10-04T23:45:00Z", "first_call_due_at": "2026-10-05T12:15:00Z" },
+    { "id": "sunday_2100", "received_at": "2026-10-05T01:00:00Z", "first_call_due_at": "2026-10-05T12:30:00Z" },
+    { "id": "exact_closing", "received_at": "2026-10-05T00:00:00Z", "first_call_due_at": "2026-10-05T12:30:00Z" },
+    { "id": "spring_dst_carry", "received_at": "2026-03-08T00:45:00Z", "first_call_due_at": "2026-03-08T12:15:00Z" },
+    { "id": "fall_dst_carry", "received_at": "2026-10-31T23:45:00Z", "first_call_due_at": "2026-11-01T13:15:00Z" }
+  ],
+  "unresolved": ["Partial-day call quota", "Subsequent-call spacing/deadlines", "SMS deadline", "Holiday overrides", "Unassigned/restricted clock treatment", "P07 evidence eligibility"]
+}

@@ -1,0 +1,25 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P03-v1",
+  "approval_ref": "owner-session-2026-10-02-P03",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "mode": "fixed schedule age",
+  "initial_days": [1, 2, 3],
+  "later_first_day": 6,
+  "later_interval_days": 3,
+  "configurable": true,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "sms_deadline_approved": false,
+  "arrival_allowance_approved": false,
+  "scope": "Active New policy; initial receipt date 2026-10-02; no arrival allowance/restriction inferred",
+  "required_days_through_13": [1, 2, 3, 6, 9, 12],
+  "required_dates": ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-07", "2026-10-10", "2026-10-13"],
+  "cases": [
+    { "id": "extra_day_seven", "extra_send_day": 7, "next_required_day": 9, "future_schedule_shifted": false },
+    { "id": "missed_day_three", "missed_day": 3, "next_required_day": 6, "future_schedule_shifted": false, "recovery_policy_approved": false },
+    { "id": "late_day_three_capture", "send_schedule_day": 3, "capture_schedule_day": 4, "evaluation_schedule_day": 3, "evidence_eligibility_approved": false }
+  ]
+}

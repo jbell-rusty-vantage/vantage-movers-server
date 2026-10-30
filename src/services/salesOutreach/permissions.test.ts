@@ -7,7 +7,7 @@ import { TRUSTED_ADMIN_ACTOR_ROLES, APPROVED_REGISTRY_READ_ROLES } from "../oper
 import { MANAGER_CAPABILITIES, OWNER_ONLY_CAPABILITIES, ROLE_CAPABILITIES, rolesWithCapability, type OutreachCapability } from "./permissions";
 
 const fixture = <T>(name: string) =>
-  JSON.parse(readFileSync(resolve(__dirname, "../../../docs/sales-outreach-desk/contracts/fixtures", name), "utf8")) as T;
+  JSON.parse(readFileSync(resolve(__dirname, "testSupport/contracts/fixtures", name), "utf8")) as T;
 
 test("fixture p09b: Manager holds exactly the approved coordination set and no Owner-only control", () => {
   const p09b = fixture<{ manager_allowed: string[]; owner_only: string[]; rep_scope_expanded: boolean }>("p09b-manager-permissions.json");

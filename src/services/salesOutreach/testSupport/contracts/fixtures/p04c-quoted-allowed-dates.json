@@ -1,0 +1,24 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P04c-v1",
+  "approval_ref": "owner-session-2026-10-02-P04c",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "quoted_same_day_cutoff_minute": 1170,
+  "configurable": true,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "no_date_default_approved": false,
+  "cases": [
+    { "id": "today_1400", "selected_date_relation": "today", "command_minute": 840, "working_date": true, "allowed": true, "activation_minute": 840, "due_minute": 1200, "retrospective_miss_created": false },
+    { "id": "today_before_open", "selected_date_relation": "today", "command_minute": 465, "working_date": true, "allowed": true, "activation_minute": 480, "due_minute": 1200, "retrospective_miss_created": false },
+    { "id": "today_1930", "selected_date_relation": "today", "command_minute": 1170, "working_date": true, "allowed": true, "activation_minute": 1170, "due_minute": 1200, "retrospective_miss_created": false },
+    { "id": "today_1931", "selected_date_relation": "today", "command_minute": 1171, "working_date": true, "allowed": false },
+    { "id": "future_working_date", "selected_date_relation": "future", "working_date": true, "allowed": true, "activation_minute": 480, "due_minute": 1200 },
+    { "id": "future_closed_date", "selected_date_relation": "future", "working_date": false, "allowed": false, "silently_shifted": false },
+    { "id": "past_date", "selected_date_relation": "past", "working_date": true, "allowed": false },
+    { "id": "selected_date_later_closed", "selected_date_preserved": true, "quota_waived": true, "miss_created_from_closure": false, "next_working_date_ordinary_calls": 1 },
+    { "id": "early_call_then_select_today", "early_call_while_deferred": true, "retroactive_credit_created": false }
+  ]
+}

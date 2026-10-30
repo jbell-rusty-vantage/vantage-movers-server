@@ -1,0 +1,51 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P08a-v1",
+  "approval_ref": "owner-session-2026-10-03-P08a",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "manager_goal_edit_approved": false,
+  "configuration_authority": "persisted editable reloadable policy",
+  "default_scheduled_day_goal": 100,
+  "rows": [
+    {
+      "rep": "a",
+      "goal": 100,
+      "actual": 100
+    },
+    {
+      "rep": "b",
+      "goal": 100,
+      "actual": 0
+    },
+    {
+      "rep": "c",
+      "goal": 100,
+      "actual": 120
+    },
+    {
+      "rep": "d",
+      "goal": 50,
+      "actual": 25,
+      "override": "partial_day"
+    },
+    {
+      "rep": "e",
+      "goal": 0,
+      "actual": 10,
+      "override": "absence",
+      "label": "No goal today",
+      "goal_achieved": false
+    }
+  ],
+  "expected_team_goal": 350,
+  "expected_actual": 255,
+  "expected_goal_enabled_reps": 4,
+  "expected_reps_at_goal": 2,
+  "absence_pauses_lead_cadence": false,
+  "absence_workload_flagged": true,
+  "changes_prospective": true,
+  "historical_correction_requires_audit": true,
+  "automatic_partial_day_proration": false
+}

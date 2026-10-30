@@ -20,7 +20,7 @@ import { ContextBuilder, inboundCall, leg, newId, outboundCall, party, subjectFa
  */
 
 const fixture = <T>(name: string): T =>
-  JSON.parse(readFileSync(path.join(process.cwd(), "docs/sales-outreach-desk/contracts/fixtures", name), "utf8")) as T;
+  JSON.parse(readFileSync(path.join(process.cwd(), "src/services/salesOutreach/testSupport/contracts/fixtures", name), "utf8")) as T;
 
 const ALICE = newId();
 const BOB = newId();

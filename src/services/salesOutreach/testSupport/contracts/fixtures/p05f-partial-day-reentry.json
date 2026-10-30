@@ -1,0 +1,60 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05f-v1",
+  "approval_ref": "owner-session-2026-10-03-P05f",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "historical_policy_evidence_proven": false,
+  "initial_clock_restarted": false,
+  "superseded_catchup_revived": false,
+  "duplicate_goal_credit": 0,
+  "earlier_noon_miss_fabricated": false,
+  "quoted_reentry_default": "next_working_date_unless_human_selected",
+  "cases": [
+    {
+      "id": "day4_1400_one_prior",
+      "age_day": 4,
+      "return_minute": 840,
+      "prior_active_policy_call_credit": 1,
+      "call_remaining": 1,
+      "sms_required": 0,
+      "due_minute": 1200
+    },
+    {
+      "id": "day2_1800",
+      "age_day": 2,
+      "return_minute": 1080,
+      "call_remaining": 1,
+      "sms_required": 1
+    },
+    {
+      "id": "day2_1930",
+      "age_day": 2,
+      "return_minute": 1170,
+      "call_remaining": 1,
+      "sms_required": 1
+    },
+    {
+      "id": "day2_1931",
+      "age_day": 2,
+      "return_minute": 1171,
+      "call_remaining": 0,
+      "sms_required": 0
+    },
+    {
+      "id": "day8_1400",
+      "age_day": 8,
+      "return_minute": 840,
+      "call_remaining": 1,
+      "sms_required": 0
+    },
+    {
+      "id": "sms_already_qualified",
+      "age_day": 3,
+      "return_minute": 840,
+      "prior_sms_credit": 1,
+      "sms_remaining": 0
+    }
+  ]
+}

@@ -115,7 +115,7 @@ function classify(raw: ProviderMessage, context = mailboxContext()) {
 const credit = (c: ReturnType<typeof classify>) => (c.kind === "sms_sent" && c.verification === "confirmed" ? 1 : 0);
 
 function fixture(name: string) {
-  return JSON.parse(readFileSync(path.join(process.cwd(), "docs/sales-outreach-desk/contracts/fixtures", name), "utf8")) as {
+  return JSON.parse(readFileSync(path.join(process.cwd(), "src/services/salesOutreach/testSupport/contracts/fixtures", name), "utf8")) as {
     cases: Array<{ id: string; expected_credit?: number; expected_sms_credit?: number; previous_credit?: number }>;
   };
 }

@@ -190,7 +190,7 @@ export function obligationsOn(result: EvaluateSubjectResult, date: string, chann
 }
 
 export function fixture<T = Record<string, unknown>>(name: string): T {
-  return JSON.parse(readFileSync(join(process.cwd(), "docs/sales-outreach-desk/contracts/fixtures", name), "utf8")) as T;
+  return JSON.parse(readFileSync(join(process.cwd(), "src/services/salesOutreach/testSupport/contracts/fixtures", name), "utf8")) as T;
 }
 
 export interface FixtureFile<C> {

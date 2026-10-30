@@ -135,7 +135,7 @@ test("configuration documents are kind-checked; versions are insert-only and bul
 
 test("the CONTRACTS bootstrap defaults are exactly what an empty value normalizes to", () => {
   const fixture = JSON.parse(
-    readFileSync(resolve(__dirname, "../../../docs/sales-outreach-desk/contracts/configuration-defaults.json"), "utf8"),
+    readFileSync(resolve(__dirname, "../../services/salesOutreach/testSupport/contracts/configuration-defaults.json"), "utf8"),
   ) as { value: Record<string, Record<string, unknown>> };
   const normalized = salesOutreachConfigurationValueSchema.parse({}) as unknown as Record<string, Record<string, unknown>>;
   for (const [namespace, fields] of Object.entries(fixture.value))

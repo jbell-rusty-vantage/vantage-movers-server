@@ -6,7 +6,7 @@ import { FINAL_01_CADENCE_VALUE } from "./approvedStartingValues";
 import { cadenceConfigurationValueSchema, CADENCE_FIELDS, resolveEnginePolicy } from "./policy";
 
 const defaults = JSON.parse(
-  readFileSync(join(process.cwd(), "docs/sales-outreach-desk/contracts/configuration-defaults.json"), "utf8"),
+  readFileSync(join(process.cwd(), "src/services/salesOutreach/testSupport/contracts/configuration-defaults.json"), "utf8"),
 ) as { value: { cadence: Record<string, unknown> } };
 
 test("the cadence encoding covers exactly the CONTRACTS/configuration-defaults field names", () => {

@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P04b-v1",
+  "approval_ref": "owner-session-2026-10-02-P04b",
+  "approved_on": "2026-10-02",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "date_validation_approved": false,
+  "scope": "Active Quoted period, otherwise valid date/revision/actor proof; no Manager capability granted",
+  "cases": [
+    { "id": "current_rep", "actor": "rep-a", "current_assigned_rep": "rep-a", "permitted": true },
+    { "id": "owner", "actor": "owner", "current_assigned_rep": "rep-a", "permitted": true },
+    { "id": "former_rep", "actor": "rep-a", "current_assigned_rep": "rep-b", "permitted": false, "expected_status": 404 },
+    { "id": "unassigned_rep", "actor": "rep-a", "current_assigned_rep": null, "permitted": false, "expected_status": 404 },
+    { "id": "generic_admin", "actor": "admin", "permitted": false, "expected_status": 403 },
+    { "id": "post_miss_reschedule", "actor": "rep-b", "current_assigned_rep": "rep-b", "permitted": true, "separate_owner_approval_required": false, "old_miss_retained": true, "post_miss_deferral_visible_to_owner": true, "contact_credit_created": false },
+    { "id": "reassignment_during_open_page", "actor": "rep-a", "page_assignment": "rep-a", "current_assigned_rep": "rep-b", "permitted": false, "expected_status": 404 },
+    { "id": "concurrent_revision", "actor": "rep-b", "current_assigned_rep": "rep-b", "submitted_revision": 1, "current_revision": 2, "command_accepted": false, "expected_status": 409 }
+  ],
+  "reassignment_preserves_schedule": true,
+  "required_audit_fields": ["actor", "prior_selected_date", "new_selected_date", "period_id", "effective_at"]
+}

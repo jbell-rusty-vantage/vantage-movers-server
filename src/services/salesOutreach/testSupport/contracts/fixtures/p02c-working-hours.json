@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02c-v1",
+  "approval_ref": "owner-session-2026-10-02-P02c",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "opening_minute": 480,
+  "closing_minute": 1200,
+  "interval": "opening-inclusive, closing-exclusive",
+  "scope": "Routine operating hours only; no holiday override assumed",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "first_deadline_approved": false,
+  "partial_day_quota_approved": false,
+  "holidays_approved": false,
+  "outside_window_credit_approved": false,
+  "cases": [
+    { "id": "sunday_before_open", "instant": "2026-10-04T11:59:00Z", "local_minute": 479, "inside_window": false },
+    { "id": "sunday_opening", "instant": "2026-10-04T12:00:00Z", "local_minute": 480, "inside_window": true },
+    { "id": "sunday_before_close", "instant": "2026-10-04T23:59:00Z", "local_minute": 1199, "inside_window": true },
+    { "id": "sunday_closing", "instant": "2026-10-05T00:00:00Z", "local_minute": 1200, "inside_window": false },
+    { "id": "winter_sunday_opening", "instant": "2026-11-01T13:00:00Z", "local_minute": 480, "inside_window": true },
+    { "id": "winter_sunday_closing", "instant": "2026-11-02T01:00:00Z", "local_minute": 1200, "inside_window": false }
+  ],
+  "arrival_examples": [
+    { "id": "sunday_after_hours", "received_at": "2026-10-05T01:00:00Z", "next_opening_at": "2026-10-05T12:00:00Z", "schedule_day_at_next_opening": 2, "first_call_due_at": null, "required_first_window_calls": null },
+    { "id": "sunday_1945_partial_day", "received_at": "2026-10-04T23:45:00Z", "working_minutes_until_close": 15, "first_call_due_at": null, "required_first_window_calls": null }
+  ]
+}

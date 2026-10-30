@@ -1,0 +1,64 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P04d-v1",
+  "approval_ref": "owner-session-2026-10-03-P04d",
+  "approved_on": "2026-10-03",
+  "timezone": "America/New_York",
+  "no_date_default": "next_working_date",
+  "opening_minute": 480,
+  "quoted_due_minute": 1200,
+  "configuration_authority": "persisted editable reloadable policy",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "evidence_eligibility_approved": false,
+  "cases": [
+    {
+      "id": "daytime",
+      "entry_at": "2026-10-02T18:00:00Z",
+      "closed_dates": [],
+      "entry_date_required_quoted_calls": 0,
+      "first_required_date": "2026-10-03"
+    },
+    {
+      "id": "late_evening",
+      "entry_at": "2026-10-02T23:45:00Z",
+      "closed_dates": [],
+      "entry_date_required_quoted_calls": 0,
+      "first_required_date": "2026-10-03"
+    },
+    {
+      "id": "after_hours",
+      "entry_at": "2026-10-03T01:00:00Z",
+      "closed_dates": [],
+      "entry_date_required_quoted_calls": 0,
+      "first_required_date": "2026-10-03"
+    },
+    {
+      "id": "closed_next_date",
+      "entry_at": "2026-10-02T18:00:00Z",
+      "closed_dates": [
+        "2026-10-03"
+      ],
+      "entry_date_required_quoted_calls": 0,
+      "first_required_date": "2026-10-04"
+    },
+    {
+      "id": "already_called_today",
+      "entry_at": "2026-10-02T18:00:00Z",
+      "closed_dates": [],
+      "entry_date_required_quoted_calls": 0,
+      "first_required_date": "2026-10-03",
+      "entry_date_call_at": "2026-10-02T17:00:00Z",
+      "future_requirement_fulfilled": false
+    }
+  ],
+  "repeated_priority": {
+    "schedule_restarted": false,
+    "first_required_date_preserved": true
+  },
+  "explicit_date": {
+    "default_overrides_selected_date": false
+  },
+  "ordinary_continuation_calls_per_working_date": 1
+}

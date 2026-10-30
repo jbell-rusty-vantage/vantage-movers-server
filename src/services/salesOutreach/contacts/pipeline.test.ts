@@ -319,7 +319,7 @@ describe("rep-day recount", () => {
 
   test("END-TO-END-RUN §3: Late/corrected evidence — the corrected initiator moves the one credit (P07f)", async () => {
     const w = world();
-    const fx = JSON.parse(readFileSync(path.join(process.cwd(), "docs/sales-outreach-desk/contracts/fixtures/p07f-late-evidence.json"), "utf8")) as {
+    const fx = JSON.parse(readFileSync(path.join(process.cwd(), "src/services/salesOutreach/testSupport/contracts/fixtures/p07f-late-evidence.json"), "utf8")) as {
       cases: Array<{ id: string; before?: Record<string, number>; after?: Record<string, number>; total_goal_credit?: number; contact_at?: string; credited_date?: string }>;
     };
     const corrected = fx.cases.find((c) => c.id === "corrected_initiator")!;
@@ -389,7 +389,7 @@ describe("rep-day recount", () => {
   });
 
   test("p08a / END-TO-END-RUN §3: Goals 100/100/100/50/0 with actuals 100/0/120/25/10", () => {
-    const fx = JSON.parse(readFileSync(path.join(process.cwd(), "docs/sales-outreach-desk/contracts/fixtures/p08a-roster-goals.json"), "utf8")) as {
+    const fx = JSON.parse(readFileSync(path.join(process.cwd(), "src/services/salesOutreach/testSupport/contracts/fixtures/p08a-roster-goals.json"), "utf8")) as {
       default_scheduled_day_goal: number;
       rows: Array<{ rep: string; goal: number; actual: number; override?: "absence" | "partial_day" }>;
       expected_team_goal: number;

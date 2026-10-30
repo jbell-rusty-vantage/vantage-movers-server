@@ -1,0 +1,70 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P07b-v1",
+  "approval_ref": "owner-session-2026-10-03-P07b",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "helping_rep_inbound_approved": false,
+  "helping_rep_sms_approved": false,
+  "assignment_changed": false,
+  "rep_access_expanded": false,
+  "cases": [
+    {
+      "id": "bob_helps_alice",
+      "assigned_rep": "alice",
+      "initiating_rep": "bob",
+      "participants": [
+        "bob"
+      ],
+      "eligible_cadence_credit": 1,
+      "goal_credits": {
+        "alice": 0,
+        "bob": 1
+      },
+      "clears_call_catchup": true,
+      "extra_goal_credit_for_catchup": 0
+    },
+    {
+      "id": "alice_transfers_to_bob",
+      "assigned_rep": "alice",
+      "initiating_rep": "alice",
+      "participants": [
+        "alice",
+        "bob"
+      ],
+      "eligible_cadence_credit": 1,
+      "goal_credits": {
+        "alice": 1,
+        "bob": 0
+      },
+      "clears_call_catchup": true,
+      "extra_goal_credit_for_catchup": 0
+    },
+    {
+      "id": "duplicate_transfer_legs",
+      "initiating_rep": "alice",
+      "participants": [
+        "alice",
+        "bob"
+      ],
+      "eligible_cadence_credit": 1,
+      "goal_credits": {
+        "alice": 1,
+        "bob": 0
+      }
+    },
+    {
+      "id": "ambiguous_identity",
+      "eligible_cadence_credit": 0,
+      "goal_credits": {},
+      "pending_verification": true
+    },
+    {
+      "id": "ambiguous_lead",
+      "eligible_cadence_credit": 0,
+      "goal_credits": {},
+      "pending_verification": true
+    }
+  ]
+}

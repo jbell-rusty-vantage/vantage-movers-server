@@ -22,7 +22,7 @@ import { addRestriction, confirmRestriction, liftRestriction, listRestrictions }
 import { deskActor, MemoryCommandLedger, MemoryDeskCommandStore } from "./testing";
 
 const fixture = (name: string) =>
-  JSON.parse(readFileSync(path.resolve(__dirname, "../../../../docs/sales-outreach-desk/contracts/fixtures", name), "utf8")) as {
+  JSON.parse(readFileSync(path.resolve(__dirname, "../testSupport/contracts/fixtures", name), "utf8")) as {
     cases: Array<Record<string, unknown>>;
   } & Record<string, unknown>;
 

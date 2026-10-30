@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02a-v1",
+  "approval_ref": "owner-session-2026-10-02-P02a",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "scope": "New cadence age only; input instants already normalized",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "working_calendar_approved": false,
+  "deadlines_approved": false,
+  "cases": [
+    { "id": "friday_received", "received_at": "2026-10-02T23:45:00Z", "as_of": "2026-10-02T23:45:00Z", "received_date": "2026-10-02", "business_date": "2026-10-02", "schedule_day": 1 },
+    { "id": "sunday_age_advances", "received_at": "2026-10-02T23:45:00Z", "as_of": "2026-10-04T16:00:00Z", "received_date": "2026-10-02", "business_date": "2026-10-04", "schedule_day": 3 },
+    { "id": "monday_day_four", "received_at": "2026-10-02T23:45:00Z", "as_of": "2026-10-05T16:00:00Z", "received_date": "2026-10-02", "business_date": "2026-10-05", "schedule_day": 4 },
+    { "id": "late_friday_local_midnight", "received_at": "2026-10-03T03:45:00Z", "as_of": "2026-10-03T04:00:00Z", "received_date": "2026-10-02", "business_date": "2026-10-03", "schedule_day": 2 },
+    { "id": "saturday_to_monday", "received_at": "2026-10-03T16:00:00Z", "as_of": "2026-10-05T16:00:00Z", "received_date": "2026-10-03", "business_date": "2026-10-05", "schedule_day": 3 },
+    { "id": "spring_23_hour_day", "received_at": "2026-03-08T05:00:00Z", "as_of": "2026-03-09T04:00:00Z", "received_date": "2026-03-08", "business_date": "2026-03-09", "schedule_day": 2, "elapsed_hours": 23 },
+    { "id": "fall_25_hour_day", "received_at": "2026-11-01T04:00:00Z", "as_of": "2026-11-02T05:00:00Z", "received_date": "2026-11-01", "business_date": "2026-11-02", "schedule_day": 2, "elapsed_hours": 25 }
+  ],
+  "unresolved": ["Sunday/holiday contact requirements", "Late-arrival first enforceable quota", "Call/SMS deadlines and spacing", "Return-to-New age under P05"]
+}

@@ -1,0 +1,48 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P06a-v1",
+  "approval_ref": "owner-session-2026-10-03-P06a",
+  "configuration_authority": "persisted editable reloadable policy",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "qualifying_activity_rule_approved": false,
+  "cases": [
+    {
+      "id": "four_old_two_today",
+      "historical_missed_calls": 4,
+      "ordinary_calls_today": 2,
+      "call_catchup_before": 1,
+      "qualifying_current_calls": 1,
+      "call_catchup_after": 0,
+      "ordinary_calls_remaining": 1,
+      "historical_missed_calls_after": 4,
+      "goal_credit_from_clearing_marker": 0
+    },
+    {
+      "id": "call_cannot_clear_sms",
+      "qualifying_current_calls": 1,
+      "call_catchup_after": 0,
+      "sms_catchup_after": 1
+    },
+    {
+      "id": "scheduled_sms_day",
+      "qualifying_current_sms": 1,
+      "sms_catchup_after": 0,
+      "ordinary_sms_remaining": 0,
+      "next_fixed_sms_day": 9,
+      "sequence_shifted": false
+    },
+    {
+      "id": "unscheduled_sms_day",
+      "qualifying_current_sms": 1,
+      "sms_catchup_after": 0,
+      "ordinary_sms_required": 0,
+      "next_fixed_sms_day": 9,
+      "sequence_shifted": false
+    }
+  ],
+  "oldest_deadline_preserved_until_cleared": true,
+  "historical_misses_erased": false,
+  "catchup_per_channel_maximum": 1
+}

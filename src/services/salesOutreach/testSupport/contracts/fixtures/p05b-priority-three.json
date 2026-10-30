@@ -1,0 +1,63 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05b-v1",
+  "approval_ref": "owner-session-2026-10-03-P05b",
+  "approved_on": "2026-10-03",
+  "priority": "3",
+  "meaning": "Rep discretion",
+  "routine_calls_required": 0,
+  "routine_sms_required": 0,
+  "display_label": "No routine cadence",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "callback_policy_approved": false,
+  "goal_credit_approved": false,
+  "unknown_priority_policy_approved": false,
+  "reentry_policy_approved": false,
+  "cases": [
+    {
+      "id": "new_to_three",
+      "prior_workflow": "new",
+      "accepted_priority": true,
+      "prior_cadence_ended": true,
+      "outstanding_routine_requirements": "superseded",
+      "fulfillment_created": false,
+      "historical_miss_retained": true,
+      "contact_history_retained": true,
+      "lead_remains_open": true,
+      "visible": true
+    },
+    {
+      "id": "quoted_to_three",
+      "prior_workflow": "quoted",
+      "accepted_priority": true,
+      "prior_cadence_ended": true,
+      "outstanding_routine_requirements": "superseded",
+      "fulfillment_created": false,
+      "historical_miss_retained": true,
+      "contact_history_retained": true,
+      "lead_remains_open": true,
+      "visible": true
+    },
+    {
+      "id": "already_three",
+      "accepted_priority": true,
+      "new_routine_requirements_created": 0,
+      "lead_remains_open": true,
+      "visible": true
+    },
+    {
+      "id": "closed_to_three",
+      "accepted_priority": true,
+      "implicit_reopen": false,
+      "lead_remains_closed": true
+    },
+    {
+      "id": "unvouched_three",
+      "accepted_priority": false,
+      "transition_authorized": false,
+      "previous_requirements_superseded": false
+    }
+  ]
+}

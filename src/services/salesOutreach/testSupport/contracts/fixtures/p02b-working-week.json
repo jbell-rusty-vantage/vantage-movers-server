@@ -1,0 +1,21 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02b-v1",
+  "approval_ref": "owner-session-2026-10-02-P02b",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "working_weekdays": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+  "scope": "Working weekdays only; count examples assume full-day eligible New work, approved P01 count and already specified initial SMS cadence",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "hours_approved": false,
+  "holidays_approved": false,
+  "deadlines_approved": false,
+  "cases": [
+    { "id": "friday_arrival_sunday_day_three", "received_date": "2026-10-02", "business_date": "2026-10-04", "schedule_day": 3, "working_day": true, "required_calls": 2, "required_sms": 1, "automatic_sunday_exemption": false },
+    { "id": "saturday_arrival_sunday_day_two", "received_date": "2026-10-03", "business_date": "2026-10-04", "schedule_day": 2, "working_day": true, "required_calls": 2, "required_sms": 1, "automatic_sunday_exemption": false },
+    { "id": "sunday_full_day_arrival", "received_date": "2026-10-04", "business_date": "2026-10-04", "schedule_day": 1, "working_day": true, "required_calls": 2, "required_sms": 1, "automatic_sunday_exemption": false }
+  ],
+  "unresolved": ["Daily operating hours", "Holiday closures", "Sunday late-arrival quota and deadline", "Individual rep attendance and roster", "Outside-window evidence credit"]
+}

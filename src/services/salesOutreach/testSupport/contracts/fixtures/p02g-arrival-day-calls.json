@@ -1,0 +1,28 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P02g-v1",
+  "approval_ref": "owner-session-2026-10-02-P02g",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "two_calls_before_minute": 1080,
+  "one_call_through_minute_inclusive": 1170,
+  "configurable": true,
+  "configuration_authority": "persisted reloadable configuration",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "sms_allowance_approved": false,
+  "cases": [
+    { "id": "before_opening", "arrival_minute": 465, "arrival_date_required_calls": 2, "first_due_day_offset": 0, "first_due_minute": 510, "second_due_minute": 1200, "past_noon_deadline": false },
+    { "id": "afternoon", "arrival_minute": 840, "arrival_date_required_calls": 2, "first_due_day_offset": 0, "first_due_minute": 870, "second_due_minute": 1200, "past_noon_deadline": false },
+    { "id": "1759", "arrival_minute": 1079, "arrival_date_required_calls": 2, "first_due_day_offset": 0, "first_due_minute": 1109, "second_due_minute": 1200, "past_noon_deadline": false },
+    { "id": "1800", "arrival_minute": 1080, "arrival_date_required_calls": 1, "first_due_day_offset": 0, "first_due_minute": 1110, "second_due_minute": null, "past_noon_deadline": false },
+    { "id": "1815", "arrival_minute": 1095, "arrival_date_required_calls": 1, "first_due_day_offset": 0, "first_due_minute": 1125, "second_due_minute": null, "past_noon_deadline": false },
+    { "id": "1930", "arrival_minute": 1170, "arrival_date_required_calls": 1, "first_due_day_offset": 0, "first_due_minute": 1200, "second_due_minute": null, "past_noon_deadline": false },
+    { "id": "1931", "arrival_minute": 1171, "arrival_date_required_calls": 0, "first_due_day_offset": 1, "first_due_minute": 481, "second_due_minute": null, "past_noon_deadline": false, "arrival_quota_waived_not_missed": true },
+    { "id": "1945", "arrival_minute": 1185, "arrival_date_required_calls": 0, "first_due_day_offset": 1, "first_due_minute": 495, "second_due_minute": null, "past_noon_deadline": false, "arrival_quota_waived_not_missed": true },
+    { "id": "2100", "arrival_minute": 1260, "arrival_date_required_calls": 0, "first_due_day_offset": 1, "first_due_minute": 510, "second_due_minute": null, "past_noon_deadline": false, "arrival_quota_waived_not_missed": true }
+  ],
+  "next_day_example": { "schedule_day": 2, "required_calls": 2, "first_response_call_credited": true, "remaining_required_calls": 1, "extra_third_obligation": false },
+  "unresolved": ["Arrival-day SMS allowance", "Holiday overrides", "P06 restrictions/assignment", "P07 eligible evidence"]
+}

@@ -1,0 +1,71 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05e-v1",
+  "approval_ref": "owner-session-2026-10-03-P05e",
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "source_timestamp_proof": false,
+  "granot_priority_fabricated": false,
+  "historical_import_treated_as_fresh": false,
+  "closure_overridden": false,
+  "cases": [
+    {
+      "id": "website",
+      "fresh_eligible": true,
+      "accepted_priority": null,
+      "cadence": "new",
+      "policy_origin": "intake_default"
+    },
+    {
+      "id": "best_relocation",
+      "fresh_eligible": true,
+      "accepted_priority": null,
+      "cadence": "new",
+      "policy_origin": "intake_default"
+    },
+    {
+      "id": "ringcentral",
+      "fresh_eligible": true,
+      "accepted_priority": null,
+      "cadence": "new",
+      "policy_origin": "intake_default"
+    },
+    {
+      "id": "manual",
+      "fresh_eligible": true,
+      "accepted_priority": null,
+      "cadence": "new",
+      "policy_origin": "intake_default"
+    },
+    {
+      "id": "granot_missing",
+      "cadence": null,
+      "label": "Priority needs review"
+    },
+    {
+      "id": "blank_refresh",
+      "last_verified": "quoted",
+      "cadence": "quoted",
+      "timeline_reset": false,
+      "uncertainty_visible": true
+    },
+    {
+      "id": "malformed_refresh",
+      "last_verified": "new",
+      "cadence": "new",
+      "timeline_reset": false,
+      "uncertainty_visible": true
+    },
+    {
+      "id": "accepted_three",
+      "cadence": null,
+      "label": "No routine cadence"
+    },
+    {
+      "id": "accepted_unmapped",
+      "cadence": null,
+      "label": "No policy configured"
+    }
+  ]
+}

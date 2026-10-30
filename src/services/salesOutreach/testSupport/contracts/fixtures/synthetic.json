@@ -1,0 +1,39 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "cases": [
+    {
+      "id": "above_goal",
+      "actual": 108,
+      "goal": 100,
+      "remaining": 0,
+      "progress": 1,
+      "overdue_leads": 2
+    },
+    {
+      "id": "sms_unknown",
+      "call_status": "completed",
+      "sms_status": "pending",
+      "sms_verified_completed": null,
+      "sms_coverage_state": "gap"
+    },
+    {
+      "id": "foreign_rep",
+      "request_actor": "synthetic-agent-a",
+      "current_assignment": "synthetic-agent-b",
+      "expected_status": 404
+    },
+    {
+      "id": "unapproved_policy",
+      "approval_ref": null,
+      "cadence_enforcement_enabled": false,
+      "expected_activation": "rejected"
+    },
+    {
+      "id": "missing_job",
+      "job_number": null,
+      "eligible": true,
+      "copy_enabled": false
+    }
+  ]
+}

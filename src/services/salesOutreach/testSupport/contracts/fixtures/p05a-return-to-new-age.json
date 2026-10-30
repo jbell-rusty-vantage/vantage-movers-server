@@ -1,0 +1,72 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P05a-v1",
+  "approval_ref": "owner-session-2026-10-03-P05a",
+  "approved_on": "2026-10-03",
+  "timezone": "America/New_York",
+  "configuration_field": "cadence.return_to_new_mode",
+  "age_basis": "original_received_date",
+  "age_pauses_while_quoted": false,
+  "age_restarts_on_return": false,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "transition_date_allowance_approved": false,
+  "earlier_call_credit_approved": false,
+  "initial_response_treatment_approved": false,
+  "cases": [
+    {
+      "id": "day_ten_return",
+      "received_at": "2026-10-02T14:00:00Z",
+      "quoted_entry_date": "2026-10-03",
+      "returned_at": "2026-10-11T18:00:00Z",
+      "expected_schedule_day": 10
+    },
+    {
+      "id": "day_three_return",
+      "received_at": "2026-10-02T14:00:00Z",
+      "quoted_entry_date": "2026-10-03",
+      "returned_at": "2026-10-04T18:00:00Z",
+      "expected_schedule_day": 3
+    },
+    {
+      "id": "closed_date_age_advances",
+      "received_at": "2026-10-02T14:00:00Z",
+      "quoted_entry_date": "2026-10-03",
+      "closed_dates": [
+        "2026-10-04"
+      ],
+      "returned_at": "2026-10-05T18:00:00Z",
+      "expected_schedule_day": 4
+    },
+    {
+      "id": "ny_midnight_return",
+      "received_at": "2026-10-03T03:45:00Z",
+      "quoted_entry_date": "2026-10-02",
+      "returned_at": "2026-10-03T04:00:00Z",
+      "expected_schedule_day": 2
+    }
+  ],
+  "repeated_cycles": {
+    "original_received_date_preserved": true,
+    "restarted_day_one": false
+  },
+  "subsequent_full_working_dates": [
+    {
+      "date": "2026-10-12",
+      "schedule_day": 11,
+      "required_calls": 1,
+      "required_sms": 0
+    },
+    {
+      "date": "2026-10-13",
+      "schedule_day": 12,
+      "required_calls": 1,
+      "required_sms": 1
+    }
+  ],
+  "missing_anchor": {
+    "guessed": false,
+    "policy_available": false
+  }
+}

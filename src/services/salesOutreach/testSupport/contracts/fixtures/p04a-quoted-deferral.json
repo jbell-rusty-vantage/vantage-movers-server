@@ -1,0 +1,25 @@
+{
+  "synthetic": true,
+  "contract_version": "sod-v1",
+  "decision_revision": "P04a-v1",
+  "approval_ref": "owner-session-2026-10-02-P04a",
+  "approved_on": "2026-10-02",
+  "timezone": "America/New_York",
+  "selected_date": "2026-10-08",
+  "activation_at": "2026-10-08T12:00:00Z",
+  "due_at": "2026-10-09T00:00:00Z",
+  "quoted_due_minute": 1200,
+  "configurable": true,
+  "complete_policy_approved": false,
+  "cadence_enforcement_enabled": false,
+  "permissions_approved": false,
+  "closed_date_selection_approved": false,
+  "scope": "Valid selected working date, active Quoted period, no calendar closure or attribution/restriction ambiguity assumed",
+  "cases": [
+    { "id": "before_selected_date", "business_date": "2026-10-07", "ordinary_required_calls": 0, "scheduled": true, "actionable_countdown_active": false },
+    { "id": "selected_date_opening", "as_of": "2026-10-08T12:00:00Z", "ordinary_required_calls": 1, "actionable_countdown_active": true, "overdue": false },
+    { "id": "call_on_selected_date", "call_started_at": "2026-10-08T15:00:00Z", "verified_completed": 1, "remaining": 0, "next_due_at": "2026-10-10T00:00:00Z" },
+    { "id": "early_extra_call", "call_started_at": "2026-10-07T15:00:00Z", "selected_date_verified_completed": 0, "selected_date_changed": false, "goal_eligibility_approved": false },
+    { "id": "missed_selected_date", "selected_date_missed": true, "next_business_date": "2026-10-09", "next_date_ordinary_required_calls": 1, "recovery_policy_approved": false }
+  ]
+}
