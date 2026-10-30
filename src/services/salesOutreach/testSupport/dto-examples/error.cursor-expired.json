@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "code": "CURSOR_EXPIRED",
+  "error": "Sales Outreach request rejected",
+  "request_id": "req-example",
+  "issues": [
+    {
+      "path": "cursor",
+      "code": "assignment_changed",
+      "message": "resnapshot"
+    }
+  ]
+}

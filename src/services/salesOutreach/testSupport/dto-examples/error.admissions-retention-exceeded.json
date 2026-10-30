@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "code": "INVALID_INPUT",
+  "error": "Sales Outreach request rejected",
+  "request_id": "req-example",
+  "issues": [
+    {
+      "path": "business_day",
+      "code": "retention_exceeded",
+      "message": "completed jobs are kept 14 days"
+    }
+  ]
+}

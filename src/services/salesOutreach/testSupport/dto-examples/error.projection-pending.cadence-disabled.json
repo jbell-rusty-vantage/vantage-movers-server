@@ -1,0 +1,12 @@
+{
+  "ok": false,
+  "code": "PROJECTION_PENDING",
+  "error": "Sales Outreach request rejected",
+  "request_id": "req-example",
+  "issues": [
+    {
+      "path": "controls",
+      "code": "cadence_disabled"
+    }
+  ]
+}

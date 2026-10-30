@@ -4,7 +4,7 @@
  *
  *   node --import tsx ops/sales-outreach/write-dto-examples.ts
  *
- * Writes `docs/sales-outreach-desk/workspace/evidence/dto-examples/*.json` from the real read
+ * Writes `src/services/salesOutreach/testSupport/dto-examples/*.json` from the real read
  * services over a synthetic in-memory store (no database, no provider, no env). The roster mirrors
  * contracts/fixtures/p08a-roster-goals.json (partial-day and absence overrides, 108/100) plus one
  * rep with no activity yet and one Agent with calls who is not on the roster.
@@ -30,7 +30,7 @@ import { activeInspection, fixedConfigurationLoader, MemoryReadStore, repDayRow 
 import { csiOperatorActor } from "../../src/services/salesIntelligence/auth";
 import type { SalesOutreachConfigurationInput } from "../../src/validation/v1/salesOutreach";
 
-export const DTO_EXAMPLES_DIR = path.resolve(__dirname, "../../docs/sales-outreach-desk/workspace/evidence/dto-examples");
+export const DTO_EXAMPLES_DIR = path.resolve(__dirname, "../../src/services/salesOutreach/testSupport/dto-examples");
 
 const NOW = new Date("2026-10-05T15:00:00.000Z");
 const DAY = "2026-10-05";

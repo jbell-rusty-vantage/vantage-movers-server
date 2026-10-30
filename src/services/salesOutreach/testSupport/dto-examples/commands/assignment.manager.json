@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/admin/sales-outreach/outreach/6650a1b2c3d4e5f607182a01/assignment",
+    "headers": {
+      "Idempotency-Key": "mgr-assign-1"
+    },
+    "body": {
+      "expected_revision": 1,
+      "agent_id": "6650a1b2c3d4e5f60718293b"
+    }
+  },
+  "response": {
+    "ok": true,
+    "data": {
+      "contract_version": "sod-v1",
+      "subject_id": "6650a1b2c3d4e5f607182a01",
+      "assigned_agent_id": "6650a1b2c3d4e5f60718293b",
+      "previous_agent_id": "6650a1b2c3d4e5f60718293a",
+      "assignment_revision": 2,
+      "lead_revision": 5,
+      "receiver_agent_source": "manual",
+      "changed": true,
+      "replayed": false
+    }
+  }
+}

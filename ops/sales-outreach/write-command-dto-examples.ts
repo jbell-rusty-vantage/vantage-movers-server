@@ -3,7 +3,7 @@
  *
  *   node --import tsx ops/sales-outreach/write-command-dto-examples.ts
  *
- * Writes `docs/sales-outreach-desk/workspace/evidence/dto-examples/commands/*.json`, each
+ * Writes `src/services/salesOutreach/testSupport/dto-examples/commands/*.json`, each
  * `{ request, response }`, from the real command services over the in-memory command store, CSI
  * ledger stand-in and configuration store (no database, no provider, no env). The sequence is one
  * synthetic Quoted subject assigned to Alice: Rep Quoted date → reschedule → stale 409 → callback

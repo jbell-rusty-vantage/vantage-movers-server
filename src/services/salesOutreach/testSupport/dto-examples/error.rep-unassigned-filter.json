@@ -1,0 +1,12 @@
+{
+  "ok": false,
+  "code": "FORBIDDEN",
+  "error": "Sales Outreach request rejected",
+  "request_id": "req-example",
+  "issues": [
+    {
+      "path": "unassigned",
+      "code": "unassigned_not_permitted"
+    }
+  ]
+}

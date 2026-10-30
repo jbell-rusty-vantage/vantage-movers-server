@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/admin/sales-outreach/outreach/6650a1b2c3d4e5f607182a01/callback",
+    "headers": {
+      "Idempotency-Key": "owner-callback-3"
+    },
+    "body": {
+      "operation": "cancel",
+      "expected_revision": 4
+    }
+  },
+  "response": {
+    "ok": true,
+    "data": {
+      "contract_version": "sod-v1",
+      "subject_id": "6650a1b2c3d4e5f607182a01",
+      "plan_revision": 5,
+      "plan": null,
+      "ended_plan": {
+        "plan_id": "000000000000000000000004",
+        "kind": "callback",
+        "status": "cancelled"
+      },
+      "changed": true,
+      "replayed": false
+    }
+  }
+}

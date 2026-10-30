@@ -28,7 +28,7 @@ import {
   policyInstalled,
 } from "./sales-outreach-final01";
 
-const packet = (path: string) => JSON.parse(readFileSync(resolve(__dirname, "../../docs/sales-outreach-desk", path), "utf8")) as Record<string, unknown>;
+const packet = (path: string) => JSON.parse(readFileSync(resolve(__dirname, "../../src/services/salesOutreach/testSupport", path), "utf8")) as Record<string, unknown>;
 const fixture = (name: string) => packet(`contracts/fixtures/${name}`);
 const A = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "bbbbbbbbbbbbbbbbbbbbbbbb";

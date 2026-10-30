@@ -1,0 +1,46 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/v1/admin/sales-outreach/outreach/6650a1b2c3d4e5f607182a01/callback",
+    "headers": {
+      "Idempotency-Key": "mgr-callback-1"
+    },
+    "body": {
+      "operation": "set",
+      "expected_revision": 2,
+      "appointment_at": "2026-10-08T19:00:00.000Z",
+      "replace_active_plan": true
+    }
+  },
+  "response": {
+    "ok": true,
+    "data": {
+      "contract_version": "sod-v1",
+      "subject_id": "6650a1b2c3d4e5f607182a01",
+      "plan_revision": 3,
+      "plan": {
+        "plan_id": "000000000000000000000003",
+        "kind": "callback",
+        "period_id": "6650a1b2c3d4e5f607182b01",
+        "selected_date": null,
+        "appointment_at": "2026-10-08T19:00:00.000Z",
+        "appointment_local": {
+          "business_date": "2026-10-08",
+          "minute": 900
+        },
+        "due_at": "2026-10-08T19:15:00.000Z",
+        "window_minutes": 15,
+        "effective_at": "2026-10-05T16:00:00.000Z",
+        "status": "active",
+        "revision": 3
+      },
+      "ended_plan": {
+        "plan_id": "000000000000000000000002",
+        "kind": "quoted_date",
+        "status": "replaced"
+      },
+      "changed": true,
+      "replayed": false
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/admin/sales-outreach/restrictions",
+    "headers": {
+      "Idempotency-Key": "owner-restrict-1"
+    },
+    "body": {
+      "contact_number_id": "6650a1b2c3d4e5f607182d01",
+      "channels": [
+        "sms"
+      ],
+      "until": "2026-10-12T04:00:00.000Z",
+      "reason": "Customer asked for no texts this week"
+    }
+  },
+  "response": {
+    "ok": true,
+    "data": {
+      "contract_version": "sod-v1",
+      "restriction": {
+        "restriction_id": "000000000000000000000005",
+        "contact_number_id": "6650a1b2c3d4e5f607182d01",
+        "channels": [
+          "sms"
+        ],
+        "origin": "owner",
+        "state": "active",
+        "effective_at": "2026-10-05T14:00:00.000Z",
+        "until": "2026-10-12T04:00:00.000Z",
+        "reason": "Customer asked for no texts this week",
+        "needs_review": false,
+        "confirmed_at": null,
+        "confirmed_by": null,
+        "resolved_at": null,
+        "resolved_by": null,
+        "resolution_reason": null,
+        "revision": 1
+      },
+      "changed": true,
+      "replayed": false
+    }
+  }
+}
