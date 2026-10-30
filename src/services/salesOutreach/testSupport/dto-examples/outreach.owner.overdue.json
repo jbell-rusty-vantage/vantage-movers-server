@@ -1,7 +1,7 @@
 {
   "ok": true,
   "data": {
-    "granot_link_available": false,
+    "granot_link_available": true,
     "contract_version": "sod-v1",
     "as_of": "2026-10-05T15:00:00.000Z",
     "timezone": "America/New_York",

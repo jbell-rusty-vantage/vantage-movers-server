@@ -10,7 +10,6 @@ import { MemoryDeskReadStore } from "./deskTesting";
 import { readOutreachDetail } from "./detail";
 import { readTeam } from "./service";
 import { activeInspection, fixedConfigurationLoader, MemoryReadStore } from "./testing";
-import { GRANOT_LINK_PILOT_AGENT } from "../granotLinkPilot";
 
 /**
  * SRV-8 `GET /outreach/:id` and the team cadence cards: authorization before serialization (foreign and
@@ -106,12 +105,10 @@ async function notFound(promise: Promise<unknown>) {
   await assert.rejects(promise, (e: unknown) => e instanceof OutreachError && e.code === "NOT_FOUND");
 }
 
-test("Granot button is granted only to Josh on his canonical assignment, never coordinator views", async () => {
+test("Granot button is available to reps and coordinators for accessible jobs, hidden for pending jobs", async () => {
   const { subject, deps, store } = await seeded();
-  store.setLead(subject.lead, GRANOT_LINK_PILOT_AGENT);
-  assert.equal((await readOutreachDetail(rep(GRANOT_LINK_PILOT_AGENT), subject.id, deps)).granot_link_available, true);
-  for (const actor of [owner, manager]) assert.equal((await readOutreachDetail(actor, subject.id, deps)).granot_link_available, false);
-  store.setLead(subject.lead, REP_A);
+  for (const actor of [rep(REP_A), owner, manager]) assert.equal((await readOutreachDetail(actor, subject.id, deps)).granot_link_available, true);
+  store.evaluation.subjects.set(subject.id, { ...subject, display: { ...subject.display, job_no: null } });
   assert.equal((await readOutreachDetail(rep(REP_A), subject.id, deps)).granot_link_available, false);
 });
 

@@ -47,7 +47,7 @@ Apply effects after capture are owned by [`automation-apply.md`](../granot-lifec
 
 ## HTTP / queue / cron
 
-### Outreach job navigation (Josh pilot, 2026-10-30)
+### Outreach job navigation (all Desk roles, 2026-10-30)
 
 `jobFormLink.ts` retrieves a job form through Advanced Search (`searchwc`, POST `searchret` with `ORDNO`, then History fallback). Only a unique visible Job Number equivalent under the canonical booking identity rule and one observed `mpcharge~chargeswc` URL qualify. It never executes job-page scripts or job update actions. The UUID changes on repeated selection; this URL is navigation evidence, not job identity. Browser Granot cookies are required; lifetime and Josh's own browser behavior are not guaranteed by the server's lookup.
 
