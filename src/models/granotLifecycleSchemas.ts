@@ -380,6 +380,7 @@ export const LEAD_PROVENANCE_FIELD_NAMES = [
 export const PUBLIC_LEAD_FORBIDDEN_LIFECYCLE_FIELDS = [
   "ingestion_origin",
   "external_sheet_review",
+  "external_call_admission",
   "ringcentral",
   "outreach_automation_suppressed",
   "normalized_job_no",

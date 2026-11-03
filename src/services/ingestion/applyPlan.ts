@@ -1,5 +1,6 @@
 import { bestRelocationRetiredError } from "./retirementPolicy";
 import { ConflictError } from "../errors";
+import { bestRelocationFinalCallPayloadChecksum } from "../domainCommands/bestRelocationFinalCall";
 import { createHash } from "node:crypto";
 import {
   assertChecksum,
@@ -278,7 +279,7 @@ async function executeAction(
   resolved: Map<string, string>,
 ): Promise<CompatibilityCanonicalCommandResult> {
   const data = resolvePayload(action, resolved);
-  const payloadChecksum = computeChecksum({
+  const payloadChecksum = action.command === "admit_final_best_relocation_call" ? bestRelocationFinalCallPayloadChecksum(action) : computeChecksum({
     checksum_version: 1,
     artifact_kind: "ingestion_plan",
     schema_version: action.schema_version,
@@ -300,6 +301,9 @@ async function executeAction(
     },
   };
   switch (action.command) {
+    case "admit_final_best_relocation_call":
+      if (!input.commands.admitBestRelocationFinalCall) throw new ConflictError("Final Call admission command is unavailable");
+      return input.commands.admitBestRelocationFinalCall({ action, context });
     case "create_form_lead":
       return input.commands.createFormLead({ data: data as never, context });
     case "create_call_lead":

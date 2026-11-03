@@ -1,4 +1,8 @@
 import { hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
+import { externalCallAdmissionSchema, type ExternalCallAdmission } from "./callLeadAdmission";
+import { getCallLeadReportingDecision } from "./callLeadReportingDisposition";
+import type { ExternalSheetReview } from "./externalSheetReview";
+import { classifyRingCentralCallLeadDuplicate } from "../ringcentral/ringcentral-duplicate-guard";
 import { V1ServiceError } from "../v1ServiceError";
 import type { ClientSession } from "mongoose";
 import {
@@ -125,6 +129,41 @@ export async function beginCallLeadIngestion(
   tx: CallLeadSession & { ingestion_origin: CallLeadIngestionOrigin },
 ): Promise<CallLeadIngestionInProgress> {
   throw new V1ServiceError("Only a qualified RingCentral inbound queue call can create a Call Lead", 409);
+}
+
+/** Internal final-import handoff. Its canonical caller verifies the frozen approved
+ * action and live final-run transaction fence before invoking this function. */
+export async function beginFinalBestRelocationCallLeadIngestion(input: {
+  phone_number: string; timestamp: Date; duplicate: boolean;
+  admission: ExternalCallAdmission; review?: ExternalSheetReview;
+  expected_disposition: "calls" | "duplicate_calls" | "bad_call_leads";
+}, tx: CallLeadSession): Promise<CallLeadIngestionInProgress> {
+  const admission = externalCallAdmissionSchema.parse(input.admission);
+  const { assignment: sourceAssignment } = await resolveLeadSourceAssignment({
+    company_slug: "best_relocation_leads", channel: "call", requireActive: false,
+  });
+  if (String(sourceAssignment.lead_source_company) !== admission.source_company_id ||
+      String(sourceAssignment.source_granularity_id) !== admission.source_granularity_id ||
+      +input.timestamp !== +admission.source_arrival_at) throw new ConflictError("Final Call source assignment changed");
+  const form_fill = await hasFormFillForCallLead({ sourceCompany: "best_relocation_leads", leadSourceCompany: sourceAssignment.lead_source_company }, input.phone_number, tx.session);
+  const duplicateProof = await classifyRingCentralCallLeadDuplicate({ sourceCompany: "best_relocation_leads",
+    leadSourceCompany: sourceAssignment.lead_source_company, sourceGranularityId: admission.source_granularity_id,
+    callerPhoneNumber: input.phone_number, callTimestamp: input.timestamp, session: tx.session });
+  const duplicate = input.duplicate || duplicateProof.isDuplicate;
+  const timestamp = stampFloridaTime(input.timestamp);
+  const cplSnapshot = await priceTheLead(admission.source_granularity_id, timestamp, duplicate);
+  const lead = new CallLead({
+    ...sourceAssignment, phone_number: input.phone_number, timestamp,
+    duplicate, form_fill, ...cplSnapshot,
+    ...rememberHowTheLeadArrived("best_relocation_sheet", tx.now, { phone_number: input.phone_number }),
+    external_call_admission: admission, external_sheet_review: input.review,
+    outreach_automation_suppressed: true, post_to_granot: false, no_sync: false,
+  });
+  if (getCallLeadReportingDecision(lead).disposition !== input.expected_disposition) throw new ConflictError("Final Call reporting disposition changed");
+  await writeTheCallLead(lead, tx.session);
+  const job = callLeadCreateJob(lead._id.toString());
+  await rememberSheetSync(job, tx.session);
+  return { lead, job, source_company: "best_relocation_leads", sourceAssignment, form_fill };
 }
 
 export async function completeCallLeadIngestion(

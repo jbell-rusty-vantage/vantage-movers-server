@@ -1,5 +1,5 @@
 import { billableCallLeadExpression } from "../leads/callLeadReportingDisposition";
-import { qualifiedCallLeadFilter } from "../ringcentral/callLeadQualification";
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
 import mongoose, { type PipelineStage } from "mongoose";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
@@ -92,7 +92,7 @@ async function leadRowsForType(
   const model = leadType === "FormLead" ? models["form-leads"] : models["call-leads"];
   const match = await receiverLeadMatch(leadType, query);
   const pipeline: PipelineStage[] = [
-    { $match: leadType === "CallLead" ? { $and: [match, qualifiedCallLeadFilter()] } : match },
+    { $match: leadType === "CallLead" ? { $and: [match, reportingEligibleCallLeadFilter()] } : match },
     ...receiverLeadLookups(leadType),
     {
       $set: {

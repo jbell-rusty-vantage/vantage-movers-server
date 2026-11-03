@@ -11,6 +11,7 @@ import { finalizeSheetSync } from "../sheetSync/sheetSyncCoordinator";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
 import { ExternalDataConnection } from "../../models/ExternalDataConnection";
 import { activeTokenFilter, type LeaseToken } from "../durableWork";
+import { assertFinalReconciliationWriteInTransaction } from "../ingestion/finalReconciliationFence";
 
 export type CapturedReviewCell = {
   source_workbook_id: string; source_sheet_id: number; source_tab: string;
@@ -68,6 +69,9 @@ export async function reconcileExternalSheetReview(input: ReconcileReviewInput) 
       const connection = await ExternalDataConnection.findOneAndUpdate({ key: "best_relocation", retired_at: null },
         { $set: { updatedAt: now } }, { session, returnDocument: "after" });
       if (!connection) throw new Error("review_connection_retired_or_missing");
+      // Older final-review commands may still hold approved envelopes. Shutdown
+      // now holds those too until a new Owner release binds to the run checksum.
+      if (connection.retirement_ingestion_deferred === true) await assertFinalReconciliationWriteInTransaction(context, session);
       const Model = (input.lead_model === "FormLead" ? getFormLeadModel() : getCallLeadModel()) as unknown as mongoose.Model<Record<string, unknown>>;
       const row = await Model.findById(input.lead_id).session(session).lean();
       if (!row || row.source_company !== "best_relocation_leads") throw new Error("review_target_source_mismatch");

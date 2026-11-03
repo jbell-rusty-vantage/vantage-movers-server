@@ -50,6 +50,10 @@ export type SheetContainsTabPlan = {
 
 export type SheetContainsRecordFlags = {
   ringcentral?: unknown;
+  external_call_admission?: unknown;
+  source_company?: unknown;
+  lead_source_company?: unknown;
+  source_granularity_id?: unknown;
   timestamp?: unknown;
   form_fill?: boolean | null;
   external_sheet_review?: unknown;
@@ -145,13 +149,15 @@ export function planExpectedSheetTabs(
   }
   switch (entityModel) {
     case "FormLead": {
+      if (hasFormBadProjection(flags)) {
+        return { expected: [formBadLeads("expected")], siblings: [
+          { ...formPrimary(false), role: "sibling" },
+          { ...formPrimary(true), role: "sibling" },
+        ] };
+      }
       const expected = [formPrimary(flags.duplicate)];
       const siblings = [formOpposite(flags.duplicate)];
-      if (hasFormBadProjection(flags)) {
-        expected.push(formBadLeads("expected"));
-      } else {
-        siblings.push(formBadLeads("sibling"));
-      }
+      siblings.push(formBadLeads("sibling"));
       return { expected, siblings };
     }
     case "CallLead": {

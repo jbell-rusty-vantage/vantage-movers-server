@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose, { type ClientSession } from "mongoose";
+import { reportingEligibleCallLeadFilter } from "./callLeadAdmission";
 import {
   findDuplicateFormLeadMatch,
   hasFormFillForCallLead,
@@ -391,7 +392,7 @@ test("form fill mark shares one command execution and the caller session", async
     session,
   );
 
-  assert.ok(findQuery?.$and?.some((part) => "ringcentral.qualification_reason" in part));
+  assert.deepEqual(findQuery?.$and?.[1], reportingEligibleCallLeadFilter());
   assert.deepEqual(findQuery?.$and?.[2], { form_fill: { $ne: true } });
   assert.deepEqual(findQuery?.$and?.[0], { source_company: "tbm_leads" });
   assert.deepEqual(querySessions, [session]);

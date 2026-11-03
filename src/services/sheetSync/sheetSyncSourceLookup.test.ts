@@ -22,10 +22,8 @@ test("syncSourceLead evaluates no_sync before unmatched and deletes ordinary tab
 
   const deleteFn = source.slice(source.indexOf("async function deleteOrdinaryNoSyncLeadRows"));
   assert.match(deleteFn, /deleteRowsFromTargets/);
-  assert.match(deleteFn, /master_forms/);
-  assert.match(deleteFn, /master_calls/);
-  assert.doesNotMatch(deleteFn, /master_duplicates/);
-  assert.doesNotMatch(deleteFn, /master_bad_leads/);
+  assert.match(deleteFn, /allFormLeadTargets/);
+  assert.match(deleteFn, /FORM_REPORTING_TARGET_KEYS/);
   assert.match(deleteFn, /callLeadTargets/);
   assert.match(deleteFn, /CALL_REPORTING_TARGET_KEYS/);
 });

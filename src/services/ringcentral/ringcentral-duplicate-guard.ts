@@ -1,4 +1,4 @@
-import { qualifiedCallLeadFilter } from "./callLeadQualification";
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
 import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
@@ -82,7 +82,7 @@ const defaultDeps: RingCentralDuplicateDeps = {
     session,
   }) {
     return CallLead.find({
-      ...qualifiedCallLeadFilter(),
+      ...reportingEligibleCallLeadFilter(),
       source_granularity_id: sourceGranularityId,
       duplicate: { $ne: true },
       normalized_phone_number: normalizedPhone,

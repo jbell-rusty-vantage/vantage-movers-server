@@ -59,9 +59,9 @@ async function main() {
     await assert.rejects(retireBestRelocationConnectionAndSources(input), /holds the lease/);
     const context = { command_id: "proof", idempotency_key: "proof", payload_checksum: "a".repeat(64), actor: createBestRelocationIngestionActor("proof"), initiator: typeOwnerContext,
       provenance: { origin: "external_sheet_ingestion" as const, run_id: String(applying._id), source_receipt_id: String(new mongoose.Types.ObjectId()), source_connection_key: "best_relocation" } };
-    async function probe(name: string) {
+    async function probe(name: string, commandContext = context) {
       const session = await mongoose.startSession();
-      try { await session.withTransaction(async () => { await db!.collection("retirement_fence_probes").insertOne({ name }, { session }); await assertFinalReconciliationWriteInTransaction(context, session); }); }
+      try { await session.withTransaction(async () => { await db!.collection("retirement_fence_probes").insertOne({ name }, { session }); await assertFinalReconciliationWriteInTransaction(commandContext, session); }); }
       finally { await session.endSession(); }
     }
     await assert.rejects(probe("no-approval"), /run_not_applying/);
@@ -79,11 +79,34 @@ async function main() {
     await assert.rejects(retireBestRelocationConnectionAndSources(input), /still reports a live lease/);
     await IngestionRun.updateOne({ _id: applying._id }, { $set: { leased_until: null } });
     await db.collection("booked_leads").insertOne({ synthetic: true, job_no: "KEEP" });
+    const shutdown = await retireBestRelocationConnectionAndSources({ ...input, final_run_id: "synthetic-shutdown", reconciliation_status: "deferred" });
+    assert.equal(shutdown.cancelled_runs, statuses.length);
+    const heldConnection = await ExternalDataConnection.findById(connection._id).lean();
+    assert.equal(heldConnection?.retired_at, null); assert.equal(heldConnection?.retirement_final_run_id, null);
+    assert.equal(heldConnection?.retirement_shutdown_run_id, "synthetic-shutdown"); assert.ok(heldConnection?.retirement_shutdown_at);
+    assert.equal(heldConnection?.retirement_ingestion_deferred, true); assert.equal(heldConnection?.retirement_reconciliation_status, "pending_owner_review");
+    assert.equal(heldConnection?.application_enabled, false); assert.equal(heldConnection?.next_due_at, null);
+    assert.equal((await getLeadSourceCompanyModel().findById(company._id).lean())?.active, true);
+    assert.equal((await retireBestRelocationConnectionAndSources({ ...input, final_run_id: "synthetic-shutdown-repeat", reconciliation_status: "deferred" })).cancelled_runs, 0);
+    const futureLease = await store.acquire({ scope: "ingestion:best_relocation:apply", owner: "synthetic-future-final", ttl_ms: 60_000, now: new Date() });
+    assert.ok(futureLease);
+    const future = await IngestionRun.create({ adapter_key: "best_relocation", schema_version: 2, trigger: "manual", status: "applying", connection_id: connection._id,
+      cutoff: new Date("2026-04-30T04:00:00Z"), timezone: "America/New_York", actor: createBestRelocationIngestionActor("future-proof"), initiator: typeOwnerContext,
+      plan_checksum: "a".repeat(64), approval: { final_reconciliation: true }, lease_owner: futureLease.owner, lease_epoch: futureLease.epoch });
+    const futureContext = { ...context, provenance: { ...context.provenance, run_id: String(future._id) } };
+    await assert.rejects(probe("old-approval-held", futureContext), /deferred_pending_owner_review/);
+    await IngestionRun.updateOne({ _id: future._id }, { $set: { "approval.owner_released_deferred_ingestion_checksum": "a".repeat(64) } });
+    await probe("future-exact-owner-release", futureContext);
+    assert.equal((await ExternalDataConnection.findById(connection._id).lean())?.retirement_ingestion_deferred, true);
+    await IngestionRun.updateOne({ _id: future._id }, { $set: { status: "completed", lease_owner: null, leased_until: null } });
+    await store.release({ token: futureLease, now: new Date() });
     const retired = await retireBestRelocationConnectionAndSources(input);
-    assert.equal(retired.cancelled_runs, statuses.length);
+    assert.equal(retired.cancelled_runs, 0);
     const saved = await ExternalDataConnection.findById(connection._id).lean();
     assert.ok(saved?.retired_at); assert.equal(saved.application_enabled, false); assert.equal(saved.next_due_at, null);
     assert.equal(saved.retirement_reconciliation_status, "incomplete"); assert.match(saved.retirement_reason ?? "", /incomplete/);
+    assert.equal(saved.retirement_ingestion_deferred, false);
+    await assert.rejects(retireBestRelocationConnectionAndSources({ ...input, reconciliation_status: "deferred" }), /cannot be reopened/);
     const sources = await Source.find({ _id: { $in: sourceIds } }).lean();
     assert.equal(sources.length, sourceIds.length);
     for (const source of sources) { assert.equal(source.lead_created_policy, "link_only"); assert.ok(source.granot_creation_retired_at); assert.equal(source.outbound_sms?.enabled, false); }
@@ -107,7 +130,7 @@ async function main() {
     assert.equal((await getLeadMessageModel().findById(message._id).lean())?.skip_reason, "best_relocation_retired");
     const second = await retireBestRelocationConnectionAndSources(input);
     assert.equal(second.cancelled_runs, 0); assert.equal(await Source.countDocuments(), sourceIds.length + 1);
-    console.log(JSON.stringify({ ok: true, database, assertions: ["complete variant inventory", "active worker lease refusal", "old live checkpoint refusal", "null SMS compatibility", "transaction rollback on missing approval/stale epoch/retired connection", "durable company/source policy fence", "historical Booking preserved", "incomplete status retained", "queued confirmation never sent", "repeat cutover no extra runs/sources"] }));
+    console.log(JSON.stringify({ ok: true, database, assertions: ["complete variant inventory", "active worker lease refusal", "old live checkpoint refusal", "null SMS compatibility", "transaction rollback on missing approval/stale epoch/retired connection", "deferred shutdown leaves company active and final-run reference empty", "manual hold rejects old approval and permits only exact Owner checksum release", "no automatic hold clearing or retired connection reopening", "durable company/source policy fence", "historical Booking preserved", "incomplete status retained", "queued confirmation never sent", "repeat cutover no extra runs/sources"] }));
   } finally {
     // This process owns only its isolated local synthetic database.
     assert.equal(mongoose.connection.host, "127.0.0.1"); assert.equal(mongoose.connection.name, database);

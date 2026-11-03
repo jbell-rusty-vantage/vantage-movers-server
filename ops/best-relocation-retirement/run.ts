@@ -31,8 +31,11 @@ import { captureSourceSnapshot, hash, type FrozenSourceSnapshot } from "./source
 import { inspectDerivativeFormulas, applyDerivativeFormulas, type DerivativeFormulaPlan } from "./derivativeFormulas";
 import { verifyCanonicalFinancials } from "./financialVerification";
 import { planSourceReconciliation, retirementPlanChecksum, type RetirementSourcePlan } from "./sourcePlan";
-import { planCallBackfill, applyCallBackfill, verifyCallBackfill, type CallBackfillPlan } from "./callBackfill";
+import { planCallBackfill, applyCallBackfill, verifyCallBackfill, callBackfillPlanChecksum, type CallBackfillPlan } from "./callBackfill";
 import { assertProductionWriterMatchesDeployment } from "../lib/production-writer-guard";
+import { applyGeneralCallRun, verifyGeneralCallRun } from "./generalCallRun";
+import { shutdownBestRelocationWithoutIngestion } from "./shutdown";
+import { BEST_RELOCATION_ADMISSION_CALL_FEED_ID, BEST_RELOCATION_ADMISSION_COMPANY_ID } from "../../src/services/leads/callLeadAdmission";
 
 const args = process.argv.slice(2), mode = args[0] && !args[0].startsWith("--") ? args.shift()! : "inspect";
 const option = (key: string) => { const at = args.indexOf(`--${key}`); return at < 0 ? undefined : args[at + 1]; };
@@ -136,6 +139,8 @@ async function resolvedReviews(plan: RetirementSourcePlan, connectionId: string)
 
 async function apply(plan: RetirementSourcePlan, callPlan: CallBackfillPlan, runId: string) {
   if (!plan.final_capture || retirementPlanChecksum(plan) !== required("checksum") || plan.checksum !== required("checksum")) throw new Error("final_frozen_plan_checksum_required");
+  if (!has("owner-release-ingestion-hold")) throw new Error("BEST_RELOCATION_INGESTION_HELD_BY_OWNER");
+  if (!Array.isArray(plan.new_normal_call_flags)) throw new Error("owner_corrected_final_source_plan_required");
   if (required("expected-database") !== "vantagemovers") throw new Error("explicit_database_mismatch");
   await assertDeployment(required("deployment"));
   const before = await readMemberships(); await save(`${runId}-membership-before.json`, serializedMemberships(before));
@@ -153,6 +158,7 @@ async function apply(plan: RetirementSourcePlan, callPlan: CallBackfillPlan, run
       cutoff: BEST_RELOCATION_CUTOFF, timezone: "America/New_York", source_read_through: new Date(plan.through), plan_snapshot: plan,
       plan_checksum: plan.checksum, plan_locked_at: new Date(), source_snapshot: { hash: plan.snapshot_hash }, actor, initiator: owner,
       "approval.final_reconciliation": true, "approval.policy_version": EXTERNAL_REVIEW_POLICY_VERSION, lease_owner: lease().owner, lease_epoch: lease().epoch, leased_until: lease().leased_until,
+      "approval.owner_released_deferred_ingestion_checksum":plan.checksum,
     } }, { upsert: true });
     const assertEnabled = async () => {
       await assertLease();
@@ -247,6 +253,43 @@ async function verify(plan: RetirementSourcePlan, calls: CallBackfillPlan, runId
 }
 
 async function main() {
+  if (mode === "shutdown-ingestion") {
+    await assertDeployment(required("deployment"));
+    const plan=await load<RetirementSourcePlan>(required("plan"));
+    if (retirementPlanChecksum(plan)!==plan.checksum) throw new Error("plan_checksum_mismatch");
+    const result=await shutdownBestRelocationWithoutIngestion({company_id:plan.registry.company_id,
+      source_ids:plan.registry.sources.map(source=>String((source as {_id:unknown})._id)),shutdown_id:required("shutdown-id"),actor:owner});
+    await save("shutdown-with-ingestion-deferred.json",result); summary({mode,...result}); return;
+  }
+  if (mode === "general-plan") {
+    const calls=await planCallBackfill({through:option("through")??new Date().toISOString(),deploymentId:required("deployment")});
+    await save("call-plan.json",calls); summary({mode,checksum:calls.checksum,from:calls.from,through:calls.through,totals:calls.totals,
+      held_best_relocation_candidates:calls.items.filter(item=>item.source_granularity_id===BEST_RELOCATION_ADMISSION_CALL_FEED_ID).length}); return;
+  }
+  if (["general-apply","general-verify","general-evidence"].includes(mode)) {
+    const calls=await load<CallBackfillPlan>(required("call-plan")),runId=required("run-id");
+    if (callBackfillPlanChecksum(calls)!==calls.checksum) throw new Error("call_plan_checksum_mismatch");
+    await assertDeployment(required("deployment"));
+    if (calls.items.some(item=>item.source_granularity_id===BEST_RELOCATION_ADMISSION_CALL_FEED_ID) ||
+      await getCallLeadModel().exists({_id:{$in:calls.items.map(item=>item.lead_id)},$or:[{source_company:"best_relocation_leads"},{lead_source_company:BEST_RELOCATION_ADMISSION_COMPANY_ID}]})) throw new Error("general_backfill_contains_held_best_relocation_candidates");
+    if (mode==="general-evidence") {
+      const rows=await getCallLeadModel().find({_id:{$in:calls.items.map(item=>item.lead_id)}}).select("_id domain_revision ringcentral form_fill duplicate external_call_admission external_sheet_review").lean();
+      const memberships=serializedMemberships(await readMemberships());
+      const evidence={run_id:runId,plan_checksum:calls.checksum,captured_at:new Date(),entities:rows,memberships};
+      await save(`${runId}-general-evidence.json`,evidence);summary({mode,run_id:runId,entities:rows.length});return;
+    }
+    if (required("expected-database")!=="vantagemovers") throw new Error("explicit_database_mismatch");
+    const result=await withLease("lead-reporting:general-call-backfill",runId,async(_lease,assertLease)=>{
+      const input={plan:calls,checksum:required("checksum"),expectedDatabase:"vantagemovers",deploymentId:required("deployment"),runId,owner,assertLease};
+      if (mode==="general-apply") return applyGeneralCallRun(input);
+      const membership=await readMemberships();
+      return verifyGeneralCallRun({...input,readMembership:async id=>({calls:membership.leads.get("Calls")?.get(id)??0,
+        duplicate_calls:membership.leads.get("Duplicate Calls")?.get(id)??0,bad_call_leads:membership.leads.get("Bad Call Leads")?.get(id)??0})});
+    });
+    await save(`${runId}-${mode}.json`,result);
+    summary(mode==="general-apply"?{mode,run_id:runId,completed:(result as Awaited<ReturnType<typeof applyGeneralCallRun>>).completed.length,
+      conflicts:(result as Awaited<ReturnType<typeof applyGeneralCallRun>>).conflicts,unresolved:result.unresolved}:result); return;
+  }
   if (mode === "inspect-formulas") {
     const plan = await inspectDerivativeFormulas(getSheetsClient()); await save("derivative-plan.json", plan);
     summary({mode,checksum:plan.checksum,workbooks:plan.workbooks.map(book=>({id:book.spreadsheetId,renames:book.renames,formulas:book.formulas.length,conflicts:book.conflicts})),conflicts:plan.conflicts}); return;
@@ -266,6 +309,8 @@ async function main() {
     const snapshot = await load<FrozenSourceSnapshot>(required("source-snapshot"));
     if (option("through") && option("through") !== snapshot.through) throw new Error("snapshot_through_is_immutable");
     const plan = await planSourceReconciliation(snapshot); await save("source-plan.json", plan);
+    if (has("source-only")) { summary({mode,source_only:true,checksum:plan.checksum,through:plan.through,counters:plan.counters,
+      canonical_counters:plan.canonical_plan.counters,held_new_normal_calls:plan.new_normal_call_flags?.length}); return; }
     const calls = await planCallBackfill({ through: snapshot.through, deploymentId: required("deployment") }); await save("call-plan.json", calls);
     const topology = await inspectLeadTabMigration(getSheetsClient(), getMasterLeadsSheetContainerId()); await save("tab-plan.json", topology);
     await save("derivative-plan.json", await inspectDerivativeFormulas(getSheetsClient()));

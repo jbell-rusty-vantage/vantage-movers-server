@@ -26,18 +26,18 @@ test("Duplicate Form Lead expects Master Leads Duplicates", () => {
   assert.ok(plan.siblings.some((tab) => tab.tabName === SHEET_TAB_NAMES.forms));
 });
 
-test("Bad Lead expects the primary tab and Bad Leads", () => {
+test("Bad Form Lead exclusively expects Bad Form Leads", () => {
   const plan = planExpectedSheetTabs("FormLead", {
     duplicate: false,
     bad_lead: "disconnected_number",
   });
   assert.deepEqual(
     plan.expected.map((tab) => tab.tabName),
-    [SHEET_TAB_NAMES.forms, SHEET_TAB_NAMES.badLeads],
+    [SHEET_TAB_NAMES.badLeads],
   );
   assert.deepEqual(
     plan.siblings.map((tab) => tab.tabName),
-    [SHEET_TAB_NAMES.duplicates],
+    [SHEET_TAB_NAMES.forms, SHEET_TAB_NAMES.duplicates],
   );
 });
 
@@ -93,7 +93,7 @@ test("No-Sync + Bad Lead still expects today's Bad tabs", () => {
   assert.equal(plan.skipReason, undefined);
   assert.deepEqual(
     plan.expected.map((tab) => tab.tabName),
-    [SHEET_TAB_NAMES.forms, SHEET_TAB_NAMES.badLeads],
+    [SHEET_TAB_NAMES.badLeads],
   );
 });
 

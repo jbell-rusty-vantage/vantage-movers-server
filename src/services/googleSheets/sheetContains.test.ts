@@ -231,7 +231,7 @@ test("ordinary No-Sync Call Lead is not_expected and does not read tabs", async 
   assert.equal(reads, 0);
 });
 
-test("No-Sync + Bad Lead uses today's Bad expected tabs, not the no_sync skip", async () => {
+test("No-Sync bad Form found only on Forms is wrong_tab and still requires Bad Form Leads", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "FormLead", ids: [FORM_ID] },
     fakeDeps({
@@ -250,7 +250,7 @@ test("No-Sync + Bad Lead uses today's Bad expected tabs, not the no_sync skip", 
     }),
   );
 
-  assert.equal(result.items[0]?.verdict, "found");
+  assert.equal(result.items[0]?.verdict, "wrong_tab");
   assert.notEqual(result.items[0]?.reason, "no_sync");
   assert.deepEqual(result.items[0]?.missing_expected_tabs, [SHEET_TAB_NAMES.badLeads]);
 });
@@ -304,7 +304,7 @@ test("unknown Mongo id is not_found", async () => {
   assert.equal(result.items[0]?.reason, "missing_from_mongo");
 });
 
-test("Bad Lead found on Forms but missing Bad Leads is still found with a missing tab", async () => {
+test("Bad Form found on Forms but missing Bad Form Leads is wrong_tab", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "FormLead", ids: [FORM_ID] },
     fakeDeps({
@@ -322,7 +322,7 @@ test("Bad Lead found on Forms but missing Bad Leads is still found with a missin
     }),
   );
 
-  assert.equal(result.items[0]?.verdict, "found");
+  assert.equal(result.items[0]?.verdict, "wrong_tab");
   assert.deepEqual(result.items[0]?.missing_expected_tabs, [SHEET_TAB_NAMES.badLeads]);
 });
 

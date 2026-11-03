@@ -7,6 +7,7 @@ import { CallLead } from "../../../models/CallLead";
 import { FormLead } from "../../../models/FormLead";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { planJobWrites } from "./jobPlanner";
+import { BEST_RELOCATION_TRACKER_ID, EXTERNAL_REVIEW_POLICY_VERSION } from "../../leads/externalSheetReview";
 
 test("jobPlanner registers mongoose models required for booked-lead populate", () => {
   assert.ok(mongoose.models.Customer, "Customer must be registered for booking_chain populate");
@@ -167,7 +168,7 @@ test("planJobWrites returns a single empty plan when a tombstone has no targets"
   assert.equal(planned[0].writes.length, 0);
 });
 
-test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", async () => {
+test("planJobWrites upserts Bad Form Leads before deleting both primary titles", async () => {
   process.env.MASTER_LEADS_SHEET_ID = "master-leads-test";
   process.env.TEST_MASTER_LEADS_SHEET_ID = "master-leads-test";
   const leadObjectId = new Types.ObjectId();
@@ -188,7 +189,7 @@ test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", a
     local: "long_distance",
     source_company: "main_site",
     bad_lead: "auto_only",
-    sheet_sync: [{ target: "master_forms", row_number: 7 }],
+    sheet_sync: [{ target: "master_forms", spreadsheet_id: "master-leads-test", tab_name: SHEET_TAB_NAMES.forms, row_number: 7 }],
     get(key: string) {
       return this[key as keyof typeof lead];
     },
@@ -201,12 +202,13 @@ test("planJobWrites dual-writes bad form leads to Forms and Master Bad Leads", a
   assert.equal(planned.length, 1);
   assert.deepEqual(
     planned[0].writes.map((write) => write.target),
-    ["master_forms", "master_bad_leads"],
+    ["master_bad_leads", "master_forms", "master_duplicates", "master_duplicates"],
   );
-  assert.equal(planned[0].writes[1].tabName, SHEET_TAB_NAMES.badLeads);
-  assert.equal(planned[0].writes[1].op, "upsert");
-  assert.equal(planned[0].writes[1].row.at(-1), "");
-  assert.equal(planned[0].writes[1].row.at(-2), "Auto Only");
+  assert.equal(planned[0].writes[0].tabName, SHEET_TAB_NAMES.badLeads);
+  assert.equal(planned[0].writes[0].op, "upsert");
+  assert.equal(planned[0].writes[0].row.at(-1), "");
+  assert.equal(planned[0].writes[0].row.at(-2), "Auto Only");
+  assert.ok(planned[0].writes.slice(1).every(write => write.op === "delete"));
 });
 
 test("planJobWrites deletes stale Master Bad Leads row when bad_lead is cleared", async () => {
@@ -309,6 +311,7 @@ function formLeadStub(overrides: Record<string, unknown> = {}) {
   const leadObjectId = new Types.ObjectId();
   const lead = {
     _id: leadObjectId,
+    duplicate: false,
     timestamp: new Date("2026-05-27T15:04:05.000Z"),
     name: "Jane Tester",
     pickup_zip: "10001",
@@ -322,7 +325,7 @@ function formLeadStub(overrides: Record<string, unknown> = {}) {
     ref_no: "ref-1",
     local: "long_distance",
     source_company: "main_site",
-    sheet_sync: [{ target: "master_forms", row_number: 7 }],
+    sheet_sync: [{ target: "master_forms", spreadsheet_id: "master-leads-test", tab_name: SHEET_TAB_NAMES.forms, row_number: 7 }],
     get(key: string) {
       return this[key as keyof typeof lead];
     },
@@ -371,7 +374,7 @@ function stubBookedLead(document: Record<string, unknown>): void {
   BookedLead.findById = (() => query) as unknown as typeof BookedLead.findById;
 }
 
-test("ordinary No-Sync Form deletes Forms only and does not upsert", async () => {
+test("ordinary No-Sync Form deletes every Form destination and transitional title without upsert", async () => {
   useMasterSheetIds();
   const lead = formLeadStub({ no_sync: true });
   stubFormLead(lead);
@@ -381,6 +384,10 @@ test("ordinary No-Sync Form deletes Forms only and does not upsert", async () =>
   assert.equal(planned.length, 1);
   assert.deepEqual(writeKeys(planned[0].writes), [
     `delete:master_forms:${SHEET_TAB_NAMES.forms}`,
+    `delete:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+    `delete:master_duplicates:Duplicates`,
+    `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
+    `delete:master_bad_leads:Bad Leads`,
   ]);
   assert.equal(
     planned[0].writes.some((write) => write.op === "upsert"),
@@ -390,8 +397,48 @@ test("ordinary No-Sync Form deletes Forms only and does not upsert", async () =>
     planned[0].writes.some((write) =>
       ["master_duplicates", "master_bad_leads"].includes(write.target),
     ),
-    false,
+    true,
   );
+});
+
+test("trusted bad Form review overrides duplicate and stale retry hints without changing flags", async () => {
+  useMasterSheetIds();
+  const lead = formLeadStub({ duplicate: true, no_sync: true, sheet_sync: [], external_sheet_review: {
+    kind: "bad_form", reason_code: "external_bad_form", raw_value: "bad form", normalized_value: "bad form",
+    source_workbook_id: BEST_RELOCATION_TRACKER_ID, source_sheet_id: 0, source_tab: "Forms", stable_source_row_id: "source-form",
+    source_content_hash: "a".repeat(64), policy_version: EXTERNAL_REVIEW_POLICY_VERSION,
+    ingestion_run_id: "run", source_row_receipt_id: "receipt", applied_at: new Date(),
+  } });
+  stubFormLead(lead);
+  const job = { ...sourceLeadJob(lead._id.toString()), target_hints: ["master_forms"] } as SheetSyncJobDocument;
+  const [plan] = await planJobWrites(job);
+  assert.deepEqual(writeKeys(plan.writes), [
+    `upsert:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
+    `delete:master_forms:${SHEET_TAB_NAMES.forms}`,
+    `delete:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+    `delete:master_duplicates:Duplicates`,
+  ]);
+  assert.ok(plan.writes.every(write => write.mongoId === lead._id.toString()));
+  assert.equal(lead.duplicate, true);
+});
+
+test("Booking Chain preserves Booked Deals while moving bad Form exclusively", async () => {
+  useMasterSheetIds();
+  const lead = formLeadStub({ bad_lead: "auto_only", duplicate: true, no_sync: true, sheet_sync: [] });
+  stubFormLead(lead);
+  const booking = {
+    _id: new Types.ObjectId(), timestamp: new Date(), book_date: new Date(), job_no: "JN-FORM",
+    customer_name: "Synthetic", source: "main_site", merchant: "authorize_net",
+    lead_ref: lead._id, lead_model: "FormLead", agent_allocations: [], sheet_sync: [],
+    get(key: string) { return this[key as keyof typeof booking]; },
+  };
+  stubBookedLead(booking);
+  const plans = await planJobWrites({ _id: new Types.ObjectId(), resource: "booking_chain", operation: "booked_lead.update", entity_id: booking._id.toString() } as SheetSyncJobDocument);
+  assert.ok(plans.some(plan => plan.writes.some(write => write.target === "master_booked" && write.op === "upsert")));
+  const form = plans.find(plan => plan.docKey.startsWith("FormLead:"))!;
+  assert.deepEqual(form.writes.filter(write => write.op === "upsert").map(write => write.tabName), [SHEET_TAB_NAMES.badLeads]);
+  assert.ok(plans.flatMap(plan => plan.writes).every(write => write.op !== "delete" || !["master_booked", "master_cancelled"].includes(write.target)));
+  assert.equal(lead.duplicate, true);
 });
 
 test("ordinary No-Sync Call cleans every Call destination without upsert", async () => {
@@ -477,7 +524,7 @@ test("Unmatched Call without no_sync stays an empty plan with no deletes", async
   assert.deepEqual(planned, []);
 });
 
-test("no_sync + bad_lead matches today's Bad Form dual-write", async () => {
+test("no_sync does not suppress exclusive Bad Form projection", async () => {
   useMasterSheetIds();
   const baseline = formLeadStub({ bad_lead: "auto_only" });
   stubFormLead(baseline);
@@ -492,8 +539,10 @@ test("no_sync + bad_lead matches today's Bad Form dual-write", async () => {
   );
 
   assert.deepEqual(baselineWrites, [
-    `upsert:master_forms:${SHEET_TAB_NAMES.forms}`,
     `upsert:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
+    `delete:master_forms:${SHEET_TAB_NAMES.forms}`,
+    `delete:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+    `delete:master_duplicates:Duplicates`,
   ]);
   assert.deepEqual(twinWrites, baselineWrites);
 });

@@ -146,6 +146,7 @@ test("[AC-07] omitForbiddenLeadLifecycleFields strips internal metadata from upd
 
 test("compatibility updates cannot forge reporting review, RingCentral evidence or final-import automation guards", () => {
  const result = omitForbiddenLeadLifecycleFields({ name: "Corrected name", external_sheet_review: { kind: "bad_call" },
+  external_call_admission: { policy_version: "best-relocation-final-import-v1" }, "external_call_admission.applied_at": new Date(),
   "external_sheet_review.raw_value": "bad", ringcentral: { qualification: { qualified: true } },
   "ringcentral.final_call_result": "Missed", outreach_automation_suppressed: false,
  });

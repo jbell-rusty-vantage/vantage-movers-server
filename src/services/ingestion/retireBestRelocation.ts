@@ -7,13 +7,13 @@ import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { BEST_RELOCATION_COMPANY_SLUG, BEST_RELOCATION_RETIRED_LABELS } from "../../models/bestRelocationRetirement";
 import { activeTokenFilter, MongoLeaseStore, type DurableActor } from "../durableWork";
 
-/** Operator-only cutover after final reconciliation; never exposed through HTTP or queue. */
+/** Operator-only shutdown/cutover; deferred mode records no final-ingestion success. */
 export async function retireBestRelocationConnectionAndSources(input: {
   company_id: string;
   source_ids: readonly string[];
   final_run_id: string;
   actor: DurableActor;
-  reconciliation_status?: "complete" | "incomplete";
+  reconciliation_status?: "complete" | "incomplete" | "deferred";
   now?: Date;
 }): Promise<{ cancelled_runs: number; source_ids: string[] }> {
   if (!input.final_run_id.trim() || input.actor.actor_type !== "owner" ||
@@ -27,6 +27,7 @@ export async function retireBestRelocationConnectionAndSources(input: {
   }
   const now = input.now ?? new Date();
   const reconciliationStatus = input.reconciliation_status ?? "incomplete";
+  if (!["complete", "incomplete", "deferred"].includes(reconciliationStatus)) throw new Error("Unknown retirement reconciliation status.");
   const store = new MongoLeaseStore(SheetSyncLease);
   const token = await store.acquire({ scope: "ingestion:best_relocation:apply", owner: `retire:${input.final_run_id}`,
     ttl_ms: 5 * 60_000, now });
@@ -42,6 +43,8 @@ export async function retireBestRelocationConnectionAndSources(input: {
       const active = await IngestionRun.exists({ adapter_key: "best_relocation",
         status: { $in: ["inspecting", "planning", "applying"] }, leased_until: { $gt: now } }).session(session);
       if (active) throw new Error("An old run still reports a live lease; inspect its checkpoint before cancelling it.");
+      const connection = await ExternalDataConnection.findOne({ key: "best_relocation" }).session(session).lean();
+      if (reconciliationStatus === "deferred" && connection?.retired_at) throw new Error("A fully retired connection cannot be reopened as deferred.");
       const company = await getLeadSourceCompanyModel().findById(input.company_id).session(session).lean().exec();
       if (!company || company.company_slug !== BEST_RELOCATION_COMPANY_SLUG) {
         throw new Error("Inventoried Source Company is not Best Relocation.");
@@ -73,18 +76,25 @@ export async function retireBestRelocationConnectionAndSources(input: {
         "outbound_sms.deactivation_reason": "best_relocation_retired",
       } }, { session }).exec();
       await ExternalDataConnection.updateOne({ key: "best_relocation" }, { $set: {
-        retired_at: now, retirement_final_run_id: input.final_run_id,
+        ...(reconciliationStatus === "deferred" ? {} : { retired_at: now, retirement_final_run_id: input.final_run_id }),
+        retirement_shutdown_at: connection?.retirement_shutdown_at ?? now,
+        retirement_shutdown_run_id: connection?.retirement_shutdown_run_id ?? input.final_run_id,
+        retirement_ingestion_deferred: reconciliationStatus === "deferred",
         retirement_reason: reconciliationStatus === "complete"
           ? "Recurring ingestion permanently retired; final reconciliation verified complete."
+          : reconciliationStatus === "deferred"
+          ? "Recurring ingestion and Granot creation shut down; final manual reconciliation deferred pending Owner review. Shutdown performs no source ingestion."
           : "Recurring ingestion permanently retired; final reconciliation incomplete; inspect final-run evidence.",
-        retirement_reconciliation_status: reconciliationStatus,
+        retirement_reconciliation_status: reconciliationStatus === "deferred" ? "pending_owner_review" : reconciliationStatus,
         application_enabled: false, application_enabled_actor: null, next_due_at: null, updated_actor: input.actor,
       }, $setOnInsert: { provider: "google_sheets", created_actor: input.actor,
         workbook_env_keys: { leads: "archived_final_snapshot", booked: "archived_final_snapshot" } } },
       { session, upsert: true }).exec();
       const cancelled = await IngestionRun.updateMany({ adapter_key: "best_relocation",
         status: { $in: ["queued", "inspecting", "planning", "awaiting_approval", "applying", "failed"] } },
-        { $set: { status: "skipped", skip_reason: { code: "BEST_RELOCATION_RETIRED", final_run_id: input.final_run_id },
+        { $set: { status: "skipped", skip_reason: reconciliationStatus === "deferred"
+          ? { code: "BEST_RELOCATION_SHUTDOWN_INGESTION_DEFERRED", shutdown_id: input.final_run_id }
+          : { code: "BEST_RELOCATION_RETIRED", final_run_id: input.final_run_id },
           completed_at: now, lease_owner: null, leased_until: null } }, { session }).exec();
       result = { cancelled_runs: cancelled.modifiedCount, source_ids: actualIds };
     });

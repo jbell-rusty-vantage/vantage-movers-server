@@ -70,7 +70,7 @@ const projection = {
   "ringcentral.duration_seconds": 1, "ringcentral.start_time": 1,
   "ringcentral.final_result": 1, "ringcentral.final_result_observed_at": 1,
   "ringcentral.final_result_call_log_id": 1, "ringcentral.final_result_answered": 1,
-  created_on_unmatched: 1, no_sync: 1, external_sheet_review: 1,
+  created_on_unmatched: 1, no_sync: 1, external_sheet_review: 1, external_call_admission: 1,
 };
 function defaults(): CallBackfillDependencies {
   let catalog: ReturnType<typeof loadInsightsCatalog> | undefined;

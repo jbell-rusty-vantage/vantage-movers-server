@@ -40,7 +40,9 @@ generated:
 
 # Google Sheets Service
 
-**Role:** Projects Mongo Form Leads, qualified Call Leads, official Bookings and Cancellations into Reporting Sheets. Mongo remains the System of Record. November 3 reporting corrections are implemented in this checkout; deployment, physical tab migration, derivative formulas and production membership qualification require separate release evidence.
+**Role:** Projects Mongo Form Leads, reporting-eligible Call Leads, official Bookings and Cancellations into Reporting Sheets. Mongo remains the System of Record. November 3 reporting corrections are implemented in this checkout; deployment, physical tab migration, derivative formulas and production membership qualification require separate release evidence.
+
+**Owner hold:** The entire final Best Relocation source ingestion is held, including source creates, adoptions and imported reviews. The exclusive bad-Form routing below is the implementation contract for release, not evidence that frozen source facts have been applied. See the [Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) and [release evidence](../../lead-reporting-retirement/README.md).
 
 **Facade:** `src/services/googleSheets.service.ts` re-exports `googleSheets/googleSheets.service.ts`. Legacy sync uses the facade; queued `sheetSync/drainer/jobPlanner.ts` uses the same reporting policy and target definitions through the batch writer.
 
@@ -50,16 +52,16 @@ generated:
 | --- | --- | --- | --- |
 | Ordinary Form | Forms | `master_forms` | `FORM_SHEET_HEADERS` |
 | Duplicate Form | Duplicate Forms | `master_duplicates` | `FORM_SHEET_HEADERS` |
-| Supplemental bad Form | Bad Form Leads | `master_bad_leads` | `FORM_SHEET_HEADERS` |
+| Canonical or trusted imported bad Form, including a Duplicate Form | Bad Form Leads only | `master_bad_leads` | `FORM_SHEET_HEADERS` |
 | Ordinary qualified Call | Calls | `master_calls` | `CALL_SHEET_HEADERS` |
 | Effective duplicate Call | Duplicate Calls | `master_duplicate_calls` | `CALL_SHEET_HEADERS` |
 | Bad qualified Call | Bad Call Leads | `master_bad_calls` | `CALL_SHEET_HEADERS` |
 
-`getCallLeadReportingDecision` in `leads/callLeadReportingDisposition.ts` owns Call disposition. Saved RingCentral qualification is mandatory. Unmatched/unqualified Calls are excluded even through direct facade sync. Effective duplicate means canonical repeat-call `duplicate`, canonical `form_fill`, or a trusted imported duplicate review; it takes precedence over bad. Bad includes a trusted imported bad review or an evidenced final caller-side missed result arriving during `[01:00, 07:00)` on the `America/New_York` clock. This layer does not change qualification, fabricate duration, or rewrite the repeat-call `duplicate` flag.
+`getCallLeadReportingDecision` in `leads/callLeadReportingDisposition.ts` owns Call disposition. Ordinary Calls require saved RingCentral qualification; the approved final Best Relocation import can instead attach protected source admission. Unmatched Calls and Calls lacking either admission are excluded even through direct facade sync. Effective duplicate means canonical repeat-call `duplicate`, canonical `form_fill`, or a trusted imported duplicate review; it takes precedence over bad. Bad includes a trusted imported bad review or an evidenced final caller-side missed result arriving during `[01:00, 07:00)` on the `America/New_York` clock. This layer does not change qualification, fabricate duration, or rewrite the repeat-call `duplicate` flag.
 
-Forms retain their primary Forms/Duplicate Forms row. Canonical `bad_lead` or a fully trusted imported `bad_form` review adds a Bad Form Leads row, including booked/cancelled/duplicate Forms. Imported `raw_value` is displayed in the existing Bad Lead column as inert text under `USER_ENTERED`; no new columns are added. Clearing the bad fact deletes both old/new supplemental titles even when `sheet_sync[]` is empty.
+`hasFormBadProjection` and `formLeadTargets` in `leadReportingTargets.ts` route canonical `bad_lead` or a fully trusted imported `bad_form` review exclusively to Bad Form Leads, including booked/cancelled/duplicate Forms. Bad projection takes precedence over the duplicate destination while preserving the canonical duplicate and lifecycle flags. Other Forms keep their ordinary Forms/Duplicate Forms primary destination. The canonical formatted bad reason takes precedence in the existing Bad Lead column; otherwise imported `raw_value` is inert text under `USER_ENTERED`. No columns are added. Clearing the bad fact restores the ordinary primary destination and deletes both old/new bad-Form titles even when `sheet_sync[]` is empty.
 
-Ordinary `no_sync` leads are suppressed. Effective duplicate/bad Calls and bad/duplicate Forms still project. An ordinary No-Sync Call cleans all three Call destinations; ordinary No-Sync Forms retain the existing normal-Forms-only delete behavior. Excluded Call sync returns no writes; an operator removing preexisting excluded rows must explicitly invoke `deleteCallLeadFromSheets`.
+Ordinary `no_sync` leads are suppressed. Effective duplicate/bad Calls and bad/duplicate Forms still project. An ordinary No-Sync Call cleans all three Call destinations. An ordinary No-Sync Form cleans Forms, Duplicate Forms and Bad Form Leads, including old Form titles; this also removes stale membership after a bad fact is cleared. Excluded Call sync returns no writes; an operator removing preexisting excluded rows must explicitly invoke `deleteCallLeadFromSheets`.
 
 ## Bookings and Cancellations
 
@@ -69,10 +71,11 @@ Official Bookings project to Master Booked / Booked Deals (`master_booked`), and
 
 - All three Call destinations use the same `callLeadToRow` and exact 15-column `CALL_SHEET_HEADERS`; missing duration stays blank. Form headers retain their 22-column order. `Sales Rep` remains the saved `receiver_agent_name_snapshot`.
 - Desired membership is upserted by the **Mongo ID column**, then that ID is removed from the other two Call tabs. Row numbers are hints; phone numbers and foreign IDs elsewhere in a row are never move identities.
+- Bad Forms are upserted to Bad Form Leads before the same Mongo ID is deleted from Forms and both old/new Duplicate Forms titles. `staleFormTargets`/`staleFormTargetKeys` and the queued planner discover these rows without saved metadata. Form retries replan the current destination and cleanup despite stale `target_hints`.
 - A failed/deferred destination fences stale deletes. The queued writer completes upserts first, then deletes. A destination-written/stale-delete-failed interruption remains pending and retries without another append.
 - Physical duplicate IDs are repaired from canonical Mongo values: update one desired row, remove extra copies, and remove every stale copy in descending row order. Repairs are logged. Overlapping jobs for the same ID and identical payload share a physical write while each job receives an outcome; conflicting current payloads fail closed.
 - Missing tabs are an idempotent no-op on deletes and are never auto-provisioned by a delete. Upserts ensure only their written tab; bootstrap handles full provisioning. Append requires Google confirmation.
-- Hard Call deletes and tombstones enumerate all three destinations. Form deletes enumerate primary/supplemental destinations plus both transitional Form titles. Historical `sheet_sync[]` locations participate, including source locations when current dual writing is disabled. Booking/Cancellation rows are not lead-move targets.
+- Hard Call deletes and tombstones enumerate all three destinations. Form deletes enumerate all three Form destinations plus both transitional Form titles. Historical `sheet_sync[]` locations participate, including source locations when current dual writing is disabled. Booking/Cancellation rows are not lead-move targets.
 - A durable command or outbox receipt does not prove sheet membership. Owner contains and the release verifier read live rows by ID. Contains checks the other two Call tabs so stale membership is visible.
 
 ## Title compatibility and migration

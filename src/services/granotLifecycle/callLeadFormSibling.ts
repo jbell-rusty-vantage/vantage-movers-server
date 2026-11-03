@@ -1,4 +1,4 @@
-import { qualifiedCallLeadFilter, hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
+import { reportingEligibleCallLeadFilter, hasReportingEligibleCall } from "../leads/callLeadAdmission";
 /**
  * Granot Form sibling update (Owner 2026-10-28; `job-number-pending-investigation/SPECIFICATION.md` S2).
  *
@@ -62,6 +62,9 @@ export type SiblingFormLead = {
 
 export type SiblingCallLead = {
   ringcentral?: unknown;
+  external_call_admission?: unknown;
+  source_company?: string | null;
+  source_granularity_id?: Id | null;
   _id: Id;
   duplicate?: boolean | null;
   created_on_unmatched?: boolean | null;
@@ -97,7 +100,7 @@ export const SIBLING_FORM_PROJECTION = {
 } as const;
 
 export const SIBLING_CALL_PROJECTION = {
-  ringcentral: 1,
+  ringcentral: 1, external_call_admission: 1, source_company: 1, source_granularity_id: 1,
   duplicate: 1, created_on_unmatched: 1, no_sync: 1, job_no: 1, normalized_job_no: 1, granot_priority: 1,
   receiver_agent: 1, receiver_agent_source: 1, lead_source_company: 1, createdAt: 1, domain_revision: 1,
   granot_form_sibling: 1, "sheet_sync.target": 1, "sheet_sync.status": 1, "sheet_sync.row_number": 1,
@@ -123,7 +126,7 @@ export function planFormSiblingUpdate(
 ): SiblingPlan {
   const job = form.normalized_job_no;
   if (form.duplicate === true || form.bad_lead || !job || !form.job_no) return { kind: "skip", reason: "form_ineligible" };
-  const eligible = (call: SiblingCallLead) => hasQualifiedRingCentralCall(call.ringcentral) && call.duplicate !== true && call.created_on_unmatched !== true;
+  const eligible = (call: SiblingCallLead) => hasReportingEligibleCall(call) && call.duplicate !== true && call.created_on_unmatched !== true;
   const byJob = jobMatches.filter((call) => eligible(call) && jobNumbersEquivalent(call.normalized_job_no, job));
   let target: SiblingCallLead;
   let basis: "job_no" | "phone_source_company";
@@ -171,10 +174,10 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
   const phones = formSiblingPhones(form);
   const calls = getCallLeadModel();
   // Sequential: inside the command these reads share one transaction session.
-  const jobMatches = await calls.find({ $and: [qualifiedCallLeadFilter(), equivalentNormalizedJobFilter(form.normalized_job_no)] }, SIBLING_CALL_PROJECTION)
+  const jobMatches = await calls.find({ $and: [reportingEligibleCallLeadFilter(), equivalentNormalizedJobFilter(form.normalized_job_no)] }, SIBLING_CALL_PROJECTION)
     .limit(10).session(session ?? null).lean<SiblingCallLead[]>();
   const phoneMatches = phones.length && form.lead_source_company
-    ? await calls.find({ $and: [qualifiedCallLeadFilter()], lead_source_company: form.lead_source_company, $or: [
+    ? await calls.find({ $and: [reportingEligibleCallLeadFilter()], lead_source_company: form.lead_source_company, $or: [
       { normalized_phone_number: { $in: phones } }, { "ingested_contact_snapshot.normalized_phone_number": { $in: phones } },
     ] }, SIBLING_CALL_PROJECTION).limit(10).session(session ?? null).lean<SiblingCallLead[]>()
     : [];

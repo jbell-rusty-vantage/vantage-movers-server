@@ -15,6 +15,10 @@ export function noSyncAppliesToNormalTabs(lead: {
   duplicate?: boolean | null;
   bad_lead?: unknown;
   ringcentral?: unknown;
+  external_call_admission?: unknown;
+  source_company?: unknown;
+  lead_source_company?: unknown;
+  source_granularity_id?: unknown;
   form_fill?: boolean | null;
   external_sheet_review?: unknown;
   timestamp?: unknown;

@@ -17,7 +17,9 @@ test("import timestamp and old/equal observations cannot release the immutable i
  assert.equal(facts.outreach_automation_suppressed, true);
 });
 
-test("the marker affects imported Forms only; ordinary intake and Call policies stay independent", () => {
+test("the marker holds final imported Calls too and leaves ordinary intake unchanged", () => {
  assert.equal(isImportOutreachSuppressed(leadFacts()), false);
- assert.equal(isImportOutreachSuppressed(leadFacts({ model: "CallLead", outreach_automation_suppressed: true })), false);
+ assert.equal(isImportOutreachSuppressed(leadFacts({ model: "CallLead", outreach_automation_suppressed: true })), true);
+ const importedCall = leadFacts({ model: "CallLead", outreach_automation_suppressed: true });
+ assert.equal(isImportOutreachSuppressed({ ...importedCall, ...accepted("9", "2026-10-01T14:00:05.001Z") }), false);
 });

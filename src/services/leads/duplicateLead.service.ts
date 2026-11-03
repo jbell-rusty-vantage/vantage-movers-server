@@ -1,4 +1,4 @@
-import { qualifiedCallLeadFilter } from "../ringcentral/callLeadQualification";
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
 import mongoose, { type ClientSession } from "mongoose";
 import type { SourceCompany } from "../../config/domain";
 import { logger } from "../../logger";
@@ -235,7 +235,7 @@ export async function markMatchingCallLeadsWithFormFill(
   const candidatesQuery = CallLead.find({
     $and: [
       buildSourceMatchFilter(sourceScope),
-      qualifiedCallLeadFilter(),
+      reportingEligibleCallLeadFilter(),
       { form_fill: { $ne: true } },
       {
         $or: [

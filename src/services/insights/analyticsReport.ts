@@ -27,7 +27,7 @@ import type {
 } from "./types";
 
 export const INSIGHTS_DEFINITIONS: Record<string, string> = {
-  lead: "A Form Lead or Call Lead that arrived in the period, New York time. Duplicate Leads and Bad Call Leads are counted separately and cost $0. Only RingCentral-qualified Calls are eligible.",
+  lead: "A Form Lead or Call Lead that arrived in the period, New York time. Duplicate Leads and Bad Call Leads are counted separately and cost $0. Calls require saved RingCentral qualification or approved final Best Relocation admission.",
   booking: "A booking whose book date falls in the period.",
   booking_rate: "Bookings in the period ÷ leads in the period (activity basis).",
   conversion: "Of the leads that arrived in the period, the share that is booked as of now (cohort basis). Recent periods are still maturing.",

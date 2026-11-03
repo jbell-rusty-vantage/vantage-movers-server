@@ -42,6 +42,8 @@ generated:
 
 **Stack:** Domain services persist intent → optional Vercel Queue wake-up → drainer → `googleSheets/` writes. Legacy mode skips the outbox and runs sync inline via `waitUntil`.
 
+**Owner hold:** The entire final Best Relocation source ingestion is held, including source creates, adoptions and imported reviews. The routing contract below describes behavior after release; it does not claim that frozen Best Relocation source facts have been applied. Retirement of recurring ingestion and Granot creation policies is separate and preserves the active Source Company and legitimate historical lifecycle updates. See the [Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) and [release evidence](../../lead-reporting-retirement/README.md).
+
 **Public barrel:** `src/services/sheetSync/index.ts` re-exports coordinator, outbox, queue, drainer, persistence, and source-lookup helpers.
 
 **HTTP / queue entry**
@@ -173,11 +175,11 @@ Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin
 
 Planner skip/fail paths (also true on the legacy `syncSourceLead` path):
 
-- Ordinary `no_sync` suppresses upserts. Ordinary Forms delete only normal Forms targets; ordinary Calls clean all three Call destinations. Effective duplicate/bad Call exceptions and canonical/trusted imported bad Forms still project. Official Booking/Cancellation chain rows retain their own writes.
-- Unmatched/unqualified Calls produce no sheet upsert, including through the direct facade. `getCallLeadReportingDecision` owns qualification-aware disposition across planner, legacy, contains and retries. Syncing an excluded Call does not itself remove a preexisting row; an explicit delete/reprojection repair owns that cleanup.
-- Forms write Forms or Duplicate Forms plus supplemental Bad Form Leads when canonical `bad_lead` or trusted `external_sheet_review.kind === "bad_form"` applies. Clearing the fact deletes both old/new bad-Form titles even with empty metadata.
+- Ordinary `no_sync` suppresses upserts. Ordinary Forms clean all three Form destinations and old/new Form titles; ordinary Calls clean all three Call destinations. Effective duplicate/bad Call exceptions and canonical/trusted imported bad Forms still project. Official Booking/Cancellation chain rows retain their own writes.
+- Unmatched Calls and Calls lacking either saved RingCentral qualification or protected final Best Relocation admission produce no sheet upsert, including through the direct facade. `getCallLeadReportingDecision` owns admission-aware disposition across planner, legacy, contains and retries. Syncing an excluded Call does not itself remove a preexisting row; an explicit delete/reprojection repair owns that cleanup.
+- Forms with canonical `bad_lead` or a fully trusted `external_sheet_review.kind === "bad_form"` write **Bad Form Leads only**. Bad projection wins over duplicate routing without changing canonical duplicate, Booking or Cancellation facts. `formLeadTargets` selects the destination; `staleFormTargets`/`staleFormTargetKeys` plan cleanup of Forms and both old/new Duplicate Forms titles by Mongo ID, even with empty metadata. The batch writer confirms the bad destination before any stale delete, so interrupted delivery remains pending and replay repairs it. Clearing the bad fact restores the ordinary primary destination and deletes both old/new bad-Form titles. Other Forms retain their ordinary Forms/Duplicate Forms routing.
 - Calls upsert exactly one of Calls / Duplicate Calls / Bad Call Leads, then delete the same Mongo ID from the other two tabs. Form Fill and trusted duplicate review are reporting duplicates without rewriting `duplicate`. Duplicate disposition takes precedence over bad. All Call tabs retain the same headers/projection.
-- Call retries always replan the full current membership; old `target_hints` cannot delete the new desired row or skip an updated destination. Tombstones enumerate all possible Lead targets and historical locations, including old/new Form titles. Unknown target headers are dropped; source-lead tombstones are not restricted by old target hints.
+- Form and Call retries always replan the current destination and required cleanup; old `target_hints` cannot delete the new desired row or skip an updated destination. Tombstones enumerate all possible Lead targets and historical locations, including old/new Form titles. Unknown target headers are dropped; source-lead tombstones are not restricted by old target hints.
 - Missing Booking/Cancellation documents produce an empty plan. Official outcomes remain reportable when their Lead becomes nonbillable.
 
 ## Temporary topology writer fence

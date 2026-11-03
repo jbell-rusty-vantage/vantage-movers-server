@@ -1,4 +1,4 @@
-import { hasQualifiedRingCentralCall, qualifiedCallLeadFilter } from "../ringcentral/callLeadQualification";
+import { hasReportingEligibleCall, reportingEligibleCallLeadFilter } from "./callLeadAdmission";
 import { hasTrustedExternalSheetReview } from "./externalSheetReview";
 
 export type CallDisposition = "excluded" | "calls" | "duplicate_calls" | "bad_call_leads";
@@ -18,7 +18,7 @@ export function isOvernightCallArrival(value: unknown): boolean {
 export function getCallLeadReportingDecision(value: unknown): CallReportingDecision {
   const call = record(value), rc = record(call.ringcentral);
   const reasons: string[] = [];
-  if (!hasQualifiedRingCentralCall(rc)) reasons.push("missing_ringcentral_qualification");
+  if (!hasReportingEligibleCall(call)) reasons.push("missing_call_reporting_admission");
   if (call.created_on_unmatched === true) reasons.push("created_on_unmatched");
   if (reasons.length) return { disposition: "excluded", billable: false, reason_codes: reasons };
   if (call.duplicate === true) reasons.push("repeat_call_duplicate");
@@ -51,6 +51,9 @@ export function billableCallLeadFilter(): Record<string, unknown> {
     "external_sheet_review.source_content_hash": /^[a-f0-9]{64}$/,
     "external_sheet_review.applied_at": { $type: "date" },
     $expr: { $and: [
+      ...["kind", "reason_code", "policy_version", "source_workbook_id", "source_tab", "source_content_hash", "raw_value", "normalized_value", "stable_source_row_id", "ingestion_run_id", "source_row_receipt_id"].map(key => ({ $eq: [{ $type: `$external_sheet_review.${key}` }, "string"] })),
+      { $isNumber: "$external_sheet_review.source_sheet_id" },
+      { $eq: [{ $type: "$external_sheet_review.applied_at" }, "date"] },
       ...["raw_value", "normalized_value", "stable_source_row_id", "ingestion_run_id", "source_row_receipt_id"].map(key => {
         const text = { $convert: { input: `$external_sheet_review.${key}`, to: "string", onError: "", onNull: "" } };
         // Zod/Mongoose bounds count UTF-16 units; supplementary characters
@@ -62,7 +65,7 @@ export function billableCallLeadFilter(): Record<string, unknown> {
   });
   const start = { $convert: { input: "$ringcentral.start_time", to: "date", onError: new Date(0), onNull: new Date(0) } };
   const hour = { $hour: { date: start, timezone: "America/New_York" } };
-  return { $and: [qualifiedCallLeadFilter(), { created_on_unmatched: { $ne: true }, duplicate: { $ne: true }, form_fill: { $ne: true } },
+  return { $and: [reportingEligibleCallLeadFilter(), { created_on_unmatched: { $ne: true }, duplicate: { $ne: true }, form_fill: { $ne: true } },
     { $nor: [validReview("duplicate_call"), validReview("bad_call")] },
     { $nor: [{ "ringcentral.final_result": /^\s*missed\s*$/i, "ringcentral.final_result_answered": false,
       "ringcentral.final_result_observed_at": { $type: "date" }, "ringcentral.start_time": { $type: "date" }, "ringcentral.final_result_call_log_id": /\S/,

@@ -1,7 +1,7 @@
 ---
 type: Service
 title: Call Lead Service
-description: Create Call Leads only from qualified RingCentral queue calls; manage corrections, duplicates, billing and Master Leads projection.
+description: Qualified RingCentral Call capture, bounded final Best Relocation admission, corrections, billing and Master Leads projection.
 tags: [call-lead, ingestion]
 status: draft
 stale_after: 2026-11-20
@@ -11,6 +11,9 @@ applies_to:
   - src/services/leads/leadIngestionProvenance.ts
   - src/services/leads/leadCplResolution.ts
   - src/services/leads/duplicateLead.service.ts
+  - src/services/leads/callLeadAdmission.ts
+  - src/services/leads/callLeadReportingDisposition.ts
+  - src/services/domainCommands/bestRelocationFinalCall.ts
   - src/routes/v1.routes.ts
   - src/services/ringcentral/ringcentral-call-lead-ingest.service.ts
 owners: [team:main-server]
@@ -37,9 +40,9 @@ generated:
 
 **System of Record:** MongoDB `call_leads`. Owner reporting via **Sheet Sync** → **Master Sheets**.
 
-**Owner billing rule, November 3, 2026:** Only a finished inbound RingCentral call to a mapped queue can create a Call Lead. Webhook and cron both use final Detailed Call Log qualification: total elapsed time of at least 120 seconds, with answer optional. See [qualification](ringcentral-call-lead-qualification.md) and [billing eligibility and release checks](../../call-lead-billing.md).
+**Owner billing rule, November 3, 2026:** Ordinary Call capture requires a finished inbound RingCentral call to a mapped queue. Webhook and cron both use final Detailed Call Log qualification: total elapsed time of at least 120 seconds, with answer optional. See [qualification](ringcentral-call-lead-qualification.md) and [billing eligibility and release checks](../../call-lead-billing.md).
 
-Manual/API creation, external sheet creation, Granot Call creation, booking placeholders and reconciliation creation of Call Leads are retired. Granot may synchronize an existing Call Lead. Form Fill and Form sibling pairing may enrich an already-qualified Call Lead. Historical origins remain intact; saved RingCentral evidence decides billing and projection.
+Manual/API creation, scheduled external Call creation, Granot Call creation and booking-placeholder creation remain retired. The owner separately authorized a bounded final Best Relocation source exception through `admitBestRelocationFinalCallV1` / `beginFinalBestRelocationCallLeadIngestion`; it uses protected source admission rather than RingCentral qualification. **The entire Best Relocation source apply is currently held, including selective rows and all 125 proposed new normal Calls; no production final-import admission has been applied.** Existing history is retained. The Source Company stays active while external ingestion and Granot creation policies are shut down. See the [owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md).
 
 ## Call Lead Ingestion — Ring Central (`ingestRingCentralCallLead` / `beginRingCentralCallLeadIngestion`)
 
@@ -55,7 +58,7 @@ Manual/API creation, external sheet creation, Granot Call creation, booking plac
 
 Per glossary and `ringcentral-duplicate-guard.ts`:
 
-- Same exact **Source Granularity** + normalized phone as an earlier qualified **non-duplicate** Call Lead in the inclusive prior 90-day window.
+- Same exact **Source Granularity** + normalized phone as an earlier reporting-eligible **non-duplicate** Call Lead in the inclusive prior 90-day window.
 - Excludes the current `telephony_session_id`.
 - Call Log sync ingests one run oldest-first so same-batch callbacks classify against the earlier call. The window itself stays earlier-only.
 - Duplicate Call Leads still persist and **Sheet Sync**; they are **never CRM-posted** (Call Lead Enrichment is separate).
@@ -70,11 +73,11 @@ Create/update use `resolveLeadCplSnapshot` (Operations Registry periods). Duplic
 
 | Condition | Master Leads tab |
 |-----------|------------------|
-| Saved qualified, matched, billable | `Calls` |
+| Reporting-eligible, matched, billable | `Calls` |
 | Effective duplicate (repeat call, Form Fill or trusted duplicate review) | `Duplicate Calls` |
 | Trusted bad review or confirmed overnight Missed result, without duplicate precedence | `Bad Call Leads` |
 
-Missing qualification and unmatched Calls are excluded from every Call tab. Booking/Cancellation rows remain independent. Delivery upserts the desired row by Mongo ID before deleting every stale membership from the other Call destinations; deletes/tombstones enumerate all destinations even with missing metadata. The `FormFill` column retains canonical `form_fill` and may be false for an annotation-only duplicate.
+Missing reporting admission and unmatched Calls are excluded from every Call tab. Booking/Cancellation rows remain independent. Delivery upserts the desired row by Mongo ID before deleting every stale membership from the other Call destinations; deletes/tombstones enumerate all destinations even with missing metadata. The `FormFill` column retains canonical `form_fill` and may be false for an annotation-only duplicate.
 
 Ordinary No-Sync suppresses normal Calls delivery only. Effective duplicate/bad exceptions still project; No-Sync alone does not change billing. Owner UI copy is Hide / Show / Hidden from Master Leads and does not expose internal flag names.
 
@@ -83,7 +86,7 @@ Ordinary No-Sync suppresses normal Calls delivery only. Effective duplicate/bad 
 | Direction | Behavior |
 |-----------|----------|
 | At Call Lead create | `hasFormFillForCallLead` reads existing non-duplicate Form Leads in the source scope (company, or company `$or` Lead Source Company) with the normalized phone |
-| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill`, which reads qualified Call Leads and excludes ones already marked `form_fill` ([`form-lead.md`](./form-lead.md)) |
+| At Form Lead create | Non-duplicate Form Leads call `markMatchingCallLeadsWithFormFill`, which reads reporting-eligible Call Leads and excludes ones already marked `form_fill` ([`form-lead.md`](./form-lead.md)) |
 
 Form Fill excludes Call Lead billing and routes to Duplicate Calls. It does not rewrite the canonical repeat-call `duplicate` field or invent a sibling.
 
@@ -111,7 +114,7 @@ Form Fill excludes Call Lead billing and routes to Duplicate Calls. It does not 
 
 | Rule | Detail |
 |------|--------|
-| Manual/API creates | No public Call Lead creation route; only qualified RingCentral calls may mint. |
+| Manual/API creates | No public Call Lead creation route; ordinary capture requires qualified RingCentral evidence. The final Best Relocation exception is operator-only and currently held. |
 | Idempotency vs Duplicate Lead | Same telephony session ≠ business duplicate (different calls, same caller within ±90 days) |
 | CRM | Call leads not CRM-posted at create; **Call Lead Enrichment** is separate |
 | Helpers | Do not bypass phone normalization, Form Fill, Source Company parsing, or Sheet Sync scheduling |
@@ -128,7 +131,7 @@ Logger `msg` keys only; nothing is persisted (the Operational Events ledger was 
 
 ## Lifecycle revision
 
-`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, or `ringcentral_convergence` metadata. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. `post_to_granot` defaults to `false`; explicit `true` fails validation only for `granot_lead_created` rows. The field remains non-required, and ordinary legacy rows with either an absent field or a historical `true` remain saveable. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. Historical rows without durable proof receive `legacy_unknown` / `legacy_baseline` from the Lead provenance migration only; later RingCentral adoption never rewrites `granot_lead_created`. `createLeadFromGranot` cannot create new Call Leads.
+`domain_revision` defaults to `0`. `change_history_started_at` is a write-once server boundary. Public/admin DTOs cannot set revision, origin, snapshot, Priority provenance, temporal-winner, contact-summary, `ringcentral_convergence`, `external_call_admission` or `outreach_automation_suppressed` metadata. Admission is immutable after insert/attachment; generic model updates also reject nested admission mutation. Canonical create/update/delete routes persist an append-only `EntityChange` and stamp `last_change_*` in the executor transaction. Lead Job Number remains non-unique. `quoted` is required and defaults to `false`. `post_to_granot` defaults to `false`; explicit `true` fails validation only for `granot_lead_created` rows. The field remains non-required, and ordinary legacy rows with either an absent field or a historical `true` remain saveable. Nested `ringcentral.ingestion_source` remains transport provenance and is not Ingestion Origin. Historical rows without durable proof receive `legacy_unknown` / `legacy_baseline` from the Lead provenance migration only; later RingCentral adoption never rewrites `granot_lead_created`. `createLeadFromGranot` cannot create new Call Leads.
 
 ## Related services
 
@@ -147,4 +150,4 @@ Logger `msg` keys only; nothing is persisted (the Operational Events ledger was 
 
 ## Reporting and billing disposition
 
-`leads/callLeadReportingDisposition.ts` owns effective Call classification. Saved qualification and unmatched gates come first. Canonical repeat-call duplicate, Form Fill and trusted duplicate reviews route to Duplicate Calls at zero billable cost. Trusted bad-call reviews and confirmed final caller-side Missed results arriving in [01:00,07:00) America/New_York route to Bad Call Leads at zero billable cost. Duplicate wins while retaining both reasons. Unknown results and answered-leg conflicts are not inferred missed calls. The canonical repeat-call `duplicate` field, price provenance and preferred Form Booking anchor are preserved. No-Sync alone changes delivery, not billing; exception tabs still project. All sheet paths use the same decision and 15-column Call projection. See [billing contract](../../call-lead-billing.md) and [operator/release evidence](../../lead-reporting-retirement/README.md).
+`leads/callLeadReportingDisposition.ts` owns effective Call classification. `hasReportingEligibleCall` / `reportingEligibleCallLeadFilter` in `leads/callLeadAdmission.ts` accept saved RingCentral qualification or a trusted final Best Relocation admission whose company/feed IDs match the canonical Lead. The stamp pins `best-relocation-final-import-v1`, tracker/Calls sheet identity, stable row/hash, source arrival, run/receipt IDs and applied date. These reporting-admission and unmatched gates come first. Form Fill, sibling matching and enrichment reuse this eligibility; RingCentral creation still validates its own strict qualification. Canonical repeat-call duplicate, Form Fill and trusted duplicate reviews route to Duplicate Calls at zero billable cost. Trusted bad-call reviews and confirmed final caller-side Missed results arriving in [01:00,07:00) America/New_York route to Bad Call Leads at zero billable cost. Duplicate wins while retaining both reasons. Unknown results and answered-leg conflicts are not inferred missed calls. The canonical repeat-call `duplicate` field, price provenance and preferred Form Booking anchor are preserved. No-Sync alone changes delivery, not billing; exception tabs still project. All sheet paths use the same decision and 15-column Call projection. See [billing contract](../../call-lead-billing.md) and [operator/release evidence](../../lead-reporting-retirement/README.md).

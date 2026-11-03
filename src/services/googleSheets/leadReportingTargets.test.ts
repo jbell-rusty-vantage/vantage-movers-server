@@ -51,10 +51,11 @@ test("direct facade rejects unqualified and unmatched calls before any Google ac
   assert.deepEqual(await syncCallLeadToSheets({ ...base, ringcentral: rc, created_on_unmatched: true, duplicate: true } as CallLeadSheetSource), []);
 });
 
-test("imported Form notes remain supplemental on duplicate booked Forms and inert in projection", () => {
+test("imported bad Form notes route duplicate booked Forms exclusively to Bad Form Leads and remain inert", () => {
   const lead = { _id: { toString: () => "form-1" }, timestamp: new Date(), name: "Fixture", pickup_zip: "10001", destination_zip: "90001", move_date: new Date(), phone_number: "5551234567", source_company: "main_site", local: "long_distance", duplicate: true, booked: "booking-1", external_sheet_review: review("bad_form", '=IMPORTXML("https://example.invalid")'), no_sync: true } as FormLeadSheetSource;
   assert.equal(hasFormBadProjection(lead), true);
-  assert.deepEqual(planExpectedSheetTabs("FormLead", lead).expected.map((tab) => tab.tabName), [SHEET_TAB_NAMES.duplicates, SHEET_TAB_NAMES.badLeads]);
+  assert.deepEqual(planExpectedSheetTabs("FormLead", lead).expected.map((tab) => tab.tabName), [SHEET_TAB_NAMES.badLeads]);
+  assert.equal(lead.duplicate, true);
   const row = formLeadToRow(lead);
   assert.equal(row.length, 22);
   assert.equal(row[20], '\'=IMPORTXML("https://example.invalid")');

@@ -42,14 +42,14 @@ type Cancellation = Row & { _id: unknown; booked_lead: unknown; cancel_date: Dat
 
 const LEAD_REPORTING_PROJECTION = {
   _id: 1, timestamp: 1, createdAt: 1, updatedAt: 1,
-  lead_source_company: 1, source_granularity_key: 1,
+  lead_source_company: 1, source_granularity_key: 1, source_granularity_id: 1,
   source_company: 1, source_company_label_snapshot: 1,
   source_granularity_label_snapshot: 1,
   name: 1, phone_number: 1, email: 1,
   pickup_zip: 1, pickup_state: 1, destination_zip: 1, delivery_zip: 1,
   delivery_state: 1, local: 1, move_date: 1, move_size: 1,
   quoted: 1, duplicate: 1, form_fill: 1, external_sheet_review: 1, bad_lead: 1, cpl: 1,
-  cpl_resolution_status: 1, ringcentral: 1, created_on_unmatched: 1,
+  cpl_resolution_status: 1, external_call_admission: 1, ringcentral: 1, created_on_unmatched: 1,
 } as const;
 
 const BOOKING_REPORTING_PROJECTION = {

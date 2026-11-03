@@ -256,6 +256,10 @@ async function loadSheetContainsRecords(
     duplicate: record.duplicate,
     bad_lead: record.bad_lead,
     ringcentral: record.ringcentral,
+    external_call_admission: record.external_call_admission,
+    source_company: record.source_company,
+    lead_source_company: record.lead_source_company,
+    source_granularity_id: record.source_granularity_id,
     timestamp: record.timestamp,
     form_fill: record.form_fill,
     external_sheet_review: record.external_sheet_review,
@@ -274,6 +278,10 @@ type LeanContainsDoc = {
   duplicate?: boolean | null;
   bad_lead?: string | null;
   ringcentral?: unknown;
+  external_call_admission?: unknown;
+  source_company?: unknown;
+  lead_source_company?: unknown;
+  source_granularity_id?: unknown;
   timestamp?: unknown;
   form_fill?: boolean | null;
   external_sheet_review?: unknown;

@@ -1,6 +1,6 @@
 import { getCallLeadModel } from "../../models/CallLead";
 import { hasFormFillForCallLead } from "../leads/duplicateLead.service";
-import { hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
+import { hasReportingEligibleCall } from "../leads/callLeadAdmission";
 import { emitLeadChange } from "./leadChangeEmission";
 import { executeCanonicalCommandWithPostCommit } from "./idempotency";
 import { DomainRevisionConflictError, type CanonicalCommandContext } from "./types";
@@ -21,8 +21,8 @@ export async function repairCallFormFillForReporting(input: {
     context: input.context,
     operation: async (tx) => {
       const lead = await getCallLeadModel().findById(input.lead_id).session(tx.session).exec();
-      if (!lead || !hasQualifiedRingCentralCall(lead.ringcentral)) {
-        throw new Error("Saved RingCentral qualification required for Form Fill repair");
+      if (!lead || !hasReportingEligibleCall(lead)) {
+        throw new Error("Trusted Call reporting admission required for Form Fill repair");
       }
       if (Number(lead.domain_revision ?? 0) !== input.expected_revision) throw new DomainRevisionConflictError();
       if (lead.form_fill === true) return { entity_refs: [{ model: "CallLead", id: input.lead_id }] };

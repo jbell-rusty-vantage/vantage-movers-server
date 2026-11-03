@@ -1,12 +1,10 @@
 import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
 import { noSyncAppliesToNormalTabs } from "../sheetSync/noSyncLead";
 import { assertLeadTabWritesAllowed } from "../sheetSync/writerFence";
-import { allFormLeadTargets, callLeadTargets, hasFormBadProjection, CALL_REPORTING_TARGET_KEYS, FORM_REPORTING_TARGET_KEYS, staleCallTargetKeys } from "./leadReportingTargets";
+import { allFormLeadTargets, callLeadTargets, formLeadTargets, staleFormTargets, staleFormTargetKeys, CALL_REPORTING_TARGET_KEYS, FORM_REPORTING_TARGET_KEYS, staleCallTargetKeys } from "./leadReportingTargets";
 import {
   BOOKED_SHEET_HEADERS,
-  CALL_SHEET_HEADERS,
   CANCELLED_SHEET_HEADERS,
-  FORM_SHEET_HEADERS,
   getMasterBookedSheetContainerId,
   getMasterLeadsSheetContainerId,
   getSourceLeadSheetContainerId,
@@ -24,7 +22,6 @@ import { cancelledLeadToRow } from "./projections/cancelledLeadRow";
 import { formLeadToRow } from "./projections/formLeadRow";
 import { syncRowToTargets } from "./syncRows";
 import {
-  getLeadTargets,
   getMasterBookedTabs,
   getMasterLeadsTabs,
   getSourceLeadTabs,
@@ -40,46 +37,18 @@ import type {
 
 export async function syncFormLeadToSheets(
   lead: FormLeadSheetSource,
+  delivery = { syncRowToTargets, deleteRowsFromTargets },
 ): Promise<SheetSyncUpdateEntry[]> {
   if (noSyncAppliesToNormalTabs(lead)) {
-    const targets = getLeadTargets("master_forms", "source_forms", lead.source_company, SHEET_TAB_NAMES.forms, FORM_SHEET_HEADERS);
-    const deleted = await deleteRowsFromTargets(lead, targets, ["master_forms", "source_forms"]);
+    const deleted = await delivery.deleteRowsFromTargets(lead, allFormLeadTargets(lead.source_company), FORM_REPORTING_TARGET_KEYS);
     return deleted.map((target) => ({ target, status: "deleted" as const }));
   }
-  const targetBase = lead.duplicate
-    ? {
-        masterTarget: "master_duplicates",
-        sourceTarget: "source_duplicates",
-        tabName: SHEET_TAB_NAMES.duplicates,
-      }
-    : {
-        masterTarget: "master_forms",
-        sourceTarget: "source_forms",
-        tabName: SHEET_TAB_NAMES.forms,
-      };
-  const targets = getLeadTargets(
-    targetBase.masterTarget,
-    targetBase.sourceTarget,
-    lead.source_company,
-    targetBase.tabName,
-    FORM_SHEET_HEADERS,
-  );
-  const row = formLeadToRow(lead);
-  const results: SheetSyncUpdateEntry[] = await syncRowToTargets(
-    lead,
-    hasFormBadProjection(lead) ? [...targets, masterBadLeadsTarget()] : targets,
-    row,
-  );
-  if (!hasFormBadProjection(lead)) {
-    const deletedTargets = await deleteRowsFromTargets(
-      lead,
-      allFormLeadTargets(lead.source_company).filter((target) => target.target.endsWith("bad_leads")),
-      ["master_bad_leads", "source_bad_leads"],
-    );
-    results.push(
-      ...deletedTargets.map((target) => ({ target, status: "deleted" as const })),
-    );
-  }
+  const results: SheetSyncUpdateEntry[] = await delivery.syncRowToTargets(lead, formLeadTargets(lead), formLeadToRow(lead));
+  // Destination must exist before removing primary membership. A replay
+  // repairs a destination-written/stale-not-deleted interruption by Mongo ID.
+  if (results.some(result => result.status !== "synced")) return results;
+  const deleted = await delivery.deleteRowsFromTargets(lead, staleFormTargets(lead), staleFormTargetKeys(lead));
+  results.push(...deleted.map(target => ({ target, status: "deleted" as const })));
   return results;
 }
 
@@ -138,16 +107,6 @@ export async function deleteFormLeadFromSheets(
 ): Promise<void> {
   const targets = allFormLeadTargets(lead.source_company);
   await deleteRowsFromTargets(lead, targets, FORM_REPORTING_TARGET_KEYS);
-}
-
-function masterBadLeadsTarget() {
-  return {
-    target: "master_bad_leads",
-    spreadsheetId: getMasterLeadsSheetContainerId(),
-    tabName: SHEET_TAB_NAMES.badLeads,
-    headers: FORM_SHEET_HEADERS,
-    ensureTabs: getMasterLeadsTabs(),
-  };
 }
 
 export async function deleteCallLeadFromSheets(

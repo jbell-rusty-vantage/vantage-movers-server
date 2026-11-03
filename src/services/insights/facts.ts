@@ -1,4 +1,4 @@
-import { qualifiedCallLeadFilter } from "../ringcentral/callLeadQualification";
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
 import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
 /**
  * Lean facts for one period: the leads that arrived in it, the bookings booked in it, the cancellations recorded in
@@ -87,6 +87,7 @@ const LEAD_PROJECTION = {
   duplicate: 1,
   form_fill: 1,
   ringcentral: 1,
+  external_call_admission: 1,
   external_sheet_review: 1,
   created_on_unmatched: 1,
   source_granularity_id: 1,
@@ -228,7 +229,7 @@ export async function loadLeadFacts(catalog: InsightsCatalog, range: RangeLike):
   const scan = { $gte: dayToUtc(range.start), $lt: new Date(dayToUtc(range.end_exclusive).getTime() + 6 * 3_600_000) };
   const [form, call] = await Promise.all([
     insightsCollection("form_leads").find({ timestamp: scan }, { projection: LEAD_PROJECTION }).toArray(),
-    insightsCollection("call_leads").find({ timestamp: scan, ...qualifiedCallLeadFilter() }, { projection: LEAD_PROJECTION }).toArray(),
+    insightsCollection("call_leads").find({ timestamp: scan, ...reportingEligibleCallLeadFilter() }, { projection: LEAD_PROJECTION }).toArray(),
   ]);
   const facts: LeadFact[] = [];
   for (const [kind, docs] of [["form", form], ["call", call]] as const) {

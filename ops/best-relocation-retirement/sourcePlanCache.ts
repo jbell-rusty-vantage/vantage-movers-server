@@ -17,7 +17,7 @@ type SourceIdentity = { dataset_key: string; stable_source_row_id: string };
 const BATCH = 100, CANDIDATE_CAP = 5000;
 const chunks = <T>(rows: T[]) => Array.from({ length: Math.ceil(rows.length / BATCH) }, (_, index) => rows.slice(index * BATCH, (index + 1) * BATCH));
 export const sourceIdentityKey = (row: SourceIdentity) => `${row.dataset_key}:${row.stable_source_row_id}`;
-const targetProjection = "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid duplicate domain_revision external_sheet_review source source_company lead_ref lead_model job_no normalized_job_no total_binder_amount deposit_amount refund_amount booked_lead cancelled booked ringcentral created_on_unmatched form_fill bad_lead sheet_sync";
+const targetProjection = "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid duplicate domain_revision external_sheet_review external_call_admission source source_company lead_source_company source_granularity_id lead_ref lead_model job_no normalized_job_no total_binder_amount deposit_amount refund_amount booked_lead cancelled booked ringcentral created_on_unmatched form_fill bad_lead sheet_sync";
 const models = () => ({ FormLead: getFormLeadModel(), CallLead: getCallLeadModel(), BookedLead, CancelledLead }) as Record<string, mongoose.Model<any>>;
 
 /** Reads are bounded by frozen source identities, never by the whole collection. */
@@ -96,16 +96,23 @@ export async function loadSourcePlanTargets(refs: Array<{ model: string; id: str
 export async function loadSourceCallCandidates(calls: ParsedCallLead[], companyId: string, granularities: string[]) {
   const candidates = new Map<string, Row>();
   const phones = [...new Set(calls.map(row => row.normalized_phone).filter((phone): phone is string => !!phone))];
-  const times = calls.map(row => Date.parse(row.timestamp ?? "")).filter(Number.isFinite);
-  if (!times.length) return [];
-  const from = new Date(Math.min(...times) - 1000), through = new Date(Math.max(...times) + 1000);
-  for (const granularity of granularities) for (const batch of chunks(phones)) {
+  if (!phones.length) return [];
+  for (const granularity of granularities) {
+    // Legacy external Calls carry both timestamp conventions and may lack a
+    // normalized phone. Read the bounded source scope, then match real instants.
     const rows = await getCallLeadModel().find({ lead_source_company: companyId, source_granularity_id: granularity,
-      normalized_phone_number: { $in: batch }, "ringcentral.start_time": { $gte: from, $lte: through } })
-      .hint({ source_granularity_id: 1, normalized_phone_number: 1, createdAt: -1 })
-      .select(targetProjection).limit(CANDIDATE_CAP + 1).lean();
+      source_company: "best_relocation_leads" })
+      .hint({ source_granularity_id: 1 })
+      .select(targetProjection).limit(CANDIDATE_CAP + 1).maxTimeMS(10000).lean();
     if (rows.length > CANDIDATE_CAP) throw new Error("source_call_candidate_bound_exceeded");
-    for (const row of rows) candidates.set(String(row._id), row);
+    for (const row of rows) if (phones.includes(normalizePhoneNumberForMatch(row.normalized_phone_number ?? row.phone_number) ?? "")) candidates.set(String(row._id), row);
   }
   return [...candidates.values()];
+}
+
+export async function loadSourceFormFillPhones(companyId: string): Promise<Set<string>> {
+  const rows = await getFormLeadModel().find({ $and: [{ $or: [{ lead_source_company:companyId }, {source_company:"best_relocation_leads"}] }, {duplicate:{$ne:true}}] })
+    .select("phone_number normalized_phone_number").limit(CANDIDATE_CAP+1).maxTimeMS(10000).lean();
+  if (rows.length > CANDIDATE_CAP) throw new Error("source_form_fill_candidate_bound_exceeded");
+  return new Set(rows.map(row=>normalizePhoneNumberForMatch(row.normalized_phone_number ?? row.phone_number)).filter((phone):phone is string=>!!phone));
 }

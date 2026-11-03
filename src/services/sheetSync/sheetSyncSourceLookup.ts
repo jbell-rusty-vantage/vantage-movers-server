@@ -1,9 +1,6 @@
 import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
 import mongoose from "mongoose";
 import {
-  CALL_SHEET_HEADERS,
-  FORM_SHEET_HEADERS,
-  SHEET_TAB_NAMES,
   type LeadModelName,
   type SourceCompany,
 } from "../../config/domain";
@@ -11,9 +8,8 @@ import { logger } from "../../logger";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import { deleteRowsFromTargets } from "../googleSheets/deleteRows";
-import { callLeadTargets, CALL_REPORTING_TARGET_KEYS } from "../googleSheets/leadReportingTargets";
+import { allFormLeadTargets, FORM_REPORTING_TARGET_KEYS, callLeadTargets, CALL_REPORTING_TARGET_KEYS } from "../googleSheets/leadReportingTargets";
 import type { CallLeadSheetSource } from "../googleSheets/types";
-import { getLeadTargets } from "../googleSheets/targets";
 import type { SyncableDocument } from "../googleSheets/types";
 import {
   syncBookedLeadToSheets,
@@ -130,6 +126,10 @@ export async function syncSourceLead(
       duplicate: lead.get("duplicate") as boolean | null | undefined,
       bad_lead: lead.get("bad_lead"),
       ringcentral: lead.get("ringcentral"),
+      external_call_admission: lead.get("external_call_admission"),
+      source_company: lead.get("source_company"),
+      lead_source_company: lead.get("lead_source_company"),
+      source_granularity_id: lead.get("source_granularity_id"),
       timestamp: lead.get("timestamp"),
       form_fill: lead.get("form_fill") as boolean | null | undefined,
       external_sheet_review: lead.get("external_sheet_review"),
@@ -162,21 +162,10 @@ async function deleteOrdinaryNoSyncLeadRows(
 ): Promise<SheetSyncUpdateEntry[]> {
   const sourceCompany = lead.get("source_company") as SourceCompany;
   const isForm = leadModel === "FormLead";
-  const masterTarget = isForm ? "master_forms" : "master_calls";
-  const sourceTarget = isForm ? "source_forms" : "source_calls";
-  const tabName = isForm ? SHEET_TAB_NAMES.forms : SHEET_TAB_NAMES.calls;
-  const headers = isForm ? FORM_SHEET_HEADERS : CALL_SHEET_HEADERS;
-  const targets = getLeadTargets(
-    masterTarget,
-    sourceTarget,
-    sourceCompany,
-    tabName,
-    headers,
-  );
   const deletedTargets = await deleteRowsFromTargets(
     lead as unknown as SyncableDocument,
-    isForm ? targets : callLeadTargets(lead as unknown as CallLeadSheetSource, true),
-    isForm ? [masterTarget, sourceTarget] : CALL_REPORTING_TARGET_KEYS,
+    isForm ? allFormLeadTargets(sourceCompany) : callLeadTargets(lead as unknown as CallLeadSheetSource, true),
+    isForm ? FORM_REPORTING_TARGET_KEYS : CALL_REPORTING_TARGET_KEYS,
   );
   return deletedTargets.map((target) => ({ target, status: "deleted" as const }));
 }

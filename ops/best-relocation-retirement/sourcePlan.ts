@@ -11,11 +11,11 @@ import { BEST_RELOCATION_RETIRED_LABELS } from "../../src/models/bestRelocationR
 import { buildBestRelocationApplicationPlan, type BestRelocationApplicationPlan, type BestRelocationPlanAction } from "../../src/services/bestRelocationSheetIngest/applicationPlan";
 import { applyCanonicalAdoptionPolicy } from "../../src/services/bestRelocationSheetIngest/canonicalLeadAdoption";
 import { canonicalJson } from "../../src/services/durableWork";
-import { loadSourceEvidence, preloadCanonicalAdoption, loadSourcePlanTargets, loadSourceCallCandidates, sourceIdentityKey } from "./sourcePlanCache";
+import { loadSourceEvidence, preloadCanonicalAdoption, loadSourcePlanTargets, loadSourceCallCandidates, loadSourceFormFillPhones, sourceIdentityKey } from "./sourcePlanCache";
 import { stableSourceRowId, managedId, isValidManagedIngestionId, type AuthoritativeObservation } from "../../src/services/bestRelocationSheetIngest/identity";
 import type { ParsedWorkbookData } from "../../src/services/bestRelocationSheetIngest/types";
 import { selectBestRelocationRefundObservations } from "../../src/services/bestRelocationSheetIngest/matching";
-import { hasQualifiedRingCentralCall } from "../../src/services/ringcentral/callLeadQualification";
+import { planFinalSourceCalls, type NewNormalCallFlag } from "./sourceCalls";
 import { classifyExternalReview, EXTERNAL_REVIEW_POLICY_VERSION } from "../../src/services/leads/externalSheetReview";
 import type { CapturedReviewCell } from "../../src/services/domainCommands/externalSheetReview";
 import { BEST_RELOCATION_CUTOFF } from "../../src/services/bestRelocationSheetIngest/sheets";
@@ -28,6 +28,7 @@ export type RetirementSourcePlan = { version: string; database: string; snapshot
   connection_id: string | null; registry: { company_id: string; sources: unknown[] };
   inventory: ReturnType<typeof parseFrozenSnapshot>["inventory"]; canonical_plan: BestRelocationApplicationPlan;
   financial_source_payloads: Record<string, Record<string, unknown>>;
+  new_normal_call_flags?: NewNormalCallFlag[];
   review_actions: ReviewAction[]; counters: Record<string, number>; target_before: Array<Record<string, unknown>>; checksum: string };
 
 export function retirementPlanChecksum(plan: RetirementSourcePlan): string { const { checksum: _checksum, ...data } = plan; return hash(data); }
@@ -130,8 +131,15 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
   const refs = [...canonical.actions.flatMap(action => action.adopted_entity_refs ?? []), ...[...evidence.latest.values()].flatMap(row =>
     row.resulting_canonical_ids?.length && row.resulting_canonical_model ? [{ model: row.resulting_canonical_model, id: row.resulting_canonical_ids[0] }] : [])];
   const targets = await loadSourcePlanTargets(refs);
-  const callCandidates = await loadSourceCallCandidates(partitioned.data.calls.filter(row => !evidence.latest.has(`calls:${stableSourceRowId(row)}`)), String(company._id), callGranularities);
+  const callCandidates = await loadSourceCallCandidates(partitioned.data.calls, String(company._id), callGranularities);
   for (const candidate of callCandidates) targets.set(`CallLead:${candidate._id}`, candidate);
+  const formPhones = await loadSourceFormFillPhones(String(company._id));
+  for (const row of [...partitioned.data.forms,...partitioned.data.localForms]) {
+    const action=canonical.actions.find(action=>action.dataset_key===datasetKey(row)&&action.stable_source_row_id===stableSourceRowId(row));
+    if (action && !["conflict","invalid"].includes(action.classification) && row.normalized_phone) formPhones.add(row.normalized_phone);
+  }
+  const sourceCalls=await planFinalSourceCalls({calls:partitioned.data.calls,candidates:callCandidates,formPhones,receipts:evidence.latest});
+  canonical.actions.push(...sourceCalls.actions);
   const targetBefore: Array<Record<string, unknown>> = [];
   for (const action of canonical.actions) {
     let receiptRelatedIds: string[] = [];
@@ -204,20 +212,22 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
       const receipt = evidence.latest.get(`${dataset}:${stable}`);
       if (receipt?.resulting_canonical_model === model) ids = receipt.resulting_canonical_ids;
     }
-    if (isCall && !ids.length && row.normalized_phone && row.timestamp && callGranularities.length) {
-      const at = Date.parse(row.timestamp);
-      const matches = callCandidates.filter(candidate => candidate.normalized_phone_number === row.normalized_phone &&
-        candidate.ringcentral?.start_time instanceof Date && Math.abs(+candidate.ringcentral.start_time - at) <= 1000);
-      ids = matches.filter(candidate => hasQualifiedRingCentralCall(candidate.ringcentral) && candidate.created_on_unmatched !== true).map(candidate => String(candidate._id));
-    }
     if (ids.length === 1) {
       const target = targets.get(`${model}:${ids[0]}`);
-      if (!target || target.source_company !== "best_relocation_leads" || (isCall && (!hasQualifiedRingCentralCall(target.ringcentral) || target.created_on_unmatched))) {
+      if (!target || target.source_company !== "best_relocation_leads" || (isCall && target.created_on_unmatched === true)) {
         review.classification = "conflict"; review.conflict = "unqualified_or_wrong_source_target";
       } else { review.lead_id = ids[0]; review.expected_revision = Number(target.domain_revision ?? 0); review.target_before = target; }
-    } else if (!isCall && action?.command === "create_form_lead") review.lead_action_key = action.action_key;
-    else { review.classification = "conflict"; review.conflict = ids.length > 1 ? "ambiguous_canonical_match" : isCall ? "no_qualified_ringcentral_call_match" : "unresolved_form_dependency"; }
+    } else if (!isCall && action?.command === "create_form_lead" || isCall && action?.command === "admit_final_best_relocation_call" && action.classification === "create") review.lead_action_key = action!.action_key;
+    else { review.classification = "conflict"; review.conflict = ids.length > 1 ? "ambiguous_canonical_match" : isCall ? action?.conflict?.type === "new_normal_call_creation" ? "owner_held_new_normal_call" : "unresolved_call_identity" : "unresolved_form_dependency"; }
     reviews.push(review);
+  }
+  for (const alias of sourceCalls.aliases) {
+    const row=alias.source, raw=row.provenance.raw["Form Fill Checker"] ?? row.form_fill_checker;
+    const primary=reviews.find(review=>review.dataset_key==="calls"&&review.stable_source_row_id===stableSourceRowId(row));
+    if (!primary) throw new Error("alias_primary_review_missing");
+    reviews.push({...primary,dataset_key:"call_aliases",stable_source_row_id:alias.action.stable_source_row_id,
+      lead_id:String(alias.target._id),lead_action_key:undefined,expected_revision:Number(alias.target.domain_revision??0),target_before:alias.target,
+      cell:{...primary.cell,raw_value:raw}});
   }
   const counters: Record<string, number> = {};
   for (const review of reviews) { const key = `${review.dataset_key}:${review.conflict ?? review.classification}`; counters[key] = (counters[key] ?? 0) + 1; }
@@ -235,7 +245,7 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
   const plan: RetirementSourcePlan = { version: EXTERNAL_REVIEW_POLICY_VERSION, database: mongoose.connection.name, snapshot_hash: hash(snapshot), through: snapshot.through,
     final_capture: snapshot.final_capture, connection_id: connection ? String(connection._id) : null, registry: { company_id: String(company._id), sources },
     inventory, canonical_plan: canonical, financial_source_payloads: financialSourcePayloads,
-    review_actions: reviews, counters, target_before: targetBefore, checksum: "" };
+    new_normal_call_flags:sourceCalls.normal_call_flags, review_actions: reviews, counters, target_before: targetBefore, checksum: "" };
   plan.checksum = retirementPlanChecksum(plan);
   return plan;
 }

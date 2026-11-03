@@ -1,12 +1,9 @@
 import { getCallLeadReportingDecision } from "../../leads/callLeadReportingDisposition";
-import { allFormLeadTargets, callLeadTargets, hasFormBadProjection, CALL_REPORTING_TARGET_KEYS, staleCallTargetKeys } from "../../googleSheets/leadReportingTargets";
+import { allFormLeadTargets, callLeadTargets, formLeadTargets, staleFormTargets, staleFormTargetKeys, FORM_REPORTING_TARGET_KEYS, CALL_REPORTING_TARGET_KEYS, staleCallTargetKeys } from "../../googleSheets/leadReportingTargets";
 import {
   BOOKED_SHEET_HEADERS,
-  CALL_SHEET_HEADERS,
   CANCELLED_SHEET_HEADERS,
-  FORM_SHEET_HEADERS,
   getMasterBookedSheetContainerId,
-  getMasterLeadsSheetContainerId,
   SHEET_TAB_NAMES,
   type LeadModelName,
   type SourceCompany,
@@ -24,8 +21,6 @@ import { formLeadToRow } from "../../googleSheets/projections/formLeadRow";
 import {
   getDeleteTargets,
   getHeadersForSyncTarget,
-  getLeadTargets,
-  getMasterLeadsTabs,
 } from "../../googleSheets/targets";
 import type {
   BookedLeadSheetSource,
@@ -109,22 +104,6 @@ function targetToDeleteWrite(
   };
 }
 
-function formLeadTargetBase(duplicate?: boolean | null) {
-  return duplicate
-    ? { masterTarget: "master_duplicates", sourceTarget: "source_duplicates", tabName: SHEET_TAB_NAMES.duplicates }
-    : { masterTarget: "master_forms", sourceTarget: "source_forms", tabName: SHEET_TAB_NAMES.forms };
-}
-
-function masterBadLeadsTarget(): SyncTarget {
-  return {
-    target: "master_bad_leads",
-    spreadsheetId: getMasterLeadsSheetContainerId(),
-    tabName: SHEET_TAB_NAMES.badLeads,
-    headers: FORM_SHEET_HEADERS,
-    ensureTabs: getMasterLeadsTabs(),
-  };
-}
-
 function bookedTarget(): SyncTarget {
   return {
     target: "master_booked",
@@ -160,23 +139,19 @@ async function planSourceLead(
       duplicate: lead.get("duplicate") as boolean | null | undefined,
       bad_lead: lead.get("bad_lead"),
       ringcentral: lead.get("ringcentral"),
+      external_call_admission: lead.get("external_call_admission"),
+      source_company: lead.get("source_company"),
+      lead_source_company: lead.get("lead_source_company"),
+      source_granularity_id: lead.get("source_granularity_id"),
       timestamp: lead.get("timestamp"),
       form_fill: lead.get("form_fill") as boolean | null | undefined,
       external_sheet_review: lead.get("external_sheet_review"),
     })
   ) {
     const sourceCompany = lead.get("source_company") as SourceCompany;
-    const base =
-      leadModel === "FormLead" ? formLeadTargetBase(false) : { masterTarget: "master_calls", sourceTarget: "source_calls", tabName: SHEET_TAB_NAMES.calls };
-    const headers = leadModel === "FormLead" ? FORM_SHEET_HEADERS : CALL_SHEET_HEADERS;
-    const targets = getLeadTargets(
-      base.masterTarget,
-      base.sourceTarget,
-      sourceCompany,
-      base.tabName,
-      headers,
-    );
-    const selected = leadModel === "CallLead" ? getDeleteTargets(lead as unknown as CallLeadSheetSource, callLeadTargets(lead as unknown as CallLeadSheetSource, true), CALL_REPORTING_TARGET_KEYS) : filterTargets(job, targets);
+    const selected = leadModel === "CallLead"
+      ? getDeleteTargets(lead as unknown as CallLeadSheetSource, callLeadTargets(lead as unknown as CallLeadSheetSource, true), CALL_REPORTING_TARGET_KEYS)
+      : getDeleteTargets(lead as unknown as FormLeadSheetSource, allFormLeadTargets(sourceCompany), FORM_REPORTING_TARGET_KEYS);
     const writes = selected.map((target) =>
       targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
     );
@@ -189,47 +164,13 @@ async function planSourceLead(
   if (leadModel === "CallLead" && getCallLeadReportingDecision(lead).disposition === "excluded") return [];
   await looseDoc.populate({ path: "booked", populate: { path: "customer" } });
 
-  const sourceCompany = lead.get("source_company") as SourceCompany;
-  const duplicate = lead.get("duplicate") as boolean | undefined;
-
   if (leadModel === "FormLead") {
-    const base = formLeadTargetBase(duplicate);
-    const targets = getLeadTargets(
-      base.masterTarget,
-      base.sourceTarget,
-      sourceCompany,
-      base.tabName,
-      FORM_SHEET_HEADERS,
-    );
-    const row = formLeadToRow(lead as unknown as FormLeadSheetSource);
-    const writes = targetsToWrites(
-      jobId,
-      docKey,
-      leadId,
-      looseDoc,
-      filterTargets(job, targets),
-      row,
-    );
-    const badLeadsTarget = masterBadLeadsTarget();
-    if (hasFormBadProjection({ bad_lead: lead.get("bad_lead"), external_sheet_review: lead.get("external_sheet_review") })) {
-      writes.push(
-        ...targetsToWrites(
-          jobId,
-          docKey,
-          leadId,
-          looseDoc,
-          filterTargets(job, [badLeadsTarget]),
-          row,
-        ),
-      );
-    } else {
-      const selectedBadLeadTargets = getDeleteTargets(lead as unknown as FormLeadSheetSource, allFormLeadTargets(sourceCompany).filter((target) => target.target.endsWith("bad_leads")), ["master_bad_leads", "source_bad_leads"]);
-      writes.push(
-        ...selectedBadLeadTargets.map((target) =>
-          targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
-        ),
-      );
-    }
+    const form = lead as unknown as FormLeadSheetSource;
+    // A stale retry hint must not omit the current destination or primary
+    // cleanup. The batch writer fences deletes until all upserts succeed.
+    const writes = targetsToWrites(jobId, docKey, leadId, looseDoc, formLeadTargets(form), formLeadToRow(form));
+    const stale = getDeleteTargets(form, staleFormTargets(form), staleFormTargetKeys(form));
+    writes.push(...stale.map(target => targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target)));
     return [{ docKey, doc: looseDoc, writes }];
   }
 

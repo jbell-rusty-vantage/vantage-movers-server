@@ -34,6 +34,7 @@ import {
 } from "../durableWork";
 import { InMemoryLeaseStore } from "../durableWork/testing";
 import { applyBestRelocationPlan } from "./applyPlan";
+import type { FinalBestRelocationCallInput } from "../domainCommands/bestRelocationFinalCall";
 import {
   planHealthSignals,
   shouldAlertIngestionSignal,
@@ -1859,4 +1860,29 @@ test("the shared apply engine rejects old callers even when the plan checksum is
  await assert.rejects(applyBestRelocationPlan({ plan, checksum, run_id: "old", connection_id: "old",
    actor, initiator: actor, lease, leaseStore, commands: {} as Parameters<typeof applyBestRelocationPlan>[0]["commands"],
  }), /permanently retired/);
+});
+
+test("final apply routes approved Calls through only the dedicated admission command with source provenance", async () => {
+  const { bestRelocationFinalCallPayloadChecksum } = await import("../domainCommands/bestRelocationFinalCall.js");
+  const built = buildBestRelocationApplicationPlan({ data: fixture(), trigger: "manual", cutoff: BEST_RELOCATION_CUTOFF, sourceReadThrough: new Date("2026-05-03T00:00:00Z") });
+  const action = { ...built.plan.actions[0]!, action_key: "final:call", command: "admit_final_best_relocation_call" as const,
+    classification: "adoption" as const, dataset_key: "calls", command_payload: { target_lead_id: "600000000000000000000001" }, depends_on: [] };
+  const plan = { ...built.plan, actions: [action] };
+  const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: plan.schema_version, payload: plan });
+  const actor = createBestRelocationIngestionActor("final-admission-test"), leaseStore = new InMemoryLeaseStore();
+  const lease = await leaseStore.acquire({ scope: "ingestion:best_relocation:apply", owner: "final-admission-test", ttl_ms: 60_000, now: new Date() });
+  assert.ok(lease);
+  let admissions = 0, receipts = 0;
+  const result = await applyFinalPlan({ plan, checksum, run_id: "600000000000000000000002", connection_id: "600000000000000000000003", actor, initiator: actor,
+    lease, leaseStore, commands: { admitBestRelocationFinalCall: async (input: FinalBestRelocationCallInput) => {
+      admissions++; assert.deepEqual(input.action, action);
+      assert.equal(input.context.payload_checksum, bestRelocationFinalCallPayloadChecksum(action));
+      assert.equal(input.context.provenance.source_receipt_id, "600000000000000000000004");
+      assert.equal(input.context.provenance.origin, "external_sheet_ingestion");
+      return { status: "applied", entity_refs: [{ model: "CallLead", id: "600000000000000000000001" }], warnings: [] };
+    }, createCallLead: async () => { throw new Error("public Call create must not be called"); } } as unknown as Parameters<typeof applyBestRelocationPlan>[0]["commands"],
+    persistence: { preallocateReceiptId: () => "600000000000000000000004", appendSourceReceipt: async () => { receipts++; return { id: "600000000000000000000004" }; },
+      resolvedActionIdsForRun: async () => new Map(), isIngestionConflictDispositioned: async () => false, openIngestionConflict: async () => undefined } as unknown as Parameters<typeof applyBestRelocationPlan>[0]["persistence"],
+  });
+  assert.equal(admissions, 1); assert.equal(receipts, 1); assert.equal(result.applied, 1); assert.equal(result.failures, 0);
 });
