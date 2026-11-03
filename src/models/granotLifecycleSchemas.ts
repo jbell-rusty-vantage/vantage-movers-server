@@ -477,6 +477,7 @@ const currentMoveProvenanceSchema = new Schema(
 const lastAcceptedGranotObservationSchema = new Schema(
   {
     observation_id: { type: Schema.Types.ObjectId, required: true },
+    evidence: { type: Schema.Types.Mixed },
     captured_at: { type: Date, required: true },
   },
   { _id: false },

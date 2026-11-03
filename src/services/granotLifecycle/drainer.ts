@@ -1,3 +1,5 @@
+import { withTransaction } from "../../db";
+import { acceptsLead, certifyAcceptedLead } from "./acceptedLeadEvidence";
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import {
@@ -194,6 +196,7 @@ export type DrainerDeps = {
     id: mongoose.Types.ObjectId,
     owner: string,
     update: Record<string, unknown>,
+    result?: ProcessorResult,
   ) => Promise<boolean>;
   loadReceipt?: (id: string) => Promise<ClaimedReceiptSnapshot | null>;
   loadDecisionResult?: (decisionId: mongoose.Types.ObjectId) => Promise<ProcessorResult | null>;
@@ -466,6 +469,7 @@ async function runFencedProcessor(
           "processing.last_error": "",
         },
       },
+      result,
     );
     if (!fenced) {
       return { status: "lease_lost" };
@@ -897,12 +901,14 @@ async function defaultFinalize(
   id: mongoose.Types.ObjectId,
   owner: string,
   update: Record<string, unknown>,
+  processed?: ProcessorResult,
 ): Promise<boolean> {
-  const result = await getGranotObservationReceiptModel().updateOne(
-    buildFenceFilter(id, owner),
-    update,
-  );
-  return result.matchedCount === 1;
+  const complete = async (session?: mongoose.ClientSession) => {
+    const write = await getGranotObservationReceiptModel().updateOne(buildFenceFilter(id, owner), update, { session });
+    if (write.matchedCount && processed && session) await certifyAcceptedLead(id, processed, session);
+    return write.matchedCount === 1;
+  };
+  return acceptsLead(processed) ? withTransaction(complete) : complete();
 }
 
 async function defaultLoadReceipt(id: string): Promise<ClaimedReceiptSnapshot | null> {

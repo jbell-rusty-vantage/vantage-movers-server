@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { Types } from "mongoose";
+import mongoose from "mongoose";
+import { connectMongo, withTransaction } from "../../db";
+import { getFormLeadModel } from "../../models/FormLead";
+import { getGranotObservationModel } from "../../models/GranotObservation";
+import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
+import { certifyAcceptedLead } from "./acceptedLeadEvidence";
+
+test("certification records the winning Lead only and rolls back on failed receipt finalization", async (t) => {
+  if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true") return t.skip("requires disposable replica");
+  assert.equal(process.env.TEST_MODE, "true");
+  assert.match(process.env.MONGO_URI ?? "", /^mongodb:\/\/127\.0\.0\.1:/);
+  await connectMongo();
+  t.after(() => mongoose.disconnect());
+  const db = mongoose.connection.db!;
+  assert.match(db.databaseName, /^testvantagemovers_/);
+  const leads = db.collection(getFormLeadModel().collection.name);
+  const observations = db.collection(getGranotObservationModel().collection.name);
+  const decisions = db.collection(getSynchronizationDecisionModel().collection.name);
+  const oid = () => new Types.ObjectId();
+  const lead = oid(), observation = oid(), receipt = oid(), decision = oid(), when = new Date();
+  const winner = { observation_id: observation, captured_at: when };
+  await leads.insertOne({ _id: lead, last_accepted_granot_observation: winner });
+  await observations.insertOne({ _id: observation, receipt_id: receipt, captured_at: when, normalization_result: "valid", priority: { valid: true, canonical: "9" }, identity: { normalized_job_no: "A123" } });
+  const target = { model: "FormLead" as const, id: String(lead) };
+  await decisions.insertOne({ _id: decision, execution_mode: "live", outcome: "already_current", observation_id: observation, target, source_scope: { policy_version: "v1" } });
+  const result = { observation_id: String(observation), decision_id: String(decision), outcome: "already_current" as const, target, effects: [] };
+  const read = async () => (await leads.findOne({ _id: lead }))?.last_accepted_granot_observation;
+  await assert.rejects(withTransaction(async s => { await certifyAcceptedLead(receipt, result, s); throw new Error("rollback"); }), /rollback/);
+  assert.equal((await read()).evidence, undefined);
+  await withTransaction(s => certifyAcceptedLead(receipt, result, s));
+  assert.equal((await read()).evidence.normalized_job_no, "A123");
+  await leads.updateOne({ _id: lead }, { $set: { last_accepted_granot_observation: { observation_id: oid(), captured_at: new Date(+when + 1) } } });
+  await withTransaction(s => certifyAcceptedLead(receipt, result, s));
+  assert.equal((await read()).evidence, undefined);
+});
