@@ -24,7 +24,7 @@ export async function prepareClosedRun(db: Db, run: string, cutoff: Date) {
   const rows: ClosedOperation[] = [];
   for (const r of receipts) {
     const d = byId.get(String(r.processing.latest_decision_id));
-    if (!d || receiptsByObservation.get(String(d.observation_id)) !== String(r._id) || !d.outcome || !(d.decided_at instanceof Date) || d.decided_at >= cutoff
+    if (!d || receiptsByObservation.get(String(d.observation_id)) !== String(r._id) || !d.outcome || ["pending_match","accepted_for_processing"].includes(d.outcome) || !(d.decided_at instanceof Date) || d.decided_at >= cutoff
       || !/^[a-f0-9]{64}$/i.test(r.payload_sha256) || !r.channel_operation_kind) return { reason: "incomplete_evidence" as const };
     rows.push({ operation:r.channel_operation_id, kind:r.channel_operation_kind,hash:r.payload_sha256, receipt:String(r._id),
       result: { decision_id:String(d._id), observation_id:String(d.observation_id),outcome:d.outcome,

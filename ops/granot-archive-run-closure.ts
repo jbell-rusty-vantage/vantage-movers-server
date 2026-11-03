@@ -14,7 +14,7 @@ async function main() {
   try {
     const db=client.db("vantagemovers"), cutoff=new Date(Date.now()-7*86400000), runs=new Set<string>();
     for (const entry of await archiveCatalog(db).find({}).sort({_id:1}).limit(32).toArray()) {
-      const rows=decodeChains(await readArchiveObject(db.databaseName,entry._id),entry._id,entry.job);
+      const rows=decodeChains(await readArchiveObject(db.databaseName,entry.hash ?? entry._id),entry.hash ?? entry._id,entry.job);
       for (const chain of rows) { const run=automationRunId(chain.receipt.channel_operation_id); if(run)runs.add(run); }
     }
     const counts:Record<string,number>={};

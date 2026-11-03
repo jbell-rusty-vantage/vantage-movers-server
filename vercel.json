@@ -75,6 +75,7 @@
     }
   },
   "crons": [
+    { "path": "/api/cron/granot-storage-retention", "schedule": "*/2 * * * *" },
     {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
