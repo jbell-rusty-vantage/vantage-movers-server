@@ -2,6 +2,8 @@ import {
   DEFAULT_GRANOT_LEAD_CREATED_SMS_TEMPLATE,
   unknownOutboundSmsPlaceholders,
 } from "../leadMessaging/granotCreatedLead";
+import { granotCreationRetired } from "../../models/bestRelocationRetirement";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getLeadMessageModel } from "../../models/LeadMessage";
 import type { OutboundSmsConsentBasis } from "../../config/domain";
@@ -105,6 +107,12 @@ export async function setGranotCrmSourceOutboundSms(
           throw new RegistryError("Granot CRM source not found.", {
             registryCode: REGISTRY_ERROR_CODES.NOT_FOUND,
           });
+        }
+        const company = command.enabled && before.lead_source_company
+          ? await getLeadSourceCompanyModel().findById(before.lead_source_company).session(session).lean().exec()
+          : null;
+        if (command.enabled && (granotCreationRetired(before) || granotCreationRetired(company ?? {}))) {
+          throw invalid("Best Relocation Lead creation and its confirmation text are permanently retired.");
         }
         if (command.enabled && before.lead_created_policy !== "create_if_missing") {
           throw new RegistryError(

@@ -143,3 +143,11 @@ test("[AC-07] omitForbiddenLeadLifecycleFields strips internal metadata from upd
   assert.equal("ingested_contact_snapshot" in stripped, false);
   assert.equal("domain_revision" in stripped, false);
 });
+
+test("compatibility updates cannot forge reporting review, RingCentral evidence or final-import automation guards", () => {
+ const result = omitForbiddenLeadLifecycleFields({ name: "Corrected name", external_sheet_review: { kind: "bad_call" },
+  "external_sheet_review.raw_value": "bad", ringcentral: { qualification: { qualified: true } },
+  "ringcentral.final_call_result": "Missed", outreach_automation_suppressed: false,
+ });
+ assert.deepEqual(result, { name: "Corrected name" });
+});

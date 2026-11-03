@@ -13,6 +13,9 @@ import type {
 
 export const BEST_RELOCATION_LEAD_SOURCES = new Set([
   "best relocation forms",
+  "bestrelocation forms",
+  "bestrelocation inbounds",
+  "bestrelocation locals",
   "best relocation inbounds",
   "best relocation locals",
 ]);
@@ -21,80 +24,10 @@ export function cell(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-export function parseDate(value: string): Date | undefined {
-  const raw = value.trim();
-  if (!raw || raw.toUpperCase() === "FORMULAS") return undefined;
-  const serial = parseGoogleSheetsSerial(raw);
-  if (serial) return serial;
-  const withoutWeekday = raw.replace(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+/i, "");
-  const newYorkWallClock = parseNewYorkWallClock(withoutWeekday);
-  if (newYorkWallClock) return newYorkWallClock;
-  const parsed = new Date(withoutWeekday);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
+export { parseSourceDate as parseDate } from "./sourceTime";
+import { parseSourceDate as parseDate } from "./sourceTime";
 
-function parseNewYorkWallClock(value: string): Date | undefined {
-  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(value)) return undefined;
-  const match = value.match(
-    /^(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[/-](\d{1,2})[/-](\d{4}))(?:[ T]+(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(AM|PM)?)?$/,
-  );
-  if (!match) return undefined;
-  const year = Number(match[1] ?? match[6]);
-  const month = Number(match[2] ?? match[4]);
-  const day = Number(match[3] ?? match[5]);
-  let hour = Number(match[7] ?? 0);
-  const minute = Number(match[8] ?? 0);
-  const second = Number(match[9] ?? 0);
-  const meridiem = match[10]?.toUpperCase();
-  if (meridiem === "AM" && hour === 12) hour = 0;
-  if (meridiem === "PM" && hour < 12) hour += 12;
-  if (
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31 ||
-    hour > 23 ||
-    minute > 59 ||
-    second > 59
-  ) {
-    return undefined;
-  }
-  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute, second);
-  let candidate = wallClockUtc;
-  for (let iteration = 0; iteration < 2; iteration += 1) {
-    candidate = wallClockUtc - timeZoneOffsetMilliseconds(candidate);
-  }
-  return new Date(candidate);
-}
-
-function timeZoneOffsetMilliseconds(timestamp: number): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(timestamp));
-  const values = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
-  );
-  const representedAsUtc = Date.UTC(
-    values.year,
-    values.month - 1,
-    values.day,
-    values.hour,
-    values.minute,
-    values.second,
-  );
-  return representedAsUtc - timestamp;
-}
-
-export function parseDateTime(dateValue: string, timeValue: string): Date | undefined {
+export function parseDateTime(dateValue: string, timeValue: string, timeZone = "America/New_York"): Date | undefined {
   const dateRaw = dateValue.trim();
   const timeRaw = timeValue.trim();
   const dateSerial = Number(dateRaw);
@@ -103,30 +36,17 @@ export function parseDateTime(dateValue: string, timeValue: string): Date | unde
     dateSerial >= 20_000 &&
     dateSerial <= 100_000
   ) {
-    if (!timeRaw) return parseDate(dateRaw);
+    if (!timeRaw) return parseDate(dateRaw, timeZone);
     const numericTime = Number(timeRaw);
     if (Number.isFinite(numericTime) && numericTime >= 0 && numericTime < 1) {
-      return dateFromGoogleSerial(Math.floor(dateSerial) + numericTime);
+      return parseDate(String(Math.floor(dateSerial) + numericTime), timeZone);
     }
     const clockFraction = parseClockFraction(timeRaw);
     if (clockFraction !== undefined) {
-      return dateFromGoogleSerial(Math.floor(dateSerial) + clockFraction);
+      return parseDate(String(Math.floor(dateSerial) + clockFraction), timeZone);
     }
   }
-  return parseDate(`${dateValue.trim()} ${timeValue.trim()}`.trim());
-}
-
-function parseGoogleSheetsSerial(value: string): Date | undefined {
-  if (!/^\d{4,6}(?:\.\d+)?$/.test(value)) return undefined;
-  const serial = Number(value);
-  return Number.isFinite(serial) && serial >= 20_000 && serial <= 100_000
-    ? dateFromGoogleSerial(serial)
-    : undefined;
-}
-
-function dateFromGoogleSerial(serial: number): Date {
-  const milliseconds = Date.UTC(1899, 11, 30) + serial * 24 * 60 * 60 * 1000;
-  return new Date(Math.round(milliseconds / 1000) * 1000);
+  return parseDate(`${dateValue.trim()} ${timeValue.trim()}`.trim(), timeZone);
 }
 
 function parseClockFraction(value: string): number | undefined {
@@ -250,11 +170,12 @@ function rows(tab: TabReadResult): Array<{ sheetRow: number; raw: SheetRow }> {
 export function parseFormRows(
   tab: TabReadResult,
   sourceTab: "Forms" | "Local Forms",
+  timeZone = "America/New_York",
 ): ParsedFormLead[] {
   return rows(tab)
     .filter(({ raw }) => cell(raw["Time Stamp"]).toUpperCase() !== "FORMULAS")
     .map(({ sheetRow, raw }) => {
-      const timestamp = parseDate(cell(raw["Time Stamp"]));
+      const timestamp = parseDate(cell(raw["Time Stamp"]), timeZone);
       const name = cell(raw.Name);
       const phone = cell(raw.Phone);
       return {
@@ -269,7 +190,7 @@ export function parseFormRows(
         pickup_zip: cell(raw["Pickup Zip"]),
         destination_zip: cell(raw["Destination Zip"]),
         move_size: cell(raw["Move Size"]),
-        move_date: parseDate(cell(raw["Move Date"]))?.toISOString(),
+        move_date: parseDate(cell(raw["Move Date"]), timeZone)?.toISOString(),
         phone,
         normalized_phone: normalizePhoneNumberForMatch(phone),
         lead_id: cell(raw["Lead ID"]) || undefined,
@@ -284,12 +205,12 @@ export function parseFormRows(
     });
 }
 
-export function parseCallRows(tab: TabReadResult): ParsedCallLead[] {
+export function parseCallRows(tab: TabReadResult, timeZone = "America/New_York"): ParsedCallLead[] {
   return rows(tab).map(({ sheetRow, raw }) => {
     const phone = cell(raw["PHONE NUMBER"] ?? raw["Phone Number"] ?? raw.Phone);
     const date = cell(raw.Date);
     const time = cell(raw.Time);
-    const timestamp = parseDateTime(date, time);
+    const timestamp = parseDateTime(date, time, timeZone);
     return {
       kind: "call",
       source_tab: "Calls",
@@ -309,12 +230,12 @@ export function parseCallRows(tab: TabReadResult): ParsedCallLead[] {
   });
 }
 
-export function parseBookedDealRows(tab: TabReadResult): ParsedBookedDeal[] {
+export function parseBookedDealRows(tab: TabReadResult, timeZone = "America/New_York"): ParsedBookedDeal[] {
   return rows(tab)
     .filter(({ raw }) => cell(raw.Timestamp).toUpperCase() !== "FORMULAS")
     .map(({ sheetRow, raw }) => {
-      const timestamp = parseDate(cell(raw.Timestamp));
-      const bookDate = parseDate(cell(raw["Book Date"]));
+      const timestamp = parseDate(cell(raw.Timestamp), timeZone);
+      const bookDate = parseDate(cell(raw["Book Date"]), timeZone);
       const jobNo = cell(raw["Job Number:"]);
       const customerName = cell(raw["Customer Name"]);
       const leadSource = cell(raw["Lead Source"]);
@@ -343,7 +264,7 @@ export function parseBookedDealRows(tab: TabReadResult): ParsedBookedDeal[] {
     });
 }
 
-export function parseRefundRows(tab: TabReadResult): ParsedRefund[] {
+export function parseRefundRows(tab: TabReadResult, timeZone = "America/New_York"): ParsedRefund[] {
   return rows(tab).map(({ sheetRow, raw }) => {
     const jobNo = cell(raw["Job Number:"]);
     const customerName = cell(raw["Customer Name"]);
@@ -351,12 +272,12 @@ export function parseRefundRows(tab: TabReadResult): ParsedRefund[] {
     return {
       source_tab: "Refunds",
       sheet_row: sheetRow,
-      refund_request_date: parseDate(cell(raw["Refund Request Date"]))?.toISOString(),
+      refund_request_date: parseDate(cell(raw["Refund Request Date"]), timeZone)?.toISOString(),
       status: cell(raw.Status),
-      timestamp: parseDate(cell(raw.Timestamp))?.toISOString(),
+      timestamp: parseDate(cell(raw.Timestamp), timeZone)?.toISOString(),
       agent: cell(raw.Agent),
       normalized_agent: normalizeAgentName(cell(raw.Agent)),
-      book_date: parseDate(cell(raw["Book Date"]))?.toISOString(),
+      book_date: parseDate(cell(raw["Book Date"]), timeZone)?.toISOString(),
       job_no: jobNo,
       normalized_job_no: normalizeJobNo(jobNo),
       customer_name: customerName,

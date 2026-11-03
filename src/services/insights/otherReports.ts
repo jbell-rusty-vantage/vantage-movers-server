@@ -1,3 +1,4 @@
+import { isBillableLeadFact, isBadCallLeadFact } from "./facts";
 /**
  * The smaller Insights reads: Reviews (doc 09 tab 5), the Outreach Desk's lead allocation cost per rep, the live
  * Daily Operations lead spend, and Today's Money tab (`GET /admin/money/spend`, SERVER-WORK T1). All price leads
@@ -101,6 +102,7 @@ export function buildReviewsReport(input: {
 type RepBucket = {
   leads: number;
   duplicates: number;
+  bad_calls: number;
   spend: number;
   booked: number;
   companies: Map<string, { leads: number; spend: number }>;
@@ -111,12 +113,14 @@ function repBuckets(leads: readonly LeadFact[], booked: (lead: LeadFact) => bool
   const map = new Map<string, RepBucket>();
   for (const lead of leads) {
     const key = lead.receiver_id ?? "unassigned";
-    const bucket = map.get(key) ?? { leads: 0, duplicates: 0, spend: 0, booked: 0, companies: new Map(), feeds: new Map() };
+    const bucket = map.get(key) ?? { leads: 0, duplicates: 0, bad_calls: 0, spend: 0, booked: 0, companies: new Map(), feeds: new Map() };
     if (lead.duplicate) {
       bucket.duplicates += 1;
       map.set(key, bucket);
       continue;
     }
+    if (isBadCallLeadFact(lead)) { bucket.bad_calls += 1; map.set(key, bucket); continue; }
+    if (!isBillableLeadFact(lead)) { map.set(key, bucket); continue; }
     bucket.leads += 1;
     bucket.spend = round2(bucket.spend + lead.price.amount);
     if (booked(lead)) bucket.booked += 1;
@@ -149,7 +153,7 @@ export function buildAllocationReport(input: {
   const then = input.comparisonLeads ? repBuckets(input.comparisonLeads, () => false) : null;
   // Every active rep shows, even with no leads yet, so "$0 allocated" is visible rather than missing.
   for (const agent of catalog.agents.values()) {
-    if (agent.active && !now.has(agent.id)) now.set(agent.id, { leads: 0, duplicates: 0, spend: 0, booked: 0, companies: new Map(), feeds: new Map() });
+    if (agent.active && !now.has(agent.id)) now.set(agent.id, { leads: 0, duplicates: 0, bad_calls: 0, spend: 0, booked: 0, companies: new Map(), feeds: new Map() });
   }
   const totalSpend = round2([...now.values()].reduce((sum, bucket) => sum + bucket.spend, 0));
   const reps: InsightsAllocationRep[] = [...now.entries()].map(([key, bucket]) => {
@@ -160,6 +164,7 @@ export function buildAllocationReport(input: {
       active: agent ? agent.active : null,
       leads: bucket.leads,
       duplicates: bucket.duplicates,
+      bad_calls: bucket.bad_calls,
       spend: bucket.spend,
       share_of_spend: ratio(bucket.spend, totalSpend),
       booked: bucket.booked,
@@ -184,18 +189,20 @@ export function buildAllocationReport(input: {
   });
   reps.sort((x, y) => (x.agent_id === null ? 1 : y.agent_id === null ? -1 : y.spend - x.spend || x.agent_name.localeCompare(y.agent_name)));
   const companySpend = new Map<string, number>();
-  for (const lead of input.leads) if (!lead.duplicate) companySpend.set(lead.company, round2((companySpend.get(lead.company) ?? 0) + lead.price.amount));
+  for (const lead of input.leads) if (isBillableLeadFact(lead)) companySpend.set(lead.company, round2((companySpend.get(lead.company) ?? 0) + lead.price.amount));
   const unassigned = now.get("unassigned")?.spend ?? 0;
   return {
     generated_at: (input.generatedAt ?? new Date()).toISOString(),
     period: input.period,
     comparison: input.comparison,
     totals: {
-      leads: input.leads.filter((lead) => !lead.duplicate).length,
+      leads: input.leads.filter((lead) => isBillableLeadFact(lead)).length,
+      duplicates: input.leads.filter((lead) => lead.duplicate).length,
+      bad_calls: input.leads.filter(isBadCallLeadFact).length,
       spend: totalSpend,
       assigned_spend: round2(totalSpend - unassigned),
       unassigned_spend: unassigned,
-      unpriced_leads: input.leads.filter((lead) => !lead.duplicate && lead.price.status === "unpriced").length,
+      unpriced_leads: input.leads.filter((lead) => isBillableLeadFact(lead) && lead.price.status === "unpriced").length,
     },
     companies: [...companySpend.entries()].map(([key, spend]) => ({ key, label: companyLabel(catalog, key), spend })).sort((x, y) => y.spend - x.spend),
     reps,
@@ -207,7 +214,7 @@ export function buildAllocationReport(input: {
 export function buildLeadSpendDay(input: { catalog: InsightsCatalog; today: string; nowHour: number; leads: readonly LeadFact[]; now?: Date }): InsightsLeadSpendDay {
   const yesterday = addDays(input.today, -1);
   const dayBefore = addDays(input.today, -2);
-  const billable = input.leads.filter((lead) => !lead.duplicate);
+  const billable = input.leads.filter((lead) => isBillableLeadFact(lead));
   const sum = (rows: readonly LeadFact[]) => round2(rows.reduce((total, lead) => total + lead.price.amount, 0));
   const on = (day: string, byNow = false) => billable.filter((lead) => lead.day === day && (!byNow || lead.hour <= input.nowHour));
   const hourly = (day: string) => {
@@ -239,6 +246,7 @@ export function buildLeadSpendDay(input: { catalog: InsightsCatalog; today: stri
       today: todays.length,
       yesterday_by_now: on(yesterday, true).length,
       duplicates_today: input.leads.filter((lead) => lead.duplicate && lead.day === input.today).length,
+      bad_calls_today: input.leads.filter((lead) => isBadCallLeadFact(lead) && lead.day === input.today).length,
       unpriced_today: todays.filter((lead) => lead.price.status === "unpriced").length,
     },
     hourly: { today: hourly(input.today), yesterday: hourly(yesterday) },
@@ -253,12 +261,13 @@ export function buildLeadSpendDay(input: { catalog: InsightsCatalog; today: stri
 export type MoneySpendResponse = {
   range: InsightsMoneyRange;
   generated_at: string;
-  totals: { lead_spend: number; cost_per_lead: number | null; cost_per_booked_lead: number | null; rep_cost_per_lead: number | null; unpriced: number };
+  totals: { leads: number; duplicates: number; bad_calls: number; lead_spend: number; cost_per_lead: number | null; cost_per_booked_lead: number | null; rep_cost_per_lead: number | null; unpriced: number };
   by_source_company: Array<{
     source_company: string;
     source_company_label: string;
     leads: number;
     duplicates: number;
+    bad_calls: number;
     rate_label: string | null;
     spend: number;
     booked: number;
@@ -287,11 +296,12 @@ export function buildMoneySpend(input: {
   now?: Date;
 }): MoneySpendResponse {
   const isBooked = (lead: LeadFact) => Boolean(lead.booked_id && input.cohort.has(lead.booked_id));
-  const companies = new Map<string, { leads: number; duplicates: number; spend: number; booked: number; unpriced: number; rates: Set<number> }>();
+  const companies = new Map<string, { leads: number; duplicates: number; bad_calls: number; spend: number; booked: number; unpriced: number; rates: Set<number> }>();
   for (const lead of input.leads) {
-    const row = companies.get(lead.company) ?? { leads: 0, duplicates: 0, spend: 0, booked: 0, unpriced: 0, rates: new Set<number>() };
+    const row = companies.get(lead.company) ?? { leads: 0, duplicates: 0, bad_calls: 0, spend: 0, booked: 0, unpriced: 0, rates: new Set<number>() };
     if (lead.duplicate) row.duplicates += 1;
-    else {
+    else if (isBadCallLeadFact(lead)) row.bad_calls += 1;
+    else if (isBillableLeadFact(lead)) {
       row.leads += 1;
       row.spend = round2(row.spend + lead.price.amount);
       if (isBooked(lead)) row.booked += 1;
@@ -302,19 +312,22 @@ export function buildMoneySpend(input: {
   }
   const reps = new Map<string, { name: string; leads: number; booked: number }>();
   for (const lead of input.leads) {
-    if (lead.duplicate || !lead.receiver_id) continue;
+    if (!isBillableLeadFact(lead) || !lead.receiver_id) continue;
     const row = reps.get(lead.receiver_id) ?? { name: input.catalog.agents.get(lead.receiver_id)?.name ?? lead.receiver_name ?? "Unknown agent", leads: 0, booked: 0 };
     row.leads += 1;
     if (isBooked(lead)) row.booked += 1;
     reps.set(lead.receiver_id, row);
   }
-  const billable = input.leads.filter((lead) => !lead.duplicate);
+  const billable = input.leads.filter((lead) => isBillableLeadFact(lead));
   const spend = round2(billable.reduce((sum, lead) => sum + lead.price.amount, 0));
   const booked = billable.filter(isBooked).length;
   return {
     range: input.range,
     generated_at: (input.now ?? new Date()).toISOString(),
     totals: {
+      leads: billable.length,
+      duplicates: input.leads.filter((lead) => lead.duplicate).length,
+      bad_calls: input.leads.filter(isBadCallLeadFact).length,
       lead_spend: spend,
       cost_per_lead: ratio(spend, billable.length),
       cost_per_booked_lead: ratio(spend, booked),
@@ -327,6 +340,7 @@ export function buildMoneySpend(input: {
         source_company_label: companyLabel(input.catalog, key),
         leads: row.leads,
         duplicates: row.duplicates,
+        bad_calls: row.bad_calls,
         rate_label: rateLabel(row.rates),
         spend: row.spend,
         booked: row.booked,

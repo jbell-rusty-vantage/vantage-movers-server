@@ -26,5 +26,6 @@ test("syncSourceLead evaluates no_sync before unmatched and deletes ordinary tab
   assert.match(deleteFn, /master_calls/);
   assert.doesNotMatch(deleteFn, /master_duplicates/);
   assert.doesNotMatch(deleteFn, /master_bad_leads/);
-  assert.doesNotMatch(deleteFn, /master_duplicate_calls/);
+  assert.match(deleteFn, /callLeadTargets/);
+  assert.match(deleteFn, /CALL_REPORTING_TARGET_KEYS/);
 });

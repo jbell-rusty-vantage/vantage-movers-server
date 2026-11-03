@@ -447,13 +447,14 @@ test("twelve policy × effect outcomes are independent for link, enrich, create,
 
 test("a later store edit does not mutate an already-returned SourcePolicySnapshot", async () => {
   const row = formSource({
+    normalized_granot_label: "other forms",
     lead_created_policy: "create_if_missing",
     lifecycle_policy_version: "snap-v1",
   });
   const rows = [row];
   const first = await resolveSourcePolicy(
     {
-      source_label: "BestRelocation Forms",
+      source_label: "Other Forms",
       origin_state: "NY",
       destination_state: "NY",
     },
@@ -466,7 +467,7 @@ test("a later store edit does not mutate an already-returned SourcePolicySnapsho
   row.lifecycle_policy_version = "snap-v2";
   const second = await resolveSourcePolicy(
     {
-      source_label: "BestRelocation Forms",
+      source_label: "Other Forms",
       origin_state: "NY",
       destination_state: "NY",
     },

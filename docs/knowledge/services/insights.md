@@ -111,3 +111,8 @@ on the local `csi01` replica (`node --import tsx ops/insights/cpl-schedule.repli
 Browser walk against the real server (2026-10-06): `node --import tsx ops/insights/seed-synthetic.ts
 --database=testvantagemovers_insights` (≈150 days of synthetic leads, bookings, cancellations, lead costs, reviews on
 the loopback replica), then `ops/local-integration/serve.ts` and the Admin per `ops/local-integration/README.md`.
+
+
+## Call reporting disposition
+
+The November 3 shared Call policy excludes unsupported/unmatched Calls, prices Form Fill and effective duplicate/bad Calls at zero, and retains raw qualified exception volume separately. Facts project RingCentral final evidence, `form_fill`, and trusted imported review facts before pricing. Analytics, allocation, daily spend, Money and the Desk use billable volume for counts/costs and expose separate `bad_calls` counters (`bad_calls_today` on the daily view). Live feed rates and canonical `duplicate` meanings remain intact. Official Booking/Cancellation totals are independent of call billability. See [release record](../../lead-reporting-retirement/README.md) for deployment and backfill qualification.

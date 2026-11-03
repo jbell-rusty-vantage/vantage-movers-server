@@ -85,3 +85,6 @@ Execution package mandates literal `RAW` spreadsheet writes, literal headers/cel
 - [`analytics.md`](./analytics.md) — interactive admin reports, not this pipeline
 - [`google-sheets.md`](./google-sheets.md) — Sheet Sync projections; reporting uses its own Google adapters
 - [`operations-registry.md`](./operations-registry.md) — Owner/read actor gates
+
+
+November 3 Call quality correction: existing versioned columns retain their schema. Their duplicate/bad/valid and billed CPL values use the server Call reporting disposition, including saved qualification, Form Fill, trusted reviews and confirmed overnight Missed results. Financial outcomes still load independently. Previously exported files are not rewritten; the operator artifact reports a November 1 onward live-rate delta with unresolved pricing/evidence explicitly retained. See [operator/release record](../../lead-reporting-retirement/README.md).

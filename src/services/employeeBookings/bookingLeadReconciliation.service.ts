@@ -36,7 +36,6 @@ import {
 import { evaluateEmployeeBookingMatch } from "./leadMatchEvaluator";
 import {
   attachLeadToEmployeeBooking,
-  createAndAttachReconciliationCallLead,
   createAndAttachReconciliationFormLead,
   reassignEmployeeBookingLead,
 } from "./bookingLeadAttachment.service";
@@ -488,51 +487,27 @@ export async function persistBookingLeadReconciliationResolveInTransaction(
       } as any);
     } else if (command.action === "create_and_attach") {
       caseDoc.status = "resolved";
-      if (command.lead_model === "CallLead") {
-        const result = await createAndAttachReconciliationCallLead({
-          booking,
-          prepared,
-          leadFields: command.lead_fields as any,
-          session,
-          leadChanges,
-        });
-        for (const extraJob of result.extraJobs) {
-          await persistSheetSyncIntent(extraJob, session);
-          jobsToFinalize.push(extraJob);
-        }
-        await persistSheetSyncIntent(result.job, session);
-        jobsToFinalize.push(result.job);
-        caseDoc.resolution_history.push({
-          action: "create_and_attach",
-          lead_model: "CallLead",
-          lead_id: toObjectId(result.leadId),
-          actor: context.actor,
-          notes: command.notes,
-          occurred_at: new Date(),
-        } as any);
-      } else {
-        const result = await createAndAttachReconciliationFormLead({
-          booking,
-          prepared,
-          leadFields: command.lead_fields as any,
-          session,
-          leadChanges,
-        });
-        for (const extraJob of result.extraJobs) {
-          await persistSheetSyncIntent(extraJob, session);
-          jobsToFinalize.push(extraJob);
-        }
-        await persistSheetSyncIntent(result.job, session);
-        jobsToFinalize.push(result.job);
-        caseDoc.resolution_history.push({
-          action: "create_and_attach",
-          lead_model: "FormLead",
-          lead_id: toObjectId(result.leadId),
-          actor: context.actor,
-          notes: command.notes,
-          occurred_at: new Date(),
-        } as any);
+      const result = await createAndAttachReconciliationFormLead({
+        booking,
+        prepared,
+        leadFields: command.lead_fields as any,
+        session,
+        leadChanges,
+      });
+      for (const extraJob of result.extraJobs) {
+        await persistSheetSyncIntent(extraJob, session);
+        jobsToFinalize.push(extraJob);
       }
+      await persistSheetSyncIntent(result.job, session);
+      jobsToFinalize.push(result.job);
+      caseDoc.resolution_history.push({
+        action: "create_and_attach",
+        lead_model: "FormLead",
+        lead_id: toObjectId(result.leadId),
+        actor: context.actor,
+        notes: command.notes,
+        occurred_at: new Date(),
+      } as any);
     } else if (command.action === "reassign") {
       const liveLead = await getLinkedLead(command.lead_model, command.lead_id, session);
       const liveWarnings = deriveLiveLeadWarnings(liveLead, command.lead_model, booking, prepared);

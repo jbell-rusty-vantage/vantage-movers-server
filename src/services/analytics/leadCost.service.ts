@@ -1,3 +1,4 @@
+import { billableCallLeadFilter } from "../leads/callLeadReportingDisposition";
 import type { AnalyticsQuery } from "../../validation/v1.validation";
 import type { AdminModels } from "../admin/adminScope.service";
 import {
@@ -32,7 +33,7 @@ async function billableFormLeadMatch(query: AnalyticsQuery): Promise<Record<stri
 
 async function billableCallLeadMatch(query: AnalyticsQuery): Promise<Record<string, unknown>> {
   const base = await leadMatchForQuery("CallLead", query);
-  const unmatchedFilter = { created_on_unmatched: { $ne: true } };
+  const unmatchedFilter = { ...billableCallLeadFilter(), created_on_unmatched: { $ne: true } };
   if (!Object.keys(base).length) {
     return unmatchedFilter;
   }

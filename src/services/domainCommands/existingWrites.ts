@@ -1,9 +1,10 @@
+import { assertFinalReconciliationWriteInTransaction } from "../ingestion/finalReconciliationFence";
+import { V1ServiceError } from "../v1ServiceError";
 import mongoose from "mongoose";
 import { BookedLead } from "../../models/BookedLead";
 import { toObjectId } from "../../utils/objectId";
 import {
   createBookedLeadSchema,
-  createCallLeadSchema,
   createCancelledLeadSchema,
   createFormLeadSchema,
   createLeadlessBookingSchema,
@@ -31,7 +32,6 @@ import {
 import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import { getLinkedLead } from "../leads";
 import {
-  beginCallLeadIngestion,
   beginCallLeadRemoval,
   completeCallLeadIngestion,
   correctCallLead,
@@ -43,7 +43,6 @@ import {
   correctFormLead,
 } from "../leads/formLead.service";
 import {
-  deriveCallLeadIngestionOrigin,
   deriveFormLeadIngestionOrigin,
 } from "../leads/leadIngestionProvenance";
 import {
@@ -90,6 +89,7 @@ async function persistPlannedMutations(
   mutations: Array<Omit<AggregateMutationPlan, "change_id">>,
   changeIds: mongoose.Types.ObjectId[],
 ): Promise<void> {
+  await assertFinalReconciliationWriteInTransaction(context, tx.session);
   await persistEntityChangeMutations({
     session: tx.session,
     now: tx.now,
@@ -126,6 +126,8 @@ export async function runExistingCreateFormLead(input: {
       ? {
           ...(input.data as Record<string, unknown>),
           ingestion_source: "best_relocation_sheet",
+          post_to_granot: false,
+          sms_consent: false,
         }
       : input.data,
   );
@@ -150,6 +152,7 @@ export async function runExistingCreateFormLead(input: {
     operation: async (tx) => {
       const pending = await beginFormLeadIngestion(data, {
         ...tx,
+        ...(input.context.provenance.origin === "external_sheet_ingestion" ? {final_reporting_run_id: input.context.provenance.run_id ?? undefined} : {}),
         ingestion_origin: deriveFormLeadIngestionOrigin({
           commandOrigin: input.context.provenance.origin,
           actorType: input.context.actor.actor_type,
@@ -198,48 +201,7 @@ export async function runExistingCreateCallLead(input: {
   command: CompatibilityCanonicalCommandResult;
   data: Awaited<ReturnType<typeof completeCallLeadIngestion>>;
 }> {
-  const data = createCallLeadSchema.parse(input.data);
-  if (input.context.provenance.origin === "external_sheet_ingestion") {
-    requireBestRelocationImportSource(
-      "best_relocation_sheet",
-      String(data.source_company),
-    );
-  }
-  const changeIds = preallocatedChangeIds(1);
-  let finalized: Awaited<ReturnType<typeof completeCallLeadIngestion>>;
-  const command = await executeCanonicalCommandWithPostCommit({
-    command_name: "createCallLead",
-    context: input.context,
-    operation: async (tx) => {
-      const pending = await beginCallLeadIngestion(data, {
-        ...tx,
-        ingestion_origin: deriveCallLeadIngestionOrigin({
-          commandOrigin: input.context.provenance.origin,
-        }),
-      });
-      await persistPlannedMutations(
-        "createCallLead",
-        input.context,
-        tx,
-        [
-          {
-            entity: { model: "CallLead", id: pending.lead._id.toString() },
-            revision_before: 0,
-            fields: createFields(pending.lead, CALL_LEAD_CHANGE_PATHS),
-          },
-        ],
-        changeIds,
-      );
-      return {
-        entity_refs: [{ model: "CallLead", id: pending.lead._id.toString() }],
-        pending,
-      };
-    },
-    finalize: async (pending) => {
-      finalized = await completeCallLeadIngestion(pending);
-    },
-  });
-  return { command, data: finalized! };
+  throw new V1ServiceError("Only a qualified RingCentral inbound queue call can create a Call Lead", 409);
 }
 
 export async function runExistingUpdateSourceOwnedLead(input: {

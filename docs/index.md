@@ -6,6 +6,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
+November 3 Lead reporting and Best Relocation retirement: [operator and release record](lead-reporting-retirement/README.md). Implementation, production delivery and final-data coverage are tracked separately.
+
 Outreach Desk rep performance (October 16, 2026): [packet](outreach-performance/README.md) — Owner/Manager weekly call/text reporting, ranked completion rates, retained SMS reporting facts and release checks. Runtime integration is documented in the Desk Service below.
 
 Query stamped rows with `pnpm okf:query` (`--type Service`, `--tag`, `--status`, `--stale`). The `docs/knowledge/` rows are current on disk. Many long-form specification and delivery-pack links below point to folders that were dropped from the tracked tree (`259b8b72`, 2026-09-10, and `b67f740f`, 2026-10-03) and now resolve only in git history or in checkouts that keep them locally.
@@ -31,7 +33,7 @@ Canonical bodies live under `docs/knowledge/`.
 | [ringcentral-call-lead-qualification.md](knowledge/services/ringcentral-call-lead-qualification.md) | Qualify one completed inbound RingCentral call (120s total elapsed, answer optional) through shared ingest. |
 | [operations-registry.md](knowledge/services/operations-registry.md) | Catalog, source, CPL, inbound-route, and Granot CRM source system of record. |
 | [form-lead.md](knowledge/services/form-lead.md) | Create, update, and delete Form Leads, including duplicates, CRM Posting, and Sheet Sync. |
-| [call-lead.md](knowledge/services/call-lead.md) | Create and update Call Leads (manual and RingCentral), duplicates, CPL, and sheet tabs. |
+| [call-lead.md](knowledge/services/call-lead.md) | RingCentral-only Call Lead creation; saved queue qualification gates billing, Form siblings and Calls rows. |
 | [sales-outreach-desk.md](knowledge/services/sales-outreach-desk.md) | Sales Outreach Desk (sod-v1), per module: roles and `requireOutreachActor`, persisted versioned `sales_outreach_configuration` (GET/PATCH, fail closed, R0 evolution rule), subjects, Lead-change feed, intake and automatic expansion admission, enrollment, evaluator and engine v2, commands, queue/team/live reads, RingCentral capture, contact events and rep-days, operator scripts. Known limits and decisions. Lifecycle overview: [sales-outreach-lifecycle.md](knowledge/sales-outreach-lifecycle.md). |
 | [sales-intelligence-live.md](knowledge/services/sales-intelligence-live.md) | Owner-only SSE of committed Numbers and RingCentral Accounts changes from a Mongo change stream; topic slugs only. |
 | [sales-intelligence-nudges.md](knowledge/services/sales-intelligence-nudges.md) | RingCentral Accounts messages: the Owner's own `review_context` text to one directory User by Team Messaging or pager; single attempt, receipt-only repair, unknown delivery never resent. |

@@ -8,7 +8,6 @@ import {
 } from "../../config/domain/granotLifecycle";
 import { MOVE_SIZES } from "../../config/domain";
 import { Agent } from "../../models/Agent";
-import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleActivation";
 import { getGranotObservationModel, type GranotObservationDocument } from "../../models/GranotObservation";
@@ -19,8 +18,6 @@ import {
 } from "../../models/GranotRecordLink";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
-import { getRingCentralInboundRouteModel } from "../../models/RingCentralInboundRoute";
-import { getRingCentralInboundRouteAssignmentModel } from "../../models/RingCentralInboundRouteAssignment";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import {
   getSynchronizationDecisionModel,
@@ -28,7 +25,6 @@ import {
   type SynchronizationDecisionSourceScope,
 } from "../../models/SynchronizationDecision";
 import {
-  CALL_LEAD_CHANGE_PATHS,
   collectDocumentFieldChanges,
   FORM_LEAD_CHANGE_PATHS,
   persistEntityChangeMutations,
@@ -47,7 +43,6 @@ import { logger } from "../../logger";
 import { sendGranotCreatedLeadConfirmation } from "../leadMessaging/granotCreatedLead";
 import { enqueueSheetSyncJob, finalizeSheetSync } from "../sheetSync";
 import {
-  recordCallLeadDailyOperationsFact,
   recordFormLeadDailyOperationsFact,
   type LeadDailyOperationsSnapshot,
 } from "../dailyOperations/recordDomainFacts";
@@ -65,16 +60,9 @@ import {
 } from "./sourcePolicy";
 import { normalizeUsStateCode, selectFormMoveType } from "./sourceLabel";
 import {
-  trustedGranotCallLeadCreateSchema,
   trustedGranotFormLeadCreateSchema,
 } from "./trustedLeadCreateValidation";
 import type { LeadModel } from "./types";
-import {
-  acquireRingCentralConvergenceScopeLock,
-  ensureRingCentralConvergenceScopeLock,
-  findPreCreationRingCentralConvergenceCandidates,
-} from "../ringcentral/callLeadConvergence.service";
-
 export const CREATE_LEAD_FROM_GRANOT_COMMAND_NAME = "createLeadFromGranot";
 
 export type CreateLeadFromGranotInput = {
@@ -123,9 +111,7 @@ export function snapshotAllowsCreateRouteEventClass(input: {
   selected_lead_model: SourcePolicySnapshot["selected_lead_model"];
   lead_created_policy: SourcePolicySnapshot["lead_created_policy"];
 }): boolean {
-  void input.selected_lead_model;
-  void input.lead_created_policy;
-  return input.route_event_class === "lead_created";
+  return input.selected_lead_model === "FormLead" && input.route_event_class === "lead_created";
 }
 
 export function createLeadFromGranotPayloadChecksum(input: {
@@ -174,22 +160,7 @@ export async function createLeadFromGranot(
   deps: CreateLeadFromGranotDependencies = {},
 ): Promise<CanonicalCommandResult> {
   assertCommandEnvelope(input);
-  if (input.lead_model === "CallLead") {
-    const observation = await getGranotObservationModel()
-      .findById(input.observation_id)
-      .select({ "contact.normalized_phone": 1 })
-      .lean()
-      .exec();
-    const normalizedPhone = observation?.contact?.normalized_phone;
-    // No Observation phone → skip both lock sites. Job-only create remains
-    // legal (pack spec §7 residual hole). Do not invent a phone.
-    if (normalizedPhone) {
-      await ensureRingCentralConvergenceScopeLock({
-        source_granularity_id: input.source_scope.source_granularity_id,
-        normalized_phone_number: normalizedPhone,
-      });
-    }
-  }
+  if (input.lead_model === "CallLead") throw new CreateLeadFromGranotRaceError("policy");
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: CREATE_LEAD_FROM_GRANOT_COMMAND_NAME,
     context: input.context,
@@ -230,8 +201,7 @@ export async function createLeadFromGranot(
       // SPECIFICATION §14 (SRV-9): a Granot-created Lead is a Lead received like any other, so it records
       // the same canonical Lead fact after commit (not on `granot.minted`, which counts the decision).
       const leadFact = { source_company: pending.source_company, lead: pending.daily_operations_lead };
-      if (pending.lead_model === "FormLead") await recordFormLeadDailyOperationsFact(leadFact);
-      else await recordCallLeadDailyOperationsFact(leadFact);
+      await recordFormLeadDailyOperationsFact(leadFact);
     },
   });
   return {
@@ -251,7 +221,7 @@ async function executeCreation(
   entity_refs: Array<{ model: string; id: string }>;
   sheetJob: {
     resource: "source_lead";
-    operation: "form_lead.create" | "call_lead.create";
+    operation: "form_lead.create";
     leadModel: LeadModel;
     leadId: string;
   };
@@ -352,7 +322,7 @@ async function executeCreation(
   }
   const selectedModel = snapshot.selected_lead_model;
   if (
-    selectedModel !== input.lead_model ||
+    selectedModel !== "FormLead" || selectedModel !== input.lead_model ||
     !snapshot.lead_source_company_id ||
     !snapshot.source_granularity_id ||
     !snapshot.lifecycle_policy_version
@@ -369,27 +339,6 @@ async function executeCreation(
   if (!normalizedJob) {
     throw new CreateLeadFromGranotRaceError("identity");
   }
-  if (
-    selectedModel === "CallLead" &&
-    observation.contact?.normalized_phone
-  ) {
-    await acquireRingCentralConvergenceScopeLock({
-      source_granularity_id: snapshot.source_granularity_id,
-      normalized_phone_number: observation.contact.normalized_phone,
-      session,
-      now,
-    });
-    const convergenceCandidates =
-      await findPreCreationRingCentralConvergenceCandidates({
-        source_granularity_id: snapshot.source_granularity_id,
-        normalized_phone_number: observation.contact.normalized_phone,
-        session,
-      });
-    if (convergenceCandidates.length > 0) {
-      throw new CreateLeadFromGranotRaceError("identity");
-    }
-  }
-
   const identity = await resolveLeadIdentity(
     { observation, policy: snapshot },
     createMongoLeadIdentityStore(session),
@@ -418,19 +367,10 @@ async function executeCreation(
     !granularity ||
     granularity.active !== true ||
     String(granularity.source_company) !== String(company._id) ||
-    granularity.channel !== (selectedModel === "FormLead" ? "form" : "call")
+    granularity.channel !== "form"
   ) {
     throw new CreateLeadFromGranotRaceError("policy");
   }
-  if (selectedModel === "CallLead") {
-    await assertSingleActiveRingCentralAssignment(
-      company._id,
-      granularity._id,
-      now,
-      session,
-    );
-  }
-
   const sourceScope: SynchronizationDecisionSourceScope = {
     granot_crm_source_id: objectId(snapshot.granot_crm_source_id),
     lead_source_company: company._id,
@@ -463,8 +403,7 @@ async function executeCreation(
   if (identity.agent && !agent) {
     throw new CreateLeadFromGranotRaceError("identity");
   }
-  const lead = await createLead({
-    model: selectedModel,
+  const lead = await createGranotFormLead({
     observation,
     source: {
       company_id: company._id,
@@ -508,8 +447,7 @@ async function executeCreation(
   failAfter(deps, "link");
 
   const leadRaw = lead.toObject() as Record<string, unknown>;
-  const leadPaths =
-    selectedModel === "FormLead" ? FORM_LEAD_CHANGE_PATHS : CALL_LEAD_CHANGE_PATHS;
+  const leadPaths = FORM_LEAD_CHANGE_PATHS;
   const leadFields = collectDocumentFieldChanges(null, leadRaw, leadPaths);
   const mutations: AggregateMutationPlan[] = [
     {
@@ -569,10 +507,7 @@ async function executeCreation(
 
   const sheetJob = {
     resource: "source_lead" as const,
-    operation:
-      selectedModel === "FormLead"
-        ? ("form_lead.create" as const)
-        : ("call_lead.create" as const),
+    operation: "form_lead.create" as const,
     leadModel: selectedModel,
     leadId: String(lead._id),
   };
@@ -643,8 +578,7 @@ export function dailyOperationsLeadOf(raw: Record<string, unknown>): LeadDailyOp
   };
 }
 
-async function createLead(input: {
-  model: "FormLead" | "CallLead";
+async function createGranotFormLead(input: {
   observation: GranotObservationDocument;
   source: {
     company_id: mongoose.Types.ObjectId;
@@ -756,92 +690,49 @@ async function createLead(input: {
     crm_source_label_snapshot: source.crm_label,
   };
 
-  if (input.model === "FormLead") {
-    const trusted = trustedGranotFormLeadCreateSchema.parse({
-      job_no: jobNo,
-      name: displayName,
-      first_name: contact.first_name,
-      last_name: contact.last_name,
-      phone_number: phoneValue,
-      email: contact.normalized_email,
+  const trusted = trustedGranotFormLeadCreateSchema.parse({
+    job_no: jobNo,
+    name: displayName,
+    first_name: contact.first_name,
+    last_name: contact.last_name,
+    phone_number: phoneValue,
+    email: contact.normalized_email,
+    pickup_city: move.origin?.city,
+    pickup_zip: pickupZip,
+    pickup_state: pickupState,
+    delivery_city: move.destination?.city,
+    destination_zip: deliveryZip,
+    delivery_state: deliveryState,
+    move_size: moveSize,
+    move_date: move.move_date,
+    source_company: source.company_slug,
+    post_to_granot: false,
+  });
+  const created = new (getFormLeadModel())({
+    ...trusted,
+    ...sourceFields,
+    ...input.cpl,
+    ...provenance,
+    ref_no: observation.identity?.normalized_form_ref,
+    timestamp: observation.captured_at,
+    local: source.local,
+    cubic_feet: move.estimated_cubic_feet,
+    quoted: observation.priority?.valid
+      ? observation.priority.canonical === "1" ||
+        observation.priority.canonical === "5"
+      : false,
+    ingested_move_snapshot: compact({
       pickup_city: move.origin?.city,
       pickup_zip: pickupZip,
       pickup_state: pickupState,
       delivery_city: move.destination?.city,
       destination_zip: deliveryZip,
       delivery_state: deliveryState,
-      move_size: moveSize,
       move_date: move.move_date,
-      source_company: source.company_slug,
-      post_to_granot: false,
-    });
-    const created = new (getFormLeadModel())({
-      ...trusted,
-      ...sourceFields,
-      ...input.cpl,
-      ...provenance,
-      ref_no: observation.identity?.normalized_form_ref,
-      timestamp: observation.captured_at,
-      local: source.local,
-      cubic_feet: move.estimated_cubic_feet,
-      quoted: observation.priority?.valid
-        ? observation.priority.canonical === "1" ||
-          observation.priority.canonical === "5"
-        : false,
-      ingested_move_snapshot: compact({
-        pickup_city: move.origin?.city,
-        pickup_zip: pickupZip,
-        pickup_state: pickupState,
-        delivery_city: move.destination?.city,
-        destination_zip: deliveryZip,
-        delivery_state: deliveryState,
-        move_date: move.move_date,
-        move_size: moveSize,
-        captured_at: observation.captured_at,
-        evidence_status: "captured_at_ingestion",
-      }),
-    });
-    await created.save({ session: input.session });
-    return created;
-  }
-
-  const trusted = trustedGranotCallLeadCreateSchema.parse({
-    job_no: jobNo,
-    phone_number: phoneValue,
-    name: displayName,
-    first_name: contact.first_name,
-    last_name: contact.last_name,
-    email: contact.normalized_email,
-    source_company: source.company_slug,
-    post_to_granot: false,
-  });
-  const created = new (getCallLeadModel())({
-    ...trusted,
-    ...sourceFields,
-    ...input.cpl,
-    ...provenance,
-    timestamp: observation.captured_at,
-    local: source.local,
-    form_fill: false,
-    pickup_city: move.origin?.city,
-    pickup_zip: pickupZip,
-    pickup_state: pickupState,
-    delivery_city: move.destination?.city,
-    delivery_zip: deliveryZip,
-    delivery_state: deliveryState,
-    move_date: move.move_date,
-    cubic_feet: move.estimated_cubic_feet,
-    quoted: observation.priority?.valid
-      ? observation.priority.canonical === "1" ||
-        observation.priority.canonical === "5"
-      : false,
-    ringcentral_convergence: {
-      state: contact.normalized_phone ? "pending" : "not_applicable",
-      observation_id: observation._id,
-      ...(contact.normalized_phone
-        ? { candidate_window_started_at: now }
-        : {}),
-    },
+      move_size: moveSize,
+      captured_at: observation.captured_at,
+      evidence_status: "captured_at_ingestion",
+    }),
   });
   await created.save({ session: input.session });
   return created;
@@ -925,47 +816,6 @@ async function reserveRecordLink(input: {
     }
   }
   throw new CreateLeadFromGranotRaceError("link_duplicate");
-}
-
-async function assertSingleActiveRingCentralAssignment(
-  companyId: mongoose.Types.ObjectId,
-  granularityId: mongoose.Types.ObjectId,
-  now: Date,
-  session: ClientSession,
-): Promise<void> {
-  const assignments = await getRingCentralInboundRouteAssignmentModel()
-    .find({
-      source_company: companyId,
-      source_granularity: granularityId,
-    })
-    .session(session)
-    .lean()
-    .exec();
-  if (assignments.length === 0) {
-    return;
-  }
-  const active = assignments.filter(
-    (assignment) =>
-      assignment.active === true &&
-      new Date(assignment.effective_from).getTime() <= now.getTime() &&
-      (!assignment.effective_until ||
-        new Date(assignment.effective_until).getTime() > now.getTime()),
-  );
-  if (active.length !== 1) {
-    throw new CreateLeadFromGranotRaceError("route_assignment");
-  }
-  const route = await getRingCentralInboundRouteModel()
-    .findOne({
-      _id: active[0].route,
-      active: true,
-      validation_status: "valid",
-    })
-    .session(session)
-    .lean()
-    .exec();
-  if (!route) {
-    throw new CreateLeadFromGranotRaceError("route_assignment");
-  }
 }
 
 function sourceFacts(observation: GranotObservationDocument) {

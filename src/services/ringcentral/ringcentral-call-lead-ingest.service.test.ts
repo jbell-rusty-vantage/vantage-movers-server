@@ -46,6 +46,54 @@ function call(
 
 const noEvent: RingCentralIngestDependencies["recordEvent"] = async () => null;
 
+test("processed replay captures final evidence before returning without creating or requalifying a lead", async () => {
+  const descriptor = call("call_log_sync");
+  descriptor.finalCallLogResult = {
+    result: "Missed", answered: false, callLogId: descriptor.callLogId, observedAt: new Date(),
+  };
+  const leadId = "507f1f77bcf86cd799439011";
+  const order: string[] = [];
+  const result = await ingestRingCentralQualifiedCall(descriptor, new Date(), {
+    findProcessedCall: async () => ({
+      status: "lead_created", callLeadId: leadId, duplicate: false, duplicateReason: "unique",
+    } as RingCentralProcessedCallDocument),
+    resolveWriteMode: () => "create",
+    persistFinalResult: async (received, id) => {
+      assert.equal(received, descriptor);
+      assert.equal(id, leadId);
+      order.push("capture");
+      return id!;
+    },
+    attemptConvergence: async () => { throw new Error("replay cannot adopt"); },
+    createLead: async () => { throw new Error("replay cannot create"); },
+    recordEvent: noEvent,
+  });
+  assert.equal(result.action, "skipped_already_processed");
+  assert.deepEqual(order, ["capture"]);
+});
+
+test("new lead receives final parent result and original RingCentral arrival", async () => {
+  const descriptor = call("call_log_sync");
+  descriptor.finalCallLogResult = {
+    result: "Missed", answered: true, callLogId: descriptor.callLogId, observedAt: new Date(),
+  };
+  const result = await ingestRingCentralQualifiedCall(descriptor, new Date(), {
+    findProcessedCall: async () => null,
+    resolveWriteMode: () => "create", adoptionEnabled: () => false,
+    attemptConvergence: async () => ({ outcome: "disabled" }),
+    classifyDuplicate: async () => ({ isDuplicate: false, reason: "unique", existingLeadId: null, windowDays: 90, matchCount: 0 }),
+    createLead: async (input) => {
+      assert.equal(input.ringcentral.start_time, descriptor.startTime);
+      assert.equal(input.ringcentral.final_result, "Missed");
+      assert.equal(input.ringcentral.final_result_answered, true);
+      assert.equal(input.ringcentral.final_result_call_log_id, descriptor.callLogId);
+      return { _id: { toString: () => "507f1f77bcf86cd799439011" } };
+    },
+    upsertProcessedCall: async () => undefined, recordEvent: noEvent,
+  });
+  assert.equal(result.action, "lead_created");
+});
+
 test("[AC-14] telephony replay returns before adoption candidate work", async () => {
   let convergenceCalls = 0;
   const stored: RingCentralProcessedCallDocument = {

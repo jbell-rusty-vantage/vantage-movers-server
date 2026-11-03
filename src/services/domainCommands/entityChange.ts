@@ -20,6 +20,12 @@ const CONTACT_OR_ADDRESS_PATH =
   /(^|\.)(name|first_name|last_name|display_name|phone|phone_number|normalized_phone_number|email|normalized_email|customer_name|customer_phone|customer_email|address|street|city|zip|pickup_zip|destination_zip|pickup_city|delivery_city|pickup_state|delivery_state|origin|destination)(\.|$)/i;
 
 const STORED_PATHS = new Set([
+  "ringcentral.final_result",
+  "ringcentral.final_result_observed_at",
+  "ringcentral.final_result_call_log_id",
+  "ringcentral.final_result_answered",
+  "ringcentral.call_log_id",
+  "ringcentral.start_time",
   "quoted",
   "priority",
   "granot_priority",
@@ -120,6 +126,7 @@ export const FORM_LEAD_CHANGE_PATHS = [
   "duplicate",
   "bad_lead",
   "no_sync",
+  "outreach_automation_suppressed",
   "post_to_granot",
   "booked",
   "cancelled",

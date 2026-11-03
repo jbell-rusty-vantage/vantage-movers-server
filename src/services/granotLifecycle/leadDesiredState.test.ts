@@ -783,16 +783,14 @@ test("Call create_if_missing + priority_updated + unmatched + Job is not eligibl
   assert.notEqual(result.reason_code, "lead_created_authorized");
 });
 
-test("Call create_if_missing + lead_created stays eligible", () => {
+test("a stale Call create_if_missing policy cannot plan creation", () => {
   const result = plan({
     observation: observation({ route_event_class: "lead_created" }),
     identity: pendingIdentity(),
     policy: callCreatePolicy(),
   });
-  assert.equal(result.creation_eligibility, "eligible");
-  assert.equal(result.creation_model, "CallLead");
-  assert.equal(result.outcome, "created");
-  assert.equal(result.reason_code, "lead_created_authorized");
+  assert.notEqual(result.creation_eligibility, "eligible");
+  assert.notEqual(result.outcome, "created");
 });
 
 test("Form create_if_missing + lead_created stays eligible", () => {

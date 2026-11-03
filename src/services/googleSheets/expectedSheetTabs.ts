@@ -1,3 +1,5 @@
+import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
+import { CALL_REPORTING_TARGETS, hasFormBadProjection } from "./leadReportingTargets";
 import {
   BOOKED_SHEET_HEADERS,
   CALL_SHEET_HEADERS,
@@ -38,7 +40,7 @@ export type SheetContainsTabRef = {
   role: "expected" | "sibling";
 };
 
-export type SheetContainsSkipReason = "created_on_unmatched" | "no_sync";
+export type SheetContainsSkipReason = "created_on_unmatched" | "no_sync" | "missing_call_qualification";
 
 export type SheetContainsTabPlan = {
   expected: SheetContainsTabRef[];
@@ -47,6 +49,10 @@ export type SheetContainsTabPlan = {
 };
 
 export type SheetContainsRecordFlags = {
+  ringcentral?: unknown;
+  timestamp?: unknown;
+  form_fill?: boolean | null;
+  external_sheet_review?: unknown;
   duplicate?: boolean | null;
   bad_lead?: string | null;
   created_on_unmatched?: boolean | null;
@@ -128,29 +134,6 @@ function formBadLeads(role: SheetContainsTabRef["role"]): SheetContainsTabRef {
   );
 }
 
-function callPrimary(duplicate?: boolean | null): SheetContainsTabRef {
-  return duplicate
-    ? masterLeadsTab(
-        "master_duplicate_calls",
-        SHEET_TAB_NAMES.duplicateCalls,
-        CALL_SHEET_HEADERS,
-        CALL_EVIDENCE_HEADERS,
-        "expected",
-      )
-    : masterLeadsTab(
-        "master_calls",
-        SHEET_TAB_NAMES.calls,
-        CALL_SHEET_HEADERS,
-        CALL_EVIDENCE_HEADERS,
-        "expected",
-      );
-}
-
-/**
- * Maps a Mongo entity onto the live Master Sheet tabs Sheet Sync would write
- * right now. Tab titles match the production workbooks: Forms, Duplicates,
- * Calls, Duplicate Calls, Bad Leads, Booked Deals, Cancelled Deals.
- */
 export function planExpectedSheetTabs(
   entityModel: SheetContainsEntityModel,
   flags: SheetContainsRecordFlags = {},
@@ -164,7 +147,7 @@ export function planExpectedSheetTabs(
     case "FormLead": {
       const expected = [formPrimary(flags.duplicate)];
       const siblings = [formOpposite(flags.duplicate)];
-      if (flags.bad_lead) {
+      if (hasFormBadProjection(flags)) {
         expected.push(formBadLeads("expected"));
       } else {
         siblings.push(formBadLeads("sibling"));
@@ -175,11 +158,17 @@ export function planExpectedSheetTabs(
       if (flags.created_on_unmatched) {
         return { expected: [], siblings: [], skipReason: "created_on_unmatched" };
       }
-      return {
-        expected: [callPrimary(flags.duplicate)],
-        siblings: [{ ...callPrimary(!flags.duplicate), role: "sibling" }],
-      };
+      const decision = getCallLeadReportingDecision(flags);
+      if (decision.disposition === "excluded") {
+        return { expected: [], siblings: [], skipReason: "missing_call_qualification" };
+      }
+      const tabs = CALL_REPORTING_TARGETS.map((base) => masterLeadsTab(
+        base.masterTarget, base.tabName, CALL_SHEET_HEADERS, CALL_EVIDENCE_HEADERS,
+        base.disposition === decision.disposition ? "expected" : "sibling",
+      ));
+      return { expected: tabs.filter((tab) => tab.role === "expected"), siblings: tabs.filter((tab) => tab.role === "sibling") };
     }
+
     case "BookedLead":
       return {
         expected: [

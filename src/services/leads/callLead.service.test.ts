@@ -294,14 +294,9 @@ test("correctCallLead does not throw ConflictError when marking no_sync on booke
   }
 });
 
-test("Admin Call create stamps no_sync from origin and skips call_lead.create outbox when true", async () => {
-  const source = await readFile(path.join(__dirname, "callLead.service.ts"), "utf8");
-  const begin = extractExportedFunction(source, "beginCallLeadIngestion");
-  assert.match(begin, /noSyncOnCreate\(tx\.ingestion_origin, input\.no_sync\)/);
-  assert.match(begin, /if \(created\.no_sync !== true\)/);
-  assert.match(begin, /rememberSheetSync/);
-  const rcBegin = extractExportedFunction(source, "beginRingCentralCallLeadIngestion");
-  assert.match(rcBegin, /noSyncOnCreate\("ringcentral"\)/);
+test("manual Call Lead creation is rejected before persistence", async () => {
+  const { ingestCallLead } = await import("./callLead.service.js");
+  await assert.rejects(ingestCallLead({} as never), /qualified RingCentral/);
 });
 
 test("Admin Call omit stamps no_sync true; RingCentral client true stamps false", () => {
@@ -329,7 +324,7 @@ test("begin remembers Sheet Sync before commit; complete dispatches and records 
     path.join(__dirname, "callLead.service.ts"),
     "utf8",
   );
-  const begin = extractExportedFunction(source, "beginCallLeadIngestion");
+  const begin = extractExportedFunction(source, "beginRingCentralCallLeadIngestion");
   const complete = extractExportedFunction(source, "completeCallLeadIngestion");
   const rcIngest = extractExportedFunction(source, "ingestRingCentralCallLead");
   const defaultIngestPair = await readFile(
@@ -342,7 +337,7 @@ test("begin remembers Sheet Sync before commit; complete dispatches and records 
 
   assert.match(begin, /rememberSheetSync|persistSheetSyncIntent/);
   assert.doesNotMatch(begin, /finalizeSheetSync\s*\(/);
-  assert.doesNotMatch(begin, /lead\.call\.created/);
+  assert.doesNotMatch(begin, /logger\.info\s*\(/);
   assert.match(complete, /projectTheLeadOntoSheets|finalizeSheetSync/);
   assert.match(complete, /lead\.call\.created/);
   assert.doesNotMatch(rcIngest, /lead\.call\.created/);

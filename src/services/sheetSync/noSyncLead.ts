@@ -1,3 +1,5 @@
+import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
+import { hasFormBadProjection } from "../googleSheets/leadReportingTargets";
 /**
  * Shared No-Sync Lead predicates for Sheet Sync planner, legacy sync, and
  * Owner contains. Only `no_sync === true` excludes. Missing / false / null
@@ -12,9 +14,15 @@ export function noSyncAppliesToNormalTabs(lead: {
   no_sync?: boolean | null;
   duplicate?: boolean | null;
   bad_lead?: unknown;
+  ringcentral?: unknown;
+  form_fill?: boolean | null;
+  external_sheet_review?: unknown;
+  timestamp?: unknown;
 }): boolean {
   if (lead.no_sync !== true) return false;
   if (lead.duplicate === true) return false;
-  if (lead.bad_lead) return false;
+  if (hasFormBadProjection(lead)) return false;
+  const disposition = getCallLeadReportingDecision(lead).disposition;
+  if (disposition === "duplicate_calls" || disposition === "bad_call_leads") return false;
   return true;
 }

@@ -109,15 +109,15 @@ test("planJobWrites turns a tombstone's previous_targets into delete writes", as
   assert.equal(planned.length, 1);
   const [doc] = planned;
   assert.equal(doc.doc, undefined, "tombstone plans carry no surviving document");
-  assert.equal(doc.writes.length, 2);
+  assert.equal(doc.writes.length, 6);
   assert.ok(doc.writes.every((write) => write.op === "delete"));
   assert.deepEqual(
     doc.writes.map((write) => write.spreadsheetId),
-    ["sheet-a", "sheet-b"],
+    ["sheet-a", "sheet-b", "sheet-a", "sheet-a", "sheet-b", "sheet-b"],
   );
   assert.deepEqual(
     doc.writes.map((write) => write.knownRowNumber),
-    [12, 4],
+    [12, 4, undefined, undefined, undefined, undefined],
   );
   assert.ok(doc.writes.every((write) => write.mongoId === "lead-1"));
 });
@@ -136,7 +136,7 @@ test("planJobWrites skips tombstone targets with unknown headers", async () => {
   assert.equal(planned[0].writes[0].target, "master_booked");
 });
 
-test("planJobWrites limits retrying tombstones to target_hints", async () => {
+test("planJobWrites retries every Call tombstone destination despite stale target_hints", async () => {
   const job = {
     ...tombstoneJob("delete_source_lead", {
       mongo_id: "lead-1",
@@ -152,7 +152,7 @@ test("planJobWrites limits retrying tombstones to target_hints", async () => {
   assert.equal(planned.length, 1);
   assert.deepEqual(
     planned[0].writes.map((write) => write.target),
-    ["source_calls"],
+    ["master_calls", "source_calls", "master_duplicate_calls", "master_bad_calls", "source_duplicate_calls", "source_bad_calls"],
   );
 });
 
@@ -260,6 +260,7 @@ test("planJobWrites deletes stale Calls row when duplicate call lead lacks sheet
     job_no: "",
     phone_number: "(260) 446-6873",
     duration: 1738,
+    ringcentral: { call_log_id: "call-log-id", ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s", duration_seconds: 1738 },
     booked: null,
     over_2000: false,
     over_4000: false,
@@ -285,6 +286,7 @@ test("planJobWrites deletes stale Calls row when duplicate call lead lacks sheet
     [
       `upsert:master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
       `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+      `delete:master_bad_calls:${SHEET_TAB_NAMES.badCalls}`,
     ],
   );
   const staleDelete = planned[0].writes.find((write) => write.target === "master_calls");
@@ -338,6 +340,7 @@ function callLeadStub(overrides: Record<string, unknown> = {}) {
     job_no: "",
     phone_number: "(260) 446-6873",
     duration: 1738,
+    ringcentral: { call_log_id: "call-log-id", ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s", duration_seconds: 1738 },
     booked: null,
     over_2000: false,
     over_4000: false,
@@ -391,7 +394,7 @@ test("ordinary No-Sync Form deletes Forms only and does not upsert", async () =>
   );
 });
 
-test("ordinary No-Sync Call deletes Calls only and does not upsert", async () => {
+test("ordinary No-Sync Call cleans every Call destination without upsert", async () => {
   useMasterSheetIds();
   const lead = callLeadStub({ no_sync: true });
   stubCallLead(lead);
@@ -401,6 +404,8 @@ test("ordinary No-Sync Call deletes Calls only and does not upsert", async () =>
   assert.equal(planned.length, 1);
   assert.deepEqual(writeKeys(planned[0].writes), [
     `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+    `delete:master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
+    `delete:master_bad_calls:${SHEET_TAB_NAMES.badCalls}`,
   ]);
   assert.equal(
     planned[0].writes.some((write) => write.op === "upsert"),
@@ -408,7 +413,7 @@ test("ordinary No-Sync Call deletes Calls only and does not upsert", async () =>
   );
   assert.equal(
     planned[0].writes.some((write) => write.target === "master_duplicate_calls"),
-    false,
+    true,
   );
 });
 
@@ -453,6 +458,8 @@ test("Booking Chain + ordinary No-Sync Call upserts Booked Deals and deletes Cal
   assert.ok(leadPlan);
   assert.deepEqual(writeKeys(leadPlan.writes), [
     `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+    `delete:master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
+    `delete:master_bad_calls:${SHEET_TAB_NAMES.badCalls}`,
   ]);
   assert.equal(
     leadPlan.writes.some((write) => write.op === "upsert"),
@@ -508,6 +515,7 @@ test("no_sync + Call duplicate matches today's Duplicate Calls plan", async () =
   assert.deepEqual(baselineWrites, [
     `upsert:master_duplicate_calls:${SHEET_TAB_NAMES.duplicateCalls}`,
     `delete:master_calls:${SHEET_TAB_NAMES.calls}`,
+    `delete:master_bad_calls:${SHEET_TAB_NAMES.badCalls}`,
   ]);
   assert.deepEqual(twinWrites, baselineWrites);
 });
@@ -521,6 +529,8 @@ test("Form Duplicate upserts Duplicates and does not delete leftover Forms", asy
 
   assert.deepEqual(writeKeys(planned[0].writes), [
     `upsert:master_duplicates:${SHEET_TAB_NAMES.duplicates}`,
+    `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`,
+    `delete:master_bad_leads:Bad Leads`,
   ]);
 });
 
@@ -555,6 +565,6 @@ test("clear no_sync on an ordinary Form upserts Forms", async () => {
     (await planJobWrites(sourceLeadJob(missing._id.toString())))[0].writes,
   );
 
-  assert.deepEqual(clearedWrites, [`upsert:master_forms:${SHEET_TAB_NAMES.forms}`]);
+  assert.deepEqual(clearedWrites, [`upsert:master_forms:${SHEET_TAB_NAMES.forms}`, `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`, `delete:master_bad_leads:Bad Leads`]);
   assert.deepEqual(missingWrites, clearedWrites);
 });

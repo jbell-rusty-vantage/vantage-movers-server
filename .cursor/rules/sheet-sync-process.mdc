@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Google Sheets Sync Process
 
-Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md). Ordinary [No-Sync Lead](../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`) skips/deletes Master Leads Forms and Calls only; [Unmatched Call Lead](../../../CONTEXT.md) stays a separate empty-plan skip (`created_on_unmatched`).
+Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md). Ordinary [No-Sync Lead](../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`) suppresses ordinary lead upserts; ordinary Forms delete normal Forms rows, while ordinary Calls clean Calls, Duplicate Calls and Bad Call Leads; effective duplicate/bad exceptions still project. [Unmatched Call Lead](../../../CONTEXT.md) stays a separate empty-plan skip (`created_on_unmatched`). Call disposition is shared through `leads/callLeadReportingDisposition.ts`, and direct facade entry points enforce qualification.
 
 ## Env, modes, quotas
 
@@ -18,6 +18,12 @@ Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../doc
 - Cron: `router.all("/api/cron/sheet-sync-drain")`, auth `CRON_SECRET` (Bearer or `x-cron-secret`), no-op unless queued, every 5 minutes (`vercel.json`). Consumer: `api/queues/sheet-sync-consumer.ts` (payload ignored).
 - Google hard ceilings: 60 reads/min and 60 writes/min per user. Default operational budgets 45/45 (`SHEET_SYNC_READS_PER_MINUTE_BUDGET`, `SHEET_SYNC_WRITES_PER_MINUTE_BUDGET`). Other knobs: `SHEET_SYNC_MAX_JOBS_PER_DRAIN` (500), `SHEET_SYNC_DEBOUNCE_WINDOW_MS` (3000), `SHEET_SYNC_MAX_ATTEMPTS` (8), payload/batch/lease/run-duration envs in `getSheetSyncBudgets` / `getSheetSyncDrainGuardrails`.
 - Quota deferral retries in 60s and does not burn an attempt. Coalesce only `pending`/`retrying`.
+
+## Topology writer fence
+
+- `sheetSync/writerFence.ts` reads the short-lived `SheetSyncLease` scope `lead-reporting:tab-migration`; held leases block lead upserts/deletes/provisioning before Google writes. Queued drains skip before claiming and recheck before delivery; outbox work remains durable.
+- Deploy compatible writers, acquire/renew both topology and `sheet-sync:drain` leases, wait out older invocations, rename numeric tab IDs and repair derivative formulas, verify, then release. Migration uses operator Google APIs. No public bypass or permanent env flag exists.
+- Old Form aliases (`Duplicates`, `Bad Leads`) are never cached; warm writers re-resolve after cutover and provision only canonical titles.
 
 ## Operational safety
 

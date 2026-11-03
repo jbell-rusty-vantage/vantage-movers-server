@@ -106,13 +106,12 @@ CRM Posting is independent of webhook capture. Capture remains receipt-only ([`c
 | Condition | Master Leads tab |
 |-----------|------------------|
 | Not Duplicate Lead | `Forms` |
-| Duplicate Lead | `Duplicates` |
-| `bad_lead` set | primary tab **+** `Bad Leads` |
+| Duplicate Lead | `Duplicate Forms` |
+| Canonical `bad_lead` or trusted `external_sheet_review.kind === "bad_form"` | primary tab **+** `Bad Form Leads` |
 
 `legacy_bad_tab` is the lossless migration-only reason for a row observed on a
 legacy bad-lead surface when no trustworthy specific reason exists. It is not
-derived from cell color. Duplicate, Booked, and Cancelled state keeps
-precedence; the migration records the legacy disposition as provenance.
+derived from cell color. Canonical mark-bad guards still reject Duplicate, Booked and Cancelled Forms. The protected external review fact is independent and can add the requested historical bad projection without changing those canonical lifecycle fields.
 
 Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`. Delete: tombstone `delete_source_lead` / `delete_form_lead`.
 
@@ -140,7 +139,7 @@ Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) 
 
 | Rule | Detail |
 |------|--------|
-| Duplicate Form Leads | Always saved + Sheet Sync'd to `Duplicates`; **never CRM-posted** |
+| Duplicate Form Leads | Always saved + Sheet Sync'd to `Duplicate Forms`; **never CRM-posted** |
 | Unknown-state Move Type | Either pickup or delivery `not_found` → Local Move (`deriveFormLeadLocal`). Call Leads still use optional location / `deriveLocal`. |
 | Form Fill | One-way at create: new non-duplicate Form Lead marks existing Call Leads; not run for duplicates |
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
@@ -181,3 +180,6 @@ Structured logger `msg` keys; nothing is persisted to Mongo (the Operational Eve
 
 - [`form-lead-granot-crm.mdc`](../../../.cursor/rules/form-lead-granot-crm.mdc) — CRM Posting payload and posting flow
 - [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox modes, drainer, quotas
+
+
+The final Best Relocation review command derives a protected `external_sheet_review` from captured source cells. A genuine checker annotation longer than two trimmed characters supplements the normal primary row, including duplicate/booked/cancelled Forms. The canonical formatted reason takes precedence in the Bad Lead column; otherwise the imported annotation is inert text. Public mark-bad guards remain unchanged. New final-import Forms cannot post to Granot, send confirmation messages, or enter automatic Outreach; existing Leads and official outcomes remain intact. Operator/release evidence: [lead reporting retirement](../../lead-reporting-retirement/README.md).

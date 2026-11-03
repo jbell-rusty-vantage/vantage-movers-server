@@ -139,3 +139,10 @@ These rows have **no** `DomainCommandExecution`; `command_execution_id` is fresh
 
 Still without a Lead change: none of the known Booking/employee-booking/RingCentral create paths. The Booking source resolver's writes commit inside the from-source booking transaction (`bookedLeadFromSource.service.ts` passes its session); legacy callers without a session commit the Lead write and its change separately.
 
+
+
+## Final reporting reconciliation commands
+
+`domainCommands/externalSheetReview.ts` adds `reconcileExternalSheetReviewV1` for captured Best Relocation review cells. It derives classification, validates exact source provenance, checks payload hash and target revision, and commits protected review fact, Entity Change, durable replay and queued Sheet Sync together. The active final-import lease and unretired connection are locked in the same transaction. Identical facts do not change aggregate revisions; delivery repair is independently enqueued by the runner. Explicit blank correction can only clear the same source namespace with the prior hash; it cannot clear canonical `bad_lead`/`duplicate` flags.
+
+`recordRingCentralFinalCallLogResult` preserves qualification while capturing/correcting final parent evidence. `repairCallFormFillForReporting` rechecks eligible source-company/phone Form proof in an Owner-authorized audited transaction. Public payloads cannot supply RingCentral/review/import automation suppression fields. `ingestion/finalReconciliationFence.ts` prevents any external final aggregate write from committing without the approved applying run, live connection and matching lease epoch. Production operator evidence is separate from these implementation contracts.

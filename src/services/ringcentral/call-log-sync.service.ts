@@ -480,7 +480,7 @@ async function processRecord(
   }
   summary.qualifiedRecords += 1;
 
-  const qualifiedCall = qualifiedCallFromCallLog(vet, "call_log_sync");
+  const qualifiedCall = qualifiedCallFromCallLog(vet, "call_log_sync", now);
 
   const result = await deps.ingestCall(qualifiedCall, now);
   summary.ingestActions[result.action] += 1;

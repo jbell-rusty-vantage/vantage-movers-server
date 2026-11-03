@@ -66,6 +66,8 @@ function formRow(id: string, extras: Record<string, string> = {}): SheetContains
   };
 }
 
+const qualifiedCall = { call_log_id: "call-log-1", duration_seconds: 120, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s" };
+
 test("rowsFromValues maps Mongo ID cells and keeps evidence columns", () => {
   const rows = rowsFromValues(
     [
@@ -152,7 +154,7 @@ test("unmatched Call Lead is not_expected and does not read tabs", async () => {
       ...fakeDeps({
         records: [
           {
-            id: CALL_ID,
+            id: CALL_ID, ringcentral: qualifiedCall,
             label: "Job 99",
             created_on_unmatched: true,
           },
@@ -209,7 +211,7 @@ test("ordinary No-Sync Call Lead is not_expected and does not read tabs", async 
       ...fakeDeps({
         records: [
           {
-            id: CALL_ID,
+            id: CALL_ID, ringcentral: qualifiedCall,
             label: "Job 99",
             no_sync: true,
             duplicate: false,
@@ -259,7 +261,7 @@ test("No-Sync + Duplicate Call Lead uses today's Duplicate Calls tab, not the no
     fakeDeps({
       records: [
         {
-          id: CALL_ID,
+          id: CALL_ID, ringcentral: qualifiedCall,
           label: "Job 99",
           no_sync: true,
           duplicate: true,
@@ -284,7 +286,7 @@ test("ordinary Call missing from Calls is still missing", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "CallLead", ids: [CALL_ID] },
     fakeDeps({
-      records: [{ id: CALL_ID, label: "Job 99", duplicate: false }],
+      records: [{ id: CALL_ID, ringcentral: qualifiedCall, label: "Job 99", duplicate: false }],
       tabs: {},
     }),
   );

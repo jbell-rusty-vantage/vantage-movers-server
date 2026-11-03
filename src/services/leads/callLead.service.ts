@@ -1,3 +1,5 @@
+import { hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
+import { V1ServiceError } from "../v1ServiceError";
 import type { ClientSession } from "mongoose";
 import {
   CALL_SHEET_HEADERS,
@@ -43,7 +45,7 @@ import { toObjectId } from "../../utils/objectId";
 // resolves correctly via ESM/CJS late binding.
 import { deleteBookedLead, refreshAttachedBookingFromLead } from "../v1.service";
 import { hasFormFillForCallLead } from "./duplicateLead.service";
-import { normalizeLeadName, normalizeLeadNameUpdate } from "./leadName.service";
+import { normalizeLeadNameUpdate } from "./leadName.service";
 import {
   callLeadCreationProvenanceFields,
   noSyncOnCreate,
@@ -87,6 +89,11 @@ export type CreateRingCentralCallLeadInput = {
     source_label?: string | null;
     ingestion_source: "webhook" | "call_log_sync" | "manual";
     qualification_reason?: string | null;
+    start_time?: Date | null;
+    final_result?: string;
+    final_result_observed_at?: Date;
+    final_result_call_log_id?: string | null;
+    final_result_answered?: boolean;
     answered_at?: Date | null;
     terminal_at?: Date | null;
     duration_seconds?: number | null;
@@ -98,7 +105,7 @@ export type CreateRingCentralCallLeadInput = {
 
 /**
  * Handoff from "the Call Lead is saved" to "tell the sheets and the owner."
- * Admin/sheet and RingCentral return the same bag.
+ * Only the qualified RingCentral ingest path produces this result.
  */
 export type CallLeadIngestionInProgress = {
   lead: CallLeadDocument;
@@ -108,72 +115,16 @@ export type CallLeadIngestionInProgress = {
   form_fill: boolean;
 };
 
-// A phone call becomes a Call Lead.
-// Admin / Best Relocation type it in. RingCentral promotes a qualified call.
-// Later the owner may correct it, list recent ones, or remove it.
-
-// ── 1a. Call Lead Ingestion — Admin / sheet ───────────────
-
+// Legacy callers fail closed; only the RingCentral queue pipeline can insert.
 export async function ingestCallLead(input: CreateCallLeadInput) {
-  const pending = await runSheetSyncWrite((session) =>
-    beginCallLeadIngestion(input, {
-      session,
-      now: new Date(),
-      ingestion_origin: "vantage_admin",
-    }),
-  );
-  return completeCallLeadIngestion(pending);
+  throw new V1ServiceError("Only a qualified RingCentral inbound queue call can create a Call Lead", 409);
 }
 
 export async function beginCallLeadIngestion(
   input: CreateCallLeadInput,
   tx: CallLeadSession & { ingestion_origin: CallLeadIngestionOrigin },
 ): Promise<CallLeadIngestionInProgress> {
-  const normalizedInput = normalizeTheCaller(input);
-  const location = await locateTheMoveIfWeHaveZips(normalizedInput);
-  const local = location.local ?? normalizedInput.local;
-  const sourceAssignment = await assignTheSourceGranularity(
-    normalizedInput,
-    local,
-  );
-  const source_company = sourceAssignment.source_company as SourceCompany;
-  const form_fill = await detectFormFill(
-    {
-      sourceCompany: source_company,
-      leadSourceCompany: sourceAssignment.lead_source_company,
-    },
-    normalizedInput.phone_number,
-  );
-  const leadTimestamp = stampFloridaTime(normalizedInput.timestamp);
-  const cplSnapshot = await priceTheLead(
-    sourceAssignment.source_granularity_id
-      ? String(sourceAssignment.source_granularity_id)
-      : null,
-    leadTimestamp,
-  );
-  const created = new CallLead({
-    ...normalizedInput,
-    ...location,
-    ...sourceAssignment,
-    local,
-    form_fill,
-    timestamp: leadTimestamp,
-    ...cplSnapshot,
-    ...rememberHowTheLeadArrived(tx.ingestion_origin, tx.now, {
-      first_name: normalizedInput.first_name,
-      last_name: normalizedInput.last_name,
-      name: normalizedInput.name,
-      phone_number: normalizedInput.phone_number,
-      email: normalizedInput.email,
-    }),
-    no_sync: noSyncOnCreate(tx.ingestion_origin, input.no_sync),
-  });
-  await writeTheCallLead(created, tx.session);
-  const job = callLeadCreateJob(created._id.toString());
-  if (created.no_sync !== true) {
-    await rememberSheetSync(job, tx.session);
-  }
-  return { lead: created, job, source_company, sourceAssignment, form_fill };
+  throw new V1ServiceError("Only a qualified RingCentral inbound queue call can create a Call Lead", 409);
 }
 
 export async function completeCallLeadIngestion(
@@ -256,6 +207,9 @@ export async function beginRingCentralCallLeadIngestion(
   input: CreateRingCentralCallLeadInput,
   tx: CallLeadSession,
 ): Promise<CallLeadIngestionInProgress> {
+  if (!hasQualifiedRingCentralCall(input.ringcentral) || !input.ringcentral.route_assignment_id || !input.ringcentral.route_id) {
+    throw new V1ServiceError("RingCentral inbound queue qualification is required", 409);
+  }
   const { source_company } = input;
   const sourceAssignment = acceptTheAlreadyResolvedSource(input);
   const duplicate = acceptTheDuplicateLeadFlag(input);
@@ -360,29 +314,6 @@ export async function ingestRingCentralCallLead(
   return lead;
 }
 
-function normalizeTheCaller(input: CreateCallLeadInput) {
-  return normalizeLeadName(input);
-}
-
-async function locateTheMoveIfWeHaveZips(input: CreateCallLeadInput) {
-  return resolveOptionalLocation(input, { workflow: "call_lead_create" });
-}
-
-async function assignTheSourceGranularity(
-  input: CreateCallLeadInput,
-  local: LocalType | undefined,
-) {
-  const { assignment } = await resolveLeadSourceAssignment({
-    value: input.source_company,
-    company_slug: input.company_slug,
-    granularity_key: input.source_granularity_key,
-    channel: "call",
-    local,
-    source_site: input.source_company_site,
-  });
-  return assignment;
-}
-
 function acceptTheAlreadyResolvedSource(input: CreateRingCentralCallLeadInput) {
   return {
     source_company: input.source_company,
@@ -450,6 +381,11 @@ function rememberRingCentralTransport(input: CreateRingCentralCallLeadInput) {
     source_label: input.ringcentral.source_label ?? undefined,
     ingestion_source: input.ringcentral.ingestion_source,
     qualification_reason: input.ringcentral.qualification_reason ?? undefined,
+    start_time: input.ringcentral.start_time ?? undefined,
+    final_result: input.ringcentral.final_result,
+    final_result_observed_at: input.ringcentral.final_result_observed_at,
+    final_result_call_log_id: input.ringcentral.final_result_call_log_id ?? undefined,
+    final_result_answered: input.ringcentral.final_result_answered,
     answered_at: input.ringcentral.answered_at ?? undefined,
     terminal_at: input.ringcentral.terminal_at ?? undefined,
     duration_seconds: input.ringcentral.duration_seconds ?? undefined,

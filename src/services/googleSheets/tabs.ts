@@ -1,5 +1,5 @@
 import type { sheets_v4 } from "googleapis";
-import { CALL_SHEET_HEADERS, FORM_SHEET_HEADERS } from "../../config/domain";
+import { CALL_SHEET_HEADERS, FORM_SHEET_HEADERS, SHEET_TAB_NAMES } from "../../config/domain";
 import { escapeSheetTitleForRange } from "../../utils/googleSheets/ranges";
 import { withSheetsRetry } from "./retry";
 import type { SheetTabConfig } from "./types";
@@ -25,6 +25,30 @@ const LEGACY_FORM_SHEET_HEADER_LENGTH = 23;
  * amplification while still self-healing across cold starts.
  */
 const ensuredTabs = new Set<string>();
+const resolvedTitles = new Map<string, string>();
+
+export const RENAMED_FORM_TABS = [
+  { oldTitle: "Duplicates", title: SHEET_TAB_NAMES.duplicates },
+  { oldTitle: "Bad Leads", title: SHEET_TAB_NAMES.badLeads },
+] as const;
+
+/** Additive deploy compatibility before the fenced physical rename. Both
+ * titles existing is a topology conflict requiring an operator inventory. */
+export async function resolveCompatibleSheetTitle(sheets: sheets_v4.Sheets, spreadsheetId: string, tabName: string): Promise<string> {
+  const rename = RENAMED_FORM_TABS.find((entry) => entry.title === tabName || entry.oldTitle === tabName);
+  if (!rename) return tabName;
+  const cacheKey = `${spreadsheetId}:${rename.title}`;
+  const cached = resolvedTitles.get(cacheKey);
+  if (cached) return cached;
+  const response = await withSheetsRetry("spreadsheets.get.titleCompatibility", () => sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" }));
+  const titles = response.data.sheets?.map((sheet) => sheet.properties?.title) ?? [];
+  if (titles.includes(rename.title) && titles.includes(rename.oldTitle)) throw new Error(`sheet_title_conflict:${rename.oldTitle}:${rename.title}`);
+  if (titles.includes(rename.title)) { resolvedTitles.set(cacheKey, rename.title); return rename.title; }
+  // Never cache the legacy alias: warm production isolates must observe the
+  // numeric-ID rename without relying on the operator's process-local reset.
+  if (titles.includes(rename.oldTitle)) return rename.oldTitle;
+  return rename.title;
+}
 
 function ensuredTabKey(spreadsheetId: string, tabName: string): string {
   return `${spreadsheetId}:${tabName}`;
@@ -33,6 +57,7 @@ function ensuredTabKey(spreadsheetId: string, tabName: string): string {
 /** Test/maintenance helper to force re-ensuring on the next sync. */
 export function resetEnsuredTabsCache(): void {
   ensuredTabs.clear();
+  resolvedTitles.clear();
 }
 
 export async function ensureTabsAndHeaders(
@@ -41,12 +66,13 @@ export async function ensureTabsAndHeaders(
   tabs: SheetTabConfig[],
 ): Promise<void> {
   for (const tab of tabs) {
-    const cacheKey = ensuredTabKey(spreadsheetId, tab.tabName);
+    const tabName = await resolveCompatibleSheetTitle(sheets, spreadsheetId, tab.tabName);
+    const cacheKey = ensuredTabKey(spreadsheetId, tabName);
     if (ensuredTabs.has(cacheKey)) {
       continue;
     }
 
-    const sheet = await ensureTab(sheets, spreadsheetId, tab.tabName);
+    const sheet = await ensureTab(sheets, spreadsheetId, tabName);
     await ensureColumnCapacity(
       sheets,
       spreadsheetId,
@@ -62,14 +88,14 @@ export async function ensureTabsAndHeaders(
     await clearLegacyTrailingCells(
       sheets,
       spreadsheetId,
-      tab.tabName,
+      tabName,
       tab.headers,
       1,
     );
     await withSheetsRetry("values.update.headers", () =>
       sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${escapeSheetTitleForRange(tab.tabName)}!A1:${columnLetter(tab.headers.length)}1`,
+        range: `${escapeSheetTitleForRange(tabName)}!A1:${columnLetter(tab.headers.length)}1`,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [[...tab.headers]] },
       }),

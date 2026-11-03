@@ -224,9 +224,6 @@ export function evaluateMinimumCreationData(input: {
     return { eligibility: "insufficient", reason_code: "missing_creation_route_data" };
   }
   const model = input.policy.selected_lead_model;
-  if (model === "CallLead") {
-    return { eligibility: "eligible" };
-  }
   if (model !== "FormLead") {
     return { eligibility: "insufficient", reason_code: "missing_creation_route_data" };
   }
@@ -263,8 +260,8 @@ function planNoMatch(input: LeadDesiredStateInput): LeadDesiredStatePlan {
     });
   }
 
-  // Any selected_lead_model may mint on lead_created + create_if_missing.
-  if (input.observation.route_event_class === "lead_created") {
+  // Only a Form Lead may mint on lead_created + create_if_missing.
+  if (input.policy.selected_lead_model === "FormLead" && input.observation.route_event_class === "lead_created") {
     const minimum = evaluateMinimumCreationData({
       observation: input.observation,
       policy: input.policy,

@@ -1,3 +1,4 @@
+import { granotCreationRetired } from "./bestRelocationRetirement";
 import type {
   GranotLeadCreatedPolicy,
   GranotLifecycleDisposition,
@@ -41,6 +42,7 @@ export type GranotCrmSourceRouteInput = {
 };
 
 export type GranotCrmSourceSemanticsInput = {
+  granot_creation_retired_at?: Date | string | null;
   granot_label?: string;
   normalized_granot_label?: string;
   enabled: boolean;
@@ -53,6 +55,8 @@ export type GranotCrmSourceSemanticsInput = {
 };
 
 export type LoadedSourceCompanyRef = {
+  company_slug?: string;
+  granot_creation_retired_at?: Date | string | null;
   id: string;
   active: boolean;
 };
@@ -100,7 +104,14 @@ export function validateGranotCrmSourceSemantics(
     }
   }
 
+  if (input.lead_created_policy === "create_if_missing" &&
+      (granotCreationRetired(input) || granotCreationRetired(refs?.company ?? {}))) {
+    return fail("Best Relocation Lead creation is permanently retired. Use link_only.");
+  }
   const routes = input.lifecycle_routes ?? [];
+  if (input.lead_created_policy === "create_if_missing" && routes.some((route) => route.lead_model === "CallLead")) {
+    return fail("Only RingCentral can create Call Leads. Use link_only for Call routes.");
+  }
   const structural = validateRouteStructure(input.lifecycle_disposition, routes);
   if (!structural.ok) {
     return structural;

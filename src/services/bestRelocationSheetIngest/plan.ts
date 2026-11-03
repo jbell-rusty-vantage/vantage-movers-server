@@ -114,21 +114,13 @@ export function buildIngestPlan(
   const acceptedMatches = leadMatchResult.matches.filter(
     (match) =>
       match.confidence >= threshold &&
-      match.lead.kind !== "lid_best_relo" &&
+      match.lead.kind === "form" &&
       includedJobs.has(match.booking.normalized_job_no ?? ""),
   );
   const matchByJob = bestLeadMatchByJob(acceptedMatches);
-  const callEnrichment = new Map<string, LeadBookingMatch>();
-  for (const match of acceptedMatches) {
-    if (match.lead.kind === "call") {
-      callEnrichment.set(sourceLeadKey(match.lead.row), match);
-    }
-  }
-
   const mutations: PlannedMutation[] = [
     ...data.forms.map(mapFormMutation),
     ...data.localForms.map(mapFormMutation),
-    ...data.calls.map((row) => mapCallMutation(row, callEnrichment.get(sourceLeadKey(row)))),
   ];
   for (const booking of collapsed) {
     mutations.push(mapBookingMutation(booking, matchByJob.get(booking.normalized_job_no)));
@@ -154,7 +146,7 @@ export function buildIngestPlan(
   const unmatchedJobs = collapsed.filter(
     (booking) => !matchByJob.has(booking.normalized_job_no),
   );
-  const warnings: string[] = [];
+  const warnings: string[] = data.calls.length ? ["Sheet Call rows are not qualification evidence. Call-only booking matches require reconciliation."] : [];
   const unmatchedRefundCount =
     refundMatchResult.unmatched.length +
     refundMatchResult.matches.length -
@@ -259,38 +251,6 @@ function mapFormMutation(row: ParsedFormLead): PlannedMutation {
   };
 }
 
-function mapCallMutation(
-  row: ParsedCallLead,
-  enrichment?: LeadBookingMatch,
-): PlannedMutation {
-  const booking = enrichment?.booking;
-  return {
-    action: "create_call_lead",
-    idempotency_key: sourceLeadKey(row),
-    api: {
-      method: "POST",
-      path: "/api/v1/call-leads",
-      body: compact({
-        source_company: SOURCE_COMPANY,
-        phone_number: row.phone,
-        timestamp: row.timestamp,
-        job_no: booking?.job_no,
-        name: booking?.customer_name,
-        over_2000: flag(row.over_2000),
-        over_4000: flag(row.over_4000),
-      }),
-    },
-    sheet: row.provenance,
-    ...(enrichment
-      ? {
-          confidence: enrichment.confidence,
-          match_method: enrichment.method,
-          notes: ["Name and job number enriched from the accepted booking match."],
-        }
-      : {}),
-  };
-}
-
 function mapBookingMutation(
   booking: CollapsedBooking,
   match?: LeadBookingMatch,
@@ -307,7 +267,7 @@ function mapBookingMutation(
     ingestion_source: "best_relocation_sheet",
   });
   const sheet = { rows: booking.rows.map((row) => row.provenance) };
-  if (!match || match.lead.kind === "lid_best_relo") {
+  if (!match || match.lead.kind !== "form") {
     return {
       action: "create_leadless_booking",
       idempotency_key: bookingKey,
@@ -333,17 +293,9 @@ function mapBookingMutation(
     ...common,
     source_company: booking.primary.lead_source,
     binder_amount: booking.total_binder_amount,
-    lead_type: match.lead.kind === "form" ? "FormLead" : "CallLead",
+    lead_type: "FormLead",
+    form_lead_id: `$ref:${leadKey}`,
   };
-  const bindings: Record<string, string> = {};
-  if (match.lead.kind === "form") {
-    body.form_lead_id = `$ref:${leadKey}`;
-    bindings.form_lead_id = leadKey;
-  } else {
-    delete body.job_no;
-    body.call_phone_number = match.lead.row.phone;
-    body.call_job_no = booking.primary.job_no;
-  }
   return {
     action: "create_booked_from_source",
     idempotency_key: bookingKey,
@@ -354,7 +306,7 @@ function mapBookingMutation(
       method: "POST",
       path: "/api/v1/booked-leads/from-source",
       body,
-      ...(Object.keys(bindings).length ? { bindings } : {}),
+      bindings: { form_lead_id: leadKey },
     },
     sheet,
   };

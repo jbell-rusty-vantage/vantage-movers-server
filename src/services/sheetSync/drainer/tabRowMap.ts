@@ -13,14 +13,17 @@ const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
  * map to the batch writer so each known row is updated in place and only truly
  * new rows are appended.
  */
+export type TabRowMap = Map<string, number> & { duplicateRows: Map<string, number[]> };
+
 export async function buildTabRowMap(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   tabName: string,
   headers: readonly string[],
-): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  const mongoIdIndex = headers.indexOf("Mongo ID");
+): Promise<TabRowMap> {
+  const map = new Map<string, number>() as TabRowMap;
+  map.duplicateRows = new Map();
+
 
   const response = await withSheetsRetry("values.get.tabMap", () =>
     sheets.spreadsheets.values.get({
@@ -29,25 +32,21 @@ export async function buildTabRowMap(
     }),
   );
   const rows = response.data.values ?? [];
+  const actualIdColumn = (rows[0] ?? []).indexOf("Mongo ID");
+  const mongoIdIndex = actualIdColumn >= 0 ? actualIdColumn : headers.indexOf("Mongo ID");
   for (let index = 1; index < rows.length; index += 1) {
     const row = rows[index] ?? [];
     const rowNumber = index + 1;
     if (mongoIdIndex >= 0) {
       const candidate = row[mongoIdIndex];
       if (typeof candidate === "string" && candidate.length > 0) {
-        map.set(candidate, rowNumber);
+        if (map.has(candidate)) {
+          map.duplicateRows.set(candidate, [...(map.duplicateRows.get(candidate) ?? []), rowNumber]);
+        } else map.set(candidate, rowNumber);
         continue;
       }
     }
-    // Fall back to scanning the row for any cell that equals a Mongo id, which
-    // tolerates legacy rows whose id landed in a shifted column.
-    for (const cell of row) {
-      if (typeof cell === "string" && /^[a-f0-9]{24}$/i.test(cell)) {
-        if (!map.has(cell)) {
-          map.set(cell, rowNumber);
-        }
-      }
-    }
+
   }
 
   return map;

@@ -75,7 +75,7 @@ import {
 } from "./wordpressFormSubmissionReceipt";
 
 type FormLeadDocument = InstanceType<ReturnType<typeof getFormLeadModel>>;
-type FormLeadSession = { session?: ClientSession; now: Date };
+type FormLeadSession = { session?: ClientSession; now: Date; final_reporting_run_id?: string };
 type SourceAssignment = Awaited<
   ReturnType<typeof resolveLeadSourceAssignment>
 >["assignment"];
@@ -433,6 +433,7 @@ async function writeTheFormLead(
     ...prepared.cplSnapshot,
     duplicate: prepared.duplicate,
     post_to_granot: prepared.shouldPostToGranot,
+    outreach_automation_suppressed: tx.ingestion_origin === "best_relocation_sheet",
     ...formLeadCreationProvenanceFields({
       origin: tx.ingestion_origin,
       now: tx.now,
@@ -469,6 +470,7 @@ async function writeTheFormLead(
       created.phone_number,
       leadId,
       tx.session,
+      tx.final_reporting_run_id,
     );
     sheetSyncJobs.push(...formFillJobs);
   }

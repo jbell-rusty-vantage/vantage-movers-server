@@ -64,6 +64,8 @@ const LeadSourceCompanySchema = new Schema(
       },
     },
     granularities: { type: [sourceGranularitySchema], default: [] },
+    granot_creation_retired_at: { type: Date, default: null },
+    granot_creation_retirement_run_id: { type: String, trim: true, default: null },
     created_from: { type: String, required: true, trim: true, default: "admin" },
   },
   {

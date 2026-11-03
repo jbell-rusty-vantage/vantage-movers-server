@@ -1,3 +1,7 @@
+import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
+import { noSyncAppliesToNormalTabs } from "../sheetSync/noSyncLead";
+import { assertLeadTabWritesAllowed } from "../sheetSync/writerFence";
+import { allFormLeadTargets, callLeadTargets, hasFormBadProjection, CALL_REPORTING_TARGET_KEYS, FORM_REPORTING_TARGET_KEYS, staleCallTargetKeys } from "./leadReportingTargets";
 import {
   BOOKED_SHEET_HEADERS,
   CALL_SHEET_HEADERS,
@@ -37,6 +41,11 @@ import type {
 export async function syncFormLeadToSheets(
   lead: FormLeadSheetSource,
 ): Promise<SheetSyncUpdateEntry[]> {
+  if (noSyncAppliesToNormalTabs(lead)) {
+    const targets = getLeadTargets("master_forms", "source_forms", lead.source_company, SHEET_TAB_NAMES.forms, FORM_SHEET_HEADERS);
+    const deleted = await deleteRowsFromTargets(lead, targets, ["master_forms", "source_forms"]);
+    return deleted.map((target) => ({ target, status: "deleted" as const }));
+  }
   const targetBase = lead.duplicate
     ? {
         masterTarget: "master_duplicates",
@@ -58,14 +67,14 @@ export async function syncFormLeadToSheets(
   const row = formLeadToRow(lead);
   const results: SheetSyncUpdateEntry[] = await syncRowToTargets(
     lead,
-    lead.bad_lead ? [...targets, masterBadLeadsTarget()] : targets,
+    hasFormBadProjection(lead) ? [...targets, masterBadLeadsTarget()] : targets,
     row,
   );
-  if (!lead.bad_lead) {
+  if (!hasFormBadProjection(lead)) {
     const deletedTargets = await deleteRowsFromTargets(
       lead,
-      [masterBadLeadsTarget()],
-      ["master_bad_leads"],
+      allFormLeadTargets(lead.source_company).filter((target) => target.target.endsWith("bad_leads")),
+      ["master_bad_leads", "source_bad_leads"],
     );
     results.push(
       ...deletedTargets.map((target) => ({ target, status: "deleted" as const })),
@@ -77,31 +86,20 @@ export async function syncFormLeadToSheets(
 export async function syncCallLeadToSheets(
   lead: CallLeadSheetSource,
 ): Promise<SheetSyncUpdateEntry[]> {
-  const targetBase = callLeadTargetBase(lead.duplicate);
-  const staleTargetBase = callLeadTargetBase(!lead.duplicate);
-  const targets = getLeadTargets(
-    targetBase.masterTarget,
-    targetBase.sourceTarget,
-    lead.source_company,
-    targetBase.tabName,
-    CALL_SHEET_HEADERS,
-  );
+  const decision = getCallLeadReportingDecision(lead);
+  if (decision.disposition === "excluded") return [];
+  const allTargets = callLeadTargets(lead, true);
+  if (noSyncAppliesToNormalTabs(lead)) {
+    const deleted = await deleteRowsFromTargets(lead, allTargets, CALL_REPORTING_TARGET_KEYS);
+    return deleted.map((target) => ({ target, status: "deleted" as const }));
+  }
+  const targets = callLeadTargets(lead);
   const results: SheetSyncUpdateEntry[] = await syncRowToTargets(lead, targets, callLeadToRow(lead));
-  const staleTargets = getLeadTargets(
-    staleTargetBase.masterTarget,
-    staleTargetBase.sourceTarget,
-    lead.source_company,
-    staleTargetBase.tabName,
-    CALL_SHEET_HEADERS,
-  );
-  const deletedTargets = await deleteRowsFromTargets(
-    lead,
-    staleTargets,
-    [staleTargetBase.masterTarget, staleTargetBase.sourceTarget],
-  );
-  results.push(
-    ...deletedTargets.map((target) => ({ target, status: "deleted" as const })),
-  );
+  // A failed destination never permits deleting the last good projection.
+  if (results.some((result) => result.status !== "synced")) return results;
+  const staleTargets = allTargets.filter((target) => !targets.some((desired) => desired.target === target.target));
+  const deleted = await deleteRowsFromTargets(lead, staleTargets, staleCallTargetKeys(lead));
+  results.push(...deleted.map((target) => ({ target, status: "deleted" as const })));
   return results;
 }
 
@@ -138,28 +136,8 @@ export async function syncCancelledLeadToSheets(
 export async function deleteFormLeadFromSheets(
   lead: SyncableDocument & { source_company: SourceCompany | string; duplicate?: boolean | null },
 ): Promise<void> {
-  const targetBase = lead.duplicate
-    ? {
-        masterTarget: "master_duplicates",
-        sourceTarget: "source_duplicates",
-        tabName: SHEET_TAB_NAMES.duplicates,
-      }
-    : {
-        masterTarget: "master_forms",
-        sourceTarget: "source_forms",
-        tabName: SHEET_TAB_NAMES.forms,
-      };
-  await deleteRowsFromTargets(
-    lead,
-    getLeadTargets(
-      targetBase.masterTarget,
-      targetBase.sourceTarget,
-      lead.source_company,
-      targetBase.tabName,
-      FORM_SHEET_HEADERS,
-    ),
-    [targetBase.masterTarget, targetBase.sourceTarget, "master_bad_leads"],
-  );
+  const targets = allFormLeadTargets(lead.source_company);
+  await deleteRowsFromTargets(lead, targets, FORM_REPORTING_TARGET_KEYS);
 }
 
 function masterBadLeadsTarget() {
@@ -175,41 +153,8 @@ function masterBadLeadsTarget() {
 export async function deleteCallLeadFromSheets(
   lead: SyncableDocument & { source_company: SourceCompany | string; duplicate?: boolean | null },
 ): Promise<void> {
-  const targetBase = callLeadTargetBase(lead.duplicate);
-  await deleteRowsFromTargets(
-    lead,
-    getLeadTargets(
-      targetBase.masterTarget,
-      targetBase.sourceTarget,
-      lead.source_company,
-      targetBase.tabName,
-      CALL_SHEET_HEADERS,
-    ),
-    [targetBase.masterTarget, targetBase.sourceTarget],
-  );
-}
-
-/**
- * Routes a call lead to the right Master Leads tab. Duplicates go to the
- * dedicated "Duplicate Calls" tab (same headers/values as the Calls tab) so
- * the owner can exclude them from lead spend without polluting the Calls tab.
- */
-function callLeadTargetBase(duplicate?: boolean | null): {
-  masterTarget: string;
-  sourceTarget: string;
-  tabName: string;
-} {
-  return duplicate
-    ? {
-        masterTarget: "master_duplicate_calls",
-        sourceTarget: "source_duplicate_calls",
-        tabName: SHEET_TAB_NAMES.duplicateCalls,
-      }
-    : {
-        masterTarget: "master_calls",
-        sourceTarget: "source_calls",
-        tabName: SHEET_TAB_NAMES.calls,
-      };
+  const targets = callLeadTargets(lead, true);
+  await deleteRowsFromTargets(lead, targets, CALL_REPORTING_TARGET_KEYS);
 }
 
 export async function deleteBookedLeadFromSheets(booking: SyncableDocument): Promise<void> {
@@ -245,6 +190,7 @@ export async function deleteCancelledLeadFromSheets(cancellation: SyncableDocume
 }
 
 export async function ensureAllConfiguredSheetTabs(): Promise<void> {
+  await assertLeadTabWritesAllowed();
   const sheets = getSheetsClient();
   await ensureTabsAndHeaders(sheets, getMasterLeadsSheetContainerId(), getMasterLeadsTabs());
   await ensureTabsAndHeaders(sheets, getMasterBookedSheetContainerId(), getMasterBookedTabs());

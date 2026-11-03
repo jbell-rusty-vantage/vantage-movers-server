@@ -7,9 +7,9 @@ import {
 } from "../../../utils/googleSheets/ranges";
 import { formatGoogleApiError } from "../../googleSheets/diagnostics";
 import { withSheetsRetry } from "../../googleSheets/retry";
-import { columnLetter, ensureTabsAndHeaders } from "../../googleSheets/tabs";
+import { columnLetter, ensureTabsAndHeaders, getExistingSheetId, RENAMED_FORM_TABS, resolveCompatibleSheetTitle } from "../../googleSheets/tabs";
 import type { QuotaLimiter } from "./quotaLimiter";
-import { buildTabRowMap } from "./tabRowMap";
+import { buildTabRowMap, type TabRowMap } from "./tabRowMap";
 import type { PlannedWrite, PlannedWriteOutcome } from "./types";
 
 type TabGroup = {
@@ -17,6 +17,7 @@ type TabGroup = {
   tabName: string;
   headers: readonly string[];
   writes: PlannedWrite[];
+  sheetId?: number;
 };
 
 type UpdateEntry = { write: PlannedWrite; rowNumber?: number };
@@ -61,10 +62,35 @@ export async function writeBatchedTargets(args: {
 }): Promise<PlannedWriteOutcome[]> {
   const { sheets, writes, quota, ensureHeaders = true } = args;
   const outcomes: PlannedWriteOutcome[] = [];
-  for (const group of groupByTab(writes)) {
-    outcomes.push(...(await processTabGroup(sheets, group, quota, ensureHeaders)));
+  // Finish destinations first. A failed/deferred destination fences every
+  // stale delete for that document; retry recomputes membership from Mongo.
+  for (const group of groupByTab(writes.filter((write) => write.op === "upsert"))) {
+    outcomes.push(...(await processCoalescedTabGroup(sheets, group, quota, ensureHeaders)));
+  }
+  const pending = new Set(outcomes.filter((outcome) => outcome.status !== "synced").map((outcome) => outcome.write.docKey));
+  const deletes = writes.filter((write) => write.op === "delete");
+  outcomes.push(...deletes.filter((write) => pending.has(write.docKey)).map((write) => ({ ...deferred(write, "delete"), error: "destination_upsert_pending" })));
+  for (const group of groupByTab(deletes.filter((write) => !pending.has(write.docKey)))) {
+    outcomes.push(...(await processCoalescedTabGroup(sheets, group, quota, false)));
   }
   return outcomes;
+}
+
+/** A chain job and a source job may both refresh the same Lead in one drain.
+ * Coalesce physical writes, retaining an outcome for each durable job. */
+async function processCoalescedTabGroup(sheets: sheets_v4.Sheets, group: TabGroup, quota: QuotaLimiter, ensureHeaders: boolean): Promise<PlannedWriteOutcome[]> {
+  const byId = new Map<string, PlannedWrite[]>();
+  for (const write of group.writes) byId.set(write.mongoId, [...(byId.get(write.mongoId) ?? []), write]);
+  const selected: PlannedWrite[] = [];
+  const conflicts: PlannedWriteOutcome[] = [];
+  for (const writes of byId.values()) {
+    if (writes[0].op === "upsert" && new Set(writes.map((write) => JSON.stringify(write.row))).size > 1) {
+      conflicts.push(...writes.map((write) => failed(write, "lookup", "conflicting_current_row_payloads")));
+    } else selected.push(writes[0]);
+  }
+  if (!selected.length) return conflicts;
+  const results = await processTabGroup(sheets, { ...group, writes: selected }, quota, ensureHeaders);
+  return [...conflicts, ...results.flatMap((result) => byId.get(result.write.mongoId)!.map((write) => ({ ...result, write })))];
 }
 
 async function processTabGroup(
@@ -73,7 +99,21 @@ async function processTabGroup(
   quota: QuotaLimiter,
   ensureHeaders: boolean,
 ): Promise<PlannedWriteOutcome[]> {
-  const { spreadsheetId, tabName, headers } = group;
+  const { spreadsheetId, headers } = group;
+  try {
+    if (group.writes.some((write) => write.op === "upsert")) {
+      if (RENAMED_FORM_TABS.some((rename) => rename.title === group.tabName || rename.oldTitle === group.tabName)) {
+        if (!(await quota.reserve("read", 1)).granted) return deferGroup(group, "lookup");
+      }
+      group = { ...group, tabName: await resolveCompatibleSheetTitle(sheets, spreadsheetId, group.tabName) };
+    } else {
+      if (!(await quota.reserve("read", 1)).granted) return deferGroup(group, "lookup");
+      const sheetId = await getExistingSheetId(sheets, spreadsheetId, group.tabName);
+      if (sheetId === undefined) return group.writes.map((write) => synced(write, "delete", undefined));
+      group = { ...group, sheetId };
+    }
+  } catch (error) { return failGroup(group, error, "lookup"); }
+  const { tabName } = group;
 
   if (ensureHeaders) {
     try {
@@ -89,7 +129,7 @@ async function processTabGroup(
     return deferGroup(group, "lookup");
   }
 
-  let rowMap: Map<string, number>;
+  let rowMap: TabRowMap;
   try {
     rowMap = await buildTabRowMap(sheets, spreadsheetId, tabName, headers);
   } catch (error) {
@@ -109,6 +149,24 @@ async function processTabGroup(
   const outcomes: PlannedWriteOutcome[] = [];
   outcomes.push(...(await applyUpdates(sheets, group, updates, quota)));
   outcomes.push(...(await applyAppends(sheets, group, appends, quota)));
+  const repairs = upserts.filter((write) => rowMap.duplicateRows.has(write.mongoId) && outcomes.some((outcome) => outcome.write === write && outcome.status === "synced"));
+  if (repairs.length) {
+    const extraMap = new Map<string, number>() as TabRowMap;
+    extraMap.duplicateRows = new Map();
+    for (const write of repairs) {
+      const extras = rowMap.duplicateRows.get(write.mongoId)!;
+      extraMap.set(write.mongoId, extras[0]);
+      extraMap.duplicateRows.set(write.mongoId, extras.slice(1));
+    }
+    const repairOutcomes = await applyDeletes(sheets, group, repairs, extraMap, quota);
+    for (const write of repairs) {
+      const failure = repairOutcomes.find((outcome) => outcome.write === write && outcome.status !== "synced");
+      if (failure) {
+        const index = outcomes.findIndex((outcome) => outcome.write === write);
+        outcomes[index] = { ...failure, error: `duplicate_row_repair_pending:${failure.error}` };
+      } else logger.info({ msg: "sheet_sync.duplicate_rows_repaired", mongoId: write.mongoId, tabName, removed: rowMap.duplicateRows.get(write.mongoId)?.length });
+    }
+  }
   outcomes.push(...(await applyDeletes(sheets, group, deletes, rowMap, quota)));
   return outcomes;
 }
@@ -207,6 +265,7 @@ async function applyAppends(
         }),
       );
       const firstRow = extractRowNumberFromRange(response.data.updates?.updatedRange);
+      if (firstRow === undefined) throw new Error("append_confirmation_missing");
       outcomes.push(
         ...chunk.map(({ write }, index) =>
           synced(write, "append", firstRow === undefined ? undefined : firstRow + index),
@@ -224,7 +283,7 @@ async function applyDeletes(
   sheets: sheets_v4.Sheets,
   group: TabGroup,
   deletes: PlannedWrite[],
-  rowMap: Map<string, number>,
+  rowMap: TabRowMap,
   quota: QuotaLimiter,
 ): Promise<PlannedWriteOutcome[]> {
   if (deletes.length === 0) {
@@ -232,7 +291,7 @@ async function applyDeletes(
   }
 
   const resolved = deletes
-    .map((write) => ({ write, rowNumber: rowMap.get(write.mongoId) }))
+    .flatMap((write) => [rowMap.get(write.mongoId), ...(rowMap.duplicateRows?.get(write.mongoId) ?? [])].map((rowNumber) => ({ write, rowNumber })))
     .filter((entry): entry is { write: PlannedWrite; rowNumber: number } =>
       entry.rowNumber !== undefined,
     );
@@ -245,7 +304,8 @@ async function applyDeletes(
     return alreadyGone;
   }
 
-  const sheetId = await resolveSheetId(sheets, group.spreadsheetId, group.tabName);
+  if (group.sheetId === undefined && !(await quota.reserve("read", 1)).granted) return [...alreadyGone, ...resolved.map(({ write }) => deferred(write, "delete"))];
+  const sheetId = group.sheetId ?? await resolveSheetId(sheets, group.spreadsheetId, group.tabName);
   if (sheetId === undefined) {
     return [
       ...alreadyGone,
@@ -254,7 +314,8 @@ async function applyDeletes(
   }
 
   // Descending row order so earlier deletions never shift later indices.
-  const ordered = [...resolved].sort((a, b) => b.rowNumber - a.rowNumber);
+  const uniqueRows = new Map(resolved.map((entry) => [entry.rowNumber, entry]));
+  const ordered = [...uniqueRows.values()].sort((a, b) => b.rowNumber - a.rowNumber);
   const chunks = chunkByLimits(ordered, (entry) => deleteRequest(sheetId, entry.rowNumber));
   const outcomes: PlannedWriteOutcome[] = [...alreadyGone];
 

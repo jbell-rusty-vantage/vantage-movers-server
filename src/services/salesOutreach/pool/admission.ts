@@ -1,3 +1,4 @@
+import { isImportOutreachSuppressed } from "../subjects/importAdmission";
 import { normalizedJobCandidates, legacyBookingJobFilter } from "../../bookings/indexedJobLookup";
 import mongoose, { type ClientSession } from "mongoose";
 import { getFormLeadModel } from "../../../models/FormLead";
@@ -253,6 +254,9 @@ export async function refreshPoolLead(ref: DeskLeadRef, configuration: ActiveCon
   const previous = await Model.findOne({ lead_model: ref.model, lead_id: oid(ref.id) }).session(session).lean();
   if (!poolEnabled(configuration.value) && !previous?.active) return null;
   const candidate = await inspectPoolCandidate(ref, session);
+  // Explicit selected-ID activation and existing membership keep their Owner
+  // contracts. Only a new automatic admission is held for later Granot evidence.
+  if (!previous && candidate.facts && isImportOutreachSuppressed(candidate.facts)) return null;
   if (poolEnabled(configuration.value) && candidate.eligible && (previous || configuration.value.pool?.admission_enabled))
     return writePoolCandidate(candidate, configuration, now, session, configuration.value.pool!.approval_ref);
   if (!previous?.active) return null;

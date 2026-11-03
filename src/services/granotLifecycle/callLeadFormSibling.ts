@@ -1,3 +1,4 @@
+import { qualifiedCallLeadFilter, hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
 /**
  * Granot Form sibling update (Owner 2026-10-28; `job-number-pending-investigation/SPECIFICATION.md` S2).
  *
@@ -15,10 +16,10 @@
  *
  * The Call Lead is found by an equivalent job, else by phone (current/ingested/Granot phone of the Form
  * Lead against the Call Lead's current/ingested phone) within the same Lead Source Company and
- * `FORM_SIBLING_WINDOW_DAYS` of each other. Exactly one eligible (non-duplicate, not `created_on_unmatched`)
+ * `FORM_SIBLING_WINDOW_DAYS` of each other. Exactly one qualified, non-duplicate (not `created_on_unmatched`)
  * Call Lead, or nothing. It never creates a Lead, never writes the Form Lead, a Record Link, a Decision
  * or `last_accepted_granot_observation` (the Call ladder keeps its own temporal winner). The Calls row
- * is updated in place only when the Call Lead already has one (a sheet job appends a missing row).
+ * is requested only for a previously synced Call; the sheet writer may restore a missing qualified row.
  */
 import { createHash, randomUUID } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
@@ -60,6 +61,7 @@ export type SiblingFormLead = {
 };
 
 export type SiblingCallLead = {
+  ringcentral?: unknown;
   _id: Id;
   duplicate?: boolean | null;
   created_on_unmatched?: boolean | null;
@@ -95,6 +97,7 @@ export const SIBLING_FORM_PROJECTION = {
 } as const;
 
 export const SIBLING_CALL_PROJECTION = {
+  ringcentral: 1,
   duplicate: 1, created_on_unmatched: 1, no_sync: 1, job_no: 1, normalized_job_no: 1, granot_priority: 1,
   receiver_agent: 1, receiver_agent_source: 1, lead_source_company: 1, createdAt: 1, domain_revision: 1,
   granot_form_sibling: 1, "sheet_sync.target": 1, "sheet_sync.status": 1, "sheet_sync.row_number": 1,
@@ -120,7 +123,7 @@ export function planFormSiblingUpdate(
 ): SiblingPlan {
   const job = form.normalized_job_no;
   if (form.duplicate === true || form.bad_lead || !job || !form.job_no) return { kind: "skip", reason: "form_ineligible" };
-  const eligible = (call: SiblingCallLead) => call.duplicate !== true && call.created_on_unmatched !== true;
+  const eligible = (call: SiblingCallLead) => hasQualifiedRingCentralCall(call.ringcentral) && call.duplicate !== true && call.created_on_unmatched !== true;
   const byJob = jobMatches.filter((call) => eligible(call) && jobNumbersEquivalent(call.normalized_job_no, job));
   let target: SiblingCallLead;
   let basis: "job_no" | "phone_source_company";
@@ -168,10 +171,10 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
   const phones = formSiblingPhones(form);
   const calls = getCallLeadModel();
   // Sequential: inside the command these reads share one transaction session.
-  const jobMatches = await calls.find(equivalentNormalizedJobFilter(form.normalized_job_no), SIBLING_CALL_PROJECTION)
+  const jobMatches = await calls.find({ $and: [qualifiedCallLeadFilter(), equivalentNormalizedJobFilter(form.normalized_job_no)] }, SIBLING_CALL_PROJECTION)
     .limit(10).session(session ?? null).lean<SiblingCallLead[]>();
   const phoneMatches = phones.length && form.lead_source_company
-    ? await calls.find({ lead_source_company: form.lead_source_company, $or: [
+    ? await calls.find({ $and: [qualifiedCallLeadFilter()], lead_source_company: form.lead_source_company, $or: [
       { normalized_phone_number: { $in: phones } }, { "ingested_contact_snapshot.normalized_phone_number": { $in: phones } },
     ] }, SIBLING_CALL_PROJECTION).limit(10).session(session ?? null).lean<SiblingCallLead[]>()
     : [];
@@ -179,8 +182,7 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
 }
 
 /**
- * True when the Call Lead's Calls row is known to exist (a synced Master Calls entry with a row number).
- * A sheet job for a Call Lead without one would append the row, so only this case is updated in place.
+ * True when a prior Master Calls sync recorded a row number. The row may have moved or disappeared.
  */
 export function hasSyncedCallsRow(call: SiblingCallLead): boolean {
   return call.no_sync !== true && (call.sheet_sync ?? []).some((entry) => entry.target === "master_calls" && entry.status === "synced" && typeof entry.row_number === "number");

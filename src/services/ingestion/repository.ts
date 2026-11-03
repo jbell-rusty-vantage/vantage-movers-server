@@ -1,3 +1,4 @@
+import { bestRelocationRetiredError } from "./retirementPolicy";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { ExternalDataConnection } from "../../models/ExternalDataConnection";
@@ -46,53 +47,7 @@ export async function claimDueBestRelocationConnection(input: {
   next_due_at: Date;
   initiator: DurableActor;
 } | null> {
-  const current = await ExternalDataConnection.findOne({
-    key: BEST_RELOCATION_CONNECTION_KEY,
-    application_enabled: true,
-    application_enabled_actor: { $ne: null },
-    $or: [
-      { next_due_at: null },
-      { next_due_at: { $exists: false } },
-      { next_due_at: { $lte: input.now } },
-    ],
-  })
-    .select("_id cadence_hours application_enabled_actor")
-    .lean()
-    .exec();
-  if (!current) return null;
-  const nextDueAt = new Date(
-    input.now.getTime() + Number(current.cadence_hours) * 60 * 60 * 1000,
-  );
-  const claimed = await ExternalDataConnection.findOneAndUpdate(
-    {
-      _id: current._id,
-      application_enabled: true,
-      application_enabled_actor: { $ne: null },
-      $or: [
-        { next_due_at: null },
-        { next_due_at: { $exists: false } },
-        { next_due_at: { $lte: input.now } },
-      ],
-    },
-    {
-      $set: {
-        next_due_at: nextDueAt,
-        last_checked_at: input.now,
-        updated_actor: input.actor,
-      },
-    },
-    { returnDocument: "after" },
-  )
-      .select("_id next_due_at application_enabled_actor")
-    .lean()
-    .exec();
-  return claimed
-    ? {
-        connection_id: String(claimed._id),
-        next_due_at: claimed.next_due_at ?? nextDueAt,
-          initiator: claimed.application_enabled_actor as DurableActor,
-      }
-    : null;
+  return null;
 }
 
 export async function createQueuedIngestionRun(input: {
@@ -102,19 +57,7 @@ export async function createQueuedIngestionRun(input: {
   initiator: DurableActor;
   now: Date;
 }): Promise<{ run_id: string }> {
-  const run = await IngestionRun.create({
-    adapter_key: BEST_RELOCATION_CONNECTION_KEY,
-    schema_version: 2,
-    trigger: input.trigger,
-    status: "queued",
-    connection_id: input.connection_id,
-    cutoff: BEST_RELOCATION_CUTOFF,
-    timezone: BEST_RELOCATION_TIMEZONE,
-    actor: input.actor,
-    initiator: input.initiator,
-    last_attempt_at: input.now,
-  });
-  return { run_id: String(run._id) };
+  throw bestRelocationRetiredError();
 }
 
 export async function claimQueuedRun(input: {

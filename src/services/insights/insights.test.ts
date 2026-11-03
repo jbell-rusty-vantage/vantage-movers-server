@@ -314,6 +314,53 @@ describe("analytics report", () => {
   });
 });
 
+test("bad Calls have a distinct zero-cost disposition across Insights while official outcomes remain unchanged", () => {
+  const catalog = catalogWith({ tbm: 205, top10: 190 });
+  const at = new Date("2026-11-03T17:00:00.000Z");
+  const { today, period } = resolvePeriods({ preset: "today", compare: "none" }, at);
+  const rc = { call_log_id: "rc-call", duration_seconds: 120, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s", start_time: new Date("2026-11-03T06:30:00Z"), final_result: "Missed", final_result_answered: false, final_result_observed_at: at, final_result_call_log_id: "rc-call" };
+  const call = (id: string, overrides: Record<string, unknown>) => {
+    const fact = toLeadFact(catalog, "call", { _id: id, timestamp: new Date("2026-11-03T12:00:00Z"), createdAt: at, source_granularity_id: "f1", receiver_agent: "a1", ringcentral: rc, ...overrides });
+    assert.ok(fact);
+    return fact;
+  };
+  const regular = call("normal", { ringcentral: { ...rc, final_result: "Call connected", final_result_answered: true } });
+  const bad = call("bad", { booked: "official-bad" });
+  const overlap = call("overlap", { form_fill: true, booked: "official-duplicate" });
+  assert.deepEqual([regular.price, bad.price, overlap.price], [{ status: "priced", amount: 205 }, { status: "nonbillable", amount: 0 }, { status: "duplicate", amount: 0 }]);
+  const leads = [regular, bad, overlap];
+  const bookings = [
+    booking({ id: "official-bad", day: today, binder: 1000, deposit: 500, allocations: [["a1", "Austin", 1000]], cancelled: true }),
+    booking({ id: "official-duplicate", day: today, binder: 2000, deposit: 1000, allocations: [["a1", "Austin", 2000]] }),
+  ];
+  const now = facts(catalog, period, { leads, bookings });
+  now.cancellations = [{ id: "cancel-bad", day: today, refund: 100, reason: "Fixture", booking_day: today, company: "tbm_leads", feed: regular.feed, agents: ["Austin"] }];
+  const report = buildAnalyticsReport({ catalog, today, period, comparison: null, sources: [], now, then: null, generatedAt: at });
+  assert.equal(report.scorecards.leads.value, 1);
+  assert.equal(report.scorecards.duplicates.value, 1);
+  assert.equal(report.scorecards.bad_calls.value, 1);
+  assert.equal(report.scorecards.lead_spend.value, 205);
+  assert.equal(report.scorecards.cost_per_lead.value, 205);
+  assert.deepEqual(report.series.current.map((point) => [point.leads, point.duplicates, point.bad_calls, point.spend, point.bookings, point.binder, point.deposits, point.cancellations]), [[1, 1, 1, 205, 2, 3000, 1500, 1]]);
+  assert.equal(report.sources.companies[0]!.metrics.bad_calls!.value, 1);
+  assert.equal(report.scorecards.bookings.value, 2);
+  assert.equal(report.bookings.cancellations.count.value, 1);
+  assert.equal(report.bookings.cancellations.refunds.value, 100);
+  assert.equal(report.scorecards.binder.value, 3000);
+  assert.equal(report.scorecards.deposits.value, 1500);
+
+  const allocation = buildAllocationReport({ catalog, today, period, comparison: null, leads, comparisonLeads: null, cohort: now.cohortBookings, generatedAt: at });
+  assert.deepEqual([allocation.totals.leads, allocation.totals.duplicates, allocation.totals.bad_calls, allocation.totals.spend], [1, 1, 1, 205]);
+  const rep = allocation.reps.find((row) => row.agent_id === "a1")!;
+  assert.deepEqual([rep.leads, rep.duplicates, rep.bad_calls, rep.spend, rep.booked], [1, 1, 1, 205, 0]);
+  const day = buildLeadSpendDay({ catalog, today, nowHour: 12, leads, now: at });
+  assert.deepEqual([day.leads.today, day.leads.duplicates_today, day.leads.bad_calls_today, day.spend.today], [1, 1, 1, 205]);
+  assert.equal(day.hourly.today.reduce((sum, value) => sum + value, 0), 205);
+  const money = buildMoneySpend({ catalog, today, range: "today", leads, cohort: now.cohortBookings, now: at });
+  assert.deepEqual([money.totals.leads, money.totals.duplicates, money.totals.bad_calls, money.totals.lead_spend, money.totals.cost_per_lead], [1, 1, 1, 205, 205]);
+  assert.deepEqual(money.by_source_company.map((row) => [row.leads, row.duplicates, row.bad_calls, row.spend]), [[1, 1, 1, 205]]);
+});
+
 describe("other reports", () => {
   test("allocation cost per rep reconciles with total spend, every active rep shows", () => {
     const { catalog, nowLeads, nowBookings, period } = scenario({ tbm: 205, top10: 190 });

@@ -33,12 +33,12 @@ test("create-and-attach validates Form Lead fields for its selected model", () =
   }
 });
 
-test("create-and-attach requires Phone or Job Number for a Call Lead", () => {
+test("create-and-attach rejects a Call Lead even with valid contact details", () => {
   const result = resolveBookingLeadReconciliationSchema.safeParse({
     action: "create_and_attach",
     revision: 0,
     lead_model: "CallLead",
-    lead_fields: { name: "Jane Customer" },
+    lead_fields: { name: "Jane Customer", phone_number: "2125550101", job_no: "5550001" },
   });
 
   assert.equal(result.success, false);

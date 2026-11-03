@@ -5,11 +5,9 @@ import {
   type SourceCompany,
 } from "../../config/domain";
 import { CallLead } from "../../models/CallLead";
-import { toFloridaTimestamp } from "../../utils/easternTime";
 import {
   findBestCallLeadMatchByPhone,
   getLinkedLead,
-  hasFormFillForCallLead,
   type SourceLeadDocument,
 } from "../leads";
 import { normalizePhoneNumberForMatch } from "../../utils/phone";
@@ -18,8 +16,6 @@ import type {
   CreateBookedLeadInput,
 } from "../../validation/v1.validation";
 import { V1ServiceError } from "../v1ServiceError";
-import { resolveLeadSourceAssignment } from "../leads/leadSourceCompany";
-import { resolveLeadCplSnapshot } from "../leads/leadCplResolution";
 import { bestRelocationImportLeadFilter } from "./bestRelocationImportGuard";
 import {
   applyLeadChangeStamp,
@@ -29,27 +25,7 @@ import {
   systemLeadChangeContext,
 } from "../domainCommands/leadChangeEmission";
 
-/**
- * Locates (or creates) the source lead a booked-from-source request points at.
- *
- * Owner Precise Booking Form Call Lead create does **not** use this resolver.
- * That path asks Exact Job Booking Attach (`evaluateEmployeeBookingMatch`)
- * and never phone-matches or mints an Unmatched Call Lead.
- *
- * This resolver remains for:
- *   - `FormLead` requests (Owner-selected Mongo ID).
- *   - Best Relocation import Call Lead (`ingestion_source=best_relocation_sheet`):
- *     job lookup (409 if 2+), then `findBestCallLeadMatchByPhone`, then mint
- *     `created_on_unmatched`.
- *
- * Every Call Lead write here (phone/job correction, the Unmatched mint) emits
- * its own Lead `EntityChange` (LP-03 / H4) in `options.session` when the caller
- * supplies one, and stamps the returned document's `domain_revision` so the
- * booking command's later Lead mutation uses the current CAS value. The
- * from-source booking planner passes its transaction session, so the write and
- * its change commit with the Booking. Without a session (legacy callers) the
- * Lead write and its change are two separate writes, not one atomic commit.
- */
+/** Resolve an existing booking source by ID or import job/phone. A missing Call Lead requires reconciliation. */
 export async function resolveBookingSourceLead(
   input: CreateBookedLeadFromSourceInput,
   options: { session?: ClientSession } = {},
@@ -119,38 +95,7 @@ export async function resolveBookingSourceLead(
     return { lead: phoneMatchedLead, leadModel: "CallLead", jobNo };
   }
 
-  const { assignment: sourceAssignment } = await resolveLeadSourceAssignment({
-      value: input.source_company,
-      channel: "call",
-    });
-  const form_fill = await hasFormFillForCallLead(
-    {
-      sourceCompany: sourceAssignment.source_company,
-      leadSourceCompany: sourceAssignment.lead_source_company,
-    },
-    submittedPhone,
-  );
-  const timestamp = toFloridaTimestamp(input.timestamp);
-  const cplSnapshot = await resolveLeadCplSnapshot({
-    sourceGranularityId: sourceAssignment.source_granularity_id
-      ? String(sourceAssignment.source_granularity_id)
-      : null,
-    storedBusinessTimestamp: timestamp,
-    applicable: false,
-  });
-  const lead = new CallLead({
-    ...(jobNo ? { job_no: jobNo } : {}),
-    ...(submittedPhone ? { phone_number: submittedPhone } : {}),
-    ...sourceAssignment,
-    form_fill,
-    created_on_unmatched: true,
-    timestamp,
-    ...cplSnapshot,
-  });
-  await lead.save({ session });
-  await recordResolverLeadChange(lead, null, "createCallLead", session);
-
-  return { lead, leadModel: "CallLead", jobNo };
+  throw new V1ServiceError("No existing Call Lead matched; reconcile the booking without creating a Call Lead", 409);
 }
 
 async function recordResolverLeadChange(

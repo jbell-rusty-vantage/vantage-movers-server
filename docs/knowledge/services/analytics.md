@@ -178,3 +178,6 @@ Company variants: `resolveSourceCompany` + config label/aliases + `SOURCE_LABEL_
 - RingCentral ops reconcile: `ringcentral/analytics-reconcile.service.ts`
 
 Tests: `analytics.service.test.ts` (query schema, booked prefix + employee snapshot, receiver-agent and SMS-conversion reports, CSV flatten); `smsConversion.service.test.ts` (origin rows); `adminDatabaseScope.test.ts` and `v1-admin-database-scope.routes.test.ts` (retired scopes return 400).
+
+
+Call lead cost and compatibility CSV totals apply `billableCallLeadFilter` before grouping: saved qualification, unmatched, Form Fill, effective duplicate and confirmed bad-call facts use the same policy as live Insights. These compatibility totals retain their existing stamped-price provenance; live Insights continues using current feed rates. Custom Reporting's existing versioned quality columns agree with the disposition without a schema version change. Official Booking/Cancellation aggregation is unchanged.

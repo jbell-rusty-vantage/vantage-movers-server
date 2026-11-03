@@ -1,3 +1,4 @@
+import { externalSheetReviewField } from "./externalSheetReviewSchema";
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { granotJobFormLinkField } from "./granotJobFormLinkSchema";
 import {
@@ -31,6 +32,7 @@ export const FORM_LEAD_UNKNOWN_STATE = "not_found";
 const FormLeadSchema = new Schema(
   {
     granot_job_form_link: granotJobFormLinkField,
+    external_sheet_review: externalSheetReviewField("FormLead"),
     source_company: sourceCompanyField,
     lead_source_company: {
       type: Schema.Types.ObjectId,
@@ -87,6 +89,8 @@ const FormLeadSchema = new Schema(
     quoted: { type: Boolean, default: false },
     duplicate: { type: Boolean, default: false, index: true },
     no_sync: { type: Boolean, default: false },
+    // Keep import provenance; later accepted Granot evidence may permit normal outreach admission.
+    outreach_automation_suppressed: { type: Boolean, default: false, immutable: true },
     bad_lead: {
       type: String,
       enum: FORM_LEAD_BAD_LEAD_REASONS,

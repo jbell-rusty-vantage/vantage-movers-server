@@ -25,6 +25,7 @@ const call = (over: Partial<SiblingCallLead> = {}): SiblingCallLead => ({
   _id: "650000000000000000000020",
   lead_source_company: COMPANY,
   createdAt: new Date("2026-10-20T14:00:00.000Z"),
+  ringcentral: { call_log_id: "call-log-1", duration_seconds: 120, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s" },
   domain_revision: 3,
   sheet_sync: [{ target: "master_calls" }],
   ...over,
@@ -63,6 +64,11 @@ describe("Granot Form sibling update: planFormSiblingUpdate", () => {
     assert.deepEqual(planFormSiblingUpdate(form(), [], [call({ duplicate: true }), call({ _id: "650000000000000000000021", created_on_unmatched: true })], NOW),
       { kind: "skip", reason: "no_call_sibling" });
     assert.deepEqual(planFormSiblingUpdate(form(), [], [call(), call({ _id: "650000000000000000000021" })], NOW), { kind: "skip", reason: "multiple_call_siblings" });
+  });
+
+  test("a matching job or phone cannot qualify a sibling", () => {
+    const unqualified = call({ ringcentral: null, normalized_job_no: "P5562894" });
+    assert.deepEqual(planFormSiblingUpdate(form(), [unqualified], [call({ ringcentral: null })], NOW), { kind: "skip", reason: "no_call_sibling" });
   });
 
   test("an ineligible Form Lead mirrors nothing", () => {

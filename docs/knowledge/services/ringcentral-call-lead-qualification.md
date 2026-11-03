@@ -26,6 +26,8 @@ generated:
 
 # RingCentral Call Lead Qualification
 
+**Billing and projection:** only RingCentral queue qualification permits Call Lead creation or a new Master Leads Calls row. Historical saved evidence remains valid regardless of ingestion origin. See the [billing contract and release checks](../../call-lead-billing.md).
+
 **Role:** **Call Qualification** rules decide which Ring Central inbound calls become Call Leads, then promote them through one shared ingest path. `ingestRingCentralQualifiedCall` is the only RingCentral promotion gate: it may adopt one exact pending Granot-created Call Lead or create/shadow/dry-run a RingCentral-origin Call Lead. Routes, webhooks, cron, and scripts do neither directly.
 
 **Hybrid strategy:** Webhooks track one telephony session and wake a Detailed Call Log check; the scheduled Call Log scan recovers late/finalized records. Both use `vetRingCentralCallLogRecord` and `qualifiedCallFromCallLog` before the same ingest gate. Per-party/session previews never authorize creation.
@@ -260,3 +262,12 @@ Logger `msg` keys and Section 33 metrics only; nothing is persisted (the Operati
 - `call-log-sync.service.test.ts` — AC-17 claim-before-work, loser no-op, renewal, stop-on-loss, cursor-on-full-success only, 12-hour floor, telemetry privacy, and oldest-first same-run ingest
 - `call-log-sync-lease.replica.test.ts` — AC-17 real concurrent runs, cursor immobility on failure, expiry takeover, and rescan idempotency
 - `ringcentral-cron.routes.test.ts` — auth, disabled skip, `lease_held` skip, safe failure, and the exact `vercel.json` entry
+
+
+## Final caller result for reporting (November 3, 2026)
+
+The final Detailed Call Log vetter carries parent `result`, observation time, Call Log identity and same-call answered evidence through the qualified ingest to `ringcentral.final_result`, `final_result_observed_at`, `final_result_call_log_id`, and `final_result_answered`. Inserts also preserve original `ringcentral.start_time`. An unrelated missed/answered leg cannot establish the parent outcome. A parent Missed result with answered evidence remains a diagnostic conflict.
+
+Processed/replayed calls still capture newly available final evidence through `recordRingCentralFinalCallLogResult`, an idempotent audited transaction with revision/Entity Change/Sheet Sync intent. A source correction reevaluates reporting without rewriting saved qualification. Provisional webhook status cannot overwrite this fact. Reporting classification lives in `leads/callLeadReportingDisposition.ts`; only exact normalized Missed with confirmed final evidence is mapped to overnight bad-call reporting.
+
+The one-time `ops/best-relocation-retirement/callBackfill.ts` exposes bounded, checksum-bound plan/apply/verify APIs from November 1, 2026 04:00Z through a fixed watermark. It retains timestamp discrepancies, uses source-scoped eligible Forms for audited Form Fill repair, looks up the same account/call identity for missing overnight results, and records unresolved evidence explicitly. The CLI captures its final plan after final source reconciliation, so newly applied source facts cannot invalidate an earlier Call plan silently. Production completion is recorded separately in the release record.

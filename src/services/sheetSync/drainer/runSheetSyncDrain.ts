@@ -25,6 +25,7 @@ import {
 } from "./leases";
 import { planJobWrites, type PlannedDoc } from "./jobPlanner";
 import { QuotaLimiter } from "./quotaLimiter";
+import { assertLeadTabWritesAllowed, readLeadTabWriterFence } from "../writerFence";
 import type { PlannedWrite, PlannedWriteOutcome } from "./types";
 
 const DRAIN_LEASE_SCOPE = "sheet-sync:drain";
@@ -59,6 +60,10 @@ export async function runSheetSyncDrain(
   options: RunSheetSyncDrainOptions = {},
 ): Promise<SheetSyncDrainSummary> {
   await connectMongo();
+  if (await readLeadTabWriterFence()) {
+    logger.info({ msg: "sheet_sync.drain.skipped_tab_migration", trigger });
+    return { ok: true, runId: null, skipped: true, claimed: 0, synced: 0, failed: 0, deferred: 0 };
+  }
   const guardrails = getSheetSyncDrainGuardrails();
   const owner = options.owner ?? `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -178,6 +183,9 @@ export async function runSheetSyncDrain(
 
     const allWrites = plannedDocs.flatMap((doc) => doc.writes);
     await requireActiveLease(true);
+    // The fence can be acquired while an older drain is still planning.
+    // Throwing here releases claimed jobs for retry without consuming attempts.
+    await assertLeadTabWritesAllowed();
     let outcomes =
       allWrites.length > 0
         ? await writeBatchedTargets({ sheets, writes: allWrites, quota })

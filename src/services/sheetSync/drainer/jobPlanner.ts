@@ -1,3 +1,5 @@
+import { getCallLeadReportingDecision } from "../../leads/callLeadReportingDisposition";
+import { allFormLeadTargets, callLeadTargets, hasFormBadProjection, CALL_REPORTING_TARGET_KEYS, staleCallTargetKeys } from "../../googleSheets/leadReportingTargets";
 import {
   BOOKED_SHEET_HEADERS,
   CALL_SHEET_HEADERS,
@@ -20,6 +22,7 @@ import { callLeadToRow } from "../../googleSheets/projections/callLeadRow";
 import { cancelledLeadToRow } from "../../googleSheets/projections/cancelledLeadRow";
 import { formLeadToRow } from "../../googleSheets/projections/formLeadRow";
 import {
+  getDeleteTargets,
   getHeadersForSyncTarget,
   getLeadTargets,
   getMasterLeadsTabs,
@@ -112,12 +115,6 @@ function formLeadTargetBase(duplicate?: boolean | null) {
     : { masterTarget: "master_forms", sourceTarget: "source_forms", tabName: SHEET_TAB_NAMES.forms };
 }
 
-function callLeadTargetBase(duplicate?: boolean | null) {
-  return duplicate
-    ? { masterTarget: "master_duplicate_calls", sourceTarget: "source_duplicate_calls", tabName: SHEET_TAB_NAMES.duplicateCalls }
-    : { masterTarget: "master_calls", sourceTarget: "source_calls", tabName: SHEET_TAB_NAMES.calls };
-}
-
 function masterBadLeadsTarget(): SyncTarget {
   return {
     target: "master_bad_leads",
@@ -162,11 +159,15 @@ async function planSourceLead(
       no_sync: lead.get("no_sync") as boolean | null | undefined,
       duplicate: lead.get("duplicate") as boolean | null | undefined,
       bad_lead: lead.get("bad_lead"),
+      ringcentral: lead.get("ringcentral"),
+      timestamp: lead.get("timestamp"),
+      form_fill: lead.get("form_fill") as boolean | null | undefined,
+      external_sheet_review: lead.get("external_sheet_review"),
     })
   ) {
     const sourceCompany = lead.get("source_company") as SourceCompany;
     const base =
-      leadModel === "FormLead" ? formLeadTargetBase(false) : callLeadTargetBase(false);
+      leadModel === "FormLead" ? formLeadTargetBase(false) : { masterTarget: "master_calls", sourceTarget: "source_calls", tabName: SHEET_TAB_NAMES.calls };
     const headers = leadModel === "FormLead" ? FORM_SHEET_HEADERS : CALL_SHEET_HEADERS;
     const targets = getLeadTargets(
       base.masterTarget,
@@ -175,7 +176,8 @@ async function planSourceLead(
       base.tabName,
       headers,
     );
-    const writes = filterTargets(job, targets).map((target) =>
+    const selected = leadModel === "CallLead" ? getDeleteTargets(lead as unknown as CallLeadSheetSource, callLeadTargets(lead as unknown as CallLeadSheetSource, true), CALL_REPORTING_TARGET_KEYS) : filterTargets(job, targets);
+    const writes = selected.map((target) =>
       targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
     );
     return [{ docKey, doc: looseDoc, writes }];
@@ -184,6 +186,7 @@ async function planSourceLead(
     logger.info({ msg: "sheet_sync.drain.call_lead.created_on_unmatched.skipped", leadId });
     return [];
   }
+  if (leadModel === "CallLead" && getCallLeadReportingDecision(lead).disposition === "excluded") return [];
   await looseDoc.populate({ path: "booked", populate: { path: "customer" } });
 
   const sourceCompany = lead.get("source_company") as SourceCompany;
@@ -208,7 +211,7 @@ async function planSourceLead(
       row,
     );
     const badLeadsTarget = masterBadLeadsTarget();
-    if (lead.get("bad_lead")) {
+    if (hasFormBadProjection({ bad_lead: lead.get("bad_lead"), external_sheet_review: lead.get("external_sheet_review") })) {
       writes.push(
         ...targetsToWrites(
           jobId,
@@ -219,8 +222,8 @@ async function planSourceLead(
           row,
         ),
       );
-    } else if (knownRowFor(looseDoc, badLeadsTarget.target)) {
-      const selectedBadLeadTargets = filterTargets(job, [badLeadsTarget]);
+    } else {
+      const selectedBadLeadTargets = getDeleteTargets(lead as unknown as FormLeadSheetSource, allFormLeadTargets(sourceCompany).filter((target) => target.target.endsWith("bad_leads")), ["master_bad_leads", "source_bad_leads"]);
       writes.push(
         ...selectedBadLeadTargets.map((target) =>
           targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
@@ -230,31 +233,15 @@ async function planSourceLead(
     return [{ docKey, doc: looseDoc, writes }];
   }
 
-  const base = callLeadTargetBase(duplicate);
-  const targets = getLeadTargets(
-    base.masterTarget,
-    base.sourceTarget,
-    sourceCompany,
-    base.tabName,
-    CALL_SHEET_HEADERS,
-  );
-  const row = callLeadToRow(lead as unknown as CallLeadSheetSource);
-  const selectedTargets = filterTargets(job, targets);
-  const writes = targetsToWrites(jobId, docKey, leadId, looseDoc, selectedTargets, row);
-  const staleBase = callLeadTargetBase(!duplicate);
-  const staleTargets = getLeadTargets(
-    staleBase.masterTarget,
-    staleBase.sourceTarget,
-    sourceCompany,
-    staleBase.tabName,
-    CALL_SHEET_HEADERS,
-  );
-  const selectedStaleTargets = filterTargets(job, staleTargets);
-  writes.push(
-    ...selectedStaleTargets.map((target) =>
-      targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target),
-    ),
-  );
+  const call = lead as unknown as CallLeadSheetSource;
+  const targets = callLeadTargets(call);
+  const row = callLeadToRow(call);
+  // Target hints describe a previous failed attempt; disposition can change
+  // before retry. Always replan the complete current call membership.
+  const writes = targetsToWrites(jobId, docKey, leadId, looseDoc, targets, row);
+  const staleTargets = callLeadTargets(call, true).filter((target) => !targets.some((desired) => desired.target === target.target));
+  const stale = getDeleteTargets(call, staleTargets, staleCallTargetKeys(call));
+  writes.push(...stale.map((target) => targetToDeleteWrite(jobId, docKey, leadId, looseDoc, target)));
   return [{ docKey, doc: looseDoc, writes }];
 }
 
@@ -349,8 +336,36 @@ function planTombstone(job: SheetSyncJobDocument): PlannedDoc[] {
   const mongoId = tombstone.mongo_id;
   const docKey = `tombstone:${job.resource}:${mongoId}`;
   const writes: PlannedWrite[] = [];
-  for (const previous of tombstone.previous_targets ?? []) {
-    if (!targetAllowed(job, previous.target)) {
+  const previousTargets: { target: string; spreadsheet_id: string; tab_name: string; row_number?: number | null }[] = [...(tombstone.previous_targets ?? [])];
+  if (job.resource === "delete_source_lead") {
+    const sourceCompany = tombstone.source_company as SourceCompany | undefined;
+    const model = job.entity_model;
+    if (sourceCompany && (model === "CallLead" || model === "FormLead")) {
+      const targets = model === "CallLead" ? callLeadTargets({ source_company: sourceCompany }, true) : allFormLeadTargets(sourceCompany);
+      previousTargets.push(...targets.map((target) => ({ target: target.target, spreadsheet_id: target.spreadsheetId, tab_name: target.tabName })));
+    }
+    // Old tombstones with one known workbook still enumerate every possible
+    // call destination, and historical Form titles remain delete-only.
+    for (const previous of [...previousTargets]) {
+      const isCall = ["master_calls", "master_duplicate_calls", "master_bad_calls", "source_calls", "source_duplicate_calls", "source_bad_calls"].includes(previous.target);
+      if (isCall) {
+        const prefix = previous.target.startsWith("master_") ? "master" : "source";
+        for (const [suffix, title] of [["calls", SHEET_TAB_NAMES.calls], ["duplicate_calls", SHEET_TAB_NAMES.duplicateCalls], ["bad_calls", SHEET_TAB_NAMES.badCalls]]) {
+          previousTargets.push({ target: `${prefix}_${suffix}`, spreadsheet_id: previous.spreadsheet_id, tab_name: title });
+        }
+      } else if (["master_duplicates", "source_duplicates", "master_bad_leads", "source_bad_leads"].includes(previous.target)) {
+        const titles = previous.target.endsWith("duplicates") ? ["Duplicates", SHEET_TAB_NAMES.duplicates] : ["Bad Leads", SHEET_TAB_NAMES.badLeads];
+        for (const title of titles) previousTargets.push({ ...previous, tab_name: title });
+      }
+    }
+  }
+  const uniqueTargets = new Map<string, (typeof previousTargets)[number]>();
+  for (const previous of previousTargets) {
+    const key = `${previous.spreadsheet_id}:${previous.tab_name}`;
+    if (!uniqueTargets.has(key)) uniqueTargets.set(key, previous);
+  }
+  for (const previous of uniqueTargets.values()) {
+    if (job.resource !== "delete_source_lead" && !targetAllowed(job, previous.target)) {
       continue;
     }
     const headers = getHeadersForSyncTarget(previous.target);

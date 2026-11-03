@@ -223,8 +223,10 @@ export function omitForbiddenLeadLifecycleFields<T extends Record<string, unknow
   input: T,
 ): T {
   const copy = { ...input };
-  for (const field of PUBLIC_LEAD_FORBIDDEN_LIFECYCLE_FIELDS) {
-    delete copy[field];
+  for (const key of Object.keys(copy)) {
+    if (PUBLIC_LEAD_FORBIDDEN_LIFECYCLE_FIELDS.some((field) => key === field || key.startsWith(`${field}.`))) {
+      delete copy[key];
+    }
   }
   return copy;
 }

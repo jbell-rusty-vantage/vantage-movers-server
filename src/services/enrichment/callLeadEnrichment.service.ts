@@ -1,3 +1,4 @@
+import { qualifiedCallLeadFilter } from "../ringcentral/callLeadQualification";
 import mongoose, { type HydratedDocument } from "mongoose";
 import { connectMongo } from "../../db";
 import { CallLead, type CallLeadDocument } from "../../models/CallLead";
@@ -186,7 +187,7 @@ async function applyEnrichmentTransaction(
   const session = await mongoose.connection.startSession();
   session.startTransaction();
   try {
-    const lead = await CallLead.findById(approvedLead._id).session(session).orFail();
+    const lead = await CallLead.findOne({ _id: approvedLead._id, ...qualifiedCallLeadFilter() }).session(session).orFail();
     if (
       options.expectedCallLeadId !== undefined &&
       lead._id.toString() !== options.expectedCallLeadId
@@ -488,7 +489,7 @@ async function findBestCallLeadMatch(
   const jobNo = parsed.job_no;
 
   if (jobNo) {
-    const byJobNo = await CallLead.find({ job_no: jobNo })
+    const byJobNo = await CallLead.find({ job_no: jobNo, $and: [qualifiedCallLeadFilter()] })
       .sort({ createdAt: -1 })
       .limit(5)
       .exec();
@@ -503,6 +504,7 @@ async function findBestCallLeadMatch(
   if (normalizedPhone) {
     const candidates = (
       await CallLead.find({
+        $and: [qualifiedCallLeadFilter()],
         $or: [
           { normalized_phone_number: normalizedPhone },
           { phone_number: buildPhoneRegex(normalizedPhone) },

@@ -1,4 +1,5 @@
 import { logger } from "../../logger";
+import { assertLeadTargetWritesAllowed } from "../sheetSync/writerFence";
 import type { SheetSyncEntry } from "../../models/schemaHelpers";
 import {
   formatGoogleApiError,
@@ -7,7 +8,7 @@ import {
 } from "./diagnostics";
 import { getSheetsClient } from "./auth";
 import { upsertRow } from "./rowLookup";
-import { ensureTabsAndHeaders } from "./tabs";
+import { ensureTabsAndHeaders, resolveCompatibleSheetTitle } from "./tabs";
 import type { SyncableDocument, SyncTarget } from "./types";
 
 export async function syncRowToTargets(
@@ -15,6 +16,7 @@ export async function syncRowToTargets(
   targets: SyncTarget[],
   row: string[],
 ): Promise<SheetSyncEntry[]> {
+  await assertLeadTargetWritesAllowed(targets);
   const sheets = getSheetsClient();
   const authSummary = resolveAuthConfigSummary();
   const documentId = document._id.toString();
@@ -32,8 +34,10 @@ export async function syncRowToTargets(
     clientEmail: authSummary.clientEmail ?? null,
   });
 
-  for (const target of targets) {
+  for (const requestedTarget of targets) {
+    let target = requestedTarget;
     try {
+      target = { ...target, tabName: await resolveCompatibleSheetTitle(sheets, target.spreadsheetId, target.tabName) };
       // Only ensure the tab this sync actually writes to. Ensuring every
       // sibling tab (`target.ensureTabs`) on each row sync rewrote 5+ header
       // rows per source-sheet write and was the main driver of Sheets

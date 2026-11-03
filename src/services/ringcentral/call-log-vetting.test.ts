@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildRingCentralRouteSnapshot } from "../operationsRegistry";
-import { vetRingCentralCallLogRecord as vetWithSnapshot } from "./call-log-vetting";
+import { qualifiedCallFromCallLog, vetRingCentralCallLogRecord as vetWithSnapshot } from "./call-log-vetting";
 
 const mappings = [
   ["+18883083612", "tbm_prime_leads", "TBM Prime Inbounds"],
@@ -149,6 +149,32 @@ const inbound = {
   result: "Missed", to: { phoneNumber: "+18883083612" },
   from: { phoneNumber: "+13055554444" },
 };
+
+test("final parent result survives both transports with same-call answered conflicts", () => {
+  const observedAt = new Date("2026-11-01T06:35:00Z");
+  for (const result of [" Missed ", "Busy", "Voicemail", "No Answer", "Completed"]) {
+    const vet = vetRingCentralCallLogRecord({ ...inbound, result, durationMs: 150000,
+      legs: [{ telephonySessionId: "one-session", result: " Answered " }],
+    });
+    assert.equal(vet.qualifies, true);
+    for (const source of ["webhook", "call_log_sync"] as const) {
+      const descriptor = qualifiedCallFromCallLog(vet, source, observedAt);
+      assert.deepEqual(descriptor.finalCallLogResult, {
+        result, observedAt, callLogId: "one-call", answered: true,
+      });
+      assert.equal(descriptor.answeredAt, null);
+      assert.equal(descriptor.startTime, vet.startTime);
+    }
+  }
+});
+
+test("a foreign answered leg cannot turn a missed parent into same-call answered evidence", () => {
+  const vet = vetRingCentralCallLogRecord({ ...inbound, durationMs: 150000,
+    legs: [{ telephonySessionId: "different-call", result: "Answered" }],
+  });
+  assert.equal(vet.answered, false);
+  assert.equal(qualifiedCallFromCallLog(vet, "call_log_sync").finalCallLogResult?.answered, false);
+});
 
 test("120 seconds qualifies without any answer; precise milliseconds win over rounding", () => {
   for (const result of ["Missed", "Voicemail", "Accepted"]) {

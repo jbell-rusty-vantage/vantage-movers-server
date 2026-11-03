@@ -1,12 +1,10 @@
 import { type ClientSession } from "mongoose";
 import type { LeadModelName } from "../../config/domain";
 import { FormLead } from "../../models/FormLead";
-import { CallLead } from "../../models/CallLead";
 import { toFloridaTimestamp } from "../../utils/easternTime";
-import { resolveRequiredLocation, deriveFormLeadLocal, resolveOptionalLocation } from "../leads";
+import { resolveRequiredLocation, deriveFormLeadLocal } from "../leads";
 import {
   findDuplicateFormLeadMatch,
-  hasFormFillForCallLead,
   markMatchingCallLeadsWithFormFill,
 } from "../leads/duplicateLead.service";
 import { normalizeLeadName } from "../leads/leadName.service";
@@ -26,7 +24,6 @@ import { getLinkedLead } from "../leads";
 import { normalizePhoneNumberForStorage } from "../../utils/phone";
 import { V1ServiceError } from "../v1ServiceError";
 import type {
-  CreateReconciliationCallLeadInput,
   CreateReconciliationFormLeadInput,
 } from "../../validation/v1.validation";
 import type { PreparedEmployeeBookingSubmission } from "./types";
@@ -116,82 +113,6 @@ export async function attachLeadToEmployeeBooking(args: {
     operation: args.operation,
     bookingId: args.booking._id.toString(),
   };
-}
-
-export async function createAndAttachReconciliationCallLead(args: {
-  booking: any;
-  prepared: PreparedEmployeeBookingSubmission;
-  leadFields: CreateReconciliationCallLeadInput;
-  session?: ClientSession;
-  leadChanges?: LeadChangeRecorder;
-}): Promise<{ leadId: string; job: FullSheetSyncJob; extraJobs: FullSheetSyncJob[] }> {
-  const normalized = normalizeLeadName({
-    name: args.leadFields.name ?? args.prepared.leadName,
-    email: args.leadFields.email ?? args.prepared.email,
-    phone_number: normalizePhoneNumberForStorage(
-      args.leadFields.phone_number ?? args.prepared.phoneNumber,
-    ),
-    job_no: args.leadFields.job_no ?? args.prepared.jobNo,
-  });
-  const location = await resolveOptionalLocation(
-    {},
-    { workflow: "booking_reconciliation_create_call" },
-  );
-  const resolution = await resolveLeadSourceAssignment({
-    value: args.prepared.sourceAssignment.source_company,
-    company_slug: args.prepared.sourceAssignment.source_company,
-    granularity_key: args.prepared.sourceAssignment.source_granularity_key,
-    channel: "call",
-    local: location.local ?? args.prepared.local,
-  });
-  const formFill = await hasFormFillForCallLead(
-    {
-      sourceCompany: resolution.assignment.source_company,
-      leadSourceCompany: resolution.assignment.lead_source_company,
-    },
-    normalized.phone_number,
-  );
-  const timestamp = toFloridaTimestamp(new Date());
-  const cplSnapshot = await resolveLeadCplSnapshot({
-    sourceGranularityId: resolution.assignment.source_granularity_id
-      ? String(resolution.assignment.source_granularity_id)
-      : null,
-    storedBusinessTimestamp: timestamp,
-  });
-  const created = new CallLead({
-    ...normalized,
-    ...location,
-    ...resolution.assignment,
-    local: location.local ?? args.prepared.local,
-    form_fill: formFill,
-    timestamp,
-    ...cplSnapshot,
-    created_on_unmatched: false,
-  });
-  await created.save({ session: args.session });
-  args.leadChanges?.trackCreated("CallLead", created._id.toString());
-  if (created.cpl_resolution_status === "missing_rate") {
-    await recordMissingLeadCplRate({
-      leadModel: "CallLead",
-      leadId: created._id.toString(),
-      sourceCompany: String(resolution.assignment.source_company),
-      sourceGranularityId: resolution.assignment.source_granularity_id
-        ? String(resolution.assignment.source_granularity_id)
-        : null,
-      sourceGranularityKey: resolution.assignment.source_granularity_key,
-    });
-  }
-  const job = await attachLeadToEmployeeBooking({
-    booking: args.booking,
-    prepared: args.prepared,
-    leadModel: "CallLead",
-    leadId: created._id.toString(),
-    operation: "booking_reconciliation.create_and_attach",
-    sourceResolution: "apply_submission_source",
-    session: args.session,
-    leadChanges: args.leadChanges,
-  });
-  return { leadId: created._id.toString(), job, extraJobs: [] };
 }
 
 export async function createAndAttachReconciliationFormLead(args: {

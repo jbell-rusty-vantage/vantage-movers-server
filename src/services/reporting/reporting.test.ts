@@ -277,10 +277,12 @@ test("rolling windows are strict, bounded, fresh, and DST-aware", () => {
   }));
 });
 
+const qualifiedCall = { ingestion_source: "call_log_sync", call_log_id: "call", qualification_reason: "call_log_inbound_target_answered_over_120s", duration_seconds: 150 };
+
 test("source performance aggregates all related bookings with approved semantics", () => {
   const leads = [
     { _id: "l1", leadType: "form" as const, quoted: true, duplicate: false, cpl: 10.125, cpl_resolution_status: "resolved" },
-    { _id: "l2", leadType: "call" as const, quoted: true, bad_lead: "spam", cpl: 20, cpl_resolution_status: "missing_rate" },
+    { _id: "l2", leadType: "call" as const, ringcentral: qualifiedCall, quoted: true, cpl: 20, cpl_resolution_status: "missing_rate" },
   ];
   const bookings = [
     { _id: "b1", lead_ref: "l1", total_binder_amount: 100.111, deposit_amount: 10 },
@@ -291,7 +293,7 @@ test("source performance aggregates all related bookings with approved semantics
     ["b2", [{}]], ["b3", [{}]],
   ]));
   assert.deepEqual(measures, {
-    total_leads: 2, valid_leads: 1, duplicates: 0, bad_leads: 1,
+    total_leads: 2, valid_leads: 2, duplicates: 0, bad_leads: 0,
     quoted_form_leads: 1, booked_leads: 2, cancelled_bookings: 2,
     net_bookings: 1, lead_to_booking_conversion: 1, net_conversion: 0.5,
     resolved_cpl_spend: 10.13, unresolved_cpl_count: 1,
@@ -312,8 +314,8 @@ test("CPL unresolved semantics exclude resolved zero and not-applicable states",
   const leads = [
     { _id: "f1", leadType: "form" as const, cpl_resolution_status: "resolved" },
     { _id: "f2", leadType: "form" as const, cpl_resolution_status: "duplicate_zero" },
-    { _id: "c1", leadType: "call" as const, cpl_resolution_status: "not_applicable" },
-    { _id: "c2", leadType: "call" as const, cpl_resolution_status: "missing_rate" },
+    { _id: "c1", leadType: "call" as const, ringcentral: qualifiedCall, cpl_resolution_status: "not_applicable" },
+    { _id: "c2", leadType: "call" as const, ringcentral: qualifiedCall, cpl_resolution_status: "missing_rate" },
   ];
   assert.equal(
     aggregateSourcePerformance(leads, [], new Map()).unresolved_cpl_count,

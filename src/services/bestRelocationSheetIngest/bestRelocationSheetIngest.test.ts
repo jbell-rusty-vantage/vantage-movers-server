@@ -32,19 +32,19 @@ test("restores leading zeroes dropped from formatted ZIP cells", () => {
   assert.throws(() => normalizeZip("unknown"));
 });
 
-test("decodes Google Sheets serial timestamps as owner-facing UTC components", () => {
+test("decodes Google Sheets serial timestamps using the New York source clock", () => {
   assert.equal(
     parseDate("45922.8633333333")?.toISOString(),
-    "2025-09-22T20:43:12.000Z",
+    "2025-09-23T00:43:12.000Z",
   );
-  assert.equal(parseDate("45922")?.toISOString(), "2025-09-22T00:00:00.000Z");
+  assert.equal(parseDate("45922")?.toISOString(), "2025-09-22T04:00:00.000Z");
   assert.equal(
     parseDateTime("45922", "20:43:12")?.toISOString(),
-    "2025-09-22T20:43:12.000Z",
+    "2025-09-23T00:43:12.000Z",
   );
   assert.equal(
     parseDate("45929.87042824074")?.toISOString(),
-    "2025-09-29T20:53:25.000Z",
+    "2025-09-30T00:53:25.000Z",
   );
 });
 
@@ -56,7 +56,17 @@ test("call parser accepts a combined Google Sheets serial timestamp", () => {
       ["716-383-0064", "45922.8633333333", ""],
     ]),
   );
-  assert.equal(call.timestamp, "2025-09-22T20:43:12.000Z");
+  assert.equal(call.timestamp, "2025-09-23T00:43:12.000Z");
+});
+
+test("external Calls are observations, never Call Lead creates", () => {
+  const headers = ["PHONE NUMBER", "Date", "Time"];
+  const calls = parseCallRows(makeTab("Calls", headers, [headers, ["716-383-0064", "45922.8633333333", ""]]));
+  const plan = buildIngestPlan({ forms: [], localForms: [], calls, booked: [], refunds: [], lidBestRelo: [],
+    leadsWorkbook: { id: "leads", title: "Leads" }, bookedWorkbook: { id: "booked", title: "Bookings" } });
+  assert.equal(plan.summary.calls, 1);
+  assert.equal(plan.mutations.length, 0);
+  assert.match(plan.warnings.join(" "), /not qualification evidence/);
 });
 
 test("parsers preserve source-row provenance and skip formula sentinels", () => {
@@ -402,55 +412,20 @@ test("live apply refuses to send the secret to an unpinned host", async () => {
           return new Response();
         },
       }),
-    /pinned/,
+    /permanently retired/,
   );
   assert.equal(called, false);
 });
 
-test("booking preflight uses filtered admin lookup and skips an existing job", async () => {
-  const plan = minimalPlan("https://vantage-movers-main-server.vercel.app");
-  plan.mutations = [
-    {
-      action: "create_leadless_booking",
-      idempotency_key: "booking:best_relocation_leads:P123",
-      api: {
-        method: "POST",
-        path: "/api/v1/leadless-bookings",
-        body: { job_no: "P123" },
-      },
-      sheet: { rows: [] },
-    },
-  ];
-  const urls: string[] = [];
-  const results = await applyIngestPlan(plan, {
-    apiSecret: "secret",
-    confirmProductionApply: true,
-    fetchImpl: async (input, init) => {
-      urls.push(String(input));
-      assert.notEqual(init?.method, "POST");
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          data: {
-            items: [
-              {
-                _id: "507f1f77bcf86cd799439011",
-                job_no: "P123",
-                normalized_job_no: "P123",
-              },
-            ],
-          },
-        }),
-        { status: 200 },
-      );
-    },
-  });
-  assert.match(urls[0], /admin\/booked-leads/);
-  assert.match(urls[0], /job_no=P123/);
-  assert.equal(results[0].status, "existing");
+test("retired legacy apply refuses Booking writes before any HTTP lookup", async () => {
+ const plan = minimalPlan("https://vantage-movers-main-server.vercel.app");
+ let calls = 0;
+ await assert.rejects(applyIngestPlan(plan, { apiSecret: "secret", confirmProductionApply: true,
+ fetchImpl: async () => { calls++; throw new Error("unexpected request"); } }), /permanently retired/);
+ assert.equal(calls, 0);
 });
 
-test("call preflight recognizes the route's bare-array response", async () => {
+test("an old saved plan cannot send any Call Lead creates", async () => {
   const plan = minimalPlan("https://vantage-movers-main-server.vercel.app");
   plan.mutations = [
     {
@@ -475,29 +450,11 @@ test("call preflight recognizes the route's bare-array response", async () => {
     },
   ];
   let calls = 0;
-  const results = await applyIngestPlan(plan, {
-    apiSecret: "secret",
-    confirmProductionApply: true,
-    fetchImpl: async () => {
-      calls += 1;
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          data: [
-            {
-              _id: "507f1f77bcf86cd799439011",
-              phone_number: "305-555-1212",
-              // Call creation stores Eastern wall-clock components in Mongo.
-              timestamp: "2026-01-01T10:00:00.000Z",
-            },
-          ],
-        }),
-        { status: 200 },
-      );
-    },
-  });
-  assert.equal(calls, 1);
-  assert.equal(results[0].status, "existing");
+  await assert.rejects(applyIngestPlan(plan, {
+    apiSecret: "secret", confirmProductionApply: true,
+    fetchImpl: async () => { calls++; throw new Error("unexpected HTTP write"); },
+  }), /permanently retired/);
+  assert.equal(calls, 0);
 });
 
 function minimalPlan(baseUrl: string): IngestPlan {

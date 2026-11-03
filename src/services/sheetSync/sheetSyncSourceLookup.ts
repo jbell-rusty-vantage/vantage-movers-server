@@ -1,3 +1,4 @@
+import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
 import mongoose from "mongoose";
 import {
   CALL_SHEET_HEADERS,
@@ -10,6 +11,8 @@ import { logger } from "../../logger";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import { deleteRowsFromTargets } from "../googleSheets/deleteRows";
+import { callLeadTargets, CALL_REPORTING_TARGET_KEYS } from "../googleSheets/leadReportingTargets";
+import type { CallLeadSheetSource } from "../googleSheets/types";
 import { getLeadTargets } from "../googleSheets/targets";
 import type { SyncableDocument } from "../googleSheets/types";
 import {
@@ -126,6 +129,10 @@ export async function syncSourceLead(
       no_sync: lead.get("no_sync") as boolean | null | undefined,
       duplicate: lead.get("duplicate") as boolean | null | undefined,
       bad_lead: lead.get("bad_lead"),
+      ringcentral: lead.get("ringcentral"),
+      timestamp: lead.get("timestamp"),
+      form_fill: lead.get("form_fill") as boolean | null | undefined,
+      external_sheet_review: lead.get("external_sheet_review"),
     })
   ) {
     await syncAndStore(lead, (doc) => deleteOrdinaryNoSyncLeadRows(doc, leadModel));
@@ -139,6 +146,7 @@ export async function syncSourceLead(
       });
       return;
     }
+    if (getCallLeadReportingDecision(lead).disposition === "excluded") return;
     await lead.populate({ path: "booked", populate: { path: "customer" } });
     await syncAndStore(lead, syncCallLeadToSheets);
     return;
@@ -167,8 +175,8 @@ async function deleteOrdinaryNoSyncLeadRows(
   );
   const deletedTargets = await deleteRowsFromTargets(
     lead as unknown as SyncableDocument,
-    targets,
-    [masterTarget, sourceTarget],
+    isForm ? targets : callLeadTargets(lead as unknown as CallLeadSheetSource, true),
+    isForm ? [masterTarget, sourceTarget] : CALL_REPORTING_TARGET_KEYS,
   );
   return deletedTargets.map((target) => ({ target, status: "deleted" as const }));
 }

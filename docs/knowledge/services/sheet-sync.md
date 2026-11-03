@@ -13,6 +13,7 @@ applies_to:
   - src/services/sheetSync/drainer/runSheetSyncDrain.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
   - src/services/sheetSync/noSyncLead.ts
+  - src/services/sheetSync/writerFence.ts
   - src/config/domain/sheetSync.ts
   - src/routes/sheet-sync-cron.routes.ts
   - api/queues/sheet-sync-consumer.ts
@@ -161,23 +162,31 @@ Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin
 
 `runSheetSyncDrain(trigger, options?)` — queue, cron, and admin retry all enter here.
 
-1. **Acquire** global lease `sheet-sync:drain`; skip (`skipped: true`) if another drain holds it.
+1. **Check topology fence** `lead-reporting:tab-migration`; return `skipped: true` before acquiring/claiming anything while held. **Acquire** global lease `sheet-sync:drain`; skip (`skipped: true`) if another drain holds it.
 2. **Create** `SheetSyncRun` (`running`). Heartbeat renews the drain lease and claimed job leases; lease loss throws.
 3. **Claim** due jobs (`pending`/`retrying`, `due_at ≤ now`, unleased) up to `maxJobsPerDrain` (500), sorted `priority desc, createdAt asc`.
 4. **Plan** each representative via `jobPlanner.ts` — reload current Mongo (or tombstone). Duplicate claimed keys are later marked `synced` with `coalesced_into_representative`.
-5. **Batch write** per tab via `batchWriter.ts` + `QuotaLimiter`.
+5. **Recheck topology fence**, then **batch write** destinations before stale deletes via `batchWriter.ts` + `QuotaLimiter`. Failed/deferred destination upserts prevent stale deletes. Identical per-ID writes from overlapping jobs are coalesced without losing per-job outcomes; conflicting payloads fail. Duplicate physical IDs are repaired and logged.
 6. **Persist** `sheet_sync[]` with direct `updateOne` (must not abort the run). Metadata persist failure flips those outcomes to `failed`.
 7. **Finalize** jobs: empty plan (doc gone / unmatched skip) → `synced`; all writes ok → `synced`; any `failed` → `retrying` with exponential backoff (30s × 2^(attempts-1), cap 15 min) until `maxAttempts` (8) then `failed`; quota `deferred` → `retrying` in 60s **without** burning an attempt, `target_hints` = failed/deferred targets only.
 8. Run timeout releases **unplanned** remaining claims back to `pending`. Run-level exception releases that run's still-`processing` jobs to `retrying` and logs `sheet_sync.drain.failed`.
 
 Planner skip/fail paths (also true on the legacy `syncSourceLead` path):
 
-- Ordinary [No-Sync Lead](../../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`): `planSourceLead` / `syncSourceLead` skip Forms/Calls upserts and delete living Forms or Calls rows only. Duplicate Lead and Bad Lead still run today's planner — `no_sync` does not delete or skip Duplicates, Duplicate Calls, or Bad Leads. [Booking Chain](../../../../CONTEXT.md) still writes Booked Deals (Mongo Lead ID stays); the linked ordinary source Lead uses the same predicate and must not upsert Forms or Calls. Do not gate only `persistSheetSyncIntent`. Create with `no_sync: true` does not enqueue `form_lead.create` / `call_lead.create`.
-- [Unmatched Call Lead](../../../../CONTEXT.md) (`CallLead.created_on_unmatched === true`) → empty plan / no Calls row (do not invent a lead row). Distinct from No-Sync; unmatched is not a living-lead delete.
-- Missing booking or cancellation → empty plan, job marked `synced`.
-- Form `bad_lead` set → primary tab **plus** Master `Bad Leads` upsert. Cleared `bad_lead` deletes Master `Bad Leads` only when `sheet_sync[]` already has that target (queued). Legacy `syncFormLeadToSheets` always attempts the Bad Leads delete when `bad_lead` is falsy.
-- Call duplicate flip → upsert current tab and **delete** the stale Calls / Duplicate Calls tab even when `sheet_sync[]` is empty (Mongo-id lookup).
-- Tombstone targets with unknown headers or outside `target_hints` are dropped.
+- Ordinary `no_sync` suppresses upserts. Ordinary Forms delete only normal Forms targets; ordinary Calls clean all three Call destinations. Effective duplicate/bad Call exceptions and canonical/trusted imported bad Forms still project. Official Booking/Cancellation chain rows retain their own writes.
+- Unmatched/unqualified Calls produce no sheet upsert, including through the direct facade. `getCallLeadReportingDecision` owns qualification-aware disposition across planner, legacy, contains and retries. Syncing an excluded Call does not itself remove a preexisting row; an explicit delete/reprojection repair owns that cleanup.
+- Forms write Forms or Duplicate Forms plus supplemental Bad Form Leads when canonical `bad_lead` or trusted `external_sheet_review.kind === "bad_form"` applies. Clearing the fact deletes both old/new bad-Form titles even with empty metadata.
+- Calls upsert exactly one of Calls / Duplicate Calls / Bad Call Leads, then delete the same Mongo ID from the other two tabs. Form Fill and trusted duplicate review are reporting duplicates without rewriting `duplicate`. Duplicate disposition takes precedence over bad. All Call tabs retain the same headers/projection.
+- Call retries always replan the full current membership; old `target_hints` cannot delete the new desired row or skip an updated destination. Tombstones enumerate all possible Lead targets and historical locations, including old/new Form titles. Unknown target headers are dropped; source-lead tombstones are not restricted by old target hints.
+- Missing Booking/Cancellation documents produce an empty plan. Official outcomes remain reportable when their Lead becomes nonbillable.
+
+## Temporary topology writer fence
+
+`writerFence.ts` reads the durable `SheetSyncLease` scope `lead-reporting:tab-migration` on each write boundary. A future `leased_until` blocks legacy/direct Form/Call upserts, deletes and provisioning before any Google write with retryable `lead_sheet_tab_migration_in_progress`; a failed lookup also fails closed. No permanent flag is added. Direct Booked/Cancelled targets do not depend on this lead-topology lease.
+
+A queued drain checks before claiming and rechecks immediately before batch delivery. A held lease at entry leaves every outbox row untouched. A fence acquired while planning releases claims to retrying without incrementing attempts; work resumes after release/expiry using current Mongo. Domain transactions continue persisting outbox intent while delivery is fenced.
+
+The operator must deploy compatible writers, acquire both the topology fence and existing `sheet-sync:drain` lease, renew them, and wait for older invocations to finish before physical renames or derivative formula updates. Migration uses explicit operator Google APIs, not a bypass in the facade. Clear title/header caches, verify renamed numeric IDs, headers, derivative formulas and live membership, then release leases. A lease check does not cancel a Google request already in flight. Legacy Form aliases are never cached: warm isolates re-resolve them after the numeric-ID rename. See [Google Sheets](./google-sheets.md) for compatibility mapping and the checksummed idempotent migration helper.
 
 ## Domain service integration
 
@@ -218,7 +227,7 @@ No destructive "heal" that could fight the drainer for the same rows.
 | `sheet_sync_jobs` | `SheetSyncJob` | Durable outbox |
 | `sheet_sync_runs` | `SheetSyncRun` | Per-drain audit; expires 90 days after `started_at` (`sheet_sync_run_started_ttl`, disk trim 2026-10-07) |
 | `sheet_sync_attempts` | `SheetSyncAttempt` | Per-target write outcomes; expires 90 days after `createdAt` (`sheet_sync_attempt_created_ttl`) |
-| `sheet_sync_leases` | `SheetSyncLease` | Global drain mutex |
+| `sheet_sync_leases` | `SheetSyncLease` | Global drain mutex and short-lived topology writer fence |
 
 `sheet_sync_jobs` (the outbox) has no TTL; the admin run list reads the newest page only, so nothing selects a run older than 90 days. `QuotaLimiter` uses `SheetSyncQuotaBucket` for per-minute budgets. Domain documents store `sheet_sync[]` (spreadsheet, tab, `row_number` hint, status).
 

@@ -1,9 +1,9 @@
 ---
 type: Service
 title: Best Relocation Ingestion
-description: Fenced Best Relocation sheet inspect/preview/adopt/apply through canonical domain commands.
+description: Retired recurring Best Relocation ingestion; read-only evidence and a scoped final-reconciliation engine remain.
 tags: [ingestion, best-relocation]
-status: draft
+status: retired
 stale_after: 2026-09-21
 resource: src/services/ingestion/applyPlan.ts
 applies_to:
@@ -34,58 +34,41 @@ generated:
 
 # Best Relocation Ingestion
 
-**System of Record:** MongoDB domain documents written only through canonical commands ([`domain-commands.md`](./domain-commands.md)). Best Relocation workbooks are the external evidence source. Ingestion runs, receipts, and conflicts (`IngestionRun`, `SourceRowReceipt`, `IngestionConflict`, `ExternalDataConnection` key `best_relocation`) are operational evidence, not a second Lead authority.
+Recurring ingestion is permanently fenced in this build. This is implementation evidence, not a claim that final reconciliation or production cutover has completed.
 
-**Role:** Inspect Best Relocation sheets, plan create/update/adopt/conflict actions after the 2026-04-30 Eastern cutoff, and apply a checksum-bound plan under a single lease. This is not Sheet Sync and not Granot HTTP automation.
+The old queue worker acknowledges delayed deliveries with `status: retired` before Mongo or source reads. The publisher cannot send; the Vercel queue trigger and heartbeat cron are removed. The compatibility heartbeat acknowledges `reason: retired` without work. Old HTTP mutations return `410 / BEST_RELOCATION_RETIRED` after Owner authentication; stored connection/run/conflict GETs remain readable. Admin Setup and the old ingestion dashboard have no activation, preview, apply, retry or identity-repair controls. Setting the old environment flag cannot resume ingestion. Legacy direct HTTP apply throws before any request.
 
-## HTTP / queue / cron
+MongoDB remains the System of Record. Historical Leads, source routes, receipts, links, Bookings and Cancellations remain; legitimate Granot matching and lifecycle updates continue.
 
-| Surface | Path | Notes |
-|---------|------|-------|
-| Connection | `GET/PATCH /api/v1/admin/ingestion/connections/best-relocation` | Read actor / Owner actor |
-| Inspect | `POST .../inspect` | Read-only. `repair_identity=true` is Owner-gated and still 409 — repair runs only inside a fenced bootstrap/apply |
-| Preview / queue | `POST .../preview` | Owner. `bootstrap` / `dry_run` / default `manual` → `createQueuedIngestionRun` + 202 |
-| Approve apply | `POST .../run` | Owner. `{ run_id, plan_checksum }` while `awaiting_approval` |
-| Retry | `POST .../runs/:runId/retry` | Owner + env gate |
-| Conflicts | `GET .../conflicts`, `POST .../conflicts/:id/resolve` | Resolve delegates Booking attach to a canonical command |
-| Queue | Best Relocation ingestion consumer | `runBestRelocationIngestionWorker` |
-| Cron | Best Relocation ingest heartbeat | skips before source reads when gates are off |
-| CLI dry-run | `pnpm ingest:best-relocation -- --dry-run` | Inspects Forms / Local Forms / Calls / Booked Deals / Refunds. Applies receipt skip when the connection exists, then `applyCanonicalAdoptionPolicy`. Writes sanitized `DRY-RUN-REPORT.md` / `dry-run-report.json` (no names, phones, or emails). `ingest-plan.json` stays restricted. CLI live apply is retired. |
+## Scoped final reconciliation
 
-`BEST_RELOCATION_INGEST_ENABLED` must be true before `application_enabled=true`, non-bootstrap apply, or retry. `application_enabled` also requires a completed bootstrap (`bootstrap_completed_at`). Cadence is 24 or 48 hours.
+`applyBestRelocationPlan` remains the canonical command/checkpoint engine for archived operator tooling. The retired default rejects callers without an explicit `final_reconciliation: { run_id, plan_checksum }` matching the input, an Owner initiator, and an `assertApplicationEnabled` callback. That callback must check the live connection retirement marker and held final-run lease. It runs before processing and before every action/checkpoint. No HTTP or recurring worker exposes this exception. Replay repairs physical Sheet membership independently because canonical command replay correctly emits no new outbox intent.
 
-## Happy path
+The final import creates Forms with CRM posting and SMS consent forced off at the canonical create boundary. New imported Forms carry the protected immutable `outreach_automation_suppressed` audit marker. Shared `isImportOutreachSuppressed` holds new automatic intake, expansion and Pool admission until a protected accepted Granot observation has a capture time strictly after the Form's `createdAt`. Missing, old or simultaneous observation evidence stays held; the imported business timestamp never releases it. A later accepted observation restores the ordinary eligibility/closure/source/identity checks, rather than granting admission by itself. Existing historical subjects, Pool membership, explicit Owner-reviewed enrollment/selected-ID activation and ordinary intake retain their contracts. External sheet Calls never create Call Leads.
 
-1. Owner queues a run (`preview` is mutation-free after planning; `manual` / `bootstrap` require later approval).
-2. Worker claims `ingestion:best_relocation:apply` (5-minute lease). Approved applying runs are claimed first, then queued.
-3. Planner reads sheets (readonly scope): Forms, Local Forms, Calls, Booked Deals, Refunds. Rows at or after `BEST_RELOCATION_CUTOFF` (`2026-04-30T04:00:00.000Z`, America/New_York midnight) may enter the plan. Pre-cutoff observations never become actions. `LID_BestRelo` is matching evidence only — never an action.
-4. Owner approves with the exact `plan_checksum`. Altered plans fail before mutation. Open `blocking` / `critical` conflicts must be dispositioned first.
-5. `applyBestRelocationPlan` walks actions under the held lease. `unchanged` counts as completed. Domain mutations go through `canonicalDomainCommands` with origin `external_sheet_ingestion` and a deterministic idempotency key. `adopt_existing` writes a receipt only and puts the adopted entity id on the dependency map so a later Booking can bind that Form Lead or Call Lead without minting a second Lead. `record_conflict` opens a conflict unless already dispositioned.
-6. Checkpoint after each action. Resume uses `start_action_index` and does not replay successful actions.
+## Durable retirement cutover
 
-Bootstrap remaps creates to receipt-only `adopt_existing` and does not run canonical adoption. Recurring preview / manual / schedule planning then applies receipt skip (`applySourceChangePolicy`) and **adopt-before-create** (`applyCanonicalAdoptionPolicy`). Receipt-skip and already-adopted actions stay as-is. A remaining Form Lead create becomes `adopt_existing` when exactly one Best Relocation Form Lead matches sheet `ref_no` / `lid` (Tracking Reference / LID), or — when that misses — unique phone + name + same America/New_York day on or after the cutoff (contact match skips Duplicate Leads). Two matches are `ambiguous_lead_match`. Zero matches stay a create. Call Leads adopt on phone + persisted timestamp (same two-match conflict). Bookings adopt on unique `normalized_job_no`. Refunds adopt an existing Cancellation for the Booking already on the dependency map. Adopt is receipt-only: no field upsert. Granot-minted Form Leads keep [Ingestion Origin](../../../../CONTEXT.md) `granot_lead_created`.
+`retireBestRelocationConnectionAndSources` (`src/services/ingestion/retireBestRelocation.ts`) is operator-only. Call it after capturing final-run outcomes (including explicit conflicts) and after releasing the final runner's apply lease. Input is the inventoried canonical company ID, every applicable Granot CRM Source ID, final-run reference, reconciliation status (`complete` or `incomplete`, defaulting to `incomplete`) and Owner durable actor. It acquires `ingestion:best_relocation:apply`; an active lease or an old run reporting a live lease blocks cutover for checkpoint inspection. Its transaction:
 
-## Skip / fail paths
+- verifies the canonical `best_relocation_leads` company and the complete source inventory (company IDs plus exact normalized Forms/Locals/Inbounds labels, including joined `BestRelocation` variants);
+- persists company/source retirement markers, changes policies to `link_only`, installs the retired source policy version and disables new-lead confirmation texts;
+- marks the connection retired with final-run reference and honest reconciliation status, `application_enabled=false`, and `next_due_at=null`;
+- terminally skips old queued, inspecting, planning, awaiting-approval, applying and failed runs, preserving their plans/checkpoints as evidence.
 
-| Condition | Outcome |
-|-----------|---------|
-| Lease busy | `{ claimed: false, status: "lease_busy" }` — one owner only |
-| Env or `application_enabled` off on applying / schedule / retry (not bootstrap) | run `skipped` / `DEPLOYMENT_GATE_DISABLED` |
-| Failed dependency | dependent actions increment `skipped_dependencies` and continue |
-| Row-scoped Zod / Conflict / NotFound / invalid Google request | row `failures`, run continues |
-| Other errors or lost lease | throw; do not keep applying |
-| Unmatched Booking | leadless Booking **plus** one reconciliation conflict |
-| Unmatched refund | blocking conflict; never invent a Cancellation. Below-threshold / review-only refunds do not cancel |
-| Missing source on a later plan | preserve canonical refs; **never delete** |
-| Copied / malformed managed identities | block inspect/repair; preview never writes identity cells |
+The runtime source resolver forces `link_only` for the canonical company slug, durable source/company markers, and exact known labels even if an old migration reinstalls `create_if_missing`. The transactional Granot create executor re-resolves this live policy, so stale decisions cannot mint Leads. Setup/registry semantic validation rejects re-enable, and dispatch rechecks queued Granot confirmation texts against retirement before provider send. Unrelated sources retain legitimate Form creation.
 
-## Health alerts
+Record live registry before/after IDs, labels, routes and policy versions in restricted final-run evidence. Preserve shared credentials and Master Sheet IDs; ingestion-only workbook IDs remain available only to explicit archived final tooling. Recurring retirement alone is not a clean final ingestion: report **retired; final reconciliation incomplete** while data conflicts, membership proof or second-run idempotency remain unresolved.
 
-`shouldAlertIngestionSignal` always alerts on structural failure, schema/formula drift, duplicate source identity, lease contention, and completed-with-errors. `zero_parsed_counts` alerts when `read_count === 0`. `unmatched_refunds`, `leadless_booking_growth`, and `conflict_growth` alert at count ≥ 5. Route errors never expose provider or source details.
+## Local verification (not production qualification)
 
-## Related services
+`node --import tsx ops/best-relocation-retirement/retirement.replica.ts` uses only local `127.0.0.1:27119`, replica `callReportingProof`, and a disposable `testvantagemovers_retirementproof<pid>` database. It proves exact variant/company inventory, active lease and live checkpoint refusal, transactional aggregate rollback on missing final approval/stale epoch/retired connection, null legacy SMS compatibility, durable company/ID policy enforcement, cancellation with checkpoint preservation, skipped queued confirmation before provider send, preserved official Booking, explicit incomplete reconciliation and repeat cutover without extra sources/runs. It drops only its own disposable database and leaves the shared local Mongo process running. Deployment, final source capture, real reconciliation, Sheet membership and former-heartbeat observation remain separate release gates.
 
-- [`domain-commands.md`](./domain-commands.md) — only mutation path
-- [`bookings.md`](./bookings.md) / [`employee-bookings.md`](./employee-bookings.md) — leadless Booking + Owner case when a sheet Booking has no Lead
-- [`form-lead.md`](./form-lead.md) — trusted `ingestion_origin=best_relocation_sheet` on sheet-minted creates; adopt does not rewrite Granot-minted `granot_lead_created`
-- [`cancelled-lead.md`](./cancelled-lead.md) — Refunds become a Cancellation only when a Booking is already resolved
+## Reporting derivative formula migration
+
+Archived operator helper `ops/best-relocation-retirement/derivativeFormulas.ts` exports `inspectDerivativeFormulas`, `applyDerivativeFormulas`, `verifyDerivativeFormulas` and `derivativeFormulaPlanChecksum`. Inspection resolves Master and every configured Source Company reporting workbook through the domain helpers, deduplicates destinations and records unconfigured destinations. The retired tracker and booked-source workbooks are excluded even if misconfigured as reporting destinations; a protected-ID conflict blocks apply. The distinct `BEST_RELOCATION_LEADS_SHEET_ID` reporting derivative remains eligible.
+
+The checksum-bound restricted plan contains numeric source tab IDs and formula cells with before/after values, never customer cell contents. Reads page at 40,000 cells, with reviewed per-workbook limits of 100,000 rows, 702 columns, five million grid cells and 10,000 formulas; oversized scope fails closed. Exact literal `IMPORTRANGE` source/range arguments and direct local sheet-reference tokens are rewritten; QUERY labels, SQL strings, unrelated imports and arbitrary text remain unchanged. Dynamic affected imports, simultaneous old/new titles, concurrent formula edits and changed topology require review. Local tab renames preserve numeric IDs. A new direct-write `Bad Call Leads` source tab/header is provisioned only when the existing `WRITE_SOURCE_LEAD_SHEETS` setting was enabled and remains enabled; the helper never changes that setting.
+
+The caller must hold both topology and drainer writer fences and supply a renewing `assertLease` callback for every provider call. Apply accepts original or already-applied cells/topology after interruption, writes formula changes with `USER_ENTERED`, and verifies every changed or Master-referencing formula against its recalculated `effectiveValue`, including provider error types and missing/pending results. Verification retries are bounded and returns `complete:false` while calculation errors remain. Local mocked tests cover exact references, protected workbooks, mutation-free inspection, stale plan refusal, effective errors, provisioning, interrupted rename resume and idempotent repeat apply. Real derivative calculation and permissions remain a production release proof.
+
+Provider semantics: [Sheets range/field-mask reads](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get), [calculated cell values](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/cells), and [formula input parsing](https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueInputOption).

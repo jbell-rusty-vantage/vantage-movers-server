@@ -81,3 +81,7 @@ Every unreviewed row remains lifecycle-disabled, deferred, observation-only, and
 - Identity consumes this snapshot and never copies Registry semantics ([`identity.md`](./identity.md)).
 - Decision processor consumes this read/gate snapshot and Unit 14 identity ([`processor.md`](./processor.md)).
 - Successful snapshots also carry `operational_enabled`, `lifecycle_enabled`, `source_company_active`, and `source_granularity_active` so Unit 15 can persist real gate facts.
+
+## Best Relocation retirement (November 3, 2026 build)
+
+The runtime snapshot forces `link_only` for the canonical Best Relocation company, exact normalized Forms/Locals/Inbounds labels (spaced and joined spelling) and durable company/source retirement markers. Creation re-resolves this policy inside its canonical transaction, so a pre-retirement decision cannot mint a Form or Call Lead. Registry semantics reject re-enable. Routes, identity resolution, historical enrichment, official Booking/Cancellation processing and unrelated sources remain available. See [ingestion.md](../services/ingestion.md) for operator cutover and unqualified production evidence.

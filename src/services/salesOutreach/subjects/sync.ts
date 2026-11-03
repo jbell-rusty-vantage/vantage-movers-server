@@ -1,3 +1,4 @@
+import { isImportOutreachSuppressed } from "./importAdmission";
 import { createHash } from "node:crypto";
 import type { ClientSession } from "mongoose";
 import { leadPhoneE164 } from "../../numberActivity/leadContactNumber";
@@ -366,6 +367,7 @@ export function intakeAdmissionOf(
   decision: DeskPolicyDecision = resolveDeskPolicy(facts, configuration.value.cadence),
 ): IntakeAdmission {
   const { transition } = configuration.value;
+  if (isImportOutreachSuppressed(facts)) return { admit: false, reason: "historical_reconciliation" };
   if (!transition.intake_admission_enabled || !transition.intake_admission_at) return { admit: false, reason: "intake_disabled" };
   const gate = new Date(transition.intake_admission_at);
   if (!facts.created_at || +facts.created_at <= +gate) return { admit: false, reason: "created_before_intake" };
@@ -442,6 +444,7 @@ export function expansionAdmissionOf(
 ): ExpansionAdmission {
   const refuse = (reason: string): ExpansionAdmission => ({ admit: false, deferred: false, reason: `${EXPANSION_REASON_PREFIX}${reason}` });
   const { transition, migration } = configuration.value;
+  if (isImportOutreachSuppressed(facts)) return refuse("historical_reconciliation");
   if (transition.expansion_admission_enabled !== true) return refuse("admission_disabled");
   if (migration.paused) return refuse("migration_paused");
   if (expansionNeedsCreationSettled(facts, configuration) && !input.creation_settled) return { admit: false, deferred: true, reason: "deferred_to_intake" };

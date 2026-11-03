@@ -83,7 +83,9 @@ export function vetRingCentralCallLogRecord(
   // A parent record spans one caller's call. Parallel/transfer legs must never
   // supply its duration. Prefer precise milliseconds over rounded seconds.
   const durationSeconds = readParentElapsedSeconds(root);
-  const answered = isAnswered(root) || legs.some(isAnswered);
+  const answered = isAnswered(root) || legs.some((leg) =>
+    (!root?.telephonySessionId || !leg.telephonySessionId || leg.telephonySessionId === root.telephonySessionId) &&
+    isAnswered(leg));
   const overMinimumDuration =
     durationSeconds !== null && durationSeconds >= CALL_LEAD_MINIMUM_ELAPSED_SECONDS;
 
@@ -147,6 +149,7 @@ const EMPTY_ROUTE_SNAPSHOT: RingCentralRouteSnapshot = Object.freeze({
 export function qualifiedCallFromCallLog(
   vet: RingCentralCallLogVetResult,
   ingestionSource: RingCentralQualifiedCall["ingestionSource"],
+  observedAt: Date = new Date(),
 ): RingCentralQualifiedCall {
   if (!vet.qualifies || !vet.startTime || vet.durationSeconds === null ||
       !vet.routeResolution || !vet.sourceCompany || !vet.callerPhoneNumber) {
@@ -170,6 +173,12 @@ export function qualifiedCallFromCallLog(
     startTime: vet.startTime,
     durationSeconds: vet.durationSeconds,
     qualificationReason: "call_log_inbound_target_elapsed_at_least_120s",
+    ...(vet.result ? { finalCallLogResult: {
+      result: vet.result,
+      observedAt,
+      callLogId: vet.callLogId,
+      answered: vet.answered,
+    } } : {}),
   };
 }
 
@@ -214,7 +223,8 @@ function findTargetName(
 
 function isAnswered(recordOrLeg: Record<string, unknown> | null): boolean {
   const result = valueToString(recordOrLeg?.result);
-  return result !== null && ANSWERED_RESULTS.has(result);
+  return result !== null && [...ANSWERED_RESULTS].some((known) =>
+    known.toLowerCase() === result.trim().toLowerCase());
 }
 
 function getLegs(record: Record<string, unknown> | null): Record<string, unknown>[] {
