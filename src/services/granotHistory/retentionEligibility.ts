@@ -11,7 +11,9 @@ export function routineAutomationChain(
   return (
     ds.length === 1 &&
     d?.execution_mode === "live" &&
-    d.outcome === "already_current" &&
+    (d.outcome === "already_current" ||
+      (d.outcome === "stale" &&
+        d.reason_code === "older_than_temporal_winner")) &&
     Array.isArray(d.effects) &&
     !d.effects.length &&
     r.observation_channel === "granot_http_automation" &&

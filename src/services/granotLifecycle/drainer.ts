@@ -461,7 +461,7 @@ async function runFencedProcessor(
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(result.decision_id),
           ...(claimed.claimed.channel_operation_id ? { "processing.replay_result": result } : {}),
-          ...(claimed.claimed.observation_channel === "granot_http_automation" && result.outcome === "already_current" && !result.effects.length
+          ...(claimed.claimed.observation_channel === "granot_http_automation" && (result.outcome === "already_current" || result.outcome === "stale") && !result.effects.length
             ? { "processing.retention_review_at": new Date(+now + 7 * 86400000 + 60000) } : {}),
           "processing.technical_attempts": 0,
         },

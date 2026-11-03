@@ -28,82 +28,76 @@ async function main() {
       "synchronization_decisions",
     ];
     for (const name of collections) await db.createCollection(name);
-    await db
-      .collection(collections[0])
-      .createIndex(
-        { observation_channel: 1, channel_operation_id: 1 },
-        {
-          unique: true,
-          partialFilterExpression: {
-            channel_operation_id: { $type: "string" },
-          },
-          name: "granot_observation_receipt_channel_operation_id_unique",
+    await db.collection(collections[0]).createIndex(
+      { observation_channel: 1, channel_operation_id: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          channel_operation_id: { $type: "string" },
         },
-      );
+        name: "granot_observation_receipt_channel_operation_id_unique",
+      },
+    );
     await installRetention(db, new Date(+now - 14 * day));
     const receipts: ObjectId[] = [];
-    for (const [i, age] of [10, 9, 35].entries()) {
+    for (const [i, age] of [10, 9, 35, 11].entries()) {
       const at = new Date(+now - age * day),
         r = new ObjectId(),
         o = new ObjectId(),
         d = new ObjectId();
       receipts.push(r);
-      await db
-        .collection(collections[0])
-        .insertOne({
-          _id: r,
-          createdAt: at,
-          captured_at: at,
-          observation_channel: "granot_http_automation",
-          channel_operation_id: run + ":" + i,
-          channel_operation_kind: "lead_snapshot_apply",
-          payload_sha256: "a".repeat(64),
-          processing: {
-            state: "completed",
-            completed_at: at,
-            latest_decision_id: d,
-            retention_review_at: now,
-          },
-        });
-      await db
-        .collection(collections[1])
-        .insertOne({
-          _id: o,
-          receipt_id: r,
-          captured_at: at,
-          identity: { normalized_job_no: job },
-          priority: { valid: true, canonical: "9" },
-          kind: "lead_snapshot",
-        });
-      await db
-        .collection(collections[2])
-        .insertOne({
-          _id: d,
-          observation_id: o,
-          attempt: 1,
-          execution_mode: "live",
-          outcome: "already_current",
-          target: { model: "FormLead", id: String(lead) },
-          effects: [],
-          decided_at: at,
-        });
+      await db.collection(collections[0]).insertOne({
+        _id: r,
+        createdAt: at,
+        captured_at: at,
+        observation_channel: "granot_http_automation",
+        channel_operation_id: run + ":" + i,
+        channel_operation_kind: "lead_snapshot_apply",
+        payload_sha256: "a".repeat(64),
+        processing: {
+          state: "completed",
+          completed_at: at,
+          latest_decision_id: d,
+          retention_review_at: now,
+        },
+      });
+      await db.collection(collections[1]).insertOne({
+        _id: o,
+        receipt_id: r,
+        captured_at: at,
+        identity: { normalized_job_no: job },
+        priority: { valid: true, canonical: "9" },
+        kind: "lead_snapshot",
+      });
+      await db.collection(collections[2]).insertOne({
+        _id: d,
+        observation_id: o,
+        attempt: 1,
+        execution_mode: "live",
+        outcome: i === 3 ? "stale" : "already_current",
+        reason_code:
+          i === 3
+            ? "older_than_temporal_winner"
+            : "desired_state_already_current",
+        target: { model: "FormLead", id: String(lead) },
+        effects: [],
+        decided_at: at,
+      });
       if (i === 1)
         await db
           .collection("sales_outreach_pool_work")
           .insertOne({ episodes: [{ observation_id: o }] });
     }
-    await db
-      .collection("form_leads")
-      .insertOne({
-        _id: lead,
-        last_accepted_granot_observation: {
-          observation_id: new ObjectId(),
-          captured_at: now,
-        },
-      });
+    await db.collection("form_leads").insertOne({
+      _id: lead,
+      last_accepted_granot_observation: {
+        observation_id: new ObjectId(),
+        captured_at: now,
+      },
+    });
     const shadow = await runFutureRetention(db, now);
     assert.equal(shadow.status, "shadow");
-    assert.equal(shadow.archived, 1);
+    assert.equal(shadow.archived, 2);
     assert.equal(shadow.stamped, 0);
     for (const name of collections)
       assert.equal(
@@ -121,13 +115,16 @@ async function main() {
       );
     const active = await runFutureRetention(db, now);
     assert.equal(active.status, "future");
-    assert.equal(active.stamped, 1);
+    assert.equal(active.stamped, 2);
     const rows = [];
     for await (const batch of archivedChains(db, job)) rows.push(...batch);
-    assert.equal(rows.length, 1);
-    assert.equal(String(rows[0].receipt._id), String(receipts[0]));
-    assert.equal((await readClosedRun(db, run))?.length, 3);
-    for (const id of receipts.slice(1))
+    assert.equal(rows.length, 2);
+    assert.deepEqual(
+      rows.map((c) => String(c.receipt._id)).sort(),
+      [receipts[0], receipts[3]].map(String).sort(),
+    );
+    assert.equal((await readClosedRun(db, run))?.length, 4);
+    for (const id of receipts.slice(1, 3))
       assert.ok(
         await db
           .collection(collections[0])
