@@ -69,6 +69,7 @@ export type ClaimedReceiptSnapshot = {
     last_error?: { code: string; message: string; failed_at: Date };
     completed_at?: Date;
     latest_decision_id?: mongoose.Types.ObjectId;
+    replay_result?: ProcessorResult;
     manual_requeue_count: number;
   };
 };
@@ -251,22 +252,14 @@ export async function claimAndProcessOrPoll(
   if (item.status === "completed" || item.status === "retry_scheduled" || item.status === "dead_letter") {
     if (item.status === "completed" && item.outcome) {
       const receipt = await (deps.loadReceipt ?? defaultLoadReceipt)(receiptId);
-      const stored = receipt?.processing.latest_decision_id
-        ? await (deps.loadDecisionResult ?? defaultLoadDecisionResult)(
-            receipt.processing.latest_decision_id,
-          )
-        : null;
+      const stored = await readReceiptResult(receipt, deps);
       if (stored) {
         return { status: "processed", result: stored };
       }
     }
     if (item.status === "completed") {
       const receipt = await (deps.loadReceipt ?? defaultLoadReceipt)(receiptId);
-      const stored = receipt?.processing.latest_decision_id
-        ? await (deps.loadDecisionResult ?? defaultLoadDecisionResult)(
-            receipt.processing.latest_decision_id,
-          )
-        : null;
+      const stored = await readReceiptResult(receipt, deps);
       if (stored) {
         return { status: "processed", result: stored };
       }
@@ -289,11 +282,7 @@ export async function claimAndProcessOrPoll(
     return { status: "skipped", reason: "not_found" };
   }
   if (receipt.processing.state === "completed") {
-    const stored = receipt.processing.latest_decision_id
-      ? await (deps.loadDecisionResult ?? defaultLoadDecisionResult)(
-          receipt.processing.latest_decision_id,
-        )
-      : null;
+    const stored = await readReceiptResult(receipt, deps);
     if (stored) {
       return { status: "processed", result: stored };
     }
@@ -468,6 +457,7 @@ async function runFencedProcessor(
           "processing.state": "completed",
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(result.decision_id),
+          ...(claimed.claimed.channel_operation_id ? { "processing.replay_result": result } : {}),
           "processing.technical_attempts": 0,
         },
         $unset: {
@@ -657,9 +647,7 @@ async function pollForResult(
       return { status: "skipped", reason: "not_found" };
     }
     if (receipt.processing.state === "completed" && receipt.processing.latest_decision_id) {
-      const stored = await (deps.loadDecisionResult ?? defaultLoadDecisionResult)(
-        receipt.processing.latest_decision_id,
-      );
+      const stored = await readReceiptResult(receipt, deps);
       if (stored) {
         return { status: "processed", result: stored };
       }
@@ -676,9 +664,7 @@ async function pollForResult(
     return { status: "skipped", reason: "not_found" };
   }
   if (receipt.processing.state === "completed" && receipt.processing.latest_decision_id) {
-    const stored = await (deps.loadDecisionResult ?? defaultLoadDecisionResult)(
-      receipt.processing.latest_decision_id,
-    );
+    const stored = await readReceiptResult(receipt, deps);
     if (stored) {
       return { status: "processed", result: stored };
     }
@@ -922,6 +908,16 @@ async function defaultFinalize(
 async function defaultLoadReceipt(id: string): Promise<ClaimedReceiptSnapshot | null> {
   const row = await getGranotObservationReceiptModel().findById(id).lean();
   return row ? toSnapshot(row) : null;
+}
+
+/** A later reconciliation can supersede the original decision. Only replay the matching result. */
+async function readReceiptResult(receipt: ClaimedReceiptSnapshot | null, deps: DrainerDeps) {
+  const processing = receipt?.processing;
+  if (!processing?.latest_decision_id) return null;
+  if (processing.state === "completed" && processing.replay_result?.decision_id === String(processing.latest_decision_id)) {
+    return processing.replay_result;
+  }
+  return (deps.loadDecisionResult ?? defaultLoadDecisionResult)(processing.latest_decision_id);
 }
 
 async function defaultLoadDecisionResult(

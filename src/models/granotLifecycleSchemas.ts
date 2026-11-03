@@ -653,6 +653,7 @@ export const granotReceiptProcessingSchema = new Schema(
     last_started_at: { type: Date },
     last_error: { type: granotReceiptLastErrorSchema },
     completed_at: { type: Date },
+    replay_result: { type: Schema.Types.Mixed },
     latest_decision_id: { type: Schema.Types.ObjectId },
     manual_requeue_count: { type: Number, required: true, min: 0 },
   },

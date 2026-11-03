@@ -542,3 +542,23 @@ test("nonblocking refresh honors an Owner requeue before the canonical claim", a
   assert.equal(result.status, "processed");
   assert.equal(deps.processorCalls.length, 1);
 });
+
+test("completed channel replay survives decision expiry and respects a superseding decision", async () => {
+  const original = processorResult("already_current");
+  const newer = processorResult("linked");
+  for (const latest of [original, newer]) {
+    const row = snapshot({
+      processing: {
+        state: "completed", technical_attempts: 0, match_attempt: 0,
+        next_attempt_at: capturedAt, completed_at: capturedAt, manual_requeue_count: 0,
+        latest_decision_id: toObjectId(latest.decision_id), replay_result: original,
+      },
+    });
+    const deps = memoryStore([row]);
+    if (latest === newer) deps.decisions.push(newer);
+    const response = await claimAndProcessOrPoll(String(row._id), deps);
+    assert.equal(response.status, "processed");
+    if (response.status === "processed") assert.equal(response.result.outcome, latest.outcome);
+    assert.equal(deps.processorCalls.length, 0);
+  }
+});
