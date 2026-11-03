@@ -1,3 +1,4 @@
+import { recentHistoryObservations } from "../../granotHistory/archiveReads";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 
 import { getFormLeadModel } from "../../../models/FormLead";
@@ -78,7 +79,7 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
   if (!row) return null;
   const leadRef = { "lead_ref.model": lead.model, "lead_ref.id": oid };
   const jobNo = str(row.normalized_job_no);
-  const [numbers, changes, observations, bookings, cancellations, messages] = await Promise.all([
+  const [numbers, changes, hotObservations, bookings, cancellations, messages] = await Promise.all([
     getContactNumberModel().find({ purged_at: null, $or: [{ "lead.id": oid }, { "other_leads.id": oid }] }, { e164: 1, lead: 1, lead_link: 1 })
       .sort({ _id: 1 }).limit(LIMITS.numbers).lean(),
     getEntityChangeModel().find({ "entity.model": lead.model, "entity.id": lead.id } as Row).sort({ applied_at: -1 }).limit(LIMITS.changes)
@@ -92,6 +93,9 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
     getLeadMessageModel().find(lead.model === "FormLead" ? { $or: [leadRef, { form_lead: oid }] } : leadRef).sort({ createdAt: -1 }).limit(LIMITS.messages)
       .select("purpose origin status dispatch_mode template_version to from sent_at delivered_at accepted_at attempt_count skip_reason last_error_code provider_status createdAt").lean(),
   ]);
+  const db = getGranotObservationModel().db.db;
+  if (jobNo && !db) throw new Error("Granot history database unavailable");
+  const observations = jobNo && db ? await recentHistoryObservations(db, jobNo, hotObservations, LIMITS.observations) : hotObservations;
   return serialize({
     lead: leadProjection(row, lead.model),
     contact_numbers: (numbers as unknown as Row[]).map((number) => {

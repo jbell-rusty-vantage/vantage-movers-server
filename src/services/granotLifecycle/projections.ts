@@ -1,3 +1,4 @@
+import { archivedChains, mergeEvidence } from "../granotHistory/archiveReads";
 import {
   getGranotLifecycleFlags,
   GRANOT_LIFECYCLE_ALERT_THRESHOLDS,
@@ -1175,7 +1176,7 @@ async function browseConnectLeadViews(
 async function buildTimelineForJob(
   normalizedJobNo: string,
 ): Promise<Omit<GranotTimelinePage, "next_cursor">> {
-  const [links, observations, bookingCases, releaseCases, bookingDiscrepancies, releaseDiscrepancies, booking] = await Promise.all([
+  const [links, hotObservations, bookingCases, releaseCases, bookingDiscrepancies, releaseDiscrepancies, booking] = await Promise.all([
     getGranotRecordLinkModel()
       .find({ provider: "granot", normalized_job_no: normalizedJobNo })
       .lean(),
@@ -1192,10 +1193,18 @@ async function buildTimelineForJob(
     getGranotReleaseDiscrepancyModel().find({ normalized_job_no: normalizedJobNo }).lean(),
     BookedLead.findOne({ normalized_job_no: normalizedJobNo }).lean(),
   ]);
-  const observationIds = observations.map((row) => row._id);
-  const decisions = observationIds.length
+  const observationIds = hotObservations.map((row) => row._id);
+  const hotDecisions = observationIds.length
     ? await getSynchronizationDecisionModel().find({ observation_id: { $in: observationIds } }).lean()
     : [];
+  let observations = hotObservations;
+  let decisions = hotDecisions;
+  const db = getGranotObservationModel().db.db;
+  if (!db) throw new Error("Granot timeline database unavailable");
+  for await (const batch of archivedChains(db, normalizedJobNo, { exact: true })) {
+    observations = mergeEvidence(observations, batch.map(c => c.observation)) as typeof hotObservations;
+    decisions = mergeEvidence(decisions, batch.flatMap(c => c.decisions)) as typeof hotDecisions;
+  }
   const cancellation = booking
     ? await CancelledLead.findOne({ booked_lead: booking._id }).lean()
     : null;

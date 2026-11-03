@@ -1,3 +1,4 @@
+import { archivedChains, mergeEvidence } from "../granotHistory/archiveReads.js";
 import type { Db, Document } from "mongodb";
 import type { FindCursor } from "mongodb";
 import { isObjectIdString, toObjectId } from "../../utils/objectId.js";
@@ -252,7 +253,7 @@ export async function loadJobNumberTimelineRows(
     read(db.collection("granot_release_discrepancies").find(jobFilter)),
     db.collection(getRingCentralCollectionName("callLogSyncState")).findOne({ key: "account" }),
   ]);
-  const observations = asDocumentArray(observationDocs);
+  let observations = asDocumentArray(observationDocs);
   const record_links = asDocumentArray(recordLinkDocs);
   const bookings = asDocumentArray(bookingDocs);
   const booking_cases = asDocumentArray(bookingCaseDocs);
@@ -281,8 +282,16 @@ export async function loadJobNumberTimelineRows(
         }))
       : Promise.resolve([]),
   ]);
-  const decisions = asDocumentArray(decisionDocs);
-  const receiptDocs = asDocumentArray(receiptDocRows);
+  let decisions = asDocumentArray(decisionDocs);
+  let receiptDocs = asDocumentArray(receiptDocRows);
+  for await (const batch of archivedChains(db, normalizedJobNo)) {
+    observations = mergeEvidence(observations, batch.map(row => row.observation));
+    decisions = mergeEvidence(decisions, batch.flatMap(row => row.decisions));
+    receiptDocs = mergeEvidence(receiptDocs, batch.map(row => row.receipt));
+    if (bounds.maxRowsPerQuery !== undefined && Math.max(observations.length, decisions.length, receiptDocs.length) > bounds.maxRowsPerQuery) {
+      throw new JobTimelineEvidenceLimitError();
+    }
+  }
 
   const mappedObservations = observations.map(mapObservation);
   const mappedDecisions = decisions.map(mapDecision);
