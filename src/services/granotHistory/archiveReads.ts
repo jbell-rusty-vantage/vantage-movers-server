@@ -1,12 +1,20 @@
 import type { Db, Document } from "mongodb";
 import { archiveJobKey, decodeChains } from "./archiveCodec";
 
-export type ArchiveEntry = { _id: string; job: string; job_key: string; newest: Date; oldest: Date; count: number };
+export type ArchiveEntry = { _id: string; hash?: string; job: string; job_key: string; newest: Date; oldest: Date; count: number };
 export const archiveCatalog = (db: Db) => db.collection<ArchiveEntry>("granot_history_archive_chunks");
 export function mergeEvidence(hot: Document[], cold: Document[]): Document[] {
   const rows = new Map(cold.map(row => [String(row._id), row]));
   for (const row of hot) rows.set(String(row._id), row);
   return [...rows.values()];
+}
+
+export async function readArchiveEntry(db: Db, entry: ArchiveEntry) {
+  const { readArchiveObject } = await import("./archiveObjects.js");
+  const hash = entry.hash ?? entry._id;
+  const rows = decodeChains(await readArchiveObject(db.databaseName, hash), hash, entry.job);
+  if (rows.length !== entry.count) throw new Error("Granot archive count mismatch");
+  return rows;
 }
 
 export async function* archivedChains(db: Db, job: string, options: { exact?: boolean; since?: () => number } = {}) {
@@ -15,10 +23,7 @@ export async function* archivedChains(db: Db, job: string, options: { exact?: bo
   try {
     for await (const entry of cursor) {
       if (+entry.newest < (options.since?.() ?? -Infinity)) break;
-      const { readArchiveObject } = await import("./archiveObjects.js");
-      const rows = decodeChains(await readArchiveObject(db.databaseName, entry._id), entry._id, entry.job);
-      if (rows.length !== entry.count) throw new Error("Granot archive count mismatch");
-      yield rows;
+      yield await readArchiveEntry(db, entry);
     }
   } finally { await cursor.close(); }
 }

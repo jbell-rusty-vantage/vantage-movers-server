@@ -1,4 +1,5 @@
-import { archivedChains, mergeEvidence } from "../granotHistory/archiveReads.js";
+import { archiveJobKey } from "../granotHistory/archiveCodec.js";
+import { archiveCatalog, readArchiveEntry, mergeEvidence } from "../granotHistory/archiveReads.js";
 import type { Db, Document } from "mongodb";
 import type { FindCursor } from "mongodb";
 import { isObjectIdString, toObjectId } from "../../utils/objectId.js";
@@ -284,7 +285,8 @@ export async function loadJobNumberTimelineRows(
   ]);
   let decisions = asDocumentArray(decisionDocs);
   let receiptDocs = asDocumentArray(receiptDocRows);
-  for await (const batch of archivedChains(db, normalizedJobNo)) {
+  for (const entry of await read(archiveCatalog(db).find({ job_key: archiveJobKey(normalizedJobNo) }))) {
+    const batch = await readArchiveEntry(db, entry);
     observations = mergeEvidence(observations, batch.map(row => row.observation));
     decisions = mergeEvidence(decisions, batch.flatMap(row => row.decisions));
     receiptDocs = mergeEvidence(receiptDocs, batch.map(row => row.receipt));
