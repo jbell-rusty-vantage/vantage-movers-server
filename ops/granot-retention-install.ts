@@ -55,7 +55,7 @@ export async function installRetention(db: Db, now = new Date()) {
   );
 }
 async function main() {
-  if (process.argv[2] !== "--install-shadow")
+  if (!["--install-shadow", "--arm-future"].includes(process.argv[2]))
     throw new Error("Expected --install-shadow");
   if (process.env.MONGO_DNS_SERVERS)
     dns.setServers(
@@ -66,6 +66,29 @@ async function main() {
     appName: "granot-retention-install",
   });
   try {
+    if (process.argv[2] === "--arm-future") {
+      const cutoff = new Date(process.argv[3] ?? "");
+      if (!Number.isFinite(+cutoff))
+        throw new Error("Supply the existing new_data_from timestamp");
+      const col = policies(client.db("vantagemovers"));
+      await col.updateOne(
+        {
+          _id: "v1",
+          mode: "shadow",
+          new_data_from: cutoff,
+          armed_at: { $exists: false },
+        },
+        { $set: { armed_at: new Date() } },
+      );
+      const state = await col.findOne(
+        { _id: "v1", new_data_from: cutoff },
+        { projection: { mode: 1, new_data_from: 1, armed_at: 1 } },
+      );
+      if (!state?.armed_at)
+        throw new Error("Retention cutoff mismatch or policy unavailable");
+      console.log(JSON.stringify(state));
+      return;
+    }
     console.log(
       JSON.stringify(await installRetention(client.db("vantagemovers"))),
     );

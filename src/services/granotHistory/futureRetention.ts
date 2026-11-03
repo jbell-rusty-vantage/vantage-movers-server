@@ -1,3 +1,7 @@
+import mongoose from "mongoose";
+import type { DeskLeadRef } from "../salesOutreach/subjects/leadFacts";
+import { canPromoteFuture, type ShadowDay } from "./shadowWeek";
+import { inspectPoolCandidates } from "../salesOutreach/pool/admission";
 import { type ClientSession, type Db, type ObjectId } from "mongodb";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -20,6 +24,7 @@ export type RetentionPolicy = {
   _id: string;
   mode: "shadow" | "future";
   new_data_from: Date;
+  armed_at?: Date;
   lease_until?: Date;
   owner?: string;
 };
@@ -57,7 +62,29 @@ async function readChains(db: Db, ids: ObjectId[], session?: ClientSession) {
   });
 }
 
-export async function runFutureRetention(db: Db, now = new Date()) {
+async function comparePoolEvidence(
+  db: Db,
+  ref: DeskLeadRef,
+  session: ClientSession,
+) {
+  if (mongoose.connection.db !== db)
+    throw new Error("Granot shadow comparison requires the same database");
+  const result = (items: Awaited<ReturnType<typeof inspectPoolCandidates>>) =>
+    items.map((c) => ({
+      eligible: c.eligible,
+      reason: c.reason,
+      anchor: c.anchor,
+    }));
+  const current = await inspectPoolCandidates([ref], session, "current");
+  const legacy = await inspectPoolCandidates([ref], session, "history");
+  return isDeepStrictEqual(result(current), result(legacy));
+}
+
+export async function runFutureRetention(
+  db: Db,
+  now = new Date(),
+  compare = comparePoolEvidence,
+) {
   const policy = await policies(db).findOne({ _id: "v1" });
   if (
     !policy ||
@@ -78,6 +105,30 @@ export async function runFutureRetention(db: Db, now = new Date()) {
   );
   if (!acquired.matchedCount) return { status: "busy" };
   try {
+    if (
+      policy.mode === "shadow" &&
+      policy.armed_at instanceof Date &&
+      (await canPromoteFuture(
+        db,
+        now,
+        new Date(Math.max(+policy.armed_at, +policy.new_data_from + 7 * day)),
+      ))
+    ) {
+      const promoted = await policies(db).updateOne(
+        {
+          _id: "v1",
+          owner,
+          mode: "shadow",
+          armed_at: policy.armed_at,
+          new_data_from: policy.new_data_from,
+        },
+        { $set: { mode: "future" } },
+      );
+      // Release the lease and let the next tick reread the committed mode and the same cutoff.
+      return {
+        status: promoted.modifiedCount ? "future_qualified" : "policy_changed",
+      };
+    }
     const source = db.collection("granot_webhook_receipts");
     const lower = policy.new_data_from,
       cutoff = new Date(+now - 7 * day);
@@ -154,7 +205,9 @@ export async function runFutureRetention(db: Db, now = new Date()) {
         );
         if (!active || !active.lease_until || +active.lease_until <= Date.now())
           throw new Error("Retention lease changed");
-        let stamped = 0;
+        let stamped = 0,
+          qualified = 0,
+          comparisons = 0;
         const fresh = await readChains(db, ids, session);
         const eligible = fresh.filter((c) =>
           isDeepStrictEqual(verified.get(String(c.observation._id)), c),
@@ -164,13 +217,14 @@ export async function runFutureRetention(db: Db, now = new Date()) {
         for (const c of eligible) {
           const id = String(c.observation._id);
           if (
-            policy.mode !== "future" ||
             holds.has(id) ||
             !advanced.has(id) ||
             c.receipt.createdAt < lower ||
             c.receipt.captured_at < lower
           )
             continue;
+          qualified++;
+          if (policy.mode === "shadow") continue;
           const set = { $set: { retention_purge_at: now } };
           await source.updateOne(
             { _id: c.receipt._id },
@@ -185,6 +239,60 @@ export async function runFutureRetention(db: Db, now = new Date()) {
             .updateOne({ _id: c.decisions[0]._id }, set, { session });
           stamped++;
         }
+        let poolCursor: ObjectId | undefined;
+        if (policy.mode === "shadow" && qualified) {
+          const daily = await db
+            .collection<{
+              _id: string;
+              last_pool_cursor?: ObjectId;
+            }>("granot_retention_days")
+            .findOne(
+              { _id: now.toISOString().slice(0, 10) },
+              { session, projection: { last_pool_cursor: 1 } },
+            );
+          const work = db.collection("sales_outreach_pool_work");
+          const opts = {
+            session,
+            sort: { _id: 1 as const },
+            projection: { lead_model: 1, lead_id: 1 },
+          };
+          const sample =
+            (daily?.last_pool_cursor
+              ? await work.findOne(
+                  { active: true, _id: { $gt: daily.last_pool_cursor } },
+                  opts,
+                )
+              : null) ?? (await work.findOne({ active: true }, opts));
+          if (
+            sample &&
+            (sample.lead_model === "FormLead" ||
+              sample.lead_model === "CallLead")
+          ) {
+            poolCursor = sample._id;
+            const lead = await db
+              .collection(
+                sample.lead_model === "FormLead" ? "form_leads" : "call_leads",
+              )
+              .findOne(
+                {
+                  _id: sample.lead_id,
+                  "last_accepted_granot_observation.evidence.version": 2,
+                },
+                { session, projection: { _id: 1 } },
+              );
+            if (lead) {
+              if (
+                !(await compare(
+                  db,
+                  { model: sample.lead_model, id: String(sample.lead_id) },
+                  session,
+                ))
+              )
+                throw new Error("Granot shadow Pool mismatch");
+              comparisons++;
+            }
+          }
+        }
         await source.updateMany(
           {
             _id: { $in: ids },
@@ -198,10 +306,16 @@ export async function runFutureRetention(db: Db, now = new Date()) {
           {
             $inc: {
               reviewed: ids.length,
+              qualified,
+              read_comparisons: comparisons,
               archived_reviews: verified.size,
               ttl_stamped: stamped,
             },
-            $set: { last_review_at: now, mode: policy.mode },
+            $set: {
+              last_review_at: now,
+              mode: policy.mode,
+              ...(poolCursor ? { last_pool_cursor: poolCursor } : {}),
+            },
           },
           { session, upsert: true },
         );
@@ -216,6 +330,23 @@ export async function runFutureRetention(db: Db, now = new Date()) {
     } finally {
       await session.endSession();
     }
+  } catch (error) {
+    await db.collection<ShadowDay>("granot_retention_days").updateOne(
+      { _id: now.toISOString().slice(0, 10) },
+      {
+        $inc: {
+          failures: 1,
+          mismatches:
+            error instanceof Error &&
+            error.message === "Granot shadow Pool mismatch"
+              ? 1
+              : 0,
+        },
+        $set: { mode: policy.mode },
+      },
+      { upsert: true },
+    );
+    throw error;
   } finally {
     await policies(db).updateOne(
       { _id: "v1", owner },

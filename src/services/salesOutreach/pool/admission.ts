@@ -64,7 +64,7 @@ export function poolBookingBlocks(booking: RawPoolBooking, ref: DeskLeadRef, job
 }
 
 /** Batched fresh authorization: a fixed set of reads per <=1,000 work records, never N+1. */
-export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], session: ClientSession | null = null): Promise<PoolCandidate[]> {
+export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], session: ClientSession | null = null, evidenceMode: "current" | "history" = "current"): Promise<PoolCandidate[]> {
   if (!refs.length) return [];
   const rawByKey = new Map<string, Record<string, unknown> & { _id: unknown }>();
   for (const kind of ["FormLead", "CallLead"] as const) {
@@ -89,7 +89,7 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   const certified = new Map<string, PoolAcceptedProof>();
   for (const [key, row] of rawByKey) {
     const winner = row.last_accepted_granot_observation as { evidence?: PoolAcceptedProof } | undefined;
-    if (winner?.evidence?.version === 2 && winner.evidence.source_scope?.granot_crm_source_id) certified.set(key, winner.evidence);
+    if (evidenceMode === "current" && winner?.evidence?.version === 2 && winner.evidence.source_scope?.granot_crm_source_id) certified.set(key, winner.evidence);
   }
   const observationIds = [...factsByKey.entries()].flatMap(([key,f]) => !certified.has(key) && f.accepted_observation ? [f.accepted_observation.observation_id] : []);
   const [companies, granularities, links, bookings, formIdentities, callIdentities, observations, decisions] = await readBatch([

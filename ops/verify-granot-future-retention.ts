@@ -38,7 +38,7 @@ async function main() {
         name: "granot_observation_receipt_channel_operation_id_unique",
       },
     );
-    await installRetention(db, new Date(+now - 14 * day));
+    await installRetention(db, new Date(+now - 15 * day));
     const receipts: ObjectId[] = [];
     for (const [i, age] of [10, 9, 35, 11].entries()) {
       const at = new Date(+now - age * day),
@@ -86,17 +86,41 @@ async function main() {
       if (i === 1)
         await db
           .collection("sales_outreach_pool_work")
-          .insertOne({ episodes: [{ observation_id: o }] });
+          .insertOne({
+            active: true,
+            lead_model: "FormLead",
+            lead_id: lead,
+            episodes: [{ observation_id: o }],
+          });
     }
     await db.collection("form_leads").insertOne({
       _id: lead,
       last_accepted_granot_observation: {
         observation_id: new ObjectId(),
         captured_at: now,
+        evidence: { version: 2 },
       },
     });
-    const shadow = await runFutureRetention(db, now);
+    // Pool equivalence itself is exercised by acceptedLeadEvidence.replica.test.ts.
+    // This standalone client proves the worker passes the candidate and shares its transaction.
+    const shadow = await runFutureRetention(
+      db,
+      now,
+      async (bound, ref, session) =>
+        bound === db && String(lead) === ref.id && session.inTransaction(),
+    );
     assert.equal(shadow.status, "shadow");
+    assert.equal(
+      (
+        await db
+          .collection<{
+            _id: string;
+            read_comparisons: number;
+          }>("granot_retention_days")
+          .findOne({ _id: now.toISOString().slice(0, 10) })
+      )?.read_comparisons,
+      1,
+    );
     assert.equal(shadow.archived, 2);
     assert.equal(shadow.stamped, 0);
     for (const name of collections)
@@ -106,7 +130,24 @@ async function main() {
           .countDocuments({ retention_purge_at: { $exists: true } }),
         0,
       );
-    await policies(db).updateOne({ _id: "v1" }, { $set: { mode: "future" } });
+    await policies(db).updateOne(
+      { _id: "v1" },
+      { $set: { armed_at: new Date(+now - 15 * day) } },
+    );
+    assert.equal((await runFutureRetention(db, now)).status, "idle");
+    for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+      await db.collection<{ _id: string }>("granot_retention_days").insertOne({
+        _id: new Date(+now - daysAgo * day).toISOString().slice(0, 10),
+        mode: "shadow",
+        qualified: 100,
+        read_comparisons: 3,
+        ttl_stamped: 0,
+      } as { _id: string });
+    }
+    assert.equal(
+      (await runFutureRetention(db, now)).status,
+      "future_qualified",
+    );
     await db
       .collection(collections[0])
       .updateMany(
