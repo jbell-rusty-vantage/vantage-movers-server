@@ -41,7 +41,7 @@ async function main() {
         || String(decision._id) !== String(receipt.processing.latest_decision_id)
         || decision.target?.model !== kind || decision.target.id !== String(lead._id)
         || !["created", "linked", "applied", "already_current"].includes(decision.outcome)) return "no_accepted_decision";
-      if (String(winner.evidence?.decision_id) === String(decision._id)) return "already_certified";
+      if (winner.evidence?.version === 2 && String(winner.evidence?.decision_id) === String(decision._id)) return "already_certified";
       if (mode === "--review") return "certifiable_at_read";
       await certifyAcceptedLead(receipt._id, { target: decision.target, decision_id: String(decision._id),
         observation_id: String(observation._id), outcome: decision.outcome, effects: [] }, session);
@@ -54,4 +54,3 @@ async function main() {
     next: rows.length === limit ? String(rows.at(-1)!._id) : null }));
 }
 main().catch(error => { console.error(error.name, error.code ?? "backfill_failed"); process.exitCode = 1; }).finally(() => mongoose.disconnect());
-

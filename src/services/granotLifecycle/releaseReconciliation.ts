@@ -1,3 +1,4 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
@@ -9,7 +10,6 @@ import type {
 } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotObservationModel } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type {
   SynchronizationDecisionDocument,
@@ -577,11 +577,7 @@ export function createMongoReleaseReconciliationStore(): ReleaseReconciliationPe
     async insertDecision(decision, receiptId, session) {
       await getSynchronizationDecisionModel().create([decision], { session });
       if (decision.target?.model === "GranotReleaseReconciliationCase") await preserveCaseDecision(decision, session);
-      await getGranotObservationReceiptModel().collection.updateOne(
-        { _id: receiptId },
-        { $set: { "processing.latest_decision_id": decision._id } },
-        { session },
-      );
+      await pointReceiptToDecision(receiptId, decision._id, session);
     },
     async findDecision(observationId, attempt, session) {
       return getSynchronizationDecisionModel()

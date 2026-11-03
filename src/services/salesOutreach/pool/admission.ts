@@ -21,6 +21,12 @@ import { getGranotObservationReceiptModel } from "../../../models/GranotObservat
 import { getSynchronizationDecisionModel } from "../../../models/SynchronizationDecision";
 import { getGranotCrmSourceModel } from "../../../models/GranotCrmSource";
 
+type PoolAcceptedProof = {
+  version: 2; normalized_job_no?: string; normalization_result: string;
+  priority: { valid: boolean; canonical?: string }; outcome: string;
+  source_scope: { granot_crm_source_id: mongoose.Types.ObjectId; lead_source_company: mongoose.Types.ObjectId;
+    source_granularity_id: mongoose.Types.ObjectId; policy_version: string };
+};
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 export type PoolCandidateAnchor = {
   record_link_id: string; record_link_revision: number; source_company_id: string;
@@ -80,7 +86,12 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     const ids = refs.filter((r) => r.model === kind).map((r) => oid(r.id));
     return ids.length ? [{ "lead_ref.model": kind, "lead_ref.id": { $in: ids } }] : [];
   });
-  const observationIds = [...factsByKey.values()].flatMap((f) => f.accepted_observation ? [f.accepted_observation.observation_id] : []);
+  const certified = new Map<string, PoolAcceptedProof>();
+  for (const [key, row] of rawByKey) {
+    const winner = row.last_accepted_granot_observation as { evidence?: PoolAcceptedProof } | undefined;
+    if (winner?.evidence?.version === 2 && winner.evidence.source_scope?.granot_crm_source_id) certified.set(key, winner.evidence);
+  }
+  const observationIds = [...factsByKey.entries()].flatMap(([key,f]) => !certified.has(key) && f.accepted_observation ? [f.accepted_observation.observation_id] : []);
   const [companies, granularities, links, bookings, formIdentities, callIdentities, observations, decisions] = await readBatch([
     () => getLeadSourceCompanyModel().find({ _id: { $in: companyIds }, active: true }, { _id: 1 }).session(session).lean(),
     () => getLeadSourceGranularityModel().find({ _id: { $in: granularityIds }, active: true }, { source_company: 1, channel: 1 }).session(session).lean(),
@@ -100,7 +111,7 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   const identities = [...formIdentities, ...callIdentities];
   const [receipts, sources] = await readBatch([
     () => getGranotObservationReceiptModel().find({ _id: { $in: observations.map((o) => o.receipt_id) } }, { processing: 1 }).session(session).lean(),
-    () => getGranotCrmSourceModel().find({ _id: { $in: decisions.flatMap((d) => d.source_scope ? [d.source_scope.granot_crm_source_id] : []) } }, { enabled: 1, lifecycle_enabled: 1, lifecycle_disposition: 1, lifecycle_policy_version: 1, lead_source_company: 1, lifecycle_routes: 1 }).session(session).lean(),
+    () => getGranotCrmSourceModel().find({ _id: { $in: [...decisions.flatMap((d) => d.source_scope ? [d.source_scope.granot_crm_source_id] : []), ...[...certified.values()].map(d => d.source_scope.granot_crm_source_id)] } }, { enabled: 1, lifecycle_enabled: 1, lifecycle_disposition: 1, lifecycle_policy_version: 1, lead_source_company: 1, lifecycle_routes: 1 }).session(session).lean(),
   ], session);
   const companyById = rowsById(companies), granularityById = rowsById(granularities);
   const observationById = rowsById(observations), receiptById = rowsById(receipts), sourceById = rowsById(sources);
@@ -134,7 +145,10 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     const companyId = String(raw.lead_source_company), granularityId = String(raw.source_granularity_id);
     const company = companyById.get(companyId), granularity = granularityById.get(granularityId);
     if (!company || !granularity || String(granularity.source_company) !== companyId || granularity.channel !== (ref.model === "FormLead" ? "form" : "call")) return refuse("source_scope_unavailable");
-    const observation = observationById.get(facts.accepted_observation.observation_id);
+    const proof = certified.get(key);
+    const observation = proof ? { _id: facts.accepted_observation.observation_id, captured_at: facts.accepted_observation.captured_at,
+      normalization_result: proof.normalization_result, priority: proof.priority, identity: { normalized_job_no: proof.normalized_job_no }, receipt_id: undefined }
+      : observationById.get(facts.accepted_observation.observation_id);
     const jobKey = jobIdentityKey(facts.normalized_job_no);
     const matches = [...new Set([...(linksByLead.get(key) ?? []), ...(linksByJob.get(jobKey) ?? [])])];
     // Canonical priority-only matching may retain both a digit and prefixed Job Record Link.
@@ -148,11 +162,13 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     if (identityCounts.get(jobKey) !== 1) return refuse("ambiguous_identity");
     if (!observation || !["valid", "valid_with_issues"].includes(observation.normalization_result) || !observation.priority.valid || observation.priority.canonical !== "9"
       || +observation.captured_at !== +facts.accepted_observation.captured_at || !jobNumbersEquivalent(observation.identity.normalized_job_no, facts.normalized_job_no)) return refuse("accepted_observation_conflict");
-    const decision = decisionByObservation.get(String(observation._id)), receipt = receiptById.get(String(observation.receipt_id));
+    const decision = proof ? { execution_mode: "live", outcome: proof.outcome, target: ref, source_scope: proof.source_scope }
+      : decisionByObservation.get(String(observation._id));
+    const completed = Boolean(proof) || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
     if (!decision || decision.execution_mode !== "live" || !["created", "linked", "applied", "already_current"].includes(decision.outcome)
       || decision.target?.model !== ref.model || String(decision.target?.id) !== ref.id
       || String(decision.source_scope?.lead_source_company) !== companyId || String(decision.source_scope?.source_granularity_id) !== granularityId
-      || receipt?.processing.state !== "completed") return refuse("accepted_decision_unavailable");
+      || !completed) return refuse("accepted_decision_unavailable");
     const source = sourceById.get(String(decision.source_scope?.granot_crm_source_id));
     if (!source?.enabled || !source.lifecycle_enabled || source.lifecycle_disposition !== "source_scoped_lead"
       || source.lifecycle_policy_version !== decision.source_scope?.policy_version || String(source.lead_source_company) !== companyId

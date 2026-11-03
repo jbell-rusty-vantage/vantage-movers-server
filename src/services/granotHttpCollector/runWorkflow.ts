@@ -1,3 +1,4 @@
+import { closedRuns } from "../granotHistory/closedAutomationRun";
 import { createHash, randomUUID } from "node:crypto";
 import { readGranotCredentials as readCredentials } from "./credentials";
 import { send } from "@vercel/queue";
@@ -27,7 +28,7 @@ import { previewCallLeadEnrichment } from "../enrichment";
 import { previewBookedCallLeadReconciliation } from "../reconciliation";
 import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../domainCommands/types";
 import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
-import { applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
+import { applyOpenAutomationPlanAction, type applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import {
   buildGranotOperationPayloads,
@@ -954,7 +955,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   loadReplayStates?: typeof loadAutomationReplayStates;
   refreshOutreach?: typeof refreshExistingEstimatesOutreach;
 } = {}): Promise<string> {
-  const applyAction = deps.applyAction ?? applyAutomationPlanAction;
+  const applyAction = deps.applyAction ?? applyOpenAutomationPlanAction;
   const run = await GranotAutomationRun.findOne({
     ...fenced(runId, lease, ["applying"]),
     expires_at: { $gt: new Date() },
@@ -963,6 +964,10 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     .exec();
   if (!run || !run.plan_snapshot || !run.plan_checksum || !run.approval) {
     throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "Approved Granot run expired or lost its immutable plan.");
+  }
+  const db = GranotAutomationRun.db.db;
+  if (!db || await closedRuns(db).findOne({ _id: runId }, { projection: { _id: 1 } })) {
+    throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "This Granot run is closed for replay.");
   }
   const estimatesAutoApply =
     run.operation === "estimates_in_process" &&

@@ -1,3 +1,4 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
@@ -17,7 +18,6 @@ import {
   projectBookingPriorityPairing,
   type BookingPriorityPairing,
 } from "./bookingPriorityPairing";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type {
   SynchronizationDecisionDocument,
@@ -800,11 +800,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
     async insertDecision(decision, receiptId, session) {
       await getSynchronizationDecisionModel().create([decision], { session });
       if (decision.target?.model === "GranotBookingReconciliationCase") await preserveCaseDecision(decision, session);
-      await getGranotObservationReceiptModel().collection.updateOne(
-        { _id: receiptId },
-        { $set: { "processing.latest_decision_id": decision._id } },
-        { session },
-      );
+      await pointReceiptToDecision(receiptId, decision._id, session);
     },
     async listJobObservations(normalizedJobNo, session) {
       return getGranotObservationModel()

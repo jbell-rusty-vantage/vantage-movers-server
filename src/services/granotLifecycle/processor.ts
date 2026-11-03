@@ -1,3 +1,4 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import mongoose, { type ClientSession } from "mongoose";
 import {
   classifyExecutionMode,
@@ -1993,12 +1994,11 @@ async function defaultPersistDecisionOnly(
   receiptId: mongoose.Types.ObjectId,
   session?: ClientSession,
 ): Promise<void> {
+  if (!session) {
+    return defaultWithTransaction(txn => defaultPersistDecisionOnly(decision, receiptId, txn));
+  }
   await getSynchronizationDecisionModel().create([decision], { session });
-  await getGranotObservationReceiptModel().collection.updateOne(
-    { _id: receiptId },
-    { $set: { "processing.latest_decision_id": decision._id } },
-    session ? { session } : {},
-  );
+  await pointReceiptToDecision(receiptId, decision._id, session);
 }
 
 async function defaultPersistDecisionAndLink(input: {

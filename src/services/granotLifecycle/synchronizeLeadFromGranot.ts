@@ -1,8 +1,8 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import mongoose, { type ClientSession } from "mongoose";
 import { Agent } from "../../models/Agent";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import {
   getGranotRecordLinkModel,
@@ -750,11 +750,7 @@ async function persistDecision(
   session: ClientSession,
 ): Promise<void> {
   await getSynchronizationDecisionModel().create([decision], { session });
-  await getGranotObservationReceiptModel().collection.updateOne(
-    { _id: input.execution.receipt_id },
-    { $set: { "processing.latest_decision_id": decision._id } },
-    session ? { session } : {},
-  );
+  await pointReceiptToDecision(input.execution.receipt_id, decision._id, session);
 }
 
 type LoadedLead = LeadDesiredStateProjection & {

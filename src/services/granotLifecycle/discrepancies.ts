@@ -1,3 +1,4 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
@@ -15,7 +16,6 @@ import type {
   GranotDiscrepancyDocument,
   GranotDiscrepancyEvidence,
 } from "../../models/granotDiscrepancyModel";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import type {
   SynchronizationDecisionDocument,
   SynchronizationDecisionSourceScope,
@@ -446,11 +446,7 @@ export function createMongoDiscrepancyStore(): DiscrepancyPersistenceStore {
     async insertDecision(decision, receiptId, session) {
       await getSynchronizationDecisionModel().create([decision], { session });
       if (decision.target?.model === "GranotBookingDiscrepancy" || decision.target?.model === "GranotReleaseDiscrepancy") await preserveCaseDecision(decision, session);
-      await getGranotObservationReceiptModel().collection.updateOne(
-        { _id: receiptId },
-        { $set: { "processing.latest_decision_id": decision._id } },
-        { session },
-      );
+      await pointReceiptToDecision(receiptId, decision._id, session);
     },
   };
 }

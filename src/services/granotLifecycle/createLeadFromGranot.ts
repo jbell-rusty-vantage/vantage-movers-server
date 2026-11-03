@@ -1,3 +1,4 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import {
@@ -563,11 +564,7 @@ async function executeCreation(
     ],
     { session },
   );
-  await getGranotObservationReceiptModel().collection.updateOne(
-    { _id: receipt._id },
-    { $set: { "processing.latest_decision_id": decisionId } },
-    { session },
-  );
+  await pointReceiptToDecision(receipt._id, decisionId, session);
   failAfter(deps, "decision");
 
   const sheetJob = {

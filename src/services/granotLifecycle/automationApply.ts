@@ -1,3 +1,5 @@
+import { automationRunId, checkClosedOperation, readClosedRun } from "../granotHistory/closedAutomationRun";
+import { connectMongo } from "../../db";
 import type { DurableActor } from "../durableWork/types";
 import {
   isPendingAutomationActionOutcome,
@@ -68,6 +70,30 @@ export async function applyAutomationPlanAction(
     return input.existing_receipt;
   }
 
+  if (!deps.capture && !deps.claimAndProcess) {
+    const run = automationRunId(input.lifecycle_apply.operation_id);
+    if (run) {
+      await connectMongo();
+      const db = getGranotObservationReceiptModel().db.db;
+      if (!db) throw new Error("Granot replay database unavailable");
+      const closed = await readClosedRun(db, run);
+      if (closed) {
+        const saved = checkClosedOperation(closed, input.lifecycle_apply, input.existing_receipt?.lifecycle_receipt_id);
+        const hot = await getGranotObservationReceiptModel().exists({ _id: saved.receipt });
+        if (hot) {
+          const current = await claimAndProcessOrPoll(saved.receipt, { syncPollDeadlineMs: 0 });
+          return translateClaimResult(input.action_id, saved.receipt, current);
+        }
+        return translateClaimResult(input.action_id, saved.receipt, { status: "processed", result: saved.result });
+      }
+    }
+  }
+  return applyOpenAutomationPlanAction(input, deps);
+}
+
+/** The run worker has checked the active lease, expiry, and closed-run fence for this batch. */
+export async function applyOpenAutomationPlanAction(input: ApplyAutomationActionInput, deps: AutomationApplyDeps = {}) {
+  if (input.existing_receipt && isTerminalStoredReceipt(input.existing_receipt)) return input.existing_receipt;
   const capture = deps.capture ?? captureChannelOperationReceipt;
   const claimAndProcess = deps.claimAndProcess ?? ((id: string) =>
     claimAndProcessOrPoll(id, { syncPollDeadlineMs: input.existing_receipt ? 0 : undefined }));
