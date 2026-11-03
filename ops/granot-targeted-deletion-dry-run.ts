@@ -175,6 +175,17 @@ async function main() {
         reasons,
       });
     }
+    let averageAllocatedBytesPerChain = 0;
+    for (const collection of [
+      "granot_webhook_receipts",
+      "granot_observations",
+      "synchronization_decisions",
+    ]) {
+      const stats = await db.command({ collStats: collection });
+      if (stats.count)
+        averageAllocatedBytesPerChain +=
+          (stats.storageSize + stats.totalIndexSize) / stats.count;
+    }
     const summary = {
       asOf,
       cutoff,
@@ -183,6 +194,10 @@ async function main() {
       examined: chains.size,
       prepared,
       logicalBytes: candidateBytes,
+      estimatedAllocatedBytesRepresented: Math.round(
+        prepared * averageAllocatedBytesPerChain,
+      ),
+      physicalDiskReclamationAssumed: 0,
       excluded,
     };
     await writeFile(output, JSON.stringify({ summary, entries }, null, 2), {

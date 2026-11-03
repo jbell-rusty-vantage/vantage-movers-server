@@ -97,6 +97,12 @@ export async function runFutureRetention(db: Db, now = new Date()) {
       .toArray();
     if (!due.length) return { status: "idle" };
     const ids = due.map((x) => x._id);
+    // Defer the claimed page before network I/O. A failed archive must not starve later pages.
+    const retryAt = new Date(+now + 30 * 60000);
+    await source.updateMany(
+      { _id: { $in: ids }, "processing.retention_review_at": { $lte: now } },
+      { $set: { "processing.retention_review_at": retryAt } },
+    );
     const all = await readChains(db, ids);
     const routine = all.filter((c) => routineAutomationChain(c, cutoff));
     const held = await referencedChains(db, routine);
@@ -182,25 +188,23 @@ export async function runFutureRetention(db: Db, now = new Date()) {
         await source.updateMany(
           {
             _id: { $in: ids },
-            "processing.retention_review_at": { $lte: now },
+            "processing.retention_review_at": retryAt,
           },
           { $set: { "processing.retention_review_at": new Date(+now + day) } },
           { session },
         );
-        await db
-          .collection<{ _id: string }>("granot_retention_days")
-          .updateOne(
-            { _id: now.toISOString().slice(0, 10) },
-            {
-              $inc: {
-                reviewed: ids.length,
-                archived_reviews: verified.size,
-                ttl_stamped: stamped,
-              },
-              $set: { last_review_at: now, mode: policy.mode },
+        await db.collection<{ _id: string }>("granot_retention_days").updateOne(
+          { _id: now.toISOString().slice(0, 10) },
+          {
+            $inc: {
+              reviewed: ids.length,
+              archived_reviews: verified.size,
+              ttl_stamped: stamped,
             },
-            { session, upsert: true },
-          );
+            $set: { last_review_at: now, mode: policy.mode },
+          },
+          { session, upsert: true },
+        );
         return stamped;
       });
       return {
