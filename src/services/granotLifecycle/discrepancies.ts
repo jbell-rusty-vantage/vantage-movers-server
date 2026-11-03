@@ -1,3 +1,4 @@
+import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
@@ -408,6 +409,7 @@ export function createMongoDiscrepancyStore(): DiscrepancyPersistenceStore {
         .exec() as Promise<GranotDiscrepancyDocument | null>;
     },
     async insert(kind, row, session) {
+      for (const item of row.evidence) await preserveCaseEvidence(item.observation_id, item.decision_id, session);
       const [created] = await discrepancyModel(kind).create([row], { session });
       if (!created) throw new Error("Discrepancy insert returned no row.");
       return created.toObject() as GranotDiscrepancyDocument;
@@ -429,7 +431,10 @@ export function createMongoDiscrepancyStore(): DiscrepancyPersistenceStore {
         )
         .lean()
         .exec();
-      if (updated) return updated as GranotDiscrepancyDocument;
+      if (updated) {
+        await preserveCaseEvidence(input.evidence.observation_id, input.evidence.decision_id, session);
+        return updated as GranotDiscrepancyDocument;
+      }
       const replay = await discrepancyModel(kind)
         .findOne({ _id: input.discrepancy_id, state: "open" })
         .session(session)
@@ -440,6 +445,7 @@ export function createMongoDiscrepancyStore(): DiscrepancyPersistenceStore {
     },
     async insertDecision(decision, receiptId, session) {
       await getSynchronizationDecisionModel().create([decision], { session });
+      if (decision.target?.model === "GranotBookingDiscrepancy" || decision.target?.model === "GranotReleaseDiscrepancy") await preserveCaseDecision(decision, session);
       await getGranotObservationReceiptModel().collection.updateOne(
         { _id: receiptId },
         { $set: { "processing.latest_decision_id": decision._id } },

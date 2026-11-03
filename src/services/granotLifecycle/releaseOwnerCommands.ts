@@ -1,3 +1,4 @@
+import { readCaseObservation, readCaseStatement } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
@@ -12,8 +13,7 @@ import {
   type GranotReleaseReconciliationCaseDocument,
 } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { getGranotObservationModel, type GranotObservationDocument } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { type GranotObservationDocument } from "../../models/GranotObservation";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
@@ -356,9 +356,9 @@ async function prepareOwnerCommand(
   if (!row) throw lifecycle("Granot Release reconciliation case not found", "CASE_NOT_FOUND", 404, input.request_id);
   const first = row.evidence[0];
   if (!first) throw lifecycle("Release case has no causal evidence", "IDENTITY_CONFLICT", 409, input.request_id);
-  const observation = await getGranotObservationModel().findById(first.observation_id).lean().exec();
+  const observation = await readCaseObservation(first.observation_id);
   const receipt = observation
-    ? await getGranotObservationReceiptModel().findById(observation.receipt_id).lean().exec()
+    ? await readCaseStatement(observation.receipt_id)
     : null;
   if (!observation || !receipt) {
     throw lifecycle("Release case causal evidence is unavailable", "IDENTITY_CONFLICT", 409, input.request_id);

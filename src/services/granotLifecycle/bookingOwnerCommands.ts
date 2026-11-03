@@ -1,3 +1,4 @@
+import { readCaseObservation, readCaseStatement, readCaseDecision } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
@@ -13,10 +14,7 @@ import {
   type GranotBookingReconciliationCaseDocument,
 } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { getGranotObservationModel } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
-import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
@@ -498,9 +496,9 @@ async function prepareOwnerCommand(
   if (!row) throw lifecycle("Granot reconciliation case not found", "CASE_NOT_FOUND", 404, input.request_id);
   const first = row.evidence[0];
   if (!first) throw lifecycle("Booking case has no causal evidence", "IDENTITY_CONFLICT", 409, input.request_id);
-  const observation = await getGranotObservationModel().findById(first.observation_id).lean().exec();
+  const observation = await readCaseObservation(first.observation_id);
   const receipt = observation
-    ? await getGranotObservationReceiptModel().findById(observation.receipt_id).lean().exec()
+    ? await readCaseStatement(observation.receipt_id)
     : null;
   if (!observation || !receipt) {
     throw lifecycle("Booking case causal evidence is unavailable", "IDENTITY_CONFLICT", 409, input.request_id);
@@ -574,10 +572,10 @@ async function assertActiveReferralPolicy(
   // Minting Booked-only lives in referralBooking.ts; this helper is policy liveness only.
   const first = row.evidence[0];
   const observation = first
-    ? await getGranotObservationModel().findById(first.observation_id).session(session).lean().exec()
+    ? await readCaseObservation(first.observation_id, session)
     : null;
   const decision = first
-    ? await getSynchronizationDecisionModel().findById(first.decision_id).session(session).lean().exec()
+    ? await readCaseDecision(first.decision_id, session)
     : null;
   const activation = await getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" })
     .session(session).lean().exec();

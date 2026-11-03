@@ -1,3 +1,4 @@
+import { readCaseObservation, readCaseStatement } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
@@ -9,7 +10,6 @@ import { Merchant } from "../../models/Merchant";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getGranotObservationModel } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
@@ -343,9 +343,9 @@ async function loadCausalContext(caseId: string, requestId?: string) {
   if (!row) throw lifecycle("Granot reconciliation case not found", "CASE_NOT_FOUND", 404, requestId);
   const first = row.evidence[0];
   if (!first) throw lifecycle("Booking case has no causal evidence", "IDENTITY_CONFLICT", 409, requestId);
-  const observation = await getGranotObservationModel().findById(first.observation_id).lean().exec();
+  const observation = await readCaseObservation(first.observation_id);
   const receipt = observation
-    ? await getGranotObservationReceiptModel().findById(observation.receipt_id).lean().exec()
+    ? await readCaseStatement(observation.receipt_id)
     : null;
   if (!observation || !receipt) {
     throw lifecycle("Booking case causal evidence is unavailable", "IDENTITY_CONFLICT", 409, requestId);
