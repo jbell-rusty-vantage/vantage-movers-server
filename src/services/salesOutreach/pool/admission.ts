@@ -1,3 +1,4 @@
+import { normalizedJobCandidates, legacyBookingJobFilter } from "../../bookings/indexedJobLookup";
 import mongoose, { type ClientSession } from "mongoose";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
@@ -35,12 +36,7 @@ export type PoolCandidateAnchor = {
 export type PoolCandidate = { eligible: boolean; reason: string | null; facts: DeskLeadFacts | null; subject: DeskSubjectRow | null; anchor: PoolCandidateAnchor | null };
 type RawPoolBooking = { lead_ref?: unknown; normalized_job_no?: unknown; job_no?: unknown };
 
-/** Same aliases as equivalentNormalizedJobFilter, with one regex scan for the whole batch. */
-export function poolBatchJobFilter(jobs: readonly string[]): Record<string, unknown> {
-  const cores = [...new Set(jobs.flatMap((job) => jobNumberDigitCore(job) ?? []))];
-  const exact = { normalized_job_no: { $in: [...new Set([...jobs, ...cores])] } };
-  return cores.length ? { $or: [exact, { normalized_job_no: { $regex: `^[A-Z]+(?:${cores.join("|")})$` } }] } : exact;
-}
+export const poolBatchJobFilter = normalizedJobCandidates;
 
 /** Independent GET reads may overlap; Mongo transactions must execute their reads sequentially. */
 async function readBatch<const T extends readonly (() => PromiseLike<unknown>)[]>(reads: T, session: ClientSession | null) {
@@ -97,10 +93,10 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     () => getLeadSourceGranularityModel().find({ _id: { $in: granularityIds }, active: true }, { source_company: 1, channel: 1 }).session(session).lean(),
     () => getGranotRecordLinkModel().find({ provider: "granot", state: "active", $or: [...leadFilters, jobFilter] }, { normalized_job_no: 1, lead_ref: 1, disputed: 1, booking_ref: 1, source_scope: 1, domain_revision: 1 }).session(session).lean(),
     () => getFormLeadModel().db.collection<RawPoolBooking>(BookedLead.collection.collectionName).find({ $or: [
-      { lead_ref: { $in: refs.flatMap((r) => [oid(r.id), r.id, r.id.toUpperCase()]) } }, jobFilter,
+      { lead_ref: { $in: refs.flatMap((r) => [oid(r.id), r.id, r.id.toUpperCase()]) } }, normalizedJobCandidates(jobs, "scan"),
       // Legacy raw Jobs may lack or contradict the normalized key. Project once per batch and use
       // the canonical NFKC/case/punctuation normalizer below; field-only regexes cannot reproduce it.
-      { job_no: { $type: "string" } },
+      legacyBookingJobFilter,
     ] }, { session: session ?? undefined, projection: { lead_ref: 1, normalized_job_no: 1, job_no: 1 } }).toArray(),
     () => getFormLeadModel().find({ duplicate: { $ne: true }, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
     // A Call Lead mirroring its Form Lead's job (`granot_form_sibling`) is the same customer, not a second holder.
