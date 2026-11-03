@@ -6,8 +6,8 @@ import { getCallLeadModel } from "../../src/models/CallLead";
 import { BookedLead } from "../../src/models/BookedLead";
 import { CancelledLead } from "../../src/models/CancelledLead";
 import type { CanonicalAdoptionStore, CanonicalLeadDoc } from "../../src/services/bestRelocationSheetIngest/canonicalLeadAdoption";
+import { FORM_ADOPTION_STORED_CUTOFF } from "../../src/services/bestRelocationSheetIngest/canonicalLeadAdoption";
 import type { BestRelocationApplicationPlan } from "../../src/services/bestRelocationSheetIngest/applicationPlan";
-import { BEST_RELOCATION_CUTOFF } from "../../src/services/bestRelocationSheetIngest/sheets";
 import { normalizePhoneNumberForMatch } from "../../src/utils/phone";
 import { normalizeJobNo } from "../../src/services/bookings/bookingIdentity";
 import type { ParsedCallLead } from "../../src/services/bestRelocationSheetIngest/types";
@@ -17,7 +17,7 @@ type SourceIdentity = { dataset_key: string; stable_source_row_id: string };
 const BATCH = 100, CANDIDATE_CAP = 5000;
 const chunks = <T>(rows: T[]) => Array.from({ length: Math.ceil(rows.length / BATCH) }, (_, index) => rows.slice(index * BATCH, (index + 1) * BATCH));
 export const sourceIdentityKey = (row: SourceIdentity) => `${row.dataset_key}:${row.stable_source_row_id}`;
-const targetProjection = "_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid duplicate domain_revision external_sheet_review source source_company lead_ref lead_model job_no normalized_job_no total_binder_amount deposit_amount refund_amount booked_lead cancelled booked ringcentral created_on_unmatched form_fill bad_lead sheet_sync";
+const targetProjection = "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid duplicate domain_revision external_sheet_review source source_company lead_ref lead_model job_no normalized_job_no total_binder_amount deposit_amount refund_amount booked_lead cancelled booked ringcentral created_on_unmatched form_fill bad_lead sheet_sync";
 const models = () => ({ FormLead: getFormLeadModel(), CallLead: getCallLeadModel(), BookedLead, CancelledLead }) as Record<string, mongoose.Model<any>>;
 
 /** Reads are bounded by frozen source identities, never by the whole collection. */
@@ -43,12 +43,13 @@ export async function loadSourceEvidence(connectionId: string | null, identities
 }
 
 const leadDoc = (row: Row): CanonicalLeadDoc => ({ id: String(row._id), name: row.name, phone_number: row.phone_number,
-  normalized_phone_number: row.normalized_phone_number, timestamp: row.timestamp, ref_no: row.ref_no, lid: row.lid, normalized_lid: row.normalized_lid });
+  normalized_phone_number: row.normalized_phone_number, timestamp: row.timestamp, createdAt: row.createdAt, ingestion_origin: row.ingestion_origin,
+  ref_no: row.ref_no, lid: row.lid, normalized_lid: row.normalized_lid });
 
 export function cachedCanonicalAdoptionStore(input: { forms: Row[]; bookings: Row[]; cancellations: Row[] }): CanonicalAdoptionStore {
   return {
     findFormLeadsByIdentity: async identities => input.forms.filter(row => identities.some(id => row.ref_no === id || row.lid === id || row.normalized_lid === id.toLowerCase())).map(leadDoc),
-    findFormLeadsByPhoneNameDate: async ({ phone }) => input.forms.filter(row => row.duplicate !== true && row.timestamp instanceof Date && +row.timestamp >= +BEST_RELOCATION_CUTOFF &&
+    findFormLeadsByPhoneNameDate: async ({ phone }) => input.forms.filter(row => row.duplicate !== true && row.timestamp instanceof Date && +row.timestamp >= +FORM_ADOPTION_STORED_CUTOFF &&
       (normalizePhoneNumberForMatch(row.normalized_phone_number) ?? normalizePhoneNumberForMatch(row.phone_number)) === phone).map(leadDoc),
     findCallLeadsByPhoneTimestamp: async () => { throw new Error("final_source_plan_cannot_adopt_or_create_calls_through_legacy_path"); },
     findBookingsByJob: async job => input.bookings.filter(row => row.normalized_job_no === job).map(row => ({ id: String(row._id), normalized_job_no: row.normalized_job_no })),
@@ -69,7 +70,7 @@ export async function preloadCanonicalAdoption(plan: BestRelocationApplicationPl
     { ref_no: { $in: batch } }, { lid: { $in: batch } }, { normalized_lid: { $in: batch.map(id => id.toLowerCase()) } },
   ] }, forms);
   const phones = [...new Set(payloads.map(row => normalizePhoneNumberForMatch(row.phone_number as string)).filter((value): value is string => !!value))];
-  for (const batch of chunks(phones)) await collect(getFormLeadModel(), { source_company: "best_relocation_leads", duplicate: { $ne: true }, timestamp: { $gte: BEST_RELOCATION_CUTOFF },
+  for (const batch of chunks(phones)) await collect(getFormLeadModel(), { source_company: "best_relocation_leads", duplicate: { $ne: true }, timestamp: { $gte: FORM_ADOPTION_STORED_CUTOFF },
     $or: [{ normalized_phone_number: { $in: batch } }, { phone_number: { $in: batch } }] }, forms);
   const jobs = [...new Set(plan.actions.filter(action => ["create_booked_from_source", "create_leadless_booking"].includes(action.command))
     .map(action => normalizeJobNo(String(action.command_payload?.job_no ?? action.command_payload?.call_job_no ?? ""))).filter((value): value is string => !!value))];

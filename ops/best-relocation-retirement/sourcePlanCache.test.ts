@@ -41,3 +41,18 @@ test("batched receipt policy keeps canonical IDs primary and only unchanged sour
   assert.deepEqual(transformed.actions[2]?.depends_on, [transformed.actions[0]!.action_key]);
   assert.equal(transformed.actions.some(action => action.command === "update_source_owned_lead"), false);
 });
+
+test("cached source adoption carries timestamp provenance and includes the wall-clock midnight cutoff", async () => {
+  const store = cachedCanonicalAdoptionStore({ forms: [
+    { _id: id, name: "Synthetic", phone_number: "5550001111", normalized_phone_number: "5550001111", timestamp: new Date("2026-04-30T00:30:00Z"), createdAt: new Date("2026-04-30T04:30:01Z"), ingestion_origin: "legacy_unknown", duplicate: false },
+    { _id: linked, name: "Other", phone_number: "5550002222", normalized_phone_number: "5550002222", timestamp: new Date("2026-08-28T03:30:00Z"), createdAt: new Date("2026-08-28T03:30:01Z"), ingestion_origin: "granot_lead_created", duplicate: false },
+  ], bookings: [], cancellations: [] });
+  const midnight = action("cutoff-new-ref");
+  midnight.command_payload = { name: "Synthetic", phone_number: "5550001111", timestamp: "2026-04-30T16:00:00Z" };
+  const instant = action("granot-new-ref");
+  instant.command_payload = { name: "Other", phone_number: "5550002222", timestamp: "2026-08-28T16:00:00Z" };
+  const result = await applyCanonicalAdoptionPolicy({ plan: plan([midnight, instant]), store });
+  assert.equal(result.actions[0]?.command, "adopt_existing");
+  assert.equal(result.actions[0]?.adopted_entity_refs?.[0]?.id, id);
+  assert.equal(result.actions[1]?.command, "create_form_lead");
+});

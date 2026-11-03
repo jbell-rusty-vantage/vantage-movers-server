@@ -11,6 +11,11 @@ import {
   type BestRelocationPlanAction,
 } from "./applicationPlan";
 import { BEST_RELOCATION_CUTOFF, BEST_RELOCATION_TIMEZONE } from "./sheets";
+import { leadInstant } from "../salesOutreach/subjects/leadInstant";
+
+// Candidate reads must include midnight-to-04:00 stored ET wall-clock rows.
+// The matcher below applies the real instant cutoff after interpreting provenance.
+export const FORM_ADOPTION_STORED_CUTOFF = toFloridaTimestamp(BEST_RELOCATION_CUTOFF);
 
 export type CanonicalLeadDoc = {
   id: string;
@@ -18,6 +23,8 @@ export type CanonicalLeadDoc = {
   phone_number?: string;
   normalized_phone_number?: string;
   timestamp?: Date;
+  createdAt?: Date;
+  ingestion_origin?: string;
   ref_no?: string;
   lid?: string;
   normalized_lid?: string;
@@ -208,7 +215,7 @@ export function createMongoCanonicalAdoptionStore(): CanonicalAdoptionStore {
         ],
       })
         .select(
-          "_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid",
+          "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid",
         )
         .limit(5)
         .lean()
@@ -219,14 +226,14 @@ export function createMongoCanonicalAdoptionStore(): CanonicalAdoptionStore {
       const docs = await FormLead.find({
         source_company: "best_relocation_leads",
         duplicate: { $ne: true },
-        timestamp: { $gte: BEST_RELOCATION_CUTOFF },
+        timestamp: { $gte: FORM_ADOPTION_STORED_CUTOFF },
         $or: [
           { normalized_phone_number: input.phone },
           { phone_number: input.phone },
         ],
       })
         .select(
-          "_id name phone_number normalized_phone_number timestamp ref_no lid normalized_lid",
+          "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid",
         )
         .limit(20)
         .lean()
@@ -282,10 +289,8 @@ function formPhoneNameDateMatches(
   name: string,
   timestamp: Date,
 ): boolean {
-  if (
-    !doc.timestamp ||
-    doc.timestamp.getTime() < BEST_RELOCATION_CUTOFF.getTime()
-  ) {
+  const arrived = leadInstant(doc);
+  if (!arrived || +arrived < +BEST_RELOCATION_CUTOFF) {
     return false;
   }
   const docPhone =
@@ -295,7 +300,7 @@ function formPhoneNameDateMatches(
   return (
     docPhone === phone &&
     docName === name &&
-    newYorkDateKey(doc.timestamp) === newYorkDateKey(timestamp)
+    newYorkDateKey(arrived) === newYorkDateKey(timestamp)
   );
 }
 
@@ -464,6 +469,8 @@ function asLeadDoc(doc: {
   phone_number?: string | null;
   normalized_phone_number?: string | null;
   timestamp?: Date | null;
+  createdAt?: Date | null;
+  ingestion_origin?: string | null;
   ref_no?: string | null;
   lid?: string | null;
   normalized_lid?: string | null;
@@ -474,6 +481,8 @@ function asLeadDoc(doc: {
     phone_number: absent(doc.phone_number),
     normalized_phone_number: absent(doc.normalized_phone_number),
     timestamp: absent(doc.timestamp),
+    createdAt: absent(doc.createdAt),
+    ingestion_origin: absent(doc.ingestion_origin),
     ref_no: absent(doc.ref_no),
     lid: absent(doc.lid),
     normalized_lid: absent(doc.normalized_lid),
