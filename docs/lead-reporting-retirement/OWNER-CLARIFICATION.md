@@ -1,5 +1,7 @@
 # November 3 owner clarification
 
+**Latest direction for the next session:** [NEXT-SESSION-INGESTION.md](NEXT-SESSION-INGESTION.md). The Owner will direct a separate manual run: ingest exception rows, all in-scope Bookings regardless of Lead attachment, high-confidence matched refunds, and create missing normal Forms/Calls only with a definite Booking match. The entire source apply remains held in this session. The old broad create preview is not approval and does not implement this new restriction.
+
 This clarification supersedes the earlier universal RingCentral-only wording in the November 3 specification for the final Best Relocation reconciliation.
 
 Best Relocation used its external Lead Tracker and Granot workflow rather than a RingCentral qualification queue. The final manual reconciliation must use the existing Best Relocation external tracker, cross-reference the shared Booked Deal Form responses and supported refunds, and apply `Form Fill Checker` and `Bad Lead Checker` from the frozen source. Missing RingCentral metadata is not a reason to discard this supported Best Relocation history.

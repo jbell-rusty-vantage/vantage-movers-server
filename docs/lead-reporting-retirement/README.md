@@ -2,6 +2,8 @@
 
 Current phase evidence: [RELEASE.md](RELEASE.md). The final Best Relocation source ingestion remains deferred; the independent general Call backfill and policy shutdown have separate production proofs.
 
+Next-session Owner rules and execution requirements: [NEXT-SESSION-INGESTION.md](NEXT-SESSION-INGESTION.md). This is a planning handoff, not permission to execute the old source preview. New normal Forms and Calls will require a definite Booking match; all in-scope Bookings remain independently reportable.
+
 **Owner clarification, November 3:** [the final Best Relocation import is a bounded exception to the earlier universal RingCentral-only wording](OWNER-CLARIFICATION.md). The Owner subsequently held **all** Best Relocation source ingestion, including selective exception rows, while requesting the remaining implementation, general Call backfill and ingestion/policy shutdown now. Bad Forms route exclusively to Bad Form Leads, and the Source Company stays active. No final source ingestion completion may be inferred from shutdown or general-backfill evidence.
 
 The owner requested the complete November 3 specification, including production backfills and permanent retirement, on `main`. Implementation, local proof, deployment, Mongo application, physical Sheet membership, and final reconciliation are separate states. This record must not claim completion while import conflicts or historical result gaps remain.
