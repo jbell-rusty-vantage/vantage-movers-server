@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { syncFormLeadToSheets } from "./googleSheets.service";
-import type { FormLeadSheetSource } from "./types";
+import { syncFormLeadToSheets, syncCallLeadToSheets } from "./googleSheets.service";
+import type { FormLeadSheetSource, CallLeadSheetSource } from "./types";
+import { LEGACY_BEST_RELOCATION_CALL_IDS } from "../leads/legacyBestRelocationCalls";
+import { BEST_RELOCATION_ADMISSION_COMPANY_ID, BEST_RELOCATION_ADMISSION_CALL_FEED_ID } from "../leads/callLeadAdmission";
 import type { SheetSyncEntry } from "../../models/schemaHelpers";
 
 const previous = { master: process.env.MASTER_LEADS_SHEET_ID, testMaster: process.env.TEST_MASTER_LEADS_SHEET_ID };
@@ -15,6 +17,27 @@ function form(overrides: Partial<FormLeadSheetSource> = {}): FormLeadSheetSource
     pickup_zip: "10001", destination_zip: "90210", move_size: "Studio", move_date: new Date(), source_company: "main_site",
     local: "long_distance", bad_lead: "auto_only", sheet_sync: [], ...overrides } as FormLeadSheetSource;
 }
+
+test("historical BR facade preserves No-Sync duplicate/Form Fill exceptions without RC or new admission", async () => {
+  process.env.MASTER_LEADS_SHEET_ID = process.env.TEST_MASTER_LEADS_SHEET_ID = "fixture-master";
+  const base = { _id: LEGACY_BEST_RELOCATION_CALL_IDS[0], timestamp: new Date(), source_company: "best_relocation_leads",
+    lead_source_company: BEST_RELOCATION_ADMISSION_COMPANY_ID, source_granularity_id: BEST_RELOCATION_ADMISSION_CALL_FEED_ID, no_sync: true };
+  for (const flags of [{ form_fill: true }, { duplicate: true }, {}]) {
+    const events: string[] = [];
+    await syncCallLeadToSheets({ ...base, ...flags } as CallLeadSheetSource, {
+      syncRowToTargets: async (_doc, targets) => {
+        assert.deepEqual(targets.map(target => target.tabName), ["Duplicate Calls"]);
+        events.push("upsert"); return targets.map(target => ({ target: target.target, spreadsheet_id: target.spreadsheetId,
+          tab_name: target.tabName, status: "synced" as const, updated_since_last_sync: false }));
+      },
+      deleteRowsFromTargets: async (_doc, targets) => {
+        assert.deepEqual(targets.map(target => target.tabName), "form_fill" in flags || "duplicate" in flags ? ["Calls", "Bad Call Leads"] : ["Calls", "Duplicate Calls", "Bad Call Leads"]);
+        events.push("delete"); return [];
+      },
+    });
+    assert.deepEqual(events, "form_fill" in flags || "duplicate" in flags ? ["upsert", "delete"] : ["delete"]);
+  }
+});
 
 test("direct bad Form facade upserts only Bad Form Leads then discovers stale primaries without metadata", async () => {
   const lead = form({ duplicate: true, no_sync: true });

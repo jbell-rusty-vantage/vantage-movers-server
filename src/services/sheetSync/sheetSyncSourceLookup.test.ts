@@ -13,6 +13,7 @@ test("syncSourceLead evaluates no_sync before unmatched and deletes ordinary tab
   const next = source.indexOf("\nasync function deleteOrdinaryNoSyncLeadRows", start);
   const body = next === -1 ? source.slice(start) : source.slice(start, next);
   assert.match(body, /noSyncAppliesToNormalTabs/);
+  assert.match(body, /_id: lead\._id/);
   assert.match(body, /deleteOrdinaryNoSyncLeadRows/);
   const unmatchedIndex = body.indexOf("created_on_unmatched");
   const noSyncIndex = body.indexOf("noSyncAppliesToNormalTabs");

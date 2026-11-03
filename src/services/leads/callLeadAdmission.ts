@@ -1,11 +1,16 @@
 import { z } from "zod";
+import { Types } from "mongoose";
 import { hasQualifiedRingCentralCall, qualifiedCallLeadFilter } from "../ringcentral/callLeadQualification";
 import { BEST_RELOCATION_TRACKER_ID } from "./externalSheetReview";
+import { LEGACY_BEST_RELOCATION_CALL_IDS } from "./legacyBestRelocationCalls";
+export { LEGACY_BEST_RELOCATION_CALL_MANIFEST } from "./legacyBestRelocationCalls";
 
 export const EXTERNAL_CALL_ADMISSION_POLICY_VERSION = "best-relocation-final-import-v1";
 export const BEST_RELOCATION_ADMISSION_COMPANY_ID = "6a4d240f3117eacd97823868";
 export const BEST_RELOCATION_ADMISSION_CALL_FEED_ID = "6a4d240f04c6e063cb6621f3";
 const objectId = z.string().regex(/^[a-f0-9]{24}$/);
+const legacyIds = new Set<string>(LEGACY_BEST_RELOCATION_CALL_IDS);
+const legacyMongoIds = [...LEGACY_BEST_RELOCATION_CALL_IDS.map(id => new Types.ObjectId(id)), ...LEGACY_BEST_RELOCATION_CALL_IDS];
 
 /** Owner-approved final tracker admission; it is never RingCentral qualification. */
 export const externalCallAdmissionSchema = z.object({
@@ -34,11 +39,21 @@ function canonicalId(value: unknown): string | null {
   return null;
 }
 
-/** Reporting may admit the final Best Relocation source without fabricating RC facts. */
+/** Preserves only the approved native historical inventory, without any Lead write. */
+export function hasLegacyBestRelocationCall(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const lead = value as Record<string, unknown>;
+  return legacyIds.has(canonicalId(lead._id) ?? "") && lead.source_company === "best_relocation_leads"
+    && canonicalId(lead.lead_source_company) === BEST_RELOCATION_ADMISSION_COMPANY_ID
+    && canonicalId(lead.source_granularity_id) === BEST_RELOCATION_ADMISSION_CALL_FEED_ID;
+}
+
+/** Independent saved RC, closed historical inventory, or approved final-source evidence. */
 export function hasReportingEligibleCall(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const lead = value as Record<string, unknown>;
   if (hasQualifiedRingCentralCall(lead.ringcentral)) return true;
+  if (hasLegacyBestRelocationCall(lead)) return true;
   const fact = lead.external_call_admission;
   return hasTrustedExternalCallAdmission(fact) && lead.source_company === "best_relocation_leads"
     && canonicalId(lead.lead_source_company) === fact.source_company_id
@@ -48,6 +63,15 @@ export function hasReportingEligibleCall(value: unknown): boolean {
 /** BSON Date checks intentionally reject imported ISO strings as admission evidence. */
 export function reportingEligibleCallLeadFilter(): Record<string, unknown> {
   return { $or: [qualifiedCallLeadFilter(), {
+    _id: { $in: [...legacyMongoIds] },
+    source_company: "best_relocation_leads",
+    lead_source_company: { $in: [new Types.ObjectId(BEST_RELOCATION_ADMISSION_COMPANY_ID), BEST_RELOCATION_ADMISSION_COMPANY_ID] },
+    source_granularity_id: { $in: [new Types.ObjectId(BEST_RELOCATION_ADMISSION_CALL_FEED_ID), BEST_RELOCATION_ADMISSION_CALL_FEED_ID] },
+    $expr: { $and: [
+      { $eq: [{ $type: "$source_company" }, "string"] },
+      ...["_id", "lead_source_company", "source_granularity_id"].map(field => ({ $in: [{ $type: `$${field}` }, ["objectId", "string"]] })),
+    ] },
+  }, {
     source_company: "best_relocation_leads",
     "external_call_admission.policy_version": EXTERNAL_CALL_ADMISSION_POLICY_VERSION,
     "external_call_admission.source_workbook_id": BEST_RELOCATION_TRACKER_ID,

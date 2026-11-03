@@ -10,6 +10,8 @@ import {
   type SheetContainsTabRead,
 } from "./sheetContains";
 import type { SheetContainsTabRef } from "./expectedSheetTabs";
+import { LEGACY_BEST_RELOCATION_CALL_IDS } from "../leads/legacyBestRelocationCalls";
+import { BEST_RELOCATION_ADMISSION_COMPANY_ID, BEST_RELOCATION_ADMISSION_CALL_FEED_ID } from "../leads/callLeadAdmission";
 
 const FORM_ID = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const FORM_ID_TWO = "bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -67,6 +69,18 @@ function formRow(id: string, extras: Record<string, string> = {}): SheetContains
 }
 
 const qualifiedCall = { call_log_id: "call-log-1", duration_seconds: 120, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s" };
+
+test("contains transports historical BR identity for No-Sync Form Fill and duplicate exceptions", async () => {
+  const id = LEGACY_BEST_RELOCATION_CALL_IDS[0];
+  for (const flags of [{ form_fill: true }, { duplicate: true }, {}]) {
+    const result = await runSheetContainsCheck({ entity_model: "CallLead", ids: [id] }, fakeDeps({
+      records: [{ _id: id, id, label: "Synthetic historical", source_company: "best_relocation_leads",
+        lead_source_company: BEST_RELOCATION_ADMISSION_COMPANY_ID, source_granularity_id: BEST_RELOCATION_ADMISSION_CALL_FEED_ID, no_sync: true, ...flags }],
+      tabs: { "master_leads:Duplicate Calls": formRow(id) },
+    }));
+    assert.deepEqual(result.items[0].expected_tabs, "form_fill" in flags || "duplicate" in flags ? ["Duplicate Calls"] : []);
+  }
+});
 
 test("rowsFromValues maps Mongo ID cells and keeps evidence columns", () => {
   const rows = rowsFromValues(

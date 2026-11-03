@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { externalCallAdmissionSchema, hasReportingEligibleCall, hasTrustedExternalCallAdmission,
   reportingEligibleCallLeadFilter, EXTERNAL_CALL_ADMISSION_POLICY_VERSION,
@@ -11,6 +12,7 @@ import { aggregateSourcePerformance } from "../reporting/query/canonicalReportin
 import { planExpectedSheetTabs } from "../googleSheets/expectedSheetTabs";
 import { getCallLeadModel } from "../../models/CallLead";
 import { planFormSiblingUpdate } from "../granotLifecycle/callLeadFormSibling";
+import { LEGACY_BEST_RELOCATION_CALL_IDS, LEGACY_BEST_RELOCATION_CALL_MANIFEST } from "./legacyBestRelocationCalls";
 
 function admitted() {
   return { source_company: "best_relocation_leads", lead_source_company: new mongoose.Types.ObjectId(COMPANY),
@@ -22,6 +24,39 @@ function admitted() {
       source_row_receipt_id: "650000000000000000000002", applied_at: new Date("2026-11-03T21:00:00Z"),
     } };
 }
+
+function historical(id: string = LEGACY_BEST_RELOCATION_CALL_IDS[0]) {
+  return { _id: new mongoose.Types.ObjectId(id), source_company: "best_relocation_leads",
+    lead_source_company: new mongoose.Types.ObjectId(COMPANY), source_granularity_id: new mongoose.Types.ObjectId(FEED) };
+}
+
+test("closed native historical inventory preserves exactly 69 scoped Calls without stamping or qualifying them", () => {
+  assert.equal(LEGACY_BEST_RELOCATION_CALL_IDS.length, 69);
+  assert.equal(new Set(LEGACY_BEST_RELOCATION_CALL_IDS).size, 69);
+  assert.deepEqual([...LEGACY_BEST_RELOCATION_CALL_IDS].sort(), LEGACY_BEST_RELOCATION_CALL_IDS);
+  assert.equal(createHash("sha256").update(JSON.stringify(LEGACY_BEST_RELOCATION_CALL_IDS)).digest("hex"), LEGACY_BEST_RELOCATION_CALL_MANIFEST.id_sha256);
+  assert.equal(LEGACY_BEST_RELOCATION_CALL_MANIFEST.captured_at, "2026-11-03T21:43:54.101Z");
+  for (const id of LEGACY_BEST_RELOCATION_CALL_IDS) {
+    const row = historical(id), before = JSON.stringify(row);
+    assert.equal(hasReportingEligibleCall(row), true);
+    assert.equal(hasReportingEligibleCall({ ...row, _id: id, lead_source_company: COMPANY, source_granularity_id: FEED }), true);
+    assert.equal(hasQualifiedRingCentralCall(undefined), false);
+    assert.equal(JSON.stringify(row), before);
+    assert.equal("external_call_admission" in row, false);
+  }
+  const row = historical();
+  for (const patch of [{ _id: new mongoose.Types.ObjectId() }, { _id: [row._id] }, { source_company: "tbm_leads" },
+    { source_company: ["best_relocation_leads"] }, { lead_source_company: "650000000000000000000099" },
+    { lead_source_company: [COMPANY] }, { source_granularity_id: "650000000000000000000099" }, { source_granularity_id: [FEED] }]) {
+    assert.equal(hasReportingEligibleCall({ ...row, ...patch }), false);
+  }
+  assert.deepEqual(getCallLeadReportingDecision(row), { disposition: "calls", billable: true, reason_codes: [] });
+  assert.equal(getCallLeadReportingDecision({ ...row, duplicate: true }).disposition, "duplicate_calls");
+  assert.equal(getCallLeadReportingDecision({ ...row, form_fill: true }).disposition, "duplicate_calls");
+  assert.equal(getCallLeadReportingDecision({ ...row, created_on_unmatched: true }).disposition, "excluded");
+  assert.equal(getCallLeadReportingDecision({ ...row, no_sync: true }).billable, true);
+  assert.equal(planExpectedSheetTabs("CallLead", { ...row, no_sync: true }).expected.length, 0);
+});
 
 test("trusted final BR admission enables reporting without asserting RingCentral qualification", () => {
   const row = admitted();
@@ -135,6 +170,42 @@ test("loopback Mongo: persisted admission object/filter/billing expression agree
     assert.equal(saved?.external_call_admission.stable_source_row_id, "lead:fixture");
   } finally {
     await model.collection.deleteMany({ _id: { $in: ids } });
+    await mongoose.disconnect();
+  }
+});
+
+test("loopback Mongo: all fixed historical IDs agree across object, indexed match and billing expression", {
+  skip: process.env.RUN_CALL_ADMISSION_LOCAL_TEST !== "1",
+}, async () => {
+  process.env.TEST_MODE = "true";
+  process.env.TEST_MONGO_DATABASE_NAME = "testvantagemovers_legacycallproof";
+  await mongoose.connect("mongodb://127.0.0.1:27119/?replicaSet=callReportingProof", { dbName: "testvantagemovers_legacycallproof", serverSelectionTimeoutMS: 8000 });
+  const collection = mongoose.connection.db!.collection("legacy_reporting_parity_fixtures");
+  const fixtures: Record<string, unknown>[] = LEGACY_BEST_RELOCATION_CALL_IDS.map((id, index) => ({ ...historical(id),
+    duplicate: index === 1, form_fill: index === 2, created_on_unmatched: index === 3, no_sync: index === 4,
+  }));
+  fixtures.push({ ...historical(), _id: LEGACY_BEST_RELOCATION_CALL_IDS[5], lead_source_company: COMPANY, source_granularity_id: FEED });
+  fixtures.push({ ...historical(), _id: new mongoose.Types.ObjectId() });
+  const corruptions = [{ source_company: "tbm_leads" }, { lead_source_company: "650000000000000000000099" },
+    { source_granularity_id: "650000000000000000000099" }, { source_company: ["best_relocation_leads"] },
+    { lead_source_company: [new mongoose.Types.ObjectId(COMPANY)] }, { source_granularity_id: [FEED] }];
+  for (const [index, patch] of corruptions.entries()) fixtures.push({ ...historical(), _id: LEGACY_BEST_RELOCATION_CALL_IDS[index + 6], ...patch });
+  const ids = fixtures.map(row => row._id);
+  const identity = (row: Record<string, unknown>) => `${typeof row._id}:${String(row._id)}`;
+  try {
+    await collection.insertMany(fixtures);
+    const persisted = await collection.find({ _id: { $in: ids } } as never).toArray();
+    const eligible = await collection.find({ $and: [{ _id: { $in: ids } }, reportingEligibleCallLeadFilter()] }).toArray();
+    assert.deepEqual(eligible.map(identity).sort(), persisted.filter(hasReportingEligibleCall).map(identity).sort());
+    assert.equal(eligible.length, 70);
+    const expected = persisted.filter(row => getCallLeadReportingDecision(row).billable).map(identity).sort();
+    const matched = await collection.find({ $and: [{ _id: { $in: ids } }, billableCallLeadFilter()] }).toArray();
+    assert.deepEqual(matched.map(identity).sort(), expected);
+    const expressed = await collection.aggregate([{ $match: { _id: { $in: ids } } }, { $project: { billable: billableCallLeadExpression() } }]).toArray();
+    assert.deepEqual(expressed.filter(row => row.billable).map(identity).sort(), expected);
+    assert.deepEqual(await collection.find({ _id: { $in: ids } } as never).toArray(), persisted);
+  } finally {
+    await collection.deleteMany({ _id: { $in: ids } } as never);
     await mongoose.disconnect();
   }
 });

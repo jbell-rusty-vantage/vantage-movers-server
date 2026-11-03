@@ -251,6 +251,7 @@ async function loadSheetContainsRecords(
 ): Promise<SheetContainsLoadedRecord[]> {
   const docs = await loadDocuments(entityModel, ids);
   return docs.map((record) => ({
+    _id: record._id,
     id: record._id.toString(),
     label: labelFor(entityModel, record),
     duplicate: record.duplicate,

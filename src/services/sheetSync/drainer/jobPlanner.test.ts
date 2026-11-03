@@ -8,6 +8,8 @@ import { FormLead } from "../../../models/FormLead";
 import type { SheetSyncJobDocument } from "../../../models/SheetSyncJob";
 import { planJobWrites } from "./jobPlanner";
 import { BEST_RELOCATION_TRACKER_ID, EXTERNAL_REVIEW_POLICY_VERSION } from "../../leads/externalSheetReview";
+import { LEGACY_BEST_RELOCATION_CALL_IDS } from "../../leads/legacyBestRelocationCalls";
+import { BEST_RELOCATION_ADMISSION_COMPANY_ID, BEST_RELOCATION_ADMISSION_CALL_FEED_ID } from "../../leads/callLeadAdmission";
 
 test("jobPlanner registers mongoose models required for booked-lead populate", () => {
   assert.ok(mongoose.models.Customer, "Customer must be registered for booking_chain populate");
@@ -567,6 +569,19 @@ test("no_sync + Call duplicate matches today's Duplicate Calls plan", async () =
     `delete:master_bad_calls:${SHEET_TAB_NAMES.badCalls}`,
   ]);
   assert.deepEqual(twinWrites, baselineWrites);
+});
+
+test("historical BR queued policy retains identity for No-Sync Form Fill and duplicate routing", async () => {
+  useMasterSheetIds();
+  for (const flags of [{ form_fill: true }, { duplicate: true }, {}]) {
+    const lead = callLeadStub({ _id: new Types.ObjectId(LEGACY_BEST_RELOCATION_CALL_IDS[0]), ringcentral: undefined,
+      source_company: "best_relocation_leads", lead_source_company: new Types.ObjectId(BEST_RELOCATION_ADMISSION_COMPANY_ID),
+      source_granularity_id: new Types.ObjectId(BEST_RELOCATION_ADMISSION_CALL_FEED_ID), no_sync: true, ...flags });
+    stubCallLead(lead);
+    const planned = await planJobWrites(sourceLeadJob(lead._id.toString(), "CallLead"));
+    const upserts = planned.flatMap(plan => plan.writes).filter(write => write.op === "upsert");
+    assert.deepEqual(upserts.map(write => write.tabName), "form_fill" in flags || "duplicate" in flags ? [SHEET_TAB_NAMES.duplicateCalls] : []);
+  }
 });
 
 test("Form Duplicate upserts Duplicates and does not delete leftover Forms", async () => {

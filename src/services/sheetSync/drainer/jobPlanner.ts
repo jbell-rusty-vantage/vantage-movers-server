@@ -135,6 +135,8 @@ async function planSourceLead(
   const docKey = `${leadModel}:${leadId}`;
   if (
     noSyncAppliesToNormalTabs({
+      _id: lead._id,
+      created_on_unmatched: lead.get("created_on_unmatched") as boolean | null | undefined,
       no_sync: lead.get("no_sync") as boolean | null | undefined,
       duplicate: lead.get("duplicate") as boolean | null | undefined,
       bad_lead: lead.get("bad_lead"),

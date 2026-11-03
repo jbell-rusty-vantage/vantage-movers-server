@@ -49,6 +49,7 @@ export type SheetContainsTabPlan = {
 };
 
 export type SheetContainsRecordFlags = {
+  _id?: unknown;
   ringcentral?: unknown;
   external_call_admission?: unknown;
   source_company?: unknown;

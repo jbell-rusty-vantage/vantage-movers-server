@@ -11,6 +11,7 @@ export function isNoSyncLead(lead: { no_sync?: boolean | null }): boolean {
 }
 
 export function noSyncAppliesToNormalTabs(lead: {
+  _id?: unknown;
   no_sync?: boolean | null;
   duplicate?: boolean | null;
   bad_lead?: unknown;
@@ -19,6 +20,7 @@ export function noSyncAppliesToNormalTabs(lead: {
   source_company?: unknown;
   lead_source_company?: unknown;
   source_granularity_id?: unknown;
+  created_on_unmatched?: boolean | null;
   form_fill?: boolean | null;
   external_sheet_review?: unknown;
   timestamp?: unknown;

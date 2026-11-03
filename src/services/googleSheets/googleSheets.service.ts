@@ -54,20 +54,21 @@ export async function syncFormLeadToSheets(
 
 export async function syncCallLeadToSheets(
   lead: CallLeadSheetSource,
+  delivery = { syncRowToTargets, deleteRowsFromTargets },
 ): Promise<SheetSyncUpdateEntry[]> {
   const decision = getCallLeadReportingDecision(lead);
   if (decision.disposition === "excluded") return [];
   const allTargets = callLeadTargets(lead, true);
   if (noSyncAppliesToNormalTabs(lead)) {
-    const deleted = await deleteRowsFromTargets(lead, allTargets, CALL_REPORTING_TARGET_KEYS);
+    const deleted = await delivery.deleteRowsFromTargets(lead, allTargets, CALL_REPORTING_TARGET_KEYS);
     return deleted.map((target) => ({ target, status: "deleted" as const }));
   }
   const targets = callLeadTargets(lead);
-  const results: SheetSyncUpdateEntry[] = await syncRowToTargets(lead, targets, callLeadToRow(lead));
+  const results: SheetSyncUpdateEntry[] = await delivery.syncRowToTargets(lead, targets, callLeadToRow(lead));
   // A failed destination never permits deleting the last good projection.
   if (results.some((result) => result.status !== "synced")) return results;
   const staleTargets = allTargets.filter((target) => !targets.some((desired) => desired.target === target.target));
-  const deleted = await deleteRowsFromTargets(lead, staleTargets, staleCallTargetKeys(lead));
+  const deleted = await delivery.deleteRowsFromTargets(lead, staleTargets, staleCallTargetKeys(lead));
   results.push(...deleted.map((target) => ({ target, status: "deleted" as const })));
   return results;
 }
