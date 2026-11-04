@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import type { BestRelocationPlanAction } from "../bestRelocationSheetIngest/applicationPlan";
 import type { CanonicalCommandContext } from "./types";
 import { assertApprovedFinalCallAction, bestRelocationFinalCallPayloadChecksum, finalCallAdoptionReceiptTarget, selectFinalCallAdoption } from "./bestRelocationFinalCall";
@@ -31,7 +32,9 @@ function context(row: BestRelocationPlanAction): CanonicalCommandContext {
     provenance: { origin: "external_sheet_ingestion", source_connection_key: "best_relocation", run_id: "600000000000000000000002", source_receipt_id: "600000000000000000000003" } };
 }
 function run(row: BestRelocationPlanAction) {
-  return { plan_snapshot: { checksum: "plan-sha", canonical_plan: { actions: [row] } }, plan_checksum: "plan-sha", source_read_through: new Date("2026-11-03T12:00:00Z"), initiator: { actor_id: "owner" }, approval: { final_reconciliation: true } as Record<string, unknown> };
+  const signed = { canonical_plan: { actions: [row] } };
+  const checksum = createHash("sha256").update(JSON.stringify(signed)).digest("hex");
+  return { plan_snapshot: { ...signed, checksum }, plan_checksum: checksum, source_read_through: new Date("2026-11-03T12:00:00Z"), initiator: { actor_id: "owner" }, approval: { final_reconciliation: true, owner_released_deferred_ingestion_checksum: checksum } as Record<string, unknown> };
 }
 
 test("final Calls require exact stored approval, pinned source scope and immutable action evidence", () => {
@@ -55,6 +58,18 @@ test("new normal Calls stay held until explicit Owner checksum approval; existin
   const reviewedRun = run(reviewed); reviewedRun.approval.normal_call_insert_approval = "different-checksum";
   assert.throws(() => assertApprovedFinalCallAction({ action: reviewed, context: context(reviewed) }, reviewedRun), /explicit Owner checksum/);
   reviewedRun.approval.normal_call_insert_approval = reviewedRun.plan_checksum;
+  assert.throws(() => assertApprovedFinalCallAction({ action: reviewed, context: context(reviewed) }, reviewedRun), /persisted definite Booking/);
+  reviewed.matching = { method: "definite_booking", calibration_version: "final-v1", evidence: ["booking_action:booking:job"] };
+  const booking: BestRelocationPlanAction = { ...reviewed, action_key: "booking:job", command: "adopt_existing", classification: "adoption", dataset_key: "booked_deals", stable_source_row_id: "booking:job" };
+  reviewedRun.plan_snapshot.canonical_plan.actions.push(booking);
+  const snapshot = reviewedRun.plan_snapshot as typeof reviewedRun.plan_snapshot & { booking_matches: unknown[] };
+  snapshot.booking_matches = [{ lead_action_key: reviewed.action_key, booking_action_key: booking.action_key, booking_identity: booking.stable_source_row_id,
+    evidence: ["exact reviewed durable Booking identity"] }];
+  const { checksum: _checksum, ...signed } = snapshot;
+  snapshot.checksum = createHash("sha256").update(JSON.stringify(signed)).digest("hex");
+  reviewedRun.plan_checksum = snapshot.checksum;
+  reviewedRun.approval.normal_call_insert_approval = snapshot.checksum;
+  reviewedRun.approval.owner_released_deferred_ingestion_checksum = snapshot.checksum;
   assert.equal(assertApprovedFinalCallAction({ action: reviewed, context: context(reviewed) }, reviewedRun).reviewed_for_insert, true);
   const adopted = action({ expected_disposition: "calls", duplicate: false, target_lead_id: targetId, expected_revision: 0 });
   assert.equal(assertApprovedFinalCallAction({ action: adopted, context: context(adopted) }, run(adopted)).target_lead_id, targetId);

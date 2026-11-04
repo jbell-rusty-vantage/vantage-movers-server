@@ -20,6 +20,10 @@ import { classifyExternalReview, EXTERNAL_REVIEW_POLICY_VERSION } from "../../sr
 import type { CapturedReviewCell } from "../../src/services/domainCommands/externalSheetReview";
 import { BEST_RELOCATION_CUTOFF } from "../../src/services/bestRelocationSheetIngest/sheets";
 import { parseFrozenSnapshot, hash, type FrozenSourceSnapshot } from "./sourceSnapshot";
+import { buildFinalBookingGraph, buildFinalFinancialActions, type FinalBookingGraph } from "./bookingGraph";
+import { selectFinalLeadActions, loadFinalFormDuplicateContext, type BookingMatchEdge, type SkippedSourceRow } from "./finalLeadSelection";
+import { normalizeComparisonName } from "../../src/services/bookings/bookingIdentity";
+import { normalizeMerchantName } from "../../src/services/bestRelocationSheetIngest/plan";
 
 export type ReviewAction = { dataset_key: string; stable_source_row_id: string; cell: CapturedReviewCell;
   lead_model: "FormLead" | "CallLead"; lead_id?: string; lead_action_key?: string; expected_revision?: number;
@@ -29,6 +33,8 @@ export type RetirementSourcePlan = { version: string; database: string; snapshot
   inventory: ReturnType<typeof parseFrozenSnapshot>["inventory"]; canonical_plan: BestRelocationApplicationPlan;
   financial_source_payloads: Record<string, Record<string, unknown>>;
   new_normal_call_flags?: NewNormalCallFlag[];
+  booking_graph?: FinalBookingGraph; booking_matches?: BookingMatchEdge[]; skipped_source_rows?: SkippedSourceRow[];
+  source_identity_collapses?: Array<{ stable_source_row_id: string; primary_row: number; rows: AuthoritativeObservation[] }>;
   review_actions: ReviewAction[]; counters: Record<string, number>; target_before: Array<Record<string, unknown>>; checksum: string };
 
 export function retirementPlanChecksum(plan: RetirementSourcePlan): string { const { checksum: _checksum, ...data } = plan; return hash(data); }
@@ -42,6 +48,7 @@ export function partitionSourceIdentities(data: ParsedWorkbookData) {
     ...selectBestRelocationRefundObservations(data.refunds, data.booked)];
   const groups = new Map<string, AuthoritativeObservation[]>();
   const conflicts = new Map<string, { row: AuthoritativeObservation; stable_id: string; reason: "duplicate_source_identity" | "missing_durable_source_identity" }>();
+  const collapsed: NonNullable<RetirementSourcePlan["source_identity_collapses"]> = [], omitted = new Set<string>();
   for (const row of rows) {
     try {
       if ((row.source_tab === "Calls" || row.source_tab === "Refunds") && !isValidManagedIngestionId(managedId(row.provenance.raw) ?? "")) throw new Error("invalid_managed_identity");
@@ -50,12 +57,27 @@ export function partitionSourceIdentities(data: ParsedWorkbookData) {
     catch { conflicts.set(rowKey(row), { row, stable_id: `unresolved:${hash([row.source_tab, row.sheet_row, row.provenance.raw])}`, reason: "missing_durable_source_identity" }); }
   }
   for (const [id, group] of groups) if (group.length > 1 && !group.every(row => row.source_tab === "Booked Deals")) {
+    const primary = [...group].sort((a, b) => Date.parse(a.timestamp!) - Date.parse(b.timestamp!) || a.sheet_row - b.sheet_row)[0]!;
+    // One durable Form identity copied within a minute, with identical contact
+    // and move facts and the same exclusive bad disposition, is one Lead.
+    // Both annotations remain checksum-bound evidence; no duplicate is invented.
+    if (group.every(row => "kind" in row && row.kind === "form" && "kind" in primary && primary.kind === "form" &&
+      row.source_tab === primary.source_tab && row.normalized_name === primary.normalized_name && row.normalized_phone === primary.normalized_phone &&
+      !!row.normalized_name && !!row.normalized_phone && row.ref_no === primary.ref_no && row.over_2k === primary.over_2k &&
+      row.over_4k === primary.over_4k && row.booked_flag === primary.booked_flag &&
+      row.pickup_zip === primary.pickup_zip && row.destination_zip === primary.destination_zip && row.move_size === primary.move_size &&
+      row.move_date === primary.move_date && Math.abs(Date.parse(row.timestamp!) - Date.parse(primary.timestamp!)) <= 60000 &&
+      (() => { try { return classifyExternalReview(row.bad_lead_checker, "FormLead")?.kind === "bad_form"; } catch { return false; } })())) {
+      collapsed.push({ stable_source_row_id: id, primary_row: primary.sheet_row, rows: group });
+      for (const row of group) if (row !== primary) omitted.add(rowKey(row));
+      continue;
+    }
     for (const row of group) conflicts.set(rowKey(row), { row, stable_id: id, reason: "duplicate_source_identity" });
   }
   const filtered = Object.fromEntries(["forms", "localForms", "calls", "booked", "refunds"].map(key => [key,
-    (data[key as "forms"] as AuthoritativeObservation[]).filter(row => !conflicts.has(rowKey(row))),
+    (data[key as "forms"] as AuthoritativeObservation[]).filter(row => !conflicts.has(rowKey(row)) && !omitted.has(rowKey(row))),
   ]));
-  return { data: { ...data, ...filtered } as ParsedWorkbookData, conflicts };
+  return { data: { ...data, ...filtered } as ParsedWorkbookData, conflicts, collapsed, omitted };
 }
 
 export function financialAdoptionMatches(model: string, payload: Record<string, unknown> | undefined, row: Record<string, unknown>): boolean {
@@ -66,6 +88,17 @@ export function financialAdoptionMatches(model: string, payload: Record<string, 
   return fields.every(key => payload[key] == null ||
     Number.isFinite(Number(payload[key])) && Number.isFinite(Number(row[key])) &&
     Math.round(Number(payload[key]) * 100) === Math.round(Number(row[key]) * 100));
+}
+export function finalBookingIdentityMatches(payload: Record<string, any> | undefined, row: Record<string, any>): boolean {
+  if (!payload || !payload.customer_name || !row.customer_name || !payload.book_date || !row.book_date) return false;
+  const day=(value:unknown)=>{const at=new Date(String(value));return Number.isFinite(+at)?at.toISOString().slice(0,10):null;};
+  const names=(values:unknown[])=>values.map(value=>normalizeComparisonName(String(value??""))).filter(Boolean).sort();
+  try {
+    return normalizeComparisonName(payload.customer_name)===normalizeComparisonName(row.customer_name) && day(payload.book_date)===day(row.book_date) &&
+      normalizeMerchantName(payload.merchant)===normalizeMerchantName(row.merchant) &&
+      canonicalJson(names([payload.agent,payload.split_agent]))===canonicalJson(names((row.agent_allocations??[]).map((item:any)=>item.agent_name_snapshot??item.agent_name))) &&
+      (row.agent_allocations??[]).every((item:any)=>Math.round(Number(item.binder_amount)*100)===Math.round(Number(payload.total_binder_amount)*100/(payload.split_agent?2:1)));
+  } catch { return false; }
 }
 export function primaryReceiptReference(model: string | null | undefined, ids: readonly string[]) {
   if (!model || !["FormLead", "CallLead", "BookedLead", "CancelledLead"].includes(model) ||
@@ -87,15 +120,21 @@ export function applyFinalReceiptPolicy(plan: BestRelocationApplicationPlan, evi
     const priorValues = baseline.last_applied_source_values ?? state?.last_applied_source_values;
     const same = baseline.content_hash === action.content_hash || state?.last_applied_content_hash === action.content_hash || priorValues != null &&
       canonicalJson(priorValues) === canonicalJson(action.source_owned_values ?? action.command_payload ?? {});
+    // The final graph deliberately removes historical Lead dependencies and
+    // legacy payload representations. Receipt ownership can still adopt a
+    // financial entity, subject to the exact source/job/money/link readback
+    // below; this path never updates its stored financial or attachment fields.
+    const financial = ["booked_deals", "refunds"].includes(action.dataset_key);
+    const adopt = ref?.primary.model === expectedModel && (same || financial);
     const actionKey = `${action.action_key}:revision:${action.content_hash.slice(0, 16)}`;
     remapped.set(action.action_key, actionKey);
     const { command_payload: _payload, ...rest } = action;
     return {
       ...rest, action_key: actionKey,
-      command: ref?.primary.model === expectedModel && same ? "adopt_existing" as const : "record_conflict" as const,
-      classification: ref?.primary.model === expectedModel && same ? "adoption" as const : "conflict" as const,
+      command: adopt ? "adopt_existing" as const : "record_conflict" as const,
+      classification: adopt ? "adoption" as const : "conflict" as const,
       ...(ref ? { adopted_entity_refs: [ref.primary, ...ref.related_ids.map(id => ({ model: ref.primary.model, id }))] } : {}),
-      ...(!(ref?.primary.model === expectedModel && same) ? { conflict: { type: "canonical_divergence" as const, severity: "blocking" as const } } : {}),
+      ...(!adopt ? { conflict: { type: "canonical_divergence" as const, severity: "blocking" as const } } : {}),
     };
   });
   return { ...plan, actions: actions.map(action => ({ ...action, depends_on: action.depends_on.map(key => remapped.get(key) ?? key) })) };
@@ -103,7 +142,8 @@ export function applyFinalReceiptPolicy(plan: BestRelocationApplicationPlan, evi
 export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): Promise<RetirementSourcePlan> {
   await connectMongo();
   if (mongoose.connection.name !== "vantagemovers") throw new Error("source_final_plan_requires_explicit_production_database");
-  const { data, inventory } = parseFrozenSnapshot(snapshot);
+  const { data, all_data, inventory } = parseFrozenSnapshot(snapshot);
+  const bookingGraph = buildFinalBookingGraph({ data: all_data, through: snapshot.through });
   const partitioned = partitionSourceIdentities(data);
   const connection = await ExternalDataConnection.findOne({ key: "best_relocation" }).lean();
   const company = await getLeadSourceCompanyModel().findOne({ company_slug: "best_relocation_leads" }).select("_id company_slug granot_creation_retired_at").lean();
@@ -120,6 +160,9 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
   for (const rows of [partitioned.data.forms, partitioned.data.localForms]) rows.sort((a,b) =>
     Date.parse(a.timestamp!) - Date.parse(b.timestamp!) || stableSourceRowId(a).localeCompare(stableSourceRowId(b)));
   const built = buildBestRelocationApplicationPlan({ data: partitioned.data, trigger: "manual", cutoff: BEST_RELOCATION_CUTOFF, sourceReadThrough: new Date(snapshot.through) });
+  // Financial identities and amounts are resolved independently of Lead
+  // matching. A failed or absent Lead never suppresses an official Booking.
+  built.plan.actions = [...built.plan.actions.filter(action => !["booked_deals", "refunds"].includes(action.dataset_key)), ...buildFinalFinancialActions(bookingGraph)];
   const originalPayloads = new Map(built.plan.actions.map(action => [`${action.dataset_key}:${action.stable_source_row_id}`, action.command_payload]));
   const identities = [...built.plan.actions.map(action => ({ dataset_key: action.dataset_key, stable_source_row_id: action.stable_source_row_id })),
     ...[...partitioned.data.forms, ...partitioned.data.localForms, ...partitioned.data.calls].map(row => ({ dataset_key: datasetKey(row), stable_source_row_id: stableSourceRowId(row) }))];
@@ -131,14 +174,18 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
   const refs = [...canonical.actions.flatMap(action => action.adopted_entity_refs ?? []), ...[...evidence.latest.values()].flatMap(row =>
     row.resulting_canonical_ids?.length && row.resulting_canonical_model ? [{ model: row.resulting_canonical_model, id: row.resulting_canonical_ids[0] }] : [])];
   const targets = await loadSourcePlanTargets(refs);
+  const duplicates = await loadFinalFormDuplicateContext(String(company._id));
+  const formSelection = selectFinalLeadActions({ actions: canonical.actions, graph: bookingGraph, targets, duplicates });
+  canonical.actions = formSelection.actions;
   const callCandidates = await loadSourceCallCandidates(partitioned.data.calls, String(company._id), callGranularities);
   for (const candidate of callCandidates) targets.set(`CallLead:${candidate._id}`, candidate);
   const formPhones = await loadSourceFormFillPhones(String(company._id));
   for (const row of [...partitioned.data.forms,...partitioned.data.localForms]) {
     const action=canonical.actions.find(action=>action.dataset_key===datasetKey(row)&&action.stable_source_row_id===stableSourceRowId(row));
-    if (action && !["conflict","invalid"].includes(action.classification) && row.normalized_phone) formPhones.add(row.normalized_phone);
+    if (action && action.command === "create_form_lead" && row.normalized_phone) formPhones.add(row.normalized_phone);
   }
-  const sourceCalls=await planFinalSourceCalls({calls:partitioned.data.calls,candidates:callCandidates,formPhones,receipts:evidence.latest});
+  const sourceCalls=await planFinalSourceCalls({calls:partitioned.data.calls,candidates:callCandidates,formPhones,receipts:evidence.latest,
+    definiteBookings: new Map(bookingGraph.permitted_normal_leads.filter(row => row.dataset_key === "calls").map(row => [row.stable_source_row_id, row.booking_job]))});
   canonical.actions.push(...sourceCalls.actions);
   const targetBefore: Array<Record<string, unknown>> = [];
   for (const action of canonical.actions) {
@@ -173,6 +220,8 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
       const payload = originalPayloads.get(`${action.dataset_key}:${action.stable_source_row_id}`);
       const linkedIds = [row.lead_ref, row.booked_lead, row.booked].filter(Boolean).map(String);
       if (receiptRelatedIds.some(id => !linkedIds.includes(id)) ||
+          ref.model === "BookedLead" && `booking:${row.normalized_job_no}` !== action.stable_source_row_id ||
+          ref.model === "BookedLead" && !finalBookingIdentityMatches(payload,row) ||
           (["FormLead", "CallLead"].includes(ref.model) && row.source_company !== "best_relocation_leads") || !financialAdoptionMatches(ref.model, payload, row)) {
         action.command = "record_conflict"; action.classification = "conflict"; action.conflict = { type: "canonical_divergence", severity: "blocking" };
       }
@@ -189,16 +238,29 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
     };
     canonical.actions.push(action);
   }
+  const finalSelection = selectFinalLeadActions({ actions: canonical.actions, graph: bookingGraph, targets, duplicates });
+  canonical.actions = finalSelection.actions;
+  const skipped = [...new Map([...formSelection.skipped, ...finalSelection.skipped].map(row => [`${row.dataset_key}:${row.stable_source_row_id}`, row])).values()];
+  const skippedActions = new Set(skipped.map(row => row.action_key));
+  canonical.actions = canonical.actions.map(action => {
+    if (action.dataset_key !== "call_aliases" || !action.depends_on.some(key => skippedActions.has(key))) return action;
+    skipped.push({dataset_key:action.dataset_key,stable_source_row_id:action.stable_source_row_id,action_key:action.action_key,reason:"historical_duplicate_alias_preserved_without_normal_source_apply"});
+    const {command_payload:_payload,...rest}=action;
+    return {...rest,command:"unchanged" as const,classification:"unchanged" as const,depends_on:[]};
+  });
+  const skippedKeys = new Set(skipped.map(row => `${row.dataset_key}:${row.stable_source_row_id}`));
   canonical.counters = canonical.actions.reduce<Record<string, number>>((counts, action) => { counts[action.classification] = (counts[action.classification] ?? 0) + 1; return counts; }, {});
   const financialSourcePayloads = Object.fromEntries(canonical.actions
     .filter(action => ["booked_deals", "refunds"].includes(action.dataset_key) && originalPayloads.get(`${action.dataset_key}:${action.stable_source_row_id}`) != null)
     .map(action => [action.action_key, originalPayloads.get(`${action.dataset_key}:${action.stable_source_row_id}`)!]));
   const reviews: ReviewAction[] = [];
   for (const row of [...data.forms, ...data.localForms, ...data.calls]) {
+    if (partitioned.omitted.has(rowKey(row))) continue;
     const isCall = row.kind === "call", model = isCall ? "CallLead" : "FormLead";
     const dataset = row.source_tab === "Local Forms" ? "local_forms" : isCall ? "calls" : "forms";
     const identityConflict = partitioned.conflicts.get(rowKey(row));
     const stable = identityConflict?.stable_id ?? stableSourceRowId(row), raw = row.provenance.raw[isCall ? "Form Fill Checker" : "Bad Lead Checker"] ?? (isCall ? row.form_fill_checker : row.bad_lead_checker);
+    if (skippedKeys.has(`${dataset}:${stable}`)) continue;
     const tab = snapshot.tabs.find(t => t.tabName === row.source_tab)!;
     const cell: CapturedReviewCell = { source_workbook_id: tab.spreadsheetId, source_sheet_id: tab.tabId!, source_tab: row.source_tab,
       stable_source_row_id: stable, raw_value: raw, source_content_hash: hash([EXTERNAL_REVIEW_POLICY_VERSION, row.provenance.raw]) };
@@ -224,7 +286,7 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
   for (const alias of sourceCalls.aliases) {
     const row=alias.source, raw=row.provenance.raw["Form Fill Checker"] ?? row.form_fill_checker;
     const primary=reviews.find(review=>review.dataset_key==="calls"&&review.stable_source_row_id===stableSourceRowId(row));
-    if (!primary) throw new Error("alias_primary_review_missing");
+    if (!primary) continue;
     reviews.push({...primary,dataset_key:"call_aliases",stable_source_row_id:alias.action.stable_source_row_id,
       lead_id:String(alias.target._id),lead_action_key:undefined,expected_revision:Number(alias.target.domain_revision??0),target_before:alias.target,
       cell:{...primary.cell,raw_value:raw}});
@@ -245,6 +307,8 @@ export async function planSourceReconciliation(snapshot: FrozenSourceSnapshot): 
   const plan: RetirementSourcePlan = { version: EXTERNAL_REVIEW_POLICY_VERSION, database: mongoose.connection.name, snapshot_hash: hash(snapshot), through: snapshot.through,
     final_capture: snapshot.final_capture, connection_id: connection ? String(connection._id) : null, registry: { company_id: String(company._id), sources },
     inventory, canonical_plan: canonical, financial_source_payloads: financialSourcePayloads,
+    booking_graph: bookingGraph, booking_matches: finalSelection.booking_matches, skipped_source_rows: skipped,
+    source_identity_collapses: partitioned.collapsed,
     new_normal_call_flags:sourceCalls.normal_call_flags, review_actions: reviews, counters, target_before: targetBefore, checksum: "" };
   plan.checksum = retirementPlanChecksum(plan);
   return plan;

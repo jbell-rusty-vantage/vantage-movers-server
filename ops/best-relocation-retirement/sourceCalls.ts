@@ -18,6 +18,7 @@ export type SourceCallPlan = { actions: BestRelocationPlanAction[]; normal_call_
 export async function planFinalSourceCalls(input: {
   calls: ParsedCallLead[]; candidates: Row[]; formPhones: Set<string>;
   receipts: Map<string, Row>;
+  definiteBookings?: ReadonlyMap<string, string>;
 }): Promise<SourceCallPlan> {
   const actions: BestRelocationPlanAction[] = [], flags: NewNormalCallFlag[] = [], aliases: SourceCallPlan["aliases"] = [];
   const candidates = input.candidates.filter(row => row.source_company === "best_relocation_leads" &&
@@ -43,7 +44,7 @@ export async function planFinalSourceCalls(input: {
     const formFill = target?.form_fill === true || input.formPhones.has(phone);
     // The Owner held the missing blank-checker cohort for inspection. A later
     // repeat-window heuristic must not silently turn those holds into creates.
-    if (!target && !review && !formFill) {
+    if (!target && !review && !formFill && !input.definiteBookings?.has(stable)) {
       flags.push({stable_source_row_id:stable,row:row.sheet_row,timestamp,phone_number:row.phone,same_phone_ids:samePhone.map(candidate=>String(candidate._id)),held:true});
       actions.push({...base,conflict:{type:"new_normal_call_creation",severity:"blocking"},matching:{method:"owner_hold",score:0,calibration_version:"best-relocation-final-import-v1",evidence:["owner_hold_new_normal_calls"]}}); continue;
     }
@@ -57,14 +58,14 @@ export async function planFinalSourceCalls(input: {
         +toFloridaTimestamp(leadInstant(candidate)!) >= +from && +toFloridaTimestamp(leadInstant(candidate)!) < +to).map(candidate=>({...candidate,_id:candidate._id as {toString():string}})),
     })).isDuplicate;
     const disposition = repeated || formFill || review?.kind === "duplicate_call" ? "duplicate_calls" : review?.kind === "bad_call" ? "bad_call_leads" : "calls";
-    if (!target && disposition === "calls") {
+    if (!target && disposition === "calls" && !input.definiteBookings?.has(stable)) {
       flags.push({stable_source_row_id:stable,row:row.sheet_row,timestamp,phone_number:row.phone,same_phone_ids:samePhone.map(candidate=>String(candidate._id)),held:true});
       actions.push({...base,conflict:{type:"new_normal_call_creation",severity:"blocking"},matching:{method:"owner_hold",score:0,calibration_version:"best-relocation-final-import-v1",evidence:["owner_hold_new_normal_calls"]}}); continue;
     }
     // A different timestamp on the same phone is not durable identity proof.
     if (!target && samePhone.length && disposition !== "duplicate_calls") { actions.push({...base,conflict:{type:"ambiguous_lead_match",severity:"blocking"}}); continue; }
     const payload: Row = { phone_number:row.phone,timestamp,source_company:"best_relocation_leads",lead_source_company:BEST_RELOCATION_ADMISSION_COMPANY_ID,
-      source_granularity_id:BEST_RELOCATION_ADMISSION_CALL_FEED_ID,duplicate:repeated,reviewed_for_insert:!target && disposition !== "calls",expected_disposition:disposition,
+      source_granularity_id:BEST_RELOCATION_ADMISSION_CALL_FEED_ID,duplicate:repeated,reviewed_for_insert:!target && (disposition !== "calls" || input.definiteBookings?.has(stable) === true),expected_disposition:disposition,
       ...(target ? {target_lead_id:String(target._id),expected_revision:Number(target.domain_revision??0)} : {}),...(receiptId ? {matching_receipt_id:String(receipt!._id)} : {}) };
     const {conflict:_conflict,...clean} = base;
     const action: BestRelocationPlanAction = {...clean,action_key:`${base.action_key}:target:${target?String(target._id):"new"}`,command:"admit_final_best_relocation_call",

@@ -2,6 +2,8 @@
 
 Owner direction recorded November 3, 2026, after the reporting/shutdown release. **Planning handoff only: do not execute source ingestion in the handoff session.** The Owner will return in another session to direct the exact run. This document supersedes the old broad source-create preview; it does not release a frozen plan or the durable ingestion hold.
 
+**Owner-return update, November 3:** the Owner has now confirmed the rules below and requested completion. The current session uses a fresh capture with a fixed watermark and implements the Booking restriction before applying the new exact checksum. References to the held “handoff session” describe the earlier session; they do not cancel this subsequent direction. The old preview remains unreleased. Implementation/local proof and actual deployment, source application, physical delivery and replay are tracked separately in [README](README.md) and [RELEASE](RELEASE.md); this note is not completion evidence.
+
 ## Outcome the next session must deliver
 
 Use a manually invoked, bounded, resumable script built on the existing canonical ingestion commands and Sheet Sync. Read the real external tracker and shared Booked Deal responses/refunds, freeze the evidence, reconcile against Mongo, review the exact action list, apply once and prove a same-plan replay. Keep recurring external ingestion and Granot `create_if_missing` closed. Mongo remains the system of record; physical spreadsheet editing must not bypass it.

@@ -1,5 +1,13 @@
 # November 3 release evidence
 
+## Owner-return implementation, November 3 evening
+
+The Owner confirmed the next-session rules and requested completion. The new manual planner uses a deterministic Booking graph, treats normal unbooked source rows as explicit non-mutating exclusions, preserves financial identities independently of Lead attachment, and binds normal create matches into the frozen plan. Bad Forms carry their protected review before initial save/outbox; all new final Forms/Calls require the released outer checksum. Literal international phone values behind source parse errors are captured as supplemental cell evidence without source writes; copied bad Form identities retain both original annotations while producing one canonical identity.
+
+Local verification: typecheck; 3,956 full-suite tests (3,794 pass, 162 explicit skips, zero failures); 81 focused operator tests; and disposable loopback transaction proof for atomic exception routing, allowed/refused normal creates, stale-lease rollback/resume and unchanged replay. Independent source/create reviews passed. No schema migration or environment changes are required. Rollback stops the bounded operator; any imported facts require expected-revision canonical corrections rather than deleting provenance or reopening ingestion.
+
+These are implementation and local/read-only preparation results. Production deployment, exact final capture/checksum release, canonical source application, physical delivery, financial preservation and same-plan replay must be recorded below before final reconciliation is described as complete. The Source Company remains active and the independent November 1 general backfill is not repeated.
+
 The current phase finishes reporting behavior, tab migration, the independent November 1 Call backfill, and shutdown of Best Relocation external ingestion and Granot creation policies. The Owner explicitly deferred **all final Best Relocation source ingestion**, including selective bad/duplicate rows. No source apply, source admission, new source Lead, checker reconciliation or financial import has run. The Source Company remains active.
 
 ## Released code and checks

@@ -44,3 +44,12 @@ test("prior nonduplicate call within the shared ninety-day window makes a new ca
   const result=await planFinalSourceCalls({calls:[source("Bad info")],candidates:[canonical({timestamp:new Date("2026-05-01T12:00:00Z"),createdAt:new Date("2026-05-01T16:00:01Z")})],formPhones:new Set(),receipts:new Map()});
   assert.equal(result.actions[0]?.command_payload?.duplicate,true);assert.equal(result.actions[0]?.command_payload?.expected_disposition,"duplicate_calls");
 });
+
+test("a definite frozen Booking match may propose a normal Call for the additional canonical insert gate",async()=>{
+  const row=source(),stable=row.provenance.raw.vantage_ingestion_id!;
+  const result=await planFinalSourceCalls({calls:[row],candidates:[],formPhones:new Set(),receipts:new Map(),definiteBookings:new Map([[stable,"P5550001"]])});
+  assert.equal(result.normal_call_flags.length,0);
+  assert.equal(result.actions[0]!.command,"admit_final_best_relocation_call");
+  assert.equal(result.actions[0]!.command_payload!.expected_disposition,"calls");
+  assert.equal(result.actions[0]!.command_payload!.reviewed_for_insert,true);
+});

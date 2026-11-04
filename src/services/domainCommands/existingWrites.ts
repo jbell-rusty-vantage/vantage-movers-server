@@ -62,6 +62,7 @@ import {
   type AggregateMutationPlan,
 } from "./entityChange";
 import { executeCanonicalCommandWithPostCommit } from "./idempotency";
+import { loadFinalFormCreateAuthorization } from "./bestRelocationFinalLead";
 import type {
   CanonicalCommandContext,
   CanonicalCommandOperationInput,
@@ -150,8 +151,11 @@ export async function runExistingCreateFormLead(input: {
     command_name: "createFormLead",
     context: input.context,
     operation: async (tx) => {
+      const finalAuthorization = input.context.provenance.origin === "external_sheet_ingestion"
+        ? await loadFinalFormCreateAuthorization(input, tx.session, tx.now) : undefined;
       const pending = await beginFormLeadIngestion(data, {
         ...tx,
+        ...(finalAuthorization ? { final_import_authorization: finalAuthorization } : {}),
         ...(input.context.provenance.origin === "external_sheet_ingestion" ? {final_reporting_run_id: input.context.provenance.run_id ?? undefined} : {}),
         ingestion_origin: deriveFormLeadIngestionOrigin({
           commandOrigin: input.context.provenance.origin,
@@ -167,7 +171,7 @@ export async function runExistingCreateFormLead(input: {
             {
               entity: { model: "FormLead", id: pending.lead._id.toString() },
               revision_before: 0,
-              fields: createFields(pending.lead, FORM_LEAD_CHANGE_PATHS),
+              fields: createFields(pending.lead, [...FORM_LEAD_CHANGE_PATHS, "external_sheet_review"]),
             },
           ],
           changeIds,

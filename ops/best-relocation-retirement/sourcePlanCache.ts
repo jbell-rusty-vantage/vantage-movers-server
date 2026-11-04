@@ -17,7 +17,7 @@ type SourceIdentity = { dataset_key: string; stable_source_row_id: string };
 const BATCH = 100, CANDIDATE_CAP = 5000;
 const chunks = <T>(rows: T[]) => Array.from({ length: Math.ceil(rows.length / BATCH) }, (_, index) => rows.slice(index * BATCH, (index + 1) * BATCH));
 export const sourceIdentityKey = (row: SourceIdentity) => `${row.dataset_key}:${row.stable_source_row_id}`;
-const targetProjection = "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid duplicate domain_revision external_sheet_review external_call_admission source source_company lead_source_company source_granularity_id lead_ref lead_model job_no normalized_job_no total_binder_amount deposit_amount refund_amount booked_lead cancelled booked ringcentral created_on_unmatched form_fill bad_lead sheet_sync";
+const targetProjection = "_id name phone_number normalized_phone_number timestamp createdAt ingestion_origin ref_no lid normalized_lid duplicate domain_revision external_sheet_review external_call_admission source source_company lead_source_company source_granularity_id lead_ref lead_model job_no normalized_job_no customer_name book_date merchant agent_allocations total_binder_amount deposit_amount refund_amount booked_lead cancelled booked ringcentral created_on_unmatched form_fill bad_lead sheet_sync";
 const models = () => ({ FormLead: getFormLeadModel(), CallLead: getCallLeadModel(), BookedLead, CancelledLead }) as Record<string, mongoose.Model<any>>;
 
 /** Reads are bounded by frozen source identities, never by the whole collection. */

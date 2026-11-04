@@ -24,6 +24,7 @@ import { wakeLeadLinksAfterLeadCommand } from "../numberActivity/leadLinkJobs";
 import { CALL_LEAD_CHANGE_PATHS, collectDocumentFieldChanges, persistEntityChangeMutations } from "./entityChange";
 import { executeCanonicalCommandWithPostCommit } from "./idempotency";
 import type { CanonicalCommandContext } from "./types";
+import { assertFinalNormalLeadBookingMatch, assertReleasedFinalLeadPlan } from "./bestRelocationFinalLead";
 
 const objectId = z.string().regex(/^[a-f0-9]{24}$/);
 export const finalBestRelocationCallPayloadSchema = z.object({
@@ -78,6 +79,8 @@ export function assertApprovedFinalCallAction(input: FinalBestRelocationCallInpu
   if (payload.matching_receipt_id && !payload.target_lead_id) throw new ConflictError("Final Call receipt requires an adoption target");
   if (!payload.target_lead_id && payload.expected_disposition === "calls" &&
       (!payload.reviewed_for_insert || !run.plan_checksum || run.approval?.normal_call_insert_approval !== run.plan_checksum)) throw new ConflictError("New normal Calls require explicit Owner checksum approval");
+  if (!payload.target_lead_id) assertReleasedFinalLeadPlan(run);
+  if (!payload.target_lead_id && payload.expected_disposition === "calls") assertFinalNormalLeadBookingMatch(action, run);
   return payload;
 }
 

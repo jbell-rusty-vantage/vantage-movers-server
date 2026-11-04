@@ -5,6 +5,8 @@ import { managedId } from "../../src/services/bestRelocationSheetIngest/identity
 import { selectBestRelocationRefundObservations } from "../../src/services/bestRelocationSheetIngest/matching";
 import type { TabReadResult, SourceTab, ParsedWorkbookData } from "../../src/services/bestRelocationSheetIngest/types";
 import { BEST_RELOCATION_TRACKER_ID, EXTERNAL_REVIEW_POLICY_VERSION } from "../../src/services/leads/externalSheetReview";
+import { captureLiteralCallPhones, type LiteralCallPhoneEvidence } from "./sourceCellEvidence";
+import { normalizePhoneNumberForMatch } from "../../src/utils/phone";
 
 export const BOOKED_SOURCE_ID = "1M5fzPdvtbj9LvcaXxE_qdHBJcOdhmtNfhZlv13hgaXk";
 const REQUIRED_SOURCE_HEADERS: Record<string, string[]> = {
@@ -20,6 +22,7 @@ export type FrozenSourceSnapshot = {
   workbooks: Array<{ id: string; title: string; timezone: string }>;
   tabs: TabReadResult[];
   sidecar: Array<{ workbook_id: string; sheet_id: number; fingerprint: string; managed_id: string; original_identity: string[] }>;
+  cell_evidence?: LiteralCallPhoneEvidence[];
 };
 /** Deterministic v4-shaped sidecar ID; source cells remain untouched. */
 export function sidecarManagedId(fingerprint: string): string {
@@ -52,6 +55,8 @@ export async function captureSourceSnapshot(finalCapture = false): Promise<Froze
   }
   const at = new Date().toISOString();
   const snapshot: FrozenSourceSnapshot = { version: EXTERNAL_REVIEW_POLICY_VERSION, captured_at: at, through: at, final_capture: finalCapture, workbooks, tabs, sidecar: [] };
+  snapshot.cell_evidence = await captureLiteralCallPhones(client, tabs.find(tab => tab.tabName === "Calls")!);
+  snapshot.captured_at = new Date().toISOString();
   attachSidecar(snapshot);
   return snapshot;
 }
@@ -81,7 +86,7 @@ export function attachSidecar(snapshot: FrozenSourceSnapshot): void {
   }
   snapshot.sidecar = [...sidecar.values()];
 }
-export function parseFrozenSnapshot(snapshot: FrozenSourceSnapshot): { data: ParsedWorkbookData; inventory: Record<string, { parsed: number; in_window: number; older: number; invalid_time: number; after_through: number; out_of_scope: number }> } {
+export function parseFrozenSnapshot(snapshot: FrozenSourceSnapshot): { data: ParsedWorkbookData; all_data: ParsedWorkbookData; inventory: Record<string, { parsed: number; in_window: number; older: number; invalid_time: number; after_through: number; out_of_scope: number }> } {
   if (snapshot.version !== EXTERNAL_REVIEW_POLICY_VERSION || !/(?:Z|[+-]\d\d:\d\d)$/.test(snapshot.through) || !/(?:Z|[+-]\d\d:\d\d)$/.test(snapshot.captured_at) || !Number.isFinite(Date.parse(snapshot.through)) ||
       !Number.isFinite(Date.parse(snapshot.captured_at)) || Date.parse(snapshot.through) > Date.parse(snapshot.captured_at)) throw new Error("invalid_frozen_snapshot_watermark");
   if (new Set(snapshot.tabs.map(tab => tab.tabName)).size !== snapshot.tabs.length) throw new Error("duplicate_snapshot_source_tab");
@@ -99,6 +104,15 @@ export function parseFrozenSnapshot(snapshot: FrozenSourceSnapshot): { data: Par
   const leads = snapshot.workbooks.find(w => w.id === BEST_RELOCATION_TRACKER_ID)!, booked = snapshot.workbooks.find(w => w.id === BOOKED_SOURCE_ID)!;
   if (!leads || !booked) throw new Error("snapshot_source_mismatch");
   const all = { forms: parseFormRows(tab("Forms"), "Forms", zone(leads.id)), localForms: parseFormRows(tab("Local Forms"), "Local Forms", zone(leads.id)), calls: parseCallRows(tab("Calls"), zone(leads.id)), booked: parseBookedDealRows(tab("Booked Deals"), zone(booked.id)), refunds: parseRefundRows(tab("Refunds"), zone(booked.id)) };
+  for (const evidence of snapshot.cell_evidence ?? []) {
+    const call = all.calls.find(row => row.sheet_row === evidence.row);
+    if (!call || evidence.workbook_id !== BEST_RELOCATION_TRACKER_ID || evidence.sheet_id !== 1191420872 || evidence.column !== 1 ||
+      call.provenance.raw["PHONE NUMBER"] !== evidence.resolved_value || evidence.resolved_value !== "#ERROR!" ||
+      !/^\+[\d\s().-]+$/.test(evidence.phone_literal) || evidence.phone_literal !== evidence.user_entered_formula ||
+      !normalizePhoneNumberForMatch(evidence.phone_literal)) throw new Error("frozen_phone_literal_evidence_mismatch");
+    call.phone = evidence.phone_literal; call.normalized_phone = normalizePhoneNumberForMatch(call.phone);
+    call.provenance.raw.__vantage_captured_phone_literal = evidence.phone_literal;
+  }
   const relevantRefundRows = new Set(selectBestRelocationRefundObservations(all.refunds.filter(row => row.is_best_relocation_source || !row.lead_source.trim()), all.booked).map(row => row.sheet_row));
   const inventory: ReturnType<typeof parseFrozenSnapshot>["inventory"] = {};
   const filtered = Object.fromEntries(Object.entries(all).map(([key, rows]) => {
@@ -109,5 +123,6 @@ export function parseFrozenSnapshot(snapshot: FrozenSourceSnapshot): { data: Par
       out_of_scope: rows.length - scoped.length };
     return [key, inWindow];
   })) as typeof all;
-  return { data: { leadsWorkbook: { id: leads.id, title: leads.title }, bookedWorkbook: { id: booked.id, title: booked.title }, ...filtered, lidBestRelo: parseLidBestRelo(tab("LID_BestRelo")) }, inventory };
+  const common = { leadsWorkbook: { id: leads.id, title: leads.title }, bookedWorkbook: { id: booked.id, title: booked.title }, lidBestRelo: parseLidBestRelo(tab("LID_BestRelo")) };
+  return { data: { ...common, ...filtered }, all_data: { ...common, ...all }, inventory };
 }

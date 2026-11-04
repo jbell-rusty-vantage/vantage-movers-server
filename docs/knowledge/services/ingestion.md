@@ -4,7 +4,7 @@ title: Best Relocation Ingestion
 description: Retired recurring Best Relocation ingestion; read-only evidence and a scoped final-reconciliation engine remain.
 tags: [ingestion, best-relocation]
 status: retired
-stale_after: 2026-09-21
+stale_after: 2026-11-20
 resource: src/services/ingestion/applyPlan.ts
 applies_to:
   - src/services/ingestion/applyPlan.ts
@@ -12,6 +12,9 @@ applies_to:
   - src/services/ingestion/repository.ts
   - src/services/ingestion/health.ts
   - src/services/bestRelocationSheetIngest/
+  - src/services/domainCommands/bestRelocationFinalLead.ts
+  - src/services/domainCommands/bestRelocationFinalCall.ts
+  - ops/best-relocation-retirement/
   - scripts/best-relocation-sheet-ingest.ts
 owners: [team:main-server]
 sources:
@@ -50,7 +53,25 @@ The [November 3 Owner clarification](../../lead-reporting-retirement/OWNER-CLARI
 
 Existing Calls require exact receipt ownership or normalized phone plus real arrival in the same canonical company/feed. If an identity group contains one original and duplicate copies, the original is the primary; separately approved `call_aliases` actions can admit the existing duplicate copies only after verifying their original group and primary action. Adoption preserves RingCentral metadata, duplicate flags, thresholds and historical lifecycle fields, adding only admission and factual Form Fill. Newly created exception Calls derive their review fact from the frozen checker and reuse the normal duplicate/Form Fill, CPL, revision and Sheet Sync pipeline. Newly created ordinary Calls additionally require `reviewed_for_insert=true` and `approval.normal_call_insert_approval` equal to the final source plan checksum. Without that explicit Owner approval they remain held; a preview is not authorization to insert.
 
-This admission extension has focused unit/apply tests and a disposable local replica proof for lease rollback, legacy revision initialization, immutable attach, exception creation and replay. It has not been qualified as a production import. The latest Owner direction holds the entire Best Relocation source apply, including selective application; no production create/apply is implied by these tests.
+This admission extension has focused unit/apply tests and a disposable local replica proof for lease rollback, legacy revision initialization, immutable attach, exception creation and replay. Those tests do not qualify a production import. The Owner has returned and authorized completion under the confirmed [Booking restriction](../../lead-reporting-retirement/NEXT-SESSION-INGESTION.md); the new exact source plan and live execution evidence are recorded separately in [RELEASE](../../lead-reporting-retirement/RELEASE.md). The old preview and its checksum remain unreleased.
+
+### Booking restriction and frozen source accounting
+
+`ops/best-relocation-retirement/bookingGraph.ts` builds the final graph from the frozen capture, including older Lead evidence. Each Booking is scoped by its own event timestamp, independently of whether a Lead exists or is in the Lead date window. Responses are grouped by normalized Job Number; repeated same-agent responses with consistent identity and financial values are counted once, while distinct split-agent allocations retain their source amounts. Conflicting customer, source, date, merchant, LID, deposit or same-agent Binder values remain explicit conflicts. The current leadless create boundary supports equal splits; an unequal split requires reconciliation instead of silently changing allocations.
+
+Every ready Booking produces a financial action without a Lead dependency. The canonical adoption pass reuses saved Bookings and retains their existing attachments. Source-row identity and canonical Booking identity stay separate, so repeated submissions never authorize repeated money or physical rows. Refunds match a unique Booking identity with exact job/LID and corroborating source/customer/agent evidence. Matching does not consume physical split-agent rows in source order. Conflicting identities and distinct competing refund requests remain review entries; identical repeated requests share one Cancellation action with all response provenance.
+
+`finalLeadSelection.ts` records explicit non-executable skips for normal source rows without a definite in-scope Booking match. An absent canonical Lead is not itself permission to create. A new normal Form requires a unique exact LID/ref plus consistent customer/source evidence; the configured generic Forms source may resolve a Local Form, but the selected dataset remains part of the evidence. A new normal Call requires explicit source job/contact evidence. Phone alone, a Booked flag, nearest date and fuzzy name do not qualify either model. Existing saved attachments are retained conservatively. Selected earlier nonduplicate Form creates contribute to later canonical duplicate planning; excluded normal rows do not.
+
+`bestRelocationFinalLead.ts` revalidates the stored released plan checksum and the literal approved Form action in the canonical transaction. A normal create must have a persisted Booking edge to a ready financial action. The Call command requires the same Booking evidence in addition to its separate normal-Call insert approval. Bad Form review facts are constructed from the frozen checker and stored during the Form insert, before the first Sheet Sync intent can become visible; exception-only creation cannot first appear in Forms. Canonical duplicate flags, official Bookings/Cancellations and the established Form billing rule are preserved.
+
+The source partitioner can collapse copied bad Form responses with one durable identity, consistent contact/move/protected facts and a bounded timestamp difference into one Lead. Both raw annotations and physical source rows remain checksum-bound in `source_identity_collapses`; this does not invent a duplicate flag or erase a response from accounting. Other conflicting source identities remain quarantined.
+
+The capture retains resolved checker values. `sourceCellEvidence.ts` additionally reads exact phone error cells with an International Number annotation: it accepts only an independently observed formula-parse error whose original user-entered value is a literal `+` telephone number. The supplemental evidence is frozen and revalidated with the snapshot; no formula is evaluated, digit inferred or source cell written. Other formula errors and structural/header sentinels remain review conflicts.
+
+`run.ts plan --source-only`, `apply-source`, `verify-source` and `source-evidence` keep this one-time source phase independent of the already completed November 1 general Call backfill. `verify-source` checks actual Mongo review facts, all six Master Leads destinations and official financial membership; `source-evidence` captures protected entity/revision, receipt/command and physical-membership evidence for before/after replay comparison. Operator flags, bounds and completion requirements are in the [runbook](../../lead-reporting-retirement/README.md#operator-tooling).
+
+The graph, selection and strict canonical payload tests are local implementation proof. New normal-create authorization, atomic exception classification and replay also have a disposable replica harness in `src/services/domainCommands/bestRelocationFinalLead.replica.ts`. Deployment, approved-plan application, physical delivery and unchanged same-plan replay must be evidenced independently; no completion follows from these modules existing or a dry run passing.
 
 ## Durable retirement cutover
 

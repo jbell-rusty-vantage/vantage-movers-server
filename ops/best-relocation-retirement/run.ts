@@ -12,6 +12,11 @@ import { SheetSyncLease } from "../../src/models/SheetSyncLease";
 import { getEntityChangeModel } from "../../src/models/EntityChange";
 import { getCallLeadModel } from "../../src/models/CallLead";
 import { getFormLeadModel } from "../../src/models/FormLead";
+import { BookedLead } from "../../src/models/BookedLead";
+import { CancelledLead } from "../../src/models/CancelledLead";
+import { DomainCommandExecution } from "../../src/models/DomainCommandExecution";
+import { getLeadSourceCompanyModel } from "../../src/models/LeadSourceCompany";
+import { getGranotCrmSourceModel } from "../../src/models/GranotCrmSource";
 import { MongoLeaseStore, computeChecksum, type DurableActor, type LeaseToken } from "../../src/services/durableWork";
 import { canonicalDomainCommands } from "../../src/services/domainCommands";
 import { reconcileExternalSheetReview, reviewPayloadChecksum } from "../../src/services/domainCommands/externalSheetReview";
@@ -137,10 +142,11 @@ async function resolvedReviews(plan: RetirementSourcePlan, connectionId: string)
   return resolved;
 }
 
-async function apply(plan: RetirementSourcePlan, callPlan: CallBackfillPlan, runId: string) {
+async function apply(plan: RetirementSourcePlan, runId: string) {
   if (!plan.final_capture || retirementPlanChecksum(plan) !== required("checksum") || plan.checksum !== required("checksum")) throw new Error("final_frozen_plan_checksum_required");
   if (!has("owner-release-ingestion-hold")) throw new Error("BEST_RELOCATION_INGESTION_HELD_BY_OWNER");
   if (!Array.isArray(plan.new_normal_call_flags)) throw new Error("owner_corrected_final_source_plan_required");
+  if (plan.booking_graph?.version !== "best-relocation-booking-bounded-v1" || !Array.isArray(plan.booking_matches) || !Array.isArray(plan.skipped_source_rows)) throw new Error("booking_bounded_final_plan_required");
   if (required("expected-database") !== "vantagemovers") throw new Error("explicit_database_mismatch");
   await assertDeployment(required("deployment"));
   const before = await readMemberships(); await save(`${runId}-membership-before.json`, serializedMemberships(before));
@@ -159,6 +165,7 @@ async function apply(plan: RetirementSourcePlan, callPlan: CallBackfillPlan, run
       plan_checksum: plan.checksum, plan_locked_at: new Date(), source_snapshot: { hash: plan.snapshot_hash }, actor, initiator: owner,
       "approval.final_reconciliation": true, "approval.policy_version": EXTERNAL_REVIEW_POLICY_VERSION, lease_owner: lease().owner, lease_epoch: lease().epoch, leased_until: lease().leased_until,
       "approval.owner_released_deferred_ingestion_checksum":plan.checksum,
+      ...(has("approve-normal-call-inserts") ? { "approval.normal_call_insert_approval": plan.checksum } : {}),
     } }, { upsert: true });
     const assertEnabled = async () => {
       await assertLease();
@@ -224,6 +231,62 @@ async function apply(plan: RetirementSourcePlan, callPlan: CallBackfillPlan, run
     if (finished.matchedCount !== 1) throw new Error("source_run_finalize_fence_lost");
     return result;
   });
+}
+
+async function sourceEvidence(plan: RetirementSourcePlan, runId: string) {
+  await database();
+  const connection = await ExternalDataConnection.findOne({ key: "best_relocation" }).lean();
+  const company = await getLeadSourceCompanyModel().findById(plan.registry.company_id).select("_id active granot_creation_retired_at").lean();
+  const sources = await getGranotCrmSourceModel().find({ _id: { $in: plan.registry.sources.map(row => String((row as {_id:unknown})._id)) } })
+    .select("_id lead_created_policy enabled lifecycle_routes outbound_sms").lean();
+  const projection = "_id domain_revision duplicate form_fill external_sheet_review external_call_admission outreach_automation_suppressed booked cancelled job_no normalized_job_no lead_ref lead_model total_binder_amount deposit_amount refund_amount source source_company over_2000 over_4000 ringcentral";
+  const [forms, calls, bookings, cancellations] = await Promise.all([
+    getFormLeadModel().find({ source_company: "best_relocation_leads" }).select(projection).sort({_id:1}).limit(10001).lean(),
+    getCallLeadModel().find({ source_company: "best_relocation_leads" }).select(projection).sort({_id:1}).limit(10001).lean(),
+    BookedLead.find({}).select(projection).sort({_id:1}).limit(10001).lean(),
+    CancelledLead.find({}).select(projection).sort({_id:1}).limit(10001).lean(),
+  ]);
+  if ([forms,calls,bookings,cancellations].some(rows => rows.length > 10000)) throw new Error("source_evidence_bound_exceeded");
+  const result = { run_id: runId, plan_checksum: plan.checksum, captured_at: new Date(), database: mongoose.connection.name,
+    deployment: await mongoose.connection.db!.collection("sales_intelligence_sync_state").findOne({scope:"deployment"}),
+    company, sources, connection, entities: { forms, calls, bookings, cancellations },
+    command_count: await DomainCommandExecution.countDocuments({ "provenance.run_id": runId }),
+    receipt_count: await SourceRowReceipt.countDocuments({ ingestion_run_id: runId }),
+    memberships: serializedMemberships(await readMemberships()) };
+  await save(`${runId}-source-evidence.json`, result);
+  return { run_id: runId, entity_hash: hash(result.entities), membership_hash: hash({leads:result.memberships.leads,booked:result.memberships.booked}),
+    counts: { forms:forms.length,calls:calls.length,bookings:bookings.length,cancellations:cancellations.length,commands:result.command_count,receipts:result.receipt_count },
+    source_company_active: company?.active, scheduling_disabled: connection?.application_enabled === false && connection?.next_due_at == null,
+    deployment: result.deployment && {commit:result.deployment.deployment_commit,recorded_at:result.deployment.recorded_at,deployment_id:result.deployment.vercel_deployment_id},
+    policies_link_only: sources.every(row => row.lead_created_policy === "link_only") };
+}
+
+async function verifySource(plan: RetirementSourcePlan, runId: string) {
+  await database();
+  const memberships = await readMemberships();
+  const connection = await ExternalDataConnection.findOne({ key: "best_relocation" }).lean();
+  if (!connection) throw new Error("missing_final_connection");
+  const discrepancies: unknown[] = [];
+  for (const action of await resolvedReviews(plan, String(connection._id))) {
+    if (action.conflict || !action.lead_id) { discrepancies.push({ stable_id:action.stable_source_row_id, reason:action.conflict ?? "unresolved_dependency" }); continue; }
+    const Model = (action.lead_model === "FormLead" ? getFormLeadModel() : getCallLeadModel()) as mongoose.Model<any>;
+    const row = await Model.findById(action.lead_id).lean();
+    if (!row) { discrepancies.push({id:action.lead_id,reason:"canonical_missing"}); continue; }
+    const expected = planExpectedSheetTabs(action.lead_model,row).expected.map(tab=>tab.tabName);
+    const tabs = action.lead_model === "FormLead" ? ["Forms","Duplicate Forms","Bad Form Leads"] : ["Calls","Duplicate Calls","Bad Call Leads"];
+    for (const tab of tabs) {
+      const count=memberships.leads.get(tab)?.get(action.lead_id.toLowerCase())??0;
+      if (count!==Number(expected.includes(tab))) discrepancies.push({id:action.lead_id,tab,count,reason:"physical_membership"});
+    }
+    if (action.classification!=="unchanged" && row.external_sheet_review?.source_content_hash!==action.cell.source_content_hash)
+      discrepancies.push({id:action.lead_id,reason:"review_fact_missing_or_different"});
+  }
+  const financial = await verifyCanonicalFinancials(plan,runId,String(connection._id),memberships.booked);
+  const sourceConflicts=plan.canonical_plan.actions.filter(action=>["conflict","invalid"].includes(action.classification));
+  const result = { run_id:runId,complete:financial.complete && !discrepancies.length && !sourceConflicts.length,
+    financial,source_discrepancies:discrepancies,source_conflicts:sourceConflicts.map(action=>({action_key:action.action_key,type:action.conflict?.type})),
+    skipped_source_rows:plan.skipped_source_rows?.length,booking_accounting:plan.booking_graph?.accounting,topology:memberships.tabs };
+  await save(`${runId}-source-verification.json`,result); return result;
 }
 
 async function verify(plan: RetirementSourcePlan, calls: CallBackfillPlan, runId: string) {
@@ -347,10 +410,27 @@ async function main() {
       }));
     await save("tab-migration-result.json", result); summary({ mode, result }); return;
   }
-  const plan = await load<RetirementSourcePlan>(required("plan")), calls = await load<CallBackfillPlan>(required("call-plan"));
+  const plan = await load<RetirementSourcePlan>(required("plan"));
   if (retirementPlanChecksum(plan) !== plan.checksum) throw new Error("plan_checksum_mismatch");
   const runId = option("run-id") ?? new mongoose.Types.ObjectId().toHexString();
-  if (mode === "apply" || mode === "resume") { const result = await apply(plan, calls, runId); summary({ mode, run_id: runId, canonical: result.canonical, review_conflicts: result.reviews.filter(o=>o.outcome === "conflict").length, call_conflicts: result.calls.conflicts.length }); return; }
+  if (mode === "source-evidence") { summary(await sourceEvidence(plan,required("run-id")));return; }
+  if (mode === "verify-source") { summary(await verifySource(plan,required("run-id")));return; }
+  if (mode === "finalize-source") {
+    await assertDeployment(required("deployment"));
+    const first=await load<any>(required("replay-before")),second=await load<any>(required("replay-after"));
+    if ([first,second].some(value=>value.run_id!==required("run-id") || value.plan_checksum!==plan.checksum) ||
+      hash(first.entities)!==hash(second.entities) || first.command_count!==second.command_count || first.receipt_count!==second.receipt_count ||
+      hash({leads:first.memberships.leads,booked:first.memberships.booked})!==hash({leads:second.memberships.leads,booked:second.memberships.booked})) throw new Error("same_plan_replay_proof_missing_or_changed");
+    const verification=await verifySource(plan,required("run-id"));
+    if (!verification.complete) throw new Error("final_source_verification_incomplete");
+    const result=await retireBestRelocationConnectionAndSources({company_id:plan.registry.company_id,
+      source_ids:plan.registry.sources.map(source=>String((source as {_id:unknown})._id)),final_run_id:required("run-id"),actor:owner,reconciliation_status:"complete"});
+    await save(`${runId}-final-source-complete.json`,{...result,plan_checksum:plan.checksum,source_company_deactivated:false,
+      replay_entity_hash:hash(first.entities),replay_membership_hash:hash({leads:first.memberships.leads,booked:first.memberships.booked}),verification});
+    summary({mode,run_id:runId,final_source_reconciliation_complete:true,source_company_deactivated:false,...result});return;
+  }
+  if (["apply-source","apply","resume"].includes(mode)) { const result = await apply(plan, runId); summary({ mode, run_id: runId, canonical: result.canonical, review_conflicts: result.reviews.filter(o=>o.outcome === "conflict").length }); return; }
+  const calls = await load<CallBackfillPlan>(required("call-plan"));
   if (mode === "apply-calls") {
     if (required("expected-database") !== "vantagemovers") throw new Error("explicit_database_mismatch");
     await assertDeployment(required("deployment"));

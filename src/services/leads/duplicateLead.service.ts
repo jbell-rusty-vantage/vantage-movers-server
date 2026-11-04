@@ -80,6 +80,7 @@ export async function findDuplicateFormLeadMatch(
   phoneNumber?: string | null,
   email?: string | null,
   eventTimestamp: Date = new Date(),
+  session?: ClientSession,
 ): Promise<DuplicateFormLeadMatch> {
   const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
@@ -107,16 +108,15 @@ export async function findDuplicateFormLeadMatch(
 
   // $and keeps the granularity, duplicate, cohort, and email/phone clauses
   // from overwriting one another.
-  const candidates = await FormLead.find({
+  const query = FormLead.find({
     $and: [
       { source_granularity_id: sourceScope.sourceGranularityId },
       { duplicate: { $ne: true } },
       { timestamp: cohortRange },
       { $or: duplicateClauses },
     ],
-  })
-    .sort({ timestamp: 1, _id: 1 })
-    .exec();
+  }).sort({ timestamp: 1, _id: 1 });
+  const candidates = await (session ? query.session(session) : query).exec();
 
   let emailMatch = false;
   let phoneMatch = false;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { attachSidecar, BOOKED_SOURCE_ID, parseFrozenSnapshot, type FrozenSourceSnapshot } from "./sourceSnapshot";
-import { partitionSourceIdentities, financialAdoptionMatches, primaryReceiptReference } from "./sourcePlan";
+import { partitionSourceIdentities, financialAdoptionMatches, finalBookingIdentityMatches, primaryReceiptReference } from "./sourcePlan";
 import { BEST_RELOCATION_TRACKER_ID, EXTERNAL_REVIEW_POLICY_VERSION } from "../../src/services/leads/externalSheetReview";
 import type { SourceTab, TabReadResult } from "../../src/services/bestRelocationSheetIngest/types";
 
@@ -80,4 +80,37 @@ test("financial receipt first ID is primary while linked IDs remain linkage evid
   assert.deepEqual(primaryReceiptReference("CancelledLead", [primary, linked]), { primary: { model: "CancelledLead", id: primary }, related_ids: [linked] });
   assert.equal(primaryReceiptReference("FormLead", [primary, linked]), null);
   assert.equal(primaryReceiptReference("BookedLead", [primary, "malformed"]), null);
+});
+
+test("copied bad Form identity collapses once while both original annotations remain evidence", () => {
+  const frozen=snapshot(), first=form("one-bad-identity","2026-05-01T16:00:00Z"), second=form("one-bad-identity","2026-05-01T16:00:19Z");
+  first[9]="Bad Info";second[9]="Duplicate Form";
+  frozen.tabs[1]!.matrix.push(first,second);
+  const partition=partitionSourceIdentities(parseFrozenSnapshot(frozen).data);
+  assert.equal(partition.conflicts.size,0);assert.equal(partition.data.localForms.length,1);
+  assert.equal(partition.collapsed.length,1);assert.equal(partition.collapsed[0]!.rows.length,2);
+  assert.deepEqual(partition.collapsed[0]!.rows.map(row=>row.provenance.raw["Bad Lead Checker"]),["Bad Info","Duplicate Form"]);
+});
+
+test("literal phone recovery binds original error cell and preserves raw resolved value",()=>{
+  const frozen=snapshot();frozen.tabs[2]!.matrix.push(["#ERROR!","5/1/2026","12:00:00 PM","International Number"]);
+  frozen.cell_evidence=[{workbook_id:BEST_RELOCATION_TRACKER_ID,sheet_id:1191420872,row:2,column:1,
+    resolved_value:"#ERROR!",user_entered_formula:"+44 (0) 1234 567890",phone_literal:"+44 (0) 1234 567890"}];
+  attachSidecar(frozen);
+  const parsed=parseFrozenSnapshot(frozen);
+  assert.equal(parsed.data.calls[0]!.phone,"+44 (0) 1234 567890");
+  assert.equal(parsed.data.calls[0]!.provenance.raw["PHONE NUMBER"],"#ERROR!");
+  assert.equal(parsed.data.calls[0]!.provenance.raw.__vantage_captured_phone_literal,"+44 (0) 1234 567890");
+  frozen.cell_evidence[0]!.row=3;
+  assert.throws(()=>parseFrozenSnapshot(frozen),/frozen_phone_literal_evidence_mismatch/);
+});
+
+test("financial receipt representation changes still require exact canonical business identity",()=>{
+  const payload={customer_name:"Synthetic Customer",book_date:"2026-05-01T04:00:00Z",merchant:"Elavon",agent:"Synthetic Agent",total_binder_amount:100};
+  const row={customer_name:"Synthetic Customer",book_date:new Date("2026-05-01T00:00:00Z"),merchant:"Elavon CC",agent_allocations:[{agent_name_snapshot:"Synthetic Agent",binder_amount:100}]};
+  assert.equal(finalBookingIdentityMatches(payload,row),true);
+  assert.equal(finalBookingIdentityMatches(payload,{...row,customer_name:"Other Customer"}),false);
+  assert.equal(finalBookingIdentityMatches(payload,{...row,book_date:new Date("2026-05-02T00:00:00Z")}),false);
+  assert.equal(finalBookingIdentityMatches(payload,{...row,agent_allocations:[{agent_name_snapshot:"Other Agent",binder_amount:100}]}),false);
+  assert.equal(finalBookingIdentityMatches(payload,{...row,agent_allocations:[{agent_name_snapshot:"Synthetic Agent",binder_amount:99}]}),false);
 });

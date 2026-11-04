@@ -73,9 +73,11 @@ import {
   captureWordpressReceiptThenCreateLead,
   createMongoWordpressReceiptStore,
 } from "./wordpressFormSubmissionReceipt";
+import type { ExternalSheetReview } from "./externalSheetReview";
 
 type FormLeadDocument = InstanceType<ReturnType<typeof getFormLeadModel>>;
-type FormLeadSession = { session?: ClientSession; now: Date; final_reporting_run_id?: string };
+type FormLeadSession = { session?: ClientSession; now: Date; final_reporting_run_id?: string;
+  final_import_authorization?: { review?: ExternalSheetReview; assertCreate(duplicate: boolean): void } };
 type SourceAssignment = Awaited<
   ReturnType<typeof resolveLeadSourceAssignment>
 >["assignment"];
@@ -167,7 +169,8 @@ export async function beginFormLeadIngestion(
   tx: FormLeadSession & { ingestion_origin: FormLeadIngestionOrigin },
 ): Promise<FormLeadIngestionInProgress> {
   const FormLead = getFormLeadModel();
-  const prepared = await prepareTheQuoteForIngestion(input);
+  const prepared = await prepareTheQuoteForIngestion(input,
+    tx.ingestion_origin === "best_relocation_sheet" ? tx.session : undefined);
 
   let createdPending: FormLeadIngestionInProgress | undefined;
   const capture = await captureWordpressReceiptThenCreateLead({
@@ -323,6 +326,7 @@ export async function completeFormLeadIngestion(
 
 async function prepareTheQuoteForIngestion(
   input: CreateFormLeadInput,
+  session?: ClientSession,
 ): Promise<PreparedQuote> {
   const {
     crm_company_label,
@@ -360,6 +364,7 @@ async function prepareTheQuoteForIngestion(
     normalized.phone_number,
     normalized.email,
     leadTimestamp,
+    session,
   );
   const duplicate = duplicateMatch.duplicate;
   const shouldPostToGranot = decideWhetherToPostToGranot(
@@ -420,6 +425,7 @@ async function writeTheFormLead(
   prepared: PreparedQuote,
   tx: FormLeadSession & { ingestion_origin: FormLeadIngestionOrigin },
 ): Promise<FormLeadIngestionInProgress> {
+  tx.final_import_authorization?.assertCreate(prepared.duplicate);
   const FormLead = getFormLeadModel();
   const created = new FormLead({
     ...prepared.normalized,
@@ -434,6 +440,7 @@ async function writeTheFormLead(
     duplicate: prepared.duplicate,
     post_to_granot: prepared.shouldPostToGranot,
     outreach_automation_suppressed: tx.ingestion_origin === "best_relocation_sheet",
+    ...(tx.final_import_authorization?.review ? { external_sheet_review: tx.final_import_authorization.review } : {}),
     ...formLeadCreationProvenanceFields({
       origin: tx.ingestion_origin,
       now: tx.now,
