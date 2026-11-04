@@ -41,6 +41,8 @@ import { assertProductionWriterMatchesDeployment } from "../lib/production-write
 import { applyGeneralCallRun, verifyGeneralCallRun } from "./generalCallRun";
 import { shutdownBestRelocationWithoutIngestion } from "./shutdown";
 import { BEST_RELOCATION_ADMISSION_CALL_FEED_ID, BEST_RELOCATION_ADMISSION_COMPANY_ID } from "../../src/services/leads/callLeadAdmission";
+import { findEquivalentFrozenReview, assertEquivalentReviewRevision } from "./reviewAliases";
+import type { ReviewAction } from "./sourcePlan";
 
 const args = process.argv.slice(2), mode = args[0] && !args[0].startsWith("--") ? args.shift()! : "inspect";
 const option = (key: string) => { const at = args.indexOf(`--${key}`); return at < 0 ? undefined : args[at + 1]; };
@@ -142,6 +144,27 @@ async function resolvedReviews(plan: RetirementSourcePlan, connectionId: string)
   return resolved;
 }
 
+const reviewReceiptId=(runId:string,action:ReviewAction)=>new mongoose.Types.ObjectId(hash([runId,action.dataset_key,action.stable_source_row_id,action.cell.source_content_hash]).slice(0,24)).toHexString();
+async function hasPrimaryReviewReceipt(primary:ReviewAction,runId:string,connectionId:string,current:Record<string,any>){
+  if(!primary.lead_id)return false;
+  const id=reviewReceiptId(runId,primary);
+  return current.external_sheet_review?.source_row_receipt_id===id && !!await SourceRowReceipt.exists({_id:id,connection_id:connectionId,
+    ingestion_run_id:runId,dataset_key:primary.dataset_key,stable_source_row_id:primary.stable_source_row_id,
+    content_hash:primary.cell.source_content_hash,schema_version:3,observation_type:"final_review",outcome:{$in:["applied","already_applied"]},
+    resulting_canonical_model:primary.lead_model,resulting_canonical_ids:[primary.lead_id]});
+}
+async function hasFrozenReviewFact(plan:RetirementSourcePlan,action:ReviewAction,current:Record<string,any>,runId:string,connectionId:string){
+  if(!action.lead_id)return false;
+  if(action.classification==="unchanged" || current.external_sheet_review?.source_content_hash===action.cell.source_content_hash)return true;
+  const primary=findEquivalentFrozenReview(plan,action,current,runId);
+  if(!primary || !await hasPrimaryReviewReceipt(primary,runId,connectionId,current))return false;
+  return !!await SourceRowReceipt.exists({_id:reviewReceiptId(runId,action),connection_id:connectionId,ingestion_run_id:runId,
+    dataset_key:action.dataset_key,stable_source_row_id:action.stable_source_row_id,content_hash:action.cell.source_content_hash,
+    schema_version:3,observation_type:"final_review",outcome:"adopted",resulting_canonical_model:action.lead_model,resulting_canonical_ids:[action.lead_id],
+    "matching.method":"equivalent_review_alias_v1","matching.primary_receipt_id":reviewReceiptId(runId,primary),
+    "matching.primary_source_hash":primary.cell.source_content_hash,"matching.alias_source_hash":action.cell.source_content_hash});
+}
+
 async function apply(plan: RetirementSourcePlan, runId: string) {
   if (!plan.final_capture || retirementPlanChecksum(plan) !== required("checksum") || plan.checksum !== required("checksum")) throw new Error("final_frozen_plan_checksum_required");
   if (!has("owner-release-ingestion-hold")) throw new Error("BEST_RELOCATION_INGESTION_HELD_BY_OWNER");
@@ -184,7 +207,26 @@ async function apply(plan: RetirementSourcePlan, runId: string) {
       const Model = (action.lead_model === "FormLead" ? getFormLeadModel() : getCallLeadModel()) as mongoose.Model<any>;
       const current = await Model.findById(action.lead_id).select("domain_revision external_sheet_review").lean();
       if (!current) throw new Error("review_target_disappeared");
-      const receiptId = new mongoose.Types.ObjectId(hash([runId, action.dataset_key, action.stable_source_row_id, action.cell.source_content_hash]).slice(0,24)).toHexString();
+      const receiptId = reviewReceiptId(runId,action);
+      const equivalent=findEquivalentFrozenReview(plan,action,current,runId);
+      if(equivalent){
+        const ownChanges=await getEntityChangeModel().countDocuments({"entity.model":action.lead_model,"entity.id":action.lead_id,"provenance.run_id":runId});
+        assertEquivalentReviewRevision(action,Number(current.domain_revision??0),ownChanges);
+        if(!await hasPrimaryReviewReceipt(equivalent,runId,connectionId,current))throw new Error("equivalent_review_primary_receipt_missing");
+        await appendSourceReceipt({_id:receiptId,connection_id:connectionId,dataset_key:action.dataset_key,stable_source_row_id:action.stable_source_row_id,
+          content_hash:action.cell.source_content_hash,schema_profile:EXTERNAL_REVIEW_POLICY_VERSION,schema_version:3,workbook_id:action.cell.source_workbook_id,
+          workbook_title:"BestRelocation Lead Tracker (Vantage Movers)",tab_id:action.cell.source_sheet_id,tab_name:action.cell.source_tab,
+          last_observed_row_number:action.row,range:`${action.cell.source_tab}:frozen`,observed_at:new Date(plan.through),ingestion_run_id:runId,
+          observation_type:"final_review",classification:action.classification,outcome:"adopted",resulting_canonical_model:action.lead_model,
+          resulting_canonical_ids:[action.lead_id],source_state:"present",matching:{method:"equivalent_review_alias_v1",
+            primary_stable_source_row_id:equivalent.stable_source_row_id,primary_source_hash:equivalent.cell.source_content_hash,
+            primary_receipt_id:reviewReceiptId(runId,equivalent),alias_source_hash:action.cell.source_content_hash,
+            primary_raw_value:equivalent.cell.raw_value,alias_raw_value:action.cell.raw_value,planned_revision:action.expected_revision,
+            observed_revision:current.domain_revision,own_run_changes:ownChanges}});
+        await enqueueSheetSyncJob({resource:"source_lead",operation:"form_lead.update",leadModel:"FormLead",leadId:action.lead_id},{createdBy:"script"});
+        outcomes.push({stable_id:action.stable_source_row_id,id:action.lead_id,outcome:"equivalent_review_adopted",primary:equivalent.stable_source_row_id});
+        await save(`${runId}-review-checkpoint.json`,outcomes);continue;
+      }
       const envelopeKey = hash([action.dataset_key, action.stable_source_row_id, action.cell.source_content_hash]);
       const stored = await IngestionRun.findById(runId).select(`approval.review_envelopes.${envelopeKey}`).lean();
       let payload = (stored?.approval as {review_envelopes?: Record<string, {lead_model: "FormLead"|"CallLead"; lead_id:string; expected_revision:number; cell: typeof action.cell}>} | undefined)?.review_envelopes?.[envelopeKey];
@@ -290,7 +332,7 @@ async function verifySource(plan: RetirementSourcePlan, runId: string) {
       const count=memberships.leads.get(tab)?.get(action.lead_id.toLowerCase())??0;
       if (count!==Number(expected.includes(tab))) discrepancies.push({id:action.lead_id,tab,count,reason:"physical_membership"});
     }
-    if (action.classification!=="unchanged" && row.external_sheet_review?.source_content_hash!==action.cell.source_content_hash)
+    if (!await hasFrozenReviewFact(plan,action,row,runId,String(connection._id)))
       discrepancies.push({id:action.lead_id,reason:"review_fact_missing_or_different"});
   }
   const financial = await verifyCanonicalFinancials(plan,runId,String(connection._id),memberships.booked);
@@ -318,7 +360,7 @@ async function verify(plan: RetirementSourcePlan, calls: CallBackfillPlan, runId
     const expected = planExpectedSheetTabs(action.lead_model, row).expected.map(tab => tab.tabName);
     const candidateTabs = action.lead_model === "CallLead" ? ["Calls", "Duplicate Calls", "Bad Call Leads"] : ["Forms", "Duplicate Forms", "Bad Form Leads"];
     for (const tab of candidateTabs) if (count(tab, action.lead_id) !== Number(expected.includes(tab))) discrepancies.push({ id: action.lead_id, tab, reason: "physical_membership" });
-    if (action.classification !== "unchanged" && row.external_sheet_review?.source_content_hash !== action.cell.source_content_hash) discrepancies.push({ id: action.lead_id, reason: "review_fact_missing_or_different" });
+    if (!await hasFrozenReviewFact(plan,action,row,runId,String(connection._id))) discrepancies.push({ id: action.lead_id, reason: "review_fact_missing_or_different" });
   }
   const financial = await verifyCanonicalFinancials(plan, runId, String(connection._id), memberships.booked);
   const invalidTimes = Object.values(plan.inventory).reduce((n, tab) => n + tab.invalid_time, 0);

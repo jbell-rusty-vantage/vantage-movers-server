@@ -8,6 +8,8 @@ Local verification: typecheck; 3,956 full-suite tests (3,794 pass, 162 explicit 
 
 These are implementation and local/read-only preparation results. Production deployment, exact final capture/checksum release, canonical source application, physical delivery, financial preservation and same-plan replay must be recorded below before final reconciliation is described as complete. The Source Company remains active and the independent November 1 general backfill is not repeated.
 
+The first live apply completed all canonical actions, including the 315 approved exception creates, with zero canonical failures/conflicts. It stopped during review reconciliation when two approved Local Form identities resolved to one existing Lead: the first identical bad annotation advanced the revision, so the second frozen expected revision correctly failed. No concurrent Owner edit caused this stop. The operator correction adopts the second row as explicit equivalent-review source evidence, retaining the first protected stamp and one canonical projection. The frozen source selection and checksum remain unchanged. Completion is still pending resume, delivery and replay proof; no direct approval-field or aggregate patch is used to bypass the revision fence.
+
 The current phase finishes reporting behavior, tab migration, the independent November 1 Call backfill, and shutdown of Best Relocation external ingestion and Granot creation policies. The Owner explicitly deferred **all final Best Relocation source ingestion**, including selective bad/duplicate rows. No source apply, source admission, new source Lead, checker reconciliation or financial import has run. The Source Company remains active.
 
 ## Released code and checks
