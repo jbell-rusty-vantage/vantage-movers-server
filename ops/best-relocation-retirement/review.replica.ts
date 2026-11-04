@@ -31,7 +31,7 @@ const lease: LeaseToken = { scope: "ingestion:best_relocation:apply", owner: pre
 before(async () => {
   if (!enabled) return;
   await connectMongo();
-  assert.equal(mongoose.connection.name, "testvantagemovers");
+  assert.match(mongoose.connection.name, /^testvantagemovers_[a-z0-9]+$/i);
   assert.equal(process.env.SHEET_SYNC_MODE, "queued");
   assert.equal((await mongoose.connection.db!.admin().command({ hello: 1 })).setName, "callReportingProof");
   await Promise.all([getCallLeadModel(), getFormLeadModel(), EntityChange, DomainCommandExecution, SheetSyncJob, SheetSyncLease, ExternalDataConnection].map(async Model => {
@@ -94,7 +94,9 @@ test("replica: final result revision/change/command/outbox commit, replay no-op,
   assert.deepEqual(await counts(id), { changes: 1, commands: 1, outbox: 1 });
   await persistRingCentralFinalCallLogResult(observation(session), id);
   assert.deepEqual(await counts(id), { changes: 1, commands: 1, outbox: 1 });
-  await persistRingCentralFinalCallLogResult(observation(session, "Missed", true), id);
+  const correction = observation(session, "Missed", true);
+  correction.finalCallLogResult!.observedAt = new Date(observedAt.getTime() + 1000);
+  await persistRingCentralFinalCallLogResult(correction, id);
   const corrected = await getCallLeadModel().findById(id).lean();
   assert.equal(corrected?.domain_revision, 2);
   assert.equal(corrected?.ringcentral?.qualification_reason, "call_log_inbound_target_answered_over_120s");

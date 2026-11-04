@@ -70,7 +70,7 @@ function buildSourceMatchFilter(
   return {
     $or: [
       { lead_source_company: leadSourceCompany },
-      { source_company: sourceCompany },
+      { lead_source_company: null, source_company: sourceCompany },
     ],
   };
 }
@@ -172,8 +172,8 @@ export async function isDuplicateFormLead(
 /**
  * Returns true when a non-duplicate Form Lead in the source scope shares the
  * supplied phone. A string scope matches `source_company`. A scope object
- * with `leadSourceCompany` matches either `lead_source_company` or
- * `source_company`. Used to set `form_fill` on a newly created Call Lead.
+ * with `leadSourceCompany` matches canonical company, with legacy slug fallback only when canonical
+ * company is absent. Used to set `form_fill` on a newly created Call Lead.
  */
 export async function hasFormFillForCallLead(
   sourceScope: SourceCompany | LeadSourceMatchScope,
@@ -186,28 +186,28 @@ export async function hasFormFillForCallLead(
     return false;
   }
 
-  const query = FormLead.find({
-    $and: [
-      buildSourceMatchFilter(sourceScope),
-      { duplicate: { $ne: true } },
-      { phone_number: buildPhoneRegex(normalizedPhone) },
-    ],
-  })
-    .sort({ createdAt: -1 })
-    .limit(25);
-  const candidates = await (session ? query.session(session) : query).exec();
-
-  return candidates.some(
-    (lead) =>
-      normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-  );
+  let afterId: mongoose.Types.ObjectId | undefined;
+  for (;;) {
+    const query = FormLead.find({
+      $and: [
+        buildSourceMatchFilter(sourceScope),
+        { duplicate: { $ne: true } },
+        { phone_number: buildPhoneRegex(normalizedPhone) },
+        ...(afterId ? [{ _id: { $gt: afterId } }] : []),
+      ],
+    }).sort({ _id: 1 }).limit(100);
+    const candidates = await (session ? query.session(session) : query).exec();
+    if (candidates.some(lead => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone)) return true;
+    if (candidates.length < 100) return false;
+    afterId = candidates[candidates.length - 1]!._id;
+  }
 }
 
 /**
  * Flips `form_fill = true` on matching Call Leads in the source scope when a
  * new (non-duplicate) Form Lead arrives. A string scope matches
- * `source_company`. A scope object with `leadSourceCompany` matches either
- * `lead_source_company` or `source_company`.
+ * `source_company`. A scope object with `leadSourceCompany` matches canonical company, with
+ * legacy slug fallback only when canonical company is absent.
  *
  * Returns a `source_lead` sheet-sync job for every call lead it touched so the
  * caller can persist/finalize the syncs alongside the form-lead write (inside
@@ -224,6 +224,7 @@ export async function markMatchingCallLeadsWithFormFill(
   formLeadId: string,
   session?: ClientSession,
   finalReportingRunId?: string,
+  page?: { afterId?: mongoose.Types.ObjectId | null; onPage(lastId: mongoose.Types.ObjectId | null, full: boolean): void },
 ): Promise<FullSheetSyncJob[]> {
   const CallLead = getCallLeadModel();
   const sourceCompany = getSourceCompany(sourceScope);
@@ -235,6 +236,7 @@ export async function markMatchingCallLeadsWithFormFill(
   const candidatesQuery = CallLead.find({
     $and: [
       buildSourceMatchFilter(sourceScope),
+      ...(page?.afterId ? [{ _id: { $gt: page.afterId } }] : []),
       reportingEligibleCallLeadFilter(),
       { form_fill: { $ne: true } },
       {
@@ -245,12 +247,13 @@ export async function markMatchingCallLeadsWithFormFill(
       },
     ],
   })
-    .sort({ createdAt: -1 })
+    .sort({ _id: 1 })
     .limit(25);
   const candidates = await (
     session ? candidatesQuery.session(session) : candidatesQuery
   ).exec();
 
+  page?.onPage(candidates.at(-1)?._id ?? null, candidates.length === 25);
   const matchedCallLeads = candidates.filter(
     (lead) =>
       normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,

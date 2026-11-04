@@ -35,7 +35,7 @@ export function planRingCentralFinalResultUpdate(
   if (!sameSession && !sameLog) return null;
   if (call.telephonySessionId && saved?.telephony_session_id && !sameSession) return null;
   const observed = saved?.final_result_observed_at;
-  if (observed && new Date(observed as string).getTime() > fact.observedAt.getTime()) return null;
+  if (observed && new Date(observed as string).getTime() >= fact.observedAt.getTime()) return null;
   const start = saved?.start_time;
   const unchanged = saved?.final_result === fact.result &&
     saved?.final_result_answered === fact.answered &&
@@ -43,8 +43,8 @@ export function planRingCentralFinalResultUpdate(
     observed != null && Number.isFinite(new Date(observed as string).getTime()) &&
     start != null && Number.isFinite(new Date(start as string).getTime()) &&
     (!fact.callLogId || saved?.call_log_id === fact.callLogId);
-  // A poll of identical evidence must not advance the revision or refill the outbox.
-  if (unchanged) return null;
+  // Persist ordering evidence through the command, without semantic audit/outbox churn.
+  if (unchanged) return { "ringcentral.final_result_observed_at": fact.observedAt };
   return {
     "ringcentral.final_result": fact.result,
     "ringcentral.final_result_observed_at": fact.observedAt,
@@ -121,6 +121,9 @@ export async function persistRingCentralFinalCallLogResult(
         const currentPatch = planRingCentralFinalResultUpdate(current, call);
         if (!currentPatch) return { entity_refs: [{ model: "CallLead", id }] };
         await getCallLeadModel().updateOne({ _id: new mongoose.Types.ObjectId(id) }, { $set: currentPatch }, { session: tx.session });
+        if (Object.keys(currentPatch).length === 1 && "ringcentral.final_result_observed_at" in currentPatch) {
+          return { entity_refs: [{ model: "CallLead", id }] };
+        }
         await emitLeadChange({
           model: "CallLead", id, before: current,
           session: tx.session, now: tx.now,

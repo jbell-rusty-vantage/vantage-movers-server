@@ -6,6 +6,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
+November 4 Call billing/Form parity review: [fixes, replica evidence, read-only repair preview and release limits](call-billing-review-2026-11-04.md). The broader efficiency work starts from this reviewed revision after integration/release checks.
+
 November 3 Lead reporting and Best Relocation retirement: [operator and release record](lead-reporting-retirement/README.md). Implementation, production delivery and final-data coverage are tracked separately.
 
 Outreach Desk rep performance (October 16, 2026): [packet](outreach-performance/README.md) — Owner/Manager weekly call/text reporting, ranked completion rates, retained SMS reporting facts and release checks. Runtime integration is documented in the Desk Service below.

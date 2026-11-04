@@ -189,3 +189,6 @@ Structured logger `msg` keys; nothing is persisted to Mongo (the Operational Eve
 
 
 The final Best Relocation review command derives a protected `external_sheet_review` from captured source cells. A genuine checker annotation longer than two trimmed characters selects Bad Form Leads exclusively, including duplicate/booked/cancelled Forms. The canonical formatted reason takes precedence in the existing Bad Lead column; otherwise the imported annotation is inert text. Public mark-bad guards remain unchanged. New final-import Forms cannot post to Granot, send confirmation messages, or enter automatic Outreach; existing Leads and official outcomes remain intact. The bounded Owner-return run has completed with independent physical delivery and replay proof; the retired connection blocks further application.
+
+
+**November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).

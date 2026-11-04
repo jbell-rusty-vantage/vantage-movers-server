@@ -120,3 +120,6 @@ The November 3 shared Call policy uses `hasReportingEligibleCall` / `reportingEl
 The final Best Relocation source-admission implementation is separate from production application: the entire source apply is owner-held, including the 125 proposed new normal Calls, and no production final-import admissions have been applied. The Source Company remains active. The independent general November 1 Call backfill and ingestion-policy shutdown do not claim source-ingestion completion.
 
 The historical manifest restores reporting eligibility for already saved scoped Calls while final ingestion is held. It uses exact IDs rather than a Source Company bypass, applies existing quality/billing flags, and writes no admission/checker facts, revisions or source receipts. Full native evidence stays private; the runtime exports its version, capture time and ID hash.
+
+
+**November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).

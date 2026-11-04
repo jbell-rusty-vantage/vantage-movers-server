@@ -74,6 +74,7 @@ import {
   createMongoWordpressReceiptStore,
 } from "./wordpressFormSubmissionReceipt";
 import type { ExternalSheetReview } from "./externalSheetReview";
+import { scheduleFormFillWork } from "./formFillWork";
 
 type FormLeadDocument = InstanceType<ReturnType<typeof getFormLeadModel>>;
 type FormLeadSession = { session?: ClientSession; now: Date; final_reporting_run_id?: string;
@@ -465,6 +466,7 @@ async function writeTheFormLead(
     no_sync: noSyncOnCreate(tx.ingestion_origin, prepared.input.no_sync),
   });
   await created.save({ session: tx.session });
+  await scheduleFormFillWork("FormLead", String(created._id), tx.session);
 
   const leadId = created._id.toString();
   const sheetSyncJobs: FullSheetSyncJob[] = [];

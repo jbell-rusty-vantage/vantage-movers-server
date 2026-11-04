@@ -110,3 +110,6 @@ Focused offline tests: `googleSheets/**/*.test.ts` and `sheetSync/**/*.test.ts`,
 - [Call Leads](./call-lead.md), [Form Leads](./form-lead.md): domain writes and qualification.
 - [Bookings](./bookings.md), [Cancellations](./cancelled-lead.md): official outcome chains.
 - [Sheet Sync rule](../../../.cursor/rules/sheet-sync-process.mdc): modes, envs and quotas.
+
+
+**November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).

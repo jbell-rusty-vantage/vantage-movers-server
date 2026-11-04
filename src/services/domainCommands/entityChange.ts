@@ -15,6 +15,7 @@ import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import type { EntityRef } from "../granotLifecycle/types";
 import type { CanonicalCommandContext, CommandOrigin } from "./types";
+import { scheduleFormFillWork } from "../leads/formFillWork";
 
 const CONTACT_OR_ADDRESS_PATH =
   /(^|\.)(name|first_name|last_name|display_name|phone|phone_number|normalized_phone_number|email|normalized_email|customer_name|customer_phone|customer_email|address|street|city|zip|pickup_zip|destination_zip|pickup_city|delivery_city|pickup_state|delivery_state|origin|destination)(\.|$)/i;
@@ -414,6 +415,10 @@ export async function persistEntityChangeMutations(input: {
       applied_at: input.now,
     });
     await document.save({ session: input.session });
+    if (!mutation.deleted && (mutation.entity.model === "FormLead" || mutation.entity.model === "CallLead") &&
+      changed_paths.some(path => ["phone_number", "source_company", "lead_source_company", "source_granularity_id", "duplicate", "ringcentral", "external_call_admission"].some(key => path === key || path.startsWith(`${key}.`)))) {
+      await scheduleFormFillWork(mutation.entity.model, mutation.entity.id, input.session);
+    }
     if (!mutation.deleted) {
       await stampAggregateRevision({
         entity: mutation.entity,

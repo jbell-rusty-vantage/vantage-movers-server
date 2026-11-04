@@ -38,3 +38,6 @@ Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../doc
 - Scheduling: `sheetSyncCoordinator.ts`, `sheetSyncOutbox.service.ts`, `sheetSyncQueue.service.ts`.
 - Execution: `drainer/runSheetSyncDrain.ts`, `jobPlanner.ts`, `batchWriter.ts`, `tabRowMap.ts`, `quotaLimiter.ts`, `leases.ts`.
 - Sheet details: `src/services/googleSheets/targets.ts`, `tabs.ts`, `src/config/domain/sheets.ts`.
+
+
+- The authenticated queued Sheet Sync cron first runs `leads/drainFormFillWork.ts` (durable model `FormFillWork`, due index + per-task cursor/generation). Keep Lead effects, audit, outbox and cursor transactional; never perform external delivery inside that transaction. Owner policy and correction limits: [billing](../../docs/call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering).

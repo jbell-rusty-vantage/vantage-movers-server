@@ -352,7 +352,7 @@ test("form fill detection matches lead source company or source company", async 
   assert.deepEqual(findQuery?.$and?.[0], {
     $or: [
       { lead_source_company: leadSourceCompany },
-      { source_company: "tbm_leads" },
+      { lead_source_company: null, source_company: "tbm_leads" },
     ],
   });
   assert.deepEqual(findQuery?.$and?.[1]?.duplicate, { $ne: true });

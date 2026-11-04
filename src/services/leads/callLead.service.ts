@@ -258,6 +258,7 @@ export async function beginRingCentralCallLeadIngestion(
       leadSourceCompany: sourceAssignment.lead_source_company,
     },
     input.phone_number,
+    tx.session,
   );
   const leadTimestamp = stampFloridaTime(input.timestamp ?? new Date());
   const cplSnapshot = await priceTheLead(
@@ -377,8 +378,9 @@ async function detectFormFill(
     leadSourceCompany: SourceAssignment["lead_source_company"];
   },
   phoneNumber: string | undefined,
+  session?: ClientSession,
 ) {
-  return hasFormFillForCallLead(source, phoneNumber);
+  return hasFormFillForCallLead(source, phoneNumber, session);
 }
 
 function stampFloridaTime(timestamp?: Date | null) {

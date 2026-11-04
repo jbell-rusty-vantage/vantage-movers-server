@@ -35,11 +35,11 @@ test("identical final evidence polls are no-ops; parent correction preserves ans
     final_result: " Missed ", final_result_answered: false,
     final_result_call_log_id: "parent-log", final_result_observed_at: observedAt,
   } };
-  assert.equal(planRingCentralFinalResultUpdate(saved, { ...call,
+  assert.deepEqual(planRingCentralFinalResultUpdate(saved, { ...call,
     finalCallLogResult: { ...call.finalCallLogResult!, observedAt: new Date("2026-11-01T07:00:00Z") },
-  }), null);
+  }), { "ringcentral.final_result_observed_at": new Date("2026-11-01T07:00:00Z") });
   const patch = planRingCentralFinalResultUpdate(saved, { ...call,
-    finalCallLogResult: { ...call.finalCallLogResult!, answered: true },
+    finalCallLogResult: { ...call.finalCallLogResult!, answered: true, observedAt: new Date("2026-11-01T07:01:00Z") },
   })!;
   assert.equal(patch["ringcentral.final_result_answered"], true);
   assert.equal(patch["ringcentral.start_time"], undefined);
@@ -61,4 +61,18 @@ test("final result correction audit stores reproducible result and identity valu
   const patch = planRingCentralFinalResultUpdate(lead, call)!;
   const fields = buildEntityChangeFields(Object.entries(patch).map(([path, after]) => ({ path, after })));
   assert.ok(fields.every((field) => field.value_mode === "stored"));
+});
+
+
+test("a newer identical observation fences delayed changed results and ties", () => {
+  const saved = { ...lead, ringcentral: { ...qualified, start_time: start, call_log_id: "parent-log",
+    final_result: " Missed ", final_result_answered: false, final_result_call_log_id: "parent-log",
+    final_result_observed_at: new Date("2026-11-01T08:05:00Z") } };
+  const observe = (time: string, result = " Missed ") => ({ ...call, finalCallLogResult: {
+    ...call.finalCallLogResult!, result, observedAt: new Date(`2026-11-01T${time}Z`) } });
+  const watermark = planRingCentralFinalResultUpdate(saved, observe("08:07:00"))!;
+  saved.ringcentral.final_result_observed_at = watermark["ringcentral.final_result_observed_at"] as Date;
+  assert.equal(planRingCentralFinalResultUpdate(saved, observe("08:06:00", "Accepted")), null);
+  assert.equal(planRingCentralFinalResultUpdate(saved, observe("08:07:00", "Accepted")), null);
+  assert.ok(planRingCentralFinalResultUpdate(saved, observe("08:08:00", "Accepted")));
 });
