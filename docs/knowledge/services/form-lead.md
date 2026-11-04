@@ -105,7 +105,7 @@ CRM Posting is independent of webhook capture. Capture remains receipt-only ([`c
 
 ## Sheet Sync tab routing (Form Lead)
 
-The [November 3 Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) selects exclusive bad-Form routing. The entire final Best Relocation source ingestion remains held, including source creates, adoptions and imported reviews. The implementation below describes behavior after release; it does not mean captured Best Relocation facts have been applied. Track deployment and per-ID delivery separately in the [release evidence](../../lead-reporting-retirement/README.md).
+The [November 3 Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) selects exclusive bad-Form routing. The Owner-return final source reconciliation completed under its exact released checksum: 272 exception Forms were created and all selected physical memberships verified. The [final report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md) records financial preservation, live billing and unchanged replay. Recurring ingestion remains retired; the Source Company remains active for separate Owner deactivation.
 
 | Condition | Master Leads tab |
 |-----------|------------------|
@@ -188,4 +188,4 @@ Structured logger `msg` keys; nothing is persisted to Mongo (the Operational Eve
 - [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox modes, drainer, quotas
 
 
-The final Best Relocation review command derives a protected `external_sheet_review` from captured source cells. A genuine checker annotation longer than two trimmed characters selects Bad Form Leads exclusively, including duplicate/booked/cancelled Forms. The canonical formatted reason takes precedence in the existing Bad Lead column; otherwise the imported annotation is inert text. Public mark-bad guards remain unchanged. New final-import Forms cannot post to Granot, send confirmation messages, or enter automatic Outreach; existing Leads and official outcomes remain intact. This command is part of the entire Best Relocation source ingestion hold; its implementation is not production application evidence.
+The final Best Relocation review command derives a protected `external_sheet_review` from captured source cells. A genuine checker annotation longer than two trimmed characters selects Bad Form Leads exclusively, including duplicate/booked/cancelled Forms. The canonical formatted reason takes precedence in the existing Bad Lead column; otherwise the imported annotation is inert text. Public mark-bad guards remain unchanged. New final-import Forms cannot post to Granot, send confirmation messages, or enter automatic Outreach; existing Leads and official outcomes remain intact. The bounded Owner-return run has completed with independent physical delivery and replay proof; the retired connection blocks further application.

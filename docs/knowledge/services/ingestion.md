@@ -37,7 +37,7 @@ generated:
 
 # Best Relocation Ingestion
 
-Recurring ingestion is permanently fenced in this build. This is implementation evidence, not a claim that final reconciliation or production cutover has completed.
+Recurring ingestion is permanently fenced. The Owner-directed final reconciliation is complete in production through November 3, 2026 at 7:49:27 p.m. New York, including canonical application, physical financial readback, independent verification and unchanged same-plan replay. The connection records complete final reconciliation; the Source Company remains active for separate Owner deactivation. See the [final report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md) for the released checksum and qualification evidence. The operator contracts below do not release a further import.
 
 The old queue worker acknowledges delayed deliveries with `status: retired` before Mongo or source reads. The publisher cannot send; the Vercel queue trigger and heartbeat cron are removed. The compatibility heartbeat acknowledges `reason: retired` without work. Old HTTP mutations return `410 / BEST_RELOCATION_RETIRED` after Owner authentication; stored connection/run/conflict GETs remain readable. Admin Setup and the old ingestion dashboard have no activation, preview, apply, retry or identity-repair controls. Setting the old environment flag cannot resume ingestion. Legacy direct HTTP apply throws before any request.
 

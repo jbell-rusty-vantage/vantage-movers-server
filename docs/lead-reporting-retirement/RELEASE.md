@@ -1,5 +1,11 @@
 # November 3 release evidence
 
+## Final source reconciliation complete
+
+The Owner-return run is complete in production through November 3 at 7:49:27 p.m. New York. [Final report](FINAL-RECONCILIATION-2026-11-03.md) records 315 exception creates, zero new normal Leads, 495 correct unique Lead memberships, ten preserved official Bookings ($11,352 Binder / $13,219.24 deposits), independent physical money-cell checks and unchanged same-plan replay. Run `6aea79aa80506078c37279fe` now records completed final reconciliation. Recurring ingestion and Granot creation remain closed; the Source Company remains active for separate Owner deactivation.
+
+Qualified runtime: `4a31e894148b8ddf782143ff23c940043f223cf6`, deployment `dpl_FkmiMuQYTwKpGQ1jBKdB9gQPmeyp`, [Actions 41753543016](https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/41753543016). Resume and replay retained the exact released source checksum. Final local checks included 85 focused operator tests and the equivalent-review transaction proof. The sections below retain the earlier implementation, interruption and held-session history; their pending statements are superseded by the final report.
+
 ## Owner-return implementation, November 3 evening
 
 The Owner confirmed the next-session rules and requested completion. The new manual planner uses a deterministic Booking graph, treats normal unbooked source rows as explicit non-mutating exclusions, preserves financial identities independently of Lead attachment, and binds normal create matches into the frozen plan. Bad Forms carry their protected review before initial save/outbox; all new final Forms/Calls require the released outer checksum. Literal international phone values behind source parse errors are captured as supplemental cell evidence without source writes; copied bad Form identities retain both original annotations while producing one canonical identity.
