@@ -50,6 +50,15 @@ test("mismatched canonical refund/deposit are reported without changing money", 
   assert.deepEqual(f.rows, before);
 });
 
+test("saved Best Relocation financial display labels remain valid without rewriting source",async()=>{
+  for(const label of ["Best Relocation Forms","Best Relocation Locals","BestRelocation Inbounds"]){
+    const f=fixture();f.rows["BookedLead:b1"].source=label;f.rows["CancelledLead:c1"].source=label;
+    const before=structuredClone(f.rows);assert.equal((await f.verify()).complete,true);assert.deepEqual(f.rows,before);
+  }
+  const f=fixture();f.rows["BookedLead:b1"].source="Other Company";
+  assert.ok((await f.verify()).discrepancies.some(row=>row.reason==="canonical_financial_source_mismatch"));
+});
+
 test("destination missing/duplicate official rows and changed cancellation links cannot qualify", async () => {
   const f = fixture();
   f.membership.get("Booked Deals")!.set("b1", 2);

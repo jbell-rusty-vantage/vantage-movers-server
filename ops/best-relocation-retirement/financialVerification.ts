@@ -3,6 +3,7 @@ import { BookedLead } from "../../src/models/BookedLead";
 import { CancelledLead } from "../../src/models/CancelledLead";
 import { IngestionRun } from "../../src/models/IngestionRun";
 import { SourceRowReceipt } from "../../src/models/SourceRowReceipt";
+import { BEST_RELOCATION_COMPANY_SLUG, BEST_RELOCATION_RETIRED_LABELS } from "../../src/models/bestRelocationRetirement";
 import type { BestRelocationPlanAction } from "../../src/services/bestRelocationSheetIngest/applicationPlan";
 import type { RetirementSourcePlan } from "./sourcePlan";
 
@@ -158,7 +159,8 @@ export async function verifyCanonicalFinancials(
   for (const item of resolved) {
     membership(item.model, item.id);
     compare(item.model, item.id, intended[item.action.action_key], item.action.action_key);
-    if (entities.get(`${item.model}:${item.id}`)?.source !== "best_relocation_leads") discrepancies.push({ reason: "canonical_financial_source_mismatch", action_key: item.action.action_key, model: item.model, id: item.id });
+    const source=String(entities.get(`${item.model}:${item.id}`)?.source??"").trim().toLowerCase().replace(/\s+/g," ");
+    if (source!==BEST_RELOCATION_COMPANY_SLUG && !BEST_RELOCATION_RETIRED_LABELS.some(label=>label===source)) discrepancies.push({ reason: "canonical_financial_source_mismatch", action_key: item.action.action_key, model: item.model, id: item.id });
     counters[item.model === "BookedLead" ? "bookings_checked" : "cancellations_checked"]++;
     const row = entities.get(`${item.model}:${item.id}`);
     if (row && item.model === "CancelledLead") {
