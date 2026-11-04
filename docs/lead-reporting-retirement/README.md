@@ -47,7 +47,7 @@ The final graph builds Bookings independently of Lead creation, collapses consis
 
 ## Local verification
 
-`finalize-source --plan <file> --run-id <ObjectId> --deployment <SHA> --replay-before <evidence-file> --replay-after <evidence-file>` requires matching source evidence checksums, unchanged replay entities, receipt/command counts and physical memberships, then repeats source verification before marking the connection's final reconciliation complete. It preserves Source Company activity. Run this only after actual delivery and replay proof; the completed independent general Call backfill is not repeated.
+`finalize-source --plan <file> --run-id <ObjectId> --deployment <SHA> --replay-before <evidence-file> --replay-after <evidence-file>` requires matching source evidence checksums, unchanged replay entities, receipt/command counts and physical memberships, then repeats source verification before marking the connection's final reconciliation complete. Replay compares the Best Relocation Lead inventory and selected official financial identities; unrelated live intake is outside that replay cohort. The full before/after snapshots remain available for baseline preservation checks. It preserves Source Company activity. Run this only after actual delivery and replay proof; the completed independent general Call backfill is not repeated.
 
 The full server suite completed with 3,923 tests: 3,763 passed, 160 existing skips, zero failures. Focused ops and disposable-replica proofs run separately because the package test glob does not include these operator subdirectories. Subsequent operator-only hardening is checked with its focused tests and coordinated typecheck.
 

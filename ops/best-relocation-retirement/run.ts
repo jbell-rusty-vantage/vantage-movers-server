@@ -247,14 +247,26 @@ async function sourceEvidence(plan: RetirementSourcePlan, runId: string) {
     CancelledLead.find({}).select(projection).sort({_id:1}).limit(10001).lean(),
   ]);
   if ([forms,calls,bookings,cancellations].some(rows => rows.length > 10000)) throw new Error("source_evidence_bound_exceeded");
+  const financialReceipts=await SourceRowReceipt.find({ingestion_run_id:runId,resulting_canonical_model:{$in:["BookedLead","CancelledLead"]}})
+    .select("resulting_canonical_model resulting_canonical_ids").limit(10001).lean();
+  if(financialReceipts.length>10000)throw new Error("source_evidence_receipt_bound_exceeded");
+  const bookingIds=new Set(plan.canonical_plan.actions.flatMap(action=>action.adopted_entity_refs??[]).filter(ref=>ref.model==="BookedLead").map(ref=>ref.id));
+  const cancellationIds=new Set(plan.canonical_plan.actions.flatMap(action=>action.adopted_entity_refs??[]).filter(ref=>ref.model==="CancelledLead").map(ref=>ref.id));
+  for(const receipt of financialReceipts){const id=receipt.resulting_canonical_ids[0];if(id)(receipt.resulting_canonical_model==="BookedLead"?bookingIds:cancellationIds).add(id);}
+  for(const row of bookings)if(bookingIds.has(String(row._id))&&row.cancelled)cancellationIds.add(String(row.cancelled));
+  const replayEntities={forms,calls,bookings:bookings.filter(row=>bookingIds.has(String(row._id))),cancellations:cancellations.filter(row=>cancellationIds.has(String(row._id)))};
+  const leadIds=new Set([...forms,...calls].map(row=>String(row._id))),financialIds=new Set([...bookingIds,...cancellationIds]);
+  const memberships=serializedMemberships(await readMemberships());
+  const subset=(tabs:Record<string,Record<string,number>>,ids:Set<string>)=>Object.fromEntries(Object.entries(tabs).sort(([a],[b])=>a.localeCompare(b)).map(([tab,counts])=>[tab,Object.fromEntries(Object.entries(counts).filter(([id])=>ids.has(id)).sort(([a],[b])=>a.localeCompare(b)))]));
+  const replayMemberships={leads:subset(memberships.leads,leadIds),booked:subset(memberships.booked,financialIds)};
   const result = { run_id: runId, plan_checksum: plan.checksum, captured_at: new Date(), database: mongoose.connection.name,
     deployment: await mongoose.connection.db!.collection("sales_intelligence_sync_state").findOne({scope:"deployment"}),
-    company, sources, connection, entities: { forms, calls, bookings, cancellations },
+    company, sources, connection, entities: { forms, calls, bookings, cancellations },replay_entities:replayEntities,replay_memberships:replayMemberships,
     command_count: await DomainCommandExecution.countDocuments({ "provenance.run_id": runId }),
     receipt_count: await SourceRowReceipt.countDocuments({ ingestion_run_id: runId }),
-    memberships: serializedMemberships(await readMemberships()) };
+    memberships };
   await save(`${runId}-source-evidence.json`, result);
-  return { run_id: runId, entity_hash: hash(result.entities), membership_hash: hash({leads:result.memberships.leads,booked:result.memberships.booked}),
+  return { run_id: runId, entity_hash: hash(result.replay_entities), membership_hash: hash(result.replay_memberships),
     counts: { forms:forms.length,calls:calls.length,bookings:bookings.length,cancellations:cancellations.length,commands:result.command_count,receipts:result.receipt_count },
     source_company_active: company?.active, scheduling_disabled: connection?.application_enabled === false && connection?.next_due_at == null,
     deployment: result.deployment && {commit:result.deployment.deployment_commit,recorded_at:result.deployment.recorded_at,deployment_id:result.deployment.vercel_deployment_id},
@@ -419,14 +431,14 @@ async function main() {
     await assertDeployment(required("deployment"));
     const first=await load<any>(required("replay-before")),second=await load<any>(required("replay-after"));
     if ([first,second].some(value=>value.run_id!==required("run-id") || value.plan_checksum!==plan.checksum) ||
-      hash(first.entities)!==hash(second.entities) || first.command_count!==second.command_count || first.receipt_count!==second.receipt_count ||
-      hash({leads:first.memberships.leads,booked:first.memberships.booked})!==hash({leads:second.memberships.leads,booked:second.memberships.booked})) throw new Error("same_plan_replay_proof_missing_or_changed");
+      hash(first.replay_entities)!==hash(second.replay_entities) || first.command_count!==second.command_count || first.receipt_count!==second.receipt_count ||
+      hash(first.replay_memberships)!==hash(second.replay_memberships)) throw new Error("same_plan_replay_proof_missing_or_changed");
     const verification=await verifySource(plan,required("run-id"));
     if (!verification.complete) throw new Error("final_source_verification_incomplete");
     const result=await retireBestRelocationConnectionAndSources({company_id:plan.registry.company_id,
       source_ids:plan.registry.sources.map(source=>String((source as {_id:unknown})._id)),final_run_id:required("run-id"),actor:owner,reconciliation_status:"complete"});
     await save(`${runId}-final-source-complete.json`,{...result,plan_checksum:plan.checksum,source_company_deactivated:false,
-      replay_entity_hash:hash(first.entities),replay_membership_hash:hash({leads:first.memberships.leads,booked:first.memberships.booked}),verification});
+      replay_entity_hash:hash(first.replay_entities),replay_membership_hash:hash(first.replay_memberships),verification});
     summary({mode,run_id:runId,final_source_reconciliation_complete:true,source_company_deactivated:false,...result});return;
   }
   if (["apply-source","apply","resume"].includes(mode)) { const result = await apply(plan, runId); summary({ mode, run_id: runId, canonical: result.canonical, review_conflicts: result.reviews.filter(o=>o.outcome === "conflict").length }); return; }
