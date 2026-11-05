@@ -100,12 +100,12 @@ describe("Granot Form sibling update: planFormSiblingUpdate", () => {
   });
 });
 
-test("hasSyncedCallsRow: only a synced Master Calls entry with a row number counts (a pending or failed entry could append)", () => {
-  const base = { _id: "650000000000000000000020" };
+test("hasSyncedCallsRow: canonical delivered destinations respect admission and effective No-Sync", () => {
+  const base = call();
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "synced", row_number: 12 }] }), true);
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "pending" }] }), false);
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "synced", row_number: 12 }], no_sync: true }), false);
-  assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_duplicate_calls", status: "synced", row_number: 3 }] }), false);
+  assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_duplicate_calls", status: "synced", row_number: 3 }] }), true);
 });
 
 test("both command origins pass the canonical command context validator (processor result and Owner backfill)", async () => {
@@ -119,4 +119,14 @@ test("both command origins pass the canonical command context validator (process
   await assertCommandContext(siblingContext({ kind: "granot_lifecycle", actor: processorActor, initiator: createGranotWebhookInitiator(receipt), receipt_id: receipt,
     observation_id: "650000000000000000000102", decision_id: "650000000000000000000103", observation_channel: "granot_webhook" }, "granot-form-sibling:k1", checksum));
   await assertCommandContext(siblingContext({ kind: "owner_backfill", run_id: "call-lead-form-siblings-2026-10-28" }, "granot-form-sibling:k2", checksum));
+});
+
+
+test("exception destinations retain delivery under No-Sync, unsupported Calls never gain admission", () => {
+  for (const target of ['master_calls', 'master_duplicate_calls', 'master_bad_calls']) {
+    const sheet_sync = [{ target, status: 'synced', row_number: 2 }];
+    assert.equal(hasSyncedCallsRow(call({ form_fill: true, no_sync: true, sheet_sync })), true);
+    assert.equal(hasSyncedCallsRow(call({ ringcentral: null, form_fill: true, sheet_sync })), false);
+    assert.equal(hasSyncedCallsRow(call({ created_on_unmatched: true, sheet_sync })), false);
+  }
 });

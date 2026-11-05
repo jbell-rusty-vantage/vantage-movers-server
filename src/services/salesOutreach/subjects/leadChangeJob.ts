@@ -10,6 +10,7 @@ import { expansionAdmissionOf, expansionNeedsCreationSettled, hasAmbiguousIdenti
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
 import { evaluationJob } from "../evaluation/evaluateJob";
 import { refreshPoolLead } from "../pool/admission";
+import { getCallLeadModel } from "../../../models/CallLead";
 
 /**
  * The job's stored result (`sales_intelligence_jobs.result`, kept 14 days), read by
@@ -31,10 +32,10 @@ export type LeadRefreshResult = Readonly<{
  * tail's `…:admission:r<rev>` nomination (expansion only, never intake), `default` otherwise (the intake
  * gate on a creation, a plain refresh for a subject).
  */
-export type LeadChangeTrigger = "default" | "admission" | "estimates_refresh";
+export type LeadChangeTrigger = "default" | "admission" | "estimates_refresh" | "related_form";
 
 /** The trigger of a claimed `outreach_lead_change` row, from its own `dedupe_key`. */
-export const triggerOfJob = (dedupeKey: string): LeadChangeTrigger => dedupeKey.includes(":estimates-refresh:") ? "estimates_refresh" : dedupeKey.includes(":admission:") ? "admission" : "default";
+export const triggerOfJob = (dedupeKey: string): LeadChangeTrigger => dedupeKey.includes(":related:") ? "related_form" : dedupeKey.includes(":estimates-refresh:") ? "estimates_refresh" : dedupeKey.includes(":admission:") ? "admission" : "default";
 
 /**
  * The work of one `outreach_lead_change` job, inside its transaction: refresh the Lead's subject from
@@ -56,8 +57,8 @@ export async function refreshLeadForOutreach(
 ): Promise<LeadRefreshResult> {
   const [facts] = await store.loadLeads([lead], session);
   const [subject] = await store.findSubjects([lead], session);
-  if (trigger === "estimates_refresh" && (!subject || subject.status === "closed")) {
-    return { outcome: "not_admitted", subject_id: subject?.id ?? null, reason: "estimates_refresh_existing_open_only", status: subject?.status ?? null, admission: null };
+  if ((trigger === "estimates_refresh" || trigger === "related_form") && (!subject || subject.status === "closed")) {
+    return { outcome: "not_admitted", subject_id: subject?.id ?? null, reason: `${trigger}_existing_open_only`, status: subject?.status ?? null, admission: null };
   }
   if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found", status: subject?.status ?? null, admission: null };
   const context = await loadSubjectPageContext(store, [facts], asOf, session);
@@ -82,6 +83,7 @@ export async function refreshLeadForOutreach(
 }
 
 export type LeadChangeJobDeps = {
+  relatedForm?: (callId: string, session: ClientSession) => Promise<string | null>;
   loader?: ConfigurationLoader;
   store?: DeskSubjectStore;
   now?: () => Date;
@@ -117,7 +119,17 @@ export async function runOutreachLeadChangeJob(jobId?: string, deps: LeadChangeJ
           throw new OutreachError("CONFIGURATION_UNAVAILABLE", [{ path: "configuration", code: "revision_changed" }]);
         const now = (deps.now ?? (() => new Date()))();
         const trigger = triggerOfJob(String(row.dedupe_key ?? ""));
-        if (!deps.store) await refreshPoolLead({ model, id }, current, now, session);
+        if (trigger === "related_form") {
+          const refs = row.input_refs.map(String);
+          if (model !== "FormLead" || row.subject_key !== `outreach-lead:FormLead:${id}` || refs.length !== 2 || !refs.every(ref => /^[a-f\d]{24}$/i.test(ref))) throw new CsiError("INVALID_INPUT");
+          const related = await (deps.relatedForm ?? (async (callId, transaction) => {
+            const call = await getCallLeadModel().findById(callId, { "granot_form_sibling.form_lead_id": 1 }).session(transaction).lean();
+            return call?.granot_form_sibling?.form_lead_id ? String(call.granot_form_sibling.form_lead_id) : null;
+          }))(refs[1]!, session);
+          if (related !== id) return { outcome: "not_admitted" as const, subject_id: null, reason: "related_form_changed", status: null, admission: null };
+        }
+        // Related wakes have no Pool/intake/expansion authority, even for an absent or closed Form.
+        if (!deps.store && trigger !== "related_form") await refreshPoolLead({ model, id }, current, now, session);
         const refreshed = await refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, trigger);
         if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted") {
           await (deps.enqueue ?? enqueueCsiJob)(evaluationJob(refreshed.subject_id, `estimates-refresh:${String(row.dedupe_key)}`), session);

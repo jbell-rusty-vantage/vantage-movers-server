@@ -55,7 +55,7 @@ Before checksum lock, `sealAutomationPlan` attaches:
 
 `applyAutomationPlanAction` captures through `captureChannelOperationReceipt` (`authentication_method: "automation_owner_approval"`, initiator = `approval.approved_by`, hint `granot_apply_item_v1`) and then `claimAndProcessOrPoll(receipt_id)` in [`drainer.md`](./drainer.md). It does **not** publish a lifecycle queue wake-up.
 
-`operation_id` is `${run_id}:${action_id}` (`isAutomationOperationId`: nonempty parts, no control/bidi, max 300 chars). It is not required to be ObjectId-shaped. A stored action receipt with terminal outcome is returned without recapture. Stored `pending_match` is **non-terminal** and will recapture/reclaim.
+`operation_id` is `${run_id}:${action_id}` (`isAutomationOperationId`: nonempty parts, no control/bidi, max 300 chars). It is not required to be ObjectId-shaped. A stored action receipt with terminal outcome is returned without recapture. Stored `pending_match` is **non-terminal** and re-enters the due canonical claim using the original receipt, without recapture.
 
 Run action receipt:
 
@@ -98,7 +98,7 @@ and stores the signed Owner approval. The existing worker and lifecycle apply pe
 the effects. This narrow path skips the ordinary automation flag, retains every
 lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
 
-The recurring cron still uses yesterday through today at 8, 13, and 18 New York.
+The recurring cron covers trailing 90 inclusive Open Dates plus verified older provider-date months hourly 08:00-20:00 inclusive and at 22:00/00:00/02:00/04:00/06:00 America/New_York.
 A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
 and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
 The existing Mongo `_id` index enforces uniqueness; no index migration is required.

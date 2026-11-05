@@ -157,3 +157,6 @@ Historical preservation uses the closed `best-relocation-legacy-reporting-v1` ma
 
 
 **November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).
+
+
+Granot Form sibling exported Job/receiver changes recognize previous synced row-number metadata in all three canonical Call destinations. They enqueue generic `call_lead.update` only when admitted and permitted by effective No-Sync; the shared planner owns exclusive destination-before-stale-delete. Saved Form Fill cannot become a normal Calls append. Priority-only and unchanged mirrors enqueue no Sheet work, and never-delivered Calls are not newly admitted by this fix. [Pair identity](../granot-lifecycle/identity.md#form-sibling-update-after-the-ladder-2026-10-28).

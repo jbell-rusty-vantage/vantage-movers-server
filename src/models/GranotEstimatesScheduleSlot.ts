@@ -4,6 +4,7 @@ const windowSchema = new Schema({from:{type:String,required:true},to:{type:Strin
 /** Immutable scope is stored before child1. Recovery must not infer scope from whichever children exist. */
 const schema = new Schema({
   _id:{type:String,required:true},
+  scheduled_at:{type:Date,immutable:true},
   lane:{type:String,enum:['all','pool_refresh','pool_discovery'],required:true},
   date_window:{type:windowSchema,required:true},
   windows:{type:[windowSchema],required:true},

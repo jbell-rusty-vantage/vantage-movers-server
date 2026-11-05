@@ -31,6 +31,8 @@ generated:
 
 # Granot lifecycle processor (`granotLifecycle/processor`)
 
+Sheet efficiency (November 5): equal-valued observations retain temporal/audit evidence without business or Sheet writes. A change consisting solely of `granot_priority` still commits its Lead revision and Desk feed event but requests no Sheet Sync: neither Lead sheet exports or routes by that field. Companion reporting changes retain the existing outbox path. Release evidence: [cadence review](../../granot-automation-frequency/RELEASE-REVIEW-2026-11-05.md).
+
 **Role:** Channel-neutral production orchestrator. One receipt becomes one Observation, one Unit 14 identity result, one desired-state plan, and one Synchronization Decision. Historical shadow may establish or confirm a **job-level** Granot Record Link. Authorized live matched-Lead writes enter `synchronizeLeadFromGranot` only. Authorized live `create_if_missing` with no eligible match enters `createLeadFromGranot` only on `lead_created` (Form only). `priority_updated` never mints. This module never patches a Lead or official Booking/Cancellation fact itself. // pragma: allowlist secret
 
 **Stack:** callable module `processor.ts`. Capture does not invoke it. Queue, cron, and the synchronous claim-and-poll seam invoke it only after a fenced receipt claim (`drainer.ts`). Routes pass receipt identity (and optional initiator); they do not plan patches.
@@ -154,3 +156,8 @@ Official Booking Owner commands (including Confirm Granot Cancellation on a book
 - Release cases: [`release-reconciliation.md`](./release-reconciliation.md)
 - Executor / command registry: [`domain-commands.md`](../services/domain-commands.md)
 - Software map: [`granot-lifecycle-capture.mdc`](../../../.cursor/rules/granot-lifecycle-capture.mdc)
+
+
+## Cadence convergence and no-op evidence
+
+Webhook Priority Update and Estimates snapshots enter the same temporal/desired-state command. Fresh unchanged business state may advance accepted metadata and retains a Decision, without a business revision/EntityChange/Sheet intent. Exact operation replay returns saved evidence; stale captured tuples cannot win. Current Form state is reread for sibling mirroring, including after `already_current`; the best-effort callback is not made durable by terminal replay. The committed marker's related Form wake is owned by the [Outreach tail](../sales-outreach-lifecycle.md#granot-cadence-convergence-november-4). Actual Booked/Release assertions retain reconciliation and Owner-command authority. [Proof and release limits](../../granot-automation-frequency/IMPLEMENTATION-LEDGER.md).

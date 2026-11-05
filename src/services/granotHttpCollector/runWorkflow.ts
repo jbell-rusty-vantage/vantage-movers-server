@@ -51,7 +51,7 @@ import { refreshExistingEstimatesOutreach } from "./estimatesOutreachRefresh";
 class EstimatesOutreachRefreshRetry extends Error {}
 import { planEstimatesIdentities, type EstimatesIdentityPlanningDeps } from "./estimatesIdentityPlanning";
 import { GranotRunConflict } from "./errors";
-import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot } from "./estimatesCron";
+import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot, estimatesSlotInstant, estimatesCoverageIsLate, ESTIMATES_COLLECTION_GRACE_MS } from "./estimatesCron";
 import { poolLatestSlot, POOL_DISCOVERY_FLOOR, type EstimatesLane } from './poolCron';
 import {
   planGranotFormWorkflow,
@@ -210,8 +210,8 @@ export async function createGranotRun(
     try {
       await GranotAutomationRun.updateOne(
         { _id: id },
-        { $setOnInsert: { ...document, run_group_id: request.scheduledCoverage?.slotKey ?? null, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey, scheduled_coverage: request.scheduledCoverage, ...(request.afterAllCoverage ? { after_all_coverage:request.afterAllCoverage, waiting_for_all:true } : {}) } } },
-        { upsert: true },
+        { $setOnInsert: { ...document, createdAt: new Date(), updatedAt: new Date(), run_group_id: request.scheduledCoverage?.slotKey ?? null, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey, scheduled_coverage: request.scheduledCoverage, ...(request.afterAllCoverage ? { after_all_coverage:request.afterAllCoverage, waiting_for_all:true } : {}) } } },
+        { upsert: true, timestamps: false },
       ).exec();
     } catch (error) {
       if ((error as { code?: number }).code !== 11000) throw error;
@@ -254,18 +254,18 @@ export async function createEstimatesSchedule(input:EstimatesScheduleInput) {
   if(!input.windows.length || input.windows.length>1000 || input.windows.some(w=>getGranotDateWindowProblem(w)))throw new GranotRunConflict('INVALID_SCHEDULE_SCOPE','Invalid Estimates schedule scope');
   try {
     await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$setOnInsert:{
-      lane:input.lane,date_window:input.dateWindow,windows:input.windows,
+      lane:input.lane,date_window:input.dateWindow,windows:input.windows,scheduled_at:estimatesSlotInstant(input.slotKey),createdAt:new Date(),updatedAt:new Date(),
       after_all_slot:input.afterAllCoverage?.slotKey ?? null,after_all_windows:input.afterAllCoverage?.totalWindows ?? null,
       initiator:input.initiator,dispatched:false,also_pool_refresh:input.alsoPoolRefresh===true,pool_manifest_created:false,purge_at:new Date(Date.now()+8*86400000),
-    }},{upsert:true});
+    }},{upsert:true,timestamps:false});
   }catch(error){if((error as {code?:number}).code!==11000)throw error;}
-  if(input.alsoPoolRefresh)await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$set:{also_pool_refresh:true}});
+  if(input.alsoPoolRefresh)await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey,also_pool_refresh:{$ne:true}},{$set:{also_pool_refresh:true}});
   const slot=await GranotEstimatesScheduleSlot.findById(input.slotKey).lean().orFail();
-  if(slot.lane==='all' && slot.also_pool_refresh && !slot.pool_manifest_created){
+  if(input.alsoPoolRefresh && slot.lane==='all' && slot.also_pool_refresh && !slot.pool_manifest_created){
     await createEstimatesSchedule({slotKey:`${input.slotKey}:pool_refresh`,lane:'pool_refresh',
       dateWindow:{from:slot.date_window.from,to:slot.date_window.to},windows:slot.windows.map((w:{from:string;to:string})=>({from:w.from,to:w.to})),
       initiator:slot.initiator as DurableActor,afterAllCoverage:{slotKey:input.slotKey,totalWindows:slot.windows.length}});
-    await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$set:{pool_manifest_created:true}});
+    await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey,pool_manifest_created:{$ne:true}},{$set:{pool_manifest_created:true}});
   }
   return slot;
 }
@@ -284,7 +284,7 @@ export async function dispatchEstimatesSchedule(slotKey:string, create:typeof cr
       ...(slot.after_all_slot ? {afterAllCoverage:{slotKey:slot.after_all_slot,totalWindows:slot.after_all_windows!}} : {}),
     }));
   }
-  await GranotEstimatesScheduleSlot.updateOne({_id:slotKey},{$set:{dispatched:true}});
+  await GranotEstimatesScheduleSlot.updateOne({_id:slotKey,dispatched:{$ne:true}},{$set:{dispatched:true}});
   return runs;
 }
 
@@ -1324,7 +1324,7 @@ export async function estimatesScheduledWindows(now: Date): Promise<Array<{ from
 }
 
 /** Complete collection and completed synchronization are deliberately separate. */
-async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane): Promise<Record<string, unknown>> {
+async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane, enabled = true): Promise<Record<string, unknown>> {
   await connectMongo();
   const slots = await GranotAutomationRun.aggregate([
     { $match: { operation: "estimates_in_process", "request_snapshot.scheduled_coverage.slotKey": { $type: "string" }, ...(lane === "all" ? { "request_snapshot.estimatesSelection": { $ne:"pool" } } : { "request_snapshot.estimatesLane":lane }) } },
@@ -1336,6 +1336,8 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane): Promis
       completed_windows: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
       failed_windows: { $sum: { $cond: [{ $in: ["$status", ["failed", "completed_with_errors", "expired"]] }, 1, 0] } },
       held_rows: { $sum: "$collection_summary.held_rows" },
+      unapplied_actions: { $sum: { $size: { $filter: { input: { $ifNull: ["$receipts", []] }, as: "receipt",
+        cond: { $not: [{ $in: ["$$receipt.outcome", ["applied", "linked", "already_current"]] }] } } } } },
       latest_collection_at: { $max: "$collection_summary.coverage.captured_at" },
       created_at: { $min: "$createdAt" },
     } },
@@ -1348,11 +1350,15 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane): Promis
     if(existing){existing.expected_windows=manifest.windows.length;existing.created_at=manifest.createdAt;}
     else slots.push({_id:manifest._id,expected_windows:manifest.windows.length,discovered_windows:0,collected_windows:0,completed_windows:0,failed_windows:0,held_rows:0,latest_collection_at:null,created_at:manifest.createdAt});
   }
-  slots.sort((a,b)=>+new Date(b.created_at)-+new Date(a.created_at));
+  for (const slot of slots) slot.scheduled_at = manifests.find(m => m._id === slot._id)?.scheduled_at ?? estimatesSlotInstant(slot._id);
+  slots.sort((a,b)=>+new Date(b.scheduled_at)-+new Date(a.scheduled_at));
   const complete = slots.find((slot) => slot.expected_windows > 0 && slot.collected_windows === slot.expected_windows);
+  const synchronized = slots.find(slot => slot.expected_windows > 0 && slot.collected_windows === slot.expected_windows && slot.completed_windows === slot.expected_windows && !slot.held_rows && !slot.failed_windows && !slot.unapplied_actions);
   const current = slots[0];
   const lastCollected = complete?.latest_collection_at;
   const expected = lane === "all" ? estimatesLatestSlot(now) : poolLatestSlot(now,lane);
+  const latestSlot = (at: Date) => lane === 'all' ? estimatesLatestSlot(at) : poolLatestSlot(at, lane);
+  const graceElapsed = latestSlot(new Date(+now - ESTIMATES_COLLECTION_GRACE_MS));
   const uncovered = current ? await GranotAutomationRun.find({"request_snapshot.scheduled_coverage.slotKey":current._id,"collection_summary.coverage.complete":{$ne:true}}).select({"request_snapshot.dateWindow":1}).lean() : [];
   const ranges = uncovered.flatMap(run=>{const window=(run.request_snapshot as {dateWindow?:{from:string;to:string}}).dateWindow;return window?[window]:[];}).sort((a,b)=>granotCalendarEpoch(a.from)-granotCalendarEpoch(b.from));
   const manifest=manifests.find(m=>m._id===current?._id);
@@ -1364,16 +1370,25 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane): Promis
   return {
     observed_at: now.toISOString(),
     last_complete_coverage_at: lastCollected ?? null,
-    latest_expected_slot: expected.slotKey,
+    enabled,
+    latest_expected_slot: enabled ? expected.slotKey : null,
+    latest_expected_slot_at: enabled ? expected.at.toISOString() : null,
+    grace_elapsed_slot: enabled ? graceElapsed.slotKey : null,
+    grace_elapsed_slot_at: enabled ? graceElapsed.at.toISOString() : null,
+    last_complete_collected_slot: complete?._id ?? null,
+    last_complete_collected_slot_at: complete?.scheduled_at ?? null,
+    last_complete_synchronized_slot: synchronized?._id ?? null,
+    last_complete_synchronized_slot_at: synchronized?.scheduled_at ?? null,
     latest_slot: current ?? null,
-    warnings: [
+    warnings: enabled ? [
       ...(!complete ? ["no_complete_scheduled_coverage"] : []),
       ...(current && current.collected_windows < current.expected_windows ? ["partial_scan"] : []),
       ...(current?.failed_windows > 0 ? ["failed_windows"] : []),
       ...(current?.held_rows > 0 ? ["held_rows"] : []),
-      ...(current && current.completed_windows < current.expected_windows ? ["synchronization_pending"] : []),
-      ...(+now - +expected.at > 90 * 60_000 && (complete?._id !== expected.slotKey) ? ["late_slot"] : []),
-    ],
+      ...(current?.unapplied_actions > 0 ? ["unapplied_actions"] : []),
+      ...(current && (current.completed_windows < current.expected_windows || current.unapplied_actions > 0) ? ["synchronization_pending"] : []),
+      ...(estimatesCoverageIsLate(now, complete ? new Date(complete.scheduled_at) : null, latestSlot) ? ["late_slot"] : []),
+    ] : [],
     oldest_uncovered_range: ranges[0] ?? null,
     held_rows: current?.held_rows ?? 0,
     lag_ms: lastCollected ? Math.max(0,+now-+new Date(lastCollected)) : null,
@@ -1382,8 +1397,10 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane): Promis
   };
 }
 
-export async function getEstimatesFreshness(now = new Date()): Promise<Record<string, unknown>> {
-  const [all,refresh,discovery] = await Promise.all([getEstimatesLaneFreshness(now,"all"),getEstimatesLaneFreshness(now,"pool_refresh"),getEstimatesLaneFreshness(now,"pool_discovery")]);
+export async function getEstimatesFreshness(now = new Date(), loader: Pick<ConfigurationLoader, 'inspect'> = salesOutreachConfigurationLoader): Promise<Record<string, unknown>> {
+  const configuration = await loader.inspect();
+  const enabled = configuration.state === 'active' && poolEnabled(configuration.value);
+  const [all,refresh,discovery] = await Promise.all([getEstimatesLaneFreshness(now,"all"),getEstimatesLaneFreshness(now,"pool_refresh",enabled),getEstimatesLaneFreshness(now,"pool_discovery",enabled)]);
   return {...all,pool_lanes:{refresh,discovery}};
 }
 

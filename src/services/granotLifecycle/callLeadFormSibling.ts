@@ -33,6 +33,8 @@ import type { DurableActor } from "../durableWork";
 import type { ObservationChannel } from "./types";
 import { finalizeSheetSync } from "../sheetSync/sheetSyncCoordinator";
 import { enqueueSheetSyncJob } from "../sheetSync/sheetSyncOutbox.service";
+import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
+import { noSyncAppliesToNormalTabs } from "../sheetSync/noSyncLead";
 
 export const FORM_SIBLING_WINDOW_DAYS = 45;
 const DAY_MS = 86_400_000;
@@ -61,6 +63,8 @@ export type SiblingFormLead = {
 };
 
 export type SiblingCallLead = {
+  form_fill?: boolean | null;
+  external_sheet_review?: unknown;
   ringcentral?: unknown;
   external_call_admission?: unknown;
   source_company?: string | null;
@@ -100,6 +104,7 @@ export const SIBLING_FORM_PROJECTION = {
 } as const;
 
 export const SIBLING_CALL_PROJECTION = {
+  form_fill: 1, external_sheet_review: 1,
   ringcentral: 1, external_call_admission: 1, source_company: 1, source_granularity_id: 1,
   duplicate: 1, created_on_unmatched: 1, no_sync: 1, job_no: 1, normalized_job_no: 1, granot_priority: 1,
   receiver_agent: 1, receiver_agent_source: 1, lead_source_company: 1, createdAt: 1, domain_revision: 1,
@@ -113,6 +118,7 @@ export function formSiblingPhones(form: SiblingFormLead): string[] {
 }
 
 const same = (a: unknown, b: unknown) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);
+const eligibleSibling = (call: SiblingCallLead) => hasReportingEligibleCall(call) && call.duplicate !== true && call.created_on_unmatched !== true;
 
 /**
  * Which Call Lead mirrors the Form Lead's job and what to write (pure). `jobMatches` are Call Leads whose
@@ -126,8 +132,7 @@ export function planFormSiblingUpdate(
 ): SiblingPlan {
   const job = form.normalized_job_no;
   if (form.duplicate === true || form.bad_lead || !job || !form.job_no) return { kind: "skip", reason: "form_ineligible" };
-  const eligible = (call: SiblingCallLead) => hasReportingEligibleCall(call) && call.duplicate !== true && call.created_on_unmatched !== true;
-  const byJob = jobMatches.filter((call) => eligible(call) && jobNumbersEquivalent(call.normalized_job_no, job));
+  const byJob = jobMatches.filter((call) => eligibleSibling(call) && jobNumbersEquivalent(call.normalized_job_no, job));
   let target: SiblingCallLead;
   let basis: "job_no" | "phone_source_company";
   if (byJob.length > 1) return { kind: "skip", reason: "multiple_call_siblings" };
@@ -136,7 +141,7 @@ export function planFormSiblingUpdate(
     basis = "job_no";
   } else {
     const formAt = form.createdAt ? +form.createdAt : null;
-    const byPhone = phoneMatches.filter((call) => eligible(call) && !call.normalized_job_no && same(call.lead_source_company, form.lead_source_company)
+    const byPhone = phoneMatches.filter((call) => eligibleSibling(call) && !call.normalized_job_no && same(call.lead_source_company, form.lead_source_company)
       && formAt !== null && call.createdAt instanceof Date && Math.abs(+call.createdAt - formAt) <= FORM_SIBLING_WINDOW_DAYS * DAY_MS);
     if (byPhone.length === 0) return { kind: "skip", reason: "no_call_sibling" };
     if (byPhone.length > 1) return { kind: "skip", reason: "multiple_call_siblings" };
@@ -176,7 +181,10 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
   // Sequential: inside the command these reads share one transaction session.
   const jobMatches = await calls.find({ $and: [reportingEligibleCallLeadFilter(), equivalentNormalizedJobFilter(form.normalized_job_no)] }, SIBLING_CALL_PROJECTION)
     .limit(10).session(session ?? null).lean<SiblingCallLead[]>();
-  const phoneMatches = phones.length && form.lead_source_company
+  // A Job match (including ambiguity) decides the ladder. Repeated observations of an established
+  // pair need no fallback phone query; the pure planner still applies all eligibility protections.
+  const hasJobCandidate = jobMatches.some(call => eligibleSibling(call) && jobNumbersEquivalent(call.normalized_job_no, form.normalized_job_no));
+  const phoneMatches = !hasJobCandidate && phones.length && form.lead_source_company
     ? await calls.find({ $and: [reportingEligibleCallLeadFilter()], lead_source_company: form.lead_source_company, $or: [
       { normalized_phone_number: { $in: phones } }, { "ingested_contact_snapshot.normalized_phone_number": { $in: phones } },
     ] }, SIBLING_CALL_PROJECTION).limit(10).session(session ?? null).lean<SiblingCallLead[]>()
@@ -185,10 +193,12 @@ export async function loadFormSiblingCandidates(formLeadId: string, session?: Cl
 }
 
 /**
- * True when a prior Master Calls sync recorded a row number. The row may have moved or disappeared.
+ * Previously delivered canonical Call destination. The shared planner selects its current destination.
  */
 export function hasSyncedCallsRow(call: SiblingCallLead): boolean {
-  return call.no_sync !== true && (call.sheet_sync ?? []).some((entry) => entry.target === "master_calls" && entry.status === "synced" && typeof entry.row_number === "number");
+  return getCallLeadReportingDecision(call).disposition !== "excluded" && !noSyncAppliesToNormalTabs(call)
+    && (call.sheet_sync ?? []).some((entry) => ["master_calls", "master_duplicate_calls", "master_bad_calls"].includes(entry.target ?? "")
+      && entry.status === "synced" && typeof entry.row_number === "number" && entry.row_number > 0);
 }
 
 export type SiblingResult = Readonly<{ outcome: "updated" | SiblingSkipReason; call_id: string | null; basis: string | null; paths: string[]; sheet: boolean }>;
@@ -253,7 +263,7 @@ export async function mirrorFormLeadToCallSibling(formLeadId: string, origin: Si
       await persistEntityChangeMutations({ session, now, command_name: "mirrorFormLeadToCallSibling", command_execution_id, context,
         mutations: [{ entity: { model: "CallLead", id: plan.call_id }, change_id: new mongoose.Types.ObjectId(), revision_before: revision,
           fields: paths.map((path) => ({ path, ...(readPath(call, path) !== undefined ? { before: readPath(call, path) } : {}), after: plan.set[path] })) }] });
-      // Update the Calls row in place only: a sheet job for a Call Lead without a Calls row would append one.
+      // Only nominate previously delivered Leads; canonical routing owns destination and stale-row removal.
       const sheet: Sheet | null = hasSyncedCallsRow(call) && (plan.set.job_no !== undefined || plan.set.receiver_agent_name_snapshot !== undefined)
         ? { resource: "source_lead", operation: "call_lead.update", leadModel: "CallLead", leadId: plan.call_id }
         : null;

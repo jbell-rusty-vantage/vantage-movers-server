@@ -596,6 +596,11 @@ test("[AC-05] replica Bad Form stores Priority only and Duplicate never becomes 
     assert.equal(lead?.normalized_job_no, undefined);
     assert.equal(lead?.receiver_agent, undefined);
 
+    assert.equal(await SheetSyncJob.countDocuments({ entity_id: String(badId) }), 0,
+      "Priority-only changes update Desk facts without writing an unchanged sheet projection");
+    const priorityDecision = await getSynchronizationDecisionModel().findById(bad.decision_id).lean();
+    assert.equal(priorityDecision?.effects.some(effect => effect.kind === "sheet_sync_requested"), false);
+
     const duplicateObs = observation({ job: jobPair(`dup-${String(objectId())}`), priority: "1" });
     const duplicate = await processLive({
       observation: duplicateObs,
@@ -867,5 +872,39 @@ test("Estimates sparse Call enrichment converges Granot assignment and desk prio
     await CallLead.deleteMany({ _id: { $in: [leadId, siblingId] } });
     await Agent.deleteMany({ _id: { $in: [repA, repB] } });
     await deleteLinks([job.normalized]);
+  }
+});
+
+
+test('cadence channel orders converge; next-slot no-op retains evidence without business writes', async t => {
+  if (!(await replicaReady(t))) return;
+  const Form = getFormLeadModel();
+  for (const channels of [ ['granot_webhook','granot_http_automation'], ['granot_http_automation','granot_webhook'] ] as const) {
+    const id = objectId(), job = jobPair(`cadence-${id}`), identity = identityFor(String(id));
+    await seedFormLead({ id, job });
+    try {
+      const first = observation({ job, priority:'0', captured_at:new Date('2026-08-18T16:00:00Z') });
+      first.route_event_class = 'priority_updated';
+      assert.equal((await processLive({ observation:first, identity, channel:channels[0] })).outcome, 'applied');
+      const before = await Form.findById(id).lean();
+      const mutations = await getEntityChangeModel().countDocuments({ 'entity.id':String(id) });
+      const sheets = await SheetSyncJob.countDocuments({ entity_id:String(id) });
+      const next = observation({ job, priority:'0', captured_at:new Date('2026-08-18T17:00:00Z') });
+      next.route_event_class = 'priority_updated';
+      const result = await processLive({ observation:next, identity, channel:channels[1] });
+      assert.equal(result.outcome, 'already_current');
+      const after = await Form.findById(id).lean();
+      assert.equal(after?.domain_revision, before?.domain_revision);
+      assert.equal(String(after?.last_accepted_granot_observation?.observation_id), String(next._id));
+      assert.equal(await getEntityChangeModel().countDocuments({ 'entity.id':String(id) }), mutations);
+      assert.equal(await SheetSyncJob.countDocuments({ entity_id:String(id) }), sheets);
+      const replay = await processLive({ observation:next, identity, channel:channels[1] });
+      assert.equal(replay.decision_id, result.decision_id);
+      assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id:next._id }), 1);
+      const stale = observation({ job, priority:'5', captured_at:new Date('2026-08-18T16:30:00Z') });
+      assert.equal((await processLive({ observation:stale, identity, channel:channels[0] })).outcome, 'stale');
+      assert.equal((await Form.findById(id).lean())?.granot_priority, '0');
+      assert.equal(await getEntityChangeModel().countDocuments({ 'entity.id':String(id) }), mutations);
+    } finally { await Form.deleteOne({ _id:id }); await deleteLinks([job.normalized]); }
   }
 });

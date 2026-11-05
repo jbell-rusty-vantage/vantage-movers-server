@@ -94,6 +94,7 @@ async function main() {
   await connectMongo();
   assert.equal(mongoose.connection.name, database);
   resetVerifiedCsiFences();
+  const { SALES_OUTREACH_MODEL_REGISTRY } = await import("../../src/models/salesOutreach/registry.js");
   for (const Model of [
     getCallInteractionModel(),
     getRepIdentityLinkModel(),
@@ -110,6 +111,7 @@ async function main() {
     models.getSalesOutreachEnrollmentRunModel(),
     models.getSalesOutreachProjectionModel(),
     models.getSalesOutreachFollowupScheduleModel(),
+    ...SALES_OUTREACH_MODEL_REGISTRY.map(entry => entry.model()),
   ] as unknown as Array<mongoose.Model<unknown>>) {
     await Model.createCollection();
     await Model.createIndexes();
@@ -251,16 +253,20 @@ async function main() {
   });
   await Agent.collection.insertOne({ _id: bob, name: "Bob", normalized_name: "bob", active: true });
   await getFormLeadModel().collection.insertOne({ _id: leadId, name: "Replica Lead", domain_revision: 1 });
-  const fillCall = async (extension: string, at: string, session: string) => {
+  const fillCall = async (extension: string, at: string, session: string, direction: "Outbound" | "Inbound" = "Inbound") => {
     const started = new Date(at);
     const row = await getCallInteractionModel().create({
-      provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction: "Outbound",
+      provider_account_id: account, telephony_session_id: session, identity_basis: "telephony_session_id", direction,
       contact_number_id: number, external_endpoint_kind: "external", started_at: started, provider_connected: true, provider_result: "Call connected",
-      parties: [{ role: "user", direction: "Outbound", extension_id: extension }], legs: [{ extension_id: extension, direction: "Outbound", start_time: started, result: "Call connected" }],
+      parties: [{ role: "user", direction, extension_id: extension, connected: direction === "Inbound", answered_at: direction === "Inbound" ? started : null }], legs: [{ extension_id: extension, direction, start_time: started, result: "Call connected" }],
       call_log_state: "settled", terminal: true, first_observed_at: started, last_observed_at: started,
     });
     return { source_kind: "call" as const, source_id: String(row._id) };
   };
+  const outboundAttempt = await fillCall("102", "2026-10-05T14:59:00Z", "s-no-fill", "Outbound");
+  const notAssigned = await withTransaction(session => applyContactSources([outboundAttempt], { now, queueRepDays: false }, mongoContactEventStore, session));
+  assert.equal(notAssigned.receivers_filled, 0, "outbound attempts never assign the Lead");
+  assert.equal((await getFormLeadModel().collection.findOne({ _id: leadId }))?.receiver_agent, undefined);
   const bobCall = await fillCall("102", "2026-10-05T15:00:00Z", "s-fill-1");
   const filled = await withTransaction((session) => applyContactSources([bobCall], { now, queueRepDays: false }, mongoContactEventStore, session));
   assert.equal(filled.receivers_filled, 1);
@@ -840,7 +846,7 @@ async function main() {
   // own wake nominates this sync) clears it: active again, the same single period (age kept).
   const c2cLead = new mongoose.Types.ObjectId();
   const c2cReceived = new Date("2026-12-20T15:00:00Z");
-  await getCallLeadModel().collection.insertOne({ _id: c2cLead, name: "C2c Caller", timestamp: c2cReceived, createdAt: c2cReceived, domain_revision: 1 });
+  await getCallLeadModel().collection.insertOne({ _id: c2cLead, name: "C2c Caller", job_no: "C2C123", normalized_job_no: "C2C123", timestamp: c2cReceived, createdAt: c2cReceived, domain_revision: 1 });
   const c2cRef = { model: "CallLead" as const, id: String(c2cLead) };
   const c2cRuleOn = deskConfiguration({ controls: { desk_enabled: true }, cadence: { no_contact_number_rule: "review_no_cadence" } });
   const c2cSync = (config: typeof c4Config, at: Date) =>

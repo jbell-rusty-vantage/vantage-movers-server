@@ -37,6 +37,9 @@ const at = (iso: string) => new Date(iso);
 const transaction = <T>(fn: (session: ClientSession) => Promise<T>) => fn(fakeSession);
 
 class MemoryFeedStore implements OutreachFeedStore {
+  relations = new Map<string, string>();
+  relationReads: string[][] = [];
+  async relatedForms(ids: readonly string[]) { this.relationReads.push([...ids]); return new Map(ids.flatMap(id => this.relations.has(id) ? [[id, this.relations.get(id)!]] : [])); }
   changes: LeadChangeRow[] = [];
   subjects: Array<{
     id: string;
@@ -724,4 +727,20 @@ describe("decision reconcile (olr B2, migration.decision_reconcile_per_run)", ()
       assert.equal(salesOutreachConfigurationValueSchema.safeParse(value).success, false, JSON.stringify(bad));
     }
   });
+});
+
+
+test("related Form wake batches current relations and survives completed Form revisions and overlap replay", async () => {
+  const store = new MemoryFeedStore(), form = lead(), call = lead('CallLead');
+  const changed = { ...change(call, 1, '2026-10-04T14:00:00Z', objectId(), ['granot_form_sibling']), command_name: 'mirrorFormLeadToCallSibling' };
+  store.changes = [changed, changed]; store.relations.set(call.id, form.id);
+  store.jobs.set(leadChangeJobInput(form, 1).dedupe_key, leadChangeJobInput(form, 1));
+  const deps = { store, transaction, loader: fixedConfigurationLoader(deskConfiguration()) };
+  await scanOutreachLeadChanges(at('2026-10-04T14:00:01Z'), deps);
+  const related = [...store.jobs.values()].filter(job => job.dedupe_key.includes(':related:'));
+  assert.equal(related.length, 1);
+  assert.deepEqual(related[0]!.input_refs, [form.id, call.id]);
+  assert.deepEqual(store.relationReads, [[call.id]]);
+  await scanOutreachLeadChanges(at('2026-10-04T14:00:02Z'), deps);
+  assert.equal([...store.jobs.values()].filter(job => job.dedupe_key.includes(':related:')).length, 1);
 });

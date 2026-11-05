@@ -158,3 +158,31 @@ test("drain stops when nothing is claimable and is bounded to 100", async () => 
   const { outcomes } = await drainOutreachLeadChangeJobs(500, 10_000, deps);
   assert.deepEqual(outcomes, { completed: 1, not_claimable: 1 });
 });
+
+
+test("related wakes validate both refs, recheck relation, and never admit absent or closed Forms", async () => {
+  const lead = leadFacts(), callId = 'a'.repeat(24);
+  const key = `sod:lead-change:FormLead:${lead.ref.id}:related:CallLead:${callId}:change:${'b'.repeat(24)}`;
+  const relatedHarness = (refs: string[] = [lead.ref.id, callId], relation: string | null = lead.ref.id) => {
+    const h = harness(lead, undefined, key), claim = h.deps.claim!;
+    h.deps.claim = (async (...args: Parameters<typeof claim>) => { const row = await claim(...args); return row ? { ...row, input_refs: refs } : null; }) as typeof claim;
+    h.deps.relatedForm = async () => relation;
+    return h;
+  };
+  const missing = relatedHarness();
+  assert.equal((await runOutreachLeadChangeJob(undefined, missing.deps)).result?.reason, 'related_form_existing_open_only');
+  assert.equal(missing.store.writes.length, 0);
+  const malformed = relatedHarness([lead.ref.id]);
+  assert.equal((await runOutreachLeadChangeJob(undefined, malformed.deps)).status, 'retry');
+  assert.ok(malformed.calls.includes('fail:schema_invalid'));
+  const changed = relatedHarness(undefined, 'c'.repeat(24));
+  assert.equal((await runOutreachLeadChangeJob(undefined, changed.deps)).result?.reason, 'related_form_changed');
+  const initial = harness(lead); await runOutreachLeadChangeJob(undefined, initial.deps);
+  const closed = relatedHarness(); closed.store.subjects.push({ ...initial.store.subjects[0]!, status: 'closed' });
+  assert.equal((await runOutreachLeadChangeJob(undefined, closed.deps)).result?.reason, 'related_form_existing_open_only');
+  assert.equal(closed.store.writes.length, 0);
+  const active = relatedHarness(); active.store.subjects.push(...structuredClone(initial.store.subjects)); active.store.periods.push(...structuredClone(initial.store.periods));
+  assert.equal((await runOutreachLeadChangeJob(undefined, active.deps)).result?.outcome, 'unchanged');
+  assert.deepEqual(active.store.periods, initial.store.periods);
+  assert.equal(active.store.writes.length, 0);
+});

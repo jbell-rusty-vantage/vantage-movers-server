@@ -6,7 +6,7 @@ import {
   type Response,
 } from "express";
 import { estimatesCronDecision } from "../services/granotHttpCollector/estimatesCron";
-import { poolCronDecision, poolDiscoveryDateChunks } from '../services/granotHttpCollector/poolCron';
+import { poolCronDuties, poolDiscoveryDateChunks } from '../services/granotHttpCollector/poolCron';
 import { salesOutreachConfigurationLoader } from '../services/salesOutreach/config/load';
 import { poolEnabled } from '../services/salesOutreach/pool/policy';
 import {
@@ -48,26 +48,26 @@ router.all(
   requireCronAuth,
   async (_req: Request, res: Response) => {
     const now = new Date();
-    const decision = estimatesCronDecision(now), pool = poolCronDecision(now);
-    if (!decision.run && !pool.run) {
+    const decision = estimatesCronDecision(now), poolDuties = poolCronDuties(now);
+    if (!decision.run && !poolDuties.length) {
       return res.json({ ok: true, skipped: true, reason: decision.reason });
     }
     try {
-      const windows = decision.run || (pool.run && pool.lane === 'pool_refresh') ? await estimatesScheduledWindows(now) : [];
+      const windows = decision.run ? await estimatesScheduledWindows(now) : [];
       const configuration = await salesOutreachConfigurationLoader.inspect();
       const poolActive = configuration.state === 'active' && poolEnabled(configuration.value);
       const runs = [];
       const slotsToDispatch:string[]=[];
-      let allScope: { totalWindows: number; windows:Array<{from:string;to:string}> } | null = null;
       if(decision.run) {
-        const manifest = await createEstimatesSchedule({slotKey:decision.slotKey,lane:'all',dateWindow:decision.dateWindow,windows,initiator:estimatesCronActor(),alsoPoolRefresh:poolActive});
-        allScope = {totalWindows:manifest.windows.length,windows:manifest.windows.map((w:{from:string;to:string})=>({from:w.from,to:w.to}))};
+        await createEstimatesSchedule({slotKey:decision.slotKey,lane:'all',dateWindow:decision.dateWindow,windows,initiator:estimatesCronActor(),alsoPoolRefresh:poolActive});
         slotsToDispatch.push(decision.slotKey);
       }
-      if(pool.run && poolActive) {
-        const poolWindows = pool.lane === 'pool_discovery' ? poolDiscoveryDateChunks(pool.dateWindow) : allScope?.windows ?? windows;
-        await createEstimatesSchedule({slotKey:pool.slotKey,lane:pool.lane,dateWindow:pool.dateWindow,windows:poolWindows,initiator:estimatesCronActor(),
-          ...(decision.run && allScope ? {afterAllCoverage:{slotKey:decision.slotKey,totalWindows:allScope.totalWindows}} : {})});
+      for (const pool of poolActive ? poolDuties : []) {
+        // ALL freezes and creates its correlated refresh once; discovery is independent.
+        if (pool.lane === 'pool_discovery') await createEstimatesSchedule({
+          slotKey: pool.slotKey, lane: pool.lane, dateWindow: pool.dateWindow,
+          windows: poolDiscoveryDateChunks(pool.dateWindow), initiator: estimatesCronActor(),
+        });
         slotsToDispatch.push(pool.slotKey);
       }
       for(const slotKey of slotsToDispatch)runs.push(...await dispatchEstimatesSchedule(slotKey));
@@ -80,7 +80,7 @@ router.all(
           skipped: false,
           run_id: created.run_id,
           run_ids: runs.map((run) => run.run_id),
-          date_window: decision.run ? decision.dateWindow : pool.run ? pool.dateWindow : null,
+          date_window: decision.run ? decision.dateWindow : poolDuties[0]?.dateWindow ?? null,
           pool_enabled: poolActive,
           local_worker: worker,
         });
@@ -90,7 +90,7 @@ router.all(
         skipped: false,
         run_id: created.run_id,
         run_ids: runs.map((run) => run.run_id),
-        date_window: decision.run ? decision.dateWindow : pool.run ? pool.dateWindow : null,
+        date_window: decision.run ? decision.dateWindow : poolDuties[0]?.dateWindow ?? null,
         pool_enabled: poolActive,
         queue_published: true,
       });

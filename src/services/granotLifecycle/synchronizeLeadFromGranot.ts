@@ -198,6 +198,9 @@ async function applySynchronizeLeadOperation(
 
   const leadSet = buildLeadUpdate(input, lead, now);
   const leadChanged = Object.keys(leadSet.reportable).length > 0;
+  // Priority drives Desk policy but is not a column or routing input on either Lead sheet.
+  // Keep its business revision/feed event; only exported companion changes need Sheet Sync.
+  const sheetChanged = Object.keys(leadSet.reportable).some(path => path !== "granot_priority");
   const association =
     linkAction.kind === "establish" || linkAction.kind === "attach";
 
@@ -250,7 +253,7 @@ async function applySynchronizeLeadOperation(
       ref: { model: input.lead_ref.model, id: input.lead_ref.id },
       changed_paths: changed,
     });
-    effects.push({ kind: "sheet_sync_requested" });
+    if (sheetChanged) effects.push({ kind: "sheet_sync_requested" });
   } else {
     const won = await advanceTemporalWinnerOnly(input, lead, session);
     if (!won) {
@@ -301,7 +304,7 @@ async function applySynchronizeLeadOperation(
         leadId: string;
       }
     | undefined;
-  if (leadChanged) {
+  if (sheetChanged) {
     sheetJob = {
       resource: "source_lead",
       operation: input.lead_ref.model === "FormLead" ? "form_lead.update" : "call_lead.update",
