@@ -8,6 +8,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 November 4 Call billing/Form parity review: [fixes, replica evidence, read-only repair preview and release limits](call-billing-review-2026-11-04.md). The broader efficiency work starts from this reviewed revision after integration/release checks.
 
+November 4 queued Sheet Sync recovery: [uncertain structural writes, qualification, remaining S1 work and release/rollback handoff](efficiency/sheet-sync-recovery-handoff-2026-11-04.md). Owner reporting policy and the Form Fill cron continuation are preserved; production release remains separate.
+
 November 3 Lead reporting and Best Relocation retirement: [operator and release record](lead-reporting-retirement/README.md). Implementation, production delivery and final-data coverage are tracked separately.
 
 Outreach Desk rep performance (October 16, 2026): [packet](outreach-performance/README.md) — Owner/Manager weekly call/text reporting, ranked completion rates, retained SMS reporting facts and release checks. Runtime integration is documented in the Desk Service below.

@@ -12,6 +12,9 @@ applies_to:
   - src/services/sheetSync/sheetSyncQueue.service.ts
   - src/services/sheetSync/drainer/runSheetSyncDrain.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
+  - src/services/sheetSync/drainer/batchWriter.ts
+  - src/services/sheetSync/drainer/deliveryRequests.ts
+  - src/services/sheetSync/drainer/tabRowMap.ts
   - src/services/sheetSync/noSyncLead.ts
   - src/services/sheetSync/writerFence.ts
   - src/config/domain/sheetSync.ts
@@ -28,8 +31,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T03:54:00Z
+  by: process:docs-keeper
+  at: 2026-11-05T02:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -42,7 +45,7 @@ generated:
 
 **Stack:** Domain services persist intent → optional Vercel Queue wake-up → drainer → `googleSheets/` writes. Legacy mode skips the outbox and runs sync inline via `waitUntil`.
 
-**Owner hold:** The entire final Best Relocation source ingestion is held, including source creates, adoptions and imported reviews. The routing contract below describes behavior after release; it does not claim that frozen Best Relocation source facts have been applied. Retirement of recurring ingestion and Granot creation policies is separate and preserves the active Source Company and legitimate historical lifecycle updates. See the [Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) and [release evidence](../../lead-reporting-retirement/README.md).
+**Best Relocation final reconciliation is complete:** the exact-checksum Owner-return run applied the approved exception cohort and verified official Bookings. Recurring ingestion and Granot creation remain retired. This recovery work does not authorize another import. Keep the Source Company active; the Owner deactivates it separately. See the [final reconciliation](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md).
 
 **Public barrel:** `src/services/sheetSync/index.ts` re-exports coordinator, outbox, queue, drainer, persistence, and source-lookup helpers.
 
@@ -167,10 +170,10 @@ Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin
 1. **Check topology fence** `lead-reporting:tab-migration`; return `skipped: true` before acquiring/claiming anything while held. **Acquire** global lease `sheet-sync:drain`; skip (`skipped: true`) if another drain holds it.
 2. **Create** `SheetSyncRun` (`running`). Heartbeat renews the drain lease and claimed job leases; lease loss throws.
 3. **Claim** due jobs (`pending`/`retrying`, `due_at ≤ now`, unleased) up to `maxJobsPerDrain` (500), sorted `priority desc, createdAt asc`.
-4. **Plan** each representative via `jobPlanner.ts` — reload current Mongo (or tombstone). Duplicate claimed keys are later marked `synced` with `coalesced_into_representative`.
+4. **Plan** each logical job via `jobPlanner.ts` — reload current Mongo (or tombstone), preserving its retry hints/targets even when claimed keys overlap. Physical writes are coalesced after planning; no subscriber is marked synced merely because a representative was processed.
 5. **Recheck topology fence**, then **batch write** destinations before stale deletes via `batchWriter.ts` + `QuotaLimiter`. Failed/deferred destination upserts prevent stale deletes. Identical per-ID writes from overlapping jobs are coalesced without losing per-job outcomes; conflicting payloads fail. Duplicate physical IDs are repaired and logged.
 6. **Persist** `sheet_sync[]` with direct `updateOne` (must not abort the run). Metadata persist failure flips those outcomes to `failed`.
-7. **Finalize** jobs: empty plan (doc gone / unmatched skip) → `synced`; all writes ok → `synced`; any `failed` → `retrying` with exponential backoff (30s × 2^(attempts-1), cap 15 min) until `maxAttempts` (8) then `failed`; quota `deferred` → `retrying` in 60s **without** burning an attempt, `target_hints` = failed/deferred targets only.
+7. **Finalize** jobs: empty plan (doc gone / unmatched skip) → `synced`; all writes ok → `synced`; any `failed` → `retrying` with exponential backoff (30s × 2^(attempts-1), cap 15 min) until `maxAttempts` (8) then `failed`; unconfirmed structural delivery, quota or request-guard `deferred` → `retrying` in 60s **without** burning an attempt. `target_hints` = failed/deferred targets only. Attempts retain per-job/target outcomes and reasons; duplicate claimed keys keep representative-only Daily Operations emission within that drain, and completion facts remain deduped by job ID.
 8. Run timeout releases **unplanned** remaining claims back to `pending`. Run-level exception releases that run's still-`processing` jobs to `retrying` and logs `sheet_sync.drain.failed`.
 
 Planner skip/fail paths (also true on the legacy `syncSourceLead` path):
@@ -181,6 +184,18 @@ Planner skip/fail paths (also true on the legacy `syncSourceLead` path):
 - Calls upsert exactly one of Calls / Duplicate Calls / Bad Call Leads, then delete the same Mongo ID from the other two tabs. Form Fill and trusted duplicate review are reporting duplicates without rewriting `duplicate`. Duplicate disposition takes precedence over bad. All Call tabs retain the same headers/projection.
 - Form and Call retries always replan the current destination and required cleanup; old `target_hints` cannot delete the new desired row or skip an updated destination. Tombstones enumerate all possible Lead targets and historical locations, including old/new Form titles. Unknown target headers are dropped; source-lead tombstones are not restricted by old target hints.
 - Missing Booking/Cancellation documents produce an empty plan. Official outcomes remain reportable when their Lead becomes nonbillable.
+
+## Uncertain structural delivery (queued only)
+
+`deliveryRequests.ts` wraps every Sheets request used by queued delivery, including header/tab helpers. Each request reserves quota and checks the deadline, current drain lease and topology fence before sending; safe explicit read/update retries re-enter those checks. Google transport retries are disabled through both `retry` and `retryConfig`. Legacy/direct callers keep their existing retry behavior.
+
+Each append or positional delete has one provider attempt for its current plan. A missing/malformed append range, backend error, lost response or unconfirmed delete stops **all further provider requests in that writer invocation**. Affected writes become deferred, old row maps are abandoned, unconfirmed upsert metadata row hints are cleared, and stale membership cannot be deleted on the strength of an uncertain destination. Confirmed earlier outcomes remain accounted for. Explicit HTTP 400/401/403/404/429 rejections use ordinary failed-attempt handling and are never reissued inline; structural uncertainty does not burn an attempt.
+
+The existing next queue/cron/admin drain reloads current Mongo plans and fresh per-tab identity evidence. An existing destination is updated rather than appended again; an ID reliably absent from the current map is an idempotent delete success. Reads require exactly one actual `Mongo ID` header; missing/ambiguous headers, malformed topology/row responses and failed reads never prove absence. Shifted legacy identity lookup remains supported for deletes. Upserts or cold header rewrites that would move the identity column are refused for operator correction, including with a warm header cache. Only a confirmed newly created empty tab can initialize without a prior identity header. The identity read happens before a cold header rewrite and is reused, preserving one identity read per successful tab batch.
+
+Duplicate-row repair uses the same guarded single-attempt deletions. No per-row provider reads or new scheduler are introduced. Google success followed by Mongo metadata failure keeps the jobs retryable; fresh identity reads recover both append and stale-delete effects without repeating a positional delete.
+
+Automatic recovery runs on the existing drain schedule after due time and while ownership, quota and topology permit. Invalid headers/topology or exhausted ordinary failures need operator correction and the existing Admin retry; never reset processing jobs or delete historical rows as a shortcut. Lease/fence checks cannot cancel an already in-flight request or promise exactly-once network delivery. Operators must still acquire both leases and wait out older writers before topology changes. Rollback uses the previous application revision, retains outbox/attempt/metadata evidence, and reintroduces the unsafe structural retry behavior; it is not a reason to clear pending work. [Qualification and release handoff](../../efficiency/sheet-sync-recovery-handoff-2026-11-04.md).
 
 ## Temporary topology writer fence
 

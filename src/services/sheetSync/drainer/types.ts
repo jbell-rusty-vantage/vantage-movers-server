@@ -20,7 +20,7 @@ export type PlannedWrite = {
   headers: readonly string[];
   /** Row values for an upsert; ignored for deletes. */
   row: string[];
-  /** Row number recorded on a prior sync, used as a fast-path / validation. */
+  /** Historical row hint; never authority for a positional mutation. */
   knownRowNumber?: number;
   op: "upsert" | "delete";
 };

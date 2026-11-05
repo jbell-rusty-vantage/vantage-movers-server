@@ -10,6 +10,7 @@ applies_to:
   - src/services/googleSheets/googleSheets.service.ts
   - src/services/googleSheets.service.ts
   - src/services/googleSheets/targets.ts
+  - src/services/googleSheets/tabs.ts
   - src/services/googleSheets/syncRows.ts
   - src/services/googleSheets/deleteRows.ts
   - src/services/googleSheets/projections/formLeadRow.ts
@@ -20,6 +21,7 @@ applies_to:
   - src/services/googleSheets/expectedSheetTabs.ts
   - src/services/googleSheets/sheetContains.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
+  - src/services/sheetSync/drainer/deliveryRequests.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -30,8 +32,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T03:54:00Z
+  by: process:docs-keeper
+  at: 2026-11-05T02:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -42,7 +44,7 @@ generated:
 
 **Role:** Projects Mongo Form Leads, reporting-eligible Call Leads, official Bookings and Cancellations into Reporting Sheets. Mongo remains the System of Record. November 3 reporting corrections are implemented in this checkout; deployment, physical tab migration, derivative formulas and production membership qualification require separate release evidence.
 
-**Owner hold:** The entire final Best Relocation source ingestion is held, including source creates, adoptions and imported reviews. The exclusive bad-Form routing below is the implementation contract for release, not evidence that frozen source facts have been applied. See the [Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) and [release evidence](../../lead-reporting-retirement/README.md).
+**Best Relocation reconciliation is complete:** the approved final exception cohort and official Bookings are verified in the [final reconciliation report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md). Recurring ingestion and Granot creation remain retired; this recovery slice authorizes no new import. Keep the Source Company active for the Owner's separate deactivation.
 
 **Facade:** `src/services/googleSheets.service.ts` re-exports `googleSheets/googleSheets.service.ts`. Legacy sync uses the facade; queued `sheetSync/drainer/jobPlanner.ts` uses the same reporting policy and target definitions through the batch writer.
 
@@ -74,6 +76,8 @@ Official Bookings project to Master Booked / Booked Deals (`master_booked`), and
 - Bad Forms are upserted to Bad Form Leads before the same Mongo ID is deleted from Forms and both old/new Duplicate Forms titles. `staleFormTargets`/`staleFormTargetKeys` and the queued planner discover these rows without saved metadata. Form retries replan the current destination and cleanup despite stale `target_hints`.
 - A failed/deferred destination fences stale deletes. The queued writer completes upserts first, then deletes. A destination-written/stale-delete-failed interruption remains pending and retries without another append.
 - Physical duplicate IDs are repaired from canonical Mongo values: update one desired row, remove extra copies, and remove every stale copy in descending row order. Repairs are logged. Overlapping jobs for the same ID and identical payload share a physical write while each job receives an outcome; conflicting current payloads fail closed.
+- Queued append/delete requests are single-attempt per known plan, including transport retries. An unconfirmed structural outcome stops further provider requests for that invocation and defers unresolved work; the next durable drain reloads current Mongo plans and physical IDs. Previously committed appends become updates, and reliably absent deleted IDs require no second positional delete. Missing/malformed confirmation, missing/ambiguous identity headers, failed reads or malformed topology cannot establish delivery/absence. The queued header helper validates identity before rewriting existing headers; confirmed new empty tabs can initialize. Shifted legacy ID lookup still serves deletes; unsafe identity-column header rewrites require operator correction. See [queued recovery, limits and rollback](./sheet-sync.md#uncertain-structural-delivery-queued-only).
+- The queued request boundary covers tab/header helpers and every explicit safe retry: reserve read/write quota, check deadline, drain lease and topology fence, then send with Google transport retry disabled. The legacy/direct retry helper is unchanged. A request already in flight can finish after ownership loss; no further writes or old-owner completion follow. No exactly-once network guarantee is made.
 - Missing tabs are an idempotent no-op on deletes and are never auto-provisioned by a delete. Upserts ensure only their written tab; bootstrap handles full provisioning. Append requires Google confirmation.
 - Hard Call deletes and tombstones enumerate all three destinations. Form deletes enumerate all three Form destinations plus both transitional Form titles. Historical `sheet_sync[]` locations participate, including source locations when current dual writing is disabled. Booking/Cancellation rows are not lead-move targets.
 - A durable command or outbox receipt does not prove sheet membership. Owner contains and the release verifier read live rows by ID. Contains checks the other two Call tabs so stale membership is visible.
@@ -90,7 +94,7 @@ Canonical `SHEET_TAB_NAMES` are Forms, Calls, Duplicate Forms, Duplicate Calls, 
 
 `sheetSync/writerFence.ts` reads the durable `SheetSyncLease` scope **`lead-reporting:tab-migration`**, active while `leased_until` is in the future. Every legacy/direct lead upsert and delete boundary checks it before Google writes; bootstrap provisioning checks it too. A held lease raises retryable `lead_sheet_tab_migration_in_progress`. Failure to read the lease fails closed. No env toggle, cached result or public bypass disables this guard. Direct official Booked/Cancelled targets remain independent.
 
-Queued drains skip before claiming jobs while the fence is held; a drain already planning rechecks immediately before delivery, releasing claims for retry on rejection. The outbox is retained. Operator order is deploy compatible writers, acquire the topology fence plus `sheet-sync:drain` lease, wait out older invocations, rename by numeric ID and repair derivatives through operator Google APIs, clear caches, verify headers/formulas/membership, then release both leases. Renew leases throughout the operation. The fence alone does not abort Google requests already in flight.
+Queued drains skip before claiming jobs while the fence is held; a drain already planning rechecks immediately before delivery, releasing claims for retry on rejection. Queued requests also recheck at every provider boundary, including helpers and safe retries; newly fenced unfinished work is deferred. The outbox is retained. Operator order is deploy compatible writers, acquire the topology fence plus `sheet-sync:drain` lease, wait out older invocations, rename by numeric ID and repair derivatives through operator Google APIs, clear caches, verify headers/formulas/membership, then release both leases. Renew leases throughout the operation. The fence alone does not abort Google requests already in flight.
 
 ## Master and Source Company Sheets
 

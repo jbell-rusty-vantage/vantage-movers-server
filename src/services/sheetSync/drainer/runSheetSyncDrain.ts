@@ -52,8 +52,9 @@ export type SheetSyncDrainSummary = {
  * Drains due sheet-sync outbox jobs: claims a leased batch, reloads Mongo
  * state, batches the resulting writes per tab (quota-aware), persists
  * `sheet_sync` metadata + attempt/run history, and re-queues failures with
- * backoff. A global drain lease guarantees only one drain runs at a time so the
- * queue wake-up and cron safety net never contend for Google quota.
+ * backoff. The global lease elects the current writer; an already-sent request
+ * may outlive it. Request checks stop further writes and the next owner
+ * reconciles physical identities rather than trusting old row positions.
  */
 export async function runSheetSyncDrain(
   trigger: SheetSyncRunTrigger,
@@ -132,7 +133,8 @@ export async function runSheetSyncDrain(
     );
     claimedCount = claimed.length;
 
-    // Defensive coalescing: collapse any duplicate active jobs sharing a key.
+    // Remember duplicate keys for Daily Operations dedupe. Physical write
+    // coalescing happens after each logical job has independently replanned.
     const representatives = new Map<string, SheetSyncJobDocument>();
     const duplicates: SheetSyncJobDocument[] = [];
     for (const job of claimed) {
@@ -153,11 +155,13 @@ export async function runSheetSyncDrain(
       coalesced_duplicates: duplicates.length,
     });
 
-    // Plan all representatives, accumulating writes + doc handles.
+    // Retry hints and tombstone targets may differ even for the same key.
+    // Preserve each subscriber's plan; batchWriter merges identical writes.
     const plannedDocs: PlannedDoc[] = [];
     const jobsById = new Map<string, SheetSyncJobDocument>();
     const emptyJobs: SheetSyncJobDocument[] = [];
-    for (const job of representatives.values()) {
+    const duplicateIds = new Set(duplicates.map((job) => job._id.toString()));
+    for (const job of claimed) {
       if (Date.now() > deadline) {
         // Out of time: release remaining claims back to pending.
         await requireActiveLease();
@@ -177,7 +181,7 @@ export async function runSheetSyncDrain(
         const failure = await markJobFailure(job, error, guardrails.maxAttempts);
         failedJobs += 1;
         jobsById.delete(job._id.toString());
-        await recordJobFailureEvent(job, failure);
+        if (!duplicateIds.has(job._id.toString())) await recordJobFailureEvent(job, failure);
       }
     }
 
@@ -188,7 +192,16 @@ export async function runSheetSyncDrain(
     await assertLeadTabWritesAllowed();
     let outcomes =
       allWrites.length > 0
-        ? await writeBatchedTargets({ sheets, writes: allWrites, quota })
+        ? await writeBatchedTargets({
+          sheets, writes: allWrites, quota,
+          requestChecks: {
+            deadline,
+            assertCanRequest: async () => {
+              await assertLeadTabWritesAllowed();
+              await requireActiveLease();
+            },
+          },
+        })
         : [];
 
     await requireActiveLease();
@@ -203,9 +216,9 @@ export async function runSheetSyncDrain(
     // Empty jobs (document gone / intentionally skipped) are done.
     for (const job of emptyJobs) {
       await requireActiveLease();
-      await markJobSynced(job);
+      await markJobSynced(job, duplicateIds.has(job._id.toString()) ? "coalesced_into_representative" : undefined);
       syncedJobs += 1;
-      await recordJobCompletedFact(job);
+      if (!duplicateIds.has(job._id.toString())) await recordJobCompletedFact(job);
     }
 
     // Apply per-job status from its write outcomes.
@@ -227,32 +240,28 @@ export async function runSheetSyncDrain(
           retryTargetsFor(jobOutcomes),
         );
         failedJobs += 1;
-        await recordJobFailureEvent(job, failure);
+        if (!duplicateIds.has(jobId)) await recordJobFailureEvent(job, failure);
       } else if (anyDeferred) {
-        await deferJob(job, retryTargetsFor(jobOutcomes));
+        const reason = jobOutcomes.find((outcome) => outcome.status === "deferred")?.error ?? "delivery_deferred";
+        await deferJob(job, retryTargetsFor(jobOutcomes), reason);
         deferredJobs += 1;
         logger.warn({
-          msg: "sheet_sync.write.deferred_quota",
+          msg: "sheet_sync.write.deferred",
           workflow: "sheet_sync_drain",
           jobId: job._id.toString(),
           resource: job.resource,
           operation: job.operation,
-          quota_budget_exhausted: true,
+          reason,
         });
       } else {
-        await markJobSynced(job);
+        await markJobSynced(job, duplicateIds.has(jobId) ? "coalesced_into_representative" : undefined);
         syncedJobs += 1;
-        await recordJobCompletedFact(job);
+        if (!duplicateIds.has(jobId)) await recordJobCompletedFact(job);
       }
     }
 
-    // Duplicate jobs are fully covered by their representative's sync; the
-    // representative's Daily Operations fact speaks for them.
-    for (const job of duplicates) {
-      await requireActiveLease();
-      await markJobSynced(job, "coalesced_into_representative");
-      syncedJobs += 1;
-    }
+    // Coalesced physical writes fan back to each claimed job above. Only the
+    // representative emits Daily Operations facts for duplicate coalescing keys.
 
     const status = failedJobs > 0 || deferredJobs > 0 ? "partial_failure" : "completed";
     await requireActiveLease();
@@ -489,7 +498,7 @@ function toSheetSyncEntry(outcome: PlannedWriteOutcome): SheetSyncEntry {
     target: write.target,
     spreadsheet_id: write.spreadsheetId,
     tab_name: write.tabName,
-    row_number: write.knownRowNumber,
+    row_number: undefined,
     status: outcome.status === "deferred" ? "pending" : "failed",
     last_error: outcome.error,
     updated_since_last_sync: true,
@@ -533,15 +542,16 @@ async function markJobSynced(job: SheetSyncJobDocument, note?: string): Promise<
   assertJobMutationApplied(updated);
 }
 
-async function deferJob(job: SheetSyncJobDocument, retryTargets: string[]): Promise<void> {
-  // Quota deferral is not a failure: retry next minute without burning an attempt.
+async function deferJob(job: SheetSyncJobDocument, retryTargets: string[], reason: string): Promise<void> {
+  // Unconfirmed delivery and resource/guard deferrals stay recoverable without
+  // burning an attempt. A later drain replans and rereads physical identities.
   const updated = await SheetSyncJob.findOneAndUpdate(activeJobFilter(job), {
     $set: {
       status: "retrying",
       due_at: new Date(Date.now() + 60_000),
       leased_until: new Date(0),
       target_hints: retryTargets,
-      last_error: "quota_budget_exhausted",
+      last_error: reason,
       last_error_at: new Date(),
     },
   });

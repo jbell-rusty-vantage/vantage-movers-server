@@ -64,6 +64,7 @@ export async function ensureTabsAndHeaders(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   tabs: SheetTabConfig[],
+  beforeHeaderWrite?: (tabName: string, created: boolean) => Promise<void>,
 ): Promise<void> {
   for (const tab of tabs) {
     const tabName = await resolveCompatibleSheetTitle(sheets, spreadsheetId, tab.tabName);
@@ -73,6 +74,9 @@ export async function ensureTabsAndHeaders(
     }
 
     const sheet = await ensureTab(sheets, spreadsheetId, tabName);
+    // Queued delivery validates identity before rewriting any existing header.
+    // Legacy callers retain their current initialization behavior.
+    await beforeHeaderWrite?.(tabName, sheet?.created === true);
     await ensureColumnCapacity(
       sheets,
       spreadsheetId,
@@ -174,6 +178,7 @@ async function ensureTab(
     return {
       sheetId: properties.sheetId,
       columnCount: properties.gridProperties?.columnCount,
+      created: true,
     };
   } catch (error) {
     if (!isGoogleSheetAlreadyExistsError(error)) {
@@ -186,6 +191,7 @@ async function ensureTab(
 type SheetGridProperties = {
   sheetId: number;
   columnCount?: number | null;
+  created?: boolean;
 };
 
 async function ensureColumnCapacity(
