@@ -1,6 +1,6 @@
 # Granot update cadence and Outreach convergence
 
-Owner-approved direction, November 4, 2026. Status: server patch implemented and locally tested; uncommitted, not deployed or capacity-qualified. Broad-suite limitations are recorded in the ledger.
+Owner-approved direction, November 4, 2026; release authorized November 5. The implementation is integrated on main as `6ed1aef6`. [November 5 release review](RELEASE-REVIEW-2026-11-05.md) owns deployment status, production no-op evidence and the remaining capacity qualification. The original ledger records pre-release local test limitations.
 
 1. [SPECIFICATION.md](SPECIFICATION.md) — accepted behavior, schedules, channel parity, no-op and Outreach contracts, timing limits and acceptance journeys.
 2. [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) — bounded work for one agent session, exact module ownership, checks, deliverables and release handoff.

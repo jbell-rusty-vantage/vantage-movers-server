@@ -10,6 +10,8 @@ async function main() {
     const since = new Date(process.argv[2] ?? Date.now() - 86400000);
     if (!Number.isFinite(+since)) throw new Error('Invalid since timestamp');
     const result: Record<string, unknown> = { observed_at: new Date(), since, database: db.databaseName };
+    result.deployment = await db.collection('sales_intelligence_sync_state').findOne({ scope: 'deployment' },
+      { projection: { _id: 0, deployment_commit: 1, recorded_at: 1 } });
     const aggregate = (collection: string, pipeline: object[]) => db.collection(collection)
       .aggregate(pipeline, { maxTimeMS: 20000 }).toArray();
     result.decisions = await aggregate('synchronization_decisions', [
@@ -27,7 +29,9 @@ async function main() {
         { $group: { _id: { status: '$status', stage: '$stage', operation: '$operation' }, count: { $sum: 1 }, oldest: { $min: '$createdAt' } } },
       ]);
       result[`${collection}_backlog`] = await aggregate(collection, [
-        { $match: { status: { $in: ['pending', 'retrying', 'processing', 'failed'] } } },
+        { $match: { status: { $in: collection === 'sheet_sync_jobs'
+          ? ['pending', 'retrying', 'processing', 'failed']
+          : ['pending', 'leased', 'retry', 'paused', 'dead_letter'] } } },
         { $group: { _id: { status: '$status', stage: '$stage' }, count: { $sum: 1 }, oldest: { $min: '$createdAt' } } },
       ]);
     }

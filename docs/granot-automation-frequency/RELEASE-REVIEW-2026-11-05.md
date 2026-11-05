@@ -1,6 +1,14 @@
 # Granot cadence release review — November 5, 2026
 
-The Owner authorized review, fixes, commit and push to main. The goal is timely Desk state and accurate cadence progress without multiplying unchanged Sheet writes. Production rollout and sustained capacity qualification are separate checks.
+The Owner authorized review, fixes, commit and push to main. **Released to production as `6ed1aef62ce01a4f1b160152a15451604c81d4c6`.** The goal is timely Desk state and accurate cadence progress without multiplying unchanged Sheet writes. Sustained capacity qualification remains separate from the completed rollout.
+
+## Released and verified
+
+- [Production workflow 42055454582](https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/42055454582) succeeded: clean-checkout typecheck; full suite **3,830 passed, zero failed, 164 skipped** (3,994 tests); production build and deployment.
+- Vercel deployment `dpl_CDTGNswpbhYtvLtfGpUKGDFmENEj` became READY at **15:39:06 UTC / 10:39:06 New York**. Its metadata matches the integration SHA and aliases include [the production API](https://vantage-movers-main-server.vercel.app).
+- At 15:40 UTC the runtime `sales_intelligence_sync_state` deployment stamp independently reported the same SHA. Aggregate-only post-release reads found **zero pending/retrying/processing/failed Sheet jobs**. The retained Desk/RC job queue had only 11 recent pending `call_log_refresh` jobs and no leased/retry/paused/dead-letter backlog.
+- No new Granot Decisions were present in the first minute after release. This is deployment/backlog proof, not a post-release automation-slot or no-op sample. The production no-op baseline and real processor replica tests below establish the reviewed behavior; the next new daytime slot and overnight/06:00 boundaries still need observation.
+- Audit queries are sequential, not a cross-collection transactional snapshot. The read-only utility explicitly includes each queue's own status vocabulary. Its final follow-up and documentation do not alter the deployed runtime.
 
 ## Write-path review
 

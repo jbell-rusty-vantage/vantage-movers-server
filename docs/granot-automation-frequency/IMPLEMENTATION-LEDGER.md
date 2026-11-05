@@ -1,5 +1,7 @@
 # Implementation evidence — November 4, 2026
 
+Historical pre-release record. The Owner authorized integration/release November 5; implementation is committed as `6ed1aef6`. Current validation, additional Priority-only Sheet suppression and production evidence live in [the release review](RELEASE-REVIEW-2026-11-05.md). Uncommitted/undeployed statements below describe this original November 4 session.
+
 The server patch closes the schedule/freshness defects and both pair-propagation gaps. Deployment and measured live Mongo/storage/convergence capacity remain outstanding. This is local engineering evidence, not production qualification.
 
 ## Baseline and boundaries

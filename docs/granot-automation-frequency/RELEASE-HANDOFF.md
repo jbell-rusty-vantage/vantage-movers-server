@@ -1,6 +1,6 @@
 # Release handoff — Granot cadence
 
-**Owner authorized release on November 5.** See [release review](RELEASE-REVIEW-2026-11-05.md) for the additional Priority-only Sheet suppression, fresh validation, production no-op baseline and release status. Sustained live capacity remains unqualified. See [implementation evidence](IMPLEMENTATION-LEDGER.md) for the original test limitations and write budget.
+**Released November 5 as `6ed1aef6`; production READY and runtime SHA verified.** See [release review](RELEASE-REVIEW-2026-11-05.md) for the additional Priority-only Sheet suppression, full green CI, production no-op baseline and post-release queue snapshot. Sustained live capacity remains unqualified. See [implementation evidence](IMPLEMENTATION-LEDGER.md) for the original local test limitations and write budget.
 
 ## Review identity
 
