@@ -1,4 +1,5 @@
-import { type Db, type ClientSession, ObjectId as Id } from "mongodb";
+import type { ClientSession, Db } from "mongodb";
+import { isObjectIdString, toObjectId } from "../../utils/objectId";
 import type { ArchivedChain } from "./archiveCodec";
 
 /** A superseded candidate cannot become the temporal winner again. Preserve every current winner. */
@@ -16,11 +17,10 @@ export async function supersededObservations(
       (c) => c.decisions[0]?.target?.model === model,
     );
     if (!subset.length) continue;
-    const ids = subset.flatMap((c) =>
-      Id.isValid(c.decisions[0].target.id)
-        ? [new Id(c.decisions[0].target.id)]
-        : [],
-    );
+    const ids = subset.flatMap((c) => {
+      const id = c.decisions[0].target.id;
+      return isObjectIdString(id) ? [toObjectId(id)] : [];
+    });
     const rows = await db
       .collection(collection)
       .find(

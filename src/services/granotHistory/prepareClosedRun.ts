@@ -1,4 +1,5 @@
-import { type Db, ObjectId } from "mongodb";
+import type { Db } from "mongodb";
+import { toObjectId } from "../../utils/objectId";
 import { closedRuns, packClosedRun, unpackClosedRun, type ClosedOperation } from "./closedAutomationRun";
 import { readArchiveObject, storeArchiveObject } from "./archiveObjects";
 import { digest } from "./archiveCodec";
@@ -8,7 +9,7 @@ import type { ProcessorResult } from "../granotLifecycle/drainer";
 export async function prepareClosedRun(db: Db, run: string, cutoff: Date) {
   if (!/^[a-f0-9]{24}$/i.test(run)) throw new Error("Invalid Granot run ID");
   if (!Number.isFinite(+cutoff) || +cutoff > Date.now() - 7 * 86400000) throw new Error("Granot closure requires seven days");
-  if (await db.collection("granot_automation_runs").findOne({ _id: new ObjectId(run) }, { projection: { _id: 1 } })) return { reason: "run_still_present" as const };
+  if (await db.collection("granot_automation_runs").findOne({ _id: toObjectId(run) }, { projection: { _id: 1 } })) return { reason: "run_still_present" as const };
   const receipts = await db.collection("granot_webhook_receipts").find({ observation_channel: "granot_http_automation",
     channel_operation_id: { $type: "string", $gte: run + ":", $lt: run + ";" } }, {projection:{channel_operation_id:1,channel_operation_kind:1,payload_sha256:1,processing:1}})
     .hint("granot_observation_receipt_channel_operation_id_unique").limit(5001).maxTimeMS(3000).toArray();
