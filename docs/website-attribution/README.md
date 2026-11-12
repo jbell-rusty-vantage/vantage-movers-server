@@ -2,6 +2,8 @@
 
 Implemented on `agent/site-preview-api` for isolated review, November 12, 2026. Production release and content publication are separate Owner decisions. No historical attribution is backfilled.
 
+[Final deployment, capture and full-CI evidence](RELEASE-EVIDENCE.md). This branch remains a draft pending Owner review.
+
 ## Capture contract
 
 `src/contracts/websiteAttribution.ts` owns the v1 dependency-free wire contract. The clients repository distributes a byte-identical copy at `packages/api-client/src/website-attribution.ts`; run its `scripts/check-website-attribution-contract.mjs` against this file before changing either deployment. Add future approved pages/campaigns in the server contract first. Preserve old accepted design versions when introducing a future design so historical snapshots remain readable.
