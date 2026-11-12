@@ -194,3 +194,7 @@ The final Best Relocation review command derives a protected `external_sheet_rev
 
 
 **November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).
+
+## Optional Main Site website attribution
+
+The insert-only, bounded website snapshot is accepted only for Main Site WordPress/form ingestion, sanitized before canonical command capture, and omitted on malformed or unavailable measurement. It never changes Source Company, LID, Tracking Reference, Call qualification or capture success. See [contract and qualification](../../website-attribution/README.md).

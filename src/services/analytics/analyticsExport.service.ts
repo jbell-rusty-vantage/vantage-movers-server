@@ -3,6 +3,7 @@ import type { AnalyticsQuery, AnalyticsReport } from "../../validation/v1.valida
 import { getAnalyticsReport } from "./analytics.service";
 
 const CSV_COLUMNS: Record<AnalyticsReport, string[]> = {
+  "website-outcomes": ["channel", "source", "medium", "campaign", "landing_path", "content_id", "locale", "capture_content_id", "capture_locale", "design_id", "design_version", "form_leads", "duplicate_leads", "bad_leads", "eligible_leads", "attributed_leads", "unknown_attribution_leads", "immature_leads", "booked_leads", "eligible_booked_leads", "bookings", "cancelled_bookings", "active_bookings", "booking_rate", "total_deposit_amount", "total_binder_amount", "total_refund_amount", "active_binder_amount", "unknown_deposit_bookings", "unknown_binder_bookings", "unknown_refund_bookings", "relationship_anomalies", "deposit_less_recorded_refunds", "average_days_to_book"],
   summary: [
     "form_leads",
     "call_leads",

@@ -17,7 +17,7 @@ export function assertSitePreviewEnvironment(env: NodeJS.ProcessEnv): void {
 
 export function isSitePreviewRequestAllowed(method: string, path: string): boolean {
   if (method === "GET") {
-    return ["/", "/health", "/db", "/api/v1/testimonials", "/api/v1/moving-carriers"].includes(path)
+    return ["/", "/health", "/db", "/api/v1/testimonials", "/api/v1/moving-carriers", "/api/v1/site-preview/website-outcomes"].includes(path)
       || /^\/api\/v1\/form-leads\/[a-f0-9]{24}$/i.test(path);
   }
   return method === "POST" && path === "/api/v1/form-leads";

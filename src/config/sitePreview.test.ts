@@ -17,6 +17,9 @@ test("website preview rejects production database and enabled side effects", () 
   assert.throws(() => assertSitePreviewEnvironment({ ...env, TEST_MONGO_DATABASE_NAME: "vantagemovers" }));
 });
 test("website preview only exposes content reads, form creation, and single form readback", () => {
+  assert.equal(isSitePreviewRequestAllowed("GET", "/api/v1/site-preview/website-outcomes"), true);
+  assert.equal(isSitePreviewRequestAllowed("POST", "/api/v1/site-preview/website-outcomes"), false);
+  assert.equal(isSitePreviewRequestAllowed("GET", "/api/v1/admin/analytics/website-outcomes"), false);
   assert.equal(isSitePreviewRequestAllowed("POST", "/api/v1/form-leads"), true);
   assert.equal(isSitePreviewRequestAllowed("GET", "/api/v1/form-leads/123456789012345678901234"), true);
   for (const path of ["/api/cron/sheet-sync", "/api/v1/form-leads", "/api/v1/analytics", "/api/v1/booked-leads", "/api/v1/extension/auth/login"]) {

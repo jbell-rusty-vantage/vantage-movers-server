@@ -1,4 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
+import { parseWebsiteAttribution } from "../../contracts/websiteAttribution";
 import {
   getMongoDatabaseName,
   getSheetSyncMode,
@@ -433,6 +434,11 @@ async function writeTheFormLead(
     ...prepared.normalized,
     ...prepared.location,
     ...prepared.sourceAssignment,
+    website_attribution: (() => {
+      const snapshot = prepared.source_company === "main_site" && tx.ingestion_origin === "wordpress_form"
+        ? parseWebsiteAttribution(prepared.input.website_attribution, tx.now.getTime()) : undefined;
+      return snapshot ? { ...snapshot, received_at: tx.now } : undefined;
+    })(),
     local: prepared.local,
     lid: prepared.lid,
     ref_no: prepared.normalized.ref_no?.trim() || "not provided",
