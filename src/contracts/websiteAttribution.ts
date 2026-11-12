@@ -23,6 +23,9 @@ const pagePairs = [
   ["moving-paperwork-guide", "/resources/moving-paperwork-guide", "/es/recursos/documentos-de-mudanza"],
   ["wisconsin", "/locations/wisconsin-movers", "/es/destinos/wisconsin"],
   ["madison-wisconsin", "/locations/wisconsin-movers/madison", "/es/destinos/wisconsin/madison"],
+  ["florida", "/locations/florida-movers", "/es/destinos/florida"],
+  ["florida-to-north-carolina", "/moving-routes/florida-to-north-carolina", "/es/rutas/florida-a-carolina-del-norte"],
+  ["moving-routes", "/moving-routes", "/es/rutas"],
 ] as const;
 
 export type WebsitePage = { path: string; content_id: string; locale: "en" | "es" };

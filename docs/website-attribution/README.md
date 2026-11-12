@@ -6,6 +6,8 @@ Implemented on `agent/site-preview-api` for isolated review, November 12, 2026. 
 
 ## Capture contract
 
+November 12 location mission: the bounded page allowlist also includes Florida, Florida → North Carolina and the route directory in English/Spanish. These are preview content identities, not approval to publish or generate other routes. The reverse route remains unregistered. The extension is backward-compatible, needs no environment/schema changes or migration, and does not rewrite historical snapshots. Deployment qualification is pending; existing deployed capture evidence predates this extension.
+
 `src/contracts/websiteAttribution.ts` owns the v1 dependency-free wire contract. The clients repository distributes a byte-identical copy at `packages/api-client/src/website-attribution.ts`; run its `scripts/check-website-attribution-contract.mjs` against this file before changing either deployment. Add future approved pages/campaigns in the server contract first. Preserve old accepted design versions when introducing a future design so historical snapshots remain readable.
 
 Main Site captures a tab session, at most 24 hours, using sessionStorage without a visitor identifier. It retains first touch and latest non-direct touch through guide, locale and direct returns. Paths, content IDs, locales, campaign values and referring hosts use fixed allowlists. Unknown campaign values collapse to `unknown`; arbitrary query values, UTM term/content, full referrers, contact details and raw browsing events are never stored. DNT/GPC and unavailable storage omit capture. Tracking failure never rejects an otherwise valid quote.

@@ -11,6 +11,14 @@ const snapshot = { version: 1, first_touch: first, latest_non_direct_touch: firs
 const stored = { ...snapshot, received_at: new Date("2026-10-01T12:10:00Z") };
 const period = { from: new Date("2026-10-01Z"), to: now, now };
 
+test("Florida route capture retains directed content identity and rejects unregistered reverse routes", () => {
+  const input = { ...snapshot, first_touch: { ...first, path: "/locations/florida-movers" }, latest_non_direct_touch: undefined, capture_page: { path: "/es/rutas/florida-a-carolina-del-norte" } };
+  const parsed = parseWebsiteAttribution(input, stored.received_at.getTime());
+  assert.equal(parsed?.first_touch.content_id, "florida");
+  assert.deepEqual(parsed?.capture_page, { path: "/es/rutas/florida-a-carolina-del-norte", content_id: "florida-to-north-carolina", locale: "es" });
+  assert.equal(parseWebsiteAttribution({ ...input, capture_page: { path: "/moving-routes/north-carolina-to-florida" } }, stored.received_at.getTime()), undefined);
+});
+
 test("attribution sanitizes before canonical command capture; invalid tracking does not reject a Lead", () => {
   const base = { source_company: "main_site", name: "Synthetic", phone_number: "2025550100", pickup_zip: "10001", destination_zip: "53703", move_size: "Studio" };
   const current = { ...snapshot, first_touch: { ...first, occurred_at: new Date().toISOString() }, latest_non_direct_touch: undefined };
