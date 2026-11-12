@@ -41,8 +41,10 @@ const SCOPED_READS = [
   "/api/v1/admin/facets",
   "/api/v1/admin/exports/call-leads.csv",
   "/api/v1/admin/analytics/summary",
+  "/api/v1/admin/analytics/website-outcomes",
   "/api/v1/admin/analytics/overview",
   "/api/v1/admin/exports/analytics/summary.csv",
+  "/api/v1/admin/exports/analytics/website-outcomes.csv",
   // Former Agent browse/detail paths, now the Agent catalog: the retired scope still gets a 400.
   "/api/v1/admin/agents?include_inactive=true",
   "/api/v1/admin/agents/507f1f77bcf86cd799439011",

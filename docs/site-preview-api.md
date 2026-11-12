@@ -1,6 +1,6 @@
 # Website preview API
 
-Owner goal (2026-10-30): test website variations against an isolated API and data before choosing a design for production. This is infrastructure for cloud-agent work, not the variation implementation.
+Owner goal: test website variations against an isolated API and data before choosing a design for production. The [November 12 attribution milestone](website-attribution/README.md) extends this infrastructure with optional website capture and a bounded outcome report. Production remains unchanged.
 
 ## Deployment boundary
 
@@ -9,7 +9,7 @@ Owner goal (2026-10-30): test website variations against an isolated API and dat
 - Mongo: `TEST_MODE=true`, `TEST_MONGO_DATABASE_NAME=testvantagemovers_sitepreview`.
 - Owner authorized reuse of the existing script `MONGO_URI` after Atlas organization permissions prevented creating a restricted user. This is application/database-name isolation, not credential-level isolation. Replace with a database-restricted user when an Atlas administrator is available.
 - Separate API secret and Vercel automation bypass. Never give cloud agents production credentials.
-- `src/sitePreviewApp.ts` refuses incorrect database/side-effect settings on startup and permits only health probes, testimonial/carrier GETs, Form Lead POST, and single Form Lead GET. Normal authentication still applies. Admin, reporting, cron, webhooks and list-all-leads routes are unavailable.
+- `src/sitePreviewApp.ts` refuses incorrect database/side-effect settings on startup and permits health probes, testimonial/carrier GETs, Form Lead POST, single Form Lead GET and the authenticated read-only `/api/v1/site-preview/website-outcomes` report. Normal authentication still applies. General Admin/reporting, cron, webhooks and list-all-leads routes are unavailable.
 - `CRM_FORM_LEAD_POSTING_ENABLED=false` blocks Granot calls, including when a site requests `post_to_granot=true`. No CRM, RingCentral, Twilio, SendGrid or Sheets credentials belong in this project.
 
 ## Environment (Vercel Preview scope on the separate API project)
@@ -35,7 +35,7 @@ Owner goal (2026-10-30): test website variations against an isolated API and dat
 
 Use the committed preview branch. Run `node ops/site-preview/prepare.mjs` from this repository. It prints a new temporary directory containing only HEAD's tracked files, replaces the entrypoint with the preview app, installs `vercel.preview.json` as `vercel.json`, and excludes queue consumers. It does not copy local secrets or unrelated edits.
 
-From that directory, link explicitly to the preview project/team, then run `vercel deploy --yes --no-wait --target=preview --scope vantage-4d3db9ef`. Always pass the target: Vercel otherwise treats a new project's first deployment as Production. Project framework must be Other (`null`), Node 24, using the existing serverless function routing rather than auto-detected Express framework output. Never `--prod`, never link this artifact to `vantage-movers-main-server`. Wait for Ready, then assign the stable alias with `vercel alias set <deployment-url> vantage-sites-preview-api.vercel.app --scope vantage-4d3db9ef`. There is no automatic deploy from pushing this server branch.
+GitHub Actions now owns this process: `.github/workflows/website-preview-api.yml` runs on relevant pushes to `agent/site-preview-api` or manual dispatch on that branch, typechecks/tests, exports committed source, deploys with explicit `--target=preview`, records `DEPLOYMENT_COMMIT_SHA` and assigns the stable alias after Ready. The general server preview workflow excludes this branch. Project framework remains Other (`null`), Node 24, with the existing function routing. Never `--prod`, never link this artifact to `vantage-movers-main-server`, and never promote its data or deployment to production.
 
 Seed synthetic data with `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemovers_sitepreview node --env-file=.env ops/site-preview/seed.mjs` (use shell-appropriate environment assignment). The script checks the database name and does not copy production records. Five Source Company/Form granularities and explicitly synthetic testimonial/carrier fixtures support website checks. Synthetic leads remain in this test database; never promote its data to production.
 

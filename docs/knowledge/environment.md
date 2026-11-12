@@ -231,7 +231,7 @@ Twilio (`leadMessaging.ts`). The account SID, primary auth token, from number an
 | `CRON_SECRET` | none | yes | Bearer secret for every `/api/cron/*` route. Required. |
 | `VERCEL`, `VERCEL_ENV`, `VERCEL_REGION` | injected | no | Runtime detection; queue publish needs `VERCEL=1` with a region, production topics need `VERCEL_ENV=production`. |
 | `VERCEL_DEPLOYMENT_ID`, `VERCEL_GIT_COMMIT_SHA` | injected | no | `deploymentStamp.ts`: deployed commit record (Vercel production only). |
-| `DEPLOYMENT_COMMIT_SHA` | none | no | Same stamp for CLI deploys (`vercel deploy --prod -e DEPLOYMENT_COMMIT_SHA=...`). |
+| `DEPLOYMENT_COMMIT_SHA` | none | no | Source stamp for CLI builds; the isolated website-preview workflow also sets it for its read-only outcome-report identity. It does not select a deployment target. |
 | `GRANOT_LIFECYCLE_QUEUE_TOPIC` | `granot-lifecycle-events` in Vercel production, else `-dev` | no | Lifecycle queue topic. |
 | `GRANOT_AUTOMATION_APPLY_ENABLED` | off | no | HTTP collector apply step. |
 
