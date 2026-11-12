@@ -36,6 +36,7 @@ export type BestRelocationPlanAction = {
     | "update_source_owned_lead"
     | "record_conflict"
     | "adopt_existing"
+    | "admit_final_best_relocation_call"
     | "unchanged";
   classification:
     | "create"
@@ -66,10 +67,12 @@ export type BestRelocationPlanAction = {
       | "ambiguous_lead_match"
       | "unmatched_refund"
       | "canonical_divergence"
+      | "new_normal_call_creation"
       | "missing_source_row"
       | "changed_protected_field"
       | "schema_drift"
-      | "duplicate_source_identity";
+      | "duplicate_source_identity"
+      | "new_normal_call_creation";
     severity: "warning" | "blocking";
   };
   adopted_entity_refs?: Array<{ model: string; id: string }>;

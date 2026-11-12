@@ -145,11 +145,11 @@ Company variants: `resolveSourceCompany` + config label/aliases + `SOURCE_LABEL_
 
 **Lead source performance** — groups by `source_granularity_key` and catalog `owner_label`, same hierarchy as source-company performance. Does not group by `booked_leads.source`.
 
-**Receiver-agent reports** — production rows. Source breakdown groups by `source_granularity_key` and catalog `owner_label`. // pragma: allowlist secret
+**Receiver-agent reports** (`reportingEligibleCallLeadFilter` for Call volume; `billableCallLeadExpression` for billable/unpriced flags) — production rows. Source breakdown groups by `source_granularity_key` and catalog `owner_label`. // pragma: allowlist secret
 
 **SMS successfully sent then booked** — production `lead_messages` only. Successful text = status `accepted` | `sent` | `delivered`. One Lead, one vote (`lead_ref.id`, fallback `form_lead`). Booked is the official Lead `booked` ref, not a `booked_leads` lookup. Rate = distinct texted-and-booked Leads / distinct texted Leads. Payload is an `all` totals row plus a breakout by message `origin`. Date/source/`local` filters apply to the joined Lead, not the message.
 
-**Lead cost** (`leadCost.service.ts`) — **overview only**, all-time / last-7-days. Sums stored **CPL**: Form Leads `duplicate: { $ne: true }`; Call Leads `created_on_unmatched: { $ne: true }`. Null `cpl` increments `unresolved_count` and contributes 0. Reports seed every catalog Source Granularity in scope (zeros remain).
+**Lead cost** (`leadCost.service.ts`) — **overview only**, all-time / last-7-days. Sums stored **CPL**: Form Leads `duplicate: { $ne: true }`; Call Leads `billableCallLeadFilter()` (reporting admission, matched, not Form Fill/effective duplicate/bad). Null `cpl` increments `unresolved_count` and contributes 0. Reports seed every catalog Source Granularity in scope (zeros remain).
 
 ## Overview (`overview.service.ts`)
 
@@ -178,3 +178,8 @@ Company variants: `resolveSourceCompany` + config label/aliases + `SOURCE_LABEL_
 - RingCentral ops reconcile: `ringcentral/analytics-reconcile.service.ts`
 
 Tests: `analytics.service.test.ts` (query schema, booked prefix + employee snapshot, receiver-agent and SMS-conversion reports, CSV flatten); `smsConversion.service.test.ts` (origin rows); `adminDatabaseScope.test.ts` and `v1-admin-database-scope.routes.test.ts` (retired scopes return 400).
+
+
+Call lead cost and compatibility CSV totals apply `billableCallLeadFilter` before grouping: `reportingEligibleCallLeadFilter` accepts saved RingCentral qualification, the closed 69-ID native Best Relocation historical manifest, or the protected final stamp with matching canonical company/feed IDs; unmatched, Form Fill, effective duplicate and confirmed bad-call facts use the same policy as live Insights. These compatibility totals retain their existing stamped-price provenance; live Insights continues using current feed rates. Custom Reporting's existing versioned quality columns agree with the disposition without a schema version change. Official Booking/Cancellation aggregation is unchanged.
+
+The entire final Best Relocation source apply remains owner-held; the implemented source-admission exception has no production admissions applied. The Source Company stays active. Independent general Call backfill evidence does not complete that held source ingestion.

@@ -7,6 +7,7 @@ import {
   type CanonicalAdoptionStore,
   type CanonicalBookingDoc,
   type CanonicalLeadDoc,
+  FORM_ADOPTION_STORED_CUTOFF,
 } from "./canonicalLeadAdoption";
 import type { BestRelocationApplicationPlan, BestRelocationPlanAction } from "./applicationPlan";
 
@@ -167,6 +168,38 @@ test("pre-cutoff Form Leads are ignored by phone-name-date adoption", async () =
   });
   assert.deepEqual(decision, { classification: "create" });
   assert.ok(new Date("2026-04-29T04:00:00.000Z").getTime() < BEST_RELOCATION_CUTOFF.getTime());
+});
+
+test("Form adoption interprets early wall-clock rows once and keeps adjacent business days separate", async () => {
+  assert.equal(FORM_ADOPTION_STORED_CUTOFF.toISOString(), "2026-04-30T00:00:00.000Z");
+  for (const hour of [0, 1, 2, 3]) {
+    const stored = new Date(`2026-06-15T0${hour}:30:00.000Z`);
+    const doc = formDoc({ id: `wall-${hour}`, timestamp: stored, createdAt: new Date(+stored + 4 * 3_600_000 + 1000), ingestion_origin: "legacy_unknown", ref_no: "different-ref", lid: undefined });
+    const payload = { name: "Alex Rivera", phone_number: "3055551212", timestamp: "2026-06-15T16:00:00.000Z" };
+    assert.equal((await decideFormLeadAdoption({ payload, store: memoryStore({ forms: [doc] }) })).classification, "adopt", `stored hour ${hour}`);
+    assert.equal((await decideFormLeadAdoption({ payload: { ...payload, timestamp: "2026-06-14T16:00:00.000Z" }, store: memoryStore({ forms: [doc] }) })).classification, "create", `previous day, stored hour ${hour}`);
+  }
+});
+
+test("real instant Granot Forms around midnight retain their actual New York day", async () => {
+  const doc = formDoc({ id: "granot-instant", timestamp: new Date("2026-08-28T03:30:00Z"), createdAt: new Date("2026-08-28T03:30:01Z"), ingestion_origin: "granot_lead_created", ref_no: "other-ref", lid: undefined });
+  const payload = { name: "Alex Rivera", phone_number: "3055551212", timestamp: "2026-08-28T16:00:00Z" };
+  assert.equal((await decideFormLeadAdoption({ payload, store: memoryStore({ forms: [doc] }) })).classification, "create");
+  assert.equal((await decideFormLeadAdoption({ payload: { ...payload, timestamp: "2026-08-27T20:00:00Z" }, store: memoryStore({ forms: [doc] }) })).classification, "adopt");
+});
+
+test("Form adoption includes stored cutoff midnight and both DST repeated hours without admitting pre-cutoff instants", async () => {
+  const payload = { name: "Alex Rivera", phone_number: "3055551212", timestamp: "2026-04-30T04:30:00Z" };
+  const atCutoff = formDoc({ id: "cutoff-midnight", timestamp: new Date("2026-04-30T00:00:00Z"), createdAt: new Date("2026-04-30T04:00:01Z"), ref_no: "other-ref", lid: undefined });
+  assert.equal((await decideFormLeadAdoption({ payload, store: memoryStore({ forms: [atCutoff] }) })).classification, "adopt");
+  const before = { ...atCutoff, timestamp: new Date("2026-04-30T03:59:59Z"), ingestion_origin: "granot_lead_created" };
+  assert.equal((await decideFormLeadAdoption({ payload, store: memoryStore({ forms: [before] }) })).classification, "create");
+  for (const captured of ["2026-11-01T05:30:01Z", "2026-11-01T06:30:01Z"]) {
+    const repeated = { ...atCutoff, timestamp: new Date("2026-11-01T01:30:00Z"), createdAt: new Date(captured) };
+    assert.equal((await decideFormLeadAdoption({ payload: { ...payload, timestamp: "2026-11-01T18:00:00Z" }, store: memoryStore({ forms: [repeated] }) })).classification, "adopt");
+  }
+  const standard = { ...atCutoff, timestamp: new Date("2026-11-02T00:30:00Z"), createdAt: new Date("2026-11-02T05:30:01Z") };
+  assert.equal((await decideFormLeadAdoption({ payload: { ...payload, timestamp: "2026-11-02T18:00:00Z" }, store: memoryStore({ forms: [standard] }) })).classification, "adopt");
 });
 
 test("canonical adoption remaps remaining creates and leaves receipt outcomes alone", async () => {

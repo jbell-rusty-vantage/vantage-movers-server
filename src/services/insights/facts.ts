@@ -1,3 +1,5 @@
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
+import { getCallLeadReportingDecision } from "../leads/callLeadReportingDisposition";
 /**
  * Lean facts for one period: the leads that arrived in it, the bookings booked in it, the cancellations recorded in
  * it, and the bookings of its leads (cohort). Everything below the loaders is pure, so the metric code is tested on
@@ -20,6 +22,8 @@ export type LeadFact = {
   day: string;
   hour: number;
   duplicate: boolean;
+  billable?: boolean;
+  bad_call?: boolean;
   feed: InsightsFeed | null;
   company: string;
   price: LeadPrice;
@@ -81,6 +85,10 @@ const LEAD_PROJECTION = {
   createdAt: 1,
   ingestion_origin: 1,
   duplicate: 1,
+  form_fill: 1,
+  ringcentral: 1,
+  external_call_admission: 1,
+  external_sheet_review: 1,
   created_on_unmatched: 1,
   source_granularity_id: 1,
   source_granularity_key: 1,
@@ -123,11 +131,13 @@ export function resolveCompany(catalog: InsightsCatalog, feed: InsightsFeed | nu
 
 /** A lead row → fact; null for rows that are not leads (unmatched calls) or have no readable day. */
 export function toLeadFact(catalog: InsightsCatalog, kind: "form" | "call", doc: Document): LeadFact | null {
-  if (kind === "call" && doc.created_on_unmatched === true) return null;
+  const decision = kind === "call" ? getCallLeadReportingDecision(doc) : null;
+  if (decision?.disposition === "excluded") return null;
   const at = leadDayAndHour(doc);
   if (!at) return null;
   const feed = resolveFeed(catalog, doc.source_granularity_id, doc.source_granularity_key);
-  const duplicate = doc.duplicate === true;
+  const duplicate = decision ? decision.disposition === "duplicate_calls" : doc.duplicate === true;
+  const billable = decision ? decision.billable : !duplicate;
   const receiver = doc.receiver_agent ? str(doc.receiver_agent) : null;
   return {
     id: str(doc._id),
@@ -135,9 +145,11 @@ export function toLeadFact(catalog: InsightsCatalog, kind: "form" | "call", doc:
     day: at.day,
     hour: at.hour,
     duplicate,
+    billable,
+    bad_call: decision?.disposition === "bad_call_leads",
     feed,
     company: resolveCompany(catalog, feed, doc.lead_source_company, doc.source_company),
-    price: priceLead(catalog, { feed, day: at.day, duplicate }),
+    price: priceLead(catalog, { feed, day: at.day, duplicate, billable }),
     receiver_id: receiver,
     receiver_name: receiver ? (catalog.agents.get(receiver)?.name ?? (str(doc.receiver_agent_name_snapshot) || null)) : null,
     booked_id: doc.booked ? str(doc.booked) : null,
@@ -217,7 +229,7 @@ export async function loadLeadFacts(catalog: InsightsCatalog, range: RangeLike):
   const scan = { $gte: dayToUtc(range.start), $lt: new Date(dayToUtc(range.end_exclusive).getTime() + 6 * 3_600_000) };
   const [form, call] = await Promise.all([
     insightsCollection("form_leads").find({ timestamp: scan }, { projection: LEAD_PROJECTION }).toArray(),
-    insightsCollection("call_leads").find({ timestamp: scan }, { projection: LEAD_PROJECTION }).toArray(),
+    insightsCollection("call_leads").find({ timestamp: scan, ...reportingEligibleCallLeadFilter() }, { projection: LEAD_PROJECTION }).toArray(),
   ]);
   const facts: LeadFact[] = [];
   for (const [kind, docs] of [["form", form], ["call", call]] as const) {
@@ -294,3 +306,8 @@ export function filterFacts(facts: PeriodFacts, sources: readonly string[]): Per
     cohortBookings: new Map([...facts.cohortBookings].filter(([, booking]) => wanted.has(booking.company))),
   };
 }
+
+export function isBillableLeadFact(lead: LeadFact): boolean { return lead.billable ?? (!lead.duplicate && !lead.bad_call); }
+
+/** Primary disposition: duplicate wins when more than one exception reason is present. */
+export function isBadCallLeadFact(lead: LeadFact): boolean { return lead.kind === "call" && lead.bad_call === true && !lead.duplicate; }

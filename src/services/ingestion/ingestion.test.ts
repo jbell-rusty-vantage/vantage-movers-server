@@ -1,3 +1,4 @@
+import { runBestRelocationIngestionWorker } from "./worker";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -33,6 +34,7 @@ import {
 } from "../durableWork";
 import { InMemoryLeaseStore } from "../durableWork/testing";
 import { applyBestRelocationPlan } from "./applyPlan";
+import type { FinalBestRelocationCallInput } from "../domainCommands/bestRelocationFinalCall";
 import {
   planHealthSignals,
   shouldAlertIngestionSignal,
@@ -691,7 +693,7 @@ test("ingestion run graph makes all terminal states immutable", () => {
 test("heartbeat gates skip before source reads", () => {
   const now = new Date("2026-05-01T12:00:00.000Z");
   assert.equal(envGateEnabled(undefined), false);
-  assert.equal(envGateEnabled("true"), true);
+  assert.equal(envGateEnabled("true"), false);
   assert.equal(
     ingestionHeartbeatSkipReason({
       env_enabled: false,
@@ -699,7 +701,7 @@ test("heartbeat gates skip before source reads", () => {
       next_due_at: null,
       now,
     }),
-    "environment_disabled",
+    "retired",
   );
   assert.equal(
     ingestionHeartbeatSkipReason({
@@ -708,7 +710,7 @@ test("heartbeat gates skip before source reads", () => {
       next_due_at: null,
       now,
     }),
-    "application_disabled",
+    "retired",
   );
   assert.equal(
     ingestionHeartbeatSkipReason({
@@ -717,7 +719,7 @@ test("heartbeat gates skip before source reads", () => {
       next_due_at: new Date("2026-05-02T00:00:00.000Z"),
       now,
     }),
-    "not_due",
+    "retired",
   );
 });
 
@@ -749,20 +751,11 @@ test("read paths use readonly Sheets scope and repair has a separate writer", as
   );
 });
 
-test("worker final and failure transitions remain lease-fenced", async () => {
+test("retired worker acknowledges stale deliveries without connecting or reading sources", async () => {
+
+  assert.deepEqual(await runBestRelocationIngestionWorker(), { claimed: false, status: "retired" });
   const source = await readFile(path.join(__dirname, "worker.ts"), "utf8");
-  assert.match(source, /finalized\.modifiedCount !== 1/);
-  assert.match(source, /lease_owner: lease\.owner/);
-  assert.match(source, /lease_epoch: lease\.epoch/);
-  const consumer = await readFile(
-    path.join(
-      __dirname,
-      "../../../api/queues/best-relocation-ingestion-consumer.ts",
-    ),
-    "utf8",
-  );
-  assert.match(consumer, /status === "lease_busy"/);
-  assert.match(consumer, /throw new Error/);
+  assert.doesNotMatch(source, /connectMongo|createBestRelocationIngestionAdapter|applyBestRelocationPlan/);
 });
 
 test("pre-cutoff observations never enter the application plan", () => {
@@ -1112,7 +1105,7 @@ test("bootstrap adoption remaps creates to receipt-only adopt_existing", () => {
   );
 });
 
-test("bootstrap adopts nonduplicate calls using DST-aware persisted timestamps", async (t) => {
+test("bootstrap ignores external Call observations while retaining booking work", async () => {
   const data = fixture();
   data.calls = parseCallRows(
     makeTab("Calls", ["PHONE NUMBER", "Date", "Time", "vantage_ingestion_id"], [
@@ -1126,71 +1119,9 @@ test("bootstrap adopts nonduplicate calls using DST-aware persisted timestamps",
     cutoff: BEST_RELOCATION_CUTOFF,
     sourceReadThrough: new Date("2026-05-03T00:00:00.000Z"),
   }).plan;
-  const callAction = source.actions.find(
-    (action) => action.command === "create_call_lead",
-  )!;
-  const winterAction = {
-    ...callAction,
-    action_key: `${callAction.action_key}:winter`,
-    stable_source_row_id: managed("8"),
-    content_hash: "f".repeat(64),
-    command_payload: {
-      ...callAction.command_payload,
-      timestamp: "2026-01-15T15:00:00.000Z",
-    },
-  };
-  const capturedFilters: Record<string, unknown>[] = [];
-  t.mock.method(CallLead, "find", (filter: Record<string, unknown>) => {
-    capturedFilters.push(filter);
-    const query = {
-      select: () => query,
-      limit: () => query,
-      lean: () => query,
-      exec: async () => [
-        {
-          _id: "507f1f77bcf86cd799439011",
-          ...callAction.source_owned_values,
-        },
-      ],
-    };
-    return query as never;
-  });
-
-  const summer = await planBootstrapAdoption({
-    ...source,
-    actions: [callAction],
-  });
-  const winter = await planBootstrapAdoption({
-    ...source,
-    actions: [winterAction],
-  });
-
-  const summerTimestamp = capturedFilters[0]?.timestamp as
-    | { $gte?: Date; $lte?: Date }
-    | undefined;
-  const winterTimestamp = capturedFilters[1]?.timestamp as
-    | { $gte?: Date; $lte?: Date }
-    | undefined;
-  assert.equal(
-    summerTimestamp?.$gte?.toISOString(),
-    "2026-05-01T09:59:59.000Z",
-  );
-  assert.equal(
-    summerTimestamp?.$lte?.toISOString(),
-    "2026-05-01T10:00:01.000Z",
-  );
-  assert.equal(
-    winterTimestamp?.$gte?.toISOString(),
-    "2026-01-15T09:59:59.000Z",
-  );
-  assert.equal(
-    winterTimestamp?.$lte?.toISOString(),
-    "2026-01-15T10:00:01.000Z",
-  );
-  assert.deepEqual(capturedFilters[0]?.duplicate, { $ne: true });
-  assert.deepEqual(capturedFilters[1]?.duplicate, { $ne: true });
-  assert.equal(summer.actions[0].command, "adopt_existing");
-  assert.equal(winter.actions[0].command, "adopt_existing");
+  assert.equal(source.actions.some((row) => row.command === "create_call_lead"), false);
+  assert.ok(source.actions.some((row) => row.command === "create_leadless_booking"));
+  assert.match(source.warnings.join(" "), /not qualification evidence/);
 });
 
 test("apply resumes from checkpoint without replaying successful actions", async () => {
@@ -1273,7 +1204,7 @@ test("apply resumes from checkpoint without replaying successful actions", async
       new Map([[leadAction.action_key, "507f1f77bcf86cd799439011"]]),
   };
   const actor = createBestRelocationIngestionActor("run-1");
-  const result = await applyBestRelocationPlan({
+  const result = await applyFinalPlan({
     plan,
     checksum,
     run_id: "507f1f77bcf86cd799439000",
@@ -1413,7 +1344,7 @@ test("adopt_existing Form Lead supplies the Booking lead_ref without creating a 
   assert.ok(lease);
   let bookingLeadRef: unknown;
   const actor = createBestRelocationIngestionActor("run-adopt");
-  const result = await applyBestRelocationPlan({
+  const result = await applyFinalPlan({
     plan,
     checksum,
     run_id: "507f1f77bcf86cd799439000",
@@ -1566,7 +1497,7 @@ test("failed lead dependency blocks dependent booking and continues independentl
   });
   const actor = createBestRelocationIngestionActor("run-dep");
   const calls: string[] = [];
-  const result = await applyBestRelocationPlan({
+  const result = await applyFinalPlan({
     plan,
     checksum,
     run_id: "507f1f77bcf86cd799439000",
@@ -1638,10 +1569,10 @@ test("failed lead dependency blocks dependent booking and continues independentl
       resolvedActionIdsForRun: async () => new Map(),
     },
   });
-  assert.deepEqual(calls, ["create_form_lead", "create_call_lead"]);
-  assert.equal(result.failures, 1);
+  assert.deepEqual(calls, ["create_form_lead"]);
+  assert.equal(result.failures, 2);
   assert.equal(result.skipped_dependencies, 1);
-  assert.equal(result.applied, 1);
+  assert.equal(result.applied, 0);
 });
 
 test("concurrent apply lease acquisition admits only one owner", async () => {
@@ -1682,7 +1613,7 @@ test("altered plan checksum is rejected before any mutation", async () => {
   let commands = 0;
   await assert.rejects(
     () =>
-      applyBestRelocationPlan({
+      applyFinalPlan({
         plan: built.plan,
         checksum: "0".repeat(64),
         run_id: "507f1f77bcf86cd799439000",
@@ -1786,12 +1717,13 @@ test("health signals alert on structural and growth thresholds", () => {
   );
 });
 
-test("conflict resolve route delegates booking attach to canonical command", async () => {
+test("retired ingestion routes cannot resolve conflicts or attach a booking", async () => {
   const source = await readFile(
     path.join(__dirname, "../../routes/ingestion.routes.ts"),
     "utf8",
   );
-  assert.match(source, /canonicalDomainCommands\.attachBookingToLead/);
+  assert.match(source, /status\(410\)/);
+  assert.doesNotMatch(source, /canonicalDomainCommands|router\.(?:post|patch)/);
   assert.doesNotMatch(source, /BookedLead\.(?:updateOne|findByIdAndUpdate|findOneAndUpdate)/);
   assert.doesNotMatch(source, /models\/BookedLead/);
 });
@@ -1907,4 +1839,50 @@ test("ingestion route errors never expose provider or source details", () => {
     code: "ingestion_internal_error",
     error: "Ingestion request failed",
   });
+});
+
+/** Archived final-run harness explicitly opts into the retired engine. */
+function applyFinalPlan(input: Parameters<typeof applyBestRelocationPlan>[0]) {
+ return applyBestRelocationPlan({ ...input,
+   initiator: { actor_type: "owner", actor_id: "test-owner", actor_label: "Test Owner", actor_role: "owner", request_id: input.run_id, origin: "vantage_admin" },
+   final_reconciliation: { run_id: input.run_id, plan_checksum: input.checksum },
+   assertApplicationEnabled: input.assertApplicationEnabled ?? (async () => undefined),
+ });
+}
+
+test("the shared apply engine rejects old callers even when the plan checksum is valid", async () => {
+ const { plan, checksum } = buildBestRelocationApplicationPlan({ data: fixture(), trigger: "preview",
+   cutoff: BEST_RELOCATION_CUTOFF, sourceReadThrough: new Date("2026-05-03T00:00:00Z") });
+ const actor = createBestRelocationIngestionActor("old");
+ const leaseStore = new InMemoryLeaseStore();
+ const lease = await leaseStore.acquire({ scope: "ingestion:best_relocation:apply", owner: "old", ttl_ms: 60_000, now: new Date() });
+ assert.ok(lease);
+ await assert.rejects(applyBestRelocationPlan({ plan, checksum, run_id: "old", connection_id: "old",
+   actor, initiator: actor, lease, leaseStore, commands: {} as Parameters<typeof applyBestRelocationPlan>[0]["commands"],
+ }), /permanently retired/);
+});
+
+test("final apply routes approved Calls through only the dedicated admission command with source provenance", async () => {
+  const { bestRelocationFinalCallPayloadChecksum } = await import("../domainCommands/bestRelocationFinalCall.js");
+  const built = buildBestRelocationApplicationPlan({ data: fixture(), trigger: "manual", cutoff: BEST_RELOCATION_CUTOFF, sourceReadThrough: new Date("2026-05-03T00:00:00Z") });
+  const action = { ...built.plan.actions[0]!, action_key: "final:call", command: "admit_final_best_relocation_call" as const,
+    classification: "adoption" as const, dataset_key: "calls", command_payload: { target_lead_id: "600000000000000000000001" }, depends_on: [] };
+  const plan = { ...built.plan, actions: [action] };
+  const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: plan.schema_version, payload: plan });
+  const actor = createBestRelocationIngestionActor("final-admission-test"), leaseStore = new InMemoryLeaseStore();
+  const lease = await leaseStore.acquire({ scope: "ingestion:best_relocation:apply", owner: "final-admission-test", ttl_ms: 60_000, now: new Date() });
+  assert.ok(lease);
+  let admissions = 0, receipts = 0;
+  const result = await applyFinalPlan({ plan, checksum, run_id: "600000000000000000000002", connection_id: "600000000000000000000003", actor, initiator: actor,
+    lease, leaseStore, commands: { admitBestRelocationFinalCall: async (input: FinalBestRelocationCallInput) => {
+      admissions++; assert.deepEqual(input.action, action);
+      assert.equal(input.context.payload_checksum, bestRelocationFinalCallPayloadChecksum(action));
+      assert.equal(input.context.provenance.source_receipt_id, "600000000000000000000004");
+      assert.equal(input.context.provenance.origin, "external_sheet_ingestion");
+      return { status: "applied", entity_refs: [{ model: "CallLead", id: "600000000000000000000001" }], warnings: [] };
+    }, createCallLead: async () => { throw new Error("public Call create must not be called"); } } as unknown as Parameters<typeof applyBestRelocationPlan>[0]["commands"],
+    persistence: { preallocateReceiptId: () => "600000000000000000000004", appendSourceReceipt: async () => { receipts++; return { id: "600000000000000000000004" }; },
+      resolvedActionIdsForRun: async () => new Map(), isIngestionConflictDispositioned: async () => false, openIngestionConflict: async () => undefined } as unknown as Parameters<typeof applyBestRelocationPlan>[0]["persistence"],
+  });
+  assert.equal(admissions, 1); assert.equal(receipts, 1); assert.equal(result.applied, 1); assert.equal(result.failures, 0);
 });

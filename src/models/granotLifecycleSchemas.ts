@@ -379,6 +379,10 @@ export const LEAD_PROVENANCE_FIELD_NAMES = [
 
 export const PUBLIC_LEAD_FORBIDDEN_LIFECYCLE_FIELDS = [
   "ingestion_origin",
+  "external_sheet_review",
+  "external_call_admission",
+  "ringcentral",
+  "outreach_automation_suppressed",
   "normalized_job_no",
   "granot_priority",
   "granot_move_size",
@@ -477,6 +481,7 @@ const currentMoveProvenanceSchema = new Schema(
 const lastAcceptedGranotObservationSchema = new Schema(
   {
     observation_id: { type: Schema.Types.ObjectId, required: true },
+    evidence: { type: Schema.Types.Mixed },
     captured_at: { type: Date, required: true },
   },
   { _id: false },
@@ -653,6 +658,8 @@ export const granotReceiptProcessingSchema = new Schema(
     last_started_at: { type: Date },
     last_error: { type: granotReceiptLastErrorSchema },
     completed_at: { type: Date },
+    replay_result: { type: Schema.Types.Mixed },
+    retention_review_at: { type: Date },
     latest_decision_id: { type: Schema.Types.ObjectId },
     manual_requeue_count: { type: Number, required: true, min: 0 },
   },

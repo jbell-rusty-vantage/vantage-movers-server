@@ -1,3 +1,5 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
+import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
@@ -8,7 +10,6 @@ import type {
 } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotObservationModel } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type {
   SynchronizationDecisionDocument,
@@ -534,6 +535,7 @@ export function createMongoReleaseReconciliationStore(): ReleaseReconciliationPe
       return row?.sequence_number ?? 0;
     },
     async insertCase(row, session) {
+      for (const item of row.evidence) await preserveCaseEvidence(item.observation_id, item.decision_id, session);
       const [created] = await getGranotReleaseReconciliationCaseModel().create([row], { session });
       if (!created) throw new Error("Granot Release reconciliation case insert returned no row.");
       return created.toObject() as GranotReleaseReconciliationCaseDocument;
@@ -560,7 +562,10 @@ export function createMongoReleaseReconciliationStore(): ReleaseReconciliationPe
         )
         .lean()
         .exec();
-      if (updated) return updated;
+      if (updated) {
+        await preserveCaseEvidence(input.evidence.observation_id, input.evidence.decision_id, session);
+        return updated;
+      }
       const replay = await getGranotReleaseReconciliationCaseModel()
         .findOne({ _id: input.case_id, state: "open" })
         .session(session)
@@ -571,11 +576,8 @@ export function createMongoReleaseReconciliationStore(): ReleaseReconciliationPe
     },
     async insertDecision(decision, receiptId, session) {
       await getSynchronizationDecisionModel().create([decision], { session });
-      await getGranotObservationReceiptModel().collection.updateOne(
-        { _id: receiptId },
-        { $set: { "processing.latest_decision_id": decision._id } },
-        { session },
-      );
+      if (decision.target?.model === "GranotReleaseReconciliationCase") await preserveCaseDecision(decision, session);
+      await pointReceiptToDecision(receiptId, decision._id, session);
     },
     async findDecision(observationId, attempt, session) {
       return getSynchronizationDecisionModel()

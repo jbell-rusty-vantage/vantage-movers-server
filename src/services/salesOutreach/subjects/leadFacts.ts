@@ -28,6 +28,8 @@ export type DeskLeadFacts = Readonly<{
   bad_lead: string | null;
   /** Reporting scope only; never a desk closure (P05h). */
   no_sync: boolean;
+  /** Immutable final-import marker; automatic admission waits for later accepted Granot evidence. */
+  outreach_automation_suppressed?: boolean;
   /** Call Lead created only to anchor a Booking (P05h: no automatic cadence). */
   created_on_unmatched: boolean;
   /** Call Lead Form Fill flag: neither excludes nor merges (P05h). */
@@ -65,6 +67,7 @@ export const DESK_LEAD_PROJECTION = {
   duplicate: 1,
   bad_lead: 1,
   no_sync: 1,
+  outreach_automation_suppressed: 1,
   created_on_unmatched: 1,
   form_fill: 1,
   "granot_form_sibling.form_lead_id": 1,
@@ -113,6 +116,7 @@ export function toDeskLeadFacts(model: SalesOutreachLeadModel, raw: RawLead): De
     duplicate: raw.duplicate === true,
     bad_lead: str(raw.bad_lead),
     no_sync: raw.no_sync === true,
+    outreach_automation_suppressed: raw.outreach_automation_suppressed === true,
     created_on_unmatched: raw.created_on_unmatched === true,
     form_fill: raw.form_fill === true,
     form_sibling_lead_id: model === "CallLead" ? id((raw.granot_form_sibling as { form_lead_id?: unknown } | null | undefined)?.form_lead_id) : null,

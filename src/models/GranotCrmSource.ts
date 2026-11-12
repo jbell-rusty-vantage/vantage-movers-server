@@ -149,6 +149,8 @@ const GranotCrmSourceSchema = new Schema(
       enum: GRANOT_LIFECYCLE_DISPOSITIONS,
       default: "deferred",
     },
+    granot_creation_retired_at: { type: Date, default: null },
+    granot_creation_retirement_run_id: { type: String, trim: true, default: null },
     lead_created_policy: {
       type: String,
       required: true,
@@ -198,6 +200,7 @@ GranotCrmSourceSchema.pre("validate", function validateLifecycleSemantics() {
     source_granularity_id: String(route.source_granularity_id ?? ""),
   }));
   const result = validateGranotCrmSourceSemantics({
+    granot_creation_retired_at: this.granot_creation_retired_at,
     granot_label: this.granot_label,
     normalized_granot_label: this.normalized_granot_label || undefined,
     enabled: this.enabled !== false,

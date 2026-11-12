@@ -1,3 +1,4 @@
+import { granotCreationRetired } from "../../models/bestRelocationRetirement";
 import type { ClientSession } from "mongoose";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
@@ -21,6 +22,7 @@ export type SourcePolicyRoute = {
 };
 
 export type SourcePolicyRow = {
+  granot_creation_retired_at?: Date | string | null;
   id: string;
   enabled: boolean;
   lifecycle_enabled: boolean;
@@ -126,6 +128,7 @@ export function createMongoSourcePolicyStore(session?: ClientSession): SourcePol
         .lean()
         .exec();
       return rows.map((row) => ({
+        granot_creation_retired_at: row.granot_creation_retired_at,
         id: String(row._id),
         enabled: row.enabled !== false,
         lifecycle_enabled: row.lifecycle_enabled === true,
@@ -150,7 +153,7 @@ export function createMongoSourcePolicyStore(session?: ClientSession): SourcePol
         .session(session ?? null)
         .lean()
         .exec();
-      return row ? { id: String(row._id), active: row.active === true } : null;
+      return row ? { id: String(row._id), active: row.active === true, company_slug: row.company_slug, granot_creation_retired_at: row.granot_creation_retired_at } : null;
     },
     async findGranularity(id) {
       const row = await getLeadSourceGranularityModel()
@@ -222,7 +225,7 @@ async function resolveNormalizedMatches(
     granot_crm_source_id: row.id,
     lead_source_company_id: row.lead_source_company,
     lifecycle_disposition: row.lifecycle_disposition,
-    lead_created_policy: row.lead_created_policy,
+    lead_created_policy: granotCreationRetired({ ...row, granot_label: facts.source_label }) ? "link_only" : row.lead_created_policy,
     lifecycle_policy_version: row.lifecycle_policy_version || undefined,
     operational_enabled: row.enabled,
     lifecycle_enabled: row.lifecycle_enabled,
@@ -270,6 +273,7 @@ async function resolveNormalizedMatches(
     };
   }
 
+  if (granotCreationRetired(company)) baseSnapshot.lead_created_policy = "link_only";
   const selected = await selectRoute(row, facts, store);
   if (!selected.ok) {
     return {

@@ -604,10 +604,9 @@ test("the drainer records Sheet Sync facts on synced and failed jobs, never on c
   );
   assert.equal(source.match(/recordJobCompletedFact\(job\)/g)?.length, 2);
   assert.match(source, /recordSheetSyncDailyOperationsFact\(\{\s*job,\s*outcome: "failed"/);
-  const duplicatesLoop = source.slice(source.indexOf("for (const job of duplicates)"));
-  const duplicatesBody = duplicatesLoop.slice(0, duplicatesLoop.indexOf("\n    }\n"));
-  assert.match(duplicatesBody, /coalesced_into_representative/);
-  assert.doesNotMatch(duplicatesBody, /recordJobCompletedFact/);
+  // Duplicate-key subscriber statuses and representative-only emission are
+  // behaviorally qualified by ops/sheet-sync-recovery/replica.ts. The old
+  // unconditional duplicate-finalization loop must not be required here.
   const deferStart = source.indexOf("else if (anyDeferred)");
   const deferBranch = source.slice(deferStart, source.indexOf("} else {", deferStart));
   assert.match(deferBranch, /deferJob\(job/);

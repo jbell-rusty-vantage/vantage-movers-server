@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Google Sheets Sync Process
 
-Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md). Ordinary [No-Sync Lead](../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`) skips/deletes Master Leads Forms and Calls only; [Unmatched Call Lead](../../../CONTEXT.md) stays a separate empty-plan skip (`created_on_unmatched`).
+Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../docs/knowledge/services/sheet-sync.md), [`google-sheets.md`](../../docs/knowledge/services/google-sheets.md). Canonical commands: [`domain-commands.md`](../../docs/knowledge/services/domain-commands.md). Ordinary [No-Sync Lead](../../../CONTEXT.md) (`noSyncAppliesToNormalTabs` in `src/services/sheetSync/noSyncLead.ts`) suppresses ordinary lead upserts; ordinary Forms delete normal Forms rows, while ordinary Calls clean Calls, Duplicate Calls and Bad Call Leads; effective duplicate/bad exceptions still project. [Unmatched Call Lead](../../../CONTEXT.md) stays a separate empty-plan skip (`created_on_unmatched`). Call disposition is shared through `leads/callLeadReportingDisposition.ts`, and direct facade entry points enforce qualification.
 
 ## Env, modes, quotas
 
@@ -17,7 +17,21 @@ Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../doc
 - Queue publish (`shouldPublishSheetSyncQueue`): not a Vantage test runner; hosted function runtime (`VERCEL=1` plus `VERCEL_REGION`); **and** non-preview `VERCEL_ENV` (`shouldPublishSheetSyncQueue`). Preview/local never publish. `SHEET_SYNC_QUEUE_LOCAL_PUBLISH` does not enable publish. Topic `sheet-sync-events` / `sheet-sync-events-dev` (`SHEET_SYNC_QUEUE_TOPIC` override). Admin retry starts `runSheetSyncDrain("admin")` and does not publish.
 - Cron: `router.all("/api/cron/sheet-sync-drain")`, auth `CRON_SECRET` (Bearer or `x-cron-secret`), no-op unless queued, every 5 minutes (`vercel.json`). Consumer: `api/queues/sheet-sync-consumer.ts` (payload ignored).
 - Google hard ceilings: 60 reads/min and 60 writes/min per user. Default operational budgets 45/45 (`SHEET_SYNC_READS_PER_MINUTE_BUDGET`, `SHEET_SYNC_WRITES_PER_MINUTE_BUDGET`). Other knobs: `SHEET_SYNC_MAX_JOBS_PER_DRAIN` (500), `SHEET_SYNC_DEBOUNCE_WINDOW_MS` (3000), `SHEET_SYNC_MAX_ATTEMPTS` (8), payload/batch/lease/run-duration envs in `getSheetSyncBudgets` / `getSheetSyncDrainGuardrails`.
-- Quota deferral retries in 60s and does not burn an attempt. Coalesce only `pending`/`retrying`.
+- Quota, request-guard and unconfirmed structural delivery deferrals retry in 60s without burning an attempt. Coalesce only `pending`/`retrying`.
+
+## Topology writer fence
+
+- `sheetSync/writerFence.ts` reads the short-lived `SheetSyncLease` scope `lead-reporting:tab-migration`; held leases block lead upserts/deletes/provisioning before Google writes. Queued drains skip before claiming, recheck before delivery, and recheck ownership/fence/deadline at each provider request; outbox work remains durable.
+- Deploy compatible writers, acquire/renew both topology and `sheet-sync:drain` leases, wait out older invocations, rename numeric tab IDs and repair derivative formulas, verify, then release. Migration uses operator Google APIs. No public bypass or permanent env flag exists.
+- Old Form aliases (`Duplicates`, `Bad Leads`) are never cached; warm writers re-resolve after cutover and provision only canonical titles.
+
+## Queued request/recovery boundary
+
+- `drainer/deliveryRequests.ts` guards every queued provider request, including tab/header helpers and safe explicit retries. Reserve quota per actual attempt; override both Google transport `retry` and `retryConfig`. Do not change legacy/direct retry behavior.
+- Append and positional delete get one attempt per plan. Unconfirmed structural delivery stops all further provider requests in that invocation. Defer unresolved targets; retain confirmed outcomes and each logical job's attempt/status evidence. Replan from current Mongo and fresh tab identity on the next durable drain; never reuse old delete positions. Metadata failure after Google success remains recoverable by identity.
+- Read exactly one actual `Mongo ID` header; malformed/failed reads cannot prove absence. Validate identity before a cold header rewrite and reuse the read. Shifted legacy lookup remains supported for deletes; refuse a header rewrite that would move identity. Initialize headerless emptiness only for a confirmed newly created tab. Missing/invalid existing headers need operator correction and existing Admin retry.
+- `runSheetSyncDrain.ts` plans each claimed logical job so retry hints/tombstones remain independent; the writer coalesces identical physical writes and fans results back. Duplicate claimed keys retain representative-only Daily Operations emission within the drain. Never finalize a subscriber solely because a representative was processed.
+- An in-flight request may finish after lease/fence loss; stop subsequent requests and let the next owner reconcile. No exactly-once network claim. Rollback retains durable work/evidence and restores the prior retry risk. Qualification: [handoff](../../docs/efficiency/sheet-sync-recovery-handoff-2026-11-04.md).
 
 ## Operational safety
 
@@ -32,3 +46,6 @@ Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../doc
 - Scheduling: `sheetSyncCoordinator.ts`, `sheetSyncOutbox.service.ts`, `sheetSyncQueue.service.ts`.
 - Execution: `drainer/runSheetSyncDrain.ts`, `jobPlanner.ts`, `batchWriter.ts`, `tabRowMap.ts`, `quotaLimiter.ts`, `leases.ts`.
 - Sheet details: `src/services/googleSheets/targets.ts`, `tabs.ts`, `src/config/domain/sheets.ts`.
+
+
+- The authenticated queued Sheet Sync cron first runs `leads/drainFormFillWork.ts` (durable model `FormFillWork`, due index + per-task cursor/generation). Keep Lead effects, audit, outbox and cursor transactional; never perform external delivery inside that transaction. Owner policy and correction limits: [billing](../../docs/call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering).

@@ -1,3 +1,4 @@
+import { bestRelocationRetiredError } from "../ingestion/retirementPolicy";
 import {
   MANAGED_ID_HEADER,
   isValidManagedIngestionId,
@@ -60,6 +61,7 @@ export async function inspectBestRelocationSources(input: {
   repairIdentity: boolean;
   sheetsClient?: SheetsClient;
 }): Promise<IngestionInspection> {
+  if (input.repairIdentity) throw bestRelocationRetiredError();
   const client =
     input.sheetsClient ??
     (input.repairIdentity

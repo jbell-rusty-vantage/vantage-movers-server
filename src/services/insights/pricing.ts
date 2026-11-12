@@ -12,6 +12,7 @@ import type { InsightsCatalog, InsightsFeed } from "./catalog";
 export type LeadPrice =
   | { status: "priced"; amount: number }
   | { status: "duplicate"; amount: 0 }
+  | { status: "nonbillable"; amount: 0 }
   | { status: "unpriced"; amount: 0 }
   | { status: "no_feed"; amount: 0 };
 
@@ -31,8 +32,9 @@ export function priceForDay(periods: readonly PricedPeriod[] | undefined, day: s
 
 export function priceLead(
   catalog: Pick<InsightsCatalog, "periodsByFeed">,
-  lead: { feed: InsightsFeed | null; day: string; duplicate: boolean },
+  lead: { feed: InsightsFeed | null; day: string; duplicate: boolean; billable?: boolean },
 ): LeadPrice {
+  if (lead.billable === false && !lead.duplicate) return { status: "nonbillable", amount: 0 };
   if (!lead.feed) return { status: "no_feed", amount: 0 };
   if (lead.duplicate) return { status: "duplicate", amount: 0 };
   const amount = priceForDay(catalog.periodsByFeed.get(lead.feed.id), lead.day);

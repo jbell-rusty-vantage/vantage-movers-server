@@ -27,6 +27,7 @@ import {
   markRingCentralConvergenceConflict,
 } from "../ringcentral/callLeadConvergence.service";
 import type { CanonicalDomainCommands } from "./types";
+import { admitBestRelocationFinalCall } from "./bestRelocationFinalCall";
 import { correctGranotRecordLink, reEvaluateGranotDiscrepancy, resolveGranotDiscrepancyNoAction } from "../granotLifecycle/discrepancyOwnerCommands";
 
 export * from "./bookings";
@@ -36,6 +37,7 @@ export * from "./existingWrites";
 export * from "./idempotency";
 export * from "./leads";
 export * from "./types";
+export * from "./bestRelocationFinalCall";
 export { createLeadFromGranot } from "../granotLifecycle/createLeadFromGranot";
 export {
   adoptRingCentralCall,
@@ -43,6 +45,7 @@ export {
 } from "../ringcentral/callLeadConvergence.service";
 
 export const canonicalDomainCommands: CanonicalDomainCommands = {
+  admitBestRelocationFinalCall,
   createFormLead,
   createCallLead,
   updateSourceOwnedLead,

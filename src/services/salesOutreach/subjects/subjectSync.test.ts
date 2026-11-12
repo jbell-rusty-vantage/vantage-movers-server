@@ -848,3 +848,33 @@ describe("olr C2c: cadence.no_contact_number_rule (D-C2c; off unless the Owner s
     assert.deepEqual(subjectStatusOf({ ...base, active_workflow: "closed", contact }), { status: "closed", review_reasons: [] });
   });
 });
+
+test("final-import Forms await later Granot evidence before automatic intake or expansion", () => {
+  const facts = leadFacts({ outreach_automation_suppressed: true });
+  const configuration = intakeOn();
+  const now = at("2026-10-02T14:00:00Z");
+  assert.deepEqual(intakeAdmissionOf(facts, configuration, now), { admit: false, reason: "historical_reconciliation" });
+  assert.deepEqual(expansionAdmissionOf(facts, configuration, now, { ambiguous_identity: false, creation_settled: true }),
+    { admit: false, deferred: false, reason: "expansion:historical_reconciliation" });
+});
+
+test("later accepted Granot evidence restores normal admission without bypassing official closures", () => {
+ const configuration = deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: GATE,
+   expansion_admission_enabled: true, backfill_lookback_days: 90, backfill_include_upcoming_moves: true }, migration: { paused: false } });
+ const now = at("2026-10-02T14:00:00Z");
+ const imported = leadFacts({ ingestion_origin: "best_relocation_sheet", outreach_automation_suppressed: true });
+ for (const capturedAt of ["2026-09-30T14:00:00Z", imported.created_at!.toISOString()]) {
+  const old = { ...imported, ...accepted("0", capturedAt) };
+  assert.deepEqual(intakeAdmissionOf(old, configuration, now), { admit: false, reason: "historical_reconciliation" });
+  assert.deepEqual(expansionAdmissionOf(old, configuration, now, { ambiguous_identity: false, creation_settled: true }),
+   { admit: false, deferred: false, reason: "expansion:historical_reconciliation" });
+ }
+ const later = { ...imported, ...accepted("0", "2026-10-01T15:00:00Z") };
+ assert.equal(intakeAdmissionOf(later, configuration, now).admit, true);
+ assert.equal(expansionAdmissionOf(later, configuration, now, { ambiguous_identity: false, creation_settled: true }).admit, true);
+ for (const closure of [{ booked_id: "official-booking" }, { cancelled_id: "official-cancellation" }, { bad_lead: "bad_phone_email_name" }, { duplicate: true }]) {
+  assert.equal(intakeAdmissionOf({ ...later, ...closure }, configuration, now).admit, false);
+  assert.equal(expansionAdmissionOf({ ...later, ...closure }, configuration, now, { ambiguous_identity: false, creation_settled: true }).admit, false);
+ }
+ assert.equal(expansionAdmissionOf(later, configuration, now, { ambiguous_identity: true, creation_settled: true }).admit, false);
+});

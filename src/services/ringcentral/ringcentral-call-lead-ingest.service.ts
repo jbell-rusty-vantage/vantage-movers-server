@@ -29,6 +29,7 @@ import {
 } from "./processed-calls-store";
 import { insertShadowCallLead } from "./shadow-call-leads-store";
 import type { RingCentralAdoptionOutcome } from "./ringcentral-metrics";
+import { persistRingCentralFinalCallLogResult } from "../domainCommands/ringcentralFinalResult";
 
 /**
  * The single, path-agnostic descriptor of a call that has qualified as a
@@ -55,6 +56,13 @@ export type RingCentralQualifiedCall = {
   startTime: Date | null;
   durationSeconds: number;
   qualificationReason: string;
+  /** Set only by the final Detailed Call Log vetter, including webhook lookups. */
+  finalCallLogResult?: {
+    result: string;
+    observedAt: Date;
+    callLogId: string | null;
+    answered: boolean;
+  };
 };
 
 export type RingCentralIngestAction =
@@ -85,6 +93,7 @@ export type RingCentralIngestResult = {
 
 export type RingCentralIngestDependencies = {
   findProcessedCall: typeof findProcessedCall;
+  persistFinalResult: typeof persistRingCentralFinalCallLogResult;
   attemptConvergence: typeof attemptRingCentralCallLeadConvergence;
   classifyDuplicate: typeof classifyRingCentralCallLeadDuplicate;
   resolveWriteMode: typeof resolveRingCentralLeadWriteMode;
@@ -112,6 +121,7 @@ function logRingCentralIngestEvent(entry: RingCentralIngestLogEntry): void {
 
 const defaultIngestDependencies: RingCentralIngestDependencies = {
   findProcessedCall,
+  persistFinalResult: persistRingCentralFinalCallLogResult,
   attemptConvergence: attemptRingCentralCallLeadConvergence,
   classifyDuplicate: classifyRingCentralCallLeadDuplicate,
   resolveWriteMode: resolveRingCentralLeadWriteMode,
@@ -155,6 +165,9 @@ export async function ingestRingCentralQualifiedCall(
       existing.status as (typeof RINGCENTRAL_PROCESSED_CALL_TERMINAL_STATUSES)[number],
     )
   ) {
+    if (existing.callLeadId && call.finalCallLogResult && deps.resolveWriteMode() === "create") {
+      await deps.persistFinalResult(call, existing.callLeadId);
+    }
     logger.info({
       msg: "ringcentral.ingest.skipped_already_processed",
       telephonySessionId: call.telephonySessionId,
@@ -203,6 +216,9 @@ export async function ingestRingCentralQualifiedCall(
     allowMutations: writeMode === "create",
   });
   if (convergence.outcome === "adopted") {
+    if (call.finalCallLogResult && writeMode === "create") {
+      await deps.persistFinalResult(call, convergence.callLeadId);
+    }
     const action = convergence.duplicate
       ? "lead_adopted_duplicate"
       : "lead_adopted";
@@ -292,6 +308,13 @@ export async function ingestRingCentralQualifiedCall(
         source_label: call.sourceLabel,
         ingestion_source: call.ingestionSource,
         qualification_reason: call.qualificationReason,
+        start_time: call.startTime,
+        ...(call.finalCallLogResult ? {
+          final_result: call.finalCallLogResult.result,
+          final_result_observed_at: call.finalCallLogResult.observedAt,
+          final_result_call_log_id: call.finalCallLogResult.callLogId,
+          final_result_answered: call.finalCallLogResult.answered,
+        } : {}),
         answered_at: call.answeredAt,
         terminal_at: call.terminalAt,
         duration_seconds: call.durationSeconds,
@@ -386,12 +409,15 @@ export async function ingestRingCentralQualifiedCall(
           sessionId: call.sessionId,
           callLogId: call.callLogId,
         });
-        if (!raced) throw error;
+        const racedLeadId = call.finalCallLogResult
+          ? await deps.persistFinalResult(call, raced?.callLeadId)
+          : null;
+        if (!raced && !racedLeadId) throw error;
         return {
           action: "skipped_already_processed",
-          duplicate: raced.duplicate,
-          duplicateReason: raced.duplicateReason,
-          callLeadId: raced.callLeadId,
+          duplicate: raced?.duplicate ?? duplicate.isDuplicate,
+          duplicateReason: raced?.duplicateReason ?? duplicate.reason,
+          callLeadId: raced?.callLeadId ?? racedLeadId,
           telephonySessionId: call.telephonySessionId,
           callLogId: call.callLogId,
           convergenceOutcome: convergence.outcome,

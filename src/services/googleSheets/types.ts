@@ -17,6 +17,8 @@ export type SheetTabConfig = {
 export type SyncableDocument = {
   _id: { toString(): string };
   sheet_sync?: SheetSyncEntry[];
+  no_sync?: boolean | null;
+  external_sheet_review?: unknown;
 };
 
 export type AgentAllocationSheetSource = {
@@ -78,6 +80,11 @@ export type FormLeadSheetSource = SyncableDocument & {
 };
 
 export type CallLeadSheetSource = SyncableDocument & {
+  ringcentral?: unknown;
+  external_call_admission?: unknown;
+  lead_source_company?: unknown;
+  source_granularity_id?: unknown;
+  created_on_unmatched?: boolean | null;
   timestamp: Date;
   job_no?: string | null;
   name?: string | null;

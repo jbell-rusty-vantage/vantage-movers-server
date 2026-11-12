@@ -1,10 +1,11 @@
+import { logger } from "../../logger";
 import type { sheets_v4 } from "googleapis";
 import {
   escapeSheetTitleForRange,
   extractRowNumberFromRange,
 } from "../../utils/googleSheets/ranges";
 import { withSheetsRetry } from "./retry";
-import { clearLegacyTrailingCells, columnLetter } from "./tabs";
+import { clearLegacyTrailingCells, columnLetter, getExistingSheetId } from "./tabs";
 
 const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
 
@@ -17,11 +18,8 @@ export async function upsertRow(
   mongoId: string,
   knownRowNumber?: number,
 ): Promise<number | undefined> {
-  const rowNumber =
-    knownRowNumber &&
-    (await rowNumberContainsMongoId(sheets, spreadsheetId, tabName, headers, mongoId, knownRowNumber))
-      ? knownRowNumber
-      : await findRowNumberByMongoId(sheets, spreadsheetId, tabName, headers, mongoId);
+  const rowNumbers = await findRowNumbersByMongoId(sheets, spreadsheetId, tabName, headers, mongoId);
+  const rowNumber = rowNumbers[0];
   if (rowNumber) {
     await clearLegacyTrailingCells(sheets, spreadsheetId, tabName, headers, rowNumber);
     await withSheetsRetry("values.update.row", () =>
@@ -32,6 +30,10 @@ export async function upsertRow(
         requestBody: { values: [row] },
       }),
     );
+    if (rowNumbers.length > 1) {
+      await deleteSheetRowsByNumbers(sheets, spreadsheetId, tabName, rowNumbers.slice(1));
+      logger.info({ msg: "sheets.duplicate_rows_repaired", mongoId, tabName, removed: rowNumbers.length - 1 });
+    }
     return rowNumber;
   }
 
@@ -45,7 +47,9 @@ export async function upsertRow(
     }),
   );
 
-  return extractRowNumberFromRange(response.data.updates?.updatedRange);
+  const appended = extractRowNumberFromRange(response.data.updates?.updatedRange);
+  if (appended === undefined) throw new Error("append_confirmation_missing");
+  return appended;
 }
 
 export async function findRowNumberByMongoId(
@@ -55,26 +59,34 @@ export async function findRowNumberByMongoId(
   headers: readonly string[],
   mongoId: string,
 ): Promise<number | undefined> {
-  const response = await withSheetsRetry("values.get.lookup", () =>
-    sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
-    }),
-  );
+  return (await findRowNumbersByMongoId(sheets, spreadsheetId, tabName, headers, mongoId))[0];
+}
+
+export async function findRowNumbersByMongoId(
+  sheets: sheets_v4.Sheets, spreadsheetId: string, tabName: string,
+  headers: readonly string[], mongoId: string,
+): Promise<number[]> {
+  const response = await withSheetsRetry("values.get.lookup", () => sheets.spreadsheets.values.get({
+    spreadsheetId, range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
+  }));
   const rows = response.data.values ?? [];
-  const mongoIdIndex = headers.indexOf("Mongo ID");
-  if (mongoIdIndex < 0) {
-    return undefined;
-  }
+  const mongoIdIndex = (rows[0] ?? []).indexOf("Mongo ID");
+  const idColumn = mongoIdIndex >= 0 ? mongoIdIndex : headers.indexOf("Mongo ID");
+  if (idColumn < 0) return [];
+  return rows.flatMap((row, index) => index > 0 && row[idColumn] === mongoId ? [index + 1] : []);
+}
 
-  for (let index = 1; index < rows.length; index += 1) {
-    const row = rows[index] ?? [];
-    if (row[mongoIdIndex] === mongoId || row.includes(mongoId)) {
-      return index + 1;
-    }
+export async function deleteSheetRowsByNumbers(sheets: sheets_v4.Sheets, spreadsheetId: string, tabName: string, rowNumbers: number[]): Promise<void> {
+  if (!rowNumbers.length) return;
+  const sheetId = await getExistingSheetId(sheets, spreadsheetId, tabName);
+  if (sheetId === undefined) return;
+  const ordered = [...new Set(rowNumbers)].sort((left, right) => right - left);
+  // Keep each request bounded, with descending indices across chunks.
+  for (let offset = 0; offset < ordered.length; offset += 100) {
+    await withSheetsRetry("batchUpdate.deleteRows", () => sheets.spreadsheets.batchUpdate({
+      spreadsheetId, requestBody: { requests: ordered.slice(offset, offset + 100).map((rowNumber) => ({ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowNumber - 1, endIndex: rowNumber } } })) },
+    }));
   }
-
-  return undefined;
 }
 
 export async function rowNumberContainsMongoId(
@@ -97,5 +109,5 @@ export async function rowNumberContainsMongoId(
     }),
   );
   const row = response.data.values?.[0] ?? [];
-  return row[mongoIdIndex] === mongoId || row.includes(mongoId);
+  return row[mongoIdIndex] === mongoId;
 }

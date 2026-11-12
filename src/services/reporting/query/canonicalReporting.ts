@@ -1,3 +1,5 @@
+import { getCallLeadReportingDecision } from "../../leads/callLeadReportingDisposition";
+import { hasTrustedExternalSheetReview } from "../../leads/externalSheetReview";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession, type PipelineStage } from "mongoose";
 import { BookedLead } from "../../../models/BookedLead";
@@ -40,14 +42,14 @@ type Cancellation = Row & { _id: unknown; booked_lead: unknown; cancel_date: Dat
 
 const LEAD_REPORTING_PROJECTION = {
   _id: 1, timestamp: 1, createdAt: 1, updatedAt: 1,
-  lead_source_company: 1, source_granularity_key: 1,
+  lead_source_company: 1, source_granularity_key: 1, source_granularity_id: 1,
   source_company: 1, source_company_label_snapshot: 1,
   source_granularity_label_snapshot: 1,
   name: 1, phone_number: 1, email: 1,
   pickup_zip: 1, pickup_state: 1, destination_zip: 1, delivery_zip: 1,
   delivery_state: 1, local: 1, move_date: 1, move_size: 1,
-  quoted: 1, duplicate: 1, bad_lead: 1, cpl: 1,
-  cpl_resolution_status: 1,
+  quoted: 1, duplicate: 1, form_fill: 1, external_sheet_review: 1, bad_lead: 1, cpl: 1,
+  cpl_resolution_status: 1, external_call_admission: 1, ringcentral: 1, created_on_unmatched: 1,
 } as const;
 
 const BOOKING_REPORTING_PROJECTION = {
@@ -457,9 +459,9 @@ function detailRows(
       move_date: dateOnly(lead.move_date, input.resolvedWindow.timezone),
       move_size: lead.move_size ?? null,
       quoted: lead.leadType === "call" ? "not_applicable" : lead.quoted === true,
-      duplicate_state: lead.duplicate === true,
-      bad_lead_state: Boolean(lead.bad_lead),
-      cpl_value: finiteOrNull(lead.cpl),
+      duplicate_state: reportingDuplicate(lead),
+      bad_lead_state: reportingBad(lead),
+      cpl_value: lead.leadType === "call" && !getCallLeadReportingDecision(lead).billable ? 0 : finiteOrNull(lead.cpl),
       cpl_resolution_status: lead.cpl_resolution_status ?? null,
       booked: bookings.length > 0,
       booking_count: bookings.length,
@@ -590,6 +592,7 @@ export function aggregateSourcePerformance(
   const cancelled = bookings.filter(
     (booking) => (cancellationsByBooking.get(String(booking._id)) ?? []).length > 0,
   );
+  const pricedLeads = leads.filter((lead) => lead.leadType === "form" ? lead.duplicate !== true : getCallLeadReportingDecision(lead).billable);
   const totalLeads = leads.length;
   const bookedLeads = leads.filter(
     (lead) => (bookingsByLead.get(String(lead._id)) ?? []).length > 0,
@@ -597,17 +600,17 @@ export function aggregateSourcePerformance(
   const netBookings = bookings.length - cancelled.length;
   return {
     total_leads: totalLeads,
-    valid_leads: leads.filter((lead) => lead.duplicate !== true && !lead.bad_lead).length,
-    duplicates: leads.filter((lead) => lead.duplicate === true).length,
-    bad_leads: leads.filter((lead) => Boolean(lead.bad_lead)).length,
+    valid_leads: leads.filter((lead) => !reportingDuplicate(lead) && !reportingBad(lead) && (lead.leadType === "form" || getCallLeadReportingDecision(lead).billable)).length,
+    duplicates: leads.filter((lead) => reportingDuplicate(lead)).length,
+    bad_leads: leads.filter((lead) => reportingBad(lead)).length,
     quoted_form_leads: leads.filter((lead) => lead.leadType === "form" && lead.quoted === true).length,
     booked_leads: bookedLeads,
     cancelled_bookings: cancelled.length,
     net_bookings: netBookings,
     lead_to_booking_conversion: totalLeads === 0 ? null : bookedLeads / totalLeads,
     net_conversion: totalLeads === 0 ? null : netBookings / totalLeads,
-    resolved_cpl_spend: roundMoney(leads.filter((lead) => lead.cpl_resolution_status === "resolved").reduce((sum, lead) => sum + number(lead.cpl), 0)),
-    unresolved_cpl_count: leads.filter((lead) =>
+    resolved_cpl_spend: roundMoney(pricedLeads.filter((lead) => lead.cpl_resolution_status === "resolved").reduce((sum, lead) => sum + number(lead.cpl), 0)),
+    unresolved_cpl_count: pricedLeads.filter((lead) =>
       isUnresolvedCplStatus(lead.cpl_resolution_status),
     ).length,
     total_binder: roundMoney(bookings.reduce((sum, booking) => sum + number(booking.total_binder_amount), 0)),
@@ -624,8 +627,8 @@ async function exceptionRows(
   const rows: Row[] = [];
   for (const lead of leads) {
     const common = exceptionCommon(lead, input);
-    if (lead.duplicate === true) rows.push(exception("duplicate", common, "Lead is marked duplicate.", 1));
-    if (lead.bad_lead) rows.push(exception("bad_lead", common, "Lead is marked bad.", 1));
+    if (reportingDuplicate(lead)) rows.push(exception("duplicate", common, "Lead is marked duplicate.", 1));
+    if (reportingBad(lead)) rows.push(exception("bad_lead", common, "Lead is marked bad.", 1));
     if (isUnresolvedCplStatus(lead.cpl_resolution_status) || !lead.lead_source_company) {
       rows.push(exception("unresolved_cpl_or_source_attribution", common, "CPL or source attribution is unresolved.", 1));
     }
@@ -1639,3 +1642,6 @@ async function collectExceptionManifestEntries(
   assertWithinQueryBudget(entries.length, budget, "manifest exception dependencies");
   return entries;
 }
+
+function reportingDuplicate(lead: Row): boolean { return lead.leadType === "call" ? getCallLeadReportingDecision(lead).disposition === "duplicate_calls" : lead.duplicate === true; }
+function reportingBad(lead: Row): boolean { return lead.leadType === "call" ? getCallLeadReportingDecision(lead).disposition === "bad_call_leads" : Boolean(lead.bad_lead) || hasTrustedExternalSheetReview(lead.external_sheet_review, ["bad_form"]); }

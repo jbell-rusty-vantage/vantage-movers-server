@@ -115,20 +115,6 @@ export const createReconciliationFormLeadSchema = z
   })
   .strict();
 
-export const createReconciliationCallLeadSchema = z
-  .object({
-    name: optionalString,
-    phone_number: optionalString,
-    email: optionalString,
-    job_no: optionalString,
-    notes: optionalString,
-  })
-  .strict()
-  .refine(
-    (value) => Boolean(value.phone_number?.trim() || value.job_no?.trim()),
-    "Call lead creation requires phone_number or job_no",
-  );
-
 export const resolveBookingLeadReconciliationSchema = z.discriminatedUnion(
   "action",
   [
@@ -147,7 +133,7 @@ export const resolveBookingLeadReconciliationSchema = z.discriminatedUnion(
       .object({
         action: z.literal("create_and_attach"),
         revision: z.coerce.number().int().min(0),
-        lead_model: z.enum(["FormLead", "CallLead"]),
+        lead_model: z.literal("FormLead"),
         lead_fields: z.record(z.string(), z.unknown()),
         notes: optionalString,
       })
@@ -175,11 +161,7 @@ export const resolveBookingLeadReconciliationSchema = z.discriminatedUnion(
   if (command.action !== "create_and_attach") {
     return;
   }
-  const fieldsSchema =
-    command.lead_model === "FormLead"
-      ? createReconciliationFormLeadSchema
-      : createReconciliationCallLeadSchema;
-  const parsed = fieldsSchema.safeParse(command.lead_fields);
+  const parsed = createReconciliationFormLeadSchema.safeParse(command.lead_fields);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       context.addIssue({
@@ -257,7 +239,4 @@ export type UpdatePendingEmployeeBookingInput = z.infer<
 >;
 export type CreateReconciliationFormLeadInput = z.infer<
   typeof createReconciliationFormLeadSchema
->;
-export type CreateReconciliationCallLeadInput = z.infer<
-  typeof createReconciliationCallLeadSchema
 >;

@@ -93,6 +93,20 @@ export function leadChangeJobInput(lead: DeskLeadRef, revision: number): JobInpu
   };
 }
 
+export function relatedFormJobInput(formId: string, change: LeadChangeRow): JobInput {
+  return {
+    stage: "outreach_lead_change",
+    subject_key: `outreach-lead:FormLead:${formId}`,
+    dedupe_key: `sod:lead-change:FormLead:${formId}:related:CallLead:${change.lead.id}:change:${change.id}`,
+    input_revision: change.revision_after,
+    input_refs: [formId, change.lead.id],
+  };
+}
+
+export const touchesFormSibling = (change: LeadChangeRow) => change.lead.model === "CallLead"
+  && change.command_name === "mirrorFormLeadToCallSibling"
+  && change.changed_paths.some(path => path === "granot_form_sibling" || path.startsWith("granot_form_sibling."));
+
 /**
  * The `outreach_lead_change` job that re-decides one subject under the active configuration (olr B2;
  * LANE-B §0.2): one identity per subject per decision fingerprint and configuration revision, so a
@@ -239,6 +253,7 @@ export type ReconcileSubject = Readonly<{
 }>;
 
 export type OutreachFeedStore = {
+  relatedForms(callIds: readonly string[], session: ClientSession): Promise<Map<string, string>>;
   readTailCursor(session: ClientSession): Promise<FeedCursor | null>;
   writeTailCursor(cursor: FeedCursor, session: ClientSession): Promise<void>;
   /** Lead changes strictly after `(applied_at, id)`, oldest first. */
@@ -280,6 +295,14 @@ const toChange = (row: ChangeLean): LeadChangeRow => ({
 const CHANGE_PROJECTION = { _id: 1, entity: 1, revision_before: 1, revision_after: 1, applied_at: 1, changed_paths: 1, command_name: 1 } as const;
 
 export const mongoOutreachFeedStore: OutreachFeedStore = {
+  async relatedForms(callIds, session) {
+    if (!callIds.length) return new Map();
+    const calls = await getCallLeadModel().find({ _id: { $in: callIds.map(oid) } }, { "granot_form_sibling.form_lead_id": 1 }).session(session).lean();
+    return new Map(calls.flatMap(call => {
+      const formId = String(call.granot_form_sibling?.form_lead_id ?? "");
+      return /^[a-f\d]{24}$/i.test(formId) ? [[String(call._id), formId]] : [];
+    }));
+  },
   async readTailCursor(session) {
     const row = await getSalesIntelligenceSyncStateModel().findOne({ scope: OUTREACH_LEAD_CHANGE_SCOPE }).session(session).lean();
     const cursor = row?.cursor as { entity_change_applied_at?: Date | null; entity_change_id?: unknown } | undefined;
@@ -445,6 +468,16 @@ async function runTailPass(now: Date, deps: OutreachFeedDeps, gates: TailGates, 
     for (const nomination of nominateLeadChanges(changes, subjects, gates.intake, gates.admission, gates.pool)) {
       const job = nomination.kind === "admission" ? admissionJobInput(nomination.lead, nomination.revision) : leadChangeJobInput(nomination.lead, nomination.revision);
       if ((await store.enqueue(job, session)) === "conflict") conflicts++;
+      else nominated++;
+    }
+    // One projected read per bounded page, never a read per EntityChange. Reference-only fields
+    // intentionally omit marker values; authority comes from the current Call inside this transaction.
+    const relatedChanges = [...new Map(changes.filter(touchesFormSibling).map(change => [change.id, change])).values()];
+    const relations = await store.relatedForms([...new Set(relatedChanges.map(change => change.lead.id))], session);
+    for (const change of relatedChanges) {
+      const formId = relations.get(change.lead.id);
+      if (!formId) continue;
+      if ((await store.enqueue(relatedFormJobInput(formId, change), session)) === "conflict") conflicts++;
       else nominated++;
     }
     const last = page.at(-1);

@@ -4,7 +4,12 @@
     "deploymentEnabled": false
   },
   "outputDirectory": "public",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
+    }
+  ],
   "functions": {
     "api/index.ts": {
       "maxDuration": 800
@@ -23,15 +28,6 @@
         {
           "type": "queue/v2beta",
           "topic": "lead-messaging-events*",
-          "retryAfterSeconds": 30
-        }
-      ]
-    },
-    "api/queues/best-relocation-ingestion-consumer.ts": {
-      "experimentalTriggers": [
-        {
-          "type": "queue/v2beta",
-          "topic": "best-relocation-ingestion-events*",
           "retryAfterSeconds": 30
         }
       ]
@@ -76,6 +72,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/granot-storage-retention",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/cron/ringcentral-call-log-sync",
       "schedule": "*/30 * * * *"
     },
@@ -102,10 +102,6 @@
     {
       "path": "/api/cron/cpl-corrections-drain",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/best-relocation-ingest-heartbeat",
-      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/reporting-delivery-heartbeat",

@@ -11,10 +11,10 @@
 export const SHEET_TAB_NAMES = {
   forms: "Forms",
   calls: "Calls",
-  duplicates: "Duplicates",
+  duplicates: "Duplicate Forms",
   duplicateCalls: "Duplicate Calls",
-  badLeads: "Bad Leads",
-  badCalls: "Bad Calls",
+  badLeads: "Bad Form Leads",
+  badCalls: "Bad Call Leads",
   bookedDeals: "Booked Deals",
   cancelledDeals: "Cancelled Deals",
 } as const;

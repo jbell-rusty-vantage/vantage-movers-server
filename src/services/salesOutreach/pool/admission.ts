@@ -1,3 +1,5 @@
+import { isImportOutreachSuppressed } from "../subjects/importAdmission";
+import { normalizedJobCandidates, legacyBookingJobFilter } from "../../bookings/indexedJobLookup";
 import mongoose, { type ClientSession } from "mongoose";
 import { getFormLeadModel } from "../../../models/FormLead";
 import { getCallLeadModel } from "../../../models/CallLead";
@@ -21,6 +23,12 @@ import { getGranotObservationReceiptModel } from "../../../models/GranotObservat
 import { getSynchronizationDecisionModel } from "../../../models/SynchronizationDecision";
 import { getGranotCrmSourceModel } from "../../../models/GranotCrmSource";
 
+type PoolAcceptedProof = {
+  version: 2; normalized_job_no?: string; normalization_result: string;
+  priority: { valid: boolean; canonical?: string }; outcome: string;
+  source_scope: { granot_crm_source_id: mongoose.Types.ObjectId; lead_source_company: mongoose.Types.ObjectId;
+    source_granularity_id: mongoose.Types.ObjectId; policy_version: string };
+};
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 export type PoolCandidateAnchor = {
   record_link_id: string; record_link_revision: number; source_company_id: string;
@@ -29,12 +37,7 @@ export type PoolCandidateAnchor = {
 export type PoolCandidate = { eligible: boolean; reason: string | null; facts: DeskLeadFacts | null; subject: DeskSubjectRow | null; anchor: PoolCandidateAnchor | null };
 type RawPoolBooking = { lead_ref?: unknown; normalized_job_no?: unknown; job_no?: unknown };
 
-/** Same aliases as equivalentNormalizedJobFilter, with one regex scan for the whole batch. */
-export function poolBatchJobFilter(jobs: readonly string[]): Record<string, unknown> {
-  const cores = [...new Set(jobs.flatMap((job) => jobNumberDigitCore(job) ?? []))];
-  const exact = { normalized_job_no: { $in: [...new Set([...jobs, ...cores])] } };
-  return cores.length ? { $or: [exact, { normalized_job_no: { $regex: `^[A-Z]+(?:${cores.join("|")})$` } }] } : exact;
-}
+export const poolBatchJobFilter = normalizedJobCandidates;
 
 /** Independent GET reads may overlap; Mongo transactions must execute their reads sequentially. */
 async function readBatch<const T extends readonly (() => PromiseLike<unknown>)[]>(reads: T, session: ClientSession | null) {
@@ -58,7 +61,7 @@ export function poolBookingBlocks(booking: RawPoolBooking, ref: DeskLeadRef, job
 }
 
 /** Batched fresh authorization: a fixed set of reads per <=1,000 work records, never N+1. */
-export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], session: ClientSession | null = null): Promise<PoolCandidate[]> {
+export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], session: ClientSession | null = null, evidenceMode: "current" | "history" = "current"): Promise<PoolCandidate[]> {
   if (!refs.length) return [];
   const rawByKey = new Map<string, Record<string, unknown> & { _id: unknown }>();
   for (const kind of ["FormLead", "CallLead"] as const) {
@@ -80,16 +83,21 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     const ids = refs.filter((r) => r.model === kind).map((r) => oid(r.id));
     return ids.length ? [{ "lead_ref.model": kind, "lead_ref.id": { $in: ids } }] : [];
   });
-  const observationIds = [...factsByKey.values()].flatMap((f) => f.accepted_observation ? [f.accepted_observation.observation_id] : []);
+  const certified = new Map<string, PoolAcceptedProof>();
+  for (const [key, row] of rawByKey) {
+    const winner = row.last_accepted_granot_observation as { evidence?: PoolAcceptedProof } | undefined;
+    if (evidenceMode === "current" && winner?.evidence?.version === 2 && winner.evidence.source_scope?.granot_crm_source_id) certified.set(key, winner.evidence);
+  }
+  const observationIds = [...factsByKey.entries()].flatMap(([key,f]) => !certified.has(key) && f.accepted_observation ? [f.accepted_observation.observation_id] : []);
   const [companies, granularities, links, bookings, formIdentities, callIdentities, observations, decisions] = await readBatch([
     () => getLeadSourceCompanyModel().find({ _id: { $in: companyIds }, active: true }, { _id: 1 }).session(session).lean(),
     () => getLeadSourceGranularityModel().find({ _id: { $in: granularityIds }, active: true }, { source_company: 1, channel: 1 }).session(session).lean(),
     () => getGranotRecordLinkModel().find({ provider: "granot", state: "active", $or: [...leadFilters, jobFilter] }, { normalized_job_no: 1, lead_ref: 1, disputed: 1, booking_ref: 1, source_scope: 1, domain_revision: 1 }).session(session).lean(),
     () => getFormLeadModel().db.collection<RawPoolBooking>(BookedLead.collection.collectionName).find({ $or: [
-      { lead_ref: { $in: refs.flatMap((r) => [oid(r.id), r.id, r.id.toUpperCase()]) } }, jobFilter,
+      { lead_ref: { $in: refs.flatMap((r) => [oid(r.id), r.id, r.id.toUpperCase()]) } }, normalizedJobCandidates(jobs, "scan"),
       // Legacy raw Jobs may lack or contradict the normalized key. Project once per batch and use
       // the canonical NFKC/case/punctuation normalizer below; field-only regexes cannot reproduce it.
-      { job_no: { $type: "string" } },
+      legacyBookingJobFilter,
     ] }, { session: session ?? undefined, projection: { lead_ref: 1, normalized_job_no: 1, job_no: 1 } }).toArray(),
     () => getFormLeadModel().find({ duplicate: { $ne: true }, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
     // A Call Lead mirroring its Form Lead's job (`granot_form_sibling`) is the same customer, not a second holder.
@@ -100,7 +108,7 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   const identities = [...formIdentities, ...callIdentities];
   const [receipts, sources] = await readBatch([
     () => getGranotObservationReceiptModel().find({ _id: { $in: observations.map((o) => o.receipt_id) } }, { processing: 1 }).session(session).lean(),
-    () => getGranotCrmSourceModel().find({ _id: { $in: decisions.flatMap((d) => d.source_scope ? [d.source_scope.granot_crm_source_id] : []) } }, { enabled: 1, lifecycle_enabled: 1, lifecycle_disposition: 1, lifecycle_policy_version: 1, lead_source_company: 1, lifecycle_routes: 1 }).session(session).lean(),
+    () => getGranotCrmSourceModel().find({ _id: { $in: [...decisions.flatMap((d) => d.source_scope ? [d.source_scope.granot_crm_source_id] : []), ...[...certified.values()].map(d => d.source_scope.granot_crm_source_id)] } }, { enabled: 1, lifecycle_enabled: 1, lifecycle_disposition: 1, lifecycle_policy_version: 1, lead_source_company: 1, lifecycle_routes: 1 }).session(session).lean(),
   ], session);
   const companyById = rowsById(companies), granularityById = rowsById(granularities);
   const observationById = rowsById(observations), receiptById = rowsById(receipts), sourceById = rowsById(sources);
@@ -134,7 +142,10 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     const companyId = String(raw.lead_source_company), granularityId = String(raw.source_granularity_id);
     const company = companyById.get(companyId), granularity = granularityById.get(granularityId);
     if (!company || !granularity || String(granularity.source_company) !== companyId || granularity.channel !== (ref.model === "FormLead" ? "form" : "call")) return refuse("source_scope_unavailable");
-    const observation = observationById.get(facts.accepted_observation.observation_id);
+    const proof = certified.get(key);
+    const observation = proof ? { _id: facts.accepted_observation.observation_id, captured_at: facts.accepted_observation.captured_at,
+      normalization_result: proof.normalization_result, priority: proof.priority, identity: { normalized_job_no: proof.normalized_job_no }, receipt_id: undefined }
+      : observationById.get(facts.accepted_observation.observation_id);
     const jobKey = jobIdentityKey(facts.normalized_job_no);
     const matches = [...new Set([...(linksByLead.get(key) ?? []), ...(linksByJob.get(jobKey) ?? [])])];
     // Canonical priority-only matching may retain both a digit and prefixed Job Record Link.
@@ -148,11 +159,13 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     if (identityCounts.get(jobKey) !== 1) return refuse("ambiguous_identity");
     if (!observation || !["valid", "valid_with_issues"].includes(observation.normalization_result) || !observation.priority.valid || observation.priority.canonical !== "9"
       || +observation.captured_at !== +facts.accepted_observation.captured_at || !jobNumbersEquivalent(observation.identity.normalized_job_no, facts.normalized_job_no)) return refuse("accepted_observation_conflict");
-    const decision = decisionByObservation.get(String(observation._id)), receipt = receiptById.get(String(observation.receipt_id));
+    const decision = proof ? { execution_mode: "live", outcome: proof.outcome, target: ref, source_scope: proof.source_scope }
+      : decisionByObservation.get(String(observation._id));
+    const completed = Boolean(proof) || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
     if (!decision || decision.execution_mode !== "live" || !["created", "linked", "applied", "already_current"].includes(decision.outcome)
       || decision.target?.model !== ref.model || String(decision.target?.id) !== ref.id
       || String(decision.source_scope?.lead_source_company) !== companyId || String(decision.source_scope?.source_granularity_id) !== granularityId
-      || receipt?.processing.state !== "completed") return refuse("accepted_decision_unavailable");
+      || !completed) return refuse("accepted_decision_unavailable");
     const source = sourceById.get(String(decision.source_scope?.granot_crm_source_id));
     if (!source?.enabled || !source.lifecycle_enabled || source.lifecycle_disposition !== "source_scoped_lead"
       || source.lifecycle_policy_version !== decision.source_scope?.policy_version || String(source.lead_source_company) !== companyId
@@ -241,6 +254,9 @@ export async function refreshPoolLead(ref: DeskLeadRef, configuration: ActiveCon
   const previous = await Model.findOne({ lead_model: ref.model, lead_id: oid(ref.id) }).session(session).lean();
   if (!poolEnabled(configuration.value) && !previous?.active) return null;
   const candidate = await inspectPoolCandidate(ref, session);
+  // Explicit selected-ID activation and existing membership keep their Owner
+  // contracts. Only a new automatic admission is held for later Granot evidence.
+  if (!previous && candidate.facts && isImportOutreachSuppressed(candidate.facts)) return null;
   if (poolEnabled(configuration.value) && candidate.eligible && (previous || configuration.value.pool?.admission_enabled))
     return writePoolCandidate(candidate, configuration, now, session, configuration.value.pool!.approval_ref);
   if (!previous?.active) return null;

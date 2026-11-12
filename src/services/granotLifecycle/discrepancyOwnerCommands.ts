@@ -1,3 +1,4 @@
+import { readCaseObservation, readCaseStatement } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getCallLeadModel } from "../../models/CallLead";
@@ -5,8 +6,6 @@ import { getFormLeadModel } from "../../models/FormLead";
 import type { GranotDiscrepancyDocument } from "../../models/granotDiscrepancyModel";
 import { getGranotBookingDiscrepancyModel } from "../../models/GranotBookingDiscrepancy";
 import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDiscrepancy";
-import { getGranotObservationModel } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import type { GranotLifecycleCorrectRecordLinkCommandInput, GranotLifecycleDiscrepancyNoActionCommandInput, GranotLifecycleReEvaluateDiscrepancyCommandInput } from "../../validation/v1/granotLifecycle.validation";
@@ -154,8 +153,8 @@ async function prepare(input: Envelope, commandName: string, validatedBody: Reco
   const found = await findAny(input.discrepancy_id);
   if (!found) throw lifecycle("Granot discrepancy not found", "DISCREPANCY_NOT_FOUND", 404, input.request_id);
   const newest = found.row.evidence.at(-1);
-  const observation = newest ? await getGranotObservationModel().findById(newest.observation_id).lean().exec() : null;
-  const receipt = observation ? await getGranotObservationReceiptModel().findById(observation.receipt_id).lean().exec() : null;
+  const observation = newest ? await readCaseObservation(newest.observation_id) : null;
+  const receipt = observation ? await readCaseStatement(observation.receipt_id) : null;
   if (!newest || !observation || !receipt) throw lifecycle("Discrepancy causal evidence is unavailable", "IDENTITY_CONFLICT", 409, input.request_id);
   const receiptId = String(receipt._id);
   const context: CanonicalCommandContext = {

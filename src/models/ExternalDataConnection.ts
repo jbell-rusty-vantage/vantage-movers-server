@@ -38,6 +38,13 @@ const ExternalDataConnectionSchema = new Schema(
         masked_id: { type: String, trim: true, default: null },
       },
     },
+    retired_at: { type: Date, default: null },
+    retirement_final_run_id: { type: String, trim: true, default: null },
+    retirement_shutdown_at: { type: Date, default: null },
+    retirement_shutdown_run_id: { type: String, trim: true, default: null },
+    retirement_ingestion_deferred: { type: Boolean, default: false },
+    retirement_reason: { type: String, trim: true, default: null },
+    retirement_reconciliation_status: { type: String, enum: ["complete", "incomplete", "pending_owner_review"], default: null },
     application_enabled: { type: Boolean, required: true, default: false },
     application_enabled_actor: { type: Schema.Types.Mixed, default: null },
     cadence_hours: {

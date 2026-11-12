@@ -19,7 +19,7 @@ import {
   type SheetContainsSkipReason,
   type SheetContainsTabRef,
 } from "./expectedSheetTabs";
-import { getExistingSheetId } from "./tabs";
+import { getExistingSheetId, resolveCompatibleSheetTitle } from "./tabs";
 import { withSheetsRetry } from "./retry";
 
 const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
@@ -93,6 +93,7 @@ export type SheetContainsRowSnapshot = {
 
 export type SheetContainsTabRead = {
   spreadsheetId: string;
+  tabName?: string;
   gid?: number;
   rows: Map<string, SheetContainsRowSnapshot>;
 };
@@ -250,10 +251,19 @@ async function loadSheetContainsRecords(
 ): Promise<SheetContainsLoadedRecord[]> {
   const docs = await loadDocuments(entityModel, ids);
   return docs.map((record) => ({
+    _id: record._id,
     id: record._id.toString(),
     label: labelFor(entityModel, record),
     duplicate: record.duplicate,
     bad_lead: record.bad_lead,
+    ringcentral: record.ringcentral,
+    external_call_admission: record.external_call_admission,
+    source_company: record.source_company,
+    lead_source_company: record.lead_source_company,
+    source_granularity_id: record.source_granularity_id,
+    timestamp: record.timestamp,
+    form_fill: record.form_fill,
+    external_sheet_review: record.external_sheet_review,
     created_on_unmatched: record.created_on_unmatched,
     no_sync: record.no_sync,
     sheet_sync: record.sheet_sync,
@@ -268,6 +278,14 @@ type LeanContainsDoc = {
   phone_number?: string | null;
   duplicate?: boolean | null;
   bad_lead?: string | null;
+  ringcentral?: unknown;
+  external_call_admission?: unknown;
+  source_company?: unknown;
+  lead_source_company?: unknown;
+  source_granularity_id?: unknown;
+  timestamp?: unknown;
+  form_fill?: boolean | null;
+  external_sheet_review?: unknown;
   created_on_unmatched?: boolean | null;
   no_sync?: boolean | null;
   sheet_sync?: SheetSyncEntry[];
@@ -323,10 +341,11 @@ async function readLiveSheetContainsTab(
   gidCache: Map<string, Promise<number | undefined>>,
 ): Promise<SheetContainsTabRead> {
   const sheets = getSheetsClient();
-  const gidKey = `${spreadsheetId}:${tab.tabName}`;
+  const tabName = await resolveCompatibleSheetTitle(sheets, spreadsheetId, tab.tabName);
+  const gidKey = `${spreadsheetId}:${tabName}`;
   let gidPromise = gidCache.get(gidKey);
   if (!gidPromise) {
-    gidPromise = getExistingSheetId(sheets, spreadsheetId, tab.tabName).catch(() => undefined);
+    gidPromise = getExistingSheetId(sheets, spreadsheetId, tabName).catch(() => undefined);
     gidCache.set(gidKey, gidPromise);
   }
 
@@ -335,13 +354,14 @@ async function readLiveSheetContainsTab(
       withSheetsRetry("values.get.sheetContains", () =>
         sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: `${escapeSheetTitleForRange(tab.tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
+          range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
         }),
       ),
       gidPromise,
     ]);
     return {
       spreadsheetId,
+      tabName,
       gid,
       rows: rowsFromValues(response.data.values ?? [], tab.headers),
     };
@@ -387,9 +407,7 @@ export function rowsFromValues(
 function extractMongoId(row: unknown[], mongoIdIndex: number): string | undefined {
   if (mongoIdIndex >= 0) {
     const candidate = row[mongoIdIndex];
-    if (typeof candidate === "string" && /^[a-f0-9]{24}$/i.test(candidate)) {
-      return candidate;
-    }
+    return typeof candidate === "string" && /^[a-f0-9]{24}$/i.test(candidate) ? candidate : undefined;
   }
   for (const cell of row) {
     if (typeof cell === "string" && /^[a-f0-9]{24}$/i.test(cell)) {
@@ -409,7 +427,7 @@ function locationFromRow(
     workbook: tab.workbookTitle,
     workbook_key: tab.workbook,
     spreadsheet_id: read.spreadsheetId,
-    tab_name: tab.tabName,
+    tab_name: read.tabName ?? tab.tabName,
     target: tab.target,
     role: tab.role,
     row_number: row.rowNumber,

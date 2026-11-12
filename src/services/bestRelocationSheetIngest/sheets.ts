@@ -376,6 +376,7 @@ export async function readTab(
   client: SheetsClient,
   spreadsheetId: string,
   tabName: SourceTab,
+  options: { preserveCellText?: boolean } = {},
 ): Promise<TabReadResult> {
   const metadataResponse = await client.spreadsheets.get({
     spreadsheetId,
@@ -401,9 +402,9 @@ export async function readTab(
   }, {});
   const data = valueResponse.data as sheets_v4.Schema$ValueRange;
   const matrix = ((data.values ?? []) as unknown[][]).map((row) =>
-    row.map(cell),
+    row.map(value => options.preserveCellText ? String(value ?? "") : cell(value)),
   );
-  const headerRow = matrix[0] ?? [];
+  const headerRow = (matrix[0] ?? []).map(cell);
   const lastHeader = headerRow.reduce(
     (last, header, index) => (header ? index : last),
     -1,

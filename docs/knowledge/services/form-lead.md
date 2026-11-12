@@ -14,6 +14,8 @@ applies_to:
   - src/services/leads/leadIngestionProvenance.ts
   - src/services/leads/leadCplResolution.ts
   - src/services/leads/duplicateLead.service.ts
+  - src/services/googleSheets/leadReportingTargets.ts
+  - src/services/googleSheets/expectedSheetTabs.ts
   - src/services/crm/crm.service.ts
   - src/services/crm/formLeadPayload.ts
   - src/routes/v1.routes.ts
@@ -103,20 +105,23 @@ CRM Posting is independent of webhook capture. Capture remains receipt-only ([`c
 
 ## Sheet Sync tab routing (Form Lead)
 
+The [November 3 Owner clarification](../../lead-reporting-retirement/OWNER-CLARIFICATION.md) selects exclusive bad-Form routing. The Owner-return final source reconciliation completed under its exact released checksum: 272 exception Forms were created and all selected physical memberships verified. The [final report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md) records financial preservation, live billing and unchanged replay. Recurring ingestion remains retired; the Source Company remains active for separate Owner deactivation.
+
 | Condition | Master Leads tab |
 |-----------|------------------|
-| Not Duplicate Lead | `Forms` |
-| Duplicate Lead | `Duplicates` |
-| `bad_lead` set | primary tab **+** `Bad Leads` |
+| Canonical `bad_lead` or fully trusted `external_sheet_review.kind === "bad_form"`, including a Duplicate/Booked/Cancelled Form | `Bad Form Leads` only |
+| Not bad and not Duplicate Lead | `Forms` |
+| Not bad and Duplicate Lead | `Duplicate Forms` |
+
+`hasFormBadProjection` and `formLeadTargets` in `googleSheets/leadReportingTargets.ts` select the exclusive bad destination before duplicate routing. Direct/legacy sync and the queued planner confirm its upsert before deleting that Mongo ID from Forms and both old/new Duplicate Forms titles. Empty `sheet_sync[]` and stale retry target hints do not suppress cleanup. Failed destination writes preserve primary membership; a destination-written/delete-failed interruption retries by ID. Clearing the bad fact restores the ordinary primary destination and removes both old/new bad-Form titles. Canonical duplicate flags, sibling links and official Booking/Cancellation rows and financial values are preserved.
 
 `legacy_bad_tab` is the lossless migration-only reason for a row observed on a
 legacy bad-lead surface when no trustworthy specific reason exists. It is not
-derived from cell color. Duplicate, Booked, and Cancelled state keeps
-precedence; the migration records the legacy disposition as provenance.
+derived from cell color. Canonical mark-bad guards still reject Duplicate, Booked and Cancelled Forms. The protected external review fact is independent and can select the historical exclusive bad projection without changing those canonical lifecycle fields.
 
 Job: `resource: source_lead`, `operation: form_lead.create` | `form_lead.update`. Delete: tombstone `delete_source_lead` / `delete_form_lead`.
 
-Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) (`input.no_sync ?? true` via `noSyncOnCreate`). Other origins persist `false` and ignore client `true`. Create with `no_sync: true` skips the `form_lead.create` outbox. Owner PATCH `no_sync` is `updateSourceOwnedLead`. Ordinary No-Sync skips/deletes Forms only; the Duplicate / Bad routing above is unchanged — `no_sync` does not delete or skip those tabs. Owner UI copy is Hide / Show / Hidden from Master Leads and never prints `no_sync`.
+Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) (`input.no_sync ?? true` via `noSyncOnCreate`). Other origins persist `false` and ignore client `true`. Create with `no_sync: true` skips the `form_lead.create` outbox. Owner PATCH `no_sync` is `updateSourceOwnedLead`. Ordinary No-Sync skips upserts and cleans all three Form destinations, including transitional titles and stale bad rows after a fact is cleared. Duplicate Forms still project to Duplicate Forms; bad Forms still project exclusively to Bad Form Leads. Owner UI copy is Hide / Show / Hidden from Master Leads and never prints `no_sync`.
 
 ## Correction (`correctFormLead`)
 
@@ -142,7 +147,7 @@ Website preview isolation: `CRM_FORM_LEAD_POSTING_ENABLED=false` suppresses CRM 
 
 | Rule | Detail |
 |------|--------|
-| Duplicate Form Leads | Always saved + Sheet Sync'd to `Duplicates`; **never CRM-posted** |
+| Duplicate Form Leads | Always saved; Sheet Sync selects `Duplicate Forms` unless canonical/trusted imported bad evidence selects `Bad Form Leads` exclusively. The duplicate flag is preserved; **never CRM-posted**. |
 | Unknown-state Move Type | Either pickup or delivery `not_found` → Local Move (`deriveFormLeadLocal`). Call Leads still use optional location / `deriveLocal`. |
 | Form Fill | One-way at create: new non-duplicate Form Lead marks existing Call Leads; not run for duplicates |
 | Helpers | Do not bypass Source Company, location, duplicate, or Sheet Sync scheduling |
@@ -183,3 +188,9 @@ Structured logger `msg` keys; nothing is persisted to Mongo (the Operational Eve
 
 - [`form-lead-granot-crm.mdc`](../../../.cursor/rules/form-lead-granot-crm.mdc) — CRM Posting payload and posting flow
 - [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — outbox modes, drainer, quotas
+
+
+The final Best Relocation review command derives a protected `external_sheet_review` from captured source cells. A genuine checker annotation longer than two trimmed characters selects Bad Form Leads exclusively, including duplicate/booked/cancelled Forms. The canonical formatted reason takes precedence in the existing Bad Lead column; otherwise the imported annotation is inert text. Public mark-bad guards remain unchanged. New final-import Forms cannot post to Granot, send confirmation messages, or enter automatic Outreach; existing Leads and official outcomes remain intact. The bounded Owner-return run has completed with independent physical delivery and replay proof; the retired connection blocks further application.
+
+
+**November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).

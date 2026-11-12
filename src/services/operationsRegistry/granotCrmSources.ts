@@ -132,6 +132,7 @@ export async function persistGranotCrmSourceInSession(
     throw notFound("Granot CRM source");
   }
   const intended = intendedSemantics(command, before as Record<string, unknown> | null);
+  intended.granot_creation_retired_at = before?.granot_creation_retired_at;
   const refs = await loadSemanticsRefs(intended, session);
   const validated = validateGranotCrmSourceSemantics(intended, refs);
   if (!validated.ok) {
@@ -405,7 +406,7 @@ async function loadSemanticsRefs(
       .lean()
       .exec();
     company = row
-      ? { id: String(row._id), active: row.active === true }
+      ? { id: String(row._id), active: row.active === true, company_slug: row.company_slug, granot_creation_retired_at: row.granot_creation_retired_at }
       : null;
   }
   for (const route of intended.lifecycle_routes) {

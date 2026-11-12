@@ -192,8 +192,8 @@ The Systems tab ([systems-capacity.md](services/systems-capacity.md), 2026-10-07
 | `SHEET_SYNC_MAX_PAYLOAD_BYTES`, `_MAX_JOBS_PER_DRAIN`, `_MAX_COALESCED_ENTITIES_PER_DRAIN`, `_MAX_ROWS_PER_BATCH`, `_MAX_WRITE_SUBREQUESTS_PER_CALL`, `_MAX_RUN_DURATION_MS`, `_LEASE_DURATION_MS`, `_DEBOUNCE_WINDOW_MS`, `_MAX_ATTEMPTS` | `1500000`, `500`, `500`, `500`, `100`, `60000`, `120000`, `3000`, `8` | no | Drainer bounds. |
 | `REPORTING_GOOGLE_DELIVERY_ENABLED` | off | no | `reporting.ts`: external Google writes for Reporting. |
 | `REPORTING_ENABLED_DATASETS` | every dataset | no | Dataset allowlist. |
-| `BEST_RELOCATION_INGEST_ENABLED` | off | no | `ingestion/worker.ts` heartbeat ingest. |
-| `BEST_RELOCATION_SYNC_SHEET_ID`, `BACKFILL_BEST_RELOCATION_SHEET_ID`, `BACKFILL_BOOKED_SHEET_ID`, `BOOKED_DEALS_FORM_RESPONSES_SYNC_SHEET_ID` | none | no | Ingest and backfill sheet ids. |
+| `BEST_RELOCATION_INGEST_ENABLED` | retired | no | Ignored by runtime. Recurring ingestion is permanently fenced; remove deployment values after retirement release. |
+| `BEST_RELOCATION_SYNC_SHEET_ID`, `BACKFILL_BEST_RELOCATION_SHEET_ID`, `BACKFILL_BOOKED_SHEET_ID`, `BOOKED_DEALS_FORM_RESPONSES_SYNC_SHEET_ID` | none | no | Archived final-reconciliation / read-only operator inputs only; recurring runtime no longer requires these. Preserve restricted final snapshot IDs before removing obsolete deployment values. |
 
 Reporting live-test harness (`reportingLiveTest.ts`; not used by normal traffic): `REPORTING_LIVE_TEST_ENABLED`, `REPORTING_LIVE_TEST_EXPORT_ROOT_FOLDER_ID`, `REPORTING_LIVE_TEST_DENYLIST_WORKBOOK_ID`, `REPORTING_LIVE_TEST_RUN_TAG_PREFIX`, `REPORTING_LIVE_TEST_ARTIFACT_MAX_AGE_MS`, `REPORTING_LIVE_TEST_INJECT_TRANSIENT_FAILURES`, `REPORTING_PRODUCTION_GOOGLE_OAUTH_CLIENT_ID`, `REPORTING_PRODUCTION_GOOGLE_OAUTH_OWNER_EMAIL`, `GITHUB_SHA`, `GITHUB_RUN_ID`.
 

@@ -79,9 +79,9 @@ test("SRV-9 (A): createLeadFromGranot records the canonical Lead fact once, afte
   const start = source.indexOf("finalize: async (pending)");
   const body = source.slice(start, source.indexOf("return {", start));
   const minted = body.indexOf("recordGranotMintedDailyOperationsFact");
-  assert.ok(minted > 0 && body.indexOf("recordFormLeadDailyOperationsFact") > minted && body.indexOf("recordCallLeadDailyOperationsFact") > minted);
+  assert.ok(minted > 0 && body.indexOf("recordFormLeadDailyOperationsFact") > minted);
   assert.equal(body.match(/recordFormLeadDailyOperationsFact\(/g)?.length, 1);
-  assert.equal(body.match(/recordCallLeadDailyOperationsFact\(/g)?.length, 1);
+  assert.doesNotMatch(body, /recordCallLeadDailyOperationsFact\(/);
   const lead = dailyOperationsLeadOf({ _id: "7".repeat(24), timestamp: new Date("2026-10-06T02:00:00.000Z"), ingestion_origin: "granot_lead_created", name: "Synthetic", job_no: "P1" });
   installTestDailyOperationsSink();
   clearCapturedDailyOperationsFacts();

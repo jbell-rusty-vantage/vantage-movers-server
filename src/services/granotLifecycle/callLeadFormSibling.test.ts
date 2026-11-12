@@ -25,6 +25,7 @@ const call = (over: Partial<SiblingCallLead> = {}): SiblingCallLead => ({
   _id: "650000000000000000000020",
   lead_source_company: COMPANY,
   createdAt: new Date("2026-10-20T14:00:00.000Z"),
+  ringcentral: { call_log_id: "call-log-1", duration_seconds: 120, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s" },
   domain_revision: 3,
   sheet_sync: [{ target: "master_calls" }],
   ...over,
@@ -65,6 +66,11 @@ describe("Granot Form sibling update: planFormSiblingUpdate", () => {
     assert.deepEqual(planFormSiblingUpdate(form(), [], [call(), call({ _id: "650000000000000000000021" })], NOW), { kind: "skip", reason: "multiple_call_siblings" });
   });
 
+  test("a matching job or phone cannot qualify a sibling", () => {
+    const unqualified = call({ ringcentral: null, normalized_job_no: "P5562894" });
+    assert.deepEqual(planFormSiblingUpdate(form(), [unqualified], [call({ ringcentral: null })], NOW), { kind: "skip", reason: "no_call_sibling" });
+  });
+
   test("an ineligible Form Lead mirrors nothing", () => {
     for (const over of [{ duplicate: true }, { bad_lead: "spam" }, { job_no: null, normalized_job_no: null }])
       assert.deepEqual(planFormSiblingUpdate(form(over), [], [call()], NOW), { kind: "skip", reason: "form_ineligible" });
@@ -94,12 +100,12 @@ describe("Granot Form sibling update: planFormSiblingUpdate", () => {
   });
 });
 
-test("hasSyncedCallsRow: only a synced Master Calls entry with a row number counts (a pending or failed entry could append)", () => {
-  const base = { _id: "650000000000000000000020" };
+test("hasSyncedCallsRow: canonical delivered destinations respect admission and effective No-Sync", () => {
+  const base = call();
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "synced", row_number: 12 }] }), true);
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "pending" }] }), false);
   assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_calls", status: "synced", row_number: 12 }], no_sync: true }), false);
-  assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_duplicate_calls", status: "synced", row_number: 3 }] }), false);
+  assert.equal(hasSyncedCallsRow({ ...base, sheet_sync: [{ target: "master_duplicate_calls", status: "synced", row_number: 3 }] }), true);
 });
 
 test("both command origins pass the canonical command context validator (processor result and Owner backfill)", async () => {
@@ -113,4 +119,14 @@ test("both command origins pass the canonical command context validator (process
   await assertCommandContext(siblingContext({ kind: "granot_lifecycle", actor: processorActor, initiator: createGranotWebhookInitiator(receipt), receipt_id: receipt,
     observation_id: "650000000000000000000102", decision_id: "650000000000000000000103", observation_channel: "granot_webhook" }, "granot-form-sibling:k1", checksum));
   await assertCommandContext(siblingContext({ kind: "owner_backfill", run_id: "call-lead-form-siblings-2026-10-28" }, "granot-form-sibling:k2", checksum));
+});
+
+
+test("exception destinations retain delivery under No-Sync, unsupported Calls never gain admission", () => {
+  for (const target of ['master_calls', 'master_duplicate_calls', 'master_bad_calls']) {
+    const sheet_sync = [{ target, status: 'synced', row_number: 2 }];
+    assert.equal(hasSyncedCallsRow(call({ form_fill: true, no_sync: true, sheet_sync })), true);
+    assert.equal(hasSyncedCallsRow(call({ ringcentral: null, form_fill: true, sheet_sync })), false);
+    assert.equal(hasSyncedCallsRow(call({ created_on_unmatched: true, sheet_sync })), false);
+  }
 });

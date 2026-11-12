@@ -336,7 +336,7 @@ test("command rejects priority_updated even for Call create_if_missing", () => {
       selected_lead_model: "CallLead",
       lead_created_policy: "create_if_missing",
     }),
-    true,
+    false,
   );
   assert.equal(
     snapshotAllowsCreateRouteEventClass({
@@ -360,21 +360,6 @@ test("executeCreation requested_effect stays lead_created", () => {
   assert.equal(source.includes('requested_effect: "priority_updated"'), false);
 });
 
-test("both Granot phone-fence sites run without the adoption flag; Job-only still skips", () => {
-  const source = readFileSync(
-    path.join(__dirname, "createLeadFromGranot.ts"),
-    "utf8",
-  );
-  assert.equal(source.includes("isRingCentralGranotAdoptionEnabled"), false);
-  assert.match(
-    source,
-    /if \(input\.lead_model === "CallLead"\) \{[\s\S]*normalizedPhone[\s\S]*ensureRingCentralConvergenceScopeLock/,
-  );
-  assert.match(
-    source,
-    /selectedModel === "CallLead" &&\s+observation\.contact\?\.normalized_phone\s+\) \{\s+await acquireRingCentralConvergenceScopeLock/,
-  );
-  assert.match(source, /findPreCreationRingCentralConvergenceCandidates/);
-  assert.equal(source.includes("Job-only create remains"), true);
-  assert.equal(source.includes("residual hole"), true);
+test("the command rejects an otherwise valid Granot Call create before any DB access", async () => {
+  await assert.rejects(createLeadFromGranot(envelope(String(objectId()), String(objectId()), { lead_model: "CallLead" })), /policy race/);
 });

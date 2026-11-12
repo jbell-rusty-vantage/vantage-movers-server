@@ -1,3 +1,4 @@
+import { reportingEligibleCallLeadFilter } from "../leads/callLeadAdmission";
 import mongoose, { type ClientSession } from "mongoose";
 import type { SourceCompany } from "../../config/domain";
 import { logger } from "../../logger";
@@ -40,18 +41,55 @@ const FORM_DUPLICATE_CUTOFF = new Date("2026-04-30T04:00:00.000Z");
  * Phone matching uses `buildPhoneRegex` as a Mongo-side sieve and then
  * re-verifies in memory via `normalizePhoneNumberForMatch`.
  */
+
+function getSourceCompany(
+  sourceScope: SourceCompany | LeadSourceMatchScope,
+): SourceCompany | string {
+  return typeof sourceScope === "string"
+    ? sourceScope
+    : sourceScope.sourceCompany;
+}
+
+function getLeadSourceCompany(
+  sourceScope: SourceCompany | LeadSourceMatchScope,
+): unknown {
+  return typeof sourceScope === "string"
+    ? undefined
+    : sourceScope.leadSourceCompany;
+}
+
+function buildSourceMatchFilter(
+  sourceScope: SourceCompany | LeadSourceMatchScope,
+) {
+  const sourceCompany = getSourceCompany(sourceScope);
+  const leadSourceCompany = getLeadSourceCompany(sourceScope);
+  if (!leadSourceCompany) {
+    return { source_company: sourceCompany };
+  }
+
+  return {
+    $or: [
+      { lead_source_company: leadSourceCompany },
+      { lead_source_company: null, source_company: sourceCompany },
+    ],
+  };
+}
+
 export async function findDuplicateFormLeadMatch(
   sourceScope: ExactGranularityMatchScope,
   phoneNumber?: string | null,
   email?: string | null,
   eventTimestamp: Date = new Date(),
+  session?: ClientSession,
 ): Promise<DuplicateFormLeadMatch> {
   const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
   const normalizedEmail = email?.trim().toLowerCase();
   const duplicateClauses = [
     ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
-    ...(normalizedPhone ? [{ phone_number: buildPhoneRegex(normalizedPhone) }] : []),
+    ...(normalizedPhone
+      ? [{ phone_number: buildPhoneRegex(normalizedPhone) }]
+      : []),
   ];
 
   if (duplicateClauses.length === 0) {
@@ -59,24 +97,26 @@ export async function findDuplicateFormLeadMatch(
   }
 
   if (!sourceScope.sourceGranularityId) {
-    throw new Error("Duplicate Form Lead classification requires an exact Source Granularity");
+    throw new Error(
+      "Duplicate Form Lead classification requires an exact Source Granularity",
+    );
   }
-  const cohortRange = eventTimestamp < FORM_DUPLICATE_CUTOFF
-    ? { $lt: eventTimestamp }
-    : { $gte: FORM_DUPLICATE_CUTOFF, $lt: eventTimestamp };
+  const cohortRange =
+    eventTimestamp < FORM_DUPLICATE_CUTOFF
+      ? { $lt: eventTimestamp }
+      : { $gte: FORM_DUPLICATE_CUTOFF, $lt: eventTimestamp };
 
   // $and keeps the granularity, duplicate, cohort, and email/phone clauses
   // from overwriting one another.
-  const candidates = await FormLead.find({
+  const query = FormLead.find({
     $and: [
       { source_granularity_id: sourceScope.sourceGranularityId },
       { duplicate: { $ne: true } },
       { timestamp: cohortRange },
       { $or: duplicateClauses },
     ],
-  })
-    .sort({ timestamp: 1, _id: 1 })
-    .exec();
+  }).sort({ timestamp: 1, _id: 1 });
+  const candidates = await (session ? query.session(session) : query).exec();
 
   let emailMatch = false;
   let phoneMatch = false;
@@ -120,19 +160,25 @@ export async function isDuplicateFormLead(
   email?: string | null,
   eventTimestamp?: Date,
 ): Promise<boolean> {
-  const match = await findDuplicateFormLeadMatch(sourceCompany, phoneNumber, email, eventTimestamp);
+  const match = await findDuplicateFormLeadMatch(
+    sourceCompany,
+    phoneNumber,
+    email,
+    eventTimestamp,
+  );
   return match.duplicate;
 }
 
 /**
  * Returns true when a non-duplicate Form Lead in the source scope shares the
  * supplied phone. A string scope matches `source_company`. A scope object
- * with `leadSourceCompany` matches either `lead_source_company` or
- * `source_company`. Used to set `form_fill` on a newly created Call Lead.
+ * with `leadSourceCompany` matches canonical company, with legacy slug fallback only when canonical
+ * company is absent. Used to set `form_fill` on a newly created Call Lead.
  */
 export async function hasFormFillForCallLead(
   sourceScope: SourceCompany | LeadSourceMatchScope,
   phoneNumber?: string | null,
+  session?: ClientSession,
 ): Promise<boolean> {
   const FormLead = getFormLeadModel();
   const normalizedPhone = normalizePhoneNumberForMatch(phoneNumber);
@@ -140,27 +186,28 @@ export async function hasFormFillForCallLead(
     return false;
   }
 
-  const candidates = await FormLead.find({
-    $and: [
-      buildSourceMatchFilter(sourceScope),
-      { duplicate: { $ne: true } },
-      { phone_number: buildPhoneRegex(normalizedPhone) },
-    ],
-  })
-    .sort({ createdAt: -1 })
-    .limit(25)
-    .exec();
-
-  return candidates.some(
-    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
-  );
+  let afterId: mongoose.Types.ObjectId | undefined;
+  for (;;) {
+    const query = FormLead.find({
+      $and: [
+        buildSourceMatchFilter(sourceScope),
+        { duplicate: { $ne: true } },
+        { phone_number: buildPhoneRegex(normalizedPhone) },
+        ...(afterId ? [{ _id: { $gt: afterId } }] : []),
+      ],
+    }).sort({ _id: 1 }).limit(100);
+    const candidates = await (session ? query.session(session) : query).exec();
+    if (candidates.some(lead => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone)) return true;
+    if (candidates.length < 100) return false;
+    afterId = candidates[candidates.length - 1]!._id;
+  }
 }
 
 /**
  * Flips `form_fill = true` on matching Call Leads in the source scope when a
  * new (non-duplicate) Form Lead arrives. A string scope matches
- * `source_company`. A scope object with `leadSourceCompany` matches either
- * `lead_source_company` or `source_company`.
+ * `source_company`. A scope object with `leadSourceCompany` matches canonical company, with
+ * legacy slug fallback only when canonical company is absent.
  *
  * Returns a `source_lead` sheet-sync job for every call lead it touched so the
  * caller can persist/finalize the syncs alongside the form-lead write (inside
@@ -176,6 +223,8 @@ export async function markMatchingCallLeadsWithFormFill(
   phoneNumber: string,
   formLeadId: string,
   session?: ClientSession,
+  finalReportingRunId?: string,
+  page?: { afterId?: mongoose.Types.ObjectId | null; onPage(lastId: mongoose.Types.ObjectId | null, full: boolean): void },
 ): Promise<FullSheetSyncJob[]> {
   const CallLead = getCallLeadModel();
   const sourceCompany = getSourceCompany(sourceScope);
@@ -187,6 +236,8 @@ export async function markMatchingCallLeadsWithFormFill(
   const candidatesQuery = CallLead.find({
     $and: [
       buildSourceMatchFilter(sourceScope),
+      ...(page?.afterId ? [{ _id: { $gt: page.afterId } }] : []),
+      reportingEligibleCallLeadFilter(),
       { form_fill: { $ne: true } },
       {
         $or: [
@@ -196,12 +247,16 @@ export async function markMatchingCallLeadsWithFormFill(
       },
     ],
   })
-    .sort({ createdAt: -1 })
+    .sort({ _id: 1 })
     .limit(25);
-  const candidates = await (session ? candidatesQuery.session(session) : candidatesQuery).exec();
+  const candidates = await (
+    session ? candidatesQuery.session(session) : candidatesQuery
+  ).exec();
 
+  page?.onPage(candidates.at(-1)?._id ?? null, candidates.length === 25);
   const matchedCallLeads = candidates.filter(
-    (lead) => normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
+    (lead) =>
+      normalizePhoneNumberForMatch(lead.phone_number) === normalizedPhone,
   );
 
   const jobs: FullSheetSyncJob[] = [];
@@ -215,6 +270,7 @@ export async function markMatchingCallLeadsWithFormFill(
           payload: { form_lead_id: formLeadId },
         })
       : null;
+  if (context && finalReportingRunId) context.provenance.run_id = finalReportingRunId;
   for (const callLead of matchedCallLeads) {
     const before = callLead.toObject() as Record<string, unknown>;
     callLead.form_fill = true;
@@ -247,27 +303,4 @@ export async function markMatchingCallLeadsWithFormFill(
   });
 
   return jobs;
-}
-
-function getSourceCompany(sourceScope: SourceCompany | LeadSourceMatchScope): SourceCompany | string {
-  return typeof sourceScope === "string" ? sourceScope : sourceScope.sourceCompany;
-}
-
-function getLeadSourceCompany(sourceScope: SourceCompany | LeadSourceMatchScope): unknown {
-  return typeof sourceScope === "string" ? undefined : sourceScope.leadSourceCompany;
-}
-
-function buildSourceMatchFilter(sourceScope: SourceCompany | LeadSourceMatchScope) {
-  const sourceCompany = getSourceCompany(sourceScope);
-  const leadSourceCompany = getLeadSourceCompany(sourceScope);
-  if (!leadSourceCompany) {
-    return { source_company: sourceCompany };
-  }
-
-  return {
-    $or: [
-      { lead_source_company: leadSourceCompany },
-      { source_company: sourceCompany },
-    ],
-  };
 }

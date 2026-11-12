@@ -1,3 +1,4 @@
+import { isBillableLeadFact, isBadCallLeadFact } from "./facts";
 /**
  * Insights › Analytics (doc 09): one report per (period, comparison, sources), computed in memory from the period
  * facts. The five admin tabs and the Owner report read this one payload, so every number on the page agrees.
@@ -26,12 +27,13 @@ import type {
 } from "./types";
 
 export const INSIGHTS_DEFINITIONS: Record<string, string> = {
-  lead: "A Form Lead or Call Lead that arrived in the period, New York time. Duplicates are counted separately and cost $0. Unmatched calls are not leads.",
+  lead: "A Form Lead or Call Lead that arrived in the period, New York time. Duplicate Leads and Bad Call Leads are counted separately and cost $0. Calls require saved RingCentral qualification or approved final Best Relocation admission.",
   booking: "A booking whose book date falls in the period.",
   booking_rate: "Bookings in the period ÷ leads in the period (activity basis).",
   conversion: "Of the leads that arrived in the period, the share that is booked as of now (cohort basis). Recent periods are still maturing.",
-  lead_spend: "Each lead priced at its feed's lead cost (Setup › Lead sources) for the day it arrived. Read live: a lead cost changed in Setup changes every report at once. Duplicates cost $0; a feed with no cost for that day is counted as unpriced.",
-  cost_per_lead: "Lead spend ÷ leads.",
+  lead_spend: "Each lead priced at its feed's lead cost (Setup › Lead sources) for the day it arrived. Read live: a lead cost changed in Setup changes every report at once. Duplicate Leads and Bad Call Leads cost $0; a feed with no cost for that day is counted as unpriced.",
+  cost_per_lead: "Lead spend ÷ billable leads.",
+  bad_calls: "Qualified Calls assigned to Bad Call Leads by the server reporting policy. Duplicate classification takes precedence. These Calls cost $0; official Bookings and Cancellations remain reportable.",
   cost_per_booking: "Lead spend ÷ bookings (on Sources: ÷ the period's leads that booked).",
   return_on_spend: "Binder of the bookings that came from the period's leads ÷ the spend on those leads.",
   split_credit: "A booking split between agents credits each agent its own binder and the same share of the deposit; the booking counts once for each agent.",
@@ -42,6 +44,7 @@ export const INSIGHTS_DEFINITIONS: Record<string, string> = {
 type LeadAgg = {
   leads: number;
   duplicates: number;
+  bad_calls: number;
   spend: number;
   unpriced: number;
   booked: number;
@@ -53,7 +56,7 @@ type LeadAgg = {
 type BookingAgg = { bookings: number; binder: number; deposits: number; cancelled: number };
 
 function emptyLeadAgg(): LeadAgg {
-  return { leads: 0, duplicates: 0, spend: 0, unpriced: 0, booked: 0, booked_binder: 0, booked_cancelled: 0, rates: new Set() };
+  return { leads: 0, duplicates: 0, bad_calls: 0, spend: 0, unpriced: 0, booked: 0, booked_binder: 0, booked_cancelled: 0, rates: new Set() };
 }
 
 export function aggregateLeads(leads: readonly LeadFact[], cohort: ReadonlyMap<string, BookingFact>): LeadAgg {
@@ -63,6 +66,8 @@ export function aggregateLeads(leads: readonly LeadFact[], cohort: ReadonlyMap<s
       agg.duplicates += 1;
       continue;
     }
+    if (isBadCallLeadFact(lead)) { agg.bad_calls += 1; continue; }
+    if (!isBillableLeadFact(lead)) continue;
     agg.leads += 1;
     agg.spend += lead.price.amount;
     if (lead.price.status === "unpriced") agg.unpriced += 1;
@@ -99,6 +104,7 @@ function leadRowMetrics(now: LeadAgg | undefined, then: LeadAgg | undefined, has
   return {
     leads: metric(a.leads, c(b?.leads), "count", "up"),
     duplicates: metric(a.duplicates, c(b?.duplicates), "count", "down"),
+    bad_calls: metric(a.bad_calls, c(b?.bad_calls), "count", "down"),
     spend: metric(a.spend, c(b?.spend), "money", "none"),
     cpl: metric(ratio(a.spend, a.leads), b ? ratio(b.spend, b.leads) : null, "money", "down", { base: a.leads, comparisonBase: b?.leads }),
     booked: metric(a.booked, c(b?.booked), "count", "up"),
@@ -134,12 +140,14 @@ function seriesFor<T>(
 
 function overallSeries(facts: PeriodFacts, bucket: InsightsBucket): InsightsSeriesPoint[] {
   const keys = bucketKeys(facts.range, bucket);
-  const map = new Map<string, InsightsSeriesPoint>(keys.map((key) => [key, { day: key, leads: 0, bookings: 0, spend: 0, binder: 0, deposits: 0, cancellations: 0 }]));
+  const map = new Map<string, InsightsSeriesPoint>(keys.map((key) => [key, { day: key, leads: 0, duplicates: 0, bad_calls: 0, bookings: 0, spend: 0, binder: 0, deposits: 0, cancellations: 0 }]));
   const at = (day: string) => map.get(bucketKey(day, facts.range.start, bucket));
   for (const lead of facts.leads) {
-    if (lead.duplicate) continue;
     const point = at(lead.day);
     if (!point) continue;
+    if (lead.duplicate) { point.duplicates += 1; continue; }
+    if (isBadCallLeadFact(lead)) { point.bad_calls += 1; continue; }
+    if (!isBillableLeadFact(lead)) continue;
     point.leads += 1;
     point.spend = round2(point.spend + lead.price.amount);
   }
@@ -173,6 +181,7 @@ function scoreValues(facts: PeriodFacts): Scores {
     cancellation_rate: ratio(bookings.cancelled, bookings.bookings),
     cost_per_lead: ratio(leads.spend, leads.leads),
     duplicates: leads.duplicates,
+    bad_calls: leads.bad_calls,
     return_on_spend: ratio(leads.booked_binder, leads.spend),
     average_binder: ratio(bookings.binder, bookings.bookings),
     _leads: leads.leads,
@@ -196,6 +205,7 @@ function scorecards(now: Scores, then: Scores | null): Record<InsightsScorecardK
     cancellation_rate: metric(now.cancellation_rate, v("cancellation_rate"), "rate", "down", bookingBase),
     cost_per_lead: metric(now.cost_per_lead, v("cost_per_lead"), "money", "down", leadsBase),
     duplicates: metric(now.duplicates, v("duplicates"), "count", "down"),
+    bad_calls: metric(now.bad_calls, v("bad_calls"), "count", "down"),
     return_on_spend: metric(now.return_on_spend, v("return_on_spend"), "ratio", "up", { base: now._cohort_booked, comparisonBase: then?._cohort_booked }),
     average_binder: metric(now.average_binder, v("average_binder"), "money", "up", bookingBase),
   };
@@ -244,7 +254,7 @@ function sourceRows(
     rankValue: (agg) => agg.leads * 1_000 + agg.booked,
     series: (key) =>
       seriesFor(
-        (leadsByCompany.get(key) ?? []).filter((lead) => !lead.duplicate),
+        (leadsByCompany.get(key) ?? []).filter((lead) => isBillableLeadFact(lead)),
         period,
         rowBucket,
         (lead) => lead.day,
@@ -366,7 +376,7 @@ function receiverRows(catalog: InsightsCatalog, now: PeriodFacts, then: PeriodFa
     rankValue: (agg) => agg.leads * 1_000 + agg.booked,
     series: (k) =>
       seriesFor(
-        (byKey.get(k) ?? []).filter((lead) => !lead.duplicate),
+        (byKey.get(k) ?? []).filter((lead) => isBillableLeadFact(lead)),
         period,
         rowBucket,
         (lead) => lead.day,
@@ -565,7 +575,7 @@ export function buildAnalyticsReport(input: {
   const salesAgents = salesAgentRows(now, then, period, rowBucket);
   const receivers = receiverRows(catalog, now, then, period, rowBucket);
   const ttb = timeToBook(now, then);
-  const nonDuplicate = now.leads.filter((lead) => !lead.duplicate);
+  const billableLeads = now.leads.filter((lead) => isBillableLeadFact(lead));
   const sourceOptions = [...catalog.companies.values()]
     .map((company) => ({
       key: company.slug,
@@ -587,9 +597,9 @@ export function buildAnalyticsReport(input: {
     series: { bucket: period.bucket, current: overallSeries(now, period.bucket), comparison: then ? overallSeries(then, period.bucket) : [] },
     movers: then ? movers(companies, salesAgents, receivers, { leads: scoresNow._leads, binder: scoresNow.binder ?? 0, spend: scoresNow.lead_spend ?? 0 }) : [],
     data_quality: {
-      unpriced_leads: nonDuplicate.filter((lead) => lead.price.status === "unpriced").length,
-      unmapped_leads: nonDuplicate.filter((lead) => lead.price.status === "no_feed").length,
-      receiver_attribution: ratio(nonDuplicate.filter((lead) => lead.receiver_id).length, nonDuplicate.length),
+      unpriced_leads: billableLeads.filter((lead) => lead.price.status === "unpriced").length,
+      unmapped_leads: billableLeads.filter((lead) => lead.price.status === "no_feed").length,
+      receiver_attribution: ratio(billableLeads.filter((lead) => lead.receiver_id).length, billableLeads.length),
       unattributed_bookings: now.bookings.filter((booking) => booking.company === "unknown").length,
     },
     sources: {

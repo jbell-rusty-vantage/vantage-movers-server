@@ -1,5 +1,5 @@
 /** America/New_York hours at which the Estimates cron collects and applies. */
-export const ESTIMATES_RUN_HOURS = [8, 13, 18] as const;
+export const ESTIMATES_RUN_HOURS = [0, 2, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22] as const;
 
 const NEW_YORK = "America/New_York";
 
@@ -9,7 +9,7 @@ export type EstimatesCronDecision =
 
 /**
  * Hourly cron gate. Vercel schedules are UTC; the New York hour decides, so
- * daylight saving time does not move the three runs.
+ * daylight saving time does not move the local business hours.
  */
 export function estimatesCronDecision(now: Date): EstimatesCronDecision {
   if (!ESTIMATES_RUN_HOURS.includes(newYorkHour(now) as (typeof ESTIMATES_RUN_HOURS)[number])) {
@@ -28,6 +28,24 @@ export function estimatesLatestSlot(now: Date): { slotKey: string; at: Date } {
     at = new Date(+at - 3_600_000);
   }
   throw new Error("Estimates schedule did not contain a recent slot.");
+}
+
+/** Decode immutable keys, including old manifests, without updating stored history.
+ * Search UTC instants instead of guessing an offset at month/year or DST boundaries. */
+export function estimatesSlotInstant(slotKey: string): Date {
+  const [date, hour] = slotKey.split(":");
+  const midnight = granotCalendarEpoch(date!);
+  for (let offset = 0; offset < 48; offset++) {
+    const at = new Date(midnight + offset * 3_600_000);
+    if (estimatesDateWindow(at).to === date && newYorkHour(at) === Number(hour)) return at;
+  }
+  throw new Error("Invalid Estimates scheduled slot.");
+}
+
+export const ESTIMATES_COLLECTION_GRACE_MS = 90 * 60_000;
+
+export function estimatesCoverageIsLate(now: Date, completeAt: Date | null, latest = estimatesLatestSlot): boolean {
+  return !completeAt || +completeAt < +latest(new Date(+now - ESTIMATES_COLLECTION_GRACE_MS)).at;
 }
 
 /** Inclusive trailing 90 Open Dates in America/New_York, `MM/DD/YYYY`. */
@@ -71,16 +89,16 @@ function newYorkCalendarDate(now: Date): { year: number; month: number; day: num
   };
 }
 
-function part(now: Date, type: "year" | "month" | "day" | "hour"): string {
-  const options: Intl.DateTimeFormatOptions = {
+const clockFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone: NEW_YORK,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     hourCycle: "h23",
-  };
-  const value = new Intl.DateTimeFormat("en-US", options)
+  });
+function part(now: Date, type: "year" | "month" | "day" | "hour"): string {
+  const value = clockFormatter
     .formatToParts(now)
     .find((entry) => entry.type === type)?.value;
   if (!value) throw new Error(`America/New_York ${type} was not available`);

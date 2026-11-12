@@ -4,19 +4,24 @@ title: Google Sheets Service
 description: Tab routing, projections, upsert/delete, and master versus source writes.
 tags: [sheet-sync, google-sheets]
 status: draft
-stale_after: 2026-09-21
+stale_after: 2026-12-03
 resource: src/services/googleSheets/googleSheets.service.ts
 applies_to:
   - src/services/googleSheets/googleSheets.service.ts
   - src/services/googleSheets.service.ts
   - src/services/googleSheets/targets.ts
+  - src/services/googleSheets/tabs.ts
   - src/services/googleSheets/syncRows.ts
   - src/services/googleSheets/deleteRows.ts
   - src/services/googleSheets/projections/formLeadRow.ts
   - src/services/googleSheets/projections/callLeadRow.ts
+  - src/services/googleSheets/leadReportingTargets.ts
+  - src/services/googleSheets/tabMigration.ts
+  - src/services/sheetSync/writerFence.ts
   - src/services/googleSheets/expectedSheetTabs.ts
   - src/services/googleSheets/sheetContains.ts
   - src/services/sheetSync/drainer/jobPlanner.ts
+  - src/services/sheetSync/drainer/deliveryRequests.ts
 owners: [team:main-server]
 sources:
   - id: primary
@@ -27,8 +32,8 @@ sources:
   - id: adr-0001
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
-  by: process:okf-docs-optimization
-  at: 2026-08-22T03:54:00Z
+  by: process:docs-keeper
+  at: 2026-11-05T02:30:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -37,147 +42,78 @@ generated:
 
 # Google Sheets Service
 
-**Role:** Projects Mongo Form Lead, Call Lead, Booking, and Cancellation documents into **Reporting Sheets**. **System of Record** is MongoDB; sheets are eventually consistent reporting only — never authoritative for lead state, CPL, or CRM.
+**Role:** Projects Mongo Form Leads, reporting-eligible Call Leads, official Bookings and Cancellations into Reporting Sheets. Mongo remains the System of Record. November 3 reporting corrections are implemented in this checkout; deployment, physical tab migration, derivative formulas and production membership qualification require separate release evidence.
 
-**Facade:** `src/services/googleSheets.service.ts` re-exports this module. Legacy sheet sync (`sheetSyncSourceLookup` → `runFullSheetSyncProcess`) calls these functions. The queued drainer (`jobPlanner.ts`) **mirrors the same tab routing** and writes through `batchWriter` instead of this facade.
+**Best Relocation reconciliation is complete:** the approved final exception cohort and official Bookings are verified in the [final reconciliation report](../../lead-reporting-retirement/FINAL-RECONCILIATION-2026-11-03.md). Recurring ingestion and Granot creation remain retired; this recovery slice authorizes no new import. Keep the Source Company active for the Owner's separate deactivation.
 
-## Public API
+**Facade:** `src/services/googleSheets.service.ts` re-exports `googleSheets/googleSheets.service.ts`. Legacy sync uses the facade; queued `sheetSync/drainer/jobPlanner.ts` uses the same reporting policy and target definitions through the batch writer.
 
-| Function | Entity | Spreadsheet(s) |
-|----------|--------|----------------|
-| `syncFormLeadToSheets` | Form Lead | **Master Leads** (+ optional Source Company Sheet) |
-| `syncCallLeadToSheets` | Call Lead | **Master Leads** (+ optional Source Company Sheet) |
-| `syncBookedLeadToSheets` | Booking | **Master Booked** / `Booked Deals` |
-| `syncCancelledLeadToSheets` | Cancellation | **Master Booked** / `Cancelled Deals` |
-| `deleteFormLeadFromSheets` | Form lead | Current primary tab(s) + `master_bad_leads` in the delete-target list |
-| `deleteCallLeadFromSheets` | Call lead | Duplicate-aware **current** primary tab(s) only (Calls **or** Duplicate Calls) |
-| `deleteBookedLeadFromSheets` | Booking | `Booked Deals` |
-| `deleteCancelledLeadFromSheets` | Cancellation | `Cancelled Deals` |
-| `ensureAllConfiguredSheetTabs` | — | Provisions Master Leads, Master Booked, and every source container that has an env id |
+## Lead classifications and stable targets
 
-All sync functions return `SheetSyncEntry[]` (per-target row number, status, errors). Deletes are void on the facade; queued mode prefers tombstones in the outbox. Per-target failures are captured; other targets still attempt.
+| Entity / primary disposition | Master Leads tab | Stable target | Headers |
+| --- | --- | --- | --- |
+| Ordinary Form | Forms | `master_forms` | `FORM_SHEET_HEADERS` |
+| Duplicate Form | Duplicate Forms | `master_duplicates` | `FORM_SHEET_HEADERS` |
+| Canonical or trusted imported bad Form, including a Duplicate Form | Bad Form Leads only | `master_bad_leads` | `FORM_SHEET_HEADERS` |
+| Ordinary qualified Call | Calls | `master_calls` | `CALL_SHEET_HEADERS` |
+| Effective duplicate Call | Duplicate Calls | `master_duplicate_calls` | `CALL_SHEET_HEADERS` |
+| Bad qualified Call | Bad Call Leads | `master_bad_calls` | `CALL_SHEET_HEADERS` |
 
-## Tab routing (legacy facade **and** `jobPlanner.ts`)
+`getCallLeadReportingDecision` in `leads/callLeadReportingDisposition.ts` owns Call disposition. Ordinary Calls require saved RingCentral qualification; the approved final Best Relocation import can instead attach protected source admission. Unmatched Calls and Calls lacking either admission are excluded even through direct facade sync. Effective duplicate means canonical repeat-call `duplicate`, canonical `form_fill`, or a trusted imported duplicate review; it takes precedence over bad. Bad includes a trusted imported bad review or an evidenced final caller-side missed result arriving during `[01:00, 07:00)` on the `America/New_York` clock. This layer does not change qualification, fabricate duration, or rewrite the repeat-call `duplicate` flag.
 
-### Form leads
+`hasFormBadProjection` and `formLeadTargets` in `leadReportingTargets.ts` route canonical `bad_lead` or a fully trusted imported `bad_form` review exclusively to Bad Form Leads, including booked/cancelled/duplicate Forms. Bad projection takes precedence over the duplicate destination while preserving the canonical duplicate and lifecycle flags. Other Forms keep their ordinary Forms/Duplicate Forms primary destination. The canonical formatted bad reason takes precedence in the existing Bad Lead column; otherwise imported `raw_value` is inert text under `USER_ENTERED`. No columns are added. Clearing the bad fact restores the ordinary primary destination and deletes both old/new bad-Form titles even when `sheet_sync[]` is empty.
 
-| Duplicate Lead? | Bad Lead? | Writes |
-|-----------------|-----------|--------|
-| no | no | `Forms` |
-| yes | no | `Duplicates` |
-| either | yes | primary tab **+** Master `Bad Leads` |
+Ordinary `no_sync` leads are suppressed. Effective duplicate/bad Calls and bad/duplicate Forms still project. An ordinary No-Sync Call cleans all three Call destinations. An ordinary No-Sync Form cleans Forms, Duplicate Forms and Bad Form Leads, including old Form titles; this also removes stale membership after a bad fact is cleared. Excluded Call sync returns no writes; an operator removing preexisting excluded rows must explicitly invoke `deleteCallLeadFromSheets`.
 
-When `bad_lead` is cleared:
+## Bookings and Cancellations
 
-- **Legacy** `syncFormLeadToSheets` always calls `deleteRowsFromTargets` on Master `Bad Leads`.
-- **Queued** `planSourceLead` deletes Master `Bad Leads` only when `sheet_sync[]` already has `master_bad_leads`.
+Official Bookings project to Master Booked / Booked Deals (`master_booked`), and Cancellations to Cancelled Deals (`master_cancelled`). Their financial values and independent reporting eligibility do not change with source Lead disposition. Booking/Cancellation Chain jobs refresh the official rows and then use the current source Lead policy. Referral/leadless jobs can write only the official row.
 
-### Call leads (`callLeadTargetBase`)
+## Delivery and recovery
 
-| Duplicate Lead? | Tab |
-|-----------------|-----|
-| no | `Calls` |
-| yes | `Duplicate Calls` |
+- All three Call destinations use the same `callLeadToRow` and exact 15-column `CALL_SHEET_HEADERS`; missing duration stays blank. Form headers retain their 22-column order. `Sales Rep` remains the saved `receiver_agent_name_snapshot`.
+- Desired membership is upserted by the **Mongo ID column**, then that ID is removed from the other two Call tabs. Row numbers are hints; phone numbers and foreign IDs elsewhere in a row are never move identities.
+- Bad Forms are upserted to Bad Form Leads before the same Mongo ID is deleted from Forms and both old/new Duplicate Forms titles. `staleFormTargets`/`staleFormTargetKeys` and the queued planner discover these rows without saved metadata. Form retries replan the current destination and cleanup despite stale `target_hints`.
+- A failed/deferred destination fences stale deletes. The queued writer completes upserts first, then deletes. A destination-written/stale-delete-failed interruption remains pending and retries without another append.
+- Physical duplicate IDs are repaired from canonical Mongo values: update one desired row, remove extra copies, and remove every stale copy in descending row order. Repairs are logged. Overlapping jobs for the same ID and identical payload share a physical write while each job receives an outcome; conflicting current payloads fail closed.
+- Queued append/delete requests are single-attempt per known plan, including transport retries. An unconfirmed structural outcome stops further provider requests for that invocation and defers unresolved work; the next durable drain reloads current Mongo plans and physical IDs. Previously committed appends become updates, and reliably absent deleted IDs require no second positional delete. Missing/malformed confirmation, missing/ambiguous identity headers, failed reads or malformed topology cannot establish delivery/absence. The queued header helper validates identity before rewriting existing headers; confirmed new empty tabs can initialize. Shifted legacy ID lookup still serves deletes; unsafe identity-column header rewrites require operator correction. See [queued recovery, limits and rollback](./sheet-sync.md#uncertain-structural-delivery-queued-only).
+- The queued request boundary covers tab/header helpers and every explicit safe retry: reserve read/write quota, check deadline, drain lease and topology fence, then send with Google transport retry disabled. The legacy/direct retry helper is unchanged. A request already in flight can finish after ownership loss; no further writes or old-owner completion follow. No exactly-once network guarantee is made.
+- Missing tabs are an idempotent no-op on deletes and are never auto-provisioned by a delete. Upserts ensure only their written tab; bootstrap handles full provisioning. Append requires Google confirmation.
+- Hard Call deletes and tombstones enumerate all three destinations. Form deletes enumerate all three Form destinations plus both transitional Form titles. Historical `sheet_sync[]` locations participate, including source locations when current dual writing is disabled. Booking/Cancellation rows are not lead-move targets.
+- A durable command or outbox receipt does not prove sheet membership. Owner contains and the release verifier read live rows by ID. Contains checks the other two Call tabs so stale membership is visible.
 
-Same `CALL_SHEET_HEADERS` for both. On every call sync, the **stale** opposite tab is deleted (legacy and queued), even when `sheet_sync[]` is empty — lookup is by Mongo ID. Master Leads also provisions **`Duplicate Calls`**.
+## Title compatibility and migration
 
-**`Bad Calls`** exists in `SHEET_TAB_NAMES` and is added to source tab sets when `hasBadTabs` is true. **No sync write path targets it.**
+Canonical `SHEET_TAB_NAMES` are Forms, Calls, Duplicate Forms, Duplicate Calls, Bad Form Leads and Bad Call Leads. Stable target keys are retained. `Duplicates` and `Bad Leads` are historical Form titles; unused `Bad Calls` is not provisioned.
 
-`created_on_unmatched` Call Leads are skipped **before** this module (`syncSourceLead` / `planSourceLead`). This facade will write a Calls row if invoked directly. Ordinary [No-Sync Lead](../../../../CONTEXT.md) skip/delete is the same callers (`noSyncAppliesToNormalTabs`); this facade does not own it. The Bad dual-write and Call stale-delete tables above are unchanged — `no_sync` does not delete or skip those tabs.
+`resolveCompatibleSheetTitle` temporarily uses the existing old Form tab before cutover and resolves historical old-title requests to the new title afterwards. Both titles existing is an explicit topology conflict; writers do not silently pick one. Legacy aliases are never cached, so warm remote isolates observe cutover without an operator-local reset. Canonical resolution/header caches are cleared with `resetEnsuredTabsCache` after migration.
 
-### Bookings / cancellations
+`tabMigration.ts` provides a pure checksummed numeric-ID plan, read-only inspection, and explicit fenced apply. Existing tabs are renamed in place, preserving formatting, filters, protections and history; only the new Bad Call Leads tab is added when needed. The apply helper rejects topology drift/conflicts, repairs headers, verifies topology, and a repeated successful apply does no writes. Legacy source Bad Calls can be renamed in place. Derivative IMPORTRANGE/QUERY strings require a separate inventory/repair and representative readback; the helper does not claim that qualification.
 
-- Bookings → Master Booked / `Booked Deals` only (no source booked sheet).
-- Cancellations → Master Booked / `Cancelled Deals` only.
-- A **Booking Chain** job writes the booked row, then the linked source lead (if `lead_ref` + `lead_model` exist). Referral / leadless use `booked_lead` (booked row only).
-- A **Cancellation Chain** job writes the booking chain first, then the cancellation row.
+## Temporary writer fence
 
-Header constants live in `src/config/domain/sheets.ts`. Row shape is built by `projections/*Row.ts`.
+`sheetSync/writerFence.ts` reads the durable `SheetSyncLease` scope **`lead-reporting:tab-migration`**, active while `leased_until` is in the future. Every legacy/direct lead upsert and delete boundary checks it before Google writes; bootstrap provisioning checks it too. A held lease raises retryable `lead_sheet_tab_migration_in_progress`. Failure to read the lease fails closed. No env toggle, cached result or public bypass disables this guard. Direct official Booked/Cancelled targets remain independent.
 
-## Write targets (`getLeadTargets` in `targets.ts`)
+Queued drains skip before claiming jobs while the fence is held; a drain already planning rechecks immediately before delivery, releasing claims for retry on rejection. Queued requests also recheck at every provider boundary, including helpers and safe retries; newly fenced unfinished work is deferred. The outbox is retained. Operator order is deploy compatible writers, acquire the topology fence plus `sheet-sync:drain` lease, wait out older invocations, rename by numeric ID and repair derivatives through operator Google APIs, clear caches, verify headers/formulas/membership, then release both leases. Renew leases throughout the operation. The fence alone does not abort Google requests already in flight.
 
-Every lead sync **always** writes **Master Sheets** first.
+## Master and Source Company Sheets
 
-**Source Company Sheets** are appended **only** when `shouldWriteSourceLeadSheets()` is true. That helper is true only for `WRITE_SOURCE_LEAD_SHEETS` trimmed/lowercased to the literal `"true"` (`"1"` / `"false"` stay off). Default is **master-only**. Target plumbing stays in code either way.
+Master targets always come first. Source Company Sheets are normally derivatives; dual writes occur only when `WRITE_SOURCE_LEAD_SHEETS` is the literal trimmed/lowercased `true`. This setting is not changed by retirement. When enabled, source Calls use the same three-way disposition and source provisioning contains no duplicate tab definitions. The retired external tracker is not a reporting destination.
 
-`not_provided` and `paid_overflow` have no source container env. `main_site` has `hasBadTabs: false`. Source env names include `GETMOVERS_LEADS_SHEET_ID` for `get_movers_leads`.
+`not_provided` and `paid_overflow` have no source container. Mode-aware env names and TEST prefixes remain in `config/domain/{sheets,runtime}.ts`; existing credential and Master IDs are retained.
 
-`getSourceLeadTabs`: base set is the Master Leads tabs (Forms, Calls, Duplicates, Duplicate Calls, Bad Leads). When `hasBadTabs` is true, the helper also appends `Bad Leads` and `Bad Calls`.
+## Public operations and verification
 
-## Upsert mechanics (`syncRows.ts` + `rowLookup.ts`)
+`syncFormLeadToSheets`, `syncCallLeadToSheets`, `syncBookedLeadToSheets`, `syncCancelledLeadToSheets` return target outcomes. Corresponding delete functions remove matching IDs. `ensureAllConfiguredSheetTabs` provisions reporting containers. Owner-only `POST /api/v1/admin/sheet-sync/contains` is read-only and does not trust metadata or enqueue writes (maximum 25 IDs).
 
-For each target:
-
-1. Ensure the **single tab being written** exists with correct headers (not full sibling tab provisioning — that is `ensureAllConfiguredSheetTabs`).
-2. **Upsert by Lead ID:** lookup `Mongo ID` column; update row if found, else append.
-3. Use `document.sheet_sync[].row_number` when it still contains that Mongo ID.
-4. Per-target failures stay on that result; other targets still attempt.
-
-Returns updated `sheet_sync` entries stored on the Mongo document by `syncAndStore` (legacy) or the drainer's `updateOne` (queued).
-
-## Delete mechanics (`deleteRows.ts`)
-
-1. Resolve targets from fallback list + historical `sheet_sync` entries (`getDeleteTargets`).
-2. Find row by Mongo ID (prefer cached `row_number` when it still matches).
-3. Delete via `batchUpdate.deleteDimension`. Missing tab or missing row is a no-op (idempotent).
-
-Form delete also lists `master_bad_leads` in `syncedTargets`. Call delete uses the current duplicate-aware primary targets only (it does not also delete the stale opposite tab — that happens on **sync**). Queued deletes use the tombstone `previous_targets` snapshot.
-
-## Projections (do not inline live cell values elsewhere)
-
-| Helper | Columns driven by |
-|--------|-------------------|
-| `formLeadToRow` | Timestamp, name, zips/states (empty state → `FORM_LEAD_UNKNOWN_STATE`), local, move date, contact, quoted/cubic feet, booking mirrors, Mongo ID, `ref_no` or `"not provided"`, source label (`crm_source_label_snapshot` → `source_granularity_label_snapshot` → `getFormLeadSourceCompanyLabel`), `formatFormLeadBadLeadReason(bad_lead)`, `Sales Rep` = `receiver_agent_name_snapshot` |
-| `callLeadToRow` | Timestamp, job no, phone, duration, booking mirrors, local, cubic feet, Mongo ID, inbound source label (same snapshot fallback → `getCallLeadSourceCompanyLabel`), `FormFill`, `Sales Rep` from snapshot |
-| `bookedLeadToRow` | Agent / SplitAgent from `agent_allocations[0..1].agent_name_snapshot`, binder/deposit, book date, job, customer `full_name` else `customer_name`, merchant, resolved source, Mongo ID, lead Mongo ID, local, cancelled |
-| `cancelledLeadToRow` | Agent, cancel date, job, `customer_name` snapshot, refund, source, Mongo ID, lead Mongo ID |
-
-**No CPL column** on sheets. Use projection `cells.ts` helpers for booked/quoted/cancelled/threshold formatting. `Move Size`, `Lead ID`, and `Source Company Site` were removed from form projections; Mongo fields may remain.
-
-## Bootstrap
-
-`ensureAllConfiguredSheetTabs()` — Master Leads tabs, Master Booked tabs, and every configured source lead container (skips missing env / no `leadSheetEnvVar`). Used at startup/scripts, not on every row sync.
-
-## Owner contains check
-
-`POST /api/v1/admin/sheet-sync/contains` is an Owner-only **read** of Master Sheets. It does not write, retry, or trust `sheet_sync[]`.
-
-`checkSheetContains` in `src/services/googleSheets/sheetContains.ts` loads the selected Mongo documents, uses `planExpectedSheetTabs` (`expectedSheetTabs.ts`) for the live tab map, reads each needed tab once, and returns Found / Missing / Wrong tab / Not expected plus row evidence.
-
-| Entity | Master workbook | Expected tab |
-|--------|-----------------|--------------|
-| Form Lead (not duplicate) | Master Leads | `Forms` |
-| Form Lead (duplicate) | Master Leads | `Duplicates` |
-| Form Lead + Bad Lead | Master Leads | primary tab **and** `Bad Leads` |
-| Call Lead (not duplicate) | Master Leads | `Calls` |
-| Call Lead (duplicate) | Master Leads | `Duplicate Calls` |
-| Call Lead `created_on_unmatched` | — | not written (`skipReason: "created_on_unmatched"` → Not expected; no tab reads) |
-| Ordinary [No-Sync Lead](../../../../CONTEXT.md) (`noSyncAppliesToNormalTabs`) | — | not written (`skipReason: "no_sync"` → Not expected; no tab reads) |
-| Booking | Master Booked | `Booked Deals` |
-| Cancellation | Master Booked | `Cancelled Deals` |
-
-Sibling tabs on the same workbook are scanned so a leftover row is **Wrong tab**, not a silent miss. Source Company Sheets are not queried. Cap: 25 ids.
-
-Contains `skipReason: "no_sync"` fires only when `noSyncAppliesToNormalTabs`. Bad Lead + `no_sync` and Duplicate + `no_sync` use today's expected tabs (reads run). Unmatched Call Lead `skipReason` stays `created_on_unmatched`.
-
-## Invariants
-
-- Tab choice follows **current** document flags (`duplicate`, `bad_lead`) at sync time. Keep `googleSheets.service.ts` and `jobPlanner.ts` aligned.
-- Do not treat sheet rows as source of truth for lead state, CPL, or CRM.
-- Do not bypass projections when adding columns; update `sheets.ts` headers + matching `*Row.ts` + drainer/tests.
-- `Sales Rep` is the persisted `receiver_agent_name_snapshot`. Do not live-join Agent at sync time. Empty snapshot stays blank even when `receiver_agent` is set.
-- External Google calls belong here or submodules (`auth`, `tabs`, `retry`) — not in lead/booking services.
+Focused offline tests: `googleSheets/**/*.test.ts` and `sheetSync/**/*.test.ts`, including migration replay, ambiguous titles, qualification/no-sync routing, inert imported notes, destination/delete interruption recovery, physical duplicate repair and writer-fence lease boundaries. Production release still requires independent per-ID membership, formula and billing readback.
 
 ## Related services
 
-- [`sheet-sync.md`](./sheet-sync.md) — scheduling, outbox, drainer
-- [`form-lead.md`](./form-lead.md), [`call-lead.md`](./call-lead.md) — when those services enqueue work
+- [Sheet Sync](./sheet-sync.md): scheduling, leases, queued retries and metadata.
+- [Call Leads](./call-lead.md), [Form Leads](./form-lead.md): domain writes and qualification.
+- [Bookings](./bookings.md), [Cancellations](./cancelled-lead.md): official outcome chains.
+- [Sheet Sync rule](../../../.cursor/rules/sheet-sync-process.mdc): modes, envs and quotas.
 
-## Related rules
 
-- [`sheet-sync-process.mdc`](../../../.cursor/rules/sheet-sync-process.mdc) — env, `TEST_` prefixes, quotas, modes
-
-## When to read this vs sheet-sync docs
-
-- **This file:** what gets written where, and sync/delete entry points.
-- **`sheet-sync.md` + `sheet-sync-process.mdc`:** scheduling and software-layer process.
+**November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).

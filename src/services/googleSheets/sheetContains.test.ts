@@ -10,6 +10,8 @@ import {
   type SheetContainsTabRead,
 } from "./sheetContains";
 import type { SheetContainsTabRef } from "./expectedSheetTabs";
+import { LEGACY_BEST_RELOCATION_CALL_IDS } from "../leads/legacyBestRelocationCalls";
+import { BEST_RELOCATION_ADMISSION_COMPANY_ID, BEST_RELOCATION_ADMISSION_CALL_FEED_ID } from "../leads/callLeadAdmission";
 
 const FORM_ID = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const FORM_ID_TWO = "bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -65,6 +67,20 @@ function formRow(id: string, extras: Record<string, string> = {}): SheetContains
     ]),
   };
 }
+
+const qualifiedCall = { call_log_id: "call-log-1", duration_seconds: 120, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s" };
+
+test("contains transports historical BR identity for No-Sync Form Fill and duplicate exceptions", async () => {
+  const id = LEGACY_BEST_RELOCATION_CALL_IDS[0];
+  for (const flags of [{ form_fill: true }, { duplicate: true }, {}]) {
+    const result = await runSheetContainsCheck({ entity_model: "CallLead", ids: [id] }, fakeDeps({
+      records: [{ _id: id, id, label: "Synthetic historical", source_company: "best_relocation_leads",
+        lead_source_company: BEST_RELOCATION_ADMISSION_COMPANY_ID, source_granularity_id: BEST_RELOCATION_ADMISSION_CALL_FEED_ID, no_sync: true, ...flags }],
+      tabs: { "master_leads:Duplicate Calls": formRow(id) },
+    }));
+    assert.deepEqual(result.items[0].expected_tabs, "form_fill" in flags || "duplicate" in flags ? ["Duplicate Calls"] : []);
+  }
+});
 
 test("rowsFromValues maps Mongo ID cells and keeps evidence columns", () => {
   const rows = rowsFromValues(
@@ -152,7 +168,7 @@ test("unmatched Call Lead is not_expected and does not read tabs", async () => {
       ...fakeDeps({
         records: [
           {
-            id: CALL_ID,
+            id: CALL_ID, ringcentral: qualifiedCall,
             label: "Job 99",
             created_on_unmatched: true,
           },
@@ -209,7 +225,7 @@ test("ordinary No-Sync Call Lead is not_expected and does not read tabs", async 
       ...fakeDeps({
         records: [
           {
-            id: CALL_ID,
+            id: CALL_ID, ringcentral: qualifiedCall,
             label: "Job 99",
             no_sync: true,
             duplicate: false,
@@ -229,7 +245,7 @@ test("ordinary No-Sync Call Lead is not_expected and does not read tabs", async 
   assert.equal(reads, 0);
 });
 
-test("No-Sync + Bad Lead uses today's Bad expected tabs, not the no_sync skip", async () => {
+test("No-Sync bad Form found only on Forms is wrong_tab and still requires Bad Form Leads", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "FormLead", ids: [FORM_ID] },
     fakeDeps({
@@ -248,7 +264,7 @@ test("No-Sync + Bad Lead uses today's Bad expected tabs, not the no_sync skip", 
     }),
   );
 
-  assert.equal(result.items[0]?.verdict, "found");
+  assert.equal(result.items[0]?.verdict, "wrong_tab");
   assert.notEqual(result.items[0]?.reason, "no_sync");
   assert.deepEqual(result.items[0]?.missing_expected_tabs, [SHEET_TAB_NAMES.badLeads]);
 });
@@ -259,7 +275,7 @@ test("No-Sync + Duplicate Call Lead uses today's Duplicate Calls tab, not the no
     fakeDeps({
       records: [
         {
-          id: CALL_ID,
+          id: CALL_ID, ringcentral: qualifiedCall,
           label: "Job 99",
           no_sync: true,
           duplicate: true,
@@ -284,7 +300,7 @@ test("ordinary Call missing from Calls is still missing", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "CallLead", ids: [CALL_ID] },
     fakeDeps({
-      records: [{ id: CALL_ID, label: "Job 99", duplicate: false }],
+      records: [{ id: CALL_ID, ringcentral: qualifiedCall, label: "Job 99", duplicate: false }],
       tabs: {},
     }),
   );
@@ -302,7 +318,7 @@ test("unknown Mongo id is not_found", async () => {
   assert.equal(result.items[0]?.reason, "missing_from_mongo");
 });
 
-test("Bad Lead found on Forms but missing Bad Leads is still found with a missing tab", async () => {
+test("Bad Form found on Forms but missing Bad Form Leads is wrong_tab", async () => {
   const result = await runSheetContainsCheck(
     { entity_model: "FormLead", ids: [FORM_ID] },
     fakeDeps({
@@ -320,7 +336,7 @@ test("Bad Lead found on Forms but missing Bad Leads is still found with a missin
     }),
   );
 
-  assert.equal(result.items[0]?.verdict, "found");
+  assert.equal(result.items[0]?.verdict, "wrong_tab");
   assert.deepEqual(result.items[0]?.missing_expected_tabs, [SHEET_TAB_NAMES.badLeads]);
 });
 

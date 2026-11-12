@@ -47,7 +47,6 @@ import {
   existingWriteContextFromRequest,
   runExistingCreateBookedLeadFromSource,
   runExistingCreateBookingFromLead,
-  runExistingCreateCallLead,
   runExistingCreateCancellation,
   runExistingCreateFormLead,
   runExistingCreateLeadlessBooking,
@@ -126,7 +125,6 @@ import {
   bookingLeadReconciliationListQuerySchema,
   createBookedLeadFromSourceSchema,
   createBookedLeadSchema,
-  createCallLeadSchema,
   createCancelledLeadSchema,
   createCustomerSchema,
   createEmployeeBookingSubmissionSchema,
@@ -565,15 +563,6 @@ router.post(
 router.post(
   "/api/v1/call-leads/booked-reconciliation/preview",
   handleBookedCallLeadReconciliationPreview,
-);
-router.post(
-  "/api/v1/call-leads",
-  handleCanonicalCreate(
-    createCallLeadSchema,
-    "createCallLead",
-    async (data, context) =>
-      (await runExistingCreateCallLead({ data, context })).data,
-  ),
 );
 router.patch(
   "/api/v1/call-leads/:id",

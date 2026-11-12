@@ -477,3 +477,34 @@ test("accepted New → daily 2 ↔ 3 → unmapped → Quoted → closed preserve
   for (let i = 0; i < store.periods.length - 1; i++) assert.equal(+store.periods[i]!.ended_at!, +store.periods[i + 1]!.started_at);
   assert.equal(store.subjects[0]!.status, "closed");
 });
+
+
+test("cadence current-state boundary: both 0-5-0 interleavings retain irreversible closure", async () => {
+  for (const consumeMiddle of [false, true]) {
+    const store = new MemoryDeskSubjectStore(), config = intakeOn();
+    let facts = store.addLead(leadFacts({ ...accepted('0', '2026-10-01T14:01:00Z') }));
+    const refresh = () => refreshLeadForOutreach(facts.ref, config, at('2026-10-01T16:00:00Z'), store, fakeSession);
+    await refresh(); const original = structuredClone(store.periods[0]!);
+    facts = store.addLead({ ...facts, ...accepted('5', '2026-10-01T15:00:00Z'), domain_revision: 2 });
+    if (consumeMiddle) await refresh();
+    facts = store.addLead({ ...facts, ...accepted('0', '2026-10-01T15:01:00Z'), domain_revision: 3 });
+    await refresh();
+    assert.equal(store.subjects[0]!.status, consumeMiddle ? 'closed' : 'active');
+    assert.equal(store.subjects[0]!.priority.raw, '0');
+    if (!consumeMiddle) assert.deepEqual(store.periods, [original]);
+    else assert.equal(store.periods.filter(p => p.workflow === 'new').length, 1);
+  }
+});
+
+test("hourly same-value and 2-3 observations preserve periods and contact nominations", async () => {
+  const store = new MemoryDeskSubjectStore(), config = intakeOn();
+  let facts = store.addLead(leadFacts({ ...accepted('2', '2026-10-01T14:01:00Z') }));
+  await refreshLeadForOutreach(facts.ref, config, at('2026-10-01T15:00:00Z'), store, fakeSession);
+  const periods = structuredClone(store.periods), wakes = store.contactWakes.length;
+  for (const [index, priority] of ['2', '3', '2', '2'].entries()) {
+    facts = store.addLead({ ...facts, ...accepted(priority, `2026-10-01T${16 + index}:00:00Z`) });
+    await refreshLeadForOutreach(facts.ref, config, at(`2026-10-01T${16 + index}:01:00Z`), store, fakeSession);
+    assert.deepEqual(store.periods, periods);
+    assert.equal(store.contactWakes.length, wakes);
+  }
+});

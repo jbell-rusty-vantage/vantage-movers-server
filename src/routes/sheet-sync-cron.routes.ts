@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { getSheetSyncMode } from "../config/domain";
 import { logger as rootLogger } from "../logger";
 import { runSheetSyncDrain } from "../services/sheetSync";
+import { drainFormFillWork } from "../services/leads/drainFormFillWork";
 
 /**
  * Cron-triggered safety net for the sheet-sync outbox. Vercel Cron (see
@@ -26,8 +27,9 @@ router.all("/api/cron/sheet-sync-drain", requireCronAuth, async (req: Request, r
   }
 
   try {
+    const formFill = await drainFormFillWork();
     const summary = await runSheetSyncDrain("cron");
-    return res.json({ ok: true, skipped: false, summary });
+    return res.json({ ok: true, skipped: false, summary, formFill });
   } catch (error) {
     log.error({ err: error, msg: "sheet_sync.cron.drain.failed" });
     return res.status(500).json({

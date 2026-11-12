@@ -8,7 +8,6 @@ import {
   getSourceLeadSheetContainerId,
   SHEET_TAB_NAMES,
   shouldWriteSourceLeadSheets,
-  SOURCE_COMPANY_CONFIGS,
   type SourceCompany,
 } from "../../config/domain";
 import type { SheetTabConfig, SyncableDocument, SyncTarget } from "./types";
@@ -95,11 +94,14 @@ export function getHeadersForSyncTarget(target: string): readonly string[] | und
     case "master_duplicates":
     case "source_duplicates":
     case "master_bad_leads":
+    case "source_bad_leads":
       return FORM_SHEET_HEADERS;
     case "master_calls":
     case "source_calls":
     case "master_duplicate_calls":
     case "source_duplicate_calls":
+    case "master_bad_calls":
+    case "source_bad_calls":
       return CALL_SHEET_HEADERS;
     case "master_booked":
       return BOOKED_SHEET_HEADERS;
@@ -117,11 +119,14 @@ export function getEnsureTabsForSyncTarget(target: string): SheetTabConfig[] {
     case "master_duplicates":
     case "master_duplicate_calls":
     case "master_bad_leads":
+    case "master_bad_calls":
       return getMasterLeadsTabs();
     case "source_forms":
     case "source_calls":
     case "source_duplicates":
     case "source_duplicate_calls":
+    case "source_bad_calls":
+    case "source_bad_leads":
       return [
         { tabName: SHEET_TAB_NAMES.forms, headers: FORM_SHEET_HEADERS },
         { tabName: SHEET_TAB_NAMES.calls, headers: CALL_SHEET_HEADERS },
@@ -145,6 +150,7 @@ export function getMasterLeadsTabs(): SheetTabConfig[] {
     { tabName: SHEET_TAB_NAMES.duplicates, headers: FORM_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.duplicateCalls, headers: CALL_SHEET_HEADERS },
     { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
+    { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
   ];
 }
 
@@ -158,15 +164,5 @@ export function getMasterBookedTabs(
 }
 
 export function getSourceLeadTabs(sourceCompany: SourceCompany | string): SheetTabConfig[] {
-  const tabs = getMasterLeadsTabs();
-  const config =
-    SOURCE_COMPANY_CONFIGS[sourceCompany as keyof typeof SOURCE_COMPANY_CONFIGS];
-  if (config?.hasBadTabs) {
-    tabs.push(
-      { tabName: SHEET_TAB_NAMES.badLeads, headers: FORM_SHEET_HEADERS },
-      { tabName: SHEET_TAB_NAMES.badCalls, headers: CALL_SHEET_HEADERS },
-    );
-  }
-
-  return tabs;
+  return getMasterLeadsTabs();
 }

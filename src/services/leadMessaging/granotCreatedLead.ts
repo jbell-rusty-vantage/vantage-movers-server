@@ -4,6 +4,7 @@ import {
   type LeadMessagingMode,
   type OutboundSmsConsentBasis,
 } from "../../config/domain";
+import { granotCreationRetired } from "../../models/bestRelocationRetirement";
 import { logger } from "../../logger";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
@@ -225,7 +226,7 @@ async function loadSendContext(input: GranotCreatedLeadSmsInput): Promise<{
   ]);
   if (!crmSource) return null;
   return {
-    lead_created_policy: crmSource.lead_created_policy,
+    lead_created_policy: granotCreationRetired(crmSource) || granotCreationRetired(company ?? {}) ? "link_only" : crmSource.lead_created_policy,
     outbound_sms: crmSource.outbound_sms
       ? {
           enabled: crmSource.outbound_sms.enabled,

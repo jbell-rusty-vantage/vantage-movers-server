@@ -1,3 +1,4 @@
+import { readCaseObservation, readCaseStatement } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
@@ -10,7 +11,6 @@ import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { getGranotObservationModel } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type { GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
@@ -522,9 +522,9 @@ async function loadCausalContext(caseId: string, requestId?: string) {
   if (!row) throw lifecycle("Granot reconciliation case not found", "CASE_NOT_FOUND", 404, requestId);
   const first = row.evidence[0];
   if (!first) throw lifecycle("Booking case has no causal evidence", "IDENTITY_CONFLICT", 409, requestId);
-  const observation = await getGranotObservationModel().findById(first.observation_id).lean().exec();
+  const observation = await readCaseObservation(first.observation_id);
   if (!observation) throw lifecycle("Booking case Observation is unavailable", "IDENTITY_CONFLICT", 409, requestId);
-  const receipt = await getGranotObservationReceiptModel().findById(observation.receipt_id).lean().exec();
+  const receipt = await readCaseStatement(observation.receipt_id);
   if (!receipt) throw lifecycle("Booking case Receipt is unavailable", "IDENTITY_CONFLICT", 409, requestId);
   return {
     receipt_id: String(receipt._id),

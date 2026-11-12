@@ -9,6 +9,7 @@ build/
 /env.salesintelligence
 
 # Local scratch scripts. Do not commit.
+/.tmp/
 /.cleanup-*.cjs
 /.cleanup-*.txt
 /.storage-*.cjs

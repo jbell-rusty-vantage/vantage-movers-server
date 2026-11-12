@@ -342,3 +342,17 @@ The packet record with approval references is [DECISIONS.md](../sales-outreach-d
 - **Historic rep-days** before 2026-10-05 carry the roster snapshot of the day they were frozen (D-C3). Days frozen before P08a-1 (2026-10-05 and 2026-10-06) keep the explicit roster of revision 7–10, which still names the four retired reps at goal 100.
 - **`Agent.active`, the Granot username and `Agent.outreach_desk` have no history** (P08a-1, People & access). The identity links are temporal, so a past day's roster reads the link that was effective at that day's end but the Agent's *current* active flag, username and control; it only matters for a past day without a frozen row (C5 freezes every desk rep's row after midnight).
 - **Not covered by the C4 wake:** a subject created later does not re-derive a number where its Lead is only in `other_leads`.
+
+
+**November 4 Call billing review:** zero-cost Duplicate Calls/Bad Call Leads are reporting dispositions, not physical deletion or Desk closure. `form_fill` alone does not merge/exclude a subject. Verified `granot_form_sibling` still makes the Form the Desk subject/job holder; jobless Calls wait for their job while Forms keep their approved cadence. Overnight reporting-bad does not set canonical `bad_lead`. Official Bookings/Cancellations, contacts and rep attribution retain their existing authority. See [billing policy](../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) and [review evidence](../call-billing-review-2026-11-04.md).
+
+
+## Granot cadence convergence (November 4)
+
+The EntityChange tail recognizes `mirrorFormLeadToCallSibling` Call changes touching `granot_form_sibling`. It batch-reads current Call-to-Form references in the existing cursor transaction; reference-only `fields.after` is not relation authority. A separate `sod:lead-change:FormLead:<form>:related:CallLead:<call>:change:<change>` job stores `[formId, callId]`. Completed Form revision jobs cannot suppress it. Nomination and cursor commit together; overlap/replay retains one job.
+
+The consumer validates both refs and the current marker in its transaction. `related_form` refreshes only an existing active/review Form and skips Pool admission, intake and expansion; it never reopens a closed subject or fabricates a Form revision. The ordinary CAS/period planner/evaluator clears an ambiguous first-period hold once the pair is verified. Existing periods stay stable. Five-minute revision/held recovery remains; a sibling callback that never committed is still best-effort and needs a later accepted Form observation to heal.
+
+The Desk consumes current facts. Same workflow (including 2/3) and fresh same-value observations preserve periods/deadlines, although accepted metadata and evaluator bookkeeping may change. For 0-to-5-to-0, consuming 5 closes the subject permanently; consuming only final 0 retains the original New period. This is not lossless intermediate Priority history. Form Fill is a reporting disposition, not sibling authority.
+
+RingCentral schedules, staffed windows, capture/derivation coverage and settlement allowance are unchanged. See [Number Activity capture](services/number-activity-capture.md) for provider authority. Late evidence repairs evaluation through contact wake/sweep; Granot retries never manufacture contact credit or verified misses beyond coverage. [Cadence proof and capacity/release gates](../granot-automation-frequency/IMPLEMENTATION-LEDGER.md).

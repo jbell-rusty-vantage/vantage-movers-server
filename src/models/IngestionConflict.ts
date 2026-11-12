@@ -8,6 +8,7 @@ export const INGESTION_CONFLICT_TYPES = [
   "schema_drift",
   "unmatched_refund",
   "canonical_divergence",
+  "new_normal_call_creation",
 ] as const;
 
 const IngestionConflictSchema = new Schema(

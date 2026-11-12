@@ -307,6 +307,7 @@ test("one_feed Call Feed derives CallLead", async () => {
 
   const result = await createGranotNameFromOwnerIntent(
     ownerIntent({
+      when_lead_arrives: "existing_only",
       destination: { kind: "one_feed", feed_id: String(callFeedId) },
     }),
     OWNER,

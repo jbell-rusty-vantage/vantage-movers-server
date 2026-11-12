@@ -1,3 +1,4 @@
+import { normalizedJobCandidates } from "../bookings/indexedJobLookup";
 import mongoose, { type ClientSession } from "mongoose";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
@@ -187,15 +188,14 @@ export function isMongoObjectIdHex(value: string): boolean {
 export function createMongoLeadIdentityStore(session?: ClientSession): LeadIdentityStore {
   return {
     async findActiveRecordLink(normalizedJobNo) {
-      const row = await getGranotRecordLinkModel()
-        .findOne({
-          provider: "granot",
-          state: "active",
-          ...equivalentNormalizedJobFilter(normalizedJobNo),
-        })
-        .session(session ?? null)
-        .lean()
-        .exec();
+      const model = getGranotRecordLinkModel();
+      const scope = { provider: "granot", state: "active" } as const;
+      const matches = await model.find({ ...scope, ...normalizedJobCandidates([normalizedJobNo]) })
+        .limit(2).session(session ?? null).lean().exec();
+      // Multiple equivalent links must preserve the existing resolver's selection.
+      const row = matches.length < 2 ? matches[0] : await model
+        .findOne({ ...scope, ...equivalentNormalizedJobFilter(normalizedJobNo) })
+        .session(session ?? null).lean().exec();
       if (!row) return null;
       return {
         id: String(row._id),

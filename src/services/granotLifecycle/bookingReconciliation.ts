@@ -1,3 +1,5 @@
+import { pointReceiptToDecision } from "./receiptDecisionPointer";
+import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
@@ -16,7 +18,6 @@ import {
   projectBookingPriorityPairing,
   type BookingPriorityPairing,
 } from "./bookingPriorityPairing";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type {
   SynchronizationDecisionDocument,
@@ -752,6 +753,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
       return row?.sequence_number ?? 0;
     },
     async insertCase(row, session) {
+      for (const item of row.evidence) await preserveCaseEvidence(item.observation_id, item.decision_id, session);
       const [created] = await getGranotBookingReconciliationCaseModel().create([row], { session });
       if (!created) throw new Error("Granot Booking reconciliation case insert returned no row.");
       return created.toObject() as GranotBookingReconciliationCaseDocument;
@@ -783,7 +785,10 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
         )
         .lean()
         .exec();
-      if (updated) return updated;
+      if (updated) {
+        await preserveCaseEvidence(input.evidence.observation_id, input.evidence.decision_id, session);
+        return updated;
+      }
       const replay = await getGranotBookingReconciliationCaseModel()
         .findOne({ _id: input.case_id, state: "open" })
         .session(session)
@@ -794,11 +799,8 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
     },
     async insertDecision(decision, receiptId, session) {
       await getSynchronizationDecisionModel().create([decision], { session });
-      await getGranotObservationReceiptModel().collection.updateOne(
-        { _id: receiptId },
-        { $set: { "processing.latest_decision_id": decision._id } },
-        { session },
-      );
+      if (decision.target?.model === "GranotBookingReconciliationCase") await preserveCaseDecision(decision, session);
+      await pointReceiptToDecision(receiptId, decision._id, session);
     },
     async listJobObservations(normalizedJobNo, session) {
       return getGranotObservationModel()

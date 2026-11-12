@@ -45,6 +45,14 @@ function registeredMethods(
   );
 }
 
+test("Call Leads can be browsed and corrected, but have no public creation route", () => {
+  const routes = registeredMethods(router);
+  assert.equal(routes.has("POST /api/v1/call-leads"), false);
+  assert.ok(routes.has("GET /api/v1/call-leads"));
+  assert.ok(routes.has("PATCH /api/v1/call-leads/:id"));
+  assert.ok(routes.has("POST /api/v1/form-leads"));
+});
+
 test("Operations Registry entities expose complete lifecycle CRUD surfaces", () => {
   const routes = registeredMethods(router);
   const ringCentralRoutes = registeredMethods(ringCentralRouter);

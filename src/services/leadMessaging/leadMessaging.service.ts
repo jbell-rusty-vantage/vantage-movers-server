@@ -18,6 +18,9 @@ import {
   type LeadMessageStatus,
   type OutboundSmsConsentBasis,
 } from "../../config/domain";
+import { granotCreationRetired } from "../../models/bestRelocationRetirement";
+import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
+import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
 import { logger } from "../../logger";
 import {
   createLeadMessage,
@@ -339,6 +342,19 @@ export async function dispatchPersistedLeadMessage(
       message_id: existing?._id.toString() ?? null,
       status: existing?.status ?? "not_found",
     };
+  }
+
+  if (message.purpose === "granot_lead_created_confirmation") {
+    const [source, company] = await Promise.all([
+      message.granot_crm_source ? getGranotCrmSourceModel().findById(message.granot_crm_source).lean().exec() : null,
+      message.lead_source_company ? getLeadSourceCompanyModel().findById(message.lead_source_company).lean().exec() : null,
+    ]);
+    if (granotCreationRetired(source ?? {}) || granotCreationRetired(company ?? {})) {
+      await LeadMessage.updateOne({ _id: message._id, status: "sending", lease_owner: message.lease_owner }, {
+        $set: { status: "skipped", skip_reason: "best_relocation_retired", next_attempt_at: null, lease_owner: null, leased_until: null },
+      });
+      return { message_id: message._id.toString(), status: "skipped" };
+    }
   }
 
   let result: Awaited<ReturnType<TwilioSender>>;

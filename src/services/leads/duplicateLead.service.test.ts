@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import mongoose, { type ClientSession } from "mongoose";
+import { reportingEligibleCallLeadFilter } from "./callLeadAdmission";
 import {
   findDuplicateFormLeadMatch,
   hasFormFillForCallLead,
@@ -351,7 +352,7 @@ test("form fill detection matches lead source company or source company", async 
   assert.deepEqual(findQuery?.$and?.[0], {
     $or: [
       { lead_source_company: leadSourceCompany },
-      { source_company: "tbm_leads" },
+      { lead_source_company: null, source_company: "tbm_leads" },
     ],
   });
   assert.deepEqual(findQuery?.$and?.[1]?.duplicate, { $ne: true });
@@ -391,7 +392,8 @@ test("form fill mark shares one command execution and the caller session", async
     session,
   );
 
-  assert.deepEqual(findQuery?.$and?.[1], { form_fill: { $ne: true } });
+  assert.deepEqual(findQuery?.$and?.[1], reportingEligibleCallLeadFilter());
+  assert.deepEqual(findQuery?.$and?.[2], { form_fill: { $ne: true } });
   assert.deepEqual(findQuery?.$and?.[0], { source_company: "tbm_leads" });
   assert.deepEqual(querySessions, [session]);
   assert.equal(first.form_fill, true);

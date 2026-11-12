@@ -95,3 +95,48 @@ test('interrupted dispatcher resumes missing windows outside its hour and freeze
   await releasePoolCollectionDependencies();
   assert.equal((await GranotAutomationRun.findById(readyPool.run_id).lean())?.request_snapshot.waiting_for_all,false,'blocked child prefixes cannot starve a ready dependency');
 });
+
+
+test('hourly freshness uses due scheduled coverage, preserves no-op manifests and exposes held effects', async t => {
+  if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== 'true') { t.skip('Opt-in isolated replica proof'); return; }
+  assert.match(getMongoDatabaseName(), /^testvantagemovers_poolcollector[0-9]+$/);
+  await connectMongo();
+  await GranotAutomationRun.deleteMany({}); await GranotEstimatesScheduleSlot.deleteMany({});
+  const actor = { actor_type:'system', actor_id:'granot-estimates-in-process-cron', actor_label:'Frequency proof', actor_role:'system', request_id:'frequency-proof', origin:'vantage_admin' } as const;
+  const window = { from:'11/04/2026', to:'11/04/2026' };
+  const input = { slotKey:'11/04/2026:6', lane:'all' as const, dateWindow:window, windows:[window], initiator:actor, alsoPoolRefresh:true };
+  await createEstimatesSchedule(input);
+  await createEstimatesSchedule({ ...input, slotKey:'11/04/2026:6:pool_discovery', lane:'pool_discovery', alsoPoolRefresh:false });
+  assert.equal(await GranotEstimatesScheduleSlot.countDocuments(), 3, '06:00 independent duties, one correlated refresh');
+  const all = await dispatchEstimatesSchedule(input.slotKey);
+  const first = await GranotAutomationRun.findById(all[0]!.run_id).lean();
+  const manifest = await GranotEstimatesScheduleSlot.findById(input.slotKey).lean();
+  await createEstimatesSchedule(input); await dispatchEstimatesSchedule(input.slotKey);
+  assert.equal(+(await GranotEstimatesScheduleSlot.findById(input.slotKey).lean())!.updatedAt, +manifest!.updatedAt);
+  assert.equal(+(await GranotAutomationRun.findById(all[0]!.run_id).lean())!.updatedAt, +first!.updatedAt);
+  const disabled = { inspect: async () => deskConfiguration() };
+  for (const time of ['2026-11-04T14:40:00Z', '2026-11-04T15:40:00Z']) {
+    const result = await getEstimatesFreshness(new Date(time), disabled);
+    assert.ok((result.warnings as string[]).includes('late_slot'));
+    const refresh = (result.pool_lanes as {refresh: Record<string, unknown>}).refresh;
+    assert.equal(refresh.enabled, false); assert.equal(refresh.latest_expected_slot, null); assert.deepEqual(refresh.warnings, []);
+  }
+  const next = { ...input, slotKey:'11/04/2026:9', alsoPoolRefresh:false };
+  await createEstimatesSchedule(next); const runs = await dispatchEstimatesSchedule(next.slotKey);
+  await GranotAutomationRun.updateOne({ _id:runs[0]!.run_id }, { $set: { status:'completed', collection_summary:{ coverage:{complete:true,captured_at:'2026-11-04T14:10:00Z'},held_rows:1 } } });
+  let result = await getEstimatesFreshness(new Date('2026-11-04T15:40:00Z'), disabled);
+  assert.equal((result.warnings as string[]).includes('late_slot'), false, 'newer complete supersedes missed collection');
+  assert.equal(result.last_complete_collected_slot, next.slotKey); assert.equal(result.last_complete_synchronized_slot, null);
+  assert.ok((result.warnings as string[]).includes('held_rows'));
+  await GranotEstimatesScheduleSlot.collection.updateOne({ _id:next.slotKey } as never, { $unset:{scheduled_at:''} });
+  await GranotAutomationRun.updateOne({ _id:runs[0]!.run_id }, { $set:{ 'collection_summary.held_rows':0 } });
+  result = await getEstimatesFreshness(new Date('2026-11-04T15:40:00Z'), disabled);
+  assert.equal(result.last_complete_synchronized_slot, next.slotKey, 'old manifest decoded without backfill');
+  assert.equal((await GranotEstimatesScheduleSlot.findById(next.slotKey).lean())?.scheduled_at, undefined);
+  await GranotAutomationRun.collection.updateOne({ _id:new mongoose.Types.ObjectId(runs[0]!.run_id) }, { $set:{ receipts:[{outcome:'shadow_effect_suppressed'}] } });
+  result = await getEstimatesFreshness(new Date('2026-11-04T15:40:00Z'), disabled);
+  assert.equal(result.last_complete_collected_slot, next.slotKey);
+  assert.equal(result.last_complete_synchronized_slot, null);
+  assert.ok((result.warnings as string[]).includes('unapplied_actions'));
+  assert.ok((result.warnings as string[]).includes('synchronization_pending'));
+});

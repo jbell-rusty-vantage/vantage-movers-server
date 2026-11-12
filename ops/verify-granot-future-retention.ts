@@ -1,0 +1,190 @@
+import assert from "node:assert/strict";
+import { MongoClient, ObjectId } from "mongodb";
+import { installRetention } from "./granot-retention-install";
+import {
+  policies,
+  runFutureRetention,
+} from "../src/services/granotHistory/futureRetention";
+import { archivedChains } from "../src/services/granotHistory/archiveReads";
+import { readClosedRun } from "../src/services/granotHistory/closedAutomationRun";
+
+async function main() {
+  const client = new MongoClient(
+    "mongodb://127.0.0.1:27961/?replicaSet=storageRs",
+    { serverSelectionTimeoutMS: 3000 },
+  );
+  try {
+    const db = client.db(
+        "testvantagemovers_ret" + new ObjectId().toHexString(),
+      ),
+      now = new Date(),
+      day = 86400000;
+    const run = new ObjectId().toHexString(),
+      job = "TEST" + Date.now(),
+      lead = new ObjectId();
+    const collections = [
+      "granot_webhook_receipts",
+      "granot_observations",
+      "synchronization_decisions",
+    ];
+    for (const name of collections) await db.createCollection(name);
+    await db.collection(collections[0]).createIndex(
+      { observation_channel: 1, channel_operation_id: 1 },
+      {
+        unique: true,
+        partialFilterExpression: {
+          channel_operation_id: { $type: "string" },
+        },
+        name: "granot_observation_receipt_channel_operation_id_unique",
+      },
+    );
+    await installRetention(db, new Date(+now - 15 * day));
+    const receipts: ObjectId[] = [];
+    for (const [i, age] of [10, 9, 35, 11].entries()) {
+      const at = new Date(+now - age * day),
+        r = new ObjectId(),
+        o = new ObjectId(),
+        d = new ObjectId();
+      receipts.push(r);
+      await db.collection(collections[0]).insertOne({
+        _id: r,
+        createdAt: at,
+        captured_at: at,
+        observation_channel: "granot_http_automation",
+        channel_operation_id: run + ":" + i,
+        channel_operation_kind: "lead_snapshot_apply",
+        payload_sha256: "a".repeat(64),
+        processing: {
+          state: "completed",
+          completed_at: at,
+          latest_decision_id: d,
+          retention_review_at: now,
+        },
+      });
+      await db.collection(collections[1]).insertOne({
+        _id: o,
+        receipt_id: r,
+        captured_at: at,
+        identity: { normalized_job_no: job },
+        priority: { valid: true, canonical: "9" },
+        kind: "lead_snapshot",
+      });
+      await db.collection(collections[2]).insertOne({
+        _id: d,
+        observation_id: o,
+        attempt: 1,
+        execution_mode: "live",
+        outcome: i === 3 ? "stale" : "already_current",
+        reason_code:
+          i === 3
+            ? "older_than_temporal_winner"
+            : "desired_state_already_current",
+        target: { model: "FormLead", id: String(lead) },
+        effects: [],
+        decided_at: at,
+      });
+      if (i === 1)
+        await db
+          .collection("sales_outreach_pool_work")
+          .insertOne({
+            active: true,
+            lead_model: "FormLead",
+            lead_id: lead,
+            episodes: [{ observation_id: o }],
+          });
+    }
+    await db.collection("form_leads").insertOne({
+      _id: lead,
+      last_accepted_granot_observation: {
+        observation_id: new ObjectId(),
+        captured_at: now,
+        evidence: { version: 2 },
+      },
+    });
+    // Pool equivalence itself is exercised by acceptedLeadEvidence.replica.test.ts.
+    // This standalone client proves the worker passes the candidate and shares its transaction.
+    const shadow = await runFutureRetention(
+      db,
+      now,
+      async (bound, ref, session) =>
+        bound === db && String(lead) === ref.id && session.inTransaction(),
+    );
+    assert.equal(shadow.status, "shadow");
+    assert.equal(
+      (
+        await db
+          .collection<{
+            _id: string;
+            read_comparisons: number;
+          }>("granot_retention_days")
+          .findOne({ _id: now.toISOString().slice(0, 10) })
+      )?.read_comparisons,
+      1,
+    );
+    assert.equal(shadow.archived, 2);
+    assert.equal(shadow.stamped, 0);
+    for (const name of collections)
+      assert.equal(
+        await db
+          .collection(name)
+          .countDocuments({ retention_purge_at: { $exists: true } }),
+        0,
+      );
+    await policies(db).updateOne(
+      { _id: "v1" },
+      { $set: { armed_at: new Date(+now - 15 * day) } },
+    );
+    assert.equal((await runFutureRetention(db, now)).status, "idle");
+    for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+      await db.collection<{ _id: string }>("granot_retention_days").insertOne({
+        _id: new Date(+now - daysAgo * day).toISOString().slice(0, 10),
+        mode: "shadow",
+        qualified: 100,
+        read_comparisons: 3,
+        ttl_stamped: 0,
+      } as { _id: string });
+    }
+    assert.equal(
+      (await runFutureRetention(db, now)).status,
+      "future_qualified",
+    );
+    await db
+      .collection(collections[0])
+      .updateMany(
+        { _id: { $in: receipts } },
+        { $set: { "processing.retention_review_at": now } },
+      );
+    const active = await runFutureRetention(db, now);
+    assert.equal(active.status, "future");
+    assert.equal(active.stamped, 2);
+    const rows = [];
+    for await (const batch of archivedChains(db, job)) rows.push(...batch);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(
+      rows.map((c) => String(c.receipt._id)).sort(),
+      [receipts[0], receipts[3]].map(String).sort(),
+    );
+    assert.equal((await readClosedRun(db, run))?.length, 4);
+    for (const id of receipts.slice(1, 3))
+      assert.ok(
+        await db
+          .collection(collections[0])
+          .findOne({ _id: id, retention_purge_at: { $exists: false } }),
+      );
+    console.log(
+      JSON.stringify({
+        database: db.databaseName,
+        shadow,
+        active,
+        protected: ["historic", "Pool episode"],
+        archiveAndReplayVerified: true,
+      }),
+    );
+  } finally {
+    await client.close();
+  }
+}
+main().catch((e) => {
+  console.error(e.name, e.message);
+  process.exitCode = 1;
+});

@@ -4,6 +4,7 @@ import {
   LocalType,
 } from "../../../config/domain";
 import { FORM_LEAD_UNKNOWN_STATE } from "../../../models/FormLead";
+import { hasTrustedExternalSheetReview } from "../../leads/callLeadReportingDisposition";
 import type { FormLeadSheetSource } from "../types";
 import {
   bookedCell,
@@ -41,11 +42,21 @@ export function formLeadToRow(lead: FormLeadSheetSource): string[] {
     lead.crm_source_label_snapshot?.trim() ||
       lead.source_granularity_label_snapshot?.trim() ||
       getFormLeadSourceCompanyLabel(lead.source_company, lead.local as LocalType),
-    formatFormLeadBadLeadReason(lead.bad_lead),
+    formBadReasonCell(lead),
     lead.receiver_agent_name_snapshot?.trim() ?? "",
   ];
 }
 
 function formLeadStateCell(value?: string | null): string {
   return value?.trim() || FORM_LEAD_UNKNOWN_STATE;
+}
+
+function formBadReasonCell(lead: FormLeadSheetSource): string {
+  if (hasTrustedExternalSheetReview(lead.external_sheet_review, ["bad_form"])) {
+    const note = (lead.external_sheet_review as { raw_value: string }).raw_value;
+    // USER_ENTERED preserves date/numeric formatting elsewhere; arbitrary imported
+    // review text is always escaped so formulas cannot execute in this cell.
+    return "'" + note;
+  }
+  return formatFormLeadBadLeadReason(lead.bad_lead);
 }

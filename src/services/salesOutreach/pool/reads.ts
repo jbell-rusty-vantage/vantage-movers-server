@@ -1,3 +1,4 @@
+import { groupPoolEpisodeIntervals } from "./episodeIntervals";
 import mongoose from "mongoose";
 import { getSalesOutreachPoolWorkModel, getSalesOutreachPoolDutyModel, getSalesOutreachContactEventModel } from "../../../models/salesOutreach";
 import type { SalesOutreachPoolDto, SalesOutreachQueueDto } from "../../../validation/v1/salesOutreachReads";
@@ -116,7 +117,7 @@ export async function readPoolSummary(works: readonly PoolAccess[], configuratio
   const intervals = history.flatMap((w) => w.episodes.filter((e) => +e.started_at < +bounds.end && (!e.ended_at || +e.ended_at > +bounds.start)).map((e) => ({
     subject_id: w.subject_id, event_at: { $gte: new Date(Math.max(+e.started_at, +bounds.start)), $lt: new Date(Math.min(+(e.ended_at ?? bounds.end), +bounds.end)) },
   })));
-  const actual_outbound = intervals.length ? await getSalesOutreachContactEventModel().countDocuments({ $or: intervals,
+  const actual_outbound = intervals.length ? await getSalesOutreachContactEventModel().countDocuments({ $or: groupPoolEpisodeIntervals(intervals),
     channel: "call", kind: "outbound_attempt", verification: "confirmed", restricted_at_contact: false,
     "pool_caller_eligibility.eligible": true,
     goal_agent_id: agent ? oid(agent) : { $ne: null } }) : 0;

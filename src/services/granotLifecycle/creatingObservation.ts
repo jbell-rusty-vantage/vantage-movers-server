@@ -3,7 +3,7 @@ import {
   getGranotObservationModel,
   type GranotObservationDocument,
 } from "../../models/GranotObservation";
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { readCaseObservation, readCaseStatement } from "./caseEvidence";
 import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
 import { toObjectId } from "../../utils/objectId";
 import {
@@ -108,15 +108,10 @@ const defaultLoaders: CreatingObservationLoaders = {
       .lean();
   },
   async findObservation(observationId) {
-    return getGranotObservationModel()
-      .findById(toObjectId(observationId))
-      .lean();
+    return readCaseObservation(toObjectId(observationId));
   },
   async findReceipt(receiptId) {
-    return getGranotObservationReceiptModel()
-      .findById(toObjectId(receiptId))
-      .select({ payload: 1 })
-      .lean();
+    return readCaseStatement(toObjectId(receiptId));
   },
   async findJobObservations(normalizedJobNo) {
     return getGranotObservationModel()

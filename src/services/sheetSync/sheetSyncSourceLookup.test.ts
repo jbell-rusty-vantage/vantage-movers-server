@@ -13,6 +13,7 @@ test("syncSourceLead evaluates no_sync before unmatched and deletes ordinary tab
   const next = source.indexOf("\nasync function deleteOrdinaryNoSyncLeadRows", start);
   const body = next === -1 ? source.slice(start) : source.slice(start, next);
   assert.match(body, /noSyncAppliesToNormalTabs/);
+  assert.match(body, /_id: lead\._id/);
   assert.match(body, /deleteOrdinaryNoSyncLeadRows/);
   const unmatchedIndex = body.indexOf("created_on_unmatched");
   const noSyncIndex = body.indexOf("noSyncAppliesToNormalTabs");
@@ -22,9 +23,8 @@ test("syncSourceLead evaluates no_sync before unmatched and deletes ordinary tab
 
   const deleteFn = source.slice(source.indexOf("async function deleteOrdinaryNoSyncLeadRows"));
   assert.match(deleteFn, /deleteRowsFromTargets/);
-  assert.match(deleteFn, /master_forms/);
-  assert.match(deleteFn, /master_calls/);
-  assert.doesNotMatch(deleteFn, /master_duplicates/);
-  assert.doesNotMatch(deleteFn, /master_bad_leads/);
-  assert.doesNotMatch(deleteFn, /master_duplicate_calls/);
+  assert.match(deleteFn, /allFormLeadTargets/);
+  assert.match(deleteFn, /FORM_REPORTING_TARGET_KEYS/);
+  assert.match(deleteFn, /callLeadTargets/);
+  assert.match(deleteFn, /CALL_REPORTING_TARGET_KEYS/);
 });

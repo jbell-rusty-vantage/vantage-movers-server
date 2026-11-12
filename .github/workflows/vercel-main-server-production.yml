@@ -67,6 +67,9 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=12288
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
+      - name: Verify Granot retention in the built function
+        run: node ops/verify-granot-retention-build.cjs .vercel/output/functions/api/index.func
+
       - name: Deploy prebuilt production
         id: deploy
         run: |

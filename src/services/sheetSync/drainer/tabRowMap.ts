@@ -13,14 +13,17 @@ const SHEET_ROW_LOOKUP_END_COLUMN = "ZZ";
  * map to the batch writer so each known row is updated in place and only truly
  * new rows are appended.
  */
+export type TabRowMap = Map<string, number> & { duplicateRows: Map<string, number[]>; idColumn?: number };
+
 export async function buildTabRowMap(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   tabName: string,
-  headers: readonly string[],
-): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  const mongoIdIndex = headers.indexOf("Mongo ID");
+  _headers: readonly string[],
+  allowNewEmptyTab = false,
+): Promise<TabRowMap> {
+  const map = new Map<string, number>() as TabRowMap;
+  map.duplicateRows = new Map();
 
   const response = await withSheetsRetry("values.get.tabMap", () =>
     sheets.spreadsheets.values.get({
@@ -28,25 +31,24 @@ export async function buildTabRowMap(
       range: `${escapeSheetTitleForRange(tabName)}!A:${SHEET_ROW_LOOKUP_END_COLUMN}`,
     }),
   );
-  const rows = response.data.values ?? [];
+  const rows = response.data.values;
+  if (allowNewEmptyTab && (rows === undefined || (Array.isArray(rows) && rows.length === 0))) return map;
+  if (!Array.isArray(rows)) throw new Error("sheet_identity_rows_invalid");
+  const header = rows[0];
+  if (!Array.isArray(header) || header.filter((value) => value === "Mongo ID").length !== 1) {
+    throw new Error("sheet_identity_header_invalid");
+  }
+  const mongoIdIndex = header.indexOf("Mongo ID");
+  map.idColumn = mongoIdIndex;
   for (let index = 1; index < rows.length; index += 1) {
-    const row = rows[index] ?? [];
+    const row = rows[index];
+    if (!Array.isArray(row)) throw new Error("sheet_identity_rows_invalid");
     const rowNumber = index + 1;
-    if (mongoIdIndex >= 0) {
-      const candidate = row[mongoIdIndex];
-      if (typeof candidate === "string" && candidate.length > 0) {
-        map.set(candidate, rowNumber);
-        continue;
-      }
-    }
-    // Fall back to scanning the row for any cell that equals a Mongo id, which
-    // tolerates legacy rows whose id landed in a shifted column.
-    for (const cell of row) {
-      if (typeof cell === "string" && /^[a-f0-9]{24}$/i.test(cell)) {
-        if (!map.has(cell)) {
-          map.set(cell, rowNumber);
-        }
-      }
+    const candidate = row[mongoIdIndex];
+    if (typeof candidate === "string" && candidate.length > 0) {
+      if (map.has(candidate)) {
+        map.duplicateRows.set(candidate, [...(map.duplicateRows.get(candidate) ?? []), rowNumber]);
+      } else map.set(candidate, rowNumber);
     }
   }
 

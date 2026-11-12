@@ -17,6 +17,8 @@ import {
 import { normalizePhoneNumberForMatch } from "../utils/phone";
 import { normalizeJobNo } from "../services/bookings/bookingIdentity";
 import { CALL_LEAD_ATTACHMENT_INDEXES } from "./leadContactPhoneIndexes";
+import { externalSheetReviewField } from "./externalSheetReviewSchema";
+import { externalCallAdmissionField, applyExternalCallAdmissionGuards } from "./externalCallAdmissionSchema";
 
 /**
  * Provenance + qualification metadata for call leads created from the
@@ -41,6 +43,10 @@ const ringCentralCallMetadataSchema = new Schema(
     session_id: { type: String, trim: true },
     party_id: { type: String, trim: true },
     call_log_id: { type: String, trim: true },
+    final_result: { type: String },
+    final_result_observed_at: { type: Date },
+    final_result_call_log_id: { type: String, trim: true },
+    final_result_answered: { type: Boolean },
     source_label: { type: String, trim: true },
     ingestion_source: {
       type: String,
@@ -121,8 +127,11 @@ const CallLeadSchema = new Schema(
     // so the owner can exclude it from lead spend rather than paying twice.
     duplicate: { type: Boolean, default: false, index: true },
     ringcentral: { type: ringCentralCallMetadataSchema, default: undefined },
+    external_sheet_review: externalSheetReviewField("CallLead"),
+    external_call_admission: externalCallAdmissionField,
     created_on_unmatched: { type: Boolean, default: false, index: true },
     no_sync: { type: Boolean, default: false },
+    outreach_automation_suppressed: { type: Boolean, default: false, immutable: true },
     pickup_city: { type: String, trim: true },
     pickup_zip: { type: String, trim: true },
     delivery_city: { type: String, trim: true },
@@ -260,6 +269,7 @@ for (const index of CALL_LEAD_S08_INDEXES) {
 
 applyLeadProvenanceGuards(CallLeadSchema);
 applyAggregateRevisionGuards(CallLeadSchema);
+applyExternalCallAdmissionGuards(CallLeadSchema);
 
 CallLeadSchema.pre("validate", function normalizePhoneNumber() {
   this.normalized_phone_number = normalizePhoneNumberForMatch(this.phone_number);

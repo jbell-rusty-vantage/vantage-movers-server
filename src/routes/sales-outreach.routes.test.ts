@@ -49,7 +49,7 @@ after(async () => {
     else process.env[key] = value;
 });
 
-function signed(role: "owner" | "manager" | "admin" | "rep", method: "GET" | "PATCH", path = PATH): Record<string, string> {
+function signed(role: "owner" | "manager" | "admin" | "rep", method: "GET" | "POST" | "PATCH", path = PATH): Record<string, string> {
   const timestamp = `${Date.now()}`;
   const requestId = `req-${role}-${timestamp}`;
   const fields = { adminId: `${role}-1`, email: `${role}@example.invalid`, role, timestamp, requestId, method, path };
@@ -119,6 +119,19 @@ test("PATCH /configuration: Owner only, Idempotency-Key required, strict body, C
   assert.deepEqual([data.configuration_state, data.revision, data.value.controls.desk_enabled], ["active", 1, true]);
 });
 
+test("Granot navigation is paused over HTTP for every Desk role, including old refresh requests", async () => {
+  const path = "/api/v1/admin/sales-outreach/outreach/bbbbbbbbbbbbbbbbbbbbbbbb/granot-link";
+  for (const role of ["owner", "manager", "rep"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed(role, "POST", path), body: JSON.stringify({ refresh: true }) });
+    assert.equal(response.status, 503);
+    const body = await response.json() as { code: string; issues: Array<{ code: string; message: string }> };
+    assert.equal(body.code, "SERVICE_UNAVAILABLE");
+    assert.deepEqual(body.issues[0], { path: "granot_link", code: "auth_fix_pending", message: "Attempting auth fix." });
+  }
+  const admin = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed("admin", "POST", path), body: "{}" });
+  assert.equal(admin.status, 403);
+});
+
 test("scope other than production is refused before any service runs", async () => {
   const response = await fetch(`${baseUrl}${PATH}?scope=historical`, { headers: signed("owner", "GET") });
   assert.equal(response.status, 400);
@@ -127,4 +140,18 @@ test("scope other than production is refused before any service runs", async () 
   assert.equal(unknown.status, 400);
   const noSecret = await fetch(`${baseUrl}${PATH}`, { headers: { ...signed("owner", "GET"), "x-api-secret": "wrong" } });
   assert.equal(noSecret.status, 401);
+});
+
+test("Granot session lookup refuses non-pilot actors and invalid or extra context fields over HTTP", async () => {
+  const path = "/api/v1/admin/sales-outreach/outreach/bbbbbbbbbbbbbbbbbbbbbbbb/granot-session-link";
+  const context = "11111111-2222-3333-4444-555555555555";
+  for (const role of ["owner", "manager", "rep", "admin"] as const) {
+    const response = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed(role, "POST", path), body: JSON.stringify({ session_context: context }) });
+    assert.equal(response.status, 403);
+  }
+  for (const body of [{ session_context: "not-a-context" }, { session_context: context, username: "JOSH" }, { session_context: context, agent_id: "6a1dc03e419f58fdad44944f" }]) {
+    const response = await fetch(`${baseUrl}${path}`, { method: "POST", headers: signed("rep", "POST", path), body: JSON.stringify(body) });
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+  }
 });

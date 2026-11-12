@@ -369,7 +369,7 @@ test("owner idempotency key helper preserves the 8-200 printable envelope", () =
   );
 });
 
-test("call-lead command validates DTO without an unsupported ingestion field", async () => {
+test("external sheet Call command is rejected before validation or writing", async () => {
   await assert.rejects(
     createCallLead({
       data: {
@@ -378,7 +378,7 @@ test("call-lead command validates DTO without an unsupported ingestion field", a
       },
       context: commandContext("e".repeat(64)),
     }),
-    /restricted to best_relocation_leads/,
+    /Only a qualified RingCentral/,
   );
 });
 
@@ -598,7 +598,6 @@ test("[AC-32] v1 write routes enter existing adapters and do not patch models", 
   );
   for (const name of [
     "runExistingCreateFormLead",
-    "runExistingCreateCallLead",
     "runExistingUpdateSourceOwnedLead",
     "runExistingCreateBookingFromLead",
     "runExistingCreateBookedLeadFromSource",

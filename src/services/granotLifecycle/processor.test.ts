@@ -1097,7 +1097,7 @@ test("[AC-07] shadow matched Lead Created records one target and never claims a 
   assert.equal(result.effects.length, 0);
 });
 
-test("[AC-08] foundation eligible create_if_missing stays suppressed with no reservation", async () => {
+test("[AC-08] unmatched Call stays pending in shadow without a reservation", async () => {
   const row = observation({
     contact: {
       first_name: "Ada",
@@ -1124,8 +1124,8 @@ test("[AC-08] foundation eligible create_if_missing stays suppressed with no res
     },
   });
   const result = await processGranotObservation({ receipt_id: String(row.receipt_id) }, deps);
-  assert.equal(result.outcome, "policy_blocked");
-  assert.equal(deps.decisions[0]?.reason_code, "shadow_effect_suppressed");
+  assert.equal(result.outcome, "pending_match");
+  assert.equal(deps.decisions[0]?.reason_code, "pending_source_scoped_match");
   assert.equal(deps.links.length, 0);
   assert.equal(result.effects.length, 0);
   assert.equal(deps.createLeadCalls, 0);
@@ -1655,7 +1655,7 @@ function completeCallObservation(
   });
 }
 
-test("[AC-08] live authorized Job-only Call invokes creation and multiple candidates block it", async () => {
+test("[AC-08] live Granot Job-only Call never creates; multiple candidates block matching", async () => {
   const row = observation();
   const created = memoryDeps({
     observation: row,
@@ -1671,8 +1671,8 @@ test("[AC-08] live authorized Job-only Call invokes creation and multiple candid
     { receipt_id: String(row.receipt_id) },
     created,
   );
-  assert.equal(created.createLeadCalls, 1);
-  assert.equal(result.outcome, "created");
+  assert.equal(created.createLeadCalls, 0);
+  assert.equal(result.outcome, "pending_match");
 
   const conflicted = memoryDeps({
     observation: row,
@@ -1743,7 +1743,7 @@ test("RingCentral-origin Call Lead plus later Granot Call observation synchroniz
   }
 });
 
-test("fence identity race replans Call create_if_missing onto the RingCentral Call Lead", async () => {
+test("Granot waits for a later match when no RingCentral Call exists", async () => {
   const row = completeCallObservation({ route_event_class: "lead_created" });
   const leadId = String(objectId());
   let identityLoads = 0;
@@ -1776,9 +1776,9 @@ test("fence identity race replans Call create_if_missing onto the RingCentral Ca
     { receipt_id: String(row.receipt_id) },
     deps,
   );
-  assert.equal(deps.createLeadCalls, 1);
-  assert.equal(deps.synchronizeCalls, 1);
-  assert.equal(result.outcome, "applied");
+  assert.equal(deps.createLeadCalls, 0);
+  assert.equal(deps.synchronizeCalls, 0);
+  assert.equal(result.outcome, "pending_match");
 });
 
 test("Call Job versus phone pointing at two Leads is job_number_conflict and never creates", async () => {

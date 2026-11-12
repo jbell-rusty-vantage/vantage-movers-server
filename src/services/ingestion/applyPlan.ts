@@ -1,3 +1,6 @@
+import { bestRelocationRetiredError } from "./retirementPolicy";
+import { ConflictError } from "../errors";
+import { bestRelocationFinalCallPayloadChecksum } from "../domainCommands/bestRelocationFinalCall";
 import { createHash } from "node:crypto";
 import {
   assertChecksum,
@@ -43,6 +46,7 @@ const defaultPersistence: ApplyPlanPersistence = {
 export async function applyBestRelocationPlan(input: {
   plan: BestRelocationApplicationPlan;
   checksum: string;
+  final_reconciliation?: { run_id: string; plan_checksum: string };
   run_id: string;
   connection_id: string;
   actor: DurableActor;
@@ -84,6 +88,12 @@ export async function applyBestRelocationPlan(input: {
     },
     input.checksum,
   );
+  if (input.final_reconciliation?.run_id !== input.run_id ||
+      input.final_reconciliation?.plan_checksum !== input.checksum ||
+      input.initiator.actor_type !== "owner" || !input.assertApplicationEnabled) {
+    throw bestRelocationRetiredError();
+  }
+  await input.assertApplicationEnabled();
   const persistence = input.persistence ?? defaultPersistence;
   const now = input.now ?? (() => new Date());
   const resolved =
@@ -109,6 +119,15 @@ export async function applyBestRelocationPlan(input: {
     actionIndex < input.plan.actions.length;
     actionIndex += 1
   ) {
+    await input.assertApplicationEnabled();
+    if (
+      !(await input.leaseStore.assertHeld({
+        token: input.lease,
+        now: now(),
+      }))
+    ) {
+      throw new Error("Ingestion apply lease was lost before mutation");
+    }
     const action = input.plan.actions[actionIndex];
     if (action.classification === "unchanged") {
       result.completed_units += 1;
@@ -121,19 +140,11 @@ export async function applyBestRelocationPlan(input: {
       await checkpoint(input, actionIndex, result, failed);
       continue;
     }
-    await input.assertApplicationEnabled?.();
-    if (
-      !(await input.leaseStore.assertHeld({
-        token: input.lease,
-        now: now(),
-      }))
-    ) {
-      throw new Error("Ingestion apply lease was lost before mutation");
-    }
     let commandStarted = false;
     let commandFinished = false;
     try {
       if (action.command === "record_conflict") {
+        if (action.conflict?.severity === "blocking") failed.add(action.action_key);
         const receiptId = persistence.preallocateReceiptId();
         const dispositioned = await persistence.isIngestionConflictDispositioned({
           run_id: input.run_id,
@@ -268,7 +279,7 @@ async function executeAction(
   resolved: Map<string, string>,
 ): Promise<CompatibilityCanonicalCommandResult> {
   const data = resolvePayload(action, resolved);
-  const payloadChecksum = computeChecksum({
+  const payloadChecksum = action.command === "admit_final_best_relocation_call" ? bestRelocationFinalCallPayloadChecksum(action) : computeChecksum({
     checksum_version: 1,
     artifact_kind: "ingestion_plan",
     schema_version: action.schema_version,
@@ -290,10 +301,13 @@ async function executeAction(
     },
   };
   switch (action.command) {
+    case "admit_final_best_relocation_call":
+      if (!input.commands.admitBestRelocationFinalCall) throw new ConflictError("Final Call admission command is unavailable");
+      return input.commands.admitBestRelocationFinalCall({ action, context });
     case "create_form_lead":
       return input.commands.createFormLead({ data: data as never, context });
     case "create_call_lead":
-      return input.commands.createCallLead({ data: data as never, context });
+      throw new ConflictError("External sheet Call rows cannot create Call Leads");
     case "update_source_owned_lead":
       return input.commands.updateSourceOwnedLead({
         lead_model: data.lead_model as "FormLead" | "CallLead",

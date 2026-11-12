@@ -4,20 +4,27 @@ export type EstimatesLane = 'all' | 'pool_refresh' | 'pool_discovery';
 export type PoolLane = Exclude<EstimatesLane, 'all'>;
 export const POOL_DISCOVERY_FLOOR = '01/01/2020';
 
-export function poolCronDecision(now: Date):
-  | { run: false; reason: 'outside_pool_hours' }
-  | { run: true; lane: PoolLane; slotKey: string; dateWindow: { from: string; to: string } } {
-  const hour = newYorkHour(now), recent = estimatesDateWindow(now);
-  if (hour !== 6 && !estimatesCronDecision(now).run) return { run: false, reason: 'outside_pool_hours' };
-  const lane = hour === 6 ? 'pool_discovery' : 'pool_refresh';
-  return { run:true, lane, slotKey:`${recent.to}:${hour}:${lane}`, dateWindow:lane === 'pool_discovery' ? {from:POOL_DISCOVERY_FLOOR,to:recent.to} : recent };
+export type PoolDuty = { run: true; lane: PoolLane; slotKey: string; dateWindow: { from: string; to: string } };
+
+/** Independent duties: 06:00 has both refresh and discovery. */
+export function poolCronDuties(now: Date): PoolDuty[] {
+  const recent = estimatesDateWindow(now), hour = newYorkHour(now);
+  const duties: PoolDuty[] = [];
+  if (estimatesCronDecision(now).run) duties.push({ run: true, lane: 'pool_refresh', slotKey: `${recent.to}:${hour}:pool_refresh`, dateWindow: recent });
+  if (hour === 6) duties.push({ run: true, lane: 'pool_discovery', slotKey: `${recent.to}:6:pool_discovery`, dateWindow: { from: POOL_DISCOVERY_FLOOR, to: recent.to } });
+  return duties;
+}
+
+/** Compatibility for callers selecting one lane; dispatchers must consume all duties. */
+export function poolCronDecision(now: Date): PoolDuty | { run: false; reason: 'outside_pool_hours' } {
+  return poolCronDuties(now).at(-1) ?? { run: false, reason: 'outside_pool_hours' };
 }
 
 export function poolLatestSlot(now: Date, lane: PoolLane): { slotKey: string; at: Date } {
   let at = new Date(Math.floor(+now / 3_600_000)*3_600_000);
   for (let i=0;i<27;i++,at=new Date(+at-3_600_000)) {
-    const decision = poolCronDecision(at);
-    if (decision.run && decision.lane === lane) return {slotKey:decision.slotKey,at};
+    const duty = poolCronDuties(at).find(duty => duty.lane === lane);
+    if (duty) return {slotKey:duty.slotKey,at};
   }
   throw new Error('Pool schedule did not contain a recent slot');
 }
