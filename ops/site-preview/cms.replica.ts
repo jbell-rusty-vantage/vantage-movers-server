@@ -12,8 +12,8 @@ async function main() {
   await admin.close();
   Object.assign(process.env, { MONGO_URI: uri, TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: "testvantagemovers_sitepreview", SHEET_SYNC_MODE: "disabled", LEAD_MESSAGING_MODE: "disabled", CRM_FORM_LEAD_POSTING_ENABLED: "false" });
   const mongoose = (await import("mongoose")).default;
-  const cms = await import("../../src/services/sitePreviewCms/store");
-  const { Testimonial } = await import("../../src/models/Testimonial");
+  const cms = await import("../../src/services/sitePreviewCms/store.js");
+  const { Testimonial } = await import("../../src/models/Testimonial.js");
   const actor = { id: "cms-loopback-proof", email: "cms-proof@example.com", requestId: "cms-loopback-proof" };
   const catalog = [
     { key: "home.headline", section: "Home", label: "Headline", locale: "en", kind: "text", defaultValue: "Original headline" },
