@@ -6,6 +6,7 @@ import { connectMongo } from "./db";
 import { analyticsQuerySchema } from "./validation/v1/analytics.validation";
 import { getAnalyticsReport } from "./services/analytics/analytics.service";
 import { AppError } from "./services/errors";
+import { createSitePreviewCmsRouter } from "./services/sitePreviewCms/router";
 
 assertSitePreviewEnvironment(process.env);
 const preview = express();
@@ -28,5 +29,6 @@ preview.get("/api/v1/site-preview/website-outcomes", requireApiSecret, async (re
     res.status(error instanceof AppError ? error.statusCode : 500).json({ ok: false, error: error instanceof AppError ? error.message : "Report unavailable" });
   }
 });
+preview.use("/api/v1/site-preview/cms", createSitePreviewCmsRouter());
 preview.use(app);
 export default preview;

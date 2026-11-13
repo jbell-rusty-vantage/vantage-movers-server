@@ -27,3 +27,13 @@ test("website preview only exposes content reads, form creation, and single form
   }
   assert.equal(isSitePreviewRequestAllowed("PATCH", "/api/v1/form-leads/123456789012345678901234"), false);
 });
+
+test("preview CMS exposes only its explicit content, media and owner command paths", () => {
+  const base = "/api/v1/site-preview/cms";
+  for (const suffix of ["", "/admin", "/admin/history", "/admin/testimonials", "/testimonials", "/media/000000000000000000000001"]) assert.equal(isSitePreviewRequestAllowed("GET", base + suffix), true);
+  assert.equal(isSitePreviewRequestAllowed("PUT", base + "/admin"), true);
+  assert.equal(isSitePreviewRequestAllowed("POST", base + "/admin/media"), true);
+  assert.equal(isSitePreviewRequestAllowed("POST", base + "/admin/restore"), true);
+  for (const suffix of ["/admin/users", "/admin/seed", "/media/../../admin", "/testimonials/123"]) assert.equal(isSitePreviewRequestAllowed("GET", base + suffix), false);
+  assert.equal(isSitePreviewRequestAllowed("DELETE", base + "/admin"), false);
+});

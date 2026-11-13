@@ -16,6 +16,11 @@ export function assertSitePreviewEnvironment(env: NodeJS.ProcessEnv): void {
 }
 
 export function isSitePreviewRequestAllowed(method: string, path: string): boolean {
+  const cms = "/api/v1/site-preview/cms";
+  if (method === "GET" && [cms, `${cms}/`, `${cms}/testimonials`, `${cms}/admin`, `${cms}/admin/history`, `${cms}/admin/testimonials`].includes(path)) return true;
+  if (method === "GET" && /^\/api\/v1\/site-preview\/cms\/media\/[a-f0-9]{24}$/.test(path)) return true;
+  if (method === "PUT" && path === `${cms}/admin`) return true;
+  if (method === "POST" && [`${cms}/admin/restore`, `${cms}/admin/media`].includes(path)) return true;
   if (method === "GET") {
     return ["/", "/health", "/db", "/api/v1/testimonials", "/api/v1/moving-carriers", "/api/v1/site-preview/website-outcomes"].includes(path)
       || /^\/api\/v1\/form-leads\/[a-f0-9]{24}$/i.test(path);

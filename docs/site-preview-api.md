@@ -41,6 +41,10 @@ Seed synthetic data with `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemov
 
 ## Required proof
 
+### Owner-managed preview content
+
+The isolated entrypoint additionally mounts `/api/v1/site-preview/cms`; its exact route allowlist is in `src/config/sitePreview.ts`. [Main Site Preview Content](knowledge/services/site-preview-cms.md) defines the catalog, Owner-only edits/history/restore, bounded GridFS image uploads and rating/exclusion testimonial policy. It is absent from the normal production entrypoint. Configure a dedicated preview `VANTAGE_ADMIN_PROXY_SIGNING_SECRET` matching the Admin CMS proxy's signing key. API-only callers cannot edit content. Install the reviewed site catalog with `node --env-file=.env --import tsx ops/site-preview/install-cms-catalog.ts <exact-catalog-json-path>` only with all explicit isolated preview environment settings; the script rejects any other database. Identical installs are idempotent; catalog drift requires a reviewed migration.
+
 Check `/db` names the isolated database; protected content reads return fixtures; a synthetic Form Lead with `post_to_granot=true` and consent is saved/read back with CRM skipped and messaging disabled; invalid auth fails; forbidden routes return 404. Record deployment URL, server SHA, test lead ID and outcomes. A Ready deployment alone is not integration qualification.
 
 The clients repository owns the cloud-agent handoff at `docs/cloud-site-variations.md` and its release evidence at `docs/site-preview-status.md`.
