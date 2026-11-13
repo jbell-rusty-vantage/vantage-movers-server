@@ -39,3 +39,20 @@ test("uploads require matching raster signature and bounded bytes", () => {
   assert.throws(() => validateImageBytes(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'), "image/png"));
   assert.throws(() => validateImageBytes(Buffer.alloc(2 * 1024 * 1024 + 1), "image/png"));
 });
+
+test("contact labels stay valid action targets and templates retain each dynamic placeholder", () => {
+  const fields = catalogSchema.parse([
+    { key: "phone", section: "Business", label: "phoneDisplay · (888) 477-9232", locale: "en", kind: "text", defaultValue: "(888) 477-9232", sourceFile: "lib/content.ts" },
+    { key: "email", section: "Business", label: "email · support@example.com", locale: "en", kind: "text", defaultValue: "support@example.com", sourceFile: "lib/content.ts" },
+    { key: "template", section: "Copy", label: "Copy", locale: "en", kind: "text", defaultValue: "{{0}} of {{1}}: {{0}}" },
+    { key: "legal", section: "Copy", label: "Copy", locale: "en", kind: "text", defaultValue: ", or {{4}}." },
+  ]);
+  for (const phone of ["8885551234", "+1 (888) 555-1234", "888.555.1234"]) assert.equal(applyValues(fields, {}, { phone }).phone, phone);
+  for (const phone of ["Call 8885551234", "+44 8885551234", "888555123", "8885551234\n", ""]) assert.throws(() => applyValues(fields, {}, { phone }));
+  assert.equal(applyValues(fields, {}, { email: "owner+site@example.com" }).email, "owner+site@example.com");
+  for (const email of ["invalid", "a@example.com?bcc=x", "a@example.com\r\nbcc:x", "a b@example.com", "a?bcc@example.com", "a#b@example.com"]) assert.throws(() => applyValues(fields, {}, { email }));
+  assert.equal(applyValues(fields, {}, { template: "Total {{1}}; {{0}} twice: {{0}}" }).template, "Total {{1}}; {{0}} twice: {{0}}");
+  for (const template of ["No tokens", "{{0}} of {{1}}", "{{0}} {{1}} {{2}}", "{{0}} {{1}} {{0}} {{2}}"]) assert.throws(() => applyValues(fields, {}, { template }));
+  assert.equal(applyValues(fields, {}, { legal: "Contact {{4}} instead." }).legal, "Contact {{4}} instead.");
+  assert.deepEqual(applyValues(fields, { phone: "8885551234" }, { phone: null }), {});
+});

@@ -43,6 +43,28 @@ export class CmsError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); }
 }
 
+function validateTextValue(field: ContentField, value: string): void {
+  // Display text may reorder interpolation tokens, but cannot alter the dynamic facts.
+  const tokens = (text: string) => (text.match(/\{\{[^{}]*\}\}/g) ?? []).sort();
+  if (JSON.stringify(tokens(field.defaultValue)) !== JSON.stringify(tokens(value))) {
+    throw new CmsError("Keep every numbered placeholder, such as {{0}}, exactly once for each occurrence in the original text.", 400, "CMS_INVALID_PLACEHOLDERS");
+  }
+  if (field.sourceFile !== "lib/content.ts") return;
+  if (field.label.startsWith("phoneDisplay ·")) {
+    const digits = value.replace(/\D/g, "");
+    if (/[^+\d ().-]/.test(value) || !/^(?:1)?\d{10}$/.test(digits)) {
+      throw new CmsError("Enter a 10-digit phone number, optionally prefixed with country code 1.", 400, "CMS_INVALID_PHONE");
+    }
+  }
+  if (field.label.startsWith("email ·")) {
+    // Mailto query/fragment characters must never turn a contact address into extra actions.
+    const hasControlCharacter = [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+    if (!z.email().safeParse(value).success || hasControlCharacter || /[\s?#%&/\\:]/.test(value)) {
+      throw new CmsError("Enter one valid email address without spaces or URL parameters.", 400, "CMS_INVALID_EMAIL");
+    }
+  }
+}
+
 export function applyValues(catalog: ContentField[], existing: Record<string, string>, changes: Record<string, string | null>): Record<string, string> {
   const fields = new Map(catalog.map(field => [field.key, field]));
   const registeredImages = new Set(catalog.filter(field => field.kind === "image").map(field => field.defaultValue));
@@ -51,6 +73,7 @@ export function applyValues(catalog: ContentField[], existing: Record<string, st
     const field = fields.get(key);
     if (!field) throw new CmsError(`Unknown content field: ${key}`, 400, "CMS_UNKNOWN_FIELD");
     if (value === null || value === field.defaultValue) { delete result[key]; continue; }
+    if (field.kind === "text") validateTextValue(field, value);
     if (field.kind === "image" && !registeredImages.has(value) && !/^\/api\/site-content\/media\/[a-f0-9]{24}$/.test(value)) {
       throw new CmsError("Choose an uploaded image or restore the original image.", 400, "CMS_INVALID_IMAGE");
     }
