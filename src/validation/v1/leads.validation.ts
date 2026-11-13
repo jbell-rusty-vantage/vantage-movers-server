@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseWebsiteAttribution } from "../../contracts/websiteAttribution";
 import { FORM_LEAD_BAD_LEAD_REASONS } from "../../config/domain";
 import {
   booleanInput,
@@ -129,6 +130,7 @@ const formLeadFields = {
 export const createFormLeadSchema = z
   .object({
     ...formLeadFields,
+    website_attribution: z.unknown().transform(value => parseWebsiteAttribution(value)).optional(),
     source_company: sourceCompanySchema.default("not_provided"),
     ref_no: optionalFormLeadRefNo,
     crm_company_label: nonEmptyString.default("Main Site Forms"),

@@ -20,6 +20,7 @@ import {
   getSourceCompanyPerformance,
 } from "./sourcePerformance.service";
 import { getSummary } from "./summary.service";
+import { getWebsiteOutcomes } from "./websiteOutcomes.service";
 
 export type AnalyticsPayload = Record<string, unknown>;
 
@@ -46,6 +47,8 @@ async function buildAnalyticsReport(
 ): Promise<AnalyticsPayload> {
   const models = getAdminModels();
   switch (report) {
+    case "website-outcomes":
+      return getWebsiteOutcomes(models, query);
     case "summary":
       return getSummary(models, query);
     case "revenue-trend":

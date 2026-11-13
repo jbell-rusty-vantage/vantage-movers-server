@@ -183,3 +183,7 @@ Tests: `analytics.service.test.ts` (query schema, booked prefix + employee snaps
 Call lead cost and compatibility CSV totals apply `billableCallLeadFilter` before grouping: `reportingEligibleCallLeadFilter` accepts saved RingCentral qualification, the closed 69-ID native Best Relocation historical manifest, or the protected final stamp with matching canonical company/feed IDs; unmatched, Form Fill, effective duplicate and confirmed bad-call facts use the same policy as live Insights. These compatibility totals retain their existing stamped-price provenance; live Insights continues using current feed rates. Custom Reporting's existing versioned quality columns agree with the disposition without a schema version change. Official Booking/Cancellation aggregation is unchanged.
 
 The entire final Best Relocation source apply remains owner-held; the implemented source-admission exception has no production admissions applied. The Source Company stays active. Independent general Call backfill evidence does not complete that held source ingestion.
+
+## Website outcomes
+
+The website-outcomes report reads the Main Site Form Lead cohort and official Booking/Cancellation references, with unknown attribution, eligible denominators, recorded-money completeness and maturity limits. It reuses analytics JSON/CSV and existing runtime models; the isolated preview uses its asserted test database. See [bounded report contract](../../website-attribution/README.md).

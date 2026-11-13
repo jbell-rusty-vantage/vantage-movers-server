@@ -1,0 +1,60 @@
+# Website preview API
+
+Owner goal: test website variations against an isolated API and data before choosing a design for production. The [November 12 attribution milestone](website-attribution/README.md) extends this infrastructure with optional website capture and a bounded outcome report. Production remains unchanged.
+
+## Deployment boundary
+
+- Vercel team: `vantage-4d3db9ef`; separate project `vantage-sites-preview-api` (`prj_A0tA6L0x8InXYiqKYqIXajPfzsYs`).
+- Intended stable alias: `https://vantage-sites-preview-api.vercel.app`.
+- Mongo: `TEST_MODE=true`, `TEST_MONGO_DATABASE_NAME=testvantagemovers_sitepreview`.
+- Owner authorized reuse of the existing script `MONGO_URI` after Atlas organization permissions prevented creating a restricted user. This is application/database-name isolation, not credential-level isolation. Replace with a database-restricted user when an Atlas administrator is available.
+- Separate API secret and Vercel automation bypass. Never give cloud agents production credentials.
+- `src/sitePreviewApp.ts` refuses incorrect database/side-effect settings on startup and permits health probes, testimonial/carrier GETs, Form Lead POST, single Form Lead GET and the authenticated read-only `/api/v1/site-preview/website-outcomes` report. Normal authentication still applies. General Admin/reporting, cron, webhooks and list-all-leads routes are unavailable.
+- `CRM_FORM_LEAD_POSTING_ENABLED=false` blocks Granot calls, including when a site requests `post_to_granot=true`. No CRM, RingCentral, Twilio, SendGrid or Sheets credentials belong in this project.
+
+## Environment (Vercel Preview scope on the separate API project)
+
+| Name | Value / handling |
+|---|---|
+| `MONGO_URI` | Secret; existing script connection by owner instruction; never print |
+| `MONGO_DNS_SERVERS` | `1.1.1.1,8.8.8.8` |
+| `TEST_MODE` | `true` |
+| `TEST_MONGO_DATABASE_NAME` | `testvantagemovers_sitepreview` |
+| `VANTAGE_API_SECRET` | Unique preview secret matching both sites' Preview scope |
+| `CRM_FORM_LEAD_POSTING_ENABLED` | `false` |
+| `SHEET_SYNC_MODE` | `disabled` |
+| `WRITE_SOURCE_LEAD_SHEETS` | `false` |
+| `LEAD_MESSAGING_MODE` | `disabled` |
+| `LEAD_MESSAGING_ALLOW_TEST_MODE`, `GRANOT_LEAD_CREATED_SMS_ENABLED` | `false` |
+| `RINGCENTRAL_WEBHOOK_ENABLED`, `RINGCENTRAL_CREATE_CALL_LEADS`, `RINGCENTRAL_CALL_LOG_SYNC_ENABLED` | `false` |
+| `SALES_INTELLIGENCE_ENABLED`, `GRANOT_LIFECYCLE_PROCESSING_ENABLED`, `GRANOT_AUTOMATION_APPLY_ENABLED` | `false` |
+| `BEST_RELOCATION_INGEST_ENABLED`, `REPORTING_GOOGLE_DELIVERY_ENABLED` | `false` |
+| `CRON_SECRET` | Unique random secret; no scheduled jobs are deployed |
+
+## Reproducible deploy
+
+Use the committed preview branch. Run `node ops/site-preview/prepare.mjs` from this repository. It prints a new temporary directory containing only HEAD's tracked files, replaces the entrypoint with the preview app, installs `vercel.preview.json` as `vercel.json`, and excludes queue consumers. It does not copy local secrets or unrelated edits.
+
+GitHub Actions now owns this process: `.github/workflows/website-preview-api.yml` runs on relevant pushes to `agent/site-preview-api` or manual dispatch on that branch, typechecks/tests, exports committed source, deploys with explicit `--target=preview`, records `DEPLOYMENT_COMMIT_SHA` and assigns the stable alias after Ready. The general server preview workflow excludes this branch. Project framework remains Other (`null`), Node 24, with the existing function routing. Never `--prod`, never link this artifact to `vantage-movers-main-server`, and never promote its data or deployment to production.
+
+Seed synthetic data with `TEST_MODE=true TEST_MONGO_DATABASE_NAME=testvantagemovers_sitepreview node --env-file=.env ops/site-preview/seed.mjs` (use shell-appropriate environment assignment). The script checks the database name and does not copy production records. Five Source Company/Form granularities and explicitly synthetic testimonial/carrier fixtures support website checks. Synthetic leads remain in this test database; never promote its data to production.
+
+## Required proof
+
+### Owner-managed preview content
+
+The isolated entrypoint additionally mounts `/api/v1/site-preview/cms`; its exact route allowlist is in `src/config/sitePreview.ts`. [Main Site Preview Content](knowledge/services/site-preview-cms.md) defines the catalog, Owner-only edits/history/restore, bounded GridFS image uploads and rating/exclusion testimonial policy. It is absent from the normal production entrypoint. Configure a dedicated preview `VANTAGE_ADMIN_PROXY_SIGNING_SECRET` matching the Admin CMS proxy's signing key. API-only callers cannot edit content. Install the reviewed site catalog with `node --env-file=.env --import tsx ops/site-preview/install-cms-catalog.ts <exact-catalog-json-path>` only with all explicit isolated preview environment settings; the script rejects any other database. Identical installs are idempotent. The explicit `--allow-append` option permits reviewed new fields after the unchanged existing descriptor array, preserving Owner edits and policy in an audited revision; all other catalog drift remains rejected.
+
+Check `/db` names the isolated database; protected content reads return fixtures; a synthetic Form Lead with `post_to_granot=true` and consent is saved/read back with CRM skipped and messaging disabled; invalid auth fails; forbidden routes return 404. Record deployment URL, server SHA, test lead ID and outcomes. A Ready deployment alone is not integration qualification.
+
+The clients repository owns the cloud-agent handoff at `docs/cloud-site-variations.md` and its release evidence at `docs/site-preview-status.md`.
+
+## Qualification — October 30, 2026
+
+Deployed runtime commit `67484849`, immutable deployment `https://vantage-sites-preview-nld3k1rla-vantage-4d3db9ef.vercel.app`, Vercel Ready with Preview target; stable alias assigned. Run CLI from the exported directory itself rather than relying on `--cwd` for configuration selection. Earlier failed project-setup attempts are not qualified deployments.
+
+`ops/site-preview/verify.mjs` passed against the stable alias with preview secrets supplied through the environment. It verified database identity, testimonial/carrier reads, unauthorized 401, forbidden analytics/cron 404, Form Lead creation and readback. Evidence: lead `6ae4fb40457367376193a457`, reference `PREVIEW-1793391424104`, CRM `skipped`, messaging `not_requested`. Read-only count of that exact reference: test database 1, production database 0. No production test submission was made.
+
+36 focused CRM/Form Lead tests and two preview boundary tests passed. Standalone typecheck passed excluding the unrelated gitignored `ops/output/pool-active-canonical-audit.ts`; that scratch file is not in the exported deployment. Vercel's function builder emitted additional type diagnostics but produced a Ready artifact; standalone typecheck and the runtime checks above are the qualification evidence, not an assertion that the builder log was warning-free.
+
+For repeat smoke tests, set preview-only `VANTAGE_API_SECRET` and `VANTAGE_API_PROTECTION_BYPASS`, then run `node ops/site-preview/verify.mjs`. It creates a synthetic lead in the test database. Do not use it against production.
