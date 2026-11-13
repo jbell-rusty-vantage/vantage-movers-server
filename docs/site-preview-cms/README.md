@@ -6,6 +6,7 @@ The API implementation closes the server part of Owner editing for the optimizat
 
 - Eight focused CMS/auth/isolation tests passed, including signed Owner enforcement and stale-revision HTTP behavior. Focused ESLint passed.
 - [Disposable loopback Mongo proof](evidence/loopback-proof.json) passed catalog replay, durable edits, stale revision, concurrent writers (exactly one accepted), GridFS bytes and reuse, published/rating/exclusion selection, and restore history. Harness: `ops/site-preview/cms.replica.ts`; no production connection or data.
+- [Append-only catalog proof](evidence/catalog-append-loopback-proof.json) verifies explicit append opt-in, concurrent identical appends advancing one revision, unchanged existing descriptors, preservation of nondefault Owner text and testimonial policy, no-op replay, refusal of removal/default changes, and restore retaining the extended catalog. Harness: `ops/site-preview/cms-catalog-append.replica.ts`; loopback only.
 - The source catalog available at verification time (2,291 fields) passed the backend registration schema. This is schema compatibility, not a final inventory or deployed catalog receipt.
 - Full local typecheck finished with five pre-existing diagnostics exclusively in the ignored `ops/output/pool-active-canonical-audit.ts` scratch file (four extensionless Node16 imports and one implicit-any parameter); it reported no CMS diagnostics. Full CI typecheck remains mandatory before release acceptance; the isolated-preview workflow now includes the CMS tests.
 

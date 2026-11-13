@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyValues, catalogSchema, policySchema, reviewSelection, saveSchema, validateImageBytes } from "./contract";
+import { applyValues, catalogAdditions, catalogSchema, policySchema, reviewSelection, saveSchema, validateImageBytes } from "./contract";
 import { testimonialFilter } from "./store";
 
 const catalog = catalogSchema.parse([
@@ -8,6 +8,17 @@ const catalog = catalogSchema.parse([
   { key: "home.image", section: "Home", label: "Image", locale: "shared", kind: "image", defaultValue: "/original.webp" },
   { key: "service.image", section: "Services", label: "Image", locale: "shared", kind: "image", defaultValue: "/service.webp" },
 ]);
+test("catalog additions require explicit opt-in and preserve every existing descriptor and order", () => {
+  const next = [...catalog, { ...catalog[0], key: "navigation.faq", defaultValue: "FAQ" }];
+  assert.deepEqual(catalogAdditions(catalog, catalog), []);
+  assert.throws(() => catalogAdditions(catalog, next), { code: "CMS_CATALOG_CONFLICT" });
+  assert.deepEqual(catalogAdditions(catalog, next, true), [next.at(-1)]);
+  assert.deepEqual(catalogAdditions(next, next, true), []);
+  assert.throws(() => catalogAdditions(next, catalog, true), { code: "CMS_CATALOG_CONFLICT" });
+  assert.throws(() => catalogAdditions(catalog, [{ ...catalog[0], defaultValue: "Changed" }, ...catalog.slice(1), next.at(-1)!], true), { code: "CMS_CATALOG_CONFLICT" });
+  assert.throws(() => catalogAdditions(catalog, [catalog[1], catalog[0], ...catalog.slice(2), next.at(-1)!], true), { code: "CMS_CATALOG_CONFLICT" });
+  assert.throws(() => catalogAdditions(catalog, [...catalog, catalog[0]], true), { code: "CMS_CATALOG_CONFLICT" });
+});
 test("content preserves exact whitespace, resets defaults, rejects unregistered and external image values", () => {
   assert.deepEqual(applyValues(catalog, {}, { "home.hero": "  Owner text\nwith a line  " }), { "home.hero": "  Owner text\nwith a line  " });
   assert.deepEqual(applyValues(catalog, { "home.hero": "Changed" }, { "home.hero": null }), {});

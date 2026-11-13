@@ -3,10 +3,10 @@ import { GridFSBucket, type ClientSession } from "mongodb";
 import { toObjectId } from "../../utils/objectId";
 import { connectMongo, withTransaction } from "../../db";
 import { Testimonial } from "../../models/Testimonial";
-import { CMS_DATABASE, CMS_SCOPE, CmsError, DEFAULT_POLICY, applyValues, catalogSchema, reviewSelection, validateImageBytes, type CmsActor, type CmsSnapshot, type ContentField, type TestimonialPolicy } from "./contract";
+import { CMS_DATABASE, CMS_SCOPE, CmsError, DEFAULT_POLICY, applyValues, catalogAdditions, catalogSchema, reviewSelection, validateImageBytes, type CmsActor, type CmsSnapshot, type ContentField, type TestimonialPolicy } from "./contract";
 
 type ContentDocument = CmsSnapshot & { _id: string; catalog: ContentField[] };
-type RevisionDocument = CmsSnapshot & { _id: string; scope: string; action: "save" | "restore" | "seed"; changedKeys: string[] };
+type RevisionDocument = CmsSnapshot & { _id: string; scope: string; action: "save" | "restore" | "seed" | "catalog-append"; changedKeys: string[] };
 
 async function database() {
   // Defense in depth: even accidental mounting in another app cannot reach production data.
@@ -32,25 +32,32 @@ export async function readPublicContent() {
   return { revision: doc.revision, values: doc.values, testimonialPolicy: doc.testimonialPolicy };
 }
 
-export async function installCatalog(input: unknown) {
+export async function installCatalog(input: unknown, options: { allowAppend?: boolean } = {}): Promise<{ installed: boolean; appended: number; fields: number; revision: number }> {
   const catalog = catalogSchema.parse(input);
   const collection = await documents();
-  const existing = await collection.findOne({ _id: CMS_SCOPE });
-  if (existing) {
-    if (JSON.stringify(existing.catalog) !== JSON.stringify(catalog)) throw new CmsError("A different catalog is already installed. A reviewed catalog migration is required.", 409, "CMS_CATALOG_CONFLICT");
-    return { installed: false, fields: catalog.length, revision: existing.revision };
-  }
-  const initial: ContentDocument = { _id: CMS_SCOPE, catalog, revision: 0, values: {}, testimonialPolicy: DEFAULT_POLICY, updatedAt: new Date().toISOString(), updatedBy: { id: "catalog-install", email: "", requestId: "catalog-install" } };
   try {
-    await withTransaction(async session => {
-      await collection.insertOne(initial, { session });
-      await (await revisions()).insertOne({ _id: `${CMS_SCOPE}:0`, scope: CMS_SCOPE, ...snapshot(initial), action: "seed", changedKeys: [] }, { session });
+    return await withTransaction(async session => {
+      const existing = await collection.findOne({ _id: CMS_SCOPE }, { session });
+      const updatedAt = new Date().toISOString();
+      const updatedBy = { id: "catalog-install", email: "", requestId: "catalog-install" };
+      if (!existing) {
+        const initial: ContentDocument = { _id: CMS_SCOPE, catalog, revision: 0, values: {}, testimonialPolicy: DEFAULT_POLICY, updatedAt, updatedBy };
+        await collection.insertOne(initial, { session });
+        await (await revisions()).insertOne({ _id: `${CMS_SCOPE}:0`, scope: CMS_SCOPE, ...snapshot(initial), action: "seed", changedKeys: [] }, { session });
+        return { installed: true, appended: 0, fields: catalog.length, revision: 0 };
+      }
+      const additions = catalogAdditions(existing.catalog, catalog, options.allowAppend);
+      if (!additions.length) return { installed: false, appended: 0, fields: catalog.length, revision: existing.revision };
+      const next = { ...snapshot(existing), revision: existing.revision + 1, updatedAt, updatedBy };
+      const result = await collection.updateOne({ _id: CMS_SCOPE, revision: existing.revision }, { $set: { ...next, catalog } }, { session });
+      if (result.matchedCount !== 1) throw new CmsError("Content changed during catalog append. Retry the reviewed append.", 409, "CMS_REVISION_CONFLICT");
+      await (await revisions()).insertOne({ _id: `${CMS_SCOPE}:${next.revision}`, scope: CMS_SCOPE, ...next, action: "catalog-append", changedKeys: additions.map(field => field.key) }, { session });
+      return { installed: false, appended: additions.length, fields: catalog.length, revision: next.revision };
     });
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === 11000) return installCatalog(catalog);
+    if (error instanceof Error && "code" in error && error.code === 11000) return installCatalog(catalog, options);
     throw error;
   }
-  return { installed: true, fields: catalog.length, revision: 0 };
 }
 
 async function persistRevision(current: Awaited<ReturnType<typeof readContent>>, next: Pick<CmsSnapshot, "values" | "testimonialPolicy">, actor: CmsActor, action: "save" | "restore", session: ClientSession) {

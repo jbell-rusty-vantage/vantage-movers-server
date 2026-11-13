@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "database": "testvantagemovers_sitepreview",
+  "host": "127.0.0.1",
+  "checks": [
+    "append requires explicit operator opt-in and refusal changes nothing",
+    "concurrent identical appends commit one revision with audit and preserve Owner edits/policy",
+    "replay is unchanged; removal and descriptor mutation are refused atomically",
+    "restoring older content preserves the monotonically extended catalog"
+  ]
+}

@@ -43,6 +43,21 @@ export class CmsError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); }
 }
 
+/** Catalog evolution is an explicit operator operation; existing bindings are immutable. */
+export function catalogAdditions(existing: ContentField[], proposed: ContentField[], allowAppend = false): ContentField[] {
+  if (JSON.stringify(existing) === JSON.stringify(proposed)) return [];
+  const unchangedPrefix = proposed.length > existing.length && existing.every((field, index) => JSON.stringify(field) === JSON.stringify(proposed[index]));
+  if (!allowAppend || !unchangedPrefix) {
+    throw new CmsError("Catalog changes require explicit append approval; existing fields cannot be edited, removed or reordered.", 409, "CMS_CATALOG_CONFLICT");
+  }
+  const existingKeys = new Set(existing.map(field => field.key));
+  const added = proposed.slice(existing.length);
+  if (added.some(field => existingKeys.has(field.key)) || new Set(added.map(field => field.key)).size !== added.length) {
+    throw new CmsError("New catalog fields must have unique keys.", 409, "CMS_CATALOG_CONFLICT");
+  }
+  return added;
+}
+
 function validateTextValue(field: ContentField, value: string): void {
   // Display text may reorder interpolation tokens, but cannot alter the dynamic facts.
   const tokens = (text: string) => (text.match(/\{\{[^{}]*\}\}/g) ?? []).sort();
