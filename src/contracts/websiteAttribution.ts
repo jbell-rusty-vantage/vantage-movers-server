@@ -2,6 +2,8 @@
 export const WEBSITE_ATTRIBUTION_VERSION = 1;
 export const ATTRIBUTION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const WEBSITE_DESIGN = { id: "main-site-optimization", version: "2026-11-12" } as const;
+export const CANYON_WEBSITE_DESIGN = { id: "main-site-canyon", version: "2026-11-13" } as const;
+const websiteDesigns = [WEBSITE_DESIGN, CANYON_WEBSITE_DESIGN] as const;
 
 const pagePairs = [
   ["home", "/", "/es"], ["services", "/services", "/es/servicios"],
@@ -53,7 +55,7 @@ export type WebsiteAttribution = {
   first_touch: WebsiteTouch;
   latest_non_direct_touch?: WebsiteTouch;
   capture_page: WebsitePage;
-  design: typeof WEBSITE_DESIGN;
+  design: typeof websiteDesigns[number];
 };
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -83,13 +85,14 @@ export function parseWebsiteAttribution(value: unknown, now = Date.now()): Websi
   try {
     const input = object(value);
     if (!input || input.version !== 1) return;
-    const design = object(input.design);
-    if (design?.id !== WEBSITE_DESIGN.id || design.version !== WEBSITE_DESIGN.version) return;
+    const submittedDesign = object(input.design);
+    const design = websiteDesigns.find(candidate => candidate.id === submittedDesign?.id && candidate.version === submittedDesign?.version);
+    if (!design) return;
     const first = touch(input.first_touch, now);
     const capture = websitePage(object(input.capture_page)?.path);
     const latest = input.latest_non_direct_touch === undefined ? undefined : touch(input.latest_non_direct_touch, now);
     if (!first || !capture || (input.latest_non_direct_touch !== undefined && !latest)) return;
     if (latest && (latest.channel === "direct" || Date.parse(latest.occurred_at) < Date.parse(first.occurred_at))) return;
-    return { version: 1, first_touch: first, ...(latest ? { latest_non_direct_touch: latest } : {}), capture_page: capture, design: WEBSITE_DESIGN };
+    return { version: 1, first_touch: first, ...(latest ? { latest_non_direct_touch: latest } : {}), capture_page: capture, design };
   } catch { return; }
 }

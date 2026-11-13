@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseWebsiteAttribution, WEBSITE_DESIGN } from "../../contracts/websiteAttribution";
+import { CANYON_WEBSITE_DESIGN, parseWebsiteAttribution, WEBSITE_DESIGN } from "../../contracts/websiteAttribution";
 import { createFormLeadSchema, updateFormLeadSchema } from "../../validation/v1/leads.validation";
 import { summarizeWebsiteOutcomes, websiteOutcomePeriod } from "./websiteOutcomes.service";
 import { rowsForCsv } from "./analyticsExport.service";
@@ -30,6 +30,29 @@ test("attribution sanitizes before canonical command capture; invalid tracking d
   }
   assert.equal(updateFormLeadSchema.safeParse({ website_attribution: current }).success, false);
   assert.equal(parseWebsiteAttribution({ ...snapshot, latest_non_direct_touch: { ...first, channel: "direct" } }, stored.received_at.getTime()), undefined);
+});
+
+test("Canyon capture remains distinct from historical optimization attribution", () => {
+  const base = { source_company: "main_site", name: "Synthetic", phone_number: "2025550100", pickup_zip: "10001", destination_zip: "53703", move_size: "Studio" };
+  const current = {
+    ...snapshot,
+    first_touch: { ...first, occurred_at: new Date().toISOString() },
+    latest_non_direct_touch: undefined,
+    design: CANYON_WEBSITE_DESIGN,
+  };
+  assert.deepEqual(createFormLeadSchema.parse({ ...base, website_attribution: current }).website_attribution?.design, CANYON_WEBSITE_DESIGN);
+  const wrongVersion = { ...current, design: { ...CANYON_WEBSITE_DESIGN, version: WEBSITE_DESIGN.version } };
+  assert.equal(createFormLeadSchema.parse({ ...base, website_attribution: wrongVersion }).website_attribution, undefined);
+
+  const report = summarizeWebsiteOutcomes([
+    { _id: "optimization", timestamp: period.from, website_attribution: stored },
+    { _id: "canyon", timestamp: period.from, website_attribution: { ...stored, design: CANYON_WEBSITE_DESIGN } },
+  ], [], [], period);
+  assert.equal(report.totals.attributed_leads, 2);
+  assert.deepEqual(report.items.map(({ design_id, design_version, form_leads }) => [design_id, design_version, form_leads]), [
+    [WEBSITE_DESIGN.id, WEBSITE_DESIGN.version, 1],
+    [CANYON_WEBSITE_DESIGN.id, CANYON_WEBSITE_DESIGN.version, 1],
+  ]);
 });
 
 test("canonical Booking and Cancellation references win over lead flags, phones, jobs and cancellation snapshots", () => {
