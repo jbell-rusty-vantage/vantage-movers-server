@@ -67,6 +67,8 @@ function syntheticCallLogRecord(suffix: string, startTime: Date) {
     telephonySessionId: `${CALL_PREFIX}telephony-${suffix}`,
     startTime: startTime.toISOString(),
     direction: "Inbound",
+    type: "Voice",
+    finished: true,
     result: "Completed",
     duration: 300,
     to: { phoneNumber: TARGET_PHONE, name: "Unit 21 Synthetic" },

@@ -1030,7 +1030,14 @@ async function maybeSynchronizeMatchedLead(input: {
     const mayAssociate =
       associationNeeded &&
       (prepared.plan.outcome === "applied" || prepared.plan.outcome === "already_current");
-    if (!mayApplyLead && !mayAssociate) {
+    // A writer can make the planned date current before our revision CAS. Accept the
+    // replanned no-op through the command fence; Decision-only persistence loses the winner.
+    const mayAcceptCurrent = commandAttempt > 0 &&
+      prepared.plan.outcome === "already_current" &&
+      prepared.plan.temporal_winner_should_advance &&
+      existingLink?.lead_ref?.model === target.model &&
+      String(existingLink.lead_ref.id) === target.id;
+    if (!mayApplyLead && !mayAssociate && !mayAcceptCurrent) {
       if (commandAttempt === 0) {
         return null;
       }
@@ -2117,6 +2124,7 @@ export async function loadGranotLeadProjection(
       delivery_city: absent(row.delivery_city),
       delivery_zip: absent(row.delivery_zip),
       delivery_state: absent(row.delivery_state),
+      move_date: row.move_date ? new Date(row.move_date) : undefined,
       cubic_feet: absent(row.cubic_feet),
       local: absent(row.local),
       granot_move_size: absent(row.granot_move_size),
@@ -2169,7 +2177,10 @@ async function defaultAdvanceTemporalWinner(input: {
 }): Promise<boolean> {
   const filter = {
     _id: input.target.id,
-    ...olderTemporalWinnerFilter(input.incoming),
+    $or: [
+      { last_accepted_granot_observation: null },
+      olderTemporalWinnerFilter(input.incoming),
+    ],
   };
   const update = {
     $set: {

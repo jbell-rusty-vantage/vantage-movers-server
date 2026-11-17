@@ -24,7 +24,10 @@ import { getSalesOutreachSubjectModel, getSalesOutreachPolicyPeriodModel } from 
 import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { assembleEstimatesPlan } from "../granotHttpCollector/runWorkflow";
 import { normalizeGranotReceipt } from "./normalization";
-import { processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
+import { createGranotObservationProcessor, loadGranotLeadProjection, processGranotObservation, type GranotLifecycleProcessorDeps } from "./processor";
+import type { LeadDesiredStateProjection } from "./leadDesiredState";
+import { synchronizeLeadFromGranot } from "./synchronizeLeadFromGranot";
+import { getCapturedDailyOperationsFacts, clearCapturedDailyOperationsFacts } from "../dailyOperations/testDailyOperationsSink";
 import type { SourcePolicyStore } from "./sourcePolicy";
 
 const capturedAt = new Date("2026-08-18T16:00:00.000Z");
@@ -317,6 +320,221 @@ async function evidenceFor(leadId: string) {
   const outbox = await SheetSyncJob.find({ entity_id: leadId }).lean();
   return { decisions, commands, changes, outbox };
 }
+
+async function seedDatedCall(linked = true) {
+  const id = objectId();
+  const job = jobPair(String(id));
+  const date = new Date("2026-12-01T05:00:00.000Z");
+  await seedCallLead({ id, job });
+  await getCallLeadModel().updateOne({ _id: id }, { $set: { move_date: date } });
+  if (linked) await getGranotRecordLinkModel().create({
+    provider: "granot", normalized_job_no: job.normalized, job_no_snapshot: job.raw,
+    state: "active", lead_ref: { model: "CallLead", id }, disputed: false,
+    established_by_decision_id: objectId(), established_at: olderCapturedAt,
+    last_observation_id: objectId(), last_observed_at: olderCapturedAt, domain_revision: 0,
+  });
+  const identity = identityFor(String(id), "CallLead");
+  const capture = (offset: number, moveDate = date) => observation({
+    job, priority: "8", captured_at: new Date(+capturedAt + offset), move: { move_date: moveDate },
+  });
+  return { id, job, date, identity, capture };
+}
+
+async function assertAcceptedWithoutEffects(fixture: Awaited<ReturnType<typeof seedDatedCall>>,
+  incoming: GranotObservationDocument, decisionId: string, revision = 2) {
+  const lead = await getCallLeadModel().findById(fixture.id).lean();
+  assert.equal(lead?.move_date?.getTime(), fixture.date.getTime());
+  assert.equal(lead?.domain_revision, revision);
+  assert.equal(lead?.current_move_provenance, undefined);
+  assert.equal(String(lead?.last_accepted_granot_observation?.observation_id), String(incoming._id));
+  assert.equal(lead?.last_accepted_granot_observation?.captured_at.getTime(), +incoming.captured_at);
+  const decision = await getSynchronizationDecisionModel().findById(decisionId).lean();
+  assert.equal(decision?.outcome, "already_current");
+  assert.deepEqual(decision?.effects, []);
+  assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: incoming._id }), 1);
+  const evidence = await evidenceFor(String(fixture.id));
+  assert.equal(evidence.changes.length, 0);
+  assert.equal(evidence.outbox.length, 0);
+  assert.equal(getCapturedDailyOperationsFacts().filter(f => f.input.links?.lead_id === String(fixture.id)).length, 0);
+}
+
+test("capacity W1: fresh equal Call dates accept, replay and fence delayed changed dates", async t => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedDatedCall();
+  clearCapturedDailyOperationsFacts();
+  const projection = await loadGranotLeadProjection({ model: "CallLead", id: String(fixture.id) });
+  assert.equal(projection?.move_date?.getTime(), +fixture.date);
+  for (const offset of [1000, 2000]) {
+    const incoming = fixture.capture(offset);
+    const result = await processLive({ observation: incoming, identity: fixture.identity });
+    await assertAcceptedWithoutEffects(fixture, incoming, result.decision_id);
+    const replay = await processLive({ observation: incoming, identity: fixture.identity });
+    assert.equal(replay.decision_id, result.decision_id);
+    await assertAcceptedWithoutEffects(fixture, incoming, result.decision_id);
+  }
+  const delayed = fixture.capture(1500, new Date("2026-12-02T05:00:00Z"));
+  const stale = await processLive({ observation: delayed, identity: fixture.identity });
+  assert.equal(stale.outcome, "stale");
+  assert.deepEqual(stale.effects, []);
+  const changed = fixture.capture(3000, new Date("2026-12-03T05:00:00Z"));
+  const applied = await processLive({ observation: changed, identity: fixture.identity });
+  assert.equal(applied.outcome, "applied");
+  const lead = await getCallLeadModel().findById(fixture.id).lean();
+  assert.equal(lead?.move_date?.getTime(), +changed.move!.move_date!);
+  assert.equal(String(lead?.last_accepted_granot_observation?.observation_id), String(changed._id));
+  const evidence = await evidenceFor(String(fixture.id));
+  assert.equal(evidence.changes.length, 1);
+  assert.ok(evidence.changes[0].fields.some(f => f.path === "move_date"));
+  assert.equal(evidence.outbox.length, 1);
+  assert.equal(getCapturedDailyOperationsFacts().filter(f => f.input.kind === "granot.linked" && f.input.links?.lead_id === String(fixture.id)).length, 1);
+});
+
+for (const bumpRevision of [false, true]) test(`capacity W1: writer makes date equal before command (revision changed: ${bumpRevision})`, async t => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedDatedCall();
+  await getCallLeadModel().updateOne({ _id: fixture.id }, { $set: { move_date: new Date("2026-11-30T05:00:00Z") } });
+  const incoming = fixture.capture(2000);
+  let raced = false;
+  const result = await processLive({ observation: incoming, identity: fixture.identity, extra: {
+    synchronizeLead: async input => {
+      if (!raced) {
+        raced = true;
+        await getCallLeadModel().updateOne({ _id: fixture.id }, {
+          $set: { move_date: fixture.date }, ...(bumpRevision ? { $inc: { domain_revision: 1 } } : {}),
+        });
+      }
+      return synchronizeLeadFromGranot(input);
+    },
+  } });
+  assert.equal(raced, true);
+  await assertAcceptedWithoutEffects(fixture, incoming, result.decision_id, bumpRevision ? 3 : 2);
+  const delayed = await processLive({ observation: fixture.capture(1000, new Date("2026-12-02T05:00:00Z")), identity: fixture.identity });
+  assert.equal(delayed.outcome, "stale");
+});
+
+test("capacity W1: equal Call date still establishes its first Record Link", async t => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedDatedCall(false);
+  const incoming = fixture.capture(1000);
+  const result = await processLive({ observation: incoming, identity: fixture.identity });
+  assert.equal(result.outcome, "linked");
+  assert.ok(result.effects.some(e => e.kind === "record_link_established"));
+  const link = await getGranotRecordLinkModel().findOne({ normalized_job_no: fixture.job.normalized }).lean();
+  assert.equal(String(link?.lead_ref?.id), String(fixture.id));
+  const lead = await getCallLeadModel().findById(fixture.id).lean();
+  assert.equal(String(lead?.last_accepted_granot_observation?.observation_id), String(incoming._id));
+  const evidence = await evidenceFor(String(fixture.id));
+  assert.equal(evidence.changes.length, 0);
+  assert.equal(evidence.outbox.length, 0);
+  assert.equal(getCapturedDailyOperationsFacts().filter(f => f.input.kind === "granot.linked" && f.input.links?.lead_id === String(fixture.id)).length, 1);
+});
+
+test("capacity W1: both adapters project every planner field", async t => {
+  if (!(await replicaReady(t))) return;
+  const receiver = objectId(), winner = objectId();
+  // Required<> makes adding a planner input without a projection expectation a type error.
+  const common = {
+    ingestion_origin: "ringcentral", job_no: "P123", normalized_job_no: "P123", granot_priority: "1",
+    quoted: true, receiver_agent: String(receiver), receiver_agent_source: "granot_username_match",
+    receiver_agent_set_at: capturedAt, name: "Ada Example", first_name: "Ada", last_name: "Example",
+    phone_number: SYNTHETIC_PHONE, normalized_phone_number: SYNTHETIC_PHONE, email: SYNTHETIC_EMAIL,
+    pickup_city: "Brooklyn", pickup_zip: "11201", pickup_state: "NY", delivery_city: "Queens", delivery_state: "NY",
+    move_date: capturedAt, cubic_feet: 300, local: "local", granot_move_size: "Studio", granot_service_type: "Full",
+    granot_contact_snapshot: { name: "Ada Example" }, ingested_contact_snapshot: { name: "Ada Example" },
+    last_accepted_granot_observation: { observation_id: String(winner), captured_at: capturedAt },
+    last_granot_contact_change: { changed_paths: ["name"] }, domain_revision: 3,
+  } satisfies Required<Omit<LeadDesiredStateProjection, "model" | "id" | "destination_zip" | "delivery_zip" | "move_size">>;
+  for (const kind of ["FormLead", "CallLead"] as const) {
+    const id = objectId();
+    const model = kind === "FormLead" ? getFormLeadModel() : getCallLeadModel();
+    const fields = kind === "FormLead" ? { destination_zip: "11101", move_size: "Studio" } : { delivery_zip: "11101" };
+    await mongoose.connection.db!.collection(model.collection.name).insertOne({ _id: id, ...common, ...fields,
+      receiver_agent: receiver, last_accepted_granot_observation: { observation_id: winner, captured_at: capturedAt },
+    });
+    const projection = await loadGranotLeadProjection({ model: kind, id: String(id) });
+    assert.ok(projection);
+    for (const [key, value] of Object.entries({ ...common, ...fields })) {
+      // Snapshot projection explicitly includes absent optional leaves.
+      assert.deepEqual(JSON.parse(JSON.stringify(Reflect.get(projection, key))), JSON.parse(JSON.stringify(value)), `${kind}.${key}`);
+    }
+  }
+});
+
+test("capacity W1: normalization and invalid calendar dates preserve canonical dates", async t => {
+  if (!(await replicaReady(t))) return;
+  for (const [raw, expected] of [[" 12/01/2026 ", "2026-12-01T05:00:00Z"], ["03/08/2026", "2026-03-08T05:00:00Z"], ["07/01/2026", "2026-07-01T04:00:00Z"], ["02/30/2026", null]] as const) {
+    const fixture = await seedDatedCall();
+    if (expected) {
+      fixture.date = new Date(expected);
+      await getCallLeadModel().updateOne({ _id: fixture.id }, { $set: { move_date: fixture.date } });
+    }
+    const incoming = fixture.capture(1000);
+    const normalized = normalizeGranotReceipt({ observation_channel: "granot_webhook", route_event_class: "lead_created",
+      captured_at: incoming.captured_at, payload: { source: "Synthetic Forms", job_no: fixture.job.raw, priority: "8", move_date: raw } });
+    incoming.move = normalized.move;
+    incoming.issues = normalized.issues;
+    incoming.normalization_result = normalized.normalization_result;
+    if (expected) assert.equal(incoming.move.move_date?.getTime(), +fixture.date);
+    else {
+      assert.equal(incoming.move.move_date, undefined);
+      assert.ok(incoming.issues.some(issue => issue.code === "invalid_move_date"));
+    }
+    const result = await processLive({ observation: incoming, identity: fixture.identity });
+    await assertAcceptedWithoutEffects(fixture, incoming, result.decision_id);
+  }
+});
+
+test("capacity W1: concurrent fresh equal captures preserve the greater winner and one Decision each", async t => {
+  if (!(await replicaReady(t))) return;
+  const fixture = await seedDatedCall();
+  const first = fixture.capture(1000), second = fixture.capture(2000);
+  const results = await Promise.all([first, second].map(incoming => processLive({ observation: incoming, identity: fixture.identity })));
+  assert.ok(results.every(r => ["already_current", "stale"].includes(r.outcome)));
+  await assertAcceptedWithoutEffects(fixture, second, results[1].decision_id);
+  assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: first._id }), 1);
+  const delayed = await processLive({ observation: fixture.capture(1500, new Date("2026-12-02T05:00:00Z")), identity: fixture.identity });
+  assert.equal(delayed.outcome, "stale");
+});
+
+test("capacity W1: accepted Form no-op still repairs only its qualified Call sibling", async t => {
+  if (!(await replicaReady(t))) return;
+  for (const qualified of [true, false]) {
+    const formId = objectId(), callId = objectId(), company = objectId(), receiver = objectId();
+    const job = jobPair(String(formId));
+    await seedFormLead({ id: formId, job, priority: "8", extra: { lead_source_company: company,
+      normalized_phone_number: SYNTHETIC_PHONE, receiver_agent: receiver, receiver_agent_name_snapshot: "Synthetic Rep",
+      receiver_agent_source: "granot_username_match" } });
+    await seedCallLead({ id: callId, job: jobPair(String(callId)) });
+    const qualification = { call_log_id: `synthetic-${callId}`, duration_seconds: 150, ingestion_source: "call_log_sync", qualification_reason: "call_log_inbound_target_answered_over_120s" };
+    await getCallLeadModel().collection.updateOne({ _id: callId }, { $unset: { job_no: "", normalized_job_no: "" }, $set: {
+      lead_source_company: company, normalized_phone_number: SYNTHETIC_PHONE, granot_priority: "0",
+      ...(qualified ? { ringcentral: qualification } : {}), sheet_sync: [{ target: "master_calls", status: "synced", row_number: 2 }],
+    } });
+    await getGranotRecordLinkModel().create({ provider: "granot", normalized_job_no: job.normalized, job_no_snapshot: job.raw,
+      state: "active", lead_ref: { model: "FormLead", id: formId }, disputed: false,
+      established_by_decision_id: objectId(), established_at: olderCapturedAt, last_observation_id: objectId(),
+      last_observed_at: olderCapturedAt, domain_revision: 0 });
+    const incoming = observation({ job, priority: "8", move: { move_date: capturedAt } });
+    await seedReceipt(incoming);
+    const processor = createGranotObservationProcessor({ ...liveDeps({ observation: incoming, identity: identityFor(String(formId)) }),
+      wakeLeadLinks: async () => undefined, wakeLeadLinksTimeoutMs: 30_000 });
+    const result = await processor.process({ receipt_id: String(incoming.receipt_id) });
+    assert.equal(result.outcome, "already_current");
+    assert.deepEqual(result.effects, []);
+    const call = await getCallLeadModel().findById(callId).lean();
+    assert.equal(call?.normalized_job_no ?? undefined, qualified ? job.normalized : undefined);
+    assert.equal(call?.granot_priority, qualified ? "8" : "0");
+    assert.equal(call?.receiver_agent ? String(call.receiver_agent) : undefined, qualified ? String(receiver) : undefined);
+    assert.equal(call?.last_accepted_granot_observation, undefined);
+    if (qualified) assert.deepEqual(JSON.parse(JSON.stringify(call?.ringcentral)), qualification);
+    const evidence = await evidenceFor(String(callId));
+    assert.equal(evidence.changes.length, qualified ? 1 : 0);
+    assert.equal(evidence.outbox.length, qualified ? 1 : 0);
+    await processor.process({ receipt_id: String(incoming.receipt_id) });
+    assert.equal((await evidenceFor(String(callId))).changes.length, qualified ? 1 : 0);
+    assert.equal((await evidenceFor(String(formId))).changes.length, 0);
+  }
+});
 
 test("[AC-05][AC-07][AC-10][AC-11][AC-32] replica WordPress matched write is one causal transaction", async (t) => {
   if (!(await replicaReady(t))) return;

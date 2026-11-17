@@ -323,7 +323,7 @@ async function seedCallRegistry(suffix: string): Promise<{
     enabled: true,
     lifecycle_enabled: true,
     lifecycle_disposition: "source_scoped_lead",
-    lead_created_policy: "create_if_missing",
+    lead_created_policy: "link_only",
     lead_source_company: companyId,
     lifecycle_policy_version: "granot-lifecycle-source-policy-v1",
     lifecycle_routes: [
@@ -651,94 +651,34 @@ test("[AC-08] replica concurrent same-Observation replay commits one atomic Form
   }
 });
 
-test("[AC-08][AC-09] replica Call phone is pending, Job-only is not_applicable, and fabricates no telephony", async (t) => {
+test("[AC-08][AC-09] replica Granot cannot create phone or Job-only Calls", async (t) => {
   if (!(await replicaReady(t))) return;
-  const suffix = `${Date.now().toString(36)}b`;
-  const registry = await seedCallRegistry(suffix);
-  const phoneJob = jobPair(`${suffix}-phone`);
-  const jobOnly = jobPair(`${suffix}-job`);
-  const phoneObs = await seedObservation({
-    job: phoneJob,
-    label: registry.label,
-    move: {},
-  });
-  const jobObs = await seedObservation({
-    job: jobOnly,
-    label: registry.label,
-    contact: {},
-    move: {},
-  });
-  try {
-    const phoneResult = await createLeadFromGranot(
-      commandInput({
-        observation: phoneObs,
-        lead_model: "CallLead",
-        source_scope: {
-          granot_crm_source_id: registry.sourceId,
-          lead_source_company: registry.companyId,
-          source_granularity_id: registry.granularityId,
-        },
-      }),
-      { flags: liveCreationFlags() },
-    );
-    const phoneLead = await getCallLeadModel()
-      .findById(phoneResult.entity_refs.find((ref) => ref.model === "CallLead")?.id)
-      .lean();
-    assert.equal(phoneLead?.ingestion_origin, "granot_lead_created");
-    assert.equal(phoneLead?.post_to_granot, false);
-    assert.equal(phoneLead?.ringcentral_convergence?.state, "pending");
-    assert.equal(phoneLead?.duration, undefined);
-    assert.equal(phoneLead?.start_time, undefined);
-    assert.equal(phoneLead?.end_time, undefined);
-    assert.equal(phoneLead?.ringcentral, undefined);
-    const outbox = await SheetSyncJob.find({
-      entity_id: String(phoneLead?._id),
-    }).lean();
-    assert.ok(outbox.some((row) => row.operation === "call_lead.create"));
-
-    await getRingCentralInboundRouteAssignmentModel().deleteOne({
-      _id: registry.assignmentId,
-    });
-    await getRingCentralInboundRouteModel().deleteOne({ _id: registry.routeId });
-    const jobResult = await createLeadFromGranot(
-      commandInput({
-        observation: jobObs,
-        lead_model: "CallLead",
-        source_scope: {
-          granot_crm_source_id: registry.sourceId,
-          lead_source_company: registry.companyId,
-          source_granularity_id: registry.granularityId,
-        },
-      }),
-      { flags: liveCreationFlags() },
-    );
-    const sparse = await getCallLeadModel()
-      .findById(jobResult.entity_refs.find((ref) => ref.model === "CallLead")?.id)
-      .lean();
-    assert.equal(sparse?.ringcentral_convergence?.state, "not_applicable");
-    assert.equal(sparse?.phone_number ?? undefined, undefined);
-    assert.equal(sparse?.local ?? undefined, undefined);
-    assert.equal(sparse?.duration, undefined);
-  } finally {
-    const leads = await getCallLeadModel()
-      .find({ normalized_job_no: { $in: [phoneJob.normalized, jobOnly.normalized] } })
-      .select("_id")
-      .lean();
-    await cleanup({
-      observationIds: [phoneObs._id, jobObs._id],
-      receiptIds: [phoneObs.receipt_id, jobObs.receipt_id],
-      companyIds: [registry.companyId],
-      granularityIds: [registry.granularityId],
-      sourceIds: [registry.sourceId],
-      jobs: [phoneJob.normalized, jobOnly.normalized],
-      leadIds: leads.map((row) => row._id),
-      routeIds: [registry.routeId],
-      assignmentIds: [registry.assignmentId],
-    });
+  const registry = await seedCallRegistry(`${Date.now().toString(36)}b`);
+  // The Registry rejects new create_if_missing Call policies. Simulate a saved
+  // legacy policy as well: the canonical command must still refuse creation.
+  await assert.rejects(getGranotCrmSourceModel().findById(registry.sourceId).then(async source => {
+    assert.ok(source);
+    source.lead_created_policy = "create_if_missing";
+    await source.save();
+  }), /Only RingCentral can create Call Leads/);
+  await getGranotCrmSourceModel().collection.updateOne({ _id: registry.sourceId }, { $set: { lead_created_policy: "create_if_missing" } });
+  for (const hasPhone of [true, false]) {
+    const job = jobPair(`${registry.sourceId}-${hasPhone}`);
+    const incoming = await seedObservation({ job, label: registry.label, move: {}, ...(hasPhone ? {} : { contact: {} }) });
+    await assert.rejects(createLeadFromGranot(commandInput({ observation: incoming, lead_model: "CallLead", source_scope: {
+      granot_crm_source_id: registry.sourceId, lead_source_company: registry.companyId, source_granularity_id: registry.granularityId,
+    } }), { flags: liveCreationFlags() }), /policy race/);
+    assert.equal(await getCallLeadModel().countDocuments({ normalized_job_no: job.normalized }), 0);
+    assert.equal(await getGranotRecordLinkModel().countDocuments({ normalized_job_no: job.normalized }), 0);
+    assert.equal(await getSynchronizationDecisionModel().countDocuments({ observation_id: incoming._id }), 0);
+    assert.equal(await DomainCommandExecution.countDocuments({ "provenance.observation_id": String(incoming._id) }), 0);
+    await cleanup({ observationIds: [incoming._id], receiptIds: [incoming.receipt_id], jobs: [job.normalized] });
   }
+  await cleanup({ companyIds: [registry.companyId], granularityIds: [registry.granularityId], sourceIds: [registry.sourceId],
+    routeIds: [registry.routeId], assignmentIds: [registry.assignmentId] });
 });
 
-test("[AC-08] replica Call creation rejects missing or multiple active route assignments", async (t) => {
+test("[AC-08] replica Call creation stays blocked with missing or multiple active route assignments", async (t) => {
   if (!(await replicaReady(t))) return;
   const suffix = `${Date.now().toString(36)}r`;
   const registry = await seedCallRegistry(suffix);
@@ -773,7 +713,7 @@ test("[AC-08] replica Call creation rejects missing or multiple active route ass
           }),
           { flags: liveCreationFlags() },
         ),
-      /route_assignment race/,
+      /policy race/,
     );
 
     await getRingCentralInboundRouteAssignmentModel().updateOne(
@@ -832,7 +772,7 @@ test("[AC-08] replica Call creation rejects missing or multiple active route ass
           }),
           { flags: liveCreationFlags() },
         ),
-      /route_assignment race/,
+      /policy race/,
     );
     for (const job of jobs) {
       assert.equal(
@@ -908,7 +848,7 @@ test("[AC-07][AC-08] replica competing scoped Call phone identity creates nothin
           }),
           { flags: liveCreationFlags() },
         ),
-      /identity race/,
+      /policy race/,
     );
     assert.equal(
       await getCallLeadModel().countDocuments({
@@ -1024,11 +964,11 @@ test("Race A: existing RingCentral Call Lead synchronizes even with adoption off
           }),
           { flags: liveCreationFlags() },
         ),
-      /identity race/,
+      /policy race/,
     );
     assert.equal(
       await countConvergenceLocks(String(registry.granularityId), SYNTHETIC_PHONE),
-      1,
+      0,
     );
     assert.equal(
       await getCallLeadModel().countDocuments({

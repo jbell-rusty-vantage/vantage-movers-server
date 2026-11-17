@@ -38,6 +38,7 @@ import {
 import { compareGranotTemporal, olderTemporalWinnerFilter } from "./granotTemporal";
 import {
   contactSemanticallyEqual,
+  granotMoveDatesEqual,
   receiverFillableByGranot,
   receiverLatestWinsEnabled,
   type LeadContactSnapshot,
@@ -203,8 +204,13 @@ async function applySynchronizeLeadOperation(
   const sheetChanged = Object.keys(leadSet.reportable).some(path => path !== "granot_priority");
   const association =
     linkAction.kind === "establish" || linkAction.kind === "attach";
+  // Only an exact existing association can turn equal-date-only work (or its
+  // empty race replan) into acceptance without business effects.
+  const alreadyCurrent = !leadChanged && linkAction.kind === "confirm" &&
+    linkAction.link.lead_ref?.model === input.lead_ref.model &&
+    input.desired_state.changed_paths.every(path => path === "move_date");
 
-  if (!leadChanged && !association) {
+  if (!leadChanged && !association && !alreadyCurrent) {
     throw new SynchronizeLeadRaceError("eligibility");
   }
 
@@ -226,7 +232,7 @@ async function applySynchronizeLeadOperation(
     }
   }
 
-  if (linkAction.kind === "confirm") {
+  if (linkAction.kind === "confirm" && !alreadyCurrent) {
     await confirmLinkEvidence(input, linkAction.link, session);
     const confirmRef: EntityRef = { model: "GranotRecordLink", id: String(linkAction.link._id) };
     entity_refs.push(confirmRef);
@@ -261,8 +267,8 @@ async function applySynchronizeLeadOperation(
     }
   }
 
-  const outcome: SynchronizationOutcome = leadChanged ? "applied" : "linked";
-  const reason_code: SynchronizationReasonCode = leadChanged
+  const outcome: SynchronizationOutcome = alreadyCurrent ? "already_current" : leadChanged ? "applied" : "linked";
+  const reason_code: SynchronizationReasonCode = alreadyCurrent ? "desired_state_already_current" : leadChanged
     ? "lead_state_changed"
     : "record_link_established";
 
@@ -590,6 +596,9 @@ function buildLeadUpdate(
 
   for (const path of input.desired_state.changed_paths) {
     let value = input.desired_state.set[path];
+    // Plans are based on an earlier read. Recheck the date against the transaction
+    // snapshot before deriving provenance, revisions, Sheet or Daily Operations effects.
+    if (path === "move_date" && granotMoveDatesEqual(lead.move_date, value)) continue;
     if (path === "granot_contact_snapshot" && value && typeof value === "object") {
       const semantic = value as LeadContactSnapshot;
       value = {
@@ -633,7 +642,7 @@ function buildLeadUpdate(
     };
   }
 
-  if (input.desired_state.move_changed_paths.length > 0) {
+  if (input.desired_state.move_changed_paths.some(path => path in reportable)) {
     all.current_move_provenance = {
       source_system: "granot",
       observation_id: observationId,
@@ -703,7 +712,10 @@ async function advanceTemporalWinnerOnly(
   session: ClientSession,
 ): Promise<boolean> {
   const model = leadModel(input.lead_ref.model);
-  const filter: Record<string, unknown> = { _id: input.lead_ref.id };
+  const filter: Record<string, unknown> = {
+    _id: input.lead_ref.id,
+    domain_revision: input.expected_domain_revision,
+  };
   if (lead.last_accepted_granot_observation) {
     Object.assign(filter, olderTemporalWinnerFilter(input.desired_state.temporal_winner));
   }

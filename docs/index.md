@@ -6,6 +6,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
+November 16 capacity Phase 1: [release evidence and engineering explanation](capacity-review-2026-11-16/PHASE-ONE-RELEASE.md) — stop false equal-date Call changes while preserving temporal acceptance. Later retention, index and compaction releases remain separate.
+
 November 4 Call billing/Form parity review: [fixes, replica evidence, read-only repair preview and release limits](call-billing-review-2026-11-04.md). The broader efficiency work starts from this reviewed revision after integration/release checks.
 
 November 4 queued Sheet Sync recovery: [uncertain structural writes, qualification, remaining S1 work and release/rollback handoff](efficiency/sheet-sync-recovery-handoff-2026-11-04.md). Owner reporting policy and the Form Fill cron continuation are preserved; production release remains separate.

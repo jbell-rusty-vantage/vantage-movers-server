@@ -1,0 +1,15 @@
+{
+  "scope": "pure planner, synthetic values; actual projection omission verified by source inspection",
+  "current_missing_projection": {
+    "outcome": "applied",
+    "changed_paths": [
+      "move_date"
+    ],
+    "advances": true
+  },
+  "complete_projection": {
+    "outcome": "already_current",
+    "changed_paths": [],
+    "advances": true
+  }
+}

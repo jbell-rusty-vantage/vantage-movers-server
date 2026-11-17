@@ -81,6 +81,8 @@ A Bad Form exact target with `priority_only` eligibility plans only valid Priori
 
 Equivalent formatting uses existing Job/phone/email/state/date normalizers and does not manufacture a change. Contact snapshots also treat US `+1` vs 10-digit phones, email case, name capitalization/whitespace, and a name-only card vs the same tokens split into first/last (`splitNameForCrm`) as the same card. `synchronizeLeadFromGranot` stamps `differs_from_ingested` with that same compare. `changed_paths` are sorted and deduplicated.
 
+Both Form and Call projection adapters supply the canonical stored move date. `granotMoveDatesEqual` compares finite normalized instants and is shared by the planner and the command's date recheck; normalization owns New York calendar-date parsing. Invalid/absent dates do not establish equality. A fresh equal observation still advances temporal acceptance. The replica projection contract covers every `LeadDesiredStateProjection` field (with model-specific ZIP and Form-only move-size exceptions); [Phase 1](../../capacity-review-2026-11-16/PHASE-ONE-RELEASE.md) records end-to-end effect and race proof.
+
 ## Command conversion and role-safe projection
 
 The processor converts a plan to `GranotAuthorizedLeadDesiredState` immediately before `synchronizeLeadFromGranot`. Extra/missing/duplicate paths, `quoted:false`, forbidden metadata, and model-inapplicable ZIP fields are rejected. Contact hashes, temporal/provenance stamps, and receiver catalog snapshot/`set_at` are server-derived.

@@ -500,9 +500,7 @@ function valuesSemanticallyEqual(path: string, current: unknown, incoming: unkno
     return left === right && left != null;
   }
   if (path === "move_date") {
-    const left = current instanceof Date ? current.getTime() : undefined;
-    const right = incoming instanceof Date ? incoming.getTime() : undefined;
-    return left === right && left != null;
+    return granotMoveDatesEqual(current, incoming);
   }
   if (path === "granot_contact_snapshot") {
     return contactSemanticallyEqual(current as LeadContactSnapshot | undefined, incoming as LeadContactSnapshot);
@@ -514,6 +512,12 @@ function valuesSemanticallyEqual(path: string, current: unknown, incoming: unkno
     return current.trim() === incoming.trim();
   }
   return Object.is(current, incoming);
+}
+
+/** Compare normalized instants; invalid or absent dates never establish equality. */
+export function granotMoveDatesEqual(current: unknown, incoming: unknown): boolean {
+  return current instanceof Date && incoming instanceof Date &&
+    Number.isFinite(current.getTime()) && current.getTime() === incoming.getTime();
 }
 
 export function contactSemanticallyEqual(

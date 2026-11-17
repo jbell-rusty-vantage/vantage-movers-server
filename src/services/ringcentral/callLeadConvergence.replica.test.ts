@@ -873,6 +873,8 @@ async function createPriorLead(phone: string, timestamp: Date) {
     ringcentral: {
       telephony_session_id: `prior-${new mongoose.Types.ObjectId()}`,
       ingestion_source: "webhook",
+      duration_seconds: 180,
+      qualification_reason: "call_log_inbound_target_elapsed_at_least_120s",
       route_id: ROUTE_ID,
       route_assignment_id: ASSIGNMENT_ID,
       target_phone_number: TARGET_PHONE,
@@ -915,7 +917,7 @@ function qualifiedCall(input: {
     terminalAt: new Date(input.start.getTime() + 181_000),
     startTime: input.start,
     durationSeconds: 180,
-    qualificationReason: "synthetic_qualified",
+    qualificationReason: "call_log_inbound_target_elapsed_at_least_120s",
   };
 }
 

@@ -93,6 +93,8 @@ function ringCentralInput(prefix: string) {
     ringcentral: {
       telephony_session_id: `${prefix}-session`,
       ingestion_source: "webhook" as const,
+      duration_seconds: 150,
+      qualification_reason: "call_log_inbound_target_elapsed_at_least_120s",
       route_id: new mongoose.Types.ObjectId().toHexString(),
       route_assignment_id: new mongoose.Types.ObjectId().toHexString(),
       target_phone_number: "5550100999",

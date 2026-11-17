@@ -1,0 +1,109 @@
+{
+  "recorded_at": "2026-11-17T01:57:52.5463330Z",
+  "baseline": "6aaf3bdaa30f88e52158c090f76f67a2c805c40e",
+  "logs": "Raw logs retained locally in this evidence directory; only this digest is committed.",
+  "checks": [
+    {
+      "command": "node --import tsx --import ./ops/test-setup.ts --test --test-concurrency=2 src/**/*.test.ts api/queues/**/*.test.ts ops/lib/*.test.ts",
+      "exit_code": 0,
+      "environment": "Provider/database env scrubbed; DOTENV_CONFIG_PATH=.capacity-no-env"
+    },
+    {
+      "command": "pnpm test:granot-lifecycle:replica",
+      "exit_code": 0,
+      "environment": "TEST_MODE=true; isolated testvantagemovers_capacityrelease on loopback capacityp1:27216; runner safety checks"
+    },
+    {
+      "command": "pnpm typecheck",
+      "exit_code": 0
+    },
+    {
+      "command": "pnpm lint",
+      "exit_code": 0
+    },
+    {
+      "command": "pnpm quality:test",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --cached --check",
+      "exit_code": 0
+    }
+  ],
+  "logs_sha256": [
+    {
+      "file": "phase-one-red.txt",
+      "sha256": "960ee7096557897cf2927caa473b7c8a3f74d1e0abb29a61f632bd25ec48d5ea",
+      "summary": [
+        "ℹ tests 4",
+        "ℹ suites 0",
+        "ℹ pass 0",
+        "ℹ fail 4",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 43271.1904"
+      ]
+    },
+    {
+      "file": "phase-one-offline.txt",
+      "sha256": "feda224a2b46351d1d3b2ca4c846191ddf18818d67c05e6e3e34eedc2a99ee2e",
+      "summary": [
+        "ℹ tests 4002",
+        "ℹ suites 127",
+        "ℹ pass 3830",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 172",
+        "ℹ todo 0",
+        "ℹ duration_ms 835141.2049"
+      ]
+    },
+    {
+      "file": "phase-one-replica.txt",
+      "sha256": "21c7fd2306475d5673abf07f2b56f3831fc4157da44faa24aa2fbeab77aad5a4",
+      "summary": [
+        "ℹ tests 110",
+        "ℹ suites 0",
+        "ℹ pass 110",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 110442.4594",
+        "ℹ tests 40",
+        "ℹ suites 0",
+        "ℹ pass 40",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 45441.178"
+      ]
+    },
+    {
+      "file": "phase-one-typecheck.txt",
+      "sha256": "e35e1a022c948a066f8cf0da2cc1ce0327415f3efecceb1b5a8a16a146a6b3d8",
+      "summary": []
+    },
+    {
+      "file": "phase-one-lint.txt",
+      "sha256": "a3fd6112244031e9ac5119e461c9982756fde43b8d8c07107683f66b2f697aae",
+      "summary": []
+    },
+    {
+      "file": "phase-one-quality.txt",
+      "sha256": "559bd84a8e80b989fd7bdcb8a720495f565da71fafe5c3793d6806863a107804",
+      "summary": [
+        "ℹ tests 33",
+        "ℹ suites 0",
+        "ℹ pass 33",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 62186.0625"
+      ]
+    }
+  ]
+}
