@@ -1,3 +1,4 @@
+import { createPlanningCheckpointGate, persistActionReceipt, renewRunLeaseWhenDue } from "./runPersistence";
 import { closedRuns } from "../granotHistory/closedAutomationRun";
 import { createHash, randomUUID } from "node:crypto";
 import { readGranotCredentials as readCredentials } from "./credentials";
@@ -19,6 +20,7 @@ import {
 } from "../agents/receiverAgentCrmUsername";
 import {
   MongoLeaseStore,
+  activeTokenFilter,
   assertChecksum,
   computeChecksum,
   type DurableActor,
@@ -78,7 +80,7 @@ export const GRANOT_AUTOMATION_TOPIC = "granot-automation-events";
 const LEASE_SCOPE = "granot:automation:account";
 // The collector permits 50 sequential sources, one complete session retry,
 // and 20 seconds per request. This covers the worst supported planning run;
-// apply additionally renews before every mutation.
+// Every existing action/request gate validates stored ownership; renew within 22.5 minutes of expiry.
 const LEASE_TTL_MS = 45 * 60_000;
 const PLAN_TTL_MS = 24 * 60 * 60_000;
 
@@ -597,11 +599,13 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
   > & EstimatesRunSelection & { auto_apply?: boolean };
   let sourceIndex = 0;
   let plannedRows = 0;
+  const checkpointDue = createPlanningCheckpointGate(Date.now());
   const planningDeadline = run.operation === "estimates_in_process" ? Date.now() + 120_000 : Infinity;
   const beforeRow = async () => {
     if (Date.now() >= planningDeadline) throw new GranotRunConflict("PLANNING_BUDGET_EXCEEDED", "Granot planning exceeded 120 seconds; recollect using smaller date windows.");
     await renewRunLease(runId, lease, "planning");
     plannedRows += 1;
+    if (!checkpointDue(plannedRows, Date.now())) return;
     await GranotAutomationRun.updateOne(
       fenced(runId, lease, ["planning"]),
       { $set: { checkpoint: checkpoint("plan", plannedRows) } },
@@ -1116,29 +1120,12 @@ async function upsertActionReceipt(
   receipt: GranotAutomationActionReceipt,
   completed?: number,
 ): Promise<void> {
-  const run = await GranotAutomationRun.findOne(fenced(runId, lease, ["applying"]))
-    .select({ receipts: 1 })
-    .lean()
-    .exec();
-  if (!run) throw new Error("Granot apply checkpoint lost its fenced lease.");
-  const receipts = [
-    ...(((run.receipts as GranotAutomationActionReceipt[]) ?? []).filter(
-      (entry) => entry.action_id !== receipt.action_id,
-    )),
+  await persistActionReceipt(
+    (filter, update) => GranotAutomationRun.updateOne(filter, update).exec(),
+    () => fenced(runId, lease, ["applying"]),
     receipt,
-  ];
-  const saved = await GranotAutomationRun.updateOne(
-    fenced(runId, lease, ["applying"]),
-    {
-      $set: {
-        receipts,
-        ...(completed !== undefined
-          ? { checkpoint: checkpoint("apply", completed) }
-          : {}),
-      },
-    },
-  ).exec();
-  if (saved.modifiedCount !== 1) throw new Error("Granot apply checkpoint lost its fenced lease.");
+    completed !== undefined ? checkpoint("apply", completed) : undefined,
+  );
 }
 
 async function yieldApplyingRun(runId: string, lease: LeaseToken, completed: number, freshActionsRemain = false): Promise<void> {
@@ -1216,6 +1203,17 @@ async function renewRunLease(
   lease: LeaseToken,
   status: "planning" | "applying",
 ): Promise<void> {
+  await renewRunLeaseWhenDue({
+    now: Date.now,
+    readAccount: () => SheetSyncLease.findOne(activeTokenFilter(lease, new Date()))
+      .select({ leased_until: 1 }).read("primary").lean().exec(),
+    readRun: () => GranotAutomationRun.findOne(fenced(runId, lease, [status]))
+      .select({ leased_until: 1 }).read("primary").lean().exec(),
+    renew: () => extendRunLease(runId, lease, status),
+  });
+}
+
+async function extendRunLease(runId: string, lease: LeaseToken, status: "planning" | "applying"): Promise<void> {
   const now = new Date();
   const leaseStore = new MongoLeaseStore(SheetSyncLease);
   const renewed = await leaseStore.renew({
@@ -1235,11 +1233,11 @@ async function renewRunLease(
       status,
       lease_owner: lease.owner,
       lease_epoch: lease.epoch,
-      leased_until: { $gt: now },
+      leased_until: { $gt: new Date() },
     },
     { $set: { leased_until: renewed.leased_until } },
   ).exec();
-  if (updated.modifiedCount !== 1) {
+  if (updated.matchedCount !== 1) {
     throw new GranotRunConflict(
       "RUN_LEASE_LOST",
       "Granot run lease was lost while processing a run.",

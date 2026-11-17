@@ -1,0 +1,11 @@
+✔ worker crash after canonical action but before run result replays the exact identity and checksum (1408.3352ms)
+✔ legacy expiry remains enforced: an approved run beyond normal expiry does not execute (48.2977ms)
+✔ legacy closed-run reconstruction requires absent run, mature complete evidence and exact replay hash (61.5034ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6650.7766

@@ -1,0 +1,50 @@
+{
+  "observed_at": "2026-11-17T15:14:03.838Z",
+  "from": "2026-11-17T03:00:00.000Z",
+  "to": "2026-11-17T05:00:00.000Z",
+  "database": "vantagemovers",
+  "basis": "ObjectId creation window; counts of new rows, not disk savings or all queue updates",
+  "deployment": {
+    "deployment_commit": "3327b31ce7b5a2f001e74febb0b2d3be79e47543",
+    "recorded_at": "2026-11-17T15:10:02.595Z",
+    "vercel_deployment_id": "dpl_55kau2rKsicyWmnBx6Quyb2R7JgP"
+  },
+  "call_changes": [],
+  "call_decisions": [
+    {
+      "_id": "already_current",
+      "count": 506,
+      "sheet_requests": 0
+    },
+    {
+      "_id": "stale",
+      "count": 35,
+      "sheet_requests": 0
+    }
+  ],
+  "recent_equal_call_sample": [
+    {
+      "inspected": 20,
+      "no_effects": 20,
+      "equal_date": 20,
+      "still_current_winner": 0
+    }
+  ],
+  "call_sheet_jobs": [],
+  "daily_facts": [
+    {
+      "_id": "granot.linked",
+      "count": 5
+    },
+    {
+      "_id": "sheet_sync.completed",
+      "count": 28
+    }
+  ],
+  "recent_receipts": [
+    {
+      "_id": "completed",
+      "count": 6877
+    }
+  ]
+}

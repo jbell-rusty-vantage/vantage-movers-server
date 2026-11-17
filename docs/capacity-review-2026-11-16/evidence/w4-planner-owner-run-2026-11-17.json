@@ -1,0 +1,96 @@
+{
+  "at": "2026-11-17T15:25:49.398Z",
+  "remote_writes": 0,
+  "mode": "queryPlanner only; synthetic values; no executionStats",
+  "queries": [
+    {
+      "fields": [
+        "provenance.observation_id"
+      ],
+      "choices_per_branch": 384,
+      "winning_stages": [
+        {
+          "stage": "PROJECTION_DEFAULT"
+        },
+        {
+          "stage": "COLLSCAN"
+        }
+      ],
+      "rejected_plan_count": 0,
+      "shape_hash": "C74A0F24"
+    },
+    {
+      "fields": [
+        "provenance.observation_id",
+        "provenance.decision_id",
+        "provenance.receipt_id"
+      ],
+      "choices_per_branch": 384,
+      "winning_stages": [
+        {
+          "stage": "SUBPLAN"
+        },
+        {
+          "stage": "PROJECTION_DEFAULT"
+        },
+        {
+          "stage": "COLLSCAN"
+        }
+      ],
+      "rejected_plan_count": 0,
+      "shape_hash": "B048EA80"
+    }
+  ],
+  "index_definitions": [
+    {
+      "v": 2,
+      "key": {
+        "_id": 1
+      },
+      "name": "_id_"
+    },
+    {
+      "v": 2,
+      "key": {
+        "changed_paths": 1,
+        "applied_at": -1
+      },
+      "name": "entity_change_changed_paths_applied"
+    },
+    {
+      "v": 2,
+      "key": {
+        "entity.model": 1,
+        "entity.id": 1,
+        "revision_after": 1
+      },
+      "name": "entity_change_entity_revision_unique",
+      "unique": true
+    },
+    {
+      "v": 2,
+      "key": {
+        "applied_at": 1,
+        "_id": 1
+      },
+      "name": "entity_change_applied_scan"
+    },
+    {
+      "v": 2,
+      "key": {
+        "command_execution_id": 1
+      },
+      "name": "entity_change_command_execution_id"
+    },
+    {
+      "v": 2,
+      "key": {
+        "entity.model": 1,
+        "entity.id": 1,
+        "applied_at": -1
+      },
+      "name": "entity_change_entity_applied"
+    }
+  ],
+  "finished_at": "2026-11-17T15:25:50.120Z"
+}

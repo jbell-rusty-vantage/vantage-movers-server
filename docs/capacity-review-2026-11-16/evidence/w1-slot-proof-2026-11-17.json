@@ -1,0 +1,147 @@
+{
+  "observed_at": "2026-11-17T15:15:51.942Z",
+  "remote_writes": 0,
+  "slots": [
+    {
+      "slot": "11/16/2026:22",
+      "manifest": {
+        "dispatched": true,
+        "lane": "all",
+        "pool_manifest_created": true,
+        "scheduled_at": "2026-11-17T03:00:00.000Z"
+      },
+      "runs": [
+        {
+          "_id": "completed",
+          "count": 65,
+          "last_updated_at": "2026-11-17T03:32:52.787Z"
+        }
+      ]
+    },
+    {
+      "slot": "11/16/2026:22:pool_refresh",
+      "manifest": {
+        "dispatched": true,
+        "lane": "pool_refresh",
+        "pool_manifest_created": false,
+        "scheduled_at": "2026-11-17T03:00:00.000Z"
+      },
+      "runs": [
+        {
+          "_id": "completed",
+          "count": 65,
+          "last_updated_at": "2026-11-17T03:23:17.265Z"
+        }
+      ]
+    },
+    {
+      "slot": "11/17/2026:8",
+      "manifest": {
+        "dispatched": true,
+        "lane": "all",
+        "pool_manifest_created": true,
+        "scheduled_at": "2026-11-17T13:00:00.000Z"
+      },
+      "runs": [
+        {
+          "_id": "completed",
+          "count": 65,
+          "last_updated_at": "2026-11-17T13:36:55.574Z"
+        }
+      ]
+    },
+    {
+      "slot": "11/17/2026:8:pool_refresh",
+      "manifest": {
+        "dispatched": true,
+        "lane": "pool_refresh",
+        "pool_manifest_created": false,
+        "scheduled_at": "2026-11-17T13:00:00.000Z"
+      },
+      "runs": [
+        {
+          "_id": "completed",
+          "count": 65,
+          "last_updated_at": "2026-11-17T13:24:30.297Z"
+        }
+      ]
+    },
+    {
+      "slot": "11/17/2026:9",
+      "manifest": {
+        "dispatched": true,
+        "lane": "all",
+        "pool_manifest_created": true,
+        "scheduled_at": "2026-11-17T14:00:00.000Z"
+      },
+      "runs": [
+        {
+          "_id": "completed",
+          "count": 65,
+          "last_updated_at": "2026-11-17T14:32:30.162Z"
+        }
+      ]
+    },
+    {
+      "slot": "11/17/2026:9:pool_refresh",
+      "manifest": {
+        "dispatched": true,
+        "lane": "pool_refresh",
+        "pool_manifest_created": false,
+        "scheduled_at": "2026-11-17T14:00:00.000Z"
+      },
+      "runs": [
+        {
+          "_id": "completed",
+          "count": 65,
+          "last_updated_at": "2026-11-17T14:22:57.734Z"
+        }
+      ]
+    }
+  ],
+  "windows": [
+    {
+      "from": "2026-11-17T03:00:00Z",
+      "to": "2026-11-17T05:00:00Z",
+      "equal_call_sample": {
+        "inspected": 20,
+        "same": 0,
+        "strictly_newer_with_decision": 20,
+        "unexplained": 0
+      },
+      "genuine_change_population": [
+        {
+          "_id": "FormLead",
+          "count": 5
+        },
+        {
+          "_id": "GranotRecordLink",
+          "count": 5
+        }
+      ],
+      "genuine_call_delivery": "No Call change observed in prior aggregate; causal Call delivery proof remains open."
+    },
+    {
+      "from": "2026-11-17T13:00:00Z",
+      "to": "2026-11-17T15:00:00Z",
+      "equal_call_sample": {
+        "inspected": 20,
+        "same": 20,
+        "strictly_newer_with_decision": 0,
+        "unexplained": 0
+      },
+      "genuine_change_population": [
+        {
+          "_id": "GranotRecordLink",
+          "count": 4
+        },
+        {
+          "_id": "FormLead",
+          "count": 19
+        }
+      ],
+      "genuine_call_delivery": "No Call change observed in prior aggregate; causal Call delivery proof remains open."
+    }
+  ],
+  "finished_at": "2026-11-17T15:15:57.341Z"
+}

@@ -1,0 +1,211 @@
+{
+  "at": "2026-11-17T15:18:09.332Z",
+  "cutoff": "2026-11-14T15:18:09.332Z",
+  "month": "2026-10-18T15:18:09.332Z",
+  "database": "vantagemovers",
+  "remote_writes": 0,
+  "jobs_over_three_days": {
+    "value": [
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "outcome": "not_admitted"
+        },
+        "count": 2041,
+        "logical_bson_bytes": 1432757,
+        "oldest": "2026-11-14T01:07:07.917Z",
+        "newest": "2026-11-14T15:17:11.438Z"
+      },
+      {
+        "_id": {
+          "stage": "rep_sms_sync",
+          "status": "completed"
+        },
+        "count": 56,
+        "logical_bson_bytes": 51160,
+        "oldest": "2026-11-14T02:06:52.809Z",
+        "newest": "2026-11-14T15:15:12.389Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "outcome": "created"
+        },
+        "count": 17,
+        "logical_bson_bytes": 12754,
+        "oldest": "2026-11-14T01:30:13.154Z",
+        "newest": "2026-11-14T15:12:51.423Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_contact_change",
+          "status": "completed"
+        },
+        "count": 477,
+        "logical_bson_bytes": 316560,
+        "oldest": "2026-11-14T01:07:51.043Z",
+        "newest": "2026-11-14T15:17:20.629Z"
+      },
+      {
+        "_id": {
+          "stage": "lead_link",
+          "status": "completed"
+        },
+        "count": 51,
+        "logical_bson_bytes": 34705,
+        "oldest": "2026-11-14T01:10:00.950Z",
+        "newest": "2026-11-14T15:18:01.011Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "outcome": "created"
+        },
+        "count": 17,
+        "logical_bson_bytes": 12240,
+        "oldest": "2026-11-14T01:30:10.380Z",
+        "newest": "2026-11-14T15:12:09.594Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "outcome": "updated"
+        },
+        "count": 7179,
+        "logical_bson_bytes": 5502673,
+        "oldest": "2026-11-14T01:05:06.852Z",
+        "newest": "2026-11-14T15:18:06.726Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_rep_day",
+          "status": "completed",
+          "outcome": "written"
+        },
+        "count": 7,
+        "logical_bson_bytes": 4683,
+        "oldest": "2026-11-14T01:11:21.111Z",
+        "newest": "2026-11-14T15:17:20.759Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "outcome": "updated"
+        },
+        "count": 5357,
+        "logical_bson_bytes": 4382592,
+        "oldest": "2026-11-14T01:04:51.471Z",
+        "newest": "2026-11-14T15:16:51.735Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_evaluate",
+          "status": "completed",
+          "outcome": "unchanged"
+        },
+        "count": 29229,
+        "logical_bson_bytes": 22778545,
+        "oldest": "2026-11-14T01:04:52.486Z",
+        "newest": "2026-11-14T15:17:54.415Z"
+      },
+      {
+        "_id": {
+          "stage": "outreach_lead_change",
+          "status": "completed",
+          "outcome": "unchanged"
+        },
+        "count": 8667,
+        "logical_bson_bytes": 6663548,
+        "oldest": "2026-11-14T01:07:06.840Z",
+        "newest": "2026-11-14T15:18:09.240Z"
+      },
+      {
+        "_id": {
+          "stage": "call_log_refresh",
+          "status": "completed"
+        },
+        "count": 12,
+        "logical_bson_bytes": 9300,
+        "oldest": "2026-11-14T01:14:35.693Z",
+        "newest": "2026-11-14T14:56:02.734Z"
+      },
+      {
+        "_id": {
+          "stage": "capture_projection",
+          "status": "completed"
+        },
+        "count": 437,
+        "logical_bson_bytes": 417473,
+        "oldest": "2026-11-14T01:07:50.863Z",
+        "newest": "2026-11-14T15:16:59.088Z"
+      }
+    ],
+    "duration_ms": 785
+  },
+  "jobs_bounded_candidate_sample": {
+    "value": {
+      "scope": "First 1000 by completed_at, candidate only; no export, no deletion authority",
+      "scanned": 1000,
+      "datasets": [
+        "csi-production/vantagemovers"
+      ],
+      "candidates": 902,
+      "classes": {
+        "outreach_evaluate:updated": 671,
+        "outreach_evaluate:unchanged": 231
+      },
+      "logical_bson_bytes": 727815,
+      "selection_hash": "b84219925baed6e57d2e79349197c24a5ac9cbde66daef9124fa269dfdb029e5",
+      "oldest": "2026-11-14T01:04:51.471Z",
+      "newest": "2026-11-14T01:07:49.722Z"
+    },
+    "duration_ms": 483
+  },
+  "sheet_jobs_over_thirty_days": {
+    "value": [
+      {
+        "_id": "synced",
+        "count": 18115,
+        "logical_bson_bytes": 8061866
+      },
+      {
+        "_id": "cancelled",
+        "count": 3,
+        "logical_bson_bytes": 1875
+      }
+    ],
+    "duration_ms": 176
+  },
+  "automation_states": {
+    "unavailable": true,
+    "code": 50,
+    "code_name": "MaxTimeMSExpired",
+    "duration_ms": 5075
+  },
+  "automation_first100": {
+    "value": {
+      "runs": 100,
+      "bytes": 15365811,
+      "counts": {
+        "active": 2,
+        "failed_or_error": 2,
+        "expired_approved_apply": 0,
+        "active_with_elapsed_purge": 0,
+        "active_purge_within_day": 0,
+        "terminal_with_pending_actions": 0,
+        "missing_or_invalid_dates": 0,
+        "pending_actions": 0,
+        "result_count": 5996,
+        "lifecycle_change_authorized": 0
+      },
+      "scope": "bounded first-ID sample, not whole-cohort counts"
+    },
+    "duration_ms": 5186
+  },
+  "finished_at": "2026-11-17T15:18:21.665Z"
+}

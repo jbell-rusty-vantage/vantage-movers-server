@@ -6,6 +6,8 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
+November 17 capacity continuation: [isolated W0/W5 release and qualification record](capacity-review-2026-11-16/QUALIFIED-RELEASE-2026-11-17.md), [fresh all-member capacity/recovery audit](capacity-review-2026-11-16/PRODUCTION-CAPACITY-AUDIT-2026-11-17.md), and [bounded retention-query/index proposal](capacity-review-2026-11-16/W4-ATLAS-DIAGNOSIS-2026-11-17.md). Application deployment, sustained qualification and database-operation approval remain separate.
+
 November 16 capacity Phase 1: [release evidence and engineering explanation](capacity-review-2026-11-16/PHASE-ONE-RELEASE.md) — stop false equal-date Call changes while preserving temporal acceptance. Later retention, index and compaction releases remain separate.
 
 November 4 Call billing/Form parity review: [fixes, replica evidence, read-only repair preview and release limits](call-billing-review-2026-11-04.md). The broader efficiency work starts from this reviewed revision after integration/release checks.

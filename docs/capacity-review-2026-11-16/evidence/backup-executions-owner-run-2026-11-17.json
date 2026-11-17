@@ -1,0 +1,370 @@
+[
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-17T07:15:01.672202Z",
+      "name": "vantage-mongodb-backup-dvt6f"
+    },
+    "status": {
+      "completionTime": "2026-11-17T07:22:25.180384Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-17T07:22:25.180384Z",
+          "message": "Task vantage-mongodb-backup-dvt6f-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-17T07:15:02.914837Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-17T07:15:23.976409Z",
+          "message": "Started deployed execution in 21.06s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-17T07:15:02.828255Z",
+          "message": "Imported container image in 1.16s.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-16T07:15:01.475140Z",
+      "name": "vantage-mongodb-backup-26jvn"
+    },
+    "status": {
+      "completionTime": "2026-11-16T07:21:03.840205Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-16T07:21:03.840205Z",
+          "message": "Task vantage-mongodb-backup-26jvn-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-16T07:15:02.434546Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-16T07:15:26.275137Z",
+          "message": "Started deployed execution in 23.84s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-16T07:15:02.348560Z",
+          "message": "Imported container image.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-15T07:15:01.627632Z",
+      "name": "vantage-mongodb-backup-shfcl"
+    },
+    "status": {
+      "completionTime": "2026-11-15T07:20:44.928486Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-15T07:20:44.928486Z",
+          "message": "Task vantage-mongodb-backup-shfcl-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-15T07:15:02.699921Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-15T07:15:09.849914Z",
+          "message": "Started deployed execution in 7.14s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-15T07:15:02.582207Z",
+          "message": "Imported container image.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-14T07:15:01.579428Z",
+      "name": "vantage-mongodb-backup-zfhls"
+    },
+    "status": {
+      "completionTime": "2026-11-14T07:21:25.320897Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-14T07:21:25.320897Z",
+          "message": "Task vantage-mongodb-backup-zfhls-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-14T07:15:02.574946Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-14T07:15:17.961474Z",
+          "message": "Started deployed execution in 15.38s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-14T07:15:02.477574Z",
+          "message": "Imported container image.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-13T07:15:01.509424Z",
+      "name": "vantage-mongodb-backup-k74t7"
+    },
+    "status": {
+      "completionTime": "2026-11-13T07:22:52.495314Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-13T07:22:52.495314Z",
+          "message": "Task vantage-mongodb-backup-k74t7-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-13T07:15:03.020937Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-13T07:15:29.212767Z",
+          "message": "Started deployed execution in 26.19s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-13T07:15:02.914179Z",
+          "message": "Imported container image in 1.4s.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-12T07:15:01.671510Z",
+      "name": "vantage-mongodb-backup-lg8d6"
+    },
+    "status": {
+      "completionTime": "2026-11-12T07:21:03.235257Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-12T07:21:03.235257Z",
+          "message": "Task vantage-mongodb-backup-lg8d6-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-12T07:15:02.665851Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-12T07:15:19.899925Z",
+          "message": "Started deployed execution in 17.23s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-12T07:15:02.566053Z",
+          "message": "Imported container image.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-11T07:15:01.620599Z",
+      "name": "vantage-mongodb-backup-vp95g"
+    },
+    "status": {
+      "completionTime": "2026-11-11T07:21:01.692185Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-11T07:21:01.692185Z",
+          "message": "Task vantage-mongodb-backup-vp95g-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-11T07:15:02.885586Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-11T07:15:14.581113Z",
+          "message": "Started deployed execution in 11.69s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-11T07:15:02.788936Z",
+          "message": "Imported container image in 1.17s.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-10T07:15:01.517915Z",
+      "name": "vantage-mongodb-backup-2hg64"
+    },
+    "status": {
+      "completionTime": "2026-11-10T07:22:57.577160Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-10T07:22:57.577160Z",
+          "message": "Task vantage-mongodb-backup-2hg64-task0 failed with exit code: 1 and message: The container exited with an error.",
+          "reason": "NonZeroExitCode",
+          "status": "False",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-10T07:15:02.487351Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-10T07:15:18.896542Z",
+          "message": "Started deployed execution in 16.4s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-10T07:15:02.399407Z",
+          "message": "Imported container image.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "failedCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-09T07:15:01.578871Z",
+      "name": "vantage-mongodb-backup-6klgg"
+    },
+    "status": {
+      "completionTime": "2026-11-09T07:19:05.134770Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-09T07:19:05.134770Z",
+          "message": "Execution completed successfully in 3m57.22s.",
+          "status": "True",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-09T07:15:02.649571Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-09T07:15:19.764432Z",
+          "message": "Started deployed execution in 17.11s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-09T07:15:02.542009Z",
+          "message": "Imported container image.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "succeededCount": 1
+    }
+  },
+  {
+    "metadata": {
+      "creationTimestamp": "2026-11-08T07:15:01.578637Z",
+      "name": "vantage-mongodb-backup-p6m4c"
+    },
+    "status": {
+      "completionTime": "2026-11-08T07:18:43.762789Z",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-08T07:18:43.762789Z",
+          "message": "Execution completed successfully in 3m35.82s.",
+          "status": "True",
+          "type": "Completed"
+        },
+        {
+          "lastTransitionTime": "2026-11-08T07:15:03.213372Z",
+          "message": "Provisioned imported containers.",
+          "status": "True",
+          "type": "ResourcesAvailable"
+        },
+        {
+          "lastTransitionTime": "2026-11-08T07:15:24.221022Z",
+          "message": "Started deployed execution in 21s.",
+          "status": "True",
+          "type": "Started"
+        },
+        {
+          "lastTransitionTime": "2026-11-08T07:15:03.038196Z",
+          "message": "Imported container image in 1.46s.",
+          "status": "True",
+          "type": "ContainerReady"
+        }
+      ],
+      "succeededCount": 1
+    }
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "observed_at": "2026-11-17T15:27:47.248Z",
+  "production_mutations": 0,
+  "provider_calls": 0,
+  "artifact_sha256": "e5c99ec8b3a8df56e0afc1f700a9d01eb890584106d454a2c3f9b4331f1aefc8",
+  "manifest_sha256": "c3599d0f0ba15b34db4cfe89f614ffd120ef2008ec3ba9368d4d66e6d904ca5c",
+  "artifact_bytes": 19683,
+  "serialized_document_bytes": 19536,
+  "rows_verified": 25,
+  "all_25_manifest_hashes_verified": true,
+  "all_25_local_roundtrip_bytes_equal": true,
+  "envelope_roundtrip_bytes_equal": true,
+  "target": "verified loopback capacityp1; unique disposable database",
+  "local_fixture_removed": true,
+  "limits": "Sample restore/read proof only; no application handlers or customer effects executed; not full-context replay qualification or production restore readiness."
+}

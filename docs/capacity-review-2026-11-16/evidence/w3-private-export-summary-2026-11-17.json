@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-17T15:25:55.157Z",
+  "cutoff": "2026-11-14T15:18:09.332Z",
+  "collection": "sales_intelligence_jobs",
+  "deployment": "csi-production",
+  "database": "vantagemovers",
+  "scanned": 271,
+  "selected": 25,
+  "retention_class": "outreach_evaluate:unchanged",
+  "logical_bson_bytes": 19536,
+  "export_bytes": 19683,
+  "export_sha256": "e5c99ec8b3a8df56e0afc1f700a9d01eb890584106d454a2c3f9b4331f1aefc8",
+  "manifest_file_sha256": "c3599d0f0ba15b34db4cfe89f614ffd120ef2008ec3ba9368d4d66e6d904ca5c",
+  "oldest_completed_at": "2026-11-14T01:04:52.486Z",
+  "newest_completed_at": "2026-11-14T01:05:05.635Z",
+  "private_directory": "C:\\Users\\Pinda\\.codex\\private\\capacity-w3-2026-11-17-f2f20d08b3ca4382a2d96846c6916518",
+  "production_mutations": 0,
+  "apply_authorized": false,
+  "live_context_replay_qualified": false,
+  "manifest_name": "candidate-manifest-v2.ejson",
+  "supersedes_summary": "summary.json",
+  "byte_basis": "sum of exact type-preserving BSON.serialize(document).length"
+}

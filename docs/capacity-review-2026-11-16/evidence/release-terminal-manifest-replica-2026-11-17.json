@@ -1,0 +1,7 @@
+{
+  "exit_code": 0,
+  "duration_seconds": 13.75,
+  "fixture_sha256": "443b4680e0bfe3428917e7de6d4b3dc7ec665108de4164c4bc357a27e915c37a",
+  "log_sha256": "b6261f313588a5cfbdc64012e7556bb7641a1c08662a0bfca367bcd8d94312e9",
+  "scope": "Synthetic real-service replay and export matrix only; not exported production-record replay"
+}

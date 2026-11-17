@@ -71,9 +71,9 @@ test("day one: the database is green on the seed estimate and Master Leads is re
   assert.equal(db.until_full!.basis, "estimate");
   assert.equal(db.growth_per_day_bytes, 4_000_000);
   assert.match(db.until_90!.label, /^about 2 years/);
-  assert.equal(db.breakdown!.business_bytes, 547_000_000);
-  assert.equal(db.breakdown!.oplog_reclaimable_bytes, 4_947_000_000);
-  assert.equal(db.breakdown!.system_bytes, 9_018_167_296 - 547_000_000 - 5_985_000_000);
+  assert.equal(db.breakdown, null);
+  assert.equal(db.storage_evidence!.allocated_business_bytes.value, 547_000_000);
+  assert.deepEqual(db.storage_evidence!.oplog_reclaimable_bytes, { basis: "unknown", value: null });
   assert.match(db.caveat, /auto-scaling/);
 
   const [leads, booked] = result.sheets;

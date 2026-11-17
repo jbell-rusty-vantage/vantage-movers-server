@@ -1,0 +1,29 @@
+✔ planning checkpoints bound row and elapsed-time lag without changing row work (1.414ms)
+✔ atomic receipt writes survive crash boundaries, lease loss and legacy replay on a disposable replica (899.0897ms)
+ℹ 100 fresh actions: 200 update commands, 68900 JSON command bytes; constant append size 348 bytes (not wire/BSON or disk measurement).
+✔ fresh lease checks reduce writes until the earlier persisted expiry is due, including long runs (1.2537ms)
+✔ lease gates reject missing owners/status, expiration during reads, and read failures (0.5303ms)
+✔ expiry or ownership loss after reads is rejected by the renewal CAS without continuation (0.3079ms)
+✔ non-renewing lease gate retains headroom beyond an entire 800-second invocation (0.2898ms)
+✔ Pool schedules cannot collide with ALL retry identity or bypass selector/lane validation (2.0623ms)
+✔ run-group creation inserts two correlated compatible queued children (0.8961ms)
+✔ run-group validation completes before any child insertion (0.3458ms)
+✔ call plan previews convert Mongo ObjectIds before checksumming (1.1507ms)
+✔ form expected filters do not cast empty strings as ObjectIds (0.3599ms)
+✔ [AC-02] applyRun has no runtime path to legacy Form/Call/Booked mutation services (9.75ms)
+✔ Estimates observation time is immutable provider capture, never apply time (0.4779ms)
+✔ worker eligibility shares one queue for fresh collection, approved actions, and due waiting matches (0.2032ms)
+✔ [AC-02][AC-33] automation apply captures granot_http_automation then claimAndProcessOrPoll (1.5722ms)
+✔ [AC-02] exact replay returns the stored terminal receipt without another capture (0.2135ms)
+✔ [AC-02] accepted_for_processing yields a nonterminal receipt for the same operation ID (0.1716ms)
+✔ pending_match stays accepted_for_processing until a terminal Decision exists (0.1805ms)
+✔ dead-lettered receipts become bounded technical_failure (0.2992ms)
+✔ processing disabled leaves the durable receipt recoverable (0.1829ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15641.0128

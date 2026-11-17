@@ -58,16 +58,25 @@ export async function readDatabaseLive(): Promise<CapacityDatabaseReading> {
     try {
       stats = (await client.db(name).stats()) as DbStats;
     } catch {
-      continue;
+      throw new Error("A database allocation measurement is unavailable; partial totals are not capacity evidence.");
+    }
+    if (![stats.storageSize, stats.indexSize].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+      throw new Error("A database allocation measurement is missing or invalid.");
     }
     if (!fsTotal && stats.fsTotalSize) {
-      fsUsed = stats.fsUsedSize ?? 0;
+      if (typeof stats.fsUsedSize !== "number" || !Number.isFinite(stats.fsUsedSize) || stats.fsUsedSize < 0) {
+        throw new Error("The database did not report valid disk usage.");
+      }
+      fsUsed = stats.fsUsedSize;
       fsTotal = stats.fsTotalSize;
     }
     if (name !== "local") dataBytes += (stats.storageSize ?? 0) + (stats.indexSize ?? 0);
   }
   if (!fsTotal) throw new Error("The database did not report its disk size.");
   const oplog = (await client.db("local").command({ collStats: "oplog.rs" })) as { storageSize?: number; maxSize?: number };
+  if (![oplog.storageSize, oplog.maxSize].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+    throw new Error("The oplog did not report valid allocated storage and configured logical maximum.");
+  }
   return {
     fs_used_bytes: fsUsed,
     fs_total_bytes: fsTotal,

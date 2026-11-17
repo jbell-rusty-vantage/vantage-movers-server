@@ -1,0 +1,1088 @@
+{
+  "captured_at": "2026-11-17T15:15:40.817Z",
+  "database": "vantagemovers",
+  "mutations": 0,
+  "members": [
+    {
+      "member": "atlas-khw1wz-shard-00-00.ccf491v.mongodb.net:27017",
+      "expected_role": "REPLICA_SECONDARY",
+      "collections": [
+        {
+          "name": "sales_intelligence_audit_events",
+          "stats": {
+            "count": 23438,
+            "size": 18713845,
+            "storageSize": 169709568,
+            "freeStorageSize": 159244288,
+            "totalIndexSize": 74657792,
+            "indexSizes": {
+              "_id_": 9584640,
+              "csi_audit_stream": 16334848,
+              "csi_audit_subject": 12156928,
+              "csi_audit_semantic_unique": 33734656,
+              "csi_audit_kind_happened": 2527232,
+              "csi_audit_happened_ttl": 319488
+            },
+            "totalSize": 244367360
+          },
+          "compact_estimate": {
+            "ok": 1,
+            "estimatedBytesFreed": 12337152
+          }
+        },
+        {
+          "name": "sales_intelligence_jobs",
+          "stats": {
+            "count": 405196,
+            "size": 314664148,
+            "storageSize": 326631424,
+            "freeStorageSize": 240676864,
+            "totalIndexSize": 224288768,
+            "indexSizes": {
+              "_id_": 38604800,
+              "csi_job_dedupe_unique": 73056256,
+              "csi_job_due": 21999616,
+              "csi_job_lease": 14331904,
+              "csi_job_claim": 55672832,
+              "csi_job_completed_ttl": 20623360
+            },
+            "totalSize": 550920192
+          },
+          "compact_estimate": {
+            "ok": 1,
+            "estimatedBytesFreed": 72531968
+          }
+        },
+        {
+          "name": "granot_webhook_receipts",
+          "stats": {
+            "count": 1903504,
+            "size": 4228358532,
+            "storageSize": 1148530688,
+            "freeStorageSize": 32145408,
+            "totalIndexSize": 378834944,
+            "indexSizes": {
+              "_id_": 53813248,
+              "granot_observation_receipt_channel_operation_id_unique": 55533568,
+              "granot_observation_receipt_processing_due": 15069184,
+              "granot_observation_receipt_leased_until": 18055168,
+              "granot_observation_receipt_route_event_captured": 24338432,
+              "granot_observation_receipt_payload_sha256_diag": 193572864,
+              "granot_retention_review_v1": 18444288,
+              "granot_retention_purge_v1": 8192
+            },
+            "totalSize": 1527365632
+          },
+          "index_definitions": [
+            {
+              "v": 2,
+              "key": {
+                "_id": 1
+              },
+              "name": "_id_"
+            },
+            {
+              "v": 2,
+              "key": {
+                "observation_channel": 1,
+                "channel_operation_id": 1
+              },
+              "name": "granot_observation_receipt_channel_operation_id_unique",
+              "unique": true,
+              "partialFilterExpression": {
+                "channel_operation_id": {
+                  "$type": "string"
+                }
+              }
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.state": 1,
+                "processing.next_attempt_at": 1,
+                "captured_at": 1
+              },
+              "name": "granot_observation_receipt_processing_due"
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.leased_until": 1
+              },
+              "name": "granot_observation_receipt_leased_until"
+            },
+            {
+              "v": 2,
+              "key": {
+                "route_event_class": 1,
+                "captured_at": -1
+              },
+              "name": "granot_observation_receipt_route_event_captured"
+            },
+            {
+              "v": 2,
+              "key": {
+                "payload_sha256": 1,
+                "captured_at": -1
+              },
+              "name": "granot_observation_receipt_payload_sha256_diag"
+            },
+            {
+              "v": 2,
+              "key": {
+                "retention_purge_at": 1
+              },
+              "name": "granot_retention_purge_v1",
+              "sparse": true,
+              "expireAfterSeconds": 0
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.retention_review_at": 1
+              },
+              "name": "granot_retention_review_v1",
+              "sparse": true
+            }
+          ],
+          "index_usage": [
+            {
+              "name": "granot_observation_receipt_route_event_captured",
+              "key": {
+                "route_event_class": 1,
+                "captured_at": -1
+              },
+              "accesses": {
+                "ops": 0,
+                "since": "2026-11-14T20:10:00.011Z"
+              }
+            },
+            {
+              "name": "granot_observation_receipt_payload_sha256_diag",
+              "key": {
+                "payload_sha256": 1,
+                "captured_at": -1
+              },
+              "accesses": {
+                "ops": 0,
+                "since": "2026-11-14T20:10:00.011Z"
+              }
+            }
+          ]
+        },
+        {
+          "name": "granot_automation_runs",
+          "stats": {
+            "count": 16725,
+            "size": 2208582988,
+            "storageSize": 662863872,
+            "freeStorageSize": 57413632,
+            "totalIndexSize": 8826880,
+            "indexSizes": {
+              "_id_": 827392,
+              "granot_run_retention_ttl": 237568,
+              "granot_run_plan_identity": 2727936,
+              "run_group_id_1": 172032,
+              "expires_at_1": 237568,
+              "lease_owner_1": 839680,
+              "leased_until_1": 2990080,
+              "granot_run_queue_claim": 266240,
+              "granot_run_recovery": 528384
+            },
+            "totalSize": 671690752
+          }
+        }
+      ],
+      "topology": {
+        "me": "atlas-khw1wz-shard-00-00.ccf491v.mongodb.net:27017",
+        "primary": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "setName": "atlas-khw1wz-shard-0",
+        "isWritablePrimary": false,
+        "secondary": true,
+        "hosts": [
+          "atlas-khw1wz-shard-00-00.ccf491v.mongodb.net:27017",
+          "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+          "atlas-khw1wz-shard-00-02.ccf491v.mongodb.net:27017"
+        ],
+        "maxWireVersion": 25
+      },
+      "database_stats": {
+        "collections": 127,
+        "objects": 8144200,
+        "storageSize": 3468939264,
+        "indexSize": 1436839936,
+        "totalSize": 4905779200,
+        "fsUsedSize": 10059259904,
+        "fsTotalSize": 13853786112,
+        "freeStorageSize": 553340928,
+        "indexFreeStorageSize": 307630080,
+        "totalFreeStorageSize": 860971008
+      },
+      "server": {
+        "version": "8.0.37",
+        "uptime": 241551,
+        "localTime": "2026-11-17T15:15:42.838Z",
+        "ttl": {
+          "collSubpassesIncreasedPriority": 0,
+          "deletedDocuments": 0,
+          "passes": 4025,
+          "subPasses": 4025
+        }
+      }
+    },
+    {
+      "member": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+      "expected_role": "REPLICA_PRIMARY",
+      "collections": [
+        {
+          "name": "sales_intelligence_audit_events",
+          "stats": {
+            "count": 23438,
+            "size": 18713845,
+            "storageSize": 135045120,
+            "freeStorageSize": 124485632,
+            "totalIndexSize": 73629696,
+            "indexSizes": {
+              "_id_": 12345344,
+              "csi_audit_stream": 15110144,
+              "csi_audit_subject": 13611008,
+              "csi_audit_semantic_unique": 29372416,
+              "csi_audit_kind_happened": 2891776,
+              "csi_audit_happened_ttl": 299008
+            },
+            "totalSize": 208674816
+          }
+        },
+        {
+          "name": "sales_intelligence_jobs",
+          "stats": {
+            "count": 405196,
+            "size": 314664148,
+            "storageSize": 326991872,
+            "freeStorageSize": 241152000,
+            "totalIndexSize": 225525760,
+            "indexSizes": {
+              "_id_": 38432768,
+              "csi_job_dedupe_unique": 74317824,
+              "csi_job_due": 22192128,
+              "csi_job_lease": 14249984,
+              "csi_job_claim": 55586816,
+              "csi_job_completed_ttl": 20746240
+            },
+            "totalSize": 552517632
+          }
+        },
+        {
+          "name": "granot_webhook_receipts",
+          "stats": {
+            "count": 1903510,
+            "size": 4228372292,
+            "storageSize": 1146933248,
+            "freeStorageSize": 31993856,
+            "totalIndexSize": 378494976,
+            "indexSizes": {
+              "_id_": 54530048,
+              "granot_observation_receipt_channel_operation_id_unique": 55771136,
+              "granot_observation_receipt_processing_due": 14958592,
+              "granot_observation_receipt_leased_until": 18362368,
+              "granot_observation_receipt_route_event_captured": 24596480,
+              "granot_observation_receipt_payload_sha256_diag": 191877120,
+              "granot_retention_review_v1": 18391040,
+              "granot_retention_purge_v1": 8192
+            },
+            "totalSize": 1525428224
+          },
+          "index_definitions": [
+            {
+              "v": 2,
+              "key": {
+                "_id": 1
+              },
+              "name": "_id_"
+            },
+            {
+              "v": 2,
+              "key": {
+                "observation_channel": 1,
+                "channel_operation_id": 1
+              },
+              "name": "granot_observation_receipt_channel_operation_id_unique",
+              "unique": true,
+              "partialFilterExpression": {
+                "channel_operation_id": {
+                  "$type": "string"
+                }
+              }
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.state": 1,
+                "processing.next_attempt_at": 1,
+                "captured_at": 1
+              },
+              "name": "granot_observation_receipt_processing_due"
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.leased_until": 1
+              },
+              "name": "granot_observation_receipt_leased_until"
+            },
+            {
+              "v": 2,
+              "key": {
+                "route_event_class": 1,
+                "captured_at": -1
+              },
+              "name": "granot_observation_receipt_route_event_captured"
+            },
+            {
+              "v": 2,
+              "key": {
+                "payload_sha256": 1,
+                "captured_at": -1
+              },
+              "name": "granot_observation_receipt_payload_sha256_diag"
+            },
+            {
+              "v": 2,
+              "key": {
+                "retention_purge_at": 1
+              },
+              "name": "granot_retention_purge_v1",
+              "sparse": true,
+              "expireAfterSeconds": 0
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.retention_review_at": 1
+              },
+              "name": "granot_retention_review_v1",
+              "sparse": true
+            }
+          ],
+          "index_usage": [
+            {
+              "name": "granot_observation_receipt_route_event_captured",
+              "key": {
+                "route_event_class": 1,
+                "captured_at": -1
+              },
+              "accesses": {
+                "ops": 0,
+                "since": "2026-11-14T20:19:07.014Z"
+              }
+            },
+            {
+              "name": "granot_observation_receipt_payload_sha256_diag",
+              "key": {
+                "payload_sha256": 1,
+                "captured_at": -1
+              },
+              "accesses": {
+                "ops": 0,
+                "since": "2026-11-14T20:19:07.014Z"
+              }
+            }
+          ]
+        },
+        {
+          "name": "granot_automation_runs",
+          "stats": {
+            "count": 16725,
+            "size": 2208584759,
+            "storageSize": 662757376,
+            "freeStorageSize": 56233984,
+            "totalIndexSize": 8994816,
+            "indexSizes": {
+              "_id_": 798720,
+              "granot_run_retention_ttl": 221184,
+              "granot_run_plan_identity": 2822144,
+              "run_group_id_1": 192512,
+              "expires_at_1": 229376,
+              "lease_owner_1": 827392,
+              "leased_until_1": 3112960,
+              "granot_run_queue_claim": 262144,
+              "granot_run_recovery": 528384
+            },
+            "totalSize": 671752192
+          }
+        }
+      ],
+      "topology": {
+        "me": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "primary": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "setName": "atlas-khw1wz-shard-0",
+        "isWritablePrimary": true,
+        "secondary": false,
+        "hosts": [
+          "atlas-khw1wz-shard-00-00.ccf491v.mongodb.net:27017",
+          "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+          "atlas-khw1wz-shard-00-02.ccf491v.mongodb.net:27017"
+        ],
+        "maxWireVersion": 25
+      },
+      "database_stats": {
+        "collections": 127,
+        "objects": 8144242,
+        "storageSize": 3434651648,
+        "indexSize": 1428762624,
+        "totalSize": 4863414272,
+        "fsUsedSize": 11771154432,
+        "fsTotalSize": 13853786112,
+        "freeStorageSize": 517632000,
+        "indexFreeStorageSize": 295100416,
+        "totalFreeStorageSize": 812732416
+      },
+      "server": {
+        "version": "8.0.37",
+        "uptime": 241006,
+        "localTime": "2026-11-17T15:15:44.877Z",
+        "ttl": {
+          "collSubpassesIncreasedPriority": 0,
+          "deletedDocuments": 188155,
+          "passes": 4014,
+          "subPasses": 4014
+        }
+      },
+      "retention_diagnostics": [
+        {
+          "day": "2026-11-17",
+          "failures": 7,
+          "mismatches": 0,
+          "last_review_at": "2026-11-17T15:14:33.129Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "last_review_at",
+            "failures",
+            "mismatches"
+          ]
+        },
+        {
+          "day": "2026-11-16",
+          "failures": 17,
+          "mismatches": 0,
+          "last_review_at": "2026-11-16T23:58:33.446Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "last_review_at",
+            "failures",
+            "mismatches"
+          ]
+        },
+        {
+          "day": "2026-11-15",
+          "last_review_at": "2026-11-15T23:58:33.299Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "last_review_at"
+          ]
+        },
+        {
+          "day": "2026-11-14",
+          "failures": 1,
+          "mismatches": 0,
+          "last_review_at": "2026-11-14T23:58:33.164Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "last_review_at",
+            "failures",
+            "mismatches"
+          ]
+        },
+        {
+          "day": "2026-11-13",
+          "failures": 3,
+          "mismatches": 0,
+          "last_review_at": "2026-11-13T23:58:33.624Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "last_review_at",
+            "failures",
+            "mismatches"
+          ]
+        },
+        {
+          "day": "2026-11-12",
+          "failures": 6,
+          "mismatches": 0,
+          "last_review_at": "2026-11-12T23:58:33.208Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "last_review_at",
+            "failures",
+            "mismatches"
+          ]
+        },
+        {
+          "day": "2026-11-11",
+          "failures": 503,
+          "mismatches": 0,
+          "last_review_at": "2026-11-11T23:58:33.165Z",
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "failures",
+            "mismatches",
+            "last_review_at"
+          ]
+        },
+        {
+          "day": "2026-11-10",
+          "failures": 179,
+          "mismatches": 0,
+          "last_failure": null,
+          "last_error_category": null,
+          "diagnostic_keys_present": [
+            "_id",
+            "failures",
+            "mismatches"
+          ]
+        }
+      ],
+      "indexes": {
+        "sales_intelligence_jobs": [
+          {
+            "v": 2,
+            "key": {
+              "_id": 1
+            },
+            "name": "_id_"
+          },
+          {
+            "v": 2,
+            "key": {
+              "dedupe_key": 1
+            },
+            "name": "csi_job_dedupe_unique",
+            "unique": true
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "next_attempt_at": 1,
+              "priority": -1
+            },
+            "name": "csi_job_due"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "leased_until": 1
+            },
+            "name": "csi_job_lease"
+          },
+          {
+            "v": 2,
+            "key": {
+              "deployment": 1,
+              "database": 1,
+              "stage": 1,
+              "status": 1,
+              "priority": -1,
+              "next_attempt_at": 1,
+              "_id": 1
+            },
+            "name": "csi_job_claim"
+          },
+          {
+            "v": 2,
+            "key": {
+              "completed_at": 1
+            },
+            "name": "csi_job_completed_ttl",
+            "expireAfterSeconds": 1209600
+          }
+        ],
+        "sheet_sync_jobs": [
+          {
+            "v": 2,
+            "key": {
+              "_id": 1
+            },
+            "name": "_id_"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "due_at": 1,
+              "priority": -1,
+              "createdAt": 1
+            },
+            "name": "status_1_due_at_1_priority_-1_createdAt_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "coalescing_key": 1,
+              "status": 1
+            },
+            "name": "coalescing_key_1_status_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "leased_until": 1
+            },
+            "name": "leased_until_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "entity_model": 1,
+              "entity_id": 1,
+              "status": 1
+            },
+            "name": "entity_model_1_entity_id_1_status_1"
+          }
+        ],
+        "sheet_sync_attempts": [
+          {
+            "v": 2,
+            "key": {
+              "_id": 1
+            },
+            "name": "_id_"
+          },
+          {
+            "v": 2,
+            "key": {
+              "run_id": 1,
+              "createdAt": 1
+            },
+            "name": "run_id_1_createdAt_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "job_id": 1,
+              "createdAt": 1
+            },
+            "name": "job_id_1_createdAt_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "createdAt": -1
+            },
+            "name": "status_1_createdAt_-1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "createdAt": 1
+            },
+            "name": "sheet_sync_attempt_created_ttl",
+            "expireAfterSeconds": 7776000
+          }
+        ],
+        "sheet_sync_runs": [
+          {
+            "v": 2,
+            "key": {
+              "_id": 1
+            },
+            "name": "_id_"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "started_at": -1
+            },
+            "name": "status_1_started_at_-1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "started_at": -1
+            },
+            "name": "started_at_-1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "started_at": 1
+            },
+            "name": "sheet_sync_run_started_ttl",
+            "expireAfterSeconds": 7776000
+          }
+        ],
+        "granot_automation_runs": [
+          {
+            "v": 2,
+            "key": {
+              "_id": 1
+            },
+            "name": "_id_"
+          },
+          {
+            "v": 2,
+            "key": {
+              "purge_at": 1
+            },
+            "name": "granot_run_retention_ttl",
+            "expireAfterSeconds": 0
+          },
+          {
+            "v": 2,
+            "key": {
+              "_id": 1,
+              "plan_checksum": 1
+            },
+            "name": "granot_run_plan_identity",
+            "unique": true,
+            "partialFilterExpression": {
+              "plan_checksum": {
+                "$type": "string"
+              }
+            }
+          },
+          {
+            "v": 2,
+            "key": {
+              "run_group_id": 1
+            },
+            "name": "run_group_id_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "expires_at": 1
+            },
+            "name": "expires_at_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "lease_owner": 1
+            },
+            "name": "lease_owner_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "leased_until": 1
+            },
+            "name": "leased_until_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "createdAt": 1
+            },
+            "name": "granot_run_queue_claim"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "leased_until": 1
+            },
+            "name": "granot_run_recovery"
+          }
+        ],
+        "entity_changes": [
+          {
+            "v": 2,
+            "key": {
+              "_id": 1
+            },
+            "name": "_id_"
+          },
+          {
+            "v": 2,
+            "key": {
+              "changed_paths": 1,
+              "applied_at": -1
+            },
+            "name": "entity_change_changed_paths_applied"
+          },
+          {
+            "v": 2,
+            "key": {
+              "entity.model": 1,
+              "entity.id": 1,
+              "revision_after": 1
+            },
+            "name": "entity_change_entity_revision_unique",
+            "unique": true
+          },
+          {
+            "v": 2,
+            "key": {
+              "applied_at": 1,
+              "_id": 1
+            },
+            "name": "entity_change_applied_scan"
+          },
+          {
+            "v": 2,
+            "key": {
+              "command_execution_id": 1
+            },
+            "name": "entity_change_command_execution_id"
+          },
+          {
+            "v": 2,
+            "key": {
+              "entity.model": 1,
+              "entity.id": 1,
+              "applied_at": -1
+            },
+            "name": "entity_change_entity_applied"
+          }
+        ]
+      }
+    },
+    {
+      "member": "atlas-khw1wz-shard-00-02.ccf491v.mongodb.net:27017",
+      "expected_role": "REPLICA_SECONDARY",
+      "collections": [
+        {
+          "name": "sales_intelligence_audit_events",
+          "stats": {
+            "count": 23438,
+            "size": 18713845,
+            "storageSize": 156979200,
+            "freeStorageSize": 146546688,
+            "totalIndexSize": 76361728,
+            "indexSizes": {
+              "_id_": 12341248,
+              "csi_audit_stream": 15032320,
+              "csi_audit_subject": 12156928,
+              "csi_audit_semantic_unique": 32034816,
+              "csi_audit_kind_happened": 4497408,
+              "csi_audit_happened_ttl": 299008
+            },
+            "totalSize": 233340928
+          },
+          "compact_estimate": {
+            "ok": 1,
+            "estimatedBytesFreed": 11812864
+          }
+        },
+        {
+          "name": "sales_intelligence_jobs",
+          "stats": {
+            "count": 405196,
+            "size": 314664148,
+            "storageSize": 327278592,
+            "freeStorageSize": 241152000,
+            "totalIndexSize": 223272960,
+            "indexSizes": {
+              "_id_": 39063552,
+              "csi_job_dedupe_unique": 71450624,
+              "csi_job_due": 22032384,
+              "csi_job_lease": 14311424,
+              "csi_job_claim": 55607296,
+              "csi_job_completed_ttl": 20807680
+            },
+            "totalSize": 550551552
+          },
+          "compact_estimate": {
+            "ok": 1,
+            "estimatedBytesFreed": 73060352
+          }
+        },
+        {
+          "name": "granot_webhook_receipts",
+          "stats": {
+            "count": 1903529,
+            "size": 4228415972,
+            "storageSize": 1144672256,
+            "freeStorageSize": 29757440,
+            "totalIndexSize": 380461056,
+            "indexSizes": {
+              "_id_": 54669312,
+              "granot_observation_receipt_channel_operation_id_unique": 56516608,
+              "granot_observation_receipt_processing_due": 14929920,
+              "granot_observation_receipt_leased_until": 18329600,
+              "granot_observation_receipt_route_event_captured": 24469504,
+              "granot_observation_receipt_payload_sha256_diag": 193220608,
+              "granot_retention_purge_v1": 8192,
+              "granot_retention_review_v1": 18317312
+            },
+            "totalSize": 1525133312
+          },
+          "index_definitions": [
+            {
+              "v": 2,
+              "key": {
+                "_id": 1
+              },
+              "name": "_id_"
+            },
+            {
+              "v": 2,
+              "key": {
+                "observation_channel": 1,
+                "channel_operation_id": 1
+              },
+              "name": "granot_observation_receipt_channel_operation_id_unique",
+              "unique": true,
+              "partialFilterExpression": {
+                "channel_operation_id": {
+                  "$type": "string"
+                }
+              }
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.state": 1,
+                "processing.next_attempt_at": 1,
+                "captured_at": 1
+              },
+              "name": "granot_observation_receipt_processing_due"
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.leased_until": 1
+              },
+              "name": "granot_observation_receipt_leased_until"
+            },
+            {
+              "v": 2,
+              "key": {
+                "route_event_class": 1,
+                "captured_at": -1
+              },
+              "name": "granot_observation_receipt_route_event_captured"
+            },
+            {
+              "v": 2,
+              "key": {
+                "payload_sha256": 1,
+                "captured_at": -1
+              },
+              "name": "granot_observation_receipt_payload_sha256_diag"
+            },
+            {
+              "v": 2,
+              "key": {
+                "retention_purge_at": 1
+              },
+              "name": "granot_retention_purge_v1",
+              "sparse": true,
+              "expireAfterSeconds": 0
+            },
+            {
+              "v": 2,
+              "key": {
+                "processing.retention_review_at": 1
+              },
+              "name": "granot_retention_review_v1",
+              "sparse": true
+            }
+          ],
+          "index_usage": [
+            {
+              "name": "granot_observation_receipt_payload_sha256_diag",
+              "key": {
+                "payload_sha256": 1,
+                "captured_at": -1
+              },
+              "accesses": {
+                "ops": 0,
+                "since": "2026-11-14T20:28:53.277Z"
+              }
+            },
+            {
+              "name": "granot_observation_receipt_route_event_captured",
+              "key": {
+                "route_event_class": 1,
+                "captured_at": -1
+              },
+              "accesses": {
+                "ops": 0,
+                "since": "2026-11-14T20:28:53.277Z"
+              }
+            }
+          ]
+        },
+        {
+          "name": "granot_automation_runs",
+          "stats": {
+            "count": 16725,
+            "size": 2208590383,
+            "storageSize": 663179264,
+            "freeStorageSize": 57364480,
+            "totalIndexSize": 9252864,
+            "indexSizes": {
+              "_id_": 815104,
+              "granot_run_retention_ttl": 249856,
+              "granot_run_plan_identity": 2875392,
+              "run_group_id_1": 172032,
+              "expires_at_1": 237568,
+              "lease_owner_1": 897024,
+              "leased_until_1": 3125248,
+              "granot_run_queue_claim": 274432,
+              "granot_run_recovery": 606208
+            },
+            "totalSize": 672432128
+          }
+        }
+      ],
+      "topology": {
+        "me": "atlas-khw1wz-shard-00-02.ccf491v.mongodb.net:27017",
+        "primary": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+        "setName": "atlas-khw1wz-shard-0",
+        "isWritablePrimary": false,
+        "secondary": true,
+        "hosts": [
+          "atlas-khw1wz-shard-00-00.ccf491v.mongodb.net:27017",
+          "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+          "atlas-khw1wz-shard-00-02.ccf491v.mongodb.net:27017"
+        ],
+        "maxWireVersion": 25
+      },
+      "database_stats": {
+        "collections": 127,
+        "objects": 8144270,
+        "storageSize": 3454279680,
+        "indexSize": 1436295168,
+        "totalSize": 4890574848,
+        "fsUsedSize": 11786014720,
+        "fsTotalSize": 13853786112,
+        "freeStorageSize": 535789568,
+        "indexFreeStorageSize": 294334464,
+        "totalFreeStorageSize": 830124032
+      },
+      "server": {
+        "version": "8.0.37",
+        "uptime": 240422,
+        "localTime": "2026-11-17T15:15:46.537Z",
+        "ttl": {
+          "collSubpassesIncreasedPriority": 0,
+          "deletedDocuments": 0,
+          "passes": 4006,
+          "subPasses": 4006
+        }
+      }
+    }
+  ],
+  "finished_at": "2026-11-17T15:15:48.670Z"
+}

@@ -1,0 +1,440 @@
+{
+  "captured_at": "2026-11-17T15:13:20.899Z",
+  "database": "vantagemovers",
+  "scope": "One current connected-node snapshot. No all-member, configured-tier, physical-reclaim or cost qualification.",
+  "query_limit_ms": 5000,
+  "collections": [
+    {
+      "name": "granot_webhook_receipts",
+      "observed_at": "2026-11-17T15:13:21.659Z",
+      "duration_ms": 174,
+      "count": 1902778,
+      "size": 4226707935,
+      "avgObjSize": 2221,
+      "storageSize": 1144995840,
+      "freeStorageSize": 30478336,
+      "nindexes": 8,
+      "totalIndexSize": 378499072,
+      "totalSize": 1523494912
+    },
+    {
+      "name": "granot_observations",
+      "observed_at": "2026-11-17T15:13:21.749Z",
+      "duration_ms": 90,
+      "count": 1902779,
+      "size": 2057634832,
+      "avgObjSize": 1081,
+      "storageSize": 531431424,
+      "freeStorageSize": 9326592,
+      "nindexes": 8,
+      "totalIndexSize": 270712832,
+      "totalSize": 802144256
+    },
+    {
+      "name": "synchronization_decisions",
+      "observed_at": "2026-11-17T15:13:21.799Z",
+      "duration_ms": 49,
+      "count": 1911818,
+      "size": 2376335023,
+      "avgObjSize": 1242,
+      "storageSize": 283914240,
+      "freeStorageSize": 2146304,
+      "nindexes": 6,
+      "totalIndexSize": 203743232,
+      "totalSize": 487657472
+    },
+    {
+      "name": "sales_intelligence_jobs",
+      "observed_at": "2026-11-17T15:13:21.850Z",
+      "duration_ms": 51,
+      "count": 404570,
+      "size": 314173144,
+      "avgObjSize": 776,
+      "storageSize": 326991872,
+      "freeStorageSize": 241397760,
+      "nindexes": 6,
+      "totalIndexSize": 225525760,
+      "totalSize": 552517632
+    },
+    {
+      "name": "granot_automation_runs",
+      "observed_at": "2026-11-17T15:13:21.902Z",
+      "duration_ms": 52,
+      "count": 16725,
+      "size": 2208099760,
+      "avgObjSize": 132023,
+      "storageSize": 662757376,
+      "freeStorageSize": 57044992,
+      "nindexes": 9,
+      "totalIndexSize": 9027584,
+      "totalSize": 671784960
+    },
+    {
+      "name": "entity_changes",
+      "observed_at": "2026-11-17T15:13:21.947Z",
+      "duration_ms": 45,
+      "count": 177992,
+      "size": 224772672,
+      "avgObjSize": 1262,
+      "storageSize": 35180544,
+      "freeStorageSize": 1232896,
+      "nindexes": 6,
+      "totalIndexSize": 27963392,
+      "totalSize": 63143936
+    },
+    {
+      "name": "sheet_sync_jobs",
+      "observed_at": "2026-11-17T15:13:22.000Z",
+      "duration_ms": 53,
+      "count": 163916,
+      "size": 73592594,
+      "avgObjSize": 448,
+      "storageSize": 15450112,
+      "freeStorageSize": 831488,
+      "nindexes": 5,
+      "totalIndexSize": 12886016,
+      "totalSize": 28336128
+    },
+    {
+      "name": "sheet_sync_attempts",
+      "observed_at": "2026-11-17T15:13:22.052Z",
+      "duration_ms": 52,
+      "count": 458811,
+      "size": 136480236,
+      "avgObjSize": 297,
+      "storageSize": 19161088,
+      "freeStorageSize": 716800,
+      "nindexes": 5,
+      "totalIndexSize": 32292864,
+      "totalSize": 51453952
+    },
+    {
+      "name": "sheet_sync_runs",
+      "observed_at": "2026-11-17T15:13:22.121Z",
+      "duration_ms": 68,
+      "count": 107824,
+      "size": 26097775,
+      "avgObjSize": 242,
+      "storageSize": 5525504,
+      "freeStorageSize": 299008,
+      "nindexes": 4,
+      "totalIndexSize": 7004160,
+      "totalSize": 12529664
+    },
+    {
+      "name": "call_interactions",
+      "observed_at": "2026-11-17T15:13:22.188Z",
+      "duration_ms": 67,
+      "count": 35468,
+      "size": 111105930,
+      "avgObjSize": 3132,
+      "storageSize": 22020096,
+      "freeStorageSize": 561152,
+      "nindexes": 12,
+      "totalIndexSize": 10985472,
+      "totalSize": 33005568
+    },
+    {
+      "name": "ringcentral_webhook_events",
+      "observed_at": "2026-11-17T15:13:22.233Z",
+      "duration_ms": 45,
+      "count": 36048,
+      "size": 165196880,
+      "avgObjSize": 4582,
+      "storageSize": 62242816,
+      "freeStorageSize": 30543872,
+      "nindexes": 7,
+      "totalIndexSize": 6721536,
+      "totalSize": 68964352
+    },
+    {
+      "name": "daily_operations_events",
+      "observed_at": "2026-11-17T15:13:22.282Z",
+      "duration_ms": 49,
+      "count": 512154,
+      "size": 342362571,
+      "avgObjSize": 668,
+      "storageSize": 66908160,
+      "freeStorageSize": 2064384,
+      "nindexes": 8,
+      "totalIndexSize": 99528704,
+      "totalSize": 166436864
+    },
+    {
+      "name": "granot_history_archive_chunks",
+      "observed_at": "2026-11-17T15:13:22.320Z",
+      "duration_ms": 38,
+      "count": 6246,
+      "size": 1536177,
+      "avgObjSize": 245,
+      "storageSize": 1523712,
+      "freeStorageSize": 462848,
+      "nindexes": 2,
+      "totalIndexSize": 1257472,
+      "totalSize": 2781184
+    },
+    {
+      "name": "granot_closed_automation_runs",
+      "observed_at": "2026-11-17T15:13:22.353Z",
+      "duration_ms": 33,
+      "count": 1948,
+      "size": 280512,
+      "avgObjSize": 144,
+      "storageSize": 307200,
+      "freeStorageSize": 53248,
+      "nindexes": 1,
+      "totalIndexSize": 143360,
+      "totalSize": 450560
+    }
+  ],
+  "probes": {
+    "database_stats": {
+      "observed_at": "2026-11-17T15:13:21.394Z",
+      "duration_ms": 91,
+      "value": {
+        "collections": 127,
+        "views": 0,
+        "objects": 8141388,
+        "avgObjSize": 1566.1462383318421,
+        "dataSize": 12750604191,
+        "storageSize": 3432570880,
+        "indexes": 610,
+        "indexSize": 1428721664,
+        "totalSize": 4861292544,
+        "fsUsedSize": 11774574592,
+        "fsTotalSize": 13853786112,
+        "freeStorageSize": 518811648,
+        "indexFreeStorageSize": 305512448,
+        "totalFreeStorageSize": 824324096
+      }
+    },
+    "retention_control": {
+      "observed_at": "2026-11-17T15:13:22.353Z",
+      "duration_ms": 34,
+      "value": [
+        {
+          "mode": "shadow",
+          "new_data_from": "2026-11-03T17:30:42.610Z",
+          "armed_at": "2026-11-03T18:08:27.859Z"
+        }
+      ]
+    },
+    "retention_days": {
+      "observed_at": "2026-11-17T15:13:22.387Z",
+      "duration_ms": 32,
+      "value": [
+        {
+          "day": "2026-11-17",
+          "mode": "shadow",
+          "qualified": 28799,
+          "reviewed": 28800,
+          "read_comparisons": 450,
+          "failures": 7,
+          "mismatches": 0,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-16",
+          "mode": "shadow",
+          "qualified": 44672,
+          "reviewed": 44672,
+          "read_comparisons": 698,
+          "failures": 17,
+          "mismatches": 0,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-15",
+          "mode": "shadow",
+          "qualified": 46079,
+          "reviewed": 46080,
+          "read_comparisons": 720,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-14",
+          "mode": "shadow",
+          "qualified": 46011,
+          "reviewed": 46016,
+          "read_comparisons": 719,
+          "failures": 1,
+          "mismatches": 0,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-13",
+          "mode": "shadow",
+          "qualified": 45781,
+          "reviewed": 45824,
+          "read_comparisons": 716,
+          "failures": 3,
+          "mismatches": 0,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-12",
+          "mode": "shadow",
+          "qualified": 40576,
+          "reviewed": 41282,
+          "read_comparisons": 638,
+          "failures": 6,
+          "mismatches": 0,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-11",
+          "mode": "shadow",
+          "qualified": 13787,
+          "reviewed": 13824,
+          "read_comparisons": 216,
+          "failures": 503,
+          "mismatches": 0,
+          "ttl_stamped": 0
+        },
+        {
+          "day": "2026-11-10",
+          "mode": "shadow",
+          "failures": 179,
+          "mismatches": 0
+        }
+      ]
+    },
+    "capacity_snapshots": {
+      "observed_at": "2026-11-17T15:13:22.419Z",
+      "duration_ms": 33,
+      "value": [
+        {
+          "day": "2026-11-17",
+          "taken_at": "2026-11-17T08:45:01.410Z",
+          "database": {
+            "fs_used_bytes": 11758546944,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 4836909056,
+            "oplog_storage_bytes": 4138729472,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-16",
+          "taken_at": "2026-11-16T08:45:01.423Z",
+          "database": {
+            "fs_used_bytes": 11376128000,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 4617908224,
+            "oplog_storage_bytes": 4138729472,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-15",
+          "taken_at": "2026-11-15T08:45:01.166Z",
+          "database": {
+            "fs_used_bytes": 11253456896,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 4404830208,
+            "oplog_storage_bytes": 4138762240,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-14",
+          "taken_at": "2026-11-14T08:45:01.424Z",
+          "database": {
+            "fs_used_bytes": 11004727296,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 4177555456,
+            "oplog_storage_bytes": 4033556480,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-13",
+          "taken_at": "2026-11-13T08:45:01.106Z",
+          "database": {
+            "fs_used_bytes": 10478960640,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 3951919104,
+            "oplog_storage_bytes": 4033556480,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-12",
+          "taken_at": "2026-11-12T08:45:01.392Z",
+          "database": {
+            "fs_used_bytes": 10340814848,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 3711422464,
+            "oplog_storage_bytes": 4033568768,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-11",
+          "taken_at": "2026-11-11T08:45:01.292Z",
+          "database": {
+            "fs_used_bytes": 10251239424,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 3420393472,
+            "oplog_storage_bytes": 4033597440,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-10",
+          "taken_at": "2026-11-10T08:45:01.258Z",
+          "database": {
+            "fs_used_bytes": 9813811200,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 3139313664,
+            "oplog_storage_bytes": 4033605632,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-09",
+          "taken_at": "2026-11-09T08:45:01.174Z",
+          "database": {
+            "fs_used_bytes": 9522274304,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 2861420544,
+            "oplog_storage_bytes": 4033691648,
+            "oplog_max_bytes": 1038090240
+          }
+        },
+        {
+          "day": "2026-11-08",
+          "taken_at": "2026-11-08T08:45:01.246Z",
+          "database": {
+            "fs_used_bytes": 9305370624,
+            "fs_total_bytes": 13853786112,
+            "data_bytes": 2530643968,
+            "oplog_storage_bytes": 4033691648,
+            "oplog_max_bytes": 1038090240
+          }
+        }
+      ]
+    },
+    "deployment_worker_stamp": {
+      "observed_at": "2026-11-17T15:13:22.452Z",
+      "duration_ms": 31,
+      "value": {
+        "deployment_commit": "3327b31ce7b5a2f001e74febb0b2d3be79e47543",
+        "recorded_at": "2026-11-17T15:10:02.595Z",
+        "vercel_deployment_id": "dpl_55kau2rKsicyWmnBx6Quyb2R7JgP"
+      }
+    },
+    "local_oplog_stats": {
+      "observed_at": "2026-11-17T15:13:22.483Z",
+      "duration_ms": 36,
+      "value": {
+        "size": 10245912520,
+        "storageSize": 4138729472,
+        "freeStorageSize": 2144772096,
+        "maxSize": 1038090240,
+        "count": 2480531
+      }
+    }
+  },
+  "finished_at": "2026-11-17T15:13:22.519Z"
+}

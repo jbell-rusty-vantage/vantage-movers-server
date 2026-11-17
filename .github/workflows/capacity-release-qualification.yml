@@ -1,0 +1,56 @@
+name: Capacity Release Qualification
+
+# Build the exact production configuration before allowing the release onto main.
+# This workflow intentionally has no deploy step and uploads no environment/build files.
+on:
+  push:
+    branches:
+      - 'capacity/qualified-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capacity-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_MAIN_SERVER }}
+  VERCEL_GIT_PROVIDER: github
+  VERCEL_GIT_REPO_SLUG: ${{ github.event.repository.name }}
+  VERCEL_GIT_REPO_OWNER: ${{ github.repository_owner }}
+  VERCEL_GIT_COMMIT_REF: ${{ github.ref_name }}
+  VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
+
+jobs:
+  qualify:
+    name: Build production artifact without deployment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.13.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install pinned deployment tooling
+        run: npm install --global vercel@60.0.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - name: Pull production build configuration
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build production artifact
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+      - name: Verify built Granot retention contract
+        run: node ops/verify-granot-retention-build.cjs .vercel/output/functions/api/index.func

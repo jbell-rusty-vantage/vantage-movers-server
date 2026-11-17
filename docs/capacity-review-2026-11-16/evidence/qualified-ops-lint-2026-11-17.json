@@ -1,0 +1,8 @@
+{
+  "method": "Unchanged repository correctness rules extended in memory to release proof bootstrap",
+  "files": [
+    "ops/capacity/run-recovery.replica.ts"
+  ],
+  "errors": 0,
+  "warnings": 0
+}

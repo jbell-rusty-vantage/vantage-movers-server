@@ -6,6 +6,8 @@ import type {
 } from "../../models/CapacitySnapshot";
 import { liveCapacityReaders, type CapacityReaders, type SyncLine } from "./readers";
 import { projectRunway, type Runway, type RunwayPoint } from "./runway";
+import { forecastDatabase, validDatabaseReading, type DatabaseForecast } from "./databaseForecast";
+import { getWorkflowCounterSnapshot } from "./workflowCounters";
 import { mongoSnapshotStore, type SnapshotStore } from "./snapshot";
 
 /**
@@ -61,6 +63,13 @@ export type DatabaseCard = {
   until_90: Runway | null;
   until_full: Runway | null;
   caveat: string;
+  forecast?: DatabaseForecast;
+  storage_evidence?: {
+    allocated_business_bytes: { basis: "measured"; value: number };
+    oplog_allocated_bytes: { basis: "measured"; value: number };
+    oplog_configured_logical_max_bytes: { basis: "measured"; value: number };
+    oplog_reclaimable_bytes: { basis: "unknown"; value: null };
+  };
 };
 
 export type SheetCard = {
@@ -89,6 +98,8 @@ export type SystemsCapacity = {
   database: DatabaseCard;
   sheets: [SheetCard, SheetCard];
   generated_at: string;
+  /** Local process evidence only; never a complete fleet total. */
+  workflow_counters?: ReturnType<typeof getWorkflowCounterSnapshot>;
   /** False when `refresh` was asked for within a minute of the last one and the caches were used. */
   refreshed: boolean;
 };
@@ -139,32 +150,6 @@ function points<T>(rows: Array<Omit<CapacitySnapshotDocument, "_id">>, pick: (ro
   });
 }
 
-/**
- * Projects the disk with the larger of two slopes (doc 11b): `fs_used_bytes`, or `data_bytes` while WiredTiger
- * reuses space freed inside the files and the disk stays flat. The data series is projected against the same
- * remaining room, so both runways answer "time until the disk reaches the limit".
- */
-function databaseRunway(
-  rows: Array<Omit<CapacitySnapshotDocument, "_id">>,
-  reading: CapacityDatabaseReading,
-  limit: number,
-  now: Date,
-): { runway: Runway; source: "disk" | "data" } {
-  const options = { seedRatePerDay: DATABASE_SEED_BYTES_PER_DAY, capYears: 5 };
-  const disk = projectRunway(points(rows, (row) => row.database?.fs_used_bytes), limit, now, {
-    ...options,
-    current: reading.fs_used_bytes,
-  });
-  const offset = reading.fs_used_bytes - reading.data_bytes;
-  const data = projectRunway(points(rows, (row) => row.database?.data_bytes), limit - offset, now, {
-    ...options,
-    current: reading.data_bytes,
-  });
-  return data.basis === "measured" && data.rate_per_day > disk.rate_per_day
-    ? { runway: data, source: "data" }
-    : { runway: disk, source: "disk" };
-}
-
 export function databaseStatus(usedPct: number, until90: Runway): CapacityStatus {
   const days = until90.days_left;
   if (usedPct > 85) return { colour: "red", reason: `${usedPct}% of the disk is used. Over 85% needs action now.` };
@@ -199,10 +184,16 @@ export function buildDatabaseCard(
     };
   }
   const reading = settled.value;
+  if (!validDatabaseReading(reading) || now.getTime() - settled.at > DATABASE_CACHE_MS) {
+    return { ...empty, status: { colour: "unknown", reason: "The database reading is missing, invalid or stale. Refresh before assessing capacity." },
+      read_at: new Date(settled.at).toISOString(), error: "A current valid database measurement is unavailable." };
+  }
   const used = reading.fs_used_bytes;
   const total = reading.fs_total_bytes;
-  const until90 = databaseRunway(rows, reading, total * 0.9, now);
-  const untilFull = databaseRunway(rows, reading, total, now);
+  const forecast90 = forecastDatabase(rows, reading, total * 0.9, now, DATABASE_SEED_BYTES_PER_DAY);
+  const until90 = forecast90[forecast90.selected_window];
+  const forecast = forecastDatabase(rows, reading, total, now, DATABASE_SEED_BYTES_PER_DAY);
+  const untilFull = forecast[forecast.selected_window];
   const usedPct = pct(used, total);
   return {
     status: databaseStatus(usedPct, until90.runway),
@@ -211,17 +202,20 @@ export function buildDatabaseCard(
     used_bytes: used,
     total_bytes: total,
     used_pct: usedPct,
-    breakdown: {
-      business_bytes: reading.data_bytes,
-      oplog_bytes: reading.oplog_storage_bytes,
-      oplog_reclaimable_bytes: Math.max(0, reading.oplog_storage_bytes - reading.oplog_max_bytes),
-      system_bytes: Math.max(0, used - reading.data_bytes - reading.oplog_storage_bytes),
+    // Older Admin renders every breakdown as a reclaim claim. Its nullable contract safely hides that detail.
+    breakdown: null,
+    forecast,
+    storage_evidence: {
+      allocated_business_bytes: { basis: "measured", value: reading.data_bytes },
+      oplog_allocated_bytes: { basis: "measured", value: reading.oplog_storage_bytes },
+      oplog_configured_logical_max_bytes: { basis: "measured", value: reading.oplog_max_bytes },
+      oplog_reclaimable_bytes: { basis: "unknown", value: null },
     },
     growth_per_day_bytes: untilFull.runway.rate_per_day,
     growth_source: untilFull.source,
     until_90: until90.runway,
     until_full: untilFull.runway,
-    caveat: DATABASE_CAVEAT,
+    caveat: `${DATABASE_CAVEAT} This is a connected-member measurement, not worst-member capacity. Oplog reclaimable bytes are unknown; allocated storage minus the logical cap is not reclaimable space.`,
   };
 }
 
@@ -362,6 +356,7 @@ export async function getSystemsCapacity(
       buildSheetCard("master_booked", sheets, rows, sync?.master_booked ?? null, now, lastCancellationAt),
     ],
     generated_at: now.toISOString(),
+    workflow_counters: getWorkflowCounterSnapshot(),
     refreshed,
   };
 }

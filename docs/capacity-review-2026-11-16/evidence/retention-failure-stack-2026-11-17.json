@@ -1,0 +1,47 @@
+{
+  "observedAtUtc": "2026-11-17T15:22:41.4449939Z",
+  "cliExit": 0,
+  "method": "one latest matching request; only known error names and source stack function/file locations retained; numeric-prefix matches discarded as unverified",
+  "logs": [
+    {
+      "errorNames": [],
+      "errorCodes": [],
+      "stackFrames": [
+        {
+          "function": "onResFinished",
+          "file": "logger.js",
+          "line": 115,
+          "column": 39
+        },
+        {
+          "function": "ServerResponse.onResponseComplete",
+          "file": "logger.js",
+          "line": 178,
+          "column": 14
+        },
+        {
+          "function": "Mn.e.emit",
+          "file": "nodejs.js",
+          "line": 23,
+          "column": 8471
+        }
+      ],
+      "operationTimeout": false
+    },
+    {
+      "errorNames": [
+        "MongoServerError"
+      ],
+      "errorCodes": [],
+      "stackFrames": [
+        {
+          "function": "Connection.sendCommand",
+          "file": "connection.js",
+          "line": 320,
+          "column": 27
+        }
+      ],
+      "operationTimeout": true
+    }
+  ]
+}

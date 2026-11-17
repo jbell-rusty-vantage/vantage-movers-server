@@ -1,0 +1,71 @@
+{
+  "observedAtUtc": "2026-11-17T15:21:32.0264130Z",
+  "deployment": "dpl_55kau2rKsicyWmnBx6Quyb2R7JgP",
+  "project": "prj_K1he4MhLkTAbudfQ3EsZzMTOdcvM",
+  "method": "read-only Vercel logs; retention path query; HTTP500; last24h; limit5",
+  "cliExit": 0,
+  "parsedCount": 5,
+  "completeFailureCensus": false,
+  "entries": [
+    {
+      "timestampUtc": "2026-11-17T14:20:33.1080000+00:00",
+      "responseStatusCode": 500,
+      "diagnosticTokens": [
+        "operation exceeded time limit",
+        "MongoServerError"
+      ],
+      "nestedLogKeys": [
+        "level",
+        "message"
+      ]
+    },
+    {
+      "timestampUtc": "2026-11-17T13:28:33.1330000+00:00",
+      "responseStatusCode": 500,
+      "diagnosticTokens": [
+        "operation exceeded time limit",
+        "MongoServerError"
+      ],
+      "nestedLogKeys": [
+        "level",
+        "message"
+      ]
+    },
+    {
+      "timestampUtc": "2026-11-17T13:26:33.1670000+00:00",
+      "responseStatusCode": 500,
+      "diagnosticTokens": [
+        "operation exceeded time limit",
+        "MongoServerError"
+      ],
+      "nestedLogKeys": [
+        "level",
+        "message"
+      ]
+    },
+    {
+      "timestampUtc": "2026-11-17T07:16:33.2580000+00:00",
+      "responseStatusCode": 500,
+      "diagnosticTokens": [
+        "operation exceeded time limit",
+        "MongoServerError"
+      ],
+      "nestedLogKeys": [
+        "level",
+        "message"
+      ]
+    },
+    {
+      "timestampUtc": "2026-11-17T05:04:33.4130000+00:00",
+      "responseStatusCode": 500,
+      "diagnosticTokens": [
+        "operation exceeded time limit",
+        "MongoServerError"
+      ],
+      "nestedLogKeys": [
+        "level",
+        "message"
+      ]
+    }
+  ]
+}

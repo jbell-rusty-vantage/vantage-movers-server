@@ -1,0 +1,87 @@
+{
+  "observed_at": "2026-11-17T15:18:54.084Z",
+  "remote_writes": 0,
+  "database": "vantagemovers",
+  "probes": {
+    "deployment": {
+      "deployment_commit": "3327b31ce7b5a2f001e74febb0b2d3be79e47543",
+      "recorded_at": "2026-11-17T15:18:00.185Z",
+      "vercel_deployment_id": "dpl_55kau2rKsicyWmnBx6Quyb2R7JgP"
+    },
+    "sheet_sync_jobs_current": [
+      {
+        "_id": "pending",
+        "count": 1,
+        "oldest_due": "2026-11-17T15:18:22.466Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      }
+    ],
+    "sales_intelligence_jobs_current": [
+      {
+        "_id": "leased",
+        "count": 2,
+        "oldest_due": "2026-11-17T15:18:19.729Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      },
+      {
+        "_id": "pending",
+        "count": 119,
+        "oldest_due": "2026-11-17T15:17:44.994Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      }
+    ],
+    "granot_automation_runs_current": [
+      {
+        "_id": "applying",
+        "count": 31,
+        "oldest_due": "2026-11-17T15:00:45.369Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      },
+      {
+        "_id": "failed",
+        "count": 305,
+        "oldest_due": "2026-11-11T09:00:45.390Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 266
+      },
+      {
+        "_id": "queued",
+        "count": 453,
+        "oldest_due": "2026-11-11T09:00:48.700Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 388
+      }
+    ],
+    "sheet_sync_jobs_new_last_hour": [
+      {
+        "_id": "pending",
+        "count": 1
+      },
+      {
+        "_id": "synced",
+        "count": 19
+      }
+    ],
+    "granot_webhook_receipts_new_last_hour": [
+      {
+        "_id": "completed",
+        "count": 7500
+      }
+    ],
+    "granot_automation_runs_created_last_hour": [
+      {
+        "_id": "applying",
+        "count": 31
+      },
+      {
+        "_id": "completed",
+        "count": 99
+      }
+    ]
+  },
+  "object_id_window_basis": "New ObjectId rows during last hour; not updates or a causal delivery proof."
+}

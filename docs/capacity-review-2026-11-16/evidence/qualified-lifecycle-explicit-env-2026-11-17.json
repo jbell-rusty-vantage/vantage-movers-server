@@ -1,0 +1,16 @@
+{
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--import",
+    "./ops/test-setup.ts",
+    "ops/test-granot-lifecycle-replica.ts"
+  ],
+  "cwd": "C:\\Users\\Pinda\\.codex\\worktrees\\capacity-qualified-release\\vantage-main-server",
+  "exit_code": 0,
+  "duration_seconds": 149.5,
+  "harness_adjustment": "Explicit synthetic SALES_INTELLIGENCE_DEPLOYMENT_ID supplied; baseline launcher and exact release tests unchanged",
+  "local_database": "testvantagemovers_qualifiedcorrected",
+  "log_sha256": "e6bdbada3f16ff727ee1a6bc561003f304ccac62de876898963c117cf31a2fd0"
+}

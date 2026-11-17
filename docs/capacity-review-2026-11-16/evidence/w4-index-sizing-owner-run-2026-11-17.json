@@ -1,0 +1,57 @@
+{
+  "at": "2026-11-17T15:27:24.218Z",
+  "remote_writes": 0,
+  "max_time_ms": 5000,
+  "stats": {
+    "count": 178003,
+    "totalSize": 63229952,
+    "indexSizes": {
+      "_id_": 2998272,
+      "entity_change_changed_paths_applied": 9461760,
+      "entity_change_entity_revision_unique": 3604480,
+      "entity_change_applied_scan": 4268032,
+      "entity_change_command_execution_id": 2908160,
+      "entity_change_entity_applied": 4747264
+    }
+  },
+  "reference_counts": [
+    {
+      "_id": null,
+      "count": 178003,
+      "observation_missing": 4235,
+      "observation_null": 0,
+      "observation_objectId": 173768,
+      "observation_string": 0,
+      "observation_array": 0,
+      "observation_object": 0,
+      "observation_present": 173768,
+      "observation_string_bytes": 0,
+      "decision_missing": 4496,
+      "decision_null": 0,
+      "decision_objectId": 173507,
+      "decision_string": 0,
+      "decision_array": 0,
+      "decision_object": 0,
+      "decision_present": 173507,
+      "decision_string_bytes": 0,
+      "receipt_missing": 4001,
+      "receipt_null": 0,
+      "receipt_objectId": 174002,
+      "receipt_string": 0,
+      "receipt_array": 0,
+      "receipt_object": 0,
+      "receipt_present": 174002,
+      "receipt_string_bytes": 0,
+      "comparison_missing": 0,
+      "comparison_null": 0,
+      "comparison_objectId": 178003,
+      "comparison_string": 0,
+      "comparison_array": 0,
+      "comparison_object": 0,
+      "comparison_present": 178003,
+      "comparison_string_bytes": 0
+    }
+  ],
+  "duration_ms": 4003,
+  "finished_at": "2026-11-17T15:27:29.091Z"
+}

@@ -73,13 +73,13 @@ Returns `{ database, sheets: [master_leads, master_booked], generated_at, refres
 
 | Reading | Source | Cache |
 | --- | --- | --- |
-| Disk | `db.stats` on every database (`fsUsedSize`, `fsTotalSize`; `storageSize + indexSize` summed over every database except `local`) and `collStats` on `local.oplog.rs` (`storageSize`, `maxSize`) | 10 min |
+| Disk | `db.stats` on every database (`fsUsedSize`, `fsTotalSize`; `storageSize + indexSize` summed over every database except `local`) and `collStats` on `local.oplog.rs` (`storageSize`, `maxSize`). Missing allocation statistics fail the read rather than silently undercounting. This is connected-member evidence, not a survey of replica members. | 10 min |
 | Sheets | `spreadsheets.get` grid sizes for every tab, plus the last non-empty cell of column A (one `values.batchGet`) — **only** on Master Leads and Master Booked, where column A is the Mongo id | 1 h |
 | Sync line | `sheet_sync_jobs` by resource and status; newest `sheet_sync_runs` that synced at least one job | live |
 | Last cancellation | newest `cancelled_leads.createdAt` (Master Booked card only) | live |
 
 `refresh=1` skips both caches at most once a minute (`refreshed: false` inside that minute). A failed read keeps the
-last good reading; with none, the card is `unknown` with a sentence and an `error`, and the page still renders.
+last good reading; database cache older than ten minutes is `unknown` with no runway. With no reading, the card is `unknown` with a sentence and an `error`, and the page still renders.
 
 **Sync line per workbook.** Master Leads owns `source_lead` and `delete_source_lead` jobs; Master Booked owns the
 rest. `pending` counts `pending` and `retrying`; a job is **stuck** when `processing` with `updatedAt` more than
@@ -90,10 +90,9 @@ least-squares slope over the newest 30 snapshots; fewer than 7 snapshots uses th
 and `points: N` (the admin shows "estimate · N of 7 days measured"); a slope ≤ 0 is "not growing"; beyond `capYears`
 (5 for the disk, 15 for sheets) is "more than N years"; otherwise "about 2 years 2 months (≈ Nov 2028)".
 
-- **Database:** time until 90% and until full. The rate is the **larger** of the `fs_used_bytes` slope and the
-  `data_bytes` slope (projected against the same remaining room), because WiredTiger reuses space freed by the
-  2026-10-07 disk trim before the files grow. Seed ≈ 4 MB/day. The breakdown is business data (`data_bytes`),
-  replication log (`oplog_storage_bytes`, reclaimable = storage − max) and system (the rest of `fs_used_bytes`).
+- **Database (W0 bounded implementation; production qualification recorded separately):** expose recent (seven daily observations within seven days) and long (up to thirty within thirty days) forecasts. Each uses the larger of disk-allocation and business-allocation slopes against the same remaining disk room, preserving the internal-reuse safeguard. Select the larger measured rate across windows; otherwise use an explicitly labelled estimate. After a segment reset, retain the larger prior measured rate available in the loaded history instead of reducing known rapid growth to the historical seed; `estimate_rate_source` distinguishes that fallback from the seed. `forecast` includes both windows, selected window, segment start/reason and history status. Resizes, allocation decreases (including compaction-shaped steps, not proof of compaction) and measurement gaps over two days restart the series; stale history cannot be labelled measured. Duplicate UTC measurement days cannot manufacture seven observations.
+  `forecast.scope` is `connected_member`, and `worst_member` remains null. Current collection does not identify member changes or establish cluster-wide/worst-member capacity; Atlas per-member measurements and alerts remain an operational gate.
+  The legacy nullable `breakdown` is null: the existing Admin always renders its reclaimable field as a numeric fact. Additive `storage_evidence` separately reports measured business allocation, oplog allocation and configured logical maximum. `oplog_reclaimable_bytes` is `{ basis: "unknown", value: null }`; allocated storage minus logical maximum is not a reclaim estimate. No reclaim measurement is fabricated. The Admin consumer at `vantage-admin/lib/api/systems.ts` and `components/systems/systems-model.ts` was inspected; it ignores additions, safely hides null breakdown, and renders the caveat. A later Admin change is needed to display these new evidence fields.
 - **Master Sheets:** the biggest tab by filled rows against 40,000; grid cells against Google's 10,000,000. "Time until a
   new workbook is needed" is the earlier of the biggest tab reaching 40,000 rows and the workbook reaching 5,000,000
   cells (`trigger: rows | cells`). Seeds per month: Master Leads +1,300 rows / +45,000 cells; Master Booked +185 rows /
@@ -122,3 +121,9 @@ failing writes nothing so a later call can retry. No TTL (about 30 KB a year).
 
 Backups, reachability probes, uptime, deploy state, Atlas tier, workbook rotation: 11b "Deliberately left out".
 Partner health stays on Setup › Connections & health.
+
+### Capacity workflow counter contract
+
+The additive `workflow_counters` response is a fixed-cardinality **process-local** contract with explicit interval timestamps and `complete=false`; it is not a fleet count or unique-entity metric. This release contains the counter module and response contract but no workflow producer hooks, so its workflow list is empty. Empty does not mean zero workload. The module's tested semantics count successful repeated work, treat absent keys as unobserved and report saturation. No payload, operation ID, account or customer labels enter this structure.
+
+Fleet collection, producer hooks and alert evaluation/routing remain separate capacity-plan work. This release installs no production alert or Atlas configuration. See [W0 implementation evidence](../../capacity-review-2026-11-16/W0-FORECAST-IMPLEMENTATION.md) for the release boundary.

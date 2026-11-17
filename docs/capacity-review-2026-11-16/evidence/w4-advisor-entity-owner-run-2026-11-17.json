@@ -1,0 +1,570 @@
+{
+  "at": "2026-11-17T15:25:26.910Z",
+  "remote_writes": 0,
+  "windows": [
+    {
+      "at": "2026-11-17T14:20:33Z",
+      "http_status": 200,
+      "logs": [],
+      "response_keys": [
+        "slowQueries"
+      ],
+      "returned": 0
+    },
+    {
+      "at": "2026-11-17T13:26:33Z",
+      "http_status": 200,
+      "logs": [
+        {
+          "timestamp": "2026-11-17T13:26:35.925+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [
+            "provenance.observation_id",
+            "observation_id"
+          ],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 2057,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 0,
+          "numYields": 141,
+          "planningTimeMicros": 656,
+          "queryHash": "B048EA80",
+          "planCacheShapeHash": "B048EA80",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {
+              "provenance.observation_id": {
+                "operators": [
+                  "$in"
+                ],
+                "in_count": 312
+              }
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:26:48.436+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 2230,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 1,
+          "numYields": 146,
+          "planningTimeMicros": 149,
+          "queryHash": "B68FD0A8",
+          "planCacheShapeHash": "B68FD0A8",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {}
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:26:52.266+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "IXSCAN",
+          "durationMillis": 251,
+          "docsExamined": 272,
+          "keysExamined": 272,
+          "nreturned": 1,
+          "numYields": 0,
+          "planningTimeMicros": 250971,
+          "queryHash": "E8683DE1",
+          "planCacheShapeHash": "E8683DE1",
+          "plan_summary": "IXSCAN { entity.model: 1, entity.id: 1, revision_after: 1 }",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": []
+        },
+        {
+          "timestamp": "2026-11-17T13:26:52.266+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "IXSCAN",
+          "durationMillis": 326,
+          "docsExamined": 272,
+          "keysExamined": 272,
+          "nreturned": 1,
+          "numYields": 0,
+          "planningTimeMicros": 326176,
+          "queryHash": "E8683DE1",
+          "planCacheShapeHash": "E8683DE1",
+          "plan_summary": "IXSCAN { entity.model: 1, entity.id: 1, revision_after: 1 }",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": []
+        },
+        {
+          "timestamp": "2026-11-17T13:27:05.849+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 2141,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 1,
+          "numYields": 143,
+          "planningTimeMicros": 173,
+          "queryHash": "B68FD0A8",
+          "planCacheShapeHash": "B68FD0A8",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {}
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:27:22.994+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 1894,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 1,
+          "numYields": 144,
+          "planningTimeMicros": 114,
+          "queryHash": "B68FD0A8",
+          "planCacheShapeHash": "B68FD0A8",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {}
+          ]
+        }
+      ],
+      "response_keys": [
+        "slowQueries"
+      ],
+      "returned": 6
+    },
+    {
+      "at": "2026-11-17T13:28:33Z",
+      "http_status": 200,
+      "logs": [
+        {
+          "timestamp": "2026-11-17T13:27:56.998+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [
+            "provenance.observation_id",
+            "observation_id"
+          ],
+          "plan_scan": "IXSCAN",
+          "durationMillis": 559,
+          "docsExamined": 308,
+          "keysExamined": 308,
+          "nreturned": 0,
+          "numYields": 32,
+          "planningTimeMicros": 558917,
+          "queryHash": "BE4958C9",
+          "planCacheShapeHash": "BE4958C9",
+          "plan_summary": "IXSCAN { entity.model: 1, entity.id: 1, revision_after: 1 }",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "provenance.observation_id"
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:28:01.199+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 4852,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 1,
+          "numYields": 317,
+          "planningTimeMicros": 143,
+          "queryHash": "B68FD0A8",
+          "planCacheShapeHash": "B68FD0A8",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {}
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:28:10.267+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [
+            "provenance.observation_id",
+            "observation_id"
+          ],
+          "plan_scan": "IXSCAN",
+          "durationMillis": 681,
+          "docsExamined": 264,
+          "keysExamined": 264,
+          "nreturned": 0,
+          "numYields": 38,
+          "planningTimeMicros": 680889,
+          "queryHash": "BE4958C9",
+          "planCacheShapeHash": "BE4958C9",
+          "plan_summary": "IXSCAN { entity.model: 1, entity.id: 1, revision_after: 1 }",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "provenance.observation_id"
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:28:10.818+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [
+            "provenance.observation_id",
+            "observation_id"
+          ],
+          "plan_scan": "IXSCAN",
+          "durationMillis": 249,
+          "docsExamined": 261,
+          "keysExamined": 261,
+          "nreturned": 0,
+          "numYields": 13,
+          "planningTimeMicros": 249589,
+          "queryHash": "BE4958C9",
+          "planCacheShapeHash": "BE4958C9",
+          "plan_summary": "IXSCAN { entity.model: 1, entity.id: 1, revision_after: 1 }",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "provenance.observation_id"
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:28:11.875+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [
+            "provenance.observation_id",
+            "observation_id"
+          ],
+          "plan_scan": "IXSCAN",
+          "durationMillis": 331,
+          "docsExamined": 260,
+          "keysExamined": 260,
+          "nreturned": 0,
+          "numYields": 19,
+          "planningTimeMicros": 331550,
+          "queryHash": "BE4958C9",
+          "planCacheShapeHash": "BE4958C9",
+          "plan_summary": "IXSCAN { entity.model: 1, entity.id: 1, revision_after: 1 }",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "provenance.observation_id"
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:29:08.351+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 4302,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 1,
+          "numYields": 314,
+          "planningTimeMicros": 416,
+          "queryHash": "B68FD0A8",
+          "planCacheShapeHash": "B68FD0A8",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {}
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:29:27.686+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [
+            "provenance.observation_id",
+            "observation_id"
+          ],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 2266,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 0,
+          "numYields": 176,
+          "planningTimeMicros": 589,
+          "queryHash": "B048EA80",
+          "planCacheShapeHash": "B048EA80",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {
+              "provenance.observation_id": {
+                "operators": [
+                  "$in"
+                ],
+                "in_count": 312
+              }
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-11-17T13:29:28.880+00:00",
+          "namespace": "vantagemovers.entity_changes",
+          "parsed": true,
+          "query_fields": [],
+          "plan_scan": "COLLSCAN",
+          "durationMillis": 954,
+          "docsExamined": 177963,
+          "keysExamined": 0,
+          "nreturned": 1,
+          "numYields": 76,
+          "planningTimeMicros": 109,
+          "queryHash": "B68FD0A8",
+          "planCacheShapeHash": "B68FD0A8",
+          "plan_summary": "COLLSCAN",
+          "entry_keys": [
+            "line",
+            "metrics",
+            "namespace",
+            "replicaState"
+          ],
+          "top_filter_keys": [
+            "$or"
+          ],
+          "or_branches": [
+            {}
+          ]
+        }
+      ],
+      "response_keys": [
+        "slowQueries"
+      ],
+      "returned": 8
+    },
+    {
+      "at": "2026-11-17T07:16:33Z",
+      "http_status": 200,
+      "logs": [],
+      "response_keys": [
+        "slowQueries"
+      ],
+      "returned": 0
+    },
+    {
+      "at": "2026-11-17T05:04:33Z",
+      "http_status": 200,
+      "logs": [],
+      "response_keys": [
+        "slowQueries"
+      ],
+      "returned": 0
+    }
+  ],
+  "advisor_status": 200,
+  "advisor_shapes": [
+    {
+      "namespace": "vantagemovers.form_leads",
+      "avgMs": 260,
+      "count": 1,
+      "inefficiencyScore": 8912
+    },
+    {
+      "namespace": "other",
+      "avgMs": 1317,
+      "count": 2,
+      "inefficiencyScore": 35434
+    },
+    {
+      "namespace": "vantagemovers.form_leads",
+      "avgMs": 246,
+      "count": 3,
+      "inefficiencyScore": 2853
+    },
+    {
+      "namespace": "vantagemovers.granot_observations",
+      "avgMs": 300,
+      "count": 141,
+      "inefficiencyScore": 552
+    },
+    {
+      "namespace": "vantagemovers.granot_automation_runs",
+      "avgMs": 12113,
+      "count": 40,
+      "inefficiencyScore": 167
+    }
+  ],
+  "suggested_indexes": [
+    {
+      "namespace": "vantagemovers.granot_automation_runs",
+      "index": [
+        {
+          "createdAt": 1
+        }
+      ],
+      "impact": [
+        "6afc71e9b5ac3f005b01a57a"
+      ]
+    },
+    {
+      "namespace": "other",
+      "index": [
+        {
+          "merged_into_id": 1
+        },
+        {
+          "provider": 1
+        },
+        {
+          "telephony_session_id": 1
+        },
+        {
+          "contact_number_id": 1
+        }
+      ],
+      "impact": [
+        "6afc71e9b5ac3f005b01a586"
+      ]
+    },
+    {
+      "namespace": "vantagemovers.granot_observations",
+      "index": [
+        {
+          "priority.valid": 1
+        },
+        {
+          "identity.normalized_job_no": 1
+        },
+        {
+          "captured_at": 1
+        },
+        {
+          "priority.raw": 1
+        }
+      ],
+      "impact": [
+        "6afc71e9b5ac3f005b01a558"
+      ]
+    },
+    {
+      "namespace": "vantagemovers.form_leads",
+      "index": [
+        {
+          "booked": 1
+        }
+      ],
+      "impact": [
+        "6afc71e9b5ac3f005b01a561"
+      ]
+    },
+    {
+      "namespace": "vantagemovers.form_leads",
+      "index": [
+        {
+          "lead_source_company": 1
+        },
+        {
+          "source_granularity_id": 1
+        },
+        {
+          "duplicate": 1
+        }
+      ],
+      "impact": [
+        "6afc71e9b5ac3f005b01a585"
+      ]
+    }
+  ],
+  "finished_at": "2026-11-17T15:25:30.454Z"
+}

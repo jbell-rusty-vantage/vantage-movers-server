@@ -279,3 +279,21 @@ Repeated schedule/run upserts disable timestamp churn and only insert initial ti
 Fresh accepted snapshots still retain receipt/Observation/Decision evidence and advance temporal metadata. They are not skipped by row hash: target, Registry, assignment protection and downstream repair must be reevaluated. A fresh business no-op produces no business Lead revision, EntityChange or Sheet intent; exact terminal replay retains the existing Decision. Existing open-subject/Pool repair remains bounded and may write subject/evaluation bookkeeping. There is no new collection, TTL, index, environment variable or production migration.
 
 Base ALL collection increases from 39 to 234 seven-day children per ordinary day, before verified older dates and Pool. This is not measured capacity. Decision evidence remains append-only; this patch does not solve its long-term retention. [Engineering evidence and release gates](../../granot-automation-frequency/IMPLEMENTATION-LEDGER.md) separate tests from production throughput/storage qualification.
+
+## Capacity W5 bounded persistence subset (November 17, 2026)
+
+Planning progress is advisory and persists at most every 25 rows or five seconds,
+plus the existing final immutable plan lock. A crash still recollects/replans; the
+cursor is never authority to skip rows. Every existing action/request lease gate reads both account and run ownership freshly from the primary, including owner/epoch/status and expiration fencing. Renew only within 22.5 minutes of the earlier persisted expiry; recheck the wall clock after reads, and retain fenced renewal and post-effect writes. There is no cached ownership authority.
+
+Run action receipts retain the existing embedded array and lifecycle identity.
+Persistence now replaces only the matching array element, or atomically appends
+when that action ID is absent, under a fresh run fence for each write. Identical
+replays use matched count rather than modified count. Result/checkpoint commit
+stays atomic; downstream Outreach refresh still records its durable marker only
+after successful nomination. No plan, approval checksum, TTL, retention closure,
+reader shape, schedule, environment variable or migration changes are required.
+
+This is a bounded-command subset of W5, not a new normalized result layout or a
+terminal-before-purge lifecycle. Active runs crossing plan/purge expiry remain separately qualified work. External effects are not atomically fenced with Mongo lease reads or renewals; the preexisting check-to-effect race remains. See
+[W5 implementation evidence](../../capacity-review-2026-11-16/W5-IMPLEMENTATION.md).
