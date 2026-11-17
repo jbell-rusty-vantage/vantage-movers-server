@@ -1,6 +1,8 @@
 # AGENTS.md
 
-This file is intentionally thin. See the following for the real guidance:
+For a sealed Granot action, start with the [local trace runbook](docs/operations/granot.md) or `pnpm vantage -- services`.
+
+See the following for repository guidance:
 
 - **`docs/index.md`** — OKF v0.2 catalog. Start here for Service / ADR / Reference concepts. Query with `pnpm okf:query`.
 - **`CLOUD_AGENTS.md`** — Cursor Cloud dev environment setup and non-obvious runtime caveats

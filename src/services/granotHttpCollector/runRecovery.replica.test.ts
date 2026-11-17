@@ -24,16 +24,16 @@ async function ready(t: { skip: (reason: string) => void }) {
   for (const host of [...hello.hosts, ...(hello.passives ?? []), ...(hello.arbiters ?? [])]) assert.match(String(host), /^(127\.0\.0\.1|localhost):\d+$/);
   return true;
 }
-function planFor(id: Types.ObjectId) {
-  return { kind: 'estimates_in_process' as const, schema_version: 2, counters: { update: 1 }, actions: [{ action_id: 'row-1', classification: 'update', collection_captured_at: '2026-10-01T00:00:00.000Z', lifecycle_apply: {
-    operation_id: `${id}:row-1`, operation_kind: 'lead_snapshot_apply' as const, granot_statement: { priority: '0', job_no: 'SYNTHETIC-W5' },
-  } }] };
+function planFor(id: Types.ObjectId, actionIds = ['row-1']) {
+  return { kind: 'estimates_in_process' as const, schema_version: 2, counters: { update: actionIds.length }, actions: actionIds.map(action_id => ({ action_id, classification: 'update', collection_captured_at: '2026-10-01T00:00:00.000Z', lifecycle_apply: {
+    operation_id: `${id}:${action_id}`, operation_kind: 'lead_snapshot_apply' as const, granot_statement: { priority: '0', job_no: 'SYNTHETIC-W5' },
+  } })) };
 }
-async function seed(id: Types.ObjectId, expiresAt = new Date(Date.now() + 3600000)) {
-  const plan = planFor(id);
+async function seed(id: Types.ObjectId, expiresAt = new Date(Date.now() + 3600000), actionIds = ['row-1']) {
+  const plan = planFor(id, actionIds);
   const checksum = computeChecksum({ checksum_version: 1, artifact_kind: 'ingestion_plan', schema_version: 1, payload: plan });
   await GranotAutomationRun.create({ _id: id, operation: 'estimates_in_process', workflow: 'apply', status: 'applying', request_snapshot: { auto_apply: true }, initiator: actor,
-    plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date('2026-10-01'), approval: { selected_action_ids: ['row-1'], plan_checksum: checksum, approved_by: actor, approved_at: new Date('2026-10-01') },
+    plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date('2026-10-01'), approval: { selected_action_ids: actionIds, plan_checksum: checksum, approved_by: actor, approved_at: new Date('2026-10-01') },
     expires_at: expiresAt, purge_at: new Date(Date.now() + 86400000), last_attempt_at: new Date(0) });
   return checksum;
 }
@@ -76,10 +76,14 @@ test('worker crash after canonical action but before run result replays the exac
   }
 });
 
-test('legacy expiry remains enforced: an approved run beyond normal expiry does not execute', async t => {
+test('a resumed partial run retains its saved receipt and original expiry without executing the remaining action', async t => {
   if (!(await ready(t))) return;
   const id = new Types.ObjectId();
-  await seed(id, new Date(Date.now() - 8 * 86400000));
+  const expiresAt = new Date(Date.now() - 8 * 86400000);
+  const checksum = await seed(id, expiresAt, ['row-1', 'row-2']);
+  const saved = { action_id: 'row-1', lifecycle_receipt_id: new Types.ObjectId().toHexString(), outcome: 'applied', applied_at: new Date(+expiresAt - 1) };
+  await GranotAutomationRun.updateOne({ _id: id }, { $push: { receipts: saved } });
+  const interrupted = await GranotAutomationRun.findById(id).lean().orFail();
   let calls = 0;
   try {
     await assert.rejects(runGranotWorker({ applyAction: async input => {
@@ -87,8 +91,51 @@ test('legacy expiry remains enforced: an approved run beyond normal expiry does 
       return { action_id: input.action_id, lifecycle_receipt_id: '', outcome: 'technical_failure', applied_at: new Date() };
     } }), /expired or lost/);
     assert.equal(calls, 0);
-    assert.equal((await GranotAutomationRun.findById(id).lean())?.status, 'failed');
+    const stopped = await GranotAutomationRun.findById(id).lean().orFail();
+    assert.equal(stopped.status, 'failed');
+    assert.deepEqual(stopped.receipts, [saved]);
+    assert.deepEqual(stopped.approval, interrupted.approval);
+    assert.deepEqual(stopped.plan_snapshot, interrupted.plan_snapshot);
+    assert.equal(+stopped.purge_at, +interrupted.purge_at);
+    assert.equal(stopped.plan_checksum, checksum);
+    assert.equal(+stopped.expires_at, +expiresAt);
   } finally { await GranotAutomationRun.deleteOne({ _id: id }); }
+});
+
+test('an in-flight batch preserves its first receipt and refuses a new action at the original expiry', async t => {
+  if (!(await ready(t))) return;
+  const id = new Types.ObjectId();
+  const actionIds = ['row-1', 'row-2'];
+  const expiresAt = new Date(Date.now() + 3_000);
+  const checksum = await seed(id, expiresAt, actionIds);
+  const sealed = await GranotAutomationRun.findById(id).lean().orFail();
+  const operations: string[] = [];
+  const receiptId = new Types.ObjectId().toHexString();
+  try {
+    await assert.rejects(runGranotWorker({
+      applyAction: async input => {
+        operations.push(input.lifecycle_apply.operation_id);
+        return { action_id: input.action_id, lifecycle_receipt_id: receiptId, outcome: 'applied', applied_at: new Date() };
+      },
+      refreshOutreach: async () => {
+        // The already-applied action is completing when the approved window closes.
+        await new Promise(resolve => setTimeout(resolve, Math.max(0, +expiresAt - Date.now()) + 10));
+        return 'enqueued';
+      },
+    }), /expired/i);
+    const stopped = await GranotAutomationRun.findById(id).lean().orFail();
+    assert.equal(stopped.status, 'failed');
+    assert.deepEqual(operations, [`${id}:row-1`]);
+    assert.deepEqual(stopped.receipts.map(r => [r.action_id, r.lifecycle_receipt_id]), [['row-1', receiptId]]);
+    assert.deepEqual(stopped.approval, sealed.approval);
+    assert.deepEqual(stopped.plan_snapshot, sealed.plan_snapshot);
+    assert.equal(stopped.plan_checksum, checksum);
+    assert.equal(+stopped.expires_at, +expiresAt);
+    assert.equal(+stopped.purge_at, +sealed.purge_at);
+    assert.equal((await runGranotWorker()).claimed, false);
+  } finally {
+    await GranotAutomationRun.deleteOne({ _id: id });
+  }
 });
 
 test('legacy closed-run reconstruction requires absent run, mature complete evidence and exact replay hash', async t => {

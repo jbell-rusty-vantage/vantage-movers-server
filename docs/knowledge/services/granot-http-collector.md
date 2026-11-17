@@ -75,6 +75,8 @@ The collector signs in through two Granot pages, in order. `readCredentials()` p
 
 `/vantage/admin.htm` is the unsigned frame that loads the network login. It is not the main menu. After the user POST the session is the cookie jar plus the id in `mv~mainmenuwc~{session}~LOGIN`. A copied `wc.dll` URL without those cookies returns Granot's cookie security alert. `SAVEPASS` is dropped before the network POST.
 
+The scheduler returns only the ID and status from its atomic claim. Planning or apply then reads the state it owns under its lease. The worker checks the sealed plan's original expiry on batch entry and immediately after lease verification before admitting each action. An action already admitted can finish and checkpoint its result. If the window closes, the worker preserves recorded receipts and fails the approved run before dispatching another action. The approval and purge clocks stay fixed. See the [local trace runbook](../../operations/granot.md).
+
 ## Workflows
 
 | Workflow | After plan lock |
@@ -295,5 +297,5 @@ after successful nomination. No plan, approval checksum, TTL, retention closure,
 reader shape, schedule, environment variable or migration changes are required.
 
 This is a bounded-command subset of W5, not a new normalized result layout or a
-terminal-before-purge lifecycle. Active runs crossing plan/purge expiry remain separately qualified work. External effects are not atomically fenced with Mongo lease reads or renewals; the preexisting check-to-effect race remains. See
+terminal-before-purge lifecycle. The [Phase 2 local qualification](../../operations/evidence/granot-stage-measurement.md) covers a partial run crossing its original approval deadline. The seven-day purge behavior remains in place. External effects are not atomically fenced with Mongo lease reads or renewals; the preexisting check-to-effect race remains. See
 [W5 implementation evidence](../../capacity-review-2026-11-16/W5-IMPLEMENTATION.md).

@@ -1,0 +1,941 @@
+{
+  "baseCommit": "868db09443681753390c25d0e6cec2160a130795",
+  "workflowSha256": "623a07f33a0b69776dacd1668f4705e3881bc92400733a561ab9ccf9632f4337",
+  "recordedAt": "2026-11-17T20:51:21.522Z",
+  "fixture": "Single-row Estimates report, active Form and Record Link, open Outreach subject, queued Sheet intent, local synthetic HTTP.",
+  "bytes": "BSON document sizes from command events. Returned firstBatch/nextBatch/value, submitted update expressions (including no-match), submitted inserted documents (including attempted duplicate). Excludes ACK envelopes, wire/physical storage, replication and indexes. Inventory is materialized application BSON.",
+  "measurements": {
+    "stale": {
+      "create": {
+        "commands": 1,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 0,
+        "insertBson": 797,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1
+        }
+      },
+      "collect and seal": {
+        "commands": 36,
+        "returnedDocuments": 30,
+        "returnedBson": 4256,
+        "updateBson": 3425,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "aggregate": 1,
+          "findAndModify": 2,
+          "update": 4,
+          "find": 29
+        }
+      },
+      "run claim (collect and seal)": {
+        "commands": 1,
+        "returnedDocuments": 1,
+        "returnedBson": 41,
+        "updateBson": 255,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1
+        }
+      },
+      "approve": {
+        "commands": 2,
+        "returnedDocuments": 1,
+        "returnedBson": 3363,
+        "updateBson": 541,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 1,
+          "update": 1
+        }
+      },
+      "apply worker": {
+        "commands": 12,
+        "returnedDocuments": 4,
+        "returnedBson": 4048,
+        "updateBson": 2134,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "aggregate": 1,
+          "findAndModify": 1,
+          "update": 6,
+          "find": 4
+        }
+      },
+      "run claim (apply worker)": {
+        "commands": 1,
+        "returnedDocuments": 1,
+        "returnedBson": 43,
+        "updateBson": 255,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1
+        }
+      },
+      "capture": {
+        "commands": 1,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 0,
+        "insertBson": 1488,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1
+        }
+      },
+      "receipt claim and finalize": {
+        "commands": 4,
+        "returnedDocuments": 2,
+        "returnedBson": 3292,
+        "updateBson": 951,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1,
+          "update": 2,
+          "find": 1
+        }
+      },
+      "process": {
+        "commands": 12,
+        "returnedDocuments": 10,
+        "returnedBson": 5478,
+        "updateBson": 0,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 12
+        }
+      },
+      "normalize": {
+        "commands": 3,
+        "returnedDocuments": 1,
+        "returnedBson": 1578,
+        "updateBson": 0,
+        "insertBson": 732,
+        "failed": 0,
+        "commandNames": {
+          "find": 2,
+          "insert": 1
+        }
+      },
+      "decision and Lead transaction": {
+        "commands": 3,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 59,
+        "insertBson": 1214,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1,
+          "update": 1,
+          "commitTransaction": 1
+        }
+      }
+    },
+    "genuine": {
+      "create": {
+        "commands": 1,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 0,
+        "insertBson": 797,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1
+        }
+      },
+      "collect and seal": {
+        "commands": 36,
+        "returnedDocuments": 30,
+        "returnedBson": 4256,
+        "updateBson": 3470,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "aggregate": 1,
+          "findAndModify": 2,
+          "update": 4,
+          "find": 29
+        }
+      },
+      "run claim (collect and seal)": {
+        "commands": 1,
+        "returnedDocuments": 1,
+        "returnedBson": 41,
+        "updateBson": 255,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1
+        }
+      },
+      "approve": {
+        "commands": 2,
+        "returnedDocuments": 1,
+        "returnedBson": 3408,
+        "updateBson": 541,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 1,
+          "update": 1
+        }
+      },
+      "apply worker": {
+        "commands": 12,
+        "returnedDocuments": 4,
+        "returnedBson": 4093,
+        "updateBson": 2140,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "aggregate": 1,
+          "findAndModify": 1,
+          "update": 6,
+          "find": 4
+        }
+      },
+      "run claim (apply worker)": {
+        "commands": 1,
+        "returnedDocuments": 1,
+        "returnedBson": 43,
+        "updateBson": 255,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1
+        }
+      },
+      "capture": {
+        "commands": 1,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 0,
+        "insertBson": 1488,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1
+        }
+      },
+      "receipt claim and finalize": {
+        "commands": 9,
+        "returnedDocuments": 4,
+        "returnedBson": 4298,
+        "updateBson": 1895,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1,
+          "update": 4,
+          "find": 3,
+          "commitTransaction": 1
+        }
+      },
+      "process": {
+        "commands": 18,
+        "returnedDocuments": 14,
+        "returnedBson": 8076,
+        "updateBson": 0,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 18
+        }
+      },
+      "normalize": {
+        "commands": 3,
+        "returnedDocuments": 1,
+        "returnedBson": 1578,
+        "updateBson": 0,
+        "insertBson": 732,
+        "failed": 0,
+        "commandNames": {
+          "find": 2,
+          "insert": 1
+        }
+      },
+      "decision and Lead transaction": {
+        "commands": 13,
+        "returnedDocuments": 4,
+        "returnedBson": 2030,
+        "updateBson": 943,
+        "insertBson": 4149,
+        "failed": 0,
+        "commandNames": {
+          "find": 4,
+          "update": 4,
+          "insert": 3,
+          "findAndModify": 1,
+          "commitTransaction": 1
+        }
+      },
+      "Outreach refresh": {
+        "commands": 7,
+        "returnedDocuments": 7,
+        "returnedBson": 1097,
+        "updateBson": 693,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 3,
+          "listIndexes": 2,
+          "findAndModify": 1,
+          "commitTransaction": 1
+        }
+      }
+    },
+    "unchanged": {
+      "create": {
+        "commands": 1,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 0,
+        "insertBson": 797,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1
+        }
+      },
+      "collect and seal": {
+        "commands": 36,
+        "returnedDocuments": 30,
+        "returnedBson": 5480,
+        "updateBson": 3437,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "aggregate": 1,
+          "findAndModify": 2,
+          "update": 4,
+          "find": 29
+        }
+      },
+      "run claim (collect and seal)": {
+        "commands": 1,
+        "returnedDocuments": 1,
+        "returnedBson": 41,
+        "updateBson": 255,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1
+        }
+      },
+      "approve": {
+        "commands": 2,
+        "returnedDocuments": 1,
+        "returnedBson": 3375,
+        "updateBson": 541,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 1,
+          "update": 1
+        }
+      },
+      "apply worker": {
+        "commands": 12,
+        "returnedDocuments": 4,
+        "returnedBson": 4060,
+        "updateBson": 2164,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "aggregate": 1,
+          "findAndModify": 1,
+          "update": 6,
+          "find": 4
+        }
+      },
+      "run claim (apply worker)": {
+        "commands": 1,
+        "returnedDocuments": 1,
+        "returnedBson": 43,
+        "updateBson": 255,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1
+        }
+      },
+      "capture": {
+        "commands": 1,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 0,
+        "insertBson": 1488,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1
+        }
+      },
+      "receipt claim and finalize": {
+        "commands": 9,
+        "returnedDocuments": 4,
+        "returnedBson": 3926,
+        "updateBson": 1539,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1,
+          "update": 4,
+          "find": 3,
+          "commitTransaction": 1
+        }
+      },
+      "process": {
+        "commands": 16,
+        "returnedDocuments": 12,
+        "returnedBson": 7271,
+        "updateBson": 0,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 16
+        }
+      },
+      "normalize": {
+        "commands": 3,
+        "returnedDocuments": 1,
+        "returnedBson": 1578,
+        "updateBson": 0,
+        "insertBson": 732,
+        "failed": 0,
+        "commandNames": {
+          "find": 2,
+          "insert": 1
+        }
+      },
+      "decision and Lead transaction": {
+        "commands": 4,
+        "returnedDocuments": 0,
+        "returnedBson": 0,
+        "updateBson": 220,
+        "insertBson": 1227,
+        "failed": 0,
+        "commandNames": {
+          "update": 2,
+          "insert": 1,
+          "commitTransaction": 1
+        }
+      },
+      "Outreach refresh": {
+        "commands": 6,
+        "returnedDocuments": 5,
+        "returnedBson": 980,
+        "updateBson": 693,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "find": 3,
+          "listIndexes": 1,
+          "findAndModify": 1,
+          "commitTransaction": 1
+        }
+      }
+    },
+    "replay": {
+      "capture": {
+        "commands": 2,
+        "returnedDocuments": 1,
+        "returnedBson": 155,
+        "updateBson": 0,
+        "insertBson": 1488,
+        "failed": 0,
+        "commandNames": {
+          "insert": 1,
+          "find": 1
+        }
+      },
+      "receipt claim and finalize": {
+        "commands": 2,
+        "returnedDocuments": 1,
+        "returnedBson": 2276,
+        "updateBson": 272,
+        "insertBson": 0,
+        "failed": 0,
+        "commandNames": {
+          "findAndModify": 1,
+          "find": 1
+        }
+      }
+    }
+  },
+  "evidence": {
+    "genuine": {
+      "runId": "6afcbe42ed93f6f5ef475bf0",
+      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "operationId": "6afcbe42ed93f6f5ef475bf0:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "checksum": "7c41d1663951b7edabf97f084cfc16f473a207e413431a7be9e5e36698b33daf",
+      "expiresAt": "2026-11-18T20:51:14.651Z",
+      "purgeAt": "2026-11-24T20:51:14.651Z",
+      "receiptId": "6afcbe43ed93f6f5ef475bf2",
+      "observationId": "6afcbe43ed93f6f5ef475bf3",
+      "decisionId": "6afcbe44ed93f6f5ef475bf4",
+      "targetId": "000000000000000000000101",
+      "winner": "6afcbe43ed93f6f5ef475bf3",
+      "outcome": "applied",
+      "reason": "lead_state_changed",
+      "revision": 5,
+      "effects": [
+        "lead_updated",
+        "record_link_confirmed",
+        "sheet_sync_requested"
+      ],
+      "retainedBefore": {
+        "granot_webhook_receipts": {
+          "count": 0,
+          "bson": 0
+        },
+        "granot_observations": {
+          "count": 0,
+          "bson": 0
+        },
+        "synchronization_decisions": {
+          "count": 0,
+          "bson": 0
+        },
+        "domain_command_executions": {
+          "count": 0,
+          "bson": 0
+        },
+        "entity_changes": {
+          "count": 0,
+          "bson": 0
+        },
+        "sheet_sync_jobs": {
+          "count": 0,
+          "bson": 0
+        },
+        "sales_intelligence_jobs": {
+          "count": 0,
+          "bson": 0
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 553
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "retainedAfter": {
+        "granot_webhook_receipts": {
+          "count": 1,
+          "bson": 2276
+        },
+        "granot_observations": {
+          "count": 1,
+          "bson": 732
+        },
+        "synchronization_decisions": {
+          "count": 1,
+          "bson": 1476
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 1,
+          "bson": 691
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1165
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "trace": {
+        "status": "traced",
+        "stop": "canonical_lead_read",
+        "outcome": "applied",
+        "temporalOrder": "same"
+      }
+    },
+    "unchanged": {
+      "runId": "6afcbe45ed93f6f5ef475bfa",
+      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "operationId": "6afcbe45ed93f6f5ef475bfa:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "checksum": "c82c5071dae6502a4dc0fd34bd87a60fd82a35ed63601016eca86d030f61c976",
+      "expiresAt": "2026-11-18T20:51:17.707Z",
+      "purgeAt": "2026-11-24T20:51:17.707Z",
+      "receiptId": "6afcbe46ed93f6f5ef475bfc",
+      "observationId": "6afcbe46ed93f6f5ef475bfd",
+      "decisionId": "6afcbe47ed93f6f5ef475bfe",
+      "targetId": "000000000000000000000101",
+      "winner": "6afcbe46ed93f6f5ef475bfd",
+      "outcome": "already_current",
+      "reason": "desired_state_already_current",
+      "revision": 5,
+      "effects": [],
+      "retainedBefore": {
+        "granot_webhook_receipts": {
+          "count": 1,
+          "bson": 2276
+        },
+        "granot_observations": {
+          "count": 1,
+          "bson": 732
+        },
+        "synchronization_decisions": {
+          "count": 1,
+          "bson": 1476
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 1,
+          "bson": 691
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1165
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "retainedAfter": {
+        "granot_webhook_receipts": {
+          "count": 2,
+          "bson": 4172
+        },
+        "granot_observations": {
+          "count": 2,
+          "bson": 1464
+        },
+        "synchronization_decisions": {
+          "count": 2,
+          "bson": 2703
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 2,
+          "bson": 1382
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1173
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "trace": {
+        "status": "traced",
+        "stop": "canonical_lead_read",
+        "outcome": "already_current",
+        "temporalOrder": "same"
+      }
+    },
+    "stale": {
+      "runId": "6afcbe40ed93f6f5ef475bee",
+      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "operationId": "6afcbe40ed93f6f5ef475bee:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "checksum": "2100d1a62980d1c12eb347668d72b55074f5ef5015a06bd5817fb64f701a4120",
+      "expiresAt": "2026-11-18T20:51:12.605Z",
+      "purgeAt": "2026-11-24T20:51:12.605Z",
+      "receiptId": "6afcbe48ed93f6f5ef475c00",
+      "observationId": "6afcbe48ed93f6f5ef475c01",
+      "decisionId": "6afcbe48ed93f6f5ef475c02",
+      "targetId": "000000000000000000000101",
+      "winner": "6afcbe46ed93f6f5ef475bfd",
+      "outcome": "stale",
+      "reason": "older_than_temporal_winner",
+      "revision": 5,
+      "effects": [],
+      "retainedBefore": {
+        "granot_webhook_receipts": {
+          "count": 2,
+          "bson": 4172
+        },
+        "granot_observations": {
+          "count": 2,
+          "bson": 1464
+        },
+        "synchronization_decisions": {
+          "count": 2,
+          "bson": 2703
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 2,
+          "bson": 1382
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1173
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "retainedAfter": {
+        "granot_webhook_receipts": {
+          "count": 3,
+          "bson": 5976
+        },
+        "granot_observations": {
+          "count": 3,
+          "bson": 2196
+        },
+        "synchronization_decisions": {
+          "count": 3,
+          "bson": 3917
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 2,
+          "bson": 1382
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1173
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "trace": {
+        "status": "traced",
+        "stop": "canonical_lead_read",
+        "outcome": "stale",
+        "temporalOrder": "older"
+      }
+    },
+    "replay": {
+      "operationId": "6afcbe42ed93f6f5ef475bf0:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+      "receiptId": "6afcbe43ed93f6f5ef475bf2",
+      "observationId": "6afcbe43ed93f6f5ef475bf3",
+      "decisionId": "6afcbe44ed93f6f5ef475bf4",
+      "winner": "6afcbe46ed93f6f5ef475bfd",
+      "outcome": "applied",
+      "revision": 5,
+      "retainedBefore": {
+        "granot_webhook_receipts": {
+          "count": 3,
+          "bson": 5976
+        },
+        "granot_observations": {
+          "count": 3,
+          "bson": 2196
+        },
+        "synchronization_decisions": {
+          "count": 3,
+          "bson": 3917
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 2,
+          "bson": 1382
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1173
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      },
+      "retainedAfter": {
+        "granot_webhook_receipts": {
+          "count": 3,
+          "bson": 5976
+        },
+        "granot_observations": {
+          "count": 3,
+          "bson": 2196
+        },
+        "synchronization_decisions": {
+          "count": 3,
+          "bson": 3917
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bson": 1381
+        },
+        "entity_changes": {
+          "count": 1,
+          "bson": 1292
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bson": 363
+        },
+        "sales_intelligence_jobs": {
+          "count": 2,
+          "bson": 1382
+        },
+        "form_leads": {
+          "count": 1,
+          "bson": 1173
+        },
+        "call_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "booked_leads": {
+          "count": 0,
+          "bson": 0
+        },
+        "cancelled_leads": {
+          "count": 0,
+          "bson": 0
+        }
+      }
+    }
+  },
+  "crashProof": {
+    "runId": "6afcbe49ed93f6f5ef475c05",
+    "checksum": "ec078d5968a04e0e6505f54f4435a8fc00e9a5782c42b18fb9e169a7923d33e4",
+    "operationId": "6afcbe49ed93f6f5ef475c05:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
+    "receiptId": "6afcbe4aed93f6f5ef475c07",
+    "observationId": "6afcbe4aed93f6f5ef475c08",
+    "decisionId": "6afcbe4aed93f6f5ef475c09",
+    "commandId": "6afcbe4aed93f6f5ef475c0a",
+    "changeId": "6afcbe4aed93f6f5ef475c0c",
+    "revisionBefore": 5,
+    "revisionAfter": 6,
+    "embeddedReceiptsAtFault": 0,
+    "embeddedReceiptsAfter": 1,
+    "trace": "canonical_lead_read",
+    "unchangedApprovalAndDates": true,
+    "repeatedCanonicalEffects": 0
+  }
+}

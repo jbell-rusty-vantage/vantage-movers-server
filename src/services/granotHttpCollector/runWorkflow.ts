@@ -1050,6 +1050,10 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     if (processedActions >= 25 || Date.now() >= applyDeadline) break;
     processedActions += 1;
     await renewRunLease(runId, lease, "applying");
+    // A previous action can finish after expiry while this worker still owns both leases.
+    if (Date.now() >= run.expires_at.getTime()) {
+      throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "The approved Granot plan expired before the next action.");
+    }
     let receipt: GranotAutomationActionReceipt;
     try {
       receipt = await applyAction({
@@ -1692,7 +1696,7 @@ async function claimGranotRun(
       },
       $inc: { attempt_count: 1 },
     },
-    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after" },
+    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after", projection: { _id: 1, status: 1 } },
   )
     .lean()
     .exec();
