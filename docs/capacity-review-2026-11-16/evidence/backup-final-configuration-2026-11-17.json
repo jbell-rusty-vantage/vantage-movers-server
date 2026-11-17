@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "generation": 2
+  },
+  "spec": {
+    "template": {
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "resources": {
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                }
+              }
+            ],
+            "maxRetries": 1,
+            "timeoutSeconds": "1200"
+          }
+        }
+      }
+    }
+  }
+}

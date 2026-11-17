@@ -1,0 +1,52 @@
+{
+  "recorded_at": "2026-11-17T15:38:59.589044+00:00",
+  "baseline_harness_attempt": {
+    "name": "lifecycle-replica",
+    "command": [
+      "node",
+      "--import",
+      "tsx",
+      "--import",
+      "./ops/test-setup.ts",
+      "ops/test-granot-lifecycle-replica.ts"
+    ],
+    "exit_code": 1,
+    "duration_seconds": 75.12,
+    "log": "docs/capacity-review-2026-11-16/evidence/qualified-lifecycle-replica-2026-11-17.txt",
+    "sha256": "0395f30d7e8ff80930e4d46393131bdcf8ac4eaddcb378b213f15dfd14f2fa79",
+    "tests": 110,
+    "passed": 109,
+    "failed": 1,
+    "skipped": 0,
+    "sole_failure": "SALES_INTELLIGENCE_DEPLOYMENT_ID is required",
+    "second_queued_effect_pass": "not run after first-pass failure"
+  },
+  "qualified_proof": {
+    "reference": "qualified-lifecycle-explicit-env-2026-11-17.json",
+    "passed": 150,
+    "failed": 0,
+    "skipped": 0,
+    "code_or_test_changes": "none; explicit synthetic dataset environment only"
+  },
+  "fixture_cleanup": {
+    "recorded_at": "2026-11-17T15:38:41.151Z",
+    "only_owned_session_databases_removed": [
+      {
+        "database": "testvantagemovers_qualifiedrelease",
+        "synthetic_collections": 54
+      },
+      {
+        "database": "testvantagemovers_qualifiedcorrected",
+        "synthetic_collections": 54
+      }
+    ],
+    "production_mutations": 0,
+    "container": {
+      "name": "vantage-capacity-phase-one-mongo",
+      "initial_state": "exited",
+      "verified_final_state": "exited",
+      "removed": false
+    }
+  },
+  "immutable_release_gates_changed": false
+}

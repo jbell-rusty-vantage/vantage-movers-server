@@ -1,0 +1,77 @@
+{
+  "truncated": false,
+  "series_count": 1,
+  "metric": "run.googleapis.com/container/memory/utilizations",
+  "window_end": "2026-11-17T07:24:00Z",
+  "series": [
+    {
+      "points": [
+        {
+          "count": 1,
+          "range": null,
+          "mean": null,
+          "double_value": null,
+          "end": "2026-11-17T07:24:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.9711189270019531,
+          "double_value": null,
+          "end": "2026-11-17T07:23:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.756866455078125,
+          "double_value": null,
+          "end": "2026-11-17T07:22:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.5118179321289062,
+          "double_value": null,
+          "end": "2026-11-17T07:21:00Z"
+        },
+        {
+          "count": 1,
+          "range": null,
+          "mean": null,
+          "double_value": null,
+          "end": "2026-11-17T07:20:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.9946975708007812,
+          "double_value": null,
+          "end": "2026-11-17T07:19:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.8348350524902344,
+          "double_value": null,
+          "end": "2026-11-17T07:18:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.6096904139487338,
+          "double_value": null,
+          "end": "2026-11-17T07:17:00Z"
+        },
+        {
+          "count": "1",
+          "range": null,
+          "mean": 0.41684722900390625,
+          "double_value": null,
+          "end": "2026-11-17T07:16:00Z"
+        }
+      ]
+    }
+  ],
+  "at": "2026-11-17T15:51:39.9498181Z",
+  "window_start": "2026-11-17T07:14:00Z"
+}

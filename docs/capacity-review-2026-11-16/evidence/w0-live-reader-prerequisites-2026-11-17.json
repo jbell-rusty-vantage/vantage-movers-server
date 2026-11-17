@@ -1,0 +1,8 @@
+{
+  "at": "2026-11-17T15:42:53.781Z",
+  "remote_writes": 0,
+  "database_count": 8,
+  "valid_allocation_count": 8,
+  "failures": [],
+  "oplog_valid": true
+}

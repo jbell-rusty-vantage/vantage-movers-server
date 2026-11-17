@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-11-17 16:02:52 UTC",
+  "commit": "7d12c4b3e09ef1e0e87c16dabbb8cc816427d73a",
+  "qualification_run": "https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/44116697063",
+  "production_run": "https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/44119191697",
+  "deployment": {
+    "id": "dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm",
+    "url": "vantage-movers-main-server-6c0efzjjg-vantage-4d3db9ef.vercel.app",
+    "target": "production",
+    "readyState": "READY",
+    "createdAt": 1794931249077,
+    "aliases": [
+      "vantage-movers-main-server.vercel.app",
+      "vantage-movers-main-server-vantage-4d3db9ef.vercel.app"
+    ]
+  },
+  "health": {
+    "application_http": 200,
+    "application_ok": true,
+    "database_http": 200,
+    "database_ok": true,
+    "database_name": "vantagemovers",
+    "database_ready_state": 1
+  },
+  "scope": "Alias/HTTP health plus separately saved database worker and queue evidence; not sustained workflow or storage qualification."
+}

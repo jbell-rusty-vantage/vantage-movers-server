@@ -1,0 +1,104 @@
+[
+  {
+    "at": "2026-11-17T07:22:25.320319Z",
+    "severity": "ERROR",
+    "log": "cloudaudit.googleapis.com%2Fsystem_event",
+    "text_present": false,
+    "payload_keys": [],
+    "matched_categories": []
+  },
+  {
+    "at": "2026-11-17T07:22:22.773907Z",
+    "severity": "WARNING",
+    "log": "run.googleapis.com%2Fvarlog%2Fsystem",
+    "text_present": true,
+    "payload_keys": [],
+    "matched_categories": []
+  },
+  {
+    "at": "2026-11-17T07:22:22.574588Z",
+    "log": "run.googleapis.com%2Fstdout",
+    "event": "backup.failed",
+    "text_present": false,
+    "payload_keys": [
+      "error",
+      "event",
+      "execution_id",
+      "ts"
+    ],
+    "matched_categories": [
+      "exit 1",
+      "no output"
+    ]
+  },
+  {
+    "at": "2026-11-17T07:22:22.522803Z",
+    "log": "run.googleapis.com%2F%2Fvar%2Flog%2Fsystem",
+    "text_present": true,
+    "payload_keys": [],
+    "matched_categories": []
+  },
+  {
+    "at": "2026-11-17T07:19:26.410745Z",
+    "log": "run.googleapis.com%2Fstdout",
+    "event": "backup.started",
+    "text_present": false,
+    "payload_keys": [
+      "bucket",
+      "daily_object",
+      "database",
+      "event",
+      "execution_id",
+      "ts",
+      "weekly_planned"
+    ],
+    "matched_categories": []
+  },
+  {
+    "at": "2026-11-17T07:19:16.411438Z",
+    "severity": "WARNING",
+    "log": "run.googleapis.com%2Fvarlog%2Fsystem",
+    "text_present": true,
+    "payload_keys": [],
+    "matched_categories": []
+  },
+  {
+    "at": "2026-11-17T07:19:16.216890Z",
+    "log": "run.googleapis.com%2Fstdout",
+    "event": "backup.failed",
+    "text_present": false,
+    "payload_keys": [
+      "error",
+      "event",
+      "execution_id",
+      "ts"
+    ],
+    "matched_categories": [
+      "exit 1",
+      "no output"
+    ]
+  },
+  {
+    "at": "2026-11-17T07:19:16.160310Z",
+    "log": "run.googleapis.com%2F%2Fvar%2Flog%2Fsystem",
+    "text_present": true,
+    "payload_keys": [],
+    "matched_categories": []
+  },
+  {
+    "at": "2026-11-17T07:15:24.990920Z",
+    "log": "run.googleapis.com%2Fstdout",
+    "event": "backup.started",
+    "text_present": false,
+    "payload_keys": [
+      "bucket",
+      "daily_object",
+      "database",
+      "event",
+      "execution_id",
+      "ts",
+      "weekly_planned"
+    ],
+    "matched_categories": []
+  }
+]

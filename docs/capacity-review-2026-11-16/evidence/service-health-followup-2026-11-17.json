@@ -1,0 +1,83 @@
+{
+  "observed_at": "2026-11-17T16:05:43.761Z",
+  "remote_writes": 0,
+  "database": "vantagemovers",
+  "probes": {
+    "deployment": {
+      "deployment_commit": "7d12c4b3e09ef1e0e87c16dabbb8cc816427d73a",
+      "recorded_at": "2026-11-17T16:05:00.496Z",
+      "vercel_deployment_id": "dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm"
+    },
+    "sheet_sync_jobs_current": [],
+    "sales_intelligence_jobs_current": [
+      {
+        "_id": "pending",
+        "count": 116,
+        "oldest_due": "2026-11-17T16:05:06.552Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      }
+    ],
+    "granot_automation_runs_current": [
+      {
+        "_id": "planning",
+        "count": 1,
+        "oldest_due": "2026-11-17T16:00:48.812Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      },
+      {
+        "_id": "applying",
+        "count": 13,
+        "oldest_due": "2026-11-17T16:00:45.465Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 0
+      },
+      {
+        "_id": "failed",
+        "count": 305,
+        "oldest_due": "2026-11-11T09:00:45.390Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 266
+      },
+      {
+        "_id": "queued",
+        "count": 539,
+        "oldest_due": "2026-11-11T09:00:48.700Z",
+        "expired_lease_count": 0,
+        "expired_plan_count": 388
+      }
+    ],
+    "sheet_sync_jobs_new_last_hour": [
+      {
+        "_id": "synced",
+        "count": 15
+      }
+    ],
+    "granot_webhook_receipts_new_last_hour": [
+      {
+        "_id": "completed",
+        "count": 6907
+      },
+      {
+        "_id": "retry_scheduled",
+        "count": 1
+      }
+    ],
+    "granot_automation_runs_created_last_hour": [
+      {
+        "_id": "completed",
+        "count": 31
+      },
+      {
+        "_id": "queued",
+        "count": 86
+      },
+      {
+        "_id": "applying",
+        "count": 13
+      }
+    ]
+  },
+  "object_id_window_basis": "New ObjectId rows during last hour; not updates or a causal delivery proof."
+}

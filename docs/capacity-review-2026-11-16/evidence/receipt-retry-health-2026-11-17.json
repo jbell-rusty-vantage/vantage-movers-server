@@ -1,0 +1,17 @@
+{
+  "observed_at": "2026-11-17T16:06:09.789Z",
+  "remote_writes": 0,
+  "rows": [
+    {
+      "observation_channel": "granot_webhook",
+      "processing": {
+        "technical_attempts": 0,
+        "match_attempt": 4,
+        "next_attempt_at": "2026-11-17T16:25:24.387Z",
+        "last_started_at": "2026-11-17T15:40:46.337Z"
+      },
+      "createdAt": "2026-11-17T15:25:24.390Z",
+      "updatedAt": "2026-11-17T15:40:46.458Z"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # W0/W5 application release — November 17, 2026
 
-The remaining outcome is sustained capacity relief with Sheet Sync, Sales Outreach and Granot behavior preserved. This release isolates capacity forecasting and Granot persistence efficiency; it does not finish the entire capacity action plan. Deployment and validation evidence will be recorded below only after verification.
+The remaining outcome is sustained capacity relief with Sheet Sync, Sales Outreach and Granot behavior preserved. The qualified capacity forecasting and Granot persistence subset is deployed and its identity and immediate health are verified. This does not finish the entire capacity action plan or establish sustained production savings.
 
 ## Source and scope
 
@@ -44,4 +44,20 @@ Exact isolated-tree application qualification passed: 4,024 offline tests discov
 
 The added `Capacity Release Qualification` workflow was independently reviewed. It matches production tooling and build configuration, adds lint, has read-only GitHub permissions and no deploy/alias/worker/migration step. It downloads production build configuration only after tests and uploads no build/environment artifacts. Its success does not replace the manual diagnostic-identity comparison before the `main` push. Runtime/test sources were frozen during validation; this reviewed workflow is a separately recorded configuration addition.
 
-Build-only qualification and production deployment remain pending. This document does not yet claim a new production release or completed capacity mission.
+Application commit: `7d12c4b3e09ef1e0e87c16dabbb8cc816427d73a`. [Build-only qualification run](https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/44116697063) passed typecheck, lint, full tests, production artifact build and built-retention verification. All 91 diagnostic identities and multiplicities match the deployed W1 baseline: no additions/removals. Only expected line shifts occur (`runWorkflow.ts` +2 lines; `readers.ts` +9). [Diagnostic comparison](evidence/w0-w5-qualification-build-parity-2026-11-17.json). This is inherited build-tooling debt, not a clean diagnostic log.
+
+After refetching and verifying `origin/main` still exactly matched the expected base, the reviewed commit was fast-forwarded to `main`. The [production pipeline](https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/44119191697) completed successfully, including built-function retention verification. Its 91 diagnostic identities/multiplicities also match the baseline with no additions/removals ([production comparison](evidence/w0-w5-production-build-parity-2026-11-17.json)).
+
+Production deployment **`dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm`**, created November 17 at approximately **11:00:49 a.m. Eastern**, is READY. The canonical alias `vantage-movers-main-server.vercel.app` points to it. Application and database health each returned HTTP 200 / `ok`; database ready state is 1. The database worker stamp at 11:05:00 a.m. Eastern agrees on both the full application commit and deployment ID. [Deployment and HTTP evidence](evidence/w0-w5-production-verification-2026-11-17.json).
+
+At **11:05:43 a.m. Eastern**, the pending Sheet Sync job had drained: no current pending/retrying/processing/failed jobs and 15 new last-hour jobs synced. The CSI job queue had 116 pending jobs, oldest due approximately 37 seconds earlier, no expired leases or dead letters. Granot runs created in the last hour included 31 completed, 86 queued and 13 applying runs; the historical failed count remained 305, and no active expired lease was reported. One last-hour webhook receipt remained scheduled for matching retry: it was created at 10:25:24 a.m., last updated at 10:40:46 a.m., **before deployment**, with zero technical attempts, match attempt 4 and next attempt 11:25:24 a.m. No error code was present. It is unresolved pre-existing matching work, not evidence of a newly introduced technical failure. [Queue follow-up](evidence/service-health-followup-2026-11-17.json), [bounded retry metadata](evidence/receipt-retry-health-2026-11-17.json). These are short mixed-release-window observations; they do not qualify a full slot, provider delivery, production write savings or sustained capacity relief.
+
+The existing credential also passed a raw-driver read-only rehearsal of the W0 data prerequisites: valid allocation statistics from all eight visible databases and valid oplog allocation/logical-limit values, with zero query failures. [Prerequisite evidence](evidence/w0-live-reader-prerequisites-2026-11-17.json). This is not an Owner-session UI or fleet-coverage test.
+
+## Separate recovery decision
+
+The [backup diagnosis and exact repair proposal](BACKUP-OOM-DIAGNOSIS-2026-11-17.md) now confirms OOM on both November 17 logical-backup attempts. Fresh Atlas snapshots remain available; current full-system restore proof remains absent. The proposed separate Cloud Run canary changes only the named job from 1 GiB to 2 GiB, permits one bounded execution under existing retry/time limits, and requires archive verification and an isolated local restore. It was not executed. Earlier failed days' causes remain unproved, and 2 GiB sufficiency is not assumed.
+
+The [three-reference-index proposal](W4-ATLAS-DIAGNOSIS-2026-11-17.md) and [exact 25-job export/restore evidence](W3-BOUNDED-COHORT-2026-11-17.md) are separately bounded. Neither is permission for an index operation, retention change or deletion. At the measured current yield, compaction remains deferred.
+
+The final delivery/recovery report was independently reviewed against the saved evidence. Queue wording preserves its actual scope (all CSI jobs and last-hour Granot runs, not a stage-filtered Outreach or manifest-joined complete-slot proof). No blocking source or reporting issue remained. The final documentation commit does not redeploy or change the application runtime.

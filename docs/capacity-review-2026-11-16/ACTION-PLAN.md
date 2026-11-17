@@ -1,5 +1,7 @@
 # Capacity implementation and release plan
 
+**Latest verified delivery, November 17:** [qualified W0/W5 application release](QUALIFIED-RELEASE-2026-11-17.md). The remaining waves below retain their observation, recovery and activation gates; this is not full-plan completion.
+
 **Original planning baseline:** November 16, 2026 New York. Scope: main-server behavior and its collection contracts; shared database ownership preserved. Use [SPECIFICATION.md](SPECIFICATION.md) for the measured case and invariants. Current W1 implementation, validation and deployment status is in [PHASE-ONE-RELEASE.md](PHASE-ONE-RELEASE.md). The remaining phases below are plans, not released or qualified behavior.
 
 ## Recommended order
