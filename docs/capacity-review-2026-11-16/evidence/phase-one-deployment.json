@@ -1,0 +1,149 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-11-17T01:58:06Z",
+  "headSha": "3327b31ce7b5a2f001e74febb0b2d3be79e47543",
+  "jobs": [
+    {
+      "completedAt": "2026-11-17T02:06:42Z",
+      "conclusion": "success",
+      "databaseId": 133759706929,
+      "name": "Build and deploy production",
+      "startedAt": "2026-11-17T01:58:09Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-17T01:58:11Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-17T01:58:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T01:58:12Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5",
+          "number": 2,
+          "startedAt": "2026-11-17T01:58:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T01:58:13Z",
+          "conclusion": "success",
+          "name": "Set up pnpm",
+          "number": 3,
+          "startedAt": "2026-11-17T01:58:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T01:58:17Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v5",
+          "number": 4,
+          "startedAt": "2026-11-17T01:58:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T01:58:29Z",
+          "conclusion": "success",
+          "name": "Install Vercel CLI",
+          "number": 5,
+          "startedAt": "2026-11-17T01:58:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T01:58:31Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-11-17T01:58:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T01:58:55Z",
+          "conclusion": "success",
+          "name": "Typecheck",
+          "number": 7,
+          "startedAt": "2026-11-17T01:58:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:04:00Z",
+          "conclusion": "success",
+          "name": "Test",
+          "number": 8,
+          "startedAt": "2026-11-17T01:58:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:04:01Z",
+          "conclusion": "success",
+          "name": "Pull Vercel production environment",
+          "number": 9,
+          "startedAt": "2026-11-17T02:04:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:05:47Z",
+          "conclusion": "success",
+          "name": "Build prebuilt production output",
+          "number": 10,
+          "startedAt": "2026-11-17T02:04:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:05:48Z",
+          "conclusion": "success",
+          "name": "Verify Granot retention in the built function",
+          "number": 11,
+          "startedAt": "2026-11-17T02:05:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:06:40Z",
+          "conclusion": "success",
+          "name": "Deploy prebuilt production",
+          "number": 12,
+          "startedAt": "2026-11-17T02:05:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:06:40Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v5",
+          "number": 22,
+          "startedAt": "2026-11-17T02:06:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:06:40Z",
+          "conclusion": "success",
+          "name": "Post Set up pnpm",
+          "number": 23,
+          "startedAt": "2026-11-17T02:06:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:06:40Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5",
+          "number": 24,
+          "startedAt": "2026-11-17T02:06:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-17T02:06:40Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-17T02:06:40Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/43999490293/job/133759706929"
+    }
+  ],
+  "status": "completed",
+  "updatedAt": "2026-11-17T02:06:43Z",
+  "url": "https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/43999490293"
+}

@@ -1,0 +1,24 @@
+{
+  "recorded_at": "2026-11-17T02:08:09.3069889Z",
+  "commit": "3327b31ce7b5a2f001e74febb0b2d3be79e47543",
+  "run": "https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/43999490293",
+  "deployment_id": "dpl_55kau2rKsicyWmnBx6Quyb2R7JgP",
+  "deployment_url": "vantage-movers-main-server-54tyi4hb9-vantage-4d3db9ef.vercel.app",
+  "ready_state": "READY",
+  "target": "production",
+  "aliases": [
+    "vantage-movers-main-server.vercel.app",
+    "vantage-movers-main-server-vantage-4d3db9ef.vercel.app"
+  ],
+  "health": {
+    "database_ok": true,
+    "database_http": 200,
+    "database_ready_state": 1,
+    "application_http": 200,
+    "database_name": "vantagemovers",
+    "source": "vantage_health connector after deployment",
+    "application_ok": true
+  },
+  "ci_log_sha256": "31cbadb1322033d403718f7640bd64ef22152d16835eb758e864c39daf7f3dd2",
+  "note": "Pipeline deploy URL matches inspected production alias. Database worker stamp is reported separately in production-after evidence."
+}

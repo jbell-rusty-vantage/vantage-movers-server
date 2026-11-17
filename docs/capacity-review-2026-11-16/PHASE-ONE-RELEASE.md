@@ -6,7 +6,7 @@ Owner-authorized release, November 16, 2026, America/New_York. This record cover
 
 Implemented: an unchanged Call move date no longer independently produces an applied business change, move provenance, EntityChange, Sheet Sync request or Daily Operations link fact. A fresh equal observation still becomes the temporal winner. First links and genuine updates retain their existing behavior.
 
-All pre-release checks passed. Main integration and deployment evidence will be recorded below. Production savings are not yet qualified.
+**Implemented, tested, integrated into main, pushed and deployed.** Runtime release: `3327b31ce7b5a2f001e74febb0b2d3be79e47543`. Production alias and database worker both attest the new deployment; application and database health pass. Phase 1 code release is complete. Live behavior across a representative processing slot and sustained capacity savings are not yet qualified.
 
 Baseline: fresh `origin/main` at `6aaf3bda`. Work uses an isolated `capacity-phase-one` worktree. The original `agent/site-preview-api` checkout, its uncommitted files and its preview commits were preserved. No preview commit is included in this release.
 
@@ -24,6 +24,8 @@ There are two different meanings of “nothing changed”:
 - **Accepted evidence:** a newer observation still establishes the newest known state. Its time and Observation ID must be recorded so an older delayed observation cannot overwrite it.
 
 Returning early would fix unnecessary writes while breaking ordering. The command instead commits one `already_current` Decision and temporal acceptance together under the revision/temporal fence. A revision-race replan that becomes empty also uses that path. The existing ordinary no-op path now accepts a missing previous winner; its old database predicate matched only existing older tuples, despite the planner treating no winner as newer.
+
+For example, the Lead already says “move November 20.” A 10:00 observation agrees, so no Sheet update is needed, but 10:00 must become the accepted evidence time. If a delayed 09:30 observation says “November 21,” it must lose. Suppressing every write for the 10:00 observation would let the older value win if the last accepted evidence were still 09:00. Idempotency and freshness solve different problems: replay must not duplicate effects, while fresh identical evidence must still fence older evidence.
 
 The executor's command status may still be `applied`, meaning that the command committed. The Synchronization Decision is `already_current` with no effects. These are different contracts; a command log is not proof that a business value changed.
 
@@ -48,7 +50,17 @@ Final pre-release checks:
 | `pnpm quality:test` | 33 passed, zero skipped/failures |
 | Exact staged diff / whitespace check | Passed; no preview commits or unrelated files |
 
-[Validation evidence](evidence/phase-one-validation.json) records commands, result summaries and SHA-256 hashes of retained local logs. The offline suite's gated database tests do not substitute for the separately executed replica suite. Release SHA and deployment evidence are recorded in the deployment section after the pipeline completes.
+[Validation evidence](evidence/phase-one-validation.json) records commands, result summaries and SHA-256 hashes of retained local logs. The offline suite's gated database tests do not substitute for the separately executed replica suite. CI repeated the full `pnpm test` command on Linux with the same 3,830 passed / 172 skipped / zero failed result.
+
+## Deployment verification
+
+Main was fast-forwarded from the verified baseline and pushed normally. [Production pipeline 43999490293](https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/43999490293) succeeded for `3327b31c`, including typecheck, tests, production build, packaged Granot retention verification and deployment. The deploy step completed **November 16 at 9:06:40 p.m. New York** (`2026-11-17T02:06:40Z`). [Pipeline evidence](evidence/phase-one-deployment.json).
+
+Vercel deployment `dpl_55kau2rKsicyWmnBx6Quyb2R7JgP` is READY in production. The pipeline's URL matches the target of `vantage-movers-main-server.vercel.app`: [deployed build](https://vantage-movers-main-server-54tyi4hb9-vantage-4d3db9ef.vercel.app). Application health returned HTTP 200; database health returned HTTP 200, `ok: true`, `readyState: 1`, database `vantagemovers`. At **9:08 p.m. New York**, the natural worker recorded the same release SHA and deployment ID. No cron endpoint was invoked for verification. [Verification evidence](evidence/phase-one-production-verification.json).
+
+The Vercel build emitted **91 distinct error annotations**, despite successful standalone typecheck and a successful build. Every annotation exactly matches the prior successful baseline deployment; none was added by this release. This is an inherited build-tooling limitation, not a clean diagnostic result or a newly bypassed check. Its separate repair remains outside W1. [Exact comparison](evidence/phase-one-build-annotations.json).
+
+Final documentation and observation evidence are saved in a subsequent documentation-only main commit with `[skip ci]`; that commit does not replace the deployed runtime revision above. The isolated replica container was stopped after validation. The original preview checkout and its uncommitted work remain preserved.
 
 ## Production measurement
 
@@ -58,6 +70,8 @@ Read-only baseline, November 16 **7–8 p.m. New York** (`00:00–01:00 UTC` Nov
 
 The Atlas connector required reauthentication. The baseline was obtained through the local operator environment in a separate read-only process. Production cron/apply endpoints were not invoked to manufacture evidence.
 
+Read-only post-release sample: **9:07:00–9:08:07 p.m. New York**, after deployment and before the next collector slot. There were no new Granot receipts, Call Decisions, Call EntityChanges, Call Sheet jobs or selected Daily Operations facts in that window. The database stamp confirmed the new runtime. With no qualifying activity, this sample proves neither the equal-date behavior in production nor a savings rate. [Post-release aggregate evidence](evidence/phase-one-production-after.json). The isolated replica proves behavior; a complete natural slot is the next production proof owed.
+
 ## Compatibility and rollback
 
 No environment flag, persisted configuration, schema, production index, retention, cadence or credential change. No history rewrite, deletion or compaction. Existing Decisions and EntityChanges remain immutable; official Booking/Cancellation reporting and saved Call admission evidence stay intact.
@@ -66,6 +80,6 @@ Rollback is a normal revert of the runtime release followed by the existing main
 
 ## Next session
 
-First qualify W1 across a complete daytime slot and overnight slot, then the next business day, 48-hour and seven-day checkpoints. Compare provenance-only Call changes and downstream nominations with the recorded baseline, verify real changes still propagate, and measure growth separately. A quiet partial window is insufficient qualification.
+First qualify W1 across a complete daytime slot and overnight slot, then the next business day, 48-hour and seven-day checkpoints. For this evening release, the next nominal collector slot is November 16 at 22:00 New York; the first daytime slot is November 17 at 08:00. Observe after each finishes processing, not merely after its scheduled start. Review next-business-day evidence November 17, 48-hour evidence November 18 evening and seven-day evidence November 23 evening. These are outstanding observation checkpoints, not newly created automations. Compare provenance-only Call changes and downstream nominations with the recorded baseline, verify real changes still propagate, and measure growth separately. A quiet partial window is insufficient qualification.
 
 The next code release is **W2 Release A**, per [ACTION-PLAN.md](ACTION-PLAN.md): avoid duplicate Outreach evaluation only when subject synchronization already durably requested it, preserving unchanged-subject repair. Durable coalescing, Sheet machinery, retention promotion/deletion, index changes and compaction remain separate releases. Do not apply the older blanket cleanup proposals.

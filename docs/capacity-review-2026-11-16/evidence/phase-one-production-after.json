@@ -1,0 +1,18 @@
+{
+  "observed_at": "2026-11-17T02:08:08.785Z",
+  "from": "2026-11-17T02:07:00.000Z",
+  "to": "2026-11-17T02:08:07.000Z",
+  "database": "vantagemovers",
+  "basis": "ObjectId creation window; counts of new rows, not disk savings or all queue updates",
+  "deployment": {
+    "deployment_commit": "3327b31ce7b5a2f001e74febb0b2d3be79e47543",
+    "recorded_at": "2026-11-17T02:08:00.284Z",
+    "vercel_deployment_id": "dpl_55kau2rKsicyWmnBx6Quyb2R7JgP"
+  },
+  "call_changes": [],
+  "call_decisions": [],
+  "recent_equal_call_sample": [],
+  "call_sheet_jobs": [],
+  "daily_facts": [],
+  "recent_receipts": []
+}
