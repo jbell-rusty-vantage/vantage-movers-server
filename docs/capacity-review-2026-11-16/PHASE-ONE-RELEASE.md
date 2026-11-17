@@ -10,6 +10,16 @@ Implemented: an unchanged Call move date no longer independently produces an app
 
 Baseline: fresh `origin/main` at `6aaf3bda`. Work uses an isolated `capacity-phase-one` worktree. The original `agent/site-preview-api` checkout, its uncommitted files and its preview commits were preserved. No preview commit is included in this release.
 
+## Owner handoff invariant — automatic Call Lead creation
+
+**Ordinary automatic application processing may create a new Call Lead only through the RingCentral inbound queue qualification pipeline. Qualification and admission come first; subsequent automatic updates and Sheet Sync operate on the already-admitted Call Lead.** A Granot observation, matching phone/contact, Form sibling, job number, Booking, enrichment result or Sheet row must never create a missing Call Lead or substitute for RingCentral qualification. Later capacity phases must preserve this boundary.
+
+The Owner refers to this as the RingCentral qualification cron path. Precisely, the current implementation has two RingCentral entry points: the scheduled Call Log scan and webhook-triggered final Call Log verification. Both must pass `vetRingCentralCallLogRecord` and `qualifiedCallFromCallLog` before the same `ingestRingCentralQualifiedCall` admission gate. A webhook preview alone cannot authorize creation. This is one shared qualification policy, not a separate unqualified creation path. See [RingCentral Call Lead Qualification](../knowledge/services/ringcentral-call-lead-qualification.md).
+
+**Scope of this clarification is automatic processing.** Manual/operator creation and the create-Call API surface are outside this statement; it neither changes nor certifies their availability. Phase 1 does not enable, remove or redesign those surfaces. Its regression tests prove Granot Call creation is refused without partial effects and that qualified existing Calls retain their update/Sheet behavior.
+
+Preserve previously accepted RingCentral evidence and the documented, closed Best Relocation historical/final-import admissions. Those existing records remain eligible under their saved admission rules; they are not permission for another automatic import, new Call creation bypass or fabricated RingCentral evidence. See [Call Lead admission and billing contract](../call-lead-billing.md).
+
 ## What went wrong, and what to learn
 
 The database already held the correct move date. The adapter that supplied a Call Lead to the planner omitted that field. The planner therefore compared the incoming date to an absent value and correctly concluded, from its incomplete input, that a change was needed. The write command trusted that plan. Although the date itself did not change, it stamped new move provenance and requested downstream work.
@@ -79,6 +89,8 @@ No environment flag, persisted configuration, schema, production index, retentio
 Rollback is a normal revert of the runtime release followed by the existing main deployment pipeline. Keep all acceptance/history already committed. A revert restores the old false-change behavior; it cannot and should not erase evidence recorded while the fix was active.
 
 ## Next session
+
+Carry the automatic Call Lead creation invariant above into every subsequent phase. Optimize updates and Sheet Sync only after admission; never recreate a missing Call as a repair or optimization shortcut.
 
 First qualify W1 across a complete daytime slot and overnight slot, then the next business day, 48-hour and seven-day checkpoints. For this evening release, the next nominal collector slot is November 16 at 22:00 New York; the first daytime slot is November 17 at 08:00. Observe after each finishes processing, not merely after its scheduled start. Review next-business-day evidence November 17, 48-hour evidence November 18 evening and seven-day evidence November 23 evening. These are outstanding observation checkpoints, not newly created automations. Compare provenance-only Call changes and downstream nominations with the recorded baseline, verify real changes still propagate, and measure growth separately. A quiet partial window is insufficient qualification.
 
