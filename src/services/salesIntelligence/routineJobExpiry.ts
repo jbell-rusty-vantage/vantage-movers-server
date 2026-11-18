@@ -19,6 +19,16 @@ const refresh = z.strictObject({
 });
 const estimates = /^sod:lead-change:(?:FormLead|CallLead):[a-f0-9]{24}:estimates-refresh:[a-f0-9]{24}$/;
 
+/** These two evaluation producers do not expose a per-cause job identity to callers. */
+export function isRoutineEvaluationKey(key: string, subjectId: string | undefined): boolean {
+  if (!subjectId || !id.safeParse(subjectId).success) return false;
+  const prefix = `sod:evaluate:${subjectId}:`;
+  if (!key.startsWith(prefix)) return false;
+  const cause = key.slice(prefix.length);
+  return /^r[1-9]\d*$/.test(cause)
+    || (cause.startsWith("estimates-refresh:") && estimates.test(cause.slice("estimates-refresh:".length)));
+}
+
 /** Classify the committed result. Repair, admission and unknown producers keep their existing dedupe window. */
 export function routineJobExpiry(stage: string, key: string, result: unknown, completed: Date): Date | undefined {
   let qualifies = false;
@@ -27,14 +37,7 @@ export function routineJobExpiry(stage: string, key: string, result: unknown, co
     qualifies = parsed.success && (parsed.data.reason === null || parsed.data.outcome === "unchanged");
   } else if (stage === "outreach_evaluate") {
     const parsed = evaluation.safeParse(result);
-    if (parsed.success) {
-      const prefix = `sod:evaluate:${parsed.data.subject_id}:`;
-      if (key.startsWith(prefix)) {
-        const cause = key.slice(prefix.length);
-        qualifies = /^r[1-9]\d*$/.test(cause)
-          || (cause.startsWith("estimates-refresh:") && estimates.test(cause.slice("estimates-refresh:".length)));
-      }
-    }
+    qualifies = parsed.success && isRoutineEvaluationKey(key, parsed.data.subject_id);
   }
   return qualifies ? new Date(completed.getTime() + 3 * 86_400_000) : undefined;
 }

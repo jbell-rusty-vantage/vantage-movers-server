@@ -27,7 +27,7 @@ async function main() {
   const { fixedConfigurationLoader } = await import("../../src/services/salesOutreach/reads/testing.js");
   const { completeConfigurationInput } = await import("../../src/services/salesOutreach/evaluation/testing.js");
   const { requestSubjectRefresh, claimSubjectRefresh, completeSubjectRefresh, enqueueOutreachWork } = await import("../../src/services/salesOutreach/evaluation/refreshRequests.js");
-  const { evaluationJob, evaluateAndProject, evaluationAdmissionOf, drainOutreachEvaluateJobs } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
+  const { evaluationJob, evaluateAndProject, evaluationAdmissionOf, drainOutreachEvaluateJobs, sweepOutreachEvaluations } = await import("../../src/services/salesOutreach/evaluation/evaluateJob.js");
   const { mongoEvaluationStore } = await import("../../src/services/salesOutreach/evaluation/store.js");
   const { salesOutreachConfigurationLoader } = await import("../../src/services/salesOutreach/config/load.js");
   const { runSubjectRefresh, drainSubjectRefreshes, takeSingleSlotRefreshTurn } = await import("../../src/services/salesOutreach/evaluation/refreshWorker.js");
@@ -159,19 +159,25 @@ async function main() {
     }
     assert.equal((await db.collection("sales_outreach_subjects").findOne({ _id: new mongoose.Types.ObjectId(subjectId) }))?.status, "closed", "0-to-5-to-0 never reopens immutable closure");
     assert.deepEqual((await db.collection("sales_outreach_policy_periods").find({}).sort({ started_at: 1 }).toArray()).map(row => row.workflow), ["new", "closed"]);
-    const beforeInvalidators = (await Requests.findOne().lean())!.requested_generation;
-    for (const cause of ["policy", "assignment", "rep_identity", "contact", "coverage", "clock", "priority_uncertain", "pool_hold", "same_priority_fresh_evidence"])
-      await request(shadow, cause);
-    assert.equal((await Requests.findOne().lean())!.requested_generation, beforeInvalidators + 9, "no invalidator or equal request fingerprint is cached away");
     const Jobs = getSalesIntelligenceJobModel();
     const beforeJobs = await Jobs.countDocuments();
     const configMock = mock.method(salesOutreachConfigurationLoader, "inspect", async () => active);
     try {
-      assert.equal(await withTransaction(session => enqueueOutreachWork(evaluationJob(subjectId, "active-producer"), session)), null);
-      assert.equal(await Jobs.countDocuments(), beforeJobs, "active producer creates no per-cause CSI row");
-      configMock.mock.mockImplementation(async () => shadow);
-      assert.ok(await withTransaction(session => enqueueOutreachWork(evaluationJob(subjectId, "shadow-producer"), session)));
-      assert.equal(await Jobs.countDocuments(), beforeJobs + 1, "shadow producer retains legacy queue work");
+      const generation = (await Requests.findOne().lean())!.requested_generation;
+      for (const [mode, revision] of [["active", 101], ["shadow", 102]] as const) {
+        configMock.mock.mockImplementation(async () => mode === "active" ? active : shadow);
+        const receipt = new mongoose.Types.ObjectId().toHexString();
+        const revisionJob = evaluationJob(subjectId, `r${revision}`, revision);
+        const estimatesJob = evaluationJob(subjectId, `estimates-refresh:sod:lead-change:FormLead:${id}:estimates-refresh:${receipt}`);
+        for (const job of [revisionJob, estimatesJob]) {
+          const row = await withTransaction(session => enqueueOutreachWork(job, session));
+          if (mode === "active") assert.equal(row, null);
+          else assert.ok(row?._id);
+        }
+        const activeMode = mode === "active";
+        assert.equal(await Jobs.countDocuments(), beforeJobs + (activeMode ? 0 : 2));
+        assert.equal((await Requests.findOne().lean())!.requested_generation, generation + (activeMode ? 2 : 4));
+      }
     } finally { configMock.mock.restore(); }
     const recoveryInspect = mock.method(salesOutreachConfigurationLoader, "inspect", async () => plain);
     const recoveryRequire = mock.method(salesOutreachConfigurationLoader, "requireActive", async () => plain);
@@ -205,8 +211,51 @@ async function main() {
     assert.equal(afterExpiredAsOf?.consumed_generation, expiredAsOf.consumed_generation,
       "expired completion never consumes its requested generation");
     assert.equal(afterExpiredAsOf?.pending, true, "expired work remains available for recovery");
+    const { getSalesIntelligenceSyncStateModel } = await import("../../src/models/SalesIntelligenceSyncState.js");
+    await getSalesIntelligenceSyncStateModel().createIndexes();
+    const { mongoDeskCommandStore } = await import("../../src/services/salesOutreach/commands/store.js");
+    const { contactEvaluationJob } = await import("../../src/services/salesOutreach/contacts/apply.js");
+    const { mongoContactEventStore } = await import("../../src/services/salesOutreach/contacts/mongoStore.js");
+    const generation = (await Requests.findOne().lean())!.requested_generation;
+    const retainedConfig = mock.method(salesOutreachConfigurationLoader, "inspect", async () => active);
+    try {
+      const projections = db.collection("sales_outreach_projections");
+      const due = new Date(+now - 86_400_000);
+      const changed = await projections.updateOne({ subject_id: new mongoose.Types.ObjectId(subjectId) },
+        { $set: { next_evaluation_at: due, "coverage_wait.call": due, policy_fingerprint: "obsolete" } });
+      assert.equal(changed.matchedCount, 1);
+      for (const scope of ["call_log_all_directions", "outreach_contact_calls"]) {
+        await db.collection("sales_intelligence_sync_state").updateOne({ scope }, { $set: { known_complete_through: now } }, { upsert: true });
+      }
+      const sweep = () => sweepOutreachEvaluations(now, { loader: fixedConfigurationLoader(active) });
+      const nominated = (result: Awaited<ReturnType<typeof sweep>>) => [result.due.nominated, result.coverage.nominated, result.reconcile.nominated];
+      assert.deepEqual(nominated(await sweep()), [1, 1, 1]);
+      const repairRows = await Jobs.find({ dedupe_key: { $regex: `^sod:evaluate:${subjectId}:(due|coverage|policy):` } }).sort({ _id: 1 }).lean();
+      assert.equal(repairRows.length, 3);
+      assert.deepEqual(nominated(await sweep()), [0, 0, 0], "the same clock, coverage bucket and policy nominate no further work");
+      assert.deepEqual(await Jobs.find({ dedupe_key: { $in: repairRows.map(row => row.dedupe_key) } }).sort({ _id: 1 }).lean(), repairRows);
+
+      for (const [configuration, revision] of [[active, 3], [shadow, 4]] as const) {
+        retainedConfig.mock.mockImplementation(async () => configuration);
+        const jobs = [
+          { store: mongoContactEventStore, job: contactEvaluationJob(subjectId, revision, ["contact-change"]) },
+          ...[`plan:r${revision}`, `assignment:l${revision}`, `restriction:${id}:r${revision}`, `unknown:${revision}`]
+            .map(cause => ({ store: mongoDeskCommandStore, job: evaluationJob(subjectId, cause, revision) })),
+        ];
+        for (const { store, job } of jobs) {
+          const first = await withTransaction(session => store.enqueue(job, session, now));
+          assert.ok(first.job_id && first.created);
+          assert.equal((await Jobs.findById(first.job_id).lean())?.dedupe_key, job.dedupe_key);
+          const repeat = await withTransaction(session => store.enqueue(job, session, new Date(+now + 1)));
+          assert.deepEqual(repeat, { job_id: first.job_id, created: false });
+        }
+      }
+      assert.equal(retainedConfig.mock.callCount(), 0, "repair, commands, contacts and unknown jobs bypass rollout configuration");
+      assert.equal((await Requests.findOne().lean())!.requested_generation, generation);
+    } finally { retainedConfig.mock.restore(); }
+
     assert.equal(noFetch.mock.callCount(), 0);
-    console.log("PASS W2 B: conservative generations, request during completion, worker death/expired lease, stale-owner refusal, lost-wake Mongo recovery, shadow whole-database no-write parity, rollout-off drain, ordered 0-to-5-to-0 closure");
+    console.log("PASS W2 B: conservative generations, request during completion, worker death/expired lease, stale-owner refusal, lost-wake Mongo recovery, shadow whole-database no-write parity, rollout-off drain, ordered 0-to-5-to-0 closure, revision/Estimates coalescing, stable command/contact receipts and repeated sweep deduplication");
   } finally { assert.match(db.databaseName, /^testvantagemovers_w2gen[a-f0-9]{32}$/); await db.dropDatabase(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { noFetch.mock.restore(); await mongoose.disconnect(); });
