@@ -20,6 +20,8 @@ Install the sparse scheduled-review index with the idempotent `ops/granot-retent
 
 For an on-demand restore, run `ops/granot-read-archived-evidence.ts --run <run ID> <new private BSON file>` for the original run. Use `--receipt <receipt ID> <new private BSON file>` for a retired webhook, extension operation or effect-bearing HTTP receipt. Routine HTTP history is indexed by job and month. Its original operation result is indexed by run/action.
 
+Enroll the legacy tail with `ops/granot-enroll-scheduled-archives.ts --migrate <production alias cutover UTC> [pages] [page size]`. Each invocation processes at most 128 pages of 500 IDs. The migration checkpoints examined and enrolled totals transactionally at each page. Scheduled system runs in all statuses keep their original action deadline. One fixed-range pass can begin immediately. A final pass catches old invocations that overlapped the cutover, once the server's 800-second maximum invocation lifetime has elapsed. A first invocation after that interval can finish in a single pass. Repeat with the same cutover until `--migration-status` reports `complete`. Later calls return the existing checkpoint.
+
 ## Rollout and historical review
 
 Run ops/granot-retention-install.ts --install-shadow using the main server environment. It first proves the sparse purge indexes have no pre-existing date to activate before converting them to TTL. Reinstallation preserves the original cutoff and mode. Shadow archives eligible future chains and records observations without issuing purge dates. Future mode stamps eligible new chains. Require archive restoration, replay/freshness parity, protected-record exclusions and shadow evidence before promotion. Keep the original cutoff fixed.

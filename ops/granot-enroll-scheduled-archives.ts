@@ -1,21 +1,25 @@
 import dns from "node:dns";
 import { MongoClient } from "mongodb";
+import { legacyScheduled, migrateScheduledEnrollment, migrationStatus } from "./granot-scheduled-enrollment-migration";
 
 /** Admit a bounded page of verified-terminal scheduled runs. Only their storage expiry changes. */
 async function main() {
-  const [mode, rawCutoff, rawLimit] = process.argv.slice(2);
+  const [mode, rawCutoff, rawLimit, rawSize] = process.argv.slice(2);
   const until = new Date(rawCutoff ?? "");
-  const limit = Number(rawLimit ?? 200);
-  if (!["--preview", "--apply"].includes(mode) || !Number.isFinite(+until) || +until > Date.now() ||
-      !Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Supply --preview|--apply <past UTC cutoff> [1..1000]");
+  const limit = Number(rawLimit ?? (mode === "--migrate" ? 8 : 200));
+  if (!["--preview", "--apply", "--migrate", "--migration-status"].includes(mode) ||
+      (mode !== "--migration-status" && (!Number.isFinite(+until) || +until > Date.now() ||
+      !Number.isInteger(limit) || limit < 1 || limit > 1000))) throw new Error("Supply a valid mode, cutover and page bounds");
   if (process.env.MONGO_DNS_SERVERS) dns.setServers(process.env.MONGO_DNS_SERVERS.split(",").map(v => v.trim()));
   const client = new MongoClient(process.env.MONGO_URI!, { appName: "granot-terminal-archive-enrollment", maxPoolSize: 1 });
   try {
     const db = client.db("vantagemovers");
+    if (mode === "--migrate" || mode === "--migration-status") {
+      console.log(JSON.stringify(mode === "--migrate" ? await migrateScheduledEnrollment(db, until, limit, Number(rawSize ?? 200)) : await migrationStatus(db)));
+      return;
+    }
     const runs = db.collection("granot_automation_runs");
-    const predicate = { status: "completed", operation: "estimates_in_process", workflow: "apply",
-      "request_snapshot.scheduled_slot_key": { $type: "string" }, expires_at: { $lte: until }, completed_at: { $lte: until },
-      archive_summary: { $exists: false }, archive_review_at: { $exists: false }, purge_at: { $type: "date" } };
+    const predicate = { ...legacyScheduled, status: "completed", expires_at: { $lte: until }, completed_at: { $lte: until } };
     const rows = await runs.find(predicate, { projection: { _id: 1, expires_at: 1 }, sort: { expires_at: 1 }, limit, maxTimeMS: 5000 }).toArray();
     let enrolled = 0;
     if (mode === "--apply" && rows.length) {
