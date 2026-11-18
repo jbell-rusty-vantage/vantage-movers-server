@@ -141,7 +141,7 @@ export function validateEstimatesRunSelection(request: EstimatesRunSelection & {
 type EstimatesScheduleInput = {
   slotKey:string; lane:EstimatesLane; dateWindow:{from:string;to:string}; windows:Array<{from:string;to:string}>;
   initiator:DurableActor; afterAllCoverage?:{slotKey:string;totalWindows:number};
-  alsoPoolRefresh?:boolean;
+  alsoPoolRefresh?:boolean; scheduledAt?:Date;
 };
 
 /** First insert freezes the complete declared scope even when the provider date directory changes mid-slot. */
@@ -150,7 +150,7 @@ export async function createEstimatesSchedule(input:EstimatesScheduleInput) {
   if(!input.windows.length || input.windows.length>1000 || input.windows.some(w=>getGranotDateWindowProblem(w)))throw new GranotRunConflict('INVALID_SCHEDULE_SCOPE','Invalid Estimates schedule scope');
   try {
     await GranotEstimatesScheduleSlot.updateOne({_id:input.slotKey},{$setOnInsert:{
-      lane:input.lane,date_window:input.dateWindow,windows:input.windows,scheduled_at:estimatesSlotInstant(input.slotKey),createdAt:new Date(),updatedAt:new Date(),
+      lane:input.lane,date_window:input.dateWindow,windows:input.windows,scheduled_at:input.scheduledAt ?? estimatesSlotInstant(input.slotKey),createdAt:new Date(),updatedAt:new Date(),
       after_all_slot:input.afterAllCoverage?.slotKey ?? null,after_all_windows:input.afterAllCoverage?.totalWindows ?? null,
       initiator:input.initiator,dispatched:false,also_pool_refresh:input.alsoPoolRefresh===true,pool_manifest_created:false,purge_at:new Date(Date.now()+8*86400000),
     }},{upsert:true,timestamps:false});
@@ -750,7 +750,7 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane, enabled
       ...(current?.held_rows > 0 ? ["held_rows"] : []),
       ...(current?.unapplied_actions > 0 ? ["unapplied_actions"] : []),
       ...(current && (current.completed_windows < current.expected_windows || current.unapplied_actions > 0) ? ["synchronization_pending"] : []),
-      ...(estimatesCoverageIsLate(now, complete ? new Date(complete.scheduled_at) : null, latestSlot) ? ["late_slot"] : []),
+      ...(complete?._id !== graceElapsed.slotKey && estimatesCoverageIsLate(now, complete ? new Date(complete.scheduled_at) : null, latestSlot) ? ["late_slot"] : []),
     ] : [],
     oldest_uncovered_range: ranges[0] ?? null,
     held_rows: current?.held_rows ?? 0,

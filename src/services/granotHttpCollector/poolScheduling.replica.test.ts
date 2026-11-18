@@ -1,3 +1,4 @@
+import { poolCronDuties } from './poolCron';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import mongoose from 'mongoose';
@@ -86,7 +87,10 @@ test('interrupted dispatcher resumes missing windows outside its hour and freeze
   await resumeEstimatesSchedules({inspect:async()=>config});
   assert.equal(await GranotAutomationRun.countDocuments({'request_snapshot.scheduled_coverage.slotKey':slotKey}),3);
   assert.equal((await GranotEstimatesScheduleSlot.findById(slotKey).lean())?.dispatched,true);
-  const frozen=await createEstimatesSchedule({slotKey,lane:'pool_discovery',dateWindow:{from:'01/01/2020',to:'10/14/2026'},windows:[...windows,{from:'04/01/2020',to:'04/30/2020'}],initiator:actor});
+  const migratedDuty = poolCronDuties(new Date('2026-10-14T12:00:00Z')).find(duty => duty.lane === 'pool_discovery')!;
+  const frozen=await createEstimatesSchedule({slotKey:migratedDuty.slotKey,scheduledAt:new Date('2026-10-14T12:00:00Z'),lane:'pool_discovery',dateWindow:{from:'01/01/2020',to:'10/14/2026'},windows:[...windows,{from:'04/01/2020',to:'04/30/2020'}],initiator:actor});
+  assert.equal(frozen.dispatched,true);
+  assert.equal(frozen.scheduled_at?.toISOString(),'2026-10-14T10:00:00.000Z');
   assert.equal(frozen.windows.length,3,'a retry cannot silently expand its declared scope');
   await dispatchEstimatesSchedule(slotKey);
   assert.equal(await GranotAutomationRun.countDocuments({'request_snapshot.scheduled_coverage.slotKey':slotKey}),3);

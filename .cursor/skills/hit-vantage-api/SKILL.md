@@ -396,6 +396,6 @@ The Sales Intelligence crons use `CRON_SECRET` (`Authorization: Bearer`), not th
 /api/cron/granot-estimates-in-process               0 * * * *
 ```
 
-`/api/cron/granot-estimates-in-process` uses the same `CRON_SECRET` and returns immediately unless the America/New_York hour is 8, 13, or 18.
+`/api/cron/granot-estimates-in-process` uses the same `CRON_SECRET` and admits the [scheduled New York hours](../../../docs/knowledge/services/granot-http-collector.md).
 
 The cutover runbook (`docs/server-admin-slimming/CUTOVER.md`) triggers the job-recovery cron once by hand after the slim deploy.

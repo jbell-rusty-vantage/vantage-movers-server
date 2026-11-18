@@ -1,5 +1,5 @@
 /** America/New_York hours at which the Estimates cron collects and applies. */
-export const ESTIMATES_RUN_HOURS = [6, 9, 13, 17, 21] as const;
+export const ESTIMATES_RUN_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] as const;
 
 const NEW_YORK = "America/New_York";
 

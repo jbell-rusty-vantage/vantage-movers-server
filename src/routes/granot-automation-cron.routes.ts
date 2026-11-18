@@ -64,10 +64,14 @@ router.all(
       }
       for (const pool of poolActive ? poolDuties : []) {
         // ALL freezes and creates its correlated refresh once; discovery is independent.
-        if (pool.lane === 'pool_discovery') await createEstimatesSchedule({
-          slotKey: pool.slotKey, lane: pool.lane, dateWindow: pool.dateWindow,
-          windows: poolDiscoveryDateChunks(pool.dateWindow), initiator: estimatesCronActor(),
-        });
+        if (pool.lane === 'pool_discovery') {
+          const discovery = await createEstimatesSchedule({
+            slotKey: pool.slotKey, lane: pool.lane, dateWindow: pool.dateWindow,
+            scheduledAt: new Date(Math.floor(+now / 3_600_000) * 3_600_000),
+            windows: poolDiscoveryDateChunks(pool.dateWindow), initiator: estimatesCronActor(),
+          });
+          if (discovery.dispatched) continue;
+        }
         slotsToDispatch.push(pool.slotKey);
       }
       for(const slotKey of slotsToDispatch)runs.push(...await dispatchEstimatesSchedule(slotKey));
