@@ -79,6 +79,22 @@ async function main() {
   await Jobs.updateOne({ _id: failed._id }, { $set: { next_attempt_at: new Date(0) } });
   assert.equal((await run(String(failed._id))).result?.evaluation_requested, true);
   assert.equal(await Jobs.countDocuments({ stage: "outreach_evaluate" }), 5);
+  const receiptId = String(new mongoose.Types.ObjectId());
+  const ordinary = await callback(receiptId);
+  assert.equal((await run(String(ordinary._id))).result?.outcome, "unchanged");
+  const stored = await Jobs.findById(ordinary._id).lean();
+  assert.equal(stored!.routine_purge_at!.getTime() - stored!.completed_at!.getTime(), 3 * 86_400_000);
+  const subjectBeforeReplay = await db.collection("sales_outreach_subjects").findOne({ lead_id: id });
+  const periodsBeforeReplay = await db.collection("sales_outreach_policy_periods").countDocuments({});
+  const evaluationsBeforeReplay = await Jobs.countDocuments({ stage: "outreach_evaluate" });
+  // Simulate the TTL monitor deleting a completed eligible row, then redeliver its old receipt.
+  await Jobs.deleteOne({ _id: ordinary._id, status: "completed", routine_purge_at: stored!.routine_purge_at });
+  const redelivery = await callback(receiptId);
+  assert.notEqual(String(ordinary._id), String(redelivery._id));
+  assert.equal((await run(String(redelivery._id))).result?.outcome, "unchanged");
+  assert.deepEqual(await db.collection("sales_outreach_subjects").findOne({ lead_id: id }), subjectBeforeReplay);
+  assert.equal(await db.collection("sales_outreach_policy_periods").countDocuments({}), periodsBeforeReplay);
+  assert.equal(await Jobs.countDocuments({ stage: "outreach_evaluate" }), evaluationsBeforeReplay);
   console.log("PASS W2 A: fresh evidence, revision-only suppression, concurrent duplicate lease, unchanged repair, bookkeeping repair, transactional rollback and retry");
   await db.dropDatabase();
 }

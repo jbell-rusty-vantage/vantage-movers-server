@@ -13,6 +13,7 @@ import {
   SALES_INTELLIGENCE_JOB_INDEXES,
 } from "../../models/SalesIntelligenceJob";
 import { CsiError } from "./auth";
+import { routineJobExpiry } from "./routineJobExpiry";
 import { assertIndexes, payloadHash } from "./transactions";
 export type JobInput = {
   dedupe_key: string;
@@ -259,12 +260,15 @@ export async function completeCsiJob<T>(
     if (!held) throw new CsiError("LEASE_LOST");
     const result = await mutation(session);
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
+    const completed_at = new Date();
+    const routine_purge_at = routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at);
     const updated = await Model.updateOne(
       fence(lease),
       {
         $set: {
           status: "completed",
-          completed_at: new Date(),
+          completed_at,
+          ...(routine_purge_at ? { routine_purge_at } : {}),
           lease_owner: null,
           leased_until: null,
           ...(stored === undefined ? {} : { result: stored }),
