@@ -26,7 +26,7 @@ export async function getPoolAccess(subjectId: string, configuration: ActiveConf
 
 export async function authorizedPoolWorks(configuration: ActiveConfiguration): Promise<PoolAccess[]> {
   if (!poolEnabled(configuration.value)) return [];
-  const works = await getSalesOutreachPoolWorkModel().find({ active: true }).sort({ subject_id: 1 }).lean();
+  const works = await getSalesOutreachPoolWorkModel().find({ active: true }).sort({ subject_id: 1 }).batchSize(1000).lean();
   const result: PoolAccess[] = [];
   for (let offset = 0; offset < works.length; offset += 1000) {
     const page = works.slice(offset, offset + 1000);
@@ -113,7 +113,9 @@ export async function readPoolSummary(works: readonly PoolAccess[], configuratio
   }
   const date = newYorkBusinessDay(now), bounds = newYorkDayBounds(date);
   // Separate actual-caller breakdown. The canonical event/goal row remains the sole goal authority.
-  const history = configuration.value.pool?.enabled ? await getSalesOutreachPoolWorkModel().find({}).lean() : [];
+  const history = configuration.value.pool?.enabled ? await getSalesOutreachPoolWorkModel().find({
+    episodes: { $elemMatch: { started_at: { $lt: bounds.end }, $or: [{ ended_at: null }, { ended_at: { $gt: bounds.start } }] } },
+  }, { _id: 0, subject_id: 1, episodes: 1 }).batchSize(1000).lean() : [];
   const intervals = history.flatMap((w) => w.episodes.filter((e) => +e.started_at < +bounds.end && (!e.ended_at || +e.ended_at > +bounds.start)).map((e) => ({
     subject_id: w.subject_id, event_at: { $gte: new Date(Math.max(+e.started_at, +bounds.start)), $lt: new Date(Math.min(+(e.ended_at ?? bounds.end), +bounds.end)) },
   })));

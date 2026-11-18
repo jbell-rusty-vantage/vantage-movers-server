@@ -1028,6 +1028,70 @@ async function main() {
   assert.equal((await c7Remap({ account, extension_id: "101" })).changed, 0, "C7: a replay changes nothing");
   assert.deepEqual(await c7Refresh(new Date(c7Now.getTime() + SMS_PENDING_REFRESH_MS)), { skipped: false, mailboxes: 2, written: 2, identity: 0, association: 0, unattributed: 0 });
 
+  // Exercise the normal producer and leased workers after terminal progress ages out.
+  const { enqueueOutreachContactChangeJobs } = await import("../../src/services/salesOutreach/capture/contactChangeWake.js");
+  const { runOutreachRepDayJob } = await import("../../src/services/salesOutreach/contacts/jobs.js");
+  const retainedDay = "2026-10-07";
+  const retainedSource = await c4Call(retainedDay + "T14:00:00Z", "retention-replay", number);
+  const retainedAt = new Date(retainedDay + "T19:00:00Z");
+  const retainedEvent = () => Events.findById(contactEventId("call", retainedSource.source_id)).lean();
+  const worker = { loader: fixedConfigurationLoader(configuration), now: () => retainedAt, publish: async () => undefined };
+  const runRevision = async (revision: string) => {
+    const [work] = await withTransaction((session) => enqueueOutreachContactChangeJobs(
+      [{ ...retainedSource, source_revision: revision }], session, retainedAt, { wanted: async () => true }));
+    const outcome = await runOutreachContactChangeJob(work!.job_id, worker);
+    assert.equal(outcome.status, "completed");
+    return { id: work!.job_id, result: outcome.result! };
+  };
+  const countsForDay = async () => {
+    const projection = await Rows.findOne({ agent_id: alice, business_day: retainedDay }).lean();
+    return [projection?.actual_confirmed_all, projection?.actual_confirmed_eligible];
+  };
+  const drainRecount = async (ids: readonly string[]) => {
+    const job = await Jobs.findOne({ _id: { $in: ids }, stage: "outreach_rep_day" }).lean();
+    assert.ok(job);
+    const outcome = await runOutreachRepDayJob(String(job._id), { ...worker, publishGoal: async () => undefined });
+    assert.equal(outcome.status, "completed");
+    return String(job._id);
+  };
+  const firstRevision = await runRevision("r1");
+  assert.equal(firstRevision.result.changed, 1);
+  const recountId = await drainRecount(firstRevision.result.created_job_ids);
+  assert.deepEqual(await countsForDay(), [1, 1]);
+  const credited = await retainedEvent();
+  assert.ok(credited && String(credited.subject_id) === String(subjectId));
+  const completedIds = [firstRevision.id, recountId];
+  for (const job of await Jobs.find({ _id: { $in: completedIds } }).lean()) {
+    assert.ok(job.completed_at && job.routine_purge_at);
+    assert.equal(+job.routine_purge_at - +job.completed_at, 3 * 86_400_000);
+  }
+  // Advance only the two deadlines in this isolated database and observe MongoDB's TTL monitor.
+  const expired = await Jobs.updateMany({ _id: { $in: completedIds }, status: "completed", routine_purge_at: { $type: "date" } },
+    { $set: { routine_purge_at: new Date(Date.now() - 60_000) } });
+  assert.equal(expired.modifiedCount, 2);
+  const ttlWait = Date.now() + 90_000;
+  while (await Jobs.exists({ _id: { $in: completedIds } })) {
+    assert.ok(Date.now() < ttlWait, "MongoDB TTL monitor removes both qualified completions");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  assert.ok(await Jobs.exists({ _id: wakeJob!._id, status: "completed", routine_purge_at: null }));
+  assert.ok(await getCallInteractionModel().exists({ _id: retainedSource.source_id }));
+  const replayedRevision = await runRevision("r1");
+  assert.equal(replayedRevision.result.changed, 0);
+  assert.deepEqual(replayedRevision.result.created_job_ids, []);
+  assert.equal((await retainedEvent())?.input_fingerprint, credited.input_fingerprint);
+  assert.deepEqual(await countsForDay(), [1, 1]);
+  await getCallInteractionModel().updateOne({ _id: retainedSource.source_id }, {
+    $set: { provider_result: "Stopped", provider_connected: false }, $inc: { projection_revision: 1 },
+  });
+  const revokedAttempt = await runRevision("r2");
+  assert.equal(revokedAttempt.result.changed, 1);
+  await drainRecount(revokedAttempt.result.created_job_ids);
+  assert.deepEqual(await countsForDay(), [0, 0]);
+  assert.equal((await retainedEvent())?.goal_credit, "none");
+  assert.equal(await Events.countDocuments({ source_id: retainedSource.source_id }), 1);
+  assert.ok(await models.getSalesOutreachPolicyPeriodModel().exists({ subject_id: subjectId }));
+
   console.log(JSON.stringify({ ok: true, database }));
 }
 

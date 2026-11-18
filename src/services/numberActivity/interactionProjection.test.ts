@@ -137,6 +137,21 @@ test("one party's sequence never suppresses another party in the same delivery",
   assert.equal(outcome.next.max_observed_webhook_sequence, 5);
 });
 
+test("a late party delivery preserves the destination corrected by a settled Call Log", () => {
+  const id = "s-desk-correction";
+  const first = callLog(null, outboundMissedCallLog(id)).next;
+  const correction = { ...outboundMissedCallLog(id), to: { phoneNumber: SYNTHETIC_CUSTOMER }, lastModifiedTime: at(100) };
+  const corrected = callLog(first, correction).next;
+  assert.equal(corrected.external_e164, SYNTHETIC_CUSTOMER);
+  const delivery = outboundUnansweredDeliveries(id).disconnected;
+  const late = webhook(corrected, delivery, at(150)).next;
+  assert.equal(late.external_e164, corrected.external_e164);
+  assert.equal(late.parties.find(p => p.role === "external")?.e164, corrected.external_e164);
+  assert.equal(late.direction, "Outbound");
+  assert.ok(late.sources.includes("webhook"), "party evidence is retained");
+  assert.equal(webhook(late, delivery, at(180)).changed, false);
+});
+
 test("out-of-order and late events never regress terminal or connected facts", () => {
   const d = outboundUnansweredDeliveries();
   let projected = webhook(null, d.disconnected).next;

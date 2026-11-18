@@ -180,14 +180,22 @@ const GENERATION_EXACT_LIMIT = 5000;
 /** Entitlement has already been freshly checked; shared duty state now precedes every query operation. */
 export function poolOverlayPipeline(match: QueueMatch): mongoose.PipelineStage[] {
   if (!match.pool_overrides?.length) return [];
-  return [{ $replaceWith: { $mergeObjects: ["$$ROOT", { $switch: {
-    branches: match.pool_overrides.map((o) => ({ case: { $eq: ["$subject_id", oid(o.subject_id)] }, then: { $literal: o.fields } })), default: {},
-  } }] } }];
+  const bySubject = Object.fromEntries(match.pool_overrides.map(({ subject_id, fields }) => [subject_id, fields]));
+  return [{ $replaceWith: { $mergeObjects: ["$$ROOT", {
+    $getField: { input: { $literal: bySubject }, field: { $toString: "$subject_id" } },
+  }] } }];
 }
 
 /** Restrict the indexed input before replacing fields, then recheck the complete effective row. */
 export function poolQueuePipeline(match: QueueMatch, filter: Filter): mongoose.PipelineStage[] {
   const ids = (match.pool_subject_ids ?? match.pool_overrides?.map((override) => override.subject_id) ?? []).map(oid);
+  // A freshly authorized Pool row cannot enter New, Quoted or the non-Pool Other tab.
+  // Exclude its stored projection even if that projection still has an older workflow.
+  const excludesPool = match.workflow === "other" ? match.exclude_pool_priority
+    : match.workflow && match.workflow !== "none";
+  if (excludesPool && match.pool_overrides?.every(({ fields }) => fields.workflow === "none" && fields.priority_raw === "9")) {
+    return [{ $match: { $and: [filter, { subject_id: { $nin: match.pool_overrides.map((o) => oid(o.subject_id)) } }] } }];
+  }
   // An override may change assignment, workflow or due state. Include its id even when the stored
   // row fails the filter, so fresh completion/receiver changes still precede filtering and keysets.
   const candidates = match.pool_subject_ids ? { subject_id: { $in: ids } } : { $or: [filter, { subject_id: { $in: ids } }] };

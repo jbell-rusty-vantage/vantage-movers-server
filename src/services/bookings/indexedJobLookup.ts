@@ -5,7 +5,7 @@ const letters = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
  * A bare digit core and any uppercase letter prefix are equivalent. Short lists can probe
  * every single-letter spelling directly. Longer prefixes occupy 26 disjoint lexical ranges
  * (AA through AZ..., BA through BZ..., etc.). This preserves arbitrary prefix lengths.
- * A wide batch amortizes one scan over the whole set of cores.
+ * Wide indexed batches probe the common Granot spelling directly as well.
  */
 export function normalizedJobCandidates(
   jobs: readonly string[],
@@ -17,13 +17,27 @@ export function normalizedJobCandidates(
   const exact = new Set([...jobs, ...cores]);
   if (!cores.length) return { normalized_job_no: { $in: [...exact] } };
   const suffix = "(?:" + cores.join("|") + ")$";
-  if (access === "scan" || cores.length > 4)
+  if (access === "scan")
     return {
       $or: [
         { normalized_job_no: { $in: [...exact] } },
         { normalized_job_no: { $regex: "^[A-Z]+" + suffix } },
       ],
     };
+  if (cores.length > 4) {
+    // Granot's common P-prefixed spelling and bare numbers use point lookups. The
+    // disjoint ranges still discover every other uppercase prefix, including PA.
+    for (const core of cores) {
+      exact.add("P" + core);
+      exact.add("P" + core + "\n");
+    }
+    const pattern = "^[A-Z]+" + suffix;
+    return { $or: [
+      { normalized_job_no: { $in: [...exact] } },
+      { normalized_job_no: { $gte: "A", $lt: "P0", $regex: pattern } },
+      { normalized_job_no: { $gte: "P:", $lt: "[", $regex: pattern } },
+    ] };
+  }
   for (const prefix of letters)
     for (const core of cores) {
       exact.add(prefix + core);

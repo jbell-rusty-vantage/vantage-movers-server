@@ -92,7 +92,7 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   const [companies, granularities, links, bookings, formIdentities, callIdentities, observations, decisions] = await readBatch([
     () => getLeadSourceCompanyModel().find({ _id: { $in: companyIds }, active: true }, { _id: 1 }).session(session).lean(),
     () => getLeadSourceGranularityModel().find({ _id: { $in: granularityIds }, active: true }, { source_company: 1, channel: 1 }).session(session).lean(),
-    () => getGranotRecordLinkModel().find({ provider: "granot", state: "active", $or: [...leadFilters, jobFilter] }, { normalized_job_no: 1, lead_ref: 1, disputed: 1, booking_ref: 1, source_scope: 1, domain_revision: 1 }).session(session).lean(),
+    () => getGranotRecordLinkModel().find({ provider: "granot", state: "active", $or: [...leadFilters, jobFilter] }, { normalized_job_no: 1, lead_ref: 1, disputed: 1, booking_ref: 1, source_scope: 1, domain_revision: 1 }).session(session).batchSize(2000).lean(),
     () => getFormLeadModel().db.collection<RawPoolBooking>(BookedLead.collection.collectionName).find({ $or: [
       { lead_ref: { $in: refs.flatMap((r) => [oid(r.id), r.id, r.id.toUpperCase()]) } }, normalizedJobCandidates(jobs, "scan"),
       // Legacy raw Jobs may lack or contradict the normalized key. Project once per batch and use

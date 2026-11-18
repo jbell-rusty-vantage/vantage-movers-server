@@ -261,7 +261,7 @@ export async function completeCsiJob<T>(
     const result = await mutation(session);
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const completed_at = new Date();
-    const routine_purge_at = routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at);
+    const routine_purge_at = routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at, held.subject_key);
     const updated = await Model.updateOne(
       fence(lease),
       {
