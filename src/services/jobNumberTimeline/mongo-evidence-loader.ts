@@ -28,7 +28,7 @@ import type {
 } from "./rows.js";
 import type { JobTimelineLeadModel } from "./types.js";
 
-export type JobTimelineMongoReadBounds = { maxRowsPerQuery?: number };
+export type JobTimelineMongoReadBounds = { maxRowsPerQuery?: number; includeTransportEvidence?: boolean };
 export class JobTimelineEvidenceLimitError extends Error {
   readonly code = "EVIDENCE_LIMIT_REACHED";
   constructor() { super("EVIDENCE_LIMIT_REACHED"); }
@@ -228,6 +228,16 @@ export async function loadCompanyGranularityIds(
   return rows.map((row) => asId(row._id));
 }
 
+/** Older jobs can lack a Record Link. Use an unambiguous indexed canonical Lead match. */
+async function findUniqueJobLead(db: Db, jobFilter: Document) {
+  const options = [["form_leads", "FormLead"], ["call_leads", "CallLead"]] as const;
+  const found = (await Promise.all(options.map(async ([collection, model]) => {
+    const rows = await db.collection(collection).find({ ...jobFilter, "last_accepted_granot_observation.observation_id": { $exists: true } }).project({ _id: 1 }).limit(2).maxTimeMS(3000).toArray();
+    return rows.map(row => ({ model, id: String(row._id) }));
+  }))).flat();
+  return found.length === 1 ? found[0] : undefined;
+}
+
 export async function loadJobNumberTimelineRows(
   db: Db,
   normalizedJobNo: string,
@@ -245,7 +255,7 @@ export async function loadJobNumberTimelineRows(
     releaseDiscrepancyDocs,
     callLogCursorDoc,
   ] = await Promise.all([
-    read(db.collection("granot_observations").find(observationJobFilter(normalizedJobNo))),
+    bounds.includeTransportEvidence ? read(db.collection("granot_observations").find(observationJobFilter(normalizedJobNo))) : [],
     read(db.collection("granot_record_links").find(jobFilter)),
     read(db.collection("booked_leads").find(jobFilter)),
     read(db.collection("granot_booking_reconciliation_cases").find(jobFilter)),
@@ -285,7 +295,8 @@ export async function loadJobNumberTimelineRows(
   ]);
   let decisions = asDocumentArray(decisionDocs);
   let receiptDocs = asDocumentArray(receiptDocRows);
-  for (const entry of await read(archiveCatalog(db).find({ job_key: archiveJobKey(normalizedJobNo) }))) {
+  const archiveEntries = bounds.includeTransportEvidence ? await read(archiveCatalog(db).find({ job_key: archiveJobKey(normalizedJobNo) })) : [];
+  for (const entry of archiveEntries) {
     const batch = await readArchiveEntry(db, entry);
     observations = mergeEvidence(observations, batch.map(row => row.observation));
     decisions = mergeEvidence(decisions, batch.flatMap(row => row.decisions));
@@ -398,7 +409,9 @@ export async function loadJobNumberTimelineRows(
     ?? mappedDecisions.find((row) =>
       (row.outcome === "applied" || row.outcome === "created")
       && (row.target?.model === "FormLead" || row.target?.model === "CallLead"),
-    )?.target;
+    )?.target
+    ?? mappedCancellations.find(row => row.lead_ref_snapshot)?.lead_ref_snapshot
+    ?? await findUniqueJobLead(db, jobFilter);
 
   let leads: LeadRow[] = [];
   let entity_changes: EntityChangeRow[] = [];
@@ -415,6 +428,9 @@ export async function loadJobNumberTimelineRows(
       leads = [{
         id: asId(leadDoc._id),
         model: leadRef.model,
+        job_no: asString(leadDoc.job_no),
+        normalized_job_no: asString(leadDoc.normalized_job_no),
+        accepted_granot_observation_id: leadDoc.last_accepted_granot_observation?.observation_id ? asId(leadDoc.last_accepted_granot_observation.observation_id) : undefined,
         ingestion_origin: asString(leadDoc.ingestion_origin),
         timestamp: leadDoc.timestamp ? asIso(leadDoc.timestamp) : undefined,
         createdAt: leadDoc.createdAt ? asIso(leadDoc.createdAt) : undefined,

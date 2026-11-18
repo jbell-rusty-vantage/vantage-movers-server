@@ -1,5 +1,6 @@
+import { readPairingObservations } from "./observationReadFacts";
 import { pointReceiptToDecision } from "./receiptDecisionPointer";
-import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
+import { preserveCaseEvidence, preserveCaseDecision, readCaseObservation, readCaseDecision } from "./caseEvidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
@@ -11,7 +12,6 @@ import type {
 } from "../../models/GranotBookingReconciliationCase";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import {
-  getGranotObservationModel,
   type GranotObservationDocument,
 } from "../../models/GranotObservation";
 import {
@@ -582,7 +582,7 @@ export async function reconcileBookingCaseAfterDiscrepancy(input: {
   if (classification.evidence_action !== "booked" && classification.evidence_action !== "release") {
     throw new Error("Booking case after discrepancy requires actual Booked or Release evidence.");
   }
-  const decision = await getSynchronizationDecisionModel().findById(input.decision_id).session(input.session).lean().exec();
+  const decision = await readCaseDecision(toObjectId(input.decision_id), input.session);
   const evidence: GranotBookingCaseEvidence = { observation_id: toObjectId(input.observation_id), decision_id: toObjectId(input.decision_id), captured_at: current.captured_at, action: classification.evidence_action };
   const storeForPairing = store;
   const priority_pairing = await computePersistedPriorityPairing(
@@ -625,11 +625,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
   return {
     withTransaction,
     async loadCurrentContext(observationId, session) {
-      const observation = await getGranotObservationModel()
-        .findById(observationId)
-        .session(session)
-        .lean()
-        .exec();
+      const observation = await readCaseObservation(toObjectId(observationId), session);
       if (!observation) throw new Error("Granot Observation was not found for Booking reconciliation.");
 
       const policy = await resolveSourcePolicy(
@@ -803,21 +799,7 @@ export function createMongoBookingReconciliationStore(): BookingReconciliationPe
       await pointReceiptToDecision(receiptId, decision._id, session);
     },
     async listJobObservations(normalizedJobNo, session) {
-      return getGranotObservationModel()
-        .find({ "identity.normalized_job_no": normalizedJobNo })
-        .select({
-          _id: 1,
-          receipt_id: 1,
-          captured_at: 1,
-          route_event_class: 1,
-          payload_event_type_raw: 1,
-          priority: 1,
-          identity: 1,
-          booking_action: 1,
-        })
-        .session(session)
-        .lean()
-        .exec();
+      return readPairingObservations([normalizedJobNo], session);
     },
     async findDecision(observationId, attempt, session) {
       return getSynchronizationDecisionModel()

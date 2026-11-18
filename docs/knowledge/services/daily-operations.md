@@ -48,6 +48,8 @@ Core values normally lag 60-120 seconds. Daily Operations-only goals/spend summa
 
 Only redundant `already_current` and `stale` Granot display facts are suppressed. Immutable Synchronization Decisions and Observation Receipts remain canonical. Sheet Sync completion/failure facts and existing event retention remain intact. Retained counter facts now commit atomically with day increments; no-touch cards insert once without day reads. Unused `decisions.*` display counters are retired. Close advances revision, and rebuild uses revision CAS so concurrent increments cannot be overwritten.
 
+Granot webhook acceptance increments the New York day, hour and route in the receipt transaction. Booked/Release contributions discovered during intake use the existing deduped intake event. Ordinary arrivals omit receipt cards and links. Open-day rebuilds reuse versioned webhook totals, and the cutover backfill reconstructs a legacy open day while its receipts are available.
+
 This file is a **Service pointer** only. It does not copy contract rules, hook tables, or wire shapes.
 
 **Retention (disk trim, 2026-10-07):** `daily_operations_events` rows expire 400 days after `createdAt` (`daily_operations_event_created_ttl`, declared on `DailyOperationsEvent.ts` and created in production by `ops/disk-trim/trim.ts`). The live board reads today, yesterday and the day before; 400 days is the bound already chosen for this log. The board key `day` is a string and cannot carry the TTL.

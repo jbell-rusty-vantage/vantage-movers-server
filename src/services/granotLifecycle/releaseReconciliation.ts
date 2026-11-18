@@ -1,5 +1,5 @@
 import { pointReceiptToDecision } from "./receiptDecisionPointer";
-import { preserveCaseEvidence, preserveCaseDecision } from "./caseEvidence";
+import { preserveCaseEvidence, preserveCaseDecision, readCaseObservation, readCaseDecision } from "./caseEvidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
 import { BookedLead } from "../../models/BookedLead";
@@ -398,7 +398,7 @@ export async function reconcileReleaseCaseAfterDiscrepancy(input: {
   const current = await store.loadCurrentContext(input.observation_id, input.session);
   const classification = classifyReleaseReconciliation(current);
   if (classification.kind !== "case") return undefined;
-  const decision = await getSynchronizationDecisionModel().findById(input.decision_id).session(input.session).lean().exec();
+  const decision = await readCaseDecision(toObjectId(input.decision_id), input.session);
   const evidence: GranotReleaseCaseEvidence = { observation_id: toObjectId(input.observation_id), decision_id: toObjectId(input.decision_id), captured_at: current.captured_at, action: "release" };
   const existing = await store.findOpenCase(current.normalized_job_no!, input.session);
   let row: GranotReleaseReconciliationCaseDocument;
@@ -425,11 +425,7 @@ export function createMongoReleaseReconciliationStore(): ReleaseReconciliationPe
   return {
     withTransaction,
     async loadCurrentContext(observationId, session) {
-      const observation = await getGranotObservationModel()
-        .findById(observationId)
-        .session(session)
-        .lean()
-        .exec();
+      const observation = await readCaseObservation(toObjectId(observationId), session);
       if (!observation) {
         throw new Error("Granot Observation was not found for Release reconciliation.");
       }

@@ -44,7 +44,7 @@ function fakeDb(rows: Record<string, Document[]>) {
 test("bounded real timeline loader applies Mongo limit and timeout to every first-hop and downstream cursor", async () => {
   for (const model of ["FormLead", "CallLead"] as const) {
     const {db, reads} = fakeDb(fixture(model));
-    const loader = createMongoEvidenceLoader({db, maxRowsPerQuery: 2});
+    const loader = createMongoEvidenceLoader({db, maxRowsPerQuery: 2, includeTransportEvidence: true});
     const rows = await loader.loadRows("9001001");
     await loader.loadCompanyGranularityIds("company");
     assert.equal(rows.leads?.[0]?.model, model);
@@ -57,7 +57,7 @@ test("bounded real loader rejects overflow at initial and later joins instead of
   for (const collection of ["granot_observations", "synchronization_decisions", "granot_webhook_receipts", "cancelled_leads", "entity_changes", "lead_messages", "wordpress_form_submission_receipts", "sheet_sync_jobs", "granot_crm_sources", "lead_source_granularities"]) {
     const data = fixture("FormLead"); data[collection] = Array.from({length: 30}, (_, index) => ({...data[collection]?.[0], _id: `overflow-${index}`}));
     const {db, reads} = fakeDb(data);
-    await assert.rejects(() => createMongoEvidenceLoader({db, maxRowsPerQuery: 2}).loadRows("9001001"), error => error instanceof JobTimelineEvidenceLimitError && error.code === "EVIDENCE_LIMIT_REACHED", collection);
+    await assert.rejects(() => createMongoEvidenceLoader({db, maxRowsPerQuery: 2, includeTransportEvidence: true}).loadRows("9001001"), error => error instanceof JobTimelineEvidenceLimitError && error.code === "EVIDENCE_LIMIT_REACHED", collection);
     assert.ok(reads.every(read => read.fetched <= 3));
   }
 });
@@ -69,4 +69,13 @@ test("optional bound preserves existing unbounded Owner loader behavior and reje
   await assert.rejects(() => createMongoEvidenceLoader({db, maxRowsPerQuery: 0}).loadRows("9001001"), /EVIDENCE_LIMIT_REACHED/);
   const overflow = fakeDb({lead_source_granularities: [{_id: "a"}, {_id: "b"}]});
   await assert.rejects(() => createMongoEvidenceLoader({db: overflow.db, maxRowsPerQuery: 1}).loadCompanyGranularityIds("company"), /EVIDENCE_LIMIT_REACHED/);
+});
+
+test("the daily Job timeline reads business facts without transport or Cloud Storage", async () => {
+  const {db, reads} = fakeDb(fixture("FormLead"));
+  const result = await createMongoEvidenceLoader({db}).loadRows("9001001");
+  assert.equal(result.leads?.[0]?.model, "FormLead");
+  assert.equal(result.bookings?.length, 1);
+  assert.deepEqual(result.observations, []);
+  assert.ok(reads.every(r => !["granot_observations", "synchronization_decisions", "granot_webhook_receipts", "granot_history_archive_chunks"].includes(r.collection)));
 });

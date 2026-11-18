@@ -4,7 +4,8 @@ import mongoose from "mongoose";
 import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
-import { connectMongo } from "../../db";
+import { connectMongo, withTransaction } from "../../db";
+import { preserveCaseEvidence } from "./caseEvidence";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
@@ -344,6 +345,10 @@ test("[AC-21][AC-25][AC-32] Release Update Booking fully replaces official field
 test("[AC-21][AC-25][AC-26][AC-32] Confirm Cancellation writes one complete causal chain", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seedReleaseCase();
+  await withTransaction(session => preserveCaseEvidence(fixture.observationId, fixture.decisionId, session));
+  await getGranotObservationModel().collection.deleteOne({ _id: fixture.observationId });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: fixture.receiptId });
+  await mongoose.connection.collection("synchronization_decisions").deleteOne({ _id: fixture.decisionId });
   const flags = { ...GRANOT_LIFECYCLE_FLAG_DEFAULTS, release_commands_enabled: true };
   const command = {
     case_id: String(fixture.caseId),

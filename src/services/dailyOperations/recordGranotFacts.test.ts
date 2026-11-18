@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, test } from "node:test";
+import { webhookIncrements } from "./webhookDay";
 import { recordFormLeadDailyOperationsFact } from "./recordDomainFacts";
 import {
-  classifyGranotBookingActionFromPayload,
   granotProcessorOutcomeKind,
-  granotReceiptDedupeKey,
   granotReceiptKind,
   granotReceiptMetricTouches,
   processTimeBookingMetricTouches,
@@ -15,7 +14,6 @@ import {
   recordGranotLinkedDailyOperationsFact,
   recordGranotMintedDailyOperationsFact,
   recordGranotProcessorOutcomeDailyOperationsFact,
-  recordGranotReceiptDailyOperationsFact,
 } from "./recordGranotFacts";
 import {
   clearCapturedDailyOperationsFacts,
@@ -32,127 +30,16 @@ function capturedOf(kind: string) {
   );
 }
 
-test("lead_created capture increments webhook class only", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "receipt-lead-1",
-    route_event_class: "lead_created",
-    captured_at: new Date("2026-09-06T16:00:00.000Z"),
-    payload: { event_type: "lead_created", job_no: "567632" },
-  });
-  const facts = capturedOf("granot.lead_created");
-  assert.equal(facts.length, 1);
-  assert.deepEqual(facts[0]?.input.metric_touches, [
-    "webhooks.lead_created",
-    "hourly.webhooks",
-  ]);
-  assert.equal(
-    facts[0]?.input.metric_touches.some((touch) => touch.startsWith("leads.")),
-    false,
-  );
-  assert.equal(
-    facts[0]?.input.metric_touches.some((touch) =>
-      touch.startsWith("decisions."),
-    ),
-    false,
-  );
-  assert.equal(facts[0]?.input.dedupe_key, "receipt:receipt-lead-1:lead_created");
-  assert.equal(facts[0]?.input.parent_receipt_id, null);
-  assert.equal(facts[0]?.input.links?.receipt_id, "receipt-lead-1");
-  assert.equal(facts[0]?.input.card?.granot?.route_event_class, "lead_created");
-  assert.equal(facts[0]?.input.source_company, undefined);
-});
-
-test("priority_updated capture increments webhook class only", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "receipt-pri-1",
-    route_event_class: "priority_updated",
-    payload: { event_type: "priority_updated", priority: "1" },
-  });
-  const facts = capturedOf("granot.priority_updated");
-  assert.equal(facts.length, 1);
-  assert.deepEqual(facts[0]?.input.metric_touches, [
-    "webhooks.priority_updated",
-    "hourly.webhooks",
-  ]);
-  assert.equal(
-    facts[0]?.input.dedupe_key,
-    "receipt:receipt-pri-1:priority_updated",
-  );
-});
-
-test("Booked payload at capture increments class and booked once", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "receipt-booked-1",
-    route_event_class: "booking_status_changed",
-    payload: { event_type: "Booked", job_no: "JOB-22" },
-  });
-  const facts = capturedOf("granot.booked");
-  assert.equal(facts.length, 1);
-  assert.deepEqual(facts[0]?.input.metric_touches, [
-    "webhooks.booking_status_changed",
-    "webhooks.booked",
-    "hourly.webhooks",
-  ]);
-  assert.equal(
-    facts[0]?.input.dedupe_key,
-    "receipt:receipt-booked-1:booking_status_changed:booked",
-  );
-  assert.equal(facts[0]?.input.card?.granot?.booking_action, "booked");
-  assert.equal(facts[0]?.input.parent_receipt_id, null);
-});
-
-test("Release payload at capture increments class and release once", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "receipt-rel-1",
-    route_event_class: "booking_status_changed",
-    payload: { event_type: "Release", job_no: "JOB-22" },
-  });
-  const facts = capturedOf("granot.release");
-  assert.equal(facts.length, 1);
-  assert.deepEqual(facts[0]?.input.metric_touches, [
-    "webhooks.booking_status_changed",
-    "webhooks.release",
-    "hourly.webhooks",
-  ]);
-  assert.equal(
-    facts[0]?.input.dedupe_key,
-    "receipt:receipt-rel-1:booking_status_changed:release",
-  );
-  assert.equal(facts[0]?.input.card?.granot?.booking_action, "release");
-});
-
-test("Releas token classifies as release", () => {
-  assert.equal(
-    classifyGranotBookingActionFromPayload({ event_type: "Releas" }),
-    "release",
-  );
-});
-
-test("unclassified booking_status_changed increments class only", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "receipt-unk-1",
-    route_event_class: "booking_status_changed",
-    payload: { job_no: "JOB-22" },
-  });
-  const facts = getCapturedDailyOperationsFacts();
-  assert.equal(facts.length, 1);
-  assert.deepEqual(facts[0]?.input.metric_touches, [
-    "webhooks.booking_status_changed",
-    "hourly.webhooks",
-  ]);
-  assert.equal(
-    facts[0]?.input.dedupe_key,
-    "receipt:receipt-unk-1:booking_status_changed",
-  );
-  assert.equal(facts[0]?.input.card?.granot?.booking_action, null);
-  assert.equal(
-    facts[0]?.input.metric_touches.includes("webhooks.booked"),
-    false,
-  );
-  assert.equal(
-    facts[0]?.input.metric_touches.includes("webhooks.release"),
-    false,
-  );
+test("true webhooks increment one Eastern-hour and class, plus one recognized booking action", () => {
+  const captured_at = new Date("2026-09-06T16:00:00Z");
+  for (const route_event_class of ["lead_created", "priority_updated", "booking_status_changed"] as const) {
+    assert.deepEqual(webhookIncrements({ captured_at, route_event_class, payload: {} }),
+      { revision: 1, [`webhooks.${route_event_class}`]: 1, "hourly.12.webhooks": 1 });
+  }
+  for (const [token, expected] of [["Booked", "booked"], ["Release", "release"], ["Releas", "release"]]) {
+    assert.deepEqual(webhookIncrements({ captured_at, route_event_class: "booking_status_changed", payload: { event_type: token } }),
+      { revision: 1, "webhooks.booking_status_changed": 1, [`webhooks.${expected}`]: 1, "hourly.12.webhooks": 1 });
+  }
 });
 
 test("granot.minted retains a display card without retired decision counters", async () => {
@@ -178,7 +65,7 @@ test("granot.minted retains a display card without retired decision counters", a
   assert.equal(minted.length, 1);
   assert.deepEqual(minted[0]?.input.metric_touches, []);
 
-  assert.equal(minted[0]?.input.parent_receipt_id, "receipt-mint-1");
+  assert.equal(minted[0]?.input.parent_receipt_id, undefined);
   assert.equal(
     minted[0]?.input.dedupe_key,
     "decision:decision-mint-1:granot.minted",
@@ -192,26 +79,7 @@ test("granot.minted retains a display card without retired decision counters", a
   assert.ok(form[0]?.input.metric_touches.includes("leads.total"));
 });
 
-test("outcome card parent_receipt_id pairs to the receipt card", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "pair-receipt",
-    route_event_class: "lead_created",
-    payload: { event_type: "lead_created" },
-  });
-  await recordGranotMintedDailyOperationsFact({
-    source_receipt_id: "pair-receipt",
-    decision_id: "pair-decision",
-    lead_id: "lead-1",
-    lead_model: "FormLead",
-  });
-  const receipt = capturedOf("granot.lead_created")[0];
-  const minted = capturedOf("granot.minted")[0];
-  assert.equal(receipt?.input.parent_receipt_id, null);
-  assert.equal(receipt?.input.links?.receipt_id, "pair-receipt");
-  assert.equal(minted?.input.parent_receipt_id, "pair-receipt");
-});
-
-test("linked outcome retains its parent receipt without a counter write", async () => {
+test("linked outcome retains its business link without a receipt card", async () => {
   await recordGranotLinkedDailyOperationsFact({
     outcome: "linked",
     source_receipt_id: "link-receipt",
@@ -224,7 +92,7 @@ test("linked outcome retains its parent receipt without a counter write", async 
   const facts = capturedOf("granot.linked");
   assert.equal(facts.length, 1);
   assert.deepEqual(facts[0]?.input.metric_touches, []);
-  assert.equal(facts[0]?.input.parent_receipt_id, "link-receipt");
+  assert.equal(facts[0]?.input.parent_receipt_id, undefined);
   assert.equal(facts[0]?.input.dedupe_key, "decision:link-decision:granot.linked");
 });
 
@@ -262,7 +130,7 @@ test("processor maps observe / pending_match / unmatched and skips mint/link", a
   });
   const observed = capturedOf("granot.observed");
   assert.equal(observed.length, 1);
-  assert.equal(observed[0]?.input.parent_receipt_id, "obs-receipt");
+  assert.equal(observed[0]?.input.parent_receipt_id, undefined);
   assert.equal(
     observed[0]?.input.dedupe_key,
     "decision:obs-decision:granot.observed",
@@ -297,7 +165,7 @@ test("intake opened increments intakes.opened; refresh does not", async () => {
   assert.equal(opened[0]?.input.dedupe_key, "intake:case-1:opened");
   assert.equal(opened[0]?.input.links?.intake_case_id, "case-1");
   assert.equal(opened[0]?.input.job_no, "JOB-22");
-  assert.equal(opened[0]?.input.parent_receipt_id, "intake-receipt");
+  assert.equal(opened[0]?.input.parent_receipt_id, undefined);
   assert.equal(refreshed.length, 1);
   assert.deepEqual(refreshed[0]?.input.metric_touches, ["intakes.refreshed"]);
   assert.equal(refreshed[0]?.input.dedupe_key, "intake:case-1:refreshed:2");
@@ -317,11 +185,6 @@ test("process-time Booked increments booked only when capture did not classify",
     "webhooks.release",
   ]);
 
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "once-booked",
-    route_event_class: "booking_status_changed",
-    payload: { job_no: "JOB-22" },
-  });
   await recordGranotIntakeDailyOperationsFact({
     case_id: "case-once",
     kind: "opened",
@@ -330,14 +193,7 @@ test("process-time Booked increments booked only when capture did not classify",
     booking_action: "booked",
     captureAlreadyClassified: false,
   });
-  const receipt = getCapturedDailyOperationsFacts().find(
-    (fact) => fact.input.dedupe_key === "receipt:once-booked:booking_status_changed",
-  );
   const intake = capturedOf("intake.opened")[0];
-  assert.deepEqual(receipt?.input.metric_touches, [
-    "webhooks.booking_status_changed",
-    "hourly.webhooks",
-  ]);
   assert.deepEqual(intake?.input.metric_touches, [
     "intakes.opened",
     "webhooks.booked",
@@ -349,11 +205,6 @@ test("process-time Booked increments booked only when capture did not classify",
 });
 
 test("Booked increments those buckets once when capture already classified", async () => {
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: "classified-booked",
-    route_event_class: "booking_status_changed",
-    payload: { event_type: "Booked" },
-  });
   await recordGranotIntakeDailyOperationsFact({
     case_id: "case-classified",
     kind: "opened",
@@ -361,10 +212,7 @@ test("Booked increments those buckets once when capture already classified", asy
     booking_action: "booked",
     captureAlreadyClassified: true,
   });
-  const receipt = capturedOf("granot.booked")[0];
   const intake = capturedOf("intake.opened")[0];
-  assert.ok(receipt?.input.metric_touches.includes("webhooks.booked"));
-  assert.ok(receipt?.input.metric_touches.includes("webhooks.booking_status_changed"));
   assert.deepEqual(intake?.input.metric_touches, ["intakes.opened"]);
 });
 
@@ -389,10 +237,6 @@ test("receipt kind and dedupe follow spec §14", () => {
   assert.deepEqual(
     granotReceiptMetricTouches(null, "booking_status_changed"),
     ["webhooks.booking_status_changed", "hourly.webhooks"],
-  );
-  assert.equal(
-    granotReceiptDedupeKey("r1", "booking_status_changed", "booked"),
-    "receipt:r1:booking_status_changed:booked",
   );
 });
 
@@ -458,20 +302,6 @@ test("dead letter hook is the drainer entered seam, not the 202 path", async () 
   const hook = drainer.indexOf("recordGranotDeadLetterDailyOperationsFact", entered);
   assert.ok(entered >= 0 && hook > entered);
   assert.doesNotMatch(capture, /recordGranotDeadLetterDailyOperationsFact/);
-});
-
-test("webhook capture hooks after persist and before return", async () => {
-  const source = await readFile(
-    path.join(__dirname, "../granotLifecycle/capture.ts"),
-    "utf8",
-  );
-  const start = source.indexOf("export async function captureGranotLifecycleWebhookReceipt");
-  const next = source.indexOf("\nexport async function ", start + 1);
-  const body = source.slice(start, next === -1 ? undefined : next);
-  const persist = body.indexOf("const result = await persist(document);");
-  const hook = body.indexOf("recordGranotReceiptDailyOperationsFact");
-  const ret = body.lastIndexOf("return { receipt_id:");
-  assert.ok(persist >= 0 && hook > persist && ret > hook);
 });
 
 test("already-current/stale hooks suppress only redundant display facts", async () => {

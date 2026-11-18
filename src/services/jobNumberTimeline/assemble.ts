@@ -847,8 +847,11 @@ export function assembleJobNumberTimeline(
   const snapshotCancellations = asList(input.rows.cancellations).filter((row) =>
     cancellationAttachedBySnapshot(row, normalized),
   );
-  const firstHopEmpty =
-    hop.observations.length === 0
+  const candidates = asList(input.rows.leads).filter(row =>
+    row.accepted_granot_observation_id && matchesJob(row.normalized_job_no ?? row.job_no, normalized));
+  const uniqueLead = candidates.length === 1 ? candidates[0] : undefined;
+  const firstHopEmpty = !uniqueLead
+    && hop.observations.length === 0
     && hop.record_links.length === 0
     && hop.bookings.length === 0
     && hop.booking_cases.length === 0
@@ -869,7 +872,8 @@ export function assembleJobNumberTimeline(
     bookings: hop.bookings,
     decisions,
     leads: asList(input.rows.leads),
-  });
+  }) ?? asList(input.rows.leads).find(row => snapshotCancellations.some(cancel =>
+    row.model === cancel.lead_ref_snapshot?.model && row.id === cancel.lead_ref_snapshot.id)) ?? uniqueLead;
   const changes = lead ? leadChanges(asList(input.rows.entity_changes), lead) : [];
   const booking = hop.bookings[0];
   const bookingIds = new Set(hop.bookings.map((row) => row.id));

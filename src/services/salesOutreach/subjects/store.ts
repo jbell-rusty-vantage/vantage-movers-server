@@ -8,7 +8,7 @@ import type {
 import { getCallInteractionModel } from "../../../models/CallInteraction";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getFormLeadModel } from "../../../models/FormLead";
-import { getGranotObservationModel } from "../../../models/GranotObservation";
+import { readInvalidPriorityTimes } from "../../granotLifecycle/observationReadFacts";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach/repSmsEvidence";
@@ -129,7 +129,6 @@ const oid = (id: string) => new mongoose.Types.ObjectId(id);
 /** The wake's time range on one instant field: `[since, until)`, or `[since, ∞)` without `until`. */
 const windowOf = (request: ContactWakeRequest) => (request.until ? { $gte: request.since, $lt: request.until } : { $gte: request.since });
 const leadModel = (model: SalesOutreachLeadModel) => (model === "FormLead" ? getFormLeadModel() : getCallLeadModel());
-const MAX_OBSERVATIONS = 500;
 
 export type SubjectLean = Record<string, unknown> & {
   _id: unknown;
@@ -291,24 +290,8 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
     const uncertain = new Set<string>();
     const withJob = facts.filter((f) => f.normalized_job_no);
     if (!withJob.length) return uncertain;
-    const rows = await getGranotObservationModel()
-      .find(
-        {
-          "identity.normalized_job_no": { $in: [...new Set(withJob.map((f) => f.normalized_job_no!))] },
-          "priority.valid": false,
-          "priority.raw": { $exists: true, $ne: null },
-        },
-        { "identity.normalized_job_no": 1, captured_at: 1 },
-      )
-      .sort({ captured_at: -1 })
-      .limit(MAX_OBSERVATIONS)
-      .session(session)
-      .lean();
-    const newest = new Map<string, Date>();
-    for (const row of rows as Array<{ identity?: { normalized_job_no?: string }; captured_at: Date }>) {
-      const job = row.identity?.normalized_job_no;
-      if (job && !newest.has(job)) newest.set(job, row.captured_at);
-    }
+    const jobs = [...new Set(withJob.map(fact => fact.normalized_job_no!))];
+    const newest = await readInvalidPriorityTimes(jobs, session);
     for (const lead of withJob) {
       const seen = newest.get(lead.normalized_job_no!);
       if (seen && (!lead.accepted_observation || +seen > +lead.accepted_observation.captured_at)) uncertain.add(deskLeadKey(lead.ref));

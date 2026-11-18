@@ -39,17 +39,6 @@ export function classifyGranotBookingActionFromPayload(
   return normalizeBookingAction(payloadEventType(payload)) ?? null;
 }
 
-export function granotReceiptDedupeKey(
-  receiptId: string,
-  routeEventClass: GranotRouteEventClass,
-  bookingAction: GranotBookingActionKnown | null,
-): string {
-  if (routeEventClass === "booking_status_changed" && bookingAction) {
-    return `receipt:${receiptId}:${routeEventClass}:${bookingAction}`;
-  }
-  return `receipt:${receiptId}:${routeEventClass}`;
-}
-
 export function granotReceiptKind(
   routeEventClass: GranotRouteEventClass,
   bookingAction: GranotBookingActionKnown | null,
@@ -96,50 +85,6 @@ function granotCard(input: {
   };
 }
 
-/**
- * Webhook capture receipt card. `parent_receipt_id` is null. No Source
- * Company — capture does not have one yet.
- *
- * Unclassified `booking_status_changed` still increments the class. The
- * closed catalog has no receipt kind for that row; the writer still
- * stores a Granot-lane card so the class count has an insert-win gate.
- */
-export async function recordGranotReceiptDailyOperationsFact(input: {
-  receipt_id: string;
-  route_event_class: GranotRouteEventClass;
-  captured_at?: Date;
-  payload: unknown;
-}): Promise<void> {
-  const bookingAction =
-    input.route_event_class === "booking_status_changed"
-      ? classifyGranotBookingActionFromPayload(input.payload)
-      : null;
-  const kind = granotReceiptKind(input.route_event_class, bookingAction);
-  const metricTouches = granotReceiptMetricTouches(kind, input.route_event_class);
-  if (metricTouches.length === 0) return;
-
-  const recordedKind: DailyOperationsKind = kind ?? "granot.booked";
-  await recordDailyOperationsFact({
-    kind: recordedKind,
-    dedupe_key: granotReceiptDedupeKey(
-      input.receipt_id,
-      input.route_event_class,
-      bookingAction,
-    ),
-    occurred_at: input.captured_at,
-    title: kind ? titleForKind(kind) : "Granot booking status changed",
-    parent_receipt_id: null,
-    entity_type: "GranotObservationReceipt",
-    entity_id: input.receipt_id,
-    links: { receipt_id: input.receipt_id },
-    card: granotCard({
-      route_event_class: input.route_event_class,
-      booking_action: bookingAction,
-    }),
-    metric_touches: metricTouches,
-  });
-}
-
 export type GranotMintedFactPending = {
   source_receipt_id: string;
   decision_id: string;
@@ -159,7 +104,6 @@ export async function recordGranotMintedDailyOperationsFact(
   if (!receiptId || !decisionId || !leadId) return;
 
   const links: DailyOperationsLinks = {
-    receipt_id: receiptId,
     lead_id: leadId,
     lead_model: pending.lead_model,
   };
@@ -170,7 +114,6 @@ export async function recordGranotMintedDailyOperationsFact(
     title: titleForKind("granot.minted"),
     source_company: pending.source_company ?? null,
     job_no: pending.job_no ?? null,
-    parent_receipt_id: receiptId,
     entity_type: "SynchronizationDecision",
     entity_id: decisionId,
     links,
@@ -210,12 +153,10 @@ export async function recordGranotLinkedDailyOperationsFact(
     title: titleForKind("granot.linked"),
     source_company: pending.source_company ?? null,
     job_no: pending.job_no ?? null,
-    parent_receipt_id: receiptId,
     entity_type: "SynchronizationDecision",
     entity_id: decisionId,
     links: {
-      receipt_id: receiptId,
-      lead_id: leadId,
+        lead_id: leadId,
       lead_model: pending.lead_model,
     },
     card: granotCard({
@@ -260,10 +201,8 @@ export async function recordGranotProcessorOutcomeDailyOperationsFact(input: {
     title: titleForKind(kind),
     source_company: input.source_company ?? null,
     job_no: input.job_no ?? null,
-    parent_receipt_id: receiptId,
     entity_type: "SynchronizationDecision",
     entity_id: decisionId,
-    links: { receipt_id: receiptId },
     card: granotCard({
       decision: input.outcome,
       job_no: input.job_no ?? null,
@@ -340,11 +279,9 @@ export async function recordGranotIntakeDailyOperationsFact(input: {
     occurred_at: input.occurred_at,
     title: titleForKind(kind),
     job_no: input.job_no ?? null,
-    parent_receipt_id: receiptId,
     entity_type: "GranotBookingReconciliationCase",
     entity_id: caseId,
     links: {
-      receipt_id: receiptId,
       intake_case_id: caseId,
     },
     card: granotCard({

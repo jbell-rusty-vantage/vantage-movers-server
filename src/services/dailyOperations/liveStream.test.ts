@@ -259,8 +259,8 @@ test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", 
     _id: { toString: () => LATER_ID },
     occurred_at: new Date("2026-09-08T15:44:05.000Z"),
     lane: "granot",
-    kind: "granot.lead_created",
-    title: "Granot lead created",
+    kind: "granot.minted",
+    title: "Granot lead minted",
     metric_touches: ["webhooks.lead_created"],
   });
   let polls = 0;
@@ -291,7 +291,7 @@ test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", 
   const joined = chunks.join("");
   assert.match(joined, /event: snapshot/);
   assert.match(joined, /event: event/);
-  assert.match(joined, /granot.lead_created/);
+  assert.match(joined, /granot.minted/);
   assert.match(joined, /event: metrics/);
   assert.equal(seenDay, "2026-09-08");
 });

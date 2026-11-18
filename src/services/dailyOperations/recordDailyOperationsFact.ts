@@ -103,6 +103,10 @@ export function dailyOperationsDayUpdatePipeline(
   for (const [key, value] of Object.entries({ ...seed, revision: 0, createdAt: writtenAt, updatedAt: writtenAt })) {
     initialize[key] = { $ifNull: [`$${key}`, { $literal: value }] };
   }
+  // New days start with transactional webhook counts. Existing days qualify on their first rebuild.
+  initialize.webhook_counts_version = { $cond: [
+    { $eq: [{ $type: "$revision" }, "missing"] }, 1, "$webhook_counts_version",
+  ] };
   const open = { $eq: ["$status", "open"] };
   const update: Record<string, unknown> = {
     updatedAt: { $cond: [open, { $literal: writtenAt }, "$updatedAt"] },

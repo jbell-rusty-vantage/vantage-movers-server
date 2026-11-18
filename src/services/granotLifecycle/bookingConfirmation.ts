@@ -10,7 +10,6 @@ import { getCallLeadModel } from "../../models/CallLead";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type { GranotRecordLinkDocument } from "../../models/GranotRecordLink";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
@@ -424,11 +423,7 @@ async function persistLeadlessConfirmation(input: {
     return { entity_refs: refs(caseRow._id, existingByJob._id as mongoose.Types.ObjectId, undefined, activeLink._id), warnings: [] };
   }
 
-  const observation = await getGranotObservationModel()
-    .findById(input.input.causal.observation_id)
-    .session(input.input.session)
-    .lean()
-    .exec();
+  const observation = await readCaseObservation(toObjectId(input.input.causal.observation_id), input.input.session);
   const contact = observation?.contact;
   const customerName = contact?.display_name
     || [contact?.first_name, contact?.last_name].filter(Boolean).join(" ")

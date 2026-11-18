@@ -1,4 +1,4 @@
-import { readCaseObservation, readCaseStatement } from "./caseEvidence";
+import { readCaseObservation, readCaseStatement, readCaseDecision } from "./caseEvidence";
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import { getGranotLifecycleFlags, type GranotLifecycleFlags } from "../../config/domain/granotLifecycle";
@@ -9,9 +9,7 @@ import { getGranotLifecycleActivationModel } from "../../models/GranotLifecycleA
 import { Merchant } from "../../models/Merchant";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotRecordLinkModel, type GranotRecordLinkDocument } from "../../models/GranotRecordLink";
-import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { officialBookingAgentIds, officialBookingAllocations } from "../agents";
 import { newObjectIdHex, toObjectId } from "../../utils/objectId";
 import type { GranotLifecycleCreateReferralBookingCommandInput } from "../../validation/v1/granotLifecycle.validation";
@@ -210,10 +208,8 @@ async function applyReferralBooking(input: {
     throw lifecycle("Granot reconciliation case revision changed", "CASE_REVISION_CONFLICT", 409, input.input.request_id);
   }
   assertStableEvidence(caseRow, input.causal, input.input.request_id);
-  const observation = await getGranotObservationModel().findById(input.causal.observation_id)
-    .session(input.session).lean().exec();
-  const decision = await getSynchronizationDecisionModel().findById(input.causal.decision_id)
-    .session(input.session).lean().exec();
+  const observation = await readCaseObservation(toObjectId(input.causal.observation_id), input.session);
+  const decision = await readCaseDecision(toObjectId(input.causal.decision_id), input.session);
   const activation = await getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" })
     .session(input.session).lean().exec();
   if (

@@ -1,4 +1,3 @@
-import { recentHistoryObservations } from "../../granotHistory/archiveReads";
 import { getContactNumberModel } from "../../../models/ContactNumber";
 
 import { getFormLeadModel } from "../../../models/FormLead";
@@ -6,7 +5,6 @@ import { getCallLeadModel } from "../../../models/CallLead";
 import { BookedLead } from "../../../models/BookedLead";
 import { CancelledLead } from "../../../models/CancelledLead";
 import { getEntityChangeModel } from "../../../models/EntityChange";
-import { getGranotObservationModel } from "../../../models/GranotObservation";
 import { getLeadMessageModel } from "../../../models/LeadMessage";
 import { toObjectId } from "../../../utils/objectId";
 import { moveViewsForLead, type LeadMoveSource } from "./moveViews";
@@ -17,13 +15,13 @@ import type { HistoryLeadRef } from "./candidates";
  * Read-only canonical history for the MCP history tools (`find_contact_number`,
  * `get_lead_history`). Sources are canonical records and provider metadata only: Contact Numbers
  * (with their All Numbers call summary and lead link), Leads, Bookings, Cancellations, EntityChanges,
- * Granot observations and Lead Message delivery metadata. Every read is bounded and served by an existing index. No email
+ * Lead Message delivery metadata. Every read is bounded and served by an existing index. No email
  * or Lead Message body leaves this module, and `serialize` redacts every string.
  */
 type Row = Record<string, unknown>;
 type LeadModel = HistoryLeadRef["model"];
 
-const LIMITS = { numbers: 50, changes: 50, observations: 20, bookings: 10, messages: 50 } as const;
+const LIMITS = { numbers: 50, changes: 50, bookings: 10, messages: 50 } as const;
 
 const isOid = (v: object) => ["ObjectId", "ObjectID"].includes(String((v as { _bsontype?: unknown })._bsontype));
 const sid = (v: unknown) => v == null ? null : String(v);
@@ -70,7 +68,7 @@ const leadView = (lead: Row) => ({ model: lead.model, id: sid(lead.id), name: le
 const linkView = (link: Row | null | undefined) => link ? ({ source: link.source ?? "automatic", set_at: iso(link.set_at), set_by: link.set_by ?? null,
   excluded: ((link.excluded as Row[] | undefined) ?? []).map((e) => ({ model: e.model, id: sid(e.id) })) }) : null;
 
-/** Lead projection, linked Contact Numbers, entity changes, Granot observations, bookings, cancellations and messages (no bodies). */
+/** Lead projection, linked Contact Numbers, entity changes, bookings, cancellations and messages (no bodies). */
 export async function readLeadHistory(lead: HistoryLeadRef) {
   const oid = toObjectId(lead.id);
   const hidden = "-email -sheet_sync -ingested_contact_snapshot -granot_contact_snapshot -ringcentral";
@@ -78,14 +76,11 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
     : getCallLeadModel().findById(oid).select(hidden).lean())) as unknown as Row | null;
   if (!row) return null;
   const leadRef = { "lead_ref.model": lead.model, "lead_ref.id": oid };
-  const jobNo = str(row.normalized_job_no);
-  const [numbers, changes, hotObservations, bookings, cancellations, messages] = await Promise.all([
+  const [numbers, changes, bookings, cancellations, messages] = await Promise.all([
     getContactNumberModel().find({ purged_at: null, $or: [{ "lead.id": oid }, { "other_leads.id": oid }] }, { e164: 1, lead: 1, lead_link: 1 })
       .sort({ _id: 1 }).limit(LIMITS.numbers).lean(),
     getEntityChangeModel().find({ "entity.model": lead.model, "entity.id": lead.id } as Row).sort({ applied_at: -1 }).limit(LIMITS.changes)
       .select("changed_paths fields applied_at provenance command_name revision_before revision_after").lean(),
-    jobNo ? getGranotObservationModel().find({ "identity.normalized_job_no": jobNo }).sort({ captured_at: -1 })
-      .limit(LIMITS.observations).select("kind captured_at normalized_source_label route_event_class normalization_result identity priority booking_action agent_identity display_money move provider_context").lean() : [],
     BookedLead.find({ lead_ref: oid, lead_model: lead.model }).sort({ _id: -1 }).limit(LIMITS.bookings)
       .select("job_no normalized_job_no book_date timestamp binder_amount total_binder_amount deposit_amount agent_name_snapshot source booking_origin is_referral_booking cancelled createdAt").lean(),
     CancelledLead.find({ lead_ref: oid }).sort({ _id: -1 }).limit(LIMITS.bookings)
@@ -93,9 +88,6 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
     getLeadMessageModel().find(lead.model === "FormLead" ? { $or: [leadRef, { form_lead: oid }] } : leadRef).sort({ createdAt: -1 }).limit(LIMITS.messages)
       .select("purpose origin status dispatch_mode template_version to from sent_at delivered_at accepted_at attempt_count skip_reason last_error_code provider_status createdAt").lean(),
   ]);
-  const db = getGranotObservationModel().db.db;
-  if (jobNo && !db) throw new Error("Granot history database unavailable");
-  const observations = jobNo && db ? await recentHistoryObservations(db, jobNo, hotObservations, LIMITS.observations) : hotObservations;
   return serialize({
     lead: leadProjection(row, lead.model),
     contact_numbers: (numbers as unknown as Row[]).map((number) => {
@@ -109,11 +101,6 @@ export async function readLeadHistory(lead: HistoryLeadRef) {
       revision_before: change.revision_before ?? null, revision_after: change.revision_after ?? null,
       fields: ((change.fields as Row[] | undefined) ?? []).map((field) => hashed(field) ? { path: field.path, changed: true }
         : { path: field.path, before: field.before ?? null, after: field.after ?? null }) })),
-    granot_observations: (observations as unknown as Row[]).map((observation) => ({ id: String(observation._id), kind: observation.kind, captured_at: iso(observation.captured_at),
-      source_label: observation.normalized_source_label ?? null, route_event_class: observation.route_event_class ?? null, normalization_result: observation.normalization_result,
-      job_no: (observation.identity as Row | null)?.job_no_raw ?? null, priority: observation.priority ?? null, booking_action: observation.booking_action ?? null,
-      rep_raw: (observation.agent_identity as Row | null)?.rep_raw ?? null, user_raw: (observation.agent_identity as Row | null)?.user_raw ?? null,
-      display_money: observation.display_money ?? null, move: observation.move ?? null, type_raw: (observation.provider_context as Row | null)?.type_raw ?? null })),
     bookings: (bookings as unknown as Row[]).map((booking) => ({ ...booking, id: String(booking._id) })),
     cancellations: (cancellations as unknown as Row[]).map((cancellation) => ({ ...cancellation, id: String(cancellation._id) })),
     messages: (messages as unknown as Row[]).map((message) => ({ ...message, id: String(message._id), created_at: iso(message.createdAt), createdAt: undefined })),

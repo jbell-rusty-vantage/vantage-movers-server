@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import { Agent } from "../../../models/Agent";
-import { getGranotObservationModel } from "../../../models/GranotObservation";
-import { OBSERVATION_KINDS } from "../../../models/granotLifecycleSchemas";
+import { readLatestCapture } from "../../granotLifecycle/observationReadFacts";
 import { getRepIdentityLinkModel } from "../../../models/RepIdentityLink";
 import { getSalesIntelligenceSyncStateModel } from "../../../models/SalesIntelligenceSyncState";
 import { getSalesOutreachRepDayProjectionModel } from "../../../models/salesOutreach";
@@ -255,11 +254,5 @@ export const mongoSalesOutreachReadStore: SalesOutreachReadStore = {
     };
   },
 
-  async readLatestGranotObservationAt() {
-    const row = await getGranotObservationModel()
-      .findOne({ kind: { $in: [...OBSERVATION_KINDS] } }, { _id: 0, captured_at: 1 })
-      .sort({ captured_at: -1 })
-      .lean();
-    return row?.captured_at ?? null;
-  },
+  readLatestGranotObservationAt: readLatestCapture,
 };

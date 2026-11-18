@@ -2,8 +2,7 @@ import { getGranotBookingDiscrepancyModel } from "../../models/GranotBookingDisc
 import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDiscrepancy";
 import type { GranotDiscrepancyDocument } from "../../models/granotDiscrepancyModel";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
-import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
-import { toObjectId } from "../../utils/objectId";
+import { readCaseDecisions } from "./caseEvidence";
 import type { GranotLifecycleDiscrepancyListQuery } from "../../validation/v1/granotLifecycle.validation";
 import { searchBookingLeadCandidates, type BookingLeadCandidateProjection } from "./bookingReconciliation";
 import { GRANOT_LIFECYCLE_ERROR_CODES, GranotLifecycleError } from "./errors";
@@ -47,10 +46,13 @@ export async function listGranotLifecycleDiscrepancies(query: GranotLifecycleDis
   if (query.reason_code) filter.reason_code = query.reason_code;
   if (query.normalized_job_no) filter.normalized_job_no = query.normalized_job_no;
   if (query.source_id) {
-    const decisionIds = await getSynchronizationDecisionModel().distinct("_id", {
-      "source_scope.granot_crm_source_id": toObjectId(query.source_id),
-    });
-    filter["evidence.decision_id"] = { $in: decisionIds };
+    const ids = await Promise.all([
+      getGranotBookingDiscrepancyModel().distinct("evidence.decision_id", filter),
+      getGranotReleaseDiscrepancyModel().distinct("evidence.decision_id", filter),
+    ]);
+    const decisions = await readCaseDecisions(ids.flat());
+    filter["evidence.decision_id"] = { $in: decisions.filter(row =>
+      String(row.source_scope?.granot_crm_source_id) === query.source_id).map(row => row._id) };
   }
   if (query.opened_from || query.opened_to) filter.opened_at = {
     ...(query.opened_from ? { $gte: new Date(query.opened_from) } : {}),

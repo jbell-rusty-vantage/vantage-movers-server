@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from "node:http";
-import { connectMongo } from "../../db";
+import { connectMongo, withTransaction } from "../../db";
 import {
   getGranotObservationReceiptModel,
   type GranotObservationReceiptDocument,
@@ -20,7 +20,7 @@ import {
   hashCredentialRedactedPayload,
 } from "./receiptEvidence";
 import { incrementGranotLifecycleReceiptsTotal } from "./metrics";
-import { recordGranotReceiptDailyOperationsFact } from "../dailyOperations/recordGranotFacts";
+import { incrementWebhookDay } from "../dailyOperations/webhookDay";
 
 export const GRANOT_WEBHOOK_STORED_HEADER_ALLOWLIST = [
   "content-type",
@@ -133,21 +133,24 @@ export async function captureGranotLifecycleWebhookReceipt(
     channel: "granot_webhook",
     event_class: input.route_event_class,
   });
-  await recordGranotReceiptDailyOperationsFact({
-    receipt_id: result.receipt_id,
-    route_event_class: input.route_event_class,
-    captured_at: input.captured_at,
-    payload: document.payload,
-  });
   return { receipt_id: result.receipt_id };
 }
 
 async function persistGranotObservationReceipt(
   document: GranotObservationReceiptInsert,
 ): Promise<CaptureGranotLifecycleWebhookResult> {
-  await connectMongo();
-  const receipt = await getGranotObservationReceiptModel().create(document);
-  return { receipt_id: receipt._id.toString() };
+  const persist = () => withTransaction(async (session) => {
+    const [receipt] = await getGranotObservationReceiptModel().create([{ ...document, webhook_day_counted: true }], { session });
+    await incrementWebhookDay(document, session);
+    return { receipt_id: receipt!._id.toString() };
+  });
+  try {
+    return await persist();
+  } catch (error) {
+    const problem = error as { code?: number; keyPattern?: { day?: number } };
+    if (problem?.code !== 11000 || !problem.keyPattern?.day) throw error;
+    return persist(); // Another capture created the first day row.
+  }
 }
 
 export type ChannelObservationChannel = Exclude<

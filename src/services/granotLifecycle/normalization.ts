@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { withTransaction } from "../../db";
+import { hasInvalidPriority, isPairingCandidate, recordObservationReadFacts } from "./observationReadFacts";
 import { toObjectId } from "../../utils/objectId";
 import {
   getGranotObservationModel,
@@ -966,6 +968,8 @@ export async function persistObservationCandidate(
   }
 }
 
+// A committed maximum lets older rows in the same HTTP collection batch skip a transaction.
+const latestCommittedCapture = new WeakMap<mongoose.Connection, number>();
 function mongooseObservationStore(): ObservationStore {
   const Model = getGranotObservationModel();
   return {
@@ -973,12 +977,18 @@ function mongooseObservationStore(): ObservationStore {
       return Model.findOne({ receipt_id: receiptId }).lean();
     },
     async insert(document) {
-      try {
-        const created = await Model.create(document);
-        return created.toObject();
-      } catch (error) {
-        throw error;
+      const updateLatest = +document.captured_at > (latestCommittedCapture.get(Model.db) ?? -Infinity);
+      if (!updateLatest && !hasInvalidPriority(document) && !isPairingCandidate(document)) {
+        return (await Model.create(document)).toObject();
       }
+      const saved = await withTransaction(async session => {
+        const [created] = await Model.create([document], { session });
+        const row = created!.toObject();
+        await recordObservationReadFacts(row, session, updateLatest);
+        return row;
+      });
+      latestCommittedCapture.set(Model.db, Math.max(+saved.captured_at, latestCommittedCapture.get(Model.db) ?? -Infinity));
+      return saved;
     },
   };
 }

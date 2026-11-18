@@ -52,6 +52,7 @@ export type GranotObservationReceiptDocument = {
   _id: mongoose.Types.ObjectId;
   source_system: "granot";
   observation_channel: ObservationChannel;
+  webhook_day_counted?: true;
   captured_at: Date;
   route_event_class?: GranotRouteEventClass;
   channel_operation_kind?: ChannelOperationKind;
@@ -170,6 +171,7 @@ const GranotObservationReceiptSchema = new Schema(
       enum: OBSERVATION_CHANNELS,
     },
     captured_at: { type: Date, required: true },
+    webhook_day_counted: { type: Boolean, immutable: true },
     route_event_class: { type: String, enum: ROUTE_EVENT_CLASSES },
     channel_operation_kind: { type: String, enum: CHANNEL_OPERATION_KINDS },
     authentication_method: {

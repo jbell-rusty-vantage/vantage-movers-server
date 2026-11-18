@@ -58,6 +58,8 @@ List items and case detail expose `latest_action` from `projectCaseLatestAction`
 
 Booking list rows expose compact [Booking Priority Pairing](../../../../CONTEXT.md) when the case has a creating Booked Observation: `pairing` (`priority_5_then_booked` | `booked_carries_priority_5` | `booked_without_priority_5`), `creating_booked_priority_is_5`, `has_preceding_priority_5`, and current `has_later_priority_5`. Historical Release rows, Release-only booking cases, and historical Priority-5-only Booking rows omit it. List may use the persisted snapshot for the first three fields; `has_later_priority_5` is always computed from one post-Booked Priority 5 query for the page's Booking jobs. Case detail adds full `priority_pairing` (including `later_priority_5`) or `null`. Pairing carries Observation IDs, times, route, and Priority only — no contact and no raw Priority Update payload.
 
+Daily Job and Lead timelines use business changes, Record Links, cases, discrepancies and official Bookings/Cancellations. Case evidence and priority pairing read the case-owned observations, statements and decisions. Operations Health counts actionable receipt states and decision outcomes from the past 24 hours.
+
 ## Projection boundaries
 
 - Lists contain a centralized irreversible contact label. `deterministic_booking` is `projectDeterministicBooking`: `present`; when a Booking exists, official `id`, `masked_ref`, and `public_cancel_allowed` (true only for an ordinary sourced Booking: not Referral, not Leadless, not cancelled, has `lead_ref` + `lead_model`). That `id` is the official Booking id so the list can link public cancel without opening the case — not Granot payload. `assertProjectionSafe` is unchanged. Raw case context/evidence arrays are absent.

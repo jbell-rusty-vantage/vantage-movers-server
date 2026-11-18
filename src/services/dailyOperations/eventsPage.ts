@@ -1,3 +1,4 @@
+import { RETIRED_WEBHOOK_CARD_KINDS } from "./kinds";
 import {
   getDailyOperationsEventModel,
   type DailyOperationsCard,
@@ -198,6 +199,8 @@ export function projectDailyOperationsEventItem(
     row.occurred_at instanceof Date
       ? row.occurred_at.toISOString()
       : new Date(row.occurred_at).toISOString();
+  const links = { ...row.links };
+  if (row.kind !== "exception.dead_letter") delete links.receipt_id;
   return {
     event_id: row._id.toString(),
     day: row.day,
@@ -211,8 +214,8 @@ export function projectDailyOperationsEventItem(
     job_no: row.job_no ?? null,
     entity_type: row.entity_type ?? null,
     entity_id: row.entity_id ?? null,
-    parent_receipt_id: row.parent_receipt_id ?? null,
-    links: row.links ?? {},
+    parent_receipt_id: row.kind === "exception.dead_letter" ? row.parent_receipt_id ?? null : null,
+    links,
     card: row.card ?? {},
     metric_touches: row.metric_touches ?? [],
   };
@@ -224,7 +227,7 @@ async function defaultListEvents(input: {
   cursor: DailyOperationsEventCursor | null;
   limit: number;
 }): Promise<DailyOperationsEventRow[]> {
-  const filter: Record<string, unknown> = { day: input.day };
+  const filter: Record<string, unknown> = { day: input.day, kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS } };
   if (input.lane) filter.lane = input.lane;
   if (input.cursor) {
     const occurredAt = new Date(input.cursor.occurred_at);

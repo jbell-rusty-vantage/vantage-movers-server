@@ -1,10 +1,11 @@
 import type { ClientSession, Types } from "mongoose";
-import { getGranotObservationModel, type GranotObservationDocument } from "../../models/GranotObservation";
+import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel, type GranotObservationReceiptDocument } from "../../models/GranotObservationReceipt";
 import { getSynchronizationDecisionModel, type SynchronizationDecisionDocument } from "../../models/SynchronizationDecision";
 
+import { caseObservations as observations } from "./observationReadFacts";
+
 type CaseReceipt = Pick<GranotObservationReceiptDocument, "_id" | "observation_channel" | "payload">;
-const observations = () => getGranotObservationModel().db.collection<GranotObservationDocument>("granot_case_observations");
 const statements = () => getGranotObservationModel().db.collection<CaseReceipt>("granot_case_statements");
 const decisions = () => getGranotObservationModel().db.collection<SynchronizationDecisionDocument>("granot_case_decisions");
 
@@ -21,7 +22,7 @@ export async function preserveCaseEvidence(observationId: Types.ObjectId, decisi
   await observations().updateOne({ _id: observation._id }, { $setOnInsert: observation }, { upsert: true, session });
   await statements().updateOne({ _id: receipt._id }, { $setOnInsert: receipt }, { upsert: true, session });
   // Some paths attach an existing decision. Newly created decisions are pinned at insertion.
-  const existing = await getSynchronizationDecisionModel().findById(decisionId).session(session).lean();
+  const existing = await readCaseDecision(decisionId, session);
   if (existing) await preserveCaseDecision(existing, session);
 }
 
@@ -38,4 +39,20 @@ export async function readCaseStatement(id: Types.ObjectId, session?: ClientSess
 export async function readCaseDecision(id: Types.ObjectId, session: ClientSession) {
   return await decisions().findOne({ _id: id }, { session })
     ?? await getSynchronizationDecisionModel().findById(id).session(session).lean();
+}
+
+export async function readCaseObservations(ids: Types.ObjectId[]) {
+  const rows = await observations().find({ _id: { $in: ids } }).toArray();
+  const pinned = new Set(rows.map(row => String(row._id)));
+  const missing = ids.filter(id => !pinned.has(String(id)));
+  if (missing.length) rows.push(...await getGranotObservationModel().find({ _id: { $in: missing } }).lean());
+  return rows;
+}
+
+export async function readCaseDecisions(ids: Types.ObjectId[]) {
+  const rows = await decisions().find({ _id: { $in: ids } }).toArray();
+  const pinned = new Set(rows.map(row => String(row._id)));
+  const missing = ids.filter(id => !pinned.has(String(id)));
+  if (missing.length) rows.push(...await getSynchronizationDecisionModel().find({ _id: { $in: missing } }).lean());
+  return rows;
 }
