@@ -211,7 +211,7 @@ Admin `GET .../runs/:runId?details=owner` redacts `granot_statement` from the pl
 
 ## Priority Pool collection and recovery
 
-The existing hourly Estimates dispatcher also schedules Pool refresh hourly 08:00-20:00 inclusive and at 22:00/00:00/02:00/04:00/06:00 America/New_York, after complete ALL collection for the same frozen slot, plus nightly Pool discovery at 06:00 from January 1, 2020 through today. Pool scheduling requires active Outreach configuration with Pool enabled. Refresh covers the trailing 90 inclusive provider Open Dates and every older observed provider Open Date month. A rolling 90-day-only query is insufficient: the inspected inventory included 227 Pool results older than that boundary. The nightly discovery floor is explicit; dates before 2020 are not claimed covered.
+The existing hourly Estimates dispatcher also schedules Pool refresh at 06:00, 09:00, 13:00, 17:00 and 21:00 America/New_York, after complete ALL collection for the same frozen slot, plus nightly Pool discovery at 06:00 from January 1, 2020 through today. Pool scheduling requires active Outreach configuration with Pool enabled. Refresh covers the trailing 90 inclusive provider Open Dates and every older observed provider Open Date month. A rolling 90-day-only query is insufficient: the inspected inventory included 227 Pool results older than that boundary. The nightly discovery floor is explicit; dates before 2020 are not claimed covered.
 
 `granot_estimates_schedule_slots` freezes the complete scope before child runs exist. First insert wins when the date directory changes during a slot. The ALL parent durably records its correlated Pool intent before dispatch; recovery regenerates missing manifests and children outside the original cron hour. Disabled Pool manifests cannot block ALL recovery. Pool refresh remains ineligible until every declared ALL partition has complete collection. Deterministic identities distinguish Pool from ALL without changing existing ALL identities. The shared account lease serializes collection, and ordinary lifecycle matching, assignment protection and sheet transitions remain unchanged.
 
@@ -232,7 +232,7 @@ and stores the signed Owner approval. The existing worker and lifecycle apply pe
 the effects. This narrow path skips the ordinary automation flag, retains every
 lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
 
-The recurring cron covers its full declared scope hourly 08:00-20:00 inclusive and at 22:00/00:00/02:00/04:00/06:00 America/New_York.
+The recurring cron covers its full declared scope at 06:00, 09:00, 13:00, 17:00 and 21:00 America/New_York.
 A deterministic run `_id` keyed by slot and date window makes retries and concurrent
 invocations reuse the same run, plan, and lifecycle operation IDs.
 The existing Mongo `_id` index enforces uniqueness; no index migration is required.
@@ -272,9 +272,9 @@ Owner `GET /api/v1/admin/granot-automation/runs/freshness` returns `last_complet
 
 ## November 4 cadence and Mongo efficiency
 
-The shared schedule in `estimatesCron.ts` admits 18 ordinary-day slots, 17 on spring-forward and 18 on fall-back. At 06:00 ALL, its correlated Pool refresh and daily discovery are independent duties. Only refresh depends on complete ALL collection. First insert freezes the windows, child identity and optional immutable `scheduled_at`; old keys decode read-only without migration. Disabled Pool neither nominates work nor reports an expected/late lane. Recovery keeps existing children and operation IDs.
+The shared schedule in `estimatesCron.ts` admits five slots every day, including both daylight-saving transitions. At 06:00 ALL, its correlated Pool refresh and daily discovery are independent duties. Only refresh depends on complete ALL collection. First insert freezes the windows, child identity and optional immutable `scheduled_at`; old keys decode read-only without migration. Disabled Pool neither nominates work nor reports an expected/late lane. Recovery keeps existing children and operation IDs.
 
-Freshness orders complete slots by scheduled instant, not child completion or insertion time. Its grace-elapsed comparison cannot reset away sustained hourly failures. The DTO retains existing fields and adds scheduled timing, collected/synchronized slot identities and `enabled`. Held rows and unapplied action receipts prevent a fully synchronized claim even when every scan completed. Readers write nothing.
+Freshness orders complete slots by scheduled instant, not child completion or insertion time. Its grace-elapsed comparison cannot reset away consecutive missed slots. The DTO retains existing fields and adds scheduled timing, collected/synchronized slot identities and `enabled`. Held rows and unapplied action receipts prevent a fully synchronized claim even when every scan completed. Readers write nothing.
 
 Repeated schedule/run upserts disable timestamp churn and only insert initial timestamps. Dispatch/Pool markers write only on transition. The route reuses the ALL-created refresh manifest. The sibling loader avoids its fallback phone query once the Job ladder decides. Related Form lookup is one projected Call batch per bounded EntityChange page; its jobs dedupe by causal change.
 
