@@ -20,6 +20,7 @@ export async function storeArchiveObject(database: string, bytes: Buffer) {
   } catch (error) {
     if (Number((error as { code?: unknown }).code) !== 412) throw error;
   }
-  if (digest(await readArchiveObject(database, hash)) !== hash) throw new Error("Granot archive read-back failed");
-  return hash;
+  const persisted = await readArchiveObject(database, hash);
+  if (digest(persisted) !== hash) throw new Error("Granot archive read-back failed");
+  return { hash, persisted };
 }

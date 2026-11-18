@@ -43,9 +43,9 @@ export async function publishClosedRun(db: Db, run: string, cutoff: Date) {
   }
   const result = await prepareClosedRun(db, run, cutoff);
   if (result.reason !== "ready") return result.reason;
-  const hash = await storeArchiveObject(db.databaseName,result.bytes);
+  const { hash, persisted } = await storeArchiveObject(db.databaseName, result.bytes);
   const entry = { _id:run, hash, count:result.count, closed_at:new Date() };
-  unpackClosedRun(entry, await readArchiveObject(db.databaseName,hash));
+  unpackClosedRun(entry, persisted);
   const checked = await prepareClosedRun(db,run,cutoff);
   if (checked.reason !== "ready" || digest(checked.bytes) !== hash) return "source_changed";
   await closedRuns(db).updateOne({ _id:run, hash },{ $setOnInsert:entry },{upsert:true,writeConcern:{w:"majority"}});

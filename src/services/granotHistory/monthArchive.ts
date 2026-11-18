@@ -76,12 +76,9 @@ export async function appendHistoryMonth(
       }
       let hash = old?.hash;
       if (bytes) {
-        hash = await storeArchiveObject(db.databaseName, bytes);
-        const verified = decodeChains(
-          await readArchiveObject(db.databaseName, hash),
-          hash,
-          job,
-        );
+        const published = await storeArchiveObject(db.databaseName, bytes);
+        hash = published.hash;
+        const verified = decodeChains(published.persisted, hash, job);
         const dates = verified.map((c) => +c.observation.captured_at);
         const entry = {
           _id: key,

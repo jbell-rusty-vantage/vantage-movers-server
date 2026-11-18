@@ -562,3 +562,22 @@ test("completed channel replay survives decision expiry and respects a supersedi
     assert.equal(deps.processorCalls.length, 0);
   }
 });
+
+test("routine HTTP Lead results round-trip from the receipt alone and respect later reconciliation", async () => {
+  for (const outcome of ["already_current", "stale"] as const) {
+    for (const model of ["FormLead", "CallLead"] as const) {
+      const row = snapshot({ observation_channel: "granot_http_automation", channel_operation_id: "run:action" });
+      const deps = memoryStore([row]);
+      const original = processorResult(outcome, { target: { model, id: String(objectId()) } });
+      deps.processor = { process: async () => original };
+      const expected = { status: "processed", result: original };
+      assert.deepEqual(await claimAndProcessOrPoll(String(row._id), deps), expected);
+      assert.ok(row.processing.replay_result && "decision" in row.processing.replay_result);
+      assert.deepEqual(await claimAndProcessOrPoll(String(row._id), deps), expected);
+      const correction = processorResult("linked");
+      deps.decisions.push(correction);
+      row.processing.latest_decision_id = toObjectId(correction.decision_id);
+      assert.deepEqual(await claimAndProcessOrPoll(String(row._id), deps), { status: "processed", result: correction });
+    }
+  }
+});

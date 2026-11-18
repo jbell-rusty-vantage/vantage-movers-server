@@ -1,4 +1,5 @@
 import { withTransaction } from "../../db";
+import { currentReceiptReplay, storeReceiptReplay, type StoredReceiptReplay } from "./receiptReplay";
 import { acceptsLead, certifyAcceptedLead } from "./acceptedLeadEvidence";
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
@@ -71,7 +72,7 @@ export type ClaimedReceiptSnapshot = {
     last_error?: { code: string; message: string; failed_at: Date };
     completed_at?: Date;
     latest_decision_id?: mongoose.Types.ObjectId;
-    replay_result?: ProcessorResult;
+    replay_result?: StoredReceiptReplay;
     manual_requeue_count: number;
   };
 };
@@ -460,7 +461,7 @@ async function runFencedProcessor(
           "processing.state": "completed",
           "processing.completed_at": now,
           "processing.latest_decision_id": toObjectId(result.decision_id),
-          ...(claimed.claimed.channel_operation_id ? { "processing.replay_result": result } : {}),
+          ...(claimed.claimed.channel_operation_id ? { "processing.replay_result": storeReceiptReplay(claimed.claimed.observation_channel, result) } : {}),
           ...(claimed.claimed.observation_channel === "granot_http_automation" && (result.outcome === "already_current" || result.outcome === "stale") && !result.effects.length
             ? { "processing.retention_review_at": new Date(+now + 7 * 86400000 + 60000) } : {}),
           "processing.technical_attempts": 0,
@@ -922,8 +923,9 @@ async function defaultLoadReceipt(id: string): Promise<ClaimedReceiptSnapshot | 
 async function readReceiptResult(receipt: ClaimedReceiptSnapshot | null, deps: DrainerDeps) {
   const processing = receipt?.processing;
   if (!processing?.latest_decision_id) return null;
-  if (processing.state === "completed" && processing.replay_result?.decision_id === String(processing.latest_decision_id)) {
-    return processing.replay_result;
+  if (processing.state === "completed") {
+    const replay = currentReceiptReplay(processing.replay_result, processing.latest_decision_id);
+    if (replay) return replay;
   }
   return (deps.loadDecisionResult ?? defaultLoadDecisionResult)(processing.latest_decision_id);
 }
