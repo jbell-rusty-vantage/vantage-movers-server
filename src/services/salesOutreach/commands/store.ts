@@ -1,3 +1,4 @@
+import { enqueueOutreachWork } from "../evaluation/refreshRequests";
 import mongoose, { type ClientSession } from "mongoose";
 import { getCallLeadModel } from "../../../models/CallLead";
 import { getContactNumberModel } from "../../../models/ContactNumber";
@@ -8,7 +9,7 @@ import { LeadChangeRecorder } from "../../domainCommands/leadChangeEmission";
 import type { CanonicalCommandContext } from "../../domainCommands/types";
 import { CsiError, type CsiActor } from "../../salesIntelligence/auth";
 import { duplicateKey } from "../../salesIntelligence/transactions";
-import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { type JobInput } from "../../salesIntelligence/jobs";
 import { mongoEvaluationStore, toRestrictionRow, type DeskPlanRow, type DeskRestrictionRow, type EvaluationStore } from "../evaluation/store";
 import { findDeskRepsAt } from "../roster/store";
 import type { DeskLeadRef } from "../subjects/leadFacts";
@@ -82,7 +83,7 @@ export type DeskCommandStore = Pick<EvaluationStore, "loadSubject" | "loadPeriod
   /** Subjects attached to a Contact Number (≤ 100; `sod_subject_contact_numbers`). */
   subjectIdsForNumber(contactNumberId: string, session: ClientSession): Promise<string[]>;
   /** Enqueues an evaluation job; returns its id and whether this call created it (for the after-commit wake). */
-  enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean }>;
+  enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean } | { job_id: null; created: false }>;
 };
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
@@ -258,7 +259,8 @@ export const mongoDeskCommandStore: DeskCommandStore = {
   },
 
   async enqueue(job, session, now) {
-    const row = await enqueueCsiJob(job, session, now);
+    const row = await enqueueOutreachWork(job, session, now);
+    if (!row) return { job_id: null, created: false as const };
     // `enqueueCsiJob` is insert-only and stamps `createdAt: now` on insert: a row created by this
     // call carries exactly this instant; an existing duplicate keeps its own.
     return { job_id: String(row._id), created: (row as { createdAt?: Date }).createdAt?.getTime() === now.getTime() };

@@ -1,3 +1,4 @@
+import { enqueueOutreachWork } from "../evaluation/refreshRequests";
 import { retainSmsVolume } from "../performance/evidence";
 import mongoose, { type ClientSession } from "mongoose";
 import { Agent } from "../../../models/Agent";
@@ -16,7 +17,6 @@ import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach
 import type { SalesOutreachWorkflow } from "../../../config/domain/salesOutreach";
 import type { RepSmsStatus } from "../../../config/domain/ringcentralRepSms";
 import type { TemporalRepLink } from "../../salesIntelligence/repIdentity/resolve";
-import { enqueueCsiJob } from "../../salesIntelligence/jobs";
 import { ringCentralRepCallContext, writeReceiverAgent } from "../../leads/receiverAgentWrite";
 import type { ContactEventStore, StoredContactEvent } from "./apply";
 import type { CallSourceRow, DeskLeadKey, RestrictionInterval, SmsSourceRow, SubjectFacts } from "./derive";
@@ -375,7 +375,8 @@ export const mongoContactEventStore: ContactEventStore = {
   },
 
   async enqueue(job, session, now) {
-    const row = await enqueueCsiJob(job, session, now);
+    const row = await enqueueOutreachWork(job, session, now);
+    if (!row) return { job_id: null, created: false as const };
     return { job_id: String(row._id), created: (row as { createdAt?: Date }).createdAt?.getTime() === now.getTime() };
   },
 

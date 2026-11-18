@@ -1,3 +1,4 @@
+import { enqueueOutreachWork } from "../evaluation/refreshRequests";
 import mongoose, { type ClientSession } from "mongoose";
 import type {
   SalesOutreachLeadModel,
@@ -12,7 +13,6 @@ import { getContactNumberModel } from "../../../models/ContactNumber";
 import { getSalesOutreachPolicyPeriodModel, getSalesOutreachSubjectModel } from "../../../models/salesOutreach";
 import { getRingCentralRepSmsEvidenceModel } from "../../../models/salesOutreach/repSmsEvidence";
 import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
-import { enqueueCsiJob } from "../../salesIntelligence/jobs";
 import { enqueueOutreachContactChangeJobs, type ContactChangeSource } from "../capture/contactChangeWake";
 import { findDeskRepsAt } from "../roster/store";
 import { DESK_LEAD_PROJECTION, deskLeadKey, toDeskLeadFacts, type DeskLeadFacts, type DeskLeadRef } from "./leadFacts";
@@ -365,7 +365,7 @@ export const mongoDeskSubjectStore: DeskSubjectStore = {
   },
 
   async requestEvaluation(subjectId, subjectRevision, session) {
-    await enqueueCsiJob(evaluationJobInput(subjectId, subjectRevision), session);
+    await enqueueOutreachWork(evaluationJobInput(subjectId, subjectRevision), session);
   },
 
   async nominateContactSources(request, session) {

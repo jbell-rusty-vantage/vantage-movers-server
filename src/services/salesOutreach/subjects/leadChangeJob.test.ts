@@ -81,11 +81,11 @@ test("olr B8: the stored job result names the subject status and the admission p
     return stored;
   }) as never;
   await runOutreachLeadChangeJob(undefined, deps);
-  assert.deepEqual(stored, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "active", admission: "intake" });
+  assert.deepEqual(stored, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "active", admission: "intake", evaluation_requested: true });
   const refused = harness(leadFacts({ created_at: at("2026-09-30T12:00:00Z") }));
   refused.deps.complete = deps.complete;
   await runOutreachLeadChangeJob(undefined, refused.deps);
-  assert.deepEqual(stored, { outcome: "not_admitted", subject_id: null, reason: "created_before_intake", status: null, admission: null });
+  assert.deepEqual(stored, { outcome: "not_admitted", subject_id: null, reason: "created_before_intake", status: null, admission: null, evaluation_requested: false });
 });
 
 test("olr B6: the claimed row's dedupe_key picks the trigger; an :admission: job admits a pre-gate Lead as expansion, a plain r<rev> job does not", async () => {
@@ -185,4 +185,76 @@ test("related wakes validate both refs, recheck relation, and never admit absent
   assert.equal((await runOutreachLeadChangeJob(undefined, active.deps)).result?.outcome, 'unchanged');
   assert.deepEqual(active.store.periods, initial.store.periods);
   assert.equal(active.store.writes.length, 0);
+});
+
+
+test("Estimates refresh suppresses only the revision evaluation committed by this sync", async () => {
+  const lead = leadFacts({ ...accepted("0", "2026-10-01T14:00:00Z") });
+  const initial = harness(lead);
+  await runOutreachLeadChangeJob(undefined, initial.deps);
+  const refresh = harness({ ...lead, ...accepted("0", "2026-10-01T14:30:00Z") }, undefined,
+    `sod:lead-change:FormLead:${lead.ref.id}:estimates-refresh:receipt-2`);
+  refresh.store.subjects.push(...structuredClone(initial.store.subjects));
+  refresh.store.periods.push(...structuredClone(initial.store.periods));
+  const receiptJobs: unknown[] = [];
+  refresh.deps.enqueue = async job => { receiptJobs.push(job); };
+  const result = await runOutreachLeadChangeJob(undefined, refresh.deps);
+  assert.equal(result.result?.evaluation_requested, true);
+  assert.equal(result.result?.outcome, "updated");
+  assert.equal(refresh.store.evaluations.length, 1, "fresh accepted evidence still evaluates");
+  assert.equal(receiptJobs.length, 0, "the same transaction already persisted evaluation");
+  assert.deepEqual(refresh.store.periods, initial.store.periods, "same priority preserves periods");
+});
+
+test("Estimates bookkeeping-only sync retains receipt evaluation and incomplete callback repair", async () => {
+  const lead = leadFacts();
+  const initial = harness(lead);
+  await runOutreachLeadChangeJob(undefined, initial.deps);
+  const refresh = harness({ ...lead, domain_revision: lead.domain_revision + 1 }, undefined,
+    `sod:lead-change:FormLead:${lead.ref.id}:estimates-refresh:repair`);
+  refresh.store.subjects.push(...structuredClone(initial.store.subjects));
+  refresh.store.periods.push(...structuredClone(initial.store.periods));
+  const receiptJobs: unknown[] = [];
+  refresh.deps.enqueue = async job => { receiptJobs.push(job); };
+  const result = await runOutreachLeadChangeJob(undefined, refresh.deps);
+  assert.equal(result.result?.outcome, "updated");
+  assert.equal(result.result?.evaluation_requested, false);
+  assert.equal(refresh.store.evaluations.length, 0);
+  assert.equal(receiptJobs.length, 1);
+  // A previous callback may already have advanced the subject but missed its extra nomination.
+  const repair = harness({ ...lead, domain_revision: lead.domain_revision + 1 }, undefined,
+    `sod:lead-change:FormLead:${lead.ref.id}:estimates-refresh:repair`);
+  repair.store.subjects.push(...structuredClone(refresh.store.subjects));
+  repair.store.periods.push(...structuredClone(refresh.store.periods));
+  repair.deps.enqueue = refresh.deps.enqueue;
+  assert.equal((await runOutreachLeadChangeJob(undefined, repair.deps)).result?.outcome, "unchanged");
+  assert.equal(receiptJobs.length, 2, "unchanged retry still repairs using the same durable dedupe key");
+  assert.deepEqual(receiptJobs[0], receiptJobs[1]);
+});
+
+test("failed durable revision nomination aborts the callback and cannot suppress its retry", async () => {
+  const initial = harness();
+  await runOutreachLeadChangeJob(undefined, initial.deps);
+  const refresh = harness({ ...initial.lead, name: "Changed display" }, undefined,
+    `sod:lead-change:FormLead:${initial.lead.ref.id}:estimates-refresh:failed-write`);
+  refresh.store.subjects.push(...structuredClone(initial.store.subjects));
+  refresh.store.periods.push(...structuredClone(initial.store.periods));
+  const request = refresh.store.requestEvaluation.bind(refresh.store);
+  refresh.store.requestEvaluation = async () => { throw new Error("durable nomination failed"); };
+  refresh.deps.complete = (async (_lease: unknown, mutation: (s: typeof fakeSession) => Promise<unknown>) => {
+    const rollback = refresh.store.snapshot();
+    try { return await mutation(fakeSession); } catch (error) { rollback(); throw error; }
+  }) as never;
+  let extra = 0;
+  refresh.deps.enqueue = async () => { extra++; };
+  assert.equal((await runOutreachLeadChangeJob(undefined, refresh.deps)).status, "retry");
+  assert.deepEqual(refresh.store.subjects, initial.store.subjects);
+  assert.equal(extra, 0);
+  refresh.store.requestEvaluation = request;
+  const retry = harness(refresh.lead, undefined, `sod:lead-change:FormLead:${initial.lead.ref.id}:estimates-refresh:failed-write`);
+  retry.deps.store = refresh.store;
+  retry.deps.enqueue = refresh.deps.enqueue;
+  assert.equal((await runOutreachLeadChangeJob(undefined, retry.deps)).result?.evaluation_requested, true);
+  assert.equal(refresh.store.evaluations.length, 1);
+  assert.equal(extra, 0);
 });

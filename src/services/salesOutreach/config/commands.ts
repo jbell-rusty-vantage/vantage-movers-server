@@ -90,6 +90,13 @@ function assertEnginePolicyResolvable(value: SalesOutreachConfigurationValue): v
   );
 }
 
+/** Active rollout needs a prior shadow-capable configuration plus its explicit approval/parity references. */
+export function assertRefreshRolloutTransition(prior: unknown, value: SalesOutreachConfigurationValue): void {
+  if (value.refresh_requests?.mode !== "active") return;
+  const previous = z.object({ refresh_requests: z.object({ version: z.literal("w2-v1"), mode: z.enum(["shadow", "active"]) }) }).safeParse(prior);
+  if (!previous.success) throw new OutreachError("INVALID_INPUT", [{ path: "refresh_requests", code: "shadow_rollout_required" }]);
+}
+
 /**
  * PATCH /configuration (CONTRACTS): full replacement of the validated value with `expected_revision`
  * (0 = explicit Owner initialization, which creates the pointer at revision 1) and an
@@ -127,6 +134,10 @@ export async function patchSalesOutreachConfiguration(
         // Guards on the change itself, in plan order (olr §3): C1a count scope first, B3 engine policy second.
         await assertCountScopeProspective(store, pointer, value, context.now, context.session);
         assertEnginePolicyResolvable(value);
+        if (value.refresh_requests?.mode === "active") {
+          const prior = pointer ? await store.readVersion(pointer.version, context.session) : null;
+          assertRefreshRolloutTransition(prior?.value, value);
+        }
         if (!value.pool?.enabled && pointer && store === mongoConfigurationStore) {
           const prior = await store.readVersion(pointer.version, context.session);
           if ((prior?.value as { pool?: { enabled?: boolean } } | undefined)?.pool?.enabled)

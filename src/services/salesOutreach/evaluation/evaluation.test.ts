@@ -700,3 +700,75 @@ test("A5: the sweep returns the configured drain budget (operations.evaluate_dra
   const skipped = await sweepOutreachEvaluations(at("2026-10-05T14:41:00.000Z"), deps(activeInspection({ controls: { desk_enabled: true } })));
   assert.equal(skipped.drain_options, null);
 });
+
+
+test("W2: sustained refresh backlog shares max and timing while legacy progresses first", async () => {
+  for (const max of [1, 4]) {
+    const seeded = seededMany(8);
+    const run = drainHarness(seeded.store, seeded.ids, { tickMs: 10 });
+    let time = 0;
+    run.deps.clock = () => time + run.stats.claims * 10;
+    run.deps.refreshDrain = async (remaining, budget) => {
+      assert.ok(run.stats.claims >= 1, "legacy claims before refresh work");
+      assert.equal(remaining, max - 1);
+      assert.ok(budget <= 2495);
+      time += budget;
+      return { skipped: null, outcomes: { completed: remaining }, durations_ms: Array(remaining).fill(budget / remaining) };
+    };
+    const result = await drainOutreachEvaluateJobs({ max, deadlineMs: 5000 }, run.deps);
+    assert.equal(run.stats.claims, 1);
+    assert.equal(result.jobs, max);
+    assert.equal(result.outcomes.completed, max);
+    assert.ok(result.ms_total <= 5000);
+    assert.equal(result.ms_p95, max === 1 ? 10 : 2495 / 3);
+  }
+});
+
+test("W2: empty legacy probe leaves max-one budget for refresh recovery", async () => {
+  const run = drainHarness(new MemoryEvaluationStore(), []);
+  run.deps.refreshDrain = async max => {
+    assert.equal(max, 1);
+    return { skipped: null, outcomes: { completed: 1 }, durations_ms: [7] };
+  };
+  const result = await drainOutreachEvaluateJobs({ max: 1 }, run.deps);
+  assert.equal(result.jobs, 1);
+  assert.equal(result.ms_p95, 7);
+});
+
+
+test("W2: repeated single-slot drains alternate both continuously pending lanes", async () => {
+  const seeded = seededMany(8);
+  const run = drainHarness(seeded.store, seeded.ids);
+  let turn = false, refreshed = 0;
+  run.deps.refreshTurn = async () => (turn = !turn);
+  run.deps.refreshDrain = async max => {
+    assert.equal(max, 1);
+    refreshed++;
+    return { skipped: null, outcomes: { completed: 1 }, durations_ms: [1] };
+  };
+  for (let i = 0; i < 8; i++) assert.equal((await drainOutreachEvaluateJobs({ max: 1 }, run.deps)).jobs, 1);
+  assert.equal(run.stats.claims, 4);
+  assert.equal(refreshed, 4);
+});
+
+test("W2: refresh database failure retains partial accounting in the shared legacy cap", async () => {
+  const { drainSubjectRefreshes } = await import("./refreshWorker.js");
+  const seeded = seededMany(8);
+  const run = drainHarness(seeded.store, seeded.ids);
+  let refreshAttempts = 0;
+  run.deps.refreshDrain = (max, budget) => drainSubjectRefreshes(max, budget, {
+    preflight: async () => null,
+    next: async () => {
+      refreshAttempts++;
+      if (refreshAttempts === 2) throw new Error("retry write response lost");
+      return { status: "completed" };
+    },
+  });
+  const result = await drainOutreachEvaluateJobs({ max: 4 }, run.deps);
+  assert.equal(refreshAttempts, 2);
+  assert.equal(run.stats.claims, 2, "only two legacy claims fit beside completed and uncertain refresh slots");
+  assert.equal(result.jobs, 4);
+  assert.equal(result.outcomes.completed, 3);
+  assert.equal(result.outcomes.failed, 1);
+  assert.equal(result.refresh_requests?.skipped, "failed");
+});
