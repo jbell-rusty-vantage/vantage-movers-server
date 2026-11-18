@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { routineJobExpiry } from "./routineJobExpiry";
+import { isRoutineEvaluationKey, routineJobExpiry } from "./routineJobExpiry";
 
 const subject = "a".repeat(24);
 const key = `sod:lead-change:FormLead:${"b".repeat(24)}:estimates-refresh:${"c".repeat(24)}`;
@@ -21,4 +21,17 @@ test("admission, repair, malformed, extra and mismatched evidence keeps the ordi
   for (const result of [undefined, {...evaluation, subject_id: "0".repeat(24)}, {...evaluation, publication_revision: 0}, {...evaluation, next_evaluation_at: "unknown"}])
     assert.equal(evaluate("r2", result), undefined);
   assert.equal(routineJobExpiry("outreach_lead_change", key.replace("estimates-refresh", "admission"), refresh, completed), undefined);
+});
+
+test("only subject-matched revision and Estimates receipt identities can coalesce", () => {
+  const compose = (cause: string) => `sod:evaluate:${subject}:${cause}`;
+  for (const cause of ["r12", "estimates-refresh:" + key, "estimates-refresh:" + key.replace("FormLead", "CallLead")]) {
+    assert.equal(isRoutineEvaluationKey(compose(cause), subject), true);
+    assert.equal(isRoutineEvaluationKey(compose(cause), "f".repeat(24)), false);
+  }
+  for (const cause of ["due:123", "coverage:call:1:2", "policy:abc", "r1:contacts:abcd", "assignment:l1", "plan:r1",
+    "restriction:abc:r1", "unknown", "r0", "estimates-refresh:unknown"]) {
+    assert.equal(isRoutineEvaluationKey(compose(cause), subject), false);
+  }
+  assert.equal(isRoutineEvaluationKey(compose("r1"), undefined), false);
 });

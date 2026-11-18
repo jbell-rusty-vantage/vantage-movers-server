@@ -5,6 +5,7 @@ import { getSalesOutreachSubjectModel } from "../../../models/salesOutreach/subj
 import { assertIndexes } from "../../salesIntelligence/transactions";
 import { CsiError } from "../../salesIntelligence/auth";
 import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { isRoutineEvaluationKey } from "../../salesIntelligence/routineJobExpiry";
 import { salesOutreachConfigurationLoader, type ActiveConfiguration } from "../config/load";
 
 export const REFRESH_LEASE_MS = 120_000;
@@ -37,9 +38,11 @@ export async function requestSubjectRefresh(job: JobInput, configuration: Active
   return control.mode === "active";
 }
 
-/** All ordinary Outreach producer stores use this boundary; non-evaluation stages remain unchanged. */
+/** Sweeps, commands and contacts use their durable CSI job identity for deduplication or queue wakeups. */
 export async function enqueueOutreachWork(job: JobInput, session: ClientSession, now = new Date()) {
-  if (job.stage === "outreach_evaluate") {
+  const subjectId = job.input_refs?.[0];
+  if (job.stage === "outreach_evaluate" && job.input_refs?.length === 1
+    && job.subject_key === `outreach-subject:${subjectId}` && isRoutineEvaluationKey(job.dedupe_key, subjectId)) {
     const configuration = await salesOutreachConfigurationLoader.inspect(session);
     if (configuration.state === "active" && configuration.value.refresh_requests
       && await requestSubjectRefresh(job, configuration, session, now)) return null;
