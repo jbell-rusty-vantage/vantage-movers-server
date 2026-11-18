@@ -167,7 +167,9 @@ Sources in the rows: 10best Inbounds, Best Relocation Forms, BestRelocation Inbo
 
 Paid Overflow is a source value on this page. It is not one of the nine labels the collector’s seeded source catalog walks.
 
-### Date window for three runs a day
+### Historical three-run sampling window
+
+The following table records the earlier provider investigation. The [current collector contract](services/granot-http-collector.md) gives the production hours and Open Date coverage.
 
 `ALL /api/cron/granot-estimates-in-process` is hourly in UTC (`0 * * * *`) and returns immediately unless the America/New_York hour is 8, 13, or 18. Each of those three runs uses the same Open Date window: yesterday through today. The wider midday window was considered, never measured, and is not used.
 

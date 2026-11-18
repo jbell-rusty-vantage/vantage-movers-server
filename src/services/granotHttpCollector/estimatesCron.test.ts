@@ -8,11 +8,11 @@ test("Pool has its own deterministic NY refresh and daily historical discovery s
   assert.ok(discovery.run);
   assert.equal(discovery.lane, 'pool_discovery');
   assert.deepEqual(discovery.dateWindow, { from:'01/01/2020', to:'10/14/2026' });
-  const refresh = poolCronDecision(new Date('2026-10-14T13:00:00Z'));
+  const refresh = poolCronDecision(new Date('2026-10-14T12:00:00Z'));
   assert.ok(refresh.run);
   assert.equal(refresh.lane, 'pool_refresh');
-  assert.deepEqual(refresh.dateWindow, estimatesDateWindow(new Date('2026-10-14T13:00:00Z')));
-  const all = estimatesCronDecision(new Date('2026-10-14T13:00:00Z'));
+  assert.deepEqual(refresh.dateWindow, estimatesDateWindow(new Date('2026-10-14T12:00:00Z')));
+  const all = estimatesCronDecision(new Date('2026-10-14T12:00:00Z'));
   assert.ok(all.run);
   assert.notEqual(all.slotKey, refresh.slotKey);
   assert.equal(poolCronDecision(new Date('2026-10-14T11:00:00Z')).run, false);
@@ -22,6 +22,21 @@ test("Pool has its own deterministic NY refresh and daily historical discovery s
   assert.equal(chunks[0]!.from, '01/01/2020');
   assert.equal(chunks.at(-1)!.to, '10/14/2026');
   for (let i=1;i<chunks.length;i++) assert.equal(granotCalendarEpoch(chunks[i]!.from)-granotCalendarEpoch(chunks[i-1]!.to),86400000);
+});
+
+test("the estimates cron retains historical slots and adds daytime hourly runs", () => {
+  assert.equal(newYorkHour(new Date("2026-07-13T12:00:00.000Z")), 8);
+  assert.equal(estimatesCronDecision(new Date("2026-07-13T12:00:00.000Z")).run, true);
+  assert.equal(newYorkHour(new Date("2026-07-13T13:00:00.000Z")), 9);
+  assert.equal(estimatesCronDecision(new Date("2026-07-13T13:00:00.000Z")).run, true);
+  assert.equal(newYorkHour(new Date("2026-01-13T13:00:00.000Z")), 8);
+  assert.equal(estimatesCronDecision(new Date("2026-01-13T13:00:00.000Z")).run, true);
+  assert.equal(newYorkHour(new Date("2026-07-13T22:00:00.000Z")), 18);
+  assert.equal(estimatesCronDecision(new Date("2026-07-13T22:00:00.000Z")).run, true);
+  assert.equal(newYorkHour(new Date("2026-01-13T18:00:00.000Z")), 13);
+  assert.equal(estimatesCronDecision(new Date("2026-01-13T18:00:00.000Z")).run, true);
+  assert.equal(newYorkHour(new Date("2026-01-13T23:00:00.000Z")), 18);
+  assert.equal(estimatesCronDecision(new Date("2026-01-13T23:00:00.000Z")).run, true);
 });
 
 test("every estimates run uses the trailing 90 Open Dates in New York", () => {
@@ -43,8 +58,8 @@ test("every estimates run uses the trailing 90 Open Dates in New York", () => {
 
 
 test("cron retries share a slot identity, while the next scheduled hour gets a new identity", () => {
-  const first = estimatesCronDecision(new Date("2026-10-13T13:00:00Z"));
-  const retry = estimatesCronDecision(new Date("2026-10-13T13:59:59Z"));
+  const first = estimatesCronDecision(new Date("2026-10-13T12:00:00Z"));
+  const retry = estimatesCronDecision(new Date("2026-10-13T12:59:59Z"));
   const next = estimatesCronDecision(new Date("2026-10-13T17:00:00Z"));
   assert.ok(first.run && retry.run && next.run);
   assert.equal(first.slotKey, retry.slotKey);
@@ -73,24 +88,36 @@ test("scheduled chunks cover every day exactly once across month/year and DST bo
 
 test("freshness uses the latest actual New York slot through overnight and DST transitions", () => {
   assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T11:59:00Z")), { slotKey: "03/08/2026:6", at: new Date("2026-03-08T10:00:00Z") });
-  assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T13:00:00Z")), { slotKey: "03/08/2026:9", at: new Date("2026-03-08T13:00:00Z") });
-  assert.deepEqual(estimatesLatestSlot(new Date("2026-11-01T06:30:00Z")), { slotKey: "10/31/2026:21", at: new Date("2026-11-01T01:00:00Z") });
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T12:00:00Z")), { slotKey: "03/08/2026:8", at: new Date("2026-03-08T12:00:00Z") });
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-11-01T06:30:00Z")), { slotKey: "11/01/2026:0", at: new Date("2026-11-01T04:00:00Z") });
 });
 
 
 test("exact ordinary, spring and fall local slots and independent 06:00 Pool duties", () => {
-  for (const [start, end] of [
-    ['2026-11-04T05:00:00Z', '2026-11-05T05:00:00Z'],
-    ['2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z'],
-    ['2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z'],
+  const ordinaryHours = [0, 2, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22];
+  for (const [start, end, count] of [
+    ['2026-11-04T05:00:00Z', '2026-11-05T05:00:00Z', 18],
+    ['2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z', 17],
+    ['2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z', 18],
   ] as const) {
     const slots: string[] = [], hours: number[] = [];
     for (let ms = +new Date(start); ms < +new Date(end); ms += 3600000) {
-      const decision = estimatesCronDecision(new Date(ms));
-      if (decision.run) { slots.push(decision.slotKey); hours.push(newYorkHour(new Date(ms))); assert.equal(+estimatesSlotInstant(decision.slotKey), ms); }
+      const at = new Date(ms);
+      const hour = newYorkHour(at);
+      const decision = estimatesCronDecision(at);
+      const duties = poolCronDuties(at);
+      assert.deepEqual(duties.filter(d => d.lane === 'pool_discovery').map(d => d.slotKey),
+        hour === 6 ? [estimatesDateWindow(at).to + ':6:pool_discovery'] : []);
+      assert.deepEqual(duties.filter(d => d.lane === 'pool_refresh').map(d => d.slotKey),
+        decision.run ? [decision.slotKey + ':pool_refresh'] : []);
+      if (decision.run) {
+        slots.push(decision.slotKey);
+        hours.push(hour);
+        assert.equal(+estimatesSlotInstant(decision.slotKey), ms);
+      }
     }
-    assert.equal(slots.length, 5); assert.equal(new Set(slots).size, 5);
-    assert.deepEqual(hours, [6, 9, 13, 17, 21]);
+    assert.equal(slots.length, count); assert.equal(new Set(slots).size, count);
+    assert.deepEqual(hours, count === 17 ? ordinaryHours.filter(hour => hour !== 2) : ordinaryHours);
   }
   const at = new Date('2026-11-04T11:00:00Z');
   assert.equal(estimatesCronDecision(at).run, true);
@@ -98,14 +125,15 @@ test("exact ordinary, spring and fall local slots and independent 06:00 Pool dut
   assert.equal(poolLatestSlot(at, 'pool_refresh').slotKey, '11/04/2026:6:pool_refresh');
 });
 
-test("scheduled misses remain late; later complete slots supersede old misses across calendar boundaries", () => {
-  for (const now of ['2026-11-04T15:40:00Z', '2026-11-04T16:40:00Z']) {
+test("hourly misses remain late; later complete slots supersede old misses across calendar boundaries", () => {
+  for (const now of ['2026-11-04T14:40:00Z', '2026-11-04T15:40:00Z']) {
     assert.equal(estimatesCoverageIsLate(new Date(now), null), true);
     assert.equal(estimatesCoverageIsLate(new Date(now), new Date('2026-11-04T11:00:00Z')), true);
     assert.equal(estimatesCoverageIsLate(new Date(now), new Date('2026-11-04T14:00:00Z')), false);
   }
-  assert.equal(estimatesLatestSlot(new Date('2027-01-01T04:59:00Z')).slotKey, '12/31/2026:21');
-  assert.equal(estimatesLatestSlot(new Date('2027-01-01T11:00:00Z')).slotKey, '01/01/2027:6');
-  assert.equal(estimatesSlotInstant('10/14/2026:4').toISOString(), '2026-10-14T08:00:00.000Z');
-  assert.equal(estimatesLatestSlot(new Date('2026-11-05T02:00:00Z')).slotKey, '11/04/2026:21');
+  assert.equal(estimatesLatestSlot(new Date('2027-01-01T04:59:00Z')).slotKey, '12/31/2026:22');
+  assert.equal(estimatesLatestSlot(new Date('2027-01-01T05:00:00Z')).slotKey, '01/01/2027:0');
+  assert.equal(estimatesSlotInstant('10/14/2026:13').toISOString(), '2026-10-14T17:00:00.000Z');
+  assert.equal(estimatesSlotInstant('11/18/2026:21').toISOString(), '2026-11-19T02:00:00.000Z');
+  assert.equal(estimatesLatestSlot(new Date('2026-11-05T02:00:00Z')).slotKey, '11/04/2026:20');
 });

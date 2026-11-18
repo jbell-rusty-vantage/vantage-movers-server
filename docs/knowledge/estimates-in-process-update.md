@@ -110,7 +110,7 @@ Set the posted names explicitly. A radio label that contains the word “to” m
 
 `STATUS=V15` (Today’s Recent 50 Estimates Priority 0) is a different query. This cycle does not post it. Booked Jobs on this form (`STATUS=V5` and the other booked radios) are a later slice. This cycle posts Follow-Up Estimates only, so every sealed action is `lead_snapshot_apply`. The statement must not carry `event_type: "Booked"`.
 
-The cron is registered hourly in UTC and runs at 06:00, 09:00, 13:00, 17:00 and 21:00 America/New_York. Every slot covers the trailing 90 inclusive Open Dates in durable runs of at most seven days, plus older months with verified provider Open Date evidence. Manual runs accept `from` and `to`. Open Date is not last-modified time; unknown older Leads require discovery backfill, not guessed ingestion-date coverage.
+The cron is registered hourly in UTC and runs hourly from 08:00 through 20:00 and at 22:00, 00:00, 02:00, 04:00 and 06:00 America/New_York. Every slot covers the trailing 90 inclusive Open Dates in durable runs of at most seven days, plus older months with verified provider Open Date evidence. Open Date is not last-modified time; unknown older Leads require discovery backfill, not guessed ingestion-date coverage.
 
 ## Parse
 
@@ -298,7 +298,7 @@ and stores the signed Owner approval. The existing worker and lifecycle apply pe
 the effects. This narrow path skips the ordinary automation flag, retains every
 lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
 
-The recurring cron schedules the full declared scope at 06:00, 09:00, 13:00, 17:00 and 21:00 America/New_York.
+The recurring cron schedules the full declared scope hourly from 08:00 through 20:00 and at 22:00, 00:00, 02:00, 04:00 and 06:00 America/New_York.
 A deterministic run `_id` keyed by slot plus date window makes retries and concurrent
 invocations reuse the same run, plan, and lifecycle operation IDs.
 The existing Mongo `_id` index enforces uniqueness; no index migration is required.

@@ -114,7 +114,7 @@ The Owner proposes conservative **current month through the current New York day
 
 ### Collector and lifecycle context
 
-The newer Estimates path is a separate entry path inside the existing HTTP collector module, sharing authentication/account lease. It runs at **08:00, 13:00 and 18:00 America/New_York**, Open Date yesterday through today; Granot webhooks remain active. The older Leads & Advertising path stays intact. The new table has no old numeric `no` column; blindly reusing the old parser drops its rows.
+The newer Estimates path is a separate entry path inside the existing HTTP collector module, sharing authentication/account lease. At the time of this investigation it ran three times daily over two Open Dates. The [current collector contract](services/granot-http-collector.md) gives the production hours and coverage; Granot webhooks remain active. The older Leads & Advertising path stays intact. The new table has no old numeric `no` column; blindly reusing the old parser drops its rows.
 
 Current Estimates request: GET `wc.dll?mv~estprocesswc~<session>` then POST `wc.dll?mv~estprocessret~<session>`; STATUS=V9, TYPEDTE=OPEN, DATE1/DATE2, FUSTATUS=10, USER empty, DEPT=ALL, TYPE=V1, SORT=V6. Current collector fixes ALL; implement a read-only Pool prototype based on verified form controls, not a guessed alternate endpoint. Existing priority parser extracts numeric `Prior: <digits>` from follow_up. Confirm Pool output, source routing and identity fields.
 
