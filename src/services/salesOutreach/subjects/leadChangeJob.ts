@@ -134,7 +134,8 @@ export async function runOutreachLeadChangeJob(jobId?: string, deps: LeadChangeJ
         // Related wakes have no Pool/intake/expansion authority, even for an absent or closed Form.
         if (!deps.store && trigger !== "related_form") await refreshPoolLead({ model, id }, current, now, session);
         const refreshed = await refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, trigger);
-        if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted" && !refreshed.evaluation_requested) {
+        const revisionCoversReceipt = refreshed.evaluation_requested && current.value.estimates_revision_nomination_ref;
+        if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted" && !revisionCoversReceipt) {
           // No-op/bookkeeping sync still needs repair: only a nomination in this transaction can suppress it.
           await (deps.enqueue ?? enqueueOutreachWork)(evaluationJob(refreshed.subject_id, `estimates-refresh:${String(row.dedupe_key)}`), session);
         }

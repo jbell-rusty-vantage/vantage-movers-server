@@ -396,6 +396,7 @@ export const salesOutreachConfigurationValueSchema = z
     goals: goalsSchema.prefault({}),
     operations: operationsSchema.optional(),
     // R0: optional without defaults; old immutable versions retain their exact parsed/hash shape.
+    estimates_revision_nomination_ref: text.optional(),
     refresh_requests: z.discriminatedUnion("mode", [
       z.object({ version: z.literal("w2-v1"), mode: z.literal("shadow"), approval_ref: text }).strict(),
       z.object({ version: z.literal("w2-v1"), mode: z.literal("active"), approval_ref: text, parity_ref: text }).strict(),

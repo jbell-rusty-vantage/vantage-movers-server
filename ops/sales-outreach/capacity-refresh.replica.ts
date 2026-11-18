@@ -31,7 +31,8 @@ async function main() {
   }
   for (const name of ["form_leads", "call_leads", "rep_identity_links", "granot_observations", "contact_numbers"])
     await db.createCollection(name);
-  const configuration = deskConfiguration({ transition: { intake_admission_enabled: true, intake_admission_at: "2026-10-01T00:00:00.000Z" } });
+  const configuration = deskConfiguration({ estimates_revision_nomination_ref: "replica-w1-proof",
+    transition: { intake_admission_enabled: true, intake_admission_at: "2026-10-01T00:00:00.000Z" } });
   const loader = fixedConfigurationLoader(configuration);
   const now = () => new Date("2026-10-02T15:00:00Z");
   const id = new mongoose.Types.ObjectId();

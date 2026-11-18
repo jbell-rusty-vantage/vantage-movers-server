@@ -12,6 +12,8 @@ Eligible scheduled runs close after their 24-hour execution window. The worker v
 
 Known completed subject-revision evaluations, receipt-triggered evaluations and routine Estimates refreshes receive a three-day expiry when they complete. Older jobs follow their original deadlines. Admissions, nudge/coverage/repair results and other unclassified completions keep their existing 14-day contract. Pending, leased, retry and dead-letter work keeps its recovery state. The CSI audit TTL remains 90 days.
 
+Subject refreshes can coalesce by generation after shadow comparison. The separate shortcut that omits a receipt nomination when its transaction already requested a subject revision requires `estimates_revision_nomination_ref` on the active Outreach configuration. Record the W1 observation evidence, including the November 18 and 23 evening checkpoints, before enabling that shortcut.
+
 ## Operator checks
 
 1. Confirm both master workbooks, the Admin scheduled freshness reader and the three extension operations. Confirm the retired manual/report endpoints and cron registrations are absent.

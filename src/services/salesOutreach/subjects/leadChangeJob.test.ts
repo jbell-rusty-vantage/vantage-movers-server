@@ -8,6 +8,7 @@ import { drainOutreachLeadChangeJobs, runOutreachLeadChangeJob, triggerOfJob, ty
 import { accepted, deskConfiguration, fakeSession, leadFacts, MemoryDeskSubjectStore } from "./testing";
 
 const at = (iso: string) => new Date(iso);
+const qualifiedRevision = () => fixedConfigurationLoader(deskConfiguration({ estimates_revision_nomination_ref: "replica-w1-proof" }));
 
 function harness(
   lead = leadFacts(),
@@ -192,7 +193,15 @@ test("Estimates refresh suppresses only the revision evaluation committed by thi
   const lead = leadFacts({ ...accepted("0", "2026-10-01T14:00:00Z") });
   const initial = harness(lead);
   await runOutreachLeadChangeJob(undefined, initial.deps);
-  const refresh = harness({ ...lead, ...accepted("0", "2026-10-01T14:30:00Z") }, undefined,
+  const newFacts = { ...lead, ...accepted("0", "2026-10-01T14:30:00Z") };
+  const legacy = harness(newFacts, undefined, `sod:lead-change:FormLead:${lead.ref.id}:estimates-refresh:legacy`);
+  legacy.store.subjects.push(...structuredClone(initial.store.subjects));
+  legacy.store.periods.push(...structuredClone(initial.store.periods));
+  let legacyNominations = 0;
+  legacy.deps.enqueue = async () => { legacyNominations++; };
+  assert.equal((await runOutreachLeadChangeJob(undefined, legacy.deps)).result?.evaluation_requested, true);
+  assert.equal(legacyNominations, 1, "retain both nominations until the W1 evidence is recorded");
+  const refresh = harness(newFacts, qualifiedRevision(),
     `sod:lead-change:FormLead:${lead.ref.id}:estimates-refresh:receipt-2`);
   refresh.store.subjects.push(...structuredClone(initial.store.subjects));
   refresh.store.periods.push(...structuredClone(initial.store.periods));
@@ -251,7 +260,7 @@ test("failed durable revision nomination aborts the callback and cannot suppress
   assert.deepEqual(refresh.store.subjects, initial.store.subjects);
   assert.equal(extra, 0);
   refresh.store.requestEvaluation = request;
-  const retry = harness(refresh.lead, undefined, `sod:lead-change:FormLead:${initial.lead.ref.id}:estimates-refresh:failed-write`);
+  const retry = harness(refresh.lead, qualifiedRevision(), `sod:lead-change:FormLead:${initial.lead.ref.id}:estimates-refresh:failed-write`);
   retry.deps.store = refresh.store;
   retry.deps.enqueue = refresh.deps.enqueue;
   assert.equal((await runOutreachLeadChangeJob(undefined, retry.deps)).result?.evaluation_requested, true);
