@@ -42,6 +42,8 @@ async function main() {
     await db.collection("sheet_sync_quota_buckets").insertMany([window, window + 60_000].map((start) => ({
       scope: "user", op_class: "write", window_start: new Date(start), count: 3, other: secret,
     })));
+    await db.collection("sheet_sync_leases").createIndex({ scope: 1 });
+    await db.collection("sheet_sync_quota_buckets").createIndex({ scope: 1, op_class: 1, window_start: 1 });
     const before = await db.listCollections({}, { nameOnly: true }).toArray();
     const commands: string[] = [];
     const listener = (event: { commandName: string }) => commands.push(event.commandName);
