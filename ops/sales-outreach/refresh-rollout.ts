@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { connectMongo } from "../../src/db";
+import { getSalesOutreachRefreshRequestModel } from "../../src/models/salesOutreach/refreshRequests";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { csiOperatorActor } from "../../src/services/salesIntelligence/auth";
 import { patchSalesOutreachConfiguration } from "../../src/services/salesOutreach/config/commands";
@@ -19,6 +20,12 @@ async function main() {
   if ((previous?.mode ?? "off") === mode) {
     console.log(JSON.stringify({ mode, revision: current.revision, changed: false }));
     return;
+  }
+  if (mode === "active") {
+    const requests = getSalesOutreachRefreshRequestModel();
+    const match = await requests.exists({ compared_configuration: current.version, compared_parity: "match" }).maxTimeMS(5000);
+    const mismatch = await requests.exists({ last_shadow_mismatch_configuration: current.version }).maxTimeMS(5000);
+    if (!match || mismatch) throw new Error("Current shadow configuration needs matched live comparisons and resolved differences");
   }
   const control = mode === "active" ? { version: "w2-v1", mode, approval_ref: approval, parity_ref: parity }
     : { version: "w2-v1", mode, approval_ref: approval };

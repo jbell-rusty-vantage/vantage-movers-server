@@ -17,6 +17,8 @@ import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint } from "./po
 import { toProjectionWrite } from "./projection";
 import { mongoEvaluationStore, EVALUATION_LIMITS, type EvaluationStore } from "./store";
 import { projectPoolResult } from "../pool/projection";
+import { getSalesOutreachRefreshRequestModel } from "../../../models/salesOutreach/refreshRequests";
+import { refreshFingerprint } from "./refreshRequests";
 
 /**
  * The `outreach_evaluate` stage (IMPLEMENTATION-PLAN §6.1/§6.2): load one subject's inputs, run the
@@ -122,7 +124,27 @@ export async function evaluateAndProject(
   subjectId: string, context: EvaluationPolicyContext, asOf: Date,
   store: EvaluationStore, session: ClientSession,
 ): Promise<EvaluationOutcome> {
+  // Compare the read-only and authoritative paths in the same snapshot and at the same clock time.
+  // A previously published projection can describe an earlier change and cannot qualify a generation.
+  const requests = store === mongoEvaluationStore && context.configuration.value.refresh_requests?.mode === "shadow"
+    ? getSalesOutreachRefreshRequestModel() : null;
+  const sample = requests && await requests.findOne({
+    subject_id: subjectId, requested_mode: "shadow", configuration_version: context.configuration.version,
+    $expr: { $lt: [{ $ifNull: ["$compared_generation", 0] }, "$requested_generation"] },
+  }, { requested_generation: 1 }).session(session).lean();
+  const candidate = sample && await prepareSubjectEvaluation(subjectId, context, asOf, store, session, true);
   const prepared = await prepareSubjectEvaluation(subjectId, context, asOf, store, session, false);
+  if (sample && requests) {
+    const sameInputs = candidate && prepared && candidate.ordinary.input_fingerprint === prepared.ordinary.input_fingerprint;
+    const parity = !sameInputs ? "not_observed" : candidate.capped === prepared.capped &&
+      refreshFingerprint(candidate.doc) === refreshFingerprint(prepared.doc) ? "match" : "different";
+    await requests.updateOne({ _id: sample._id, requested_generation: sample.requested_generation }, {
+      $set: { compared_generation: sample.requested_generation, compared_configuration: context.configuration.version,
+        compared_at: asOf, compared_parity: parity, last_parity: parity,
+        ...(parity === "different" ? { last_shadow_mismatch_configuration: context.configuration.version } : {}) },
+      $inc: { shadow_comparisons: Number(parity !== "not_observed"), shadow_mismatches: Number(parity === "different") },
+    }, { session });
+  }
   if (!prepared) return { outcome: "subject_missing", subject_id: subjectId, publication_revision: null, next_evaluation_at: null };
   return persistSubjectEvaluation(prepared, context, store, session);
 }

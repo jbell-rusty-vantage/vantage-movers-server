@@ -16,6 +16,9 @@ export const SalesOutreachRefreshRequestSchema = new Schema({
   lease_owner: text, lease_epoch: count, lease_until: date, claimed_generation: count,
   last_input_fingerprint: text, last_output_fingerprint: text, last_requirement_fingerprint: text,
   last_parity: { type: String, enum: ["match", "different", "not_observed"], default: null },
+  compared_generation: Number, compared_configuration: String, compared_at: Date,
+  compared_parity: { type: String, enum: ["match", "different", "not_observed"] as const },
+  shadow_comparisons: Number, shadow_mismatches: Number, last_shadow_mismatch_configuration: String,
   last_completed_at: date, last_failure_at: date,
 }, { collection: "sales_outreach_refresh_requests" });
 export const getSalesOutreachRefreshRequestModel = defineCsiModel("SalesOutreachRefreshRequest", SalesOutreachRefreshRequestSchema, SALES_OUTREACH_REFRESH_REQUEST_INDEXES);

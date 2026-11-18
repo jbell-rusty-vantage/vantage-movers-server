@@ -27,14 +27,15 @@ export async function runSubjectRefresh(claim: RefreshClaim, loader: Configurati
       const write = claim.requires_projection;
       const subjectId = String(claim.subject_id);
       const prepared = await prepareSubjectEvaluation(subjectId, admitted.context, asOf, mongoEvaluationStore, session, !write);
-      const prior = await mongoEvaluationStore.readProjection(subjectId, session);
+      const paired = write ? null : await getSalesOutreachRefreshRequestModel().findOne({
+        _id: claim._id, compared_generation: claim.requested_generation, compared_configuration: current.version,
+      }, { compared_parity: 1 }).session(session).lean();
       const evidence = {
         input: refreshFingerprint(prepared ? { input: prepared.input, subject: prepared.subject, policy: admitted.context.policy,
           configuration: current.version, coverage: prepared.coverage, pool_result: prepared.result, as_of: asOf } : { subject_missing: subjectId }),
         output: prepared?.doc.result_fingerprint ?? refreshFingerprint({ subject_missing: subjectId }),
         requirements: refreshFingerprint(prepared ? { ordinary: prepared.ordinary, capped: prepared.capped } : null),
-        parity: !prepared || !prior ? "not_observed" as const
-          : prior.result_fingerprint === prepared.doc.result_fingerprint ? "match" as const : "different" as const,
+        parity: paired?.compared_parity ?? "not_observed" as const,
       };
       let outcome: EvaluationOutcome | null = null;
       if (write && prepared) outcome = await persistSubjectEvaluation(prepared, admitted.context, mongoEvaluationStore, session);

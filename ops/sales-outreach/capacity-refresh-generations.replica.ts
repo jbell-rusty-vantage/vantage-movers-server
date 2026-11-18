@@ -79,7 +79,7 @@ async function main() {
     const replacement = (await claimSubjectRefresh())!; assert.ok(replacement);
     assert.equal(replacement.lease_epoch, dead.lease_epoch + 1);
     await assert.rejects(withTransaction(session => completeSubjectRefresh(dead, { input: "test", output: "test", requirements: "test", parity: "match" }, session)), /LEASE_LOST|lease/i);
-    const admission = evaluationAdmissionOf(plain); assert.ok(admission.ok);
+    const admission = evaluationAdmissionOf(shadow); assert.ok(admission.ok);
     await withTransaction(session => evaluateAndProject(subjectId, admission.context, now, mongoEvaluationStore, session));
     const snapshot = async () => {
       const data: Record<string, string> = {};
@@ -113,8 +113,12 @@ async function main() {
     const poolClaim = (await claimSubjectRefresh())!;
     const poolBefore = await snapshot();
     const poolPreview = await runSubjectRefresh(poolClaim, fixedConfigurationLoader(pool), now);
-    assert.equal(poolPreview.status, "completed"); assert.equal(poolPreview.parity, "match", "read-only Pool output matches the legacy evaluator");
+    assert.equal(poolPreview.status, "completed"); assert.equal(poolPreview.parity, "not_observed", "an older projection cannot qualify a new generation");
     assert.deepEqual(await snapshot(), poolBefore, "Pool shadow cannot materialize duties, bump work, snapshot contacts or retain performance");
+    await withTransaction(session => evaluateAndProject(subjectId, poolAdmission.context, now, mongoEvaluationStore, session));
+    const lateComparison = await Requests.findById(poolClaim._id).lean();
+    assert.equal(lateComparison?.compared_generation, poolClaim.requested_generation);
+    assert.equal(lateComparison?.compared_parity, "match", "legacy execution records the matching same-input comparison after a shadow-first drain");
     await db.collection("sales_outreach_pool_work").deleteMany({});
     await db.collection("sales_outreach_contact_events").deleteMany({});
     // Queue delivery is absent: claim directly from durable Mongo state.
