@@ -1,7 +1,7 @@
 # Cursor Cloud Agent base image for vantage_movers_server.
 #
 # Provides the system-level dependencies the dev environment needs:
-#   - Node.js 22 + pnpm (pinned via corepack to the repo's packageManager)
+#   - Node.js 24 + pnpm (same major and package manager as CI)
 #   - MongoDB 8.0 server + shell (run locally as a single-node replica set;
 #     the API's write paths use multi-document transactions, which require a
 #     replica set rather than a standalone mongod)
@@ -14,7 +14,7 @@
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    NODE_MAJOR=22
+    NODE_MAJOR=24
 
 # Base OS tooling. The ubuntu:24.04 image already ships a non-root `ubuntu`
 # user (uid 1000); we reuse it as the agent user.
@@ -30,12 +30,11 @@ RUN apt-get update \
         python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 22 (NodeSource) + corepack-managed pnpm.
+# Node.js 24 (NodeSource) + explicitly pinned pnpm; no bundled corepack assumption.
 RUN curl --retry 3 --retry-delay 5 -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
-    && corepack enable \
-    && corepack prepare pnpm@10.13.1 --activate
+    && npm install --global pnpm@10.13.1
 
 # MongoDB 8.0 community server + mongosh.
 RUN curl --retry 3 --retry-delay 5 -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \

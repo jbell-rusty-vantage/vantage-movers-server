@@ -1,0 +1,269 @@
+{
+  "asOf": "2026-11-18T18:18:42.150Z",
+  "measurement": {
+    "from": "2026-11-17T16:00:00.000Z",
+    "to": "2026-11-18T16:00:00.000Z",
+    "collection": "vantagemovers.granot_webhook_receipts",
+    "timeBasis": "_id generation timestamp in bounded one-hour indexed ranges",
+    "timeZoneForSlots": "America/New_York",
+    "memberRole": "primary",
+    "directlyMatchedRunIds": 1080,
+    "allObservedAutomationRunIds": 1080,
+    "slotBasis": "exact scheduled_coverage.slotKey and lane on each referenced original run",
+    "byteDefinition": "logical BSON of full receipt before compaction",
+    "certifiedDefinition": "No-effect already_current with matching certified target model/ID and decision ID. Preceding complete corpus census established these rows were completed.",
+    "baselineCode": "f28048cf and preceding Granot release"
+  },
+  "scheduler": {
+    "commit": "d8e6da214908b1fc175ca6e7ded667e4bfbfaf5f",
+    "canonicalAliasUpdated": "2026-11-18T18:16:44.208Z",
+    "retainedOldHours": [
+      6,
+      9,
+      13,
+      17
+    ],
+    "addedHour": 21,
+    "addedSlotEstimator": "mean of adjacent old 20 and 22 slots",
+    "oldHours": [
+      0,
+      2,
+      4,
+      6,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      22
+    ],
+    "newHours": [
+      6,
+      9,
+      13,
+      17,
+      21
+    ]
+  },
+  "retainedOldSlots": {
+    "n": 28581,
+    "bytes": 65045031,
+    "certified": 25072,
+    "unchanged": 28558,
+    "runs": 256
+  },
+  "removedOldSlots": {
+    "n": 91837,
+    "bytes": 208982305,
+    "certified": 80375,
+    "unchanged": 91777,
+    "runs": 824
+  },
+  "estimatedNewSlot": {
+    "n": 6914.5,
+    "bytes": 15731420.0,
+    "certified": 6028.5,
+    "unchanged": 6912.5,
+    "runs": 62.0
+  },
+  "externalWebhooks": {
+    "n": 132,
+    "bytes": 175749,
+    "certified": 0,
+    "unchanged": 0,
+    "runs": 0
+  },
+  "measuredOld24h": {
+    "n": 120550,
+    "bytes": 274203085,
+    "certified": 105447,
+    "unchanged": 120335,
+    "runs": 1080
+  },
+  "estimatedNew24h": {
+    "n": 35627.5,
+    "bytes": 80952200.0,
+    "certified": 31100.5,
+    "unchanged": 35470.5,
+    "runs": 318.0
+  },
+  "oldMeasuredSlotHourTotals": {
+    "0": {
+      "n": 6918,
+      "bytes": 15740488,
+      "certified": 6043,
+      "unchanged": 6915,
+      "runs": 62
+    },
+    "2": {
+      "n": 6920,
+      "bytes": 15744852,
+      "certified": 6046,
+      "unchanged": 6918,
+      "runs": 62
+    },
+    "4": {
+      "n": 1965,
+      "bytes": 4491031,
+      "certified": 1965,
+      "unchanged": 1965,
+      "runs": 18
+    },
+    "6": {
+      "n": 7831,
+      "bytes": 17824774,
+      "certified": 6921,
+      "unchanged": 7828,
+      "runs": 70
+    },
+    "8": {
+      "n": 6928,
+      "bytes": 15764734,
+      "certified": 6049,
+      "unchanged": 6921,
+      "runs": 62
+    },
+    "9": {
+      "n": 6938,
+      "bytes": 15789089,
+      "certified": 6054,
+      "unchanged": 6926,
+      "runs": 62
+    },
+    "10": {
+      "n": 6941,
+      "bytes": 15796695,
+      "certified": 6055,
+      "unchanged": 6930,
+      "runs": 62
+    },
+    "11": {
+      "n": 6896,
+      "bytes": 15694545,
+      "certified": 6011,
+      "unchanged": 6883,
+      "runs": 62
+    },
+    "12": {
+      "n": 6898,
+      "bytes": 15697939,
+      "certified": 6016,
+      "unchanged": 6889,
+      "runs": 62
+    },
+    "13": {
+      "n": 6901,
+      "bytes": 15707421,
+      "certified": 6073,
+      "unchanged": 6896,
+      "runs": 62
+    },
+    "14": {
+      "n": 6903,
+      "bytes": 15705784,
+      "certified": 6031,
+      "unchanged": 6902,
+      "runs": 62
+    },
+    "15": {
+      "n": 6907,
+      "bytes": 15715424,
+      "certified": 6024,
+      "unchanged": 6903,
+      "runs": 62
+    },
+    "16": {
+      "n": 6909,
+      "bytes": 15718752,
+      "certified": 6028,
+      "unchanged": 6908,
+      "runs": 62
+    },
+    "17": {
+      "n": 6911,
+      "bytes": 15723747,
+      "certified": 6024,
+      "unchanged": 6908,
+      "runs": 62
+    },
+    "18": {
+      "n": 6911,
+      "bytes": 15724147,
+      "certified": 6023,
+      "unchanged": 6907,
+      "runs": 62
+    },
+    "19": {
+      "n": 6912,
+      "bytes": 15725074,
+      "certified": 6027,
+      "unchanged": 6911,
+      "runs": 62
+    },
+    "20": {
+      "n": 6914,
+      "bytes": 15730923,
+      "certified": 6027,
+      "unchanged": 6911,
+      "runs": 62
+    },
+    "22": {
+      "n": 6915,
+      "bytes": 15731917,
+      "certified": 6030,
+      "unchanged": 6914,
+      "runs": 62
+    }
+  },
+  "oldLaneTotals": {
+    "all": {
+      "n": 104109,
+      "bytes": 236764669,
+      "certified": 89173,
+      "unchanged": 104026,
+      "runs": 545
+    },
+    "pool_refresh": {
+      "n": 15401,
+      "bytes": 35186755,
+      "certified": 15366,
+      "unchanged": 15401,
+      "runs": 527
+    },
+    "pool_discovery": {
+      "n": 908,
+      "bytes": 2075912,
+      "certified": 908,
+      "unchanged": 908,
+      "runs": 8
+    }
+  },
+  "forecasts": {
+    "receiptsAvoided": 84922.5,
+    "receiptBytesAvoidedOnBaselineEncoding": 193250885.0,
+    "threeCollectionBytesAvoidedAtHistoricalBsonPerArrival": 392627856,
+    "historicalChainBytesPerArrival": 4623.366673760374,
+    "cacheBytesAvoidedAfterSchedule": 2908581,
+    "replacementReceiptUpdatesAvoidedAfterSchedule": 31100.5,
+    "peak06CertifiedUnchanged": 6921,
+    "handoffModel2xReceiptUpdatesAvoided": 62201.0,
+    "eligibilityShareHypothesis": 0.75,
+    "uniqueUtilizationHypothesis": 0.8,
+    "singlePageBudgetPerDay": 46080,
+    "rawReviewDemandAtAssumedShare": 26720.6,
+    "uniqueAdvancesCapacityAtAssumedUtilization": 36864,
+    "newSlotSensitivity20pctTotalReceipts": [
+      34245,
+      37010
+    ]
+  },
+  "qualification": "Historical counterfactual. New 21:00 volume, changed outcome mix, catch-up, retries, provider availability, protection, shadow progress, business freshness and physical storage require production measurement. Counts are unique persisted receipts; run counts represent children producing at least one receipt."
+}

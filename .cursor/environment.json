@@ -3,7 +3,7 @@
   // JSON schema: https://www.cursor.com/schemas/environment.schema.json
   "name": "vantage-movers-server",
   "user": "ubuntu",
-  // Base image: system-level toolchain (Node 22, pnpm, MongoDB 8.0). Paths are
+  // Base image: system-level toolchain (Node 24, pnpm, MongoDB 8.0). Paths are
   // relative to this .cursor folder. Because `build` is set, the Dockerfile is
   // the source of truth and no snapshot is used.
   "build": {
@@ -11,14 +11,12 @@
   },
   // Dependency refresh on every agent start, after the latest changes are
   // pulled. Idempotent and fast (uses pnpm's content-addressable store).
-  "install": "pnpm install",
-  // Per-boot: local mongod replica set + gitignored .env + API if :3000 is down.
-  // Returns when Mongo is PRIMARY and GET /health succeeds. The `api` terminal
-  // attaches if start already launched the server.
+  "install": "pnpm install --frozen-lockfile",
+  // Per-boot: verified local replica + credential-isolated API. Never writes .env.
+  // Returns only after Mongo PRIMARY and GET /db identity verification.
   "start": "bash .cursor/scripts/ensure-cloud-runtime.sh",
   "ports": [
-    { "name": "api", "port": 3000 },
-    { "name": "mongo", "port": 27017 }
+    { "name": "api", "port": 3000 }
   ],
   // Long-running processes, started in a shared tmux session after install.
   "terminals": [
@@ -29,8 +27,8 @@
     },
     {
       "name": "api",
-      "description": "Express API on http://localhost:3000. Forces local Mongo + TEST_MODE=true and disables Sheets/RingCentral writes even when dashboard secrets inject an Atlas cluster URI."
-      "command": "bash .cursor/scripts/start-api.sh"
+      "description": "Read-only identity probe for the API started by bootstrap. Start/restart with pnpm dev after stopping the existing launcher.",
+      "command": "pnpm dev:identity"
     }
   ]
 }

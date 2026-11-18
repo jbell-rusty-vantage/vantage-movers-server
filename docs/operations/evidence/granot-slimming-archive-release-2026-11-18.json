@@ -1,0 +1,167 @@
+{
+  "release": {
+    "id": "dpl_Hy9NW8wgFKvGXwhJFzZT488K7G1q",
+    "asOf": "2026-11-18T15:11:48.1176157-05:00",
+    "target": "production",
+    "state": "READY",
+    "alias": "vantage-movers-main-server.vercel.app",
+    "name": "vantage-movers-main-server",
+    "commit": "a1f395c07b3cffe1c6ce4e07e742e09c22a77574"
+  },
+  "proofs_utc": {
+    "canary": {
+      "runs": 12,
+      "actions": 194,
+      "empty_runs": 1,
+      "pre_enrollment_bson": 666647,
+      "pre_compaction_bson": 666875,
+      "compacted_bson": 35589,
+      "closed_index_bson": 3768,
+      "net_hot_bson_removed": 627290,
+      "gzip_run_bytes": 125996
+    },
+    "historical": {
+      "manifest": "c9bc8c667a646089cbd8a9d26b2169a784079dcfa47307345e19f52c4b48eb04",
+      "exports": {
+        "generation": "1795033290043369",
+        "sha256": "9608dbcfa95c10bbd9cfd76c79c505696f043cb36f106153a25bde84e76f3c83",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-slim-granot-20261118-immutable/historic-live.bson.gz",
+        "metadata": [
+          {
+            "sha256": "c9bc8c667a646089cbd8a9d26b2169a784079dcfa47307345e19f52c4b48eb04",
+            "generation": "1795033323562037",
+            "name": "historic-final-manifest.json"
+          },
+          {
+            "sha256": "f863dd047652ac850480f1d11dbd4a619436251e45d9799719375ec1d7b15502",
+            "generation": "1795033351848846",
+            "name": "historic-catalog-recovery.bson.gz"
+          }
+        ]
+      },
+      "verified_absent": {
+        "at": "2026-11-18T20:23:39.901Z",
+        "manifest": "c9bc8c667a646089cbd8a9d26b2169a784079dcfa47307345e19f52c4b48eb04",
+        "selected": 1200,
+        "removed": 1200,
+        "held": 0,
+        "collections": {
+          "granot_webhook_receipts": {
+            "removed": 1200,
+            "remainingAmongRemoved": 0,
+            "bytes": 2679163
+          },
+          "granot_observations": {
+            "removed": 1200,
+            "remainingAmongRemoved": 0,
+            "bytes": 1276950
+          },
+          "synchronization_decisions": {
+            "removed": 1200,
+            "remainingAmongRemoved": 0,
+            "bytes": 1465120
+          }
+        }
+      },
+      "hot_catalog_bson_added": 3104,
+      "net_hot_bson_removed": 5418129,
+      "cold_reader_after": {
+        "at": "2026-11-18T20:23:49.118Z",
+        "removedChains": 1200,
+        "gcsHistoryAndClosedReplayChecks": 8
+      },
+      "isolated_full_restore_docs": 3600,
+      "application_catalogs": 16,
+      "application_closures": 232,
+      "generation_pinned_objects": 248,
+      "changed_receipt_bookkeeping_since_initial_manifest": 11,
+      "stale_manifest_held": 1200
+    },
+    "legacy": {
+      "checkpoint": {
+        "_id": "scheduled-run-archive-enrollment-v1",
+        "cutoff": "2026-11-18T20:10:54.000Z",
+        "final_after": "2026-11-18T20:24:14.000Z",
+        "stage": "complete",
+        "cursor": "ffffb07c183f19d0bfb87407",
+        "upper": "ffffb07c183f19d0bfb87407",
+        "pages": 206,
+        "examined": 33024,
+        "enrolled": 16500,
+        "completed_at": "2026-11-18T20:26:39.339Z"
+      },
+      "independent_ttl_dated_rows": 23,
+      "remaining_without_archive_protection": 0,
+      "checkpoint_replay_changed": false,
+      "earliest_cron_sample": {
+        "since": "2026-11-18T20:25:02.409Z",
+        "through": "2026-11-18T20:26:42.150Z",
+        "sample": 20,
+        "natural_verified_closed": 4,
+        "closed_action_count": 0,
+        "hot_archived": 4,
+        "held": 0,
+        "held_reasons": []
+      },
+      "early_telemetry": {
+        "as_of": "2026-11-18T20:27:05.803Z",
+        "due_bounded": 14314,
+        "due_truncated": false,
+        "oldest_due_at": "2026-11-12T21:00:47.178Z",
+        "previous_24h_start": "2026-11-17T20:27:05.803Z",
+        "scheduled_arrivals": 2162,
+        "arrivals_truncated": false,
+        "by_status": {
+          "queued": 65,
+          "planning": 0,
+          "applying": 0,
+          "completed": 2063,
+          "completed_with_errors": 0,
+          "failed": 34,
+          "expired": 0,
+          "awaiting_approval": 0
+        },
+        "migration": {
+          "cutoff": "2026-11-18T20:10:54.000Z",
+          "final_after": "2026-11-18T20:24:14.000Z",
+          "stage": "complete",
+          "pages": 206,
+          "examined": 33024,
+          "enrolled": 16500
+        }
+      }
+    },
+    "atlas_members_after_resize": [
+      {
+        "at": "2026-11-18T20:26:37.734Z",
+        "member": "ac-9mmcj05-shard-00-00",
+        "used": 12091875328,
+        "total": 18148753408,
+        "free": 6056878080
+      },
+      {
+        "at": "2026-11-18T20:26:38.080Z",
+        "member": "ac-9mmcj05-shard-00-01",
+        "used": 13704708096,
+        "total": 18148753408,
+        "free": 4444045312
+      },
+      {
+        "at": "2026-11-18T20:26:38.428Z",
+        "member": "ac-9mmcj05-shard-00-02",
+        "used": 13625982976,
+        "total": 18148753408,
+        "free": 4522770432
+      }
+    ],
+    "shadow_failures": {
+      "days": {
+        "2026-11-16": 17,
+        "2026-11-17": 14,
+        "2026-11-18": 7
+      },
+      "all_38_vercel_errors": "MongoDB find timeout on entity_changes",
+      "earliest_possible_promotion_if_next_week_all_qualifies": "2026-11-26T00:00:00Z"
+    }
+  }
+}

@@ -1,0 +1,895 @@
+{
+  "measurement": "Read-only index trial business and storage observation, 2026-11-18",
+  "database": "vantagemovers",
+  "timezone": "America/New_York",
+  "preSeriesMemberStatsAt": "2026-11-18T17:48:15.173Z",
+  "indexBuilds": [
+    {
+      "stage": 1,
+      "start": "2026-11-18T17:48:31.713Z",
+      "checkpoint": "2026-11-18T17:48:35.964Z",
+      "buildDurationMs": 2237,
+      "after": {
+        "holders": 34,
+        "docsExamined": 178390,
+        "keysExamined": 0,
+        "ms": 352
+      },
+      "bytesPerMember": {
+        "00": 2772992,
+        "01": 2772992,
+        "02": 2772992
+      }
+    },
+    {
+      "stage": 2,
+      "start": "2026-11-18T18:03:55.847Z",
+      "checkpoint": "2026-11-18T18:03:59.817Z",
+      "buildDurationMs": 2138,
+      "after": {
+        "holders": 34,
+        "docsExamined": 178393,
+        "keysExamined": 0,
+        "ms": 372
+      },
+      "bytesPerMember": {
+        "00": 2772992,
+        "01": 2772992,
+        "02": 2752512
+      }
+    },
+    {
+      "stage": 3,
+      "start": "2026-11-18T18:22:04.215Z",
+      "checkpoint": "2026-11-18T18:22:08.509Z",
+      "buildDurationMs": 2204,
+      "after": {
+        "holders": 34,
+        "docsExamined": 34,
+        "keysExamined": 202,
+        "ms": 2
+      },
+      "bytesPerMember": {
+        "00": 2781184,
+        "01": 2781184,
+        "02": 2777088
+      }
+    }
+  ],
+  "indexOnlyWatchEnd": "2026-11-18T18:37:08.509000Z",
+  "schedulerPromotion": {
+    "at": "2026-11-18T18:16:44.208000Z",
+    "commit": "d8e6da214908b1fc175ca6e7ded667e4bfbfaf5f",
+    "previous": "69d6504d6fb67ec403a99748e37bbcbae8246b08",
+    "provenance": "Vercel v4 canonical alias updatedAt matched v13 deployment object sha. This happened during the second-index window. Existing in-flight work can still run on the preceding deployment."
+  },
+  "scope": {
+    "businessLatencies": "Natural operations. Granot is elapsed last_started_at\u2192completed_at on receipt cohort selected by ObjectId generation second; Outreach is createdAt\u2192completed_at for completed evaluation jobs in window with separate arrival-status census; Sheet drains use started_at\u2192finished_at for starts in window, split by claimed work. Latencies use empirical nearest rank, in milliseconds. Small counts limit p95 precision.",
+    "collectionCounters": "Primary $collStats latencyStats.histograms differenced between nearest available snapshots. Buckets give a lower bound on p95; include all callers, including this observer. Phase intervals and workload differ. Zero inserts/writes supply no write-latency comparison.",
+    "errors": "Vercel project production 5xx log rows, by fixed route category, subject to logging coverage. Error samples are not all API requests and cannot alone establish an error rate.",
+    "time": "Event times UTC; New York is UTC-5. Distinguish minute aggregates from exact DDL/telemetry timestamps.",
+    "storage": "Atlas process/data partition free bytes at PT1M per member with independent sampling phases. Whole-volume fluctuations include other workloads. Named index size is measured separately and does not identify journal or checkpoint bytes."
+  },
+  "windows": {
+    "baseline": {
+      "from": "2026-11-18T16:45:00.000Z",
+      "until": "2026-11-18T17:45:00.000Z",
+      "metrics": {
+        "granot-webhook-final-attempt": {
+          "count": 12,
+          "status": {
+            "completed": 12
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 12,
+            "p50Ms": 322,
+            "p95Ms": 1008,
+            "maxMs": 1008
+          }
+        },
+        "granot-automation-final-attempt": {
+          "count": 6944,
+          "status": {
+            "completed": 6944
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 6944,
+            "p50Ms": 80,
+            "p95Ms": 119,
+            "maxMs": 707
+          }
+        },
+        "outreach-evaluate-created-to-completed": {
+          "count": 3923,
+          "status": {
+            "completed": 3923
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 3923,
+            "p50Ms": 41240,
+            "p95Ms": 43675,
+            "maxMs": 59024
+          }
+        },
+        "sheet-drain-idle": {
+          "count": 12,
+          "status": {
+            "completed": 12
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 12,
+            "p50Ms": 35,
+            "p95Ms": 121,
+            "maxMs": 121
+          }
+        },
+        "sheet-drain-work": {
+          "count": 13,
+          "status": {
+            "completed": 13
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 13,
+            "p50Ms": 3018,
+            "p95Ms": 9255,
+            "maxMs": 9255
+          }
+        }
+      },
+      "outreachEvaluationArrivalStatuses": {
+        "completed": 3923
+      },
+      "sampleCapsHit": {
+        "receipts": false,
+        "outreachCompleted": false,
+        "allSalesJobs": false,
+        "sheetRuns": false
+      }
+    },
+    "first-index": {
+      "from": "2026-11-18T17:48:31.713Z",
+      "until": "2026-11-18T18:03:55.847Z",
+      "metrics": {
+        "granot-automation-final-attempt": {
+          "count": 325,
+          "status": {
+            "completed": 325
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 325,
+            "p50Ms": 77,
+            "p95Ms": 90,
+            "maxMs": 104
+          }
+        },
+        "granot-webhook-final-attempt": {
+          "count": 1,
+          "status": {
+            "completed": 1
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 1,
+            "p50Ms": 341,
+            "p95Ms": 341,
+            "maxMs": 341
+          }
+        },
+        "outreach-evaluate-created-to-completed": {
+          "count": 245,
+          "status": {
+            "completed": 245
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 245,
+            "p50Ms": 42603,
+            "p95Ms": 43016,
+            "maxMs": 43268
+          }
+        },
+        "sheet-drain-work": {
+          "count": 1,
+          "status": {
+            "completed": 1
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 1,
+            "p50Ms": 4767,
+            "p95Ms": 4767,
+            "maxMs": 4767
+          }
+        },
+        "sheet-drain-idle": {
+          "count": 4,
+          "status": {
+            "completed": 4
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 4,
+            "p50Ms": 31,
+            "p95Ms": 56,
+            "maxMs": 56
+          }
+        }
+      },
+      "outreachEvaluationArrivalStatuses": {
+        "completed": 314
+      },
+      "sampleCapsHit": {
+        "receipts": false,
+        "outreachCompleted": false,
+        "allSalesJobs": false,
+        "sheetRuns": false
+      }
+    },
+    "two-indexes": {
+      "from": "2026-11-18T18:03:55.847Z",
+      "until": "2026-11-18T18:22:04.215Z",
+      "metrics": {
+        "granot-automation-final-attempt": {
+          "count": 3879,
+          "status": {
+            "completed": 3879
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 3879,
+            "p50Ms": 75,
+            "p95Ms": 160,
+            "maxMs": 2381
+          }
+        },
+        "granot-webhook-final-attempt": {
+          "count": 2,
+          "status": {
+            "completed": 2
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 2,
+            "p50Ms": 208,
+            "p95Ms": 234,
+            "maxMs": 234
+          }
+        },
+        "outreach-evaluate-created-to-completed": {
+          "count": 2782,
+          "status": {
+            "completed": 2782
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 2782,
+            "p50Ms": 40060,
+            "p95Ms": 52638,
+            "maxMs": 58177
+          }
+        },
+        "sheet-drain-work": {
+          "count": 2,
+          "status": {
+            "completed": 2
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 2,
+            "p50Ms": 2253,
+            "p95Ms": 4148,
+            "maxMs": 4148
+          }
+        },
+        "sheet-drain-idle": {
+          "count": 4,
+          "status": {
+            "completed": 4
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 4,
+            "p50Ms": 33,
+            "p95Ms": 69,
+            "maxMs": 69
+          }
+        }
+      },
+      "outreachEvaluationArrivalStatuses": {
+        "completed": 2713
+      },
+      "sampleCapsHit": {
+        "receipts": false,
+        "outreachCompleted": false,
+        "allSalesJobs": false,
+        "sheetRuns": false
+      }
+    },
+    "three-indexes": {
+      "from": "2026-11-18T18:22:04.215Z",
+      "until": "2026-11-18T18:37:08.509Z",
+      "metrics": {
+        "granot-automation-final-attempt": {
+          "count": 2742,
+          "status": {
+            "completed": 2742
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 2742,
+            "p50Ms": 74,
+            "p95Ms": 98,
+            "maxMs": 328
+          }
+        },
+        "granot-webhook-final-attempt": {
+          "count": 3,
+          "status": {
+            "completed": 3
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 3,
+            "p50Ms": 372,
+            "p95Ms": 533,
+            "maxMs": 533
+          }
+        },
+        "outreach-evaluate-created-to-completed": {
+          "count": 672,
+          "status": {
+            "completed": 672
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 672,
+            "p50Ms": 43277,
+            "p95Ms": 45978,
+            "maxMs": 46106
+          }
+        },
+        "sheet-drain-idle": {
+          "count": 3,
+          "status": {
+            "completed": 3
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 3,
+            "p50Ms": 29,
+            "p95Ms": 36,
+            "maxMs": 36
+          }
+        },
+        "sheet-drain-work": {
+          "count": 4,
+          "status": {
+            "completed": 4
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 4,
+            "p50Ms": 2059,
+            "p95Ms": 2933,
+            "maxMs": 2933
+          }
+        }
+      },
+      "outreachEvaluationArrivalStatuses": {
+        "completed": 672,
+        "pending": 1
+      },
+      "sampleCapsHit": {
+        "receipts": false,
+        "outreachCompleted": false,
+        "allSalesJobs": false,
+        "sheetRuns": false
+      }
+    },
+    "two-indexes-previous-scheduler": {
+      "from": "2026-11-18T18:03:55.847Z",
+      "until": "2026-11-18T18:16:44.208Z",
+      "metrics": {
+        "granot-automation-final-attempt": {
+          "count": 2278,
+          "status": {
+            "completed": 2278
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 2278,
+            "p50Ms": 73,
+            "p95Ms": 172,
+            "maxMs": 409
+          }
+        },
+        "granot-webhook-final-attempt": {
+          "count": 2,
+          "status": {
+            "completed": 2
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 2,
+            "p50Ms": 208,
+            "p95Ms": 234,
+            "maxMs": 234
+          }
+        },
+        "outreach-evaluate-created-to-completed": {
+          "count": 1972,
+          "status": {
+            "completed": 1972
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 1972,
+            "p50Ms": 37931,
+            "p95Ms": 48140,
+            "maxMs": 52976
+          }
+        },
+        "sheet-drain-work": {
+          "count": 1,
+          "status": {
+            "completed": 1
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 1,
+            "p50Ms": 2253,
+            "p95Ms": 2253,
+            "maxMs": 2253
+          }
+        },
+        "sheet-drain-idle": {
+          "count": 4,
+          "status": {
+            "completed": 4
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 4,
+            "p50Ms": 33,
+            "p95Ms": 69,
+            "maxMs": 69
+          }
+        }
+      },
+      "outreachEvaluationArrivalStatuses": {
+        "completed": 2013
+      },
+      "sampleCapsHit": {
+        "receipts": false,
+        "outreachCompleted": false,
+        "allSalesJobs": false,
+        "sheetRuns": false
+      }
+    },
+    "two-indexes-updated-scheduler": {
+      "from": "2026-11-18T18:16:44.208Z",
+      "until": "2026-11-18T18:22:04.215Z",
+      "metrics": {
+        "granot-automation-final-attempt": {
+          "count": 1601,
+          "status": {
+            "completed": 1601
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 1601,
+            "p50Ms": 80,
+            "p95Ms": 128,
+            "maxMs": 2381
+          }
+        },
+        "outreach-evaluate-created-to-completed": {
+          "count": 810,
+          "status": {
+            "completed": 810
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 810,
+            "p50Ms": 43644,
+            "p95Ms": 57472,
+            "maxMs": 58177
+          }
+        },
+        "sheet-drain-work": {
+          "count": 1,
+          "status": {
+            "completed": 1
+          },
+          "unknownLatency": 0,
+          "failedJobCount": 0,
+          "elapsed": {
+            "n": 1,
+            "p50Ms": 4148,
+            "p95Ms": 4148,
+            "maxMs": 4148
+          }
+        }
+      },
+      "outreachEvaluationArrivalStatuses": {
+        "completed": 700
+      },
+      "sampleCapsHit": {
+        "receipts": false,
+        "outreachCompleted": false,
+        "allSalesJobs": false,
+        "sheetRuns": false
+      }
+    }
+  },
+  "vercel5xx": {
+    "baseline": {
+      "from": "2026-11-18T16:45:00Z",
+      "to": "2026-11-18T17:45:00Z",
+      "rowLimit": 300,
+      "matchingLogEvents": 1,
+      "counts": {
+        "outreach-intelligence|500": 1
+      }
+    },
+    "first-index": {
+      "from": "2026-11-18T17:48:31.713Z",
+      "to": "2026-11-18T18:03:55Z",
+      "rowLimit": 300,
+      "matchingLogEvents": 0,
+      "counts": {}
+    },
+    "two-indexes": {
+      "from": "2026-11-18T18:03:55.847Z",
+      "to": "2026-11-18T18:22:04.215Z",
+      "rowLimit": 300,
+      "matchingLogEvents": 2,
+      "counts": {
+        "granot-retention|500": 1,
+        "granot-other|500": 1
+      }
+    },
+    "three-indexes": {
+      "from": "2026-11-18T18:22:04.215Z",
+      "to": "2026-11-18T18:37:08.509Z",
+      "rowLimit": 300,
+      "matchingLogEvents": 0,
+      "counts": {}
+    }
+  },
+  "identifiedStage2Errors": [
+    {
+      "time": "2026-11-18T18:14:33.141Z",
+      "route": "/api/cron/granot-storage-retention",
+      "evidence": "Vercel HTTP 500 includes EntityChange namespace and operation time limit. Two of three indexes installed.",
+      "servingCommit": "69d6504d"
+    },
+    {
+      "time": "2026-11-18T18:19:12.275Z",
+      "route": "/api/queues/granot-automation-consumer",
+      "evidence": "Vercel callback reports MessageNotAvailableError. Old deployment still serving a queued callback after alias promotion. No Mongo timeout in this log.",
+      "servingCommit": "69d6504d"
+    }
+  ],
+  "primaryCollectionLatencyIntervals": {
+    "index-1": {
+      "from": "2026-11-18T17:48:29.012Z",
+      "through": "2026-11-18T18:03:53.813Z",
+      "sameElection": true,
+      "sameUptimeSegment": true,
+      "collections": {
+        "entity_changes": {
+          "reads": {
+            "operations": 758,
+            "histogramCount": 758,
+            "p95BucketLowerMicroseconds": 8192
+          },
+          "writes": {
+            "operations": 3,
+            "histogramCount": 3,
+            "p95BucketLowerMicroseconds": 24576
+          }
+        },
+        "sheet_sync_jobs": {
+          "reads": {
+            "operations": 24,
+            "histogramCount": 24,
+            "p95BucketLowerMicroseconds": 1024
+          },
+          "writes": {
+            "operations": 9,
+            "histogramCount": 9,
+            "p95BucketLowerMicroseconds": 4096
+          }
+        },
+        "sheet_sync_runs": {
+          "reads": {
+            "operations": 36,
+            "histogramCount": 36,
+            "p95BucketLowerMicroseconds": 2048
+          },
+          "writes": {
+            "operations": 10,
+            "histogramCount": 10,
+            "p95BucketLowerMicroseconds": 3072
+          }
+        },
+        "sales_intelligence_jobs": {
+          "reads": {
+            "operations": 2716,
+            "histogramCount": 2716,
+            "p95BucketLowerMicroseconds": 512
+          },
+          "writes": {
+            "operations": 3942,
+            "histogramCount": 3942,
+            "p95BucketLowerMicroseconds": 2048
+          }
+        },
+        "granot_webhook_receipts": {
+          "reads": {
+            "operations": 1907,
+            "histogramCount": 1907,
+            "p95BucketLowerMicroseconds": 256
+          },
+          "writes": {
+            "operations": 1972,
+            "histogramCount": 1972,
+            "p95BucketLowerMicroseconds": 1024
+          }
+        }
+      }
+    },
+    "index-2": {
+      "from": "2026-11-18T18:03:53.813Z",
+      "through": "2026-11-18T18:22:23.400Z",
+      "sameElection": true,
+      "sameUptimeSegment": true,
+      "collections": {
+        "entity_changes": {
+          "reads": {
+            "operations": 7735,
+            "histogramCount": 7735,
+            "p95BucketLowerMicroseconds": 2048
+          },
+          "writes": {
+            "operations": 4,
+            "histogramCount": 4,
+            "p95BucketLowerMicroseconds": 6144
+          }
+        },
+        "sheet_sync_jobs": {
+          "reads": {
+            "operations": 29,
+            "histogramCount": 29,
+            "p95BucketLowerMicroseconds": 2048
+          },
+          "writes": {
+            "operations": 12,
+            "histogramCount": 12,
+            "p95BucketLowerMicroseconds": 12288
+          }
+        },
+        "sheet_sync_runs": {
+          "reads": {
+            "operations": 48,
+            "histogramCount": 48,
+            "p95BucketLowerMicroseconds": 4096
+          },
+          "writes": {
+            "operations": 12,
+            "histogramCount": 12,
+            "p95BucketLowerMicroseconds": 6144
+          }
+        },
+        "sales_intelligence_jobs": {
+          "reads": {
+            "operations": 6798,
+            "histogramCount": 6798,
+            "p95BucketLowerMicroseconds": 512
+          },
+          "writes": {
+            "operations": 16993,
+            "histogramCount": 16993,
+            "p95BucketLowerMicroseconds": 3072
+          }
+        },
+        "granot_webhook_receipts": {
+          "reads": {
+            "operations": 21028,
+            "histogramCount": 21028,
+            "p95BucketLowerMicroseconds": 128
+          },
+          "writes": {
+            "operations": 23519,
+            "histogramCount": 23519,
+            "p95BucketLowerMicroseconds": 1024
+          }
+        }
+      }
+    },
+    "index-3": {
+      "from": "2026-11-18T18:22:23.400Z",
+      "through": "2026-11-18T18:36:44.617Z",
+      "sameElection": true,
+      "sameUptimeSegment": true,
+      "collections": {
+        "entity_changes": {
+          "reads": {
+            "operations": 3666,
+            "histogramCount": 3666,
+            "p95BucketLowerMicroseconds": 2048
+          },
+          "writes": {
+            "operations": 9,
+            "histogramCount": 9,
+            "p95BucketLowerMicroseconds": 6144
+          }
+        },
+        "sheet_sync_jobs": {
+          "reads": {
+            "operations": 30,
+            "histogramCount": 30,
+            "p95BucketLowerMicroseconds": 12288
+          },
+          "writes": {
+            "operations": 22,
+            "histogramCount": 22,
+            "p95BucketLowerMicroseconds": 4096
+          }
+        },
+        "sheet_sync_runs": {
+          "reads": {
+            "operations": 42,
+            "histogramCount": 42,
+            "p95BucketLowerMicroseconds": 2048
+          },
+          "writes": {
+            "operations": 14,
+            "histogramCount": 14,
+            "p95BucketLowerMicroseconds": 4096
+          }
+        },
+        "sales_intelligence_jobs": {
+          "reads": {
+            "operations": 2060,
+            "histogramCount": 2060,
+            "p95BucketLowerMicroseconds": 512
+          },
+          "writes": {
+            "operations": 4095,
+            "histogramCount": 4095,
+            "p95BucketLowerMicroseconds": 2048
+          }
+        },
+        "granot_webhook_receipts": {
+          "reads": {
+            "operations": 12398,
+            "histogramCount": 12398,
+            "p95BucketLowerMicroseconds": 128
+          },
+          "writes": {
+            "operations": 15399,
+            "histogramCount": 15399,
+            "p95BucketLowerMicroseconds": 1024
+          }
+        }
+      }
+    }
+  },
+  "memberVolume": {
+    "00": {
+      "primaryAtCapture": false,
+      "baselineFreeBytes": 3395063808,
+      "preSeriesMinuteSamples": 191,
+      "preSeriesMinFreeBytes": 3181961216,
+      "preSeriesMaxFreeBytes": 3436605440,
+      "preSeriesMinuteDropsOver90MB": [
+        [
+          "2026-11-18T14:52:53Z",
+          -108085248
+        ],
+        [
+          "2026-11-18T15:30:52Z",
+          -135778304
+        ],
+        [
+          "2026-11-18T16:07:53Z",
+          -108470272
+        ]
+      ],
+      "duringSeriesMinuteSamples": 49,
+      "duringSeriesMinFreeBytes": 3188912128,
+      "duringSeriesMaxFreeBytes": 3395444736,
+      "lastSampleUntilWindowEnd": "2026-11-18T18:36:53Z",
+      "freeAtLastReading": 3236941824
+    },
+    "01": {
+      "primaryAtCapture": false,
+      "baselineFreeBytes": 1575739392,
+      "preSeriesMinuteSamples": 192,
+      "preSeriesMinFreeBytes": 1487208448,
+      "preSeriesMaxFreeBytes": 1884844032,
+      "preSeriesMinuteDropsOver90MB": [
+        [
+          "2026-11-18T15:16:25Z",
+          -106049536
+        ],
+        [
+          "2026-11-18T16:56:26Z",
+          -118677504
+        ],
+        [
+          "2026-11-18T17:20:26Z",
+          -125566976
+        ],
+        [
+          "2026-11-18T17:29:26Z",
+          -134144000
+        ]
+      ],
+      "duringSeriesMinuteSamples": 48,
+      "duringSeriesMinFreeBytes": 1529278464,
+      "duringSeriesMaxFreeBytes": 1762951168,
+      "lastSampleUntilWindowEnd": "2026-11-18T18:36:25Z",
+      "freeAtLastReading": 1601724416
+    },
+    "02": {
+      "primaryAtCapture": true,
+      "baselineFreeBytes": 1730379776,
+      "preSeriesMinuteSamples": 191,
+      "preSeriesMinFreeBytes": 1579802624,
+      "preSeriesMaxFreeBytes": 2019909632,
+      "preSeriesMinuteDropsOver90MB": [
+        [
+          "2026-11-18T17:24:03Z",
+          -101187584
+        ]
+      ],
+      "duringSeriesMinuteSamples": 49,
+      "duringSeriesMinFreeBytes": 1503539200,
+      "duringSeriesMaxFreeBytes": 1856749568,
+      "lastSampleUntilWindowEnd": "2026-11-18T18:37:03Z",
+      "freeAtLastReading": 1628618752
+    }
+  },
+  "chart": "granot-index-member-headroom-2026-11-18.png",
+  "combinedRequestedIndexBytesAtFinalBuild": {
+    "00": 8359936,
+    "01": 8359936,
+    "02": 8364032
+  }
+}

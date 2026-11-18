@@ -1,0 +1,69 @@
+{
+  "observed_at": "2026-11-17T20:54:43.629Z",
+  "window": [
+    "2026-11-17T20:00:00Z",
+    "2026-11-17T20:30:00Z"
+  ],
+  "stamp": {
+    "deployment_commit": "7d12c4b3e09ef1e0e87c16dabbb8cc816427d73a",
+    "recorded_at": "2026-11-17T20:51:00.345Z",
+    "vercel_deployment_id": "dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm"
+  },
+  "method": "Two change records bounded by ObjectId, exact change provenance to Decision and Observation and receipt, same-entity jobs and job/run attempts, exact Daily Operations dedupe keys. A five-second projected oplog query tests whether the Lead update, change, Decision and Sheet job share one applyOps entry. No customer field values, job numbers or private identifiers returned.",
+  "evidence": [
+    {
+      "exact_decision_change_observation_receipt_chain": true,
+      "receipt_state": "completed",
+      "latest_receipt_decision_matches": true,
+      "stored_move_date_delta": true,
+      "revision_advanced": true,
+      "known_changed_paths": [
+        "current_move_provenance",
+        "granot_priority",
+        "job_no",
+        "last_accepted_granot_observation",
+        "move_date",
+        "receiver_agent"
+      ],
+      "other_changed_path_count": 15,
+      "sheet_requested": true,
+      "lead_updated": true,
+      "decision_keyed_daily_linked_fact": true,
+      "same_entity_sheet_jobs_in_window": 1,
+      "same_entity_job_status": "synced",
+      "job_run_attempts": [
+        {
+          "action": "update",
+          "status": "synced"
+        },
+        {
+          "action": "delete",
+          "status": "synced"
+        },
+        {
+          "action": "delete",
+          "status": "synced"
+        }
+      ],
+      "job_keyed_daily_completion": true,
+      "exact_single_transaction_lead_change_decision_and_job": true,
+      "oplog_read": "completed"
+    },
+    {
+      "exact_decision_change_observation_receipt_chain": true,
+      "receipt_state": "completed",
+      "latest_receipt_decision_matches": true,
+      "stored_move_date_delta": false,
+      "revision_advanced": true,
+      "known_changed_paths": [
+        "granot_priority",
+        "last_accepted_granot_observation"
+      ],
+      "other_changed_path_count": 0,
+      "sheet_requested": false,
+      "lead_updated": true,
+      "decision_keyed_daily_linked_fact": true,
+      "same_entity_sheet_jobs_in_window": 0
+    }
+  ]
+}

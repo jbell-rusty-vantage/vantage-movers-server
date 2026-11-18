@@ -1,0 +1,3025 @@
+{
+  "terminal_slot_and_approvals": {
+    "at": "2026-11-18T01:00:03.312Z",
+    "alias": "vantage-movers-main-server.vercel.app",
+    "target": "production",
+    "expected_serving_sha": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "start": "2026-11-18T00:00:00.000Z",
+    "end": "2026-11-18T01:00:00.000Z",
+    "queue": {
+      "queued": 453,
+      "planning": 0,
+      "applying": 0,
+      "failed": 305,
+      "completed_with_errors": 0
+    },
+    "expired_active_leases": {
+      "planning": 0,
+      "applying": 0
+    },
+    "activation": {
+      "activated_at": "2026-08-20T18:52:50.047Z"
+    },
+    "parents": [
+      {
+        "waiting": 65,
+        "parent_slot": "2026-11-17T09:00:00.000Z",
+        "declared": 65,
+        "states": [
+          {
+            "_id": {
+              "status": "completed",
+              "collected": true
+            },
+            "count": 26
+          },
+          {
+            "_id": {
+              "status": "failed"
+            },
+            "count": 39
+          }
+        ]
+      }
+    ],
+    "approved": [
+      {
+        "_id": {
+          "approved": true,
+          "actor": "system",
+          "checks": true,
+          "before": true,
+          "unique": true,
+          "plan": true,
+          "receipt_unique": true,
+          "exact": true,
+          "span": 518400000
+        },
+        "runs": 62
+      },
+      {
+        "_id": {
+          "approved": false,
+          "checks": false,
+          "before": false,
+          "unique": true,
+          "plan": true,
+          "receipt_unique": true,
+          "exact": true,
+          "span": 518400000
+        },
+        "runs": 68
+      }
+    ],
+    "receiptDue": 0,
+    "failedNew": 0,
+    "receiptExpiry": [
+      {
+        "_id": null,
+        "recorded_at_or_after_expiry": 0,
+        "missing": 0
+      }
+    ],
+    "policy": {
+      "revision": 36,
+      "pointer_version_hash_equal": true,
+      "pool_enabled": true
+    },
+    "health": [
+      {
+        "_id": "coverage",
+        "last_write_at": "2026-11-18T00:55:46.381Z"
+      },
+      {
+        "_id": "last_run:cron",
+        "at": "2026-11-18T00:55:46.381Z",
+        "status": "completed"
+      },
+      {
+        "_id": "last_run:queue",
+        "at": "2026-11-18T00:22:07.912Z",
+        "status": "completed"
+      }
+    ],
+    "queueBreakdown": [
+      {
+        "_id": {
+          "expired": true,
+          "waiting_all": true
+        },
+        "count": 388,
+        "oldest_created": "2026-11-11T09:00:48.700Z"
+      },
+      {
+        "_id": {
+          "expired": false,
+          "waiting_all": true
+        },
+        "count": 65,
+        "oldest_created": "2026-11-17T09:00:48.737Z"
+      }
+    ],
+    "manifests": [
+      {
+        "lane": "pool_refresh",
+        "scheduled_at": "2026-11-18T00:00:00.000Z",
+        "dispatched": true,
+        "declared": 65,
+        "joined": 65,
+        "unique": 65,
+        "exact": true,
+        "coverage_complete": 65
+      },
+      {
+        "lane": "all",
+        "scheduled_at": "2026-11-18T00:00:00.000Z",
+        "dispatched": true,
+        "declared": 65,
+        "joined": 65,
+        "unique": 65,
+        "exact": true,
+        "coverage_complete": 65
+      }
+    ],
+    "by": {
+      "estimates_in_process:completed": 130
+    },
+    "selected_mix": {
+      "update": 6912
+    },
+    "rows": [
+      {
+        "completed_at": "2026-11-18T00:13:42.927Z",
+        "createdAt": "2026-11-18T00:00:52.672Z",
+        "expires_at": "2026-11-19T00:00:52.672Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 48681,
+        "selected": 13,
+        "receipts": 13,
+        "mix": {
+          "update": 13
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:16:29.473Z",
+        "createdAt": "2026-11-18T00:00:49.504Z",
+        "expires_at": "2026-11-19T00:00:49.504Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 61730,
+        "selected": 33,
+        "receipts": 33,
+        "mix": {
+          "update": 33
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:20.707Z",
+        "createdAt": "2026-11-18T00:00:46.323Z",
+        "expires_at": "2026-11-19T00:00:46.323Z",
+        "leased_until": "2026-11-18T00:49:18.375Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 4467,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:33.412Z",
+        "createdAt": "2026-11-18T00:00:46.642Z",
+        "expires_at": "2026-11-19T00:00:46.642Z",
+        "leased_until": "2026-11-18T00:49:30.928Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 6025,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:46.944Z",
+        "createdAt": "2026-11-18T00:00:46.935Z",
+        "expires_at": "2026-11-19T00:00:46.935Z",
+        "leased_until": "2026-11-18T00:49:44.722Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 10396,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:26.918Z",
+        "createdAt": "2026-11-18T00:00:50.850Z",
+        "expires_at": "2026-11-19T00:00:50.850Z",
+        "leased_until": "2026-11-18T00:56:25.211Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:06:11.353Z",
+        "createdAt": "2026-11-18T00:00:48.171Z",
+        "expires_at": "2026-11-19T00:00:48.170Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 51925,
+        "selected": 20,
+        "receipts": 20,
+        "mix": {
+          "update": 20
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:15.058Z",
+        "createdAt": "2026-11-18T00:00:50.531Z",
+        "expires_at": "2026-11-19T00:00:50.531Z",
+        "leased_until": "2026-11-18T00:56:13.148Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:38.661Z",
+        "createdAt": "2026-11-18T00:00:45.267Z",
+        "expires_at": "2026-11-19T00:00:45.267Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 726236,
+        "selected": 372,
+        "receipts": 372,
+        "mix": {
+          "update": 372
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:31.777Z",
+        "createdAt": "2026-11-18T00:00:47.901Z",
+        "expires_at": "2026-11-19T00:00:47.901Z",
+        "leased_until": "2026-11-18T00:50:29.831Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 10392,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:25.049Z",
+        "createdAt": "2026-11-18T00:00:50.770Z",
+        "expires_at": "2026-11-19T00:00:50.770Z",
+        "leased_until": "2026-11-18T00:56:23.161Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1621,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:28:54.843Z",
+        "createdAt": "2026-11-18T00:00:48.842Z",
+        "expires_at": "2026-11-19T00:00:48.842Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 666631,
+        "selected": 228,
+        "receipts": 228,
+        "mix": {
+          "update": 228
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:31.810Z",
+        "createdAt": "2026-11-18T00:00:50.950Z",
+        "expires_at": "2026-11-19T00:00:50.950Z",
+        "leased_until": "2026-11-18T00:56:29.488Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1643,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:28.311Z",
+        "createdAt": "2026-11-18T00:00:51.990Z",
+        "expires_at": "2026-11-19T00:00:51.990Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 38969,
+        "selected": 15,
+        "receipts": 15,
+        "mix": {
+          "update": 15
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:22.978Z",
+        "createdAt": "2026-11-18T00:00:50.725Z",
+        "expires_at": "2026-11-19T00:00:50.725Z",
+        "leased_until": "2026-11-18T00:56:21.259Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:30:37.608Z",
+        "createdAt": "2026-11-18T00:00:45.862Z",
+        "expires_at": "2026-11-19T00:00:45.862Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 571785,
+        "selected": 292,
+        "receipts": 292,
+        "mix": {
+          "update": 292
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:16:38.630Z",
+        "createdAt": "2026-11-18T00:00:49.638Z",
+        "expires_at": "2026-11-19T00:00:49.638Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 72210,
+        "selected": 38,
+        "receipts": 38,
+        "mix": {
+          "update": 38
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:39.941Z",
+        "createdAt": "2026-11-18T00:00:52.103Z",
+        "expires_at": "2026-11-19T00:00:52.103Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 22138,
+        "selected": 11,
+        "receipts": 11,
+        "mix": {
+          "update": 11
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:12.973Z",
+        "createdAt": "2026-11-18T00:00:50.459Z",
+        "expires_at": "2026-11-19T00:00:50.458Z",
+        "leased_until": "2026-11-18T00:56:11.568Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1690,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:29:43.476Z",
+        "createdAt": "2026-11-18T00:00:45.797Z",
+        "expires_at": "2026-11-19T00:00:45.797Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 497689,
+        "selected": 257,
+        "receipts": 257,
+        "mix": {
+          "update": 257
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:18:44.344Z",
+        "createdAt": "2026-11-18T00:00:49.187Z",
+        "expires_at": "2026-11-19T00:00:49.187Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 140322,
+        "selected": 73,
+        "receipts": 73,
+        "mix": {
+          "update": 73
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:25.924Z",
+        "createdAt": "2026-11-18T00:00:46.426Z",
+        "expires_at": "2026-11-19T00:00:46.426Z",
+        "leased_until": "2026-11-18T00:49:22.967Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 7424,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:14:42.831Z",
+        "createdAt": "2026-11-18T00:00:47.950Z",
+        "expires_at": "2026-11-19T00:00:47.950Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 67615,
+        "selected": 33,
+        "receipts": 33,
+        "mix": {
+          "update": 33
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:13:36.991Z",
+        "createdAt": "2026-11-18T00:00:52.624Z",
+        "expires_at": "2026-11-19T00:00:52.624Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 76171,
+        "selected": 14,
+        "receipts": 14,
+        "mix": {
+          "update": 14
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:42.861Z",
+        "createdAt": "2026-11-18T00:00:51.234Z",
+        "expires_at": "2026-11-19T00:00:51.233Z",
+        "leased_until": "2026-11-18T00:56:40.565Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 4480,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:10.426Z",
+        "createdAt": "2026-11-18T00:00:47.419Z",
+        "expires_at": "2026-11-19T00:00:47.419Z",
+        "leased_until": "2026-11-18T00:50:07.811Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 31510,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:20.809Z",
+        "createdAt": "2026-11-18T00:00:45.319Z",
+        "expires_at": "2026-11-19T00:00:45.319Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 630325,
+        "selected": 329,
+        "receipts": 329,
+        "mix": {
+          "update": 329
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:13:21.067Z",
+        "createdAt": "2026-11-18T00:00:52.491Z",
+        "expires_at": "2026-11-19T00:00:52.491Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 49513,
+        "selected": 18,
+        "receipts": 18,
+        "mix": {
+          "update": 18
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:16.035Z",
+        "createdAt": "2026-11-18T00:00:47.545Z",
+        "expires_at": "2026-11-19T00:00:47.545Z",
+        "leased_until": "2026-11-18T00:50:13.750Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 40531,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:55.427Z",
+        "createdAt": "2026-11-18T00:00:52.322Z",
+        "expires_at": "2026-11-19T00:00:52.322Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 58569,
+        "selected": 17,
+        "receipts": 17,
+        "mix": {
+          "update": 17
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:27:36.877Z",
+        "createdAt": "2026-11-18T00:00:45.925Z",
+        "expires_at": "2026-11-19T00:00:45.925Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 427740,
+        "selected": 216,
+        "receipts": 216,
+        "mix": {
+          "update": 216
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:18:54.325Z",
+        "createdAt": "2026-11-18T00:00:49.374Z",
+        "expires_at": "2026-11-19T00:00:49.374Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 118671,
+        "selected": 63,
+        "receipts": 63,
+        "mix": {
+          "update": 63
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:00.093Z",
+        "createdAt": "2026-11-18T00:00:51.633Z",
+        "expires_at": "2026-11-19T00:00:51.633Z",
+        "leased_until": "2026-11-18T00:56:58.402Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:23:38.656Z",
+        "createdAt": "2026-11-18T00:00:48.666Z",
+        "expires_at": "2026-11-19T00:00:48.666Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 417757,
+        "selected": 138,
+        "receipts": 138,
+        "mix": {
+          "update": 138
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:43.425Z",
+        "createdAt": "2026-11-18T00:00:52.195Z",
+        "expires_at": "2026-11-19T00:00:52.195Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 7348,
+        "selected": 3,
+        "receipts": 3,
+        "mix": {
+          "update": 3
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:09.571Z",
+        "createdAt": "2026-11-18T00:00:50.352Z",
+        "expires_at": "2026-11-19T00:00:50.352Z",
+        "leased_until": "2026-11-18T00:56:08.075Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:21:48.538Z",
+        "createdAt": "2026-11-18T00:00:48.335Z",
+        "expires_at": "2026-11-19T00:00:48.334Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 264170,
+        "selected": 117,
+        "receipts": 117,
+        "mix": {
+          "update": 117
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:55.065Z",
+        "createdAt": "2026-11-18T00:00:47.076Z",
+        "expires_at": "2026-11-19T00:00:47.075Z",
+        "leased_until": "2026-11-18T00:49:52.392Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 3153,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:16:27.309Z",
+        "createdAt": "2026-11-18T00:00:49.428Z",
+        "expires_at": "2026-11-19T00:00:49.428Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 82628,
+        "selected": 44,
+        "receipts": 44,
+        "mix": {
+          "update": 44
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:15.423Z",
+        "createdAt": "2026-11-18T00:00:51.844Z",
+        "expires_at": "2026-11-19T00:00:51.844Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 8013,
+        "selected": 1,
+        "receipts": 1,
+        "mix": {
+          "update": 1
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:29.663Z",
+        "createdAt": "2026-11-18T00:00:47.848Z",
+        "expires_at": "2026-11-19T00:00:47.848Z",
+        "leased_until": "2026-11-18T00:50:27.341Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 30419,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:44.505Z",
+        "createdAt": "2026-11-18T00:00:46.877Z",
+        "expires_at": "2026-11-19T00:00:46.877Z",
+        "leased_until": "2026-11-18T00:49:42.650Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 8885,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:01.969Z",
+        "createdAt": "2026-11-18T00:00:45.506Z",
+        "expires_at": "2026-11-19T00:00:45.506Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 624948,
+        "selected": 318,
+        "receipts": 318,
+        "mix": {
+          "update": 318
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:52.186Z",
+        "createdAt": "2026-11-18T00:00:47.026Z",
+        "expires_at": "2026-11-19T00:00:47.026Z",
+        "leased_until": "2026-11-18T00:49:49.821Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 16580,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:13.679Z",
+        "createdAt": "2026-11-18T00:00:46.167Z",
+        "expires_at": "2026-11-19T00:00:46.167Z",
+        "leased_until": "2026-11-18T00:49:12.183Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:22.248Z",
+        "createdAt": "2026-11-18T00:00:47.695Z",
+        "expires_at": "2026-11-19T00:00:47.695Z",
+        "leased_until": "2026-11-18T00:50:19.604Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 42153,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:15:59.169Z",
+        "createdAt": "2026-11-18T00:00:49.138Z",
+        "expires_at": "2026-11-19T00:00:49.138Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 78926,
+        "selected": 41,
+        "receipts": 41,
+        "mix": {
+          "update": 41
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:06.087Z",
+        "createdAt": "2026-11-18T00:00:50.255Z",
+        "expires_at": "2026-11-19T00:00:50.255Z",
+        "leased_until": "2026-11-18T00:56:04.167Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:40.495Z",
+        "createdAt": "2026-11-18T00:00:46.784Z",
+        "expires_at": "2026-11-19T00:00:46.784Z",
+        "leased_until": "2026-11-18T00:49:38.283Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 3037,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:20:02.789Z",
+        "createdAt": "2026-11-18T00:00:48.451Z",
+        "expires_at": "2026-11-19T00:00:48.451Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 187272,
+        "selected": 87,
+        "receipts": 87,
+        "mix": {
+          "update": 87
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:52.494Z",
+        "createdAt": "2026-11-18T00:00:51.478Z",
+        "expires_at": "2026-11-19T00:00:51.478Z",
+        "leased_until": "2026-11-18T00:56:50.587Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:03.115Z",
+        "createdAt": "2026-11-18T00:00:47.256Z",
+        "expires_at": "2026-11-19T00:00:47.256Z",
+        "leased_until": "2026-11-18T00:50:00.670Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 16680,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:18:58.799Z",
+        "createdAt": "2026-11-18T00:00:49.568Z",
+        "expires_at": "2026-11-19T00:00:49.568Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 122146,
+        "selected": 67,
+        "receipts": 67,
+        "mix": {
+          "update": 67
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:18:33.277Z",
+        "createdAt": "2026-11-18T00:00:49.035Z",
+        "expires_at": "2026-11-19T00:00:49.035Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 114730,
+        "selected": 55,
+        "receipts": 55,
+        "mix": {
+          "update": 55
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:18.195Z",
+        "createdAt": "2026-11-18T00:00:46.276Z",
+        "expires_at": "2026-11-19T00:00:46.276Z",
+        "leased_until": "2026-11-18T00:49:16.358Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:27.160Z",
+        "createdAt": "2026-11-18T00:00:47.800Z",
+        "expires_at": "2026-11-19T00:00:47.800Z",
+        "leased_until": "2026-11-18T00:50:24.439Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 29824,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:35.994Z",
+        "createdAt": "2026-11-18T00:00:46.688Z",
+        "expires_at": "2026-11-19T00:00:46.688Z",
+        "leased_until": "2026-11-18T00:49:33.587Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 8890,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:15:09.771Z",
+        "createdAt": "2026-11-18T00:00:48.499Z",
+        "expires_at": "2026-11-19T00:00:48.499Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 88603,
+        "selected": 38,
+        "receipts": 38,
+        "mix": {
+          "update": 38
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:17:45.856Z",
+        "createdAt": "2026-11-18T00:00:48.059Z",
+        "expires_at": "2026-11-19T00:00:48.059Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 115031,
+        "selected": 58,
+        "receipts": 58,
+        "mix": {
+          "update": 58
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:19.386Z",
+        "createdAt": "2026-11-18T00:00:47.596Z",
+        "expires_at": "2026-11-19T00:00:47.596Z",
+        "leased_until": "2026-11-18T00:50:16.189Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 22173,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:30.777Z",
+        "createdAt": "2026-11-18T00:00:46.535Z",
+        "expires_at": "2026-11-19T00:00:46.535Z",
+        "leased_until": "2026-11-18T00:49:28.358Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1724,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:05.645Z",
+        "createdAt": "2026-11-18T00:00:47.302Z",
+        "expires_at": "2026-11-19T00:00:47.302Z",
+        "leased_until": "2026-11-18T00:50:03.387Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 30052,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:36.318Z",
+        "createdAt": "2026-11-18T00:00:51.053Z",
+        "expires_at": "2026-11-19T00:00:51.053Z",
+        "leased_until": "2026-11-18T00:56:33.952Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1591,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:16:45.794Z",
+        "createdAt": "2026-11-18T00:00:52.430Z",
+        "expires_at": "2026-11-19T00:00:52.430Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 93566,
+        "selected": 38,
+        "receipts": 38,
+        "mix": {
+          "update": 38
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:18.264Z",
+        "createdAt": "2026-11-18T00:00:51.894Z",
+        "expires_at": "2026-11-19T00:00:51.894Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 5683,
+        "selected": 3,
+        "receipts": 3,
+        "mix": {
+          "update": 3
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:13:03.137Z",
+        "createdAt": "2026-11-18T00:00:52.378Z",
+        "expires_at": "2026-11-19T00:00:52.378Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 58087,
+        "selected": 20,
+        "receipts": 20,
+        "mix": {
+          "update": 20
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:48.371Z",
+        "createdAt": "2026-11-18T00:00:51.362Z",
+        "expires_at": "2026-11-19T00:00:51.362Z",
+        "leased_until": "2026-11-18T00:56:46.095Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 3029,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:11.804Z",
+        "createdAt": "2026-11-18T00:00:45.626Z",
+        "expires_at": "2026-11-19T00:00:45.626Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 608439,
+        "selected": 323,
+        "receipts": 323,
+        "mix": {
+          "update": 323
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:07.593Z",
+        "createdAt": "2026-11-18T00:00:47.360Z",
+        "expires_at": "2026-11-19T00:00:47.360Z",
+        "leased_until": "2026-11-18T00:50:05.811Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 15141,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:34.702Z",
+        "createdAt": "2026-11-18T00:00:52.046Z",
+        "expires_at": "2026-11-19T00:00:52.046Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 33427,
+        "selected": 18,
+        "receipts": 18,
+        "mix": {
+          "update": 18
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:10:54.587Z",
+        "createdAt": "2026-11-18T00:00:49.931Z",
+        "expires_at": "2026-11-19T00:00:49.931Z",
+        "leased_until": "2026-11-18T00:55:52.972Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:25.075Z",
+        "createdAt": "2026-11-18T00:00:45.371Z",
+        "expires_at": "2026-11-19T00:00:45.371Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 694139,
+        "selected": 350,
+        "receipts": 350,
+        "mix": {
+          "update": 350
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:16.151Z",
+        "createdAt": "2026-11-18T00:00:46.226Z",
+        "expires_at": "2026-11-19T00:00:46.226Z",
+        "leased_until": "2026-11-18T00:49:13.890Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1598,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:38.322Z",
+        "createdAt": "2026-11-18T00:00:51.104Z",
+        "expires_at": "2026-11-19T00:00:51.104Z",
+        "leased_until": "2026-11-18T00:56:36.473Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:29:50.878Z",
+        "createdAt": "2026-11-18T00:00:48.723Z",
+        "expires_at": "2026-11-19T00:00:48.723Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 692877,
+        "selected": 263,
+        "receipts": 263,
+        "mix": {
+          "update": 263
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:38.103Z",
+        "createdAt": "2026-11-18T00:00:46.733Z",
+        "expires_at": "2026-11-19T00:00:46.733Z",
+        "leased_until": "2026-11-18T00:49:36.206Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 4707,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:42.631Z",
+        "createdAt": "2026-11-18T00:00:45.423Z",
+        "expires_at": "2026-11-19T00:00:45.423Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 747022,
+        "selected": 374,
+        "receipts": 374,
+        "mix": {
+          "update": 374
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:29:54.352Z",
+        "createdAt": "2026-11-18T00:00:45.163Z",
+        "expires_at": "2026-11-19T00:00:45.162Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 634743,
+        "selected": 293,
+        "receipts": 293,
+        "mix": {
+          "update": 293
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:55.323Z",
+        "createdAt": "2026-11-18T00:00:51.539Z",
+        "expires_at": "2026-11-19T00:00:51.539Z",
+        "leased_until": "2026-11-18T00:56:52.739Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:10:48.642Z",
+        "createdAt": "2026-11-18T00:00:49.761Z",
+        "expires_at": "2026-11-19T00:00:49.761Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 14462,
+        "selected": 7,
+        "receipts": 7,
+        "mix": {
+          "update": 7
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:18:51.170Z",
+        "createdAt": "2026-11-18T00:00:49.322Z",
+        "expires_at": "2026-11-19T00:00:49.322Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 100107,
+        "selected": 52,
+        "receipts": 52,
+        "mix": {
+          "update": 52
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:48.722Z",
+        "createdAt": "2026-11-18T00:00:52.248Z",
+        "expires_at": "2026-11-19T00:00:52.248Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 30703,
+        "selected": 12,
+        "receipts": 12,
+        "mix": {
+          "update": 12
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:01.930Z",
+        "createdAt": "2026-11-18T00:00:50.146Z",
+        "expires_at": "2026-11-19T00:00:50.146Z",
+        "leased_until": "2026-11-18T00:56:00.327Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:12.850Z",
+        "createdAt": "2026-11-18T00:00:51.802Z",
+        "expires_at": "2026-11-19T00:00:51.802Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 10900,
+        "selected": 5,
+        "receipts": 5,
+        "mix": {
+          "update": 5
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:11.991Z",
+        "createdAt": "2026-11-18T00:00:46.108Z",
+        "expires_at": "2026-11-19T00:00:46.108Z",
+        "leased_until": "2026-11-18T00:49:10.390Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:00.074Z",
+        "createdAt": "2026-11-18T00:00:50.097Z",
+        "expires_at": "2026-11-19T00:00:50.096Z",
+        "leased_until": "2026-11-18T00:55:58.592Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:13.587Z",
+        "createdAt": "2026-11-18T00:00:47.493Z",
+        "expires_at": "2026-11-19T00:00:47.493Z",
+        "leased_until": "2026-11-18T00:50:10.575Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 26576,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:06:04.323Z",
+        "createdAt": "2026-11-18T00:00:48.111Z",
+        "expires_at": "2026-11-19T00:00:48.111Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 127861,
+        "selected": 20,
+        "receipts": 20,
+        "mix": {
+          "update": 20
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:10:56.328Z",
+        "createdAt": "2026-11-18T00:00:49.988Z",
+        "expires_at": "2026-11-19T00:00:49.988Z",
+        "leased_until": "2026-11-18T00:55:54.746Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1598,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:29.231Z",
+        "createdAt": "2026-11-18T00:00:50.905Z",
+        "expires_at": "2026-11-19T00:00:50.905Z",
+        "leased_until": "2026-11-18T00:56:27.085Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:28.208Z",
+        "createdAt": "2026-11-18T00:00:46.491Z",
+        "expires_at": "2026-11-19T00:00:46.490Z",
+        "leased_until": "2026-11-18T00:49:26.111Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 4567,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:16.777Z",
+        "createdAt": "2026-11-18T00:00:50.576Z",
+        "expires_at": "2026-11-19T00:00:50.576Z",
+        "leased_until": "2026-11-18T00:56:15.253Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1662,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:57.663Z",
+        "createdAt": "2026-11-18T00:00:47.161Z",
+        "expires_at": "2026-11-19T00:00:47.161Z",
+        "leased_until": "2026-11-18T00:49:55.211Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 21040,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:20:06.733Z",
+        "createdAt": "2026-11-18T00:00:48.562Z",
+        "expires_at": "2026-11-19T00:00:48.562Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 257518,
+        "selected": 100,
+        "receipts": 100,
+        "mix": {
+          "update": 100
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:50.429Z",
+        "createdAt": "2026-11-18T00:00:51.428Z",
+        "expires_at": "2026-11-19T00:00:51.428Z",
+        "leased_until": "2026-11-18T00:56:48.620Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 7731,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:09.551Z",
+        "createdAt": "2026-11-18T00:00:51.741Z",
+        "expires_at": "2026-11-19T00:00:51.741Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 16914,
+        "selected": 9,
+        "receipts": 9,
+        "mix": {
+          "update": 9
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:17:44.347Z",
+        "createdAt": "2026-11-18T00:00:47.996Z",
+        "expires_at": "2026-11-19T00:00:47.996Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 110945,
+        "selected": 57,
+        "receipts": 57,
+        "mix": {
+          "update": 57
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:17:46.962Z",
+        "createdAt": "2026-11-18T00:00:48.274Z",
+        "expires_at": "2026-11-19T00:00:48.274Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 165031,
+        "selected": 56,
+        "receipts": 56,
+        "mix": {
+          "update": 56
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:07.870Z",
+        "createdAt": "2026-11-18T00:00:50.299Z",
+        "expires_at": "2026-11-19T00:00:50.299Z",
+        "leased_until": "2026-11-18T00:56:06.281Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:45.911Z",
+        "createdAt": "2026-11-18T00:00:51.305Z",
+        "expires_at": "2026-11-19T00:00:51.305Z",
+        "leased_until": "2026-11-18T00:56:43.121Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 9060,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:10.161Z",
+        "createdAt": "2026-11-18T00:00:46.055Z",
+        "expires_at": "2026-11-19T00:00:46.055Z",
+        "leased_until": "2026-11-18T00:49:08.298Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1555,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:29:37.337Z",
+        "createdAt": "2026-11-18T00:00:45.683Z",
+        "expires_at": "2026-11-19T00:00:45.683Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 528745,
+        "selected": 270,
+        "receipts": 270,
+        "mix": {
+          "update": 270
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:04.011Z",
+        "createdAt": "2026-11-18T00:00:50.201Z",
+        "expires_at": "2026-11-19T00:00:50.201Z",
+        "leased_until": "2026-11-18T00:56:02.197Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1610,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:58.269Z",
+        "createdAt": "2026-11-18T00:00:51.579Z",
+        "expires_at": "2026-11-19T00:00:51.579Z",
+        "leased_until": "2026-11-18T00:56:55.507Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 3155,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:22.800Z",
+        "createdAt": "2026-11-18T00:00:46.377Z",
+        "expires_at": "2026-11-19T00:00:46.377Z",
+        "leased_until": "2026-11-18T00:49:20.881Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 4494,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:18.649Z",
+        "createdAt": "2026-11-18T00:00:50.619Z",
+        "expires_at": "2026-11-19T00:00:50.618Z",
+        "leased_until": "2026-11-18T00:56:16.934Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 1545,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:10:50.978Z",
+        "createdAt": "2026-11-18T00:00:49.825Z",
+        "expires_at": "2026-11-19T00:00:49.824Z",
+        "leased_until": "2026-11-18T00:55:48.931Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:40.383Z",
+        "createdAt": "2026-11-18T00:00:51.167Z",
+        "expires_at": "2026-11-19T00:00:51.167Z",
+        "leased_until": "2026-11-18T00:56:38.499Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 3220,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:16:41.863Z",
+        "createdAt": "2026-11-18T00:00:49.707Z",
+        "expires_at": "2026-11-19T00:00:49.707Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 68665,
+        "selected": 37,
+        "receipts": 37,
+        "mix": {
+          "update": 37
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:10:58.400Z",
+        "createdAt": "2026-11-18T00:00:50.046Z",
+        "expires_at": "2026-11-19T00:00:50.046Z",
+        "leased_until": "2026-11-18T00:55:56.630Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:34.222Z",
+        "createdAt": "2026-11-18T00:00:45.748Z",
+        "expires_at": "2026-11-19T00:00:45.748Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 628519,
+        "selected": 327,
+        "receipts": 327,
+        "mix": {
+          "update": 327
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:10:52.791Z",
+        "createdAt": "2026-11-18T00:00:49.875Z",
+        "expires_at": "2026-11-19T00:00:49.875Z",
+        "leased_until": "2026-11-18T00:55:51.211Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:23:44.788Z",
+        "createdAt": "2026-11-18T00:00:48.775Z",
+        "expires_at": "2026-11-19T00:00:48.775Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 365105,
+        "selected": 129,
+        "receipts": 129,
+        "mix": {
+          "update": 129
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:20:38.213Z",
+        "createdAt": "2026-11-18T00:00:49.262Z",
+        "expires_at": "2026-11-19T00:00:49.261Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 153590,
+        "selected": 82,
+        "receipts": 82,
+        "mix": {
+          "update": 82
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:21.652Z",
+        "createdAt": "2026-11-18T00:00:51.938Z",
+        "expires_at": "2026-11-19T00:00:51.938Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 19714,
+        "selected": 4,
+        "receipts": 4,
+        "mix": {
+          "update": 4
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:21.074Z",
+        "createdAt": "2026-11-18T00:00:50.662Z",
+        "expires_at": "2026-11-19T00:00:50.662Z",
+        "leased_until": "2026-11-18T00:56:18.812Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:11.416Z",
+        "createdAt": "2026-11-18T00:00:50.404Z",
+        "expires_at": "2026-11-19T00:00:50.404Z",
+        "leased_until": "2026-11-18T00:56:09.734Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 85,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:23:57.133Z",
+        "createdAt": "2026-11-18T00:00:48.955Z",
+        "expires_at": "2026-11-19T00:00:48.955Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 426438,
+        "selected": 135,
+        "receipts": 135,
+        "mix": {
+          "update": 135
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:24.236Z",
+        "createdAt": "2026-11-18T00:00:47.750Z",
+        "expires_at": "2026-11-19T00:00:47.750Z",
+        "leased_until": "2026-11-18T00:50:22.410Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 23975,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:27:49.097Z",
+        "createdAt": "2026-11-18T00:00:48.894Z",
+        "expires_at": "2026-11-19T00:00:48.894Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 730179,
+        "selected": 218,
+        "receipts": 218,
+        "mix": {
+          "update": 218
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:21:51.775Z",
+        "createdAt": "2026-11-18T00:00:48.387Z",
+        "expires_at": "2026-11-19T00:00:48.387Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 272831,
+        "selected": 120,
+        "receipts": 120,
+        "mix": {
+          "update": 120
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:31:33.582Z",
+        "createdAt": "2026-11-18T00:00:45.573Z",
+        "expires_at": "2026-11-19T00:00:45.573Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 681294,
+        "selected": 344,
+        "receipts": 344,
+        "mix": {
+          "update": 344
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:42.482Z",
+        "createdAt": "2026-11-18T00:00:46.831Z",
+        "expires_at": "2026-11-19T00:00:46.830Z",
+        "leased_until": "2026-11-18T00:49:40.676Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 4665,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:16:47.673Z",
+        "createdAt": "2026-11-18T00:00:52.549Z",
+        "expires_at": "2026-11-19T00:00:52.549Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 80882,
+        "selected": 30,
+        "receipts": 30,
+        "mix": {
+          "update": 30
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:04:49.509Z",
+        "createdAt": "2026-11-18T00:00:46.987Z",
+        "expires_at": "2026-11-19T00:00:46.987Z",
+        "leased_until": "2026-11-18T00:49:47.114Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 11859,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:12:04.878Z",
+        "createdAt": "2026-11-18T00:00:51.691Z",
+        "expires_at": "2026-11-19T00:00:51.690Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 14946,
+        "selected": 8,
+        "receipts": 8,
+        "mix": {
+          "update": 8
+        },
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:21:56.460Z",
+        "createdAt": "2026-11-18T00:00:48.616Z",
+        "expires_at": "2026-11-19T00:00:48.616Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 344623,
+        "selected": 122,
+        "receipts": 122,
+        "mix": {
+          "update": 122
+        },
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:11:33.779Z",
+        "createdAt": "2026-11-18T00:00:51.008Z",
+        "expires_at": "2026-11-19T00:00:51.007Z",
+        "leased_until": "2026-11-18T00:56:32.024Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 3103,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "pool_refresh"
+      },
+      {
+        "completed_at": "2026-11-18T00:05:00.432Z",
+        "createdAt": "2026-11-18T00:00:47.208Z",
+        "expires_at": "2026-11-19T00:00:47.208Z",
+        "leased_until": "2026-11-18T00:49:57.874Z",
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 15015,
+        "selected": 0,
+        "receipts": 0,
+        "mix": {},
+        "lane": "all"
+      },
+      {
+        "completed_at": "2026-11-18T00:20:36.471Z",
+        "createdAt": "2026-11-18T00:00:49.083Z",
+        "expires_at": "2026-11-19T00:00:49.082Z",
+        "leased_until": null,
+        "operation": "estimates_in_process",
+        "status": "completed",
+        "coverage": true,
+        "plan_bytes": 145311,
+        "selected": 77,
+        "receipts": 77,
+        "mix": {
+          "update": 77
+        },
+        "lane": "pool_refresh"
+      }
+    ]
+  },
+  "full_hour_counts": {
+    "at": "2026-11-18T01:00:25.642Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "from": "2026-11-18T00:00:00.000Z",
+    "to": "2026-11-18T01:00:00.000Z",
+    "byDecision": [
+      {
+        "_id": {
+          "model": "CallLead",
+          "outcome": "stale",
+          "mode": "live"
+        },
+        "count": 37
+      },
+      {
+        "_id": {
+          "model": "FormLead",
+          "outcome": "applied",
+          "mode": "live"
+        },
+        "count": 3
+      },
+      {
+        "_id": {
+          "model": "FormLead",
+          "outcome": "stale",
+          "mode": "live"
+        },
+        "count": 847
+      },
+      {
+        "_id": {
+          "model": "FormLead",
+          "outcome": "already_current",
+          "mode": "live"
+        },
+        "count": 5518
+      },
+      {
+        "_id": {
+          "outcome": "pending_match",
+          "mode": "live"
+        },
+        "count": 5
+      },
+      {
+        "_id": {
+          "model": "CallLead",
+          "outcome": "already_current",
+          "mode": "live"
+        },
+        "count": 509
+      }
+    ],
+    "byReceipt": [
+      {
+        "_id": {
+          "channel": "granot_webhook",
+          "state": "completed",
+          "tech": 0
+        },
+        "count": 2
+      },
+      {
+        "_id": {
+          "channel": "granot_http_automation",
+          "state": "completed",
+          "tech": 0
+        },
+        "count": 6912
+      }
+    ],
+    "checkpoint_outcomes": [
+      {
+        "_id": "applied",
+        "count": 1
+      },
+      {
+        "_id": "stale",
+        "count": 884
+      },
+      {
+        "_id": "already_current",
+        "count": 6027
+      }
+    ],
+    "interpretation": "Window creation counts across all ingress and attempts. Checkpoint outcomes describe exact completed cohort; latest attempt and effect ownership verified separately."
+  },
+  "by_lane_comparison": {
+    "observed_at": "2026-11-18T01:00:03.312Z",
+    "lanes": [
+      {
+        "baseline": {
+          "lane": "all",
+          "selected_action_strata": [
+            {
+              "selected_action_range": "0",
+              "completed": 34,
+              "p50_s": 232.281,
+              "p95_s": 267.46
+            },
+            {
+              "selected_action_range": "1\u201325",
+              "completed": 2,
+              "p50_s": 303.468,
+              "p95_s": 310.298
+            },
+            {
+              "selected_action_range": "26\u2013100",
+              "completed": 7,
+              "p50_s": 1061.069,
+              "p95_s": 1202.803
+            },
+            {
+              "selected_action_range": "101+",
+              "completed": 22,
+              "p50_s": 1653.173,
+              "p95_s": 1745.08
+            }
+          ],
+          "aggregate_child_seconds": 50769.659999999996,
+          "child_seconds_per_selected_action": 8.458790403198932,
+          "child_seconds_per_sealed_plan_MiB": 3855.5084735579767,
+          "declared_children": 65,
+          "children": 65,
+          "covered": 65,
+          "completed": 65,
+          "selected": 6002,
+          "embedded": 6002,
+          "sealed_plan_bson": 13807737,
+          "child_p50_s": 267.46,
+          "child_p95_s": 1740.718,
+          "child_max_s": 1748.177,
+          "minutes_to_last_observed_completion": 29.9011
+        },
+        "current": {
+          "lane": "all",
+          "selected_action_strata": [
+            {
+              "selected_action_range": "0",
+              "completed": 34,
+              "p50_s": 240.009,
+              "p95_s": 281.815
+            },
+            {
+              "selected_action_range": "1\u201325",
+              "completed": 2,
+              "p50_s": 316.212,
+              "p95_s": 323.182
+            },
+            {
+              "selected_action_range": "26\u2013100",
+              "completed": 7,
+              "p50_s": 1017.797,
+              "p95_s": 1158.171
+            },
+            {
+              "selected_action_range": "101+",
+              "completed": 22,
+              "p50_s": 1737.679,
+              "p95_s": 1853.394
+            }
+          ],
+          "aggregate_child_seconds": 52270.364,
+          "child_seconds_per_selected_action": 8.705923384410394,
+          "child_seconds_per_sealed_plan_MiB": 3967.732060485031,
+          "declared_children": 65,
+          "children": 65,
+          "covered": 65,
+          "completed": 65,
+          "selected": 6004,
+          "embedded": 6004,
+          "sealed_plan_bson": 13813798,
+          "child_p50_s": 281.815,
+          "child_p95_s": 1848.009,
+          "child_max_s": 1857.208,
+          "minutes_to_last_observed_completion": 31.710516666666667
+        }
+      },
+      {
+        "baseline": {
+          "lane": "pool_refresh",
+          "selected_action_strata": [
+            {
+              "selected_action_range": "0",
+              "completed": 34,
+              "p50_s": 626.107,
+              "p95_s": 658.153
+            },
+            {
+              "selected_action_range": "1\u201325",
+              "completed": 17,
+              "p50_s": 694.071,
+              "p95_s": 767.574
+            },
+            {
+              "selected_action_range": "26\u2013100",
+              "completed": 14,
+              "p50_s": 996.231,
+              "p95_s": 1230.89
+            }
+          ],
+          "aggregate_child_seconds": 48021.062999999995,
+          "child_seconds_per_selected_action": 53.061948066298335,
+          "child_seconds_per_sealed_plan_MiB": 25295.87150564229,
+          "declared_children": 65,
+          "children": 65,
+          "covered": 65,
+          "completed": 65,
+          "selected": 905,
+          "embedded": 905,
+          "sealed_plan_bson": 1990591,
+          "child_p50_s": 655.947,
+          "child_p95_s": 1129.797,
+          "child_max_s": 1230.89,
+          "minutes_to_last_observed_completion": 21.344733333333334
+        },
+        "current": {
+          "lane": "pool_refresh",
+          "selected_action_strata": [
+            {
+              "selected_action_range": "0",
+              "completed": 34,
+              "p50_s": 630.412,
+              "p95_s": 666.69
+            },
+            {
+              "selected_action_range": "1\u201325",
+              "completed": 17,
+              "p50_s": 702.656,
+              "p95_s": 770.255
+            },
+            {
+              "selected_action_range": "26\u2013100",
+              "completed": 14,
+              "p50_s": 955.124,
+              "p95_s": 1188.951
+            }
+          ],
+          "aggregate_child_seconds": 47844.212,
+          "child_seconds_per_selected_action": 52.69186343612335,
+          "child_seconds_per_sealed_plan_MiB": 25133.470657220794,
+          "declared_children": 65,
+          "children": 65,
+          "covered": 65,
+          "completed": 65,
+          "selected": 908,
+          "embedded": 908,
+          "sealed_plan_bson": 1996075,
+          "child_p50_s": 663.784,
+          "child_p95_s": 1084.951,
+          "child_max_s": 1188.951,
+          "minutes_to_last_observed_completion": 20.636883333333333
+        }
+      }
+    ],
+    "complete_declared_coverage": true
+  },
+  "claim_log_to_child_join": {
+    "at": "2026-11-18T00:24:12.681Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "unique_logged_claimed_run_ids": 5,
+    "matching_slot_lanes": [
+      {
+        "_id": "all",
+        "children": 5
+      }
+    ]
+  },
+  "latest_decision_and_approval_Form": {
+    "observed": "2026-11-18T01:00:09.703Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "sample": {
+      "applied": [
+        {
+          "model": "FormLead",
+          "channel": "granot_webhook",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 1,
+          "effects": [
+            "lead_updated",
+            "record_link_established",
+            "sheet_sync_requested"
+          ],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true
+        },
+        {
+          "model": "FormLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 1,
+          "effects": [
+            "lead_updated",
+            "record_link_established"
+          ],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        },
+        {
+          "model": "FormLead",
+          "channel": "granot_webhook",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 1,
+          "effects": [
+            "lead_updated",
+            "record_link_established",
+            "sheet_sync_requested"
+          ],
+          "current_winner_is_same": false,
+          "has_later_winner": true,
+          "receipt_created_after_cutover": true
+        }
+      ],
+      "already_current": [
+        {
+          "model": "FormLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        },
+        {
+          "model": "FormLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        }
+      ],
+      "stale": [
+        {
+          "model": "FormLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": false,
+          "has_later_winner": true,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        },
+        {
+          "model": "FormLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": false,
+          "has_later_winner": true,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        }
+      ]
+    }
+  },
+  "latest_decision_and_approval_Call": {
+    "observed": "2026-11-18T01:00:06.037Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "sample": {
+      "applied": [],
+      "already_current": [
+        {
+          "model": "CallLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        },
+        {
+          "model": "CallLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        }
+      ],
+      "stale": [
+        {
+          "model": "CallLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": false,
+          "has_later_winner": true,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        },
+        {
+          "model": "CallLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 0,
+          "effects": [],
+          "current_winner_is_same": false,
+          "has_later_winner": true,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        }
+      ]
+    }
+  },
+  "applied_Form_joins": {
+    "observed": "2026-11-18T01:00:25.850Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "sample": {
+      "applied": [
+        {
+          "model": "FormLead",
+          "channel": "granot_webhook",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 1,
+          "effects": [
+            "lead_updated",
+            "record_link_established",
+            "sheet_sync_requested"
+          ],
+          "current_winner_is_same": false,
+          "has_later_winner": true,
+          "receipt_created_after_cutover": true
+        },
+        {
+          "model": "FormLead",
+          "channel": "granot_http_automation",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 1,
+          "effects": [
+            "lead_updated",
+            "record_link_established"
+          ],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true,
+          "run": {
+            "approval_actor_type": "system",
+            "within_slot": true,
+            "approved": true,
+            "exact_embedded": 1,
+            "approved_before_receipt": true,
+            "approved_actor_matches": true,
+            "checksum_matches": true,
+            "receipt_created_before_expiry": true
+          }
+        },
+        {
+          "model": "FormLead",
+          "channel": "granot_webhook",
+          "receipt": "completed",
+          "receipt_latest_matches": true,
+          "highest_attempt_matches": true,
+          "canonical_changes": 1,
+          "effects": [
+            "lead_updated",
+            "record_link_established",
+            "sheet_sync_requested"
+          ],
+          "current_winner_is_same": true,
+          "has_later_winner": false,
+          "receipt_created_after_cutover": true
+        }
+      ]
+    }
+  },
+  "applied_Form_canonical_transactions": {
+    "observed_at": "2026-11-18T01:00:26.209Z",
+    "window": [
+      "2026-11-18T00:00:00.000Z",
+      "2026-11-18T01:00:00.000Z"
+    ],
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "method": "Up to forty change records bounded by ObjectId; direct channel verified, exact change provenance to Decision and Observation and receipt, same-entity jobs and job/run attempts, exact Daily Operations dedupe keys. A five-second projected oplog query tests whether the Lead update, change, Decision and Sheet job share one applyOps entry. No customer field values, job numbers or private identifiers returned.",
+    "evidence": [
+      {
+        "channel": "granot_webhook",
+        "exact_decision_change_observation_receipt_chain": true,
+        "receipt_state": "completed",
+        "latest_receipt_decision_matches": true,
+        "stored_move_date_delta": false,
+        "revision_advanced": true,
+        "known_changed_paths": [
+          "job_no",
+          "last_accepted_granot_observation"
+        ],
+        "other_changed_path_count": 1,
+        "sheet_requested": true,
+        "lead_updated": true,
+        "decision_keyed_daily_linked_fact": true,
+        "same_entity_sheet_jobs_in_window": 1,
+        "same_entity_job_status": "synced",
+        "job_run_attempts": [
+          {
+            "action": "update",
+            "status": "synced"
+          },
+          {
+            "action": "delete",
+            "status": "synced"
+          },
+          {
+            "action": "delete",
+            "status": "synced"
+          }
+        ],
+        "job_keyed_daily_completion": true,
+        "exact_single_transaction_lead_change_decision_and_job": true,
+        "oplog_read": "completed"
+      },
+      {
+        "channel": "granot_http_automation",
+        "exact_decision_change_observation_receipt_chain": true,
+        "receipt_state": "completed",
+        "latest_receipt_decision_matches": true,
+        "stored_move_date_delta": false,
+        "revision_advanced": true,
+        "known_changed_paths": [
+          "granot_priority",
+          "last_accepted_granot_observation"
+        ],
+        "other_changed_path_count": 0,
+        "sheet_requested": false,
+        "lead_updated": true,
+        "decision_keyed_daily_linked_fact": true,
+        "same_entity_sheet_jobs_in_window": 1,
+        "parent": {
+          "within_slot": true,
+          "approved": true,
+          "matching_checkpoint": 1
+        },
+        "exact_single_transaction_lead_change_and_decision": true,
+        "sheet_job_writes_in_exact_transaction": 0
+      },
+      {
+        "channel": "granot_webhook",
+        "exact_decision_change_observation_receipt_chain": true,
+        "receipt_state": "completed",
+        "latest_receipt_decision_matches": true,
+        "stored_move_date_delta": false,
+        "revision_advanced": true,
+        "known_changed_paths": [
+          "job_no",
+          "last_accepted_granot_observation"
+        ],
+        "other_changed_path_count": 1,
+        "sheet_requested": true,
+        "lead_updated": true,
+        "decision_keyed_daily_linked_fact": true,
+        "same_entity_sheet_jobs_in_window": 1,
+        "same_entity_job_status": "synced",
+        "job_run_attempts": [
+          {
+            "action": "update",
+            "status": "synced"
+          },
+          {
+            "action": "delete",
+            "status": "synced"
+          },
+          {
+            "action": "delete",
+            "status": "synced"
+          }
+        ],
+        "job_keyed_daily_completion": true,
+        "exact_single_transaction_lead_change_decision_and_job": true,
+        "oplog_read": "completed"
+      }
+    ]
+  },
+  "sealed_plan_lower_bound": {
+    "at": "2026-11-18T00:32:56.395Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T00:23:00.361Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "byLane": [
+      {
+        "lane": "all",
+        "declared": 65,
+        "_id": null,
+        "qualifying_approved_runs": 31,
+        "selected_terminal_actions": 6004,
+        "runs_requiring_another_claim": 29,
+        "additional_claims_lower_bound": 222,
+        "logical_sealed_plan_bson_lower_bound": 127245404
+      },
+      {
+        "lane": "pool_refresh",
+        "declared": 65,
+        "_id": null,
+        "qualifying_approved_runs": 31,
+        "selected_terminal_actions": 908,
+        "runs_requiring_another_claim": 14,
+        "additional_claims_lower_bound": 23,
+        "logical_sealed_plan_bson_lower_bound": 2627262
+      }
+    ],
+    "method": "For each exact system-approved selected terminal run, max(0, ceil(N/25)-1) additional sealed-plan claims times BSON size P. Excludes first planning/possible apply. Counterfactual logical plan subdocuments only; not actual wire/physical traffic, replies, changes in total network or service costs."
+  },
+  "half_hour_worker_logs": {
+    "deployment": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y",
+    "start_utc": "2026-11-18T00:00:00.0000000Z",
+    "end_utc": "2026-11-18T00:30:00.0000000Z",
+    "source": "deployment-filtered Vercel indexed logs, capped per term; logged queue callbacks only",
+    "events": {
+      "RUN_LEASE_LOST": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "lost its fenced lease": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "granot_automation.consumer.completed": {
+        "first_request_epoch_ms": 1794960045323,
+        "last_request_epoch_ms": 1794961799641,
+        "fenced_phases": {},
+        "request_records": 352,
+        "exact_nested_events": 352,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "granot_automation.consumer.deferred": {
+        "first_request_epoch_ms": 1794960045352,
+        "last_request_epoch_ms": 1794961506362,
+        "fenced_phases": {},
+        "request_records": 134,
+        "exact_nested_events": 134,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "LEASE_LOST": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      }
+    }
+  },
+  "existing_profile_status": {
+    "setting": {
+      "level": 0
+    },
+    "at": "2026-11-17T23:15:42.109Z",
+    "stamp": {
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-17T23:14:00.556Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "profile_collection_visible": false
+  },
+  "baseline_half_hour_worker_logs": {
+    "deployment": "dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm",
+    "start_utc": "2026-11-17T20:00:00.0000000Z",
+    "end_utc": "2026-11-17T20:30:00.0000000Z",
+    "source": "deployment-filtered Vercel indexed logs, capped per term; logged queue callbacks only",
+    "events": {
+      "RUN_LEASE_LOST": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "lost its fenced lease": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "LEASE_LOST": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "granot_automation.consumer.completed": {
+        "first_request_epoch_ms": 1794945645765,
+        "last_request_epoch_ms": 1794947391001,
+        "fenced_phases": {},
+        "request_records": 375,
+        "exact_nested_events": 375,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "granot_automation.consumer.deferred": {
+        "first_request_epoch_ms": 1794945645803,
+        "last_request_epoch_ms": 1794947106353,
+        "fenced_phases": {},
+        "request_records": 134,
+        "exact_nested_events": 134,
+        "unclassified_records": 0,
+        "limit_reached": false
+      }
+    }
+  },
+  "release_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+  "note": "Natural 19:00\u201320:00 New York slot. Child and queue states are observed at the recorded scrape time. Latest receipt/Decision/Lead identities are sampled and redacted. Provider timestamps and checkpoint times do not stamp worker admission.",
+  "second_half_worker_logs": {
+    "deployment": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y",
+    "start_utc": "2026-11-18T00:30:00.0000000Z",
+    "end_utc": "2026-11-18T01:00:00.0000000Z",
+    "source": "deployment-filtered Vercel indexed logs, capped per term; logged queue callbacks only",
+    "events": {
+      "RUN_LEASE_LOST": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "lost its fenced lease": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "granot_automation.consumer.completed": {
+        "first_request_epoch_ms": 1794961804324,
+        "last_request_epoch_ms": 1794961898815,
+        "fenced_phases": {},
+        "request_records": 23,
+        "exact_nested_events": 23,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "granot_automation.consumer.deferred": {
+        "first_request_epoch_ms": 1794961806903,
+        "last_request_epoch_ms": 1794961806903,
+        "fenced_phases": {},
+        "request_records": 1,
+        "exact_nested_events": 1,
+        "unclassified_records": 0,
+        "limit_reached": false
+      },
+      "LEASE_LOST": {
+        "first_request_epoch_ms": null,
+        "last_request_epoch_ms": null,
+        "fenced_phases": {},
+        "request_records": 0,
+        "exact_nested_events": 0,
+        "unclassified_records": 0,
+        "limit_reached": false
+      }
+    }
+  }
+}

@@ -17,5 +17,5 @@
     "types/**/*.d.ts",
     "internal_hidden_docs/investigate-booking-intake-gap.ts"
   ],
-  "exclude": ["ops/cloud/**"]
+  "exclude": ["ops/cloud/**", "ops/output/**"]
 }

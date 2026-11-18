@@ -1,0 +1,97 @@
+{
+  "comparison": "Released 69d6504d defaultFinalize vs ec5679d8 finalizeReceiptClaim. Same loopback replica, distinct synthetic current Form/Call winners, alternating models, no provider delivery, one receipt completion per measured operation. Four blocks old/new/new/old with 15 warmups and 150 measured per block. The archived old function was exported unchanged to call it directly. Counts are MongoDB collection commands from the Mongoose driver wrapper and exclude wire-level session/commit commands.",
+  "versions": {
+    "old": {
+      "measured": 300,
+      "ops": {
+        "granot_webhook_receipts/updateOne": 600,
+        "synchronization_decisions/findOne": 300,
+        "granot_observations/findOne": 300,
+        "call_leads/updateOne": 150,
+        "form_leads/updateOne": 150
+      },
+      "medianMs": 6.283,
+      "p95Ms": 9.077,
+      "blocks": [
+        {
+          "version": "old",
+          "block": "1",
+          "at": "2026-11-18T18:07:22.720Z",
+          "warmup": 15,
+          "measured": 150,
+          "ops": {
+            "granot_webhook_receipts/updateOne": 300,
+            "synchronization_decisions/findOne": 150,
+            "granot_observations/findOne": 150,
+            "call_leads/updateOne": 75,
+            "form_leads/updateOne": 75
+          },
+          "medianMs": 6.246000000001004,
+          "p95Ms": 9.277299999999741
+        },
+        {
+          "version": "old",
+          "block": "4",
+          "at": "2026-11-18T18:07:48.123Z",
+          "warmup": 15,
+          "measured": 150,
+          "ops": {
+            "granot_webhook_receipts/updateOne": 300,
+            "synchronization_decisions/findOne": 150,
+            "granot_observations/findOne": 150,
+            "call_leads/updateOne": 75,
+            "form_leads/updateOne": 75
+          },
+          "medianMs": 6.283599999999751,
+          "p95Ms": 9.07680000000073
+        }
+      ]
+    },
+    "new": {
+      "measured": 300,
+      "ops": {
+        "synchronization_decisions/findOne": 300,
+        "granot_observations/findOne": 300,
+        "call_leads/updateOne": 150,
+        "granot_webhook_receipts/updateOne": 300,
+        "form_leads/updateOne": 150
+      },
+      "medianMs": 6.621,
+      "p95Ms": 9.429,
+      "blocks": [
+        {
+          "version": "new",
+          "block": "2",
+          "at": "2026-11-18T18:07:37.424Z",
+          "warmup": 15,
+          "measured": 150,
+          "ops": {
+            "synchronization_decisions/findOne": 150,
+            "granot_observations/findOne": 150,
+            "call_leads/updateOne": 75,
+            "granot_webhook_receipts/updateOne": 150,
+            "form_leads/updateOne": 75
+          },
+          "medianMs": 6.567599999999402,
+          "p95Ms": 9.42030000000068
+        },
+        {
+          "version": "new",
+          "block": "3",
+          "at": "2026-11-18T18:07:42.843Z",
+          "warmup": 15,
+          "measured": 150,
+          "ops": {
+            "synchronization_decisions/findOne": 150,
+            "granot_observations/findOne": 150,
+            "call_leads/updateOne": 75,
+            "granot_webhook_receipts/updateOne": 150,
+            "form_leads/updateOne": 75
+          },
+          "medianMs": 6.696799999999712,
+          "p95Ms": 9.512899999999718
+        }
+      ]
+    }
+  }
+}

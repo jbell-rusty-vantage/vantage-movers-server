@@ -27,7 +27,7 @@ sources:
     title: Slimming integration evidence (obsolete names from lanes S-AI, S-OUT, S-OBS)
 generated:
   by: process:docs-keeper
-  at: 2026-10-04T00:00:00Z
+  at: 2026-11-17T17:00:00Z
 ---
 
 # Environment variables
@@ -37,6 +37,8 @@ This is the inventory for `vantage-main-server`. Do not grep `process.env` to di
 Rebuilt on 2026-10-04 from the configuration code on branch `slim/server-admin` (`src/config/domain/**` and the few modules that own their own settings, listed in each section). A flag is on only when its trimmed value is the literal the row describes (usually `true`). "Required" means the process throws or refuses that feature when the value is blank at use time. "Secret" means never log or commit it.
 
 The database name outside `TEST_MODE` is the literal `vantagemovers` (`src/config/domain/runtime.ts`). It is not an environment variable. `api/` and `vercel.json` define no variables.
+
+Local agent execution has a separate, fixed profile: `pnpm dev` uses `ops/local-runtime.ts` and `ops/vantage/local-safety.ts` to verify loopback `rs0`, select `testvantagemovers_agent`, and construct an allowlisted child environment before loading the app. It ignores inherited Mongo/provider settings and private `.env` files; this does not change production defaults or make legacy scripts safe. See [local setup](../../CLOUD_AGENTS.md) and the [operator runbook](../operations/sheet-sync.md). No new deployment environment variable is required by the November 17 metadata optimization.
 
 Admin has its own variables. Three names must match across the two processes: `VANTAGE_API_SECRET`, `VANTAGE_ADMIN_PROXY_SIGNING_SECRET`, and the Admin `VANTAGE_API_BASE_URL` (this server's origin).
 

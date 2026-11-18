@@ -1,0 +1,29 @@
+{
+  "base": "868db09443681753390c25d0e6cec2160a130795",
+  "full_suite": {
+    "exit": 0,
+    "tests": 4048,
+    "passed": 3872,
+    "failed": 0,
+    "skipped": 176
+  },
+  "focused_final": {
+    "exit": 0,
+    "passed": 26,
+    "skipped": 0
+  },
+  "typecheck_exit": 0,
+  "lint_exit": 0,
+  "diff_check_exit": 0,
+  "active_operations_missing_links": [],
+  "production_changes": false,
+  "containers": {
+    "vantage-operability-agent-proof": "exited",
+    "vantage-operability-sheet-proof": "exited"
+  },
+  "remaining_proof": [
+    "authorized production release and measured overlap savings",
+    "actual hosted Cursor configuration adoption",
+    "other service CLI adapters and their qualified recovery proofs"
+  ]
+}

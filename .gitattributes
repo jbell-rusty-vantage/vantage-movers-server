@@ -1,0 +1,3 @@
+.cursor/scripts/*.sh text eol=lf
+# Byte-exact canonical export; preserve the provenance checksum on all hosts.
+docs/operations/shared-glossary.md -text

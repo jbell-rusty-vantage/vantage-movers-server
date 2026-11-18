@@ -1,0 +1,62 @@
+{
+  "source_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+  "approved_tree": "fc51d9a09355cd7a70ef22e2b30ea17430c027c9",
+  "repo": "jbell-rusty-vantage/vantage-movers-server",
+  "pr": 223,
+  "preview_merge_commit": "c297afc299fd1295f26e6551f46fe324b06da781",
+  "preview_tree_matches": true,
+  "quality": {
+    "run": 44194308865,
+    "conclusion": "success"
+  },
+  "qualification": {
+    "run": 44194272722,
+    "conclusion": "success",
+    "built_retention_tests_passed": 3,
+    "diagnostics_exact_including_coordinates_vs_serving": 91
+  },
+  "preview": {
+    "run": 44194309031,
+    "conclusion": "success",
+    "diagnostics_exact_including_coordinates_vs_serving": 91,
+    "id": "dpl_5y218dEu3erjnoEFir8VQrLUCUFE",
+    "url": "https://vantage-movers-main-server-ffee24unk-vantage-4d3db9ef.vercel.app",
+    "target": "preview",
+    "status": "READY",
+    "application_http": 200,
+    "application_ok": true,
+    "db_ok": true,
+    "db_ready_state": 1,
+    "db_name_matches_expected": true,
+    "probe": "Authenticated Vercel CLI GET. Direct unauthenticated request returned the expected protection redirect."
+  },
+  "main_fast_forward_utc": "2026-11-17T23:03:13Z",
+  "production_run": 44195868252,
+  "production": {
+    "run": 44195868252,
+    "head": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+    "conclusion": "success",
+    "built_retention": "success",
+    "deploy_step_completed_at": "2026-11-17T23:12:21Z",
+    "alias_confirmed_by": "2026-11-17T23:13:25Z",
+    "health": {
+      "at": "2026-11-17T23:13:53.6411375Z",
+      "alias": "https://vantage-movers-main-server.vercel.app",
+      "scope": "vantage-4d3db9ef",
+      "deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y",
+      "deployment_url": "vantage-movers-main-server-g2vbexsvj-vantage-4d3db9ef.vercel.app",
+      "state": "READY",
+      "target": "production",
+      "created": 1794957100445,
+      "ready": null,
+      "application_http": 200,
+      "application_ok": true,
+      "database_http": 200,
+      "database_ok": true,
+      "ready_state": 1,
+      "expected_and_connected_db_match": true
+    },
+    "diagnostics_count": 91,
+    "diagnostic_identities_and_multiplicities": "match"
+  }
+}

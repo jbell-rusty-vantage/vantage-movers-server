@@ -1,0 +1,540 @@
+{
+  "units": "decimal bytes",
+  "release": {
+    "target": "production",
+    "promotedAt": "2026-11-18T16:54:18.3130000Z",
+    "commit": "69d6504d6fb67ec403a99748e37bbcbae8246b08",
+    "alias": "vantage-movers-main-server.vercel.app",
+    "url": "vantage-movers-main-server-ra9aediww-vantage-4d3db9ef.vercel.app",
+    "id": "dpl_29YNyvVMniVSFsh7p1L9QgiAAv8V",
+    "at": "2026-11-18T16:54:43.6726406+00:00"
+  },
+  "natural": {
+    "since": "2026-11-18T16:54:18.313Z",
+    "until": "2026-11-18T17:47:05.769Z",
+    "release": "69d6504d6fb67ec403a99748e37bbcbae8246b08",
+    "arrivals": 6954,
+    "truncated": false,
+    "compact": 6930,
+    "verified": 6930,
+    "retainedBsonAvoided": 568260,
+    "certified": 6054,
+    "byOutcome": {
+      "already_current/FormLead": 5540,
+      "already_current/CallLead": 514,
+      "stale/FormLead": 843,
+      "stale/CallLead": 33
+    }
+  },
+  "naturalOtherOutcomes": {
+    "since": "2026-11-18T16:54:18.313Z",
+    "until": "2026-11-18T17:47:13.767Z",
+    "receiptsRead": 6954,
+    "ordinaryDecisions": 24,
+    "completeFullReplays": 14,
+    "businessLeadTargets": 23,
+    "businessLeadsFound": 23,
+    "outcomes": {
+      "granot_webhook/applied/FormLead": 7,
+      "granot_http_automation/applied/FormLead": 14,
+      "granot_webhook/applied/CallLead": 2,
+      "granot_webhook/policy_blocked/none": 1
+    }
+  },
+  "health": {
+    "health": 200,
+    "at": "2026-11-18T17:47:19.7847857+00:00",
+    "ready": 1,
+    "ok": true,
+    "db": 200,
+    "name": "vantagemovers"
+  },
+  "totals": {
+    "granot_webhook_receipts": {
+      "documents": 230062,
+      "bytes": 507542122
+    },
+    "granot_observations": {
+      "documents": 230062,
+      "bytes": 248760749
+    },
+    "synchronization_decisions": {
+      "documents": 230062,
+      "bytes": 281930552
+    }
+  },
+  "cohorts": [
+    {
+      "at": "2026-11-18T16:53:06.989Z",
+      "manifest": "e500805080203f26c70962e1724704ee52b046f4afcf572b090231c82f5d286b",
+      "selected": 50600,
+      "removed": 50600,
+      "held": 0,
+      "collections": {
+        "granot_webhook_receipts": {
+          "removed": 50600,
+          "remainingAmongRemoved": 0,
+          "bytes": 99160731
+        },
+        "granot_observations": {
+          "removed": 50600,
+          "remainingAmongRemoved": 0,
+          "bytes": 54847698
+        },
+        "synchronization_decisions": {
+          "removed": 50600,
+          "remainingAmongRemoved": 0,
+          "bytes": 62081103
+        }
+      },
+      "cohort": "October 28-30 UTC",
+      "coldChecks": 8,
+      "restoredDocuments": 151800,
+      "cloud": {
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-granot-hot-20261118-1028/historic-live.bson.gz",
+        "metadata": [
+          {
+            "name": "historic-final-manifest.json",
+            "sha256": "e500805080203f26c70962e1724704ee52b046f4afcf572b090231c82f5d286b",
+            "generation": "1795019813323682"
+          },
+          {
+            "name": "historic-catalog-recovery.bson.gz",
+            "sha256": "99bec51e6883a8cfcfd05dc1b61e2852c59ede302a1804b8ba161bb0f9f339a0",
+            "generation": "1795019831358518"
+          }
+        ],
+        "sha256": "b86c36eb531712e58b0c8d678df15d38e7abc1575bb41fe877ac811b473644e4",
+        "generation": "1795019789924823"
+      },
+      "rawRollbackGzipBytes": 25435963
+    },
+    {
+      "at": "2026-11-18T17:07:18.278Z",
+      "manifest": "fe787e58ac5374417334871b17fcc68ad0f53ac33dd16bce108d8576ad1a941e",
+      "selected": 55881,
+      "removed": 49480,
+      "held": 6401,
+      "collections": {
+        "granot_webhook_receipts": {
+          "removed": 49480,
+          "remainingAmongRemoved": 0,
+          "bytes": 112694397
+        },
+        "granot_observations": {
+          "removed": 49480,
+          "remainingAmongRemoved": 0,
+          "bytes": 53676444
+        },
+        "synchronization_decisions": {
+          "removed": 49480,
+          "remainingAmongRemoved": 0,
+          "bytes": 60584161
+        }
+      },
+      "cohort": "November batch1",
+      "coldChecks": 8,
+      "restoredDocuments": 167643,
+      "cloud": {
+        "metadata": [
+          {
+            "name": "historic-final-manifest.json",
+            "sha256": "fe787e58ac5374417334871b17fcc68ad0f53ac33dd16bce108d8576ad1a941e",
+            "generation": "1795020436262402"
+          },
+          {
+            "name": "historic-catalog-recovery.bson.gz",
+            "sha256": "6e311fe66510193cd99e9a7ad27863c5c23fcd9ea291fde1d67fd09699cebbf1",
+            "generation": "1795020455353328"
+          }
+        ],
+        "sha256": "71949deaaf04008c7a64078f86bd27bbc3783ca962a3225cf08c89b566be7fdf",
+        "generation": "1795020402951173",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-granot-hot-20261118-nov/batch1/historic-live.bson.gz"
+      },
+      "rawRollbackGzipBytes": 32428424
+    },
+    {
+      "at": "2026-11-18T17:21:19.102Z",
+      "manifest": "a5b7ffaa10fd3a82be3ebc462a8e5d47131ce19a1505b737d1348531171529ed",
+      "selected": 53394,
+      "removed": 45479,
+      "held": 7915,
+      "collections": {
+        "granot_webhook_receipts": {
+          "removed": 45479,
+          "remainingAmongRemoved": 0,
+          "bytes": 103578109
+        },
+        "granot_observations": {
+          "removed": 45479,
+          "remainingAmongRemoved": 0,
+          "bytes": 49282652
+        },
+        "synchronization_decisions": {
+          "removed": 45479,
+          "remainingAmongRemoved": 0,
+          "bytes": 55700528
+        }
+      },
+      "cohort": "November batch2",
+      "coldChecks": 8,
+      "restoredDocuments": 160182,
+      "cloud": {
+        "generation": "1795020861438228",
+        "sha256": "f408244602f3f5d24cc8dfa6c3ddeda1e4a6e557972d18899182be4358ce3a79",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-granot-hot-20261118-nov/batch2/historic-live.bson.gz",
+        "metadata": [
+          {
+            "generation": "1795020885398318",
+            "sha256": "a5b7ffaa10fd3a82be3ebc462a8e5d47131ce19a1505b737d1348531171529ed",
+            "name": "historic-final-manifest.json"
+          },
+          {
+            "generation": "1795020903642032",
+            "sha256": "0a05470751b0d52c9a536cb62a0cc355d67ac81a7d85c4424177ccbd158fac9f",
+            "name": "historic-catalog-recovery.bson.gz"
+          }
+        ]
+      },
+      "rawRollbackGzipBytes": 31074721
+    },
+    {
+      "at": "2026-11-18T17:34:59.341Z",
+      "manifest": "98e36cf442dce73d982db47d880c4fe1ac1125633200a5c16d6c44281581a44e",
+      "selected": 50758,
+      "removed": 41687,
+      "held": 9071,
+      "collections": {
+        "granot_webhook_receipts": {
+          "removed": 41687,
+          "remainingAmongRemoved": 0,
+          "bytes": 94802334
+        },
+        "granot_observations": {
+          "removed": 41687,
+          "remainingAmongRemoved": 0,
+          "bytes": 44939843
+        },
+        "synchronization_decisions": {
+          "removed": 41687,
+          "remainingAmongRemoved": 0,
+          "bytes": 51070914
+        }
+      },
+      "cohort": "November batch3",
+      "coldChecks": 8,
+      "restoredDocuments": 152274,
+      "cloud": {
+        "generation": "1795021360836951",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-granot-hot-20261118-nov/batch3/historic-live.bson.gz",
+        "metadata": [
+          {
+            "generation": "1795021394268928",
+            "name": "historic-final-manifest.json",
+            "sha256": "98e36cf442dce73d982db47d880c4fe1ac1125633200a5c16d6c44281581a44e"
+          },
+          {
+            "generation": "1795021412443484",
+            "name": "historic-catalog-recovery.bson.gz",
+            "sha256": "d5f1e2f9ab5aabe857a87a789143f1a46fcf634fe6d3a3a5a9df85a972d8c224"
+          }
+        ],
+        "sha256": "933239777a12aaf2b106d49ec1214c9407e8f0db27d058ba3f9e05ec6ed2c7de"
+      },
+      "rawRollbackGzipBytes": 29432612
+    },
+    {
+      "at": "2026-11-18T17:44:13.639Z",
+      "manifest": "52cb49ce3c48b1efb8ff51a4251059648e57a78eb6139b3dd7e93809bd329c75",
+      "selected": 48824,
+      "removed": 38924,
+      "held": 9900,
+      "collections": {
+        "granot_webhook_receipts": {
+          "removed": 38924,
+          "remainingAmongRemoved": 0,
+          "bytes": 88479966
+        },
+        "granot_observations": {
+          "removed": 38924,
+          "remainingAmongRemoved": 0,
+          "bytes": 41849385
+        },
+        "synchronization_decisions": {
+          "removed": 38924,
+          "remainingAmongRemoved": 0,
+          "bytes": 47724387
+        }
+      },
+      "cohort": "November batch4",
+      "coldChecks": 8,
+      "restoredDocuments": 146472,
+      "cloud": {
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-granot-hot-20261118-nov/batch4/historic-live.bson.gz",
+        "sha256": "825fdc3d1eeed836ce73a5900442b6c06e3f28fff7bc5464ea207140fa620ab0",
+        "generation": "1795021815843448",
+        "metadata": [
+          {
+            "name": "historic-final-manifest.json",
+            "sha256": "52cb49ce3c48b1efb8ff51a4251059648e57a78eb6139b3dd7e93809bd329c75",
+            "generation": "1795021846660338"
+          },
+          {
+            "name": "historic-catalog-recovery.bson.gz",
+            "sha256": "b79a16994c8f36a04f7f2ddf5e56b1a3ca515d3023f34ede71b3c18d4fc9df55",
+            "generation": "1795021865878035"
+          }
+        ]
+      },
+      "rawRollbackGzipBytes": 28385195
+    },
+    {
+      "at": "2026-11-18T17:45:47.769Z",
+      "manifest": "d30c7729931f6b772128d0ec842ff954d3d7e603dafe923876dc1a226dc1144f",
+      "selected": 4677,
+      "removed": 3892,
+      "held": 785,
+      "collections": {
+        "granot_webhook_receipts": {
+          "removed": 3892,
+          "remainingAmongRemoved": 0,
+          "bytes": 8826585
+        },
+        "granot_observations": {
+          "removed": 3892,
+          "remainingAmongRemoved": 0,
+          "bytes": 4164727
+        },
+        "synchronization_decisions": {
+          "removed": 3892,
+          "remainingAmongRemoved": 0,
+          "bytes": 4769459
+        }
+      },
+      "cohort": "November batch5",
+      "coldChecks": 8,
+      "restoredDocuments": 14031,
+      "cloud": {
+        "generation": "1795021836337359",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/vantage-granot-hot-20261118-nov/batch5/historic-live.bson.gz",
+        "sha256": "a0e42033b1d0cd32332293501ca5c9d1519a509a111250883079ecaf45017ff5",
+        "metadata": [
+          {
+            "generation": "1795021856157328",
+            "name": "historic-final-manifest.json",
+            "sha256": "d30c7729931f6b772128d0ec842ff954d3d7e603dafe923876dc1a226dc1144f"
+          },
+          {
+            "generation": "1795021874468694",
+            "name": "historic-catalog-recovery.bson.gz",
+            "sha256": "5272d274973db7bc5e6e65e3bd7d86e468b5043b826383a66ffde981983a7418"
+          }
+        ]
+      },
+      "rawRollbackGzipBytes": 2893806
+    }
+  ],
+  "originalBusinessIdsAndSheetTabIdentity": {
+    "at": "2026-11-18T17:46:55.626Z",
+    "collections": {
+      "form_leads": {
+        "baseline": 8951,
+        "missing": 0,
+        "current": 8954
+      },
+      "call_leads": {
+        "baseline": 2105,
+        "missing": 0,
+        "current": 2105
+      },
+      "booked_leads": {
+        "baseline": 1069,
+        "missing": 0,
+        "current": 1069
+      },
+      "cancelled_leads": {
+        "baseline": 51,
+        "missing": 0,
+        "current": 51
+      },
+      "sales_outreach_subjects": {
+        "baseline": 3754,
+        "missing": 0,
+        "current": 3756
+      },
+      "reporting_destinations": {
+        "baseline": 2,
+        "missing": 0,
+        "current": 2
+      },
+      "reporting_definitions": {
+        "baseline": 7,
+        "missing": 0,
+        "current": 7
+      }
+    },
+    "sheets": {
+      "MASTER_LEADS_SHEET_ID": {
+        "tabsBefore": 6,
+        "tabsAfter": 6,
+        "missingOrRenamed": 0
+      },
+      "MASTER_BOOKED_SHEET_ID": {
+        "tabsBefore": 2,
+        "tabsAfter": 2,
+        "missingOrRenamed": 0
+      }
+    }
+  },
+  "capacity": {
+    "member": "ac-9mmcj05-shard-00-02",
+    "from": "2026-11-18T16:19:50.689Z",
+    "through": "2026-11-18T17:46:41.351Z",
+    "sameMemberFreeBefore": 1742225408,
+    "sameMemberFreeAfter": 1730359296,
+    "collections": {
+      "granot_webhook_receipts": {
+        "pre": {
+          "docs": 1939883,
+          "logical": 4339818455,
+          "allocatedData": 1215987712,
+          "allocatedIndexes": 469196800,
+          "dataFree": 65974272,
+          "indexFree": 92438528
+        },
+        "post": {
+          "docs": 1721762,
+          "logical": 3858870331,
+          "allocatedData": 1237729280,
+          "allocatedIndexes": 492711936,
+          "dataFree": 175341568,
+          "indexFree": 141135872
+        },
+        "reusableDelta": 158064640
+      },
+      "granot_observations": {
+        "pre": {
+          "docs": 1939883,
+          "logical": 2097649560,
+          "allocatedData": 568979456,
+          "allocatedIndexes": 299380736,
+          "dataFree": 32227328,
+          "indexFree": 43278336
+        },
+        "post": {
+          "docs": 1721762,
+          "logical": 1861830999,
+          "allocatedData": 598536192,
+          "allocatedIndexes": 309415936,
+          "dataFree": 105238528,
+          "indexFree": 67538944
+        },
+        "reusableDelta": 97271808
+      },
+      "synchronization_decisions": {
+        "pre": {
+          "docs": 1948991,
+          "logical": 2421910916,
+          "allocatedData": 305332224,
+          "allocatedIndexes": 226762752,
+          "dataFree": 13185024,
+          "indexFree": 27676672
+        },
+        "post": {
+          "docs": 1730871,
+          "logical": 2154608337,
+          "allocatedData": 321335296,
+          "allocatedIndexes": 234557440,
+          "dataFree": 48607232,
+          "indexFree": 46968832
+        },
+        "reusableDelta": 54714368
+      }
+    },
+    "memberVolumesBefore": [
+      {
+        "at": "2026-11-18T16:31:07.207Z",
+        "member": "ac-9mmcj05-shard-00-00",
+        "used": 10434850816,
+        "total": 13853786112,
+        "free": 3418935296
+      },
+      {
+        "at": "2026-11-18T16:31:07.678Z",
+        "member": "ac-9mmcj05-shard-00-01",
+        "used": 12104589312,
+        "total": 13853786112,
+        "free": 1749196800
+      },
+      {
+        "at": "2026-11-18T16:31:08.087Z",
+        "member": "ac-9mmcj05-shard-00-02",
+        "used": 12166348800,
+        "total": 13853786112,
+        "free": 1687437312
+      }
+    ],
+    "memberVolumesAfter": [
+      {
+        "at": "2026-11-18T17:46:57.211Z",
+        "member": "ac-9mmcj05-shard-00-00",
+        "used": 10503909376,
+        "total": 13853786112,
+        "free": 3349876736
+      },
+      {
+        "at": "2026-11-18T17:46:57.553Z",
+        "member": "ac-9mmcj05-shard-00-01",
+        "used": 12278218752,
+        "total": 13853786112,
+        "free": 1575567360
+      },
+      {
+        "at": "2026-11-18T17:46:57.890Z",
+        "member": "ac-9mmcj05-shard-00-02",
+        "used": 12123561984,
+        "total": 13853786112,
+        "free": 1730224128
+      }
+    ],
+    "archiveCatalogLogicalBefore": 3070461,
+    "archiveCatalogLogicalAfter": 3943599,
+    "secondaryDryRun": {
+      "at": "2026-11-18T17:47:19.468Z",
+      "results": [
+        {
+          "member": "atlas-khw1wz-shard-00-00.ccf491v.mongodb.net:27017",
+          "estimates": {
+            "granot_webhook_receipts": 111697920,
+            "granot_observations": 23142400,
+            "synchronization_decisions": 0
+          },
+          "bytes": 134840320
+        },
+        {
+          "member": "atlas-khw1wz-shard-00-01.ccf491v.mongodb.net:27017",
+          "estimates": {
+            "granot_webhook_receipts": 115073024,
+            "granot_observations": 22384640,
+            "synchronization_decisions": 0
+          },
+          "bytes": 137457664
+        }
+      ]
+    }
+  },
+  "retention": {
+    "mode": "shadow",
+    "day": {
+      "_id": "2026-11-18",
+      "mode": "shadow",
+      "qualified": 33752,
+      "read_comparisons": 528,
+      "reviewed": 33792,
+      "ttl_stamped": 0,
+      "failures": 6,
+      "mismatches": 0
+    }
+  }
+}

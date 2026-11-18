@@ -14,7 +14,7 @@ import {
 } from "../../../models/schemaHelpers";
 import { SheetSyncAttempt } from "../../../models/SheetSyncAttempt";
 import { SheetSyncJob, type SheetSyncJobDocument } from "../../../models/SheetSyncJob";
-import { SheetSyncRun } from "../../../models/SheetSyncRun";
+import { SheetSyncRun, type SheetSyncRunDocument } from "../../../models/SheetSyncRun";
 import { getSheetsClient } from "../../googleSheets/auth";
 import { writeBatchedTargets } from "./batchWriter";
 import {
@@ -74,7 +74,15 @@ export async function runSheetSyncDrain(
     return { ok: true, runId: null, skipped: true, claimed: 0, synced: 0, failed: 0, deferred: 0 };
   }
   let activeLease = acquired;
-  const run = await SheetSyncRun.create({ trigger, status: "running", started_at: new Date() });
+  let run: SheetSyncRunDocument;
+  try {
+    run = await SheetSyncRun.create({ trigger, status: "running", started_at: new Date() });
+  } catch (error) {
+    // A run record is the only durable owner of this lease. If its creation
+    // fails, no later recovery can associate the fenced lease with a run.
+    await releaseLease(activeLease);
+    throw error;
+  }
   const runId = run._id;
   let heartbeatFailure: Error | null = null;
   let heartbeatWork = Promise.resolve();
@@ -357,7 +365,9 @@ async function claimDueJobs(
     $or: [{ leased_until: { $exists: false } }, { leased_until: { $lte: now } }],
   })
     .sort({ priority: -1, createdAt: 1 })
-    .limit(limit);
+    .limit(limit)
+    .select({ _id: 1 })
+    .lean();
 
   const claimed: SheetSyncJobDocument[] = [];
   for (const candidate of candidates) {
@@ -406,17 +416,25 @@ async function renewClaimedJobLeases(
   );
 }
 
-async function persistDocSheetSync(
+export async function persistDocSheetSync(
   plannedDocs: PlannedDoc[],
   outcomes: PlannedWriteOutcome[],
   assertOwnership: () => Promise<void>,
 ): Promise<PlannedWriteOutcome[]> {
   const outcomesByDoc = groupBy(outcomes, (o) => o.write.docKey);
   const metadataFailures = new Map<string, string>();
+  // Every logical subscriber still contributes outcomes. Persist the combined
+  // result only at each document's final occurrence, preserving the previous
+  // last-snapshot merge and final-write order when plans loaded different state.
+  const lastDocPlan = new Map<string, PlannedDoc>();
   for (const planned of plannedDocs) {
-    if (!planned.doc) {
-      continue; // delete tombstone: no surviving document to persist onto
+    if (planned.doc) {
+      lastDocPlan.delete(planned.docKey);
+      lastDocPlan.set(planned.docKey, planned);
     }
+  }
+  for (const planned of lastDocPlan.values()) {
+    if (!planned.doc) continue;
     const docOutcomes = outcomesByDoc.get(planned.docKey) ?? [];
     if (docOutcomes.length === 0) {
       continue;
@@ -451,13 +469,13 @@ async function persistDocSheetSync(
   }
   return outcomes.map((outcome) => {
     const message = metadataFailures.get(outcome.write.docKey);
-    if (!message || outcome.status !== "synced") {
+    if (message === undefined || outcome.status !== "synced") {
       return outcome;
     }
     return {
       ...outcome,
       status: "failed",
-      error: `sheet_sync metadata persist failed: ${message}`,
+      error: `sheet_sync metadata persist failed: ${message || "no error message"}`,
     };
   });
 }

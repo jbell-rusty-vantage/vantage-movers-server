@@ -1,0 +1,1295 @@
+{
+  "captured": "2026-11-18T18:37:26.076Z",
+  "sourceNamespace": "vantagemovers.entity_changes",
+  "baseline": {
+    "at": "2026-11-18T17:48:15.173Z",
+    "query": {
+      "at": "2026-11-18T17:48:15.172Z",
+      "n": 34,
+      "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+      "docs": 178390,
+      "keys": 0,
+      "ms": 300,
+      "stages": [
+        "SUBPLAN",
+        "PROJECTION_DEFAULT",
+        "COLLSCAN"
+      ],
+      "indexes": []
+    },
+    "members": [
+      {
+        "member": "ac-9mmcj05-shard-00-00",
+        "primary": false,
+        "writeMs": 1795024093000,
+        "free": 3395063808,
+        "total": 13853786112,
+        "usedPct": 75.49360311648502,
+        "otherMaintenance": 0,
+        "indexBytes": {
+          "_id_": 3014656,
+          "entity_change_changed_paths_applied": 9588736,
+          "entity_change_entity_revision_unique": 3985408,
+          "entity_change_applied_scan": 4231168,
+          "entity_change_command_execution_id": 2871296,
+          "entity_change_entity_applied": 4759552
+        }
+      },
+      {
+        "member": "ac-9mmcj05-shard-00-01",
+        "primary": false,
+        "writeMs": 1795024093000,
+        "free": 1575739392,
+        "total": 13853786112,
+        "usedPct": 88.62592955267938,
+        "otherMaintenance": 0,
+        "indexBytes": {
+          "_id_": 3002368,
+          "entity_change_changed_paths_applied": 9596928,
+          "entity_change_entity_revision_unique": 3604480,
+          "entity_change_applied_scan": 4243456,
+          "entity_change_command_execution_id": 2904064,
+          "entity_change_entity_applied": 4747264
+        }
+      },
+      {
+        "member": "ac-9mmcj05-shard-00-02",
+        "primary": true,
+        "writeMs": 1795024093000,
+        "free": 1730379776,
+        "total": 13853786112,
+        "usedPct": 87.50969762337269,
+        "otherMaintenance": 0,
+        "indexBytes": {
+          "_id_": 2998272,
+          "entity_change_changed_paths_applied": 9699328,
+          "entity_change_entity_revision_unique": 3940352,
+          "entity_change_applied_scan": 4247552,
+          "entity_change_command_execution_id": 2879488,
+          "entity_change_entity_applied": 4759552
+        }
+      }
+    ]
+  },
+  "recovery": {
+    "objects": [
+      {
+        "bytes": 14137320,
+        "generation": "1795024031683320",
+        "sha256": "50ccd18caad122c58e6f66f2afa10253d694a5696975be5eeb45e8f3c6726b9c",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/entity-index-trial/entity.bson.gz"
+      },
+      {
+        "bytes": 1162,
+        "generation": "1795024054310057",
+        "sha256": "76506c65487e7fccb87e625f19fbf5b3072605d0418875f499a0beeec18d51e7",
+        "object": "gs://vantage-mongodb-backups-496816/history/owner-relief/2026-11-18/entity-index-trial/entity-manifest.json"
+      }
+    ],
+    "restored": {
+      "at": "2026-11-18T17:48:01.733Z",
+      "verifiedRows": 178390,
+      "originalIndexes": 6,
+      "restoredRawSha256": "b1b8581c8b7e5b671b4967e1e31a7d139bc758fd05d3049b5b3c60148e341b3b"
+    }
+  },
+  "stages": [
+    {
+      "at": "2026-11-18T17:48:35.964Z",
+      "started": "2026-11-18T17:48:31.713Z",
+      "buildMs": 2237,
+      "skippedEquivalent": false,
+      "target": {
+        "name": "entity_change_granot_observation_ref_v1",
+        "key": {
+          "provenance.observation_id": 1
+        },
+        "sparse": true
+      },
+      "before": {
+        "at": "2026-11-18T17:48:31.711Z",
+        "n": 34,
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+        "docs": 178390,
+        "keys": 0,
+        "ms": 300,
+        "stages": [
+          "SUBPLAN",
+          "PROJECTION_DEFAULT",
+          "COLLSCAN"
+        ],
+        "indexes": []
+      },
+      "after": {
+        "at": "2026-11-18T17:48:34.999Z",
+        "n": 34,
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+        "docs": 178390,
+        "keys": 0,
+        "ms": 352,
+        "stages": [
+          "SUBPLAN",
+          "PROJECTION_DEFAULT",
+          "COLLSCAN"
+        ],
+        "indexes": []
+      },
+      "members": [
+        {
+          "member": "ac-9mmcj05-shard-00-00",
+          "primary": false,
+          "writeMs": 1795024115000,
+          "free": 3391217664,
+          "total": 13853786112,
+          "usedPct": 75.52136551998183,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 3014656,
+            "entity_change_changed_paths_applied": 9588736,
+            "entity_change_entity_revision_unique": 3985408,
+            "entity_change_applied_scan": 4231168,
+            "entity_change_command_execution_id": 2871296,
+            "entity_change_entity_applied": 4759552,
+            "entity_change_granot_observation_ref_v1": 2772992
+          }
+        },
+        {
+          "member": "ac-9mmcj05-shard-00-01",
+          "primary": false,
+          "writeMs": 1795024115000,
+          "free": 1573519360,
+          "total": 13853786112,
+          "usedPct": 88.64195428398426,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 3002368,
+            "entity_change_changed_paths_applied": 9596928,
+            "entity_change_entity_revision_unique": 3604480,
+            "entity_change_applied_scan": 4243456,
+            "entity_change_command_execution_id": 2904064,
+            "entity_change_entity_applied": 4747264,
+            "entity_change_granot_observation_ref_v1": 2772992
+          }
+        },
+        {
+          "member": "ac-9mmcj05-shard-00-02",
+          "primary": true,
+          "writeMs": 1795024115000,
+          "free": 1726480384,
+          "total": 13853786112,
+          "usedPct": 87.53784438389343,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 2998272,
+            "entity_change_changed_paths_applied": 9699328,
+            "entity_change_entity_revision_unique": 3940352,
+            "entity_change_applied_scan": 4247552,
+            "entity_change_command_execution_id": 2879488,
+            "entity_change_entity_applied": 4759552,
+            "entity_change_granot_observation_ref_v1": 2772992
+          }
+        }
+      ]
+    },
+    {
+      "at": "2026-11-18T18:03:59.817Z",
+      "started": "2026-11-18T18:03:55.847Z",
+      "buildMs": 2138,
+      "skippedEquivalent": false,
+      "target": {
+        "name": "entity_change_granot_decision_ref_v1",
+        "key": {
+          "provenance.decision_id": 1
+        },
+        "sparse": true
+      },
+      "before": {
+        "at": "2026-11-18T18:03:55.845Z",
+        "n": 34,
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+        "docs": 178393,
+        "keys": 0,
+        "ms": 357,
+        "stages": [
+          "SUBPLAN",
+          "PROJECTION_DEFAULT",
+          "COLLSCAN"
+        ],
+        "indexes": []
+      },
+      "after": {
+        "at": "2026-11-18T18:03:59.058Z",
+        "n": 34,
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+        "docs": 178393,
+        "keys": 0,
+        "ms": 372,
+        "stages": [
+          "SUBPLAN",
+          "PROJECTION_DEFAULT",
+          "COLLSCAN"
+        ],
+        "indexes": []
+      },
+      "members": [
+        {
+          "member": "ac-9mmcj05-shard-00-00",
+          "primary": false,
+          "writeMs": 1795025039000,
+          "free": 3384868864,
+          "total": 13853786112,
+          "usedPct": 75.56719270360279,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 3014656,
+            "entity_change_changed_paths_applied": 9584640,
+            "entity_change_entity_revision_unique": 3985408,
+            "entity_change_applied_scan": 4231168,
+            "entity_change_command_execution_id": 2871296,
+            "entity_change_entity_applied": 4759552,
+            "entity_change_granot_observation_ref_v1": 2789376,
+            "entity_change_granot_decision_ref_v1": 2772992
+          }
+        },
+        {
+          "member": "ac-9mmcj05-shard-00-01",
+          "primary": false,
+          "writeMs": 1795025039000,
+          "free": 1753231360,
+          "total": 13853786112,
+          "usedPct": 87.34474932826218,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 3002368,
+            "entity_change_changed_paths_applied": 9596928,
+            "entity_change_entity_revision_unique": 3604480,
+            "entity_change_applied_scan": 4243456,
+            "entity_change_command_execution_id": 2904064,
+            "entity_change_entity_applied": 4747264,
+            "entity_change_granot_observation_ref_v1": 2789376,
+            "entity_change_granot_decision_ref_v1": 2772992
+          }
+        },
+        {
+          "member": "ac-9mmcj05-shard-00-02",
+          "primary": true,
+          "writeMs": 1795025039000,
+          "free": 1847730176,
+          "total": 13853786112,
+          "usedPct": 86.66263387450802,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 2998272,
+            "entity_change_changed_paths_applied": 9699328,
+            "entity_change_entity_revision_unique": 3940352,
+            "entity_change_applied_scan": 4247552,
+            "entity_change_command_execution_id": 2879488,
+            "entity_change_entity_applied": 4759552,
+            "entity_change_granot_observation_ref_v1": 2789376,
+            "entity_change_granot_decision_ref_v1": 2752512
+          }
+        }
+      ]
+    },
+    {
+      "at": "2026-11-18T18:22:08.509Z",
+      "started": "2026-11-18T18:22:04.215Z",
+      "buildMs": 2204,
+      "skippedEquivalent": false,
+      "target": {
+        "name": "entity_change_granot_receipt_ref_v1",
+        "key": {
+          "provenance.receipt_id": 1
+        },
+        "sparse": true
+      },
+      "before": {
+        "at": "2026-11-18T18:22:04.214Z",
+        "n": 34,
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+        "docs": 178397,
+        "keys": 0,
+        "ms": 330,
+        "stages": [
+          "SUBPLAN",
+          "PROJECTION_DEFAULT",
+          "COLLSCAN"
+        ],
+        "indexes": []
+      },
+      "after": {
+        "at": "2026-11-18T18:22:06.605Z",
+        "n": 34,
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+        "docs": 34,
+        "keys": 202,
+        "ms": 2,
+        "stages": [
+          "SUBPLAN",
+          "PROJECTION_DEFAULT",
+          "FETCH",
+          "OR",
+          "IXSCAN",
+          "IXSCAN",
+          "IXSCAN"
+        ],
+        "indexes": [
+          "entity_change_granot_observation_ref_v1",
+          "entity_change_granot_decision_ref_v1",
+          "entity_change_granot_receipt_ref_v1"
+        ]
+      },
+      "members": [
+        {
+          "member": "ac-9mmcj05-shard-00-00",
+          "primary": false,
+          "writeMs": 1795026127000,
+          "free": 3299164160,
+          "total": 13853786112,
+          "usedPct": 76.18583011656071,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 3026944,
+            "entity_change_changed_paths_applied": 9572352,
+            "entity_change_entity_revision_unique": 3985408,
+            "entity_change_applied_scan": 4231168,
+            "entity_change_command_execution_id": 2883584,
+            "entity_change_entity_applied": 4759552,
+            "entity_change_granot_observation_ref_v1": 2789376,
+            "entity_change_granot_decision_ref_v1": 2789376,
+            "entity_change_granot_receipt_ref_v1": 2781184
+          }
+        },
+        {
+          "member": "ac-9mmcj05-shard-00-01",
+          "primary": false,
+          "writeMs": 1795026127000,
+          "free": 1669025792,
+          "total": 13853786112,
+          "usedPct": 87.95256561270058,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 3002368,
+            "entity_change_changed_paths_applied": 9584640,
+            "entity_change_entity_revision_unique": 3604480,
+            "entity_change_applied_scan": 4243456,
+            "entity_change_command_execution_id": 2904064,
+            "entity_change_entity_applied": 4747264,
+            "entity_change_granot_observation_ref_v1": 2789376,
+            "entity_change_granot_decision_ref_v1": 2789376,
+            "entity_change_granot_receipt_ref_v1": 2781184
+          }
+        },
+        {
+          "member": "ac-9mmcj05-shard-00-02",
+          "primary": true,
+          "writeMs": 1795026127000,
+          "free": 1641193472,
+          "total": 13853786112,
+          "usedPct": 88.15346607250984,
+          "otherMaintenance": 0,
+          "indexBytes": {
+            "_id_": 2998272,
+            "entity_change_changed_paths_applied": 9699328,
+            "entity_change_entity_revision_unique": 3940352,
+            "entity_change_applied_scan": 4247552,
+            "entity_change_command_execution_id": 2879488,
+            "entity_change_entity_applied": 4759552,
+            "entity_change_granot_observation_ref_v1": 2789376,
+            "entity_change_granot_decision_ref_v1": 2797568,
+            "entity_change_granot_receipt_ref_v1": 2777088
+          }
+        }
+      ]
+    }
+  ],
+  "positiveAndAbsentBeforeCompleteSet": {
+    "at": "2026-11-18T17:58:51.715Z",
+    "queries": {
+      "positive": {
+        "inputIds": 54,
+        "returned": 34,
+        "examined": 178390,
+        "keys": 0,
+        "serverMs": 310,
+        "roundTripsMs": [
+          299
+        ],
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140"
+      },
+      "absent": {
+        "inputIds": 96,
+        "returned": 0,
+        "examined": 178390,
+        "keys": 0,
+        "serverMs": 293,
+        "roundTripsMs": [
+          339.7
+        ],
+        "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mixed": {
+        "inputIds": 150,
+        "returned": 34,
+        "examined": 178390,
+        "keys": 0,
+        "serverMs": 289,
+        "roundTripsMs": [
+          308.9
+        ],
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140"
+      }
+    }
+  },
+  "positiveAndAbsentWithCompleteSet": {
+    "at": "2026-11-18T18:22:08.925Z",
+    "queries": {
+      "positive": {
+        "inputIds": 54,
+        "returned": 34,
+        "examined": 34,
+        "keys": 106,
+        "serverMs": 1,
+        "roundTripsMs": [
+          34.4,
+          32.9,
+          31,
+          31.2,
+          31,
+          32.2,
+          44.7
+        ],
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140"
+      },
+      "absent": {
+        "inputIds": 96,
+        "returned": 0,
+        "examined": 0,
+        "keys": 99,
+        "serverMs": 1,
+        "roundTripsMs": [
+          32,
+          31.7,
+          31.8,
+          34,
+          30.6,
+          32.1,
+          32.1
+        ],
+        "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mixed": {
+        "inputIds": 150,
+        "returned": 34,
+        "examined": 34,
+        "keys": 202,
+        "serverMs": 2,
+        "roundTripsMs": [
+          32.6,
+          31.6,
+          31.3,
+          31.7,
+          34.5,
+          32,
+          31.7
+        ],
+        "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140"
+      }
+    }
+  },
+  "naturalShadow": {
+    "from": "2026-11-18T17:48:31.713Z",
+    "until": "2026-11-18T18:37:26.076Z",
+    "arrivals": 6952,
+    "uniqueRescheduledOlderThanSevenDays": 1536,
+    "groups": [
+      {
+        "at": "2026-11-18T17:48:33.466Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T17:50:33.098Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T17:52:33.126Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T17:54:33.126Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T17:56:33.236Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T17:58:33.285Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:00:33.399Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:02:33.133Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:04:33.177Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:06:33.150Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:08:33.163Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:10:33.156Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:12:33.489Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:16:33.125Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:18:33.384Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:20:33.228Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:22:33.143Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:24:33.358Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:26:33.203Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:28:33.176Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:30:33.177Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:32:33.201Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:34:33.279Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:36:33.229Z",
+        "items": 64
+      }
+    ],
+    "days": {
+      "_id": "2026-11-18",
+      "last_review_at": "2026-11-18T18:36:33.229Z",
+      "mode": "shadow",
+      "qualified": 35288,
+      "read_comparisons": 552,
+      "reviewed": 35328,
+      "ttl_stamped": 0,
+      "failures": 7,
+      "mismatches": 0
+    }
+  },
+  "final": {
+    "at": "2026-11-18T18:37:26.076Z",
+    "members": [
+      {
+        "member": "ac-9mmcj05-shard-00-00",
+        "primary": false,
+        "writeMs": 1795027044000,
+        "free": 3236532224,
+        "total": 13853786112,
+        "usedPct": 76.63792267446262,
+        "otherMaintenance": 0,
+        "indexBytes": {
+          "_id_": 3014656,
+          "entity_change_changed_paths_applied": 9560064,
+          "entity_change_entity_revision_unique": 3985408,
+          "entity_change_applied_scan": 4231168,
+          "entity_change_command_execution_id": 2871296,
+          "entity_change_entity_applied": 4759552,
+          "entity_change_granot_observation_ref_v1": 2789376,
+          "entity_change_granot_decision_ref_v1": 2789376,
+          "entity_change_granot_receipt_ref_v1": 2805760
+        }
+      },
+      {
+        "member": "ac-9mmcj05-shard-00-01",
+        "primary": false,
+        "writeMs": 1795027044000,
+        "free": 1689735168,
+        "total": 13853786112,
+        "usedPct": 87.80308029632153,
+        "otherMaintenance": 0,
+        "indexBytes": {
+          "_id_": 3002368,
+          "entity_change_changed_paths_applied": 9584640,
+          "entity_change_entity_revision_unique": 3604480,
+          "entity_change_applied_scan": 4243456,
+          "entity_change_command_execution_id": 2904064,
+          "entity_change_entity_applied": 4747264,
+          "entity_change_granot_observation_ref_v1": 2789376,
+          "entity_change_granot_decision_ref_v1": 2789376,
+          "entity_change_granot_receipt_ref_v1": 2805760
+        }
+      },
+      {
+        "member": "ac-9mmcj05-shard-00-02",
+        "primary": true,
+        "writeMs": 1795027044000,
+        "free": 1628528640,
+        "total": 13853786112,
+        "usedPct": 88.2448839123524,
+        "otherMaintenance": 0,
+        "indexBytes": {
+          "_id_": 2998272,
+          "entity_change_changed_paths_applied": 9699328,
+          "entity_change_entity_revision_unique": 3940352,
+          "entity_change_applied_scan": 4247552,
+          "entity_change_command_execution_id": 2879488,
+          "entity_change_entity_applied": 4759552,
+          "entity_change_granot_observation_ref_v1": 2789376,
+          "entity_change_granot_decision_ref_v1": 2793472,
+          "entity_change_granot_receipt_ref_v1": 2797568
+        }
+      }
+    ],
+    "query": {
+      "at": "2026-11-18T18:37:26.076Z",
+      "n": 34,
+      "hash": "70ea1a866942c9549c4790d057ecb465378bcd39cd93ffb373cdf418629dc140",
+      "docs": 34,
+      "keys": 202,
+      "ms": 2,
+      "stages": [
+        "SUBPLAN",
+        "PROJECTION_DEFAULT",
+        "FETCH",
+        "OR",
+        "IXSCAN",
+        "IXSCAN",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "entity_change_granot_observation_ref_v1",
+        "entity_change_granot_decision_ref_v1",
+        "entity_change_granot_receipt_ref_v1"
+      ]
+    },
+    "capacityObservation": "free space decreased by 100 MB since series baseline"
+  },
+  "replicaWatch": {
+    "memberSamples": 47,
+    "sampledRelativeMaxLossBytes": {
+      "ac-9mmcj05-shard-00-00": 202399744,
+      "ac-9mmcj05-shard-00-01": 46571520,
+      "ac-9mmcj05-shard-00-02": 226873344
+    },
+    "sampledMinFreeBytes": {
+      "ac-9mmcj05-shard-00-00": 3192664064,
+      "ac-9mmcj05-shard-00-01": 1529167872,
+      "ac-9mmcj05-shard-00-02": 1503506432
+    },
+    "maxObservedLagSeconds": 1.0,
+    "exceptions": [
+      {
+        "at": "2026-11-18T18:08:52.4978284+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:19:19.8813248+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:20:21.6306178+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:22:17.8368206+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:23:15.4388735+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:24:13.8694749+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:25:11.5873944+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:26:09.3497982+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:27:08.0934940+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:28:07.0220959+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:29:04.8705787+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:30:02.5203736+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:31:00.8761475+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:31:58.5649827+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:32:56.3510801+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:33:54.1363312+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:34:52.6268145+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:35:51.7240720+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      },
+      {
+        "at": "2026-11-18T18:36:49.6261110+00:00",
+        "error": "AssertionError ERR_ASSERTION free space decreased by 100 MB since series baseline"
+      }
+    ],
+    "guardFollowUpMemberSamples": [
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3256369152,
+          76.49473490009083,
+          0,
+          8
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1747927040,
+          87.38303720102937,
+          0,
+          8
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1845489664,
+          86.67880643543748,
+          0,
+          8
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3251658752,
+          76.52873571374508,
+          0,
+          8
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1672339456,
+          87.92864677944293,
+          0,
+          8
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1697472512,
+          87.7472302641538,
+          0,
+          8
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3251077120,
+          76.53293407508326,
+          0,
+          8
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1568083968,
+          88.68118826634877,
+          0,
+          8
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1711546368,
+          87.64564174613987,
+          0,
+          8
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3264974848,
+          76.43261689184075,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1668984832,
+          87.95286127194974,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1641517056,
+          88.15113036444141,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3266818048,
+          76.41931222562822,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1669091328,
+          87.9520925579019,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1642659840,
+          88.14288147138964,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3262853120,
+          76.44793204094762,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1529372672,
+          88.96061582273691,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1628700672,
+          88.24364214350591,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3195281408,
+          76.93568110429912,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1529167872,
+          88.96209411898275,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1629581312,
+          88.23728546964881,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3192664064,
+          76.95457373032092,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1554395136,
+          88.77999758742052,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1629433856,
+          88.23834984294581,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3203817472,
+          76.87406571677263,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1550258176,
+          88.80985917158644,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1503506432,
+          89.14732463858613,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3199967232,
+          76.90185768619438,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1615998976,
+          88.33532607667273,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1643630592,
+          88.13587434718438,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3199578112,
+          76.90466644906147,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1547919360,
+          88.8267413147139,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1643311104,
+          88.13818048932788,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3199553536,
+          76.90484384461097,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1547579392,
+          88.82919528648199,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1642971136,
+          88.14063446109597,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3195305984,
+          76.93550370874962,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1601617920,
+          88.43913203905541,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1643708416,
+          88.13531259461097,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3219640320,
+          76.75985254881925,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1601347584,
+          88.4410833900999,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1639321600,
+          88.1669777001968,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3219542016,
+          76.76056213101725,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1600749568,
+          88.44540001513775,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1638690816,
+          88.17153085263396,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3216592896,
+          76.78184959695731,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1595453440,
+          88.4836287560551,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1630855168,
+          88.2280904669997,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3216216064,
+          76.78456966204965,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1595908096,
+          88.48034693838935,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1629597696,
+          88.23716720594913,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3211517952,
+          76.81848177792915,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1599389696,
+          88.45521590221011,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1629990912,
+          88.23432887715713,
+          0,
+          9
+        ]
+      ],
+      [
+        [
+          "ac-9mmcj05-shard-00-00",
+          3237027840,
+          76.63434519754769,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-01",
+          1689726976,
+          87.80313942817136,
+          0,
+          9
+        ],
+        [
+          "ac-9mmcj05-shard-00-02",
+          1628659712,
+          88.24393780275507,
+          0,
+          9
+        ]
+      ]
+    ]
+  },
+  "observationStarted": "2026-11-18T17:48:31.713Z",
+  "finalIndexNaturalShadow": {
+    "from": "2026-11-18T18:22:08.509Z",
+    "until": "2026-11-18T18:37:26.076Z",
+    "arrivals": 2726,
+    "uniqueRescheduledOlderThanSevenDays": 512,
+    "groups": [
+      {
+        "at": "2026-11-18T18:22:33.143Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:24:33.358Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:26:33.203Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:28:33.176Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:30:33.177Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:32:33.201Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:34:33.279Z",
+        "items": 64
+      },
+      {
+        "at": "2026-11-18T18:36:33.229Z",
+        "items": 64
+      }
+    ],
+    "days": {
+      "_id": "2026-11-18",
+      "last_review_at": "2026-11-18T18:36:33.229Z",
+      "mode": "shadow",
+      "qualified": 35288,
+      "read_comparisons": 552,
+      "reviewed": 35328,
+      "ttl_stamped": 0,
+      "failures": 7,
+      "mismatches": 0
+    }
+  },
+  "postReleaseGuard": {
+    "passed": true,
+    "at": "2026-11-18T18:56:35.599Z",
+    "memberFreeBytes": {
+      "ac-9mmcj05-shard-00-00": 3364945920,
+      "ac-9mmcj05-shard-00-01": 1759477760,
+      "ac-9mmcj05-shard-00-02": 1704775680
+    }
+  }
+}

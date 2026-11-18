@@ -1,0 +1,381 @@
+{
+  "base": "868db09443681753390c25d0e6cec2160a130795",
+  "branch": "optimization/granot-phase-two-2026-11-17",
+  "remote": "https://github.com/jbell-rusty-vantage/vantage-movers-server.git",
+  "runtime_scope": [
+    "src/services/granotHttpCollector/runWorkflow.ts"
+  ],
+  "description": "Raw SHA-256 for every changed/untracked nonignored file except this inventory. Inherited setup, earlier evidence and local operator tools are explicitly classified. The only production application source change is the worker. No staging, commit, artifact or production release.",
+  "files": [
+    {
+      "path": ".cursor/Dockerfile",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "9ad7d2fb016cf3bfe93c2a7c090313f4de60c4fee701543a19a803aa35458a23"
+    },
+    {
+      "path": ".cursor/environment.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "7410537939defc3647a591f1c965f1a6f755c82323904ad0578bcf2f5f1f430d"
+    },
+    {
+      "path": ".cursor/rules/granot-http-automation.mdc",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "3d678a73a4ba12f9cff0bc2bcbe371ba1513ac148e67bdfe540f50f103f4d266"
+    },
+    {
+      "path": ".cursor/scripts/ensure-cloud-runtime.sh",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "aaf05823c72c77f2fd8d951a2a523fe85d81efed3c96a949aca041d122228e71"
+    },
+    {
+      "path": ".cursor/scripts/start-api.sh",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "a55cb284ec28382aeca2ddd4f69ad774b03cc3d44904b2c542bea8def1a58d82"
+    },
+    {
+      "path": ".cursor/scripts/start-mongo.sh",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "8ec12b0a653cdbc38b247587caa85e3395156a1d11d01ad4b0e1f4243d9a7c43"
+    },
+    {
+      "path": ".gitattributes",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "d2977746da3512c296885dfbdfae6ec499a92c7a74e58e0b2cd1d93168d41eb3"
+    },
+    {
+      "path": "AGENTS.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "698e44a4e5f7e17e20ac0b606219bbd65576cbf05b4a1ed52b82fd5fbb2b4804",
+      "shared_prerequisite_sha256": "12f5130bc43390139b6df127247e6ab2314e61cfdcc64fcd39c07f15a4b4939e"
+    },
+    {
+      "path": "CLOUD_AGENTS.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "7c5cdcb2c2abf81b9dd21294cdc4828f7c6e8b0ee91e8a3b0fa51777d3049ebb",
+      "shared_prerequisite_sha256": "2f6bf38296b6a844508524916f3bdabb29c7786761d19f887d2a9e87030f413f"
+    },
+    {
+      "path": "docs/efficiency/sheet-discovery-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "17938f7b99ba60e9f4b1b91b7f86640169134b0a6f73291d1b978af8070431db"
+    },
+    {
+      "path": "docs/efficiency/sheet-metadata-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "4dd8b5688ad529374cd246c08cd459257fa6f80ce7581b95edab09e1f017bd18"
+    },
+    {
+      "path": "docs/knowledge/services/granot-http-collector.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "ed0319fb0ea956c28c204fc0ea8ee9165653ac935192c4b25ec926f0ff9cad18"
+    },
+    {
+      "path": "docs/operations/FRESH-AGENT-REHEARSAL-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "a9cb2f2ea533b8ddb6b0dc431e341259ff64c86b4388276967576d38fe2322d7"
+    },
+    {
+      "path": "docs/operations/GRANOT-ENGINEERING-2026-11-17.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "adb69b4ff6884117ee5b44e852eed78663bcde301742736a4d02b901f1c8e9e9"
+    },
+    {
+      "path": "docs/operations/INDEPENDENT-REVIEW-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "3387e4512201db63cebcc1e53f0a78d4d08d1d48add25b7302b243e818566b0a"
+    },
+    {
+      "path": "docs/operations/NEXT-SESSION.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "b934a4e2f4400b487171eafc8e3b2ffda494e65dc37ca6fe4472549492b5d9e7",
+      "shared_prerequisite_sha256": "f17eda07f7373d2cfb5932fe51e9e7e236a75030ce1976721928f7c7471eb979"
+    },
+    {
+      "path": "docs/operations/QUALIFICATION-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "5ab4f635a8a402c7c3fc31428eb73f2d0cb4a22e8b6d3171911624822bd5c2b2"
+    },
+    {
+      "path": "docs/operations/README.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "659f1c74fe57f8e119d72b16a207c9fa0668ce5a0df45c326544220663c20f81",
+      "shared_prerequisite_sha256": "70eaeb2959006e5e45093e34b439b0f804809061632201b6ae8a6f3195637a2e"
+    },
+    {
+      "path": "docs/operations/SERVICE-OPTIMIZATION-ROADMAP.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "9eb2055d8c92f1613328a6dfe20cf7bfe3ae172e6beec78535ee21723ffb92cb",
+      "shared_prerequisite_sha256": "8470fd4474d246743f2a50826bb29dc9d0a8bfb335c4464f9c44b19f0a820234"
+    },
+    {
+      "path": "docs/operations/SETUP-EVIDENCE-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "ebd6ebe4543177bbc554880f13fef69f39eec7ff92d27f4138c9e56ef2bc8d43"
+    },
+    {
+      "path": "docs/operations/SHEET-ENGINEERING-2026-11-17.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "1c0ef631cce977ac3445489bb52e28974b66b2e0151a60c73586a5912c966234"
+    },
+    {
+      "path": "docs/operations/evidence/final-validation-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "6b4d111c1645cf92d93b33a98e10b79c6711ffab607b3d8889a5287d39debff8"
+    },
+    {
+      "path": "docs/operations/evidence/focused-final-2026-11-17.txt",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "04cf86de58567c4ee81fd1dddaceaf9c773e756356cba77997ed6a22027c3783"
+    },
+    {
+      "path": "docs/operations/evidence/full-tests-2026-11-17.txt",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "22aad3f2c37fc18b0174baec66df59a1f35f41e93579588df52236cf20968033"
+    },
+    {
+      "path": "docs/operations/evidence/full-tests-final-2026-11-17.txt",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "f85b518e1f7ddc00f84284ebf37f001e35af31ca6a678178cec966d3c00ea178"
+    },
+    {
+      "path": "docs/operations/evidence/granot-capacity-2026-11-17.json",
+      "scope": "Granot handback evidence",
+      "sha256": "df7eb3199bc052373d90f03568f17193949c20e9df18eab82a3a89666afcb418"
+    },
+    {
+      "path": "docs/operations/evidence/granot-measurement-after.json",
+      "scope": "Granot handback evidence",
+      "sha256": "09c3777efb8f7d8b6813321889000a8497ce2e0047f4222fc0cff4566bd72be5"
+    },
+    {
+      "path": "docs/operations/evidence/granot-measurement-before.json",
+      "scope": "Granot handback evidence",
+      "sha256": "9995a31194cfd41213fab220ca0ee9787624c6e89885fa855e506e26c205fe68"
+    },
+    {
+      "path": "docs/operations/evidence/granot-measurement-repeat.json",
+      "scope": "Granot handback evidence",
+      "sha256": "b2bd5468330e76035b6de5758886e393e2b72fb00c8d390fa8693131e1751e2f"
+    },
+    {
+      "path": "docs/operations/evidence/granot-stage-measurement.md",
+      "scope": "Granot handback evidence",
+      "sha256": "dc5f2eaf7f7e0ce0c0e31dc0260ae8b4cafafad53c0cc6dff845a026920c8a91"
+    },
+    {
+      "path": "docs/operations/evidence/granot-validation-2026-11-17.json",
+      "scope": "Granot handback evidence",
+      "sha256": "2f6921ec0dc21a95ab26cdd375e899e51f590d3ec9fc540d10a083de3c819644"
+    },
+    {
+      "path": "docs/operations/evidence/granot-w1-causal-2026-11-17.json",
+      "scope": "Granot handback evidence",
+      "sha256": "1c4ed47ed5d6418477f2eda37a65626d503ed4d39d1daf3774f935d949be7799"
+    },
+    {
+      "path": "docs/operations/evidence/granot-w1-window-2026-11-17.json",
+      "scope": "Granot handback evidence",
+      "sha256": "3600baef25bc4e194301205d439111bcfe3b7cd42bc94567aa23b37e2fda117f"
+    },
+    {
+      "path": "docs/operations/evidence/lint-final-2026-11-17.txt",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "e56b3ad025b837b5db0d2e3235b716ce6916206030c9711089d75690b4455dd8"
+    },
+    {
+      "path": "docs/operations/evidence/operator-validation-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "f4bca98ae4b38edebbe0840ab8ae91e476892b23ce69dd8d761d2679bcab7b61"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-cost-replica-2026-11-17.log",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "0ba921eff886134c2005966e59d43fe23a6b26d2c7c59da68e9894c9bb370dd4"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-metadata-after-2026-11-17.log",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "d9d89e88e66ce20bf6e9d953a53c9393f5021c021bcf787bbf2de8d16fdeef77"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-metadata-before-2026-11-17.log",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "65ec6f7df90304e681d1d538980476168332fb654357af57fa53fac203f977df"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-mixed-baseline-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "c3a278a5184fcf60e196229a4428866b46af931047516d293f4f349bbcb635f4"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-production-baseline-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "a0a35d4e45ec884ade531d830cc0bb6b5c18065b64610b36cd6bb1955b5a5ac6"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-release-manifest-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "3a47d5cb994aaf3a2a75c9e201d6793b233863a360b9842e7b7d115302d3a51a"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-validation-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "11a08ae1d448054e20b17f073b52dcf0a7a6c4e2b2323d0cdaffbf2f3816f4d4"
+    },
+    {
+      "path": "docs/operations/evidence/skipped-tests-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "a4281d73268cd4a9c87b89d44668376ff7388352a977b6ef85acbd5e80a365e4"
+    },
+    {
+      "path": "docs/operations/evidence/source-manifest-2026-11-17.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "f0f715bb3b361d160429378ad9585d22324ff89209240c8babab78e028f47a60"
+    },
+    {
+      "path": "docs/operations/evidence/typecheck-final-2026-11-17.txt",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "dcc57e9bb1f7fdb57af1c307f666530cb579136d793183563ad0d80ed486001d"
+    },
+    {
+      "path": "docs/operations/granot.md",
+      "scope": "Program handback, onboarding or Granot domain contract",
+      "sha256": "dc31ff6844df2a394d1d1ff112bdbf95f068c3f65ceaa507aebc3006001b520f"
+    },
+    {
+      "path": "docs/operations/shared-glossary.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "7bee8bca1af7186def0109d6057bf80b39d31ae56e917233e44a2d3cb001a8ce"
+    },
+    {
+      "path": "docs/operations/shared-glossary.provenance.json",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "ee2d8c2d4b397205d0b2ff01b245f41b1fdfda3d9e942adfa97a9a3edad9524b"
+    },
+    {
+      "path": "docs/operations/sheet-sync.md",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "18b25d66a3abb1bbaaccdba13e34ebcc66f80980b1deeaf871760a3eac164ac9"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "scope": "Local command registration and validation",
+      "sha256": "54eba0a51bc796000b9f3133aeaf013c27ea76f978ff47e56aeb62ae6a6a0e24",
+      "shared_prerequisite_sha256": "47f5047ec61fdb2f9d6e75d1ab14b9876459a758565f52039dc64f05bb4f4df9"
+    },
+    {
+      "path": "ops/capacity/granot-canonical-crash.ts",
+      "scope": "Granot measurement or durable proof",
+      "sha256": "32785a091612d10d7af17fb66ae7d86d92f0e3353965dd60f6cbecf6a8d49e29"
+    },
+    {
+      "path": "ops/capacity/granot-measurement-fixture.ts",
+      "scope": "Granot measurement or durable proof",
+      "sha256": "91e9d6516ea4c37c6e43f62303b912dda32255124b304d81c371da197cc39bbb"
+    },
+    {
+      "path": "ops/capacity/granot-phase-two.replica.ts",
+      "scope": "Granot measurement or durable proof",
+      "sha256": "024c66988132be5453e1c86ada2668eff5acc972de3fc0b483bacae30ceff96c"
+    },
+    {
+      "path": "ops/capacity/granot-sealed-measurement.ts",
+      "scope": "Granot measurement or durable proof",
+      "sha256": "01d3b4587299abd57b7e3e9d7acd4f13263a1bd0d9ee8b4f400230aa41834f94"
+    },
+    {
+      "path": "ops/capacity/granot-stage-metrics.ts",
+      "scope": "Granot measurement or durable proof",
+      "sha256": "304eef0c3340c7fc1137ac2a0120835f1f86345936e5869d27f1a736fa566de0"
+    },
+    {
+      "path": "ops/dev-server.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "4641584ccb0460c7ab6a8a625b925fa4f4a05272586e154c6bea1a451dc07e0e"
+    },
+    {
+      "path": "ops/local-runtime.test.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "a46ab15437700c7e130e386f4944a0d7d906e87c005c47212269301efb4ad324"
+    },
+    {
+      "path": "ops/local-runtime.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "bc569c846e130c36064ed4b7aaca054be555adef62cbf2b326842ac29552b258"
+    },
+    {
+      "path": "ops/vantage/cli.test.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "d658ca345555fb0a8c2942a7135dd829b22340540e3b33fa2f41a25a0c0d2ae3"
+    },
+    {
+      "path": "ops/vantage/cli.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "be4c38a84ec0a54a9a71b47cf7abd19730905f9251050fb6278e1d5cd44de214",
+      "shared_prerequisite_sha256": "12c4d9a82be75befd9bbc9e83d0aa77d396dba2e22c78d40156df4769b371a61"
+    },
+    {
+      "path": "ops/vantage/commands.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "b9ef21072088b67e330c6aed732cb2b96067f79dca9bcf68a21ccd922817dffd",
+      "shared_prerequisite_sha256": "fae37d563a4475a052c5649d3464d496a0534c5f5961983d0655dda31bb5e1c7"
+    },
+    {
+      "path": "ops/vantage/diagnostics.replica.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "d02f1df74a6b2fe82513f75f9187681c9ba325761f907f1f0fb7ef71dc3e4d1a"
+    },
+    {
+      "path": "ops/vantage/granot-fixture.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "d61c2b0a32bc76b89c84f2d65f25be9377b45780b06e2e582534d4120f2ad342"
+    },
+    {
+      "path": "ops/vantage/granot-trace.replica.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "5bea7be16642e2a068f9ac4373464665a5f0f90bc238b09943a70a489b7544b9"
+    },
+    {
+      "path": "ops/vantage/granot-trace.test.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "651d9ddbc316aa09e7f6fa3c1dd24e8aadeda164b441e19cc3b6dc8e8cf67ad6"
+    },
+    {
+      "path": "ops/vantage/granot-trace.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "f4f141582bea968e8e0de58f1521ccc9c08fcf265e1b991ee84f4d811e34f97e"
+    },
+    {
+      "path": "ops/vantage/local-safety.ts",
+      "scope": "Local operator dispatch, identity or Granot trace and fixture",
+      "sha256": "0502d3d0d979850c5f6fd43f531dfca37833c90f657081075297388be6a6cefc",
+      "shared_prerequisite_sha256": "6fbc3f6c506dd146e50d1fadd2f46d9bf41fdcb5a85f2a34ff2b168efd503e9d"
+    },
+    {
+      "path": "ops/vantage/sheet-sync.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "8fe777486b62c821bad4fb098a55f18ef1e2098ea3abcbf352f0b309d4bd0adb"
+    },
+    {
+      "path": "ops/vantage/test-command.ts",
+      "scope": "Inherited program documentation or operator foundation, byte-identical to S6 intake",
+      "sha256": "9b7b9f4312bc633d04b56f50a155dc6c58c6699cd76fd1c9c17bfbc11942cfac"
+    },
+    {
+      "path": "package.json",
+      "scope": "Local command registration and validation",
+      "sha256": "b29deae4db4e4596caf750423c2ca586364e8e5ba59f48332cd45922330da600",
+      "shared_prerequisite_sha256": "5758e01b93a85484a081520db82d1625768f1cf2525d632a9637e3a3d9baea09"
+    },
+    {
+      "path": "src/services/granotHttpCollector/runRecovery.replica.test.ts",
+      "scope": "Granot measurement or durable proof",
+      "sha256": "d83f9f4d33d3dd7f31002e4df1f7b1730ce3c154d89c422efbb7c877e9313263"
+    },
+    {
+      "path": "src/services/granotHttpCollector/runWorkflow.ts",
+      "scope": "Granot worker runtime",
+      "sha256": "623a07f33a0b69776dacd1668f4705e3881bc92400733a561ab9ccf9632f4337"
+    }
+  ]
+}
