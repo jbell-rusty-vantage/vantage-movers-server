@@ -1,4 +1,5 @@
 import { externalSheetReviewField } from "./externalSheetReviewSchema";
+import { websiteAttributionField, applyWebsiteAttributionGuards } from "./websiteAttributionSchema";
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 import { granotJobFormLinkField } from "./granotJobFormLinkSchema";
 import {
@@ -34,6 +35,7 @@ const FormLeadSchema = new Schema(
     granot_job_form_link: granotJobFormLinkField,
     external_sheet_review: externalSheetReviewField("FormLead"),
     source_company: sourceCompanyField,
+    website_attribution: websiteAttributionField,
     lead_source_company: {
       type: Schema.Types.ObjectId,
       ref: "LeadSourceCompany",
@@ -193,6 +195,7 @@ for (const index of FORM_LEAD_S08_INDEXES) {
 }
 
 applyLeadProvenanceGuards(FormLeadSchema);
+applyWebsiteAttributionGuards(FormLeadSchema);
 applyAggregateRevisionGuards(FormLeadSchema);
 
 FormLeadSchema.pre("validate", function normalizeEmployeeBookingFields() {

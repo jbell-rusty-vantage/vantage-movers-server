@@ -4,6 +4,7 @@ import { recordCrmFailedDailyOperationsFact } from "../dailyOperations/recordDom
 import {
   CRM_FORM_LEAD_ENDPOINT,
   crmEndpointForLog,
+  isFormLeadCrmPostingEnabled,
 } from "./crmConfig";
 import {
   buildCrmFormLeadPayload,
@@ -38,6 +39,9 @@ export async function submitFormLeadToCrm(
     options.companyLabel,
   );
   const leadId = lead._id.toString();
+  if (!isFormLeadCrmPostingEnabled()) {
+    return { ok: true, status: 0, responseText: "", payload };
+  }
   const payloadSummary = summarizeCrmPayloadForLog(payload);
   const safeEndpoint = crmEndpointForLog();
   const companyLabel = options.companyLabel ?? payload.label;

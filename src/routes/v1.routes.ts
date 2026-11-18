@@ -288,24 +288,7 @@ const adminResources = [
   "cancelled-leads",
 ] as const satisfies readonly AdminResource[];
 
-const analyticsReports = [
-  "summary",
-  "revenue-trend",
-  "source-company-performance",
-  "agent-performance",
-  "booking-cancellation-ratio",
-  "source-company-funnel",
-  "cancellation-reasons",
-  "lead-source-performance",
-  "local-vs-long-distance",
-  "geographic-lanes",
-  "pickup-state-performance",
-  "delivery-state-performance",
-  "receiver-agent-performance",
-  "receiver-agent-trend",
-  "receiver-agent-source-breakdown",
-  "sms-successfully-sent-then-booked",
-] as const;
+const analyticsReports = analyticsReportSchema.options;
 
 router.get("/api/v1/admin/search", handleAdminSearch);
 router.get("/api/v1/admin/facets", handleAdminFacets);

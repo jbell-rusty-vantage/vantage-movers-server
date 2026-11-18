@@ -16,6 +16,7 @@ export {
   CRM_FORM_LEAD_LABEL,
   CRM_MOVER_REF_ENV_VAR,
   crmEndpointForLog,
+  isFormLeadCrmPostingEnabled,
 } from "./crmConfig";
 
 export {

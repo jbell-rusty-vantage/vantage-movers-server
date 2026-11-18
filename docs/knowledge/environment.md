@@ -71,6 +71,7 @@ Admin has its own variables. Three names must match across the two processes: `V
 | `REPORTING_EVIDENCE_SECRET` | falls back to the confirmation secret chain | no | yes | Signs reporting evidence. |
 | `API_SECRET` | none | no | yes | Legacy fallback read only after the two reporting secrets. |
 | `CRM_API_ID` | none | to submit Form Leads | yes | `crm/crmConfig.ts`: Granot lead-gateway credential. |
+| `CRM_FORM_LEAD_POSTING_ENABLED` | on when unset | no | no | `crm/crmConfig.ts`: only unset or `true` allows CRM posting. Set `false` on the isolated website preview API; requests cannot override it. `TEST_MODE` alone does not disable CRM. |
 | `CRM_MOVER_REF` | none | to submit Form Leads | yes | Granot mover-ref credential. |
 | `GRANOT_WEBHOOK_SECRET` | none | webhooks reject if unset | yes | `granotWebhook.ts`: shared secret for inbound Granot webhooks. |
 | `GRANOT_NETWORK_USERNAME` / `GRANOT_NETWORK_PASSWORD` | none | to pass Granot's network login | yes | First web login. Legacy aliases `MAIN_LOGIN_USERNAME` / `MAIN_LOGIN_PASSWORD`. |
@@ -230,7 +231,7 @@ Twilio (`leadMessaging.ts`). The account SID, primary auth token, from number an
 | `CRON_SECRET` | none | yes | Bearer secret for every `/api/cron/*` route. Required. |
 | `VERCEL`, `VERCEL_ENV`, `VERCEL_REGION` | injected | no | Runtime detection; queue publish needs `VERCEL=1` with a region, production topics need `VERCEL_ENV=production`. |
 | `VERCEL_DEPLOYMENT_ID`, `VERCEL_GIT_COMMIT_SHA` | injected | no | `deploymentStamp.ts`: deployed commit record (Vercel production only). |
-| `DEPLOYMENT_COMMIT_SHA` | none | no | Same stamp for CLI deploys (`vercel deploy --prod -e DEPLOYMENT_COMMIT_SHA=...`). |
+| `DEPLOYMENT_COMMIT_SHA` | none | no | Source stamp for CLI builds; the isolated website-preview workflow also sets it for its read-only outcome-report identity. It does not select a deployment target. |
 | `GRANOT_LIFECYCLE_QUEUE_TOPIC` | `granot-lifecycle-events` in Vercel production, else `-dev` | no | Lifecycle queue topic. |
 | `GRANOT_AUTOMATION_APPLY_ENABLED` | off | no | HTTP collector apply step. |
 

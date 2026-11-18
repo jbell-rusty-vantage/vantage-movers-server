@@ -1,0 +1,45 @@
+name: Isolated Website Preview API
+on:
+  push:
+    branches: [agent/site-preview-api]
+    paths: [src/**, api/**, ops/site-preview/**, package.json, pnpm-lock.yaml, vercel.preview.json, .github/workflows/website-preview-api.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: isolated-website-preview-api
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/agent/site-preview-api'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: team_tVdLH8ZMMtS3MsmAdbRsoGDv
+      VERCEL_PROJECT_ID: prj_A0tA6L0x8InXYiqKYqIXajPfzsYs
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.13.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: node --import tsx --import ./ops/test-setup.ts --test src/config/sitePreview.test.ts src/services/sitePreviewCms/*.test.ts src/services/analytics/websiteOutcomes.service.test.ts src/routes/v1-admin-database-scope.routes.test.ts
+      - run: npm install --global vercel@63.1.2
+      - name: Export committed isolated entrypoint and deploy Preview only
+        id: deploy
+        shell: bash
+        run: |
+          stage="$(node ops/site-preview/prepare.mjs)"
+          cd "$stage"
+          vercel pull --yes --environment=preview --token="$VERCEL_TOKEN" --scope vantage-4d3db9ef
+          url="$(vercel deploy --yes --target=preview --token="$VERCEL_TOKEN" --scope vantage-4d3db9ef -m githubCommitSha="$GITHUB_SHA" -e DEPLOYMENT_COMMIT_SHA="$GITHUB_SHA")"
+          vercel alias set "$url" vantage-sites-preview-api.vercel.app --token="$VERCEL_TOKEN" --scope vantage-4d3db9ef
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Source: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Isolated Preview: $url" >> "$GITHUB_STEP_SUMMARY"

@@ -143,6 +143,8 @@ Manual / `vantage_admin` create defaults [No-Sync Lead](../../../../CONTEXT.md) 
 
 ## Invariants
 
+Website preview isolation: `CRM_FORM_LEAD_POSTING_ENABLED=false` suppresses CRM Posting even when the caller requests `post_to_granot=true`. Ingestion reports CRM as skipped. The CRM service also checks the flag before any network request. Unset retains existing production behavior; any explicit value other than `true` disables posting. See `docs/site-preview-api.md` for the isolated deployment.
+
 | Rule | Detail |
 |------|--------|
 | Duplicate Form Leads | Always saved; Sheet Sync selects `Duplicate Forms` unless canonical/trusted imported bad evidence selects `Bad Form Leads` exclusively. The duplicate flag is preserved; **never CRM-posted**. |
@@ -192,3 +194,7 @@ The final Best Relocation review command derives a protected `external_sheet_rev
 
 
 **November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).
+
+## Optional Main Site website attribution
+
+The insert-only, bounded website snapshot is accepted only for Main Site WordPress/form ingestion, sanitized before canonical command capture, and omitted on malformed or unavailable measurement. It never changes Source Company, LID, Tracking Reference, Call qualification or capture success. See [contract and qualification](../../website-attribution/README.md).

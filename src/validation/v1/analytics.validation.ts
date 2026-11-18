@@ -17,6 +17,7 @@ const optionalObjectIdString = optionalTrimmedString.refine(
 );
 
 export const analyticsReportSchema = z.enum([
+  "website-outcomes",
   "summary",
   "revenue-trend",
   "source-company-performance",

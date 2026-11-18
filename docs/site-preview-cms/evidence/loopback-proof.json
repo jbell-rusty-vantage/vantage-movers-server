@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "database": "testvantagemovers_sitepreview",
+  "host": "127.0.0.1",
+  "checks": [
+    "catalog install and identical replay in loopback database",
+    "durable edit and stale revision refusal",
+    "concurrent writers cannot overwrite each other",
+    "GridFS upload/read byte parity and catalog image reuse",
+    "published-only minimum rating and explicit exclusion in database query",
+    "restore creates audited new revision preserving history"
+  ]
+}

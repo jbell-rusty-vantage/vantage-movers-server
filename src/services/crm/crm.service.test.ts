@@ -9,12 +9,14 @@ const originalFetch = globalThis.fetch;
 const originalEnv = {
   nodeTestContext: process.env.NODE_TEST_CONTEXT,
   vercelEnv: process.env.VERCEL_ENV,
+  crmPosting: process.env.CRM_FORM_LEAD_POSTING_ENABLED,
 };
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   restoreEnv("NODE_TEST_CONTEXT", originalEnv.nodeTestContext);
   restoreEnv("VERCEL_ENV", originalEnv.vercelEnv);
+  restoreEnv("CRM_FORM_LEAD_POSTING_ENABLED", originalEnv.crmPosting);
 });
 
 type FetchCall = {
@@ -59,6 +61,15 @@ function hydrateFormLead(
     ...overrides,
   }) as FormLeadDocument;
 }
+
+test("isolated previews cannot send CRM requests, even when the service is called directly", async () => {
+  process.env.CRM_FORM_LEAD_POSTING_ENABLED = "false";
+  const calls = stubFetch(() => { throw new Error("External CRM call forbidden"); });
+  const result = await submitFormLeadToCrm(hydrateFormLead());
+  assert.equal(calls.length, 0);
+  assert.equal(result.status, 0);
+  assert.equal(result.ok, true);
+});
 
 test("submitFormLeadToCrm POSTs to the Granot lead gateway with the urlencoded payload", async () => {
   const lead = hydrateFormLead();
