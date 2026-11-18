@@ -14,7 +14,7 @@ import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDisc
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
-import { getEntityChangeModel } from "../../models/EntityChange";
+import { getEntityChangeModel, type EntityChangeDocument } from "../../models/EntityChange";
 import { BookedLead } from "../../models/BookedLead";
 import { Merchant } from "../../models/Merchant";
 import { CancelledLead } from "../../models/CancelledLead";
@@ -22,7 +22,7 @@ import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconcili
 import { getFormLeadModel } from "../../models/FormLead";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { RECEIPT_WORK_STATES } from "../../models/granotLifecycleSchemas";
+import { RECEIPT_WORK_STATES, SYNCHRONIZATION_OUTCOMES } from "../../models/granotLifecycleSchemas";
 import { applyDueGauges } from "./drainer";
 import { getCallLogSyncState } from "../ringcentral/call-log-sync-state.store";
 import {
@@ -619,6 +619,10 @@ export async function projectGranotLeadTimeline(
   const jobNumbers = [...new Set(links.map((link) => link.normalized_job_no))];
   const pages = await Promise.all(jobNumbers.map((job) => buildTimelineForJob(job)));
   const items = pages.flatMap((page) => page.items);
+  if (jobNumbers.length === 0) {
+    const changes = await getEntityChangeModel().find({ "entity.model": leadModel, "entity.id": leadId }).lean();
+    items.push(...changes.map(projectTimelineChange));
+  }
   const deduped = [...new Map(items.map((item) => [`${item.type}:${item.id}`, item])).values()];
   const current = pages.reduce<GranotTimelinePage["current"]>(
     (result, page) => ({
@@ -1163,6 +1167,16 @@ async function browseConnectLeadViews(
   ];
 }
 
+function projectTimelineChange(change: EntityChangeDocument): GranotTimelineEntry {
+  return {
+    id: String(change._id), type: "entity_change", event_at: iso(change.applied_at, "entity_change.applied_at"), type_priority: 80,
+    data: {
+      change_id: String(change._id), entity: change.entity, command_execution_id: String(change.command_execution_id),
+      revision_before: change.revision_before, revision_after: change.revision_after, changed_paths: change.changed_paths,
+    },
+  };
+}
+
 async function buildTimelineForJob(
   normalizedJobNo: string,
 ): Promise<Omit<GranotTimelinePage, "next_cursor">> {
@@ -1290,22 +1304,7 @@ async function buildTimelineForJob(
       },
     });
   }
-  for (const change of entityChanges) {
-    items.push({
-      id: String(change._id),
-      type: "entity_change",
-      event_at: iso(change.applied_at, "entity_change.applied_at"),
-      type_priority: 80,
-      data: {
-        change_id: String(change._id),
-        entity: change.entity,
-        command_execution_id: String(change.command_execution_id),
-        revision_before: change.revision_before,
-        revision_after: change.revision_after,
-        changed_paths: change.changed_paths,
-      },
-    });
-  }
+  items.push(...entityChanges.map(projectTimelineChange));
   if (booking) {
     items.push({
       id: String(booking._id),
@@ -1957,7 +1956,7 @@ export async function projectGranotLifecycleHealth(
         };
         count: number;
       }>([
-        { $match: { decided_at: { $gte: since } } },
+        { $match: { outcome: { $in: [...SYNCHRONIZATION_OUTCOMES] }, decided_at: { $gte: since, $lte: now } } },
         {
           $group: {
             _id: {
@@ -1997,13 +1996,14 @@ export async function projectGranotLifecycleHealth(
     readGranotLifecycleHealthCounters(now),
     getSynchronizationDecisionModel()
       .aggregate<{ duration_ms: number }>([
-        { $match: { decided_at: { $gte: since } } },
+        { $match: { outcome: { $in: [...SYNCHRONIZATION_OUTCOMES] }, decided_at: { $gte: since, $lte: now } } },
         {
           $lookup: {
             from: "granot_observations",
             localField: "observation_id",
             foreignField: "_id",
             as: "observation",
+            pipeline: [{ $project: { _id: 0, captured_at: 1 } }],
           },
         },
         { $unwind: "$observation" },
@@ -2021,7 +2021,7 @@ export async function projectGranotLifecycleHealth(
         _id: { source_id?: unknown; outcome: SynchronizationOutcome };
         count: number;
       }>([
-        { $match: { decided_at: { $gte: since } } },
+        { $match: { outcome: { $in: [...SYNCHRONIZATION_OUTCOMES] }, decided_at: { $gte: since, $lte: now } } },
         {
           $group: {
             _id: {

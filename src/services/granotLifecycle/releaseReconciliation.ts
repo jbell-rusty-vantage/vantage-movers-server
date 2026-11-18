@@ -9,7 +9,6 @@ import type {
   GranotReleaseReconciliationCaseDocument,
 } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
-import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import type {
   SynchronizationDecisionDocument,
