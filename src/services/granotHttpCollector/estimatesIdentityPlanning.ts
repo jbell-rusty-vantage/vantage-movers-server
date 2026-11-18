@@ -8,9 +8,38 @@ import { Types } from "mongoose";
 import { createHash } from "node:crypto";
 import { jobNumberDigitCore, jobNumbersEquivalent } from "../bookings/bookingIdentity";
 import { normalizeGranotCrmUsername } from "../operationsRegistry";
-import type { GranotFormPlanAction } from "./formWorkflow";
+import type { GranotAutomationLifecycleApply, GranotTableSection } from "./lifecycleStatement";
+import type { SynchronizationMatchMethod } from "../granotLifecycle/identity";
 import type { GranotSourceCollection } from "./index";
 import { buildLifecycleApply } from "./lifecycleStatement";
+
+export type EstimatesPlanAction = {
+  action_id: string;
+  row_id: string;
+  source_label: string;
+  table_section: GranotTableSection;
+  classification: "update" | "unchanged" | "conflict" | "no_match" | "invalid";
+  lead_id?: string;
+  reason?: string;
+  warnings?: string[];
+  lifecycle_apply?: GranotAutomationLifecycleApply;
+  collection_captured_at?: string;
+  report_identity?: {
+    version: 1;
+    normalized_job_sha256?: string;
+    job_equivalence_sha256?: string;
+    lead_model?: "FormLead" | "CallLead";
+    match_method?: SynchronizationMatchMethod;
+  };
+  desired_state_summary?: {
+    outcome: string;
+    reason_code: string;
+    changed_paths: string[];
+    agent_changed_paths: string[];
+    target_revision: number;
+    conditional_on_apply: true;
+  };
+};
 
 export type EstimatesIdentityPlanningDeps = {
   sourcePolicyStore?: SourcePolicyStore;
@@ -43,7 +72,7 @@ function cachedPolicyStore(store: SourcePolicyStore): SourcePolicyStore {
 export async function planEstimatesIdentities(
   sources: GranotSourceCollection[],
   input: EstimatesIdentityPlanningDeps & { runId: string; beforeRow?: () => Promise<void> },
-): Promise<{ kind: "estimates_in_process"; schema_version: 2; actions: GranotFormPlanAction[]; counters: Record<string, number> }> {
+): Promise<{ kind: "estimates_in_process"; schema_version: 2; actions: EstimatesPlanAction[]; counters: Record<string, number> }> {
   const policyStore = cachedPolicyStore(input.sourcePolicyStore ?? createMongoSourcePolicyStore());
   const readIdentity = input.identityStore ?? createMongoLeadIdentityStore();
   const agents = new Map<string, ReturnType<LeadIdentityStore["findActiveAgentsByUsername"]>>();
@@ -54,7 +83,7 @@ export async function planEstimatesIdentities(
       return matches;
     },
   };
-  const actions: GranotFormPlanAction[] = [];
+  const actions: EstimatesPlanAction[] = [];
   const counters: Record<string, number> = {};
   const prepared = sources.flatMap((source) => source.sections.followUpEstimates.map((row) => {
     const actionId = `${source.sourceLabel}:${row.id}`;
@@ -148,7 +177,7 @@ export async function planEstimatesIdentities(
   // The whole declared report must support a unique Job attachment to a jobless
   // Lead. Per-row uniqueness alone otherwise lets report order choose the Job.
   const jobsByAction = new Map(prepared.map((entry) => [entry.actionId, entry.normalized.identity.normalized_job_no]));
-  const attachments = new Map<string, GranotFormPlanAction[]>();
+  const attachments = new Map<string, EstimatesPlanAction[]>();
   for (const action of actions) {
     const target = action.lifecycle_apply?.expected_target;
     if (action.classification !== "update" || !target || !action.desired_state_summary?.changed_paths.some((field) => field === "job_no" || field === "normalized_job_no")) continue;

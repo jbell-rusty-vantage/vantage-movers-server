@@ -35,19 +35,6 @@ export function createBestRelocationIngestionActor(
   };
 }
 
-export function createReportingProjectionActor(
-  requestId: string,
-): DurableActor {
-  return {
-    actor_type: "system",
-    actor_id: "reporting-projection",
-    actor_label: "Reporting projection",
-    actor_role: "system",
-    request_id: requestId,
-    origin: "reporting_projection",
-  };
-}
-
 export function createGranotLifecycleProcessorActor(
   receiptId: string,
 ): DurableActor {

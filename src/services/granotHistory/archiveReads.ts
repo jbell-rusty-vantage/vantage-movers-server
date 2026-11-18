@@ -1,7 +1,7 @@
 import type { Db, Document } from "mongodb";
 import { archiveJobKey, decodeChains } from "./archiveCodec";
 
-export type ArchiveEntry = { _id: string; hash?: string; job: string; job_key: string; newest: Date; oldest: Date; count: number };
+export type ArchiveEntry = { _id: string; hash?: string; generation?: string; job: string; job_key: string; newest: Date; oldest: Date; count: number };
 export const archiveCatalog = (db: Db) => db.collection<ArchiveEntry>("granot_history_archive_chunks");
 export function mergeEvidence(hot: Document[], cold: Document[]): Document[] {
   const rows = new Map(cold.map(row => [String(row._id), row]));
@@ -12,7 +12,7 @@ export function mergeEvidence(hot: Document[], cold: Document[]): Document[] {
 export async function readArchiveEntry(db: Db, entry: ArchiveEntry) {
   const { readArchiveObject } = await import("./archiveObjects.js");
   const hash = entry.hash ?? entry._id;
-  const rows = decodeChains(await readArchiveObject(db.databaseName, hash), hash, entry.job);
+  const rows = decodeChains(await readArchiveObject(db.databaseName, hash, entry.generation), hash, entry.job);
   if (rows.length !== entry.count) throw new Error("Granot archive count mismatch");
   return rows;
 }

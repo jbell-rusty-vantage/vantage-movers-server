@@ -25,15 +25,11 @@ import granotAutomationCronRoutes from "./routes/granot-automation-cron.routes";
 import granotLifecycleCronRoutes from "./routes/granot-lifecycle-cron.routes";
 import ingestionRoutes from "./routes/ingestion.routes";
 import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestion-cron.routes";
-import reportingRoutes from "./routes/reporting.routes";
-import reportingCronRoutes from "./routes/reporting-cron.routes";
 import salesIntelligenceCronRoutes from "./routes/sales-intelligence-cron.routes";
 import salesOutreachRoutes from "./routes/sales-outreach.routes";
 import salesOutreachCronRoutes from "./routes/sales-outreach-cron.routes";
 import salesOutreachContactCronRoutes from "./routes/sales-outreach-contact-cron.routes";
-import { registerReportingStage4Foundation } from "./services/reporting/registerStage4Foundation";
 
-registerReportingStage4Foundation();
 
 const app = express();
 
@@ -69,7 +65,6 @@ app.use(cplCorrectionCronRoutes);
 app.use(twilioMessageStatusRoutes);
 app.use(twilioVoiceRoutes);
 app.use(bestRelocationIngestionCronRoutes);
-app.use(reportingCronRoutes);
 app.use(granotAutomationCronRoutes);
 app.use(granotLifecycleCronRoutes);
 app.use(salesIntelligenceCronRoutes);
@@ -80,7 +75,6 @@ app.use(granotAutomationRoutes);
 app.use(salesOutreachRoutes);
 app.use(v1Routes);
 app.use(ingestionRoutes);
-app.use(reportingRoutes);
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({

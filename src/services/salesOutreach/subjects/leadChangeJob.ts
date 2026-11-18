@@ -1,3 +1,4 @@
+import { enqueueOutreachWork } from "../evaluation/refreshRequests";
 import { randomUUID } from "node:crypto";
 import type { ClientSession } from "mongoose";
 import { CsiError } from "../../salesIntelligence/auth";
@@ -7,7 +8,7 @@ import { OutreachError } from "../errors";
 import type { DeskLeadRef } from "./leadFacts";
 import { mongoDeskSubjectStore, type DeskSubjectStore } from "./store";
 import { expansionAdmissionOf, expansionNeedsCreationSettled, hasAmbiguousIdentity, intakeAdmissionOf, loadSubjectPageContext, syncSubject } from "./sync";
-import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { type JobInput } from "../../salesIntelligence/jobs";
 import { evaluationJob } from "../evaluation/evaluateJob";
 import { refreshPoolLead } from "../pool/admission";
 import { getCallLeadModel } from "../../../models/CallLead";
@@ -25,6 +26,8 @@ export type LeadRefreshResult = Readonly<{
   reason: string | null;
   status: "active" | "review" | "closed" | null;
   admission: "intake" | "expansion" | null;
+  /** Subject sync persisted revision-keyed evaluation; excludes the callback repair nomination. */
+  evaluation_requested: boolean;
 }>;
 
 /**
@@ -58,28 +61,28 @@ export async function refreshLeadForOutreach(
   const [facts] = await store.loadLeads([lead], session);
   const [subject] = await store.findSubjects([lead], session);
   if ((trigger === "estimates_refresh" || trigger === "related_form") && (!subject || subject.status === "closed")) {
-    return { outcome: "not_admitted", subject_id: subject?.id ?? null, reason: `${trigger}_existing_open_only`, status: subject?.status ?? null, admission: null };
+    return { outcome: "not_admitted", subject_id: subject?.id ?? null, reason: `${trigger}_existing_open_only`, status: subject?.status ?? null, admission: null, evaluation_requested: false };
   }
-  if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found", status: subject?.status ?? null, admission: null };
+  if (!facts) return { outcome: "lead_missing", subject_id: subject?.id ?? null, reason: "lead_not_found", status: subject?.status ?? null, admission: null, evaluation_requested: false };
   const context = await loadSubjectPageContext(store, [facts], asOf, session);
   if (subject) {
     const synced = await syncSubject({ facts, subject, configuration, context }, store, session);
-    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: synced.period_reason, status: synced.status, admission: null };
+    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: synced.period_reason, status: synced.status, admission: null, evaluation_requested: synced.evaluation_requested };
   }
   if (trigger === "admission") {
     // Sequential reads: the session is inside the job transaction. The guard's job read only when it applies.
     const settled = expansionNeedsCreationSettled(facts, configuration) ? await store.creationJobSettled(lead, session) : true;
     const expansion = expansionAdmissionOf(facts, configuration, asOf, { ambiguous_identity: hasAmbiguousIdentity(facts, context), creation_settled: settled });
     if (!expansion.admit)
-      return { outcome: expansion.deferred ? "deferred" : "not_admitted", subject_id: null, reason: expansion.reason, status: null, admission: null };
+      return { outcome: expansion.deferred ? "deferred" : "not_admitted", subject_id: null, reason: expansion.reason, status: null, admission: null, evaluation_requested: false };
     const synced = await syncSubject({ facts, subject: null, enrollment: expansion.enrollment, configuration, context }, store, session);
-    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "expansion" };
+    return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "expansion", evaluation_requested: synced.evaluation_requested };
   }
   const admission = intakeAdmissionOf(facts, configuration, asOf);
-  if (!admission.admit) return { outcome: "not_admitted", subject_id: null, reason: admission.reason, status: null, admission: null };
+  if (!admission.admit) return { outcome: "not_admitted", subject_id: null, reason: admission.reason, status: null, admission: null, evaluation_requested: false };
   // olr B8: an ambiguous Job Number no longer refuses; the subject is admitted held (`admissionHoldOf`).
   const synced = await syncSubject({ facts, subject: null, enrollment: admission.enrollment, configuration, context }, store, session);
-  return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "intake" };
+  return { outcome: synced.outcome, subject_id: synced.subject_id, reason: null, status: synced.status, admission: "intake", evaluation_requested: synced.evaluation_requested };
 }
 
 export type LeadChangeJobDeps = {
@@ -126,13 +129,15 @@ export async function runOutreachLeadChangeJob(jobId?: string, deps: LeadChangeJ
             const call = await getCallLeadModel().findById(callId, { "granot_form_sibling.form_lead_id": 1 }).session(transaction).lean();
             return call?.granot_form_sibling?.form_lead_id ? String(call.granot_form_sibling.form_lead_id) : null;
           }))(refs[1]!, session);
-          if (related !== id) return { outcome: "not_admitted" as const, subject_id: null, reason: "related_form_changed", status: null, admission: null };
+          if (related !== id) return { outcome: "not_admitted" as const, subject_id: null, reason: "related_form_changed", status: null, admission: null, evaluation_requested: false };
         }
         // Related wakes have no Pool/intake/expansion authority, even for an absent or closed Form.
         if (!deps.store && trigger !== "related_form") await refreshPoolLead({ model, id }, current, now, session);
         const refreshed = await refreshLeadForOutreach({ model, id }, current, now, deps.store ?? mongoDeskSubjectStore, session, trigger);
-        if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted") {
-          await (deps.enqueue ?? enqueueCsiJob)(evaluationJob(refreshed.subject_id, `estimates-refresh:${String(row.dedupe_key)}`), session);
+        const revisionCoversReceipt = refreshed.evaluation_requested && current.value.estimates_revision_nomination_ref;
+        if (trigger === "estimates_refresh" && refreshed.subject_id && refreshed.status !== "closed" && refreshed.outcome !== "not_admitted" && !revisionCoversReceipt) {
+          // No-op/bookkeeping sync still needs repair: only a nomination in this transaction can suppress it.
+          await (deps.enqueue ?? enqueueOutreachWork)(evaluationJob(refreshed.subject_id, `estimates-refresh:${String(row.dedupe_key)}`), session);
         }
         return refreshed;
       },

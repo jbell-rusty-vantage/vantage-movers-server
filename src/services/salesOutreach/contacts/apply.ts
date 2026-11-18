@@ -58,7 +58,7 @@ export type ContactEventStore = {
   /** Writes the row (insert or replace of the derived fields); returns its new revision. */
   writeEvent(id: string, draft: ContactEventDraft, previous: StoredContactEvent | null, now: Date, session: ClientSession): Promise<number>;
   subjectRevisions(ids: readonly string[], session: ClientSession): Promise<Map<string, number>>;
-  enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean }>;
+  enqueue(job: JobInput, session: ClientSession, now: Date): Promise<{ job_id: string; created: boolean } | { job_id: null; created: false }>;
   /** Writes `ringcentral_rep_call` receivers on unassigned subjects whose Lead has none; returns how many. */
   fillEmptyReceivers(candidates: readonly ReceiverFillCandidate[], session: ClientSession, now: Date): Promise<number>;
   retainSmsVolume?(rows: readonly SmsSourceRow[], session: ClientSession): Promise<void>;

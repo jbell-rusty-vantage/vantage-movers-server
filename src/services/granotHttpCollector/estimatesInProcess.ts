@@ -2,16 +2,6 @@ import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import type { Element } from "domhandler" with { "resolution-mode": "import" };
 import {
-  evaluateGranotAutomationCompatibility,
-  type GranotAutomationCompatibilitySource,
-} from "../granotLifecycle/automationCompatibility";
-import {
-  createMongoSourcePolicyStore,
-  type SourcePolicyRow,
-  type SourcePolicyStore,
-} from "../granotLifecycle/sourcePolicy";
-import { normalizeGranotSourceLabel } from "../granotLifecycle/sourceLabel";
-import {
   getGranotDateWindowProblem,
   GranotCollectorError,
   openGranotAuthenticatedSession,
@@ -27,27 +17,14 @@ export type { EstimatesCollectionCoverage } from "./estimatesCollection";
 
 const REQUIRED_HEADERS = ["job_no", "open_date", "follow_up", "user", "customer", "source", "ref_no", "email", "phone1", "phone2", "from_city", "from_state", "from_zip", "to_city", "to_state", "to_zip", "move_date", "cf"];
 
-export type EstimatesRoute = "form_leads" | "call_leads" | "unresolved";
-
 export type EstimatesCollectionRequest = EstimatesCollectionControls & {
   additionalDateWindows?: Array<{ from: string; to: string }>;
   dateWindow: { from: string; to: string };
   credentials: GranotCollectorCredentials;
 };
 
-export type EstimatesLabelLookup = (
-  label: string,
-) => Promise<readonly GranotAutomationCompatibilitySource[]>;
-
-export type EstimatesPartition = {
-  form: GranotSourceCollection[];
-  call: GranotSourceCollection[];
-  unresolved: Array<{ source: GranotSourceCollection; reason: string }>;
-};
-
 /**
  * Follow-Up Estimates on Estimates in Process. Reuses the two-page login.
- * Does not call `collectGranotReport` and does not request `mprep`.
  */
 export async function collectEstimatesInProcess(
   input: EstimatesCollectionRequest,
@@ -181,72 +158,6 @@ export function parseEstimatesInProcessHtml(html: string): {
   result.sources = [...grouped.entries()].map(([source, rows]) => collectionFor(source, rows));
   result.recognized = diagnostics.length === 0;
   return result;
-}
-
-/** Registry route for one source label. Both routes, or neither, stay unresolved. */
-export function estimatesRouteForMatches(
-  matches: readonly GranotAutomationCompatibilitySource[],
-): { route: EstimatesRoute; reason: string } {
-  if (matches.length === 0) {
-    return { route: "unresolved", reason: "missing_registry" };
-  }
-  if (matches.length !== 1) {
-    return { route: "unresolved", reason: "ambiguous_label" };
-  }
-  const referenced = matches[0]!;
-  const ready = (operation: "form_leads" | "call_leads") =>
-    evaluateGranotAutomationCompatibility({
-      granot_crm_source_id: referenced.id,
-      requested_operations: [operation],
-      referenced,
-      normalized_label_match_count: 1,
-    }).available_for_apply;
-  const form = ready("form_leads");
-  const call = ready("call_leads");
-  if (form && call) return { route: "unresolved", reason: "both_routes" };
-  if (form) return { route: "form_leads", reason: "form_leads" };
-  if (call) return { route: "call_leads", reason: "call_leads" };
-  return { route: "unresolved", reason: "not_ready" };
-}
-
-export async function partitionEstimatesSources(
-  sources: GranotSourceCollection[],
-  lookup: EstimatesLabelLookup,
-): Promise<EstimatesPartition> {
-  const form: GranotSourceCollection[] = [];
-  const call: GranotSourceCollection[] = [];
-  const unresolved: EstimatesPartition["unresolved"] = [];
-  for (const source of sources) {
-    const decision = estimatesRouteForMatches(await lookup(source.sourceLabel));
-    if (decision.route === "form_leads") form.push(source);
-    else if (decision.route === "call_leads") call.push(source);
-    else unresolved.push({ source, reason: decision.reason });
-  }
-  return { form, call, unresolved };
-}
-
-export function estimatesRegistryLookup(
-  store: SourcePolicyStore = createMongoSourcePolicyStore(),
-): EstimatesLabelLookup {
-  return async (label) => {
-    const normalized = normalizeGranotSourceLabel(label);
-    if (!normalized) return [];
-    const rows = await store.findByNormalizedLabel(normalized);
-    return rows.map(compatibilitySource);
-  };
-}
-
-function compatibilitySource(row: SourcePolicyRow): GranotAutomationCompatibilitySource {
-  return {
-    id: row.id,
-    enabled: row.enabled,
-    lifecycle_enabled: row.lifecycle_enabled,
-    lifecycle_disposition: row.lifecycle_disposition,
-    lifecycle_routes: row.lifecycle_routes.map((route) => ({
-      lead_model: route.lead_model,
-    })),
-    normalized_granot_label: row.normalized_granot_label,
-  };
 }
 
 function adaptEstimatesRow(raw: Record<string, string>): Record<string, string> {

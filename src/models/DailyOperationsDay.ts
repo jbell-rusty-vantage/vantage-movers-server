@@ -40,6 +40,7 @@ export type DailyOperationsDayDocument = {
     vantage_admin: number;
   };
   companies: Record<string, DailyOperationsCompanyCount>;
+  webhook_counts_version?: number;
   webhooks: {
     lead_created: number;
     priority_updated: number;
@@ -126,6 +127,7 @@ const DailyOperationsDaySchema = new Schema<DailyOperationsDayDocument>(
       vantage_admin: { type: Number, default: 0 },
     },
     companies: { type: Schema.Types.Mixed, default: {} },
+    webhook_counts_version: Number,
     webhooks: {
       lead_created: { type: Number, default: 0 },
       priority_updated: { type: Number, default: 0 },

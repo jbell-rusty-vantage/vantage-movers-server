@@ -2133,7 +2133,7 @@ test("[AC-09] live Form same states select Local; differing states select long-d
   assert.equal(stateBlocked.links.length, 0);
 });
 
-test("pending_match records granot.pending_match with parent_receipt_id", async () => {
+test("pending_match records granot.pending_match without a receipt detail link", async () => {
   clearCapturedDailyOperationsFacts();
   const row = observation();
   const deps = memoryDeps({
@@ -2147,7 +2147,7 @@ test("pending_match records granot.pending_match with parent_receipt_id", async 
     (fact) => fact.input.kind === "granot.pending_match",
   );
   assert.equal(facts.length, 1);
-  assert.equal(facts[0]?.input.parent_receipt_id, String(row.receipt_id));
+  assert.equal(facts[0]?.input.parent_receipt_id, undefined);
   assert.equal(
     facts[0]?.input.dedupe_key,
     `decision:${result.decision_id}:granot.pending_match`,
@@ -2175,7 +2175,7 @@ test("unmatched records granot.unmatched and created is not minted by the proces
     (fact) => fact.input.kind === "granot.unmatched",
   );
   assert.equal(unmatchedFacts.length, 1);
-  assert.equal(unmatchedFacts[0]?.input.parent_receipt_id, String(row.receipt_id));
+  assert.equal(unmatchedFacts[0]?.input.parent_receipt_id, undefined);
 
   clearCapturedDailyOperationsFacts();
   const createdRow = completeFormObservation();

@@ -16,6 +16,8 @@ export async function appendHistoryMonth(
   job: string,
   month: string,
   incoming: ArchivedChain[],
+  located?: (observationId: string, hash: string, generation?: string) => void,
+  storage = { store: storeArchiveObject, read: readArchiveObject },
 ) {
   if (
     !/^\d{4}-\d{2}$/.test(month) ||
@@ -37,7 +39,7 @@ export async function appendHistoryMonth(
       const old = await catalog.findOne({ _id: key });
       const contents = old?.hash
         ? decodeChains(
-            await readArchiveObject(db.databaseName, old.hash),
+            await storage.read(db.databaseName, old.hash, old.generation),
             old.hash,
             job,
           )
@@ -75,14 +77,17 @@ export async function appendHistoryMonth(
         }
       }
       let hash = old?.hash;
+      let generation = old?.generation;
       if (bytes) {
-        const published = await storeArchiveObject(db.databaseName, bytes);
+        const published = await storage.store(db.databaseName, bytes);
         hash = published.hash;
+        generation = published.generation;
         const verified = decodeChains(published.persisted, hash, job);
         const dates = verified.map((c) => +c.observation.captured_at);
         const entry = {
           _id: key,
           hash,
+          generation,
           job,
           job_key: archiveJobKey(job),
           count: verified.length,
@@ -107,6 +112,7 @@ export async function appendHistoryMonth(
         ...added.map((c) => String(c.observation._id)),
       ]) {
         completed.set(id, hash);
+        located?.(id, hash, generation);
         pending.delete(id);
       }
       done = true;

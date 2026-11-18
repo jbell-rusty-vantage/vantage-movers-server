@@ -1,11 +1,6 @@
-import { GranotAutomationSource } from "../../models/GranotAutomationSource";
 import { OperationsRegistryChange } from "../../models/OperationsRegistryChange";
 import { getLeadSourceCompanyModel } from "../../models/LeadSourceCompany";
 import { getLeadSourceGranularityModel } from "../../models/LeadSourceGranularity";
-import {
-  evaluateGranotAutomationCompatibility,
-  type GranotAutomationSourceCompatibility,
-} from "../granotLifecycle/automationCompatibility";
 import {
   getRegistryGranotCrmSource,
   listRegistryGranotCrmSources,
@@ -39,12 +34,7 @@ export type GranotCrmSourceProjection = GranotCrmSourceRecord & {
   lead_source_company_label?: string;
   lead_source_company_status?: GranotCrmSourceDependencyStatus;
   lifecycle_routes: GranotCrmSourceRouteProjection[];
-  automation_sources: Array<{
-    id: string;
-    label: string;
-    active: boolean;
-    compatibility: GranotAutomationSourceCompatibility;
-  }>;
+  automation_sources: [];
   latest_audit?: GranotCrmSourceAuditProjection;
 };
 
@@ -80,7 +70,7 @@ async function projectRecords(
     ),
   );
   const recordIds = records.map((record) => record.id);
-  const [companies, granularities, automationRows, audits] = await Promise.all([
+  const [companies, granularities, audits] = await Promise.all([
     companyIds.length
       ? getLeadSourceCompanyModel()
           .find({ _id: { $in: companyIds } })
@@ -98,13 +88,6 @@ async function projectRecords(
             local: 1,
             active: 1,
           })
-          .lean()
-          .exec()
-      : [],
-    recordIds.length
-      ? GranotAutomationSource.find({ granot_crm_source: { $in: recordIds } })
-          .select({ label: 1, active: 1, granot_crm_source: 1, supported_operations: 1 })
-          .sort({ label: 1 })
           .lean()
           .exec()
       : [],
@@ -149,14 +132,6 @@ async function projectRecords(
       },
     ]),
   );
-  const labelCounts = new Map<string, number>();
-  for (const record of records) {
-    if (!record.normalized_granot_label) continue;
-    labelCounts.set(
-      record.normalized_granot_label,
-      (labelCounts.get(record.normalized_granot_label) ?? 0) + 1,
-    );
-  }
   const latestAuditById = new Map<string, GranotCrmSourceAuditProjection>();
   for (const audit of audits) {
     const entityId = String(audit.entity_id);
@@ -191,31 +166,6 @@ async function projectRecords(
         source_granularity_status: routeStatus(route, granularity),
       };
     });
-    const automation_sources = automationRows
-      .filter((row) => String(row.granot_crm_source) === record.id)
-      .map((row) => ({
-        id: String(row._id),
-        label: String(row.label),
-        active: row.active !== false,
-        compatibility: evaluateGranotAutomationCompatibility({
-          granot_crm_source_id: record.id,
-          requested_operations: (row.supported_operations ?? []).filter(
-            (value): value is "form_leads" | "call_leads" =>
-              value === "form_leads" || value === "call_leads",
-          ),
-          referenced: {
-            id: record.id,
-            enabled: record.enabled,
-            lifecycle_enabled: record.lifecycle_enabled,
-            lifecycle_disposition: record.lifecycle_disposition,
-            lifecycle_routes: record.lifecycle_routes,
-            normalized_granot_label: record.normalized_granot_label,
-          },
-          normalized_label_match_count: record.normalized_granot_label
-            ? labelCounts.get(record.normalized_granot_label) ?? 1
-            : 1,
-        }),
-      }));
     return {
       ...record,
       lifecycle_routes,
@@ -229,7 +179,7 @@ async function projectRecords(
               : "missing",
           }
         : {}),
-      automation_sources,
+      automation_sources: [],
       ...(latestAuditById.get(record.id)
         ? { latest_audit: latestAuditById.get(record.id) }
         : {}),

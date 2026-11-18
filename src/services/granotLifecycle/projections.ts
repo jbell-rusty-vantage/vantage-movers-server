@@ -1,4 +1,5 @@
-import { archivedChains, mergeEvidence } from "../granotHistory/archiveReads";
+import { readCaseObservations, readCaseDecisions } from "./caseEvidence";
+import { readPairingObservations } from "./observationReadFacts";
 import {
   getGranotLifecycleFlags,
   GRANOT_LIFECYCLE_ALERT_THRESHOLDS,
@@ -10,11 +11,10 @@ import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBook
 import { getGranotReleaseReconciliationCaseModel } from "../../models/GranotReleaseReconciliationCase";
 import { getGranotBookingDiscrepancyModel } from "../../models/GranotBookingDiscrepancy";
 import { getGranotReleaseDiscrepancyModel } from "../../models/GranotReleaseDiscrepancy";
-import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import { getGranotRecordLinkModel } from "../../models/GranotRecordLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
-import { getEntityChangeModel } from "../../models/EntityChange";
+import { getEntityChangeModel, type EntityChangeDocument } from "../../models/EntityChange";
 import { BookedLead } from "../../models/BookedLead";
 import { Merchant } from "../../models/Merchant";
 import { CancelledLead } from "../../models/CancelledLead";
@@ -22,7 +22,7 @@ import { BookingLeadReconciliationCase } from "../../models/BookingLeadReconcili
 import { getFormLeadModel } from "../../models/FormLead";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getGranotCrmSourceModel } from "../../models/GranotCrmSource";
-import { RECEIPT_WORK_STATES } from "../../models/granotLifecycleSchemas";
+import { RECEIPT_WORK_STATES, SYNCHRONIZATION_OUTCOMES } from "../../models/granotLifecycleSchemas";
 import { applyDueGauges } from "./drainer";
 import { getCallLogSyncState } from "../ringcentral/call-log-sync-state.store";
 import {
@@ -502,7 +502,7 @@ export type GranotLifecycleHealthProjection = {
     processor_version?: string;
   };
   receipts: {
-    by_work_state: Record<ReceiptWorkState, number>;
+    by_work_state: Record<Exclude<ReceiptWorkState, "completed">, number>;
     due_count: number;
     oldest_due_at: string | null;
     oldest_due_age_ms: number | null;
@@ -619,6 +619,10 @@ export async function projectGranotLeadTimeline(
   const jobNumbers = [...new Set(links.map((link) => link.normalized_job_no))];
   const pages = await Promise.all(jobNumbers.map((job) => buildTimelineForJob(job)));
   const items = pages.flatMap((page) => page.items);
+  if (jobNumbers.length === 0) {
+    const changes = await getEntityChangeModel().find({ "entity.model": leadModel, "entity.id": leadId }).lean();
+    items.push(...changes.map(projectTimelineChange));
+  }
   const deduped = [...new Map(items.map((item) => [`${item.type}:${item.id}`, item])).values()];
   const current = pages.reduce<GranotTimelinePage["current"]>(
     (result, page) => ({
@@ -647,10 +651,13 @@ export async function listGranotLifecycleCases(
   const commonFilter: Record<string, unknown> = {};
   if (query.state) commonFilter.state = query.state;
   if (query.source_id) {
-    const referralDecisions = await getSynchronizationDecisionModel()
-      .find({ "source_policy.granot_crm_source_id": query.source_id })
-      .select({ _id: 1 })
-      .lean();
+    const noScope = { source_scope: null, ...commonFilter };
+    const ids = await Promise.all([
+      getGranotBookingReconciliationCaseModel().distinct("evidence.decision_id", noScope),
+      getGranotReleaseReconciliationCaseModel().distinct("evidence.decision_id", noScope),
+    ]);
+    const referralDecisions = (await readCaseDecisions(ids.flat())).filter(decision =>
+      String(decision.source_policy?.granot_crm_source_id) === query.source_id);
     commonFilter.$and = [{
       $or: [
         { "source_scope.granot_crm_source_id": query.source_id },
@@ -710,8 +717,7 @@ export async function listGranotLifecycleCases(
   const referralDecisionIds = visible.flatMap((row) =>
     row.source_scope ? [] : row.evidence[0] ? [row.evidence[0].decision_id] : []);
   const referralDecisions = referralDecisionIds.length
-    ? await getSynchronizationDecisionModel().find({ _id: { $in: referralDecisionIds } })
-        .select({ source_policy: 1 }).lean()
+    ? await readCaseDecisions(referralDecisionIds)
     : [];
   const referralSourceByDecision = new Map(referralDecisions.map((row) => [
     String(row._id),
@@ -802,8 +808,8 @@ export async function getGranotLifecycleCaseDetail(
   const observationIds = row.evidence.map((item) => item.observation_id);
   const decisionIds = row.evidence.map((item) => item.decision_id);
   const [observations, decisions, link, booking, employeeCase] = await Promise.all([
-    getGranotObservationModel().find({ _id: { $in: observationIds } }).lean(),
-    getSynchronizationDecisionModel().find({ _id: { $in: decisionIds } }).lean(),
+    readCaseObservations(observationIds),
+    readCaseDecisions(decisionIds),
     row.record_link_id ? getGranotRecordLinkModel().findById(row.record_link_id).lean() : null,
     row.deterministic_booking_id ? BookedLead.findById(row.deterministic_booking_id).lean() : null,
     kind === "booking" && row.deterministic_booking_id
@@ -823,19 +829,7 @@ export async function getGranotLifecycleCaseDetail(
     : link?.lead_ref;
   const lead = leadRef ? await loadLeadContactProjection(leadRef.model, String(leadRef.id)) : null;
   const jobObservations = kind === "booking"
-    ? await getGranotObservationModel()
-        .find({ "identity.normalized_job_no": row.normalized_job_no })
-        .select({
-          _id: 1,
-          receipt_id: 1,
-          captured_at: 1,
-          route_event_class: 1,
-          payload_event_type_raw: 1,
-          priority: 1,
-          identity: 1,
-          booking_action: 1,
-        })
-        .lean()
+    ? await readPairingObservations([row.normalized_job_no])
     : [];
   const timeline = await projectGranotJob(row.normalized_job_no, { limit: DEFAULT_TIMELINE_LIMIT });
   const selectedCreating = selectCreatingObservationEvidence(row.evidence);
@@ -1173,15 +1167,22 @@ async function browseConnectLeadViews(
   ];
 }
 
+function projectTimelineChange(change: EntityChangeDocument): GranotTimelineEntry {
+  return {
+    id: String(change._id), type: "entity_change", event_at: iso(change.applied_at, "entity_change.applied_at"), type_priority: 80,
+    data: {
+      change_id: String(change._id), entity: change.entity, command_execution_id: String(change.command_execution_id),
+      revision_before: change.revision_before, revision_after: change.revision_after, changed_paths: change.changed_paths,
+    },
+  };
+}
+
 async function buildTimelineForJob(
   normalizedJobNo: string,
 ): Promise<Omit<GranotTimelinePage, "next_cursor">> {
-  const [links, hotObservations, bookingCases, releaseCases, bookingDiscrepancies, releaseDiscrepancies, booking] = await Promise.all([
+  const [links, bookingCases, releaseCases, bookingDiscrepancies, releaseDiscrepancies, booking] = await Promise.all([
     getGranotRecordLinkModel()
       .find({ provider: "granot", normalized_job_no: normalizedJobNo })
-      .lean(),
-    getGranotObservationModel()
-      .find({ "identity.normalized_job_no": normalizedJobNo })
       .lean(),
     getGranotBookingReconciliationCaseModel()
       .find({ normalized_job_no: normalizedJobNo })
@@ -1193,18 +1194,6 @@ async function buildTimelineForJob(
     getGranotReleaseDiscrepancyModel().find({ normalized_job_no: normalizedJobNo }).lean(),
     BookedLead.findOne({ normalized_job_no: normalizedJobNo }).lean(),
   ]);
-  const observationIds = hotObservations.map((row) => row._id);
-  const hotDecisions = observationIds.length
-    ? await getSynchronizationDecisionModel().find({ observation_id: { $in: observationIds } }).lean()
-    : [];
-  let observations = hotObservations;
-  let decisions = hotDecisions;
-  const db = getGranotObservationModel().db.db;
-  if (!db) throw new Error("Granot timeline database unavailable");
-  for await (const batch of archivedChains(db, normalizedJobNo, { exact: true })) {
-    observations = mergeEvidence(observations, batch.map(c => c.observation)) as typeof hotObservations;
-    decisions = mergeEvidence(decisions, batch.flatMap(c => c.decisions)) as typeof hotDecisions;
-  }
   const cancellation = booking
     ? await CancelledLead.findOne({ booked_lead: booking._id }).lean()
     : null;
@@ -1212,6 +1201,9 @@ async function buildTimelineForJob(
     model: "GranotRecordLink",
     id: String(link._id),
   }));
+  for (const link of links) {
+    if (link.lead_ref) entityRefs.push({ model: link.lead_ref.model, id: String(link.lead_ref.id) });
+  }
   if (booking) entityRefs.push({ model: "BookedLead", id: String(booking._id) });
   if (booking?.lead_ref && booking.lead_model) {
     entityRefs.push({ model: booking.lead_model, id: String(booking.lead_ref) });
@@ -1220,77 +1212,9 @@ async function buildTimelineForJob(
     entityRefs.push({ model: "CancelledLead", id: String(cancellation._id) });
   }
   const entityChanges = entityRefs.length
-    ? await getEntityChangeModel().find({ $or: entityRefs.map((ref) => ({ entity: ref })) }).lean()
+    ? await getEntityChangeModel().find({ $or: entityRefs.map((ref) => ({ "entity.model": ref.model, "entity.id": ref.id })) }).lean()
     : [];
-  const decisionsByObservation = new Map<string, typeof decisions>();
-  for (const decision of decisions) {
-    const id = String(decision.observation_id);
-    decisionsByObservation.set(id, [...(decisionsByObservation.get(id) ?? []), decision]);
-  }
-
   const items: GranotTimelineEntry[] = [];
-  for (const observation of observations) {
-    const observationId = String(observation._id);
-    const eventAt = iso(observation.captured_at, "observation.captured_at");
-    const relatedDecision = decisionsByObservation.get(observationId)?.sort((a, b) => a.attempt - b.attempt)[0];
-    items.push({
-      id: observationId,
-      type: "observation",
-      event_at: eventAt,
-      type_priority: 10,
-      data: {
-        observation_id: observationId,
-        receipt_id: String(observation.receipt_id),
-        normalization_result: observation.normalization_result,
-        issue_codes: (observation.issues ?? []).map((issue) => issue.code),
-      },
-    });
-    if (observation.priority?.valid && observation.priority.canonical) {
-      const changedPaths = relatedDecision?.effects.flatMap((effect) => effect.changed_paths ?? []) ?? [];
-      items.push({
-        id: `${observationId}:priority`,
-        type: "priority_effect",
-        event_at: eventAt,
-        type_priority: 20,
-        data: {
-          observation_id: observationId,
-          decision_id: relatedDecision ? String(relatedDecision._id) : undefined,
-          canonical_priority: observation.priority.canonical,
-          changed_paths: [...new Set(changedPaths)].sort(),
-        },
-      });
-    }
-    if (observation.booking_action?.normalized) {
-      items.push({
-        id: `${observationId}:action`,
-        type: "booking_action",
-        event_at: eventAt,
-        type_priority: 30,
-        data: {
-          observation_id: observationId,
-          decision_id: relatedDecision ? String(relatedDecision._id) : undefined,
-          action: observation.booking_action.normalized,
-        },
-      });
-    }
-  }
-  for (const decision of decisions) {
-    items.push({
-      id: String(decision._id),
-      type: "decision",
-      event_at: iso(decision.decided_at, "decision.decided_at"),
-      type_priority: 40,
-      data: {
-        decision_id: String(decision._id),
-        observation_id: String(decision.observation_id),
-        execution_mode: decision.execution_mode,
-        outcome: decision.outcome,
-        reason_code: decision.reason_code,
-        target: decision.target,
-        effects: decision.effects ?? [],
-      },
-    });
-  }
   const cases = [
     ...bookingCases.map((row) => ({ row, kind: "booking" as const, mode: row.mode })),
     ...releaseCases.map((row) => ({ row, kind: "release" as const, mode: "release" })),
@@ -1380,22 +1304,7 @@ async function buildTimelineForJob(
       },
     });
   }
-  for (const change of entityChanges) {
-    items.push({
-      id: String(change._id),
-      type: "entity_change",
-      event_at: iso(change.applied_at, "entity_change.applied_at"),
-      type_priority: 80,
-      data: {
-        change_id: String(change._id),
-        entity: change.entity,
-        command_execution_id: String(change.command_execution_id),
-        revision_before: change.revision_before,
-        revision_after: change.revision_after,
-        changed_paths: change.changed_paths,
-      },
-    });
-  }
+  items.push(...entityChanges.map(projectTimelineChange));
   if (booking) {
     items.push({
       id: String(booking._id),
@@ -2015,6 +1924,7 @@ export async function projectGranotLifecycleHealth(
     getGranotLifecycleActivationModel().findOne({ key: "granot_lifecycle" }).lean(),
     getGranotObservationReceiptModel()
       .aggregate<{ _id: ReceiptWorkState; count: number }>([
+        { $match: { "processing.state": { $in: RECEIPT_WORK_STATES.filter(state => state !== "completed") } } },
         { $group: { _id: "$processing.state", count: { $sum: 1 } } },
       ])
       .exec(),
@@ -2046,7 +1956,7 @@ export async function projectGranotLifecycleHealth(
         };
         count: number;
       }>([
-        { $match: { decided_at: { $gte: since } } },
+        { $match: { outcome: { $in: [...SYNCHRONIZATION_OUTCOMES] }, decided_at: { $gte: since, $lte: now } } },
         {
           $group: {
             _id: {
@@ -2086,13 +1996,14 @@ export async function projectGranotLifecycleHealth(
     readGranotLifecycleHealthCounters(now),
     getSynchronizationDecisionModel()
       .aggregate<{ duration_ms: number }>([
-        { $match: { decided_at: { $gte: since } } },
+        { $match: { outcome: { $in: [...SYNCHRONIZATION_OUTCOMES] }, decided_at: { $gte: since, $lte: now } } },
         {
           $lookup: {
             from: "granot_observations",
             localField: "observation_id",
             foreignField: "_id",
             as: "observation",
+            pipeline: [{ $project: { _id: 0, captured_at: 1 } }],
           },
         },
         { $unwind: "$observation" },
@@ -2110,7 +2021,7 @@ export async function projectGranotLifecycleHealth(
         _id: { source_id?: unknown; outcome: SynchronizationOutcome };
         count: number;
       }>([
-        { $match: { decided_at: { $gte: since } } },
+        { $match: { outcome: { $in: [...SYNCHRONIZATION_OUTCOMES] }, decided_at: { $gte: since, $lte: now } } },
         {
           $group: {
             _id: {
@@ -2130,10 +2041,10 @@ export async function projectGranotLifecycleHealth(
   ]);
 
   const by_work_state = Object.fromEntries(
-    RECEIPT_WORK_STATES.map((state) => [state, 0]),
-  ) as Record<ReceiptWorkState, number>;
+    RECEIPT_WORK_STATES.filter(state => state !== "completed").map((state) => [state, 0]),
+  ) as Record<Exclude<ReceiptWorkState, "completed">, number>;
   for (const row of receiptStates) {
-    if (row._id in by_work_state) {
+    if (row._id !== "completed" && row._id in by_work_state) {
       by_work_state[row._id] = row.count;
     }
   }
@@ -2423,29 +2334,13 @@ async function listPriorityPairingByCase(
   if (bookingRows.length === 0) return result;
 
   const jobNos = [...new Set(bookingRows.map((item) => item.row.normalized_job_no))];
-  const priorityFives = await getGranotObservationModel()
-    .find({
-      "identity.normalized_job_no": { $in: jobNos },
-      route_event_class: "priority_updated",
-      "priority.valid": true,
-      "priority.canonical": "5",
-    })
-    .select({
-      _id: 1,
-      receipt_id: 1,
-      captured_at: 1,
-      route_event_class: 1,
-      payload_event_type_raw: 1,
-      priority: 1,
-      identity: 1,
-    })
-    .lean();
+  const priorityFives = await readPairingObservations(jobNos);
 
   const missingSnapshotIds = bookingRows
     .filter((item) => !item.row.priority_pairing)
     .map((item) => toObjectId(String(item.selected.item.observation_id)));
   const creatingDocs = missingSnapshotIds.length
-    ? await getGranotObservationModel().find({ _id: { $in: missingSnapshotIds } }).lean()
+    ? await readCaseObservations(missingSnapshotIds)
     : [];
   const creatingById = new Map(creatingDocs.map((doc) => [String(doc._id), doc]));
 

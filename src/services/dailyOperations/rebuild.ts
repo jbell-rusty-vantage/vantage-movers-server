@@ -64,6 +64,7 @@ export type AggregateOpenDayInput = {
   day: string;
   floridaTimestampRange: InstantBounds;
   instantRange: InstantBounds;
+  existing?: DailyOperationsDayDocument | null;
 };
 
 export type DailyOperationsRebuildDeps = {
@@ -92,7 +93,7 @@ export async function rebuildOpenDailyOperationsDay(
     const existing = await loadDay(day);
     if (existing?.status === "closed") throw new DailyOperationsRebuildError("Closed days are not rebuilt", 409, "DAY_CLOSED");
     const counters = await (deps.aggregateOpenDay ?? defaultAggregateOpenDay)({
-      day, floridaTimestampRange: floridaTimestampBounds(day), instantRange: easternInstantBounds(day),
+      day, floridaTimestampRange: floridaTimestampBounds(day), instantRange: easternInstantBounds(day), existing,
     });
     try {
       const revision = await (deps.replaceCounters ?? defaultReplaceCounters)({
@@ -121,14 +122,14 @@ export async function defaultReplaceCounters(input: {
   const revision = input.previousRevision + 1;
   const Day = getDailyOperationsDayModel();
   if (!input.expectedExists) {
-    try { await Day.create({ ...buildDaySeed(input.day), ...input.counters, revision }); return revision; }
+    try { await Day.create({ ...buildDaySeed(input.day), ...input.counters, webhook_counts_version: 1, revision }); return revision; }
     catch (error) {
       if (!(error && typeof error === "object" && "code" in error && error.code === 11000)) throw error;
     }
   } else {
     const updated = await Day.updateOne(
       { day: input.day, status: "open", revision: input.previousRevision },
-      { $set: { ...input.counters, revision } },
+      { $set: { ...input.counters, webhook_counts_version: 1, revision } },
     );
     if (updated.matchedCount === 1) return revision;
   }
@@ -274,32 +275,11 @@ async function defaultAggregateOpenDay(
     .exec();
   applyLeadRows(input.day, seed, hourly, { form: formLeads as RebuildLeadRow[], call: callLeads as RebuildLeadRow[] });
 
-  const receipts = await getGranotObservationReceiptModel()
-    .find({
-      observation_channel: "granot_webhook",
-      captured_at: {
-        $gte: input.instantRange.start,
-        $lt: input.instantRange.end,
-      },
-    })
-    .select("captured_at route_event_class payload")
-    .lean()
-    .exec();
-  for (const receipt of receipts) {
-    const routeClass = receipt.route_event_class as GranotRouteEventClass | undefined;
-    if (!routeClass) continue;
-    const hour = easternHour(receipt.captured_at);
-    if (routeClass === "lead_created") seed.webhooks.lead_created += 1;
-    else if (routeClass === "priority_updated") seed.webhooks.priority_updated += 1;
-    else if (routeClass === "booking_status_changed") {
-      seed.webhooks.booking_status_changed += 1;
-      const action = classifyGranotBookingActionFromPayload(receipt.payload);
-      if (action === "booked") seed.webhooks.booked += 1;
-      if (action === "release") seed.webhooks.release += 1;
-    } else {
-      continue;
-    }
-    hourly[hour]!.webhooks += 1;
+  if (input.existing?.webhook_counts_version === 1) {
+    seed.webhooks = { ...input.existing.webhooks };
+    for (const bucket of input.existing.hourly) hourly[bucket.hour]!.webhooks = bucket.webhooks;
+  } else {
+    await backfillWebhookDay(input.day, input.instantRange, seed, hourly);
   }
 
   // Unused decision counters are retired; canonical decision/audit evidence is unchanged.
@@ -376,6 +356,44 @@ async function defaultAggregateOpenDay(
     exceptions: seed.exceptions,
     hourly,
   };
+}
+
+/** First rebuild after upgrading an open day. Day-revision CAS prevents concurrent double counting. */
+export async function backfillWebhookDay(day: string, instantRange: InstantBounds, seed: DailyOperationsDaySeed, hourly: DailyOperationsDaySeed["hourly"]) {
+  const receipts = await getGranotObservationReceiptModel()
+    .find({
+      observation_channel: "granot_webhook",
+      route_event_class: { $in: ["lead_created", "priority_updated", "booking_status_changed"] },
+      captured_at: {
+        $gte: instantRange.start,
+        $lt: instantRange.end,
+      },
+    })
+    .select("captured_at route_event_class payload")
+    .lean()
+    .exec();
+  for (const receipt of receipts) {
+    const routeClass = receipt.route_event_class as GranotRouteEventClass | undefined;
+    if (!routeClass) continue;
+    const hour = easternHour(receipt.captured_at);
+    if (routeClass === "lead_created") seed.webhooks.lead_created += 1;
+    else if (routeClass === "priority_updated") seed.webhooks.priority_updated += 1;
+    else if (routeClass === "booking_status_changed") {
+      seed.webhooks.booking_status_changed += 1;
+      const action = classifyGranotBookingActionFromPayload(receipt.payload);
+      if (action === "booked") seed.webhooks.booked += 1;
+      if (action === "release") seed.webhooks.release += 1;
+    } else {
+      continue;
+    }
+    hourly[hour]!.webhooks += 1;
+  }
+  const adjustments = await getDailyOperationsEventModel().find({ day, kind: { $in: ["intake.opened", "intake.refreshed"] },
+    metric_touches: { $in: ["webhooks.booked", "webhooks.release"] } }).select("metric_touches").lean();
+  for (const event of adjustments) {
+    if (event.metric_touches.includes("webhooks.booked")) seed.webhooks.booked++;
+    if (event.metric_touches.includes("webhooks.release")) seed.webhooks.release++;
+  }
 }
 
 function applyLeadCounters(

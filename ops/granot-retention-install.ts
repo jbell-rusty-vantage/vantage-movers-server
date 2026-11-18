@@ -3,6 +3,9 @@ import { MongoClient, type Db } from "mongodb";
 import { policies } from "../src/services/granotHistory/futureRetention";
 
 export async function installRetention(db: Db, now = new Date()) {
+  await db.collection("granot_automation_runs").createIndex(
+    { archive_review_at: 1 }, { sparse: true, name: "granot_scheduled_archive_due" },
+  );
   for (const name of [
     "granot_webhook_receipts",
     "granot_observations",

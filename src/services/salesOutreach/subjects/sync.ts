@@ -60,6 +60,8 @@ export type SubjectSyncOutcome = Readonly<{
   period_reason: string | null;
   /** `outreach_contact_change` jobs this sync nominated (olr C4 re-derive wake; 0 when none). */
   contact_wakes: number;
+  /** Revision evaluation persisted in the caller transaction; false for no-op/bookkeeping sync. */
+  evaluation_requested: boolean;
 }>;
 
 /** olr C4 engineering bounds: how far back one subject change re-derives. */
@@ -222,7 +224,7 @@ export async function syncSubject(
   } else {
     const update = changedFields(subject, built, status, review_reasons);
     if (!Object.keys(update).length && plan.action === "none")
-      return { outcome: "unchanged", subject_id: subject.id, subject_revision: subject.revision, status, period: "none", period_reason: plan.reason, contact_wakes: 0 };
+      return { outcome: "unchanged", subject_id: subject.id, subject_revision: subject.revision, status, period: "none", period_reason: plan.reason, contact_wakes: 0, evaluation_requested: false };
     if (!(await store.updateSubject(subject.id, subject.revision, update, session))) throw new CsiError("REVISION_CONFLICT");
     subjectId = subject.id;
     revision = subject.revision + 1;
@@ -252,6 +254,7 @@ export async function syncSubject(
     period: plan.action,
     period_reason: plan.action === "none" ? plan.reason : null,
     contact_wakes: contactWakes,
+    evaluation_requested: !bookkeepingOnly,
   };
 }
 

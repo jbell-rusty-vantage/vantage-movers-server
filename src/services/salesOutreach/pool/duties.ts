@@ -18,7 +18,7 @@ const oid = (id: string) => new mongoose.Types.ObjectId(id);
  * the unique Lead/date/kind index serializes first materialization. Driver transaction retries then
  * see all committed events. Recount selects earliest event time + canonical event id, not arrival order.
  */
-export async function recomputePoolDuty(subjectId: string, date: string, configuration: ActiveConfiguration, now: Date, session: ClientSession) {
+export async function recomputePoolDuty(subjectId: string, date: string, configuration: ActiveConfiguration, now: Date, session: ClientSession, readOnly = false) {
   const Work = getSalesOutreachPoolWorkModel();
   const work = await Work.findOne({ subject_id: oid(subjectId) }).session(session).lean();
   if (!work) return null;
@@ -37,8 +37,10 @@ export async function recomputePoolDuty(subjectId: string, date: string, configu
   const closure = closedPeriods.find((p) => p.workflow === "closed")?.started_at ?? (!eligible ? lead?.last_changed_at ?? now : null);
   if (closure && +closure <= window.start && !previous) return null;
   if (!window.required && !window.waived && !previous) return null;
+  if (!readOnly) {
   const lock = await Work.updateOne({ _id: work._id, revision: work.revision }, { $inc: { revision: 1 } }, { session });
   if (lock.matchedCount !== 1) throw new OutreachError("REVISION_CONFLICT");
+  }
   const bounds = newYorkDayBounds(date);
   const rows = await getSalesOutreachContactEventModel().find({ subject_id: oid(subjectId), channel: "call", event_at: { $gte: bounds.start, $lt: bounds.end } }).session(session).lean();
   const events: PoolEvent[] = [];
@@ -56,7 +58,7 @@ export async function recomputePoolDuty(subjectId: string, date: string, configu
     const uncertain = snapshotCurrent ? snapshot.reason === "membership_changed_after_contact" : Boolean(agent?.updatedAt && +agent.updatedAt > +e.event_at);
     const eligible = snapshotCurrent ? snapshot.eligible : !uncertain && (await findDeskRepsAt(e.event_at, session, [caller])).length === 1;
     if (uncertain) pending_evidence = true;
-    if (!snapshotCurrent) await getSalesOutreachContactEventModel().updateOne({ _id: e._id, revision: e.revision },
+    if (!readOnly && !snapshotCurrent) await getSalesOutreachContactEventModel().updateOne({ _id: e._id, revision: e.revision },
       { $set: { pool_caller_eligibility: { agent_id: e.actor_agent_id, event_at: e.event_at, eligible, checked_at: now, reason: uncertain ? "membership_changed_after_contact" : eligible ? null : "caller_not_desk_eligible" } } }, { session });
     if (!eligible) continue;
     events.push({ id: String(e._id), event_at: e.event_at, channel: e.channel, kind: e.kind,
@@ -65,14 +67,14 @@ export async function recomputePoolDuty(subjectId: string, date: string, configu
   const winner = poolWinner(events.filter((event) => window.restriction_start === null || +event.event_at < window.restriction_start), date, value);
   const fields = { state: winner ? "completed" as const : window.waived ? "waived" as const : "open" as const, completion_event_id: winner ? oid(winner.id) : null,
     completed_at: winner?.event_at ?? null, completed_by_agent_id: winner?.actor_agent_id ? oid(winner.actor_agent_id) : null, pending_evidence: !winner && pending_evidence };
-  if (!previous) {
+  if (!readOnly && !previous) {
     const day = poolDay(date, value);
     await Duties.create([{ ...key, subject_id: oid(subjectId), due_at: new Date(window.due), policy_version: work.policy_version,
       calendar_snapshot: { open_minute: day.open, close_minute: day.close, closed_date: day.closed }, ...fields, revision: 1 }], { session });
     await poolInvalidation(session, now);
-  } else if (String(previous.completion_event_id ?? "") !== String(fields.completion_event_id ?? "") || previous.state !== fields.state
+  } else if (!readOnly && previous && (String(previous.completion_event_id ?? "") !== String(fields.completion_event_id ?? "") || previous.state !== fields.state
     || String(previous.completed_by_agent_id ?? "") !== String(fields.completed_by_agent_id ?? "")
-    || +(previous.completed_at ?? 0) !== +(fields.completed_at ?? 0) || +previous.due_at !== window.due || previous.pending_evidence !== fields.pending_evidence) {
+    || +(previous.completed_at ?? 0) !== +(fields.completed_at ?? 0) || +previous.due_at !== window.due || previous.pending_evidence !== fields.pending_evidence)) {
     const result = await Duties.updateOne({ _id: previous._id, revision: previous.revision }, { $set: { ...fields, due_at: new Date(window.due) }, $inc: { revision: 1 },
       $push: { corrections: { changed_at: now, event_id: previous.completion_event_id, caller_id: previous.completed_by_agent_id, event_at: previous.completed_at } } }, { session });
     if (result.matchedCount !== 1) throw new OutreachError("REVISION_CONFLICT");

@@ -67,9 +67,6 @@ Admin has its own variables. Three names must match across the two processes: `V
 | `EXTENSION_REFRESH_TOKEN_SECRET` | none | for extension auth | yes | Signs extension refresh tokens. |
 | `EXTENSION_ACCESS_TOKEN_TTL_SECONDS` | `900` | no | no | Access-token lifetime. |
 | `EXTENSION_REFRESH_TOKEN_TTL_DAYS` | `90` | no | no | Refresh-token lifetime. |
-| `REPORTING_CONFIRMATION_SECRET` | falls back to `API_SECRET`, then `VANTAGE_API_SECRET` | no | yes | `reporting.service.ts`: signs run confirmations. |
-| `REPORTING_EVIDENCE_SECRET` | falls back to the confirmation secret chain | no | yes | Signs reporting evidence. |
-| `API_SECRET` | none | no | yes | Legacy fallback read only after the two reporting secrets. |
 | `CRM_API_ID` | none | to submit Form Leads | yes | `crm/crmConfig.ts`: Granot lead-gateway credential. |
 | `CRM_MOVER_REF` | none | to submit Form Leads | yes | Granot mover-ref credential. |
 | `GRANOT_WEBHOOK_SECRET` | none | webhooks reject if unset | yes | `granotWebhook.ts`: shared secret for inbound Granot webhooks. |
@@ -165,7 +162,7 @@ Other Sales Intelligence settings:
 | `SALES_INTELLIGENCE_NUDGE_PER_REP_PER_HOUR` | `6` (1–100) | no | Hourly cap per directory User. `SALES_INTELLIGENCE_NUDGE_HOURLY_LIMIT` is the alias read only when this is unset. |
 | `SALES_INTELLIGENCE_NUDGE_SENDER_EXTENSION_ID` / `_EXTENSION_NUMBER` / `_PERSON_ID` / `_DID` | empty | no | Sender identity for Accounts messages. |
 
-## Google, Sheets, Reporting and ingestion
+## Google, Sheets and ingestion
 
 Sheet container ids are required through `getRequiredEnv` (`runtime.ts`, names in `sheets.ts`); in `TEST_MODE` the same names are read with a `TEST_` prefix. Not secrets: `MASTER_LEADS_SHEET_ID`, `MASTER_BOOKED_SHEET_ID`, `TBM_LEADS_SHEET_ID`, `TBM_PRIME_LEADS_SHEET_ID`, `TOP10_LEADS_SHEET_ID`, `BEST_RELOCATION_LEADS_SHEET_ID`, `GETMOVERS_LEADS_SHEET_ID`, `MAINSITE_LEADS_SHEET_ID`. `TARIFF_SHEET_ID` (`tariff.ts`) is the tariff adjustment workbook.
 
@@ -177,24 +174,14 @@ The Systems tab ([systems-capacity.md](services/systems-capacity.md), 2026-10-07
 | `GOOGLE_SERVICE_ACCOUNT_JSON` / `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | none | yes | `googleAuth.ts`: service-account credential; one is required to call Sheets. |
 | `GOOGLE_SERVICE_ACCOUNT_TEST_JSON` / `GOOGLE_SERVICE_ACCOUNT_TEST_JSON_BASE64` | none | yes | Test-mode credential. |
 | `SERVICE_ACCOUNT_LOCAL_FILE` / `SERVICE_ACCOUNT_LOCAL_FILE_JSON` | none | yes | Local credential fallback (`googleAuth/serviceAccount.ts`, Best Relocation ingest). |
-| `GOOGLE_APPLICATION_CREDENTIALS` | none | yes | File path; the reporting live harness refuses to run when set. |
 | `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT` | none | no | Project id fallback. |
-| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_TOKEN_ENCRYPTION_KEY`, `GOOGLE_OAUTH_OWNER_EMAIL`, `GOOGLE_OAUTH_TRUSTED_ADMIN_ORIGIN` | none | secret and key are | `googleDriveOAuth.ts`: required for Drive OAuth. The key is 32 random bytes, canonical base64. |
-| `GOOGLE_OAUTH_OWNER_EMAILS` | none | no | Extra Owner emails. |
-| `GOOGLE_OAUTH_REDIRECT_URI` | production callback | no | OAuth callback. |
-| `GOOGLE_OAUTH_COMPLETION_REDIRECT_URL` | none | no | Browser return after consent. |
-| `GOOGLE_DRIVE_EXPORT_FOLDER_ID` | none | no | Export folder. |
-| `GOOGLE_PICKER_API_KEY` / `GOOGLE_PICKER_APP_ID` | none | key is | `googlePicker.ts`: required together for the picker. |
 | `SHEET_SYNC_MODE` | `legacy` | no | `sheetSync.ts`: `queued`, `legacy` or `disabled`. |
 | `SHEET_SYNC_QUEUE_TOPIC` / `SHEET_SYNC_CONSUMER_GROUP` | `sheet-sync-events` in Vercel production, else `-dev` / `sheet-sync-drainer` | no | Queue wiring. |
 | `SHEET_SYNC_READS_PER_MINUTE_BUDGET` / `_WRITES_` / `_PROJECT_READS_` / `_PROJECT_WRITES_` | `45` / `45` / `250` / `250` | no | Google quota budgets. |
 | `SHEET_SYNC_MAX_PAYLOAD_BYTES`, `_MAX_JOBS_PER_DRAIN`, `_MAX_COALESCED_ENTITIES_PER_DRAIN`, `_MAX_ROWS_PER_BATCH`, `_MAX_WRITE_SUBREQUESTS_PER_CALL`, `_MAX_RUN_DURATION_MS`, `_LEASE_DURATION_MS`, `_DEBOUNCE_WINDOW_MS`, `_MAX_ATTEMPTS` | `1500000`, `500`, `500`, `500`, `100`, `60000`, `120000`, `3000`, `8` | no | Drainer bounds. |
-| `REPORTING_GOOGLE_DELIVERY_ENABLED` | off | no | `reporting.ts`: external Google writes for Reporting. |
-| `REPORTING_ENABLED_DATASETS` | every dataset | no | Dataset allowlist. |
 | `BEST_RELOCATION_INGEST_ENABLED` | retired | no | Ignored by runtime. Recurring ingestion is permanently fenced; remove deployment values after retirement release. |
 | `BEST_RELOCATION_SYNC_SHEET_ID`, `BACKFILL_BEST_RELOCATION_SHEET_ID`, `BACKFILL_BOOKED_SHEET_ID`, `BOOKED_DEALS_FORM_RESPONSES_SYNC_SHEET_ID` | none | no | Archived final-reconciliation / read-only operator inputs only; recurring runtime no longer requires these. Preserve restricted final snapshot IDs before removing obsolete deployment values. |
 
-Reporting live-test harness (`reportingLiveTest.ts`; not used by normal traffic): `REPORTING_LIVE_TEST_ENABLED`, `REPORTING_LIVE_TEST_EXPORT_ROOT_FOLDER_ID`, `REPORTING_LIVE_TEST_DENYLIST_WORKBOOK_ID`, `REPORTING_LIVE_TEST_RUN_TAG_PREFIX`, `REPORTING_LIVE_TEST_ARTIFACT_MAX_AGE_MS`, `REPORTING_LIVE_TEST_INJECT_TRANSIENT_FAILURES`, `REPORTING_PRODUCTION_GOOGLE_OAUTH_CLIENT_ID`, `REPORTING_PRODUCTION_GOOGLE_OAUTH_OWNER_EMAIL`, `GITHUB_SHA`, `GITHUB_RUN_ID`.
 
 ## Email and SMS
 
@@ -232,7 +219,6 @@ Twilio (`leadMessaging.ts`). The account SID, primary auth token, from number an
 | `VERCEL_DEPLOYMENT_ID`, `VERCEL_GIT_COMMIT_SHA` | injected | no | `deploymentStamp.ts`: deployed commit record (Vercel production only). |
 | `DEPLOYMENT_COMMIT_SHA` | none | no | Same stamp for CLI deploys (`vercel deploy --prod -e DEPLOYMENT_COMMIT_SHA=...`). |
 | `GRANOT_LIFECYCLE_QUEUE_TOPIC` | `granot-lifecycle-events` in Vercel production, else `-dev` | no | Lifecycle queue topic. |
-| `GRANOT_AUTOMATION_APPLY_ENABLED` | off | no | HTTP collector apply step. |
 
 Granot lifecycle flags (`granotLifecycle.ts`), each `true` or `false` if set: `GRANOT_LIFECYCLE_PROCESSING_ENABLED` (default `true`), `GRANOT_LIFECYCLE_SHADOW_MODE` (`true`), and the eight effect flags `GRANOT_LIFECYCLE_{LEAD_WRITES,LEAD_CREATION,BOOKING_CASES,BOOKING_COMMANDS,RELEASE_CASES,RELEASE_COMMANDS,REFERRAL_BOOKING,EMAIL}_ENABLED` (default `false`). Granot Health state (`granot_lifecycle_health_state`) has no environment settings; its windows and thresholds are code constants.
 

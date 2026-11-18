@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import mongoose from "mongoose";
+import { captureGranotLifecycleWebhookReceipt } from "../granotLifecycle/capture";
+import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
+import { getGranotObservationModel } from "../../models/GranotObservation";
+import { upsertGranotObservation } from "../granotLifecycle/normalization";
+import { readInvalidPriorityTimes, readLatestCapture, readPairingObservations, observationReadFacts, caseObservations } from "../granotLifecycle/observationReadFacts";
+import { backfillObservationReadFacts, qualifyOpenWebhookDay } from "../../../ops/granot-read-facts-backfill";
+import { rebuildOpenDailyOperationsDay } from "./rebuild";
 import { isLoopbackMongoUri } from "../../../ops/lib/loopback-mongo";
 import { getMongoDatabaseName, isTestMode } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
@@ -147,4 +154,64 @@ test("replica: concurrent closes each advance the day revision only once", optio
   const results = await Promise.all(Array.from({ length: 4 }, () => closeDailyOperationsDay({ now: () => new Date("2026-10-24T16:00:00Z") })));
   assert.equal(results.reduce((n, row) => n + row.closed_days.length, 0), 1);
   assert.equal((await getDailyOperationsDayModel().findOne({ day }).lean())?.revision, 4);
+});
+
+
+test("replica: accepted true webhooks count once per delivery and survive raw removal and rebuild", options, async () => {
+  const capture = (token: string) => captureGranotLifecycleWebhookReceipt({
+    route_event_class: "booking_status_changed", authentication_method: "header_secret", captured_at: now,
+    headers: {}, payload: { event_type: token, job_no: "SYNTHETIC" },
+  });
+  const receipts = await Promise.all([capture("Booked"), capture("Booked"), capture("Release"), capture("unknown")]);
+  const ids = receipts.map(row => new mongoose.Types.ObjectId(row.receipt_id));
+  const model = getGranotObservationReceiptModel();
+  assert.equal(await model.countDocuments({ _id: { $in: ids }, webhook_day_counted: true }), 4);
+  assert.equal(await getDailyOperationsEventModel().countDocuments({}), 0);
+  await model.collection.deleteMany({ _id: { $in: ids } });
+  await rebuildOpenDailyOperationsDay({ now: () => now });
+  const row = await getDailyOperationsDayModel().findOne({ day }).lean();
+  assert.equal(row?.webhook_counts_version, 1);
+  assert.deepEqual([row?.webhooks.booking_status_changed, row?.webhooks.booked, row?.webhooks.release, row?.hourly[12]?.webhooks], [4, 2, 1, 4]);
+});
+
+test("replica: historical pairing, freshness and invalid priority survive cold raw observations and replay", options, async () => {
+  const job = "567632", invalidAt = new Date(+now + 1000);
+  const input = async (time: Date, priority: string) => {
+    const receipt = await captureGranotLifecycleWebhookReceipt({ captured_at: time, route_event_class: "priority_updated",
+      authentication_method: "header_secret", headers: {}, payload: { job_no: job, priority, event_type: "priority_updated" } });
+    return (await upsertGranotObservation({ receipt_id: receipt.receipt_id })).observation;
+  };
+  const five = await input(now, "5"), invalid = await input(invalidAt, "invalid");
+  assert.equal(five.identity.normalized_job_no, job);
+  assert.equal(five.priority.canonical, "5");
+  assert.equal(invalid.priority.valid, false);
+  assert.equal((await readLatestCapture())?.getTime(), +invalidAt);
+  assert.equal((await readInvalidPriorityTimes([job], null)).get(job)?.getTime(), +invalidAt);
+  await observationReadFacts().deleteMany({});
+  await caseObservations().deleteMany({});
+  await backfillObservationReadFacts();
+  await getGranotObservationModel().collection.deleteMany({ _id: { $in: [five._id, invalid._id] } });
+  await backfillObservationReadFacts();
+  assert.deepEqual((await readPairingObservations([job])).map(row => String(row._id)), [String(five._id)]);
+  assert.equal((await readInvalidPriorityTimes([job], null)).get(job)?.getTime(), +invalidAt);
+  assert.equal((await readLatestCapture())?.getTime(), +invalidAt);
+});
+
+test("replica: qualifying the legacy open day only changes webhook counters, and is idempotent", options, async () => {
+  const Day = getDailyOperationsDayModel(), seed = buildDaySeed(day);
+  await Day.create({ ...seed, leads: { ...seed.leads, total: 177 }, revision: 5 });
+  const capture = await captureGranotLifecycleWebhookReceipt({
+    route_event_class: "lead_created", authentication_method: "header_secret", captured_at: now, headers: {}, payload: {},
+  });
+  await Day.collection.updateOne({ day }, { $set: { "webhooks.lead_created": 900, "hourly.12.webhooks": 900 } });
+  await qualifyOpenWebhookDay(now);
+  const first = await Day.findOne({ day }).lean();
+  await qualifyOpenWebhookDay(now);
+  const second = await Day.findOne({ day }).lean();
+  assert.equal(first?.leads.total, 177);
+  assert.equal(first?.webhooks.lead_created, 1);
+  assert.equal(first?.webhook_counts_version, 1);
+  assert.equal(first?.revision, second?.revision);
+  assert.ok(first && first.hourly[12]!.webhooks < 900);
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: new mongoose.Types.ObjectId(capture.receipt_id) });
 });

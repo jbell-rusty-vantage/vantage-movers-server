@@ -4,20 +4,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { readGranotCredentials as readCredentials } from "./credentials";
 import { send } from "@vercel/queue";
 import { Types } from "mongoose";
-import { connectMongo, withTransaction } from "../../db";
+import { connectMongo } from "../../db";
 import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
 import { GranotEstimatesOpenDate } from "../../models/GranotEstimatesOpenDate";
 import { GranotEstimatesScheduleSlot } from '../../models/GranotEstimatesScheduleSlot';
 import { salesOutreachConfigurationLoader, type ConfigurationLoader } from '../salesOutreach/config/load';
 import { poolEnabled } from '../salesOutreach/pool/policy';
-import { BookedLead } from "../../models/BookedLead";
-import { getCallLeadModel } from "../../models/CallLead";
 import { SheetSyncLease } from "../../models/SheetSyncLease";
-import {
-  findAgentByGranotCrmUsername,
-  normalizeGranotCrmUsername,
-} from "../agents/receiverAgentCrmUsername";
 import {
   MongoLeaseStore,
   activeTokenFilter,
@@ -26,27 +20,16 @@ import {
   type DurableActor,
   type LeaseToken,
 } from "../durableWork";
-import { previewCallLeadEnrichment } from "../enrichment";
-import { previewBookedCallLeadReconciliation } from "../reconciliation";
 import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../domainCommands/types";
 import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
 import { applyOpenAutomationPlanAction, type applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import {
-  buildGranotOperationPayloads,
-  collectGranotReport,
   getGranotDateWindowProblem,
   GranotCollectorError,
-  type GranotCollectionRequest,
   type GranotSourceCollection,
 } from "./index";
-import {
-  collectEstimatesInProcess,
-  estimatesRegistryLookup,
-  partitionEstimatesSources,
-  type EstimatesLabelLookup,
-  type EstimatesPartition,
-} from "./estimatesInProcess";
+import { collectEstimatesInProcess } from "./estimatesInProcess";
 import type { EstimatesCollectionCoverage } from "./estimatesCollection";
 import { refreshExistingEstimatesOutreach } from "./estimatesOutreachRefresh";
 
@@ -56,178 +39,89 @@ import { GranotRunConflict } from "./errors";
 import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot, estimatesSlotInstant, estimatesCoverageIsLate, ESTIMATES_COLLECTION_GRACE_MS } from "./estimatesCron";
 import { poolLatestSlot, POOL_DISCOVERY_FLOOR, type EstimatesLane } from './poolCron';
 import {
-  planGranotFormWorkflow,
-  type GranotFormPlan,
-} from "./formWorkflow";
-import {
   assertSealedAutomationPlan,
   automationRunCompletionStatus,
   isPendingAutomationActionOutcome,
   isTerminalAutomationActionOutcome,
-  sealAutomationPlan,
-  type GranotAutomationLifecycleApply,
 } from "./lifecycleStatement";
 
 export { GranotRunConflict } from "./errors";
-import {
-  GranotAutomationSourceValidationError,
-  resolveGranotAutomationSources,
-  type GranotAutomationSourceItem,
-  type GranotSourceOperation,
-} from "./sourceCatalog";
-
 export const GRANOT_AUTOMATION_TOPIC = "granot-automation-events";
 const LEASE_SCOPE = "granot:automation:account";
-// The collector permits 50 sequential sources, one complete session retry,
-// and 20 seconds per request. This covers the worst supported planning run;
-// Every existing action/request gate validates stored ownership; renew within 22.5 minutes of expiry.
+// Collection and apply share the account lease. Renew halfway through its lifetime.
 const LEASE_TTL_MS = 45 * 60_000;
 const PLAN_TTL_MS = 24 * 60 * 60_000;
 
-export type GranotLeadOperation = "form_leads" | "call_leads";
-export type GranotOperation = GranotLeadOperation | "estimates_in_process";
-export type GranotWorkflow = "preview" | "apply";
 type EstimatesRunSelection = { estimatesSelection?: 'all' | 'pool'; estimatesLane?: EstimatesLane };
-export type GranotRunRequest = Omit<GranotCollectionRequest, "credentials"> & {
-  operation: GranotOperation;
-  workflow: GranotWorkflow;
+type GranotRunRequest = {
+  operation: "estimates_in_process";
+  workflow: "apply";
+  dateWindow: { from: string; to: string };
+  sourceLabels: string[];
   initiator: DurableActor;
-  sourceIds?: string[];
-  /**
-   * Estimates cron creates this flag; reviewed Owner promotion also stores it.
-   * Cron plans and approves every approvable action as the system
-   * actor, and applies in the same lease. Owner approval stays on every other run.
-   */
-  autoApply?: boolean;
-  /** Cron retry identity, scoped to an Estimates date and New York hour. */
-  scheduledSlotKey?: string;
+  autoApply: boolean;
+  scheduledSlotKey: string;
   scheduledCoverage?: { slotKey: string; dateWindow: { from: string; to: string }; totalWindows: number; lane?: EstimatesLane };
   afterAllCoverage?: { slotKey: string; totalWindows: number };
 } & EstimatesRunSelection;
-export type GranotRunGroupRequest = {
-  operations: GranotLeadOperation[];
-  workflow: GranotWorkflow;
-  dateWindow: GranotCollectionRequest["dateWindow"];
-  sourceIds: string[];
-  filters?: GranotCollectionRequest["filters"];
-  initiator: DurableActor;
-};
-type QueuedGranotRun = ReturnType<typeof buildQueuedRun>;
-type InsertedGranotRun = QueuedGranotRun & { _id: unknown };
-export type GranotRunGroupRuntime = {
-  resolveSources: (input: {
-    sourceIds: string[];
-    operations: GranotSourceOperation[];
-  }) => Promise<Map<GranotSourceOperation, GranotAutomationSourceItem[]>>;
-  insertRuns: (documents: QueuedGranotRun[]) => Promise<InsertedGranotRun[]>;
-  publishWakeup: (runId: string) => Promise<boolean>;
-};
+export type EstimatesPlan = Awaited<ReturnType<typeof planEstimatesIdentities>>;
+type GranotPlan = EstimatesPlan;
 
-type CallPlanAction = {
-  action_id: string;
-  operation: "enrichment" | "booked_reconciliation";
-  row: Record<string, unknown>;
-  preview: Record<string, unknown>;
-  syncable: boolean;
-  target_binding: CallTargetBinding;
-  lifecycle_apply?: GranotAutomationLifecycleApply;
-  collection_captured_at?: string;
-};
+const scheduledRunFilter = {
+  operation: "estimates_in_process",
+  workflow: "apply",
+  "initiator.actor_id": GRANOT_ESTIMATES_CRON_ACTOR_ID,
+  "initiator.actor_type": "system",
+  "request_snapshot.auto_apply": true,
+  "request_snapshot.scheduled_slot_key": { $type: "string" },
+} as const;
 
-type CallTargetBinding = {
-  call_lead_id: string | null;
-  call_lead_updated_at: string | null;
-  booking_id: string | null;
-  booking_updated_at: string | null;
-  receiver_username: string | null;
-  expected_receiver_agent: string | null;
-  target_receiver_agent: string | null;
-};
-
-type CallPlan = {
-  kind: "call_leads";
-  schema_version: 1 | 2;
-  actions: CallPlanAction[];
-  counters: Record<string, number>;
-};
-
-export type EstimatesPlan = {
-  kind: "estimates_in_process";
-  schema_version: 2;
-  actions: Array<GranotFormPlan["actions"][number] | CallPlanAction>;
-  counters: Record<string, number>;
-};
-
-type GranotPlan = GranotFormPlan | CallPlan | EstimatesPlan;
-
-
-export async function createGranotRun(
-  request: GranotRunRequest,
-): Promise<{ run_id: string; status: "queued"; queue_published: boolean }> {
-  await connectMongo();
+export async function createGranotRun(request: GranotRunRequest) {
   validateEstimatesRunSelection(request);
-  let sourceLabels = request.sourceLabels;
-  let sourceIds = request.sourceIds ?? [];
-  if (request.operation === "estimates_in_process") {
-    if ((request.sourceIds?.length ?? 0) > 0 || request.sourceLabels.length > 0) {
-      throw new GranotAutomationSourceValidationError(
-        "Estimates in Process does not take a source list.",
-        [{
-          path: ["source_ids"],
-          message: "omit source_ids and source_labels",
-        }],
-      );
-    }
-    sourceLabels = [];
-    sourceIds = [];
-  } else if (request.sourceIds) {
-    const partitions = await resolveGranotAutomationSources({
-      sourceIds: request.sourceIds,
-      operations: [request.operation],
-    });
-    const sources = partitions.get(request.operation) ?? [];
-    sourceLabels = sources.map((source) => source.label);
-    sourceIds = sources.map((source) => source.id);
+  if (!request.scheduledSlotKey || request.initiator.actor_type !== "system" ||
+      request.initiator.actor_id !== GRANOT_ESTIMATES_CRON_ACTOR_ID ||
+      request.operation !== "estimates_in_process" || request.workflow !== "apply" ||
+      !request.autoApply || request.sourceLabels.length) {
+    throw new GranotRunConflict("INVALID_SCHEDULED_RUN", "A scheduled Estimates run requires a system slot.");
   }
-  const document = buildQueuedRun({
-    operation: request.operation,
-    workflow: request.workflow,
-    dateWindow: request.dateWindow,
-    sourceIds,
-    sourceLabels,
-    filters: request.filters,
-    initiator: request.initiator,
-    autoApply: request.autoApply,
-    estimatesSelection: request.estimatesSelection,
-    estimatesLane: request.estimatesLane,
-  });
-  let run;
-  if (request.scheduledSlotKey) {
-    if (request.operation !== "estimates_in_process" || !request.autoApply) {
-      throw new GranotRunConflict("INVALID_SCHEDULED_RUN", "Only Estimates auto-apply may use a scheduled slot.");
-    }
-    const id = scheduledEstimatesRunId(request.scheduledSlotKey, request.estimatesSelection);
-    // _id is already unique in Mongo: no new production index is required.
-    // Both a retry and concurrent requests retain the first run and its plan.
-    try {
-      await GranotAutomationRun.updateOne(
-        { _id: id },
-        { $setOnInsert: { ...document, createdAt: new Date(), updatedAt: new Date(), run_group_id: request.scheduledCoverage?.slotKey ?? null, request_snapshot: { ...document.request_snapshot, scheduled_slot_key: request.scheduledSlotKey, scheduled_coverage: request.scheduledCoverage, ...(request.afterAllCoverage ? { after_all_coverage:request.afterAllCoverage, waiting_for_all:true } : {}) } } },
-        { upsert: true, timestamps: false },
-      ).exec();
-    } catch (error) {
-      if ((error as { code?: number }).code !== 11000) throw error;
-    }
-    run = { _id: id };
-  } else {
-    run = await GranotAutomationRun.create(document);
+
+  await connectMongo();
+  const id = scheduledEstimatesRunId(request.scheduledSlotKey, request.estimatesSelection);
+  const runId = String(id);
+  const db = GranotAutomationRun.db.db!;
+  if (await closedRuns(db).findOne({ _id: runId }, { projection: { _id: 1 } })) {
+    return { run_id: runId, status: "archived" as const, queue_published: false };
   }
-  const runId = String(run._id);
-  return {
-    run_id: runId,
-    status: "queued" as const,
-    queue_published: await publishGranotWakeup(runId, "create"),
-  };
+  const now = new Date();
+  const expiresAt = new Date(+now + PLAN_TTL_MS);
+  try {
+    await GranotAutomationRun.updateOne({ _id: id }, { $setOnInsert: {
+      schema_version: 2,
+      operation: request.operation,
+      workflow: request.workflow,
+      status: "queued",
+      initiator: request.initiator,
+      run_group_id: request.scheduledCoverage?.slotKey ?? null,
+      request_snapshot: {
+        dateWindow: request.dateWindow,
+        auto_apply: true,
+        estimatesSelection: request.estimatesSelection ?? "all",
+        estimatesLane: request.estimatesLane ?? (request.estimatesSelection === "pool" ? "pool_refresh" : "all"),
+        scheduled_slot_key: request.scheduledSlotKey,
+        scheduled_coverage: request.scheduledCoverage,
+        ...(request.afterAllCoverage ? { after_all_coverage: request.afterAllCoverage, waiting_for_all: true } : {}),
+      },
+      expires_at: expiresAt,
+      archive_review_at: expiresAt,
+      purge_at: null,
+      last_attempt_at: now,
+      createdAt: now,
+      updatedAt: now,
+    } }, { upsert: true, timestamps: false }).exec();
+  } catch (error) {
+    if ((error as { code?: number }).code !== 11000) throw error;
+  }
+  return { run_id: runId, status: "queued" as const, queue_published: await publishGranotWakeup(runId, "create") };
 }
 
 export function scheduledEstimatesRunId(slotKey: string, selection: 'all' | 'pool' = 'all'): Types.ObjectId {
@@ -235,7 +129,7 @@ export function scheduledEstimatesRunId(slotKey: string, selection: 'all' | 'poo
   return new Types.ObjectId(createHash("sha256").update(identity).digest("hex").slice(0, 24));
 }
 
-export function validateEstimatesRunSelection(request: Pick<GranotRunRequest,'operation'|'estimatesSelection'|'estimatesLane'>): void {
+export function validateEstimatesRunSelection(request: EstimatesRunSelection & { operation: string }): void {
   const selection = request.estimatesSelection ?? 'all';
   if (!['all','pool'].includes(selection) || (request.estimatesLane && !['all','pool_refresh','pool_discovery'].includes(request.estimatesLane)) ||
       (request.operation !== 'estimates_in_process' && (request.estimatesSelection || request.estimatesLane)) ||
@@ -305,230 +199,10 @@ export async function resumeEstimatesSchedules(loader:Pick<ConfigurationLoader,'
   }
 }
 
-export async function createGranotRunGroup(
-  request: GranotRunGroupRequest,
-  runtime: GranotRunGroupRuntime = defaultGranotRunGroupRuntime,
-): Promise<{
-  run_group_id: string;
-  runs: Array<{
-    run_id: string;
-    operation: GranotOperation;
-    source_labels: string[];
-    queue_published: boolean;
-  }>;
-}> {
-  if (
-    request.operations.length < 1 ||
-    request.operations.length > 2 ||
-    new Set(request.operations).size !== request.operations.length
-  ) {
-    throw new GranotAutomationSourceValidationError(
-      "Lead workflows must contain one or two unique operations.",
-      [{
-        path: ["operations"],
-        message: "Select one or two unique Lead workflows",
-      }],
-    );
-  }
-  const operations = [...new Set(request.operations)];
-  const partitions = await runtime.resolveSources({
-    sourceIds: request.sourceIds,
-    operations: operations as GranotSourceOperation[],
-  });
-  const runGroupId = randomUUID();
-  const documents = operations.map((operation) => {
-    const sources = partitions.get(operation) ?? [];
-    return buildQueuedRun({
-      operation,
-      workflow: request.workflow,
-      dateWindow: request.dateWindow,
-      sourceIds: sources.map((source) => source.id),
-      sourceLabels: sources.map((source) => source.label),
-      filters: request.filters,
-      initiator: request.initiator,
-      runGroupId,
-    });
-  });
-
-  // All compatibility validation happens above. The transaction is the
-  // durable boundary: either every child run is committed or none are.
-  const created = await runtime.insertRuns(documents);
-  const publications = await Promise.all(
-    created.map((run) => runtime.publishWakeup(String(run._id))),
-  );
-  return {
-    run_group_id: runGroupId,
-    runs: created.map((run, index) => ({
-      run_id: String(run._id),
-      operation: run.operation as GranotOperation,
-      source_labels:
-        (
-          run.request_snapshot as {
-            sourceLabels?: string[];
-          }
-        ).sourceLabels ?? [],
-      queue_published: publications[index] ?? false,
-    })),
-  };
-}
-
-const defaultGranotRunGroupRuntime: GranotRunGroupRuntime = {
-  resolveSources: resolveGranotAutomationSources,
-  insertRuns: (documents) =>
-    withTransaction(async (session) => {
-      const inserted = await GranotAutomationRun.insertMany(documents, {
-        ordered: true,
-        session,
-      });
-      return inserted as unknown as InsertedGranotRun[];
-    }),
-  publishWakeup: (runId) => publishGranotWakeup(runId, "create"),
-};
-
-function buildQueuedRun(input: {
-  operation: GranotOperation;
-  workflow: GranotWorkflow;
-  dateWindow: GranotCollectionRequest["dateWindow"];
-  sourceIds: string[];
-  sourceLabels: string[];
-  filters?: GranotCollectionRequest["filters"];
-  initiator: DurableActor;
-  runGroupId?: string;
-  autoApply?: boolean;
-} & EstimatesRunSelection) {
-  const now = new Date();
-  return {
-    operation: input.operation,
-    run_group_id: input.runGroupId ?? null,
-    workflow: input.workflow,
-    status: "queued" as const,
-    request_snapshot: {
-      dateWindow: input.dateWindow,
-      sourceIds: input.sourceIds,
-      sourceLabels: input.sourceLabels,
-      filters: input.filters ?? {},
-      ...(input.autoApply ? { auto_apply: true } : {}),
-      ...(input.operation === 'estimates_in_process' ? { estimatesSelection:input.estimatesSelection ?? 'all', estimatesLane:input.estimatesLane ?? (input.estimatesSelection === 'pool' ? 'pool_refresh' : 'all') } : {}),
-    },
-    initiator: input.initiator,
-    expires_at: new Date(now.getTime() + PLAN_TTL_MS),
-    purge_at: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
-    last_attempt_at: now,
-  };
-}
-
-type GranotApprovalInput = {
-  run_id: string;
-  plan_checksum: string;
-  selected_action_ids: string[];
-  approved_by: DurableActor;
-};
-
-export async function approveGranotRun(input: GranotApprovalInput): Promise<{ approved: boolean }> {
-  return approveSealedRun(input, false);
-}
-
-/** Owner selection from a completed, bounded preview; no recollect or direct Lead writer. */
-export async function applyReviewedEstimatesRun(input: GranotApprovalInput): Promise<{ approved: boolean }> {
-  return approveSealedRun(input, true);
-}
-
-async function approveSealedRun(input: GranotApprovalInput, reviewedEstimates: boolean): Promise<{ approved: boolean }> {
-  await connectMongo();
-  if (!reviewedEstimates && !granotApplyEnabled()) {
-    throw new GranotRunConflict("APPLY_DISABLED", "GRANOT_AUTOMATION_APPLY_ENABLED must be true before apply.");
-  }
-  const now = new Date();
-  const stateFilter = reviewedEstimates
-    ? { operation: "estimates_in_process", status: "completed", workflow: "preview" } as const
-    : { status: "awaiting_approval", workflow: "apply" } as const;
-  const run = await GranotAutomationRun.findOne({
-    _id: input.run_id,
-    ...stateFilter,
-    plan_checksum: input.plan_checksum.toLowerCase(),
-    expires_at: { $gt: now },
-  })
-    .lean()
-    .exec();
-  if (!run || !run.plan_snapshot) {
-    throw new GranotRunConflict(
-      "RUN_NOT_APPROVABLE",
-      "Run is expired, not awaiting approval, or checksum does not match.",
-    );
-  }
-  if (reviewedEstimates) {
-    assertReviewedEstimatesWindow((run.request_snapshot as { dateWindow?: unknown }).dateWindow, now);
-    if (run.approval || run.receipts.length > 0) {
-      throw new GranotRunConflict("RUN_NOT_APPROVABLE", "Reviewed preview already has apply state.");
-    }
-  }
-  const plan = run.plan_snapshot as unknown as GranotPlan;
-  assertSealedAutomationPlan(plan);
-  assertPlanChecksum(plan, input.plan_checksum);
-  assertUniqueActionIds(plan);
-  const validIds = new Set(
-    plan.actions
-      .filter(isApprovableAction)
-      .map((action) => action.action_id),
-  );
-  const selected = [...new Set(input.selected_action_ids)];
-  if (selected.length === 0 || selected.some((id) => !validIds.has(id))) {
-    throw new GranotRunConflict("UNKNOWN_ACTION", "One or more selected actions are not in the immutable plan.");
-  }
-  if (run.operation === "estimates_in_process") {
-    for (const action of plan.actions) if (selected.includes(action.action_id)) estimatesActionCaptureTime(action);
-  }
-  const approved = await GranotAutomationRun.updateOne(
-    {
-      _id: input.run_id,
-      ...stateFilter,
-      plan_checksum: input.plan_checksum.toLowerCase(),
-      expires_at: { $gt: now },
-    },
-    {
-      $set: {
-        status: "applying",
-        ...(reviewedEstimates ? { workflow: "apply", "request_snapshot.auto_apply": true, completed_at: null } : {}),
-        lease_owner: null,
-        leased_until: null,
-        lease_epoch: 0,
-        approval: {
-          approved_at: now,
-          approved_by: input.approved_by,
-          selected_action_ids: selected,
-          plan_checksum: input.plan_checksum.toLowerCase(),
-        },
-      },
-    },
-  ).exec();
-  if (approved.modifiedCount !== 1) {
-    throw new GranotRunConflict("APPROVAL_RACE", "Run approval state changed; reload and retry.");
-  }
-  await publishGranotWakeup(input.run_id, "approval");
-  return { approved: true };
-}
-
-/** At most 90 inclusive Open Dates, with no future dates, through the reviewed path. */
-export function assertReviewedEstimatesWindow(value: unknown, now: Date): void {
-  const window = value as { from?: unknown; to?: unknown } | null;
-  const parse = (input: unknown) => {
-    if (typeof input !== "string" || !/^\d{2}\/\d{2}\/\d{4}$/.test(input)) return NaN;
-    const [month, day, year] = input.split("/").map(Number);
-    const date = new Date(Date.UTC(year!, month! - 1, day!));
-    return date.getUTCFullYear() === year && date.getUTCMonth() === month! - 1 && date.getUTCDate() === day ? +date : NaN;
-  };
-  const from = parse(window?.from);
-  const to = parse(window?.to);
-  const today = parse(estimatesDateWindow(now).to);
-  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to > today || to - from > 89 * 86_400_000) {
-    throw new GranotRunConflict("INVALID_BACKFILL_WINDOW", "Reviewed Estimates apply requires 1–90 inclusive calendar dates ending no later than today in New York.");
-  }
-}
-
 export async function runGranotWorker(deps: {
   applyAction?: typeof applyAutomationPlanAction;
   loadReplayStates?: typeof loadAutomationReplayStates;
-  planRun?: typeof planRun;
+  planRun?: typeof planScheduledEstimatesRun;
   refreshOutreach?: typeof refreshExistingEstimatesOutreach;
 } = {}): Promise<{
   claimed: boolean;
@@ -549,13 +223,6 @@ export async function runGranotWorker(deps: {
   if (!lease) return { claimed: false, status: "lease_busy" };
   let runId: string | undefined;
   try {
-    await GranotAutomationRun.updateMany(
-      {
-        status: "awaiting_approval",
-        expires_at: { $lte: now },
-      },
-      { $set: { status: "expired", completed_at: now } },
-    ).exec();
     // One age-ordered queue: untouched collection/approved actions progress
     // alongside due retries. A waiting match cannot monopolize every wakeup.
     const run = await claimGranotRun(granotRecoverableFilter(now), lease, now);
@@ -565,7 +232,7 @@ export async function runGranotWorker(deps: {
       const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
     }
-    const plannedStatus = await (deps.planRun ?? planRun)(runId, lease);
+    const plannedStatus = await (deps.planRun ?? planScheduledEstimatesRun)(runId, lease);
     if (plannedStatus === "applying") {
       const status = await applyRun(runId, lease, deps);
       return { claimed: true, run_id: runId, status };
@@ -579,7 +246,7 @@ export async function runGranotWorker(deps: {
   }
 }
 
-async function planRun(runId: string, lease: LeaseToken): Promise<string> {
+export async function planScheduledEstimatesRun(runId: string, lease: LeaseToken): Promise<string> {
   const run = await GranotAutomationRun.findOneAndUpdate(
     fenced(runId, lease, ["queued", "planning"]),
     {
@@ -593,14 +260,10 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
     .lean()
     .exec();
   if (!run) throw new Error("Granot run lost its fenced lease before planning.");
-  const request = run.request_snapshot as unknown as Omit<
-    GranotCollectionRequest,
-    "credentials"
-  > & EstimatesRunSelection & { auto_apply?: boolean };
-  let sourceIndex = 0;
+  const request = run.request_snapshot as Pick<GranotRunRequest, "dateWindow" | "estimatesSelection" | "estimatesLane">;
   let plannedRows = 0;
   const checkpointDue = createPlanningCheckpointGate(Date.now());
-  const planningDeadline = run.operation === "estimates_in_process" ? Date.now() + 120_000 : Infinity;
+  const planningDeadline = Date.now() + 120_000;
   const beforeRow = async () => {
     if (Date.now() >= planningDeadline) throw new GranotRunConflict("PLANNING_BUDGET_EXCEEDED", "Granot planning exceeded 120 seconds; recollect using smaller date windows.");
     await renewRunLease(runId, lease, "planning");
@@ -611,22 +274,14 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
       { $set: { checkpoint: checkpoint("plan", plannedRows) } },
     ).exec();
   };
-  const planned = await planOperation(run.operation, request, runId, lease, beforeRow, planningDeadline);
+  const planned = await planOperation(request, runId, lease, beforeRow, planningDeadline);
   const plan = planned.plan;
   assertUniqueActionIds(plan);
   const checksum = planChecksum(plan);
-  const autoApply =
-    run.operation === "estimates_in_process" && request.auto_apply === true;
   const approvableIds = plan.actions
     .filter(isApprovableAction)
     .map((action) => action.action_id);
-  const finalStatus = autoApply
-    ? approvableIds.length > 0
-      ? "applying"
-      : "completed"
-    : run.workflow === "apply" && approvableIds.length > 0
-      ? "awaiting_approval"
-      : "completed";
+  const finalStatus = approvableIds.length ? "applying" : "completed";
   const approvedAt = new Date();
   const locked = await GranotAutomationRun.updateOne(
     {
@@ -644,7 +299,7 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
         counters: plan.counters,
         checkpoint: checkpoint("planned", plan.actions.length),
         ...(finalStatus === "completed" ? { completed_at: approvedAt } : {}),
-        ...(finalStatus === "applying" && autoApply
+        ...(finalStatus === "applying"
           ? {
               approval: {
                 approved_at: approvedAt,
@@ -664,151 +319,40 @@ async function planRun(runId: string, lease: LeaseToken): Promise<string> {
 }
 
 async function planOperation(
-  operation: string,
-  request: Omit<GranotCollectionRequest, "credentials"> & EstimatesRunSelection,
+  request: Pick<GranotRunRequest, "dateWindow" | "estimatesSelection" | "estimatesLane">,
   runId: string,
   lease: LeaseToken,
   beforeRow: () => Promise<void>,
   planningDeadline: number,
-): Promise<{ plan: GranotPlan; collection_summary: ReturnType<typeof summarizeCollection> & { coverage?: EstimatesCollectionCoverage; held_rows?: number; approvable_rows?: number } }> {
-  if (operation === "estimates_in_process") {
-    let coverage: EstimatesCollectionCoverage | undefined;
-    const sources = await collectEstimatesInProcess({
-      dateWindow: request.dateWindow,
-      selection: request.estimatesSelection ?? 'all',
-      chunkDays: request.estimatesLane === 'pool_discovery' ? 31 : 7,
-      maxRequests: request.estimatesSelection === 'pool' ? 192 : 128,
-      credentials: readCredentials(),
-      beforeRequest: async () => {
-        if (Date.now() >= planningDeadline) throw new GranotRunConflict("COLLECTION_BUDGET_EXCEEDED", "Granot collection exceeded 120 seconds; recollect using smaller date windows.");
-        await renewRunLease(runId, lease, "planning");
-      },
-      onCoverage: (value) => { coverage = value; },
-    });
-    if (!coverage?.complete) throw new GranotRunConflict("INCOMPLETE_COLLECTION", "Estimates coverage was not verified.");
-    await rememberEstimatesOpenDates(sources);
-    const plan = await assembleEstimatesPlan(sources, { runId, beforeRow });
-    return {
-      plan,
-      collection_summary: { ...summarizeEstimateSources(request.dateWindow, sources), coverage, held_rows: plan.actions.filter((action) => !isApprovableAction(action)).length, approvable_rows: plan.actions.filter(isApprovableAction).length },
-    };
-  }
-  let sourceIndex = 0;
-  const collection = await collectGranotReport(
-    {
-      ...request,
-      credentials: readCredentials(),
+): Promise<{ plan: GranotPlan; collection_summary: ReturnType<typeof summarizeEstimateSources> & { coverage?: EstimatesCollectionCoverage; held_rows?: number; approvable_rows?: number } }> {
+  let coverage: EstimatesCollectionCoverage | undefined;
+  const sources = await collectEstimatesInProcess({
+    dateWindow: request.dateWindow,
+    selection: request.estimatesSelection ?? 'all',
+    chunkDays: request.estimatesLane === 'pool_discovery' ? 31 : 7,
+    maxRequests: request.estimatesSelection === 'pool' ? 192 : 128,
+    credentials: readCredentials(),
+    beforeRequest: async () => {
+      if (Date.now() >= planningDeadline) throw new GranotRunConflict("COLLECTION_BUDGET_EXCEEDED", "Granot collection exceeded 120 seconds; recollect using smaller date windows.");
+      await renewRunLease(runId, lease, "planning");
     },
-    {
-      beforeSource: async () => {
-        await renewRunLease(runId, lease, "planning");
-        sourceIndex += 1;
-        await GranotAutomationRun.updateOne(
-          fenced(runId, lease, ["planning"]),
-          { $set: { checkpoint: checkpoint("collect", sourceIndex) } },
-        ).exec();
-      },
-    },
-  );
-  const planned =
-    operation === "form_leads"
-      ? await planGranotFormWorkflow(collection.sources, { beforeRow })
-      : await planCallWorkflow(collection.sources, beforeRow);
+    onCoverage: (value) => { coverage = value; },
+  });
+  if (!coverage?.complete) throw new GranotRunConflict("INCOMPLETE_COLLECTION", "Estimates coverage was not verified.");
+  await rememberEstimatesOpenDates(sources);
+  const plan = await assembleEstimatesPlan(sources, { runId, beforeRow });
   return {
-    plan: sealAutomationPlan(planned, runId, collection.sources),
-    collection_summary: summarizeCollection(collection),
+    plan,
+    collection_summary: { ...summarizeEstimateSources(request.dateWindow, sources), coverage, held_rows: plan.actions.filter((action) => !isApprovableAction(action)).length, approvable_rows: plan.actions.filter(isApprovableAction).length },
   };
 }
 
-/**
- * Partition Estimates rows by Registry route, seal each side with the planner
- * it already uses, and merge the sealed actions onto one run plan.
- */
+/** Plan the scheduled collection against the same identity and source policy used by apply. */
 export async function assembleEstimatesPlan(
   sources: GranotSourceCollection[],
-  input: {
-    runId: string;
-    beforeRow?: () => Promise<void>;
-    lookup?: EstimatesLabelLookup;
-    planForm?: typeof planGranotFormWorkflow;
-    planCall?: typeof planCallWorkflow;
-    canonical?: EstimatesIdentityPlanningDeps;
-  },
+  input: { runId: string; beforeRow?: () => Promise<void>; canonical?: EstimatesIdentityPlanningDeps },
 ): Promise<EstimatesPlan> {
-  // Production preview uses canonical identities. Explicit legacy planner adapters
-  // remain available to the old partition/sealing unit proofs only.
-  if (!input.planForm && !input.planCall) {
-    return planEstimatesIdentities(sources, { runId: input.runId, beforeRow: input.beforeRow, ...input.canonical });
-  }
-  const beforeRow = input.beforeRow ?? (async () => undefined);
-  const validSources = sources.map((source) => ({
-    ...source,
-    sections: { ...source.sections, followUpEstimates: source.sections.followUpEstimates.filter((row) => !row.values.estimates_hold_reason) },
-  }));
-  const partition = await partitionEstimatesSources(
-    validSources,
-    input.lookup ?? estimatesRegistryLookup(),
-  );
-  for (const source of sources) {
-    const reasons = new Set(source.sections.followUpEstimates.map((row) => row.values.estimates_hold_reason).filter(Boolean));
-    for (const reason of reasons) {
-      partition.unresolved.push({
-        reason: String(reason),
-        source: { ...source, sections: { bookedJobs: [], followUpEstimates: source.sections.followUpEstimates.filter((row) => row.values.estimates_hold_reason === reason) } },
-      });
-    }
-  }
-  const planForm = input.planForm ?? planGranotFormWorkflow;
-  const planCall = input.planCall ?? planCallWorkflow;
-  const formPlan = await planForm(partition.form, { beforeRow });
-  const callPlan = await planCall(partition.call, beforeRow);
-  for (const entry of partition.unresolved) {
-    for (const _row of entry.source.sections.followUpEstimates) {
-      await beforeRow();
-    }
-  }
-  const unresolvedPlan = unresolvedEstimatesPlan(partition.unresolved);
-  const sealedForm = sealAutomationPlan(formPlan, input.runId, partition.form);
-  const sealedCall = sealAutomationPlan(callPlan, input.runId, partition.call);
-  const sealedUnresolved = sealAutomationPlan(
-    unresolvedPlan,
-    input.runId,
-    partition.unresolved.map((entry) => entry.source),
-  );
-  // The legacy preview patches do not include Granot priority, job attachment on
-  // Forms, or replacing a call-inferred receiver. A matched "unchanged" row
-  // still needs the canonical lifecycle decision for this snapshot.
-  for (const action of sealedForm.actions) {
-    if (action.classification === "unchanged" && action.lead_id && hasEstimatesPriority(action)) {
-      action.classification = "update";
-      action.reason = "lifecycle_snapshot_check";
-      sealedForm.counters.unchanged -= 1;
-      sealedForm.counters.update += 1;
-    }
-  }
-  for (const action of sealedCall.actions) {
-    if (action.preview.status === "unchanged" && action.target_binding.call_lead_id && hasEstimatesPriority(action)) {
-      action.syncable = true;
-    }
-  }
-  return {
-    kind: "estimates_in_process",
-    schema_version: 2,
-    actions: [
-      ...sealedForm.actions,
-      ...sealedCall.actions,
-      ...sealedUnresolved.actions,
-    ],
-    counters: mergeCounters(
-      sealedForm.counters,
-      sealedCall.counters,
-      unresolvedCounters(partition.unresolved),
-    ),
-  };
-}
-
-function hasEstimatesPriority(action: { lifecycle_apply?: GranotAutomationLifecycleApply }): boolean {
-  return /^[0-9]$/.test(String(action.lifecycle_apply?.granot_statement.priority ?? ""));
+  return planEstimatesIdentities(sources, { runId: input.runId, beforeRow: input.beforeRow, ...input.canonical });
 }
 
 /** Old snapshots must be recollected, never presented as fresh apply-time evidence. */
@@ -820,68 +364,10 @@ export function estimatesActionCaptureTime(action: { collection_captured_at?: st
   return new Date(value);
 }
 
-function unresolvedEstimatesPlan(
-  entries: EstimatesPartition["unresolved"],
-): CallPlan {
-  const actions: CallPlanAction[] = [];
-  for (const entry of entries) {
-    for (const row of entry.source.sections.followUpEstimates) {
-      actions.push({
-        action_id: `unresolved:${entry.source.sourceLabel}:${row.id}`,
-        operation: "enrichment",
-        row: {
-          row_id: `${entry.source.sourceLabel}:${row.id}`,
-          row_index: row.rowIndex,
-        },
-        preview: { status: entry.reason },
-        syncable: false,
-        target_binding: {
-          call_lead_id: null,
-          call_lead_updated_at: null,
-          booking_id: null,
-          booking_updated_at: null,
-          receiver_username: null,
-          expected_receiver_agent: null,
-          target_receiver_agent: null,
-        },
-      });
-    }
-  }
-  return {
-    kind: "call_leads",
-    schema_version: 1,
-    actions,
-    counters: {},
-  };
-}
-
-function unresolvedCounters(
-  entries: EstimatesPartition["unresolved"],
-): Record<string, number> {
-  const counters: Record<string, number> = {};
-  for (const entry of entries) {
-    const count = entry.source.sections.followUpEstimates.length;
-    counters[entry.reason] = (counters[entry.reason] ?? 0) + count;
-  }
-  return counters;
-}
-
-function mergeCounters(
-  ...records: Array<Record<string, number>>
-): Record<string, number> {
-  const counters: Record<string, number> = {};
-  for (const record of records) {
-    for (const [key, value] of Object.entries(record)) {
-      counters[key] = (counters[key] ?? 0) + value;
-    }
-  }
-  return counters;
-}
-
 function summarizeEstimateSources(
   dateWindow: { from: string; to: string },
   sources: GranotSourceCollection[],
-): ReturnType<typeof summarizeCollection> {
+) {
   return {
     requestedDateWindow: dateWindow,
     discoveredSourceLabels: sources.map((source) => source.sourceLabel),
@@ -906,54 +392,6 @@ function estimatesCronActor(runId: string): DurableActor {
   };
 }
 
-async function planCallWorkflow(
-  sources: Parameters<typeof buildGranotOperationPayloads>[0],
-  beforeRow: () => Promise<void>,
-): Promise<CallPlan> {
-  const payloads = buildGranotOperationPayloads(sources);
-  const actions: CallPlanAction[] = [];
-  for (const row of payloads.enrichmentRows) {
-    await beforeRow();
-    const [preview] = await previewCallLeadEnrichment({ rows: [row] });
-    const targetBinding = await buildCallTargetBinding(row, preview);
-    actions.push({
-      action_id: `enrichment:${row.row_id}`,
-      operation: "enrichment",
-      row,
-      preview: toDurableGranotValue(preview) as Record<string, unknown>,
-      syncable:
-        preview?.status === "updateable" ||
-        Boolean(targetBinding.target_receiver_agent),
-      target_binding: targetBinding,
-    });
-  }
-  for (const row of payloads.bookedReconciliationRows) {
-    await beforeRow();
-    const [preview] = await previewBookedCallLeadReconciliation({ rows: [row] });
-    const targetBinding = await buildCallTargetBinding(row, preview);
-    actions.push({
-      action_id: `booked_reconciliation:${row.row_id}`,
-      operation: "booked_reconciliation",
-      row,
-      preview: toDurableGranotValue(preview) as Record<string, unknown>,
-      syncable:
-        preview?.status === "updateable" ||
-        Boolean(targetBinding.target_receiver_agent),
-      target_binding: targetBinding,
-    });
-  }
-  return {
-    kind: "call_leads",
-    schema_version: 1,
-    actions,
-    counters: actions.reduce<Record<string, number>>((counts, action) => {
-      const status = String(action.preview.status ?? "unknown");
-      counts[status] = (counts[status] ?? 0) + 1;
-      return counts;
-    }, {}),
-  };
-}
-
 async function applyRun(runId: string, lease: LeaseToken, deps: {
   applyAction?: typeof applyAutomationPlanAction;
   loadReplayStates?: typeof loadAutomationReplayStates;
@@ -973,12 +411,6 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   if (!db || await closedRuns(db).findOne({ _id: runId }, { projection: { _id: 1 } })) {
     throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "This Granot run is closed for replay.");
   }
-  const estimatesAutoApply =
-    run.operation === "estimates_in_process" &&
-    (run.request_snapshot as { auto_apply?: boolean } | null)?.auto_apply === true;
-  if (!estimatesAutoApply && !granotApplyEnabled()) {
-    throw new GranotRunConflict("APPLY_DISABLED", "Granot apply deployment gate is disabled.");
-  }
   const plan = run.plan_snapshot as unknown as GranotPlan;
   assertSealedAutomationPlan(plan);
   assertPlanChecksum(plan, run.plan_checksum);
@@ -987,6 +419,9 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     plan_checksum: string;
     approved_by: DurableActor;
   };
+  if (approval.approved_by?.actor_type !== "system" || approval.approved_by.actor_id !== GRANOT_ESTIMATES_CRON_ACTOR_ID) {
+    throw new GranotRunConflict("INVALID_SCHEDULED_RUN", "Scheduled Estimates require system approval.");
+  }
   if (approval.plan_checksum !== run.plan_checksum) {
     throw new GranotRunConflict("CHECKSUM_DRIFT", "Approval checksum no longer matches the immutable plan.");
   }
@@ -1009,7 +444,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   let processedActions = 0;
   const applyDeadline = Date.now() + 120_000;
   const refreshReceipt = async (receipt: GranotAutomationActionReceipt) => {
-    if (run.operation !== "estimates_in_process" || receipt.outreach_refresh_completed || !isTerminalAutomationActionOutcome(receipt.outcome)) return;
+    if (receipt.outreach_refresh_completed || !isTerminalAutomationActionOutcome(receipt.outcome)) return;
     try {
       await (deps.refreshOutreach ?? refreshExistingEstimatesOutreach)(receipt);
       receipt.outreach_refresh_completed = true;
@@ -1026,7 +461,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     if (!selectedSet.has(action.action_id)) continue;
     const existing = receiptsByAction.get(action.action_id);
     if (existing && isTerminalAutomationActionOutcome(existing.outcome)) {
-      if (run.operation === "estimates_in_process" && !existing.outreach_refresh_completed) {
+      if (!existing.outreach_refresh_completed) {
         if (processedActions >= 25 || Date.now() >= applyDeadline) break;
         processedActions += 1;
         await renewRunLease(runId, lease, "applying");
@@ -1062,7 +497,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
         initiator: approval.approved_by,
         existing_receipt: existing,
         request_id: runId,
-        captured_at: run.operation === "estimates_in_process" && !existing
+        captured_at: !existing
           ? estimatesActionCaptureTime(action)
           : undefined,
       });
@@ -1090,7 +525,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     // still reach their canonical decisions before the run waits for retries.
   }
 
-  const refreshPending = run.operation === "estimates_in_process" && selected.some((id) => {
+  const refreshPending = selected.some((id) => {
     const receipt = receiptsByAction.get(id);
     return receipt && isTerminalAutomationActionOutcome(receipt.outcome) && !receipt.outreach_refresh_completed;
   });
@@ -1149,59 +584,6 @@ async function yieldApplyingRun(runId: string, lease: LeaseToken, completed: num
   }
 }
 
-async function buildCallTargetBinding(
-  row: { granot_crm_username?: string },
-  preview: unknown,
-): Promise<CallTargetBinding> {
-  const value =
-    preview && typeof preview === "object"
-      ? (preview as Record<string, unknown>)
-      : {};
-  const callLeadId =
-    typeof value.call_lead_id === "string" ? value.call_lead_id : null;
-  const bookingId =
-    typeof value.booking_id === "string" ? value.booking_id : null;
-  const lead = callLeadId
-    ? ((await getCallLeadModel()
-        .findById(callLeadId)
-        .select("_id receiver_agent updatedAt")
-        .lean()
-        .exec()) as {
-        receiver_agent?: unknown;
-        updatedAt?: Date;
-      } | null)
-    : null;
-  const booking = bookingId
-    ? ((await BookedLead.findById(bookingId)
-        .select("_id updatedAt")
-        .lean()
-        .exec()) as { updatedAt?: Date } | null)
-    : null;
-  const username = normalizeGranotCrmUsername(row.granot_crm_username);
-  const expectedReceiver = lead?.receiver_agent
-    ? String(lead.receiver_agent)
-    : null;
-  const receiverAgent =
-    username && lead && !expectedReceiver
-      ? await findAgentByGranotCrmUsername(username)
-      : undefined;
-  return {
-    call_lead_id: callLeadId,
-    call_lead_updated_at: dateString(lead?.updatedAt),
-    booking_id: bookingId,
-    booking_updated_at: dateString(booking?.updatedAt),
-    receiver_username: username || null,
-    expected_receiver_agent: expectedReceiver,
-    target_receiver_agent: receiverAgent?.id ?? null,
-  };
-}
-
-function dateString(value: Date | string | undefined): string | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 async function renewRunLease(
   runId: string,
   lease: LeaseToken,
@@ -1251,9 +633,7 @@ async function extendRunLease(runId: string, lease: LeaseToken, status: "plannin
 }
 
 function isApprovableAction(action: GranotPlan["actions"][number]): boolean {
-  return "classification" in action
-    ? action.classification === "update"
-    : action.syncable;
+  return action.classification === "update";
 }
 
 function assertUniqueActionIds(plan: GranotPlan): void {
@@ -1267,25 +647,6 @@ function assertUniqueActionIds(plan: GranotPlan): void {
     }
     ids.add(action.action_id);
   }
-}
-
-export async function getGranotRun(
-  runId: string,
-  includeDetails = false,
-): Promise<Record<string, unknown> | null> {
-  await connectMongo();
-  const run = await GranotAutomationRun.findById(runId).lean().exec();
-  return run ? safeRun(run as unknown as Record<string, unknown>, includeDetails) : null;
-}
-
-export async function listGranotRuns(limit = 25): Promise<Record<string, unknown>[]> {
-  await connectMongo();
-  const runs = await GranotAutomationRun.find()
-    .sort({ createdAt: -1 })
-    .limit(Math.min(Math.max(limit, 1), 100))
-    .lean()
-    .exec();
-  return runs.map((run) => safeRun(run as unknown as Record<string, unknown>, false));
 }
 
 async function rememberEstimatesOpenDates(sources: GranotSourceCollection[]): Promise<void> {
@@ -1338,8 +699,8 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane, enabled
       completed_windows: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
       failed_windows: { $sum: { $cond: [{ $in: ["$status", ["failed", "completed_with_errors", "expired"]] }, 1, 0] } },
       held_rows: { $sum: "$collection_summary.held_rows" },
-      unapplied_actions: { $sum: { $size: { $filter: { input: { $ifNull: ["$receipts", []] }, as: "receipt",
-        cond: { $not: [{ $in: ["$$receipt.outcome", ["applied", "linked", "already_current"]] }] } } } } },
+      unapplied_actions: { $sum: { $ifNull: ["$archive_summary.unapplied_actions", { $size: { $filter: { input: { $ifNull: ["$receipts", []] }, as: "receipt",
+        cond: { $not: [{ $in: ["$$receipt.outcome", ["applied", "linked", "already_current"]] }] } } } }] } },
       latest_collection_at: { $max: "$collection_summary.coverage.captured_at" },
       created_at: { $min: "$createdAt" },
     } },
@@ -1451,7 +812,7 @@ export function granotRecoverableFilter(now: Date): Record<string, unknown> {
     { leased_until: null },
     { leased_until: { $exists: false } },
   ] };
-  return { 'request_snapshot.waiting_for_all': { $ne:true }, $or: [
+  return { ...scheduledRunFilter, 'request_snapshot.waiting_for_all': { $ne:true }, $or: [
     { status: "queued" },
     { status: "planning", ...leaseAvailable },
     { status: "applying", $and: [leaseAvailable, granotApplyReadyFilter(now)] },
@@ -1480,7 +841,7 @@ export async function continueGranotRuns(completedRunId: string): Promise<{
 
 export async function publishGranotWakeup(
   runId: string,
-  reason: "create" | "approval" | "recovery" | "continuation",
+  reason: "create" | "recovery" | "continuation",
   predecessorRunId?: string,
 ): Promise<boolean> {
   if (process.env.VERCEL !== "1" || process.env.NODE_ENV !== "production") return false;
@@ -1506,12 +867,6 @@ export async function publishGranotWakeup(
     });
     return false;
   }
-}
-
-export function granotApplyEnabled(
-  value = process.env.GRANOT_AUTOMATION_APPLY_ENABLED,
-): boolean {
-  return value?.trim().toLowerCase() === "true";
 }
 
 function planChecksum(plan: GranotPlan): string {
@@ -1541,6 +896,7 @@ function fenced(
   statuses: string[],
 ): Record<string, unknown> {
   return {
+    ...scheduledRunFilter,
     _id: runId,
     status: { $in: statuses },
     lease_owner: lease.owner,
@@ -1557,77 +913,6 @@ function checkpoint(phase: string, completed: number) {
     completed_units: completed,
     updated_at: new Date(),
   };
-}
-
-function summarizeCollection(collection: Awaited<ReturnType<typeof collectGranotReport>>) {
-  return {
-    requestedDateWindow: collection.requestedDateWindow,
-    discoveredSourceLabels: collection.discoveredSourceLabels,
-    notObservedSourceLabels: collection.notObservedSourceLabels,
-    sources: collection.sources.map((source) => ({
-      sourceLabel: source.sourceLabel,
-      contentHash: source.contentHash,
-      bookedJobs: source.sections.bookedJobs.length,
-      followUpEstimates: source.sections.followUpEstimates.length,
-    })),
-  };
-}
-
-function safeRun(run: Record<string, unknown>, details: boolean) {
-  const plan = run.plan_snapshot as GranotPlan | null;
-  return {
-    id: String(run._id),
-    run_group_id: run.run_group_id,
-    operation: run.operation,
-    workflow: run.workflow,
-    status: run.status,
-    plan_checksum: run.plan_checksum,
-    expires_at: run.expires_at,
-    counters: run.counters,
-    collection: run.collection_summary,
-    checkpoint: run.checkpoint,
-    receipt_count: Array.isArray(run.receipts) ? run.receipts.length : 0,
-    created_at: run.createdAt,
-    updated_at: run.updatedAt,
-    ...(details
-      ? {
-          plan: plan ? redactPlanForDisplay(plan) : plan,
-          receipts: redactReceiptsForDisplay(run.receipts),
-        }
-      : {}),
-  };
-}
-
-function redactPlanForDisplay(plan: GranotPlan): GranotPlan {
-  return {
-    ...plan,
-    actions: plan.actions.map((action) => {
-      if (!("lifecycle_apply" in action) || !action.lifecycle_apply) {
-        return action;
-      }
-      const { granot_statement: _statement, ...safeApply } = action.lifecycle_apply;
-      return {
-        ...action,
-        lifecycle_apply: safeApply as GranotAutomationLifecycleApply,
-      };
-    }),
-  } as GranotPlan;
-}
-
-function redactReceiptsForDisplay(value: unknown): GranotAutomationActionReceipt[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry) => {
-    const receipt = entry as GranotAutomationActionReceipt;
-    return {
-      action_id: receipt.action_id,
-      lifecycle_receipt_id: receipt.lifecycle_receipt_id,
-      ...(receipt.observation_id ? { observation_id: receipt.observation_id } : {}),
-      ...(receipt.decision_id ? { decision_id: receipt.decision_id } : {}),
-      outcome: receipt.outcome,
-      applied_at: receipt.applied_at,
-      ...(receipt.error_code ? { error_code: receipt.error_code } : {}),
-    };
-  });
 }
 
 async function failRun(runId: string, lease: LeaseToken, error: unknown): Promise<void> {
@@ -1700,56 +985,4 @@ async function claimGranotRun(
   )
     .lean()
     .exec();
-}
-
-export function buildFormExpectedFilter(
-  expected: Record<string, unknown>,
-): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(expected).map(([path, value]) => [
-      path,
-      value === null && path !== "receiver_agent"
-        ? { $in: [null, ""] }
-        : value,
-    ]),
-  );
-}
-
-export function toDurableGranotValue(value: unknown): unknown {
-  if (value === undefined) return null;
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new TypeError("Granot durable plans cannot contain non-finite numbers.");
-    }
-    return Object.is(value, -0) ? 0 : value;
-  }
-  if (value instanceof Date) {
-    if (!Number.isFinite(value.getTime())) {
-      throw new TypeError("Granot durable plans cannot contain invalid dates.");
-    }
-    return value.toISOString();
-  }
-  if (value instanceof Types.ObjectId) return String(value);
-  if (Array.isArray(value)) return value.map(toDurableGranotValue);
-  if (typeof value === "object") {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError("Granot durable plans cannot contain non-plain objects.");
-    }
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entry]) => entry !== undefined)
-        .map(([key, entry]) => [key, toDurableGranotValue(entry)]),
-    );
-  }
-  throw new TypeError(
-    `Granot durable plans cannot contain ${typeof value} values.`,
-  );
 }

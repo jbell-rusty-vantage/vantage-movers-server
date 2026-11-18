@@ -1,3 +1,4 @@
+import { RETIRED_WEBHOOK_CARD_KINDS } from "./kinds";
 import type { Types } from "mongoose";
 import {
   getDailyOperationsRedis,
@@ -16,6 +17,8 @@ import {
   type DailyOperationsEventRow,
 } from "./eventsPage";
 import { type DailyOperationsSnapshot } from "./snapshot";
+
+const retiredWebhookKinds = new Set<string>(RETIRED_WEBHOOK_CARD_KINDS);
 
 export const LIVE_DAILY_OPERATIONS_POLL_MS = 1_000;
 export const LIVE_DAILY_OPERATIONS_HEARTBEAT_MS = 15_000;
@@ -237,6 +240,7 @@ export async function defaultListDailyOperationsEventsAfter(
   const afterId = asObjectId(cursor.event_id);
   const filter: Record<string, unknown> = {
     day,
+    kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS },
     ...(afterId
       ? {
           $or: [
@@ -258,7 +262,7 @@ export async function defaultListNewestDailyOperationsEvent(
   day: string,
 ): Promise<DailyOperationsLiveEventRow | null> {
   const row = await getDailyOperationsEventModel()
-    .findOne({ day })
+    .findOne({ day, kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS } })
     .sort({ occurred_at: -1, _id: -1 })
     .lean()
     .exec();
@@ -307,6 +311,10 @@ async function emitWakes(args: {
     const row = await args.findEventById(wake.event_id);
     if (!row) {
       break;
+    }
+    if (retiredWebhookKinds.has(row.kind)) {
+      args.onRedisAdvance(wake.redis_stream_id);
+      continue;
     }
     const item = projectDailyOperationsEventItem(row);
     if (!isAfterCursor(item, args.cursor)) {

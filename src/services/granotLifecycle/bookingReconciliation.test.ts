@@ -410,7 +410,7 @@ describe("Booking Reconciliation persistence", () => {
     );
     assert.equal(openedFacts[0]?.input.job_no, "JOB-22");
     assert.equal(openedFacts[0]?.input.links?.intake_case_id, result.case_ref.id);
-    assert.equal(openedFacts[0]?.input.parent_receipt_id, current.receipt_id);
+    assert.equal(openedFacts[0]?.input.parent_receipt_id, undefined);
     assert.ok(openedFacts[0]?.input.metric_touches.includes("webhooks.booked"));
   });
 

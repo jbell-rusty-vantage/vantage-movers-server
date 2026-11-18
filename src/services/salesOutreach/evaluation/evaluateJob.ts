@@ -17,6 +17,8 @@ import { cadenceExposureOf, deskEnginePolicy, deskPolicyFingerprint } from "./po
 import { toProjectionWrite } from "./projection";
 import { mongoEvaluationStore, EVALUATION_LIMITS, type EvaluationStore } from "./store";
 import { projectPoolResult } from "../pool/projection";
+import { getSalesOutreachRefreshRequestModel } from "../../../models/salesOutreach/refreshRequests";
+import { refreshFingerprint } from "./refreshRequests";
 
 /**
  * The `outreach_evaluate` stage (IMPLEMENTATION-PLAN §6.1/§6.2): load one subject's inputs, run the
@@ -68,16 +70,13 @@ export type EvaluationOutcome = Readonly<{
   agent_ids?: Array<string | null>;
 }>;
 
-/** Evaluates one subject at `asOf` and persists the projection when its result changed. */
-export async function evaluateAndProject(
-  subjectId: string,
-  context: EvaluationPolicyContext,
-  asOf: Date,
-  store: EvaluationStore,
-  session: ClientSession,
-): Promise<EvaluationOutcome> {
+/** Read and calculate the exact evaluator output. readOnly suppresses Pool materialization too. */
+export async function prepareSubjectEvaluation(
+  subjectId: string, context: EvaluationPolicyContext, asOf: Date,
+  store: EvaluationStore, session: ClientSession, readOnly = true,
+) {
   const subject = await store.loadSubject(subjectId, session);
-  if (!subject) return { outcome: "subject_missing", subject_id: subjectId, publication_revision: null, next_evaluation_at: null };
+  if (!subject) return null;
   const read: ReadSession = session;
   // Sequential reads: the session is inside the job transaction and runs one operation at a time.
   const periods = await store.loadPeriods(subject.id, read);
@@ -104,13 +103,8 @@ export async function evaluateAndProject(
   );
   const ordinary = evaluateSubject(input, context.policy, asOf.toISOString());
   const result = store === mongoEvaluationStore && context.configuration.value.pool?.enabled
-    ? await projectPoolResult(ordinary, context.configuration, asOf, restrictions, engineCoverageOf(coverage, timing).call, session, subject.review_reasons.includes("no_contact_number"))
+    ? await projectPoolResult(ordinary, context.configuration, asOf, restrictions, engineCoverageOf(coverage, timing).call, session, subject.review_reasons.includes("no_contact_number"), readOnly)
     : ordinary;
-  if (store === mongoEvaluationStore) {
-    const capped = periods.length >= EVALUATION_LIMITS.periods || plans.length >= EVALUATION_LIMITS.plans || restrictions.length >= EVALUATION_LIMITS.restrictions || changes.length >= EVALUATION_LIMITS.assignment_changes || events.length >= EVALUATION_LIMITS.contact_events || links.length >= 1000;
-    if (capped) await retainSmsRequirementGap(subjectId, ordinary.business_date, context.policy, context.policy_fingerprint, session);
-    if (!capped) await retainSmsRequirements(input, ordinary, context.policy, context.policy_fingerprint, session);
-  }
   const mapped = toProjectionWrite(subject, result, {
     exposure: context.exposure,
     configuration_version: context.configuration.version,
@@ -119,6 +113,52 @@ export async function evaluateAndProject(
     timing,
   });
   const doc = result !== ordinary && result.state === "active" ? { ...mapped, subject_status: "active" } : mapped;
+  const capped = periods.length >= EVALUATION_LIMITS.periods || plans.length >= EVALUATION_LIMITS.plans
+    || restrictions.length >= EVALUATION_LIMITS.restrictions || changes.length >= EVALUATION_LIMITS.assignment_changes
+    || events.length >= EVALUATION_LIMITS.contact_events || links.length >= 1000;
+  return { subject, input, ordinary, result, doc, capped, coverage };
+}
+
+/** Evaluates one subject at `asOf` and persists the projection and retained performance facts. */
+export async function evaluateAndProject(
+  subjectId: string, context: EvaluationPolicyContext, asOf: Date,
+  store: EvaluationStore, session: ClientSession,
+): Promise<EvaluationOutcome> {
+  // Compare the read-only and authoritative paths in the same snapshot and at the same clock time.
+  // A previously published projection can describe an earlier change and cannot qualify a generation.
+  const requests = store === mongoEvaluationStore && context.configuration.value.refresh_requests?.mode === "shadow"
+    ? getSalesOutreachRefreshRequestModel() : null;
+  const sample = requests && await requests.findOne({
+    subject_id: subjectId, requested_mode: "shadow", configuration_version: context.configuration.version,
+    $expr: { $lt: [{ $ifNull: ["$compared_generation", 0] }, "$requested_generation"] },
+  }, { requested_generation: 1 }).session(session).lean();
+  const candidate = sample && await prepareSubjectEvaluation(subjectId, context, asOf, store, session, true);
+  const prepared = await prepareSubjectEvaluation(subjectId, context, asOf, store, session, false);
+  if (sample && requests) {
+    const sameInputs = candidate && prepared && candidate.ordinary.input_fingerprint === prepared.ordinary.input_fingerprint;
+    const parity = !sameInputs ? "not_observed" : candidate.capped === prepared.capped &&
+      refreshFingerprint(candidate.doc) === refreshFingerprint(prepared.doc) ? "match" : "different";
+    await requests.updateOne({ _id: sample._id, requested_generation: sample.requested_generation }, {
+      $set: { compared_generation: sample.requested_generation, compared_configuration: context.configuration.version,
+        compared_at: asOf, compared_parity: parity, last_parity: parity,
+        ...(parity === "different" ? { last_shadow_mismatch_configuration: context.configuration.version } : {}) },
+      $inc: { shadow_comparisons: Number(parity !== "not_observed"), shadow_mismatches: Number(parity === "different") },
+    }, { session });
+  }
+  if (!prepared) return { outcome: "subject_missing", subject_id: subjectId, publication_revision: null, next_evaluation_at: null };
+  return persistSubjectEvaluation(prepared, context, store, session);
+}
+
+export async function persistSubjectEvaluation(
+  prepared: NonNullable<Awaited<ReturnType<typeof prepareSubjectEvaluation>>>,
+  context: EvaluationPolicyContext, store: EvaluationStore, session: ClientSession,
+): Promise<EvaluationOutcome> {
+  const { subject, input, ordinary, result, doc, capped } = prepared;
+  const subjectId = subject.id;
+  if (store === mongoEvaluationStore) {
+    if (capped) await retainSmsRequirementGap(subjectId, ordinary.business_date, context.policy, context.policy_fingerprint, session);
+    else await retainSmsRequirements(input, ordinary, context.policy, context.policy_fingerprint, session);
+  }
   const head = await store.readProjection(subject.id, session);
   if (head && head.result_fingerprint === doc.result_fingerprint)
     return { outcome: "unchanged", subject_id: subject.id, publication_revision: head.publication_revision, next_evaluation_at: result.next_evaluation_at };
@@ -218,16 +258,19 @@ export function evaluateDrainOptionsOf(timing: DeskTiming): EvaluateDrainOptions
 export type EvaluateDrainDeps = EvaluateJobDeps & {
   /** Milliseconds clock for the budget and the per-job timing (tests inject a fake one). */
   clock?: () => number;
+  refreshTurn?: () => Promise<boolean>;
+  refreshDrain?: (max: number, budgetMs: number) => Promise<import("./refreshWorker.js").RefreshDrainResult>;
 };
 
 export type EvaluateDrainResult = Readonly<{
   outcomes: Record<string, number>;
-  /** Jobs claimed and run (completed, retry or lease lost). */
+  /** Completed/retried/lease-lost jobs plus refresh attempts with uncertain write outcomes. */
   jobs: number;
   ms_total: number;
   /** Nearest-rank p95 of the claimed jobs' durations; null when none ran. */
   ms_p95: number | null;
   options: EvaluateDrainOptions;
+  refresh_requests?: import("./refreshWorker.js").RefreshDrainResult;
 }>;
 
 const clampInt = (value: number | undefined, fallback: number, max: number) =>
@@ -251,13 +294,17 @@ export async function drainOutreachEvaluateJobs(options: Partial<EvaluateDrainOp
   const clock = deps.clock ?? Date.now;
   const started = clock();
   const deadline = started + resolved.deadlineMs;
+  const refreshDrain = deps.refreshDrain ?? (!deps.store && !deps.claim && !deps.complete
+    ? async (max: number, budget: number) => (await import("./refreshWorker.js")).drainSubjectRefreshes(max, budget)
+    : null);
+  let refresh: import("./refreshWorker.js").RefreshDrainResult | null = null;
   const outcomes: Record<string, number> = {};
   const durations: number[] = [];
   let attempts = 0;
   let stopped = false;
-  const loop = async () => {
+  const loop = async (limit = resolved.max) => {
     try {
-      while (!stopped && attempts < resolved.max && clock() < deadline) {
+      while (!stopped && attempts < limit && clock() < deadline) {
         attempts++;
         const t0 = clock();
         const { status } = await runOutreachEvaluateJob(undefined, deps);
@@ -270,14 +317,33 @@ export async function drainOutreachEvaluateJobs(options: Partial<EvaluateDrainOp
       throw error;
     }
   };
+  // Single-slot drains alternate durably; larger drains reserve a legacy opportunity.
+  if (refreshDrain) {
+    const refreshFirst = resolved.max === 1 && await (deps.refreshTurn
+      ?? (!deps.store && !deps.claim && !deps.complete
+        ? async () => (await import("./refreshWorker.js")).takeSingleSlotRefreshTurn()
+        : async () => false))().catch(() => false);
+    if (!refreshFirst) await loop(1);
+    if (outcomes.not_claimable) attempts--; // An empty legacy probe consumes no shared claim slot.
+    if (attempts < resolved.max && clock() < deadline) {
+      refresh = await refreshDrain(resolved.max - attempts, Math.min(10_000, Math.max(1, Math.floor((deadline - clock()) / 2)))).catch(() => {
+        logger.warn({ msg: "sales_outreach.refresh.recovery_failed" });
+        return { skipped: "failed", outcomes: {}, durations_ms: [] };
+      });
+      attempts += refresh.durations_ms.length;
+      durations.push(...refresh.durations_ms);
+      for (const [status, count] of Object.entries(refresh.outcomes)) outcomes[status] = (outcomes[status] ?? 0) + count;
+    }
+  }
   // allSettled: a failing loop stops the others from starting new jobs, and the drain waits for the
   // in-flight ones before it reports the first failure.
-  const settled = await Promise.allSettled(Array.from({ length: resolved.concurrency }, loop));
+  const settled = await Promise.allSettled(Array.from({ length: resolved.concurrency }, () => loop()));
   const failed = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
   if (failed) throw failed.reason;
   const sorted = [...durations].sort((a, b) => a - b);
   const result: EvaluateDrainResult = {
     outcomes,
+    ...(refresh ? { refresh_requests: refresh } : {}),
     jobs: durations.length,
     ms_total: clock() - started,
     ms_p95: sorted.length ? sorted[Math.ceil(0.95 * sorted.length) - 1]! : null,

@@ -4,7 +4,8 @@ import mongoose from "mongoose";
 import { toObjectId } from "../../utils/objectId";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
-import { connectMongo } from "../../db";
+import { connectMongo, withTransaction } from "../../db";
+import { preserveCaseEvidence } from "./caseEvidence";
 import { Agent } from "../../models/Agent";
 import { BookedLead } from "../../models/BookedLead";
 import { DomainCommandExecution } from "../../models/DomainCommandExecution";
@@ -198,7 +199,7 @@ async function seed() {
     opened_at: now,
     last_evidence_at: now,
   });
-  return { caseId, leadId, agentId, merchantId, decisionId, job };
+  return { caseId, leadId, agentId, merchantId, receiptId, observationId, decisionId, job };
 }
 
 test("[AC-21][AC-22][AC-23][AC-32] replica confirm is atomic, replay-safe, exact, and source-preserving", async (t) => {
@@ -611,6 +612,10 @@ test("Confirm omit selected_lead with unique high suggestion attaches and queues
 test("Confirm omit selected_lead with medium-only suggestion creates a Leadless Booking", async (t) => {
   if (!(await replicaReady(t))) return;
   const fixture = await seed();
+  await withTransaction(session => preserveCaseEvidence(fixture.observationId, fixture.decisionId, session));
+  await getGranotObservationModel().collection.deleteOne({ _id: fixture.observationId });
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: fixture.receiptId });
+  await mongoose.connection.collection("synchronization_decisions").deleteOne({ _id: fixture.decisionId });
   await stampSuggestion(fixture.caseId, fixture.leadId, "medium", "source_scoped_contact");
   const result = await confirmBooking({
     case_id: String(fixture.caseId),

@@ -8,7 +8,6 @@ import { externalCallAdmissionSchema, hasReportingEligibleCall, hasTrustedExtern
 import { BEST_RELOCATION_TRACKER_ID, EXTERNAL_REVIEW_POLICY_VERSION } from "./externalSheetReview";
 import { billableCallLeadExpression, billableCallLeadFilter, getCallLeadReportingDecision } from "./callLeadReportingDisposition";
 import { hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
-import { aggregateSourcePerformance } from "../reporting/query/canonicalReporting";
 import { planExpectedSheetTabs } from "../googleSheets/expectedSheetTabs";
 import { getCallLeadModel } from "../../models/CallLead";
 import { planFormSiblingUpdate } from "../granotLifecycle/callLeadFormSibling";
@@ -65,8 +64,6 @@ test("trusted final BR admission enables reporting without asserting RingCentral
   assert.equal(hasQualifiedRingCentralCall(undefined), false);
   assert.deepEqual(getCallLeadReportingDecision(row), { disposition: "calls", billable: true, reason_codes: [] });
   assert.equal(planExpectedSheetTabs("CallLead", row).expected[0]?.tabName, "Calls");
-  const totals = aggregateSourcePerformance([{ ...row, _id: "admitted", leadType: "call", cpl: 50, cpl_resolution_status: "resolved" }], [], new Map());
-  assert.equal(totals.resolved_cpl_spend, 50);
   const now = new Date("2026-11-03T22:00:00Z");
   const sibling = planFormSiblingUpdate({ _id: "650000000000000000000010", lead_source_company: COMPANY,
     job_no: "JOB1", normalized_job_no: "JOB1", createdAt: now }, [],

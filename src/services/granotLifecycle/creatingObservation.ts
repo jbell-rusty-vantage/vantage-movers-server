@@ -1,6 +1,6 @@
+import { readPairingObservations } from "./observationReadFacts";
 import { getGranotBookingReconciliationCaseModel } from "../../models/GranotBookingReconciliationCase";
 import {
-  getGranotObservationModel,
   type GranotObservationDocument,
 } from "../../models/GranotObservation";
 import { readCaseObservation, readCaseStatement } from "./caseEvidence";
@@ -114,19 +114,7 @@ const defaultLoaders: CreatingObservationLoaders = {
     return readCaseStatement(toObjectId(receiptId));
   },
   async findJobObservations(normalizedJobNo) {
-    return getGranotObservationModel()
-      .find({ "identity.normalized_job_no": normalizedJobNo })
-      .select({
-        _id: 1,
-        receipt_id: 1,
-        captured_at: 1,
-        route_event_class: 1,
-        payload_event_type_raw: 1,
-        priority: 1,
-        identity: 1,
-        booking_action: 1,
-      })
-      .lean();
+    return readPairingObservations([normalizedJobNo]);
   },
 };
 

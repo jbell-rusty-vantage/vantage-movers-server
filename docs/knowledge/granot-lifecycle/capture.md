@@ -66,7 +66,7 @@ generated:
 
 Stored headers are exactly `content-type`, `content-length`, `user-agent`, `x-request-id`, and `x-vercel-id`, each value truncated to 1,024 characters.
 
-Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, never idempotency. Webhook payload keys are not schema-validated. Granot may add unused fields or omit unused ones (for example `service_type` or `cubic_rate`). Capture stores the credential-redacted body as Mixed evidence; normalization later reads only known optional keys.
+Webhook capture commits the receipt and the New York day/hour counters in one transaction. Daily Operations stores no receipt card. Identical deliveries are distinct receipts. `payload_sha256` is diagnostic, never idempotency. Webhook payload keys are not schema-validated. Granot may add unused fields or omit unused ones (for example `service_type` or `cubic_rate`). Capture stores the credential-redacted body as Mixed evidence; normalization later reads only known optional keys.
 
 ## Responses
 
@@ -96,4 +96,4 @@ A dedicated consumer (`api/queues/granot-lifecycle-consumer.ts`) and five-minute
 
 ## Out of scope here
 
-Capture does not call Observation normalization or the Decision processor. Normalization lives in [`normalization.md`](./normalization.md). Processor orchestration lives in [`processor.md`](./processor.md). Claim/lease/retry/requeue live in [`drainer.md`](./drainer.md). Official Lead/Booking writes and Owner Booking commands stay in those modules; this path still inserts a receipt only.
+Capture does not call Observation normalization or the Decision processor. Normalization lives in [`normalization.md`](./normalization.md). Processor orchestration lives in [`processor.md`](./processor.md). Claim/lease/retry/requeue live in [`drainer.md`](./drainer.md). Official Lead/Booking writes and Owner Booking commands stay in those modules; the capture transaction owns the webhook receipt and its aggregate contribution.

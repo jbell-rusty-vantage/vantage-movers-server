@@ -281,3 +281,6 @@ export function buildMetricTouches(
 
   return touches;
 }
+
+/** Legacy capture cards are hidden on both the board and its paginated event feed. */
+export const RETIRED_WEBHOOK_CARD_KINDS = ["granot.lead_created", "granot.priority_updated", "granot.booked", "granot.release"] as const;

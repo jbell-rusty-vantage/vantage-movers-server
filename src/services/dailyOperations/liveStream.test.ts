@@ -259,8 +259,8 @@ test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", 
     _id: { toString: () => LATER_ID },
     occurred_at: new Date("2026-09-08T15:44:05.000Z"),
     lane: "granot",
-    kind: "granot.lead_created",
-    title: "Granot lead created",
+    kind: "granot.minted",
+    title: "Granot lead minted",
     metric_touches: ["webhooks.lead_created"],
   });
   let polls = 0;
@@ -291,7 +291,7 @@ test("missing Redis uses Mongo tail oldest-after-cursor and still emits facts", 
   const joined = chunks.join("");
   assert.match(joined, /event: snapshot/);
   assert.match(joined, /event: event/);
-  assert.match(joined, /granot.lead_created/);
+  assert.match(joined, /granot.minted/);
   assert.match(joined, /event: metrics/);
   assert.equal(seenDay, "2026-09-08");
 });
@@ -375,6 +375,32 @@ test("Redis throw degrades to Mongo tail for that loop", async () => {
   assert.match(chunks.join(""), /form_lead.created/);
 });
 
+test("retired webhook wake advances Redis without hiding the next business fact or skipping replica lag", async () => {
+  const retired = eventRow({ _id: { toString: () => GRANOT_ID }, kind: "granot.priority_updated",
+    metric_touches: ["webhooks.priority_updated"] });
+  const next = eventRow({ _id: { toString: () => LATER_ID }, kind: "booking.created", metric_touches: ["bookings.total"] });
+  const lastIds: string[] = [], chunks: string[] = [];
+  let finds = 0, now = Date.parse("2026-09-08T15:43:00Z");
+  await runDailyOperationsLiveSse({ write: frame => chunks.push(frame) }, {
+    getSnapshot: async () => SNAPSHOT,
+    findEventById: async id => id === GRANOT_ID ? retired : (++finds === 1 ? null : next),
+    listAfter: async () => { throw new Error("Unexpected Mongo fallback"); },
+    getRedis: () => redisFake(async lastId => {
+      lastIds.push(lastId);
+      return [
+        { redis_stream_id: "1-0", event_id: GRANOT_ID },
+        { redis_stream_id: "2-0", event_id: LATER_ID },
+      ].filter(wake => wake.redis_stream_id > lastId);
+    }),
+    now: () => now, sleep: async () => { now += 1000; }, maxMs: 3000,
+  });
+  assert.deepEqual(lastIds, ["0-0", "1-0", "2-0"]);
+  assert.equal(chunks.filter(frame => frame.includes("event: event")).length, 1);
+  assert.match(chunks.join(""), /booking\.created/);
+  assert.doesNotMatch(chunks.join(""), /granot\.priority_updated/);
+  assert.match(chunks.find(frame => frame.includes("event: metrics"))!, /"metric_touches":\["bookings.total"\]/);
+});
+
 test("replica-lag skip retries the same Redis id and does not drop the event", async () => {
   const chunks: string[] = [];
   let now = Date.parse("2026-09-08T15:43:00.000Z");
@@ -431,9 +457,9 @@ test("lane query is ignored — one socket emits every Daily Operations Event", 
     _id: { toString: () => GRANOT_ID },
     occurred_at: new Date("2026-09-08T15:44:05.000Z"),
     lane: "granot",
-    kind: "granot.priority_updated",
-    title: "Granot priority updated",
-    metric_touches: ["webhooks.priority_updated"],
+    kind: "granot.linked",
+    title: "Granot Lead linked",
+    metric_touches: [],
   });
   let polls = 0;
 
@@ -461,7 +487,7 @@ test("lane query is ignored — one socket emits every Daily Operations Event", 
   );
 
   const joined = chunks.join("");
-  assert.match(joined, /granot.priority_updated/);
+  assert.match(joined, /granot.linked/);
   assert.match(joined, /"lane":"granot"/);
 });
 

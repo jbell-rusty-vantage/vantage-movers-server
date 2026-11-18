@@ -7,7 +7,7 @@ import { resolveForbiddenCredentialKey } from "../granotLifecycle/receiptEvidenc
 import type { GranotApplyItem } from "../granotLifecycle/applyItem";
 import type { ChannelOperationKind } from "../granotLifecycle/types";
 import { GranotRunConflict } from "./errors";
-import type { GranotReportRow, GranotSourceCollection } from "./index";
+import type { GranotReportRow } from "./index";
 
 export type GranotTableSection = "bookedJobs" | "followUpEstimates";
 
@@ -161,40 +161,6 @@ export function buildLifecycleApply(input: {
   };
 }
 
-export function sealAutomationPlan<T extends SealableAutomationPlan>(
-  plan: T,
-  runId: string,
-  sources: GranotSourceCollection[],
-): T {
-  const actions = plan.actions.map((action) => {
-    const collected = findCollectedRow(sources, action, plan.kind);
-    if (!collected) {
-      throw new GranotRunConflict(
-        "RUN_REPLAN_REQUIRED",
-        "Immutable plan is missing the collected Granot row required for a lifecycle statement.",
-      );
-    }
-    return {
-      ...action,
-      table_section: collected.section,
-      ...(collected.row.collectedAt ? { collection_captured_at: collected.row.collectedAt } : {}),
-      lifecycle_apply: buildLifecycleApply({
-        runId,
-        actionId: action.action_id,
-        row: collected.row,
-        sourceLabel: collected.sourceLabel,
-        section: collected.section,
-        expectedTarget: expectedTargetFor(action, plan.kind),
-      }),
-    };
-  });
-  return {
-    ...plan,
-    schema_version: 2,
-    actions,
-  };
-}
-
 export function isSealedAutomationPlan(plan: SealableAutomationPlan): boolean {
   if (plan.schema_version !== 2) return false;
   return plan.actions.every(
@@ -218,7 +184,7 @@ export function assertSealedAutomationPlan(plan: SealableAutomationPlan): void {
   if (plan.schema_version !== 2 || !isSealedAutomationPlan(plan)) {
     throw new GranotRunConflict(
       "RUN_REPLAN_REQUIRED",
-      "Schema-v1 automation plans cannot be reconstructed; collect and approve a schema-v2 plan.",
+      "Scheduled Estimates require a sealed schema-v2 plan.",
     );
   }
 }
@@ -251,64 +217,6 @@ export function automationRunCompletionStatus(
     }
   }
   return hasError ? "completed_with_errors" : "completed";
-}
-
-function expectedTargetFor(
-  action: SealableAutomationAction,
-  kind: SealableAutomationPlan["kind"],
-): GranotAutomationLifecycleApply["expected_target"] | undefined {
-  if (kind === "form_leads" && typeof action.lead_id === "string" && action.lead_id) {
-    return { model: "FormLead", id: action.lead_id };
-  }
-  const callLeadId = action.target_binding?.call_lead_id;
-  if (kind === "call_leads" && typeof callLeadId === "string" && callLeadId) {
-    return { model: "CallLead", id: callLeadId };
-  }
-  return undefined;
-}
-
-function findCollectedRow(
-  sources: GranotSourceCollection[],
-  action: SealableAutomationAction,
-  kind: SealableAutomationPlan["kind"],
-): { row: GranotReportRow; sourceLabel: string; section: GranotTableSection } | null {
-  if (kind === "form_leads") {
-    const source = sources.find((entry) => entry.sourceLabel === action.source_label);
-    if (!source || !action.row_id) return null;
-    const section =
-      action.table_section ?? inferFormSection(source, action.row_id);
-    const row = source.sections[section].find((entry) => entry.id === action.row_id);
-    return row
-      ? { row, sourceLabel: source.sourceLabel, section }
-      : null;
-  }
-
-  const section: GranotTableSection =
-    action.operation === "booked_reconciliation" ||
-    action.table_section === "bookedJobs"
-      ? "bookedJobs"
-      : "followUpEstimates";
-  const mappedRowId =
-    typeof action.row?.row_id === "string" ? action.row.row_id : "";
-  for (const source of sources) {
-    const row = source.sections[section].find(
-      (entry) => `${source.sourceLabel}:${entry.id}` === mappedRowId,
-    );
-    if (row) {
-      return { row, sourceLabel: source.sourceLabel, section };
-    }
-  }
-  return null;
-}
-
-function inferFormSection(
-  source: GranotSourceCollection,
-  rowId: string,
-): GranotTableSection {
-  if (source.sections.bookedJobs.some((row) => row.id === rowId)) {
-    return "bookedJobs";
-  }
-  return "followUpEstimates";
 }
 
 function assignStatementValue(

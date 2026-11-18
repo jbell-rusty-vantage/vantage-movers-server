@@ -216,6 +216,7 @@ describe("intake admission gate (outreach_intake; P05e, P10b automatic intake sc
       reason: "closed_priority",
       status: null,
       admission: null,
+      evaluation_requested: false,
     });
   });
 
@@ -228,7 +229,7 @@ describe("intake admission gate (outreach_intake; P05e, P10b automatic intake sc
     assert.equal(result.outcome, "not_admitted");
     // Even an admission job (switched off after its nomination) admits nothing.
     const admission = await refreshLeadForOutreach(lead.ref, config, asOf, store, fakeSession, "admission");
-    assert.deepEqual(admission, { outcome: "not_admitted", subject_id: null, reason: "expansion:admission_disabled", status: null, admission: null });
+    assert.deepEqual(admission, { outcome: "not_admitted", subject_id: null, reason: "expansion:admission_disabled", status: null, admission: null, evaluation_requested: false });
     assert.equal(store.subjects.length, 0);
   });
 });
@@ -246,7 +247,7 @@ describe("olr B6: event-driven expansion admission (transition.expansion_admissi
     const store = new MemoryDeskSubjectStore();
     const lead = store.addLead(preGate());
     const result = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
-    assert.deepEqual(result, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "active", admission: "expansion" });
+    assert.deepEqual(result, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "active", admission: "expansion", evaluation_requested: true });
     const subject = store.subjects[0]!;
     assert.deepEqual(subject.enrollment, { cohort_id: "admission:2026-10-06", kind: "expansion", enrolled_at: asOf, activation_at: asOf, manifest_hash: null });
     assert.equal(store.periods.length, 1);
@@ -299,7 +300,7 @@ describe("olr B6: event-driven expansion admission (transition.expansion_admissi
     const lead = store.addLead(leadFacts({ created_at: at("2026-10-05T14:00:05Z"), timestamp: toFloridaTimestamp(at("2026-10-05T14:00:00Z")), ...accepted("0", "2026-10-06T14:58:00Z") }));
     store.creationJobs.set(`${lead.ref.model}:${lead.ref.id}`, "pending");
     const deferred = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
-    assert.deepEqual(deferred, { outcome: "deferred", subject_id: null, reason: "deferred_to_intake", status: null, admission: null });
+    assert.deepEqual(deferred, { outcome: "deferred", subject_id: null, reason: "deferred_to_intake", status: null, admission: null, evaluation_requested: false });
     assert.deepEqual(store.writes, []);
     store.creationJobs.set(`${lead.ref.model}:${lead.ref.id}`, "completed");
     const admitted = await refreshLeadForOutreach(lead.ref, admissionOn(), asOf, store, fakeSession, "admission");
@@ -348,7 +349,7 @@ describe("olr B8: intake admission hold (ambiguous identity, missing/unreliable 
     const a = store.addLead(leadFacts({ normalized_job_no: "J-1" }));
     const b = store.addLead(leadFacts({ model: "CallLead", normalized_job_no: "J-1" }));
     const admitted = await refreshLeadForOutreach(a.ref, config, asOf, store, fakeSession);
-    assert.deepEqual(admitted, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "review", admission: "intake" }, "admitted held, never refused");
+    assert.deepEqual(admitted, { outcome: "created", subject_id: store.subjects[0]!.id, reason: null, status: "review", admission: "intake", evaluation_requested: true }, "admitted held, never refused");
     const held = store.subjects[0]!;
     assert.deepEqual([held.status, held.review_reasons], ["review", ["ambiguous_identity"]]);
     assert.equal(held.enrollment.kind, "intake");

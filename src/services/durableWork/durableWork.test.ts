@@ -10,7 +10,7 @@ import {
   classifyGoogleFailure,
   computeChecksum,
   createBestRelocationIngestionActor,
-  createReportingProjectionActor,
+  createGranotLifecycleProcessorActor,
   decideProviderRetry,
   resolveEffectiveCapability,
   sanitizeDurableMetadata,
@@ -191,7 +191,7 @@ test("run fake enforces status graph, lease fencing, and monotonic checkpoints",
 test("system actors remain distinct and metadata is sanitized", () => {
   assert.notEqual(
     createBestRelocationIngestionActor("request-1").actor_id,
-    createReportingProjectionActor("request-1").actor_id,
+    createGranotLifecycleProcessorActor("request-1").actor_id,
   );
   assert.deepEqual(
     sanitizeDurableMetadata({

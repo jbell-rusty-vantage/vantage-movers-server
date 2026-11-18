@@ -8,9 +8,9 @@ import { poolNextDateAt } from "./policy";
 
 /** Shared Pool policy replaces routine private cadence; it has no initial response, SMS or debt. */
 export async function projectPoolResult(base: EvaluateSubjectResult, configuration: ActiveConfiguration, now: Date,
-  restrictions: readonly DeskRestrictionRow[], coverage: Date | null, session: ClientSession, noContact = false): Promise<EvaluateSubjectResult> {
+  restrictions: readonly DeskRestrictionRow[], coverage: Date | null, session: ClientSession, noContact = false, readOnly = false): Promise<EvaluateSubjectResult> {
   if (base.state === "closed") return base;
-  const shared = await recomputePoolDuty(base.subject_id, base.business_date, configuration, now, session);
+  const shared = await recomputePoolDuty(base.subject_id, base.business_date, configuration, now, session, readOnly);
   if (!shared?.work.active) return base;
   const { window, winner } = shared;
   const blocked = noContact || restrictions.some((r) => r.state === "active" && r.channels.includes("call") && (!r.until || +r.until > +now));

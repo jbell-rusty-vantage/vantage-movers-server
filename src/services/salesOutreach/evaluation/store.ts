@@ -1,3 +1,4 @@
+import { enqueueOutreachWork } from "../evaluation/refreshRequests";
 import mongoose, { type ClientSession } from "mongoose";
 import type { SalesOutreachCadenceExposure } from "../../../config/domain/salesOutreach";
 import { getEntityChangeModel } from "../../../models/EntityChange";
@@ -12,7 +13,7 @@ import {
   getSalesOutreachSubjectModel,
 } from "../../../models/salesOutreach";
 import { CsiError } from "../../salesIntelligence/auth";
-import { enqueueCsiJob, type JobInput } from "../../salesIntelligence/jobs";
+import { type JobInput } from "../../salesIntelligence/jobs";
 import { currentSmsMailboxIds, currentSmsMailboxRows, loadCallWatermarks, smsCoverage, type CallWatermarks } from "../evidence/coverage";
 import { REP_SMS_SYNC_SCOPE_PREFIX } from "../reads/store";
 import type { DeskLeadRef } from "../subjects/leadFacts";
@@ -407,7 +408,7 @@ export const mongoEvaluationStore: EvaluationStore = {
 
   async enqueue(job, session) {
     try {
-      await enqueueCsiJob(job, session);
+      await enqueueOutreachWork(job, session);
       return "enqueued";
     } catch (error) {
       if (error instanceof CsiError && error.code === "IDEMPOTENCY_CONFLICT") return "conflict";

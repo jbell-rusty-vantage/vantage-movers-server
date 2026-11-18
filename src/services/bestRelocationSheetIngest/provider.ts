@@ -14,7 +14,6 @@ import {
 } from "./sheets";
 import type { IngestionInspection } from "../ingestion";
 import type { SourceTab, TabReadResult } from "./types";
-import { maskSpreadsheetId } from "../operationalWorkbooks";
 
 const REQUIRED_HEADERS: Partial<Record<SourceTab, readonly string[]>> = {
   Forms: [
@@ -356,4 +355,22 @@ function columnLetter(value: number): string {
     current = Math.floor((current - 1) / 26);
   }
   return output;
+}
+
+function normalizeSpreadsheetId(value: string): string | undefined {
+  const trimmed = value.trim();
+  const urlMatch = trimmed.match(
+    /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)(?:\/|$)/i,
+  );
+  const candidate = urlMatch?.[1] ?? trimmed;
+  return /^[A-Za-z0-9_-]{20,}$/.test(candidate)
+    ? candidate
+    : undefined;
+}
+
+function maskSpreadsheetId(value: string): string {
+  const normalized = normalizeSpreadsheetId(value);
+  if (!normalized) return "[invalid]";
+  if (normalized.length <= 8) return "********";
+  return `${normalized.slice(0, 4)}…${normalized.slice(-4)}`;
 }

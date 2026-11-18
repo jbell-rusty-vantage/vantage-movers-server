@@ -33,7 +33,7 @@ async function main() {
       MONGO_URI: uri, TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: database,
       DOTENV_CONFIG_PATH: dotenv, NODE_ENV: "test", SALES_INTELLIGENCE_DEPLOYMENT_ID: "granot-phase-two-local",
       SHEET_SYNC_MODE: "queued", GRANOT_LIFECYCLE_SHADOW_MODE: "false", GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED: "true",
-      GRANOT_AUTOMATION_APPLY_ENABLED: "true", GRANOT_USERNAME: "fixture", GRANOT_PASSWORD: "fixture",
+      GRANOT_USERNAME: "fixture", GRANOT_PASSWORD: "fixture",
       GRANOT_NETWORK_USERNAME: "fixture", GRANOT_NETWORK_PASSWORD: "fixture",
     });
     for (const name of ["MASTER_LEADS", "MASTER_BOOKED", "TBM_LEADS", "TBM_PRIME_LEADS", "TOP10_LEADS", "BEST_RELOCATION_LEADS", "GETMOVERS_LEADS", "MAINSITE_LEADS"]) env["TEST_" + name + "_SHEET_ID"] = "synthetic-" + name;

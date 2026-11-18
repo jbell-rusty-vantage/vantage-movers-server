@@ -47,6 +47,7 @@ export const SALES_INTELLIGENCE_JOB_INDEXES = [
     key: { completed_at: 1 as const },
     expireAfterSeconds: CSI_JOB_RETENTION_SECONDS,
   },
+  { name: "csi_job_routine_ttl", key: { routine_purge_at: 1 as const }, expireAfterSeconds: 0, sparse: true },
 ];
 export const SalesIntelligenceJobSchema = new Schema(
   {
@@ -82,6 +83,7 @@ export const SalesIntelligenceJobSchema = new Schema(
       },
     },
     completed_at: date,
+    routine_purge_at: { type: Date },
     input_refs: refs,
   },
   { collection: "sales_intelligence_jobs" },

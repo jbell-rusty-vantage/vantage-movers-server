@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { ObjectId, type Db, type Document } from "mongodb";
-import { approveGranotRun, runGranotWorker } from "../../src/services/granotHttpCollector/runWorkflow";
+import { runGranotWorker } from "../../src/services/granotHttpCollector/runWorkflow";
 import { applyOpenAutomationPlanAction, type GranotAutomationActionReceipt } from "../../src/services/granotLifecycle/automationApply";
 import { traceGranotAction } from "../vantage/granot-trace";
-import { owner } from "./granot-measurement-fixture";
 
 /** Fault injection is limited to the generated local run's lease. The first and second workers use real lifecycle effects. */
 export async function proveCanonicalCrash(db: Db, sealed: Document, leadId: ObjectId) {
@@ -12,7 +11,7 @@ export async function proveCanonicalCrash(db: Db, sealed: Document, leadId: Obje
   const runs = db.collection("granot_automation_runs");
   const leadFilter = { _id: leadId };
   const loadLead = () => db.collection("form_leads").findOne(leadFilter);
-  await approveGranotRun({ run_id: runId, plan_checksum: sealed.plan_checksum, selected_action_ids: [action.action_id], approved_by: owner });
+  await runs.updateOne({ _id: sealed._id }, { $set: { leased_until: new Date(0) } });
   const approved = await runs.findOne({ _id: sealed._id });
   const originalLead = await loadLead();
   assert.ok(approved && originalLead);

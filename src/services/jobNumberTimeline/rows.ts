@@ -155,6 +155,7 @@ export type IngestedMoveSnapshotRow = {
 };
 
 export type LeadRow = {
+  accepted_granot_observation_id?: string;
   id: IdLike;
   model: JobTimelineLeadModel;
   ingestion_origin?: string;

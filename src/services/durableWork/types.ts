@@ -107,23 +107,12 @@ export type DurableAuditEnvelope = {
 };
 
 export type DurableWorkWakeup = {
-  kind: "ingestion_wakeup" | "reporting_wakeup";
+  kind: "ingestion_wakeup";
   reason: "manual" | "schedule" | "retry" | "cron" | "recovery";
   run_hint: string | null;
 };
 
-export type ChecksumArtifactKind =
-  | "ingestion_plan"
-  | "reporting_revision"
-  | "reporting_preview"
-  | "reporting_data"
-  | "reporting_draft"
-  | "reporting_sample"
-  | "reporting_destination_snapshot"
-  | "reporting_destination_stable_identity"
-  | "reporting_query_input"
-  | "reporting_query_plan"
-  | "reporting_page";
+export type ChecksumArtifactKind = "ingestion_plan";
 
 export type ChecksumEnvelope<T> = {
   checksum_version: 1;

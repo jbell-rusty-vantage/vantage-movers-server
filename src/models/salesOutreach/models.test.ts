@@ -15,6 +15,7 @@ afterEach(() => {
 });
 
 const EXPECTED_COLLECTIONS = [
+  "sales_outreach_refresh_requests",
   "sales_outreach_performance_policies",
   "sales_outreach_sms_volume_contributions",
   "sales_outreach_sms_requirement_days",
@@ -53,6 +54,9 @@ test("the desk registry includes cadence and performance collections, isolated a
 
 test("the plan's uniqueness fences and queue sort indexes are declared", () => {
   const byName = new Map(SALES_OUTREACH_MODEL_REGISTRY.flatMap((e) => e.indexes.map((i) => [i.name, i] as const)));
+  assert.deepEqual(byName.get("sod_refresh_subject_unique")?.key, { subject_id: 1 });
+  assert.equal(byName.get("sod_refresh_subject_unique")?.unique, true);
+  assert.deepEqual(byName.get("sod_refresh_pending_due")?.key, { pending: 1, next_due_at: 1, _id: 1 });
   assert.deepEqual(byName.get("sod_subject_lead_unique")?.key, { lead_model: 1, lead_id: 1 });
   assert.equal(byName.get("sod_subject_lead_unique")?.unique, true);
   assert.deepEqual(byName.get("sod_period_active_unique")?.partialFilterExpression, { ended_at: null });

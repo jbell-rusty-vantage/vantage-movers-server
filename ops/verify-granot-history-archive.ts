@@ -26,11 +26,11 @@ async function verify() {
       await db.collection("synchronization_decisions").insertMany(item.decisions);
     }
     const inspect = async () => {
-      const rows = await loadJobNumberTimelineRows(db, job);
+      const rows = await loadJobNumberTimelineRows(db, job, { includeTransportEvidence: true });
       assert.equal(rows.observations?.length, 3);
       assert.equal(rows.decisions?.length, 3);
       assert.equal(rows.observation_receipts?.length, 3);
-      await assert.rejects(loadJobNumberTimelineRows(db, job, { maxRowsPerQuery: 2 }), JobTimelineEvidenceLimitError);
+      await assert.rejects(loadJobNumberTimelineRows(db, job, { maxRowsPerQuery: 2, includeTransportEvidence: true }), JobTimelineEvidenceLimitError);
       const hotRows = await db.collection("granot_observations").find({ "identity.normalized_job_no": job }).toArray();
       const recent = await recentHistoryObservations(db, job, hotRows, 20);
       assert.deepEqual(recent.map(x => String(x._id)), [hot, shared].map(c => String(c.observation._id)));
