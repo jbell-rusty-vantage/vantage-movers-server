@@ -98,7 +98,7 @@ and stores the signed Owner approval. The existing worker and lifecycle apply pe
 the effects. This narrow path skips the ordinary automation flag, retains every
 lifecycle gate, and cannot promote form/call runs. Ordinary `/approve` keeps its gate.
 
-The recurring cron covers trailing 90 inclusive Open Dates plus verified older provider-date months hourly 08:00-20:00 inclusive and at 22:00/00:00/02:00/04:00/06:00 America/New_York.
+The recurring cron covers trailing 90 inclusive Open Dates plus verified older provider-date months at 06:00, 09:00, 13:00, 17:00 and 21:00 America/New_York.
 A deterministic run `_id` keyed by the New York date and scheduled hour makes retries
 and concurrent invocations reuse the same run, plan, and lifecycle operation IDs.
 The existing Mongo `_id` index enforces uniqueness; no index migration is required.
