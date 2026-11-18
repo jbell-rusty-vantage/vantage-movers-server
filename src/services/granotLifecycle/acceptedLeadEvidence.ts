@@ -1,4 +1,3 @@
-import { getGranotObservationReceiptModel } from "../../models/GranotObservationReceipt";
 import type { ClientSession, Types } from "mongoose";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getCallLeadModel } from "../../models/CallLead";
@@ -47,7 +46,7 @@ export function acceptedEvidence(
 
 /** Called inside the transaction that fences and completes the receipt. Replacing a temporal
  * winner replaces its whole nested document, so a later winner never inherits an older proof. */
-export async function certifyAcceptedLead(
+export async function certifyWinningLead(
   receiptId: Types.ObjectId,
   result: ProcessorResult,
   session: ClientSession,
@@ -93,25 +92,6 @@ export async function certifyAcceptedLead(
       ? await getFormLeadModel().updateOne(filter, update, options)
       : await getCallLeadModel().updateOne(filter, update, options);
   if (changed.matchedCount) {
-    const fenced =
-      await getGranotObservationReceiptModel().collection.updateOne(
-        {
-          _id: receiptId,
-          "processing.state": "completed",
-          "processing.latest_decision_id": decision._id,
-        },
-        {
-          $set: {
-            "processing.certified_lead": {
-              model: result.target.model,
-              id: filter._id,
-              decision_id: decision._id,
-            },
-          },
-        },
-        { session },
-      );
-    if (!fenced.matchedCount)
-      throw new Error("Granot acceptance changed during certification");
+    return { model: result.target.model, id: filter._id, decision_id: decision._id };
   }
 }

@@ -8,7 +8,7 @@ import { connectMongo, withTransaction } from "../../db";
 import { getFormLeadModel } from "../../models/FormLead";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
-import { certifyAcceptedLead } from "./acceptedLeadEvidence";
+import { finalizeReceiptClaim } from "./drainer";
 
 test("certification records the winning Lead only and rolls back on failed receipt finalization", async (t) => {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== "true") return t.skip("requires disposable replica");
@@ -35,16 +35,39 @@ test("certification records the winning Lead only and rolls back on failed recei
   const winner = { observation_id: observation, captured_at: when };
   await leads.insertOne({ _id: lead, granot_priority:"9", job_no:job, normalized_job_no:job, domain_revision:1, lead_source_company:company, source_granularity_id:feed, last_accepted_granot_observation: winner });
   await observations.insertOne({ _id: observation, receipt_id: receipt, captured_at: when, normalization_result: "valid", priority: { valid: true, canonical: "9" }, identity: { normalized_job_no: job } });
-  await db.collection("granot_webhook_receipts").insertOne({ _id: receipt, processing: { state: "completed", latest_decision_id: decision } });
+  const receipts = db.collection("granot_webhook_receipts");
+  await receipts.insertOne({ _id: receipt, processing: { state: "completed", latest_decision_id: decision } });
   const target = { model: "FormLead" as const, id: String(lead) };
   await decisions.insertOne({ _id: decision, execution_mode: "live", outcome: "already_current", observation_id: observation, target, source_scope: scope });
   const before = await inspectPoolCandidate(target);
   assert.equal(before.eligible, true, before.reason ?? "eligible");
   const result = { observation_id: String(observation), decision_id: String(decision), outcome: "already_current" as const, target, effects: [] };
   const read = async () => (await leads.findOne({ _id: lead }))?.last_accepted_granot_observation;
-  await assert.rejects(withTransaction(async s => { await certifyAcceptedLead(receipt, result, s); throw new Error("rollback"); }), /rollback/);
+  await receipts.updateOne({ _id: receipt }, { $set: { "processing.state": "claimed", "processing.lease_owner": "owner" } });
+  const completion = { $set: { "processing.state": "completed", "processing.latest_decision_id": decision },
+    $unset: { "processing.lease_owner": "" } };
+  assert.equal(await finalizeReceiptClaim(receipt, "lost-owner", completion, result), false);
   assert.equal((await read()).evidence, undefined);
-  await withTransaction(s => certifyAcceptedLead(receipt, result, s));
+  assert.equal((await receipts.findOne({ _id: receipt }))?.processing.state, "claimed");
+  await assert.rejects(finalizeReceiptClaim(receipt, "owner", {
+    ...completion, $set: { ...completion.$set, payload: "immutable" },
+  }, result), /processing/);
+  assert.equal((await read()).evidence, undefined);
+  assert.equal((await receipts.findOne({ _id: receipt }))?.processing.state, "claimed");
+  let receiptUpdates = 0;
+  const previousDebug = mongoose.get("debug");
+  mongoose.set("debug", (collection, method) => {
+    if (collection === receipts.collectionName && method === "updateOne") receiptUpdates++;
+  });
+  try {
+    assert.equal(await finalizeReceiptClaim(receipt, "owner", completion, result), true);
+    assert.equal(receiptUpdates, 1);
+  } finally {
+    mongoose.set("debug", previousDebug ?? false);
+  }
+  const completed = await receipts.findOne({ _id: receipt });
+  assert.equal(completed?.processing.state, "completed");
+  assert.deepEqual(completed?.processing.certified_lead, { model: target.model, id: lead, decision_id: decision });
   assert.equal((await read()).evidence.normalized_job_no, job);
   const old = await observations.findOneAndDelete({_id:observation});
   assert.ok(old);
@@ -57,6 +80,8 @@ test("certification records the winning Lead only and rolls back on failed recei
   await withTransaction(s => pointReceiptToDecision(receipt, oid(), s));
   assert.equal((await read()).evidence, undefined);
   await leads.updateOne({ _id: lead }, { $set: { last_accepted_granot_observation: { observation_id: oid(), captured_at: new Date(+when + 1) } } });
-  await withTransaction(s => certifyAcceptedLead(receipt, result, s));
+  await receipts.updateOne({ _id: receipt }, { $set: { "processing.state": "claimed", "processing.lease_owner": "again" } });
+  assert.equal(await finalizeReceiptClaim(receipt, "again", completion, result), true);
+  assert.equal((await receipts.findOne({ _id: receipt }))?.processing.certified_lead, undefined);
   assert.equal((await read()).evidence, undefined);
 });

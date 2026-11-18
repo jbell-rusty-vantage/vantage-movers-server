@@ -659,6 +659,13 @@ export const granotReceiptProcessingSchema = new Schema(
     last_error: { type: granotReceiptLastErrorSchema },
     completed_at: { type: Date },
     replay_result: { type: Schema.Types.Mixed },
+    certified_lead: {
+      type: new Schema({
+        model: { type: String, enum: ["FormLead", "CallLead"], required: true },
+        id: { type: Schema.Types.ObjectId, required: true },
+        decision_id: { type: Schema.Types.ObjectId, required: true },
+      }, { _id: false, id: false }),
+    },
     retention_review_at: { type: Date },
     latest_decision_id: { type: Schema.Types.ObjectId },
     manual_requeue_count: { type: Number, required: true, min: 0 },

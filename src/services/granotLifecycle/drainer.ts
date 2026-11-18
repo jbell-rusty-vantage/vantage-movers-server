@@ -1,6 +1,6 @@
 import { withTransaction } from "../../db";
 import { currentReceiptReplay, storeReceiptReplay, type StoredReceiptReplay } from "./receiptReplay";
-import { acceptsLead, certifyAcceptedLead } from "./acceptedLeadEvidence";
+import { acceptsLead, certifyWinningLead } from "./acceptedLeadEvidence";
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import {
@@ -354,7 +354,7 @@ async function runFencedProcessor(
 ): Promise<DrainItemResult> {
   const nowFn = deps.now ?? (() => new Date());
   const renew = deps.renewLease ?? defaultRenewLease;
-  const finalize = deps.finalize ?? defaultFinalize;
+  const finalize = deps.finalize ?? finalizeReceiptClaim;
   const processor = deps.processor ?? granotObservationProcessor;
   const recordEvent = deps.recordEvent ?? defaultRecordEvent;
 
@@ -900,18 +900,32 @@ async function defaultRenewLease(
   return result.matchedCount === 1;
 }
 
-async function defaultFinalize(
+export async function finalizeReceiptClaim(
   id: mongoose.Types.ObjectId,
   owner: string,
-  update: Record<string, unknown>,
+  update: Record<string, unknown> & { $set?: Record<string, unknown> },
   processed?: ProcessorResult,
 ): Promise<boolean> {
-  const complete = async (session?: mongoose.ClientSession) => {
-    const write = await getGranotObservationReceiptModel().updateOne(buildFenceFilter(id, owner), update, { session });
-    if (write.matchedCount && processed && session) await certifyAcceptedLead(id, processed, session);
+  const receipts = getGranotObservationReceiptModel();
+  const fence = buildFenceFilter(id, owner);
+  if (!processed || !acceptsLead(processed)) {
+    return (await receipts.updateOne(fence, update)).matchedCount === 1;
+  }
+  if (update.$set?.["processing.state"] !== "completed" ||
+      String(update.$set["processing.latest_decision_id"]) !== processed.decision_id) {
+    throw new Error("Granot completion must identify its accepted decision");
+  }
+
+  return withTransaction(async (session) => {
+    const certified = await certifyWinningLead(id, processed, session);
+    const completion = certified
+      ? { ...update, $set: { ...update.$set, "processing.certified_lead": certified } }
+      : update;
+    const write = await receipts.updateOne(fence, completion, { session });
+    // A competing claimant may have won while the processor ran. Undo any provisional Lead proof.
+    if (!write.matchedCount) await session.abortTransaction();
     return write.matchedCount === 1;
-  };
-  return acceptsLead(processed) ? withTransaction(complete) : complete();
+  });
 }
 
 async function defaultLoadReceipt(id: string): Promise<ClaimedReceiptSnapshot | null> {

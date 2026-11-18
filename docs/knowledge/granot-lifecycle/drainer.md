@@ -38,6 +38,8 @@ Callers pass receipt identity only. The claim predicate is the Section 26 filter
 
 Renew and every success/retry/dead-letter finalization are fenced by `{_id, state:claimed, lease_owner}`. A zero match means lease lost: stop, write no final state, launch no replacement processor.
 
+For accepted Lead outcomes, the transaction verifies the Decision and Observation, certifies the current winning Lead and stores its reference in the fenced receipt completion. Losing the receipt lease rolls back the Lead proof. Later reconciliation can use the stored reference to invalidate the proof.
+
 Processing disabled: no claim, safe skipped run (`claimAndProcessOrPoll` returns `{ status: "skipped", reason: "processing_disabled" }`). Capture and due work remain intact. If the processor is invoked directly with processing off, it throws `ProcessingDisabledError`.
 
 `claimAndProcessOrPoll(receipt_id)` lives in this module (not `operations.ts`). Sync poll deadline is 5 seconds with exponential backoff (`syncPollBackoffMs`). Queue `parseReceiptWakeup` accepts `{ receipt_id }` or a Vercel `{ data: { receipt_id } }` wrapper; any other shape fails.

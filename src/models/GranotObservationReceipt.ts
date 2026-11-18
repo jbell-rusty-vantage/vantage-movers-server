@@ -40,6 +40,11 @@ export type GranotObservationReceiptProcessing = {
   };
   completed_at?: Date;
   latest_decision_id?: mongoose.Types.ObjectId;
+  certified_lead?: {
+    model: "FormLead" | "CallLead";
+    id: mongoose.Types.ObjectId;
+    decision_id: mongoose.Types.ObjectId;
+  };
   manual_requeue_count: number;
 };
 
