@@ -21,3 +21,7 @@ Subject refreshes can coalesce by generation after shadow comparison. The separa
 3. Use `ops/granot-enroll-scheduled-archives.ts --preview <UTC cutoff> <limit>` and then `--apply` to enroll a bounded set of old completed runs. Verify exact recovery with `ops/granot-read-archived-evidence.ts`. The archive worker records its outcomes at each two-minute tick.
 4. Review subject refresh parity in `sales_outreach_refresh_requests`. Use `ops/sales-outreach/refresh-rollout.ts <database> shadow <approval>`, and then `active <approval> <parity reference>` once the shadow evidence supports activation. `off <approval>` restores legacy nominations. Drain outstanding active generations before rolling the server binary back to a version without refresh support.
 5. Restore the exclusive feature backup in isolation and compare every BSON record and index before dropping the manifest's namespaces. Keep the two master sheets, the mixed scheduled-run collection and shared audit ledgers. Reintroducing the retired services requires restoring the feature data and indexes before rolling binaries back.
+
+## Verified cutover
+
+The November 18 cutover dropped 13 collections exclusive to the retired features after a verified restore. All 668 sampled rows across eight official sheet tabs matched their pre-cutover values. The archive restored all 12 original scheduled runs in full. Compaction removed a net 627,518 logical BSON bytes from MongoDB. This follow-up retires the unused RingCentral recording adapter and retains the shared RingCentral HTTP client.
