@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
-import { connectMongo } from "../../db";
+import { connectMongo, withTransaction } from "../../db";
 import { getCallLeadModel } from "../../models/CallLead";
 import { createRingCentralCallIngestActor } from "../durableWork/actors";
 import { hasQualifiedRingCentralCall } from "../ringcentral/callLeadQualification";
 import type { RingCentralQualifiedCall } from "../ringcentral/ringcentral-call-lead-ingest.service";
 import { finalizeSheetSync, persistSheetSyncIntent, type FullSheetSyncJob } from "../sheetSync";
+import { assertCommandContext } from "./commandContext";
 import { emitLeadChange } from "./leadChangeEmission";
 import { executeCanonicalCommandWithPostCommit } from "./idempotency";
 import { DomainRevisionConflictError, type CanonicalCommandContext } from "./types";
@@ -43,7 +44,7 @@ export function planRingCentralFinalResultUpdate(
     observed != null && Number.isFinite(new Date(observed as string).getTime()) &&
     start != null && Number.isFinite(new Date(start as string).getTime()) &&
     (!fact.callLogId || saved?.call_log_id === fact.callLogId);
-  // Persist ordering evidence through the command, without semantic audit/outbox churn.
+  // A newer observation of the same facts only advances their ordering watermark.
   if (unchanged) return { "ringcentral.final_result_observed_at": fact.observedAt };
   return {
     "ringcentral.final_result": fact.result,
@@ -73,6 +74,10 @@ async function loadCall(call: FinalCallLogResultObservation, leadId?: string | n
     if (found[0]) return found[0] as StoredCall;
   }
   return null;
+}
+
+function isWatermarkOnly(patch: Record<string, unknown>): boolean {
+  return Object.keys(patch).length === 1 && "ringcentral.final_result_observed_at" in patch;
 }
 
 /**
@@ -110,6 +115,20 @@ export async function persistRingCentralFinalCallLogResult(
     },
   };
   try {
+    if (isWatermarkOnly(patch)) {
+      await assertCommandContext(context);
+      // The timestamp on the qualified Lead is itself the replay fence. Recheck
+      // identity and facts on each transaction attempt, including write conflicts.
+      await withTransaction(async (session) => {
+        const current = await loadCall(call, id, session);
+        if (!current) throw new DomainRevisionConflictError();
+        const next = planRingCentralFinalResultUpdate(current, call);
+        if (!next) return;
+        if (!isWatermarkOnly(next)) throw new DomainRevisionConflictError();
+        await getCallLeadModel().updateOne({ _id: current._id.toString() }, { $set: next }, { session });
+      });
+      return id;
+    }
     await executeCanonicalCommandWithPostCommit({
       command_name: "recordRingCentralFinalCallLogResult",
       context,
@@ -119,11 +138,8 @@ export async function persistRingCentralFinalCallLogResult(
           throw new DomainRevisionConflictError();
         }
         const currentPatch = planRingCentralFinalResultUpdate(current, call);
-        if (!currentPatch) return { entity_refs: [{ model: "CallLead", id }] };
+        if (!currentPatch || isWatermarkOnly(currentPatch)) throw new DomainRevisionConflictError();
         await getCallLeadModel().updateOne({ _id: new mongoose.Types.ObjectId(id) }, { $set: currentPatch }, { session: tx.session });
-        if (Object.keys(currentPatch).length === 1 && "ringcentral.final_result_observed_at" in currentPatch) {
-          return { entity_refs: [{ model: "CallLead", id }] };
-        }
         await emitLeadChange({
           model: "CallLead", id, before: current,
           session: tx.session, now: tx.now,

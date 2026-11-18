@@ -1,0 +1,504 @@
+{
+  "baseline": [
+    {
+      "label": "qualified_call",
+      "delta": {
+        "entity_changes": {
+          "count": 1,
+          "bytes": 3237
+        },
+        "call_leads": {
+          "count": 1,
+          "bytes": 1678
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bytes": 363
+        },
+        "ringcentral_processed_calls_test": {
+          "count": 1,
+          "bytes": 510
+        },
+        "form_fill_work": {
+          "count": 1,
+          "bytes": 156
+        }
+      },
+      "writes": [
+        "insert:call_leads",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:call_leads",
+        "findAndModify:sheet_sync_jobs",
+        "update:ringcentral_processed_calls_test"
+      ]
+    },
+    {
+      "label": "external_form",
+      "delta": {
+        "entity_changes": {
+          "count": 2,
+          "bytes": 4936
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bytes": 373
+        },
+        "form_fill_work": {
+          "count": 1,
+          "bytes": 156
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1003
+        },
+        "form_leads": {
+          "count": 1,
+          "bytes": 1605
+        }
+      },
+      "writes": [
+        "insert:form_leads",
+        "update:form_fill_work",
+        "update:call_leads",
+        "insert:entity_changes",
+        "update:call_leads",
+        "findAndModify:sheet_sync_jobs",
+        "findAndModify:sheet_sync_jobs",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:form_leads",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "submission_replay",
+      "delta": {},
+      "writes": []
+    },
+    {
+      "label": "duplicate_form",
+      "delta": {
+        "entity_changes": {
+          "count": 1,
+          "bytes": 4113
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1006
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bytes": 363
+        },
+        "form_fill_work": {
+          "count": 1,
+          "bytes": 156
+        },
+        "form_leads": {
+          "count": 1,
+          "bytes": 1605
+        }
+      },
+      "writes": [
+        "insert:form_leads",
+        "update:form_fill_work",
+        "findAndModify:sheet_sync_jobs",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:form_leads",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "newer_identical",
+      "delta": {
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1197
+        }
+      },
+      "writes": [
+        "update:call_leads",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "exact_replay",
+      "delta": {},
+      "writes": []
+    },
+    {
+      "label": "concurrent_identical",
+      "delta": {
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1197
+        }
+      },
+      "writes": [
+        "update:call_leads",
+        "update:call_leads",
+        "insert:domain_command_executions",
+        "update:call_leads",
+        "update:call_leads",
+        "update:call_leads"
+      ]
+    },
+    {
+      "label": "delayed_correction",
+      "delta": {},
+      "writes": []
+    },
+    {
+      "label": "genuine_correction",
+      "delta": {
+        "entity_changes": {
+          "count": 1,
+          "bytes": 1169
+        },
+        "call_leads": {
+          "count": 0,
+          "bytes": -2
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1197
+        },
+        "sheet_sync_jobs": {
+          "count": 0,
+          "bytes": -10
+        }
+      },
+      "writes": [
+        "update:call_leads",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:call_leads",
+        "findAndModify:sheet_sync_jobs",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "correction_replay",
+      "delta": {},
+      "writes": []
+    }
+  ],
+  "candidate": [
+    {
+      "label": "qualified_call",
+      "delta": {
+        "entity_changes": {
+          "count": 1,
+          "bytes": 3237
+        },
+        "ringcentral_processed_calls_test": {
+          "count": 1,
+          "bytes": 510
+        },
+        "form_fill_work": {
+          "count": 1,
+          "bytes": 156
+        },
+        "call_leads": {
+          "count": 1,
+          "bytes": 1678
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bytes": 363
+        }
+      },
+      "writes": [
+        "insert:call_leads",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:call_leads",
+        "findAndModify:sheet_sync_jobs",
+        "update:ringcentral_processed_calls_test"
+      ]
+    },
+    {
+      "label": "external_form",
+      "delta": {
+        "entity_changes": {
+          "count": 2,
+          "bytes": 4936
+        },
+        "form_fill_work": {
+          "count": 1,
+          "bytes": 156
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bytes": 373
+        },
+        "form_leads": {
+          "count": 1,
+          "bytes": 1605
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1003
+        }
+      },
+      "writes": [
+        "insert:form_leads",
+        "update:form_fill_work",
+        "update:call_leads",
+        "insert:entity_changes",
+        "update:call_leads",
+        "findAndModify:sheet_sync_jobs",
+        "findAndModify:sheet_sync_jobs",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:form_leads",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "submission_replay",
+      "delta": {},
+      "writes": []
+    },
+    {
+      "label": "duplicate_form",
+      "delta": {
+        "entity_changes": {
+          "count": 1,
+          "bytes": 4113
+        },
+        "form_leads": {
+          "count": 1,
+          "bytes": 1605
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1006
+        },
+        "form_fill_work": {
+          "count": 1,
+          "bytes": 156
+        },
+        "sheet_sync_jobs": {
+          "count": 1,
+          "bytes": 363
+        }
+      },
+      "writes": [
+        "insert:form_leads",
+        "update:form_fill_work",
+        "findAndModify:sheet_sync_jobs",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:form_leads",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "newer_identical",
+      "delta": {},
+      "writes": [
+        "update:call_leads"
+      ]
+    },
+    {
+      "label": "exact_replay",
+      "delta": {},
+      "writes": []
+    },
+    {
+      "label": "concurrent_identical",
+      "delta": {},
+      "writes": [
+        "update:call_leads",
+        "update:call_leads"
+      ]
+    },
+    {
+      "label": "delayed_correction",
+      "delta": {},
+      "writes": []
+    },
+    {
+      "label": "genuine_correction",
+      "delta": {
+        "entity_changes": {
+          "count": 1,
+          "bytes": 1169
+        },
+        "domain_command_executions": {
+          "count": 1,
+          "bytes": 1197
+        },
+        "call_leads": {
+          "count": 0,
+          "bytes": -2
+        },
+        "sheet_sync_jobs": {
+          "count": 0,
+          "bytes": -10
+        }
+      },
+      "writes": [
+        "update:call_leads",
+        "insert:entity_changes",
+        "update:form_fill_work",
+        "update:call_leads",
+        "findAndModify:sheet_sync_jobs",
+        "insert:domain_command_executions"
+      ]
+    },
+    {
+      "label": "correction_replay",
+      "delta": {},
+      "writes": []
+    }
+  ],
+  "productionBefore": {
+    "start": "2026-11-17T03:00:00.000Z",
+    "end": "2026-11-18T03:00:00.000Z",
+    "stamp": {
+      "_id": "6ab49794564e766c93b2b74b",
+      "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+      "recorded_at": "2026-11-18T02:11:00.591Z",
+      "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+    },
+    "form_leads": [
+      {
+        "_id": {
+          "origin": "granot_lead_created",
+          "duplicate": false
+        },
+        "count": 25,
+        "bytes": 82529
+      },
+      {
+        "_id": {
+          "origin": "wordpress_form",
+          "duplicate": false
+        },
+        "count": 19,
+        "bytes": 54190
+      }
+    ],
+    "call_leads": [
+      {
+        "_id": {
+          "origin": "ringcentral",
+          "duplicate": false
+        },
+        "count": 7,
+        "bytes": 18949
+      }
+    ],
+    "domain_command_executions": [
+      {
+        "_id": "synchronizeLeadFromGranot",
+        "count": 190,
+        "bytes": 264385
+      },
+      {
+        "_id": "recordRingCentralFinalCallLogResult",
+        "count": 138,
+        "bytes": 178348
+      },
+      {
+        "_id": "createLeadFromGranot",
+        "count": 25,
+        "bytes": 34175
+      },
+      {
+        "_id": "createFormLead",
+        "count": 19,
+        "bytes": 20653
+      },
+      {
+        "_id": "confirmGranotBooking",
+        "count": 5,
+        "bytes": 8690
+      },
+      {
+        "_id": "mirrorFormLeadToCallSibling",
+        "count": 1,
+        "bytes": 1339
+      }
+    ],
+    "entity_changes": [
+      {
+        "_id": "synchronizeLeadFromGranot",
+        "count": 260,
+        "bytes": 339819
+      },
+      {
+        "_id": "createLeadFromGranot",
+        "count": 50,
+        "bytes": 164100
+      },
+      {
+        "_id": "createFormLead",
+        "count": 19,
+        "bytes": 84568
+      },
+      {
+        "_id": "createCallLead",
+        "count": 7,
+        "bytes": 23220
+      },
+      {
+        "_id": "confirmGranotBooking",
+        "count": 15,
+        "bytes": 22710
+      },
+      {
+        "_id": "fillReceiverFromRepCall",
+        "count": 2,
+        "bytes": 2739
+      },
+      {
+        "_id": "mirrorFormLeadToCallSibling",
+        "count": 1,
+        "bytes": 1855
+      }
+    ],
+    "sheet_sync_jobs": [
+      {
+        "_id": "form_lead.update",
+        "count": 84,
+        "bytes": 37296
+      },
+      {
+        "_id": "form_lead.create",
+        "count": 44,
+        "bytes": 19536
+      },
+      {
+        "_id": "call_lead.update",
+        "count": 8,
+        "bytes": 3552
+      },
+      {
+        "_id": "call_lead.create",
+        "count": 7,
+        "bytes": 3108
+      },
+      {
+        "_id": "booked_lead.create",
+        "count": 5,
+        "bytes": 2215
+      }
+    ]
+  },
+  "productionConfirmed": {
+    "start": "2026-11-17T03:00:00.000Z",
+    "end": "2026-11-18T03:00:00.000Z",
+    "counts": {
+      "watermark": 133,
+      "unavailable": 5
+    },
+    "confirmedReceiptBytes": 171882,
+    "targets": 12,
+    "last": "2026-11-18T02:30:18.325Z"
+  }
+}
