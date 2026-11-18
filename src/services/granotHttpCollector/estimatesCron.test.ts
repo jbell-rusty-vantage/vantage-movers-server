@@ -4,19 +4,19 @@ import { estimatesCronDecision, estimatesDateWindow, estimatesDateChunks, granot
 import { poolCronDuties, poolCronDecision, poolDiscoveryDateChunks, poolLatestSlot } from "./poolCron";
 
 test("Pool has its own deterministic NY refresh and daily historical discovery slots", () => {
-  const discovery = poolCronDecision(new Date('2026-10-14T10:00:00Z'));
+  const discovery = poolCronDecision(new Date('2026-10-14T12:00:00Z'));
   assert.ok(discovery.run);
   assert.equal(discovery.lane, 'pool_discovery');
   assert.deepEqual(discovery.dateWindow, { from:'01/01/2020', to:'10/14/2026' });
-  const refresh = poolCronDecision(new Date('2026-10-14T12:00:00Z'));
+  const refresh = poolCronDecision(new Date('2026-10-14T13:00:00Z'));
   assert.ok(refresh.run);
   assert.equal(refresh.lane, 'pool_refresh');
   assert.deepEqual(refresh.dateWindow, estimatesDateWindow(new Date('2026-10-14T12:00:00Z')));
-  const all = estimatesCronDecision(new Date('2026-10-14T12:00:00Z'));
+  const all = estimatesCronDecision(new Date('2026-10-14T13:00:00Z'));
   assert.ok(all.run);
   assert.notEqual(all.slotKey, refresh.slotKey);
   assert.equal(poolCronDecision(new Date('2026-10-14T11:00:00Z')).run, false);
-  assert.equal(poolLatestSlot(new Date('2026-03-08T10:00:00Z'), 'pool_discovery').slotKey, '03/08/2026:6:pool_discovery');
+  assert.equal(poolLatestSlot(new Date('2026-03-08T12:00:00Z'), 'pool_discovery').slotKey, '03/08/2026:6:pool_discovery');
   const chunks = poolDiscoveryDateChunks(discovery.dateWindow);
   assert.equal(chunks.length, 80);
   assert.equal(chunks[0]!.from, '01/01/2020');
@@ -24,7 +24,7 @@ test("Pool has its own deterministic NY refresh and daily historical discovery s
   for (let i=1;i<chunks.length;i++) assert.equal(granotCalendarEpoch(chunks[i]!.from)-granotCalendarEpoch(chunks[i-1]!.to),86400000);
 });
 
-test("the estimates cron retains historical slots and adds daytime hourly runs", () => {
+test("the estimates cron admits hourly daytime runs", () => {
   assert.equal(newYorkHour(new Date("2026-07-13T12:00:00.000Z")), 8);
   assert.equal(estimatesCronDecision(new Date("2026-07-13T12:00:00.000Z")).run, true);
   assert.equal(newYorkHour(new Date("2026-07-13T13:00:00.000Z")), 9);
@@ -87,18 +87,18 @@ test("scheduled chunks cover every day exactly once across month/year and DST bo
 });
 
 test("freshness uses the latest actual New York slot through overnight and DST transitions", () => {
-  assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T11:59:00Z")), { slotKey: "03/08/2026:6", at: new Date("2026-03-08T10:00:00Z") });
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T11:59:00Z")), { slotKey: "03/07/2026:20", at: new Date("2026-03-08T01:00:00Z") });
   assert.deepEqual(estimatesLatestSlot(new Date("2026-03-08T12:00:00Z")), { slotKey: "03/08/2026:8", at: new Date("2026-03-08T12:00:00Z") });
-  assert.deepEqual(estimatesLatestSlot(new Date("2026-11-01T06:30:00Z")), { slotKey: "11/01/2026:0", at: new Date("2026-11-01T04:00:00Z") });
+  assert.deepEqual(estimatesLatestSlot(new Date("2026-11-01T06:30:00Z")), { slotKey: "10/31/2026:20", at: new Date("2026-11-01T00:00:00Z") });
 });
 
 
-test("exact ordinary, spring and fall local slots and independent 06:00 Pool duties", () => {
-  const ordinaryHours = [0, 2, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22];
+test("exact ordinary, spring and fall local slots and independent 08:00 Pool duties", () => {
+  const ordinaryHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
   for (const [start, end, count] of [
-    ['2026-11-04T05:00:00Z', '2026-11-05T05:00:00Z', 18],
-    ['2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z', 17],
-    ['2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z', 18],
+    ['2026-11-04T05:00:00Z', '2026-11-05T05:00:00Z', 13],
+    ['2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z', 13],
+    ['2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z', 13],
   ] as const) {
     const slots: string[] = [], hours: number[] = [];
     for (let ms = +new Date(start); ms < +new Date(end); ms += 3600000) {
@@ -107,7 +107,7 @@ test("exact ordinary, spring and fall local slots and independent 06:00 Pool dut
       const decision = estimatesCronDecision(at);
       const duties = poolCronDuties(at);
       assert.deepEqual(duties.filter(d => d.lane === 'pool_discovery').map(d => d.slotKey),
-        hour === 6 ? [estimatesDateWindow(at).to + ':6:pool_discovery'] : []);
+        hour === 8 ? [estimatesDateWindow(at).to + ':6:pool_discovery'] : []);
       assert.deepEqual(duties.filter(d => d.lane === 'pool_refresh').map(d => d.slotKey),
         decision.run ? [decision.slotKey + ':pool_refresh'] : []);
       if (decision.run) {
@@ -117,12 +117,12 @@ test("exact ordinary, spring and fall local slots and independent 06:00 Pool dut
       }
     }
     assert.equal(slots.length, count); assert.equal(new Set(slots).size, count);
-    assert.deepEqual(hours, count === 17 ? ordinaryHours.filter(hour => hour !== 2) : ordinaryHours);
+    assert.deepEqual(hours, ordinaryHours);
   }
-  const at = new Date('2026-11-04T11:00:00Z');
+  const at = new Date('2026-11-04T13:00:00Z');
   assert.equal(estimatesCronDecision(at).run, true);
   assert.deepEqual(poolCronDuties(at).map(d => d.lane), ['pool_refresh', 'pool_discovery']);
-  assert.equal(poolLatestSlot(at, 'pool_refresh').slotKey, '11/04/2026:6:pool_refresh');
+  assert.equal(poolLatestSlot(at, 'pool_refresh').slotKey, '11/04/2026:8:pool_refresh');
 });
 
 test("hourly misses remain late; later complete slots supersede old misses across calendar boundaries", () => {
@@ -131,8 +131,8 @@ test("hourly misses remain late; later complete slots supersede old misses acros
     assert.equal(estimatesCoverageIsLate(new Date(now), new Date('2026-11-04T11:00:00Z')), true);
     assert.equal(estimatesCoverageIsLate(new Date(now), new Date('2026-11-04T14:00:00Z')), false);
   }
-  assert.equal(estimatesLatestSlot(new Date('2027-01-01T04:59:00Z')).slotKey, '12/31/2026:22');
-  assert.equal(estimatesLatestSlot(new Date('2027-01-01T05:00:00Z')).slotKey, '01/01/2027:0');
+  assert.equal(estimatesLatestSlot(new Date('2027-01-01T04:59:00Z')).slotKey, '12/31/2026:20');
+  assert.equal(estimatesLatestSlot(new Date('2027-01-01T05:00:00Z')).slotKey, '12/31/2026:20');
   assert.equal(estimatesSlotInstant('10/14/2026:13').toISOString(), '2026-10-14T17:00:00.000Z');
   assert.equal(estimatesSlotInstant('11/18/2026:21').toISOString(), '2026-11-19T02:00:00.000Z');
   assert.equal(estimatesLatestSlot(new Date('2026-11-05T02:00:00Z')).slotKey, '11/04/2026:20');

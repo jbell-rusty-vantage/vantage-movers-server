@@ -6,12 +6,12 @@ export const POOL_DISCOVERY_FLOOR = '01/01/2020';
 
 export type PoolDuty = { run: true; lane: PoolLane; slotKey: string; dateWindow: { from: string; to: string } };
 
-/** Independent duties: 06:00 has both refresh and discovery. */
+/** Independent duties: 08:00 admits both duties. Discovery retains its legacy daily identity across deployments. */
 export function poolCronDuties(now: Date): PoolDuty[] {
   const recent = estimatesDateWindow(now), hour = newYorkHour(now);
   const duties: PoolDuty[] = [];
   if (estimatesCronDecision(now).run) duties.push({ run: true, lane: 'pool_refresh', slotKey: `${recent.to}:${hour}:pool_refresh`, dateWindow: recent });
-  if (hour === 6) duties.push({ run: true, lane: 'pool_discovery', slotKey: `${recent.to}:6:pool_discovery`, dateWindow: { from: POOL_DISCOVERY_FLOOR, to: recent.to } });
+  if (hour === 8) duties.push({ run: true, lane: 'pool_discovery', slotKey: `${recent.to}:6:pool_discovery`, dateWindow: { from: POOL_DISCOVERY_FLOOR, to: recent.to } });
   return duties;
 }
 
