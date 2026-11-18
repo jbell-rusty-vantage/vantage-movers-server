@@ -44,7 +44,10 @@ const GranotAutomationRunSchema = new Schema(
     plan_checksum: { type: String, trim: true, default: null },
     plan_locked_at: { type: Date, default: null },
     expires_at: { type: Date, required: true, index: true },
-    purge_at: { type: Date, required: true },
+    purge_at: { type: Date, default: null },
+    archive_review_at: { type: Date },
+    archive_review: { type: Schema.Types.Mixed },
+    archive_summary: { type: Schema.Types.Mixed },
     approval: { type: Schema.Types.Mixed, default: null },
     receipts: { type: [Schema.Types.Mixed], default: [] },
     counters: { type: Schema.Types.Mixed, default: {} },
@@ -61,6 +64,10 @@ const GranotAutomationRunSchema = new Schema(
 GranotAutomationRunSchema.index(
   { status: 1, createdAt: 1 },
   { name: "granot_run_queue_claim" },
+);
+GranotAutomationRunSchema.index(
+  { archive_review_at: 1 },
+  { sparse: true, name: "granot_scheduled_archive_due" },
 );
 GranotAutomationRunSchema.index(
   { purge_at: 1 },

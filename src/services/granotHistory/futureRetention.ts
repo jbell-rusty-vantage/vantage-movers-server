@@ -19,6 +19,8 @@ import { appendHistoryMonth } from "./monthArchive";
 import type { ArchivedChain } from "./archiveCodec";
 import { referencedChains } from "./retentionReferences";
 import { supersededObservations } from "./supersededObservations";
+import { hasDailyEvidence, preserveReceiptLocator, settledLeadSnapshot, verifiedWebhookDays, type ReceiptArchiveLocator } from "./settledLeadEvidence";
+import { readArchiveObject, storeArchiveObject } from "./archiveObjects";
 
 export type RetentionPolicy = {
   _id: string;
@@ -84,6 +86,7 @@ export async function runFutureRetention(
   db: Db,
   now = new Date(),
   compare = comparePoolEvidence,
+  storage = { store: storeArchiveObject, read: readArchiveObject },
 ) {
   const policy = await policies(db).findOne({ _id: "v1" });
   if (
@@ -131,7 +134,7 @@ export async function runFutureRetention(
     }
     const source = db.collection("granot_webhook_receipts");
     const lower = policy.new_data_from,
-      cutoff = new Date(+now - 7 * day);
+      cutoff = new Date(+now - day);
     // The ingestion timestamp AND capture time fence historic documents out of automatic expiration.
     const due = await source
       .find(
@@ -155,33 +158,29 @@ export async function runFutureRetention(
       { $set: { "processing.retention_review_at": retryAt } },
     );
     const all = await readChains(db, ids);
-    const routine = all.filter((c) => routineAutomationChain(c, cutoff));
+    const days = await verifiedWebhookDays(db, all);
+    const routine = all.filter(c => settledLeadSnapshot(c, cutoff) && hasDailyEvidence(c, days));
     const held = await referencedChains(db, routine);
     const superseded = await supersededObservations(db, routine);
     const replays = new Map<string, ClosedOperation[] | null>();
     const groups = new Map<string, ArchivedChain[]>();
     for (const c of routine) {
-      const id = String(c.observation._id),
-        run = automationRunId(c.receipt.channel_operation_id);
-      if (!run || held.has(id) || !superseded.has(id)) continue;
-      if (!replays.has(run)) {
-        const result = await publishClosedRun(db, run, cutoff);
-        replays.set(
-          run,
-          ["closed", "previously_closed"].includes(result)
-            ? await readClosedRun(db, run)
-            : null,
-        );
+      const id = String(c.observation._id);
+      if (held.has(id) || !superseded.has(id)) continue;
+      if (c.receipt.observation_channel === "granot_http_automation") {
+        const run = automationRunId(c.receipt.channel_operation_id);
+        if (!run) continue;
+        if (!replays.has(run)) {
+          let replay = await readClosedRun(db, run, storage.read);
+          if (!replay) {
+            // Legacy orphan closures retain the seven-day proof. New roots close after original action expiry.
+            const result = await publishClosedRun(db, run, new Date(+now - 7 * day));
+            if (["closed", "previously_closed"].includes(result)) replay = await readClosedRun(db, run, storage.read);
+          }
+          replays.set(run, replay);
+        }
+        if (!matchesClosedReplay(c, replays.get(run)?.find(op => op.operation === c.receipt.channel_operation_id))) continue;
       }
-      if (
-        !matchesClosedReplay(
-          c,
-          replays
-            .get(run)
-            ?.find((r) => r.operation === c.receipt.channel_operation_id),
-        )
-      )
-        continue;
       const key = JSON.stringify([
         c.observation.identity.normalized_job_no,
         c.observation.captured_at.toISOString().slice(0, 7),
@@ -191,9 +190,12 @@ export async function runFutureRetention(
       groups.set(key, bucket);
     }
     const verified = new Map<string, ArchivedChain>();
+    const locators = new Map<string, ReceiptArchiveLocator>();
     for (const [key, group] of groups) {
       const [job, month] = JSON.parse(key);
-      await appendHistoryMonth(db, job, month, group);
+      await appendHistoryMonth(db, job, month, group, (id, hash, generation) => {
+        locators.set(id, { job, hash, ...(generation ? { generation } : {}) });
+      }, storage);
       for (const c of group) verified.set(String(c.observation._id), c);
     }
     const session = db.client.startSession();
@@ -206,6 +208,7 @@ export async function runFutureRetention(
         if (!active || !active.lease_until || +active.lease_until <= Date.now())
           throw new Error("Retention lease changed");
         let stamped = 0,
+          retired = 0,
           qualified = 0,
           comparisons = 0;
         const fresh = await readChains(db, ids, session);
@@ -214,17 +217,29 @@ export async function runFutureRetention(
         );
         const holds = await referencedChains(db, eligible, session),
           advanced = await supersededObservations(db, eligible, session);
+        const currentDays = await verifiedWebhookDays(db, eligible, session);
         for (const c of eligible) {
           const id = String(c.observation._id);
           if (
             holds.has(id) ||
             !advanced.has(id) ||
+            !hasDailyEvidence(c, currentDays) ||
             c.receipt.createdAt < lower ||
             c.receipt.captured_at < lower
           )
             continue;
           qualified++;
           if (policy.mode === "shadow") continue;
+          if (!routineAutomationChain(c, cutoff)) {
+            const locator = locators.get(id);
+            if (!locator) throw new Error("Granot archive locator missing");
+            await preserveReceiptLocator(db, c, locator, session);
+            if (c.receipt.observation_channel !== "browser_extension") await source.deleteOne({ _id: c.receipt._id }, { session });
+            await db.collection("granot_observations").deleteOne({ _id: c.observation._id }, { session });
+            await db.collection("synchronization_decisions").deleteOne({ _id: c.decisions[0]._id }, { session });
+            retired++;
+            continue;
+          }
           const set = { $set: { retention_purge_at: now } };
           await source.updateOne(
             { _id: c.receipt._id },
@@ -310,6 +325,7 @@ export async function runFutureRetention(
               read_comparisons: comparisons,
               archived_reviews: verified.size,
               ttl_stamped: stamped,
+              archived_retired: retired,
             },
             $set: {
               last_review_at: now,
@@ -319,13 +335,14 @@ export async function runFutureRetention(
           },
           { session, upsert: true },
         );
-        return stamped;
+        return { stamped, retired };
       });
       return {
         status: policy.mode,
         examined: ids.length,
         archived: verified.size,
-        stamped: count,
+        stamped: count.stamped,
+        retired: count.retired,
       };
     } finally {
       await session.endSession();

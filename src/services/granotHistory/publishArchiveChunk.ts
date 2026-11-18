@@ -6,11 +6,11 @@ import { storeArchiveObject } from "./archiveObjects";
 /** Readers discover a chunk only after it has been uploaded, fetched and decoded. */
 export async function publishArchiveChunk(db: Db, job: string, chains: ArchivedChain[]) {
   const bytes = encodeChains(job, chains);
-  const { hash, persisted } = await storeArchiveObject(db.databaseName, bytes);
+  const { hash, persisted, generation } = await storeArchiveObject(db.databaseName, bytes);
   const restored = decodeChains(persisted, hash, job);
   const times = restored.map(c => +c.observation.captured_at);
-  const entry = { _id: hash, job, job_key: archiveJobKey(job), oldest: new Date(Math.min(...times)),
+  const entry = { _id: hash, generation, job, job_key: archiveJobKey(job), oldest: new Date(Math.min(...times)),
     newest: new Date(Math.max(...times)), count: restored.length };
-  const result = await archiveCatalog(db).updateOne(entry, { $setOnInsert: entry }, { upsert: true, writeConcern: { w: "majority" } });
+  const result = await archiveCatalog(db).updateOne({ _id: hash, job, count: restored.length }, { $setOnInsert: entry }, { upsert: true, writeConcern: { w: "majority" } });
   return { hash, bytes: bytes.length, count: restored.length, inserted: result.upsertedCount === 1 };
 }

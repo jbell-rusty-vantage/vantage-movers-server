@@ -9,7 +9,8 @@ import type { ProcessorResult } from "../granotLifecycle/drainer";
 export type ClosedOperation = {
   operation: string; kind: string; hash: string; receipt: string; result: ProcessorResult;
 };
-type RunIndex = { _id: string; hash: string; count: number; closed_at: Date };
+export type RunArchive = { hash: string; generation: string; bytes: number };
+type RunIndex = { _id: string; hash: string; generation?: string; count: number; closed_at: Date; run_archive?: RunArchive };
 export const closedRuns = (db: Db) => db.collection<RunIndex>("granot_closed_automation_runs");
 export const automationRunId = (operation: string) => /^([a-f0-9]{24}):.+$/i.exec(operation)?.[1] ?? null;
 
@@ -20,7 +21,7 @@ export function checkClosedOperation(rows: ClosedOperation[], item: GranotApplyI
   return row;
 }
 export function packClosedRun(run: string, rows: ClosedOperation[]) {
-  if (!rows.length || rows.length > 5000 || rows.some(r => automationRunId(r.operation) !== run)
+  if (rows.length > 5000 || rows.some(r => automationRunId(r.operation) !== run)
     || new Set(rows.map(r => r.operation)).size !== rows.length) throw new Error("Invalid closed Granot run");
   const raw = BSON.serialize({ version: 1, run, rows: [...rows].sort((a,b) => a.operation.localeCompare(b.operation)) });
   if (raw.length > 8 * 1024 * 1024) throw new Error("Closed Granot run too large");
@@ -34,9 +35,9 @@ export function unpackClosedRun(index: RunIndex, bytes: Buffer): ClosedOperation
   }
   return data.rows;
 }
-export async function readClosedRun(db: Db, run: string) {
+export async function readClosedRun(db: Db, run: string, reader?: typeof import("./archiveObjects").readArchiveObject) {
   const index = await closedRuns(db).findOne({ _id: run });
   if (!index) return null;
-  const { readArchiveObject } = await import("./archiveObjects.js");
-  return unpackClosedRun(index, await readArchiveObject(db.databaseName, index.hash));
+  const read = reader ?? (await import("./archiveObjects.js")).readArchiveObject;
+  return unpackClosedRun(index, await read(db.databaseName, index.hash, index.generation));
 }
