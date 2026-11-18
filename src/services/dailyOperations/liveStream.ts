@@ -18,6 +18,8 @@ import {
 } from "./eventsPage";
 import { type DailyOperationsSnapshot } from "./snapshot";
 
+const retiredWebhookKinds = new Set<string>(RETIRED_WEBHOOK_CARD_KINDS);
+
 export const LIVE_DAILY_OPERATIONS_POLL_MS = 1_000;
 export const LIVE_DAILY_OPERATIONS_HEARTBEAT_MS = 15_000;
 export const LIVE_DAILY_OPERATIONS_MAX_MS = 240_000;
@@ -221,7 +223,7 @@ export async function defaultFindDailyOperationsEventById(
     return null;
   }
   const row = await getDailyOperationsEventModel()
-    .findOne({ _id: eventId, kind: { $nin: RETIRED_WEBHOOK_CARD_KINDS } })
+    .findById(eventId)
     .lean()
     .exec();
   return (row as DailyOperationsLiveEventRow | null) ?? null;
@@ -309,6 +311,10 @@ async function emitWakes(args: {
     const row = await args.findEventById(wake.event_id);
     if (!row) {
       break;
+    }
+    if (retiredWebhookKinds.has(row.kind)) {
+      args.onRedisAdvance(wake.redis_stream_id);
+      continue;
     }
     const item = projectDailyOperationsEventItem(row);
     if (!isAfterCursor(item, args.cursor)) {
