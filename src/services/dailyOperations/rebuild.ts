@@ -359,7 +359,7 @@ async function defaultAggregateOpenDay(
 }
 
 /** First rebuild after upgrading an open day. Day-revision CAS prevents concurrent double counting. */
-async function backfillWebhookDay(day: string, instantRange: InstantBounds, seed: DailyOperationsDaySeed, hourly: DailyOperationsDaySeed["hourly"]) {
+export async function backfillWebhookDay(day: string, instantRange: InstantBounds, seed: DailyOperationsDaySeed, hourly: DailyOperationsDaySeed["hourly"]) {
   const receipts = await getGranotObservationReceiptModel()
     .find({
       observation_channel: "granot_webhook",

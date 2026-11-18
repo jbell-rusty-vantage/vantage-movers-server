@@ -6,7 +6,7 @@ import { getGranotObservationReceiptModel } from "../../models/GranotObservation
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { upsertGranotObservation } from "../granotLifecycle/normalization";
 import { readInvalidPriorityTimes, readLatestCapture, readPairingObservations, observationReadFacts, caseObservations } from "../granotLifecycle/observationReadFacts";
-import { backfillObservationReadFacts } from "../../../ops/granot-read-facts-backfill";
+import { backfillObservationReadFacts, qualifyOpenWebhookDay } from "../../../ops/granot-read-facts-backfill";
 import { rebuildOpenDailyOperationsDay } from "./rebuild";
 import { isLoopbackMongoUri } from "../../../ops/lib/loopback-mongo";
 import { getMongoDatabaseName, isTestMode } from "../../config/domain/runtime";
@@ -195,4 +195,23 @@ test("replica: historical pairing, freshness and invalid priority survive cold r
   assert.deepEqual((await readPairingObservations([job])).map(row => String(row._id)), [String(five._id)]);
   assert.equal((await readInvalidPriorityTimes([job], null)).get(job)?.getTime(), +invalidAt);
   assert.equal((await readLatestCapture())?.getTime(), +invalidAt);
+});
+
+test("replica: qualifying the legacy open day only changes webhook counters, and is idempotent", options, async () => {
+  const Day = getDailyOperationsDayModel(), seed = buildDaySeed(day);
+  await Day.create({ ...seed, leads: { ...seed.leads, total: 177 }, revision: 5 });
+  const capture = await captureGranotLifecycleWebhookReceipt({
+    route_event_class: "lead_created", authentication_method: "header_secret", captured_at: now, headers: {}, payload: {},
+  });
+  await Day.collection.updateOne({ day }, { $set: { "webhooks.lead_created": 900, "hourly.12.webhooks": 900 } });
+  await qualifyOpenWebhookDay(now);
+  const first = await Day.findOne({ day }).lean();
+  await qualifyOpenWebhookDay(now);
+  const second = await Day.findOne({ day }).lean();
+  assert.equal(first?.leads.total, 177);
+  assert.equal(first?.webhooks.lead_created, 1);
+  assert.equal(first?.webhook_counts_version, 1);
+  assert.equal(first?.revision, second?.revision);
+  assert.ok(first && first.hourly[12]!.webhooks < 900);
+  await getGranotObservationReceiptModel().collection.deleteOne({ _id: new mongoose.Types.ObjectId(capture.receipt_id) });
 });
