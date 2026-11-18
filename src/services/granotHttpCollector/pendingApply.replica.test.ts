@@ -17,15 +17,16 @@ test("replica: pending match does not block later actions or another approved ru
   const first = new mongoose.Types.ObjectId();
   const second = new mongoose.Types.ObjectId();
   const requeued = new mongoose.Types.ObjectId();
+  const manual = new mongoose.Types.ObjectId();
   const fresh = new mongoose.Types.ObjectId();
   const bounded = new mongoose.Types.ObjectId();
   const legacy = new mongoose.Types.ObjectId();
   const refreshRetry = new mongoose.Types.ObjectId();
-  const actor = { actor_type: "owner", actor_id: "pending-apply-test", actor_role: "owner", origin: "vantage_admin" };
+  const actor = { actor_type: "system", actor_id: "granot-estimates-in-process-cron", actor_label: "Synthetic", actor_role: "system", request_id: "fixture", origin: "vantage_admin" };
   async function seed(id: mongoose.Types.ObjectId, actions: string[], last: Date) {
     const plan = { kind: "estimates_in_process", schema_version: 2, actions: actions.map((action_id) => ({ action_id, classification: "update", collection_captured_at: "2026-10-13T12:00:00.000Z", lifecycle_apply: { operation_id: `${id}:${action_id}`, operation_kind: "lead_snapshot_apply", granot_statement: { priority: "0", job_no: "SYNTHETIC-100" } } })), counters: { update: actions.length } };
     const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: plan });
-    await GranotAutomationRun.create({ _id: id, operation: "estimates_in_process", workflow: "apply", status: "applying", request_snapshot: { auto_apply: true }, initiator: actor, plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date(), approval: { selected_action_ids: actions, plan_checksum: checksum, approved_by: actor }, expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000), last_attempt_at: last });
+    await GranotAutomationRun.create({ _id: id, operation: "estimates_in_process", workflow: "apply", status: "applying", request_snapshot: { auto_apply: true, scheduled_slot_key: String(id) }, initiator: actor, plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date(), approval: { selected_action_ids: actions, plan_checksum: checksum, approved_by: actor }, expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000), last_attempt_at: last });
   }
   const calls: string[] = [];
   let settledSecond = false;
@@ -46,6 +47,10 @@ test("replica: pending match does not block later actions or another approved ru
     return { action_id: input.action_id, lifecycle_receipt_id: String(new mongoose.Types.ObjectId()), outcome: input.action_id.startsWith("pending") && !(settledSecond && input.action_id === "pending-two") ? "accepted_for_processing" as const : "applied" as const, applied_at: new Date() };
   } };
   try {
+    await GranotAutomationRun.create({ _id: manual, operation: "estimates_in_process", workflow: "apply",
+      status: "queued", request_snapshot: { auto_apply: true, scheduled_slot_key: "manual-legacy" },
+      initiator: { ...actor, actor_type: "owner", actor_id: "retired-dashboard" },
+      last_attempt_at: new Date(0), expires_at: new Date(Date.now() + 3600000) });
     await seed(first, ["pending-one", "pending-two", "later-1", "later-2"], new Date("2000-01-01"));
     await seed(second, ["other-run"], new Date("2000-01-02"));
     assert.equal((await runGranotWorker(deps)).run_id, String(first));
@@ -76,7 +81,7 @@ test("replica: pending match does not block later actions or another approved ru
     assert.equal(calls.filter((id) => id.startsWith("dead-race")).length, 3, "the canonical claim rechecks the live receipt after an Owner requeue");
     assert.equal((await GranotAutomationRun.findById(requeued))?.status, "completed", "no failure fabricated from a dead-letter snapshot");
     await GranotAutomationRun.updateOne({ _id: first }, { $set: { last_attempt_at: new Date(Date.now() - 61000) } });
-    await GranotAutomationRun.create({ _id: fresh, operation: "estimates_in_process", workflow: "preview", status: "queued", request_snapshot: {}, initiator: actor, expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000) });
+    await GranotAutomationRun.create({ _id: fresh, operation: "estimates_in_process", workflow: "apply", status: "queued", request_snapshot: { auto_apply: true, scheduled_slot_key: String(fresh) }, initiator: actor, expires_at: new Date(Date.now() + 3600000), purge_at: new Date(Date.now() + 86400000) });
     const freshResult = await runGranotWorker({ ...deps, planRun: async (runId) => {
       assert.equal(runId, String(fresh));
       await GranotAutomationRun.updateOne({ _id: fresh }, { $set: { status: "completed", leased_until: null, lease_owner: null } });
@@ -115,7 +120,8 @@ test("replica: pending match does not block later actions or another approved ru
     assert.equal(calls.filter((id) => id === "refresh-retry").length, 1, "terminal canonical action never reapplies after nomination failure");
     assert.equal(refreshCalls, 2);
     assert.equal((await GranotAutomationRun.findById(refreshRetry))?.status, "completed");
+    assert.equal((await GranotAutomationRun.findById(manual))?.status, "queued");
   } finally {
-    await GranotAutomationRun.deleteMany({ _id: { $in: [first, second, requeued, fresh, bounded, legacy, refreshRetry] } });
+    await GranotAutomationRun.deleteMany({ _id: { $in: [manual, first, second, requeued, fresh, bounded, legacy, refreshRetry] } });
   }
 });

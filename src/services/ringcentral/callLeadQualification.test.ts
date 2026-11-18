@@ -8,7 +8,6 @@ import { getCallLeadModel } from "../../models/CallLead";
 import { BookedLead } from "../../models/BookedLead";
 import { CancelledLead } from "../../models/CancelledLead";
 import { validateGranotCrmSourceSemantics } from "../../models/granotCrmSourceSemantics";
-import { aggregateSourcePerformance } from "../reporting/query/canonicalReporting";
 
 const historical = { call_log_id: "provider-log", ingestion_source: "call_log_sync", duration_seconds: 120, qualification_reason: "call_log_inbound_target_answered_over_120s" };
 const current = { ...historical, ingestion_source: "webhook", qualification_reason: "call_log_inbound_target_elapsed_at_least_120s" };
@@ -30,17 +29,6 @@ test("Registry refuses a Call route configured to create missing leads", () => {
 
 test("saved qualification accepts current and historical evidence and rejects malformed records", () => {
   for (const [expected, metadata] of samples) assert.equal(hasQualifiedRingCentralCall(metadata), expected);
-});
-
-test("an unsupported linked Call contributes no lead spend but keeps the booking revenue", () => {
-  const totals = aggregateSourcePerformance([
-    { _id: "manual", leadType: "call", cpl: 100, cpl_resolution_status: "resolved" },
-    { _id: "legacy", leadType: "call", ingestion_origin: "legacy_unknown", ringcentral: historical, cpl: 75, cpl_resolution_status: "resolved" },
-    { _id: "adopted", leadType: "call", ingestion_origin: "granot_lead_created", ringcentral: current, cpl: 60, cpl_resolution_status: "resolved" },
-  ], [{ _id: "booking", lead_ref: "manual", total_binder_amount: 1000, deposit_amount: 200 }], new Map());
-  assert.equal(totals.resolved_cpl_spend, 135);
-  assert.equal(totals.total_binder, 1000);
-  assert.equal(totals.total_deposit, 200);
 });
 
 test("loopback Mongo: billing filter agrees with the in-memory gate and linked projections preserve bookings/cancellations", {

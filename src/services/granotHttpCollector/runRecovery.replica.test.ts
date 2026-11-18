@@ -11,7 +11,7 @@ import { checkClosedOperation, packClosedRun, unpackClosedRun } from '../granotH
 import { digest } from '../granotHistory/archiveCodec';
 import { hashCredentialRedactedPayload } from '../granotLifecycle/receiptEvidence';
 
-const actor = { actor_type: 'owner', actor_id: 'w5-recovery-proof', actor_label: 'Synthetic', actor_role: 'owner', origin: 'vantage_admin' };
+const actor = { actor_type: "system", actor_id: "granot-estimates-in-process-cron", actor_label: "Synthetic", actor_role: "system", request_id: "fixture", origin: "vantage_admin" };
 async function ready(t: { skip: (reason: string) => void }) {
   if (process.env.GRANOT_LIFECYCLE_REPLICA_TESTS !== 'true') { t.skip('Disposable replica proof is opt-in'); return false; }
   assert.equal(process.env.TEST_MODE, 'true');
@@ -32,7 +32,7 @@ function planFor(id: Types.ObjectId, actionIds = ['row-1']) {
 async function seed(id: Types.ObjectId, expiresAt = new Date(Date.now() + 3600000), actionIds = ['row-1']) {
   const plan = planFor(id, actionIds);
   const checksum = computeChecksum({ checksum_version: 1, artifact_kind: 'ingestion_plan', schema_version: 1, payload: plan });
-  await GranotAutomationRun.create({ _id: id, operation: 'estimates_in_process', workflow: 'apply', status: 'applying', request_snapshot: { auto_apply: true }, initiator: actor,
+  await GranotAutomationRun.create({ _id: id, operation: 'estimates_in_process', workflow: 'apply', status: 'applying', request_snapshot: { auto_apply: true, scheduled_slot_key: String(id) }, initiator: actor,
     plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date('2026-10-01'), approval: { selected_action_ids: actionIds, plan_checksum: checksum, approved_by: actor, approved_at: new Date('2026-10-01') },
     expires_at: expiresAt, purge_at: new Date(Date.now() + 86400000), last_attempt_at: new Date(0) });
   return checksum;
@@ -96,7 +96,7 @@ test('a resumed partial run retains its saved receipt and original expiry withou
     assert.deepEqual(stopped.receipts, [saved]);
     assert.deepEqual(stopped.approval, interrupted.approval);
     assert.deepEqual(stopped.plan_snapshot, interrupted.plan_snapshot);
-    assert.equal(+stopped.purge_at, +interrupted.purge_at);
+    assert.deepEqual(stopped.purge_at, interrupted.purge_at);
     assert.equal(stopped.plan_checksum, checksum);
     assert.equal(+stopped.expires_at, +expiresAt);
   } finally { await GranotAutomationRun.deleteOne({ _id: id }); }
@@ -131,7 +131,7 @@ test('an in-flight batch preserves its first receipt and refuses a new action at
     assert.deepEqual(stopped.plan_snapshot, sealed.plan_snapshot);
     assert.equal(stopped.plan_checksum, checksum);
     assert.equal(+stopped.expires_at, +expiresAt);
-    assert.equal(+stopped.purge_at, +sealed.purge_at);
+    assert.deepEqual(stopped.purge_at, sealed.purge_at);
     assert.equal((await runGranotWorker()).claimed, false);
   } finally {
     await GranotAutomationRun.deleteOne({ _id: id });

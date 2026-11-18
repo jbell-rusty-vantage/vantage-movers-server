@@ -72,6 +72,7 @@ router.all(
       }
       for(const slotKey of slotsToDispatch)runs.push(...await dispatchEstimatesSchedule(slotKey));
       if(!runs.length)return res.json({ok:true,skipped:true,reason:'pool_not_enabled'});
+      if (runs.every(run => run.status === 'archived')) return res.json({ ok: true, skipped: true, reason: 'already_archived' });
       const created = runs[0]!;
       if (!runs.some((run) => run.queue_published)) {
         const worker = await runGranotWorker();

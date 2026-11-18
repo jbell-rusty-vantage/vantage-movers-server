@@ -7,7 +7,8 @@ import { GranotAutomationRun } from '../../models/GranotAutomationRun';
 import { GranotEstimatesScheduleSlot } from '../../models/GranotEstimatesScheduleSlot';
 import { deskConfiguration } from '../salesOutreach/subjects/testing';
 import { completeConfigurationInput } from '../salesOutreach/evaluation/testing';
-import { createGranotRun, releasePoolCollectionDependencies, getEstimatesFreshness, granotRecoverableFilter, createEstimatesSchedule, dispatchEstimatesSchedule, resumeEstimatesSchedules } from './runWorkflow';
+import { closedRuns } from "../granotHistory/closedAutomationRun";
+import { scheduledEstimatesRunId, createGranotRun, releasePoolCollectionDependencies, getEstimatesFreshness, granotRecoverableFilter, createEstimatesSchedule, dispatchEstimatesSchedule, resumeEstimatesSchedules } from './runWorkflow';
 
 after(async()=>{await mongoose.disconnect();});
 
@@ -27,6 +28,18 @@ test('Pool durable scheduling preserves ALL, dedupes concurrent retries, gates o
   const first={from:'07/17/2026',to:'07/23/2026'},second={from:'07/24/2026',to:'07/30/2026'},scope={from:'07/17/2026',to:'10/14/2026'};
   const all1=await createGranotRun({...base,sourceLabels:[],dateWindow:first,estimatesSelection:'all',scheduledSlotKey:`${slot}:${first.from}:${first.to}`,scheduledCoverage:{slotKey:slot,dateWindow:scope,totalWindows:2,lane:'all'}});
   const request={...base,sourceLabels:[],dateWindow:first,estimatesSelection:'pool',estimatesLane:'pool_refresh',scheduledSlotKey:`${slot}:pool_refresh:${first.from}:${first.to}`,scheduledCoverage:{slotKey:`${slot}:pool_refresh`,dateWindow:scope,totalWindows:1,lane:'pool_refresh'},afterAllCoverage:{slotKey:slot,totalWindows:2}} as const;
+  const archivedRequest = { ...base, sourceLabels: [], dateWindow: first, scheduledSlotKey: slot + ':archived' };
+  const archivedId = scheduledEstimatesRunId(archivedRequest.scheduledSlotKey);
+  const closed = closedRuns(mongoose.connection.db!);
+  await closed.insertOne({ _id: String(archivedId), hash: 'fixture', count: 0, closed_at: now });
+  try {
+    const replay = await createGranotRun(archivedRequest);
+    assert.equal(replay.status, 'archived');
+    assert.equal(replay.queue_published, false);
+    assert.equal(await GranotAutomationRun.exists({ _id: archivedId }), null);
+  } finally {
+    await closed.deleteOne({ _id: String(archivedId) });
+  }
   const [pool1,pool2]=await Promise.all([createGranotRun({...request,sourceLabels:[]}),createGranotRun({...request,sourceLabels:[]})]);
   assert.equal(pool1.run_id,pool2.run_id);assert.notEqual(pool1.run_id,all1.run_id);
   assert.equal(await GranotAutomationRun.countDocuments({'request_snapshot.estimatesSelection':'pool'}),1);

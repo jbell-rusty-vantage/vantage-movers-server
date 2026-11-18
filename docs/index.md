@@ -70,12 +70,12 @@ Canonical bodies live under `docs/knowledge/`.
 | [insights.md](knowledge/services/insights.md) | **Start here for Insights › Analytics.** Period vs comparison, rankings with rank change, Reviews, the Desk's lead cost per rep, the live daily lead spend and Today's Money tab; every lead priced live from the lead-cost schedule. |
 | [catalog.md](knowledge/services/catalog.md) | Agents/merchants read facade; mutations go through Operations Registry. |
 | [testimonial.md](knowledge/services/testimonial.md) | Read-only public and admin testimonials; ingest stays in helpers and ops scripts. |
-| [granot-http-collector.md](knowledge/services/granot-http-collector.md) | HTTP session collector; approved apply captures automation receipts. |
+| [granot-http-collector.md](knowledge/services/granot-http-collector.md) | Scheduled Estimates and Priority Pool collection, retries and freshness. |
 | [job-number-timeline.md](knowledge/services/job-number-timeline.md) | Owner-only typed Job Number chain; production module `src/services/jobNumberTimeline/`, not Granot lifecycle projections. |
 | [lead-messaging.md](knowledge/services/lead-messaging.md) | Persist and dispatch outbound confirmation SMS for public Form Leads and Granot create-if-missing Leads. |
 | [daily-operations.md](knowledge/services/daily-operations.md) | Pointer only. Owner Daily Operations: category panels (focus expands in place) plus Arrivals as a live rail on `/daily`; snapshot carries today / yesterday / day before; trend % vs yesterday-by-now; kind colour tones. Not Daily View. Not Live Events. Contract is the formal spec, not this file. |
 | [employee-bookings.md](knowledge/services/employee-bookings.md) | Public employee booking submit with auto-match, plus Owner booking-lead reconciliation cases. |
-| [reporting.md](knowledge/services/reporting.md) | Owner-gated report definitions, immutable revisions, confirmed runs, and Google destination delivery. |
+| [reporting.md](knowledge/services/reporting.md) | Retired custom report definitions and custom Google Sheet delivery. |
 | [tariff.md](knowledge/services/tariff.md) | Append-only tariff adjustment rows to TARIFF_SHEET_ID / Master. Carrier is the resolved Moving Carrier name and DOT. |
 | [ingestion.md](knowledge/services/ingestion.md) | Fenced Best Relocation sheet inspect/preview/adopt/apply through canonical domain commands. |
 | [capture.md](knowledge/granot-lifecycle/capture.md) | Webhook and channel-neutral receipt capture; `{ receipt_id }` wake-up. |

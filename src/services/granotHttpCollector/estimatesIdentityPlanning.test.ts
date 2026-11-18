@@ -5,11 +5,11 @@ import type { LeadIdentityStore, IdentityCallLead, IdentityFormLead, IdentityRec
 import type { SourcePolicyStore } from "../granotLifecycle/sourcePolicy";
 import type { GranotSourceCollection } from "./index";
 import { assembleEstimatesPlan } from "./runWorkflow";
-import type { GranotFormPlanAction } from "./formWorkflow";
+import type { EstimatesPlanAction } from "./estimatesIdentityPlanning";
 
 const company = "64b000000000000000000001", granularity = "64b000000000000000000002", leadId = "64b000000000000000000003";
 const runId = "64b000000000000000000004";
-function formAction(plan: Awaited<ReturnType<typeof assembleEstimatesPlan>>, index = 0): GranotFormPlanAction {
+function formAction(plan: Awaited<ReturnType<typeof assembleEstimatesPlan>>, index = 0): EstimatesPlanAction {
   const action = plan.actions[index]!;
   assert.ok("classification" in action);
   return action;

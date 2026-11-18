@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { ObjectId, type Db } from "mongodb";
 
 export const dateWindow = { from: "10/12/2026", to: "10/12/2026" };
-export const owner = { actor_type: "owner", actor_id: "measurement-owner", actor_role: "owner", actor_label: "Synthetic Owner",
+export const scheduler = { actor_type: "system", actor_id: "granot-estimates-in-process-cron", actor_role: "system", actor_label: "Fixture scheduler",
   request_id: "synthetic-measurement", origin: "vantage_admin" } as const;
 const job = "P900001";
 const lead = new ObjectId("000000000000000000000101");

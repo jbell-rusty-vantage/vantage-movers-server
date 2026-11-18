@@ -1,28 +1,9 @@
 ---
-description: Granot HTTP collector and automation runs; approved apply captures lifecycle receipts
-globs: src/services/granotHttpCollector/**/*.ts,src/routes/granot-automation.routes.ts,src/routes/granot-automation-cron.routes.ts,src/models/GranotAutomationRun.ts,src/models/GranotAutomationSource.ts,api/queues/granot-automation-consumer.ts,scripts/granot-automation/**/*.ts
+description: Scheduled Granot Estimates in Process and Priority Pool
+globs: src/services/granotHttpCollector/**/*.ts,src/routes/granot-automation.routes.ts,src/routes/granot-automation-cron.routes.ts,src/models/GranotAutomationRun.ts,api/queues/granot-automation-consumer.ts
 alwaysApply: false
 ---
 
-# Granot HTTP Automation
+# Scheduled Granot Estimates
 
-Owner invariants: [`docs/knowledge/services/granot-http-collector.md`](../../docs/knowledge/services/granot-http-collector.md).
-
-- Admin surface: `/api/v1/admin/granot-automation/*` behind `requireApiSecret` + `requireRegistryOwnerActor`. Separate `app.use` in `src/app.ts` before v1.
-- Source list/create remain label + `supported_operations` compatible. Apply resolution dereferences `GranotCrmSource` and fails closed with `INVALID_GRANOT_SOURCES` when compatibility is not `ready` (`enabled` + `lifecycle_enabled` + non-`deferred` + matching routes). New labels start as `missing_reference`. Reviewed family inventory: [`operations-registry.md`](../../docs/knowledge/services/operations-registry.md).
-- Workflows are `preview` or `apply`. Owner apply requires `GRANOT_AUTOMATION_APPLY_ENABLED` and explicit owner approval of selected plan actions. The Estimates in Process cron (`auto_apply` on `estimates_in_process`) approves approvable rows as the system actor `granot-estimates-in-process-cron` and skips that flag. It does not skip the lifecycle lead-write gates.
-- Approved apply captures one `granot_http_automation` receipt per selected action (`${run_id}:${action_id}`) and enters `claimAndProcessOrPoll`. It must not call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`.
-- Queue topic `granot-automation-events` → `api/queues/granot-automation-consumer.ts` → `runGranotWorker()`. Cron heartbeat recovers leased runs.
-- Run-level `receipts` on `GranotAutomationRun` store lifecycle IDs and bounded outcomes, including `accepted_for_processing`. They are not the Observation Receipt document.
-- Schema-v1 plans fail closed (`RUN_REPLAN_REQUIRED`). Preview remains guidance-only and creates no receipt.
-- Estimates in Process is a second collector (`collectEstimatesInProcess`, operation `estimates_in_process`). Verify form selectors, required direct headers, all pages and transaction totals before sealing any plan. Missing or ambiguous row evidence remains held. `prior: Pool` means 9 only with the verified provider selector; ALL selector 10 is never a row priority. This adds parser support, not a Pool workflow.
-- `ALL /api/cron/granot-estimates-in-process` (`0 * * * *`) runs at America/New_York hours 00/02/04/06/08-20/22. Each slot schedules the trailing 90 inclusive Open Dates in deterministic runs of at most seven days, plus older months with verified provider Open Date evidence. Ingestion timestamps are not provider Open Dates. Unknown older scope needs discovery backfill.
-- Estimates preview uses canonical normalization, Registry source policy and `resolveLeadIdentity`, not the legacy Form/Call preview's approval classification. Apply revalidates the target and authority. Phone-based Call attachment requires a unique qualified non-duplicate target within Source Granularity; ambiguous/conflicting targets stay held.
-- Seal each Estimates action's provider response time as `collection_captured_at` and pass it to receipt capture. Existing pending receipts are claimed directly; missing-time legacy fresh actions require recollection. Never substitute plan-lock or apply time.
-- A scheduler claim returns the run ID and status. Apply reloads the immutable plan under its fence. After lease verification and before admitting each action, check the original run expiry. An earlier admitted action may finish and checkpoint; leave a later unstarted operation untouched when the deadline has elapsed.
-- Worker claims share least-recent-attempt ordering across queued/planning and eligible applying runs. Due lifecycle clocks stay authoritative; apply yields after 25 actions or 120 seconds. Estimates collection/planning has a 120-second budget, including login hooks; incomplete scans cannot claim complete coverage.
-- Owner `GET /api/v1/admin/granot-automation/runs/freshness` separates full-slot collection from synchronization progress and reports held/partial/failed/late state. `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS=true` enables reviewed automatic Granot rep reassignment; manual and source-less receivers remain protected. Checked-in defaults remain off; deployment changes belong in the release record.
-- Build contract: [`docs/knowledge/estimates-in-process-update.md`](../../docs/knowledge/estimates-in-process-update.md). `collectGranotReport`, `form_leads`, and `call_leads` stay on the Leads & Advertising path, including its separate Booked Jobs coverage.
-
-- Schedule admission, Pool readers and freshness share `estimatesCron.ts`; compare coverage to the latest grace-elapsed slot, never latest-slot age. At 06:00 use both `poolCronDuties` entries. Preserve immutable windows/IDs and read-only legacy slot decoding. `scheduled_at` is optional and needs no migration.
-- Idempotent manifest/run inserts must not rewrite timestamps on retries. Do not skip lifecycle checks with a raw-row hash or delete immutable Decisions to reduce volume. Record retained evidence growth and capacity qualification separately from business no-op proof.
+Use the [service contract](../../docs/knowledge/services/granot-http-collector.md) for collection, apply, replay, expiry, queue recovery and freshness. Only the Estimates system actor dispatches ALL, Pool refresh and Pool discovery. The dashboard exposes a freshness read. Browser extension capture enters the shared Granot Lifecycle independently.

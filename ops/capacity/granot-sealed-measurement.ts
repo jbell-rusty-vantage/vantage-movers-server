@@ -9,7 +9,7 @@ import { SALES_INTELLIGENCE_JOB_INDEXES } from "../../src/models/SalesIntelligen
 import { getGranotObservationReceiptModel } from "../../src/models/GranotObservationReceipt";
 import { getGranotObservationModel, type GranotObservationDocument } from "../../src/models/GranotObservation";
 import { getSynchronizationDecisionModel } from "../../src/models/SynchronizationDecision";
-import { approveGranotRun, createGranotRun, runGranotWorker } from "../../src/services/granotHttpCollector/runWorkflow";
+import { createGranotRun, planScheduledEstimatesRun, runGranotWorker } from "../../src/services/granotHttpCollector/runWorkflow";
 import { refreshExistingEstimatesOutreach } from "../../src/services/granotHttpCollector/estimatesOutreachRefresh";
 import { applyOpenAutomationPlanAction, type ApplyAutomationActionInput } from "../../src/services/granotLifecycle/automationApply";
 import { claimAndProcessOrPoll } from "../../src/services/granotLifecycle/drainer";
@@ -18,7 +18,7 @@ import { upsertGranotObservation } from "../../src/services/granotLifecycle/norm
 import { createGranotObservationProcessor } from "../../src/services/granotLifecycle/processor";
 import { computeChecksum } from "../../src/services/durableWork";
 import { traceGranotAction } from "../vantage/granot-trace";
-import { dateWindow, fakeReport, owner, seedGranotMeasurement } from "./granot-measurement-fixture";
+import { dateWindow, fakeReport, scheduler, seedGranotMeasurement } from "./granot-measurement-fixture";
 import { GranotStageMetrics } from "./granot-stage-metrics";
 import { proveCanonicalCrash } from "./granot-canonical-crash";
 
@@ -68,21 +68,27 @@ async function main() {
   async function collect(workload: string, priority: string) {
     const collected = fakeReport(priority);
     const result = await metrics.workload(workload, "create", () => createGranotRun({
-      operation: "estimates_in_process", workflow: "apply", dateWindow, sourceLabels: [], initiator: owner,
+      operation: "estimates_in_process", workflow: "apply", dateWindow, sourceLabels: [], initiator: scheduler, autoApply: true, scheduledSlotKey: workload,
     }));
     assert.equal(result.queue_published, false);
     const runId = new ObjectId(result.run_id);
     const created = await runs.findOne({ _id: runId });
     assert.ok(created);
-    const planned = await metrics.workload(workload, "collect and seal", worker);
+    const planned = await metrics.workload(workload, "collect and seal", () => runGranotWorker({
+      planRun: async (id, lease) => {
+        assert.equal(await planScheduledEstimatesRun(id, lease), "applying");
+        // Keep this fixture's sealed plan held while the other capture times are staged.
+        return "sealed";
+      },
+    }));
     collected();
     assert.equal(planned.run_id, result.run_id);
     const sealed = await runs.findOne({ _id: runId });
     assert.ok(sealed);
-    assert.equal(sealed.status, "awaiting_approval", JSON.stringify(sealed.plan_snapshot?.counters));
+    assert.equal(sealed.status, "applying", JSON.stringify(sealed.plan_snapshot?.counters));
     assert.equal(sealed.expires_at.getTime(), created.expires_at.getTime());
-    assert.equal(sealed.purge_at.getTime(), created.purge_at.getTime());
-    assert.equal(sealed.purge_at - sealed.expires_at, 6 * 86400000);
+    assert.equal(sealed.purge_at, null);
+    assert.equal(sealed.archive_review_at.getTime(), created.expires_at.getTime());
     assert.equal(sealed.plan_snapshot.actions.length, 1);
     const action = sealed.plan_snapshot.actions[0];
     assert.equal(action.lifecycle_apply.expected_target.id, String(leadId));
@@ -105,8 +111,9 @@ async function main() {
     const before = await inventory();
     const oldLead = await db.collection("form_leads").findOne({ _id: leadId });
     assert.ok(oldLead);
-    const approval = { run_id: id, plan_checksum: sealed.plan_checksum, selected_action_ids: [action.action_id], approved_by: owner };
-    await metrics.workload(workload, "approve", () => approveGranotRun(approval));
+    assert.deepEqual(sealed.approval.selected_action_ids, [action.action_id]);
+    assert.equal(sealed.approval.approved_by.actor_type, "system");
+    await runs.updateOne({ _id: sealed._id }, { $set: { leased_until: new Date(0) } });
     const approved = await runs.findOne({ _id: sealed._id });
     assert.ok(approved);
     assert.equal(approved.receipts.length, 0);
@@ -123,7 +130,7 @@ async function main() {
     const decision = await db.collection("synchronization_decisions").findOne({ _id: receipt.processing.latest_decision_id });
     const lead = await db.collection("form_leads").findOne({ _id: leadId });
     assert.ok(observation && decision && lead);
-    assert.equal(run.plan_checksum, approval.plan_checksum);
+    assert.equal(run.plan_checksum, sealed.plan_checksum);
     assert.deepEqual(run.approval, approved.approval);
     assert.deepEqual(run.plan_snapshot, sealed.plan_snapshot);
     assert.deepEqual([run.expires_at, run.purge_at], [sealed.expires_at, sealed.purge_at]);
@@ -166,7 +173,7 @@ async function main() {
       trace: { status: trace.status, stop: trace.stop, outcome: trace.decision?.outcome, temporalOrder: trace.lead?.observation_vs_current_winner } };
     return entry;
   }
-  // Seal the older assertion first. Its Owner approves only after a later snapshot has won.
+  // Seal the older assertion first. Release its fixture lease after a later snapshot has won.
   const stale = await collect("stale", "8");
   const genuine = await collect("genuine", "5");
   const first = await apply(genuine, "applied");
@@ -188,7 +195,7 @@ async function main() {
     observationId: replay.observation_id, decisionId: replay.decision_id, winner: evidence.unchanged!.winner, outcome: replay.outcome,
     revision: finalLead?.domain_revision, retainedBefore: before, retainedAfter: before };
   for (const workload of ["genuine", "unchanged", "stale"]) {
-    for (const stage of ["create", "collect and seal", "run claim (collect and seal)", "approve", "run claim (apply worker)",
+    for (const stage of ["create", "collect and seal", "run claim (collect and seal)", "run claim (apply worker)",
       "apply worker", "capture", "receipt claim and finalize", "normalize", "process", "decision and Lead transaction"]) {
       assert.ok(metrics.rows[workload]?.[stage]?.commands, "Unmeasured Mongo stage: " + workload + " / " + stage);
     }

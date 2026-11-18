@@ -11,7 +11,6 @@ import { logger as rootLogger } from "../logger";
 import { requireApiSecret } from "../middleware/requireApiSecret";
 import type { VantageAuthContext } from "../middleware/requireApiSecret";
 import extensionAuthRoutes from "./extension-auth.routes";
-import googleDriveOAuthRoutes from "./google-drive-oauth.routes";
 import ringCentralRegistryRoutes from "./ringcentral-registry.routes";
 import granotLifecycleAdminRoutes from "./granot-lifecycle-admin.routes";
 import dailyOperationsAdminRoutes from "./daily-operations-admin.routes";
@@ -256,7 +255,6 @@ import {
 const router = Router();
 
 router.use(extensionAuthRoutes);
-router.use(googleDriveOAuthRoutes);
 router.use("/api/v1", requireApiSecret);
 // Canonical history reads (MCP general endpoint) sit behind the broad secret only.
 router.use(createSalesIntelligenceHistoryRouter());

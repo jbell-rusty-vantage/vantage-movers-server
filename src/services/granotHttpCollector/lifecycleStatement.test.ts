@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { GranotSourceCollection } from "./index";
 import {
   assertSafeAutomationOperationId,
   assertSealedAutomationPlan,
@@ -11,8 +10,6 @@ import {
   isPendingAutomationActionOutcome,
   isSealedAutomationPlan,
   resolveAutomationOperationKind,
-  sealAutomationPlan,
-  type SealableAutomationPlan,
 } from "./lifecycleStatement";
 import { GranotRunConflict } from "./errors";
 
@@ -20,24 +17,6 @@ const runId = "507f1f77bcf86cd799439011";
 
 function row(values: Record<string, string>, id = "row-1") {
   return { id, rowIndex: 1, values };
-}
-
-function source(
-  values: Record<string, string>,
-  section: "bookedJobs" | "followUpEstimates" = "followUpEstimates",
-): GranotSourceCollection {
-  return {
-    sourceLabel: "Synthetic Forms",
-    contentHash: "hash",
-    sectionSchemas: {
-      bookedJobs: section === "bookedJobs" ? "table" : "empty",
-      followUpEstimates: section === "followUpEstimates" ? "table" : "empty",
-    },
-    sections: {
-      bookedJobs: section === "bookedJobs" ? [row(values)] : [],
-      followUpEstimates: section === "followUpEstimates" ? [row(values)] : [],
-    },
-  };
 }
 
 const collected = {
@@ -171,35 +150,6 @@ test("[AC-02] schema-v1 plans fail closed as RUN_REPLAN_REQUIRED", () => {
   );
 });
 
-test("[AC-02] sealing a collected plan stores schema v2 lifecycle_apply before checksum", () => {
-  const planned: SealableAutomationPlan = {
-    kind: "form_leads",
-    schema_version: 1,
-    actions: [
-      {
-        action_id: "Synthetic Forms:row-1",
-        row_id: "row-1",
-        source_label: "Synthetic Forms",
-        table_section: "followUpEstimates",
-        classification: "update",
-        lead_id: "507f1f77bcf86cd799439099",
-      },
-    ],
-    counters: { update: 1 },
-  };
-  const sealed = sealAutomationPlan(planned, runId, [
-    source(collected, "followUpEstimates"),
-  ]);
-  assert.equal(sealed.schema_version, 2);
-  assert.equal(isSealedAutomationPlan(sealed), true);
-  assert.equal(
-    sealed.actions[0]?.lifecycle_apply?.operation_kind,
-    "lead_snapshot_apply",
-  );
-  assert.equal(sealed.actions[0]?.lifecycle_apply?.granot_statement.user, "MIKE");
-  assert.equal(sealed.actions[0]?.lifecycle_apply?.expected_target?.id, "507f1f77bcf86cd799439099");
-});
-
 test("pending lifecycle outcomes keep the run applying", () => {
   assert.equal(isPendingAutomationActionOutcome("accepted_for_processing"), true);
   assert.equal(isPendingAutomationActionOutcome("pending_match"), true);
@@ -224,13 +174,4 @@ test("pending lifecycle outcomes keep the run applying", () => {
     ),
     "completed_with_errors",
   );
-});
-
-test("sealed actions carry their provider response time independently of plan lock or apply", () => {
-  const sources = [source(collected)];
-  sources[0]!.sections.followUpEstimates[0]!.collectedAt = "2026-10-13T12:00:00.000Z";
-  const plan: SealableAutomationPlan = { kind: "form_leads", schema_version: 1, counters: {}, actions: [{ action_id: "Synthetic Forms:row-1", source_label: "Synthetic Forms", row_id: "row-1", classification: "update" }] };
-  const sealed = sealAutomationPlan(plan, runId, sources);
-  assert.equal(sealed.actions[0]!.collection_captured_at, "2026-10-13T12:00:00.000Z");
-  assert.equal(sealed.actions[0]!.lifecycle_apply!.operation_id, `${runId}:Synthetic Forms:row-1`);
 });
