@@ -329,7 +329,10 @@ export function fromWebhookParties(
     companies.length > 0 &&
     externals.every((e) => isCompanySide(e.kind)) &&
     companies.every((e) => isCompanySide(e.kind));
-  const direction = deriveWebhookDirection(accountParties, existing?.direction ?? null, bothSidesCompany);
+  // A later delivery may add party evidence for a different leg of this session.
+  // The settled Call Log owns the customer endpoint used to link the call to a Lead.
+  const settled = existing?.call_log_state === "settled" ? existing : null;
+  const direction = settled?.direction ?? deriveWebhookDirection(accountParties, existing?.direction ?? null, bothSidesCompany);
   const external = pickEndpoint(externals) ?? null;
   const company = pickEndpoint(companies) ?? null;
   const callLogAuthoritative = existing?.provider_last_modified_at != null;
@@ -341,7 +344,7 @@ export function fromWebhookParties(
 
   const externalParty = buildExternalParty(
     existing?.parties.find((p) => p.role === "external") ?? null,
-    external,
+    settled ? null : external,
     externalSideName(events, direction, directory),
     direction,
   );
@@ -366,8 +369,8 @@ export function fromWebhookParties(
     session_id: existing?.session_id ?? identity.session_id,
     call_log_ids: existing?.call_log_ids ?? [],
   };
-  const externalE164 = direction === "Internal" ? null : external?.e164 ?? existing?.external_e164 ?? null;
-  const companyE164 = company?.e164 ?? existing?.company_e164 ?? null;
+  const externalE164 = settled ? settled.external_e164 : direction === "Internal" ? null : external?.e164 ?? existing?.external_e164 ?? null;
+  const companyE164 = settled ? settled.company_e164 : company?.e164 ?? existing?.company_e164 ?? null;
   const next: InteractionProjection = {
     provider: "ringcentral",
     provider_account_id: accountId,
@@ -377,7 +380,7 @@ export function fromWebhookParties(
     identity_basis: strongestBasis(fullIdentity),
     direction,
     external_e164: externalE164,
-    external_endpoint_kind: external?.kind ?? existing?.external_endpoint_kind ?? null,
+    external_endpoint_kind: settled ? settled.external_endpoint_kind : external?.kind ?? existing?.external_endpoint_kind ?? null,
     company_e164: companyE164,
     inbound_route_id:
       existing?.inbound_route_id ??

@@ -91,12 +91,12 @@ export function createCallLogApplier(input: CallLogApplierInput) {
   const touched = new Map<string, TouchedInteraction>();
   const unchanged = input.unchanged ?? unchangedRecords;
 
-  /** Resolves the provider account (never fabricated), the directory and the route resolver once per run. */
+  /** Checks every batch against the resolved account. Directory and route data are shared within the run. */
   const ensureContext = async (records: readonly CallLogRecordInput[]): Promise<CallLogApplierErrorCode | null> => {
     try {
-      accountId ??= resolveProviderAccountId(
+      accountId = resolveProviderAccountId(
         records.map((r) => accountIdFromProviderPath(str(r.uri))),
-        input.configuredAccountId,
+        accountId ?? input.configuredAccountId,
       );
     } catch (error) {
       return error instanceof ProviderAccountError ? error.code : "unknown_error";

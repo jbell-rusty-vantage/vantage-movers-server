@@ -4,7 +4,8 @@ import mongoose from "mongoose";
 import { RingCentralApiError } from "../ringcentral/client";
 import type { LeaseToken } from "../durableWork/types";
 import type { CallLogSyncInput, CallLogSyncPage } from "./callLogClient";
-import type { TouchedInteraction } from "./callLogApplier";
+import { createCallLogApplier, emptyBatchCounts, type TouchedInteraction } from "./callLogApplier";
+import { QuarantineBook } from "./callLogQuarantine";
 import {
   ISYNC_LANE_PAGE_BUDGET,
   isyncLaneMinute,
@@ -211,6 +212,35 @@ test("ISync lane: follows further pages only while a page is full, inside the pa
   const partial = fakeStore(freshToken);
   const once = laneDeps({ store: partial.store, pages: [{ ...full, records: [inboundConnectedCallLog("s-9")] }] });
   assert.equal((await runCallLogIsyncLaneOnce(once.deps)).requests, 1, "a partial page ends the chain");
+});
+
+test("window and by-id recovery revalidate accounts after loading the directory", async () => {
+  let applied = 0;
+  const applier = createCallLogApplier({
+    now: () => STAFFED, directory: async () => syntheticDirectory(), configuredAccountId: null,
+    resolveRoute: () => null, settleHorizonMinutes: 240, book: new QuarantineBook([], []),
+    renew: async () => {}, requestId: "scope", ownerHash: "test", logPrefix: "test",
+    unchanged: async () => new Set(), apply: async () => { applied++; return applyResult("stored"); },
+  });
+  const initial = outboundMissedCallLog("first");
+  await applier.applyBatch([initial], emptyBatchCounts());
+  const foreign = { ...initial, uri: "/restapi/v1.0/account/900000000001/call-log/other" };
+  assert.equal(await applier.ensureContext([foreign]), "account_mismatch");
+  const counts = emptyBatchCounts();
+  await applier.applyBatch([foreign], counts);
+  assert.equal(counts.error_code, "account_mismatch");
+  assert.equal(applied, 1);
+});
+
+test("ISync checks the provider account again on continuation pages", async () => {
+  const { store, calls } = fakeStore(freshToken);
+  const first = { records: [outboundMissedCallLog("a"), outboundMissedCallLog("b")], syncType: "ISync" as const, syncToken: "accepted", syncTime: STAFFED };
+  const second = { ...first, records: [{ ...outboundMissedCallLog("c"), uri: "/restapi/v1.0/account/900000000001/call-log/c" }], syncToken: "different-account" };
+  const run = laneDeps({ store, pages: [first, second] });
+  const summary = await runCallLogIsyncLaneOnce(run.deps);
+  assert.equal(summary.error_code, "projection_failed");
+  assert.deepEqual(run.applied, [], "mixed accounts cannot enter the sync batch");
+  assert.notEqual(calls.writes.at(-1)?.call_log_sync?.token, "different-account");
 });
 
 test("ISync lane: a throttle stores nothing new and reports it; the shared gate keeps the next minute honest", async () => {
