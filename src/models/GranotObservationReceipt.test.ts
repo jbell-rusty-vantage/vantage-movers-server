@@ -75,7 +75,7 @@ test("[AC-02] receipt keeps the physical collection and mongoose model name", ()
   );
 });
 
-test("[AC-02] declares only the five named Section 9.1 indexes", () => {
+test("[AC-02] declares the active receipt indexes", () => {
   const indexes = GranotObservationReceipt.schema.indexes() as Array<
     [Record<string, unknown>, Record<string, unknown>]
   >;
@@ -100,12 +100,12 @@ test("[AC-02] declares only the five named Section 9.1 indexes", () => {
   const payloadIndex = indexes.find(
     ([, options]) => options.name === "granot_observation_receipt_payload_sha256_diag",
   );
-  assert.notEqual(payloadIndex?.[1].unique, true);
+  assert.equal(payloadIndex, undefined);
 
   assert.equal(indexes.length, GRANOT_OBSERVATION_RECEIPT_INDEXES.length);
 });
 
-test("[AC-02] unique operation-id index is partial and payload hash index is never unique", () => {
+test("[AC-02] unique operation-id index is partial", () => {
   const unique = GRANOT_OBSERVATION_RECEIPT_INDEXES.find(
     (index) => index.name === "granot_observation_receipt_channel_operation_id_unique",
   );
