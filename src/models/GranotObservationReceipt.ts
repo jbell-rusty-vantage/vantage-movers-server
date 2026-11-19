@@ -93,10 +93,6 @@ export const GRANOT_OBSERVATION_RECEIPT_INDEXES = [
     name: "granot_observation_receipt_route_event_captured",
     key: { route_event_class: 1, captured_at: -1 },
   },
-  {
-    name: "granot_observation_receipt_payload_sha256_diag",
-    key: { payload_sha256: 1, captured_at: -1 },
-  },
 ] as const;
 
 export const GRANOT_OBSERVATION_RECEIPT_EVIDENCE_FIELDS = [
