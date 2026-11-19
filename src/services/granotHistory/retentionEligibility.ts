@@ -62,7 +62,7 @@ export function matchesClosedReplay(
 
 /** Retention bookkeeping is excluded from historical evidence and equality checks. */
 export function archivalChain(c: ArchivedChain): ArchivedChain {
-  const { retention_purge_at: _r, processing, ...receipt } = c.receipt;
+  const { retention_purge_at: _r, evidence_archive: _archive, processing, ...receipt } = c.receipt;
   const {
     retention_review_at: _review,
     retention_reason: _reason,

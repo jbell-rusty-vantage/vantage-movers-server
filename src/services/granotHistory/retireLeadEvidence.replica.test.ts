@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MongoClient, ObjectId } from "mongodb";
 import { readEvidenceIds } from "./evidencePage";
+import { policies, runFutureRetention } from "./futureRetention";
+import { closedRuns, packClosedRun } from "./closedAutomationRun";
 import { digest } from "./archiveCodec";
 import { retireLeadEvidence } from "./retireLeadEvidence";
 import { readArchivedReceipt } from "./settledLeadEvidence";
@@ -27,7 +29,7 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       { name: "granot_observation_receipt_channel_operation_id_unique" },
     );
     const run = String(new ObjectId()),
-      at = new Date(Date.now() - 20000);
+      at = new Date(Date.now() - 2 * 86400000);
     async function seed(orphan = false, priority = "1", winner = false) {
       const d = new ObjectId(),
         o = new ObjectId(),
@@ -43,6 +45,8 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
       };
       await hot.insertOne({
         _id: r,
+        captured_at: at,
+        createdAt: at,
         observation_channel: "granot_http_automation",
         channel_operation_kind: "lead_snapshot_apply",
         channel_operation_id: (orphan ? String(new ObjectId()) : run) + ":" + o,
@@ -144,6 +148,52 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
     assert.equal(
       (await loadClosedOperations(db, run, new Date())).reason,
       "incomplete_evidence",
+    );
+    await hot.updateOne(
+      { _id: normal.r },
+      {
+        $set: {
+          "processing.replay_result.outcome": "already_current",
+          "processing.retention_review_at": at,
+        },
+      },
+    );
+    await hot.createIndex(
+      { "processing.retention_review_at": 1 },
+      { name: "granot_retention_review_v1", sparse: true },
+    );
+    const closed = await loadClosedOperations(db, run, new Date());
+    assert.ok(closed.reason === "ready");
+    const bytes = packClosedRun(run, closed.rows),
+      hash = digest(bytes);
+    blobs.set(hash, bytes);
+    await closedRuns(db).insertOne({
+      _id: run,
+      count: closed.rows.length,
+      generation: "123",
+      hash,
+      closed_at: new Date(),
+    });
+    await policies(db).insertOne({
+      _id: "v1",
+      mode: "future",
+      new_data_from: new Date(+at - 1000),
+    });
+    const sweep = await runFutureRetention(db, new Date(), undefined, {
+      read,
+      store: async () => {
+        throw Error("archive already exists");
+      },
+    });
+    assert.equal(sweep.stamped, 1);
+    assert.ok(
+      (await hot.findOne({ _id: normal.r }))?.retention_purge_at instanceof
+        Date,
+    );
+    await hot.deleteOne({ _id: normal.r });
+    assert.equal(
+      (await readArchivedReceipt(db, normal.r, read))?.decisions.length,
+      1,
     );
   } finally {
     await db.dropDatabase();

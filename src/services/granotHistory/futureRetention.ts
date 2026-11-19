@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { evidenceForReceipt, readEvidencePage, type EvidenceLocator } from "./evidencePage";
 import type { DeskLeadRef } from "../salesOutreach/subjects/leadFacts";
 import { canPromoteFuture, type ShadowDay } from "./shadowWeek";
 import { inspectPoolCandidates } from "../salesOutreach/pool/admission";
@@ -33,7 +34,8 @@ export type RetentionPolicy = {
 export const policies = (db: Db) =>
   db.collection<RetentionPolicy>("granot_retention_control");
 const day = 86400000;
-async function readChains(db: Db, ids: ObjectId[], session?: ClientSession) {
+type ArchivedSource = { locator: EvidenceLocator; chain: ArchivedChain };
+async function readChains(db: Db, ids: ObjectId[], archived: Map<string,ArchivedSource>, read: typeof readArchiveObject, session?: ClientSession) {
   const options = { session, maxTimeMS: 3000 };
   const receipts = await db
     .collection("granot_webhook_receipts")
@@ -48,7 +50,7 @@ async function readChains(db: Db, ids: ObjectId[], session?: ClientSession) {
     .find({ observation_id: { $in: observations.map((o) => o._id) } }, options)
     .toArray();
   const byId = new Map(receipts.map((r) => [String(r._id), r]));
-  return observations.flatMap((o) => {
+  const chains = observations.flatMap((o) => {
     const r = byId.get(String(o.receipt_id));
     return r
       ? [
@@ -62,6 +64,24 @@ async function readChains(db: Db, ids: ObjectId[], session?: ClientSession) {
         ]
       : [];
   });
+  const pages=new Map<string,ArchivedChain[]>();
+  const observedReceipts=new Set(observations.map(o=>String(o.receipt_id)));
+  for(const receipt of receipts) {
+    const locator=receipt.evidence_archive as EvidenceLocator | undefined;
+    if(!locator || observedReceipts.has(String(receipt._id)) || !receipt.evidence_archive?.replay_hash) continue;
+    const key=String(receipt._id);
+    if(!session) {
+      let page=pages.get(locator.hash);
+      if(!page){page=await readEvidencePage(db,locator,read);pages.set(locator.hash,page);}
+      archived.set(key,{locator,chain:evidenceForReceipt(page,receipt,locator)});
+    }
+    const saved=archived.get(key);
+    if(!saved || !isDeepStrictEqual(saved.locator,locator)) continue;
+    const candidate=archivalChain({...saved.chain,receipt});
+    if(!isDeepStrictEqual(candidate,archivalChain(saved.chain))) continue;
+    chains.push(candidate);
+  }
+  return chains;
 }
 
 async function comparePoolEvidence(
@@ -157,12 +177,14 @@ export async function runFutureRetention(
       { _id: { $in: ids }, "processing.retention_review_at": { $lte: now } },
       { $set: { "processing.retention_review_at": retryAt } },
     );
-    const all = await readChains(db, ids);
+    const archived = new Map<string,ArchivedSource>();
+    const all = await readChains(db, ids, archived, storage.read);
     const days = await verifiedWebhookDays(db, all);
     const routine = all.filter(c => settledLeadSnapshot(c, cutoff) && hasDailyEvidence(c, days));
     const held = await referencedChains(db, routine);
     const superseded = await supersededObservations(db, routine);
     const replays = new Map<string, ClosedOperation[] | null>();
+    const verified = new Map<string, ArchivedChain>();
     const groups = new Map<string, ArchivedChain[]>();
     for (const c of routine) {
       const id = String(c.observation._id);
@@ -181,6 +203,7 @@ export async function runFutureRetention(
         }
         if (!matchesClosedReplay(c, replays.get(run)?.find(op => op.operation === c.receipt.channel_operation_id))) continue;
       }
+      if(archived.has(String(c.receipt._id))) {verified.set(id,c); continue;}
       const key = JSON.stringify([
         c.observation.identity.normalized_job_no,
         c.observation.captured_at.toISOString().slice(0, 7),
@@ -189,7 +212,6 @@ export async function runFutureRetention(
       bucket.push(c);
       groups.set(key, bucket);
     }
-    const verified = new Map<string, ArchivedChain>();
     const locators = new Map<string, ReceiptArchiveLocator>();
     for (const [key, group] of groups) {
       const [job, month] = JSON.parse(key);
@@ -211,7 +233,7 @@ export async function runFutureRetention(
           retired = 0,
           qualified = 0,
           comparisons = 0;
-        const fresh = await readChains(db, ids, session);
+        const fresh = await readChains(db, ids, archived, storage.read, session);
         const eligible = fresh.filter((c) =>
           isDeepStrictEqual(verified.get(String(c.observation._id)), c),
         );
@@ -239,6 +261,11 @@ export async function runFutureRetention(
             await db.collection("synchronization_decisions").deleteOne({ _id: c.decisions[0]._id }, { session });
             retired++;
             continue;
+          }
+          const saved=archived.get(String(c.receipt._id));
+          if(saved) {
+            await db.collection("granot_archived_receipts").updateOne({_id:c.receipt._id,evidence_archive:saved.locator},
+              {$setOnInsert:{evidence_archive:saved.locator}},{upsert:true,session});
           }
           const set = { $set: { retention_purge_at: now } };
           await source.updateOne(
