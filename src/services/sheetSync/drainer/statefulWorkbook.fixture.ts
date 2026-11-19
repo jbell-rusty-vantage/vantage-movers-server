@@ -16,6 +16,13 @@ export function identityRanges(ranges: string[], rows: string[][]) {
   ] } };
 }
 
+export function deletionGrid(ranges: string[], rows: string[][]) {
+  return ranges.map(range => {
+    const startRow = Number(range.split("!").at(-1)!.split(":")[0]) - 1;
+    return { startRow, rowData: [{ values: rows[startRow]?.map(stringValue => ({ userEnteredValue: { stringValue } })) }] };
+  });
+}
+
 /** Offline provider: faults can happen after the workbook has actually changed. */
 export function statefulWorkbook(initial: Record<string, string[][]>) {
   const rows = new Map(Object.entries(initial).map(([title, values]) => [title, structuredClone(values)]));
@@ -37,9 +44,13 @@ export function statefulWorkbook(initial: Record<string, string[][]>) {
     if (fault === "transport") throw Object.assign(new Error("socket closed"), { code: "ECONNRESET" });
   };
   const sheets = { spreadsheets: {
-    get: async (params: unknown, options?: RequestOptions) => {
+    get: async (params: { ranges?: string[] }, options?: RequestOptions) => {
       const fault = start("topology", params, options);
       await finish("topology", fault);
+      if (params.ranges) {
+        const title = titleFrom(params.ranges[0]);
+        return { data: { sheets: [{ properties: { title, sheetId: titles.indexOf(title) }, data: deletionGrid(params.ranges, rows.get(title)!) }] } };
+      }
       return { data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId, gridProperties: { columnCount: 30 } } })) } };
     },
     values: {
@@ -89,12 +100,17 @@ export function statefulWorkbook(initial: Record<string, string[][]>) {
         await finish("provision", fault);
         return { data: { replies: [{ addSheet: { properties: { title: addedTitle, sheetId, gridProperties: { columnCount: 30 } } } }] } };
       }
-      if (!params.requestBody.requests[0]?.deleteDimension) {
+      if (!params.requestBody.requests.some(request => request.deleteDimension || request.repeatCell?.fields === "userEnteredValue")) {
         start("format", params, options);
         return { data: {} };
       }
       const fault = start("delete", params, options);
       for (const request of params.requestBody.requests) {
+        if (request.repeatCell) {
+          const range = request.repeatCell.range!;
+          rows.get(titles[range.sheetId!])![range.startRowIndex!][range.startColumnIndex!] = "";
+          continue;
+        }
         const range = request.deleteDimension!.range!;
         rows.get(titles[range.sheetId!])!.splice(range.startIndex!, range.endIndex! - range.startIndex!);
       }

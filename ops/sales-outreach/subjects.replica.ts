@@ -222,11 +222,24 @@ async function main() {
     applied_at: appliedAt,
   });
   const now = new Date();
-  await changes.insertOne(change(2, new Date(+now - 30_000)));
+  const initialChange = change(2, new Date(+now - 30_000));
+  await changes.insertOne(initialChange);
   const pass = await scanOutreachLeadChanges(now);
   assert.equal(pass.nominated, 1);
   const cursor = await getSalesIntelligenceSyncStateModel().findOne({ scope: OUTREACH_LEAD_CHANGE_SCOPE }).lean();
   assert.ok(cursor?.cursor?.entity_change_applied_at, "durable cursor stored");
+  const commands = mongoose.connection.db!.collection("domain_command_executions");
+  const result = { status: "applied", entity_refs: [initialChange.entity], warnings: [] };
+  await commands.insertOne({ _id: initialChange.command_execution_id, origin: "vantage_admin", command_name: "createFormLead",
+    command_id: String(initialChange.command_execution_id), idempotency_key: "test-resume", payload_checksum: "a".repeat(64),
+    result, entity_refs: result.entity_refs, warnings: [] });
+  const compacted = await commands.updateOne({ _id: initialChange.command_execution_id,
+    $expr: { $eq: ["$result", { status: "applied", entity_refs: "$entity_refs", warnings: "$warnings" }] } }, { $unset: { result: "" } });
+  assert.equal(compacted.modifiedCount, 1);
+  const read = (await import("../../src/models/DomainCommandExecution.js")).readStoredCanonicalCommandResult;
+  const stored = await commands.findOne({ _id: initialChange.command_execution_id });
+  assert.ok(stored);
+  assert.deepEqual(read({ result: stored.result, entity_refs: stored.entity_refs, warnings: stored.warnings }), result);
   await changes.insertOne(change(3, new Date(+now - 60_000))); // committed late, behind the cursor
   await scanOutreachLeadChanges(new Date(+now + 5_000));
   assert.ok(await Jobs.exists({ dedupe_key: `sod:lead-change:FormLead:${lead.id}:r4` }), "overlap picks up the late commit");

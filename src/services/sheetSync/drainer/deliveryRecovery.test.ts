@@ -4,7 +4,7 @@ import type { sheets_v4 } from "googleapis";
 import { writeBatchedTargets } from "./batchWriter";
 import type { QuotaLimiter } from "./quotaLimiter";
 import type { PlannedWrite } from "./types";
-import { statefulWorkbook, identityRanges } from "./statefulWorkbook.fixture";
+import { statefulWorkbook, identityRanges, deletionGrid } from "./statefulWorkbook.fixture";
 import { resetEnsuredTabsCache } from "../../googleSheets/tabs";
 import { assertLeadTabWritesAllowed } from "../writerFence";
 
@@ -90,7 +90,7 @@ test("shifted legacy Mongo ID lookup deletes the intended row and preserves unre
   const f = statefulWorkbook({ Calls: [["Name", "Old field", "Mongo ID"], ["old", "legacy", "A"], ["neighbor", "legacy", "N"]] });
   const result = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("delete")], quota: grant, ensureHeaders: false });
   assert.ok(result.every((outcome) => outcome.status === "synced"));
-  assert.deepEqual(f.rows.get("Calls"), [["Name", "Old field", "Mongo ID"], ["neighbor", "legacy", "N"]]);
+  assert.deepEqual(f.rows.get("Calls"), [["Name", "Old field", "Mongo ID"], ["", "legacy", ""], ["neighbor", "legacy", "N"]]);
 });
 
 test("warm header cache cannot authorize an upsert into a shifted identity layout", async () => {
@@ -194,7 +194,7 @@ function fixture() {
   let failUpdate = false, failDelete = false, appends = 0;
   const titleFrom = (range: string) => /^'([^']+)'!/.exec(range)![1];
   const sheets = { spreadsheets: {
-    get: async () => ({ data: { sheets: names.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
+    get: async ({ ranges }: { ranges?: string[] }) => ({ data: { sheets: names.map((title, sheetId) => ({ properties: { title, sheetId }, data: ranges && titleFrom(ranges[0]) === title ? deletionGrid(ranges, rows.get(title)!) : undefined })) } }),
     values: {
       batchGet: async ({ ranges }: { ranges: string[] }) => identityRanges(ranges, rows.get(titleFrom(ranges[0]))!),
       get: async ({ range }: { range: string }) => ({ data: { values: rows.get(titleFrom(range)) } }),
@@ -289,4 +289,11 @@ test("cold and warm delivery preserve operator columns and refuse a displaced ma
   f.rows.set("Calls", structuredClone(displaced));
   assert.ok((await deliver()).every(row => row.status !== "synced"));
   assert.deepEqual(f.rows.get("Calls"), displaced);
+});
+
+test("duplicate repair removes only managed values from an operator-annotated extra row", async () => {
+  const f = statefulWorkbook({ Calls: [[...headers, "Owner"], ["A", "old"], ["A", "old", "keep"], ["B", "neighbor"]] });
+  const outcomes = await writeBatchedTargets({ sheets: f.sheets, writes: [recoveryWrite("upsert")], quota: grant, ensureHeaders: false });
+  assert.ok(outcomes.every(outcome => outcome.status === "synced"));
+  assert.deepEqual(f.rows.get("Calls")?.slice(1), [["A", "current"], ["", "", "keep"], ["B", "neighbor"]]);
 });

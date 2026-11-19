@@ -12,7 +12,7 @@ import { columnLetter } from "../../googleSheets/tabs";
  * map to the batch writer so each known row is updated in place and only truly
  * new rows are appended.
  */
-export type TabRowMap = Map<string, number> & { duplicateRows: Map<string, number[]>; idColumn?: number; managedHeadersMatch?: boolean };
+export type TabRowMap = Map<string, number> & { duplicateRows: Map<string, number[]>; idColumn?: number; actualHeaders?: readonly string[]; managedHeadersMatch?: boolean };
 
 export async function buildTabRowMap(
   sheets: sheets_v4.Sheets,
@@ -49,6 +49,7 @@ export async function buildTabRowMap(
   }
   if (!Array.isArray(identities) || identities[0]?.[0] !== "Mongo ID") throw new Error("sheet_identity_rows_invalid");
   map.idColumn = idColumn;
+  map.actualHeaders = header;
   map.managedHeadersMatch = headers.every((label, index) => header?.[index] === label);
   for (let index = 1; index < identities.length; index += 1) {
     const row = identities[index];

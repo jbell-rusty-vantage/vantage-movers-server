@@ -58,7 +58,7 @@ export function createDeliverySheetsClient(
     // Mongo quota reservations and ownership checks can yield; recheck before send.
     await check();
     const structural = name === "append" || (name === "batchUpdate" && params.requestBody?.requests?.some(
-      (entry: sheets_v4.Schema$Request) => entry.deleteDimension || entry.addSheet,
+      (entry: sheets_v4.Schema$Request) => entry.deleteDimension || entry.repeatCell?.fields === "userEnteredValue" || entry.addSheet,
     ));
     try {
       // googleapis exposes different callback/promise overloads for each method;

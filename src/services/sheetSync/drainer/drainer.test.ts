@@ -1,4 +1,4 @@
-import { identityRanges } from "./statefulWorkbook.fixture";
+import { deletionGrid, identityRanges } from "./statefulWorkbook.fixture";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { sheets_v4 } from "googleapis";
@@ -43,7 +43,7 @@ function fakeSheets(options: {
   const calls: FakeSheetsCalls = { batchUpdates: [], appends: [], deletes: [] };
   const sheets = {
     spreadsheets: {
-      get: async () => ({ data: { sheets: [{ properties: { title: "Calls", sheetId: options.sheetId ?? 7 } }] } }),
+      get: async ({ ranges }: { ranges?: string[] }) => ({ data: { sheets: [{ data: ranges && deletionGrid(ranges, options.rows), properties: { title: "Calls", sheetId: options.sheetId ?? 7 } }] } }),
       batchUpdate: async (req: any) => {
         calls.deletes.push(req.requestBody.requests);
         return { data: {} };

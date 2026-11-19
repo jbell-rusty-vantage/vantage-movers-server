@@ -156,6 +156,8 @@ async function processTabGroup(
   if (repairs.length) {
     const extraMap = new Map<string, number>() as TabRowMap;
     extraMap.duplicateRows = new Map();
+    extraMap.actualHeaders = rowMap.actualHeaders;
+    extraMap.idColumn = rowMap.idColumn;
     for (const write of repairs) {
       const extras = rowMap.duplicateRows.get(write.mongoId)!;
       extraMap.set(write.mongoId, extras[0]);
@@ -291,11 +293,8 @@ async function applyDeletes(
   const outcomes: PlannedWriteOutcome[] = [...alreadyGone];
 
   for (const chunk of chunks) {
-    const requests: sheets_v4.Schema$Request[] = chunk.map(({ rowNumber }) =>
-      deleteRequest(sheetId, rowNumber),
-    );
-
     try {
+      const requests = await rowRemovalRequests(sheets, group, sheetId, chunk, rowMap);
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId: group.spreadsheetId,
         requestBody: { requests },
@@ -306,6 +305,40 @@ async function applyDeletes(
     }
   }
   return outcomes;
+}
+
+/** Inspect only rows being removed. Preserve an annotated row in place and clear
+ * its managed values, including its reporting identity. Plain rows can be removed. */
+async function rowRemovalRequests(
+  sheets: sheets_v4.Sheets, group: TabGroup, sheetId: number, chunk: DeleteEntry[], map: TabRowMap,
+): Promise<sheets_v4.Schema$Request[]> {
+  const { data } = await sheets.spreadsheets.get({
+    spreadsheetId: group.spreadsheetId,
+    ranges: chunk.map(({ rowNumber }) => `${escapeSheetTitleForRange(group.tabName)}!${rowNumber}:${rowNumber}`),
+    fields: "sheets(properties(sheetId,title),data(startRow,rowData(values(userEnteredValue,note,textFormatRuns,dataValidation))),protectedRanges(range))",
+  });
+  const tab = data.sheets?.find(sheet => sheet.properties?.sheetId === sheetId);
+  const rows = new Map(tab?.data?.map(grid => [grid.startRow, grid.rowData?.[0]?.values]));
+  return chunk.flatMap(({ write, rowNumber }): sheets_v4.Schema$Request[] => {
+    const index = rowNumber - 1;
+    const cells = rows.get(index);
+    if (!cells || cells[map.idColumn!]?.userEnteredValue?.stringValue !== write.mongoId) {
+      throw new Error("sheet_delete_identity_changed");
+    }
+    const managed = (column: number) => group.headers.includes(map.actualHeaders?.[column] ?? "");
+    const hasOwnerContent = cells.some((cell, column) => cell.note || cell.textFormatRuns?.length ||
+      cell.dataValidation || cell.userEnteredValue?.formulaValue || (!managed(column) && cell.userEnteredValue));
+    const protectedRow = tab?.protectedRanges?.some(({ range }) => range &&
+      (range.startRowIndex ?? 0) <= index && (range.endRowIndex ?? Infinity) > index);
+    if (protectedRow) throw new Error("sheet_delete_protected_row");
+    if (!hasOwnerContent) return [deleteRequest(sheetId, rowNumber)];
+    return cells.flatMap((cell, column) => {
+      if (!managed(column) || !cell.userEnteredValue || cell.userEnteredValue.formulaValue) return [];
+      if (column !== map.idColumn && (cell.note || cell.textFormatRuns?.length || cell.dataValidation)) return [];
+      return [{ repeatCell: { range: { sheetId, startRowIndex: index, endRowIndex: rowNumber,
+        startColumnIndex: column, endColumnIndex: column + 1 }, cell: {}, fields: "userEnteredValue" } }];
+    });
+  });
 }
 
 function deleteRequest(sheetId: number, rowNumber: number): sheets_v4.Schema$Request {
