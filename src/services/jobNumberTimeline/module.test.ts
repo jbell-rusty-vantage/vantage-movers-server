@@ -65,3 +65,25 @@ test("module company/granularity mismatch is filtered_out", async () => {
   if (result.status !== "filtered_out") throw new Error("expected filtered_out");
   assert.deepEqual(result.scopes, []);
 });
+
+test("owner milestones retain official history through corrections, repeated links and an archived Booking", async () => {
+  const rows = wordpressRows();
+  const booked = "2026-03-01T12:00:00.000Z";
+  const cancelled = "2026-03-02T12:00:00.000Z";
+  rows.bookings = [{ id: "live", normalized_job_no: WP_JOB, book_date: booked, last_changed_at: cancelled }];
+  rows.cancellations = [
+    { id: "one", booked_lead: "live", cancel_date: cancelled },
+    { id: "two", booked_lead: "removed", normalized_job_no_snapshot: WP_JOB, booking_created_at_snapshot: booked, cancel_date: cancelled },
+  ];
+  const result = await createJobNumberTimelineModule({
+    loader: createMemoryEvidenceLoader({ rows }), milestonesOnly: true,
+  }).read({ job_no: WP_JOB });
+  assert.equal(result.status, "ok");
+  if (result.status !== "ok") throw Error("missing job");
+  const events = result.page.events;
+  assert.equal(events.filter(row => row.kind === "official_booking" && row.event_at === booked).length, 2);
+  assert.equal(events.filter(row => row.kind === "official_cancellation").length, 2);
+  assert.ok(events.filter(row => row.kind === "job_number_acquired").length <= 1);
+  assert.ok(events.every(row => ["lead_created", "job_number_acquired", "official_booking", "official_cancellation"].includes(row.kind)));
+  assert.deepEqual(events.map(row => row.event_at), events.map(row => row.event_at).sort());
+});

@@ -110,7 +110,7 @@ export async function getSheetSyncRunDetail(id: string) {
     throw new V1ServiceError("Sheet sync run not found", 404);
   }
   const attempts = await SheetSyncAttempt.find({ run_id: id }).sort({ createdAt: 1 }).lean();
-  return { run, attempts };
+  return { run, attempts: attempts.map(attempt => ({ ...attempt, google_reasons: attempt.google_reasons ?? [] })) };
 }
 
 /**

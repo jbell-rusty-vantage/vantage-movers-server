@@ -57,6 +57,7 @@ export type BookingRow = {
   job_no_snapshot?: string;
   lead_ref?: string;
   lead_model?: JobTimelineLeadModel;
+  book_date?: string;
   last_changed_at?: string;
   timestamp?: string;
   createdAt?: string;
@@ -65,6 +66,8 @@ export type BookingRow = {
 export type CancellationRow = {
   id: IdLike;
   booked_lead?: string;
+  book_date?: string;
+  cancel_date?: string;
   last_changed_at?: string;
   createdAt?: string;
   job_no_snapshot?: string | null;
@@ -184,6 +187,7 @@ export type EntityChangeRow = {
   command_name: string;
   applied_at: string;
   changed_paths: string[];
+  linked_job_numbers?: string[];
   decision_id?: string;
 };
 
@@ -262,6 +266,7 @@ export type JobTimelineRows = {
 };
 
 export type JobTimelineAssembleInput = {
+  milestonesOnly?: boolean;
   rawJobNo: string;
   filters?: {
     source_granularity_id?: string;

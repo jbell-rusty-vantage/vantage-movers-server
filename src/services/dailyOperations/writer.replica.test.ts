@@ -99,7 +99,10 @@ test("replica: retained no-touch cards insert without creating a day", options, 
 
 test("replica: closed-day counters and revision remain frozen while facts persist", options, async () => {
   await getDailyOperationsDayModel().create({ ...buildDaySeed(day), status: "closed", revision: 7 });
-  assert.equal((await write(input("closed")))?.outcome, "closed_day");
+  const correction = input("closed");
+  const receive = () => recordDailyOperationsFact(correction, { stores: createMongoDailyOperationsStores(), now: () => new Date("2026-10-24T04:01:00Z") });
+  assert.equal((await receive())?.outcome, "closed_day");
+  assert.equal((await receive())?.outcome, "duplicate");
   const row = await getDailyOperationsDayModel().findOne({ day }).lean();
   const event = await getDailyOperationsEventModel().findOne({}).lean();
   assert.equal(row?.leads.total, 0); assert.equal(row?.revision, 7);

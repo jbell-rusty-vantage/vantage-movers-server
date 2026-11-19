@@ -1,3 +1,4 @@
+import { identityRanges } from "./statefulWorkbook.fixture";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { sheets_v4 } from "googleapis";
@@ -49,6 +50,7 @@ function fakeSheets(options: {
       },
       values: {
         get: async () => ({ data: { values: options.rows } }),
+        batchGet: async ({ ranges }: { ranges: string[] }) => identityRanges(ranges, options.rows),
         batchUpdate: async (req: any) => {
           if (options.failBatchUpdate) {
             throw new Error("boom batchUpdate");

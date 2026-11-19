@@ -146,7 +146,6 @@ const mongooseExecutionStore: CanonicalCommandExecutionStore = {
       actor: input.context.actor,
       initiator: input.context.initiator,
       provenance: input.context.provenance,
-      result: input.result,
       entity_refs: input.result.entity_refs,
       warnings: input.result.warnings,
       applied_at: input.applied_at,

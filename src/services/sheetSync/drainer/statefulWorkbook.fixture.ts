@@ -7,6 +7,15 @@ type ValueWrite = { range: string; requestBody: { values: string[][] } };
 type RowUpdate = { requestBody: { data: { range: string; values: string[][] }[] } };
 type StructuralWrite = { requestBody: { requests: sheets_v4.Schema$Request[] } };
 
+export function identityRanges(ranges: string[], rows: string[][]) {
+  const letters = /!([A-Z]+):/.exec(ranges[1])![1];
+  const column = [...letters].reduce((sum, letter) => 26 * sum + letter.charCodeAt(0) - 64, 0) - 1;
+  return { data: { valueRanges: [
+    { range: ranges[0], values: rows.length ? [rows[0]] : undefined },
+    { range: ranges[1], values: rows.length ? rows.map(row => row[column] === undefined ? [] : [row[column]]) : undefined },
+  ] } };
+}
+
 /** Offline provider: faults can happen after the workbook has actually changed. */
 export function statefulWorkbook(initial: Record<string, string[][]>) {
   const rows = new Map(Object.entries(initial).map(([title, values]) => [title, structuredClone(values)]));
@@ -34,6 +43,11 @@ export function statefulWorkbook(initial: Record<string, string[][]>) {
       return { data: { sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId, gridProperties: { columnCount: 30 } } })) } };
     },
     values: {
+      batchGet: async (params: { ranges: string[] }, options?: RequestOptions) => {
+        const fault = start("read", params, options);
+        await finish("read", fault);
+        return identityRanges(params.ranges, rows.get(titleFrom(params.ranges[0])) ?? []);
+      },
       clear: async (params: unknown, options?: RequestOptions) => { start("clear", params, options); return { data: {} }; },
       update: async (params: ValueWrite, options?: RequestOptions) => {
         start("header", params, options);

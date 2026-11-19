@@ -99,6 +99,7 @@ export function createDeliverySheetsClient(
     batchUpdate: request(sheets.spreadsheets, "batchUpdate"),
     values: {
       get: request(values, "get", true),
+      batchGet: request(values, "batchGet", true),
       update: request(values, "update"),
       clear: request(values, "clear"),
       batchUpdate: request(values, "batchUpdate"),

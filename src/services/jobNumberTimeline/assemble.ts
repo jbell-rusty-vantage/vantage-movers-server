@@ -834,6 +834,54 @@ function resolvedScopes(input: {
   return scopes;
 }
 
+function milestoneEvents(
+  normalized: string, lead: LeadRow | undefined, changes: EntityChangeRow[],
+  links: RecordLinkRow[], bookings: BookingRow[], cancellations: CancellationRow[],
+): JobTimelineEvent[] {
+  const milestones: JobTimelineEvent[] = [];
+  if (lead) {
+    const origin = emitLeadCreated({ ...lead, change_history_started_at: undefined }, []);
+    milestones.push(origin);
+  }
+  const linkDates = links.filter(link => link.lead_ref && link.established_at
+    && (!lead || (link.lead_ref.id === lead.id && link.lead_ref.model === lead.model)))
+    .map(link => ({ id: link.id, at: link.established_at!, field: "record_link.established_at" }));
+  for (const change of changes) {
+    if (change.applied_at && change.linked_job_numbers?.some(job => matchesJob(job, normalized))) {
+      linkDates.push({ id: change.id, at: change.applied_at, field: "entity_change.applied_at" });
+    }
+  }
+  const first = linkDates.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))[0];
+  if (first) milestones.push(event("job_number_acquired", {
+    id: `job_number_acquired:${first.id}`, event_at: first.at, clock_field: first.field,
+    coverage: "evidence_only", headline: "First recorded Job Number link", data: {},
+  }));
+  const bookingIds = new Set(bookings.map(booking => booking.id));
+  for (const booking of bookings) {
+    milestones.push(event("official_booking", {
+      id: `official_booking:${booking.id}`, event_at: booking.book_date || booking.createdAt || "",
+      clock_field: booking.book_date ? "booking.book_date" : "booking.createdAt",
+      coverage: "official_fact_only", headline: "Official Booking", data: { booking_id: booking.id },
+    }));
+  }
+  for (const cancel of cancellations) {
+    if (cancel.booked_lead && !bookingIds.has(cancel.booked_lead) && (cancel.book_date || cancel.booking_created_at_snapshot)) {
+      bookingIds.add(cancel.booked_lead);
+      milestones.push(event("official_booking", {
+        id: `official_booking:${cancel.booked_lead}`, event_at: cancel.book_date || cancel.booking_created_at_snapshot!,
+        clock_field: cancel.book_date ? "cancellation.book_date" : "cancellation.booking_created_at_snapshot",
+        coverage: "official_fact_only", headline: "Official Booking", data: { booking_id: cancel.booked_lead },
+      }));
+    }
+    milestones.push(event("official_cancellation", {
+      id: `official_cancellation:${cancel.id}`, event_at: cancel.cancel_date || cancel.createdAt || "",
+      clock_field: cancel.cancel_date ? "cancellation.cancel_date" : "cancellation.createdAt",
+      coverage: "official_fact_only", headline: "Official Cancellation", data: { cancellation_id: cancel.id },
+    }));
+  }
+  return sortEvents(milestones);
+}
+
 export function assembleJobNumberTimeline(
   rawInput: JobTimelineAssembleInput,
 ): JobTimelineAssembleResult {
@@ -848,7 +896,7 @@ export function assembleJobNumberTimeline(
     cancellationAttachedBySnapshot(row, normalized),
   );
   const candidates = asList(input.rows.leads).filter(row =>
-    row.accepted_granot_observation_id && matchesJob(row.normalized_job_no ?? row.job_no, normalized));
+    (input.milestonesOnly || row.accepted_granot_observation_id) && matchesJob(row.normalized_job_no ?? row.job_no, normalized));
   const uniqueLead = candidates.length === 1 ? candidates[0] : undefined;
   const firstHopEmpty = !uniqueLead
     && hop.observations.length === 0
@@ -882,7 +930,9 @@ export function assembleJobNumberTimeline(
     bookingIds,
     normalized,
   });
-  const cancellations = selectedCancellations.cancellations;
+  const cancellations = input.milestonesOnly
+    ? asList(input.rows.cancellations).filter(row => (row.booked_lead && bookingIds.has(row.booked_lead)) || cancellationAttachedBySnapshot(row, normalized))
+    : selectedCancellations.cancellations;
   const cancellation = cancellations[0];
   const allowedEntityIds = new Set<string>([
     ...(lead ? [lead.id] : []),
@@ -911,50 +961,56 @@ export function assembleJobNumberTimeline(
     }
   }
 
-  const events: JobTimelineEvent[] = [];
-  events.push(...emitSourceReceived({
-    observations: hop.observations,
-    receipts: asList(input.rows.observation_receipts),
-    wordpressReceipts: asList(input.rows.wordpress_form_submission_receipts),
-    processedCalls: asList(input.rows.processed_calls),
-    lead,
-  }));
-  let created: JobTimelineEvent | undefined;
-  if (lead) {
-    created = emitLeadCreated(lead, changes);
-    events.push(created);
-    events.push(...emitMessages(lead, asList(input.rows.lead_messages)));
+  let sorted: JobTimelineEvent[];
+  if (input.milestonesOnly) {
+    sorted = milestoneEvents(normalized, lead, changes, hop.record_links, hop.bookings, cancellations);
+  } else {
+    const events: JobTimelineEvent[] = [];
+    events.push(...emitSourceReceived({
+      observations: hop.observations,
+      receipts: asList(input.rows.observation_receipts),
+      wordpressReceipts: asList(input.rows.wordpress_form_submission_receipts),
+      processedCalls: asList(input.rows.processed_calls),
+      lead,
+    }));
+
+    if (lead) {
+      events.push(emitLeadCreated(lead, changes));
+      events.push(...emitMessages(lead, asList(input.rows.lead_messages)));
+    }
+
+    const acquired = emitJobNumberAcquired({
+      lead,
+      changes,
+      links: hop.record_links,
+      observations: hop.observations,
+    });
+    if (acquired) events.push(acquired);
+
+    if (lead) {
+      events.push(...emitLeadUpdates(changes, createChange(changes), jobNumberChange(changes)));
+    }
+
+    events.push(...emitObservations(hop.observations));
+    events.push(...emitDecisions(decisions));
+    events.push(...emitIntakes("booking_intake", hop.booking_cases));
+    events.push(...emitIntakes("cancellation_intake", hop.release_cases));
+    const officialBooking = emitOfficialBooking(booking, asList(input.rows.entity_changes));
+    if (officialBooking) events.push(officialBooking);
+    const officialCancellation = emitOfficialCancellation(cancellation, asList(input.rows.entity_changes));
+    if (officialCancellation) events.push(officialCancellation);
+    events.push(...emitSheetSync(sheetJobs));
+    sorted = sortEvents(events);
   }
-
-  const acquired = emitJobNumberAcquired({
-    lead,
-    changes,
-    links: hop.record_links,
-    observations: hop.observations,
-  });
-  if (acquired) events.push(acquired);
-
-  if (lead) {
-    events.push(...emitLeadUpdates(changes, createChange(changes), jobNumberChange(changes)));
-  }
-
-  events.push(...emitObservations(hop.observations));
-  events.push(...emitDecisions(decisions));
-  events.push(...emitIntakes("booking_intake", hop.booking_cases));
-  events.push(...emitIntakes("cancellation_intake", hop.release_cases));
-  const officialBooking = emitOfficialBooking(booking, asList(input.rows.entity_changes));
-  if (officialBooking) events.push(officialBooking);
-  const officialCancellation = emitOfficialCancellation(cancellation, asList(input.rows.entity_changes));
-  if (officialCancellation) events.push(officialCancellation);
-  events.push(...emitSheetSync(sheetJobs));
-
-  const sorted = sortEvents(events);
+  const created = sorted.find(row => row.kind === "lead_created");
+  const acquired = sorted.find(row => row.kind === "job_number_acquired");
   const jobSnapshot =
     hop.record_links[0]?.job_no_snapshot
     || hop.bookings[0]?.job_no_snapshot
     || hop.observations[0]?.job_no_snapshot
     || hop.booking_cases[0]?.job_no_snapshot
     || hop.release_cases[0]?.job_no_snapshot
+    || lead?.job_no
     || cancellation?.job_no_snapshot
     || null;
 
@@ -962,7 +1018,7 @@ export function assembleJobNumberTimeline(
   const page: JobTimelinePage = {
     normalized_job_no: normalized,
     job_no_snapshot: jobSnapshot,
-    proof_shape: proofShape(lead, created, acquired),
+    proof_shape: proofShape(lead, created, input.milestonesOnly ? undefined : acquired),
     source: {
       source_company_id: lead?.source_company_id ?? primaryScope?.source_company_id ?? null,
       source_company_label: lead?.source_company_label ?? null,
@@ -976,8 +1032,8 @@ export function assembleJobNumberTimeline(
       job_number_at_create: Boolean(acquired?.data.acquired_at_create),
       booking_intake: intakeCoverage(hop.booking_cases),
       cancellation_intake: intakeCoverage(hop.release_cases),
-      official_booking: Boolean(officialBooking),
-      official_cancellation: Boolean(officialCancellation),
+      official_booking: sorted.some(row => row.kind === "official_booking"),
+      official_cancellation: Boolean(cancellation),
       sheet_sync: sheetCoverage(sheetJobs),
     },
     current: {
@@ -998,6 +1054,7 @@ export function assembleJobNumberTimeline(
       page,
       rows: input.rows,
       now: rawInput.now,
+      milestonesOnly: input.milestonesOnly,
       cancellationViaSnapshot: selectedCancellations.viaSnapshot,
     }),
   };

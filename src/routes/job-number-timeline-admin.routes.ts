@@ -45,7 +45,8 @@ async function defaultRead(input: {
     throw new Error("Mongo is not connected");
   }
   return createJobNumberTimelineModule({
-    loader: createMongoEvidenceLoader({ db }),
+    loader: createMongoEvidenceLoader({ db, milestonesOnly: true }),
+    milestonesOnly: true,
   }).read(input);
 }
 

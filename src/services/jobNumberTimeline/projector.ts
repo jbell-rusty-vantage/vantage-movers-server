@@ -31,6 +31,7 @@ export type ProjectEnhancedPageInput = {
   rows: JobTimelineRows;
   now?: Date;
   cancellationViaSnapshot?: boolean;
+  milestonesOnly?: boolean;
 };
 
 function originLabel(page: JobTimelinePage): string {
@@ -239,7 +240,7 @@ export function projectEnhancedPage(input: ProjectEnhancedPageInput): EnhancedJo
   });
 
   const withCausality = applyCausality(enhanced);
-  const dropped = withCausality.length > JOB_TIMELINE_EVENT_CAP
+  const dropped = !input.milestonesOnly && withCausality.length > JOB_TIMELINE_EVENT_CAP
     ? withCausality.slice(JOB_TIMELINE_EVENT_CAP)
     : [];
   const kept = dropped.length > 0 ? withCausality.slice(0, JOB_TIMELINE_EVENT_CAP) : withCausality;
@@ -287,9 +288,9 @@ export function projectEnhancedPage(input: ProjectEnhancedPageInput): EnhancedJo
       attention_count: attention.length,
     },
     freshness,
-    stage_assessments,
+    stage_assessments: input.milestonesOnly ? stage_assessments.filter(row => ["origin", "qualification", "booking", "cancellation"].includes(row.stage)) : stage_assessments,
     attention,
-    limitations,
+    limitations: input.milestonesOnly ? limitations.filter(row => row.code === "MULTI_QUERY_READ") : limitations,
     activities,
     events: kept.map((event) => ({
       ...event,

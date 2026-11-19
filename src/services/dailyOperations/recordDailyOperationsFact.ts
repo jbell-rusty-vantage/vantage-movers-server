@@ -145,7 +145,7 @@ export function createMongoDailyOperationsStores(): DailyOperationsFactStores {
       const eventId = new Types.ObjectId();
       const insert = async (session?: ClientSession, closed = false) => {
         await Event.create([{
-          ...event, _id: eventId, metric_touches: closed ? [] : event.metric_touches,
+          ...event, redis_stream_id: event.redis_stream_id ?? undefined, _id: eventId, metric_touches: closed ? [] : event.metric_touches,
           createdAt: writtenAt, updatedAt: writtenAt,
         }], session ? { session } : {});
         return { id: eventId.toString(), outcome: closed ? "closed_day" as const : "recorded" as const };

@@ -28,7 +28,7 @@ import type {
 } from "./rows.js";
 import type { JobTimelineLeadModel } from "./types.js";
 
-export type JobTimelineMongoReadBounds = { maxRowsPerQuery?: number; includeTransportEvidence?: boolean };
+export type JobTimelineMongoReadBounds = { maxRowsPerQuery?: number; includeTransportEvidence?: boolean; milestonesOnly?: boolean };
 export class JobTimelineEvidenceLimitError extends Error {
   readonly code = "EVIDENCE_LIMIT_REACHED";
   constructor() { super("EVIDENCE_LIMIT_REACHED"); }
@@ -152,6 +152,10 @@ function mapEntityChange(row: Document, fallbackModel?: string): EntityChangeRow
     entity_id: asId((row.entity as Document | undefined)?.id),
     command_name: String(row.command_name ?? ""),
     applied_at: asIso(row.applied_at),
+    linked_job_numbers: asUnknownArray(row.fields).flatMap(field => {
+      const value = field as Document | null;
+      return value && (value.path === "job_no" || value.path === "normalized_job_no") && typeof value.after === "string" ? [value.after] : [];
+    }),
     changed_paths: Array.isArray(row.changed_paths) ? row.changed_paths.map(String) : [],
     decision_id: provenance.decision_id ? asId(provenance.decision_id) : undefined,
   };
@@ -229,10 +233,10 @@ export async function loadCompanyGranularityIds(
 }
 
 /** Older jobs can lack a Record Link. Use an unambiguous indexed canonical Lead match. */
-async function findUniqueJobLead(db: Db, jobFilter: Document) {
+async function findUniqueJobLead(db: Db, jobFilter: Document, milestonesOnly = false) {
   const options = [["form_leads", "FormLead"], ["call_leads", "CallLead"]] as const;
   const found = (await Promise.all(options.map(async ([collection, model]) => {
-    const rows = await db.collection(collection).find({ ...jobFilter, "last_accepted_granot_observation.observation_id": { $exists: true } }).project({ _id: 1 }).limit(2).maxTimeMS(3000).toArray();
+    const rows = await db.collection(collection).find({ ...jobFilter, ...(milestonesOnly ? {} : { "last_accepted_granot_observation.observation_id": { $exists: true } }) }).project({ _id: 1 }).limit(2).maxTimeMS(3000).toArray();
     return rows.map(row => ({ model, id: String(row._id) }));
   }))).flat();
   return found.length === 1 ? found[0] : undefined;
@@ -335,6 +339,7 @@ export async function loadJobNumberTimelineRows(
     id: asId(row._id),
     normalized_job_no: String(row.normalized_job_no ?? ""),
     job_no_snapshot: asString(row.job_no),
+    book_date: asIso(row.book_date),
     lead_ref: row.lead_ref ? asId(row.lead_ref) : undefined,
     lead_model: row.lead_model === "CallLead" || row.lead_model === "FormLead"
       ? row.lead_model
@@ -372,6 +377,8 @@ export async function loadJobNumberTimelineRows(
     const leadRef = row.lead_ref_snapshot as Document | undefined;
     return {
       id: asId(row._id),
+      book_date: asIso(row.book_date),
+      cancel_date: asIso(row.cancel_date),
       booked_lead: row.booked_lead ? asId(row.booked_lead) : undefined,
       last_changed_at: row.last_changed_at ? asIso(row.last_changed_at) : undefined,
       createdAt: row.createdAt ? asIso(row.createdAt) : undefined,
@@ -418,7 +425,7 @@ export async function loadJobNumberTimelineRows(
       && (row.target?.model === "FormLead" || row.target?.model === "CallLead"),
     )?.target
     ?? mappedCancellations.find(row => row.lead_ref_snapshot)?.lead_ref_snapshot
-    ?? await findUniqueJobLead(db, jobFilter);
+    ?? await findUniqueJobLead(db, jobFilter, bounds.milestonesOnly);
 
   let leads: LeadRow[] = [];
   let entity_changes: EntityChangeRow[] = [];
@@ -452,7 +459,7 @@ export async function loadJobNumberTimelineRows(
       const messageFilter: Document = leadRef.model === "FormLead"
         ? { $or: [{ "lead_ref.id": leadDoc._id }, { form_lead: leadDoc._id }] }
         : { "lead_ref.id": leadDoc._id };
-      const processedCallQuery = leadRef.model === "CallLead"
+      const processedCallQuery = !bounds.milestonesOnly && leadRef.model === "CallLead"
         ? read(db.collection(getRingCentralCollectionName("processedCalls")).find({
             callLeadId: asId(leadDoc._id),
           }).project({
@@ -465,7 +472,7 @@ export async function loadJobNumberTimelineRows(
             callLeadId: 1,
           }))
         : Promise.resolve([]);
-      const wordpressReceiptQuery = leadRef.model === "FormLead"
+      const wordpressReceiptQuery = !bounds.milestonesOnly && leadRef.model === "FormLead"
         ? read(db.collection("wordpress_form_submission_receipts").find({
             "lead_ref.id": leadDoc._id,
           }).project({
@@ -479,8 +486,9 @@ export async function loadJobNumberTimelineRows(
         read(db.collection("entity_changes").find({
           "entity.model": leadRef.model,
           "entity.id": asId(leadDoc._id),
+          ...(bounds.milestonesOnly ? { changed_paths: { $in: ["job_no", "normalized_job_no"] } } : {}),
         })),
-        read(db.collection("lead_messages").find(messageFilter)),
+        bounds.milestonesOnly ? [] : read(db.collection("lead_messages").find(messageFilter)),
         processedCallQuery,
         wordpressReceiptQuery,
       ]);
@@ -532,7 +540,7 @@ export async function loadJobNumberTimelineRows(
   }
 
   const bookingChanges = asDocumentArray(
-    bookingIds.length > 0
+    !bounds.milestonesOnly && bookingIds.length > 0
       ? await read(db.collection("entity_changes").find({
           "entity.model": "BookedLead",
           "entity.id": { $in: bookingIds },
@@ -541,7 +549,7 @@ export async function loadJobNumberTimelineRows(
   );
   const cancellationIds = mappedCancellations.map((row) => row.id);
   const cancellationChanges = asDocumentArray(
-    cancellationIds.length > 0
+    !bounds.milestonesOnly && cancellationIds.length > 0
       ? await read(db.collection("entity_changes").find({
           "entity.model": "CancelledLead",
           "entity.id": { $in: cancellationIds },
@@ -560,7 +568,7 @@ export async function loadJobNumberTimelineRows(
     ...mappedCancellations.map((row) => row.id),
   ];
   const sheetJobs = asDocumentArray(
-    entityIds.length > 0
+    !bounds.milestonesOnly && entityIds.length > 0
       ? await read(db.collection("sheet_sync_jobs").find({ entity_id: { $in: entityIds } }))
       : [],
   );

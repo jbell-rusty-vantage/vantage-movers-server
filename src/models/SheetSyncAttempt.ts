@@ -21,7 +21,7 @@ const SheetSyncAttemptSchema = new Schema(
     row_number: { type: Number },
     google_operation: { type: String, trim: true },
     google_status: { type: String, trim: true },
-    google_reasons: { type: [String], default: [] },
+    google_reasons: { type: [String], default: undefined },
     request_count_estimate: { type: Number },
     payload_bytes_estimate: { type: Number },
     error: { type: String, trim: true },

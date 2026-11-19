@@ -15,6 +15,7 @@ export type JobNumberTimelineModule = {
 
 export function createJobNumberTimelineModule(deps: {
   loader: JobNumberTimelineEvidenceLoader;
+  milestonesOnly?: boolean;
 }): JobNumberTimelineModule {
   return {
     async read(input) {
@@ -39,6 +40,7 @@ export function createJobNumberTimelineModule(deps: {
       const rows = await deps.loader.loadRows(normalized);
       const result = assembleJobNumberTimeline({
         rawJobNo: input.job_no,
+        milestonesOnly: deps.milestonesOnly,
         filters: {
           source_granularity_id: input.source_granularity_id,
           source_company_id: input.source_company_id,

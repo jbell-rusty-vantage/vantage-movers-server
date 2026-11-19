@@ -128,7 +128,7 @@ const DailyOperationsEventSchema = new Schema<DailyOperationsEventDocument>(
     card: { type: Schema.Types.Mixed, default: {} },
     metric_touches: { type: [String], default: [] },
     dedupe_key: { type: String, required: true, trim: true },
-    redis_stream_id: { type: String, default: null },
+    redis_stream_id: { type: String },
   },
   {
     timestamps: true,

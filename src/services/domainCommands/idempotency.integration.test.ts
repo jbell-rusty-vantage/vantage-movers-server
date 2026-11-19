@@ -18,6 +18,7 @@ import {
 import {
   createIdempotentCanonicalCommandExecutor,
   executeCanonicalCommandWithPostCommit,
+  executeIdempotentCanonicalCommand,
 } from "./idempotency";
 import {
   DomainCommandIdempotencyConflictError,
@@ -58,15 +59,13 @@ after(async () => {
 test("[AC-21] replica executor: exact stored-result replay, checksum conflict, and no second mutation", async (t) => {
   if (!(await replicaReady(t))) return;
   const prefix = `u10-replay-${Date.now()}`;
-  const execute = productionExecutor();
+  const execute = executeIdempotentCanonicalCommand;
   const context = granotContext(prefix, "a".repeat(64));
-  let mutations = 0;
   const run = () =>
     execute({
       command_name: "synchronizeLeadFromGranot",
       context,
       operation: async ({ session, now }) => {
-        mutations += 1;
         const lead = await insertLead(prefix, session, now);
         return { entity_refs: [{ model: "FormLead", id: String(lead._id) }] };
       },
@@ -78,7 +77,7 @@ test("[AC-21] replica executor: exact stored-result replay, checksum conflict, a
   assert.deepEqual(replay.result.entity_refs, first.result.entity_refs);
   assert.equal(first.replayed, false);
   assert.equal(replay.replayed, true);
-  assert.equal(mutations, 1);
+  assert.equal(await getFormLeadModel().countDocuments({ name: `U10 ${prefix}` }), 1);
   await assert.rejects(
     execute({
       command_name: "synchronizeLeadFromGranot",
@@ -91,7 +90,8 @@ test("[AC-21] replica executor: exact stored-result replay, checksum conflict, a
     idempotency_key: context.idempotency_key,
   }).lean();
   assert.equal(stored.length, 1);
-  assert.equal(stored[0]?.result?.status, "applied");
+  assert.equal(stored[0]?.result, undefined);
+  assert.deepEqual(stored[0]?.entity_refs, first.result.entity_refs);
   await cleanup(prefix);
 });
 

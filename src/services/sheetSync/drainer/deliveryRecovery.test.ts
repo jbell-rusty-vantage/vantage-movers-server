@@ -4,7 +4,7 @@ import type { sheets_v4 } from "googleapis";
 import { writeBatchedTargets } from "./batchWriter";
 import type { QuotaLimiter } from "./quotaLimiter";
 import type { PlannedWrite } from "./types";
-import { statefulWorkbook } from "./statefulWorkbook.fixture";
+import { statefulWorkbook, identityRanges } from "./statefulWorkbook.fixture";
 import { resetEnsuredTabsCache } from "../../googleSheets/tabs";
 import { assertLeadTabWritesAllowed } from "../writerFence";
 
@@ -196,6 +196,7 @@ function fixture() {
   const sheets = { spreadsheets: {
     get: async () => ({ data: { sheets: names.map((title, sheetId) => ({ properties: { title, sheetId } })) } }),
     values: {
+      batchGet: async ({ ranges }: { ranges: string[] }) => identityRanges(ranges, rows.get(titleFrom(ranges[0]))!),
       get: async ({ range }: { range: string }) => ({ data: { values: rows.get(titleFrom(range)) } }),
       batchUpdate: async ({ requestBody }: any) => {
         if (failUpdate) throw new Error("injected_destination_failure");
