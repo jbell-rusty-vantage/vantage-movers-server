@@ -1,0 +1,240 @@
+{
+  "at": "2026-11-19T23:20:32.845Z",
+  "day": "2026-11-18",
+  "tabs": {
+    "Forms": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 8364,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 101,
+      "wide": 20617,
+      "narrow": 2914,
+      "header": 267
+    },
+    "Calls": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 1677,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 101,
+      "wide": 15070,
+      "narrow": 2914,
+      "header": 179
+    },
+    "Duplicate Forms": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 195,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 101,
+      "wide": 22009,
+      "narrow": 2914,
+      "header": 267
+    },
+    "Duplicate Calls": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 359,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 101,
+      "wide": 12868,
+      "narrow": 2914,
+      "header": 179
+    },
+    "Bad Form Leads": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 1040,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 101,
+      "wide": 24023,
+      "narrow": 2914,
+      "header": 267
+    },
+    "Bad Call Leads": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 19,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 20,
+      "wide": 2610,
+      "narrow": 565,
+      "header": 179
+    },
+    "Booked Deals": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 1071,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 101,
+      "wide": 19930,
+      "narrow": 2914,
+      "header": 179
+    },
+    "Cancelled Deals": {
+      "duplicateEvidence": [],
+      "canonicalTarget": 5,
+      "identities": 47,
+      "duplicates": 0,
+      "sample": 5,
+      "canonical": 5,
+      "assigned": 5,
+      "rows": 48,
+      "wide": 7731,
+      "narrow": 1377,
+      "header": 112
+    }
+  },
+  "examples": {
+    "booked": {
+      "events": [
+        {
+          "kind": "lead_created",
+          "date": "2026-11-19T03:24:05.012Z",
+          "clock": "lead.timestamp"
+        },
+        {
+          "kind": "job_number_acquired",
+          "date": "2026-11-19T03:24:05.266Z",
+          "clock": "record_link.established_at"
+        },
+        {
+          "kind": "official_booking",
+          "date": "2026-11-19T20:24:18.385Z",
+          "clock": "booking.createdAt"
+        }
+      ],
+      "canonicalDateMatches": true,
+      "leadResolved": true
+    },
+    "leadless": {
+      "events": [
+        {
+          "kind": "official_booking",
+          "date": "2026-11-16T13:27:06.958Z",
+          "clock": "booking.createdAt"
+        }
+      ],
+      "canonicalDateMatches": true,
+      "leadResolved": false
+    },
+    "cancelled": {
+      "events": [
+        {
+          "kind": "lead_created",
+          "date": "2026-10-12T07:18:51.017Z",
+          "clock": "lead.timestamp"
+        },
+        {
+          "kind": "job_number_acquired",
+          "date": "2026-10-12T07:20:46.516Z",
+          "clock": "record_link.established_at"
+        },
+        {
+          "kind": "official_booking",
+          "date": "2026-10-16T17:13:26.344Z",
+          "clock": "booking.createdAt"
+        },
+        {
+          "kind": "official_cancellation",
+          "date": "2026-11-01T16:43:24.920Z",
+          "clock": "cancellation.createdAt"
+        }
+      ],
+      "canonicalDateMatches": true,
+      "leadResolved": true
+    },
+    "open": {
+      "events": [
+        {
+          "kind": "lead_created",
+          "date": "2026-11-19T20:35:43.559Z",
+          "clock": "lead.timestamp"
+        },
+        {
+          "kind": "job_number_acquired",
+          "date": "2026-11-19T20:40:46.402Z",
+          "clock": "record_link.established_at"
+        }
+      ],
+      "canonicalDateMatches": null,
+      "leadResolved": true
+    }
+  },
+  "closed": {
+    "cardCount": 674,
+    "cardsDigest": "017afd1de39672072a2a1dbf9b897d82b75c1d82235ea805a789abfd2824ceab",
+    "snapshotDigest": "07618f13ec7f2868fa8082322cb6b6244f16f15ee05d408bd74c13b3a361efd1",
+    "status": "closed",
+    "revision": 470,
+    "leads": 74,
+    "canonicalLeads": {
+      "form_leads": 65,
+      "call_leads": 9
+    },
+    "bookings": 4,
+    "canonicalBookings": 4,
+    "cancellations": 0,
+    "canonicalCancels": 0,
+    "sheetCompleted": 173,
+    "completedCards": 173
+  },
+  "sheetAckMs": {
+    "n": 173,
+    "p50": 102313,
+    "p95": 260152
+  },
+  "drains": {
+    "runs": 452,
+    "nonempty": 156,
+    "peak": [
+      {
+        "claimed": 5,
+        "synced": 5,
+        "ms": 1955
+      },
+      {
+        "claimed": 4,
+        "synced": 4,
+        "ms": 3308
+      },
+      {
+        "claimed": 3,
+        "synced": 3,
+        "ms": 3658
+      }
+    ]
+  },
+  "pending": [],
+  "worker": {
+    "deployment_commit": "62653f030a761dbb854e621384bcac00dc37dc98",
+    "recorded_at": "2026-11-19T23:18:00.279Z"
+  },
+  "checkpoint": {
+    "cursor": {
+      "entity_change_applied_at": "2026-11-19T22:02:38.886Z"
+    }
+  }
+}

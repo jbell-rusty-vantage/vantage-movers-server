@@ -1,0 +1,44 @@
+{
+  "mode": "preview",
+  "cutoff": "2026-11-19T22:32:00.000Z",
+  "started": "2026-11-19T23:13:03.685Z",
+  "collections": {
+    "daily_operations_events": {
+      "before": {
+        "count": 0,
+        "bytes": 0,
+        "saved": 0
+      },
+      "batches": 0,
+      "modified": 0
+    },
+    "domain_command_executions": {
+      "before": {
+        "count": 0,
+        "bytes": 0,
+        "saved": 0
+      },
+      "batches": 0,
+      "modified": 0
+    },
+    "sheet_sync_jobs": {
+      "before": {
+        "count": 0,
+        "bytes": 0,
+        "saved": 0
+      },
+      "batches": 0,
+      "modified": 0
+    },
+    "sheet_sync_attempts": {
+      "before": {
+        "count": 0,
+        "bytes": 0,
+        "saved": 0
+      },
+      "batches": 0,
+      "modified": 0
+    }
+  },
+  "finished": "2026-11-19T23:13:06.397Z"
+}

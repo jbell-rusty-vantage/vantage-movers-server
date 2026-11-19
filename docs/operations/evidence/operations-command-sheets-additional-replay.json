@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-19T23:13:07.417Z",
+  "samples": 46,
+  "matched": 46,
+  "conflicts": 46,
+  "operations": 0,
+  "byCommand": {
+    "deleteBookedLead": 3,
+    "recoverCallLeadMoveDate": 8,
+    "mirrorFormLeadToCallSibling": 8,
+    "deleteCallLead": 2,
+    "updateBookedLead": 3,
+    "createReferralBooking": 8,
+    "updateSourceOwnedLead": 8,
+    "adoptRingCentralCall": 5,
+    "updateBooking": 1
+  }
+}

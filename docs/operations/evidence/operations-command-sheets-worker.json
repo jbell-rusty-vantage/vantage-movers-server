@@ -1,0 +1,126 @@
+{
+  "at": "2026-11-19T23:20:27.128Z",
+  "jobs": [
+    {
+      "tab": "Bad Form Leads",
+      "status": "synced",
+      "runId": "6aff84221d473d790ae78ff4",
+      "attempts": 0,
+      "queueMs": 113570,
+      "queued": "2026-11-19T23:18:15.156Z",
+      "finished": "2026-11-19T23:20:08.726Z",
+      "physical": 1,
+      "managedDifference": [],
+      "spentLease": false
+    },
+    {
+      "tab": "Bad Form Leads",
+      "status": "synced",
+      "runId": "6aff84221d473d790ae78ff4",
+      "attempts": 0,
+      "queueMs": 113544,
+      "queued": "2026-11-19T23:18:15.198Z",
+      "finished": "2026-11-19T23:20:08.742Z",
+      "physical": 1,
+      "managedDifference": [],
+      "spentLease": false
+    },
+    {
+      "tab": "Booked Deals",
+      "status": "synced",
+      "runId": "6aff84221d473d790ae78ff4",
+      "attempts": 0,
+      "queueMs": 113415,
+      "queued": "2026-11-19T23:18:15.233Z",
+      "finished": "2026-11-19T23:20:08.648Z",
+      "physical": 1,
+      "managedDifference": [],
+      "spentLease": false
+    },
+    {
+      "tab": "Booked Deals",
+      "status": "synced",
+      "runId": "6aff84221d473d790ae78ff4",
+      "attempts": 0,
+      "queueMs": 113407,
+      "queued": "2026-11-19T23:18:15.270Z",
+      "finished": "2026-11-19T23:20:08.677Z",
+      "physical": 1,
+      "managedDifference": [],
+      "spentLease": false
+    },
+    {
+      "tab": "Booked Deals",
+      "status": "synced",
+      "runId": "6aff84221d473d790ae78ff4",
+      "attempts": 0,
+      "queueMs": 113389,
+      "queued": "2026-11-19T23:18:15.304Z",
+      "finished": "2026-11-19T23:20:08.693Z",
+      "physical": 1,
+      "managedDifference": [],
+      "spentLease": false
+    },
+    {
+      "tab": "Booked Deals",
+      "status": "synced",
+      "runId": "6aff84221d473d790ae78ff4",
+      "attempts": 0,
+      "queueMs": 113369,
+      "queued": "2026-11-19T23:18:15.340Z",
+      "finished": "2026-11-19T23:20:08.709Z",
+      "physical": 1,
+      "managedDifference": [],
+      "spentLease": false
+    }
+  ],
+  "runs": [
+    {
+      "_id": "6aff84221d473d790ae78ff4",
+      "trigger": "cron",
+      "status": "completed",
+      "started_at": "2026-11-19T23:20:02.287Z",
+      "claimed_job_count": 6,
+      "synced_job_count": 6,
+      "deployment_commit": "62653f030a761dbb854e621384bcac00dc37dc98",
+      "finished_at": "2026-11-19T23:20:08.758Z"
+    }
+  ],
+  "pending": [],
+  "probes": {
+    "/health": {
+      "status": 200
+    },
+    "/db": {
+      "status": 200,
+      "ok": true,
+      "expectedDb": true
+    },
+    "/api/cron/daily-operations-close": {
+      "status": 200,
+      "ok": true
+    }
+  },
+  "workers": [
+    {
+      "scope": "deployment",
+      "deployment_commit": "62653f030a761dbb854e621384bcac00dc37dc98",
+      "recorded_at": "2026-11-19T23:18:00.279Z",
+      "vercel_deployment_id": "dpl_7BBnNSRUYXZ31PnFxBQidrRRhU23"
+    },
+    {
+      "scope": "lead_link_entity_changes",
+      "cursor": {
+        "entity_change_applied_at": "2026-11-19T22:02:38.886Z"
+      },
+      "updatedAt": "2026-11-19T22:03:00.387Z"
+    },
+    {
+      "scope": "outreach_entity_changes",
+      "cursor": {
+        "entity_change_applied_at": "2026-11-19T22:02:38.886Z"
+      },
+      "updatedAt": "2026-11-19T22:03:06.185Z"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "started": "2026-11-19T23:18:10.928Z",
+  "targets": [
+    {
+      "tab": "Bad Form Leads",
+      "rows": 2,
+      "canonicalUpsert": true,
+      "validIds": true,
+      "operatorContent": false,
+      "protectedRow": false,
+      "eligible": true,
+      "job_id": "6aff83b6ff33397853ec8d26",
+      "queuedAt": "2026-11-19T23:18:15.198Z"
+    },
+    {
+      "tab": "Bad Form Leads",
+      "rows": 2,
+      "canonicalUpsert": true,
+      "validIds": true,
+      "operatorContent": false,
+      "protectedRow": false,
+      "eligible": true,
+      "job_id": "6aff83b6ff33397853ec8d27",
+      "queuedAt": "2026-11-19T23:18:15.232Z"
+    },
+    {
+      "tab": "Booked Deals",
+      "rows": 2,
+      "canonicalUpsert": true,
+      "validIds": true,
+      "operatorContent": false,
+      "protectedRow": false,
+      "eligible": true,
+      "job_id": "6aff83b6ff33397853ec8d28",
+      "queuedAt": "2026-11-19T23:18:15.269Z"
+    },
+    {
+      "tab": "Booked Deals",
+      "rows": 2,
+      "canonicalUpsert": true,
+      "validIds": true,
+      "operatorContent": false,
+      "protectedRow": false,
+      "eligible": true,
+      "job_id": "6aff83b6ff33397853ec8d29",
+      "queuedAt": "2026-11-19T23:18:15.304Z"
+    },
+    {
+      "tab": "Booked Deals",
+      "rows": 2,
+      "canonicalUpsert": true,
+      "validIds": true,
+      "operatorContent": false,
+      "protectedRow": false,
+      "eligible": true,
+      "job_id": "6aff83b6ff33397853ec8d2a",
+      "queuedAt": "2026-11-19T23:18:15.340Z"
+    },
+    {
+      "tab": "Booked Deals",
+      "rows": 2,
+      "canonicalUpsert": true,
+      "validIds": true,
+      "operatorContent": false,
+      "protectedRow": false,
+      "eligible": true,
+      "job_id": "6aff83b6ff33397853ec8d2b",
+      "queuedAt": "2026-11-19T23:18:15.374Z"
+    }
+  ],
+  "eligible": 6,
+  "finished": "2026-11-19T23:18:15.374Z"
+}

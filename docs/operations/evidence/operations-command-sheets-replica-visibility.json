@@ -1,0 +1,7 @@
+{
+  "environment": "isolated loopback replica; majority-confirmed official record to completed owner timeline module response",
+  "n": 32,
+  "p50": 7.590200000000095,
+  "p95": 18.20400000000018,
+  "unit": "ms"
+}

@@ -1,0 +1,37 @@
+{
+  "started": "2026-11-19T23:19:36.935Z",
+  "polls": 6,
+  "observations": [
+    {
+      "jobCreateToBoardMs": 132849,
+      "terminalJobToBoardMs": 19279,
+      "factToBoardMs": 19274
+    },
+    {
+      "jobCreateToBoardMs": 132807,
+      "terminalJobToBoardMs": 19263,
+      "factToBoardMs": 19258
+    },
+    {
+      "jobCreateToBoardMs": 132772,
+      "terminalJobToBoardMs": 19357,
+      "factToBoardMs": 19350
+    },
+    {
+      "jobCreateToBoardMs": 132735,
+      "terminalJobToBoardMs": 19328,
+      "factToBoardMs": 19323
+    },
+    {
+      "jobCreateToBoardMs": 132701,
+      "terminalJobToBoardMs": 19312,
+      "factToBoardMs": 19306
+    },
+    {
+      "jobCreateToBoardMs": 132665,
+      "terminalJobToBoardMs": 19296,
+      "factToBoardMs": 19290
+    }
+  ],
+  "at": "2026-11-19T23:20:28.005Z"
+}

@@ -1,0 +1,50 @@
+{
+  "started": "2026-11-19T23:20:42.979Z",
+  "polls": [
+    {
+      "at": "2026-11-19T23:20:43.527Z",
+      "generated": "2026-11-19T23:20:25.396Z",
+      "revision": 60,
+      "matchedCards": 80,
+      "boardCards": 80,
+      "oldestPendingDueAt": null
+    }
+  ],
+  "boardLagUpperMs": [],
+  "timeline": [
+    {
+      "kind": "open",
+      "equal": true,
+      "events": [
+        "lead_created",
+        "job_number_acquired"
+      ]
+    },
+    {
+      "kind": "booked",
+      "equal": true,
+      "events": [
+        "lead_created",
+        "job_number_acquired",
+        "official_booking"
+      ]
+    },
+    {
+      "kind": "leadless",
+      "equal": true,
+      "events": [
+        "official_booking"
+      ]
+    },
+    {
+      "kind": "cancelled",
+      "equal": true,
+      "events": [
+        "lead_created",
+        "job_number_acquired",
+        "official_booking",
+        "official_cancellation"
+      ]
+    }
+  ]
+}

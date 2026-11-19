@@ -1,0 +1,257 @@
+{
+  "at": "2026-11-19T22:46:03.680Z",
+  "stocks": {
+    "daily_operations_events": {
+      "at": "2026-11-19T22:46:03.753Z",
+      "docs": 276616,
+      "logical": 187780794,
+      "allocated": 87150592,
+      "indexes": 154624000,
+      "reads": 1053,
+      "writes": 581,
+      "cutoff": {
+        "_id": null,
+        "n": 276615,
+        "bytes": 187780250
+      }
+    },
+    "domain_command_executions": {
+      "at": "2026-11-19T22:46:05.095Z",
+      "docs": 168378,
+      "logical": 235581264,
+      "allocated": 48152576,
+      "indexes": 14557184,
+      "reads": 748,
+      "writes": 218,
+      "cutoff": {
+        "_id": null,
+        "n": 168054,
+        "bytes": 235148238
+      }
+    },
+    "entity_changes": {
+      "at": "2026-11-19T22:46:06.009Z",
+      "docs": 178766,
+      "logical": 226160544,
+      "allocated": 35479552,
+      "indexes": 36896768,
+      "reads": 91284,
+      "writes": 330,
+      "cutoff": {
+        "_id": null,
+        "n": 178766,
+        "bytes": 226160544
+      }
+    },
+    "sheet_sync_jobs": {
+      "at": "2026-11-19T22:46:06.537Z",
+      "docs": 164269,
+      "logical": 73749406,
+      "allocated": 15499264,
+      "indexes": 12886016,
+      "reads": 903,
+      "writes": 888,
+      "cutoff": {
+        "_id": null,
+        "n": 164269,
+        "bytes": 73749406
+      }
+    },
+    "sheet_sync_attempts": {
+      "at": "2026-11-19T22:46:06.906Z",
+      "docs": 459876,
+      "logical": 136790008,
+      "allocated": 19185664,
+      "indexes": 32391168,
+      "reads": 280,
+      "writes": 114,
+      "cutoff": {
+        "_id": null,
+        "n": 459876,
+        "bytes": 136790008
+      }
+    }
+  },
+  "plans": {
+    "command origin and idempotency key": {
+      "indexes": [
+        "domain_command_origin_idempotency_unique"
+      ],
+      "keys": 1,
+      "docs": 1,
+      "returned": 1
+    },
+    "entity history": {
+      "indexes": [
+        "entity_change_entity_applied"
+      ],
+      "keys": 5,
+      "docs": 5,
+      "returned": 5
+    },
+    "tail cursor": {
+      "indexes": [
+        "entity_change_applied_scan"
+      ],
+      "keys": 0,
+      "docs": 0,
+      "returned": 0
+    },
+    "board cards": {
+      "indexes": [
+        "day_1_occurred_at_-1__id_-1"
+      ],
+      "keys": 10,
+      "docs": 10,
+      "returned": 10
+    },
+    "board milestones": {
+      "indexes": [
+        "dailyops_day_kind_order"
+      ],
+      "keys": 1,
+      "docs": 1,
+      "returned": 1
+    },
+    "job coalescing": {
+      "indexes": [
+        "coalescing_key_1_status_1"
+      ],
+      "keys": 1,
+      "docs": 0,
+      "returned": 0
+    },
+    "job candidates": {
+      "indexes": [
+        "status_1_due_at_1_priority_-1_createdAt_1"
+      ],
+      "keys": 1,
+      "docs": 0,
+      "returned": 0
+    },
+    "attempt by job": {
+      "indexes": [
+        "job_id_1_createdAt_1"
+      ],
+      "keys": 3,
+      "docs": 3,
+      "returned": 3
+    }
+  },
+  "day": {
+    "closedDayPack": {
+      "cards": 674,
+      "bson": 462533,
+      "gzip": 43029
+    },
+    "attempts": [
+      {
+        "_id": {
+          "action": "delete",
+          "tab": "Bad Form Leads",
+          "status": "synced"
+        },
+        "n": 157
+      },
+      {
+        "_id": {
+          "action": "update",
+          "tab": "Forms",
+          "status": "synced"
+        },
+        "n": 91
+      },
+      {
+        "_id": {
+          "action": "update",
+          "tab": "Calls",
+          "status": "synced"
+        },
+        "n": 6
+      },
+      {
+        "_id": {
+          "action": "delete",
+          "tab": "Bad Leads",
+          "status": "synced"
+        },
+        "n": 157
+      },
+      {
+        "_id": {
+          "action": "append",
+          "tab": "Forms",
+          "status": "synced"
+        },
+        "n": 65
+      },
+      {
+        "_id": {
+          "action": "append",
+          "tab": "Calls",
+          "status": "synced"
+        },
+        "n": 9
+      },
+      {
+        "_id": {
+          "action": "append",
+          "tab": "Booked Deals",
+          "status": "synced"
+        },
+        "n": 4
+      },
+      {
+        "_id": {
+          "action": "delete",
+          "tab": "Duplicate Calls",
+          "status": "synced"
+        },
+        "n": 15
+      },
+      {
+        "_id": {
+          "action": "append",
+          "tab": "Duplicate Forms",
+          "status": "synced"
+        },
+        "n": 1
+      },
+      {
+        "_id": {
+          "action": "delete",
+          "tab": "Bad Call Leads",
+          "status": "synced"
+        },
+        "n": 15
+      }
+    ],
+    "creationToMasterProviderAcknowledgementMs": {
+      "n": 73,
+      "median": 93379,
+      "p95": 264074
+    },
+    "canonicalToBoardFactMs": {
+      "form_leads": {
+        "n": 65,
+        "median": 471,
+        "p95": 695
+      },
+      "call_leads": {
+        "n": 9,
+        "median": 138,
+        "p95": 405
+      },
+      "booked_leads": {
+        "n": 4,
+        "median": 142,
+        "p95": 158
+      }
+    },
+    "duplicateResultBytes": 46764
+  },
+  "expired": {
+    "events400d": 0,
+    "attempts90d": 0
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "mode": "preview",
+  "cutoff": "2026-11-19T22:32:00.000Z",
+  "started": "2026-11-19T23:12:42.553Z",
+  "collections": {
+    "domain_command_executions": {
+      "before": {
+        "count": 546,
+        "bytes": 654608,
+        "saved": 72551
+      },
+      "batches": 0,
+      "modified": 0
+    }
+  },
+  "finished": "2026-11-19T23:12:43.246Z"
+}

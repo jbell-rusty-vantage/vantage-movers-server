@@ -18,7 +18,10 @@ const rules = [
   { collection: "daily_operations_events", field: "redis_stream_id", predicate: { redis_stream_id: { $type: "null" }, $expr: { $eq: [{ $type: "$redis_stream_id" }, "null"] } } },
   { collection: "domain_command_executions", field: "result", predicate: {
     origin: { $in: ["granot_lifecycle", "vantage_admin", "ringcentral"] },
-    command_name: { $in: ["createFormLead", "createCallLead", "createLeadFromGranot", "synchronizeLeadFromGranot", "createBookingFromLead", "createLeadlessBooking", "confirmGranotBooking", "createCancellation"] },
+    command_name: { $in: ["createFormLead", "createCallLead", "createLeadFromGranot", "synchronizeLeadFromGranot", "createBookingFromLead", "createLeadlessBooking", "confirmGranotBooking", "createCancellation",
+      "deleteFormLead", "deleteCallLead", "deleteBookedLead", "deleteCancelledLead", "updateSourceOwnedLead", "updateBookedLead",
+      "updateCancelledLead", "updateBooking", "createReferralBooking", "createExistingReferralBooking", "recoverCallLeadMoveDate",
+      "mirrorFormLeadToCallSibling", "adoptRingCentralCall"] },
     entity_refs: { $type: "array" }, warnings: { $type: "array" },
     $expr: { $eq: ["$result", { status: "applied", entity_refs: "$entity_refs", warnings: "$warnings" }] },
   } },

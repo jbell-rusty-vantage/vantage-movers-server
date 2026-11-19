@@ -276,3 +276,5 @@ No destructive "heal" that could fight the drainer for the same rows.
 
 
 The November 19 worker reads the header and expected Mongo ID column together with one guarded Sheets values.batchGet. A shifted identity column requires a second read that revalidates the header. Queued upserts validate the full managed prefix, including when the header cache is warm. Matching headers need no clear or rewrite. Data updates end at the last managed column. A missing Lead completes an old upsert with zero writes. A successful job releases its lease deadline, and a nonempty drain records its serving revision. The Admin run detail supplies an empty Google reason array when the attempt has no reasons.
+
+Before removing a physical row, the worker rereads its identity and operator annotations. Plain rows are deleted in descending order. Where operator values, notes, formulas or validation exist, the worker clears the managed reporting identity and eligible managed values in place. Protected rows require resolution before the intent can complete. [Production verification](../../operations/DAILY-COMMANDS-MASTER-SHEETS-RELEASE-2026-11-19.md)

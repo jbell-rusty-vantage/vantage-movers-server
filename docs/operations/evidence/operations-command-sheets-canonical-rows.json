@@ -1,0 +1,208 @@
+{
+  "at": "2026-11-19T23:13:21.411Z",
+  "jobs": [
+    {
+      "tab": "Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Forms",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Duplicate Calls",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Form Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Form Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Form Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Form Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Form Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Call Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Call Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Call Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Call Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Bad Call Leads",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Booked Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Booked Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Booked Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Booked Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Booked Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Cancelled Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Cancelled Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Cancelled Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Cancelled Deals",
+      "physical": 1,
+      "managedDifference": []
+    },
+    {
+      "tab": "Cancelled Deals",
+      "physical": 1,
+      "managedDifference": []
+    }
+  ],
+  "runs": [],
+  "pending": [],
+  "probes": {}
+}

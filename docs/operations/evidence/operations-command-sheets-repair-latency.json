@@ -1,0 +1,91 @@
+{
+  "started": "2026-11-19T23:11:25.102Z",
+  "polls": [
+    {
+      "at": "2026-11-19T23:18:20.193Z",
+      "oldestPendingMs": 4960,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:18:30.750Z",
+      "oldestPendingMs": 15517,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:18:41.403Z",
+      "oldestPendingMs": 26170,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:18:51.918Z",
+      "oldestPendingMs": 36685,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:19:02.382Z",
+      "oldestPendingMs": 47149,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:19:12.937Z",
+      "oldestPendingMs": 57704,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:19:23.406Z",
+      "oldestPendingMs": 68173,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:19:34.092Z",
+      "oldestPendingMs": 78859,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:19:45.136Z",
+      "oldestPendingMs": 89903,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:19:55.816Z",
+      "oldestPendingMs": 100583,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:20:06.506Z",
+      "oldestPendingMs": 111273,
+      "synced": 0
+    },
+    {
+      "at": "2026-11-19T23:20:17.081Z",
+      "oldestPendingMs": 0,
+      "synced": 6
+    }
+  ],
+  "firstObserved": [
+    {
+      "tab": "Booked Deals",
+      "upperMs": 111273
+    },
+    {
+      "tab": "Booked Deals",
+      "upperMs": 111236
+    },
+    {
+      "tab": "Booked Deals",
+      "upperMs": 111202
+    },
+    {
+      "tab": "Booked Deals",
+      "upperMs": 111166
+    },
+    {
+      "tab": "Bad Form Leads",
+      "upperMs": 121718
+    },
+    {
+      "tab": "Bad Form Leads",
+      "upperMs": 121676
+    }
+  ]
+}

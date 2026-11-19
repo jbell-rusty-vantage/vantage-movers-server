@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-19T22:52:01.186Z",
+  "samples": 32,
+  "matched": 32,
+  "conflicts": 32,
+  "operations": 0,
+  "byCommand": {
+    "synchronizeLeadFromGranot": 8,
+    "createLeadFromGranot": 8,
+    "confirmGranotBooking": 8,
+    "createFormLead": 8
+  }
+}

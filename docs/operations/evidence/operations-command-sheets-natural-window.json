@@ -1,0 +1,333 @@
+{
+  "started": "2026-11-19T23:04:23.978Z",
+  "polls": [
+    {
+      "at": "2026-11-19T23:04:24.795Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:04:40.094Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:04:55.395Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:05:10.762Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:05:26.077Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:05:42.009Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:05:57.299Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:06:12.601Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:06:27.917Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:06:43.210Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:06:58.509Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:07:13.839Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:07:29.759Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:07:45.081Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:08:00.880Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:08:20.571Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:08:36.372Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:08:52.587Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:09:08.563Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:09:24.757Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:09:40.689Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:09:56.472Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:10:12.449Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:10:28.179Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:10:44.191Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:11:00.170Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:11:15.507Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:11:31.723Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:11:47.016Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:12:02.337Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:12:17.640Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:12:32.946Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:12:48.289Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:13:03.587Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:13:18.903Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:13:34.319Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:13:49.838Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:14:05.196Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:14:20.536Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:14:35.832Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:14:51.137Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:15:06.458Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:15:22.135Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:15:37.541Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:15:53.043Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:16:08.646Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:16:24.172Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:16:39.473Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:16:55.099Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:17:10.680Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:17:26.221Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:17:41.582Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:17:57.326Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:18:12.723Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:18:28.045Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:18:43.451Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:18:58.762Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:19:14.719Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:19:30.558Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:19:45.871Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:20:01.495Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:20:16.782Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:20:32.086Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    },
+    {
+      "at": "2026-11-19T23:20:47.392Z",
+      "pendingSheet": 0,
+      "pendingTimeline": 0
+    }
+  ],
+  "boardLagUpperMs": [],
+  "timeline": [],
+  "observations": {
+    "timeline": [],
+    "board": [],
+    "sheets": [],
+    "errors": []
+  }
+}

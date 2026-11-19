@@ -1,0 +1,22 @@
+{
+  "mode": "apply",
+  "cutoff": "2026-11-19T22:32:00.000Z",
+  "started": "2026-11-19T23:00:52.530Z",
+  "collections": {
+    "sheet_sync_jobs": {
+      "before": {
+        "count": 164266,
+        "bytes": 73747531,
+        "saved": 3613852
+      },
+      "batches": 329,
+      "modified": 164266,
+      "after": {
+        "count": 0,
+        "bytes": 0,
+        "saved": 0
+      }
+    }
+  },
+  "finished": "2026-11-19T23:02:31.092Z"
+}

@@ -1,0 +1,63 @@
+{
+  "at": "2026-11-19T22:51:05.199Z",
+  "examples": {
+    "open": {
+      "milestones": {
+        "queries": 11,
+        "bytes": 8518,
+        "ms": 461,
+        "eventCount": 2
+      },
+      "detailed": {
+        "queries": 14,
+        "bytes": 22396,
+        "ms": 604,
+        "eventCount": 12
+      }
+    },
+    "booked": {
+      "milestones": {
+        "queries": 12,
+        "bytes": 15762,
+        "ms": 231,
+        "eventCount": 3
+      },
+      "detailed": {
+        "queries": 16,
+        "bytes": 31447,
+        "ms": 460,
+        "eventCount": 17
+      }
+    },
+    "leadless": {
+      "milestones": {
+        "queries": 12,
+        "bytes": 6308,
+        "ms": 193,
+        "eventCount": 1
+      },
+      "detailed": {
+        "queries": 14,
+        "bytes": 9346,
+        "ms": 488,
+        "eventCount": 5
+      }
+    },
+    "cancelled": {
+      "milestones": {
+        "queries": 12,
+        "bytes": 13216,
+        "ms": 228,
+        "eventCount": 4
+      },
+      "detailed": {
+        "queries": 17,
+        "bytes": 36469,
+        "ms": 504,
+        "eventCount": 19
+      }
+    }
+  },
+  "markerBytes": 83518,
+  "dayBytes": 3661
+}

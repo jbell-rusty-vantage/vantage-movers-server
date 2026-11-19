@@ -1,0 +1,2640 @@
+{
+  "start": "2026-11-18T05:00:00.000Z",
+  "end": "2026-11-19T05:00:00.000Z",
+  "at": "2026-11-19T23:13:17.447Z",
+  "collections": {
+    "daily_operations_events": {
+      "clock": "createdAt",
+      "sample": {
+        "at": "2026-11-19T23:13:17.099Z",
+        "docs": 276617,
+        "logical": 184100827,
+        "allocated": 87150592,
+        "indexes": 154624000,
+        "reads": 2060,
+        "writes": 1015
+      },
+      "ix": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "accesses": {
+            "ops": 937,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "day_1_occurred_at_-1__id_-1",
+          "key": {
+            "day": 1,
+            "occurred_at": -1,
+            "_id": -1
+          },
+          "accesses": {
+            "ops": 320,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "entity_type_1_entity_id_1",
+          "key": {
+            "entity_type": 1,
+            "entity_id": 1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "day_1_lane_1_occurred_at_-1",
+          "key": {
+            "day": 1,
+            "lane": 1,
+            "occurred_at": -1
+          },
+          "accesses": {
+            "ops": 1,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "daily_operations_event_created_ttl",
+          "key": {
+            "createdAt": 1
+          },
+          "accesses": {
+            "ops": 4,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "dedupe_key_1",
+          "key": {
+            "dedupe_key": 1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "dailyops_day_kind_order",
+          "key": {
+            "day": 1,
+            "kind": 1,
+            "occurred_at": -1,
+            "_id": -1
+          },
+          "accesses": {
+            "ops": 302,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        },
+        {
+          "name": "parent_receipt_id_1_occurred_at_1",
+          "key": {
+            "parent_receipt_id": 1,
+            "occurred_at": 1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.049Z"
+          }
+        }
+      ],
+      "day": [
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 9
+          },
+          "n": 9,
+          "bytes": 5825
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 10
+          },
+          "n": 22,
+          "bytes": 14612
+        },
+        {
+          "_id": {
+            "group": "text.skipped",
+            "hour": 11
+          },
+          "n": 1,
+          "bytes": 678
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 2
+          },
+          "n": 5,
+          "bytes": 3317
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 7
+          },
+          "n": 5,
+          "bytes": 3380
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 15
+          },
+          "n": 1,
+          "bytes": 626
+        },
+        {
+          "_id": {
+            "group": "booking.created",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 632
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 649
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 875
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 8
+          },
+          "n": 11,
+          "bytes": 6666
+        },
+        {
+          "_id": {
+            "group": "intake.opened",
+            "hour": 8
+          },
+          "n": 1,
+          "bytes": 730
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 10
+          },
+          "n": 10,
+          "bytes": 6260
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 597
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 527
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 0
+          },
+          "n": 1,
+          "bytes": 649
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 0
+          },
+          "n": 2,
+          "bytes": 1194
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 3
+          },
+          "n": 2,
+          "bytes": 1298
+        },
+        {
+          "_id": {
+            "group": "outreach.rep_goal_met",
+            "hour": 13
+          },
+          "n": 1,
+          "bytes": 659
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 0
+          },
+          "n": 1,
+          "bytes": 868
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 17
+          },
+          "n": 4,
+          "bytes": 3490
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 19
+          },
+          "n": 3,
+          "bytes": 1581
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 20
+          },
+          "n": 1,
+          "bytes": 862
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 597
+        },
+        {
+          "_id": {
+            "group": "granot.minted",
+            "hour": 8
+          },
+          "n": 11,
+          "bytes": 7733
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 9
+          },
+          "n": 2,
+          "bytes": 1789
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 863
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 11
+          },
+          "n": 3,
+          "bytes": 1791
+        },
+        {
+          "_id": {
+            "group": "text.failed",
+            "hour": 8
+          },
+          "n": 1,
+          "bytes": 652
+        },
+        {
+          "_id": {
+            "group": "form_lead.duplicate",
+            "hour": 11
+          },
+          "n": 1,
+          "bytes": 745
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 19
+          },
+          "n": 1,
+          "bytes": 901
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 11
+          },
+          "n": 5,
+          "bytes": 3130
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 8
+          },
+          "n": 9,
+          "bytes": 5979
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 11
+          },
+          "n": 3,
+          "bytes": 2600
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 15
+          },
+          "n": 2,
+          "bytes": 1713
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 1
+          },
+          "n": 3,
+          "bytes": 1791
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 15
+          },
+          "n": 5,
+          "bytes": 2705
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 10
+          },
+          "n": 15,
+          "bytes": 9735
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 16
+          },
+          "n": 13,
+          "bytes": 7696
+        },
+        {
+          "_id": {
+            "group": "intake.refreshed",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 745
+        },
+        {
+          "_id": {
+            "group": "intake.opened",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 660
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 20
+          },
+          "n": 1,
+          "bytes": 527
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 14
+          },
+          "n": 6,
+          "bytes": 3756
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 661
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 15
+          },
+          "n": 2,
+          "bytes": 1578
+        },
+        {
+          "_id": {
+            "group": "granot.unmatched",
+            "hour": 13
+          },
+          "n": 2,
+          "bytes": 1170
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 2
+          },
+          "n": 2,
+          "bytes": 1212
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 0
+          },
+          "n": 1,
+          "bytes": 606
+        },
+        {
+          "_id": {
+            "group": "granot.booked",
+            "hour": 14
+          },
+          "n": 1,
+          "bytes": 665
+        },
+        {
+          "_id": {
+            "group": "granot.minted",
+            "hour": 7
+          },
+          "n": 5,
+          "bytes": 3515
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 14
+          },
+          "n": 2,
+          "bytes": 1340
+        },
+        {
+          "_id": {
+            "group": "granot.minted",
+            "hour": 22
+          },
+          "n": 25,
+          "bytes": 15825
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 7
+          },
+          "n": 5,
+          "bytes": 4503
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 7
+          },
+          "n": 1,
+          "bytes": 667
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 22
+          },
+          "n": 25,
+          "bytes": 16900
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 11
+          },
+          "n": 3,
+          "bytes": 2010
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 8
+          },
+          "n": 2,
+          "bytes": 1252
+        },
+        {
+          "_id": {
+            "group": "granot.unmatched",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 515
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 19
+          },
+          "n": 3,
+          "bytes": 1947
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 9
+          },
+          "n": 3,
+          "bytes": 1878
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 1340
+        },
+        {
+          "_id": {
+            "group": "text.deferred",
+            "hour": 2
+          },
+          "n": 2,
+          "bytes": 1398
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 8
+          },
+          "n": 16,
+          "bytes": 10766
+        },
+        {
+          "_id": {
+            "group": "text.deferred",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 699
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 6
+          },
+          "n": 3,
+          "bytes": 1991
+        },
+        {
+          "_id": {
+            "group": "granot.booked",
+            "hour": 8
+          },
+          "n": 1,
+          "bytes": 665
+        },
+        {
+          "_id": {
+            "group": "intake.opened",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 660
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 20
+          },
+          "n": 5,
+          "bytes": 3245
+        },
+        {
+          "_id": {
+            "group": "granot.observed",
+            "hour": 12
+          },
+          "n": 1,
+          "bytes": 586
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 14
+          },
+          "n": 2,
+          "bytes": 1212
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 17
+          },
+          "n": 3,
+          "bytes": 2010
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 14
+          },
+          "n": 8,
+          "bytes": 4776
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 9
+          },
+          "n": 16,
+          "bytes": 10634
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 877
+        },
+        {
+          "_id": {
+            "group": "granot.booked",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 665
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 2
+          },
+          "n": 6,
+          "bytes": 3894
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 789
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 12
+          },
+          "n": 10,
+          "bytes": 6260
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 13
+          },
+          "n": 1,
+          "bytes": 789
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 18
+          },
+          "n": 9,
+          "bytes": 5337
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 606
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 14
+          },
+          "n": 1,
+          "bytes": 789
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 6
+          },
+          "n": 1,
+          "bytes": 597
+        },
+        {
+          "_id": {
+            "group": "booking.created",
+            "hour": 14
+          },
+          "n": 1,
+          "bytes": 632
+        },
+        {
+          "_id": {
+            "group": "granot.release",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 670
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 15
+          },
+          "n": 8,
+          "bytes": 4950
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 12
+          },
+          "n": 23,
+          "bytes": 15263
+        },
+        {
+          "_id": {
+            "group": "text.failed",
+            "hour": 15
+          },
+          "n": 1,
+          "bytes": 646
+        },
+        {
+          "_id": {
+            "group": "text.deferred",
+            "hour": 0
+          },
+          "n": 1,
+          "bytes": 699
+        },
+        {
+          "_id": {
+            "group": "booking.created",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 632
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 19
+          },
+          "n": 4,
+          "bytes": 2369
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 12
+          },
+          "n": 17,
+          "bytes": 11033
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 15
+          },
+          "n": 6,
+          "bytes": 3894
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 4
+          },
+          "n": 1,
+          "bytes": 597
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 15
+          },
+          "n": 2,
+          "bytes": 1340
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 1190
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 9
+          },
+          "n": 2,
+          "bytes": 1212
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 17
+          },
+          "n": 9,
+          "bytes": 5841
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 9
+          },
+          "n": 2,
+          "bytes": 1346
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 23
+          },
+          "n": 4,
+          "bytes": 2596
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 20
+          },
+          "n": 2,
+          "bytes": 1602
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 7
+          },
+          "n": 5,
+          "bytes": 3245
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 11
+          },
+          "n": 3,
+          "bytes": 1818
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 7
+          },
+          "n": 1,
+          "bytes": 626
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 17
+          },
+          "n": 5,
+          "bytes": 2963
+        },
+        {
+          "_id": {
+            "group": "intake.opened",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 730
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 2
+          },
+          "n": 2,
+          "bytes": 1194
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 16
+          },
+          "n": 8,
+          "bytes": 5176
+        },
+        {
+          "_id": {
+            "group": "intake.opened",
+            "hour": 14
+          },
+          "n": 1,
+          "bytes": 730
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 20
+          },
+          "n": 1,
+          "bytes": 670
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 15
+          },
+          "n": 1,
+          "bytes": 606
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 19
+          },
+          "n": 1,
+          "bytes": 676
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 13
+          },
+          "n": 8,
+          "bytes": 5192
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 2
+          },
+          "n": 2,
+          "bytes": 1762
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 795
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 8
+          },
+          "n": 15,
+          "bytes": 9735
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 13
+          },
+          "n": 15,
+          "bytes": 9946
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 14
+          },
+          "n": 7,
+          "bytes": 4637
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 597
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 870
+        },
+        {
+          "_id": {
+            "group": "booking.created",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 632
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 11
+          },
+          "n": 19,
+          "bytes": 12331
+        },
+        {
+          "_id": {
+            "group": "granot.priority_updated",
+            "hour": 13
+          },
+          "n": 7,
+          "bytes": 4382
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 670
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 606
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 0
+          },
+          "n": 4,
+          "bytes": 2646
+        },
+        {
+          "_id": {
+            "group": "granot.minted",
+            "hour": 19
+          },
+          "n": 1,
+          "bytes": 633
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 1054
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 1761
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 8
+          },
+          "n": 11,
+          "bytes": 9906
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 20
+          },
+          "n": 3,
+          "bytes": 1776
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 22
+          },
+          "n": 25,
+          "bytes": 16225
+        },
+        {
+          "_id": {
+            "group": "text.sent",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 670
+        },
+        {
+          "_id": {
+            "group": "text.skipped",
+            "hour": 17
+          },
+          "n": 1,
+          "bytes": 684
+        },
+        {
+          "_id": {
+            "group": "intake.refreshed",
+            "hour": 18
+          },
+          "n": 2,
+          "bytes": 1349
+        },
+        {
+          "_id": {
+            "group": "granot.minted",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 703
+        },
+        {
+          "_id": {
+            "group": "granot.pending_match",
+            "hour": 17
+          },
+          "n": 4,
+          "bytes": 2108
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 14
+          },
+          "n": 2,
+          "bytes": 1723
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 7
+          },
+          "n": 5,
+          "bytes": 3030
+        },
+        {
+          "_id": {
+            "group": "granot.unmatched",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 515
+        },
+        {
+          "_id": {
+            "group": "call_lead.created",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 795
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 18
+          },
+          "n": 9,
+          "bytes": 5825
+        },
+        {
+          "_id": {
+            "group": "granot.linked",
+            "hour": 11
+          },
+          "n": 24,
+          "bytes": 15930
+        },
+        {
+          "_id": {
+            "group": "form_lead.created",
+            "hour": 22
+          },
+          "n": 25,
+          "bytes": 22536
+        },
+        {
+          "_id": {
+            "group": "text.deferred",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 699
+        },
+        {
+          "_id": {
+            "group": "sheet_sync.completed",
+            "hour": 14
+          },
+          "n": 6,
+          "bytes": 3888
+        },
+        {
+          "_id": {
+            "group": "granot.lead_created",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 606
+        }
+      ]
+    },
+    "domain_command_executions": {
+      "clock": "applied_at",
+      "sample": {
+        "at": "2026-11-19T23:13:17.247Z",
+        "docs": 168378,
+        "logical": 203200933,
+        "allocated": 79093760,
+        "indexes": 14557184,
+        "reads": 1617,
+        "writes": 551
+      },
+      "ix": [
+        {
+          "name": "domain_command_applied_at",
+          "key": {
+            "applied_at": -1
+          },
+          "accesses": {
+            "ops": 238,
+            "since": "2026-11-18T20:50:25.184Z"
+          }
+        },
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "accesses": {
+            "ops": 696,
+            "since": "2026-11-18T20:50:25.184Z"
+          }
+        },
+        {
+          "name": "domain_command_origin_idempotency_unique",
+          "key": {
+            "origin": 1,
+            "idempotency_key": 1
+          },
+          "accesses": {
+            "ops": 377,
+            "since": "2026-11-18T20:50:25.184Z"
+          }
+        },
+        {
+          "name": "domain_command_command_id_unique",
+          "key": {
+            "command_id": 1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.184Z"
+          }
+        },
+        {
+          "name": "domain_command_origin",
+          "key": {
+            "origin": 1
+          },
+          "accesses": {
+            "ops": 8,
+            "since": "2026-11-18T20:50:25.184Z"
+          }
+        }
+      ],
+      "day": [
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 15
+          },
+          "n": 2,
+          "bytes": 1920
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 12
+          },
+          "n": 23,
+          "bytes": 27569
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 2362
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 7
+          },
+          "n": 5,
+          "bytes": 5855
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 0
+          },
+          "n": 4,
+          "bytes": 4811
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 11
+          },
+          "n": 24,
+          "bytes": 28808
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 22
+          },
+          "n": 25,
+          "bytes": 29275
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 1395
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 1181
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 8
+          },
+          "n": 9,
+          "bytes": 10832
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 6
+          },
+          "n": 3,
+          "bytes": 3630
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 1920
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 16
+          },
+          "n": 13,
+          "bytes": 15556
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 19
+          },
+          "n": 1,
+          "bytes": 1171
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 13
+          },
+          "n": 15,
+          "bytes": 17947
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 10
+          },
+          "n": 22,
+          "bytes": 26301
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 1171
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 18
+          },
+          "n": 9,
+          "bytes": 10745
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 15
+          },
+          "n": 8,
+          "bytes": 9448
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 14
+          },
+          "n": 7,
+          "bytes": 8267
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 20
+          },
+          "n": 3,
+          "bytes": 3572
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 14
+          },
+          "n": 2,
+          "bytes": 1920
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 17
+          },
+          "n": 4,
+          "bytes": 3840
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 2
+          },
+          "n": 5,
+          "bytes": 5963
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 1395
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 2
+          },
+          "n": 2,
+          "bytes": 1920
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 11
+          },
+          "n": 4,
+          "bytes": 3840
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 17
+          },
+          "n": 5,
+          "bytes": 5905
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 9
+          },
+          "n": 16,
+          "bytes": 19244
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 7
+          },
+          "n": 1,
+          "bytes": 1181
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 0
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 8
+          },
+          "n": 11,
+          "bytes": 12881
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 1395
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 14
+          },
+          "n": 1,
+          "bytes": 1334
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 20
+          },
+          "n": 1,
+          "bytes": 960
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 19
+          },
+          "n": 4,
+          "bytes": 4840
+        }
+      ]
+    },
+    "entity_changes": {
+      "clock": "applied_at",
+      "sample": {
+        "at": "2026-11-19T23:13:17.347Z",
+        "docs": 178766,
+        "logical": 226160544,
+        "allocated": 35479552,
+        "indexes": 36896768,
+        "reads": 91464,
+        "writes": 330
+      },
+      "ix": [
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "accesses": {
+            "ops": 33,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_applied_scan",
+          "key": {
+            "applied_at": 1,
+            "_id": 1
+          },
+          "accesses": {
+            "ops": 6306,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_entity_revision_unique",
+          "key": {
+            "entity.model": 1,
+            "entity.id": 1,
+            "revision_after": 1
+          },
+          "accesses": {
+            "ops": 26324,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_entity_applied",
+          "key": {
+            "entity.model": 1,
+            "entity.id": 1,
+            "applied_at": -1
+          },
+          "accesses": {
+            "ops": 4,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_granot_observation_ref_v1",
+          "key": {
+            "provenance.observation_id": 1
+          },
+          "accesses": {
+            "ops": 58127,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_changed_paths_applied",
+          "key": {
+            "changed_paths": 1,
+            "applied_at": -1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_granot_receipt_ref_v1",
+          "key": {
+            "provenance.receipt_id": 1
+          },
+          "accesses": {
+            "ops": 1342,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_granot_decision_ref_v1",
+          "key": {
+            "provenance.decision_id": 1
+          },
+          "accesses": {
+            "ops": 1342,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        },
+        {
+          "name": "entity_change_command_execution_id",
+          "key": {
+            "command_execution_id": 1
+          },
+          "accesses": {
+            "ops": 12,
+            "since": "2026-11-18T20:50:25.157Z"
+          }
+        }
+      ],
+      "day": [
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 14
+          },
+          "n": 1,
+          "bytes": 3317
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 7
+          },
+          "n": 10,
+          "bytes": 32820
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 4439
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 4439
+        },
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 15
+          },
+          "n": 2,
+          "bytes": 6634
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 4440
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 12
+          },
+          "n": 28,
+          "bytes": 38916
+        },
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 20
+          },
+          "n": 2,
+          "bytes": 6650
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 23
+          },
+          "n": 4,
+          "bytes": 4770
+        },
+        {
+          "_id": {
+            "group": "fillReceiverFromRepCall",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 1368
+        },
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 16
+          },
+          "n": 1,
+          "bytes": 3321
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 16
+          },
+          "n": 3,
+          "bytes": 4435
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 3
+          },
+          "n": 2,
+          "bytes": 2385
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 11
+          },
+          "n": 27,
+          "bytes": 36876
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 22
+          },
+          "n": 50,
+          "bytes": 164100
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 0
+          },
+          "n": 8,
+          "bytes": 9441
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 19
+          },
+          "n": 2,
+          "bytes": 6564
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 16
+          },
+          "n": 18,
+          "bytes": 24630
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 23
+          },
+          "n": 2,
+          "bytes": 8903
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 6
+          },
+          "n": 6,
+          "bytes": 7056
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 8
+          },
+          "n": 14,
+          "bytes": 17532
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 14
+          },
+          "n": 2,
+          "bytes": 8900
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 20
+          },
+          "n": 5,
+          "bytes": 7829
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 14
+          },
+          "n": 11,
+          "bytes": 14609
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 15
+          },
+          "n": 10,
+          "bytes": 14155
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 18
+          },
+          "n": 14,
+          "bytes": 19897
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 9
+          },
+          "n": 2,
+          "bytes": 6564
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 0
+          },
+          "n": 1,
+          "bytes": 4452
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 10
+          },
+          "n": 27,
+          "bytes": 37313
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 9
+          },
+          "n": 3,
+          "bytes": 4531
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 11
+          },
+          "n": 4,
+          "bytes": 17824
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 13
+          },
+          "n": 16,
+          "bytes": 21613
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 2
+          },
+          "n": 10,
+          "bytes": 11859
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 2
+          },
+          "n": 2,
+          "bytes": 8900
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 17
+          },
+          "n": 4,
+          "bytes": 17833
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 3
+          },
+          "n": 1,
+          "bytes": 4456
+        },
+        {
+          "_id": {
+            "group": "createLeadFromGranot",
+            "hour": 8
+          },
+          "n": 22,
+          "bytes": 72204
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 9
+          },
+          "n": 1,
+          "bytes": 4464
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 9
+          },
+          "n": 28,
+          "bytes": 35655
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 7
+          },
+          "n": 1,
+          "bytes": 1849
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 17
+          },
+          "n": 10,
+          "bytes": 13007
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 18
+          },
+          "n": 3,
+          "bytes": 4534
+        },
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 10
+          },
+          "n": 1,
+          "bytes": 3314
+        },
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 13
+          },
+          "n": 1,
+          "bytes": 3317
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 15
+          },
+          "n": 2,
+          "bytes": 8905
+        },
+        {
+          "_id": {
+            "group": "createCallLead",
+            "hour": 18
+          },
+          "n": 1,
+          "bytes": 3321
+        },
+        {
+          "_id": {
+            "group": "confirmGranotBooking",
+            "hour": 14
+          },
+          "n": 2,
+          "bytes": 3458
+        },
+        {
+          "_id": {
+            "group": "synchronizeLeadFromGranot",
+            "hour": 19
+          },
+          "n": 5,
+          "bytes": 6477
+        },
+        {
+          "_id": {
+            "group": "createFormLead",
+            "hour": 20
+          },
+          "n": 1,
+          "bytes": 4457
+        }
+      ]
+    },
+    "sheet_sync_jobs": {
+      "clock": "createdAt",
+      "sample": {
+        "at": "2026-11-19T23:13:17.459Z",
+        "docs": 164269,
+        "logical": 70135554,
+        "allocated": 25657344,
+        "indexes": 22753280,
+        "reads": 1654,
+        "writes": 1222
+      },
+      "ix": [
+        {
+          "name": "status_1_due_at_1_priority_-1_createdAt_1",
+          "key": {
+            "status": 1,
+            "due_at": 1,
+            "priority": -1,
+            "createdAt": 1
+          },
+          "accesses": {
+            "ops": 963,
+            "since": "2026-11-18T20:50:25.251Z"
+          }
+        },
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "accesses": {
+            "ops": 986,
+            "since": "2026-11-18T20:50:25.251Z"
+          }
+        },
+        {
+          "name": "leased_until_1",
+          "key": {
+            "leased_until": 1
+          },
+          "accesses": {
+            "ops": 3,
+            "since": "2026-11-18T20:50:25.251Z"
+          }
+        },
+        {
+          "name": "entity_model_1_entity_id_1_status_1",
+          "key": {
+            "entity_model": 1,
+            "entity_id": 1,
+            "status": 1
+          },
+          "accesses": {
+            "ops": 19,
+            "since": "2026-11-18T20:50:25.251Z"
+          }
+        },
+        {
+          "name": "coalescing_key_1_status_1",
+          "key": {
+            "coalescing_key": 1,
+            "status": 1
+          },
+          "accesses": {
+            "ops": 152,
+            "since": "2026-11-18T20:50:25.251Z"
+          }
+        }
+      ],
+      "day": [
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 2
+          },
+          "n": 5,
+          "bytes": 2110
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 16
+          },
+          "n": 8,
+          "bytes": 3375
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 7
+          },
+          "n": 6,
+          "bytes": 2532
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 0
+          },
+          "n": 2,
+          "bytes": 844
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 11
+          },
+          "n": 19,
+          "bytes": 8018
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 22
+          },
+          "n": 25,
+          "bytes": 10550
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 23
+          },
+          "n": 4,
+          "bytes": 1688
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 9
+          },
+          "n": 8,
+          "bytes": 3375
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 19
+          },
+          "n": 3,
+          "bytes": 1266
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 8
+          },
+          "n": 15,
+          "bytes": 6330
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 18
+          },
+          "n": 9,
+          "bytes": 3797
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 10
+          },
+          "n": 15,
+          "bytes": 6330
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 3
+          },
+          "n": 2,
+          "bytes": 844
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 12
+          },
+          "n": 17,
+          "bytes": 7174
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 13
+          },
+          "n": 8,
+          "bytes": 3376
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 14
+          },
+          "n": 6,
+          "bytes": 2539
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 17
+          },
+          "n": 8,
+          "bytes": 3376
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 20
+          },
+          "n": 5,
+          "bytes": 2110
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 1
+          },
+          "n": 1,
+          "bytes": 422
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 15
+          },
+          "n": 7,
+          "bytes": 2954
+        }
+      ]
+    },
+    "sheet_sync_attempts": {
+      "clock": "createdAt",
+      "sample": {
+        "at": "2026-11-19T23:13:17.775Z",
+        "docs": 459876,
+        "logical": 127132612,
+        "allocated": 28336128,
+        "indexes": 32391168,
+        "reads": 2220,
+        "writes": 1034
+      },
+      "ix": [
+        {
+          "name": "sheet_sync_attempt_created_ttl",
+          "key": {
+            "createdAt": 1
+          },
+          "accesses": {
+            "ops": 3,
+            "since": "2026-11-18T20:50:25.087Z"
+          }
+        },
+        {
+          "name": "_id_",
+          "key": {
+            "_id": 1
+          },
+          "accesses": {
+            "ops": 1856,
+            "since": "2026-11-18T20:50:25.087Z"
+          }
+        },
+        {
+          "name": "job_id_1_createdAt_1",
+          "key": {
+            "job_id": 1,
+            "createdAt": 1
+          },
+          "accesses": {
+            "ops": 86,
+            "since": "2026-11-18T20:50:25.087Z"
+          }
+        },
+        {
+          "name": "status_1_createdAt_-1",
+          "key": {
+            "status": 1,
+            "createdAt": -1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.087Z"
+          }
+        },
+        {
+          "name": "run_id_1_createdAt_1",
+          "key": {
+            "run_id": 1,
+            "createdAt": 1
+          },
+          "accesses": {
+            "ops": 0,
+            "since": "2026-11-18T20:50:25.087Z"
+          }
+        }
+      ],
+      "day": [
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 19
+          },
+          "n": 9,
+          "bytes": 2424
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 3
+          },
+          "n": 6,
+          "bytes": 1616
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 12
+          },
+          "n": 51,
+          "bytes": 13736
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 13
+          },
+          "n": 24,
+          "bytes": 6476
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 17
+          },
+          "n": 27,
+          "bytes": 7296
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 18
+          },
+          "n": 28,
+          "bytes": 7565
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 10
+          },
+          "n": 45,
+          "bytes": 12144
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 1
+          },
+          "n": 3,
+          "bytes": 808
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 15
+          },
+          "n": 18,
+          "bytes": 4872
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 14
+          },
+          "n": 16,
+          "bytes": 4333
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 20
+          },
+          "n": 15,
+          "bytes": 4076
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 7
+          },
+          "n": 15,
+          "bytes": 4040
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 0
+          },
+          "n": 3,
+          "bytes": 808
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 11
+          },
+          "n": 57,
+          "bytes": 15367
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 22
+          },
+          "n": 75,
+          "bytes": 20200
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 2
+          },
+          "n": 18,
+          "bytes": 4848
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 16
+          },
+          "n": 25,
+          "bytes": 6781
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 8
+          },
+          "n": 45,
+          "bytes": 12120
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 23
+          },
+          "n": 12,
+          "bytes": 3232
+        },
+        {
+          "_id": {
+            "group": "synced",
+            "hour": 9
+          },
+          "n": 28,
+          "bytes": 7553
+        }
+      ]
+    }
+  }
+}
