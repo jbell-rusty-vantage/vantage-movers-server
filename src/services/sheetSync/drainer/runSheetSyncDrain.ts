@@ -1,3 +1,4 @@
+import { deployedCommitFromEnv } from "../../salesIntelligence/deploymentStamp";
 import mongoose, { type QueryFilter } from "mongoose";
 import type { sheets_v4 } from "googleapis";
 import {
@@ -277,6 +278,7 @@ export async function runSheetSyncDrain(
       $set: {
         status,
         finished_at: new Date(),
+        ...(claimedCount > 0 ? { deployment_commit: deployedCommitFromEnv()?.commit } : {}),
         claimed_job_count: claimedCount,
         synced_job_count: syncedJobs,
         failed_job_count: failedJobs,
@@ -550,9 +552,9 @@ async function recordAttempts(
 
 async function markJobSynced(job: SheetSyncJobDocument, note?: string): Promise<void> {
   const updated = await SheetSyncJob.findOneAndUpdate(activeJobFilter(job), {
+    $unset: { leased_until: "" },
     $set: {
       status: "synced",
-      leased_until: new Date(0),
       target_hints: [],
       ...(note ? { last_error: note } : { last_error: undefined }),
     },

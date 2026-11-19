@@ -17,6 +17,7 @@ const SheetSyncRunSchema = new Schema(
     },
     started_at: { type: Date, required: true, default: Date.now },
     finished_at: { type: Date },
+    deployment_commit: { type: String },
     claimed_job_count: { type: Number, required: true, default: 0 },
     synced_job_count: { type: Number, required: true, default: 0 },
     failed_job_count: { type: Number, required: true, default: 0 },

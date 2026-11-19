@@ -77,7 +77,7 @@ function sourceLeadJob(leadId: string, leadModel: "FormLead" | "CallLead" = "For
   } as unknown as SheetSyncJobDocument;
 }
 
-function stubFormLead(document: Record<string, unknown>): void {
+function stubFormLead(document: Record<string, unknown> | null): void {
   mongoose.connection.useDb = (() => ({
     models: { FormLead },
     model: () => FormLead,
@@ -505,4 +505,11 @@ test("clear no_sync on an ordinary Form upserts Forms", async () => {
 
   assert.deepEqual(clearedWrites, [`upsert:master_forms:${SHEET_TAB_NAMES.forms}`, `delete:master_bad_leads:${SHEET_TAB_NAMES.badLeads}`, `delete:master_bad_leads:Bad Leads`]);
   assert.deepEqual(missingWrites, clearedWrites);
+});
+
+
+test("an older upsert retry after Lead removal completes without recreating its row", async () => {
+  stubFormLead(null);
+  const plan = await planJobWrites(sourceLeadJob(new Types.ObjectId().toString()));
+  assert.deepEqual(plan, []);
 });

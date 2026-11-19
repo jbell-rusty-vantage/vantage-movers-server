@@ -34,7 +34,7 @@ generated:
 
 # Job Number timeline
 
-**Role:** Typed [Job Number](../../../../CONTEXT.md) retrieval for the Owner. Assembles one owner-facing chain — including events that happened before the Lead had a Job Number — plus the [Sheet Sync](../../../../CONTEXT.md) jobs those writes requested. There is no Job Number catalog.
+The Owner HTTP route displays the Lead origin, earliest supported Job Number link, and each official Booking and Cancellation. It reads the canonical Lead arrival clock, Record Link establishment or a matching stored job-number change, official recording time and business date. An immutable Cancellation snapshot can establish an earlier Booking after the original record is gone. A transport observation alone supplies no link date. The detailed evidence assembly described below remains available to scoped consumers and test fixtures.
 
 This is not `GET /api/v1/admin/granot-lifecycle/jobs/:normalized_job_no`. That forensic page is [`projections.md`](../granot-lifecycle/projections.md) (`GranotTimelineEntry`). This path does not call `projections.ts`.
 

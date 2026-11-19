@@ -29,6 +29,7 @@ import type {
   FormLeadSheetSource,
   SyncTarget,
 } from "../../googleSheets/types";
+import { NotFoundError } from "../../errors";
 import { getLinkedLead } from "../../leads/sourceLeadLookup.service";
 import { noSyncAppliesToNormalTabs } from "../noSyncLead";
 import type { SheetSyncDocument } from "../sheetSyncPersistence";
@@ -130,7 +131,11 @@ async function planSourceLead(
   leadId: string,
 ): Promise<PlannedDoc[]> {
   const jobId = job._id.toString();
-  const lead = await getLinkedLead(leadModel, leadId);
+  const lead = await getLinkedLead(leadModel, leadId).catch(error => {
+    if (error instanceof NotFoundError) return null;
+    throw error;
+  });
+  if (!lead) return []; // A removed Lead has no upsert. Its tombstone owns row removal.
   const looseDoc = lead as unknown as SheetSyncDocument;
   const docKey = `${leadModel}:${leadId}`;
   if (

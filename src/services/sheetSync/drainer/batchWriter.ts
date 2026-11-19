@@ -46,7 +46,7 @@ function groupByTab(writes: PlannedWrite[]): TabGroup[] {
 
 /**
  * Executes planned writes grouped per tab with minimal Google API calls:
- *   - one `values.get` to map existing rows (read),
+ *   - one `values.batchGet` for the header and identity column in the canonical layout (read),
  *   - chunked `values.batchUpdate` calls for in-place updates (write),
  *   - chunked `values.append` calls for new rows (write),
  *   - chunked `spreadsheets.batchUpdate` calls deleting rows in descending order (write).
