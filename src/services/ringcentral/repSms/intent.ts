@@ -3,8 +3,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { withTransaction } from "../../../db";
 import { logger } from "../../../logger";
 import { CsiError } from "../../salesIntelligence/auth";
-import { claimCsiJob, completeCsiJob, enqueueCsiJob, failCsiJob, type JobLease } from "../../salesIntelligence/jobs";
-import { getSalesIntelligenceJobModel } from "../../../models/SalesIntelligenceJob";
+import { claimCsiJob, completeCsiJob, enqueueCsiJob, findMatchingCsiJob, failCsiJob, type JobLease } from "../../salesIntelligence/jobs";
 import { publishDelayedWakeup, type DelayedPublishDeps } from "../../numberActivity/callLogRefresh";
 import { repSmsCaptureEnabled } from "./gate";
 import { listReviewedRepMailboxes, type RepMailbox } from "./mailboxes";
@@ -57,16 +56,11 @@ export type RepSmsFanoutResult =
 export type RepSmsFanoutDeps = {
   enabled?: () => Promise<boolean>;
   enqueue?: typeof enqueueCsiJob;
-  /** Whether the bucket's job already exists (read in the same transaction before the insert-only enqueue). */
-  exists?: (dedupeKey: string, session: ClientSession) => Promise<boolean>;
+  findMatching?: typeof findMatchingCsiJob;
   transaction?: <T>(work: (session: ClientSession) => Promise<T>) => Promise<T>;
   publish?: DelayedPublishDeps;
   now?: () => Date;
 };
-
-async function jobExists(dedupeKey: string, session: ClientSession): Promise<boolean> {
-  return (await getSalesIntelligenceJobModel().findOne({ dedupe_key: dedupeKey }, { _id: 1 }).session(session).lean()) !== null;
-}
 
 /** Route hook after the receipt is stored. Never throws; the safety poll covers any failure. */
 export async function fanOutRepSmsReceipt(
@@ -80,13 +74,11 @@ export async function fanOutRepSmsReceipt(
     const { dedupe_key, due_at } = repSmsIntentKey(extensionId, input.receivedAt);
     const enqueue = deps.enqueue ?? enqueueCsiJob;
     const { row, created } = await (deps.transaction ?? withTransaction)(async (session) => {
-      const existed = await (deps.exists ?? jobExists)(dedupe_key, session);
-      const job = await enqueue(
-        { dedupe_key, stage: REP_SMS_SYNC_STAGE, subject_key: repSmsSubjectKey(extensionId), input_revision: 1, input_refs: [], priority: 15 },
-        session,
-        due_at,
-      );
-      return { row: job, created: !existed };
+      const job = { dedupe_key, stage: REP_SMS_SYNC_STAGE, subject_key: repSmsSubjectKey(extensionId),
+        input_revision: 1, input_refs: [], priority: 15 };
+      const previous = await (deps.findMatching ?? findMatchingCsiJob)(job, session);
+      if (previous) return { row: previous, created: false };
+      return { row: await enqueue(job, session, due_at), created: true };
     });
     const published = created ? await publishDelayedWakeup(String(row._id), due_at, (deps.now ?? (() => new Date()))(), deps.publish) : false;
     return { status: created ? "enqueued" : "existing", job_id: String(row._id), published };

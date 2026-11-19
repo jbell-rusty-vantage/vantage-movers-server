@@ -19,7 +19,7 @@ const base = { database, deployment: "csi-production", status: "completed", reas
   lease_owner: null, leased_until: null, record_kind: { $exists: false },
   stage: { $in: ["outreach_evaluate", "outreach_rep_day", "outreach_contact_change", "outreach_lead_change"] } };
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
-const [mode, folder, lookupId] = process.argv.slice(2);
+const [mode, folder, selector] = process.argv.slice(2);
 assert.ok(["plan", "plan-leads", "plan-recent", "verify", "apply", "seal", "reconcile", "lookup"].includes(mode) && path.isAbsolute(folder));
 const manifestPath = path.join(folder, "manifest.json");
 const save = m => {
@@ -104,7 +104,9 @@ async function backedRows(db, rows, asOf, session, recent) {
 async function plan(db) {
   fs.mkdirSync(folder, { recursive: true });
   assert.ok(!fs.existsSync(manifestPath), "Use a fresh plan directory");
-  const m = { recent: mode === "plan-recent", run: randomUUID(), asOf: new Date().toISOString(), packs: [], scanned: 0, eligible: {}, held: {} };
+  const cutoff = selector ? new Date(selector) : new Date();
+  assert.ok(Number.isFinite(+cutoff) && +cutoff <= Date.now(), "Expected a past ISO cutoff");
+  const m = { recent: mode === "plan-recent", run: randomUUID(), asOf: cutoff.toISOString(), packs: [], scanned: 0, eligible: {}, held: {} };
   const asOf = Date.parse(m.asOf);
   const threshold = new Date(asOf - 3 * 86400000);
   const stage = mode === "plan-leads" ? "outreach_lead_change" : m.recent ? base.stage : { $in: base.stage.$in.filter(s => s !== "outreach_lead_change") };
@@ -237,15 +239,22 @@ async function apply(client, db, m) {
     assert.ok(p.released);
     save(m);
   }
-  console.log("Applied", m.packs.reduce((n,p) => n+p.removed,0), "rows");
+  console.log(JSON.stringify({ removed: m.packs.reduce((n,p) => n + p.removed, 0),
+    compacted: m.packs.reduce((n,p) => n + (p.compacted ?? 0), 0) }));
 }
 /** Read every planned id after apply. A receipt inside its window must still own its original key. */
 async function reconcile(db, m) {
   const result = { asOf: new Date(), rows: 0, gone: 0, receipts: 0, expired: 0, changed: 0, earliestPending: null };
   for (const p of m.packs) {
-    const bytes = fs.readFileSync(path.join(folder, p.file));
-    assert.equal(digest(bytes), p.hash);
-    const archived = decode(bytes);
+    const file = path.join(folder, p.file);
+    let archived;
+    if (fs.existsSync(file)) {
+      const bytes = fs.readFileSync(file);
+      assert.equal(digest(bytes), p.hash);
+      archived = decode(bytes);
+    } else {
+      archived = await recover(m, p);
+    }
     const current = await db.collection("sales_intelligence_jobs").find({ _id: { $in: archived.map(r => r.doc._id) } },
       { projection: { dedupe_key: 1, status: 1, payload_hash: 1, record_kind: 1, routine_purge_at: 1 } }).toArray();
     const byId = new Map(current.map(r => [String(r._id), r]));
@@ -298,10 +307,10 @@ async function seal(m) {
 async function main() {
   const m = mode.startsWith("plan") ? null : JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   if (mode === "lookup") {
-    assert.match(lookupId, /^[a-f0-9]{24}$/);
-    for (const p of m.packs.filter(p => p.first <= lookupId && lookupId <= p.last)) {
-      const row = (await recover(m,p)).find(r => String(r.doc._id) === lookupId);
-      if (row) { console.log(JSON.stringify({ id: lookupId, stage: row.doc.stage, bytes: row.raw.length, sha256: digest(row.raw) })); return; }
+    assert.match(selector, /^[a-f0-9]{24}$/);
+    for (const p of m.packs.filter(p => p.first <= selector && selector <= p.last)) {
+      const row = (await recover(m,p)).find(r => String(r.doc._id) === selector);
+      if (row) { console.log(JSON.stringify({ id: selector, stage: row.doc.stage, bytes: row.raw.length, sha256: digest(row.raw) })); return; }
     }
     throw new Error("Original ID missing from verified packs");
   }

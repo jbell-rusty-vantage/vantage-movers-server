@@ -88,6 +88,12 @@ async function main() {
     flag: () => true, enqueue: noEnqueue, publish: async () => { throw new Error("completed receipt published a wake"); },
   });
   assert.deepEqual(delivered, { status: "existing", job_id: capture.job_id, dedupe_key: capture.dedupe_key, published: false });
+  const { fanOutRepSmsReceipt } = await import("../src/services/ringcentral/repSms/intent.js");
+  const sms = { event: "/restapi/v1.0/account/123/extension/456/message-store", receivedAt: new Date() };
+  const firstSms = await fanOutRepSmsReceipt(sms, { enabled: async () => true });
+  assert.equal(firstSms.status, "enqueued");
+  const repeatedSms = await fanOutRepSmsReceipt(sms, { enabled: async () => true, enqueue: noEnqueue });
+  assert.deepEqual(repeatedSms, { ...firstSms, status: "existing", published: false });
   await proveRetiredStageFence(Model, withTransaction);
   console.log("PASS: insert timestamps, byte-stable pending/leased/completed duplicates, payload conflicts, transaction requirement, concurrent inserts, dataset fences, claims, renewal, retry, continuation, completion, lease rejection, unchanged TTL and the retired-stage fence");
 }
