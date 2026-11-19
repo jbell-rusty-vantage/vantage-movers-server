@@ -326,7 +326,7 @@ export async function runExistingCreateBookingFromLead(input: {
     },
     finalize: async (pending) => {
       finalized = await finalizeBookedLeadCreateAfterCommit(
-        serviceInput,
+        data,
         pending.merchant,
         pending.warnings,
         pending.outcome,
