@@ -61,3 +61,23 @@ export function routineJobExpiry(stage: string, key: string, result: unknown, co
   }
   return qualifies ? new Date(completed.getTime() + 3 * 86_400_000) : undefined;
 }
+
+/** Cross-check the actual worker input against the subject and producer-scoped key. */
+export function routineJobSubjectMatches(stage: string, key: string, subject: string, refs: readonly string[]) {
+  if (refs.length !== 1 || !id.safeParse(refs[0]).success) return false;
+  const ref = refs[0];
+  if (stage === "outreach_evaluate") return subject === "outreach-subject:" + ref && key.startsWith("sod:evaluate:" + ref + ":");
+  if (stage === "outreach_contact_change") return subject === "call:" + ref && key.startsWith("sod:contact_change:" + subject + ":");
+  if (stage === "outreach_rep_day") return subject.startsWith("outreach-rep-day:" + ref + ":");
+  return ["FormLead", "CallLead"].some(model => stage === "outreach_lead_change" &&
+    subject === "outreach-lead:" + model + ":" + ref && key.startsWith("sod:lead-change:" + model + ":" + ref + ":"));
+}
+
+/** Fields that can no longer be used once a qualified worker commits its effects and handoffs. */
+export function finishedExecutionFields(stage: string) {
+  return {
+    lease_owner: "", leased_until: "", lease_epoch: "", attempts: "", max_attempts: "",
+    next_attempt_at: "", reason: "", priority: "",
+    ...(stage === "outreach_lead_change" ? {} : { result: "" }),
+  } as const;
+}

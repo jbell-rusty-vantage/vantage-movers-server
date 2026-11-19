@@ -13,7 +13,7 @@ import {
   SALES_INTELLIGENCE_JOB_INDEXES,
 } from "../../models/SalesIntelligenceJob";
 import { CsiError } from "./auth";
-import { routineJobExpiry } from "./routineJobExpiry";
+import { finishedExecutionFields, routineJobExpiry, routineJobSubjectMatches } from "./routineJobExpiry";
 import { assertIndexes, payloadHash } from "./transactions";
 export type JobInput = {
   dedupe_key: string;
@@ -278,8 +278,14 @@ export async function completeCsiJob<T>(
     const result = await mutation(session);
     const stored = options.resultFrom ? options.resultFrom(result) : options.result;
     const completed_at = new Date();
-    const routine_purge_at = routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at, held.subject_key);
-    if (routine_purge_at && held.reason == null) {
+    const refs = held.input_refs.map(String);
+    const validRoutineInput = held.reason == null &&
+      routineJobSubjectMatches(held.stage, held.dedupe_key, held.subject_key, refs) &&
+      held.payload_hash === jobPayloadHash({ stage: held.stage, dedupe_key: held.dedupe_key,
+        subject_key: held.subject_key, input_revision: held.input_revision, input_refs: refs }, csiDataset());
+    const routine_purge_at = validRoutineInput
+      ? routineJobExpiry(held.stage, held.dedupe_key, stored, completed_at, held.subject_key) : undefined;
+    if (routine_purge_at) {
       // The same unique key fences concurrent enqueue throughout the transition. Lease/attempt
       // state is useful only while actionable. Admissions and Granot still read Lead results.
       const receipt = await Model.collection.updateOne(
@@ -287,9 +293,7 @@ export async function completeCsiJob<T>(
         { $set: { record_kind: "completion_receipt", status: "completed", completed_at,
             updatedAt: completed_at, routine_purge_at,
             ...(held.stage === "outreach_lead_change" ? { result: stored } : {}) },
-          $unset: { lease_owner: "", leased_until: "", lease_epoch: "", attempts: "", max_attempts: "",
-            next_attempt_at: "", reason: "", priority: "",
-            ...(held.stage === "outreach_lead_change" ? {} : { result: "" }) } },
+          $unset: finishedExecutionFields(held.stage) },
         { session },
       );
       if (receipt.modifiedCount !== 1) throw new CsiError("LEASE_LOST");
@@ -301,7 +305,6 @@ export async function completeCsiJob<T>(
         $set: {
           status: "completed",
           completed_at,
-          ...(routine_purge_at ? { routine_purge_at } : {}),
           lease_owner: null,
           leased_until: null,
           ...(stored === undefined ? {} : { result: stored }),
