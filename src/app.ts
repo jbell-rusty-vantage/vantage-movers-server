@@ -23,8 +23,6 @@ import v1Routes from "./routes/v1.routes";
 import granotAutomationRoutes from "./routes/granot-automation.routes";
 import granotAutomationCronRoutes from "./routes/granot-automation-cron.routes";
 import granotLifecycleCronRoutes from "./routes/granot-lifecycle-cron.routes";
-import ingestionRoutes from "./routes/ingestion.routes";
-import bestRelocationIngestionCronRoutes from "./routes/best-relocation-ingestion-cron.routes";
 import salesIntelligenceCronRoutes from "./routes/sales-intelligence-cron.routes";
 import salesOutreachRoutes from "./routes/sales-outreach.routes";
 import salesOutreachCronRoutes from "./routes/sales-outreach-cron.routes";
@@ -64,7 +62,6 @@ app.use(leadMessagingCronRoutes);
 app.use(cplCorrectionCronRoutes);
 app.use(twilioMessageStatusRoutes);
 app.use(twilioVoiceRoutes);
-app.use(bestRelocationIngestionCronRoutes);
 app.use(granotAutomationCronRoutes);
 app.use(granotLifecycleCronRoutes);
 app.use(salesIntelligenceCronRoutes);
@@ -74,7 +71,6 @@ app.use(granotAutomationRoutes);
 // Sales Outreach Desk (sod-v1): applies requireApiSecret, scope and requireOutreachActor itself.
 app.use(salesOutreachRoutes);
 app.use(v1Routes);
-app.use(ingestionRoutes);
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({

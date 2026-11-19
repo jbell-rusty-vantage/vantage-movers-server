@@ -1,4 +1,3 @@
-import { assertFinalReconciliationWriteInTransaction } from "../ingestion/finalReconciliationFence";
 import { V1ServiceError } from "../v1ServiceError";
 import mongoose from "mongoose";
 import { BookedLead } from "../../models/BookedLead";
@@ -29,7 +28,6 @@ import {
   deleteCancelledLeadInTransaction,
   updateCancelledLeadInTransaction,
 } from "../cancellations/cancelledLead.service";
-import { requireBestRelocationImportSource } from "../bookings/bestRelocationImportGuard";
 import { getLinkedLead } from "../leads";
 import {
   beginCallLeadRemoval,
@@ -62,7 +60,6 @@ import {
   type AggregateMutationPlan,
 } from "./entityChange";
 import { executeCanonicalCommandWithPostCommit } from "./idempotency";
-import { loadFinalFormCreateAuthorization } from "./bestRelocationFinalLead";
 import type {
   CanonicalCommandContext,
   CanonicalCommandOperationInput,
@@ -90,7 +87,6 @@ async function persistPlannedMutations(
   mutations: Array<Omit<AggregateMutationPlan, "change_id">>,
   changeIds: mongoose.Types.ObjectId[],
 ): Promise<void> {
-  await assertFinalReconciliationWriteInTransaction(context, tx.session);
   await persistEntityChangeMutations({
     session: tx.session,
     now: tx.now,
@@ -120,43 +116,15 @@ export async function runExistingCreateFormLead(input: {
   command: CompatibilityCanonicalCommandResult;
   data: Awaited<ReturnType<typeof completeFormLeadIngestion>>;
 }> {
-  const parsed = createFormLeadSchema.parse(
-    input.context.provenance.origin === "external_sheet_ingestion" &&
-      input.data &&
-      typeof input.data === "object"
-      ? {
-          ...(input.data as Record<string, unknown>),
-          ingestion_source: "best_relocation_sheet",
-          post_to_granot: false,
-          sms_consent: false,
-        }
-      : input.data,
-  );
-  const data = {
-    ...parsed,
-    ingestion_source:
-      input.context.provenance.origin === "external_sheet_ingestion"
-        ? ("best_relocation_sheet" as const)
-        : undefined,
-  };
-  if (input.context.provenance.origin === "external_sheet_ingestion") {
-    requireBestRelocationImportSource(
-      "best_relocation_sheet",
-      String(data.source_company),
-    );
-  }
+  const data = { ...createFormLeadSchema.parse(input.data), ingestion_source: undefined };
   const changeIds = preallocatedChangeIds(1);
   let finalized: Awaited<ReturnType<typeof completeFormLeadIngestion>>;
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: "createFormLead",
     context: input.context,
     operation: async (tx) => {
-      const finalAuthorization = input.context.provenance.origin === "external_sheet_ingestion"
-        ? await loadFinalFormCreateAuthorization(input, tx.session, tx.now) : undefined;
       const pending = await beginFormLeadIngestion(data, {
         ...tx,
-        ...(finalAuthorization ? { final_import_authorization: finalAuthorization } : {}),
-        ...(input.context.provenance.origin === "external_sheet_ingestion" ? {final_reporting_run_id: input.context.provenance.run_id ?? undefined} : {}),
         ingestion_origin: deriveFormLeadIngestionOrigin({
           commandOrigin: input.context.provenance.origin,
           actorType: input.context.actor.actor_type,
@@ -228,13 +196,6 @@ export async function runExistingUpdateSourceOwnedLead(input: {
     command_name: "updateSourceOwnedLead",
     context: input.context,
     operation: async (tx) => {
-      if (input.context.provenance.origin === "external_sheet_ingestion") {
-        const lead = await getLinkedLead(input.lead_model, input.lead_id, tx.session);
-        requireBestRelocationImportSource(
-          "best_relocation_sheet",
-          String(lead.source_company),
-        );
-      }
       const before = await loadLeadSnapshot(input.lead_model, input.lead_id, tx.session);
       if (input.lead_model === "FormLead") {
         updated = await correctFormLead(
@@ -311,24 +272,13 @@ export async function runExistingCreateBookingFromLead(input: {
   data: unknown;
 }> {
   const data = createBookedLeadSchema.parse(input.data);
-  const serviceInput = {
-    ...data,
-    ...(input.context.provenance.origin === "external_sheet_ingestion"
-      ? {
-          ingestion_source: "best_relocation_sheet" as const,
-          allow_inactive_agents: true,
-          set_primary_agent_as_receiver: true,
-          receiver_agent_source_value: `Booked Deals:${data.job_no ?? "unknown-job"}`,
-        }
-      : {}),
-  };
   const changeIds = preallocatedChangeIds(2);
   let finalized: unknown;
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: "createBookingFromLead",
     context: input.context,
     operation: async (tx) => {
-      const pending = await createBookedLeadInTransaction(serviceInput, tx);
+      const pending = await createBookedLeadInTransaction(data, tx);
       if (pending.outcome.kind !== "duplicate") {
         const booking = await BookedLead.findById(pending.outcome.bookingId).session(
           tx.session ?? null,
@@ -402,13 +352,7 @@ export async function runExistingCreateLeadlessBooking(input: {
     context: input.context,
     operation: async (tx) => {
       const pending = await createLeadlessBookingInTransaction(
-        {
-          ...data,
-          ingestion_source:
-            input.context.provenance.origin === "external_sheet_ingestion"
-              ? ("best_relocation_sheet" as const)
-              : undefined,
-        },
+        { ...data, ingestion_source: undefined },
         tx,
       );
       bookingId = pending.booking._id.toString();
@@ -529,21 +473,8 @@ export async function runExistingCreateCancellation(input: {
     context: input.context,
     operation: async (tx) => {
       const pending = await createCancelledLeadInTransaction(
-        {
-          ...data,
-          ingestion_source:
-            input.context.provenance.origin === "external_sheet_ingestion"
-              ? ("best_relocation_sheet" as const)
-              : undefined,
-        },
-        {
-          ...(input.context.provenance.origin === "external_sheet_ingestion"
-            ? {
-                requiredSourceConnectionKey:
-                  input.context.provenance.source_connection_key ?? undefined,
-              }
-            : {}),
-        },
+        { ...data, ingestion_source: undefined },
+        {},
         tx,
       );
       cancellation = pending.cancellation;

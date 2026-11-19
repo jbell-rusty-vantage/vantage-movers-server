@@ -5,11 +5,9 @@ import mongoose, {
   type Model,
 } from "mongoose";
 import {
-  GRANOT_CRM_CSV_KINDS,
   OUTBOUND_SMS_CONSENT_BASES,
   OUTBOUND_SMS_TRIGGERS,
   getMongoDatabaseName,
-  type GranotCrmCsvKind,
 } from "../config/domain";
 import { sourceCompanyField } from "./schemaHelpers";
 import {
@@ -44,24 +42,6 @@ export const GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES = [
     key: { "lifecycle_routes.source_granularity_id": 1 },
   },
 ] as const;
-
-const csvPathsSchema = new Schema(
-  {
-    follow_up: { type: String, trim: true },
-    booked: { type: String, trim: true },
-  },
-  { _id: false },
-);
-
-const lastIngestionSchema = new Schema(
-  {
-    content_sha256: { type: String, trim: true },
-    ingestion_id: { type: Schema.Types.ObjectId, ref: "GranotCrmCsvIngestion" },
-    s3_key: { type: String, trim: true },
-    imported_at: { type: Date },
-  },
-  { _id: false },
-);
 
 const outboundSmsActorSchema = new Schema(
   {
@@ -134,13 +114,8 @@ const GranotCrmSourceSchema = new Schema(
       default: "unknown",
     },
     source_company: sourceCompanyField,
-    csv_paths: { type: csvPathsSchema, default: {} },
     enabled: { type: Boolean, required: true, default: true, index: true },
     notes: { type: String, trim: true },
-    last_ingestions: {
-      follow_up: { type: lastIngestionSchema },
-      booked: { type: lastIngestionSchema },
-    },
     normalized_granot_label: { type: String, trim: true, lowercase: true },
     lifecycle_enabled: { type: Boolean, required: true, default: false },
     lifecycle_disposition: {
@@ -176,9 +151,6 @@ GranotCrmSourceSchema.index(
   { crm_origin: 1, workspace_slug: 1 },
   { unique: true },
 );
-for (const csvKind of GRANOT_CRM_CSV_KINDS) {
-  GranotCrmSourceSchema.index({ [`csv_paths.${csvKind}`]: 1 });
-}
 for (const index of GRANOT_CRM_SOURCE_LIFECYCLE_INDEXES) {
   const options: Record<string, unknown> = { name: index.name };
   if ("unique" in index) {
@@ -218,20 +190,7 @@ GranotCrmSourceSchema.pre("validate", function validateLifecycleSemantics() {
   }
 });
 
-type GranotCrmLastIngestion = {
-  content_sha256?: string;
-  ingestion_id?: mongoose.Types.ObjectId;
-  s3_key?: string;
-  imported_at?: Date;
-};
-
-export type GranotCrmSource = Omit<
-  InferSchemaType<typeof GranotCrmSourceSchema>,
-  "last_ingestions"
-> & {
-  _id: mongoose.Types.ObjectId;
-  last_ingestions?: Partial<Record<GranotCrmCsvKind, GranotCrmLastIngestion>>;
-};
+export type GranotCrmSource = InferSchemaType<typeof GranotCrmSourceSchema> & { _id: mongoose.Types.ObjectId };
 
 export type GranotCrmSourceDocument = HydratedDocument<GranotCrmSource>;
 

@@ -29,7 +29,6 @@
     "ops:time-dates": "node --harmony-temporal --env-file=.env --import tsx scripts/dev_ops/time_and_dates/playground.ts",
     "db:ingest-moving-carriers": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/ingest-moving-carriers.ts",
     "db:seed-granot-carrier-codes": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/seed-granot-carrier-codes.ts",
-    "ingest:best-relocation": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/best-relocation-sheet-ingest.ts",
     "prove:tariff-append": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/prove-tariff-append.ts",
     "twilio:send-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-send-sms.ts",
     "twilio:schedule-sms": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-schedule-sms.ts",

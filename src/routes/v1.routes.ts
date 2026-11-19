@@ -163,7 +163,6 @@ import {
   movingCarrierCreateSchema,
   movingCarrierImportSchema,
   movingCarrierUpdateSchema,
-  listGranotCrmSourcesQuerySchema,
   sheetSyncJobsQuerySchema,
   sheetSyncRunsQuerySchema,
   sheetSyncRetrySchema,
@@ -180,7 +179,6 @@ import {
   searchCallLeadsSchema,
   searchFormLeadsSchema,
   resolveGranotFormLeadSchema,
-  uploadGranotCrmCsvSchema,
   updatePendingEmployeeBookingSchema,
   updateBookedLeadSchema,
   updateCallLeadSchema,
@@ -241,11 +239,6 @@ import {
   listMovingCarriers,
   updateMovingCarrier,
 } from "../services/movingCarriers";
-import {
-  listGranotCrmSources,
-  seedGranotCrmSources,
-  uploadGranotCrmCsv,
-} from "../services/granotCrmCsv";
 import {
   getLeadMessage,
   listLeadMessages,
@@ -532,9 +525,6 @@ router.get(
   "/api/v1/admin/operations-registry/changes",
   handleOperationsRegistryChanges,
 );
-
-router.get("/api/v1/granot-crm/csv/sources", handleGranotCrmCsvSources);
-router.post("/api/v1/granot-crm/csv/uploads", handleGranotCrmCsvUpload);
 
 router.get("/api/v1/form-leads", handleBrowseFormLeads);
 router.post("/api/v1/form-leads/granot-match", handleResolveGranotFormLead);
@@ -1772,50 +1762,6 @@ function describeAuthActor(req: Request): string {
   if (auth.kind === "user") return `user:${auth.userId}`;
   if (auth.kind === "scoped_key") return `scoped_key:${auth.scopedKeyName}`;
   return "api_secret";
-}
-
-async function handleGranotCrmCsvSources(req: Request, res: Response) {
-  try {
-    await connectMongo();
-    const parsed = listGranotCrmSourcesQuerySchema.parse(req.query);
-    if (parsed.seed) {
-      await seedGranotCrmSources(parsed.crm_origin);
-    }
-    const sources = await listGranotCrmSources(parsed.crm_origin);
-    return res.json({
-      ok: true,
-      data: {
-        items: sources.map((source) => ({
-          _id: source._id.toString(),
-          crm_origin: source.crm_origin,
-          workspace_slug: source.workspace_slug,
-          granot_label: source.granot_label,
-          default_channel: source.default_channel,
-          source_company: source.source_company,
-          csv_paths: source.csv_paths ?? {},
-          enabled: source.enabled,
-          notes: source.notes,
-          last_ingestions: source.last_ingestions ?? {},
-        })),
-      },
-    });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
-}
-
-async function handleGranotCrmCsvUpload(req: Request, res: Response) {
-  try {
-    await connectMongo();
-    const parsed = uploadGranotCrmCsvSchema.parse(req.body);
-    const data = await uploadGranotCrmCsv(parsed);
-    return res.status(data.status === "uploaded" ? 201 : 200).json({
-      ok: true,
-      data,
-    });
-  } catch (error) {
-    return sendError(req, res, error);
-  }
 }
 
 function handleOverviewReport() {

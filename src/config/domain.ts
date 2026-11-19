@@ -34,7 +34,7 @@ export * from "./domain/cplRateDefinitions";
 export * from "./domain/runtime";
 export * from "./domain/googleAuth";
 export * from "./domain/sheetSync";
-export * from "./domain/granotCsv";
+export const GRANOT_CRM_DEFAULT_ORIGIN = "https://eagle.hellomoving.com";
 export * from "./domain/granotWebhook";
 export * from "./domain/leadMessaging";
 export * from "./domain/employeeBookingMatching";

@@ -16,7 +16,6 @@ import type {
   AdoptRingCentralCallInput,
   MarkRingCentralConvergenceConflictInput,
 } from "../ringcentral/callLeadConvergence.service";
-import type { FinalBestRelocationCallInput } from "./bestRelocationFinalCall";
 
 export type CommandOrigin =
   | "external_sheet_ingestion"
@@ -85,7 +84,6 @@ export type CanonicalCommandOperationEvidence = {
 };
 
 export interface CanonicalDomainCommands {
-  admitBestRelocationFinalCall?(input: FinalBestRelocationCallInput): Promise<CompatibilityCanonicalCommandResult>;
   reEvaluateGranotDiscrepancy?(input: ReEvaluateDiscrepancyInput): Promise<DiscrepancyOwnerCommandResult>;
   correctGranotRecordLink?(input: CorrectRecordLinkInput): Promise<DiscrepancyOwnerCommandResult>;
   resolveGranotDiscrepancyNoAction?(input: DiscrepancyNoActionInput): Promise<DiscrepancyOwnerCommandResult>;
