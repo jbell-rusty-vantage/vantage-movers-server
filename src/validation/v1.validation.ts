@@ -200,12 +200,6 @@ export {
   type MovingCarrierUpdateInput,
 } from "./v1/movingCarriers.validation";
 
-export {
-  listGranotCrmSourcesQuerySchema,
-  uploadGranotCrmCsvSchema,
-  type ListGranotCrmSourcesQuery,
-  type UploadGranotCrmCsvInput,
-} from "./v1/granotCsv.validation";
 
 export {
   leadMessagesQuerySchema,

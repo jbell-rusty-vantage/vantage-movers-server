@@ -73,12 +73,10 @@ import {
   captureWordpressReceiptThenCreateLead,
   createMongoWordpressReceiptStore,
 } from "./wordpressFormSubmissionReceipt";
-import type { ExternalSheetReview } from "./externalSheetReview";
 import { scheduleFormFillWork } from "./formFillWork";
 
 type FormLeadDocument = InstanceType<ReturnType<typeof getFormLeadModel>>;
-type FormLeadSession = { session?: ClientSession; now: Date; final_reporting_run_id?: string;
-  final_import_authorization?: { review?: ExternalSheetReview; assertCreate(duplicate: boolean): void } };
+type FormLeadSession = { session?: ClientSession; now: Date };
 type SourceAssignment = Awaited<
   ReturnType<typeof resolveLeadSourceAssignment>
 >["assignment"];
@@ -426,7 +424,6 @@ async function writeTheFormLead(
   prepared: PreparedQuote,
   tx: FormLeadSession & { ingestion_origin: FormLeadIngestionOrigin },
 ): Promise<FormLeadIngestionInProgress> {
-  tx.final_import_authorization?.assertCreate(prepared.duplicate);
   const FormLead = getFormLeadModel();
   const created = new FormLead({
     ...prepared.normalized,
@@ -441,7 +438,6 @@ async function writeTheFormLead(
     duplicate: prepared.duplicate,
     post_to_granot: prepared.shouldPostToGranot,
     outreach_automation_suppressed: tx.ingestion_origin === "best_relocation_sheet",
-    ...(tx.final_import_authorization?.review ? { external_sheet_review: tx.final_import_authorization.review } : {}),
     ...formLeadCreationProvenanceFields({
       origin: tx.ingestion_origin,
       now: tx.now,
@@ -479,7 +475,6 @@ async function writeTheFormLead(
       created.phone_number,
       leadId,
       tx.session,
-      tx.final_reporting_run_id,
     );
     sheetSyncJobs.push(...formFillJobs);
   }

@@ -135,6 +135,24 @@ test("[AC-21] four origins validate exactly; Granot and RingCentral identities c
   assert.equal(applied.replayed, false);
 });
 
+test("retired external sheet commands can replay saved outcomes and cannot apply a new write", async () => {
+  const context = commandContext("a".repeat(64));
+  const records = new Map<string, StoredCanonicalCommandExecution>();
+  const execute = createIdempotentCanonicalCommandExecutor({
+    store: memoryExecutionStore(records),
+    connect: async () => undefined,
+    withTransaction: async (fn) => fn({} as ClientSession),
+  });
+  const request = { command_name: "createFormLead", context,
+    operation: async () => assert.fail("retired import reached a write") };
+  await assert.rejects(execute(request), /permanently retired/);
+  records.set(`external_sheet_ingestion:${context.idempotency_key}`, {
+    command_name: request.command_name, payload_checksum: context.payload_checksum,
+    result: { status: "applied", entity_refs: [], warnings: [] },
+  });
+  assert.equal((await execute(request)).replayed, true);
+});
+
 test("[AC-21] replay returns stored applied result; checksum reuse conflicts; compatibility adapter is one-way", async () => {
   const records = new Map<string, StoredCanonicalCommandExecution>();
   const store = memoryExecutionStore(records);
@@ -143,7 +161,7 @@ test("[AC-21] replay returns stored applied result; checksum reuse conflicts; co
     connect: async () => undefined,
     withTransaction: async (fn) => fn({} as ClientSession),
   });
-  const context = commandContext("a".repeat(64));
+  const context = adminContext("a".repeat(64));
   let mutations = 0;
   const run = () =>
     execute({
@@ -179,7 +197,7 @@ test("[AC-21] replay returns stored applied result; checksum reuse conflicts; co
   await assert.rejects(
     execute({
       command_name: "createCallLead",
-      context: commandContext("b".repeat(64)),
+      context: adminContext("b".repeat(64)),
       operation: async () => ({ entity_refs: [] }),
     }),
     DomainCommandIdempotencyConflictError,
@@ -196,7 +214,7 @@ test("[AC-21] failed command leaves no successful execution outcome", async () =
   await assert.rejects(
     execute({
       command_name: "createFormLead",
-      context: commandContext("c".repeat(64)),
+      context: adminContext("c".repeat(64)),
       operation: async () => {
         throw new Error("transaction aborted");
       },

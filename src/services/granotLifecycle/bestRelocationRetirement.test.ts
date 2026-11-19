@@ -2,9 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { granotCreationRetired, BEST_RELOCATION_RETIRED_LABELS } from "../../models/bestRelocationRetirement";
 import { validateGranotCrmSourceSemantics } from "../../models/granotCrmSourceSemantics";
-import { resolveSourcePolicy, type SourcePolicyStore, type SourcePolicyRow } from "../granotLifecycle/sourcePolicy";
-import { publishIngestionWakeup } from "./queue";
-import { runBestRelocationIngestionWorker } from "./worker";
+import { resolveSourcePolicy, type SourcePolicyStore, type SourcePolicyRow } from "./sourcePolicy";
 
 const row: SourcePolicyRow = { id: "source", enabled: true, lifecycle_enabled: true,
  lifecycle_disposition: "source_scoped_lead", lead_created_policy: "create_if_missing",
@@ -38,9 +36,4 @@ test("Setup and seed semantic validation cannot restore Best Relocation create-i
  assert.equal(result.ok, false);
  const renamed = validateGranotCrmSourceSemantics({ ...row, granot_label: "renamed" }, { company: { id: "company", active: true, company_slug: "best_relocation_leads" } });
  assert.equal(renamed.ok, false);
-});
-test("old environment flags cannot wake retired scheduled/queued ingestion", async () => {
- process.env.BEST_RELOCATION_INGEST_ENABLED = "true";
- assert.deepEqual(await runBestRelocationIngestionWorker(), { claimed: false, status: "retired" });
- assert.equal(await publishIngestionWakeup({ reason: "retry", run_hint: "old-run" }), false);
 });

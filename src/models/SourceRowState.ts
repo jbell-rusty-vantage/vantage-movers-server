@@ -34,7 +34,6 @@ const SourceRowStateSchema = new Schema(
     last_observed_at: { type: Date, required: true },
     last_ingestion_run_id: {
       type: Schema.Types.ObjectId,
-      ref: "IngestionRun",
       required: true,
     },
   },

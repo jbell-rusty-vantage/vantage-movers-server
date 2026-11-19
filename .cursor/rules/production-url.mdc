@@ -66,8 +66,6 @@ PATCH  /api/v1/customers/:id
 DELETE /api/v1/customers/:id
 GET    /api/v1/testimonials
 GET    /api/v1/moving-carriers
-GET    /api/v1/granot-crm/csv/sources
-POST   /api/v1/granot-crm/csv/uploads
 ```
 
 ## Admin discovery, catalog, sources, CPL
@@ -227,20 +225,10 @@ GET    /api/v1/admin/extension-users
 POST   /api/v1/admin/extension-users
 ```
 
-## Scheduled Granot Estimates and ingestion
+## Scheduled Granot Estimates
 
 ```
 GET    /api/v1/admin/granot-automation/runs/freshness
-GET    /api/v1/admin/ingestion/connections/best-relocation
-PATCH  /api/v1/admin/ingestion/connections/best-relocation
-POST   /api/v1/admin/ingestion/connections/best-relocation/inspect
-POST   /api/v1/admin/ingestion/connections/best-relocation/preview
-POST   /api/v1/admin/ingestion/connections/best-relocation/run
-GET    /api/v1/admin/ingestion/runs
-GET    /api/v1/admin/ingestion/runs/:runId
-POST   /api/v1/admin/ingestion/runs/:runId/retry
-GET    /api/v1/admin/ingestion/conflicts
-POST   /api/v1/admin/ingestion/conflicts/:conflictId/resolve
 ```
 
 ## Sales Intelligence (Numbers and RingCentral Accounts)

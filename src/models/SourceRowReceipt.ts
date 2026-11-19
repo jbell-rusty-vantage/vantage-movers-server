@@ -21,7 +21,6 @@ const SourceRowReceiptSchema = new Schema(
     observed_at: { type: Date, required: true },
     ingestion_run_id: {
       type: Schema.Types.ObjectId,
-      ref: "IngestionRun",
       required: true,
     },
     observation_type: { type: String, required: true, trim: true },

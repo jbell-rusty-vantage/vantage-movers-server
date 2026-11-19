@@ -502,14 +502,6 @@ test("zipMissSides treats not_found and blank as a miss only when a zip is prese
   );
 });
 
-test("applyBestRelocationPlan is not a Daily Operations hook site", async () => {
-  const source = await readFile(
-    path.join(__dirname, "../ingestion/applyPlan.ts"),
-    "utf8",
-  );
-  assert.doesNotMatch(source, /recordDailyOperationsFact|recordDomainFacts|recordFormLeadDailyOperationsFact/);
-});
-
 test("persistLeadMessageIntent is not a Daily Operations hook site", async () => {
   const source = await readFile(
     path.join(__dirname, "../leadMessaging/leadMessaging.service.ts"),

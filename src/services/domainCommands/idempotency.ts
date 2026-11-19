@@ -83,6 +83,9 @@ export function createIdempotentCanonicalCommandExecutor(input: {
           return { result: existing, replayed: true };
         }
 
+        if (context.provenance.origin === "external_sheet_ingestion") {
+          throw new Error("External sheet ingestion is permanently retired");
+        }
         const evidence = await command.operation({
           session,
           now,
