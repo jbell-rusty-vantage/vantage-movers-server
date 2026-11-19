@@ -1,6 +1,6 @@
 import { readEvidenceIds } from "../granotHistory/evidencePage";
 import type { GranotObservationDocument } from "../../models/GranotObservation";
-import { readRetiredWebhook } from "../granotHistory/completedWebhooks";
+import { readRetiredLifecycleReceipt } from "../granotHistory/completedWebhooks";
 import type { ClientSession, Types } from "mongoose";
 import { getGranotObservationModel } from "../../models/GranotObservation";
 import { getGranotObservationReceiptModel, type GranotObservationReceiptDocument } from "../../models/GranotObservationReceipt";
@@ -39,7 +39,7 @@ export async function readCaseStatement(id: Types.ObjectId, session?: ClientSess
   const hot = await statements().findOne({ _id: id }, { session })
     ?? await getGranotObservationReceiptModel().findById(id).select("_id observation_channel payload").session(session ?? null).lean();
   if (hot) return hot;
-  const cold = await readRetiredWebhook(getGranotObservationModel().db.db!, id, session);
+  const cold = await readRetiredLifecycleReceipt(getGranotObservationModel().db.db!, id, session);
   return cold && { _id: id, observation_channel: cold.observation_channel, payload: cold.payload };
 }
 

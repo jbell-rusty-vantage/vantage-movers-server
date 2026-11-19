@@ -6,6 +6,7 @@ import { policies, runFutureRetention } from "./futureRetention";
 import { closedRuns, packClosedRun } from "./closedAutomationRun";
 import { digest } from "./archiveCodec";
 import { retireLeadEvidence } from "./retireLeadEvidence";
+import { readRetiredLifecycleReceipt } from "./completedWebhooks";
 import { readArchivedReceipt } from "./settledLeadEvidence";
 import { loadClosedOperations } from "./prepareClosedRun";
 
@@ -191,6 +192,10 @@ test("evidence retirement preserves replay, original missing Decisions, and conc
         Date,
     );
     await hot.deleteOne({ _id: normal.r });
+    const recovered = await readRetiredLifecycleReceipt(db, normal.r, undefined, read);
+    assert.equal(String(recovered?._id), String(normal.r));
+    assert.equal(recovered?.observation_channel, "granot_http_automation");
+    assert.equal(recovered?.processing.state, "completed");
     assert.equal(
       (await readArchivedReceipt(db, normal.r, read))?.decisions.length,
       1,

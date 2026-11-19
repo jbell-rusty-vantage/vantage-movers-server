@@ -10,6 +10,7 @@ import type { GranotObservationReceiptDocument } from "../../models/GranotObserv
 import { getDailyOperationsCollectionName } from "../../config/domain/dailyOperations";
 import { easternDayKey } from "../dailyOperations/dayDocument";
 import { digest } from "./archiveCodec";
+import { evidenceForReceipt, readEvidencePage } from "./evidencePage";
 import { readArchiveObject, storeArchiveObject } from "./archiveObjects";
 
 export const webhookReceiptFormat = "completed-webhook-bson-v1";
@@ -53,6 +54,16 @@ export async function readRetiredWebhook(
   receipt.processing.latest_decision_id = locator.processing.latest_decision_id;
   receipt.processing.certified_lead = locator.processing.certified_lead;
   return receipt;
+}
+
+/** Resolve a terminal transport by original ID for drainer, requeue and case readers. */
+export async function readRetiredLifecycleReceipt(db: Db, id: ObjectId, session?: ClientSession, read = readArchiveObject) {
+  const locator = await archivedReceipts(db).findOne({ _id: id }, { session });
+  if (!locator) return null;
+  if (locator.format === webhookReceiptFormat) return readRetiredWebhook(db, id, session, read);
+  if (!locator.evidence_archive) return null;
+  const page = await readEvidencePage(db, locator.evidence_archive, read);
+  return evidenceForReceipt(page, { _id: id }, locator.evidence_archive).receipt as GranotObservationReceiptDocument;
 }
 
 async function fulfilled(db: Db, r: Document, session?: ClientSession) {
