@@ -51,6 +51,14 @@ test('Pool durable scheduling preserves ALL, dedupes concurrent retries, gates o
   let freshness=await getEstimatesFreshness(now);
   assert.equal(freshness.last_complete_coverage_at,null);
   assert.deepEqual(freshness.oldest_uncovered_range,second);
+  const db = mongoose.connection.db!;
+  const id = new mongoose.Types.ObjectId(all1.run_id);
+  const archivedWindow = await db.collection('granot_automation_runs').findOne({ _id: id });
+  assert.ok(archivedWindow);
+  await db.collection('granot_completed_estimate_windows').insertOne(archivedWindow);
+  await db.collection('granot_automation_runs').deleteOne({ _id: id });
+  t.after(async () => { await db.collection('granot_completed_estimate_windows').deleteOne({ _id: id }); });
+  assert.deepEqual(await getEstimatesFreshness(now), freshness);
   await GranotAutomationRun.updateOne({_id:all2.run_id},{$set:{collection_summary:{coverage:{complete:true,captured_at:now.toISOString()}},status:'completed'}});
   await releasePoolCollectionDependencies();
   assert.equal(await GranotAutomationRun.countDocuments({_id:pool1.run_id,...granotRecoverableFilter(now)}),1);

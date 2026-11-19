@@ -4,8 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { BSON } from "mongodb";
 import { readGranotCredentials as readCredentials } from "./credentials";
 import { send } from "@vercel/queue";
-import { Types } from "mongoose";
-import { connectMongo } from "../../db";
+import { Types, type PipelineStage } from "mongoose";
+import { connectMongo, withTransaction } from "../../db";
 import { logger } from "../../logger";
 import { GranotAutomationRun } from "../../models/GranotAutomationRun";
 import { GranotEstimatesOpenDate } from "../../models/GranotEstimatesOpenDate";
@@ -105,35 +105,37 @@ export async function createGranotRun(request: GranotRunRequest) {
   const id = scheduledEstimatesRunId(request.scheduledSlotKey, request.estimatesSelection);
   const runId = String(id);
   const db = GranotAutomationRun.db.db!;
-  if (await closedRuns(db).findOne({ _id: runId }, { projection: { _id: 1 } })) {
-    return { run_id: runId, status: "archived" as const, queue_published: false };
-  }
   const now = new Date();
   const expiresAt = new Date(+now + PLAN_TTL_MS);
   try {
-    await GranotAutomationRun.updateOne({ _id: id }, { $setOnInsert: {
-      schema_version: 3,
-      operation: request.operation,
-      workflow: request.workflow,
-      status: "queued",
-      initiator: request.initiator,
-      run_group_id: request.scheduledCoverage?.slotKey ?? null,
-      request_snapshot: {
-        dateWindow: request.dateWindow,
-        auto_apply: true,
-        estimatesSelection: request.estimatesSelection ?? "all",
-        estimatesLane: request.estimatesLane ?? (request.estimatesSelection === "pool" ? "pool_refresh" : "all"),
-        scheduled_slot_key: request.scheduledSlotKey,
-        scheduled_coverage: request.scheduledCoverage,
-        ...(request.afterAllCoverage ? { after_all_coverage: request.afterAllCoverage, waiting_for_all: true } : {}),
-      },
-      expires_at: expiresAt,
-      archive_review_at: expiresAt,
-      purge_at: null,
-      last_attempt_at: now,
-      createdAt: now,
-      updatedAt: now,
-    } }, { upsert: true, timestamps: false }).exec();
+    const archived=await withTransaction(async session=>{
+      if (await closedRuns(db).findOne({_id:runId},{projection:{_id:1},session})) return true;
+      await GranotAutomationRun.updateOne({ _id: id }, { $setOnInsert: {
+        schema_version: 3,
+        operation: request.operation,
+        workflow: request.workflow,
+        status: "queued",
+        initiator: request.initiator,
+        run_group_id: request.scheduledCoverage?.slotKey ?? null,
+        request_snapshot: {
+          dateWindow: request.dateWindow,
+          auto_apply: true,
+          estimatesSelection: request.estimatesSelection ?? "all",
+          estimatesLane: request.estimatesLane ?? (request.estimatesSelection === "pool" ? "pool_refresh" : "all"),
+          scheduled_slot_key: request.scheduledSlotKey,
+          scheduled_coverage: request.scheduledCoverage,
+          ...(request.afterAllCoverage ? { after_all_coverage: request.afterAllCoverage, waiting_for_all: true } : {}),
+        },
+        expires_at: expiresAt,
+        archive_review_at: expiresAt,
+        purge_at: null,
+        last_attempt_at: now,
+        createdAt: now,
+        updatedAt: now,
+      } }, { upsert: true, timestamps: false, session }).exec();
+      return false;
+    });
+    if (archived) return {run_id:runId,status:"archived" as const,queue_published:false};
   } catch (error) {
     if ((error as { code?: number }).code !== 11000) throw error;
   }
@@ -326,7 +328,7 @@ export async function planScheduledEstimatesRun(runId: string, lease: LeaseToken
         collection_summary: planned.collection_summary,
         counters: plan.counters,
         checkpoint: checkpoint("planned", plan.actions.length),
-        ...(finalStatus === "completed" ? { completed_at: approvedAt } : {}),
+        ...(finalStatus === "completed" ? { completed_at: approvedAt,archive_review_at:approvedAt,leased_until:null,lease_owner:null } : {}),
         ...(finalStatus === "applying"
           ? {
               approval: {
@@ -590,6 +592,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
       $set: {
         status,
         completed_at: new Date(),
+        ...(status === "completed" ? { archive_review_at: new Date() } : {}),
         checkpoint: checkpoint("completed", completed),
         lease_owner: null,
         leased_until: null,
@@ -733,11 +736,19 @@ export async function estimatesScheduledWindows(now: Date): Promise<Array<{ from
   return windows;
 }
 
+/** Read one consistent view while completed windows move out of the run queue. */
+function estimateWindows(match: Record<string,unknown>, stages: PipelineStage[]) {
+  return GranotAutomationRun.aggregate([
+    {$match:match},
+    {$unionWith:{coll:"granot_completed_estimate_windows",pipeline:[{$match:match}]}},
+    ...stages
+  ]).readConcern("snapshot");
+}
+
 /** Complete collection and completed synchronization are deliberately separate. */
 async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane, enabled = true): Promise<Record<string, unknown>> {
   await connectMongo();
-  const slots = await GranotAutomationRun.aggregate([
-    { $match: { operation: "estimates_in_process", "request_snapshot.scheduled_coverage.slotKey": { $type: "string" }, ...(lane === "all" ? { "request_snapshot.estimatesSelection": { $ne:"pool" } } : { "request_snapshot.estimatesLane":lane }) } },
+  const slots = await estimateWindows({ operation: "estimates_in_process", "request_snapshot.scheduled_coverage.slotKey": { $type: "string" }, ...(lane === "all" ? { "request_snapshot.estimatesSelection": { $ne:"pool" } } : { "request_snapshot.estimatesLane":lane }) }, [
     { $group: {
       _id: "$request_snapshot.scheduled_coverage.slotKey",
       expected_windows: { $max: "$request_snapshot.scheduled_coverage.totalWindows" },
@@ -769,11 +780,11 @@ async function getEstimatesLaneFreshness(now: Date, lane: EstimatesLane, enabled
   const expected = lane === "all" ? estimatesLatestSlot(now) : poolLatestSlot(now,lane);
   const latestSlot = (at: Date) => lane === 'all' ? estimatesLatestSlot(at) : poolLatestSlot(at, lane);
   const graceElapsed = latestSlot(new Date(+now - ESTIMATES_COLLECTION_GRACE_MS));
-  const uncovered = current ? await GranotAutomationRun.find({"request_snapshot.scheduled_coverage.slotKey":current._id,"collection_summary.coverage.complete":{$ne:true}}).select({"request_snapshot.dateWindow":1}).lean() : [];
+  const uncovered = current ? await estimateWindows({"request_snapshot.scheduled_coverage.slotKey":current._id,"collection_summary.coverage.complete":{$ne:true}},[{$project:{"request_snapshot.dateWindow":1}}]) : [];
   const ranges = uncovered.flatMap(run=>{const window=(run.request_snapshot as {dateWindow?:{from:string;to:string}}).dateWindow;return window?[window]:[];}).sort((a,b)=>granotCalendarEpoch(a.from)-granotCalendarEpoch(b.from));
   const manifest=manifests.find(m=>m._id===current?._id);
   if(manifest){
-    const collected=await GranotAutomationRun.find({'request_snapshot.scheduled_coverage.slotKey':manifest._id,'collection_summary.coverage.complete':true}).select({request_snapshot:1}).lean();
+    const collected=await estimateWindows({'request_snapshot.scheduled_coverage.slotKey':manifest._id,'collection_summary.coverage.complete':true},[{$project:{request_snapshot:1}}]);
     const covered=new Set(collected.map(run=>{const w=(run.request_snapshot as {dateWindow:{from:string;to:string}}).dateWindow;return `${w.from}:${w.to}`;}));
     ranges.splice(0,ranges.length,...manifest.windows.filter((w:{from:string;to:string})=>!covered.has(`${w.from}:${w.to}`)).map((w:{from:string;to:string})=>({from:w.from,to:w.to})).sort((a:{from:string},b:{from:string})=>granotCalendarEpoch(a.from)-granotCalendarEpoch(b.from)));
   }
@@ -825,8 +836,8 @@ export async function releasePoolCollectionDependencies(): Promise<void> {
   for(const [slot,total] of slots) {
     const manifest=await GranotEstimatesScheduleSlot.findById(slot).lean();
     const ids=manifest?.lane==='all' ? manifest.windows.map((w:{from:string;to:string})=>scheduledEstimatesRunId(`${slot}:${w.from}:${w.to}`,'all')) : null;
-    const complete = await GranotAutomationRun.countDocuments({operation:'estimates_in_process',...(ids?{_id:{$in:ids}}:{'request_snapshot.scheduled_coverage.slotKey':slot}),'request_snapshot.estimatesSelection':{$ne:'pool'},'collection_summary.coverage.complete':true});
-    if(complete === (ids?.length ?? total))await GranotAutomationRun.updateMany({status:'queued','request_snapshot.waiting_for_all':true,'request_snapshot.after_all_coverage.slotKey':slot},{$set:{'request_snapshot.waiting_for_all':false}});
+    const [coverage] = await estimateWindows({operation:'estimates_in_process',...(ids?{_id:{$in:ids}}:{'request_snapshot.scheduled_coverage.slotKey':slot}),'request_snapshot.estimatesSelection':{$ne:'pool'},'collection_summary.coverage.complete':true},[{$count:'windows'}]);
+    if((coverage?.windows??0) === (ids?.length ?? total))await GranotAutomationRun.updateMany({status:'queued','request_snapshot.waiting_for_all':true,'request_snapshot.after_all_coverage.slotKey':slot},{$set:{'request_snapshot.waiting_for_all':false}});
   }
 }
 

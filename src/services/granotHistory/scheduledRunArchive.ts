@@ -31,8 +31,8 @@ export async function readArchivedScheduledRun(db: Db, runId: string, read = rea
 async function readRunBytes(db: Db, id: ObjectId, now: Date, session?: ClientSession) {
   const raw = await db.collection(collection).findOne({
     _id: id, operation: "estimates_in_process", workflow: "apply", status: "completed",
-    "request_snapshot.scheduled_slot_key": { $type: "string" }, expires_at: { $lte: now },
-    archive_summary: { $exists: false }, $or: [{ leased_until: null }, { leased_until: { $lte: now } }],
+    "request_snapshot.scheduled_slot_key": { $type: "string" }, completed_at: { $lte: now },
+    archive_summary: { $exists: false }, $or: [{ leased_until: null }, { leased_until: { $lte: now } }, {approval:null,"receipts.0":{$exists:false},"checkpoint.phase":"planned"}],
   }, { raw: true, session, maxTimeMS: 3000 });
   if (!raw) return null;
   if (!Buffer.isBuffer(raw)) throw new Error("Scheduled run archive requires original BSON");
@@ -69,6 +69,7 @@ function matchesPlan(run: Document, operations: ClosedOperation[]) {
     }
     return !!item && !!saved && !!op && selectedIds.has(action.action_id)
       && item.operation_id === String(run._id) + ":" + action.action_id && op.kind === item.operation_kind
+      && (op.result.outcome !== "linked" || (item.expected_target?.model === op.result.target?.model && item.expected_target?.id === op.result.target?.id))
       && op.hash === hashCredentialRedactedPayload(item).payload_sha256
       && saved.outreach_refresh_completed === true && op.receipt === saved.lifecycle_receipt_id
       && op.result.outcome === saved.outcome && op.result.observation_id === saved.observation_id
@@ -81,7 +82,7 @@ export async function reviewScheduledRun(db: Db, id: ObjectId, now: Date) {
   if (!raw) return { status: "not_eligible" as const };
   const run = BSON.deserialize(raw);
   const runId = String(id);
-  const replay = await loadClosedOperations(db, runId, now);
+  const replay = await loadClosedOperations(db, runId, now, { allowOmittedDecisionEffectRef: true, allowScheduledReplay: true });
   if (replay.reason !== "ready" || !matchesPlan(run, replay.rows)) return { status: "incomplete_evidence" as const };
   return { status: "ready" as const, raw, run, replay, runId };
 }
@@ -102,7 +103,7 @@ export async function archiveScheduledRun(db: Db, id: ObjectId, now: Date, store
     return await session.withTransaction(async () => {
       const latest = await readRunBytes(db, id, now, session);
       if (!latest?.equals(raw)) return "source_changed";
-      const verified = await loadClosedOperations(db, runId, now, session);
+      const verified = await loadClosedOperations(db, runId, now, { session, allowOmittedDecisionEffectRef: true, allowScheduledReplay: true });
       if (verified.reason !== "ready" || !packClosedRun(runId, verified.rows).equals(replayBytes)) return "source_changed";
       const slot = await db.collection<{ _id: string; purge_at: Date }>("granot_estimates_schedule_slots").findOne(
         { _id: run.request_snapshot.scheduled_coverage.slotKey }, { session, projection: { purge_at: 1 } });
@@ -110,12 +111,15 @@ export async function archiveScheduledRun(db: Db, id: ObjectId, now: Date, store
       // A publish/compact race commits one terminal record and one closed-run index together.
       await closedRuns(db).insertOne(index, { session });
       const unapplied = run.receipts.filter((row: Document) => !["applied", "linked", "already_current"].includes(row.outcome)).length;
-      const updated = await db.collection(collection).updateOne({ _id: id, status: "completed", archive_summary: { $exists: false } }, {
-        $set: { archive_summary: { hash: locator.hash, generation: locator.generation, receipt_count: run.receipts.length, unapplied_actions: unapplied },
-          receipts: [], purge_at: retainUntil },
-        $unset: { plan_snapshot: "", approval: "", archive_review_at: "", archive_review: "" },
-      }, { session });
-      if (updated.modifiedCount !== 1) throw new Error("Scheduled run closure lost");
+      const request=run.request_snapshot;
+      await db.collection("granot_completed_estimate_windows").insertOne({
+        _id:id,operation:run.operation,status:"completed",createdAt:run.createdAt,purge_at:retainUntil,
+        request_snapshot:{scheduled_coverage:request.scheduled_coverage,dateWindow:request.dateWindow,estimatesSelection:request.estimatesSelection,estimatesLane:request.estimatesLane},
+        collection_summary:{coverage:{complete:run.collection_summary.coverage?.complete,captured_at:run.collection_summary.coverage?.captured_at},held_rows:run.collection_summary.held_rows},
+        archive_summary:{unapplied_actions:unapplied},
+      },{session});
+      const removed=await db.collection(collection).deleteOne({_id:id,status:"completed"},{session});
+      if(removed.deletedCount!==1)throw new Error("Scheduled run closure lost");
       return "archived";
     }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
   } finally {
@@ -127,16 +131,16 @@ export async function archiveScheduledRun(db: Db, id: ObjectId, now: Date, store
 export async function archiveDueScheduledRuns(db: Db, now = new Date(), store = storeArchiveObject) {
   const runs = db.collection(collection);
   const due = await runs.find({ archive_review_at: { $lte: now } }, {
-    projection: { _id: 1, status: 1, archive_review_at: 1 }, hint: "granot_scheduled_archive_due", sort: { archive_review_at: 1 }, limit: 4, maxTimeMS: 3000,
+    projection: { _id: 1, status: 1, archive_review_at: 1 }, hint: "granot_scheduled_archive_due", sort: { archive_review_at: 1 }, limit: 16, maxTimeMS: 3000,
   }).toArray();
   const result = { examined: 0, archived: 0, held: 0, failures: 0, oldest_due_at: due[0]?.archive_review_at ?? null };
-  for (const { _id, status } of due) {
+  async function review({ _id,status }: (typeof due)[number]) {
     result.examined++;
     let next = +now + day;
     let reason: string;
     try {
       const outcome = status === "completed" ? await archiveScheduledRun(db, _id, now, store) : "actionable_run";
-      if (outcome === "archived") { result.archived++; continue; }
+      if (outcome === "archived") { result.archived++; return; }
       reason = outcome;
       result.held++;
     } catch {
@@ -144,9 +148,10 @@ export async function archiveDueScheduledRuns(db: Db, now = new Date(), store = 
       reason = "archive_verification_or_storage_failed";
       next = +now + 30 * 60000;
     }
-    await runs.updateOne({ _id, archive_review_at: { $lte: now }, archive_summary: { $exists: false } }, { $set: {
+    await runs.updateOne({ _id, status, archive_review_at: { $lte: now }, archive_summary: { $exists: false } }, { $set: {
       archive_review_at: new Date(next), archive_review: { status, reason, last_checked_at: now },
     } });
   }
+  for (let start=0;start<due.length;start+=4) await Promise.all(due.slice(start,start+4).map(review));
   return result;
 }

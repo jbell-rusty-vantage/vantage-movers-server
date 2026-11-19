@@ -3,6 +3,8 @@ import { MongoClient, type Db } from "mongodb";
 import { policies } from "../src/services/granotHistory/futureRetention";
 
 export async function installRetention(db: Db, now = new Date()) {
+  await db.collection("granot_completed_estimate_windows").createIndex({purge_at:1},{name:"granot_completed_window_ttl",expireAfterSeconds:0});
+  await db.collection("granot_completed_estimate_windows").createIndex({"request_snapshot.scheduled_coverage.slotKey":1},{name:"granot_completed_window_slot"});
   await db.collection("granot_automation_runs").createIndex(
     { archive_review_at: 1 }, { sparse: true, name: "granot_scheduled_archive_due" },
   );

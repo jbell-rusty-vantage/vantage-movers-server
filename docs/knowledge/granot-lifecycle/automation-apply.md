@@ -128,3 +128,9 @@ it still claims due work and reads the live terminal state, including after an
 Owner requeue, but does not sleep on another claimant. Completed/dead-letter
 refreshes do not share the pending retry cap and can all settle in the same pass.
 Other synchronous lifecycle callers retain their default five-second poll.
+
+## Fulfilled scheduled runs
+
+Successful completion makes the run due for archival immediately. The two-minute worker reviews up to 16 runs. It verifies the sealed plan, every selected action result and its completed Outreach handoff, then reads the original BSON and replay manifest back from pinned GCS generations. One Mongo transaction publishes the closed-run lookup and coverage window and deletes the full run. A duplicate schedule uses the closed-run ID. Historical automation retries use the archived result and original payload hash.
+
+Freshness and the ALL-to-Pool dependency read both queued work and completed coverage windows. The compact windows expire at the latest of creation plus nine days, slot expiry plus one day, and archival plus one day. The GCS lookup survives that reporting window. Failed, unfinished, or inconsistent runs stay available for recovery.
