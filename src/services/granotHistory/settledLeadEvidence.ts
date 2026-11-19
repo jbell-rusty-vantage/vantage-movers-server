@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { readRetiredWebhook, webhookReceiptFormat } from "./completedWebhooks";
 import type { ClientSession, Db, ObjectId } from "mongodb";
 import { getDailyOperationsCollectionName } from "../../config/domain/dailyOperations";
 import { easternDayKey } from "../dailyOperations/dayDocument";
@@ -64,6 +65,13 @@ export async function preserveReceiptLocator(db: Db, chain: ArchivedChain, locat
 /** On-demand diagnostics for archived webhooks and extension operations. A corrupt locator must fail visibly. */
 export async function readArchivedReceipt(db: Db, receiptId: ObjectId, read = readArchiveObject) {
   const recorded = await db.collection<ReceiptArchiveLocator>("granot_archived_receipts").findOne({ _id: receiptId });
+  if ((recorded as { format?: string } | null)?.format === webhookReceiptFormat) {
+    const receipt = await readRetiredWebhook(db, receiptId, undefined, read);
+    const observation = await db.collection("granot_observations").findOne({ receipt_id: receiptId });
+    if (!receipt || !observation) throw new Error("Archived webhook evidence missing");
+    const decisions = await db.collection("synchronization_decisions").find({ observation_id: observation._id }).sort({ attempt: 1 }).toArray();
+    return { receipt, observation, decisions };
+  }
   const locator = recorded ?? (await db.collection("granot_webhook_receipts").findOne(
     { _id: receiptId }, { projection: { history_archive: 1 } }))?.history_archive as ReceiptArchiveLocator | undefined;
   if (!locator) return null;

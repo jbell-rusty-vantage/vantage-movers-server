@@ -295,6 +295,13 @@ export async function loadJobNumberTimelineRows(
   ]);
   let decisions = asDocumentArray(decisionDocs);
   let receiptDocs = asDocumentArray(receiptDocRows);
+  const hotIds = new Set(receiptDocs.map(row => String(row._id)));
+  const missing = receiptIds.filter(id => !hotIds.has(String(id)));
+  if (missing.length) {
+    const retired = await read(db.collection("granot_archived_receipts").find({ _id: { $in: missing.map(id => asMongoId(asId(id))) },
+      format: "completed-webhook-bson-v1" } as Document).project({ captured_at: 1, createdAt: 1, route_event_class: 1, observation_channel: 1, "processing.state": 1 }));
+    receiptDocs = mergeEvidence(receiptDocs, asDocumentArray(retired));
+  }
   const archiveEntries = bounds.includeTransportEvidence ? await read(archiveCatalog(db).find({ job_key: archiveJobKey(normalizedJobNo) })) : [];
   for (const entry of archiveEntries) {
     const batch = await readArchiveEntry(db, entry);

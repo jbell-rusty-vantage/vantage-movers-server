@@ -112,6 +112,10 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
   ], session);
   const companyById = rowsById(companies), granularityById = rowsById(granularities);
   const observationById = rowsById(observations), receiptById = rowsById(receipts), sourceById = rowsById(sources);
+  const missingReceipts = observations.filter(o => !o.scheduled_run_id && !receiptById.has(String(o.receipt_id))).map(o => o.receipt_id);
+  const archived = missingReceipts.length ? await getGranotObservationModel().db.collection("granot_archived_receipts")
+    .find({ _id: { $in: missingReceipts }, format: "completed-webhook-bson-v1" }, { session: session ?? undefined, projection: { _id: 1 } }).toArray() : [];
+  const archivedIds = new Set(archived.map(row => String(row._id)));
   // Decisions are newest-attempt-first. Preserve that winner without scanning the batch per Lead.
   const decisionByObservation = new Map<string, typeof decisions[number]>();
   for (const decision of decisions) if (!decisionByObservation.has(String(decision.observation_id))) decisionByObservation.set(String(decision.observation_id), decision);
@@ -162,7 +166,7 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     const decision = proof ? { execution_mode: "live", outcome: proof.outcome, target: ref, source_scope: proof.source_scope }
       : decisionByObservation.get(String(observation._id));
     // Scheduled Observations commit atomically with the applied Decision and Lead revision.
-    const completed = Boolean(proof) || ("scheduled_run_id" in observation && !!observation.scheduled_run_id && decision?.outcome === "applied") || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
+    const completed = Boolean(proof) || archivedIds.has(String(observation.receipt_id)) || ("scheduled_run_id" in observation && !!observation.scheduled_run_id && decision?.outcome === "applied") || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
     if (!decision || decision.execution_mode !== "live" || !["created", "linked", "applied", "already_current"].includes(decision.outcome)
       || decision.target?.model !== ref.model || String(decision.target?.id) !== ref.id
       || String(decision.source_scope?.lead_source_company) !== companyId || String(decision.source_scope?.source_granularity_id) !== granularityId

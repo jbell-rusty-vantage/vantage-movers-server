@@ -1,3 +1,4 @@
+import { readRetiredWebhook } from "../granotHistory/completedWebhooks";
 import { withTransaction } from "../../db";
 import { currentReceiptReplay, storeReceiptReplay, type StoredReceiptReplay } from "./receiptReplay";
 import { acceptsLead, certifyWinningLead } from "./acceptedLeadEvidence";
@@ -930,7 +931,8 @@ export async function finalizeReceiptClaim(
 }
 
 async function defaultLoadReceipt(id: string): Promise<ClaimedReceiptSnapshot | null> {
-  const row = await getGranotObservationReceiptModel().findById(id).lean();
+  const model = getGranotObservationReceiptModel();
+  const row = await model.findById(id).lean() ?? await readRetiredWebhook(model.db.db!, toObjectId(id));
   return row ? toSnapshot(row) : null;
 }
 

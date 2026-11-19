@@ -87,6 +87,12 @@ Channel capture (`captureChannelOperationReceipt`) does **not** publish. Extensi
 
 A dedicated consumer (`api/queues/granot-lifecycle-consumer.ts`) and five-minute cron `/api/cron/granot-lifecycle-drain` scan due work. Both are wake-ups only: Mongo receipt `processing.*` remains the durable work source. Details: [`drainer.md`](./drainer.md).
 
+## Retirement of completed inbound Lead receipts
+
+Every two minutes the retention worker examines up to eight completed receipts per Lead route. The daily webhook count, Observation and live Decision must already exist. A creation Decision also requires the created Form Lead. An observation-only or expired match requires a matching version of the source policy that permits observation or linking only. Applied updates require the target Lead and its recorded effect.
+
+The worker reads back the exact compressed BSON from a pinned GCS generation, verifies its checksum and compares it with the original. It rechecks the receipt and business evidence before replacing the receipt with a compact archive locator in one MongoDB transaction. The Observation and Decision continue to support the Desk and booking readers. Failed storage verification leaves the receipt available for retry. Booking status receipts use their own lifecycle.
+
 ## Related
 
 - CRM Posting on form-lead create does **not** write a receipt and is not triggered by webhooks ([`form-lead.md`](../services/form-lead.md)).

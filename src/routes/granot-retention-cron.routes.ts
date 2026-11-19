@@ -1,3 +1,4 @@
+import { retireCompletedWebhooks } from "../services/granotHistory/completedWebhooks";
 import mongoose from "mongoose";
 import { Router } from "express";
 import { connectMongo } from "../db";
@@ -13,10 +14,11 @@ router.all(
       await connectMongo();
       const db = mongoose.connection.db;
       if (!db) throw new Error("Granot retention database unavailable");
-      const [receipts, runs] = await Promise.allSettled([runFutureRetention(db), archiveDueScheduledRuns(db)]);
+      const [receipts, runs, webhooks] = await Promise.allSettled([runFutureRetention(db), archiveDueScheduledRuns(db), retireCompletedWebhooks(db)]);
       if (receipts.status === "rejected") throw receipts.reason;
       if (runs.status === "rejected") throw runs.reason;
-      res.status(runs.value.failures ? 503 : 200).json({ ...receipts.value, scheduled_runs: runs.value });
+      if (webhooks.status === "rejected") throw webhooks.reason;
+      res.status(runs.value.failures || webhooks.value.failures ? 503 : 200).json({ ...receipts.value, scheduled_runs: runs.value, completed_webhooks: webhooks.value });
     } catch (e) {
       next(e);
     }
