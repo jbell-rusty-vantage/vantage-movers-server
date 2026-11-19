@@ -274,3 +274,19 @@ test("conflicting current payloads fail closed and preserve prior membership", a
   assert.equal(f.appends(), 0);
   assert.equal(f.rows.get("Calls")!.length, 2);
 });
+
+
+test("cold and warm delivery preserve operator columns and refuse a displaced managed header", async () => {
+  resetEnsuredTabsCache();
+  const f = statefulWorkbook({ Calls: [[...headers, "Owner note"], ["A", "old", "retain"]] });
+  const writes = [recoveryWrite("upsert")];
+  const deliver = () => writeBatchedTargets({ sheets: f.sheets, writes, quota: grant });
+  assert.ok((await deliver()).every(row => row.status === "synced"));
+  assert.deepEqual(f.rows.get("Calls"), [[...headers, "Owner note"], ["A", "current", "retain"]]);
+  assert.equal(f.count("header"), 0);
+  assert.equal(f.count("clear"), 0);
+  const displaced = [["Mongo ID", "Owner note", "Name"], ["A", "retain", "old"]];
+  f.rows.set("Calls", structuredClone(displaced));
+  assert.ok((await deliver()).every(row => row.status !== "synced"));
+  assert.deepEqual(f.rows.get("Calls"), displaced);
+});

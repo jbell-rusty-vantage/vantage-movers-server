@@ -1,19 +1,18 @@
 import type { sheets_v4 } from "googleapis";
 import { escapeSheetTitleForRange } from "../../../utils/googleSheets/ranges";
 import { withSheetsRetry } from "../../googleSheets/retry";
-
 import { columnLetter } from "../../googleSheets/tabs";
 
 /**
  * Reads a tab once and builds a `Mongo ID -> 1-based row number` map.
  *
- * Batching all of a tab's row lookups into a single `values.get` is the core
+ * Batching all of a tab's row lookups into a single `values.batchGet` is the core
  * read-quota saving versus the legacy per-row `findRowNumberByMongoId` scan
  * (which re-read the whole tab for every document). Callers pass the resulting
  * map to the batch writer so each known row is updated in place and only truly
  * new rows are appended.
  */
-export type TabRowMap = Map<string, number> & { duplicateRows: Map<string, number[]>; idColumn?: number };
+export type TabRowMap = Map<string, number> & { duplicateRows: Map<string, number[]>; idColumn?: number; managedHeadersMatch?: boolean };
 
 export async function buildTabRowMap(
   sheets: sheets_v4.Sheets,
@@ -50,6 +49,7 @@ export async function buildTabRowMap(
   }
   if (!Array.isArray(identities) || identities[0]?.[0] !== "Mongo ID") throw new Error("sheet_identity_rows_invalid");
   map.idColumn = idColumn;
+  map.managedHeadersMatch = headers.every((label, index) => header?.[index] === label);
   for (let index = 1; index < identities.length; index += 1) {
     const row = identities[index];
     if (!Array.isArray(row) || row.length > 1) throw new Error("sheet_identity_rows_invalid");

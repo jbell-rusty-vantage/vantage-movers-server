@@ -62,7 +62,8 @@ export function statefulWorkbook(initial: Record<string, string[][]>) {
       batchUpdate: async (params: RowUpdate, options?: RequestOptions) => {
         const fault = start("update", params, options);
         for (const data of params.requestBody.data) {
-          rows.get(titleFrom(data.range))![Number(/!A(\d+)/.exec(data.range)![1]) - 1] = [...data.values[0]];
+          const row = rows.get(titleFrom(data.range))![Number(/!A(\d+)/.exec(data.range)![1]) - 1];
+          row.splice(0, data.values[0].length, ...data.values[0]);
         }
         await finish("update", fault);
         return { data: {} };

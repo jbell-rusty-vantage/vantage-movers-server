@@ -118,9 +118,10 @@ async function processTabGroup(
     try {
       await ensureTabsAndHeaders(sheets, spreadsheetId, [{ tabName, headers }], async (title, created) => {
         preparedMap = await buildTabRowMap(sheets, spreadsheetId, title, headers, created);
-        if (preparedMap.idColumn !== undefined && preparedMap.idColumn !== headers.indexOf("Mongo ID")) {
+        if (preparedMap.managedHeadersMatch === false) {
           throw new Error("sheet_identity_header_rewrite_unsafe");
         }
+        if (preparedMap.managedHeadersMatch) return "headers_current";
       });
     } catch (error) {
       return failGroup(group, error, "ensure_headers");
@@ -137,7 +138,7 @@ async function processTabGroup(
 
   const upserts = group.writes.filter((write) => write.op === "upsert");
   const deletes = group.writes.filter((write) => write.op === "delete");
-  if (upserts.length && rowMap.idColumn !== undefined && rowMap.idColumn !== headers.indexOf("Mongo ID")) {
+  if (upserts.length && rowMap.managedHeadersMatch === false) {
     return failGroup(group, new Error("sheet_identity_projection_layout_unsafe"), "lookup");
   }
 

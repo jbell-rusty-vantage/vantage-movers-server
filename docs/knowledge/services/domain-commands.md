@@ -149,3 +149,6 @@ Still without a Lead change: none of the known Booking/employee-booking/RingCent
 
 
 **November 4 Call parity review:** [canonical billing policy](../../call-lead-billing.md#form-fill-convergence-and-final-evidence-ordering) owns company-scoped Form Fill, bounded transactional follow-up and final-result ordering. Reporting exclusions remain separate from Booking/Cancellation reporting and Desk eligibility. [Evidence and release limits](../../call-billing-review-2026-11-04.md).
+
+
+Canonical commands store the applied result once as top-level entity references and warnings. The unique origin/key, payload checksum, command identity, provenance and committed result remain queryable. Replay supports the earlier nested result shape. EntityChange revisions remain write-once evidence for the Outreach checkpoint, assignment history, Granot references and historical field changes.
