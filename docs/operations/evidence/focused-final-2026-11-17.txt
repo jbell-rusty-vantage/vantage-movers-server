@@ -1,0 +1,34 @@
+✔ API readiness requires the real connection and exact synthetic database identity (1.7117ms)
+✔ actual child ignores hostile inherited credentials, Node injection and a private .env (112.9471ms)
+✔ unsupported launch options fail before any database or API access (0.7981ms)
+✔ active onboarding links resolve in a standalone checkout (11.5747ms)
+✔ standalone glossary is the exact provenance-pinned canonical snapshot (1.5262ms)
+✔ Cloud environment parses as JSONC and registers existing scripts (10.8658ms)
+✔ help/discovery/runbook need no credentials, and their references exist (18.1177ms)
+✔ strict command scope rejects injection, unknown flags, duplicate flags and unbounded trace inputs (0.6921ms)
+✔ production selection refuses before connecting, even when inherited credentials exist (0.5803ms)
+✔ local boundary requires exact loopback database, primary and every discovered host (1.353ms)
+✔ child subprocess cannot inherit provider credentials, Node flags, dotenv paths or production identity (92.1609ms)
+✔ public failure never prints driver messages or payloads and separates privilege failure (0.6067ms)
+✔ synthetic failure evidence is bounded and stored separately from JSON (13.8802ms)
+✔ empty observations remain partial and every read has row/time bounds and scalar-only projection (2.1892ms)
+✔ sample truncation is explicit and missing permission cannot become an empty healthy result (1.1225ms)
+✔ trace rejects partial read failures instead of turning unknown attempts into zero (0.6818ms)
+✔ CLI discovery works in a real scrubbed subprocess without Mongo or a .env (676.2202ms)
+✔ isTestMode is true only for the literal string 'true' after trim/lowercasing (2.31ms)
+✔ shouldWriteSourceLeadSheets is false by default and only true for the literal 'true' (0.8074ms)
+✔ getMongoDatabaseName swaps between the prod and test databases on TEST_MODE (0.6408ms)
+✔ an isolated test database override cannot change the production database (0.9221ms)
+✔ getRuntimeSheetContainerEnvVar prefixes TEST_ in test mode and is identity otherwise (0.6075ms)
+✔ getRequiredEnv throws when the env var is missing or blank, with the var name in the message (1.0958ms)
+✔ sheet container id helpers route through the TEST_-prefixed env var in test mode (0.7554ms)
+✔ getSourceLeadSheetContainerId returns undefined for not_provided (no source sheet env var) (0.2497ms)
+✔ getSourceLeadSheetContainerId returns undefined for paid_overflow (Master Sheets only) (0.2835ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1633.0176

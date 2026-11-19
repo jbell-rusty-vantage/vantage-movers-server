@@ -1,0 +1,13 @@
+{
+  "git_commit": "868db09443681753390c25d0e6cec2160a130795",
+  "drainer_git_blob": "952a2b404dfe39481d3615d91eb255a16fe70ddc",
+  "source": "Fresh plain temporary directory outside worktrees. Extracted git archive of the commit's src, ops/test-setup.ts, package.json and tsconfig.json. Linked installed dependencies. git hash-object of extracted drainer equalled git rev-parse <commit>:src/services/sheetSync/drainer/runSheetSyncDrain.ts.",
+  "harness": "Copied release local-safety.ts, replica.ts and drainCosts.ts. Selected mixed fixture through its first assertMembership, retained replica identity checks and cleanup. Expected Form/Call/Booking/Cancellation metadata counts [3,1,3,1], absent projection and complete discovery rows containing coalescing_key. The projectedBytes output field measures the actual discovery response in both runs.",
+  "snapshot_sha256": {"drainer":"b10ed3d7a57edb3823ded8c3feb3fba308eb0075bc50bf1c4fe1fee9a4d7a2ed","replica":"8a248dcdeac6b991b62f634e6ed0989cdffd4633489e463393d9fc0ca54c2daa","drainCosts":"2e43e53bfeb8c5b5a5bc2f7b7869c3e657fea4815df728b0d0bb2af4d0fa7590","localSafety":"6fbc3f6c506dd146e50d1fadd2f46d9bf41fdcb5a85f2a34ff2b168efd503e9d"},
+  "command": "node --import tsx ops/sheet-sync-recovery/replica.ts",
+  "exit_code": 0,
+  "actual_baseline_output": {"workload":"mixed","selected":5,"claimed":5,"broadBytes":1814,"projectedBytes":1814,"claimedBytes":2259,"commands":{"find.sheet_sync_leases":134,"findAndModify.sheet_sync_leases":2,"insert.sheet_sync_runs":1,"find.sheet_sync_jobs":1,"findAndModify.sheet_sync_jobs":10,"find.booked_leads":3,"find.form_leads":3,"find.cancelled_leads":1,"find.call_leads":1,"update.sheet_sync_jobs":1,"update.booked_leads":3,"update.form_leads":3,"update.cancelled_leads":1,"update.call_leads":1,"insert.sheet_sync_attempts":1,"findAndModify.sheet_sync_runs":1,"update.sheet_sync_leases":1},"attemptRows":16,"updatePayloadBytes":{"sheet_sync_leases":407,"sheet_sync_jobs":1670,"booked_leads":819,"form_leads":792,"cancelled_leads":279,"call_leads":264,"sheet_sync_runs":207},"provider":{"topology":8,"read":7,"format":4,"header":4,"append":4,"clear":2}},
+  "assertions": "Five synced. Each expected synthetic identity occurred exactly once in its Forms, Calls, Booked Deals or Cancelled Deals tab. The other fixture tabs were empty. Four appends. Eight Mongo collection metadata updates.",
+  "current_output": "sheet-cost-replica-2026-11-17.log",
+  "scope": "Two real local replica runs using corresponding fresh synthetic IDs and an offline workbook. Baseline selected only the initial mixed success case."
+}

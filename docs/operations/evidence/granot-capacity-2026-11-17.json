@@ -1,0 +1,36 @@
+{
+  "scope": "Direct member filesystem readings, one bounded dbStats per SRV member after alias/stamp/replica identity checks. Different sampling times. No disk growth attribution, alert or forecast qualification.",
+  "database": "vantagemovers",
+  "set": "atlas-khw1wz-shard-0",
+  "stamp": {
+    "deployment_commit": "7d12c4b3e09ef1e0e87c16dabbb8cc816427d73a",
+    "recorded_at": "2026-11-17T20:36:00.542Z",
+    "vercel_deployment_id": "dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm"
+  },
+  "members": [
+    {
+      "member": "ac-9mmcj05-shard-00-00.ccf491v.mongodb.net:27017",
+      "role": "secondary",
+      "at": "2026-11-17T20:36:38.132Z",
+      "used_bytes": 10283823104,
+      "total_bytes": 13853786112,
+      "used_percent": 74.231
+    },
+    {
+      "member": "ac-9mmcj05-shard-00-01.ccf491v.mongodb.net:27017",
+      "role": "primary",
+      "at": "2026-11-17T20:36:38.480Z",
+      "used_bytes": 11842822144,
+      "total_bytes": 13853786112,
+      "used_percent": 85.484
+    },
+    {
+      "member": "ac-9mmcj05-shard-00-02.ccf491v.mongodb.net:27017",
+      "role": "secondary",
+      "at": "2026-11-17T20:36:38.849Z",
+      "used_bytes": 11732094976,
+      "total_bytes": 13853786112,
+      "used_percent": 84.685
+    }
+  ]
+}

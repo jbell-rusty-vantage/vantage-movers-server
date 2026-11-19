@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-18T17:54:02.407Z",
+  "sampling": "first eight surviving receipts by ID in each of fifteen four-minute intervals per hour; secondary indexed reads; groups are purposive, not rates",
+  "windows": [
+    {
+      "ageHours": [
+        24,
+        25
+      ],
+      "from": "2026-11-17T16:54:02.407Z",
+      "until": "2026-11-17T17:54:02.407Z",
+      "rows": 66,
+      "completedHTTP": 63,
+      "routine": 63,
+      "newerWinner": 63,
+      "ofNewerWithRunInMongo": 63,
+      "ofNewerWithTerminalRun": 63,
+      "ofNewerWithTerminalRunPastActionExpiry": 63,
+      "ofNewerWithClosedRunPointer": 0,
+      "runStatus": {
+        "completed": 63
+      },
+      "distinctRuns": 7
+    },
+    {
+      "ageHours": [
+        48,
+        49
+      ],
+      "from": "2026-11-16T16:54:02.407Z",
+      "until": "2026-11-16T17:54:02.407Z",
+      "rows": 76,
+      "completedHTTP": 70,
+      "routine": 70,
+      "newerWinner": 70,
+      "ofNewerWithRunInMongo": 70,
+      "ofNewerWithTerminalRun": 70,
+      "ofNewerWithTerminalRunPastActionExpiry": 70,
+      "ofNewerWithClosedRunPointer": 0,
+      "runStatus": {
+        "completed": 70
+      },
+      "distinctRuns": 10
+    },
+    {
+      "ageHours": [
+        144,
+        145
+      ],
+      "from": "2026-11-12T16:54:02.407Z",
+      "until": "2026-11-12T17:54:02.407Z",
+      "rows": 80,
+      "completedHTTP": 80,
+      "routine": 76,
+      "newerWinner": 76,
+      "ofNewerWithRunInMongo": 76,
+      "ofNewerWithTerminalRun": 76,
+      "ofNewerWithTerminalRunPastActionExpiry": 76,
+      "ofNewerWithClosedRunPointer": 0,
+      "runStatus": {
+        "completed": 76
+      },
+      "distinctRuns": 12
+    },
+    {
+      "ageHours": [
+        192,
+        193
+      ],
+      "from": "2026-11-10T16:54:02.407Z",
+      "until": "2026-11-10T17:54:02.407Z",
+      "rows": 76,
+      "completedHTTP": 71,
+      "routine": 70,
+      "newerWinner": 70,
+      "ofNewerWithRunInMongo": 0,
+      "ofNewerWithTerminalRun": 0,
+      "ofNewerWithTerminalRunPastActionExpiry": 0,
+      "ofNewerWithClosedRunPointer": 0,
+      "runStatus": {},
+      "distinctRuns": 7
+    }
+  ]
+}

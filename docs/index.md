@@ -6,6 +6,10 @@ description: Type-grouped entrypoint for agent-readable concepts.
 
 # Vantage main server knowledge
 
+Everyday work: [operate the server](operations/README.md) and [safe local agent setup](../CLOUD_AGENTS.md). Start with the task runbook; use this catalog when a deeper invariant or implementation reference is needed.
+
+Optimization program: [service sequence and progress ledger](operations/SERVICE-OPTIMIZATION-ROADMAP.md), with the [current next-session prompt](operations/NEXT-SESSION.md). Phase 1 Sheet Sync is active; local qualification, release and production proof are tracked separately.
+
 November 17 capacity continuation: [isolated W0/W5 release and qualification record](capacity-review-2026-11-16/QUALIFIED-RELEASE-2026-11-17.md), [fresh all-member capacity/recovery audit](capacity-review-2026-11-16/PRODUCTION-CAPACITY-AUDIT-2026-11-17.md), and [bounded retention-query/index proposal](capacity-review-2026-11-16/W4-ATLAS-DIAGNOSIS-2026-11-17.md). Application deployment, sustained qualification and database-operation approval remain separate.
 
 November 16 capacity Phase 1: [release evidence and engineering explanation](capacity-review-2026-11-16/PHASE-ONE-RELEASE.md) — stop false equal-date Call changes while preserving temporal acceptance. Later retention, index and compaction releases remain separate.

@@ -1,0 +1,56 @@
+{
+  "observed_at": "2026-11-17T18:59:54.959Z",
+  "database": "vantagemovers",
+  "replica": "atlas-khw1wz-shard-0",
+  "alias_deployment_stamp": {
+    "deployment_commit": "7d12c4b3e09ef1e0e87c16dabbb8cc816427d73a",
+    "recorded_at": "2026-11-17T18:53:00.640Z",
+    "vercel_deployment_id": "dpl_384JZ1Fn3N22ZnFRTAhqdC1XgLhm"
+  },
+  "run_sample": {
+    "first_started": "2026-11-17T17:45:02.334Z",
+    "last_started": "2026-11-17T18:55:02.334Z",
+    "groups": {
+      "idle": {
+        "runs": 16,
+        "claimed": 0,
+        "synced": 0,
+        "failed": 0,
+        "deferred": 0,
+        "incomplete": 0
+      },
+      "single": {
+        "runs": 7,
+        "claimed": 7,
+        "synced": 7,
+        "failed": 0,
+        "deferred": 0,
+        "incomplete": 0
+      },
+      "multiple": {
+        "runs": 2,
+        "claimed": 4,
+        "synced": 4,
+        "failed": 0,
+        "deferred": 0,
+        "incomplete": 0
+      }
+    }
+  },
+  "job_sample": {
+    "rows": 25,
+    "storedJobBsonBytes": 11099,
+    "idOnlyBsonBytes": 550
+  },
+  "method": {
+    "target": "Canonical Vercel alias under vantage-4d3db9ef, database vantagemovers on the expected cluster SRV with TLS, writable primary, replica set name and all three SRV-advertised members verified. Indexed deployment stamp matched the Vercel deployment ID and historical release SHA before sampling.",
+    "operations": [
+      "hello",
+      "findOne deployment stamp via scope index",
+      "find latest 25 runs sorted by _id descending, hint _id_, return timestamps/status and four counters",
+      "aggregate jobs with _id_ hint, descending sort, limit 25, project $bsonSize of $$ROOT and {_id}, group counts and byte totals"
+    ],
+    "limits": "One native driver connection, 2000 ms per data read, no disk spilling, application bootstrap, customer payload output, writes or executionStats. Initial identity checks refused historical member names; current cluster SRV records, replica name and deployment stamp independently identified the target.",
+    "interpretation": "Separate latest-record samples from the existing deployed application. Job sample includes stored rows irrespective of eligibility. The ID-only byte count is hypothetical. Multiple claims do not prove overlap. No measured release effect, distribution across a business day, total backlog or Google verification."
+  }
+}

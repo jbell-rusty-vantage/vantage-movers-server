@@ -32,7 +32,7 @@ sources:
     resource: ../docs/adr/0001-mongodb-system-of-record.md
 generated:
   by: process:docs-keeper
-  at: 2026-11-05T02:30:00Z
+  at: 2026-11-17T17:00:00Z
 ---
 **Platform glossary:** [`../../../../CONTEXT.md`](../../../../CONTEXT.md)  
 **ADRs:** [`../../../../docs/adr/`](../../../../docs/adr/) — [0001 Mongo SoR](../../../../docs/adr/0001-mongodb-system-of-record.md)  
@@ -169,10 +169,10 @@ Reasons: `domain_write`, `domain_delete`, `cron`, `admin_retry`, `manual`. Admin
 
 1. **Check topology fence** `lead-reporting:tab-migration`; return `skipped: true` before acquiring/claiming anything while held. **Acquire** global lease `sheet-sync:drain`; skip (`skipped: true`) if another drain holds it.
 2. **Create** `SheetSyncRun` (`running`). Heartbeat renews the drain lease and claimed job leases; lease loss throws.
-3. **Claim** due jobs (`pending`/`retrying`, `due_at ≤ now`, unleased) up to `maxJobsPerDrain` (500), sorted `priority desc, createdAt asc`.
+3. **Claim** due jobs. Discovery returns only IDs of `pending`/`retrying` jobs due by the selection time with absent or expired leases, up to `maxJobsPerDrain` (default 500), in descending priority and ascending creation order. Each atomic claim rechecks status and job lease by ID and returns the full current document for planning. A lost claim contributes no work to this run. [Measured discovery and delivery costs](../../efficiency/sheet-discovery-2026-11-17.md).
 4. **Plan** each logical job via `jobPlanner.ts` — reload current Mongo (or tombstone), preserving its retry hints/targets even when claimed keys overlap. Physical writes are coalesced after planning; no subscriber is marked synced merely because a representative was processed.
 5. **Recheck topology fence**, then **batch write** destinations before stale deletes via `batchWriter.ts` + `QuotaLimiter`. Failed/deferred destination upserts prevent stale deletes. Identical per-ID writes from overlapping jobs are coalesced without losing per-job outcomes; conflicting payloads fail. Duplicate physical IDs are repaired and logged.
-6. **Persist** `sheet_sync[]` with direct `updateOne` (must not abort the run). Metadata persist failure flips those outcomes to `failed`.
+6. **Persist** `sheet_sync[]` with one direct `updateOne` per surviving physical document (must not abort the run). Overlapping plans contribute all outcomes; the final surviving snapshot and final-document order determine the combined metadata write. Metadata persist failure flips every confirmed subscriber outcome for that document to `failed`, while existing failed/deferred outcomes remain unchanged. [Local command-cost and recovery proof](../../efficiency/sheet-metadata-2026-11-17.md).
 7. **Finalize** jobs: empty plan (doc gone / unmatched skip) → `synced`; all writes ok → `synced`; any `failed` → `retrying` with exponential backoff (30s × 2^(attempts-1), cap 15 min) until `maxAttempts` (8) then `failed`; unconfirmed structural delivery, quota or request-guard `deferred` → `retrying` in 60s **without** burning an attempt. `target_hints` = failed/deferred targets only. Attempts retain per-job/target outcomes and reasons; duplicate claimed keys keep representative-only Daily Operations emission within that drain, and completion facts remain deduped by job ID.
 8. Run timeout releases **unplanned** remaining claims back to `pending`. Run-level exception releases that run's still-`processing` jobs to `retrying` and logs `sheet_sync.drain.failed`.
 
@@ -196,6 +196,8 @@ The existing next queue/cron/admin drain reloads current Mongo plans and fresh p
 Duplicate-row repair uses the same guarded single-attempt deletions. No per-row provider reads or new scheduler are introduced. Google success followed by Mongo metadata failure keeps the jobs retryable; fresh identity reads recover both append and stale-delete effects without repeating a positional delete.
 
 Automatic recovery runs on the existing drain schedule after due time and while ownership, quota and topology permit. Invalid headers/topology or exhausted ordinary failures need operator correction and the existing Admin retry; never reset processing jobs or delete historical rows as a shortcut. Lease/fence checks cannot cancel an already in-flight request or promise exactly-once network delivery. Operators must still acquire both leases and wait out older writers before topology changes. Rollback uses the previous application revision, retains outbox/attempt/metadata evidence, and reintroduces the unsafe structural retry behavior; it is not a reason to clear pending work. [Qualification and release handoff](../../efficiency/sheet-sync-recovery-handoff-2026-11-04.md).
+
+The [local Sheet Sync trace](../../operations/sheet-sync.md#stalled-retrying-or-uncertain-work) joins one job to bounded attempt and run history. It classifies the stored deferred-attempt reason inside Mongo and separately samples the two named leases and current user quota window. The trace cannot establish Google membership, the effective worker budget, or scheduler execution.
 
 ## Temporary topology writer fence
 

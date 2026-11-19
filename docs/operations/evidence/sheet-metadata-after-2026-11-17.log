@@ -1,0 +1,9 @@
+PASS transaction rollback retains atomic domain/outbox intent
+{"measurement":"overlapping_metadata","subscribers":3,"uncertain_updates":1,"recovered_updates":1,"uncertain_update_bson_bytes":293,"recovered_update_bson_bytes":264}
+PASS lost append, duplicate claimed keys and overlapping jobs replan fresh Mongo; completion dedupes
+PASS lost tombstone delete response reconciles identity without deleting the neighbor
+PASS same-key subscribers retain independent financial retry hints
+PASS Mongo metadata failure after confirmed destination and stale delete recovers both subscribers
+PASS competing drain skips; lease takeover during provider delivery prevents old-owner finalization
+PASS topology fence acquired during delivery preserves stale membership until a later owner reconciles
+7 replica proofs passed; synthetic workbook requests only; no production/provider calls

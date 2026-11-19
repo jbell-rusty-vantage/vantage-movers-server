@@ -1,0 +1,107 @@
+{
+  "base": "868db09443681753390c25d0e6cec2160a130795",
+  "branch": "optimization/service-operability-2026-11-17",
+  "scope": "Current changed/new non-docs files; docs and evidence separately linked by qualification record. No commit or deployment.",
+  "files": [
+    {
+      "path": ".cursor/Dockerfile",
+      "sha256": "9ad7d2fb016cf3bfe93c2a7c090313f4de60c4fee701543a19a803aa35458a23"
+    },
+    {
+      "path": ".cursor/environment.json",
+      "sha256": "7410537939defc3647a591f1c965f1a6f755c82323904ad0578bcf2f5f1f430d"
+    },
+    {
+      "path": ".cursor/rules/sheet-sync-process.mdc",
+      "sha256": "ab37a9df9eecd85fd0a0f3560a4d42ba544de4743df9bdd142feb2719c70812b"
+    },
+    {
+      "path": ".cursor/scripts/ensure-cloud-runtime.sh",
+      "sha256": "aaf05823c72c77f2fd8d951a2a523fe85d81efed3c96a949aca041d122228e71"
+    },
+    {
+      "path": ".cursor/scripts/start-api.sh",
+      "sha256": "a55cb284ec28382aeca2ddd4f69ad774b03cc3d44904b2c542bea8def1a58d82"
+    },
+    {
+      "path": ".cursor/scripts/start-mongo.sh",
+      "sha256": "8ec12b0a653cdbc38b247587caa85e3395156a1d11d01ad4b0e1f4243d9a7c43"
+    },
+    {
+      "path": ".gitattributes",
+      "sha256": "d2977746da3512c296885dfbdfae6ec499a92c7a74e58e0b2cd1d93168d41eb3"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "a67cc5f9b3073aaa997081c8f40f6bfe3415386678fbfb3600e5b232ac30f4ae"
+    },
+    {
+      "path": "CLOUD_AGENTS.md",
+      "sha256": "2f6bf38296b6a844508524916f3bdabb29c7786761d19f887d2a9e87030f413f"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "sha256": "441503bca76a69280c452311d8af580c398d480c35ab3c4fd2518483bad7bbb5"
+    },
+    {
+      "path": "ops/dev-server.ts",
+      "sha256": "4641584ccb0460c7ab6a8a625b925fa4f4a05272586e154c6bea1a451dc07e0e"
+    },
+    {
+      "path": "ops/local-runtime.test.ts",
+      "sha256": "a46ab15437700c7e130e386f4944a0d7d906e87c005c47212269301efb4ad324"
+    },
+    {
+      "path": "ops/local-runtime.ts",
+      "sha256": "bc569c846e130c36064ed4b7aaca054be555adef62cbf2b326842ac29552b258"
+    },
+    {
+      "path": "ops/sheet-sync-recovery/replica.ts",
+      "sha256": "a1c6b60ce87455049c6763786ef12449ae79d1ed6ebfb437fc28c49a3665f80f"
+    },
+    {
+      "path": "ops/vantage/cli.test.ts",
+      "sha256": "173e6adc4d3303411e86892618882d6b963c27bd92f1b5fa8704c3d2a07a3fcd"
+    },
+    {
+      "path": "ops/vantage/cli.ts",
+      "sha256": "12c4d9a82be75befd9bbc9e83d0aa77d396dba2e22c78d40156df4769b371a61"
+    },
+    {
+      "path": "ops/vantage/commands.ts",
+      "sha256": "fae37d563a4475a052c5649d3464d496a0534c5f5961983d0655dda31bb5e1c7"
+    },
+    {
+      "path": "ops/vantage/diagnostics.replica.ts",
+      "sha256": "9d1eb950f634ca0ecd25aaf3cc459ebdf960a0bd404510eb61d52a2a5d98a011"
+    },
+    {
+      "path": "ops/vantage/local-safety.ts",
+      "sha256": "6fbc3f6c506dd146e50d1fadd2f46d9bf41fdcb5a85f2a34ff2b168efd503e9d"
+    },
+    {
+      "path": "ops/vantage/sheet-sync.ts",
+      "sha256": "b10afa14b3c85f98a61f98f07578e6f898bfec668adb67ace153d17ac7591082"
+    },
+    {
+      "path": "ops/vantage/test-command.ts",
+      "sha256": "9b7b9f4312bc633d04b56f50a155dc6c58c6699cd76fd1c9c17bfbc11942cfac"
+    },
+    {
+      "path": "package.json",
+      "sha256": "3d67f92cd80b4b30a5531694ae8dfb8a758c9130ab1610d5102da9ba8954854c"
+    },
+    {
+      "path": "src/config/domain/runtime.test.ts",
+      "sha256": "ba341de7be1fb56c2d7d39d9f8959ab910254ce3be47bd9eaed72e98405c494a"
+    },
+    {
+      "path": "src/services/sheetSync/drainer/metadataPersistence.test.ts",
+      "sha256": "f4a4d4eb635ee1703565ae0759dc457123ade6647e169c8ddaf374fada09142d"
+    },
+    {
+      "path": "src/services/sheetSync/drainer/runSheetSyncDrain.ts",
+      "sha256": "780b0693551e5b2820bc5cbb0ea1041616cd7a1c6a54a3bf7ed41c2d29039da1"
+    }
+  ]
+}

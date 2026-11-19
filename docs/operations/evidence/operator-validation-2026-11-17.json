@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-17",
+  "branch": "optimization/service-operability-2026-11-17",
+  "base_commit": "868db09443681753390c25d0e6cec2160a130795",
+  "release_status": "local implementation only; no commit, push, deploy or production/provider mutation",
+  "runtime": { "node": "24.18.0", "platform": "Windows", "package_manager": "pnpm 10.13.1" },
+  "commands": [
+    { "command": "pnpm test:vantage", "result": "passed", "passed": 17, "failed": 0, "skipped": 0 },
+    { "command": "pnpm vantage -- test sheet-sync --suite fast --json", "result": "passed", "passed": 78, "skipped": 0 },
+    { "command": "node --import tsx ops/vantage/cli.ts test sheet-sync --suite replica --json", "result": "passed", "passed": 7, "skipped": 0 },
+    { "command": "pnpm test:vantage:replica", "result": "passed", "observed_diagnostic_commands": 5, "command_allowlist": ["aggregate", "getMore", "killCursors"] },
+    { "command": "node --import tsx ops/vantage/cli.ts doctor --profile sheet-replica --json", "result": "ready", "scope": "identity and read access only", "address": "127.0.0.1:27129", "replica_set": "sheetRecoveryProof", "database": "testvantagemovers_sheetrecovery" },
+    { "command": "node --import tsx ops/vantage/cli.ts sheet-sync inspect --target local --profile sheet-replica --json", "result": "partial", "jobs_returned": 0, "interpretation": "empty bounded sample; not healthy/zero-backlog certification" },
+    { "command": "node --import tsx ops/vantage/cli.ts sheet-sync inspect --target production --json", "result": "unsupported", "connection_attempted": false },
+    { "command": "pnpm --silent vantage -- services --json", "result": "passed", "stdout": "one JSON document, no package-manager banner" },
+    { "command": "pnpm typecheck", "result": "passed", "note": "Final full-scope rerun completed without diagnostics. The final error-status string assertions also passed the focused suite." },
+    { "command": "pnpm exec eslint ops/dev-server.ts ops/vantage ops/local-runtime.ts ops/local-runtime.test.ts --max-warnings 0", "result": "passed" },
+    { "command": "pnpm lint", "result": "passed", "exit_code": 0 },
+    { "command": "git diff --check", "result": "passed" }
+  ],
+  "actual_replica_evidence": [
+    "Native Mongo diagnostic reads use a fresh owned PID namespace on the fixed loopback PRIMARY replica.",
+    "Seeded malformed fields and synthetic sensitive strings are removed by server-side scalar projections; output contains none of the seeded strings.",
+    "26 attempts yield 25 returned rows, explicit truncation, and the canonical run_id association.",
+    "Mongo command monitoring during inspect/trace observed only the read allowlist, with unchanged collection inventory.",
+    "Cleanup rechecks exact PID namespace and primary/member identity before dropping only the owned fixture database.",
+    "Existing recovery harness ran with synthetic workbook calls and real Mongo transactions/indexes under the scrubbed CLI child environment."
+  ],
+  "injected_or_pure_evidence": [
+    "Wrong URI/host/database, standalone/secondary, wrong set name and remote/malformed advertised members are rejected by the shared identity guard.",
+    "Privilege errors 13 and 18 are injected unit cases, not a real authenticated Mongo read-only-user rehearsal.",
+    "Injected failure on the attempt read after a successful job read rejects the trace; it cannot become an empty healthy result.",
+    "Unknown/repeated flags, production test targets and malformed/oversized/injection-shaped job IDs are rejected before database access.",
+    "A real subprocess confirms removal of inherited provider credentials, future unknown secrets, Node options, Atlas target and dotenv path. HOME and USERPROFILE are forced to the OS null device.",
+    "Help, discovery and runbook references work without credentials or a live database. Package test/lint registration and executable runbook examples are checked."
+  ],
+  "corrected_attempts": [
+    "The first hostile-environment test failed because Windows restored USERPROFILE when omitted. The helper now explicitly forces HOME/USERPROFILE to NUL (or /dev/null on Unix), and the actual subprocess test passes.",
+    "Node test output format is explicitly TAP in the fast child, so pass/skip parsing does not depend on terminal reporter selection."
+  ],
+  "limitations": [
+    "Production diagnostics and every repair/apply command are deliberately unsupported; no generic Mongo interface is exposed.",
+    "Inspect samples newest jobs by _id, at most 25; it does not count all statuses or certify queue health.",
+    "Trace returns at most 25 attempts and 25 referenced runs. Runs/attempts have 90-day TTL; no archive or provider membership is queried.",
+    "Separate read operations are not a transactionally consistent snapshot. Each query has maxTimeMS 2000, no disk spill, and a 26-row lookahead.",
+    "Startup-level shell NODE_OPTIONS can run before JavaScript starts; only child startup options can be scrubbed by this code.",
+    "Failure output from the scrubbed synthetic test child is retained only in a unique bounded local temporary log, never emitted into JSON or uploaded. The local log is intentionally operator-removable.",
+    "Windows proof does not substitute for the separately recorded Linux/container and fresh-agent rehearsal."
+  ]
+}

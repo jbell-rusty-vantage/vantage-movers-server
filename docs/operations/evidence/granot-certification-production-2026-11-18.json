@@ -1,0 +1,46 @@
+{
+  "release": {
+    "target": "production",
+    "at": "2026-11-18T18:47:25.0797573+00:00",
+    "id": "dpl_4jwpcbjxSkn6tgcuCQvPYbdgybV8",
+    "alias": "vantage-movers-main-server.vercel.app",
+    "url": "vantage-movers-main-server-4cp5ph2ro-vantage-4d3db9ef.vercel.app",
+    "promotedAt": "2026-11-18T18:47:15.6620000Z",
+    "commit": "615ff36788b85075c1260c8390c33e3613ab733c"
+  },
+  "qualification": {
+    "qualityRun": 44367774357,
+    "dbReady": 1,
+    "dbName": "vantagemovers",
+    "productionConfigurationRun": 44367761586,
+    "previewRun": 44367773773,
+    "loopbackDisabledSheet": 110,
+    "database": 200,
+    "health": 200,
+    "sha": "615ff36788b85075c1260c8390c33e3613ab733c",
+    "loopbackQueuedSheet": 40,
+    "workflow": "https://github.com/jbell-rusty-vantage/vantage-movers-server/actions/runs/44371805110"
+  },
+  "natural": {
+    "release": {
+      "target": "production",
+      "at": "2026-11-18T18:47:25.0797573+00:00",
+      "id": "dpl_4jwpcbjxSkn6tgcuCQvPYbdgybV8",
+      "alias": "vantage-movers-main-server.vercel.app",
+      "url": "vantage-movers-main-server-4cp5ph2ro-vantage-4d3db9ef.vercel.app",
+      "promotedAt": "2026-11-18T18:47:15.6620000Z",
+      "commit": "615ff36788b85075c1260c8390c33e3613ab733c"
+    },
+    "since": "2026-11-18T18:47:15.662Z",
+    "until": "2026-11-18T19:00:02.868Z",
+    "rowsRead": 0,
+    "capped": false,
+    "certificatesVerified": 0,
+    "currentWinnersWithBothPointers": 0,
+    "subsequentlySuperseded": 0,
+    "otherWinnerStates": 0,
+    "acceptedWithoutCert": 0,
+    "pairs": {},
+    "outcomes": {}
+  }
+}

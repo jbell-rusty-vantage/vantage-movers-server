@@ -1,0 +1,33 @@
+# Operate the server
+
+Start with [local agent setup](../../CLOUD_AGENTS.md), then the [Granot runbook](granot.md) or [Sheet Sync runbook](sheet-sync.md). This entrypoint is for tasks; the [knowledge catalog](../index.md) remains the reference for deeper contracts. The [Granot engineering handback](GRANOT-ENGINEERING-2026-11-17.md) and [Sheet engineering package](SHEET-ENGINEERING-2026-11-17.md) record each service's release status.
+
+**Program tracking:** [service-by-service sequence and progress ledger](SERVICE-OPTIMIZATION-ROADMAP.md). **Next session:** [current engineering handoff](NEXT-SESSION.md). These are the canonical order/status and handoff; the workflow table below is navigation.
+
+The architecture is an Express application on Vercel, with MongoDB as the durable authority. Queue messages wake workers; they do not replace Mongo job state. A useful optimization reduces work before it fans out, or removes repeated reads/writes within an invocation, while keeping transactional intent, claim fences, replay identities and recovery evidence intact. Warm-process caches cannot be correctness authorities across serverless invocations.
+
+## Pick the workflow
+
+| Task | Start here | Durable authority and effects | Recovery / proof seam |
+| --- | --- | --- | --- |
+| Sheet row missing, stalled or duplicated | [Sheet Sync runbook](sheet-sync.md) | `sheet_sync_jobs`, `sheet_sync_runs`, `sheet_sync_attempts`, `sheet_sync_leases`; domain `sheet_sync` metadata; Google Sheets is a projection | `runSheetSyncDrain`; fresh Mongo plan and physical Mongo ID lookup after uncertain delivery; [replica proof](../../ops/sheet-sync-recovery/replica.ts) |
+| Form intake or qualified Call admission | [Form](../knowledge/services/form-lead.md), [Call qualification](../knowledge/services/ringcentral-call-lead-qualification.md) | `form_leads`, `call_leads`, canonical command and change evidence, Sheet intent; optional post-commit CRM/messaging | [Canonical executor](../knowledge/services/domain-commands.md); `(origin, idempotency_key)` plus checksum; [command tests](../../src/services/domainCommands/domainCommands.test.ts), [qualification tests](../../src/services/ringcentral/webhook-call-log-qualification.test.ts) |
+| Booking, Cancellation or allocation discrepancy | [Bookings](../knowledge/services/bookings.md), [Cancellations](../knowledge/services/cancelled-lead.md), [allocation](../knowledge/services/agent-allocation.md) | `booked_leads`, `cancelled_leads`, Lead mirrors, command/change evidence, Sheet intent; official outcomes retain their own reporting | Canonical transaction and domain revision; [Booking mirror tests](../../src/services/bookings/bookingMirror.test.ts), [Cancellation snapshots](../../src/services/cancellations/cancellationCorrelationSnapshots.test.ts); provider observations alone are not official outcomes |
+| RingCentral capture or Numbers disagreement | [Capture](../knowledge/services/number-activity-capture.md), [reads](../knowledge/services/number-activity-reads.md) | Account-scoped capture/interaction identities, Number projections and `sales_intelligence_jobs`; RingCentral reads and queued capture | Existing capture/reconcile worker and aliases; [Numbers replica harness](../../ops/numbers-v2/all-numbers.replica.ts); inspect its prerequisites before direct execution |
+| Outreach assignment, eligibility or cadence | [Lifecycle](../knowledge/sales-outreach-lifecycle.md), [Desk](../knowledge/services/sales-outreach-desk.md) | Lead remains authoritative; `sales_outreach_subjects`, `sales_intelligence_jobs`, configuration, progress and command ledger; `entity_changes` feeds nominations | Revision/CAS, command idempotency and job leases; [Desk state replica](../../ops/sales-outreach/desk-state.replica.ts), [commands replica](../../ops/sales-outreach/commands.replica.ts); current CLI does not authorize their repair commands |
+| Granot observation, approval or delayed apply | [Granot trace](granot.md), [Collector](../knowledge/services/granot-http-collector.md), [canonical commands](../knowledge/services/domain-commands.md) | `granot_automation_runs`, `granot_webhook_receipts`, `granot_observations`, `synchronization_decisions`, Record Links; approved work enters canonical lifecycle | Sealed plan/checksum, operation ID, temporal acceptance, lease and original expiry; [lifecycle replica harness](../../ops/test-granot-lifecycle-replica.ts); do not refresh approval or expiry to make replay succeed |
+| Capacity pressure | [Qualified release](../capacity-review-2026-11-16/QUALIFIED-RELEASE-2026-11-17.md), [measured inventory](../capacity-review-2026-11-16/PRODUCTION-CAPACITY-AUDIT-2026-11-17.md) | Member filesystem, collection/index allocation and arrival/drain rates are separate measurements | Bounded read-only measurement first; no count reduction demonstrates filesystem reclamation |
+
+The table is a navigation map, not a claim that every listed harness is isolated or newly qualified. Use the documented local target for the Sheet Sync CLI or the single-action Granot trace. Other replica scripts have their own environment/target contracts and must not be run with inherited production credentials.
+
+## Inspect, reproduce, repair
+
+1. Identify the workflow and its exact record/job ID. Use the supported CLI help and runbook. Keep customer payloads and credentials out of evidence.
+2. Establish target identity before interpreting results. Missing permission, failed queries, truncated samples and expired history mean incomplete evidence, not healthy or zero.
+3. Reproduce with synthetic data and faked providers. Fast tests prove branch behavior; real replica tests prove transactions, unique indexes, lease/CAS and replay behavior. Neither proves live provider delivery.
+4. Use the existing canonical command for a repair only after reviewing its exact scope, current preconditions, idempotency and owner authority. This CLI slice provides no repair/apply command. Never reset leases, delete job history or invent qualification to force convergence.
+5. Verify durable state plus delivery evidence. Keep unresolved effects retryable. Application rollback preserves the evidence needed for the next attempt.
+
+## Work sequence
+
+Follow the [canonical roadmap](SERVICE-OPTIMIZATION-ROADMAP.md) and [current handoff](NEXT-SESSION.md) for the active service, prior release gates and dated operational checkpoints. The [write and archive decision brief](WRITE-AND-ARCHIVE-DECISIONS.md) gives each service a measured comparison and names the owner of shared storage proposals.

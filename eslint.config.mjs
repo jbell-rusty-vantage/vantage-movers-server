@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default [
   { ignores: ['node_modules/**', 'dist/**', 'coverage/**'] },
   {
-    files: ['src/**/*.ts', 'api/**/*.ts', 'ops/vantage/**/*.ts', 'ops/capacity/granot-*.ts'],
+    files: ['src/**/*.ts', 'api/**/*.ts', 'ops/vantage/**/*.ts', 'ops/capacity/granot-*.ts', 'ops/local-runtime.ts', 'ops/local-runtime.test.ts', 'ops/dev-server.ts', 'ops/sheet-sync-recovery/*.ts'],
     languageOptions: { parser: tseslint.parser },
     plugins: { '@typescript-eslint': tseslint.plugin },
     rules: {

@@ -1,0 +1,7 @@
+{
+  "source": "C:/Users/Pinda/Proyectos/vantage/CONTEXT.md",
+  "captured_on": "2026-11-17",
+  "sha256": "7bee8bca1af7186def0109d6057bf80b39d31ae56e917233e44a2d3cb001a8ce",
+  "bytes": 66520,
+  "policy": "Exact source snapshot for standalone checkouts; do not edit vocabulary here. Change the workspace canonical source and regenerate this file and shared-glossary.md together. Relative links inside the snapshot retain workspace semantics and are not standalone runbook links."
+}

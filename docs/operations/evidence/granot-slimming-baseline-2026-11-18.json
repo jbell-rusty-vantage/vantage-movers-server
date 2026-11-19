@@ -1,0 +1,271 @@
+{
+  "at": "2026-11-18T18:47:46.642Z",
+  "source": "primary",
+  "storage": [
+    {
+      "name": "granot_webhook_receipts",
+      "count": 1728715,
+      "logicalBytes": 3874117070,
+      "allocatedData": 1237729280,
+      "indexBytes": 492654592
+    },
+    {
+      "name": "granot_observations",
+      "count": 1728715,
+      "logicalBytes": 1869348567,
+      "allocatedData": 598462464,
+      "indexBytes": 309399552
+    },
+    {
+      "name": "synchronization_decisions",
+      "count": 1737825,
+      "logicalBytes": 2163125858,
+      "allocatedData": 321331200,
+      "indexBytes": 234225664
+    },
+    {
+      "name": "granot_automation_runs",
+      "count": 16768,
+      "logicalBytes": 2227715224,
+      "allocatedData": 663179264,
+      "indexBytes": 8798208
+    },
+    {
+      "name": "sales_intelligence_jobs",
+      "count": 553462,
+      "logicalBytes": 430550571,
+      "allocatedData": 327278592,
+      "indexBytes": 223182848
+    },
+    {
+      "name": "sales_intelligence_audit_events",
+      "count": 23479,
+      "logicalBytes": 18744185,
+      "allocatedData": 156979200,
+      "indexBytes": 76361728
+    },
+    {
+      "name": "granot_automation_sources",
+      "count": 9,
+      "logicalBytes": 1950,
+      "allocatedData": 36864,
+      "indexBytes": 139264
+    },
+    {
+      "name": "reporting_definitions",
+      "count": 7,
+      "logicalBytes": 5079,
+      "allocatedData": 36864,
+      "indexBytes": 77824
+    },
+    {
+      "name": "reporting_definition_revisions",
+      "count": 7,
+      "logicalBytes": 30815,
+      "allocatedData": 45056,
+      "indexBytes": 98304
+    },
+    {
+      "name": "reporting_previews",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 4096,
+      "indexBytes": 12288
+    },
+    {
+      "name": "reporting_runs",
+      "count": 4,
+      "logicalBytes": 62243,
+      "allocatedData": 53248,
+      "indexBytes": 221184
+    },
+    {
+      "name": "reporting_run_confirmations",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 4096,
+      "indexBytes": 16384
+    },
+    {
+      "name": "reporting_destinations",
+      "count": 2,
+      "logicalBytes": 2423,
+      "allocatedData": 36864,
+      "indexBytes": 77824
+    },
+    {
+      "name": "reporting_deliveries",
+      "count": 4,
+      "logicalBytes": 8340,
+      "allocatedData": 36864,
+      "indexBytes": 151552
+    },
+    {
+      "name": "reporting_run_manifests",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 4096,
+      "indexBytes": 16384
+    },
+    {
+      "name": "reporting_live_test_harness_runs",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 0,
+      "indexBytes": 0
+    },
+    {
+      "name": "google_drive_connections",
+      "count": 1,
+      "logicalBytes": 573,
+      "allocatedData": 36864,
+      "indexBytes": 69632
+    },
+    {
+      "name": "google_oauth_states",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 4096,
+      "indexBytes": 12288
+    },
+    {
+      "name": "google_picker_nonces",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 4096,
+      "indexBytes": 12288
+    },
+    {
+      "name": "google_picker_selections",
+      "count": 0,
+      "logicalBytes": 0,
+      "allocatedData": 4096,
+      "indexBytes": 12288
+    }
+  ],
+  "recentRunGroups": [
+    {
+      "status": "queued",
+      "groups": [
+        {
+          "_id": {
+            "operation": "estimates_in_process",
+            "scheduledSlotKeyType": "string"
+          },
+          "count": 65
+        }
+      ]
+    },
+    {
+      "status": "planning",
+      "groups": []
+    },
+    {
+      "status": "awaiting_approval",
+      "groups": []
+    },
+    {
+      "status": "applying",
+      "groups": []
+    },
+    {
+      "status": "completed",
+      "groups": [
+        {
+          "_id": {
+            "operation": "estimates_in_process",
+            "scheduledSlotKeyType": "string"
+          },
+          "count": 2323
+        }
+      ]
+    },
+    {
+      "status": "completed_with_errors",
+      "groups": []
+    },
+    {
+      "status": "failed",
+      "groups": [
+        {
+          "_id": {
+            "operation": "estimates_in_process",
+            "scheduledSlotKeyType": "string"
+          },
+          "count": 34
+        }
+      ]
+    },
+    {
+      "status": "expired",
+      "groups": []
+    }
+  ],
+  "reportDeliveryStates": [
+    {
+      "_id": {
+        "status": "completed",
+        "cleanup": "not_needed",
+        "promotion": "verified_published"
+      },
+      "count": 1
+    },
+    {
+      "_id": {
+        "status": "failed",
+        "cleanup": "not_needed",
+        "promotion": "not_started"
+      },
+      "count": 3
+    }
+  ],
+  "recentWindow": {
+    "start": "2026-11-17T18:00:00.000Z",
+    "end": "2026-11-18T18:00:00.000Z"
+  },
+  "reportingRunStates": [
+    {
+      "_id": "failed",
+      "latestRecordedCreation": "2026-09-15T18:09:30.528Z",
+      "count": 3
+    },
+    {
+      "_id": "completed",
+      "latestRecordedCreation": "2026-09-15T19:15:28.917Z",
+      "count": 1
+    }
+  ],
+  "namespacesPresent": [
+    "google_drive_connections",
+    "google_oauth_states",
+    "google_picker_nonces",
+    "google_picker_selections",
+    "granot_automation_sources",
+    "reporting_definition_revisions",
+    "reporting_definitions",
+    "reporting_deliveries",
+    "reporting_destinations",
+    "reporting_previews",
+    "reporting_run_confirmations",
+    "reporting_run_manifests",
+    "reporting_runs"
+  ],
+  "audit": {
+    "from": "2026-11-17T18:00:00.000Z",
+    "until": "2026-11-18T18:00:00.000Z",
+    "kinds": [
+      {
+        "_id": "contact_number_created_from_lead",
+        "events": 37,
+        "bytes": 27380
+      }
+    ]
+  },
+  "reportingRecheckAt": "2026-11-18T18:49:28.343Z",
+  "method": {
+    "storage": "Read-only collStats on vantagemovers with a 3s limit per namespace on the verified writable primary. Sequential point samples. Consult namespacesPresent for existence of Reporting namespaces.",
+    "recentRuns": "One status/createdAt index range per declared Granot run status, 2.2s maximum each, grouped by operation and BSON type of request_snapshot.scheduled_slot_key. Counts reflect observed status, including schedule children. Start inclusive, end exclusive. No action or provider payload returned.",
+    "reporting": "Four retained runs and deliveries grouped by stored workflow, promotion and cleanup states. Most recent creation from created_at. These are Mongo states, not an independent Google read.",
+    "audit": "Bounded recorded_at index range, one row per event_kind with count and logical BSON bytes, same 24h as recent runs. Audit TTL uses happened_at."
+  }
+}

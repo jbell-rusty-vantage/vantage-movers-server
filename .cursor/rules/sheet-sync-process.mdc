@@ -35,6 +35,8 @@ Owner invariants (tabs, projections, outbox, drain): [`sheet-sync.md`](../../doc
 
 ## Operational safety
 
+- Local inspection, trace and synthetic recovery proof: [operator runbook](../../docs/operations/sheet-sync.md). The CLI does not expose production inspection or repairs. Metadata persistence is once per surviving physical document; keep logical subscriber outcomes independent (canonical details in the Service).
+
 - Before manually changing jobs, count/group by `status`, `run_id`, `operation`, `resource`, `entity_model`, and creation window.
 - Prefer `cancelled` plus a clear `last_error` over `failed` when abandoning verified backfill work.
 - Never reset stuck `processing` jobs to `pending` until the underlying failure is fixed. The drainer may release leftover claims to `pending` on run timeout by design.

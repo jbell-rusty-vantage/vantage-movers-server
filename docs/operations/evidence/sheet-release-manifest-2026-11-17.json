@@ -1,0 +1,293 @@
+{
+  "base": "868db09443681753390c25d0e6cec2160a130795",
+  "branch": "optimization/service-operability-2026-11-17",
+  "remote": "https://github.com/jbell-rusty-vantage/vantage-movers-server.git",
+  "scope": "All tracked modifications and nonignored untracked files against the base, excluding this self-referential manifest. SHA-256 uses actual working-file bytes before any Git line-ending normalization. No staged change, commit, hosted build or deployment.",
+  "files": [
+    {
+      "path": ".cursor/Dockerfile",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "9ad7d2fb016cf3bfe93c2a7c090313f4de60c4fee701543a19a803aa35458a23"
+    },
+    {
+      "path": ".cursor/environment.json",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "7410537939defc3647a591f1c965f1a6f755c82323904ad0578bcf2f5f1f430d"
+    },
+    {
+      "path": ".cursor/rules/sheet-sync-process.mdc",
+      "purpose": "documentation",
+      "sha256": "ab37a9df9eecd85fd0a0f3560a4d42ba544de4743df9bdd142feb2719c70812b"
+    },
+    {
+      "path": ".cursor/scripts/ensure-cloud-runtime.sh",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "aaf05823c72c77f2fd8d951a2a523fe85d81efed3c96a949aca041d122228e71"
+    },
+    {
+      "path": ".cursor/scripts/start-api.sh",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "a55cb284ec28382aeca2ddd4f69ad774b03cc3d44904b2c542bea8def1a58d82"
+    },
+    {
+      "path": ".cursor/scripts/start-mongo.sh",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "8ec12b0a653cdbc38b247587caa85e3395156a1d11d01ad4b0e1f4243d9a7c43"
+    },
+    {
+      "path": ".gitattributes",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "d2977746da3512c296885dfbdfae6ec499a92c7a74e58e0b2cd1d93168d41eb3"
+    },
+    {
+      "path": "AGENTS.md",
+      "purpose": "documentation",
+      "sha256": "12f5130bc43390139b6df127247e6ab2314e61cfdcc64fcd39c07f15a4b4939e"
+    },
+    {
+      "path": "CLOUD_AGENTS.md",
+      "purpose": "documentation",
+      "sha256": "2f6bf38296b6a844508524916f3bdabb29c7786761d19f887d2a9e87030f413f"
+    },
+    {
+      "path": "docs/efficiency/sheet-discovery-2026-11-17.md",
+      "purpose": "qualification evidence",
+      "sha256": "17938f7b99ba60e9f4b1b91b7f86640169134b0a6f73291d1b978af8070431db"
+    },
+    {
+      "path": "docs/efficiency/sheet-metadata-2026-11-17.md",
+      "purpose": "qualification evidence",
+      "sha256": "4dd8b5688ad529374cd246c08cd459257fa6f80ce7581b95edab09e1f017bd18"
+    },
+    {
+      "path": "docs/index.md",
+      "purpose": "documentation",
+      "sha256": "0f6847073c2d6e91adc56d67a46bb4d3732ed6159d90f1d3df45186947f2f51e"
+    },
+    {
+      "path": "docs/knowledge/environment.md",
+      "purpose": "documentation",
+      "sha256": "cb81f1603e6a2e4783835bcbe2e8b4039f33e6e708098da4dddfe157bcd0e193"
+    },
+    {
+      "path": "docs/knowledge/services/sheet-sync.md",
+      "purpose": "documentation",
+      "sha256": "c38c7a5364dd66966d0f4111c688d106de8cd39ca663d0ca9640ee4515af2f5c"
+    },
+    {
+      "path": "docs/operations/FRESH-AGENT-REHEARSAL-2026-11-17.md",
+      "purpose": "documentation",
+      "sha256": "a9cb2f2ea533b8ddb6b0dc431e341259ff64c86b4388276967576d38fe2322d7"
+    },
+    {
+      "path": "docs/operations/INDEPENDENT-REVIEW-2026-11-17.md",
+      "purpose": "documentation",
+      "sha256": "3387e4512201db63cebcc1e53f0a78d4d08d1d48add25b7302b243e818566b0a"
+    },
+    {
+      "path": "docs/operations/NEXT-SESSION.md",
+      "purpose": "documentation",
+      "sha256": "f17eda07f7373d2cfb5932fe51e9e7e236a75030ce1976721928f7c7471eb979"
+    },
+    {
+      "path": "docs/operations/QUALIFICATION-2026-11-17.md",
+      "purpose": "documentation",
+      "sha256": "5ab4f635a8a402c7c3fc31428eb73f2d0cb4a22e8b6d3171911624822bd5c2b2"
+    },
+    {
+      "path": "docs/operations/README.md",
+      "purpose": "documentation",
+      "sha256": "70eaeb2959006e5e45093e34b439b0f804809061632201b6ae8a6f3195637a2e"
+    },
+    {
+      "path": "docs/operations/SERVICE-OPTIMIZATION-ROADMAP.md",
+      "purpose": "documentation",
+      "sha256": "8470fd4474d246743f2a50826bb29dc9d0a8bfb335c4464f9c44b19f0a820234"
+    },
+    {
+      "path": "docs/operations/SETUP-EVIDENCE-2026-11-17.md",
+      "purpose": "documentation",
+      "sha256": "ebd6ebe4543177bbc554880f13fef69f39eec7ff92d27f4138c9e56ef2bc8d43"
+    },
+    {
+      "path": "docs/operations/SHEET-ENGINEERING-2026-11-17.md",
+      "purpose": "documentation",
+      "sha256": "1c0ef631cce977ac3445489bb52e28974b66b2e0151a60c73586a5912c966234"
+    },
+    {
+      "path": "docs/operations/evidence/final-validation-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "6b4d111c1645cf92d93b33a98e10b79c6711ffab607b3d8889a5287d39debff8"
+    },
+    {
+      "path": "docs/operations/evidence/focused-final-2026-11-17.txt",
+      "purpose": "qualification evidence",
+      "sha256": "04cf86de58567c4ee81fd1dddaceaf9c773e756356cba77997ed6a22027c3783"
+    },
+    {
+      "path": "docs/operations/evidence/full-tests-2026-11-17.txt",
+      "purpose": "qualification evidence",
+      "sha256": "22aad3f2c37fc18b0174baec66df59a1f35f41e93579588df52236cf20968033"
+    },
+    {
+      "path": "docs/operations/evidence/full-tests-final-2026-11-17.txt",
+      "purpose": "qualification evidence",
+      "sha256": "f85b518e1f7ddc00f84284ebf37f001e35af31ca6a678178cec966d3c00ea178"
+    },
+    {
+      "path": "docs/operations/evidence/lint-final-2026-11-17.txt",
+      "purpose": "qualification evidence",
+      "sha256": "e56b3ad025b837b5db0d2e3235b716ce6916206030c9711089d75690b4455dd8"
+    },
+    {
+      "path": "docs/operations/evidence/operator-validation-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "f4bca98ae4b38edebbe0840ab8ae91e476892b23ce69dd8d761d2679bcab7b61"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-cost-replica-2026-11-17.log",
+      "purpose": "qualification evidence",
+      "sha256": "0ba921eff886134c2005966e59d43fe23a6b26d2c7c59da68e9894c9bb370dd4"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-metadata-after-2026-11-17.log",
+      "purpose": "qualification evidence",
+      "sha256": "d9d89e88e66ce20bf6e9d953a53c9393f5021c021bcf787bbf2de8d16fdeef77"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-metadata-before-2026-11-17.log",
+      "purpose": "qualification evidence",
+      "sha256": "65ec6f7df90304e681d1d538980476168332fb654357af57fa53fac203f977df"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-mixed-baseline-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "c3a278a5184fcf60e196229a4428866b46af931047516d293f4f349bbcb635f4"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-production-baseline-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "a0a35d4e45ec884ade531d830cc0bb6b5c18065b64610b36cd6bb1955b5a5ac6"
+    },
+    {
+      "path": "docs/operations/evidence/sheet-validation-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "11a08ae1d448054e20b17f073b52dcf0a7a6c4e2b2323d0cdaffbf2f3816f4d4"
+    },
+    {
+      "path": "docs/operations/evidence/skipped-tests-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "a4281d73268cd4a9c87b89d44668376ff7388352a977b6ef85acbd5e80a365e4"
+    },
+    {
+      "path": "docs/operations/evidence/source-manifest-2026-11-17.json",
+      "purpose": "qualification evidence",
+      "sha256": "f0f715bb3b361d160429378ad9585d22324ff89209240c8babab78e028f47a60"
+    },
+    {
+      "path": "docs/operations/evidence/typecheck-final-2026-11-17.txt",
+      "purpose": "qualification evidence",
+      "sha256": "dcc57e9bb1f7fdb57af1c307f666530cb579136d793183563ad0d80ed486001d"
+    },
+    {
+      "path": "docs/operations/shared-glossary.md",
+      "purpose": "documentation",
+      "sha256": "7bee8bca1af7186def0109d6057bf80b39d31ae56e917233e44a2d3cb001a8ce"
+    },
+    {
+      "path": "docs/operations/shared-glossary.provenance.json",
+      "purpose": "documentation",
+      "sha256": "ee2d8c2d4b397205d0b2ff01b245f41b1fdfda3d9e942adfa97a9a3edad9524b"
+    },
+    {
+      "path": "docs/operations/sheet-sync.md",
+      "purpose": "documentation",
+      "sha256": "18b25d66a3abb1bbaaccdba13e34ebcc66f80980b1deeaf871760a3eac164ac9"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "47f5047ec61fdb2f9d6e75d1ab14b9876459a758565f52039dc64f05bb4f4df9"
+    },
+    {
+      "path": "ops/dev-server.ts",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "4641584ccb0460c7ab6a8a625b925fa4f4a05272586e154c6bea1a451dc07e0e"
+    },
+    {
+      "path": "ops/local-runtime.test.ts",
+      "purpose": "test or replica proof",
+      "sha256": "a46ab15437700c7e130e386f4944a0d7d906e87c005c47212269301efb4ad324"
+    },
+    {
+      "path": "ops/local-runtime.ts",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "bc569c846e130c36064ed4b7aaca054be555adef62cbf2b326842ac29552b258"
+    },
+    {
+      "path": "ops/sheet-sync-recovery/drainCosts.ts",
+      "purpose": "test or replica proof",
+      "sha256": "5dc9c0983de4cdd95f6063a1a280f83573683e7aef348802e45dcf11e4d2f77b"
+    },
+    {
+      "path": "ops/sheet-sync-recovery/replica.ts",
+      "purpose": "test or replica proof",
+      "sha256": "f57b7655d1208449e058e6f2f86912a7a298ade03e52a632962d312f63513166"
+    },
+    {
+      "path": "ops/vantage/cli.test.ts",
+      "purpose": "test or replica proof",
+      "sha256": "d658ca345555fb0a8c2942a7135dd829b22340540e3b33fa2f41a25a0c0d2ae3"
+    },
+    {
+      "path": "ops/vantage/cli.ts",
+      "purpose": "local operator CLI",
+      "sha256": "12c4d9a82be75befd9bbc9e83d0aa77d396dba2e22c78d40156df4769b371a61"
+    },
+    {
+      "path": "ops/vantage/commands.ts",
+      "purpose": "local operator CLI",
+      "sha256": "fae37d563a4475a052c5649d3464d496a0534c5f5961983d0655dda31bb5e1c7"
+    },
+    {
+      "path": "ops/vantage/diagnostics.replica.ts",
+      "purpose": "test or replica proof",
+      "sha256": "d02f1df74a6b2fe82513f75f9187681c9ba325761f907f1f0fb7ef71dc3e4d1a"
+    },
+    {
+      "path": "ops/vantage/local-safety.ts",
+      "purpose": "local operator CLI",
+      "sha256": "6fbc3f6c506dd146e50d1fadd2f46d9bf41fdcb5a85f2a34ff2b168efd503e9d"
+    },
+    {
+      "path": "ops/vantage/sheet-sync.ts",
+      "purpose": "local operator CLI",
+      "sha256": "8fe777486b62c821bad4fb098a55f18ef1e2098ea3abcbf352f0b309d4bd0adb"
+    },
+    {
+      "path": "ops/vantage/test-command.ts",
+      "purpose": "local operator CLI",
+      "sha256": "9b7b9f4312bc633d04b56f50a155dc6c58c6699cd76fd1c9c17bfbc11942cfac"
+    },
+    {
+      "path": "package.json",
+      "purpose": "local setup, build or validation configuration",
+      "sha256": "5758e01b93a85484a081520db82d1625768f1cf2525d632a9637e3a3d9baea09"
+    },
+    {
+      "path": "src/config/domain/runtime.test.ts",
+      "purpose": "test or replica proof",
+      "sha256": "ba341de7be1fb56c2d7d39d9f8959ab910254ce3be47bd9eaed72e98405c494a"
+    },
+    {
+      "path": "src/services/sheetSync/drainer/metadataPersistence.test.ts",
+      "purpose": "test or replica proof",
+      "sha256": "2a2d74e5cc989b9991ce3c6c271870d326605a2affab467d85ec877d7dd0df8d"
+    },
+    {
+      "path": "src/services/sheetSync/drainer/runSheetSyncDrain.ts",
+      "purpose": "queued Sheet runtime",
+      "sha256": "f2151c3b9479abf086905c71860fe12d820c2c26cb0fef8372c2f1cdd078cf2f"
+    }
+  ]
+}

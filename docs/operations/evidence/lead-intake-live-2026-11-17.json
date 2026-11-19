@@ -1,0 +1,516 @@
+{
+  "release": {
+    "checkedAt": "2026-11-18T03:50:07.1999434+00:00",
+    "alias": "https://vantage-movers-main-server.vercel.app",
+    "deployment": "dpl_FuZgQUBGAbJ7d8YRy1QQU8abtojt",
+    "sha": "f28048cf7c47355b315e7fd6a6a75cf9d0e262db",
+    "ready": "READY",
+    "target": "production",
+    "aliasAssignedAt": "2026-11-18T03:49:03.02Z",
+    "application": "ok",
+    "database": "vantagemovers",
+    "mongoState": 1,
+    "http": [
+      200,
+      200
+    ]
+  },
+  "finalHealth": {
+    "checkedAt": "2026-11-18T04:01:17.6701612+00:00",
+    "alias": "https://vantage-movers-main-server.vercel.app",
+    "deployment": "dpl_FuZgQUBGAbJ7d8YRy1QQU8abtojt",
+    "sha": "f28048cf7c47355b315e7fd6a6a75cf9d0e262db",
+    "ready": "READY",
+    "target": "production",
+    "aliasAssignedAt": "2026-11-18T03:49:03.02Z",
+    "application": "ok",
+    "database": "vantagemovers",
+    "mongoState": 1,
+    "http": [
+      200,
+      200
+    ]
+  },
+  "naturalWindow": {
+    "start": "2026-11-18T03:49:03.020Z",
+    "end": "2026-11-18T04:00:54.759Z",
+    "stamp": {
+      "deployment_commit": "f28048cf7c47355b315e7fd6a6a75cf9d0e262db",
+      "recorded_at": "2026-11-18T04:00:00.268Z",
+      "vercel_deployment_id": "dpl_FuZgQUBGAbJ7d8YRy1QQU8abtojt"
+    },
+    "watermarks": [
+      {
+        "sampleKey": "feaffc9af996ab4f",
+        "observed": "2026-11-18T04:00:17.454Z",
+        "committed": "2026-11-18T04:00:18.199Z",
+        "ops": [
+          "u:call_leads"
+        ],
+        "onlyDate": true,
+        "revision": 3,
+        "source": "call_log_sync",
+        "reason": "call_log_inbound_target_elapsed_at_least_120s",
+        "durationQualified": true,
+        "matchedPreReceiptBytes": 1293,
+        "prePoll": {
+          "sampleKey": "feaffc9af996ab4f",
+          "bytes": 3321,
+          "revision": 3,
+          "observed": "2026-11-18T03:30:17.289Z"
+        },
+        "postPoll": {
+          "sampleKey": "feaffc9af996ab4f",
+          "bytes": 3321,
+          "revision": 3,
+          "observed": "2026-11-18T04:00:17.454Z"
+        }
+      },
+      {
+        "sampleKey": "9fe6f0cf6bf970c3",
+        "observed": "2026-11-18T04:00:17.454Z",
+        "committed": "2026-11-18T04:00:18.254Z",
+        "ops": [
+          "u:call_leads"
+        ],
+        "onlyDate": true,
+        "revision": 2,
+        "source": "call_log_sync",
+        "reason": "call_log_inbound_target_elapsed_at_least_120s",
+        "durationQualified": true,
+        "matchedPreReceiptBytes": 1293,
+        "prePoll": {
+          "sampleKey": "9fe6f0cf6bf970c3",
+          "bytes": 3247,
+          "revision": 2,
+          "observed": "2026-11-18T03:30:17.289Z"
+        },
+        "postPoll": {
+          "sampleKey": "9fe6f0cf6bf970c3",
+          "bytes": 3247,
+          "revision": 2,
+          "observed": "2026-11-18T04:00:17.454Z"
+        }
+      },
+      {
+        "sampleKey": "ad2409315a2956fb",
+        "observed": "2026-11-18T04:00:17.454Z",
+        "committed": "2026-11-18T04:00:18.316Z",
+        "ops": [
+          "u:call_leads"
+        ],
+        "onlyDate": true,
+        "revision": 1,
+        "source": "call_log_sync",
+        "reason": "call_log_inbound_target_elapsed_at_least_120s",
+        "durationQualified": true,
+        "matchedPreReceiptBytes": 1293,
+        "prePoll": {
+          "sampleKey": "ad2409315a2956fb",
+          "bytes": 1943,
+          "revision": 1,
+          "observed": "2026-11-18T03:30:17.289Z"
+        },
+        "postPoll": {
+          "sampleKey": "ad2409315a2956fb",
+          "bytes": 1943,
+          "revision": 1,
+          "observed": "2026-11-18T04:00:17.454Z"
+        }
+      },
+      {
+        "sampleKey": "f0b70f9b989d8cfe",
+        "observed": "2026-11-18T04:00:17.454Z",
+        "committed": "2026-11-18T04:00:18.351Z",
+        "ops": [
+          "u:call_leads"
+        ],
+        "onlyDate": true,
+        "revision": 2,
+        "source": "call_log_sync",
+        "reason": "call_log_inbound_target_elapsed_at_least_120s",
+        "durationQualified": true,
+        "matchedPreReceiptBytes": 1293,
+        "prePoll": {
+          "sampleKey": "f0b70f9b989d8cfe",
+          "bytes": 2830,
+          "revision": 2,
+          "observed": "2026-11-18T03:30:17.289Z"
+        },
+        "postPoll": {
+          "sampleKey": "f0b70f9b989d8cfe",
+          "bytes": 2830,
+          "revision": 2,
+          "observed": "2026-11-18T04:00:17.454Z"
+        }
+      }
+    ],
+    "intakes": [
+      {
+        "model": "FormLead",
+        "origin": "wordpress_form",
+        "createdAt": "2026-11-18T03:54:17.635Z",
+        "duplicate": false,
+        "revision": 2,
+        "creationCommand": "createFormLead",
+        "revision1": 1,
+        "receiptJoins": true,
+        "transaction": [
+          "i:form_leads",
+          "i:form_fill_work",
+          "i:sheet_sync_jobs",
+          "u:lead_message_rate_limits",
+          "i:lead_message_rate_limits",
+          "i:lead_messages",
+          "i:entity_changes",
+          "u:form_fill_work",
+          "u:form_leads",
+          "i:domain_command_executions"
+        ],
+        "job": {
+          "status": "synced",
+          "operation": "form_lead.create",
+          "leadMatches": true,
+          "attempts": [
+            {
+              "action": "append",
+              "status": "synced"
+            },
+            {
+              "action": "delete",
+              "status": "synced"
+            },
+            {
+              "action": "delete",
+              "status": "synced"
+            }
+          ],
+          "keyedCompletion": true
+        }
+      }
+    ],
+    "official": {}
+  },
+  "form": {
+    "at": "2026-11-18T03:54:17.635Z",
+    "checkedAt": "2026-11-18T03:55:09.785Z",
+    "sampleKey": "d6a33793dbf4281c",
+    "lead": {
+      "duplicate": false,
+      "post_to_granot": false,
+      "bytes": 1993,
+      "originalContact": "object",
+      "originalMove": "object",
+      "rev": 1
+    },
+    "inserted": [
+      {
+        "collection": "form_leads",
+        "bytes": 1737
+      },
+      {
+        "collection": "form_fill_work",
+        "bytes": 156
+      },
+      {
+        "collection": "sheet_sync_jobs",
+        "bytes": 363
+      },
+      {
+        "collection": "lead_message_rate_limits",
+        "bytes": 251
+      },
+      {
+        "collection": "lead_messages",
+        "bytes": 884
+      },
+      {
+        "collection": "entity_changes",
+        "bytes": 4452
+      },
+      {
+        "collection": "domain_command_executions",
+        "bytes": 1087
+      }
+    ],
+    "message": {
+      "status": "delivered",
+      "provider_status": "delivered",
+      "sent_at": "2026-11-18T03:54:18.434Z"
+    }
+  },
+  "deploymentScopedReplayLogs": {
+    "deployment": "dpl_FuZgQUBGAbJ7d8YRy1QQU8abtojt",
+    "requests": 1,
+    "limit": 120,
+    "events": [
+      {
+        "at": "2026-11-18T04:00:18.204Z",
+        "sampleKey": "feaffc9af996ab4f",
+        "action": "ringcentral.ingest.skipped_already_processed",
+        "status": "lead_created",
+        "source": "call_log_sync",
+        "route": "/api/cron/ringcentral-call-log-sync"
+      },
+      {
+        "at": "2026-11-18T04:00:18.259Z",
+        "sampleKey": "9fe6f0cf6bf970c3",
+        "action": "ringcentral.ingest.skipped_already_processed",
+        "status": "lead_created",
+        "source": "call_log_sync",
+        "route": "/api/cron/ringcentral-call-log-sync"
+      },
+      {
+        "at": "2026-11-18T04:00:18.32Z",
+        "sampleKey": "ad2409315a2956fb",
+        "action": "ringcentral.ingest.skipped_already_processed",
+        "status": "lead_created",
+        "source": "call_log_sync",
+        "route": "/api/cron/ringcentral-call-log-sync"
+      },
+      {
+        "at": "2026-11-18T04:00:18.355Z",
+        "sampleKey": "f0b70f9b989d8cfe",
+        "action": "ringcentral.ingest.skipped_already_processed",
+        "status": "lead_created",
+        "source": "call_log_sync",
+        "route": "/api/cron/ringcentral-call-log-sync"
+      }
+    ]
+  },
+  "windowCounts": {
+    "start": "2026-11-18T03:49:03.020Z",
+    "end": "2026-11-18T04:00:54.759Z",
+    "domain_command_executions": 0,
+    "entity_changes": 0,
+    "booked_leads": 0,
+    "cancelled_leads": 0,
+    "call_leads": 0
+  },
+  "prePollReadAt": "2026-11-18T03:57:39.049Z",
+  "postPollReadAt": "2026-11-18T04:00:54.761Z",
+  "filesystem": {
+    "rollout": {
+      "scope": "Direct member filesystem readings, one bounded dbStats per SRV member after alias/stamp/replica identity checks. Different sampling times. No disk growth attribution, alert or forecast qualification.",
+      "database": "vantagemovers",
+      "set": "atlas-khw1wz-shard-0",
+      "stamp": {
+        "deployment_commit": "9bbe2c7c22b8594337b08f547c68ee306bc73058",
+        "recorded_at": "2026-11-18T03:19:00.230Z",
+        "vercel_deployment_id": "dpl_9pVCR9Ge1zec8ZZtHS9F8okTeA6Y"
+      },
+      "members": [
+        {
+          "member": "00",
+          "role": "secondary",
+          "at": "2026-11-18T03:36:47.208Z",
+          "used_bytes": 10241400832,
+          "total_bytes": 13853786112,
+          "used_percent": 73.925
+        },
+        {
+          "member": "01",
+          "role": "secondary",
+          "at": "2026-11-18T03:36:47.603Z",
+          "used_bytes": 11883880448,
+          "total_bytes": 13853786112,
+          "used_percent": 85.781
+        },
+        {
+          "member": "02",
+          "role": "primary",
+          "at": "2026-11-18T03:36:47.963Z",
+          "used_bytes": 11956936704,
+          "total_bytes": 13853786112,
+          "used_percent": 86.308
+        }
+      ]
+    },
+    "immediate": {
+      "scope": "Direct member filesystem readings, one bounded dbStats per SRV member after alias/stamp/replica identity checks. Different sampling times. No disk growth attribution, alert or forecast qualification.",
+      "database": "vantagemovers",
+      "set": "atlas-khw1wz-shard-0",
+      "stamp": {
+        "deployment_commit": "f28048cf7c47355b315e7fd6a6a75cf9d0e262db",
+        "recorded_at": "2026-11-18T03:50:00.480Z",
+        "vercel_deployment_id": "dpl_FuZgQUBGAbJ7d8YRy1QQU8abtojt"
+      },
+      "members": [
+        {
+          "member": "00",
+          "role": "secondary",
+          "at": "2026-11-18T03:50:34.379Z",
+          "used_bytes": 10130055168,
+          "total_bytes": 13853786112,
+          "used_percent": 73.121
+        },
+        {
+          "member": "01",
+          "role": "secondary",
+          "at": "2026-11-18T03:50:34.754Z",
+          "used_bytes": 11804200960,
+          "total_bytes": 13853786112,
+          "used_percent": 85.206
+        },
+        {
+          "member": "02",
+          "role": "primary",
+          "at": "2026-11-18T03:50:35.131Z",
+          "used_bytes": 11850301440,
+          "total_bytes": 13853786112,
+          "used_percent": 85.538
+        }
+      ]
+    },
+    "final": {
+      "scope": "Direct member filesystem readings, one bounded dbStats per SRV member after alias/stamp/replica identity checks. Different sampling times. No disk growth attribution, alert or forecast qualification.",
+      "database": "vantagemovers",
+      "set": "atlas-khw1wz-shard-0",
+      "stamp": {
+        "deployment_commit": "f28048cf7c47355b315e7fd6a6a75cf9d0e262db",
+        "recorded_at": "2026-11-18T04:00:00.268Z",
+        "vercel_deployment_id": "dpl_FuZgQUBGAbJ7d8YRy1QQU8abtojt"
+      },
+      "members": [
+        {
+          "member": "00",
+          "role": "secondary",
+          "at": "2026-11-18T04:01:13.759Z",
+          "used_bytes": 10266644480,
+          "total_bytes": 13853786112,
+          "used_percent": 74.107
+        },
+        {
+          "member": "01",
+          "role": "secondary",
+          "at": "2026-11-18T04:01:14.230Z",
+          "used_bytes": 11994288128,
+          "total_bytes": 13853786112,
+          "used_percent": 86.578
+        },
+        {
+          "member": "02",
+          "role": "primary",
+          "at": "2026-11-18T04:01:14.773Z",
+          "used_bytes": 11924213760,
+          "total_bytes": 13853786112,
+          "used_percent": 86.072
+        }
+      ]
+    }
+  },
+  "diagnostics": {
+    "qual": {
+      "baseline": "44195868252",
+      "run": "44230373569",
+      "baselineCount": 91,
+      "count": 91,
+      "sameDiagnostics": true,
+      "sameCoordinates": false,
+      "removed": [
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          68,
+          55,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          100,
+          47,
+          "TS2339",
+          "Property 'toHexString' does not exist on type 'ObjectId'."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          123,
+          79,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ]
+      ],
+      "added": [
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          69,
+          55,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          105,
+          47,
+          "TS2339",
+          "Property 'toHexString' does not exist on type 'ObjectId'."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          142,
+          79,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ]
+      ],
+      "logSha256": "3c0e920e4229d78741354f4c616aa922a9bd3573657e44549d0c4263783c2a82",
+      "retentionLines": []
+    },
+    "prod": {
+      "baseline": "44195868252",
+      "run": "44231678691",
+      "baselineCount": 91,
+      "count": 91,
+      "sameDiagnostics": true,
+      "sameCoordinates": false,
+      "removed": [
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          68,
+          55,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          100,
+          47,
+          "TS2339",
+          "Property 'toHexString' does not exist on type 'ObjectId'."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          123,
+          79,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ]
+      ],
+      "added": [
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          69,
+          55,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          105,
+          47,
+          "TS2339",
+          "Property 'toHexString' does not exist on type 'ObjectId'."
+        ],
+        [
+          "src/services/domainCommands/ringcentralFinalResult.ts",
+          142,
+          79,
+          "TS2554",
+          "Expected 0 arguments, but got 1."
+        ]
+      ],
+      "logSha256": "dadd648a0eac0a91614a8846042f53f2115571366dc0dd24810f3aabf162bf95",
+      "retentionLines": []
+    }
+  }
+}

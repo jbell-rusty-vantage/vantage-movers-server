@@ -1,0 +1,4135 @@
+diff --git a/.cursor/rules/granot-http-automation.mdc b/.cursor/rules/granot-http-automation.mdc
+index 0717611c45879d1cb9b47241ad53d82496a548d4..118c20081d8c93805b08d4a107bbdea2199dc0e6 100644
+--- a/.cursor/rules/granot-http-automation.mdc
++++ b/.cursor/rules/granot-http-automation.mdc
+@@ -19,6 +19,7 @@ Owner invariants: [`docs/knowledge/services/granot-http-collector.md`](../../doc
+ - `ALL /api/cron/granot-estimates-in-process` (`0 * * * *`) runs at America/New_York hours 00/02/04/06/08-20/22. Each slot schedules the trailing 90 inclusive Open Dates in deterministic runs of at most seven days, plus older months with verified provider Open Date evidence. Ingestion timestamps are not provider Open Dates. Unknown older scope needs discovery backfill.
+ - Estimates preview uses canonical normalization, Registry source policy and `resolveLeadIdentity`, not the legacy Form/Call preview's approval classification. Apply revalidates the target and authority. Phone-based Call attachment requires a unique qualified non-duplicate target within Source Granularity; ambiguous/conflicting targets stay held.
+ - Seal each Estimates action's provider response time as `collection_captured_at` and pass it to receipt capture. Existing pending receipts are claimed directly; missing-time legacy fresh actions require recollection. Never substitute plan-lock or apply time.
++- A scheduler claim returns the run ID and status. Apply reloads the immutable plan under its fence. After lease verification and before admitting each action, check the original run expiry. An earlier admitted action may finish and checkpoint; leave a later unstarted operation untouched when the deadline has elapsed.
+ - Worker claims share least-recent-attempt ordering across queued/planning and eligible applying runs. Due lifecycle clocks stay authoritative; apply yields after 25 actions or 120 seconds. Estimates collection/planning has a 120-second budget, including login hooks; incomplete scans cannot claim complete coverage.
+ - Owner `GET /api/v1/admin/granot-automation/runs/freshness` separates full-slot collection from synchronization progress and reports held/partial/failed/late state. `SALES_INTELLIGENCE_RECEIVER_LATEST_WINS=true` enables reviewed automatic Granot rep reassignment; manual and source-less receivers remain protected. Checked-in defaults remain off; deployment changes belong in the release record.
+ - Build contract: [`docs/knowledge/estimates-in-process-update.md`](../../docs/knowledge/estimates-in-process-update.md). `collectGranotReport`, `form_leads`, and `call_leads` stay on the Leads & Advertising path, including its separate Booked Jobs coverage.
+diff --git a/AGENTS.md b/AGENTS.md
+index 8665ef60225899f5f4e33f754536ec805c56d7cd..5dcfcc57f584a0d40272a24289972a20964bf2ab 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,6 +1,8 @@
+ # AGENTS.md
+ 
+-This file is intentionally thin. See the following for the real guidance:
++For a sealed Granot action, start with the [local trace runbook](docs/operations/granot.md) or `pnpm vantage -- services`.
++
++See the following for repository guidance:
+ 
+ - **`docs/index.md`** — OKF v0.2 catalog. Start here for Service / ADR / Reference concepts. Query with `pnpm okf:query`.
+ - **`CLOUD_AGENTS.md`** — Cursor Cloud dev environment setup and non-obvious runtime caveats
+diff --git a/docs/knowledge/services/granot-http-collector.md b/docs/knowledge/services/granot-http-collector.md
+index 1ebab8b792fa20436bcb31c09eb51e63653214f0..b8a80462a41301b1a0d611bb1c0b6b8e0d5319b7 100644
+--- a/docs/knowledge/services/granot-http-collector.md
++++ b/docs/knowledge/services/granot-http-collector.md
+@@ -75,6 +75,8 @@ The collector signs in through two Granot pages, in order. `readCredentials()` p
+ 
+ `/vantage/admin.htm` is the unsigned frame that loads the network login. It is not the main menu. After the user POST the session is the cookie jar plus the id in `mv~mainmenuwc~{session}~LOGIN`. A copied `wc.dll` URL without those cookies returns Granot's cookie security alert. `SAVEPASS` is dropped before the network POST.
+ 
++The scheduler returns only the ID and status from its atomic claim. Planning or apply then reads the state it owns under its lease. The worker checks the sealed plan's original expiry on batch entry and immediately after lease verification before admitting each action. An action already admitted can finish and checkpoint its result. If the window closes, the worker preserves recorded receipts and fails the approved run before dispatching another action. The approval and purge clocks stay fixed. See the [local trace runbook](../../operations/granot.md).
++
+ ## Workflows
+ 
+ | Workflow | After plan lock |
+@@ -295,5 +297,5 @@ after successful nomination. No plan, approval checksum, TTL, retention closure,
+ reader shape, schedule, environment variable or migration changes are required.
+ 
+ This is a bounded-command subset of W5, not a new normalized result layout or a
+-terminal-before-purge lifecycle. Active runs crossing plan/purge expiry remain separately qualified work. External effects are not atomically fenced with Mongo lease reads or renewals; the preexisting check-to-effect race remains. See
++terminal-before-purge lifecycle. The [Phase 2 local qualification](../../operations/evidence/granot-stage-measurement.md) covers a partial run crossing its original approval deadline. The seven-day purge behavior remains in place. External effects are not atomically fenced with Mongo lease reads or renewals; the preexisting check-to-effect race remains. See
+ [W5 implementation evidence](../../capacity-review-2026-11-16/W5-IMPLEMENTATION.md).
+diff --git a/docs/operations/evidence/granot-measurement-after.json b/docs/operations/evidence/granot-measurement-after.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..c97f43c19abde95c5a15a527c50fefbde6f7ee5e
+--- /dev/null
++++ b/docs/operations/evidence/granot-measurement-after.json
+@@ -0,0 +1,924 @@
++{
++  "baseCommit": "868db09443681753390c25d0e6cec2160a130795",
++  "workflowSha256": "623a07f33a0b69776dacd1668f4705e3881bc92400733a561ab9ccf9632f4337",
++  "recordedAt": "2026-11-17T20:48:52.389Z",
++  "fixture": "Single-row Estimates report, active Form and Record Link, open Outreach subject, queued Sheet intent, local synthetic HTTP.",
++  "bytes": "BSON document sizes from command events. Returned firstBatch/nextBatch/value, submitted update expressions (including no-match), submitted inserted documents (including attempted duplicate). Excludes ACK envelopes, wire/physical storage, replication and indexes. Inventory is materialized application BSON.",
++  "measurements": {
++    "stale": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 4256,
++        "updateBson": 3425,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 41,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3363,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4048,
++        "updateBson": 2134,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 43,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 4,
++        "returnedDocuments": 2,
++        "returnedBson": 3292,
++        "updateBson": 951,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 2,
++          "find": 1
++        }
++      },
++      "process": {
++        "commands": 12,
++        "returnedDocuments": 10,
++        "returnedBson": 5478,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 12
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 3,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 59,
++        "insertBson": 1214,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1,
++          "update": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "genuine": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 4256,
++        "updateBson": 3470,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 41,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3408,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4093,
++        "updateBson": 2140,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 43,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 9,
++        "returnedDocuments": 4,
++        "returnedBson": 4298,
++        "updateBson": 1895,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 4,
++          "find": 3,
++          "commitTransaction": 1
++        }
++      },
++      "process": {
++        "commands": 18,
++        "returnedDocuments": 14,
++        "returnedBson": 8076,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 18
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 13,
++        "returnedDocuments": 4,
++        "returnedBson": 2030,
++        "updateBson": 943,
++        "insertBson": 4149,
++        "failed": 0,
++        "commandNames": {
++          "find": 4,
++          "update": 4,
++          "insert": 3,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      },
++      "Outreach refresh": {
++        "commands": 7,
++        "returnedDocuments": 7,
++        "returnedBson": 1097,
++        "updateBson": 693,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 3,
++          "listIndexes": 2,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "unchanged": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 5480,
++        "updateBson": 3437,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 41,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3375,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4060,
++        "updateBson": 2164,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 43,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 9,
++        "returnedDocuments": 4,
++        "returnedBson": 3926,
++        "updateBson": 1539,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 4,
++          "find": 3,
++          "commitTransaction": 1
++        }
++      },
++      "process": {
++        "commands": 16,
++        "returnedDocuments": 12,
++        "returnedBson": 7271,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 16
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 4,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 220,
++        "insertBson": 1227,
++        "failed": 0,
++        "commandNames": {
++          "update": 2,
++          "insert": 1,
++          "commitTransaction": 1
++        }
++      },
++      "Outreach refresh": {
++        "commands": 6,
++        "returnedDocuments": 5,
++        "returnedBson": 980,
++        "updateBson": 693,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 3,
++          "listIndexes": 1,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "replay": {
++      "capture": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 155,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1,
++          "find": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 2276,
++        "updateBson": 272,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "find": 1
++        }
++      }
++    }
++  },
++  "evidence": {
++    "genuine": {
++      "runId": "6afcbdadb4270fdf9075bfd3",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbdadb4270fdf9075bfd3:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "9d2f6d0af9074c626555bc36aad5a358ce4fa6f9da767979c0a8061793956b72",
++      "expiresAt": "2026-11-18T20:48:45.712Z",
++      "purgeAt": "2026-11-24T20:48:45.712Z",
++      "receiptId": "6afcbdaeb4270fdf9075bfd5",
++      "observationId": "6afcbdaeb4270fdf9075bfd6",
++      "decisionId": "6afcbdafb4270fdf9075bfd7",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbdaeb4270fdf9075bfd6",
++      "outcome": "applied",
++      "reason": "lead_state_changed",
++      "revision": 5,
++      "effects": [
++        "lead_updated",
++        "record_link_confirmed",
++        "sheet_sync_requested"
++      ],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 0,
++          "bson": 0
++        },
++        "granot_observations": {
++          "count": 0,
++          "bson": 0
++        },
++        "synchronization_decisions": {
++          "count": 0,
++          "bson": 0
++        },
++        "domain_command_executions": {
++          "count": 0,
++          "bson": 0
++        },
++        "entity_changes": {
++          "count": 0,
++          "bson": 0
++        },
++        "sheet_sync_jobs": {
++          "count": 0,
++          "bson": 0
++        },
++        "sales_intelligence_jobs": {
++          "count": 0,
++          "bson": 0
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 553
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 1,
++          "bson": 2276
++        },
++        "granot_observations": {
++          "count": 1,
++          "bson": 732
++        },
++        "synchronization_decisions": {
++          "count": 1,
++          "bson": 1476
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 1,
++          "bson": 691
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1165
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read",
++        "outcome": "applied",
++        "temporalOrder": "same"
++      }
++    },
++    "unchanged": {
++      "runId": "6afcbdb1b4270fdf9075bfdd",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbdb1b4270fdf9075bfdd:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "8b7bb446dba16bec3a3f80a85b2fbdd4ea04da9934c7e8d73ca77bfda4ab7268",
++      "expiresAt": "2026-11-18T20:48:49.681Z",
++      "purgeAt": "2026-11-24T20:48:49.681Z",
++      "receiptId": "6afcbdb2b4270fdf9075bfdf",
++      "observationId": "6afcbdb2b4270fdf9075bfe0",
++      "decisionId": "6afcbdb2b4270fdf9075bfe1",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbdb2b4270fdf9075bfe0",
++      "outcome": "already_current",
++      "reason": "desired_state_already_current",
++      "revision": 5,
++      "effects": [],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 1,
++          "bson": 2276
++        },
++        "granot_observations": {
++          "count": 1,
++          "bson": 732
++        },
++        "synchronization_decisions": {
++          "count": 1,
++          "bson": 1476
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 1,
++          "bson": 691
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1165
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 2,
++          "bson": 4172
++        },
++        "granot_observations": {
++          "count": 2,
++          "bson": 1464
++        },
++        "synchronization_decisions": {
++          "count": 2,
++          "bson": 2703
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read",
++        "outcome": "already_current",
++        "temporalOrder": "same"
++      }
++    },
++    "stale": {
++      "runId": "6afcbdaab4270fdf9075bfd1",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbdaab4270fdf9075bfd1:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "e359c83b2493690bc5595886e49fd474872615b9d2882bfcfa409dfd16de9054",
++      "expiresAt": "2026-11-18T20:48:42.603Z",
++      "purgeAt": "2026-11-24T20:48:42.603Z",
++      "receiptId": "6afcbdb3b4270fdf9075bfe3",
++      "observationId": "6afcbdb3b4270fdf9075bfe4",
++      "decisionId": "6afcbdb3b4270fdf9075bfe5",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbdb2b4270fdf9075bfe0",
++      "outcome": "stale",
++      "reason": "older_than_temporal_winner",
++      "revision": 5,
++      "effects": [],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 2,
++          "bson": 4172
++        },
++        "granot_observations": {
++          "count": 2,
++          "bson": 1464
++        },
++        "synchronization_decisions": {
++          "count": 2,
++          "bson": 2703
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read",
++        "outcome": "stale",
++        "temporalOrder": "older"
++      }
++    },
++    "replay": {
++      "operationId": "6afcbdadb4270fdf9075bfd3:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "receiptId": "6afcbdaeb4270fdf9075bfd5",
++      "observationId": "6afcbdaeb4270fdf9075bfd6",
++      "decisionId": "6afcbdafb4270fdf9075bfd7",
++      "winner": "6afcbdb2b4270fdf9075bfe0",
++      "outcome": "applied",
++      "revision": 5,
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      }
++    }
++  }
++}
+diff --git a/docs/operations/evidence/granot-measurement-before.json b/docs/operations/evidence/granot-measurement-before.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..a54f7c98b655cddaf34e378b1eb11225cede6f32
+--- /dev/null
++++ b/docs/operations/evidence/granot-measurement-before.json
+@@ -0,0 +1,918 @@
++{
++  "baseCommit": "868db09443681753390c25d0e6cec2160a130795",
++  "workflowSha256": "9860d1f02c9245b0a5efead171257cc9bf72e3fe1496d4e32e8dbf481f97886e",
++  "recordedAt": "2026-11-17T20:45:44.261Z",
++  "fixture": "Single-row Estimates report, active Form and Record Link, open Outreach subject, queued Sheet intent, local synthetic HTTP.",
++  "bytes": "BSON document sizes from command events. Returned firstBatch/nextBatch/value, submitted update expressions (including no-match), submitted inserted documents (including attempted duplicate). Excludes ACK envelopes, wire/physical storage, replication and indexes. Inventory is materialized application BSON.",
++  "measurements": {
++    "stale": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 4256,
++        "updateBson": 3425,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 868,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3363,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4048,
++        "updateBson": 2134,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 3747,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 4,
++        "returnedDocuments": 2,
++        "returnedBson": 3292,
++        "updateBson": 951,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 2,
++          "find": 1
++        }
++      },
++      "process": {
++        "commands": 12,
++        "returnedDocuments": 10,
++        "returnedBson": 5478,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 12
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 3,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 59,
++        "insertBson": 1214,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1,
++          "update": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "genuine": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 4256,
++        "updateBson": 3470,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 868,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3408,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4093,
++        "updateBson": 2140,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 3792,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 9,
++        "returnedDocuments": 4,
++        "returnedBson": 4298,
++        "updateBson": 1895,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 4,
++          "find": 3,
++          "commitTransaction": 1
++        }
++      },
++      "process": {
++        "commands": 18,
++        "returnedDocuments": 14,
++        "returnedBson": 8076,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 18
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 13,
++        "returnedDocuments": 4,
++        "returnedBson": 2030,
++        "updateBson": 943,
++        "insertBson": 4149,
++        "failed": 0,
++        "commandNames": {
++          "find": 4,
++          "update": 4,
++          "insert": 3,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      },
++      "Outreach refresh": {
++        "commands": 7,
++        "returnedDocuments": 7,
++        "returnedBson": 1097,
++        "updateBson": 693,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 3,
++          "listIndexes": 2,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "unchanged": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 5480,
++        "updateBson": 3437,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 868,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3375,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4060,
++        "updateBson": 2164,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 3759,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 9,
++        "returnedDocuments": 4,
++        "returnedBson": 3926,
++        "updateBson": 1539,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 4,
++          "find": 3,
++          "commitTransaction": 1
++        }
++      },
++      "process": {
++        "commands": 16,
++        "returnedDocuments": 12,
++        "returnedBson": 7271,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 16
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 4,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 220,
++        "insertBson": 1227,
++        "failed": 0,
++        "commandNames": {
++          "update": 2,
++          "insert": 1,
++          "commitTransaction": 1
++        }
++      },
++      "Outreach refresh": {
++        "commands": 6,
++        "returnedDocuments": 5,
++        "returnedBson": 980,
++        "updateBson": 693,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 3,
++          "listIndexes": 1,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "replay": {
++      "capture": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 155,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1,
++          "find": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 2276,
++        "updateBson": 272,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "find": 1
++        }
++      }
++    }
++  },
++  "evidence": {
++    "genuine": {
++      "runId": "6afcbcf62cbcbf1babddb8e3",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbcf62cbcbf1babddb8e3:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "4a1025918e4a6ed6fdc12f4e3b2d1a313f3806f7620169eda21fdd7f1616f583",
++      "expiresAt": "2026-11-18T20:45:42.989Z",
++      "purgeAt": "2026-11-24T20:45:42.989Z",
++      "receiptId": "6afcbcf72cbcbf1babddb8e5",
++      "observationId": "6afcbcf72cbcbf1babddb8e6",
++      "decisionId": "6afcbcf72cbcbf1babddb8e7",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbcf72cbcbf1babddb8e6",
++      "outcome": "applied",
++      "reason": "lead_state_changed",
++      "revision": 5,
++      "effects": [
++        "lead_updated",
++        "record_link_confirmed",
++        "sheet_sync_requested"
++      ],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 0,
++          "bson": 0
++        },
++        "granot_observations": {
++          "count": 0,
++          "bson": 0
++        },
++        "synchronization_decisions": {
++          "count": 0,
++          "bson": 0
++        },
++        "domain_command_executions": {
++          "count": 0,
++          "bson": 0
++        },
++        "entity_changes": {
++          "count": 0,
++          "bson": 0
++        },
++        "sheet_sync_jobs": {
++          "count": 0,
++          "bson": 0
++        },
++        "sales_intelligence_jobs": {
++          "count": 0,
++          "bson": 0
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 553
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 1,
++          "bson": 2276
++        },
++        "granot_observations": {
++          "count": 1,
++          "bson": 732
++        },
++        "synchronization_decisions": {
++          "count": 1,
++          "bson": 1476
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 1,
++          "bson": 691
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1165
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read"
++      }
++    },
++    "unchanged": {
++      "runId": "6afcbcf72cbcbf1babddb8ed",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbcf72cbcbf1babddb8ed:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "0a4b63501d632f84c85530ee0721b44bd811ce25e13b5453ad44bebbac9b8774",
++      "expiresAt": "2026-11-18T20:45:43.533Z",
++      "purgeAt": "2026-11-24T20:45:43.533Z",
++      "receiptId": "6afcbcf72cbcbf1babddb8ef",
++      "observationId": "6afcbcf72cbcbf1babddb8f0",
++      "decisionId": "6afcbcf72cbcbf1babddb8f1",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbcf72cbcbf1babddb8f0",
++      "outcome": "already_current",
++      "reason": "desired_state_already_current",
++      "revision": 5,
++      "effects": [],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 1,
++          "bson": 2276
++        },
++        "granot_observations": {
++          "count": 1,
++          "bson": 732
++        },
++        "synchronization_decisions": {
++          "count": 1,
++          "bson": 1476
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 1,
++          "bson": 691
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1165
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 2,
++          "bson": 4172
++        },
++        "granot_observations": {
++          "count": 2,
++          "bson": 1464
++        },
++        "synchronization_decisions": {
++          "count": 2,
++          "bson": 2703
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read"
++      }
++    },
++    "stale": {
++      "runId": "6afcbcf62cbcbf1babddb8e1",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbcf62cbcbf1babddb8e1:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "5882323c281730e633b31a6da867dd1115937dc146e9903ea7e11f4e60b5a338",
++      "expiresAt": "2026-11-18T20:45:42.727Z",
++      "purgeAt": "2026-11-24T20:45:42.727Z",
++      "receiptId": "6afcbcf72cbcbf1babddb8f3",
++      "observationId": "6afcbcf72cbcbf1babddb8f4",
++      "decisionId": "6afcbcf82cbcbf1babddb8f5",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbcf72cbcbf1babddb8f0",
++      "outcome": "stale",
++      "reason": "older_than_temporal_winner",
++      "revision": 5,
++      "effects": [],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 2,
++          "bson": 4172
++        },
++        "granot_observations": {
++          "count": 2,
++          "bson": 1464
++        },
++        "synchronization_decisions": {
++          "count": 2,
++          "bson": 2703
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read"
++      }
++    },
++    "replay": {
++      "operationId": "6afcbcf62cbcbf1babddb8e3:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "receiptId": "6afcbcf72cbcbf1babddb8e5",
++      "observationId": "6afcbcf72cbcbf1babddb8e6",
++      "decisionId": "6afcbcf72cbcbf1babddb8e7",
++      "winner": "6afcbcf72cbcbf1babddb8f0",
++      "outcome": "applied",
++      "revision": 5,
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      }
++    }
++  }
++}
+diff --git a/docs/operations/evidence/granot-measurement-repeat.json b/docs/operations/evidence/granot-measurement-repeat.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..1bdc91003cca5778ec6242d131ad3d53db43eb8c
+--- /dev/null
++++ b/docs/operations/evidence/granot-measurement-repeat.json
+@@ -0,0 +1,941 @@
++{
++  "baseCommit": "868db09443681753390c25d0e6cec2160a130795",
++  "workflowSha256": "623a07f33a0b69776dacd1668f4705e3881bc92400733a561ab9ccf9632f4337",
++  "recordedAt": "2026-11-17T20:51:21.522Z",
++  "fixture": "Single-row Estimates report, active Form and Record Link, open Outreach subject, queued Sheet intent, local synthetic HTTP.",
++  "bytes": "BSON document sizes from command events. Returned firstBatch/nextBatch/value, submitted update expressions (including no-match), submitted inserted documents (including attempted duplicate). Excludes ACK envelopes, wire/physical storage, replication and indexes. Inventory is materialized application BSON.",
++  "measurements": {
++    "stale": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 4256,
++        "updateBson": 3425,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 41,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3363,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4048,
++        "updateBson": 2134,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 43,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 4,
++        "returnedDocuments": 2,
++        "returnedBson": 3292,
++        "updateBson": 951,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 2,
++          "find": 1
++        }
++      },
++      "process": {
++        "commands": 12,
++        "returnedDocuments": 10,
++        "returnedBson": 5478,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 12
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 3,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 59,
++        "insertBson": 1214,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1,
++          "update": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "genuine": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 4256,
++        "updateBson": 3470,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 41,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3408,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4093,
++        "updateBson": 2140,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 43,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 9,
++        "returnedDocuments": 4,
++        "returnedBson": 4298,
++        "updateBson": 1895,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 4,
++          "find": 3,
++          "commitTransaction": 1
++        }
++      },
++      "process": {
++        "commands": 18,
++        "returnedDocuments": 14,
++        "returnedBson": 8076,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 18
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 13,
++        "returnedDocuments": 4,
++        "returnedBson": 2030,
++        "updateBson": 943,
++        "insertBson": 4149,
++        "failed": 0,
++        "commandNames": {
++          "find": 4,
++          "update": 4,
++          "insert": 3,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      },
++      "Outreach refresh": {
++        "commands": 7,
++        "returnedDocuments": 7,
++        "returnedBson": 1097,
++        "updateBson": 693,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 3,
++          "listIndexes": 2,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "unchanged": {
++      "create": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 797,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "collect and seal": {
++        "commands": 36,
++        "returnedDocuments": 30,
++        "returnedBson": 5480,
++        "updateBson": 3437,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 2,
++          "update": 4,
++          "find": 29
++        }
++      },
++      "run claim (collect and seal)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 41,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "approve": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 3375,
++        "updateBson": 541,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 1,
++          "update": 1
++        }
++      },
++      "apply worker": {
++        "commands": 12,
++        "returnedDocuments": 4,
++        "returnedBson": 4060,
++        "updateBson": 2164,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "aggregate": 1,
++          "findAndModify": 1,
++          "update": 6,
++          "find": 4
++        }
++      },
++      "run claim (apply worker)": {
++        "commands": 1,
++        "returnedDocuments": 1,
++        "returnedBson": 43,
++        "updateBson": 255,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1
++        }
++      },
++      "capture": {
++        "commands": 1,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 9,
++        "returnedDocuments": 4,
++        "returnedBson": 3926,
++        "updateBson": 1539,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "update": 4,
++          "find": 3,
++          "commitTransaction": 1
++        }
++      },
++      "process": {
++        "commands": 16,
++        "returnedDocuments": 12,
++        "returnedBson": 7271,
++        "updateBson": 0,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 16
++        }
++      },
++      "normalize": {
++        "commands": 3,
++        "returnedDocuments": 1,
++        "returnedBson": 1578,
++        "updateBson": 0,
++        "insertBson": 732,
++        "failed": 0,
++        "commandNames": {
++          "find": 2,
++          "insert": 1
++        }
++      },
++      "decision and Lead transaction": {
++        "commands": 4,
++        "returnedDocuments": 0,
++        "returnedBson": 0,
++        "updateBson": 220,
++        "insertBson": 1227,
++        "failed": 0,
++        "commandNames": {
++          "update": 2,
++          "insert": 1,
++          "commitTransaction": 1
++        }
++      },
++      "Outreach refresh": {
++        "commands": 6,
++        "returnedDocuments": 5,
++        "returnedBson": 980,
++        "updateBson": 693,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "find": 3,
++          "listIndexes": 1,
++          "findAndModify": 1,
++          "commitTransaction": 1
++        }
++      }
++    },
++    "replay": {
++      "capture": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 155,
++        "updateBson": 0,
++        "insertBson": 1488,
++        "failed": 0,
++        "commandNames": {
++          "insert": 1,
++          "find": 1
++        }
++      },
++      "receipt claim and finalize": {
++        "commands": 2,
++        "returnedDocuments": 1,
++        "returnedBson": 2276,
++        "updateBson": 272,
++        "insertBson": 0,
++        "failed": 0,
++        "commandNames": {
++          "findAndModify": 1,
++          "find": 1
++        }
++      }
++    }
++  },
++  "evidence": {
++    "genuine": {
++      "runId": "6afcbe42ed93f6f5ef475bf0",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbe42ed93f6f5ef475bf0:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "7c41d1663951b7edabf97f084cfc16f473a207e413431a7be9e5e36698b33daf",
++      "expiresAt": "2026-11-18T20:51:14.651Z",
++      "purgeAt": "2026-11-24T20:51:14.651Z",
++      "receiptId": "6afcbe43ed93f6f5ef475bf2",
++      "observationId": "6afcbe43ed93f6f5ef475bf3",
++      "decisionId": "6afcbe44ed93f6f5ef475bf4",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbe43ed93f6f5ef475bf3",
++      "outcome": "applied",
++      "reason": "lead_state_changed",
++      "revision": 5,
++      "effects": [
++        "lead_updated",
++        "record_link_confirmed",
++        "sheet_sync_requested"
++      ],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 0,
++          "bson": 0
++        },
++        "granot_observations": {
++          "count": 0,
++          "bson": 0
++        },
++        "synchronization_decisions": {
++          "count": 0,
++          "bson": 0
++        },
++        "domain_command_executions": {
++          "count": 0,
++          "bson": 0
++        },
++        "entity_changes": {
++          "count": 0,
++          "bson": 0
++        },
++        "sheet_sync_jobs": {
++          "count": 0,
++          "bson": 0
++        },
++        "sales_intelligence_jobs": {
++          "count": 0,
++          "bson": 0
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 553
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 1,
++          "bson": 2276
++        },
++        "granot_observations": {
++          "count": 1,
++          "bson": 732
++        },
++        "synchronization_decisions": {
++          "count": 1,
++          "bson": 1476
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 1,
++          "bson": 691
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1165
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read",
++        "outcome": "applied",
++        "temporalOrder": "same"
++      }
++    },
++    "unchanged": {
++      "runId": "6afcbe45ed93f6f5ef475bfa",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbe45ed93f6f5ef475bfa:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "c82c5071dae6502a4dc0fd34bd87a60fd82a35ed63601016eca86d030f61c976",
++      "expiresAt": "2026-11-18T20:51:17.707Z",
++      "purgeAt": "2026-11-24T20:51:17.707Z",
++      "receiptId": "6afcbe46ed93f6f5ef475bfc",
++      "observationId": "6afcbe46ed93f6f5ef475bfd",
++      "decisionId": "6afcbe47ed93f6f5ef475bfe",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbe46ed93f6f5ef475bfd",
++      "outcome": "already_current",
++      "reason": "desired_state_already_current",
++      "revision": 5,
++      "effects": [],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 1,
++          "bson": 2276
++        },
++        "granot_observations": {
++          "count": 1,
++          "bson": 732
++        },
++        "synchronization_decisions": {
++          "count": 1,
++          "bson": 1476
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 1,
++          "bson": 691
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1165
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 2,
++          "bson": 4172
++        },
++        "granot_observations": {
++          "count": 2,
++          "bson": 1464
++        },
++        "synchronization_decisions": {
++          "count": 2,
++          "bson": 2703
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read",
++        "outcome": "already_current",
++        "temporalOrder": "same"
++      }
++    },
++    "stale": {
++      "runId": "6afcbe40ed93f6f5ef475bee",
++      "actionId": "Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "operationId": "6afcbe40ed93f6f5ef475bee:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "checksum": "2100d1a62980d1c12eb347668d72b55074f5ef5015a06bd5817fb64f701a4120",
++      "expiresAt": "2026-11-18T20:51:12.605Z",
++      "purgeAt": "2026-11-24T20:51:12.605Z",
++      "receiptId": "6afcbe48ed93f6f5ef475c00",
++      "observationId": "6afcbe48ed93f6f5ef475c01",
++      "decisionId": "6afcbe48ed93f6f5ef475c02",
++      "targetId": "000000000000000000000101",
++      "winner": "6afcbe46ed93f6f5ef475bfd",
++      "outcome": "stale",
++      "reason": "older_than_temporal_winner",
++      "revision": 5,
++      "effects": [],
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 2,
++          "bson": 4172
++        },
++        "granot_observations": {
++          "count": 2,
++          "bson": 1464
++        },
++        "synchronization_decisions": {
++          "count": 2,
++          "bson": 2703
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "trace": {
++        "status": "traced",
++        "stop": "canonical_lead_read",
++        "outcome": "stale",
++        "temporalOrder": "older"
++      }
++    },
++    "replay": {
++      "operationId": "6afcbe42ed93f6f5ef475bf0:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++      "receiptId": "6afcbe43ed93f6f5ef475bf2",
++      "observationId": "6afcbe43ed93f6f5ef475bf3",
++      "decisionId": "6afcbe44ed93f6f5ef475bf4",
++      "winner": "6afcbe46ed93f6f5ef475bfd",
++      "outcome": "applied",
++      "revision": 5,
++      "retainedBefore": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      },
++      "retainedAfter": {
++        "granot_webhook_receipts": {
++          "count": 3,
++          "bson": 5976
++        },
++        "granot_observations": {
++          "count": 3,
++          "bson": 2196
++        },
++        "synchronization_decisions": {
++          "count": 3,
++          "bson": 3917
++        },
++        "domain_command_executions": {
++          "count": 1,
++          "bson": 1381
++        },
++        "entity_changes": {
++          "count": 1,
++          "bson": 1292
++        },
++        "sheet_sync_jobs": {
++          "count": 1,
++          "bson": 363
++        },
++        "sales_intelligence_jobs": {
++          "count": 2,
++          "bson": 1382
++        },
++        "form_leads": {
++          "count": 1,
++          "bson": 1173
++        },
++        "call_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "booked_leads": {
++          "count": 0,
++          "bson": 0
++        },
++        "cancelled_leads": {
++          "count": 0,
++          "bson": 0
++        }
++      }
++    }
++  },
++  "crashProof": {
++    "runId": "6afcbe49ed93f6f5ef475c05",
++    "checksum": "ec078d5968a04e0e6505f54f4435a8fc00e9a5782c42b18fb9e169a7923d33e4",
++    "operationId": "6afcbe49ed93f6f5ef475c05:Synthetic Forms:estimates:10/12/2026:1:estimates:1:P900001",
++    "receiptId": "6afcbe4aed93f6f5ef475c07",
++    "observationId": "6afcbe4aed93f6f5ef475c08",
++    "decisionId": "6afcbe4aed93f6f5ef475c09",
++    "commandId": "6afcbe4aed93f6f5ef475c0a",
++    "changeId": "6afcbe4aed93f6f5ef475c0c",
++    "revisionBefore": 5,
++    "revisionAfter": 6,
++    "embeddedReceiptsAtFault": 0,
++    "embeddedReceiptsAfter": 1,
++    "trace": "canonical_lead_read",
++    "unchangedApprovalAndDates": true,
++    "repeatedCanonicalEffects": 0
++  }
++}
+diff --git a/docs/operations/evidence/granot-stage-measurement.md b/docs/operations/evidence/granot-stage-measurement.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a5a310aab9116113d659dfeddaea4ee66f50228
+--- /dev/null
++++ b/docs/operations/evidence/granot-stage-measurement.md
+@@ -0,0 +1,49 @@
++# Sealed Estimates run cost on the disposable replica
++
++The worker needs the claimed run ID and status to choose its next step. A projection on the existing atomic claim returns those two fields. The subsequent primary-fenced planning or apply read still loads the state it owns. Apply validates the full plan checksum, approval checksum, selected actions, original deadlines and closed-run fence. The queue filter, sort, lease update and attempt increment are unchanged.
++
++## Matched workloads
++
++Each fresh workload used a one-row Estimates report, an existing Form Lead and Record Link, and an open Outreach subject. Synthetic HTTP responses went through both logins, form validation, report parsing, canonical identity planning and immutable plan lock. Owner approval used the sealed checksum. Queue delivery was disabled and the harness invoked the ordinary workers directly. The real canonical command, Mongo transactions, outbox planning and Outreach nomination ran on the dedicated single-member replica.
++
++| Workload | Mongo commands, both | Returned document BSON before → after | Submitted update-expression BSON, both | Submitted insert BSON, both |
++|---|---:|---:|---:|---:|
++| Genuine change | 104 | 33,496 → 28,920 | 10,192 | 7,166 |
++| Fresh unchanged | 92 | 31,297 → 26,754 | 9,104 | 4,244 |
++| Older report approved last | 76 | 26,630 → 22,099 | 7,620 | 4,231 |
++| Recapture original terminal operation | 4 | 2,431 → 2,431 | 272 | 1,488 |
++
++Each planning claim returned 868 → 41 bytes. The applying claim returned 3,792 → 43 on the genuine change, 3,759 → 43 on unchanged and 3,747 → 43 on stale. Every other stage had identical command counts, returned BSON and submitted mutation BSON. Replay entered the action with the original operation and provider capture time, without supplying an embedded run result. Duplicate capture and the terminal receipt returned the original receipt, Observation and Decision IDs. Replay timing reflects this action-level re-entry. The paired fixture had already checkpointed the original run.
++
++[Before measurements and per-stage commands](granot-measurement-before.json) · [After measurements, approvals and temporal traces](granot-measurement-after.json)
++
++An independent candidate run reproduced every stage count and byte total. A fourth sealed report then made a genuine priority change. After the canonical transaction and receipt completion, the fixture changed the local worker's lease epoch before its first checkpoint. The old worker's write failed its fence. The next worker reused the exact operation, receipt, Observation, Decision and unchanged Lead revision 6, checkpointed once and completed the original approval before expiry. It repeated zero canonical effects. That separate run used production implementations of capture, lifecycle execution and worker recovery with the same fake HTTP boundary. [Repeated measurements and actual crash chain](granot-measurement-repeat.json)
++
++## Effects that remained
++
++| Workload | Durable Lead and lifecycle effects |
++|---|---|
++| Genuine change | The matched Form changed from priority 0 to 5 and became quoted. Revision advanced from 4 to 5. The command, one EntityChange, one queued Sheet intent and one existing-subject Outreach refresh survived commit. |
++| Fresh unchanged | A new receipt, Observation and Decision advanced the accepted observation. Revision stayed 5. The existing subject received a new receipt-specific refresh. |
++| Stale | The provider row was collected and sealed first. Its Owner approved it after both newer observations. Its receipt, Observation and stale Decision remained. Revision and accepted observation stayed fixed. |
++| Replay | All measured collection counts and retained BSON sizes stayed fixed. Receipt/Observation/Decision IDs matched the original genuine change. The later accepted observation remained the winner. |
++
++The genuine, unchanged and stale workloads retained respectively 4,484, 3,855 and 3,750 BSON bytes across their receipt, Observation and Decision. The underlying data files also report command, EntityChange, pending Sheet and Outreach job BSON. One Form Lead existed throughout. The fixture created zero Call Leads, official Bookings or Cancellations. Independent databases allocate their own IDs and clock values. Within each run the proof checked the exact operation-to-receipt linkage, every Decision pointer, original plan and approval, and expiry and purge timestamps.
++
++The read-only operator trace reached each real canonical Lead. It reported the current temporal tuple for genuine and unchanged and an older observation for stale. The harness blocked provider delivery, so the durable evidence ends at Sheet intent and Outreach nomination.
++
++## Fixture calibration
++
++The first end-to-end attempt stopped at `INDEX_REQUIRED` after committing a real local Lead effect. The empty fixture database lacked the existing CSI job deduplication index required for open-subject nomination. The launcher removed that generated database. The successful pair and repeat provisioned the same declared deduplication index before measurement. Each JSON records the base Git commit and the working `runWorkflow.ts` SHA-256. Both sides included the in-batch expiry check, so the measured difference isolates the claim projection.
++
++## Reproduce and interpret
++
++With the dedicated single writable member `capacityp1` at `127.0.0.1:27216`, run this from the server root with an unused output path.
++
++```powershell
++node --import tsx ops/capacity/granot-phase-two.replica.ts "$env:TEMP/granot-measurement-$([guid]::NewGuid()).json"
++```
++
++Each invocation uses an empty random test database. The launcher verifies every advertised replica member, removes inherited service settings, uses a fresh credential profile and drops its own database on exit. It supplies synthetic Sheet container IDs and installs the repository's test queue/Daily Operations protections. Fixture, trace, inventory, local index setup and cleanup reads sit outside the measured stages.
++
++The Mongo driver counts commands and the BSON size of returned cursor documents or a find-and-modify value. It also sizes each submitted insert document and update expression, including no-match fences and an attempted duplicate insert on replay. These metrics exclude acknowledgement envelopes, command filters, network protocol and compression, index pages, storage-engine writes and oplog bytes. Retained collection BSON is measured independently. Single-row warm local measurements establish neither fleet throughput nor production benefit. Reverting the projection restores the larger response with the same stored run and lifecycle records.
+diff --git a/docs/operations/granot.md b/docs/operations/granot.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..0f81dee88d8302d03fd7a0a2be7f6289b43ad7cf
+--- /dev/null
++++ b/docs/operations/granot.md
+@@ -0,0 +1,50 @@
++# Trace one Granot automation action
++
++Use this local read when you have the run ID and the exact action ID from an authorized operator. Start at the repository root with Node and dependencies installed with `pnpm install --frozen-lockfile`. Discovery works before Mongo is running.
++
++```powershell
++pnpm vantage -- services
++pnpm vantage -- runbook granot
++```
++
++Set the three variables to the supplied values, keeping spaces and punctuation in the action ID. The run ID is 24 hexadecimal characters. A single-quoted PowerShell string preserves dollar signs and spaces. Use a doubled apostrophe for an apostrophe in a value. The CLI never echoes the action ID, which can contain a source label.
++
++```powershell
++$traceRun = '000000000000000000000001'
++$traceAction = 'Synthetic source:followUpEstimates:1'
++$traceProfile = 'granot-rehearsal'
++pnpm --silent vantage -- granot trace --run $traceRun --action $traceAction --target local --profile $traceProfile --json
++```
++
++`granot-rehearsal` selects the disposable `testvantagemovers_granot_trace` database. `agent` selects `testvantagemovers_agent`. Both require the writable primary of the single-member `rs0` replica at `127.0.0.1:27017`. Check the returned identity. The CLI opens its own direct local connection and ignores application connection settings. It never starts a worker. Production targets exit 4 before opening a connection. There is no production adapter. A production adapter would require a separately reviewed deployment-bound identity, allowlist and read permissions.
++
++## Read the result
++
++1. `run` reports the workflow, lock time, original expiry and approval time. `checksum_matches` compares the saved approval and sealed-plan checksum fields. Recomputing the checksum would require reading the full plan. Actor identity, permissions at approval time and payload hash equality are outside the projection. `action` reports exact selected membership and whether the stored operation ID agrees with the requested pair. If the run checkpoint is absent after interrupted apply, the same operation key and kind can locate a candidate receipt. The trace stops at `operation_key_correlation_only`. It cannot verify payload equality. An idempotency conflict, invalid required checkpoint pointer, or mismatched operation kind also stops the walk.
++2. `action.recorded_*` is the collector checkpoint. The lifecycle receipt is independently linked by the exact channel and operation. For Estimates, `matches_sealed_capture_time` compares the receipt timestamp with the stored action capture time when both exist. The Observation links by receipt ID, and its Decision must match both the receipt's latest Decision pointer and the Observation ID. A later match attempt or reconciliation may move that pointer before the collector updates its checkpoint. `matches_run_checkpoint: false` reports this difference. `accepted_for_processing` is pending evidence, even when a later linked Decision already exists.
++3. `decision` gives the stored execution mode, outcome, reason, target and deduplicated effect kinds. A target is an identity match. For a live Decision, `target_lead_effect_kinds` gives the recorded Lead creation/update kinds whose reference matches that exact model and ID. Other effect kinds may refer to a sibling or another resource. A shadow Decision or an `already_current` outcome does not prove a Lead update. Matching a field on the Lead cannot establish which command wrote it. This trace does not read change history or delivery receipts.
++4. `lead` is the canonical Form Lead or Call Lead read at inspection time. Compare the traced Observation with its current accepted winner using capture time and then Observation ID. `same` identifies the same tuple, `older` means a later tuple now wins, `newer` means this Observation is ahead of the stored tuple, and `unknown` means at least one tuple is missing. `certified_for_this_decision` requires the same winner plus the current Lead's version-2 accepted evidence for the same receipt, live Decision and outcome. Historical decisions survive later winners.
++
++`status: traced` means the linked Lead could be read. `partial` and `stop` identify the first missing, inapplicable or inconsistent edge. Pending or non-Lead Decisions can legitimately end before a Lead. Missing run history can reflect purge. An absent pointer remains unknown. A pointer mismatch stops the walk. Reads are sequential and can straddle a new decision or Lead update. Repeating the same command can show a new current winner. Neither status authorizes replay, mutation or billing.
++
++## Collection, retries and original expiry
++
++The collector holds the account lease during collection, seals a schema-v2 plan, and records approval of the selected actions. Each action's immutable operation key is the run ID joined to the action ID. The run worker captures through the shared lifecycle service. A queue message or recovery heartbeat wakes work. A due receipt claim and its lease fence control processing. A pending match follows the receipt's captured-time schedule through the 24-hour match window. Compare the reported next attempt and lease times with current UTC. A terminal Decision can already exist while the collector still shows a pending checkpoint.
++
++The plan expires 24 hours after run creation. The original expiry closes further execution from that plan, including unstarted actions after partial apply. Captured lifecycle evidence keeps its own processing history. A run document may later disappear at its purge deadline. Never extend the clock or issue a new apply to fill a trace gap. Preview and unselected actions provide no approval. Official Booking and Cancellation outcomes and RingCentral Call admission have separate authorities. [Collector contract](../knowledge/services/granot-http-collector.md) · [Receipt processing and scheduler](../knowledge/granot-lifecycle/drainer.md) · [Domain commands](../knowledge/services/domain-commands.md)
++
++## Read boundaries and exits
++
++At most five indexed Mongo reads return one scalar projection apiece, excluding the initial identity handshake. Each read has a two-second server deadline and disables disk spill. Only the selected action and its checkpoint are examined within one run; Mongo may traverse that run's embedded arrays. The CLI fetches no full run, payload, plan row, contact, command body or provider response. String statuses, reasons and effect kinds use closed vocabularies. The two secondary lookups require the shipped channel/operation and receipt-ID indexes. A failed query returns a redacted error. The authenticated Owner run detail and authorized Lead lifecycle timeline supply the read vocabulary. The local projection narrows both to one chain, without opening either broader HTTP response. [Authenticated run and Lead reads](../knowledge/granot-lifecycle/projections.md)
++
++Exit 0 means the bounded read completed, including a partial result. Exit 2 indicates invalid input. Exit 3 means the identity check, permission or query failed. Verify the target/profile, local primary and existing read access. Exit 4 indicates an unsupported production target. Discovery is read-only. There are no repair or scheduling commands for Granot.
++
++## Reproduce the diagnostic tests
++
++The fast test checks discovery, identifier limits and target refusal. The explicit replica test creates synthetic records in the fixed rehearsal database, monitors every Mongo read, exercises conflicting pointers and removes only its own generated records. Use a running local rehearsal replica.
++
++```powershell
++node --import tsx --test ops/vantage/granot-trace.test.ts ops/vantage/granot-trace.replica.ts
++```
++
++To prepare an independent onboarding exercise, the coordinator can run `node --import tsx ops/vantage/granot-fixture.ts`. This separate fixture writer inserts a fresh synthetic history and prints its local profile, run ID and exact action ID. It does not call providers. Give the operator those inputs and the checkout. The scenario tests evidence interpretation. The canonical lifecycle qualification exercises actual processor and command writes separately.
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index 72e7bf1506312e90d4f61b73bebe2dcf93b5cb43..a2d55eb9f17c2c0d1d0d98e7ae862032de0bf581 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
+ export default [
+   { ignores: ['node_modules/**', 'dist/**', 'coverage/**'] },
+   {
+-    files: ['src/**/*.ts', 'api/**/*.ts'],
++    files: ['src/**/*.ts', 'api/**/*.ts', 'ops/vantage/**/*.ts', 'ops/capacity/granot-*.ts'],
+     languageOptions: { parser: tseslint.parser },
+     plugins: { '@typescript-eslint': tseslint.plugin },
+     rules: {
+diff --git a/ops/capacity/granot-canonical-crash.ts b/ops/capacity/granot-canonical-crash.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..50a5e8bbab5592ed1056803910bcd04feb3a15cd
+--- /dev/null
++++ b/ops/capacity/granot-canonical-crash.ts
+@@ -0,0 +1,80 @@
++import assert from "node:assert/strict";
++import { ObjectId, type Db, type Document } from "mongodb";
++import { approveGranotRun, runGranotWorker } from "../../src/services/granotHttpCollector/runWorkflow";
++import { applyOpenAutomationPlanAction, type GranotAutomationActionReceipt } from "../../src/services/granotLifecycle/automationApply";
++import { traceGranotAction } from "../vantage/granot-trace";
++import { owner } from "./granot-measurement-fixture";
++
++/** Fault injection is limited to the generated local run's lease. The first and second workers use real lifecycle effects. */
++export async function proveCanonicalCrash(db: Db, sealed: Document, leadId: ObjectId) {
++  const runId = String(sealed._id);
++  const action = sealed.plan_snapshot.actions[0];
++  const runs = db.collection("granot_automation_runs");
++  const leadFilter = { _id: leadId };
++  const loadLead = () => db.collection("form_leads").findOne(leadFilter);
++  await approveGranotRun({ run_id: runId, plan_checksum: sealed.plan_checksum, selected_action_ids: [action.action_id], approved_by: owner });
++  const approved = await runs.findOne({ _id: sealed._id });
++  const originalLead = await loadLead();
++  assert.ok(approved && originalLead);
++  let firstEffect: GranotAutomationActionReceipt | undefined;
++  await assert.rejects(runGranotWorker({ applyAction: async input => {
++    assert.equal(input.lifecycle_apply.operation_id, action.lifecycle_apply.operation_id);
++    firstEffect = await applyOpenAutomationPlanAction(input);
++    assert.equal(firstEffect.outcome, "applied");
++    const lost = await runs.updateOne({ _id: sealed._id, status: "applying", lease_owner: { $type: "string" } },
++      { $inc: { lease_epoch: 1 }, $set: { leased_until: new Date(0) } });
++    assert.equal(lost.modifiedCount, 1);
++    return firstEffect;
++  } }), /fenced lease/);
++  assert.ok(firstEffect);
++  const interrupted = await runs.findOne({ _id: sealed._id });
++  assert.equal(interrupted?.status, "applying");
++  assert.equal(interrupted?.receipts.length, 0);
++  const changed = await loadLead();
++  assert.ok(changed);
++  assert.equal(changed.domain_revision, originalLead.domain_revision + 1);
++  assert.equal(changed.granot_priority, "1");
++  assert.equal(String(changed.last_accepted_granot_observation.observation_id), firstEffect.observation_id);
++  const receipts = db.collection("granot_webhook_receipts");
++  const receiptFilter = { observation_channel: "granot_http_automation", channel_operation_id: action.lifecycle_apply.operation_id };
++  const receipt = await receipts.findOne(receiptFilter);
++  assert.ok(receipt);
++  assert.equal(String(receipt._id), firstEffect.lifecycle_receipt_id);
++  assert.equal(receipt.processing.state, "completed");
++  assert.equal(String(receipt.processing.latest_decision_id), firstEffect.decision_id);
++  const decisionId = new ObjectId(firstEffect.decision_id!);
++  const changes = db.collection("entity_changes");
++  const provenance = { "provenance.decision_id": decisionId };
++  const change = await changes.findOne(provenance);
++  assert.ok(change);
++  const commands = db.collection("domain_command_executions");
++  const before = { commands: await commands.countDocuments(), changes: await changes.countDocuments(), sheet: await db.collection("sheet_sync_jobs").countDocuments() };
++  const result = await runGranotWorker();
++  assert.equal(result.status, "completed");
++  assert.equal(result.run_id, runId);
++  const final = await runs.findOne({ _id: sealed._id });
++  assert.ok(final);
++  assert.equal(final.receipts.length, 1);
++  const recorded = final.receipts[0];
++  assert.deepEqual([recorded.action_id, recorded.lifecycle_receipt_id, recorded.observation_id, recorded.decision_id, recorded.outcome],
++    [firstEffect.action_id, firstEffect.lifecycle_receipt_id, firstEffect.observation_id, firstEffect.decision_id, firstEffect.outcome]);
++  assert.equal(recorded.outreach_refresh_completed, true);
++  assert.deepEqual([final.plan_snapshot, final.approval, final.plan_checksum, final.expires_at, final.purge_at],
++    [sealed.plan_snapshot, approved.approval, sealed.plan_checksum, sealed.expires_at, sealed.purge_at]);
++  assert.equal(await receipts.countDocuments(receiptFilter), 1);
++  assert.equal(await db.collection("granot_observations").countDocuments({ receipt_id: receipt._id }), 1);
++  assert.equal(await db.collection("synchronization_decisions").countDocuments({ observation_id: new ObjectId(firstEffect.observation_id!) }), 1);
++  assert.equal(await changes.countDocuments(provenance), 1);
++  assert.ok(await commands.findOne({ _id: change.command_execution_id, command_name: "synchronizeLeadFromGranot" }));
++  assert.deepEqual({ commands: await commands.countDocuments(), changes: await changes.countDocuments(),
++    sheet: await db.collection("sheet_sync_jobs").countDocuments() }, before);
++  assert.deepEqual(await loadLead(), changed);
++  const trace = await traceGranotAction(db, runId, action.action_id);
++  assert.equal(trace.status, "traced", trace.stop);
++  assert.equal(trace.lead?.observation_vs_current_winner, "same");
++  return { runId, checksum: final.plan_checksum, operationId: action.lifecycle_apply.operation_id,
++    receiptId: firstEffect.lifecycle_receipt_id, observationId: firstEffect.observation_id, decisionId: firstEffect.decision_id,
++    commandId: String(change.command_execution_id), changeId: String(change._id), revisionBefore: originalLead.domain_revision, revisionAfter: changed.domain_revision,
++    embeddedReceiptsAtFault: interrupted.receipts.length, embeddedReceiptsAfter: final.receipts.length,
++    trace: trace.stop, unchangedApprovalAndDates: true, repeatedCanonicalEffects: 0 };
++}
+diff --git a/ops/capacity/granot-measurement-fixture.ts b/ops/capacity/granot-measurement-fixture.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8111d45a885be7b92df5de6cd25a0e384c4f1d04
+--- /dev/null
++++ b/ops/capacity/granot-measurement-fixture.ts
+@@ -0,0 +1,50 @@
++import assert from "node:assert/strict";
++import { ObjectId, type Db } from "mongodb";
++
++export const dateWindow = { from: "10/12/2026", to: "10/12/2026" };
++export const owner = { actor_type: "owner", actor_id: "measurement-owner", actor_role: "owner", actor_label: "Synthetic Owner",
++  request_id: "synthetic-measurement", origin: "vantage_admin" } as const;
++const job = "P900001";
++const lead = new ObjectId("000000000000000000000101");
++const label = "Synthetic Forms";
++
++/** No socket is opened. Every collection must consume exactly the two logins, menu, form and one report. */
++export function fakeReport(priority: string) {
++  const form = '<form action="/wc.dll?mv~estprocessret~SYNTHETIC" method="post"><input name="STATUS" value="V9"><select name="TYPEDTE"><option value="OPEN">Open Date</option></select><input name="DATE1"><input name="DATE2"><select name="FUSTATUS"><option value="10">ALL</option><option value="9">Pool</option></select><select name="USER"><option value="">All users</option></select><select name="DEPT"><option value="ALL">ALL</option></select><select name="TYPE"><option value="V1">All types</option></select><select name="SORT"><option value="V6">Priority</option></select></form>';
++  const cells = { job_no: job, open_date: dateWindow.from, follow_up: "prior: " + priority, user: "", customer: "Synthetic Form", source: label,
++    ref_no: String(lead), email: "", phone1: "", phone2: "", from_city: "", from_state: "NY", from_zip: "10001",
++    to_city: "", to_state: "NY", to_zip: "10002", move_date: "", cf: "" };
++  const report = '<h1>Follow-Up Estimates, Total of: 1 Transactions</h1><table><tr>' +
++    Object.keys(cells).map(value => '<th>' + value + '</th>').join("") + '</tr><tr>' +
++    Object.values(cells).map(value => '<td>' + value + '</td>').join("") + '</tr></table>';
++  const responses = ['<form action="/network-login"></form>', '<form action="/user-login"></form>',
++    '<a href="/wc.dll?mv~mainmenuwc~A04F50BA-B981-44A9-9930-9E7FEC2B8201~LOGIN">Menu</a>', form, report];
++  globalThis.fetch = async () => {
++    const next = responses.shift();
++    assert.ok(next, "Unexpected external fetch");
++    return new Response(next, { status: 200 });
++  };
++  return () => assert.equal(responses.length, 0, "Incomplete collection");
++}
++
++export async function seedGranotMeasurement(db: Db) {
++  const company = new ObjectId(), feed = new ObjectId(), previous = new ObjectId();
++  const before = new Date("2026-01-01T00:00:00Z");
++  await db.collection("lead_source_companies").insertOne({ _id: company, active: true, company_slug: "main_site" });
++  await db.collection("lead_source_granularities").insertOne({ _id: feed, active: true, channel: "form", source_company: company });
++  await db.collection("granot_crm_sources").insertOne({ enabled: true, lifecycle_enabled: true, granot_label: label,
++    normalized_granot_label: label.toLowerCase(), lifecycle_disposition: "source_scoped_lead", lead_created_policy: "link_only",
++    lead_source_company: company, lifecycle_routes: [{ route_key: "form_any", lead_model: "FormLead", move_type: "any", source_granularity_id: feed }],
++    lifecycle_policy_version: "granot-lifecycle-source-policy-v1" });
++  await db.collection("form_leads").insertOne({ _id: lead, source_company: "main_site", ingestion_origin: "wordpress_form",
++    name: "Synthetic Form", phone_number: "2125550100", normalized_phone_number: "2125550100", pickup_zip: "10001",
++    destination_zip: "10002", pickup_state: "NY", delivery_state: "NY", local: "local", domain_revision: 4,
++    quoted: false, granot_priority: "0", job_no: job, normalized_job_no: job, lead_source_company: company, source_granularity_id: feed,
++    last_accepted_granot_observation: { observation_id: previous, captured_at: before } });
++  await db.collection("granot_record_links").insertOne({ provider: "granot", state: "active", normalized_job_no: job,
++    job_no_snapshot: job, lead_ref: { model: "FormLead", id: lead }, source_scope: { lead_source_company: company, source_granularity_id: feed },
++    disputed: false, established_by_decision_id: new ObjectId(), established_at: before, last_observation_id: previous, last_observed_at: before, domain_revision: 1 });
++  await db.collection("granot_lifecycle_activations").insertOne({ key: "granot_lifecycle", activated_at: before });
++  await db.collection("sales_outreach_subjects").insertOne({ lead_model: "FormLead", lead_id: lead, status: "active" });
++  return lead;
++}
+diff --git a/ops/capacity/granot-phase-two.replica.ts b/ops/capacity/granot-phase-two.replica.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..519ddb570a24b4f09aa6d6dea1434a5d7fddd3a5
+--- /dev/null
++++ b/ops/capacity/granot-phase-two.replica.ts
+@@ -0,0 +1,52 @@
++/** Only a new database on the dedicated loopback replica may run this synthetic proof. */
++import assert from "node:assert/strict";
++import { spawnSync } from "node:child_process";
++import { randomUUID } from "node:crypto";
++import { existsSync } from "node:fs";
++import { resolve } from "node:path";
++import { MongoClient } from "mongodb";
++
++const uri = "mongodb://127.0.0.1:27216/?replicaSet=capacityp1&directConnection=true&monitorCommands=true";
++async function main() {
++  const database = "testvantagemovers_granotphase2" + randomUUID().replaceAll("-", "");
++  const output = process.argv[2];
++  assert.ok(output, "Pass a new output JSON path");
++  assert.ok(!existsSync(output), "Refusing to overwrite existing evidence");
++  const dotenv = resolve("ops/capacity/.granot-phase-two-no-dotenv");
++  assert.ok(!existsSync(dotenv));
++  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
++  try {
++    await client.connect();
++    const db = client.db(database);
++    const hello = await db.admin().command({ hello: 1 });
++    assert.equal(hello.setName, "capacityp1");
++    assert.equal(hello.isWritablePrimary, true);
++    assert.deepEqual(hello.hosts, ["127.0.0.1:27216"]);
++    assert.equal((hello.passives ?? []).length + (hello.arbiters ?? []).length, 0);
++    assert.deepEqual(await db.listCollections().toArray(), []);
++    const env: NodeJS.ProcessEnv = {};
++    for (const key of ["PATH", "SystemRoot", "TEMP", "TMP"]) env[key] = process.env[key];
++    const emptyProfile = resolve(dotenv + "-" + database);
++    assert.ok(!existsSync(emptyProfile));
++    Object.assign(env, { HOME: emptyProfile, USERPROFILE: emptyProfile, LOCALAPPDATA: emptyProfile, APPDATA: emptyProfile });
++    Object.assign(env, {
++      MONGO_URI: uri, TEST_MODE: "true", TEST_MONGO_DATABASE_NAME: database,
++      DOTENV_CONFIG_PATH: dotenv, NODE_ENV: "test", SALES_INTELLIGENCE_DEPLOYMENT_ID: "granot-phase-two-local",
++      SHEET_SYNC_MODE: "queued", GRANOT_LIFECYCLE_SHADOW_MODE: "false", GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED: "true",
++      GRANOT_AUTOMATION_APPLY_ENABLED: "true", GRANOT_USERNAME: "fixture", GRANOT_PASSWORD: "fixture",
++      GRANOT_NETWORK_USERNAME: "fixture", GRANOT_NETWORK_PASSWORD: "fixture",
++    });
++    for (const name of ["MASTER_LEADS", "MASTER_BOOKED", "TBM_LEADS", "TBM_PRIME_LEADS", "TOP10_LEADS", "BEST_RELOCATION_LEADS", "GETMOVERS_LEADS", "MAINSITE_LEADS"]) env["TEST_" + name + "_SHEET_ID"] = "synthetic-" + name;
++    try {
++      const child = spawnSync(process.execPath, ["--import", "tsx", "--import", "./ops/test-setup.ts",
++        "ops/capacity/granot-sealed-measurement.ts", resolve(output)], { env, stdio: "inherit" });
++      if (child.error) throw child.error;
++      assert.equal(child.status, 0, "Sealed-run measurement failed");
++    } finally {
++      await db.dropDatabase();
++    }
++  } finally {
++    await client.close();
++  }
++}
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/ops/capacity/granot-sealed-measurement.ts b/ops/capacity/granot-sealed-measurement.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e6cc779fa0548e86c73b4e69c14c642b38ede2c
+--- /dev/null
++++ b/ops/capacity/granot-sealed-measurement.ts
+@@ -0,0 +1,207 @@
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { readFileSync, writeFileSync } from "node:fs";
++import { execFileSync } from "node:child_process";
++import mongoose from "mongoose";
++import { BSON, ObjectId, type Document } from "mongodb";
++import { connectMongo } from "../../src/db";
++import { SALES_INTELLIGENCE_JOB_INDEXES } from "../../src/models/SalesIntelligenceJob";
++import { getGranotObservationReceiptModel } from "../../src/models/GranotObservationReceipt";
++import { getGranotObservationModel, type GranotObservationDocument } from "../../src/models/GranotObservation";
++import { getSynchronizationDecisionModel } from "../../src/models/SynchronizationDecision";
++import { approveGranotRun, createGranotRun, runGranotWorker } from "../../src/services/granotHttpCollector/runWorkflow";
++import { refreshExistingEstimatesOutreach } from "../../src/services/granotHttpCollector/estimatesOutreachRefresh";
++import { applyOpenAutomationPlanAction, type ApplyAutomationActionInput } from "../../src/services/granotLifecycle/automationApply";
++import { claimAndProcessOrPoll } from "../../src/services/granotLifecycle/drainer";
++import { captureChannelOperationReceipt } from "../../src/services/granotLifecycle/capture";
++import { upsertGranotObservation } from "../../src/services/granotLifecycle/normalization";
++import { createGranotObservationProcessor } from "../../src/services/granotLifecycle/processor";
++import { computeChecksum } from "../../src/services/durableWork";
++import { traceGranotAction } from "../vantage/granot-trace";
++import { dateWindow, fakeReport, owner, seedGranotMeasurement } from "./granot-measurement-fixture";
++import { GranotStageMetrics } from "./granot-stage-metrics";
++import { proveCanonicalCrash } from "./granot-canonical-crash";
++
++const collectionNames = ["granot_webhook_receipts", "granot_observations", "synchronization_decisions", "domain_command_executions",
++  "entity_changes", "sheet_sync_jobs", "sales_intelligence_jobs", "form_leads", "call_leads", "booked_leads", "cancelled_leads"] as const;
++async function main() {
++  assert.equal(process.env.MONGO_URI, "mongodb://127.0.0.1:27216/?replicaSet=capacityp1&directConnection=true&monitorCommands=true");
++  assert.equal(process.env.TEST_MODE, "true");
++  assert.match(process.env.TEST_MONGO_DATABASE_NAME ?? "", /^testvantagemovers_granotphase2[a-f0-9]{32}$/);
++  mongoose.set("autoIndex", false);
++  mongoose.set("autoCreate", false);
++  await connectMongo();
++  const db = mongoose.connection.db!;
++  assert.equal(db.databaseName, process.env.TEST_MONGO_DATABASE_NAME);
++  const hello = await db.admin().command({ hello: 1 });
++  assert.equal(hello.setName, "capacityp1");
++  assert.deepEqual(hello.hosts, ["127.0.0.1:27216"]);
++  assert.deepEqual(await db.listCollections().toArray(), []);
++  for (const model of [getGranotObservationReceiptModel(), getGranotObservationModel(), getSynchronizationDecisionModel()]) await model.createIndexes();
++  const dedupe = SALES_INTELLIGENCE_JOB_INDEXES.find(index => index.name === "csi_job_dedupe_unique");
++  assert.ok(dedupe && "unique" in dedupe && dedupe.unique);
++  assert.deepEqual(dedupe.key, { dedupe_key: 1 });
++  await db.collection("sales_intelligence_jobs").createIndex({ dedupe_key: 1 }, { name: dedupe.name, unique: true });
++  const leadId = await seedGranotMeasurement(db);
++  const runs = db.collection("granot_automation_runs");
++  const metrics = new GranotStageMetrics();
++  const client = mongoose.connection.getClient();
++  assert.equal(client.options.monitorCommands, true);
++  metrics.attach(client);
++  const processor = createGranotObservationProcessor({
++    upsertObservation: id => metrics.stage("normalize", async () =>
++      (await upsertGranotObservation({ receipt_id: id })).observation as GranotObservationDocument),
++  });
++  const actionInputs = new Map<string, ApplyAutomationActionInput>();
++  const applyAction = (input: ApplyAutomationActionInput) => {
++    actionInputs.set(input.lifecycle_apply.operation_id, input);
++    return applyOpenAutomationPlanAction(input, {
++      capture: capture => metrics.stage("capture", () => captureChannelOperationReceipt(capture)),
++      claimAndProcess: id => metrics.stage("receipt claim and finalize", () => claimAndProcessOrPoll(id, {
++        syncPollDeadlineMs: input.existing_receipt ? 0 : undefined,
++        processor: { process: request => metrics.stage("process", () => processor.process(request)) },
++      })),
++    });
++  };
++  const worker = () => runGranotWorker({ applyAction,
++    refreshOutreach: receipt => metrics.stage("Outreach refresh", () => refreshExistingEstimatesOutreach(receipt)) });
++  async function collect(workload: string, priority: string) {
++    const collected = fakeReport(priority);
++    const result = await metrics.workload(workload, "create", () => createGranotRun({
++      operation: "estimates_in_process", workflow: "apply", dateWindow, sourceLabels: [], initiator: owner,
++    }));
++    assert.equal(result.queue_published, false);
++    const runId = new ObjectId(result.run_id);
++    const created = await runs.findOne({ _id: runId });
++    assert.ok(created);
++    const planned = await metrics.workload(workload, "collect and seal", worker);
++    collected();
++    assert.equal(planned.run_id, result.run_id);
++    const sealed = await runs.findOne({ _id: runId });
++    assert.ok(sealed);
++    assert.equal(sealed.status, "awaiting_approval", JSON.stringify(sealed.plan_snapshot?.counters));
++    assert.equal(sealed.expires_at.getTime(), created.expires_at.getTime());
++    assert.equal(sealed.purge_at.getTime(), created.purge_at.getTime());
++    assert.equal(sealed.purge_at - sealed.expires_at, 6 * 86400000);
++    assert.equal(sealed.plan_snapshot.actions.length, 1);
++    const action = sealed.plan_snapshot.actions[0];
++    assert.equal(action.lifecycle_apply.expected_target.id, String(leadId));
++    assert.equal(action.lifecycle_apply.operation_id, String(runId) + ":" + action.action_id);
++    assert.equal(sealed.plan_checksum, computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: sealed.plan_snapshot }));
++    return { workload, sealed, action };
++  }
++  async function inventory() {
++    const result: Record<string, { count: number; bson: number }> = {};
++    for (const name of collectionNames) {
++      const rows = await db.collection(name).find({}).toArray();
++      result[name] = { count: rows.length, bson: rows.reduce((n, row) => n + BSON.calculateObjectSize(row), 0) };
++    }
++    return result;
++  }
++  const evidence: Record<string, Document> = {};
++  async function apply(input: Awaited<ReturnType<typeof collect>>, outcome: string) {
++    const { workload, sealed, action } = input;
++    const id = String(sealed._id);
++    const before = await inventory();
++    const oldLead = await db.collection("form_leads").findOne({ _id: leadId });
++    assert.ok(oldLead);
++    const approval = { run_id: id, plan_checksum: sealed.plan_checksum, selected_action_ids: [action.action_id], approved_by: owner };
++    await metrics.workload(workload, "approve", () => approveGranotRun(approval));
++    const approved = await runs.findOne({ _id: sealed._id });
++    assert.ok(approved);
++    assert.equal(approved.receipts.length, 0);
++    assert.equal(await db.collection("granot_webhook_receipts").countDocuments({ channel_operation_id: action.lifecycle_apply.operation_id }), 0);
++    const finished = await metrics.workload(workload, "apply worker", worker);
++    const run = await runs.findOne({ _id: sealed._id });
++    assert.ok(run);
++    const receipt = await db.collection("granot_webhook_receipts").findOne({ channel_operation_id: action.lifecycle_apply.operation_id });
++    assert.ok(receipt);
++    assert.equal(finished.status, "completed", JSON.stringify({ run: run.receipts, processing: receipt.processing }));
++    assert.equal(run.receipts.length, 1);
++    const entry = run.receipts[0];
++    const observation = await db.collection("granot_observations").findOne({ receipt_id: receipt._id });
++    const decision = await db.collection("synchronization_decisions").findOne({ _id: receipt.processing.latest_decision_id });
++    const lead = await db.collection("form_leads").findOne({ _id: leadId });
++    assert.ok(observation && decision && lead);
++    assert.equal(run.plan_checksum, approval.plan_checksum);
++    assert.deepEqual(run.approval, approved.approval);
++    assert.deepEqual(run.plan_snapshot, sealed.plan_snapshot);
++    assert.deepEqual([run.expires_at, run.purge_at], [sealed.expires_at, sealed.purge_at]);
++    assert.deepEqual([entry.lifecycle_receipt_id, entry.observation_id, entry.decision_id], [receipt._id, observation._id, decision._id].map(String));
++    assert.equal(String(decision.observation_id), String(observation._id));
++    assert.equal(receipt.captured_at.toISOString(), action.collection_captured_at);
++    assert.deepEqual(observation.captured_at, receipt.captured_at);
++    assert.equal(decision.execution_mode, "live");
++    assert.equal(decision.outcome, outcome, decision.reason_code);
++    assert.equal(entry.outcome, outcome);
++    assert.equal(entry.outreach_refresh_completed, true);
++    assert.equal(lead.granot_priority, "5");
++    assert.equal(lead.quoted, true);
++    assert.equal(lead.domain_revision - oldLead.domain_revision, outcome === "applied" ? 1 : 0);
++    const winner = String(lead.last_accepted_granot_observation.observation_id);
++    assert.equal(winner, outcome === "stale" ? String(oldLead.last_accepted_granot_observation.observation_id) : String(observation._id));
++    const after = await inventory();
++    const delta = (name: string) => after[name]!.count - before[name]!.count;
++    for (const collection of ["granot_webhook_receipts", "granot_observations", "synchronization_decisions"]) assert.equal(delta(collection), 1);
++    for (const collection of ["form_leads", "call_leads", "booked_leads", "cancelled_leads"]) assert.equal(delta(collection), 0);
++    for (const collection of ["entity_changes", "domain_command_executions", "sheet_sync_jobs"]) assert.equal(delta(collection), outcome === "applied" ? 1 : 0, collection);
++    const refreshKey = "sod:lead-change:FormLead:" + leadId + ":estimates-refresh:" + receipt._id;
++    assert.equal(await db.collection("sales_intelligence_jobs").countDocuments({ dedupe_key: refreshKey }), outcome === "stale" ? 0 : 1);
++    if (outcome === "applied") {
++      assert.ok(decision.effects.some((effect: Document) => effect.kind === "sheet_sync_requested"));
++      const change = await db.collection("entity_changes").findOne({ "entity.id": String(leadId), "provenance.decision_id": decision._id });
++      assert.ok(change);
++      assert.equal(String(change._id), String(lead.last_change_id));
++      assert.ok(await db.collection("domain_command_executions").findOne({ _id: change.command_execution_id, command_name: "synchronizeLeadFromGranot" }));
++    } else assert.deepEqual(decision.effects, []);
++    const trace = await traceGranotAction(db, id, action.action_id);
++    assert.equal(trace.status, "traced", trace.stop);
++    assert.equal(trace.decision?.outcome, outcome);
++    assert.equal(String(trace.lead?.winner_id), winner);
++    assert.equal(trace.lead?.observation_vs_current_winner, outcome === "stale" ? "older" : "same");
++    evidence[workload] = { runId: id, actionId: action.action_id, operationId: action.lifecycle_apply.operation_id, checksum: run.plan_checksum,
++      expiresAt: run.expires_at, purgeAt: run.purge_at, receiptId: String(receipt._id), observationId: String(observation._id),
++      decisionId: String(decision._id), targetId: String(leadId), winner, outcome, reason: decision.reason_code, revision: lead.domain_revision,
++      effects: decision.effects.map((effect: Document) => effect.kind), retainedBefore: before, retainedAfter: after,
++      trace: { status: trace.status, stop: trace.stop, outcome: trace.decision?.outcome, temporalOrder: trace.lead?.observation_vs_current_winner } };
++    return entry;
++  }
++  // Seal the older assertion first. Its Owner approves only after a later snapshot has won.
++  const stale = await collect("stale", "8");
++  const genuine = await collect("genuine", "5");
++  const first = await apply(genuine, "applied");
++  const unchanged = await collect("unchanged", "5");
++  await apply(unchanged, "already_current");
++  assert.ok(Date.parse(stale.action.collection_captured_at) < Date.parse(genuine.action.collection_captured_at));
++  assert.ok(Date.parse(genuine.action.collection_captured_at) < Date.parse(unchanged.action.collection_captured_at));
++  await apply(stale, "stale");
++  // Missing run checkpoint: the same open-run operation reaches duplicate capture and reads its original terminal result.
++  const replayInput = actionInputs.get(genuine.action.lifecycle_apply.operation_id)!;
++  const before = await inventory();
++  const replay = await metrics.workload("replay", "action re-entry", () => applyAction(replayInput));
++  assert.deepEqual([replay.outcome, replay.lifecycle_receipt_id, replay.observation_id, replay.decision_id],
++    [first.outcome, first.lifecycle_receipt_id, first.observation_id, first.decision_id]);
++  assert.deepEqual(await inventory(), before);
++  const finalLead = await db.collection("form_leads").findOne({ _id: leadId });
++  assert.equal(String(finalLead?.last_accepted_granot_observation.observation_id), evidence.unchanged!.winner);
++  evidence.replay = { operationId: replayInput.lifecycle_apply.operation_id, receiptId: replay.lifecycle_receipt_id,
++    observationId: replay.observation_id, decisionId: replay.decision_id, winner: evidence.unchanged!.winner, outcome: replay.outcome,
++    revision: finalLead?.domain_revision, retainedBefore: before, retainedAfter: before };
++  for (const workload of ["genuine", "unchanged", "stale"]) {
++    for (const stage of ["create", "collect and seal", "run claim (collect and seal)", "approve", "run claim (apply worker)",
++      "apply worker", "capture", "receipt claim and finalize", "normalize", "process", "decision and Lead transaction"]) {
++      assert.ok(metrics.rows[workload]?.[stage]?.commands, "Unmeasured Mongo stage: " + workload + " / " + stage);
++    }
++  }
++  assert.ok(metrics.rows.replay?.capture?.commands && metrics.rows.replay?.["receipt claim and finalize"]?.commands);
++  const workflowHash = createHash("sha256").update(readFileSync("src/services/granotHttpCollector/runWorkflow.ts")).digest("hex");
++  const result = { baseCommit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
++    workflowSha256: workflowHash, recordedAt: new Date().toISOString(), fixture: "Single-row Estimates report, active Form and Record Link, open Outreach subject, queued Sheet intent, local synthetic HTTP.",
++    bytes: "BSON document sizes from command events. Returned firstBatch/nextBatch/value, submitted update expressions (including no-match), submitted inserted documents (including attempted duplicate). Excludes ACK envelopes, wire/physical storage, replication and indexes. Inventory is materialized application BSON.",
++    measurements: metrics.rows, evidence };
++  const crash = await collect("crash proof", "1");
++  const crashProof = await proveCanonicalCrash(db, crash.sealed, leadId);
++  delete metrics.rows["crash proof"]; // Separate fault scenario, outside the four measured workloads.
++  writeFileSync(process.argv[2]!, JSON.stringify({ ...result, crashProof }, null, 2) + "\n", { flag: "wx" });
++}
++main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => mongoose.disconnect());
+diff --git a/ops/capacity/granot-stage-metrics.ts b/ops/capacity/granot-stage-metrics.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..384d1728739b1ff077d23c4ce39e243b7d4860a5
+--- /dev/null
++++ b/ops/capacity/granot-stage-metrics.ts
+@@ -0,0 +1,60 @@
++import { AsyncLocalStorage } from "node:async_hooks";
++import { BSON, type CommandStartedEvent, type CommandSucceededEvent, type Document, type MongoClient } from "mongodb";
++
++const size = (document: Document) => BSON.calculateObjectSize(document);
++type Counts = { commands: number; returnedDocuments: number; returnedBson: number; updateBson: number; insertBson: number; failed: number; commandNames: Record<string, number> };
++const empty = (): Counts => ({ commands: 0, returnedDocuments: 0, returnedBson: 0, updateBson: 0, insertBson: 0, failed: 0, commandNames: {} });
++
++/** Count materialized documents and submitted write expressions. Never retain their contents. */
++export class GranotStageMetrics {
++  private readonly context = new AsyncLocalStorage<{ workload: string; stage: string }>();
++  private readonly pending = new Map<number, Counts>();
++  readonly rows: Record<string, Record<string, Counts>> = {};
++
++  workload<T>(workload: string, stage: string, run: () => Promise<T>) {
++    return this.context.run({ workload, stage }, run);
++  }
++
++  stage<T>(stage: string, run: () => Promise<T>) {
++    const context = this.context.getStore();
++    if (!context) throw new Error("Missing measurement workload");
++    return this.workload(context.workload, stage, run);
++  }
++
++  attach(client: MongoClient) {
++    client.on("commandStarted", (event: CommandStartedEvent) => {
++      const scope = this.context.getStore();
++      if (!scope) return;
++      const command = event.command;
++      let stage = scope.stage;
++      if (command.findAndModify === "granot_automation_runs" && command.update?.$inc?.attempt_count === 1) {
++        stage = "run claim (" + stage + ")";
++      } else if (stage === "process" && command.autocommit === false) {
++        stage = "decision and Lead transaction";
++      }
++      const row = (this.rows[scope.workload] ??= {})[stage] ??= empty();
++      this.pending.set(event.requestId, row);
++      row.commands++;
++      row.commandNames[event.commandName] = (row.commandNames[event.commandName] ?? 0) + 1;
++      if (event.commandName === "insert") for (const value of command.documents) row.insertBson += size(value);
++      if (event.commandName === "update") for (const update of command.updates) row.updateBson += size(update.u);
++      if (event.commandName === "findAndModify" && command.update) row.updateBson += size(command.update);
++    });
++    client.on("commandSucceeded", (event: CommandSucceededEvent) => {
++      const row = this.pending.get(event.requestId);
++      this.pending.delete(event.requestId);
++      if (!row) return;
++      const reply = event.reply as Document;
++      const returned = reply.cursor?.firstBatch ?? reply.cursor?.nextBatch ?? (reply.value ? [reply.value] : []);
++      for (const value of returned) {
++        row.returnedDocuments++;
++        row.returnedBson += size(value);
++      }
++    });
++    client.on("commandFailed", (event) => {
++      const row = this.pending.get(event.requestId);
++      if (row) row.failed++;
++      this.pending.delete(event.requestId);
++    });
++  }
++}
+diff --git a/ops/vantage/cli.ts b/ops/vantage/cli.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..db3d34d047c5bb4328e5cd57cd25504da5c944fa
+--- /dev/null
++++ b/ops/vantage/cli.ts
+@@ -0,0 +1,34 @@
++import { AGENT_LOCAL, GRANOT_REHEARSAL, OperatorError, publicFailure } from "./local-safety";
++import { GRANOT_RUNBOOK, HELP, parseCommand, type Command } from "./commands";
++import { withLocalDatabase } from "./local-database";
++import { traceGranotAction } from "./granot-trace";
++
++export async function executeCommand(command: Command): Promise<unknown> {
++  if (command.name === "help") return { status: "available", help: HELP };
++  if (command.name === "granot-runbook") return { status: "available", path: GRANOT_RUNBOOK };
++  if (command.name === "granot-trace") {
++    if (command.target === "production") throw new OperatorError("production_diagnostics_unsupported_use_reviewed_operator_path", 4);
++    const identity = command.profile === "granot-rehearsal" ? GRANOT_REHEARSAL : AGENT_LOCAL;
++    return withLocalDatabase(identity, async db => ({
++      ...await traceGranotAction(db, command.run, command.action),
++      target: "local", profile: command.profile,
++      identity: { database: identity.database, replicaSet: identity.replicaSet, address: identity.address },
++    }));
++  }
++  return { status: "available", services: [{ name: "granot", commands: ["trace", "runbook"],
++    production: "unsupported", repair: "unsupported", runbook: GRANOT_RUNBOOK }] };
++}
++export async function main(args = process.argv.slice(2)): Promise<void> {
++  let command: Command | undefined;
++  try {
++    command = parseCommand(args);
++    const result = await executeCommand(command);
++    if (command.name === "help" && !command.json) process.stdout.write(HELP);
++    else process.stdout.write(`${JSON.stringify(result, null, command.json ? 0 : 2)}\n`);
++  } catch (error) {
++    const { exitCode, ...failure } = publicFailure(error);
++    process.stdout.write(`${JSON.stringify(failure)}\n`);
++    process.exitCode = exitCode;
++  }
++}
++if (require.main === module) void main();
+diff --git a/ops/vantage/commands.ts b/ops/vantage/commands.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6010a1e53126aa4554b41bebf077c2abaae0b94a
+--- /dev/null
++++ b/ops/vantage/commands.ts
+@@ -0,0 +1,46 @@
++import { OperatorError } from "./local-safety";
++
++export const GRANOT_RUNBOOK = "docs/operations/granot.md";
++export const HELP = `pnpm vantage -- services
++pnpm vantage -- runbook granot
++pnpm vantage -- granot trace --run <run-id> --action <exact-action-id> --target local [--profile agent|granot-rehearsal] [--json]
++`;
++type Discovery = { name: "help" | "services" | "granot-runbook"; json: boolean };
++type Trace = { name: "granot-trace"; json: boolean; target: "local" | "production"; profile: "agent" | "granot-rehearsal"; run: string; action: string };
++export type Command = Discovery | Trace;
++
++export function parseCommand(input: string[]): Command {
++  const args = input[0] === "--" ? input.slice(1) : [...input];
++  const words: string[] = [];
++  const options = new Map<string, string>();
++  for (let i = 0; i < args.length; i++) {
++    const arg = args[i]!;
++    if (!arg.startsWith("--")) { words.push(arg); continue; }
++    if (!["--json", "--help", "--target", "--profile", "--run", "--action"].includes(arg) || options.has(arg)) throw new OperatorError("invalid_arguments", 2);
++    if (["--json", "--help"].includes(arg)) options.set(arg, "true");
++    else {
++      const value = args[++i];
++      if (!value || value.startsWith("-")) throw new OperatorError("invalid_arguments", 2);
++      options.set(arg, value);
++    }
++  }
++  const path = words.join(" ");
++  const json = options.has("--json");
++  if (["", "help", "services", "runbook granot"].includes(path)) {
++    if ([...options.keys()].some(key => key !== "--json" && key !== "--help")) throw new OperatorError("invalid_arguments", 2);
++    const name = options.has("--help") ? "help" : path === "services" ? "services" : path === "runbook granot" ? "granot-runbook" : "help";
++    return { name, json };
++  }
++  if (path !== "granot trace") throw new OperatorError("unsupported_command", 2);
++  if (options.size === 1 && options.has("--help")) return { name: "help", json };
++  const run = options.get("--run")?.toLowerCase();
++  const action = options.get("--action");
++  const target = options.get("--target");
++  const profile = options.get("--profile") ?? "agent";
++  if (options.has("--help") || !run || !/^[a-f0-9]{24}$/.test(run) || !action ||
++      action.trim() !== action || action.length > 275 || /[\p{Cc}\p{Cf}]/u.test(action) ||
++      (target !== "local" && target !== "production") || (profile !== "agent" && profile !== "granot-rehearsal")) {
++    throw new OperatorError("invalid_arguments", 2);
++  }
++  return { name: "granot-trace", json, run, action, target, profile };
++}
+diff --git a/ops/vantage/granot-fixture.ts b/ops/vantage/granot-fixture.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..cbbf61b8f9777ddffa7666341d9fda9d5d8aa35a
+--- /dev/null
++++ b/ops/vantage/granot-fixture.ts
+@@ -0,0 +1,66 @@
++/** Disposable redaction/reconstruction fixture; no server model, business writer or provider is loaded. */
++import { ObjectId, type Db } from "mongodb";
++import { computeChecksum } from "../../src/services/durableWork/checksum";
++import { GRANOT_REHEARSAL, OperatorError, publicFailure } from "./local-safety";
++import { withLocalDatabase } from "./local-database";
++
++export const PRIVATE_MARKER = "Synthetic private evidence";
++export async function seedGranotTrace(db: Db) {
++  if (db.databaseName !== GRANOT_REHEARSAL.database) throw new OperatorError("unsafe_fixture_database");
++  const run = new ObjectId(), receipt = new ObjectId(), observation = new ObjectId();
++  const decision = new ObjectId(), checkpoint = new ObjectId(), lead = new ObjectId(), winner = new ObjectId();
++  const action = "Synthetic source:followUpEstimates:7";
++  const operation = run.toHexString() + ":" + action;
++  const captured = new Date(Date.now() - 90_000);
++  const locked = new Date(captured.getTime() + 1_000), approved = new Date(locked.getTime() + 1_000);
++  const expires = new Date(captured.getTime() + 24 * 3_600_000);
++  const plan = { schema_version: 2, kind: "estimates_in_process", counters: {}, actions: [{
++    action_id: action, classification: "update", collection_captured_at: captured.toISOString(),
++    lifecycle_apply: { operation_id: operation, operation_kind: "lead_snapshot_apply", granot_statement: { customer: PRIVATE_MARKER } },
++  }] };
++  const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: plan });
++  // The trace requires the same key patterns as the deployed models. Only this fixed fixture DB is writable here.
++  await db.collection("granot_webhook_receipts").createIndex({ observation_channel: 1, channel_operation_id: 1 }, {
++    name: "granot_observation_receipt_channel_operation_id_unique", unique: true, partialFilterExpression: { channel_operation_id: { $type: "string" } },
++  });
++  await db.collection("granot_observations").createIndex({ receipt_id: 1 }, { name: "granot_observation_receipt_id_unique", unique: true });
++  const target = { model: "FormLead", id: lead.toHexString() };
++  await db.collection("form_leads").insertOne({
++    _id: lead, name: PRIVATE_MARKER, last_accepted_granot_observation: {
++      observation_id: winner, captured_at: new Date(captured.getTime() + 30_000),
++    },
++  });
++  await db.collection("synchronization_decisions").insertMany([
++    { _id: checkpoint, observation_id: observation, execution_mode: "live", attempt: 1, outcome: "pending_match",
++      reason_code: "pending_source_scoped_match", effects: [], candidates: [], evaluated_gates: [], decided_at: approved },
++    { _id: decision, observation_id: observation, execution_mode: "live", attempt: 2, target, outcome: "applied",
++      reason_code: "lead_state_changed", effects: [{ kind: "lead_updated", ref: target, changed_paths: [PRIVATE_MARKER] }],
++      candidates: [], evaluated_gates: [], decided_at: new Date(approved.getTime() + 10_000) },
++  ]);
++  await db.collection("granot_observations").insertOne({
++    _id: observation, receipt_id: receipt, normalization_result: "valid", captured_at: captured, contact: { display_name: PRIVATE_MARKER },
++  });
++  await db.collection("granot_webhook_receipts").insertOne({
++    _id: receipt, observation_channel: "granot_http_automation", channel_operation_id: operation, channel_operation_kind: "lead_snapshot_apply", captured_at: captured,
++    payload: { customer: PRIVATE_MARKER }, processing: { state: "completed", latest_decision_id: decision },
++  });
++  await db.collection("granot_automation_runs").insertOne({
++    _id: run, workflow: "apply", operation: "estimates_in_process", status: "applying", plan_snapshot: plan,
++    plan_checksum: checksum, plan_locked_at: locked, expires_at: expires,
++    approval: { approved_at: approved, plan_checksum: checksum, selected_action_ids: [action] },
++    receipts: [{ action_id: action, lifecycle_receipt_id: receipt.toHexString(), observation_id: observation.toHexString(),
++      decision_id: checkpoint.toHexString(), outcome: "accepted_for_processing", applied_at: approved }],
++  });
++  return { run, receipt, observation, decision, checkpoint, lead, winner, captured, action };
++}
++
++if (require.main === module) {
++  void withLocalDatabase(GRANOT_REHEARSAL, async (db) => {
++    const { run, action } = await seedGranotTrace(db);
++    process.stdout.write(JSON.stringify({ profile: "granot-rehearsal", run_id: run, action_id: action }) + "\n");
++  }).catch((error) => {
++    const { exitCode, ...failure } = publicFailure(error);
++    process.stdout.write(JSON.stringify(failure) + "\n");
++    process.exitCode = exitCode;
++  });
++}
+diff --git a/ops/vantage/granot-trace.replica.ts b/ops/vantage/granot-trace.replica.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae14c49a725777dd5bbc516c730a5942229e4760
+--- /dev/null
++++ b/ops/vantage/granot-trace.replica.ts
+@@ -0,0 +1,99 @@
++/** Run explicitly with node --import tsx --test ops/vantage/granot-trace.replica.ts. */
++import assert from "node:assert/strict";
++import test from "node:test";
++import { MongoClient, ObjectId, type Db, type Document } from "mongodb";
++import { seedGranotTrace, PRIVATE_MARKER } from "./granot-fixture";
++import { traceGranotAction } from "./granot-trace";
++import { GRANOT_REHEARSAL, assertLocalHello, assertLocalIdentity } from "./local-safety";
++import { withLocalDatabase } from "./local-database";
++
++test("exact action traverses only five bounded scalar projections; mismatches stop before the next edge", async () => {
++  await withLocalDatabase(GRANOT_REHEARSAL, async (setup) => {
++    const f = await seedGranotTrace(setup);
++    const commandNames: string[] = [], projections: Document[] = [];
++    const client = new MongoClient(GRANOT_REHEARSAL.uri, { monitorCommands: true, maxPoolSize: 1, serverSelectionTimeoutMS: 2_000 });
++    client.on("commandStarted", (event) => { commandNames.push(event.commandName); });
++    client.on("commandSucceeded", (event) => {
++      if (event.commandName === "aggregate") {
++        const reply = event.reply as { cursor: { firstBatch: Document[] } };
++        projections.push(...reply.cursor.firstBatch);
++      }
++    });
++    const update = (collection: string, id: ObjectId, fields: Document) => setup.collection(collection).updateOne({ _id: id }, { $set: fields });
++    let db: Db;
++    const trace = () => traceGranotAction(db, String(f.run), f.action);
++    try {
++      assertLocalIdentity(GRANOT_REHEARSAL);
++      await client.connect();
++      assertLocalHello(await client.db("admin").command({ hello: 1 }), GRANOT_REHEARSAL);
++      db = client.db(GRANOT_REHEARSAL.database);
++      commandNames.length = 0;
++      const result = await trace();
++      assert.equal(result.stop, "canonical_lead_read");
++      assert.equal(result.action?.recorded_outcome, "accepted_for_processing");
++      assert.equal(result.decision?.matches_run_checkpoint, false);
++      assert.equal(result.receipt?.matches_sealed_capture_time, true);
++      assert.equal(result.action?.statement_object_present, true);
++      assert.deepEqual(result.decision?.target_lead_effect_kinds, ["lead_updated"]);
++      assert.equal(result.lead?.observation_vs_current_winner, "older");
++      assert.equal(result.lead?.certified_for_this_decision, false);
++      assert.deepEqual(commandNames, Array(5).fill("aggregate"));
++      assert.equal(projections.length, 5);
++      for (const privateValue of [PRIVATE_MARKER, f.action, "changed_paths", "granot_statement", "payload", "contact"]) {
++        assert.equal(JSON.stringify(projections).includes(privateValue), false);
++      }
++
++      await update("synchronization_decisions", f.decision, { "effects.0.ref.id": String(new ObjectId()) });
++      assert.deepEqual((await trace()).decision?.target_lead_effect_kinds, []);
++      await update("form_leads", f.lead, { last_accepted_granot_observation: {
++        observation_id: f.observation, captured_at: f.captured, evidence: {
++          version: 2, outcome: "applied", decision_id: f.decision, receipt_id: f.receipt,
++        },
++      } });
++      assert.equal((await trace()).lead?.certified_for_this_decision, true);
++      await update("form_leads", f.lead, { "last_accepted_granot_observation.evidence.version": 1 });
++      assert.equal((await trace()).lead?.certified_for_this_decision, false);
++      await update("synchronization_decisions", f.decision, { outcome: PRIVATE_MARKER, "target.model": PRIVATE_MARKER });
++      const malformed = await trace();
++      assert.equal(malformed.stop, "no_canonical_lead_target");
++      assert.equal(malformed.decision?.outcome, "unknown");
++      assert.equal(JSON.stringify(malformed).includes(PRIVATE_MARKER), false);
++
++      await update("synchronization_decisions", f.decision, { observation_id: new ObjectId() });
++      assert.equal((await trace()).stop, "linked_decision_missing");
++      await update("granot_webhook_receipts", f.receipt, { "processing.latest_decision_id": null });
++      assert.equal((await trace()).stop, "latest_decision_pointer_missing");
++      await update("granot_automation_runs", f.run, { "receipts.0.observation_id": String(new ObjectId()) });
++      assert.equal((await trace()).stop, "run_observation_pointer_mismatch");
++      await update("granot_automation_runs", f.run, { "receipts.0.lifecycle_receipt_id": String(new ObjectId()) });
++      assert.equal((await trace()).stop, "run_receipt_pointer_mismatch");
++      await update("granot_automation_runs", f.run, { "receipts.0.lifecycle_receipt_id": "" });
++      assert.equal((await trace()).stop, "run_receipt_pointer_invalid");
++      await update("granot_automation_runs", f.run, { "receipts.0.error_code": "GRANOT_OPERATION_IDEMPOTENCY_CONFLICT" });
++      commandNames.length = 0;
++      const conflict = await trace();
++      assert.equal(conflict.stop, "operation_idempotency_conflict");
++      assert.equal(conflict.receipt, null);
++      assert.deepEqual(commandNames, ["aggregate"]);
++      await update("granot_automation_runs", f.run, { receipts: [] });
++      assert.equal((await trace()).stop, "operation_key_correlation_only");
++      await update("granot_webhook_receipts", f.receipt, { channel_operation_kind: "booking_action_apply" });
++      assert.equal((await trace()).stop, "receipt_operation_kind_mismatch");
++      await update("granot_automation_runs", f.run, { receipts: [{ action_id: f.action }, { action_id: f.action }] });
++      assert.equal((await trace()).stop, "ambiguous_run_evidence");
++      await update("granot_automation_runs", f.run, { receipts: [], "approval.plan_checksum": "0".repeat(64) });
++      assert.equal((await trace()).stop, "approval_evidence_incomplete");
++      await update("granot_automation_runs", f.run, { "approval.selected_action_ids": [] });
++      assert.equal((await trace()).stop, "action_not_selected");
++      assert.equal((await traceGranotAction(db, String(f.run), "$approval.selected_action_ids")).stop, "action_missing");
++      assert.equal((await traceGranotAction(db, String(new ObjectId()), f.action)).stop, "run_missing");
++    } finally {
++      await client.close();
++      // Clean only this invocation's uniquely generated fixture IDs. Leave the blind rehearsal and concurrent tests intact.
++      for (const [collection, id] of [
++        ["granot_automation_runs", f.run], ["granot_webhook_receipts", f.receipt], ["granot_observations", f.observation],
++        ["synchronization_decisions", f.decision], ["synchronization_decisions", f.checkpoint], ["form_leads", f.lead],
++      ] as const) await setup.collection(collection).deleteOne({ _id: id });
++    }
++  });
++});
+diff --git a/ops/vantage/granot-trace.test.ts b/ops/vantage/granot-trace.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec87924bf7a06f753b6f8f499fbb4f395ef5cecd
+--- /dev/null
++++ b/ops/vantage/granot-trace.test.ts
+@@ -0,0 +1,31 @@
++import assert from "node:assert/strict";
++import { readFileSync } from "node:fs";
++import test from "node:test";
++import { executeCommand } from "./cli";
++import { GRANOT_RUNBOOK, parseCommand } from "./commands";
++import { AGENT_LOCAL, GRANOT_REHEARSAL, assertLocalIdentity, OperatorError } from "./local-safety";
++
++const run = "1234567890abcdef12345678", action = "$literal:row #1";
++const args = ["granot", "trace", "--target", "local", "--profile", "granot-rehearsal", "--run", run, "--action", action, "--json"];
++
++test("Granot discovery and exact identifier command are available from onboarding", async () => {
++  const parsed = parseCommand(args);
++  assert.equal(parsed.name, "granot-trace");
++  assert.equal(parsed.action, action);
++  assert.equal(parsed.run, run);
++  const result = await executeCommand(parseCommand(["runbook", "granot"]));
++  assert.deepEqual(result, { status: "available", path: GRANOT_RUNBOOK });
++  assert.match(readFileSync(GRANOT_RUNBOOK, "utf8"), /granot trace --run/);
++});
++test("Granot refuses unsupported production and bounded profile/argument mistakes", async () => {
++  await assert.rejects(executeCommand(parseCommand(args.map((v) => v === "local" ? "production" : v))),
++    (err) => err instanceof OperatorError && err.exitCode === 4);
++  for (const bad of [
++    args.slice(0, 6), args.map((v) => v === run ? "short" : v), args.map((v) => v === action ? "x".repeat(276) : v),
++    args.map((v) => v === action ? "\u2066invisible" : v), args.map((v) => v === "granot-rehearsal" ? "sheet-replica" : v),
++    [...args, "--repair"], [...args, "--run", run], ["granot", "trace", "--run", run, "--action", action],
++  ]) assert.throws(() => parseCommand(bad));
++  assert.doesNotThrow(() => assertLocalIdentity(GRANOT_REHEARSAL));
++  assert.throws(() => assertLocalIdentity({ ...GRANOT_REHEARSAL, replicaSet: "sheetRecoveryProof" }));
++  assert.throws(() => assertLocalIdentity({ ...AGENT_LOCAL, database: "vantagemovers" }));
++});
+diff --git a/ops/vantage/granot-trace.ts b/ops/vantage/granot-trace.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9d2bdddf4804cfb7fa31005d09c08a14cc1e7260
+--- /dev/null
++++ b/ops/vantage/granot-trace.ts
+@@ -0,0 +1,158 @@
++import { ObjectId, type Db, type Document } from "mongodb";
++import {
++  CHANNEL_OPERATION_KINDS, EXECUTION_MODES, NORMALIZATION_RESULTS, RECEIPT_WORK_STATES, SYNCHRONIZATION_EFFECT_KINDS,
++  SYNCHRONIZATION_OUTCOMES, SYNCHRONIZATION_REASON_CODES, ENTITY_REF_MODELS,
++} from "../../src/models/granotLifecycleSchemas";
++import { assertSafeAutomationOperationId, buildAutomationOperationId } from "../../src/services/granotHttpCollector/lifecycleStatement";
++import { compareGranotTemporal } from "../../src/services/granotLifecycle/granotTemporal";
++import type { GranotTimelineEntry } from "../../src/services/granotLifecycle/projections";
++import type { GranotAutomationActionReceipt } from "../../src/services/granotLifecycle/automationApply";
++import { OperatorError } from "./local-safety";
++
++const readOptions = { maxTimeMS: 2_000, allowDiskUse: false, batchSize: 1 };
++const literal = (value: string) => ({ $literal: value });
++const asId = (field: string) => ({ $convert: { input: field, to: "objectId", onError: null, onNull: null } });
++const typed = (field: string, type: string) => ({ $cond: [{ $eq: [{ $type: field }, type] }, field, null] });
++const enumerated = (field: string, values: readonly string[]) => ({ $cond: [{ $in: [field, values] }, field, "unknown"] });
++const array = (field: string) => ({ $cond: [{ $isArray: field }, field, []] });
++const traceOutcomes: readonly GranotAutomationActionReceipt["outcome"][] = [...SYNCHRONIZATION_OUTCOMES, "accepted_for_processing", "technical_failure"];
++type DecisionData = Extract<GranotTimelineEntry, { type: "decision" }>["data"];
++
++const decisionProjection = {
++  decision_id: typed("$_id", "objectId"), observation_id: typed("$observation_id", "objectId"),
++  execution_mode: enumerated("$execution_mode", EXECUTION_MODES),
++  outcome: enumerated("$outcome", SYNCHRONIZATION_OUTCOMES),
++  reason_code: enumerated("$reason_code", SYNCHRONIZATION_REASON_CODES),
++  target_model: enumerated("$target.model", ENTITY_REF_MODELS),
++  target_id: asId("$target.id"),
++  // Only the closed vocabulary of effect kinds crosses the read boundary.
++  effect_kinds: { $setIntersection: [array("$effects.kind"), SYNCHRONIZATION_EFFECT_KINDS] },
++  target_lead_effect_kinds: { $setIntersection: [["lead_created", "lead_updated"], { $map: {
++    input: { $filter: { input: array("$effects"), as: "effect", cond: { $and: [
++      { $in: ["$target.model", ["FormLead", "CallLead"]] }, { $eq: ["$$effect.ref.model", "$target.model"] },
++      { $eq: ["$$effect.ref.id", "$target.id"] },
++    ] } } }, as: "matched", in: "$$matched.kind",
++  } }] },
++  next_match_attempt_at: typed("$next_match_attempt_at", "date"),
++} satisfies Record<Exclude<keyof DecisionData, "target" | "effects"> | "target_model" | "target_id" | "effect_kinds" | "target_lead_effect_kinds" | "next_match_attempt_at", unknown>;
++
++/** All lookups use an exact indexed key and return at most one scalar projection. */
++async function one(db: Db, collection: string, match: Document, project: Document, hint: string | Document = "_id_") {
++  return db.collection(collection).aggregate([
++    { $match: match }, { $limit: 1 }, { $project: { _id: 0, ...project } },
++  ], { ...readOptions, hint }).next();
++}
++
++async function readRunAction(db: Db, runId: ObjectId, actionId: string, operationId: string) {
++  const selected = literal(actionId);
++  const matching = (path: string) => ({ $filter: {
++    input: array(path), as: "entry", cond: { $eq: ["$$entry.action_id", selected] }, limit: 2,
++  } });
++  const checksum = { $cond: [{ $eq: [{ $type: "$plan_checksum" }, "string"] }, "$plan_checksum", ""] };
++  return db.collection("granot_automation_runs").aggregate([
++    { $match: { _id: runId } }, { $limit: 1 },
++    { $project: {
++      status: enumerated("$status", ["queued", "planning", "awaiting_approval", "applying", "completed", "completed_with_errors", "failed", "expired"]),
++      workflow: enumerated("$workflow", ["apply", "preview"]),
++      operation: enumerated("$operation", ["form_leads", "call_leads", "estimates_in_process"]),
++      expires_at: typed("$expires_at", "date"), plan_locked_at: typed("$plan_locked_at", "date"),
++      approved_at: typed("$approval.approved_at", "date"),
++      checksum_matches: { $and: [{ $regexMatch: { input: checksum, regex: "^[0-9a-f]{64}$" } },
++        { $eq: ["$approval.plan_checksum", "$plan_checksum"] }] },
++      schema_v2: { $eq: ["$plan_snapshot.schema_version", 2] },
++      selected: { $in: [selected, array("$approval.selected_action_ids")] },
++      actions: matching("$plan_snapshot.actions"), receipts: matching("$receipts"),
++    } },
++    { $set: { action: { $first: "$actions" }, receipt: { $first: "$receipts" } } },
++    { $project: {
++      _id: 0, run_id: "$_id", status: 1, workflow: 1, operation: 1, expires_at: 1, plan_locked_at: 1,
++      approved_at: 1, checksum_matches: 1, schema_v2: 1, selected: 1,
++      action_count: { $size: "$actions" }, receipt_count: { $size: "$receipts" },
++      operation_kind: enumerated("$action.lifecycle_apply.operation_kind", CHANNEL_OPERATION_KINDS),
++      statement_object_present: { $eq: [{ $type: "$action.lifecycle_apply.granot_statement" }, "object"] },
++      collection_captured_at: { $convert: { input: "$action.collection_captured_at", to: "date", onNull: null, onError: null } },
++      capture_conflict: { $eq: ["$receipt.error_code", "GRANOT_OPERATION_IDEMPOTENCY_CONFLICT"] },
++      observation_pointer_invalid: { $and: [{ $ne: [{ $ifNull: ["$receipt.observation_id", null] }, null] }, { $eq: [asId("$receipt.observation_id"), null] }] },
++      decision_pointer_invalid: { $and: [{ $ne: [{ $ifNull: ["$receipt.decision_id", null] }, null] }, { $eq: [asId("$receipt.decision_id"), null] }] },
++      operation_matches: { $eq: ["$action.lifecycle_apply.operation_id", literal(operationId)] },
++      lifecycle_receipt_id: asId("$receipt.lifecycle_receipt_id"), observation_id: asId("$receipt.observation_id"),
++      decision_id: asId("$receipt.decision_id"), outcome: enumerated("$receipt.outcome", traceOutcomes),
++    } },
++  ], { ...readOptions, hint: "_id_" }).next();
++}
++
++export async function traceGranotAction(db: Db, run: string, actionId: string) {
++  const runId = run.toLowerCase();
++  if (!/^[0-9a-f]{24}$/.test(runId) || !actionId || actionId.trim() !== actionId) throw new OperatorError("invalid_arguments", 2);
++  const operationId = buildAutomationOperationId(runId, actionId);
++  try { assertSafeAutomationOperationId(operationId); } catch { throw new OperatorError("invalid_arguments", 2); }
++
++  const data: { run: Document | null; action: Document | null; receipt: Document | null;
++    observation: Document | null; decision: Document | null; lead: Document | null } =
++    { run: null, action: null, receipt: null, observation: null, decision: null, lead: null };
++  const finish = (stop: string, status = "partial") => ({ status, stop, ...data });
++  const row = await readRunAction(db, new ObjectId(runId), actionId, operationId);
++  if (!row) return finish("run_missing");
++  const { run_id, status, operation, workflow, expires_at, plan_locked_at, approved_at, checksum_matches, schema_v2 } = row;
++  data.run = { run_id, status, operation, workflow, expires_at, plan_locked_at, approved_at, checksum_matches, schema_v2 };
++  data.action = { present: row.action_count > 0, selected: row.selected, operation_matches: row.operation_matches,
++    operation_kind: row.operation_kind, statement_object_present: row.statement_object_present, collection_captured_at: row.collection_captured_at,
++    run_receipt_present: row.receipt_count > 0, recorded_outcome: row.receipt_count ? row.outcome : null,
++    recorded_receipt_id: row.lifecycle_receipt_id, recorded_observation_id: row.observation_id, recorded_decision_id: row.decision_id };
++  if (!row.action_count) return finish("action_missing");
++  if (row.action_count > 1 || row.receipt_count > 1) return finish("ambiguous_run_evidence");
++  if (!row.selected) return finish("action_not_selected");
++  if (workflow !== "apply" || !schema_v2 || !plan_locked_at || !approved_at || !checksum_matches || !row.operation_matches || !row.statement_object_present || row.operation_kind === "unknown") return finish("approval_evidence_incomplete");
++
++  if (row.capture_conflict) return finish("operation_idempotency_conflict");
++  if (row.receipt_count && !row.lifecycle_receipt_id) return finish("run_receipt_pointer_invalid");
++  if (row.observation_pointer_invalid || row.decision_pointer_invalid) return finish("run_checkpoint_pointer_invalid");
++
++  const receipt = await one(db, "granot_webhook_receipts", { observation_channel: "granot_http_automation", channel_operation_id: operationId }, {
++    receipt_id: typed("$_id", "objectId"), operation_kind: enumerated("$channel_operation_kind", CHANNEL_OPERATION_KINDS),
++    captured_at: typed("$captured_at", "date"), state: enumerated("$processing.state", RECEIPT_WORK_STATES),
++    next_attempt_at: typed("$processing.next_attempt_at", "date"), leased_until: typed("$processing.leased_until", "date"),
++    latest_decision_id: typed("$processing.latest_decision_id", "objectId"),
++  }, { observation_channel: 1, channel_operation_id: 1 });
++  if (!receipt) return finish("operation_receipt_missing");
++  data.receipt = { ...receipt, matches_sealed_capture_time: row.collection_captured_at && receipt.captured_at
++    ? row.collection_captured_at.getTime() === receipt.captured_at.getTime() : null };
++  if (!receipt.receipt_id) return finish("receipt_id_invalid");
++  if (receipt.operation_kind !== row.operation_kind) return finish("receipt_operation_kind_mismatch");
++  if (!row.receipt_count) return finish("operation_key_correlation_only");
++  if (row.lifecycle_receipt_id && !row.lifecycle_receipt_id.equals(receipt.receipt_id)) return finish("run_receipt_pointer_mismatch");
++
++  const observation = await one(db, "granot_observations", { receipt_id: receipt.receipt_id }, {
++    observation_id: typed("$_id", "objectId"), receipt_id: typed("$receipt_id", "objectId"), captured_at: typed("$captured_at", "date"),
++    normalization_result: enumerated("$normalization_result", NORMALIZATION_RESULTS),
++  }, { receipt_id: 1 });
++  if (!observation) return finish("observation_missing");
++  data.observation = observation;
++  if (!observation.observation_id) return finish("observation_id_invalid");
++  if (row.observation_id && !row.observation_id.equals(observation.observation_id)) return finish("run_observation_pointer_mismatch");
++  if (!receipt.latest_decision_id) return finish("latest_decision_pointer_missing");
++  const decision = await one(db, "synchronization_decisions",
++    { _id: receipt.latest_decision_id, observation_id: observation.observation_id }, decisionProjection);
++  if (!decision) return finish("linked_decision_missing");
++  data.decision = { ...decision, matches_run_checkpoint: row.decision_id ? row.decision_id.equals(decision.decision_id) : null };
++  if (!["FormLead", "CallLead"].includes(decision.target_model)) return finish("no_canonical_lead_target");
++  if (!decision.target_id) return finish("lead_target_id_invalid");
++  const lead = await one(db, decision.target_model === "FormLead" ? "form_leads" : "call_leads", { _id: decision.target_id }, {
++    lead_id: "$_id", winner_id: typed("$last_accepted_granot_observation.observation_id", "objectId"),
++    winner_captured_at: typed("$last_accepted_granot_observation.captured_at", "date"),
++    certificate_v2: { $eq: ["$last_accepted_granot_observation.evidence.version", 2] },
++    certificate_outcome: enumerated("$last_accepted_granot_observation.evidence.outcome", SYNCHRONIZATION_OUTCOMES),
++    certified_decision_id: typed("$last_accepted_granot_observation.evidence.decision_id", "objectId"),
++    certified_receipt_id: typed("$last_accepted_granot_observation.evidence.receipt_id", "objectId"),
++  });
++  if (!lead) return finish("lead_missing");
++  const order = lead.winner_id && lead.winner_captured_at && observation.captured_at
++    ? compareGranotTemporal({ captured_at: observation.captured_at, observation_id: String(observation.observation_id) },
++        { captured_at: lead.winner_captured_at, observation_id: String(lead.winner_id) }) : "unknown";
++  data.lead = { ...lead, model: decision.target_model, observation_vs_current_winner: order,
++    certified_for_this_decision: order === "same" && lead.certificate_v2 && lead.certificate_outcome === decision.outcome
++      && decision.execution_mode === "live" && ["created", "applied", "linked", "already_current"].includes(decision.outcome)
++      && !!lead.certified_decision_id?.equals(decision.decision_id)
++      && !!lead.certified_receipt_id?.equals(receipt.receipt_id) };
++  return finish("canonical_lead_read", "traced");
++}
+diff --git a/ops/vantage/local-database.ts b/ops/vantage/local-database.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..10599e174d59bbf652c6375dd9974b8dd276403c
+--- /dev/null
++++ b/ops/vantage/local-database.ts
+@@ -0,0 +1,15 @@
++import { MongoClient, type Db } from "mongodb";
++import { assertLocalHello, assertLocalIdentity, type LocalIdentity } from "./local-safety";
++
++export async function withLocalDatabase<T>(identity: LocalIdentity, read: (db: Db) => Promise<T>): Promise<T> {
++  assertLocalIdentity(identity);
++  const client = new MongoClient(identity.uri, {
++    maxPoolSize: 1, serverSelectionTimeoutMS: 2_000, connectTimeoutMS: 2_000,
++    socketTimeoutMS: 3_000, readPreference: "primary", retryReads: false,
++  });
++  try {
++    await client.connect();
++    assertLocalHello(await client.db("admin").command({ hello: 1 }), identity);
++    return await read(client.db(identity.database));
++  } finally { await client.close(); }
++}
+diff --git a/ops/vantage/local-safety.ts b/ops/vantage/local-safety.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f31bf679badcbd36aefdb9c5f2b7e91dff1db26c
+--- /dev/null
++++ b/ops/vantage/local-safety.ts
+@@ -0,0 +1,40 @@
++/** No application imports: callers establish this boundary before loading server code. */
++export type LocalIdentity = { uri: string; database: string; replicaSet: string; address: string };
++export const AGENT_LOCAL: LocalIdentity = {
++  uri: "mongodb://127.0.0.1:27017/?directConnection=true", database: "testvantagemovers_agent",
++  replicaSet: "rs0", address: "127.0.0.1:27017",
++};
++export const GRANOT_REHEARSAL: LocalIdentity = {
++  ...AGENT_LOCAL, database: "testvantagemovers_granot_trace",
++};
++export class OperatorError extends Error {
++  constructor(public readonly code: string, public readonly exitCode = 3, public readonly evidenceFile?: string) { super(code); }
++}
++export function assertLocalIdentity(identity: LocalIdentity): void {
++  const expected = identity.database === GRANOT_REHEARSAL.database ? GRANOT_REHEARSAL : AGENT_LOCAL;
++  if (identity.database !== expected.database || identity.uri !== expected.uri ||
++      identity.address !== expected.address || identity.replicaSet !== expected.replicaSet) {
++    throw new OperatorError("unsafe_local_identity");
++  }
++}
++export function assertLocalHello(hello: Record<string, unknown>, identity: LocalIdentity): void {
++  assertLocalIdentity(identity);
++  if (["hosts", "passives", "arbiters"].some((field) => hello[field] !== undefined && !Array.isArray(hello[field]))) {
++    throw new OperatorError("local_primary_replica_identity_mismatch");
++  }
++  const members = [...(Array.isArray(hello.hosts) ? hello.hosts : []),
++    ...(Array.isArray(hello.passives) ? hello.passives : []), ...(Array.isArray(hello.arbiters) ? hello.arbiters : [])];
++  if (hello.isWritablePrimary !== true || hello.setName !== identity.replicaSet
++    || hello.me !== identity.address || hello.primary !== identity.address
++    || !members.length || members.some((host) => host !== identity.address)) {
++    throw new OperatorError("local_primary_replica_identity_mismatch");
++  }
++}
++/** Error messages from drivers can contain URIs, customer payloads and credentials. */
++export function publicFailure(error: unknown): { status: string; code: string; exitCode: number; evidenceFile?: string } {
++  if (error instanceof OperatorError) return { status: error.exitCode === 4 ? "unsupported" : error.exitCode === 5 ? "failed" : error.exitCode === 2 ? "usage" : "refused", code: error.code, exitCode: error.exitCode,
++    ...(error.evidenceFile ? { evidenceFile: error.evidenceFile } : {}) };
++  const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
++  if (code === 13 || code === 18) return { status: "permission_denied", code: "mongo_permission_denied", exitCode: 3 };
++  return { status: "unknown", code: "operation_failed_details_redacted", exitCode: 3 };
++}
+diff --git a/package.json b/package.json
+index 2e205a9ee6f0c68e13ce8ebff410547855e06701..936468d72c65787451f7cf51801fd9fad41a545e 100644
+--- a/package.json
++++ b/package.json
+@@ -36,8 +36,9 @@
+     "twilio:voice-routing": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/dev_ops/twilio/twilio-voice-routing.ts",
+     "okf:progress": "node scripts/okf-progress.mjs",
+     "okf:query": "node scripts/okf-query.mjs",
++    "vantage": "node --import tsx ops/vantage/cli.ts",
+     "typecheck": "tsc --noEmit",
+-    "test": "node --import tsx --import ./ops/test-setup.ts --test \"src/**/*.test.ts\" \"api/queues/**/*.test.ts\" \"ops/lib/*.test.ts\"",
++    "test": "node --import tsx --import ./ops/test-setup.ts --test \"src/**/*.test.ts\" \"api/queues/**/*.test.ts\" \"ops/lib/*.test.ts\" \"ops/vantage/*.test.ts\"",
+     "test:granot-lifecycle:replica": "node --import tsx --import ./ops/test-setup.ts ops/test-granot-lifecycle-replica.ts",
+     "test:csi:fence:replica": "node --import tsx ops/test-csi-enqueue-replica.ts",
+     "test:numbers:replica": "node --import tsx ops/numbers-v2/all-numbers.replica.ts",
+@@ -97,7 +98,7 @@
+     "numbers:cleanup": "node --env-file=.env --import tsx ops/numbers-v2/cleanup.ts",
+     "numbers:desk-resync": "node --env-file=.env --import tsx ops/numbers-v2/desk-resync.ts",
+     "numbers:mint-lead-numbers": "node --env-file=.env --import tsx ops/numbers-v2/mint-lead-numbers.ts",
+-    "lint": "eslint src api ops/quality --max-warnings 0",
++    "lint": "eslint src api ops/quality ops/vantage \"ops/capacity/granot-*.ts\" --max-warnings 0",
+     "quality:install": "node ops/quality/cli.mjs install",
+     "quality:uninstall": "node ops/quality/cli.mjs uninstall",
+     "quality:status": "node ops/quality/cli.mjs status",
+diff --git a/src/services/granotHttpCollector/runRecovery.replica.test.ts b/src/services/granotHttpCollector/runRecovery.replica.test.ts
+index 63f11454a7e562ad80b4a8702b130bf0015c3141..eb66fda793fab3aeef8403733b20c35354f27d41 100644
+--- a/src/services/granotHttpCollector/runRecovery.replica.test.ts
++++ b/src/services/granotHttpCollector/runRecovery.replica.test.ts
+@@ -24,16 +24,16 @@ async function ready(t: { skip: (reason: string) => void }) {
+   for (const host of [...hello.hosts, ...(hello.passives ?? []), ...(hello.arbiters ?? [])]) assert.match(String(host), /^(127\.0\.0\.1|localhost):\d+$/);
+   return true;
+ }
+-function planFor(id: Types.ObjectId) {
+-  return { kind: 'estimates_in_process' as const, schema_version: 2, counters: { update: 1 }, actions: [{ action_id: 'row-1', classification: 'update', collection_captured_at: '2026-10-01T00:00:00.000Z', lifecycle_apply: {
+-    operation_id: `${id}:row-1`, operation_kind: 'lead_snapshot_apply' as const, granot_statement: { priority: '0', job_no: 'SYNTHETIC-W5' },
+-  } }] };
++function planFor(id: Types.ObjectId, actionIds = ['row-1']) {
++  return { kind: 'estimates_in_process' as const, schema_version: 2, counters: { update: actionIds.length }, actions: actionIds.map(action_id => ({ action_id, classification: 'update', collection_captured_at: '2026-10-01T00:00:00.000Z', lifecycle_apply: {
++    operation_id: `${id}:${action_id}`, operation_kind: 'lead_snapshot_apply' as const, granot_statement: { priority: '0', job_no: 'SYNTHETIC-W5' },
++  } })) };
+ }
+-async function seed(id: Types.ObjectId, expiresAt = new Date(Date.now() + 3600000)) {
+-  const plan = planFor(id);
++async function seed(id: Types.ObjectId, expiresAt = new Date(Date.now() + 3600000), actionIds = ['row-1']) {
++  const plan = planFor(id, actionIds);
+   const checksum = computeChecksum({ checksum_version: 1, artifact_kind: 'ingestion_plan', schema_version: 1, payload: plan });
+   await GranotAutomationRun.create({ _id: id, operation: 'estimates_in_process', workflow: 'apply', status: 'applying', request_snapshot: { auto_apply: true }, initiator: actor,
+-    plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date('2026-10-01'), approval: { selected_action_ids: ['row-1'], plan_checksum: checksum, approved_by: actor, approved_at: new Date('2026-10-01') },
++    plan_snapshot: plan, plan_checksum: checksum, plan_locked_at: new Date('2026-10-01'), approval: { selected_action_ids: actionIds, plan_checksum: checksum, approved_by: actor, approved_at: new Date('2026-10-01') },
+     expires_at: expiresAt, purge_at: new Date(Date.now() + 86400000), last_attempt_at: new Date(0) });
+   return checksum;
+ }
+@@ -76,10 +76,14 @@ test('worker crash after canonical action but before run result replays the exac
+   }
+ });
+ 
+-test('legacy expiry remains enforced: an approved run beyond normal expiry does not execute', async t => {
++test('a resumed partial run retains its saved receipt and original expiry without executing the remaining action', async t => {
+   if (!(await ready(t))) return;
+   const id = new Types.ObjectId();
+-  await seed(id, new Date(Date.now() - 8 * 86400000));
++  const expiresAt = new Date(Date.now() - 8 * 86400000);
++  const checksum = await seed(id, expiresAt, ['row-1', 'row-2']);
++  const saved = { action_id: 'row-1', lifecycle_receipt_id: new Types.ObjectId().toHexString(), outcome: 'applied', applied_at: new Date(+expiresAt - 1) };
++  await GranotAutomationRun.updateOne({ _id: id }, { $push: { receipts: saved } });
++  const interrupted = await GranotAutomationRun.findById(id).lean().orFail();
+   let calls = 0;
+   try {
+     await assert.rejects(runGranotWorker({ applyAction: async input => {
+@@ -87,10 +91,53 @@ test('legacy expiry remains enforced: an approved run beyond normal expiry does
+       return { action_id: input.action_id, lifecycle_receipt_id: '', outcome: 'technical_failure', applied_at: new Date() };
+     } }), /expired or lost/);
+     assert.equal(calls, 0);
+-    assert.equal((await GranotAutomationRun.findById(id).lean())?.status, 'failed');
++    const stopped = await GranotAutomationRun.findById(id).lean().orFail();
++    assert.equal(stopped.status, 'failed');
++    assert.deepEqual(stopped.receipts, [saved]);
++    assert.deepEqual(stopped.approval, interrupted.approval);
++    assert.deepEqual(stopped.plan_snapshot, interrupted.plan_snapshot);
++    assert.equal(+stopped.purge_at, +interrupted.purge_at);
++    assert.equal(stopped.plan_checksum, checksum);
++    assert.equal(+stopped.expires_at, +expiresAt);
+   } finally { await GranotAutomationRun.deleteOne({ _id: id }); }
+ });
+ 
++test('an in-flight batch preserves its first receipt and refuses a new action at the original expiry', async t => {
++  if (!(await ready(t))) return;
++  const id = new Types.ObjectId();
++  const actionIds = ['row-1', 'row-2'];
++  const expiresAt = new Date(Date.now() + 3_000);
++  const checksum = await seed(id, expiresAt, actionIds);
++  const sealed = await GranotAutomationRun.findById(id).lean().orFail();
++  const operations: string[] = [];
++  const receiptId = new Types.ObjectId().toHexString();
++  try {
++    await assert.rejects(runGranotWorker({
++      applyAction: async input => {
++        operations.push(input.lifecycle_apply.operation_id);
++        return { action_id: input.action_id, lifecycle_receipt_id: receiptId, outcome: 'applied', applied_at: new Date() };
++      },
++      refreshOutreach: async () => {
++        // The already-applied action is completing when the approved window closes.
++        await new Promise(resolve => setTimeout(resolve, Math.max(0, +expiresAt - Date.now()) + 10));
++        return 'enqueued';
++      },
++    }), /expired/i);
++    const stopped = await GranotAutomationRun.findById(id).lean().orFail();
++    assert.equal(stopped.status, 'failed');
++    assert.deepEqual(operations, [`${id}:row-1`]);
++    assert.deepEqual(stopped.receipts.map(r => [r.action_id, r.lifecycle_receipt_id]), [['row-1', receiptId]]);
++    assert.deepEqual(stopped.approval, sealed.approval);
++    assert.deepEqual(stopped.plan_snapshot, sealed.plan_snapshot);
++    assert.equal(stopped.plan_checksum, checksum);
++    assert.equal(+stopped.expires_at, +expiresAt);
++    assert.equal(+stopped.purge_at, +sealed.purge_at);
++    assert.equal((await runGranotWorker()).claimed, false);
++  } finally {
++    await GranotAutomationRun.deleteOne({ _id: id });
++  }
++});
++
+ test('legacy closed-run reconstruction requires absent run, mature complete evidence and exact replay hash', async t => {
+   if (!(await ready(t))) return;
+   const id = new Types.ObjectId(), receipt = new Types.ObjectId(), observation = new Types.ObjectId(), decision = new Types.ObjectId();
+diff --git a/src/services/granotHttpCollector/runWorkflow.ts b/src/services/granotHttpCollector/runWorkflow.ts
+index 154fe7ee675227a0d698b1c267ca46e06b676ce6..bcd02fae1275adb758d0e46bccfc0712188e2d65 100644
+--- a/src/services/granotHttpCollector/runWorkflow.ts
++++ b/src/services/granotHttpCollector/runWorkflow.ts
+@@ -1050,6 +1050,10 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
+     if (processedActions >= 25 || Date.now() >= applyDeadline) break;
+     processedActions += 1;
+     await renewRunLease(runId, lease, "applying");
++    // A previous action can finish after expiry while this worker still owns both leases.
++    if (Date.now() >= run.expires_at.getTime()) {
++      throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "The approved Granot plan expired before the next action.");
++    }
+     let receipt: GranotAutomationActionReceipt;
+     try {
+       receipt = await applyAction({
+@@ -1692,7 +1696,7 @@ async function claimGranotRun(
+       },
+       $inc: { attempt_count: 1 },
+     },
+-    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after" },
++    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after", projection: { _id: 1, status: 1 } },
+   )
+     .lean()
+     .exec();

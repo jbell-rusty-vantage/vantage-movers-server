@@ -1,13 +1,18 @@
 # AGENTS.md
 
-For a sealed Granot action, start with the [local trace runbook](docs/operations/granot.md) or `pnpm vantage -- services`.
+Start with a task and a verified target:
 
-See the following for repository guidance:
+- **[Optimization sequence and progress](docs/operations/SERVICE-OPTIMIZATION-ROADMAP.md)** — canonical service-by-service ledger. [Next-session prompt](docs/operations/NEXT-SESSION.md) names the current bounded work; update both at session close.
+
+- **[Operate the server](docs/operations/README.md)** — workflow map, supported commands and remaining proof.
+- **[Local/Cloud setup](CLOUD_AGENTS.md)** — clean checkout, safe local API launch and real replica tests. No private `.env` is required. Use `pnpm dev` and verify `pnpm dev:identity` before any scoped local write.
+- **[Granot operator runbook](docs/operations/granot.md)** — trace one sealed action on a verified local replica.
+- **[Sheet Sync runbook](docs/operations/sheet-sync.md)** — the first supported service CLI slice. Help works offline: `pnpm vantage -- help`. Diagnostics never authorize repair or production access.
+- **[Shared vocabulary snapshot](docs/operations/shared-glossary.md)** — exact canonical workspace glossary for standalone clones; [provenance](docs/operations/shared-glossary.provenance.json). Internal relative links retain workspace semantics; use the task guide for executable navigation.
+
+For deeper domain guidance:
 
 - **`docs/index.md`** — OKF v0.2 catalog. Start here for Service / ADR / Reference concepts. Query with `pnpm okf:query`.
-- **`CLOUD_AGENTS.md`** — Cursor Cloud dev environment setup and non-obvious runtime caveats
-  (`.env` requirement, API-secret header, `SHEET_SYNC_MODE`, the MongoDB replica-set
-  requirement, how to start/verify the API, and how to run tests/typecheck).
 - **`.cursor/rules/`** — workspace rules (`*.mdc`) covering project organization, API/service
   boundaries, schema/CRUD contracts, the form-lead → Granot CRM flow, the Google Sheets sync
   process, RingCentral integration, and the branch/test/Vercel workflow.

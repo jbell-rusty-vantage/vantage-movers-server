@@ -66,15 +66,28 @@ test("shouldWriteSourceLeadSheets is false by default and only true for the lite
 });
 
 test("getMongoDatabaseName swaps between the prod and test databases on TEST_MODE", () => {
-  withEnv("TEST_MODE", "true", () =>
-    assert.equal(getMongoDatabaseName(), "testvantagemovers"),
-  );
-  withEnv("TEST_MODE", "false", () =>
-    assert.equal(getMongoDatabaseName(), "vantagemovers"),
-  );
-  withEnv("TEST_MODE", undefined, () =>
-    assert.equal(getMongoDatabaseName(), "vantagemovers"),
-  );
+  withEnv("TEST_MONGO_DATABASE_NAME", undefined, () => {
+    withEnv("TEST_MODE", "true", () =>
+      assert.equal(getMongoDatabaseName(), "testvantagemovers"),
+    );
+    withEnv("TEST_MODE", "false", () =>
+      assert.equal(getMongoDatabaseName(), "vantagemovers"),
+    );
+    withEnv("TEST_MODE", undefined, () =>
+      assert.equal(getMongoDatabaseName(), "vantagemovers"),
+    );
+  });
+});
+
+test("an isolated test database override cannot change the production database", () => {
+  withEnv("TEST_MONGO_DATABASE_NAME", "testvantagemovers_agent", () => {
+    withEnv("TEST_MODE", "true", () =>
+      assert.equal(getMongoDatabaseName(), "testvantagemovers_agent"),
+    );
+    withEnv("TEST_MODE", "false", () =>
+      assert.equal(getMongoDatabaseName(), "vantagemovers"),
+    );
+  });
 });
 
 test("getRuntimeSheetContainerEnvVar prefixes TEST_ in test mode and is identity otherwise", () => {

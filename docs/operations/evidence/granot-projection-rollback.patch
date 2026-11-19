@@ -1,0 +1,12 @@
+diff --git b/src/services/granotHttpCollector/runWorkflow.ts a/src/services/granotHttpCollector/runWorkflow.ts
+--- b/src/services/granotHttpCollector/runWorkflow.ts
++++ a/src/services/granotHttpCollector/runWorkflow.ts
+@@ -1696,7 +1692,7 @@ async function claimGranotRun(
+       },
+       $inc: { attempt_count: 1 },
+     },
+-    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after", projection: { _id: 1, status: 1 } },
++    { sort: { last_attempt_at: 1, createdAt: 1 }, returnDocument: "after" },
+   )
+     .lean()
+     .exec();

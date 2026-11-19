@@ -1,0 +1,4 @@
+
+> vantage_movers_server@1.0.0 typecheck C:\Users\Pinda\.codex\worktrees\capacity-qualified-release\vantage-main-server
+> tsc --noEmit
+
