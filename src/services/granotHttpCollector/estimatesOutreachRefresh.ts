@@ -1,6 +1,6 @@
 import { Types, type ClientSession } from "mongoose";
 import { withTransaction } from "../../db";
-import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
+import { readCaseDecision } from "../granotLifecycle/caseEvidence";
 import { getSalesOutreachSubjectModel } from "../../models/salesOutreach";
 import { enqueueCsiJob, type JobInput } from "../salesIntelligence/jobs";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
@@ -19,7 +19,7 @@ export type EstimatesOutreachRefreshDeps = {
 
 const defaults: EstimatesOutreachRefreshDeps = {
   transaction: withTransaction,
-  decision: async (id, session) => getSynchronizationDecisionModel().findById(id).select({ execution_mode: 1, outcome: 1, target: 1 }).session(session).lean().exec(),
+  decision: async (id, session) => readCaseDecision(new Types.ObjectId(id),session),
   openSubject: async (lead, session) => Boolean(await getSalesOutreachSubjectModel().exists({ lead_model: lead.model, lead_id: new Types.ObjectId(lead.id), status: { $in: ["active", "review"] } }).session(session)),
   enqueue: enqueueCsiJob,
   refreshPool: async (lead, session) => {
