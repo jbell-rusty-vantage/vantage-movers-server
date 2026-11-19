@@ -1,3 +1,4 @@
+import { leadArrivalInstant } from "../dailyOperations/leadDay.js";
 import { formSnapshotForLead } from "./evidence.js";
 import { jobsEquivalent, normalizeTypedJobNo } from "./normalize.js";
 import { projectEnhancedPage } from "./projector.js";
@@ -840,7 +841,8 @@ function milestoneEvents(
 ): JobTimelineEvent[] {
   const milestones: JobTimelineEvent[] = [];
   if (lead) {
-    const origin = emitLeadCreated({ ...lead, change_history_started_at: undefined }, []);
+    const arrived = leadArrivalInstant({ ...lead, createdAt: lead.createdAt ? new Date(lead.createdAt) : undefined });
+    const origin = emitLeadCreated({ ...lead, timestamp: arrived?.toISOString(), change_history_started_at: undefined }, []);
     milestones.push(origin);
   }
   const linkDates = links.filter(link => link.lead_ref && link.established_at
@@ -859,24 +861,24 @@ function milestoneEvents(
   const bookingIds = new Set(bookings.map(booking => booking.id));
   for (const booking of bookings) {
     milestones.push(event("official_booking", {
-      id: `official_booking:${booking.id}`, event_at: booking.book_date || booking.createdAt || "",
-      clock_field: booking.book_date ? "booking.book_date" : "booking.createdAt",
-      coverage: "official_fact_only", headline: "Official Booking", data: { booking_id: booking.id },
+      id: `official_booking:${booking.id}`, event_at: booking.createdAt || booking.book_date || "",
+      clock_field: booking.createdAt ? "booking.createdAt" : "booking.book_date",
+      coverage: "official_fact_only", headline: booking.book_date ? `Official Booking recorded (book date ${booking.book_date.slice(0, 10)})` : "Official Booking recorded", data: { booking_id: booking.id },
     }));
   }
   for (const cancel of cancellations) {
     if (cancel.booked_lead && !bookingIds.has(cancel.booked_lead) && (cancel.book_date || cancel.booking_created_at_snapshot)) {
       bookingIds.add(cancel.booked_lead);
       milestones.push(event("official_booking", {
-        id: `official_booking:${cancel.booked_lead}`, event_at: cancel.book_date || cancel.booking_created_at_snapshot!,
-        clock_field: cancel.book_date ? "cancellation.book_date" : "cancellation.booking_created_at_snapshot",
+        id: `official_booking:${cancel.booked_lead}`, event_at: cancel.booking_created_at_snapshot || cancel.book_date!,
+        clock_field: cancel.booking_created_at_snapshot ? "cancellation.booking_created_at_snapshot" : "cancellation.book_date",
         coverage: "official_fact_only", headline: "Official Booking", data: { booking_id: cancel.booked_lead },
       }));
     }
     milestones.push(event("official_cancellation", {
-      id: `official_cancellation:${cancel.id}`, event_at: cancel.cancel_date || cancel.createdAt || "",
-      clock_field: cancel.cancel_date ? "cancellation.cancel_date" : "cancellation.createdAt",
-      coverage: "official_fact_only", headline: "Official Cancellation", data: { cancellation_id: cancel.id },
+      id: `official_cancellation:${cancel.id}`, event_at: cancel.createdAt || cancel.cancel_date || "",
+      clock_field: cancel.createdAt ? "cancellation.createdAt" : "cancellation.cancel_date",
+      coverage: "official_fact_only", headline: cancel.cancel_date ? `Official Cancellation recorded (cancel date ${cancel.cancel_date.slice(0, 10)})` : "Official Cancellation recorded", data: { cancellation_id: cancel.id },
     }));
   }
   return sortEvents(milestones);
