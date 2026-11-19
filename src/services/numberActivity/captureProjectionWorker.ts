@@ -181,7 +181,7 @@ export async function runCaptureProjectionJob(
 
     const refresh = await (deps.refreshCandidates ?? sessionsNeedingRefresh)(
       observations,
-      results.map((r) => (r.ok ? { telephony_session_id: r.telephony_session_id, ok: true, result: r.result } : { telephony_session_id: r.telephony_session_id, ok: false })),
+      results,
     );
     result.call_log_refresh = refresh.map((c) => c.telephony_session_id);
     const at = now();

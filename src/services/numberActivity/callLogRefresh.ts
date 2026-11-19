@@ -96,7 +96,8 @@ export function callLogRefreshSchedule(syncMode: CallLogSyncMode): CallLogRefres
 export const CALL_LOG_REFRESH_THROTTLE_JITTER_MS = 5 * 60_000;
 const TERMINAL = new Set<string>(TERMINAL_PARTY_STATUSES);
 
-export function callLogRefreshDedupeKey(telephonySessionId: string): string {
+export function callLogRefreshDedupeKey(telephonySessionId: string, accountId?: string): string {
+  if (accountId) return `csi:call_log_refresh:account:${encodeURIComponent(accountId)}:session:${encodeURIComponent(telephonySessionId)}:1`;
   return `csi:call_log_refresh:session:${telephonySessionId}:1`;
 }
 
@@ -186,7 +187,7 @@ export function deliveryCarriesTerminalStatus(
   );
 }
 
-export type RefreshCandidate = { telephony_session_id: string; interaction_id: string };
+export type RefreshCandidate = { account_id: string; telephony_session_id: string; interaction_id: string };
 
 /**
  * Sessions of one capture-projection delivery that hung up: the delivery
@@ -196,15 +197,15 @@ export type RefreshCandidate = { telephony_session_id: string; interaction_id: s
  */
 export async function sessionsNeedingRefresh(
   observations: readonly WebhookPartyObservation[],
-  results: ReadonlyArray<{ telephony_session_id: string; ok: boolean; result?: ApplyResult }>,
+  results: ReadonlyArray<{ account_id: string | null; telephony_session_id: string; ok: boolean; result?: ApplyResult }>,
   loadState: (interactionId: string) => Promise<StoredSessionState | null> = loadStoredSessionState,
 ): Promise<RefreshCandidate[]> {
   const out: RefreshCandidate[] = [];
   for (const r of results) {
-    if (!r.ok || !r.result) continue;
+    if (!r.ok || !r.result || !r.account_id) continue;
     if (!deliveryCarriesTerminalStatus(observations, r.telephony_session_id)) continue;
     const terminal = r.result.newly_terminal || (await loadState(r.result.interaction_id))?.account_parties_terminal === true;
-    if (terminal) out.push({ telephony_session_id: r.telephony_session_id, interaction_id: r.result.interaction_id });
+    if (terminal) out.push({ account_id: r.account_id, telephony_session_id: r.telephony_session_id, interaction_id: r.result.interaction_id });
   }
   return out;
 }
@@ -221,12 +222,20 @@ export async function enqueueCallLogRefreshJob(
   syncMode: CallLogSyncMode = callLogReconcileConfig().syncMode,
 ): Promise<{ job_id: string; created: boolean; due_at: Date }> {
   const dueAt = new Date(now.getTime() + callLogRefreshSchedule(syncMode).delayMs);
-  const dedupe_key = callLogRefreshDedupeKey(candidate.telephony_session_id);
-  const prior = await getSalesIntelligenceJobModel()
-    .findOne({ dedupe_key }, { _id: 1, next_attempt_at: 1 })
+  const dedupe_key = callLogRefreshDedupeKey(candidate.telephony_session_id, candidate.account_id);
+  const legacyKey = callLogRefreshDedupeKey(candidate.telephony_session_id);
+  const matches = await getSalesIntelligenceJobModel()
+    .find({ dedupe_key: { $in: [dedupe_key, legacyKey] } }, { dedupe_key: 1, input_refs: 1, next_attempt_at: 1 })
     .session(session)
     .lean();
-  // One refresh per session: a later hang-up delivery (possibly naming a
+  let prior = matches.find(job => job.dedupe_key === dedupe_key);
+  const legacy = matches.find(job => job.dedupe_key === legacyKey);
+  if (!prior && legacy) {
+    const originalInteraction = legacy.input_refs?.[0];
+    if (String(originalInteraction) === candidate.interaction_id || (originalInteraction &&
+      await getCallInteractionModel().exists({ _id: originalInteraction, provider_account_id: candidate.account_id }).session(session))) prior = legacy;
+  }
+  // One refresh per account and session: a later hang-up delivery (possibly naming a
   // merged interaction) never re-enqueues or conflicts with the first.
   if (prior) return { job_id: String(prior._id), created: false, due_at: prior.next_attempt_at ?? dueAt };
   const row = await enqueue(
@@ -427,7 +436,7 @@ export async function runCallLogRefreshJob(
     let accountId: string;
     try {
       accountId = resolveProviderAccountId(
-        records.map((r) => accountIdFromProviderPath(typeof r.uri === "string" ? r.uri : null)),
+        [state?.provider_account_id, ...records.map((r) => accountIdFromProviderPath(typeof r.uri === "string" ? r.uri : null))],
         deps.configuredAccountId === undefined
           ? configuredRingCentralAccountId() ?? state?.provider_account_id ?? null
           : deps.configuredAccountId,

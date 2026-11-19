@@ -7,6 +7,7 @@ import {
   CALL_LOG_REFRESH_RETRY_DELAYS_MS,
   drainCallLogRefreshJobs,
   callLogRefreshSubjectKey,
+  callLogRefreshDedupeKey,
   runCallLogRefreshJob,
   type CallLogRefreshDeps,
 } from "./callLogRefresh";
@@ -156,4 +157,13 @@ test("narrowed refresh: an unconfirmed session with Call Log Sync on retries aft
   last.deps.syncMode = "on";
   await runCallLogRefreshJob(last.jobId, last.deps);
   assert.equal(last.calls.complete[0]!.result.state, "not_published");
+});
+
+test("overlapping provider session IDs retain separate refreshes and reject foreign Detailed records", async () => {
+  assert.notEqual(callLogRefreshDedupeKey("s-r", "100"), callLogRefreshDedupeKey("s-r", "200"));
+  const h = harness({ fetch: async () => [{ id: "shared", uri: "/restapi/v1.0/account/200/call-log/shared" }] });
+  const outcome = await runCallLogRefreshJob(h.jobId, h.deps);
+  assert.equal(outcome.status, "completed");
+  assert.equal(h.calls.complete[0]?.result.error_code, "account_mismatch");
+  assert.equal(h.calls.apply.length, 0);
 });

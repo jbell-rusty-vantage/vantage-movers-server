@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import mongoose from "mongoose";
-import { connectMongo } from "../../src/db";
+import { withTransaction, connectMongo } from "../../src/db";
 import { getMongoDatabaseName } from "../../src/config/domain/runtime";
 import { CSI_MODEL_REGISTRY } from "../../src/models/salesIntelligence/registry";
 import { ENTITY_CHANGE_INDEXES } from "../../src/models/EntityChange";
 import { getSalesIntelligenceJobModel } from "../../src/models/SalesIntelligenceJob";
+import { enqueueCallLogRefreshJob, callLogRefreshDedupeKey } from "../../src/services/numberActivity/callLogRefresh";
 import { applyInteractionObservation } from "../../src/services/numberActivity/persistInteraction";
 import { inboundConnectedCallLog, outboundMissedCallLog, syntheticDirectory, voicemailCallLog, SYNTHETIC_ACCOUNT_ID } from "../../src/services/numberActivity/fixtures";
 import { commandNumberLead, listAllNumbers, readNumberDetail, searchLeadsForLink } from "../../src/services/numberActivity/allNumbers";
@@ -380,4 +381,22 @@ test("All Numbers v2: migration, capture summary, lead link, reads, Owner comman
   assert.ok(ned, "the Call Lead's job minted its number with the Form Lead flag off");
   assert.equal(ned.created_via, "call_lead");
   assert.equal(String(ned.lead.id), String(L14), "and linked it in the same job");
+
+  // A pre-upgrade refresh keeps its identity while another account reuses both provider identifiers.
+  const shared = "s-overlap";
+  const captureIn = (account: string) => applyInteractionObservation(account, { kind: "call_log",
+    record: { ...voicemailCallLog(shared), uri: `/restapi/v1.0/account/${account}/call-log/shared` },
+    proof_ref: "same-proof" }, capture);
+  const a = await captureIn(SYNTHETIC_ACCOUNT_ID), b = await captureIn("800000000009");
+  assert.notEqual(a.interaction_id, b.interaction_id);
+  assert.equal((await captureIn(SYNTHETIC_ACCOUNT_ID)).interaction_id, a.interaction_id);
+  const refresh = (account_id: string, interaction_id: string) => withTransaction(session =>
+    enqueueCallLogRefreshJob({ account_id, interaction_id, telephony_session_id: shared }, session, new Date()));
+  const original = await refresh(SYNTHETIC_ACCOUNT_ID, a.interaction_id);
+  await db.collection("sales_intelligence_jobs").updateOne({ _id: new mongoose.Types.ObjectId(original.job_id) },
+    { $set: { dedupe_key: callLogRefreshDedupeKey(shared) } });
+  assert.equal((await refresh(SYNTHETIC_ACCOUNT_ID, a.interaction_id)).job_id, original.job_id);
+  const other = await refresh("800000000009", b.interaction_id);
+  assert.notEqual(other.job_id, original.job_id);
+  assert.equal((await refresh("800000000009", b.interaction_id)).job_id, other.job_id);
 });
