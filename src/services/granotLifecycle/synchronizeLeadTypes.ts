@@ -24,7 +24,7 @@ export type SynchronizeLeadJobProposal = {
 export type SynchronizeLeadExecution = {
   observation: GranotObservationDocument;
   identity: LeadIdentityResult;
-  receipt_id: mongoose.Types.ObjectId;
+  receipt_id?: mongoose.Types.ObjectId;
   attempt: number;
   execution_mode: ExecutionMode;
   flags: GranotLifecycleFlags;

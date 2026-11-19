@@ -1,3 +1,5 @@
+import { OperationIdempotencyConflictError } from "./errors";
+import { hashCredentialRedactedPayload } from "./receiptEvidence";
 import { automationRunId, checkClosedOperation, readClosedRun } from "../granotHistory/closedAutomationRun";
 import { connectMongo } from "../../db";
 import type { DurableActor } from "../durableWork/types";
@@ -40,6 +42,7 @@ export type GranotAutomationActionReceipt = {
   outcome: SynchronizationOutcome | "accepted_for_processing" | "technical_failure";
   applied_at: Date;
   error_code?: string;
+  scheduled_direct?: true;
   outreach_refresh_completed?: boolean;
 };
 
@@ -89,6 +92,21 @@ export async function applyAutomationPlanAction(
     }
   }
   return applyOpenAutomationPlanAction(input, deps);
+}
+
+/** Resume a pre-cutover capture, including a crash between capture and the run checkpoint. */
+export async function resumeCapturedAutomationAction(input: ApplyAutomationActionInput): Promise<GranotAutomationActionReceipt | null> {
+  let id = input.existing_receipt?.lifecycle_receipt_id;
+  if (!id) {
+    const row = await getGranotObservationReceiptModel().findOne({ observation_channel: "granot_http_automation",
+      channel_operation_id: input.lifecycle_apply.operation_id }).select("_id channel_operation_kind payload_sha256").lean();
+    if (!row) return null;
+    if (row.channel_operation_kind !== input.lifecycle_apply.operation_kind ||
+        row.payload_sha256 !== hashCredentialRedactedPayload(input.lifecycle_apply).payload_sha256)
+      throw new OperationIdempotencyConflictError(input.request_id);
+    id = String(row._id);
+  }
+  return translateClaimResult(input.action_id, id, await claimAndProcessOrPoll(id, { syncPollDeadlineMs: 0 }));
 }
 
 /** The run worker has checked the active lease, expiry, and closed-run fence for this batch. */

@@ -41,17 +41,22 @@ export async function refreshExistingEstimatesOutreach(
     const target = decision.target;
     if (!target || (target.model !== "FormLead" && target.model !== "CallLead") || !/^[a-f\d]{24}$/i.test(target.id)) return "skipped";
     const lead: DeskLeadRef = { model: target.model, id: target.id };
-    // Pool refresh may activate an explicitly allowed no-subject Lead; never require an ordinary subject first.
-    await deps.refreshPool?.(lead, session);
-    if (!await deps.openSubject(lead, session)) return "skipped";
-    await deps.enqueue({
-      stage: "outreach_lead_change",
-      subject_key: `outreach-lead:${lead.model}:${lead.id}`,
-      dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:estimates-refresh:${receipt.lifecycle_receipt_id}`,
-      input_revision: 1,
-      input_refs: [lead.id],
-    }, session);
-    // The existing every-minute lead-change cron drains this retained stage.
-    return "enqueued";
+    return refreshEstimatesPriorityChange(lead, receipt.lifecycle_receipt_id, session, deps);
   });
+}
+
+export async function refreshEstimatesPriorityChange(lead: DeskLeadRef, operationId: string, session: ClientSession,
+  deps: EstimatesOutreachRefreshDeps = defaults): Promise<"enqueued" | "skipped"> {
+  // Pool refresh may activate an explicitly allowed no-subject Lead; never require an ordinary subject first.
+  await deps.refreshPool?.(lead, session);
+  if (!await deps.openSubject(lead, session)) return "skipped";
+  await deps.enqueue({
+    stage: "outreach_lead_change",
+    subject_key: `outreach-lead:${lead.model}:${lead.id}`,
+    dedupe_key: `sod:lead-change:${lead.model}:${lead.id}:estimates-refresh:${operationId}`,
+    input_revision: 1,
+    input_refs: [lead.id],
+  }, session);
+  // The existing every-minute lead-change cron drains this retained stage.
+  return "enqueued";
 }

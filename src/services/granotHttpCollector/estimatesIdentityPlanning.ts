@@ -161,15 +161,16 @@ export async function planEstimatesIdentities(
       identity, lead, policy: policy.snapshot, now: normalized.captured_at, attempt: 1,
       temporal_order: winnerAt && +winnerAt > +normalized.captured_at ? "older" : "newer",
     });
-    actions.push({ ...base, classification: "update", lead_id: identity.target.id,
-      reason: "canonical_lifecycle_snapshot_check", warnings,
+    const classification = desired.outcome === "applied" && desired.changed_paths.length ? "update" : "unchanged";
+    actions.push({ ...base, classification, lead_id: identity.target.id,
+      reason: desired.reason_code, warnings,
       lifecycle_apply: { ...lifecycle, expected_target: target },
       report_identity: { ...base.report_identity, lead_model: target.model, match_method: identity.match_method },
       desired_state_summary: { outcome: desired.outcome, reason_code: desired.reason_code,
         changed_paths: desired.changed_paths, agent_changed_paths: desired.agent_changed_paths,
         target_revision: lead.domain_revision ?? 0, conditional_on_apply: true },
     });
-    counters.update = (counters.update ?? 0) + 1;
+    counters[classification] = (counters[classification] ?? 0) + 1;
     const plannedOutcome = `planned_${desired.outcome}`;
     counters[plannedOutcome] = (counters[plannedOutcome] ?? 0) + 1;
     for (const warning of warnings) counters[`warning_${warning}`] = (counters[`warning_${warning}`] ?? 0) + 1;

@@ -23,7 +23,8 @@ import {
 } from "../durableWork";
 import { GRANOT_ESTIMATES_CRON_ACTOR_ID } from "../domainCommands/types";
 import { OperationIdempotencyConflictError } from "../granotLifecycle/errors";
-import { applyOpenAutomationPlanAction, type applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
+import { applyScheduledLeadChange } from "./scheduledLeadChange";
+import { resumeCapturedAutomationAction, type applyAutomationPlanAction, loadAutomationReplayStates } from "../granotLifecycle/automationApply";
 import type { GranotAutomationActionReceipt } from "../granotLifecycle/automationApply";
 import {
   getGranotDateWindowProblem,
@@ -34,7 +35,7 @@ import { collectEstimatesInProcess } from "./estimatesInProcess";
 import type { EstimatesCollectionCoverage } from "./estimatesCollection";
 import { refreshExistingEstimatesOutreach } from "./estimatesOutreachRefresh";
 
-class EstimatesOutreachRefreshRetry extends Error {}
+class EstimatesApplyRetry extends Error {}
 import { planEstimatesIdentities, type EstimatesIdentityPlanningDeps } from "./estimatesIdentityPlanning";
 import { GranotRunConflict } from "./errors";
 import { estimatesDateWindow, estimatesDateChunks, granotCalendarEpoch, estimatesLatestSlot, estimatesSlotInstant, estimatesCoverageIsLate, ESTIMATES_COLLECTION_GRACE_MS } from "./estimatesCron";
@@ -111,7 +112,7 @@ export async function createGranotRun(request: GranotRunRequest) {
   const expiresAt = new Date(+now + PLAN_TTL_MS);
   try {
     await GranotAutomationRun.updateOne({ _id: id }, { $setOnInsert: {
-      schema_version: 2,
+      schema_version: 3,
       operation: request.operation,
       workflow: request.workflow,
       status: "queued",
@@ -266,7 +267,7 @@ export async function runGranotWorker(deps: {
     }
     return { claimed: true, run_id: runId, status, timing };
   } catch (error) {
-    if (runId && !(error instanceof EstimatesOutreachRefreshRetry)) await failRun(runId, lease, error);
+    if (runId && !(error instanceof EstimatesApplyRetry)) await failRun(runId, lease, error);
     throw error;
   } finally {
     await leaseStore.release({ token: lease, now: new Date() });
@@ -367,10 +368,11 @@ async function planOperation(
   });
   if (!coverage?.complete) throw new GranotRunConflict("INCOMPLETE_COLLECTION", "Estimates coverage was not verified.");
   await rememberEstimatesOpenDates(sources);
-  const plan = await assembleEstimatesPlan(sources, { runId, beforeRow });
+  const preview = await assembleEstimatesPlan(sources, { runId, beforeRow });
+  const plan = { ...preview, actions: preview.actions.filter(isApprovableAction) };
   return {
     plan,
-    collection_summary: { ...summarizeEstimateSources(request.dateWindow, sources), coverage, held_rows: plan.actions.filter((action) => !isApprovableAction(action)).length, approvable_rows: plan.actions.filter(isApprovableAction).length },
+    collection_summary: { ...summarizeEstimateSources(request.dateWindow, sources), coverage, held_rows: preview.actions.filter(action => action.classification === "invalid").length, approvable_rows: plan.actions.filter(isApprovableAction).length },
   };
 }
 
@@ -424,7 +426,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
   loadReplayStates?: typeof loadAutomationReplayStates;
   refreshOutreach?: typeof refreshExistingEstimatesOutreach;
 }, timing: ApplyTiming): Promise<string> {
-  const applyAction = deps.applyAction ?? applyOpenAutomationPlanAction;
+
   const run = await GranotAutomationRun.findOne({
     ...fenced(runId, lease, ["applying"]),
     expires_at: { $gt: new Date() },
@@ -482,7 +484,7 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
       // Preserve applying state so the stored terminal receipt retries its
       // idempotent nomination after a crash or transient job-store failure.
       await yieldApplyingRun(runId, lease, completed, true);
-      throw new EstimatesOutreachRefreshRetry(error instanceof Error ? error.message : "Estimates outreach refresh could not be nominated.");
+      throw new EstimatesApplyRetry(error instanceof Error ? error.message : "Estimates outreach refresh could not be nominated.");
     }
   };
 
@@ -518,10 +520,11 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
     if (Date.now() >= run.expires_at.getTime()) {
       throw new GranotRunConflict("RUN_EXPIRED_OR_DRIFTED", "The approved Granot plan expired before the next action.");
     }
+    let direct = false;
     let receipt: GranotAutomationActionReceipt;
     const lifecycleStarted = performance.now();
     try {
-      receipt = await applyAction({
+      const input = {
         action_id: action.action_id,
         lifecycle_apply: action.lifecycle_apply,
         initiator: approval.approved_by,
@@ -530,7 +533,14 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
         captured_at: !existing
           ? estimatesActionCaptureTime(action)
           : undefined,
-      });
+      };
+      if (deps.applyAction) {
+        receipt = await deps.applyAction(input);
+      } else {
+        const resumed = existing || (run.schema_version ?? 1) < 3 ? await resumeCapturedAutomationAction(input) : null;
+        direct = !resumed;
+        receipt = resumed ?? await applyScheduledLeadChange(input);
+      }
     } catch (error) {
       if (error instanceof OperationIdempotencyConflictError || (error instanceof GranotRunConflict && error.code === "RUN_REPLAN_REQUIRED")) {
         receipt = {
@@ -540,6 +550,10 @@ async function applyRun(runId: string, lease: LeaseToken, deps: {
           applied_at: new Date(),
           error_code: error.code,
         };
+      } else if (direct) {
+        // Resume the sealed action after a transient failure, including one after the Lead committed.
+        await yieldApplyingRun(runId, lease, completed, true);
+        throw new EstimatesApplyRetry("Scheduled Lead update will retry", { cause: error });
       } else {
         throw error;
       }

@@ -39,7 +39,7 @@ async function readRunBytes(db: Db, id: ObjectId, now: Date, session?: ClientSes
   return raw;
 }
 
-/** Both independently persisted action tables must cover exactly the approvable actions in the immutable plan. */
+/** Check every selected action against its embedded result and every legacy capture against its replay. */
 function matchesPlan(run: Document, operations: ClosedOperation[]) {
   const plan = run.plan_snapshot;
   if (plan?.kind !== "estimates_in_process" || plan.schema_version !== 2 || !Array.isArray(plan.actions)
@@ -52,7 +52,7 @@ function matchesPlan(run: Document, operations: ClosedOperation[]) {
   const approvable = actions.filter(a => "classification" in a ? a.classification === "update" : a.syncable === true);
   const selected = run.approval?.selected_action_ids ?? [];
   if (!Array.isArray(selected) || selected.length !== approvable.length || new Set(selected).size !== selected.length
-      || run.receipts.length !== selected.length || operations.length !== selected.length) return false;
+      || run.receipts.length !== selected.length || operations.length !== run.receipts.filter((row: Document) => row.scheduled_direct !== true).length) return false;
   const selectedIds = new Set(selected);
   const byAction = new Map<string, Document>(run.receipts.map((r: Document) => [r.action_id, r]));
   const byOperation = new Map(operations.map(row => [row.operation, row]));
@@ -60,6 +60,13 @@ function matchesPlan(run: Document, operations: ClosedOperation[]) {
     const item = action.lifecycle_apply;
     const saved = byAction.get(action.action_id);
     const op = item && byOperation.get(item.operation_id);
+    if (saved?.scheduled_direct === true) {
+      return !!item && !op && selectedIds.has(action.action_id) && saved.outreach_refresh_completed === true
+        && item.operation_id === String(run._id) + ":" + action.action_id
+        && item.operation_kind === "lead_snapshot_apply" && typeof saved.lifecycle_receipt_id === "string"
+        && ["applied", "already_current", "stale", "unmatched", "policy_blocked", "ambiguous", "invalid", "conflict", "unsupported", "deferred"].includes(saved.outcome)
+        && (saved.outcome !== "applied" || (!!saved.decision_id && !!saved.observation_id));
+    }
     return !!item && !!saved && !!op && selectedIds.has(action.action_id)
       && item.operation_id === String(run._id) + ":" + action.action_id && op.kind === item.operation_kind
       && op.hash === hashCredentialRedactedPayload(item).payload_sha256
@@ -102,9 +109,9 @@ export async function archiveScheduledRun(db: Db, id: ObjectId, now: Date, store
       const retainUntil = new Date(Math.max(+run.createdAt + 9 * day, slot?.purge_at instanceof Date ? +slot.purge_at + day : 0, +now + day));
       // A publish/compact race commits one terminal record and one closed-run index together.
       await closedRuns(db).insertOne(index, { session });
-      const unapplied = replay.rows.filter(row => !["applied", "linked", "already_current"].includes(row.result.outcome)).length;
+      const unapplied = run.receipts.filter((row: Document) => !["applied", "linked", "already_current"].includes(row.outcome)).length;
       const updated = await db.collection(collection).updateOne({ _id: id, status: "completed", archive_summary: { $exists: false } }, {
-        $set: { archive_summary: { hash: locator.hash, generation: locator.generation, receipt_count: replay.rows.length, unapplied_actions: unapplied },
+        $set: { archive_summary: { hash: locator.hash, generation: locator.generation, receipt_count: run.receipts.length, unapplied_actions: unapplied },
           receipts: [], purge_at: retainUntil },
         $unset: { plan_snapshot: "", approval: "", archive_review_at: "", archive_review: "" },
       }, { session });

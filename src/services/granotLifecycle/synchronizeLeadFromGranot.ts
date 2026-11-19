@@ -86,32 +86,13 @@ export async function synchronizeLeadFromGranot(
     throw new Error("synchronizeLeadFromGranot requires all eight effect gates.");
   }
 
-  let sheetJob:
-    | { resource: "source_lead"; operation: "form_lead.update" | "call_lead.update"; leadModel: LeadModel; leadId: string }
-    | undefined;
-
   const command = await executeCanonicalCommandWithPostCommit({
     command_name: "synchronizeLeadFromGranot",
     context: input.context,
-    operation: async (tx) => {
-      const result = await applySynchronizeLeadOperation(input, tx.session, tx.now, tx.command_execution_id);
-      sheetJob = result.pending.sheetJob;
-      return {
-        entity_refs: result.entity_refs,
-        pending: result.pending,
-      };
-    },
-    finalize: async (pending) => {
-      if (pending?.sheetJob) {
-        await finalizeSheetSync(pending.sheetJob);
-      }
-      if (pending) {
-        await recordGranotLinkedDailyOperationsFact(pending);
-      }
-    },
+    operation: tx => applySynchronizeLeadOperation(input, tx.session, tx.now, tx.command_execution_id),
+    finalize: finalizeSynchronizedLead,
   });
 
-  void sheetJob;
   return {
     status: "applied",
     entity_refs: command.entity_refs,
@@ -135,6 +116,11 @@ type SynchronizeLeadDailyOperationsPending = {
   lead_model: LeadModel;
 };
 
+export async function finalizeSynchronizedLead(pending: SynchronizeLeadDailyOperationsPending) {
+  if (pending.sheetJob) await finalizeSheetSync(pending.sheetJob);
+  await recordGranotLinkedDailyOperationsFact(pending);
+}
+
 function synchronizeDailyOperationsPending(
   input: SynchronizeLeadFromGranotInput,
   extras: {
@@ -156,7 +142,7 @@ function synchronizeDailyOperationsPending(
   };
 }
 
-async function applySynchronizeLeadOperation(
+export async function applySynchronizeLeadOperation(
   input: SynchronizeLeadFromGranotInput,
   session: ClientSession,
   now: Date,
@@ -765,7 +751,7 @@ async function persistDecision(
   session: ClientSession,
 ): Promise<void> {
   await getSynchronizationDecisionModel().create([decision], { session });
-  await pointReceiptToDecision(input.execution.receipt_id, decision._id, session);
+  if (input.execution.receipt_id) await pointReceiptToDecision(input.execution.receipt_id, decision._id, session);
 }
 
 type LoadedLead = LeadDesiredStateProjection & {

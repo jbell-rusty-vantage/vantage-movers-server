@@ -84,6 +84,7 @@ export type GranotObservationDisplayMoney = {
 export type GranotObservationDocument = {
   _id: mongoose.Types.ObjectId;
   receipt_id: mongoose.Types.ObjectId;
+  scheduled_run_id?: mongoose.Types.ObjectId;
   schema_version: 1;
   kind: GranotObservationKind;
   normalization_result: NormalizationResult;
@@ -170,6 +171,7 @@ const issueSchema = new Schema(
 const GranotObservationSchema = new Schema(
   {
     receipt_id: { type: Schema.Types.ObjectId, required: true },
+    scheduled_run_id: { type: Schema.Types.ObjectId, immutable: true },
     schema_version: { type: Number, required: true, enum: [1] },
     kind: { type: String, required: true, enum: OBSERVATION_KINDS },
     normalization_result: {

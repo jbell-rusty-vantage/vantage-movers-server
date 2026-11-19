@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import { GRANOT_LIFECYCLE_FLAG_DEFAULTS } from "../../config/domain/granotLifecycle";
 import { getMongoDatabaseName } from "../../config/domain/runtime";
 import { connectMongo } from "../../db";
+import { getSalesOutreachSubjectModel } from "../../models/salesOutreach";
+import { getSalesIntelligenceJobModel } from "../../models/SalesIntelligenceJob";
 import { Agent } from "../../models/Agent";
 import { getCallLeadModel } from "../../models/CallLead";
 import { getEntityChangeModel } from "../../models/EntityChange";
@@ -16,13 +18,14 @@ import { getRepIdentityLinkModel } from "../../models/RepIdentityLink";
 import { getSynchronizationDecisionModel } from "../../models/SynchronizationDecision";
 import { normalizeJobNo } from "../bookings/bookingIdentity";
 import type { DurableActor } from "../durableWork/types";
-import { applyAutomationPlanAction } from "../granotLifecycle/automationApply";
-import { claimAndProcessOrPoll } from "../granotLifecycle/drainer";
-import { createGranotObservationProcessor } from "../granotLifecycle/processor";
+import { applyScheduledLeadChange } from "./scheduledLeadChange";
 import { nominateLeadChanges } from "../salesOutreach/subjects/feed";
 import { buildSubjectFacts } from "../salesOutreach/subjects/subjectBuilder";
 import { mongoDeskSubjectStore } from "../salesOutreach/subjects/store";
-import { assembleEstimatesPlan } from "./runWorkflow";
+import { GranotAutomationRun } from "../../models/GranotAutomationRun";
+import { reviewScheduledRun } from "../granotHistory/scheduledRunArchive";
+import { computeChecksum } from "../durableWork";
+import { assembleEstimatesPlan, runGranotWorker } from "./runWorkflow";
 import { parseEstimatesInProcessHtml } from "./estimatesInProcess";
 
 const LIVE_NAME = "Live Caller";
@@ -312,50 +315,27 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     assert.equal("classification" in unmatchedAction && unmatchedAction.classification, "no_match");
     assert.equal(freshAction.lifecycle_apply?.granot_statement.event_type, undefined);
 
-    const processor = createGranotObservationProcessor({ flags: writeFlags });
-    const apply = (action: typeof freshAction) =>
-      applyAutomationPlanAction(
-        {
-          action_id: action.action_id,
-          lifecycle_apply: action.lifecycle_apply!,
-          initiator,
-          captured_at: capturedAt,
-          request_id: runId,
-        },
-        {
-          claimAndProcess: (receiptId) =>
-            claimAndProcessOrPoll(receiptId, { flags: writeFlags, processor }),
-        },
-      );
-
-    const suppressedFlags = { ...writeFlags, lead_writes_enabled: false };
-    const suppressedProcessor = createGranotObservationProcessor({ flags: suppressedFlags });
-    const suppressed = await applyAutomationPlanAction({
-      action_id: `${freshAction.action_id}:suppressed`,
-      lifecycle_apply: {
-        ...freshAction.lifecycle_apply!,
-        operation_id: `${freshAction.lifecycle_apply!.operation_id}:suppressed`,
-      },
-      initiator,
-      captured_at: capturedAt,
-      request_id: runId,
-    }, {
-      claimAndProcess: (receiptId) => claimAndProcessOrPoll(receiptId, {
-        flags: suppressedFlags, processor: suppressedProcessor,
-      }),
-    });
+    const apply = (action: typeof freshAction, flags = writeFlags) => applyScheduledLeadChange({
+      action_id: action.action_id, lifecycle_apply: action.lifecycle_apply!, initiator, captured_at: capturedAt, request_id: runId,
+    }, flags);
+    const suppressed = await apply(freshAction, { ...writeFlags, lead_writes_enabled: false });
     assert.equal(suppressed.outcome, "policy_blocked");
-    assert.ok(suppressed.decision_id, "disabled writes persist a decision");
-    const suppressedDecision = await getSynchronizationDecisionModel().findById(suppressed.decision_id).lean();
-    assert.equal(suppressedDecision?.reason_code, "global_effect_disabled");
+    assert.equal(suppressed.decision_id, undefined);
     const untouched = await CallLead.findById(freshId).lean();
     assert.equal(untouched?.granot_priority, undefined);
     assert.equal(untouched?.job_no, undefined);
     assert.equal(untouched?.receiver_agent, undefined);
     assert.equal(untouched?.move_date, undefined);
 
+    await getSalesIntelligenceJobModel().createIndexes();
+    await getSalesOutreachSubjectModel().collection.insertOne({ _id: objectId(), lead_model: "CallLead", lead_id: freshId, status: "active" } as never);
+    const cadenceJobs = () => getSalesIntelligenceJobModel().countDocuments({ subject_key: "outreach-lead:CallLead:" + freshId, stage: "outreach_lead_change" });
     const freshResult = await apply(freshAction);
     assert.equal(freshResult.outcome, "applied");
+    assert.equal(freshResult.outreach_refresh_completed, true);
+    assert.equal((await apply(freshAction)).decision_id, freshResult.decision_id);
+    assert.equal(await getGranotObservationReceiptModel().countDocuments(), receiptsBefore);
+    assert.equal(await cadenceJobs(), 1);
     const fresh = await CallLead.findById(freshId).lean();
     assert.equal(fresh?.job_no, freshJob);
     assert.equal(fresh?.normalized_job_no, normalizeJobNo(freshJob));
@@ -369,8 +349,32 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     assert.equal(fresh?.cubic_feet, undefined);
     assert.deepEqual(fresh?.move_date, STORED_MOVE_DATE);
 
-    const quotedResult = await apply(quotedAction);
-    assert.equal(quotedResult.outcome, "applied");
+    const sealed = { ...plan, actions: [quotedAction] };
+    const checksum = computeChecksum({ checksum_version: 1, artifact_kind: "ingestion_plan", schema_version: 1, payload: sealed });
+    await GranotAutomationRun.create({ _id: runId, schema_version: 3, status: "applying", operation: "estimates_in_process",
+      workflow: "apply", initiator, collection_summary: { coverage: { complete: true } },
+      request_snapshot: { auto_apply: true, scheduled_slot_key: runId, scheduled_coverage: { slotKey: runId } },
+      expires_at: new Date(Date.now() + 60_000), plan_locked_at: new Date(), plan_snapshot: sealed, plan_checksum: checksum,
+      approval: { approved_by: initiator, selected_action_ids: [quotedAction.action_id], plan_checksum: checksum } });
+    const flags = { GRANOT_LIFECYCLE_PROCESSING_ENABLED: "true", GRANOT_LIFECYCLE_LEAD_WRITES_ENABLED: "true", GRANOT_LIFECYCLE_SHADOW_MODE: "false" };
+    const savedFlags = Object.fromEntries(Object.keys(flags).map(k => [k, process.env[k]]));
+    try {
+      Object.assign(process.env, flags);
+      const worker = await runGranotWorker();
+      assert.equal(worker.run_id, runId);
+      assert.equal(worker.status, "completed");
+      const completed = await GranotAutomationRun.findById(runId).lean().orFail();
+      assert.equal(completed.receipts[0]?.outcome, "applied");
+      assert.equal(completed.receipts[0]?.outreach_refresh_completed, true);
+      assert.equal(completed.receipts[0]?.scheduled_direct, true);
+      const review = await reviewScheduledRun(mongoose.connection.db!, completed._id, new Date(+completed.expires_at + 1));
+      assert.equal(review.status, "ready", "direct run can retire without a webhook receipt");
+    } finally {
+      for (const [key, value] of Object.entries(savedFlags)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
     const quoted = await CallLead.findById(quotedId).lean();
     assert.equal(quoted?.granot_priority, "1");
     assert.equal(quoted?.job_no, quotedJob);
@@ -380,8 +384,38 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     assert.equal(quoted?.phone_number, quotedPhone);
     assert.equal(quoted?.name, LIVE_NAME);
 
+    // Recollection has a new operation ID. Replaying the old key alone cannot prove convergence.
+    const nextRun = objectId().toHexString();
+    const collectedAgain = new Date(+capturedAt + 60_000);
+    for (const source of parsed.sources) for (const row of source.sections.followUpEstimates) row.collectedAt = collectedAgain.toISOString();
+    const repeat = await assembleEstimatesPlan(parsed.sources, { runId: nextRun });
+    assert.equal(repeat.actions.filter(a => a.classification === "update").length, 0);
+    const sourceItem = freshAction.lifecycle_apply!;
+    const state = async () => ({
+      revision: (await CallLead.findById(freshId).lean())?.domain_revision,
+      receipts: await getGranotObservationReceiptModel().countDocuments(),
+      observations: await mongoose.connection.db!.collection("granot_observations").countDocuments(),
+      decisions: await getSynchronizationDecisionModel().countDocuments(),
+      changes: await getEntityChangeModel().countDocuments(),
+    });
+    const baseline = await state();
+    const next = (suffix: string, captured_at: Date, fields: Record<string, string>) => {
+      const action_id = freshAction.action_id + suffix;
+      return applyScheduledLeadChange({ request_id: nextRun, action_id, captured_at, initiator,
+        lifecycle_apply: { ...sourceItem, operation_id: nextRun + ":" + action_id,
+          granot_statement: { ...sourceItem.granot_statement, ...fields } } }, writeFlags);
+    };
+    assert.equal((await next("-repeat", collectedAgain, {})).outcome, "already_current");
+    assert.equal((await next("-older", new Date(+capturedAt - 1), { prior: "2", priority: "2" })).outcome, "stale");
+    assert.deepEqual(await state(), baseline);
+    const dateOnly = await next("-date", collectedAgain, { move_date: "11/21/2026" });
+    assert.equal(dateOnly.outcome, "applied");
+    assert.equal(dateOnly.outreach_refresh_completed, true);
+    assert.equal(await cadenceJobs(), 1, "date-only change and repeat leave cadence alone");
+    assert.equal(await getGranotObservationReceiptModel().countDocuments(), receiptsBefore);
+
     const conflictResult = await apply(actionFor(incomingConflictJob));
-    assert.equal(conflictResult.outcome, "conflict");
+    assert.equal(conflictResult.outcome, "unmatched");
     const conflict = await CallLead.findById(conflictId).lean();
     assert.equal(conflict?.job_no, storedConflictJob);
     assert.equal(conflict?.normalized_job_no, normalizeJobNo(storedConflictJob));
@@ -455,6 +489,9 @@ test("estimates apply fills a RingCentral Call Lead and leaves a conflicting or 
     );
     assert.equal(subject.assigned_agent_id, String(agentId));
   } finally {
+    await getSalesOutreachSubjectModel().deleteOne({ lead_id: freshId });
+    await getSalesIntelligenceJobModel().deleteMany({ subject_key: "outreach-lead:CallLead:" + freshId });
+    await GranotAutomationRun.deleteOne({ _id: runId });
     const leadIds = createdLeadIds;
     await CallLead.deleteMany({ _id: { $in: leadIds } });
     await Agent.deleteOne({ _id: agentId });

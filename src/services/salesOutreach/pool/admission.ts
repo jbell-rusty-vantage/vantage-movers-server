@@ -102,12 +102,12 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
     () => getFormLeadModel().find({ duplicate: { $ne: true }, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
     // A Call Lead mirroring its Form Lead's job (`granot_form_sibling`) is the same customer, not a second holder.
     () => getCallLeadModel().find({ duplicate: { $ne: true }, granot_form_sibling: null, ...jobFilter }, { normalized_job_no: 1 }).session(session).lean(),
-    () => getGranotObservationModel().find({ _id: { $in: observationIds } }, { receipt_id: 1, captured_at: 1, identity: 1, priority: 1, normalization_result: 1 }).session(session).lean(),
+    () => getGranotObservationModel().find({ _id: { $in: observationIds } }, { receipt_id: 1, scheduled_run_id: 1, captured_at: 1, identity: 1, priority: 1, normalization_result: 1 }).session(session).lean(),
     () => getSynchronizationDecisionModel().find({ observation_id: { $in: observationIds } }, { observation_id: 1, execution_mode: 1, outcome: 1, target: 1, source_scope: 1 }).sort({ attempt: -1 }).session(session).lean(),
   ], session);
   const identities = [...formIdentities, ...callIdentities];
   const [receipts, sources] = await readBatch([
-    () => getGranotObservationReceiptModel().find({ _id: { $in: observations.map((o) => o.receipt_id) } }, { processing: 1 }).session(session).lean(),
+    () => getGranotObservationReceiptModel().find({ _id: { $in: observations.filter(o => !o.scheduled_run_id).map(o => o.receipt_id) } }, { processing: 1 }).session(session).lean(),
     () => getGranotCrmSourceModel().find({ _id: { $in: [...decisions.flatMap((d) => d.source_scope ? [d.source_scope.granot_crm_source_id] : []), ...[...certified.values()].map(d => d.source_scope.granot_crm_source_id)] } }, { enabled: 1, lifecycle_enabled: 1, lifecycle_disposition: 1, lifecycle_policy_version: 1, lead_source_company: 1, lifecycle_routes: 1 }).session(session).lean(),
   ], session);
   const companyById = rowsById(companies), granularityById = rowsById(granularities);
@@ -161,7 +161,8 @@ export async function inspectPoolCandidates(refs: readonly DeskLeadRef[], sessio
       || +observation.captured_at !== +facts.accepted_observation.captured_at || !jobNumbersEquivalent(observation.identity.normalized_job_no, facts.normalized_job_no)) return refuse("accepted_observation_conflict");
     const decision = proof ? { execution_mode: "live", outcome: proof.outcome, target: ref, source_scope: proof.source_scope }
       : decisionByObservation.get(String(observation._id));
-    const completed = Boolean(proof) || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
+    // Scheduled Observations commit atomically with the applied Decision and Lead revision.
+    const completed = Boolean(proof) || ("scheduled_run_id" in observation && !!observation.scheduled_run_id && decision?.outcome === "applied") || receiptById.get(String(observation.receipt_id))?.processing.state === "completed";
     if (!decision || decision.execution_mode !== "live" || !["created", "linked", "applied", "already_current"].includes(decision.outcome)
       || decision.target?.model !== ref.model || String(decision.target?.id) !== ref.id
       || String(decision.source_scope?.lead_source_company) !== companyId || String(decision.source_scope?.source_granularity_id) !== granularityId

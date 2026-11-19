@@ -1,7 +1,7 @@
 ---
 type: Service
 title: "Granot HTTP automation apply (`granotLifecycle/`)"
-description: Owner-approved HTTP automation apply captures a receipt and enters claimAndProcessOrPoll.
+description: Scheduled Estimates compare Granot fields with MongoDB and apply changes to uniquely matched Leads.
 tags: [granot-lifecycle]
 status: draft
 stale_after: 2026-11-19
@@ -29,9 +29,13 @@ generated:
 
 # Granot HTTP automation apply (`granotLifecycle/`)
 
-**Role:** Convert each selected Owner-approved, checksum-locked HTTP-automation action into one `granot_http_automation` receipt under `${run_id}:${action_id}`, then enter Unit 08 `claimAndProcessOrPoll`. The locked plan statement is evidence. Apply does **not** call `updateFormLead`, `syncCallLeadEnrichment`, or `syncBookedCallLeadReconciliation`. Call contact follows the same snapshot-only rule as webhook synchronize; this path does not bypass enrichment into live phone/name/email.
+Granot supplies the collected CRM fields. MongoDB owns the Lead, its field ownership rules and its accepted update time. Scheduled Estimates plan only real changes for uniquely matched Leads and recheck identity, source policy, temporal order and desired state inside the write transaction. Unchanged, ambiguous and unmatched rows create no per-Lead history. The run keeps aggregate counters for those rows.
 
-Mongo is the **System of Record**. Preview still uses existing matching services and creates no receipt.
+A committed change uses the existing Lead synchronization mutation and Sheet Sync outbox. Its embedded run result identifies the source for the Observation, Decision and Lead provenance. The scheduled worker requests an Outreach refresh when the committed change includes priority. New scheduled actions never enter webhook receipt capture. A pre-cutover action with a saved capture resumes by its original receipt ID. [Scheduled change command](../../../src/services/granotHttpCollector/scheduledLeadChange.ts)
+
+## Historical receipt-backed automation
+
+The following contracts describe pre-cutover automation captures and their replay.
 
 ## Plan schema v2
 

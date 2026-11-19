@@ -1290,7 +1290,7 @@ async function persistLinkFollowUp(input: {
   return toDecisionDocument(input.decisionId, conflicted);
 }
 
-async function prepareDecision(input: {
+export async function prepareDecision(input: {
   observation: GranotObservationDocument;
   attempt: number;
   execution_mode: ExecutionMode;
@@ -1893,7 +1893,7 @@ function logProcessingCompletion(input: {
   });
 }
 
-function granotLifecycleProcessorActor(receiptId: string): DurableActor {
+export function granotLifecycleProcessorActor(receiptId: string): DurableActor {
   return {
     actor_type: "system",
     actor_id: "granot-lifecycle-processor",
@@ -1970,7 +1970,7 @@ async function defaultUpsertObservation(
   return result.observation as GranotObservationDocument;
 }
 
-async function defaultLoadActivation(): Promise<{ activated_at: Date } | null> {
+export async function defaultLoadActivation(): Promise<{ activated_at: Date } | null> {
   const row = await getGranotLifecycleActivationModel()
     .findOne({ key: "granot_lifecycle" })
     .lean();
@@ -2050,10 +2050,10 @@ function absent<T>(value: T | null | undefined): T | undefined {
 }
 
 export async function loadGranotLeadProjection(
-  target: EntityRef,
+  target: EntityRef, session?: ClientSession,
 ): Promise<LeadDesiredStateProjection | null> {
   if (target.model === "FormLead") {
-    const row = await getFormLeadModel().findById(target.id).lean().exec();
+    const row = await getFormLeadModel().findById(target.id).session(session ?? null).lean().exec();
     if (!row) return null;
     return {
       model: "FormLead",
@@ -2099,7 +2099,7 @@ export async function loadGranotLeadProjection(
     };
   }
   if (target.model === "CallLead") {
-    const row = await getCallLeadModel().findById(target.id).lean().exec();
+    const row = await getCallLeadModel().findById(target.id).session(session ?? null).lean().exec();
     if (!row) return null;
     return {
       model: "CallLead",
